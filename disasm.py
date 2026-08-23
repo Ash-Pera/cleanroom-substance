@@ -23,7 +23,7 @@ NAMES = {
  (1,0x12):'add',     (2,0x12):'add',
  (1,0x13):'sub',     (2,0x13):'sub',
  (1,0x14):'mul',     (2,0x14):'mul',
- (1,0x15):'div',
+ (1,0x15):'div',     (2,0x15):'div',
  (1,0x16):'mod',     (2,0x16):'mod',
  (1,0x17):'neg',
  (1,0x18):'dot',     (2,0x18):'dot',
@@ -43,13 +43,13 @@ TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
 
 # Operations whose operand tokens are immediates rather than value numbers.
 # 'all' = every token is part of one immediate; otherwise a tuple of token positions.
-#   0x10 swizzle    position 0 = packed 2-bit component mask
+#   0x10 swizzle    position 1 = packed 2-bit component mask (position 0 is the source)
 #   0x07 set        position 1 = variable slot (position 0 is the value)
 #   0x0B while      position 0 = iteration cap
 #   0x33 samplelum  position 1 = sampler index (which input image to read)
 #   0x34 samplecol  position 1 = sampler index
 IMM = {0x00:'all', 0x02:'all', 0x01:'all', 0x04:'all',
-       0x10:(0,), 0x07:(1,), 0x0B:(0,), 0x33:(1,), 0x34:(1,)}
+       0x10:(1,), 0x07:(1,), 0x0B:(0,), 0x33:(1,), 0x34:(1,)}
 
 def fields(op):
     return dict(ntok=(op >> 10) + 1, ty=(op >> 8) & 3, comps=((op >> 6) & 3) + 1, id=op & 0x3F)

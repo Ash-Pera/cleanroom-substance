@@ -15559,3 +15559,81 @@ above, and it is both simpler and closer to exact.
 More generally, **the record-slot program count is not the record's program count** for
 `fxmaps`. Any measurement of program density, CSE rates or bytecode volume that walked only
 record slots has undercounted `fxmaps`, which is 4.6% of records.
+
+## Reading the FX-Map disassembly, rather than counting it
+
+Everything above about FX-Maps came from counting nodes and programs. Disassembling one and
+reading it produces more in one pass, and immediately exposes a bug in the disassembler.
+
+### `swizzle` has its operands the other way round
+
+The first FX-Map program contained `%1 swizzle.f1 #0, %9!` - a forward operand reference, which
+contiguous three-address numbering forbids - while `%9 swizzle.f1 #0, %0` in the same program was
+fine. Same opcode, so the operand order had to be wrong.
+
+Over 144,632 `swizzle` instructions:
+
+    token 0 is a valid backward value reference   100.0%
+    token 1 is a valid backward value reference    61.6%
+    token 0 values   {1, 35, 49, 3, 0, 10, 77, 37, ...}   max 167
+    token 1 values   {78, 1, 0} and almost nothing else   max 78
+
+Token 1 takes three values in the whole corpus; token 0 spreads. **`swizzle` is
+`(source, mask)`**, and the disassembler had it as `(mask, source)` - the same mistake, in the
+same place, as `set`.
+
+The check that matters is what it does to the corpus as a whole:
+
+    instructions decoded                          1,750,691
+    with an impossible forward operand reference          2      0.0001%
+
+Two, in one and three quarter million. The disassembler is now self-consistent, which it
+demonstrably was not before.
+
+**This also corrects the operand type table published earlier.** The row
+`swizzle f1 arg 1: i2 53%, f2 45%` was typing the mask; the source operand is arg 0.
+
+### The tree is an execution sequence with a shared variable frame
+
+Node 1 of the record ends `set.f2 %3, #0` and `set.f2 %6, #2`. Node 2 begins `get.f2 2` and
+later `get.f2 0`. **The second node reads what the first wrote.**
+
+Evaluating each record's programs in chain order - the record's own program first, then each
+tree node's - and asking whether every `get` finds a slot some earlier program set:
+
+    resolved by an earlier program in the same tree   49,072   77.5%
+    still never set                                   14,253   22.5%
+
+Measured per program in isolation, 39.2% of `fxmaps` programs read a never-set slot. Measured
+along the chain, three quarters of those resolve. **The FX-Map tree is not a data structure the
+engine interprets node by node in isolation; it is a straight-line program sharing one variable
+frame**, and the chain order is the execution order. The residual 22.5% is what the engine
+genuinely seeds.
+
+### What the programs actually compute
+
+The second node of `ie_pcloud`'s FX-Map, read directly:
+
+    %1   sysvar.f1 #10          $number, the iteration index
+    %4   mul.i1 %2, 2
+    %7   cvt.i1 (a graph parameter component)      call it W
+    %8   mod.i1 %4, %7                             column
+    %14  div.i1 (%number * 131072), %7             row
+    %16  vec.f2 %9, %15                            (column, row)
+    %17  get.f2 0                                  cell size, set by node 1 as 1/param
+    %18  mul.f2 %16, %17                           scale to UV
+    %19  add.f2 %0, %18                            offset by base position
+    %20  set.f2 %19, #4                            store the instance position
+    %29  samplecol.f4 %19, #0                      sample the input image there
+    %30  set.f4 %29, #10                           store the sampled colour
+
+**A grid scatter.** It turns the iteration index into a cell coordinate by `mod` and `div`
+against a grid width, scales it to UV, and samples an input image at that point to colour the
+instance. The material is called `ie_pcloud` - a point cloud - and that is exactly what this is.
+
+That is the first FX-Map program in this document to be read rather than counted, and it makes
+the structure concrete: **`$number` in, an instance position and colour out, once per
+iteration.**
+
+One small gap closed on the way: integer `div` (operation `0x15`, int) was rendering as
+`op15` because the disassembler's name table only had the float form.
