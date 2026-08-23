@@ -2,8 +2,7 @@
 
 A resource is described by an ordinary record whose tag decodes as a resource
 descriptor. Descriptors are enumerated by the record directory, so they need not be
-searched for: walk the directory, keep the entries whose tag decodes, and the segment
-at the head of the file is fully accounted for.
+searched for: walk the directory and keep the entries whose tag decodes.
 
     [ u32 tag ][ u32 offset - 52 ]
 
@@ -11,22 +10,34 @@ at the head of the file is fully accounted for.
 
     byte[3]  NN high    pixel format  1 L8, 2 RGB8, 3 RGBA8, 5 L16, 7 RGBA16, 8 JPEG
     byte[2]  NN low     bit depth     0x08 8-bit, 0x18 16-bit
-    byte[1]  type high  output resolution, packed as (log2 h << 4) | log2 w
+    byte[1]  type high  declared resolution, packed as (log2 h << 4) | log2 w
     byte[0]  type low   2 * filter_id + is_colour; filter 16 is `bitmap`, so 0x20 / 0x21
 
-Raw resources occupy `width * height * channels * bytes_per_channel` bytes. Format 8 is
-an ordinary JFIF JPEG behind a `u32` length prefix; the prefix bounds the payload
-exactly, verified by its EOI marker on every JPEG in the corpus.
+Two things the field layout alone does not tell you, both measured against this corpus
+and handled below:
+
+*Several records may describe one image.* A resource shared by several `bitmap` nodes
+gets a descriptor per node, all pointing at the same offset — 34 of them in one
+specimen. Descriptors are therefore deduplicated by offset, and `references` records
+how many records named each image.
+
+*A descriptor does not always account for the gap to the next one.* Where the gap is a
+whole multiple of the declared image size, the surplus holds further images that no
+descriptor names. The declared geometry is still the right way to read the image that
+descriptor points at -- decoding the whole span as one larger image splices several
+images together, which is wrong and visible at a glance. The surplus is reported as
+`slack` and counted by `segment_report` rather than guessed at.
 
 Sources in FORMAT-NOTES.md: "Resource descriptors are ordinary records, and NN carries
-the format", "The record type's high byte is the output resolution", "Format 8 is JPEG".
+the format", "The record type's high byte is the output resolution", "Format 8 is JPEG",
+"The manifest's declared output size is a default, not the resource resolution".
 """
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from .assembly import SKEW, Assembly
+from .assembly import BODY, SKEW, Assembly
 
 #: format code -> (name, channels, bytes per channel). JPEG carries its own geometry.
 FORMATS: dict[int, tuple[str, int, int]] = {
@@ -47,6 +58,7 @@ _COLOUR = {1: 0x20, 5: 0x20, 2: 0x21, 3: 0x21, 7: 0x21}
 
 _BITMAP_FILTER = 16
 JPEG_SOI = b"\xff\xd8"
+_SOF_MARKERS = set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
 
 
 @dataclass(frozen=True)
@@ -62,17 +74,25 @@ class Resource:
     colour: bool
     offset: int
     size: int
-    record_offset: int
+    declared_width: int
+    declared_height: int
+    references: int = 1
+    slack: int = 0
+    geometry_known: bool = True
 
     @property
     def is_jpeg(self) -> bool:
         return self.format == "JPEG"
 
+    @property
+    def rescaled(self) -> bool:
+        """True when the stored image is not the size the descriptor declared."""
+        return (self.width, self.height) != (self.declared_width, self.declared_height)
+
     def __str__(self) -> str:
-        return "%-6s %dx%d %s %d bytes @%d" % (
-            self.format, self.width, self.height,
-            "colour" if self.colour else "grayscale", self.size, self.offset,
-        )
+        geometry = "%dx%d" % (self.width, self.height) if self.geometry_known else "?x?"
+        return "%-6s %s %s, %d bytes" % (
+            self.format, geometry, "colour" if self.colour else "grayscale", self.size)
 
 
 def decode_tag(tag: int) -> tuple[int, int, int, int] | None:
@@ -94,11 +114,25 @@ def decode_tag(tag: int) -> tuple[int, int, int, int] | None:
     return fmt, depth, resolution, colour_byte
 
 
-def resources(asm: Assembly) -> list[Resource]:
-    """Every embedded image the assembly describes, in segment order."""
-    data = asm.data
-    found: list[Resource] = []
+def jpeg_geometry(payload: bytes) -> tuple[int, int] | None:
+    """Read width and height from a JPEG's own SOF header."""
+    i = 2
+    while i + 9 < len(payload):
+        if payload[i] != 0xFF:
+            return None
+        marker = payload[i + 1]
+        length = struct.unpack_from(">H", payload, i + 2)[0]
+        if marker in _SOF_MARKERS:
+            height, width = struct.unpack_from(">HH", payload, i + 5)
+            return width, height
+        i += 2 + length
+    return None
 
+
+def _candidates(asm: Assembly) -> list[tuple[int, int, int, int, int]]:
+    """(offset, format code, resolution byte, colour byte, reference count)."""
+    data, segment_end = asm.data, asm.body_start
+    seen: dict[int, list] = {}
     for record_offset in asm.record_offsets:
         tag = asm.record_tag(record_offset)
         if tag is None:
@@ -106,35 +140,61 @@ def resources(asm: Assembly) -> list[Resource]:
         decoded = decode_tag(tag)
         if decoded is None:
             continue
-        fmt, depth, resolution, colour_byte = decoded
-
-        raw_offset = struct.unpack_from("<I", data, record_offset + 4)[0]
-        offset = raw_offset + SKEW
-        if not 0 <= offset < len(data):
+        fmt, _depth, resolution, colour_byte = decoded
+        offset = struct.unpack_from("<I", data, record_offset + 4)[0] + SKEW
+        if not BODY <= offset < segment_end:
             continue
+        if offset in seen:
+            seen[offset][-1] += 1
+            continue
+        seen[offset] = [offset, fmt, resolution, colour_byte, 1]
+    return [tuple(v) for v in sorted(seen.values())]
 
-        width = 1 << (resolution & 0xF)
-        height = 1 << ((resolution >> 4) & 0xF)
+
+def resources(asm: Assembly) -> list[Resource]:
+    """Every embedded image the assembly describes, in segment order."""
+    data, segment_end = asm.data, asm.body_start
+    found: list[Resource] = []
+
+    candidates = _candidates(asm)
+    for i, (offset, fmt, resolution, colour_byte, refs) in enumerate(candidates):
         name, channels, bpc = FORMATS[fmt]
+        declared_w = 1 << (resolution & 0xF)
+        declared_h = 1 << ((resolution >> 4) & 0xF)
+        next_offset = candidates[i + 1][0] if i + 1 < len(candidates) else segment_end
+        span = next_offset - offset
+        if span <= 0:
+            continue
 
         if fmt == 8:
             if offset + 6 > len(data) or data[offset + 4:offset + 6] != JPEG_SOI:
                 continue
             size = struct.unpack_from("<I", data, offset)[0] + 4
+            if size > span or offset + size > segment_end:
+                continue
+            geometry = jpeg_geometry(data[offset + 4:offset + size])
+            width, height = geometry or (declared_w, declared_h)
+            known = geometry is not None
+            slack = span - size
         else:
-            size = width * height * channels * bpc
-        if offset + size > len(data):
-            continue
+            # The declared geometry is the stored geometry. Where the gap to the next
+            # descriptor is larger, the surplus holds further images that no descriptor
+            # names -- reading the span as one big image is wrong, and visibly so.
+            size = declared_w * declared_h * channels * bpc
+            width, height, known = declared_w, declared_h, size <= span
+            if not known:
+                size = span
+            slack = span - size
 
         found.append(Resource(
-            index=0, format=name, width=width, height=height,
-            channels=channels, depth=8 if depth == 0x08 else 16,
-            colour=bool(colour_byte & 1), offset=offset, size=size,
-            record_offset=record_offset,
+            index=len(found), format=name, width=width, height=height,
+            channels=channels or (3 if colour_byte & 1 else 1),
+            depth=16 if fmt in (5, 7) else 8, colour=bool(colour_byte & 1),
+            offset=offset, size=size, declared_width=declared_w,
+            declared_height=declared_h, references=refs, slack=slack,
+            geometry_known=known,
         ))
-
-    found.sort(key=lambda r: r.offset)
-    return [Resource(**{**r.__dict__, "index": i}) for i, r in enumerate(found)]
+    return found
 
 
 def payload(asm: Assembly, res: Resource) -> bytes:
@@ -146,16 +206,14 @@ def payload(asm: Assembly, res: Resource) -> bytes:
 def segment_report(asm: Assembly, found: list[Resource]) -> dict:
     """How completely the resources account for the segment at the head of the file.
 
-    The segment runs from the start of the body to the first record. Descriptors that
+    The segment runs from the start of the body to the first record. Resources that
     tile it exactly are the strongest available check on the decode: a single misparsed
     descriptor breaks the total.
     """
-    from .assembly import BODY
-
     end = asm.body_start
     covered = sum(r.size for r in found)
-    # Resources are 4-aligned, so up to three bytes of padding between two of them is
-    # the layout rather than an unexplained hole. Anything more is a real gap, and an
+    # Resources are 4-aligned, so a few bytes of padding between two of them is the
+    # layout rather than an unexplained hole. More than that is a real gap, and an
     # overlap means a descriptor was misread.
     gaps = overlaps = 0
     for a, b in zip(found, found[1:]):
@@ -164,6 +222,7 @@ def segment_report(asm: Assembly, found: list[Resource]) -> dict:
             overlaps += 1
         elif slack > 3:
             gaps += 1
+    tail = end - (found[-1].offset + found[-1].size) if found else 0
     return {
         "segment_start": BODY,
         "segment_end": end,
@@ -173,6 +232,9 @@ def segment_report(asm: Assembly, found: list[Resource]) -> dict:
         "starts_at_body": bool(found) and found[0].offset == BODY,
         "internal_gaps": gaps,
         "overlaps": overlaps,
+        "trailing_bytes": max(0, tail),
+        "rescaled": sum(1 for r in found if r.rescaled),
+        "geometry_unknown": sum(1 for r in found if not r.geometry_known),
         "tiles_exactly": (
             bool(found) and found[0].offset == BODY and gaps == 0 and overlaps == 0
         ),

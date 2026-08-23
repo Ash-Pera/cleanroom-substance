@@ -15637,3 +15637,64 @@ iteration.**
 
 One small gap closed on the way: integer `div` (operation `0x15`, int) was rendering as
 `op15` because the disassembler's name table only had the float form.
+
+## The FX-Map "blob" is mostly bytecode, and the node vocabulary is larger than two
+
+Earlier sections put 64.5% of `fxmaps` record bytes outside anything decodable, then 45.3% once
+tree programs were counted. Both figures were artifacts of my own walker.
+
+### A third node type, found by reading
+
+Following one record's chain by hand rather than by whitelist:
+
+    +160    0000018B   -> +172 PROG    next -> +11448
+    +11448  000001AB   -> +11464 PROG  -> +11496 PROG   next -> +66988
+
+`0x1AB` is a node carrying **two** program pointers where `0x18B` carries one. The chain walk
+never saw it, because it only accepted headers `0x18B` and `0x89` and stopped at anything else -
+which is why chains terminated early and the rest of the record looked like an undecoded blob.
+
+The largest "unexplained region" in the corpus, 67,034 bytes, turned out to begin two bytes
+before a program's count word. Programs are u16-aligned, not u32-aligned, so a region can start
+at 2 mod 4 and a word-aligned dump makes it look like noise.
+
+### Measuring coverage soundly
+
+A greedy scan for anything that decodes would cover almost any record - roughly half of all u16
+values are valid opcodes, which is what produced the phantom opcodes earlier in this document.
+The sound test requires each program to be **referenced**: a program only counts if some
+4-aligned word in the same record points at it.
+
+Applying that to every `fxmaps` record:
+
+    programs located, each with an in-record reference   144,273
+    bytes covered                                          89.4%
+    unexplained                                            10.6%
+
+    for comparison, the {0x18B, 0x89} chain walk covered   54.7%
+
+**`fxmaps` records are about 90% bytecode.** The "blob region" this document has referred to
+since the FX-Map work began is not a data format waiting to be decoded - it is programs, and the
+only reason they were invisible is that the walker could not reach them.
+
+Confirmation that these are real rather than scan artifacts: in the record examined by hand, all
+five programs are referenced from 4-aligned words at +164, +11452, +11456, +67000 and +67004 -
+and the last two sit in a run of five consecutive program pointers, which is a structure the
+walker does not model at all.
+
+### What is still open
+
+The node vocabulary is **not** settled. Walking with no whitelist at all produces `0x18B` (42%)
+and `0x89` (35%) cleanly, plus `0x20008` (10%) and `0x1CB` (2%) which appear as chain roots and
+are probably real - but also values like `0x22000D48` that plainly are not, because the walk has
+no way to know a node's size and guesses where the next pointer sits.
+
+Settling it needs the shape-per-header rule, and the three known shapes differ:
+
+    0x18B    [header][program][next]
+    0x89     [header][program][0][next]
+    0x1AB    [header][program][program][next]
+
+**Corrected status:** `fxmaps` records are ~90% located bytecode, three node shapes are known,
+the vocabulary is open, and the figure to quote for undecoded FX-Map content is **10.6%**, not
+45%.
