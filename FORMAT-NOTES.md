@@ -1,8 +1,72 @@
 # .sbsar / .sbsasm format notes
 
 Static analysis of freely-licensed specimens. Every claim below is reproducible with
-`sbsasm_probe.py` against the corpus described here. Claims are marked **confirmed**
-(verified across independent specimens) or **open**.
+the tools in this repository against the corpus described here. Claims are marked
+**confirmed** (verified across independent specimens) or **open**.
+
+## Provenance statement
+
+This section is the auditable summary of what this work was and was not derived from.
+The detail is scattered through the notebook below; this is the whole of it in one place.
+
+### What was analysed
+
+Freely distributed `.sbsar` archives - CC0 materials from ambientCG, and `.sbsar` and `.sbs`
+files published by their authors on GitHub under MIT, CC0 and MPL licences. Analysing a
+freely distributed file to achieve interoperability is the entire basis of this work.
+
+### What was never used
+
+* **Adobe's Substance engine, in any form.** No binary was run, disassembled or inspected.
+  Nothing here was obtained by observing the engine's behaviour; every statement comes from
+  reading distributed data files.
+* **Adobe's bundled library `.sbs` sources.** Several material packs redistribute Adobe's
+  standard-library sources alongside their own work. Those files would answer many of the
+  open questions directly - they contain the definitions of the library graphs whose inlining
+  breaks source-to-binary correspondence - and they were excluded.
+
+### How the exclusion was enforced
+
+Mechanically, on every source file, before any measurement: a file containing the string
+`<author v="Allegorithmic"` was dropped in its entirety.
+
+    paired sources                                       140
+      excluded by the rule                                38
+      permitted                                          102
+
+The rule is deliberately **over-broad**. It excludes whole files rather than individual
+graphs, so the 38 excluded files gave up **12 graphs that were the material author's own
+work** along with the 39 Allegorithmic-authored ones. That cost was accepted rather than
+write a finer-grained rule that could leak.
+
+### What the exclusion cost, measured
+
+The notebook records the price rather than hiding it, because a boundary that costs nothing
+is not being enforced:
+
+* **Filter id 11** (10,978 records, 1.7% of the format) cannot be named. Its structural
+  profile matches `motionblur`, and every specimen in the corpus that uses `motionblur`
+  carries an Allegorithmic graph.
+* **Filter id 5** cannot be named. Its profile matches `svg`; the one source file using
+  `svg` is excluded.
+* **`passthrough` and `grayscaleconversion`** appear in 25-26 permitted sources each and are
+  never count-exact, so neither can be identified.
+* **FX-Map internals** remain undecoded, blocked on instance-free specimens.
+
+### A boundary incident, disclosed
+
+While investigating tag `0x12`, aggregate filter counts were read from two files that the
+rule had excluded, before it was noticed that they were excluded. The observation was
+**not used**: it was not promoted to an identification, and tag `0x12` is still recorded in
+this document as unresolved - a legacy tag with five records, named on version evidence
+alone. It is recorded here because a clean-room record that documents only its successes
+is not evidence of anything.
+
+### What a reader can verify independently
+
+The exclusion predicate is one string match and can be re-run on any corpus. The tools in
+this repository reproduce every quantitative claim from files a reader supplies themselves.
+Where a conclusion rests on a specific specimen, that specimen is named.
 
 ## Held-out validation, and a provenance boundary
 

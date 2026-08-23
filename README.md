@@ -34,14 +34,22 @@ Point the tools at your own collection.
 Analysing freely distributed `.sbsar` files for interoperability is the legitimate activity
 this project is built on. Two things were excluded throughout:
 
-* Adobe's Substance engine binaries.
-* Adobe's bundled library `.sbs` sources obtained through unofficial redistribution. Any
-  source file containing an `<author v="Allegorithmic"/>` graph was excluded from every
-  measurement.
+* **Adobe's Substance engine, in any form** — no binary was run, disassembled or inspected.
+* **Adobe's bundled library `.sbs` sources.** Several material packs redistribute them.
+  Enforced mechanically, before any measurement: a source file containing
+  `<author v="Allegorithmic"` was dropped entire. 38 of 140 paired sources were excluded
+  this way. The rule is deliberately over-broad — dropping whole files rather than
+  individual graphs gave up 12 graphs that were the material author's own work.
 
-That exclusion has a measurable cost, and the notes record it rather than hiding it: filter
-id 11 and filter id 5 cannot be named because every specimen that would identify them is
-excluded on provenance.
+That exclusion has a measured cost, and the notes record it rather than hiding it: filter
+id 11 (1.7% of all records) and filter id 5 cannot be named, because every specimen that
+would identify them is excluded. One occasion where the boundary was brushed — aggregate
+counts read from two excluded files before it was noticed — is disclosed too, along with
+the fact that the observation was not used.
+
+The **Provenance statement** at the top of `FORMAT-NOTES.md` is the auditable version of
+all of this in one place. The exclusion predicate is a single string match and can be
+re-run against any corpus.
 
 ## Where the format stands
 
