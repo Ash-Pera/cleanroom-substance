@@ -1,0 +1,40 @@
+# Corpus specimens are not redistributed here.
+#
+# The analysis in FORMAT-NOTES.md was performed on freely distributed .sbsar files
+# (ambientCG, CC0) and .sbs sources published by their authors on GitHub under MIT,
+# CC0 and MPL licences. Those files belong to their authors and are not republished
+# in this repository. The tools reproduce every result from a local corpus.
+corpus/
+acg2/
+new_acg/
+new_sbs/
+pairs/
+pairs2/
+pairs3/
+pairs4/
+pairs5/
+pairs6/
+tiny/
+tiny2/
+extracted/
+extracted2/
+extracted3/
+x_*/
+*.sbsar
+*.sbsasm
+*.sbs
+*.png
+
+# Derived caches and intermediate output
+*.pkl
+*.bak
+__pycache__/
+catalogue*.txt
+catalogue.json
+harvest2.txt
+isa_census.txt
+structmatch.txt
+DISTINCT.txt
+
+# macOS
+.DS_Store
