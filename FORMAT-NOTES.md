@@ -15340,3 +15340,48 @@ From "linked structure of unknown nodes" to one node type named against ground t
 step that made it possible was not a better walker - three walkers had already failed on this
 - but **knowing the answer for one record before looking at it**, which is what the
 count-exact expansion of `ie_pcloud` supplied.
+
+## The FX-Map tree read end to end
+
+Scanning a known record for the two node headers, and following each node's pointers:
+
+    +28   0000018B   -> program @+40    next -> +124  (0x18B)
+    +124  0000018B   -> program @+136   next -> +352  (0x89)
+    +352  00000089   -> +368            0    next -> +644  (0x89)
+    +644  00000089   -> +660            0    next -> +1092
+
+**The tree is a singly linked list of mixed node types**, entered from record slot 2, with the
+`0x18B` nodes first and the `0x89` nodes after. The two shapes differ:
+
+    0x18B    [header][program pointer][next]        an addnode, carrying its own program
+    0x89     [header][data pointer][0][next]        carries a data region, not a program
+
+That accounts for the record's programs exactly. This record has four: two reached from the
+`0x18B` nodes, and two more from the record's own slots 4 and 5. The
+"one program per FX-Map node plus one" relation recorded earlier is really **one program per
+`addnode`, plus the record's own two**, which is why it fitted the bulk and not the tail.
+
+### `0x89` remains unidentified, and the count rules out the obvious answer
+
+    binary 0x89 per record        {2: 100, 1: 7, 0: 3}     total 207
+    source paramset per node      {1: 110}                  total 110
+
+Roughly two per record against one per node, and three records carrying none. It cannot be
+`paramset`. It is unambiguously a real node - it sits in the chain, it is pointed at by a
+confirmed `addnode`, and it has a consistent four-word shape - but the source structure it
+corresponds to is not established.
+
+Also confirmed while checking this: in this material `paramsGraphData` and `paramsGraphNode`
+counts are identical (110 `paramset`, 217 `addnode`), so each shared definition has exactly one
+instance in the tree. That mattered because a first pass counted *both* families and got exactly
+double, which would have made `0x18B` half of `addnode` rather than equal to it. The strict
+count is the right one and the identification stands.
+
+### FX-Map status
+
+    entered from            record slot 2
+    structure               singly linked list, 0x18B nodes then 0x89 nodes
+    0x18B                   addnode - confirmed, exact distribution over 110 records
+    0x89                    real, four-word shape, ~2 per record, unidentified
+    programs                one per addnode, plus two from the record's own slots
+    the data regions        pointed at by 0x89 nodes, still undecoded
