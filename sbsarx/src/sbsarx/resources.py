@@ -85,8 +85,8 @@ class Resource:
         return self.format == "JPEG"
 
     @property
-    def rescaled(self) -> bool:
-        """True when the stored image is not the size the descriptor declared."""
+    def declared_geometry_differs(self) -> bool:
+        """True when a JPEG's own SOF header disagrees with the descriptor's tag."""
         return (self.width, self.height) != (self.declared_width, self.declared_height)
 
     def __str__(self) -> str:
@@ -223,6 +223,7 @@ def segment_report(asm: Assembly, found: list[Resource]) -> dict:
         elif slack > 3:
             gaps += 1
     tail = end - (found[-1].offset + found[-1].size) if found else 0
+    undescribed = max(0, (end - BODY) - covered)
     return {
         "segment_start": BODY,
         "segment_end": end,
@@ -233,7 +234,9 @@ def segment_report(asm: Assembly, found: list[Resource]) -> dict:
         "internal_gaps": gaps,
         "overlaps": overlaps,
         "trailing_bytes": max(0, tail),
-        "rescaled": sum(1 for r in found if r.rescaled),
+        "undescribed_bytes": undescribed,
+        "declared_geometry_differs": sum(
+            1 for r in found if r.declared_geometry_differs),
         "geometry_unknown": sum(1 for r in found if not r.geometry_known),
         "tiles_exactly": (
             bool(found) and found[0].offset == BODY and gaps == 0 and overlaps == 0

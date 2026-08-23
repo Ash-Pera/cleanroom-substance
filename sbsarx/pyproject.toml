@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sbsarx"
+version = "0.1.0"
+description = "Read Substance .sbsar packages and extract their embedded images without the Substance engine"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "Ash Pera" }]
+keywords = ["substance", "sbsar", "sbsasm", "texture", "reverse-engineering", "blender"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+    "Programming Language :: Python :: 3",
+]
+dependencies = ["py7zr>=0.20"]
+
+[project.optional-dependencies]
+images = ["Pillow>=9", "numpy>=1.20"]
+
+[project.scripts]
+sbsarx = "sbsarx.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/apera/cleanroom-substance"
+"Format notes" = "https://github.com/apera/cleanroom-substance/blob/main/FORMAT-NOTES.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sbsarx"]

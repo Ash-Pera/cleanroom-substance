@@ -15698,3 +15698,57 @@ Settling it needs the shape-per-header rule, and the three known shapes differ:
 **Corrected status:** `fxmaps` records are ~90% located bytecode, three node shapes are known,
 the vocabulary is open, and the figure to quote for undecoded FX-Map content is **10.6%**, not
 45%.
+
+## Verifying the 90% figure, and where FX-Map structure stops yielding
+
+The claim that `fxmaps` records are ~90% bytecode rests on accepting a program whenever some
+word in the record points at it. That is exactly the kind of permissive rule that manufactured
+the phantom opcodes, so it needs checking rather than repeating.
+
+**Check 1 - are the references coming from inside other programs?** A float immediate read as a
+u32 could point at a valid program by chance. Recomputing as a fixed point, accepting a program
+only if its reference lies outside every already-accepted program body:
+
+    programs accepted   144,207   against 144,273 accepting all references
+    coverage              89.4%   unchanged
+
+Sixty-six programs of 144,273. The references are not coming from program interiors.
+
+**Check 2 - do the programs overlap?** Random false positives would nest and overlap heavily;
+real programs laid out in a record should tile it.
+
+    program spans detected              88,671
+    starting inside another (nested)        40    0.05%
+    coverage from non-nested spans only    88.5%
+
+**Forty out of 88,671.** Twelve programs per record, essentially non-overlapping, covering 88.5%
+of the bytes. Chance does not produce a clean tiling. The figure holds.
+
+### Where the structure stops resolving
+
+Knowing the programs is not the same as knowing the nodes. Looking at how the pointers sit:
+
+    runs of consecutive program-pointer words
+      1 pointer    56.2%      3 pointers    8.8%
+      2 pointers   22.6%      4 pointers   10.4%
+      5+                                    1.9%
+
+    the word immediately before a run
+      a float or large value   66.0%
+      0x18B                    10.5%
+      0x89                      8.8%
+      0x0, 0x2A, 0xB, 0x1CB    ~5%
+
+Only about a fifth of pointer runs are preceded by a recognisable node header. The rest are
+preceded by a float - which is what a *previous program's trailing operand* looks like. So the
+pointers are embedded in structures interleaved with the programs, and the preceding word is
+usually not a header at all.
+
+That is the limit of what structural inference gives here. Deriving the node vocabulary needs
+what named `addnode` in the first place: **a material whose FX-Map composition is known from its
+source before the binary is read**. `ie_pcloud` supplied one, and for its records the
+`{0x18B, 0x89}` walk is complete - the extra node types appear only in other materials, whose
+sources are not in the permitted corpus.
+
+**Status:** `fxmaps` records are ~90% located bytecode, verified two ways; three node shapes are
+known; the vocabulary is open and blocked on ground truth rather than on method.
