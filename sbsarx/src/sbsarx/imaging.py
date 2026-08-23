@@ -17,6 +17,7 @@ _MODES = {
     ("L16"): ("I;16", "<u2"),
     ("RGB8"): ("RGB", "u1"),
     ("RGBA8"): ("RGBA", "u1"),
+    ("RGB16"): ("RGB", "<u2"),
     ("RGBA16"): ("RGBA", "<u2"),
 }
 
@@ -61,7 +62,8 @@ def to_pillow(res: Resource, data: bytes):
         # colour is reduced to 8 bits, which is lossy and is reported by the caller.
         if res.channels == 1:
             return Image.fromarray(array, mode="I;16")
-        return Image.fromarray((array >> 8).astype("u1"), mode="RGBA")
+        return Image.fromarray((array >> 8).astype("u1"),
+                               mode="RGB" if res.channels == 3 else "RGBA")
     return Image.fromarray(array, mode=mode)
 
 
@@ -72,4 +74,4 @@ def suggested_name(res: Resource) -> str:
 
 def lossy_on_write(res: Resource) -> bool:
     """True when writing a PNG loses precision the file actually carries."""
-    return res.format == "RGBA16"
+    return res.format in ("RGB16", "RGBA16")

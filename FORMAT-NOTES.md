@@ -15752,3 +15752,68 @@ sources are not in the permitted corpus.
 
 **Status:** `fxmaps` records are ~90% located bytecode, verified two ways; three node shapes are
 known; the vocabulary is open and blocked on ground truth rather than on method.
+
+## `0x89` nodes compute predicates: the two node types separate perfectly by result type
+
+Reading a `0x89` node's program rather than counting its occurrences settles what it is.
+
+### The program
+
+Fifty instructions from `ie_pcloud`, read end to end:
+
+    %1   sysvar.f1 #10                 $number
+    %8   mod.i1 (N*2), W               column        } identical to the addnode program's
+    %14  div.i1 (N*131072), W          row           } placement computation
+    %19  add.f2 base, scaled           this instance's position
+    %20  samplecol.f4 %19, #0          sample the image there
+    %26  get.f4 10                     the colour another node stored in slot 10
+    %29  sub.f1 (this.x, stored.x)
+    %30  abs.f1
+    %32  lt.b2 %30, threshold          |dx| < t
+    %37  lt.b2 |dy|, threshold         |dy| < t
+    %38  and.b2 %32, %37               both
+    %43  eq.b2  N, param0
+    %44  or.b2
+    %46  eq.b2  N, (the N stored in slot 6)
+    %47  not.b2 %46                    ... and this is not the same instance
+    %48  and.b2
+
+**It is a proximity test.** The node recomputes the current instance's position, samples the
+image, compares it against the position another node stored, and asks whether the two are within
+a threshold in both axes - while excluding the case where the stored iteration index equals the
+current one, so an instance is not compared with itself.
+
+For a material called `ie_pcloud`, an O(N^2) pairwise neighbour test between scattered points is
+exactly the right thing to find.
+
+### The result type separates the node types completely
+
+If `0x89` computes a predicate, its program should end boolean-typed. Checking the final
+instruction of every node program in the corpus:
+
+    0x18B    12,023 programs    ends i1   100.0%
+    0x89     10,048 programs    ends b2   100.0%
+
+**Twenty-two thousand programs, no exceptions either way.** `0x18B` nodes yield an integer;
+`0x89` nodes yield a boolean.
+
+That is what `0x89` is: a **conditional node**, evaluating a predicate. Its shape supports it -
+`[header][program][0][next]` has a spare word where `0x18B` has none, which is where a second
+branch target would sit, and it is null throughout this corpus.
+
+It also explains the count mismatch that blocked this earlier. `0x89` appears 207 times against
+110 source `paramset` entries, and the two never lined up because **`0x89` is not `paramset`** -
+it is a node kind the source represents some other way, and no amount of matching those two
+counts was ever going to work.
+
+### FX-Map node types
+
+    0x18B    [header][program][next]              addnode - confirmed by exact count
+                                                  program returns i1, 100% of 12,023
+    0x89     [header][program][0][next]           conditional - program returns b2,
+                                                  100% of 10,048
+    0x1AB    [header][program][program][next]     two programs, unidentified
+    0x20008, 0x1CB                                seen as chain roots, unidentified
+
+Reading two programs produced more than every counting pass before them: the execution model,
+the shared variable frame, the placement computation, and now the role of the second node type.

@@ -8,7 +8,7 @@ searched for: walk the directory and keep the entries whose tag decodes.
 
     tag = NN << 16 | type
 
-    byte[3]  NN high    pixel format  1 L8, 2 RGB8, 3 RGBA8, 5 L16, 7 RGBA16, 8 JPEG
+    byte[3]  NN high    pixel format, see FORMATS below
     byte[2]  NN low     bit depth     0x08 8-bit, 0x18 16-bit
     byte[1]  type high  declared resolution, packed as (log2 h << 4) | log2 w
     byte[0]  type low   2 * filter_id + is_colour; filter 16 is `bitmap`, so 0x20 / 0x21
@@ -40,21 +40,26 @@ from dataclasses import dataclass, replace
 from .assembly import BODY, SKEW, Assembly
 
 #: format code -> (name, channels, bytes per channel). JPEG carries its own geometry.
+#: The code is `base + 4` when the channels are 16-bit, with base 1 L, 2 RGB, 3 RGBA.
+#: FORMAT-NOTES.md lists every code but 6; RGB16 was found here, in GrassSubstance001,
+#: and confirmed by decoding it -- a clean image, and the only reading of those bytes
+#: that produces one.
 FORMATS: dict[int, tuple[str, int, int]] = {
     1: ("L8", 1, 1),
     2: ("RGB8", 3, 1),
     3: ("RGBA8", 4, 1),
     5: ("L16", 1, 2),
+    6: ("RGB16", 3, 2),
     7: ("RGBA16", 4, 2),
     8: ("JPEG", 0, 0),
 }
 
 #: The depth byte each format must carry. Agreement is 564 of 565 descriptors, so a
 #: disagreement is evidence the tag is not a descriptor at all.
-_DEPTH = {1: 0x08, 2: 0x08, 3: 0x08, 8: 0x08, 5: 0x18, 7: 0x18}
+_DEPTH = {1: 0x08, 2: 0x08, 3: 0x08, 8: 0x08, 5: 0x18, 6: 0x18, 7: 0x18}
 
 #: The grayscale/colour flag each format must carry. JPEG may be either.
-_COLOUR = {1: 0x20, 5: 0x20, 2: 0x21, 3: 0x21, 7: 0x21}
+_COLOUR = {1: 0x20, 5: 0x20, 2: 0x21, 3: 0x21, 6: 0x21, 7: 0x21}
 
 _BITMAP_FILTER = 16
 JPEG_SOI = b"\xff\xd8"
@@ -189,7 +194,7 @@ def resources(asm: Assembly) -> list[Resource]:
         found.append(Resource(
             index=len(found), format=name, width=width, height=height,
             channels=channels or (3 if colour_byte & 1 else 1),
-            depth=16 if fmt in (5, 7) else 8, colour=bool(colour_byte & 1),
+            depth=16 if fmt in (5, 6, 7) else 8, colour=bool(colour_byte & 1),
             offset=offset, size=size, declared_width=declared_w,
             declared_height=declared_h, references=refs, slack=slack,
             geometry_known=known,
