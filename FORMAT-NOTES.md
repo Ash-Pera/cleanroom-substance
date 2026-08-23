@@ -15273,3 +15273,70 @@ measured against each other at all.
 **Status: FX-Map internals remain undecoded, but are no longer unmeasured.** The blocker has
 moved from "one material, four nodes" to "one relation, fitting 93% of 110 records, with a
 plausible but unproved explanation for the rest."
+
+## FX-Map node type `0x18B` identified as `addnode`
+
+The `ie_pcloud` expansion gave FX-Maps their first substantial sample - 110 source nodes
+matching 110 binary records exactly. Reading one record whose source composition was known in
+advance made the tree legible.
+
+### Reading a record with the answer in hand
+
+The source says every one of these FX-Maps contains **one `paramset` and two `addnode`**
+entries. A 1,168-byte record, with its four inline programs subtracted:
+
+    +28   0000018B         node header
+    +32   -> +40  PROGRAM
+    +36   -> +124
+    +124  0000018B         node header
+    ...
+    +352  00000089         a different node header
+    +356  -> +368
+    +364  -> +644
+
+**Three nodes: `0x18B` twice, `0x89` once.** Against one `paramset` and two `addnode`.
+
+`0x18B` is the value that appeared at 33.5% in an earlier node-header census and was
+**dismissed as contamination** - the census was contaminated, but this value was not the
+contamination.
+
+### The distribution settles it
+
+Walking the tree in all 110 records and counting headers:
+
+    binary, 0x18B per record   {2: 105,  1: 4,  3: 1}
+    source, addnode per node   {2: 105,  1: 4,  3: 1}
+
+    total 0x18B                217
+    total addnode              217
+
+**Identical, including the tail.** One hundred and five records with two, four with one, one
+with three - and the source distribution is the same three numbers in the same places. A
+walker that found nodes by chance would not reproduce a 4-and-1 tail.
+
+    FX-Map node header 0x18B = `addnode`   confirmed
+
+### `0x89` is not `paramset`
+
+The obvious companion reading does not hold:
+
+    binary, 0x89 per record    {2: 100,  1: 7,  0: 3}
+    source, paramset per node  {1: 110}
+
+Roughly two per record against one per node, and three records with none. `0x89` is a real
+node type - it sits in the tree, it is pointed at, and it has a consistent shape
+`[header][ptr][0][ptr]` distinct from `0x18B`'s `[header][program][next]` - but it is not
+the source's `paramset`, and what it is remains open.
+
+### Where FX-Maps now stand
+
+    tree structure        linked [header][pointer] nodes, reached from record slot 2
+    node type 0x18B       addnode - confirmed, exact distribution over 110 records
+    node type 0x89        real, ~2 per record, unidentified
+    programs per record   one per FX-Map node plus one, fitting ~93% of records
+    the blob region       the largest part of a record, still undecoded
+
+From "linked structure of unknown nodes" to one node type named against ground truth. The
+step that made it possible was not a better walker - three walkers had already failed on this
+- but **knowing the answer for one record before looking at it**, which is what the
+count-exact expansion of `ie_pcloud` supplied.
