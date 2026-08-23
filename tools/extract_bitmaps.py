@@ -22,14 +22,32 @@ import standalone_parse as S
 
 CHANNELS = {1: 1, 2: 3, 3: 4}
 
+#: format code -> (name, channels, bytes per channel). The code is a base - 1 for L,
+#: 2 for RGB, 3 for RGBA - plus 0 for 8-bit, 4 for 16-bit, or 32 for 32-bit float,
+#: and the class low byte repeats the depth as 0x08 / 0x18 / 0x38. Inferred bytes per
+#: pixel agrees with this table in 100% of samples for every code below.
+#: Code 8 is JPEG, which carries its own geometry and a 4-byte length prefix.
+FORMATS = {
+    1:  ('L8',      1, 1),   2:  ('RGB8',    3, 1),   3:  ('RGBA8',   4, 1),
+    5:  ('L16',     1, 2),   6:  ('RGB16',   3, 2),   7:  ('RGBA16',  4, 2),
+    33: ('L32F',    1, 4),   34: ('RGB32F',  3, 4),   35: ('RGBA32F', 4, 4),
+    8:  ('JPEG',    0, 0),
+}
+JPEG_SOI = b'\xff\xd8'
+
 
 def pixel_format(cls):
-    """(channels, bytes_per_channel) for a bitmap record's class word, or None."""
-    hi = (cls >> 8) & 0xFF
-    ch = CHANNELS.get(hi & 3)
-    if ch is None:
-        return None
-    return ch, (2 if hi & 4 else 1)
+    """(channels, bytes_per_channel) for a bitmap record's class word, or None.
+
+    Returns (0, 0) for JPEG, whose size is not computable from the geometry.
+    """
+    f = FORMATS.get((cls >> 8) & 0xFF)
+    return (f[1], f[2]) if f else None
+
+
+def format_name(cls):
+    f = FORMATS.get((cls >> 8) & 0xFF)
+    return f[0] if f else None
 
 
 def bitmaps(path):
@@ -51,26 +69,44 @@ def bitmaps(path):
         nxt = (offs[i + 1] + 52) if i + 1 < len(offs) else r['table_start']
         if min(nxt, len(d)) - o != 8:
             continue                       # long form: a graph input, see graph_inputs()
-        fmt = pixel_format(w0 >> 16)
+        cls = w0 >> 16
+        fmt = pixel_format(cls)
         if not fmt:
             continue
         ch, bpc = fmt
+        name = FORMATS[(cls >> 8) & 0xFF][0]
         width, height = 1 << ((tag >> 8) & 0xF), 1 << ((tag >> 12) & 0xF)
-        start = struct.unpack_from('<I', d, o + 4)[0]
+        # Resource offsets carry the format's usual +52 skew. The first resource then
+        # lands at 0x38, immediately after the header, which is where the segment
+        # starts; reading them raw puts it 52 bytes early, inside the header.
+        start = struct.unpack_from('<I', d, o + 4)[0] + 52
+        if name == 'JPEG':
+            # [u32 length][JPEG stream]. The tag's geometry is the declared output
+            # size and need not match the stream's own SOF header.
+            if start + 6 > len(d):
+                continue
+            size = struct.unpack_from('<I', d, start)[0]
+            body = start + 4
+            if size <= 0 or body + size > len(d) or d[body:body + 2] != JPEG_SOI:
+                continue
+            yield {'record': i, 'offset': body, 'width': width, 'height': height,
+                   'channels': None, 'depth': None, 'format': name, 'size': size,
+                   'data': memoryview(d)[body:body + size]}
+            continue
         size = width * height * ch * bpc
         if start + size > len(d):
             continue
         yield {'record': i, 'offset': start, 'width': width, 'height': height,
-               'channels': ch, 'depth': bpc * 8, 'size': size,
+               'channels': ch, 'depth': bpc * 8, 'format': name, 'size': size,
                'data': memoryview(d)[start:start + size]}
 
 
 if __name__ == '__main__':
     import sys
     for b in bitmaps(sys.argv[1]):
-        print('record %-5d %5dx%-5d %d ch %2d-bit  offset %-10d %d bytes'
-              % (b['record'], b['width'], b['height'], b['channels'],
-                 b['depth'], b['offset'], b['size']))
+        print('record %-5d %5dx%-5d %-8s offset %-10d %d bytes'
+              % (b['record'], b['width'], b['height'], b['format'],
+                 b['offset'], b['size']))
 
 
 def graph_inputs(path):

@@ -13995,6 +13995,9 @@ is raw and uncompressed. Taking the gap between consecutive resource offsets and
 
 There are no mipmaps and no padding between images: consecutive resources abut exactly.
 
+**Corrected below**: this table is incomplete and the offsets given here are read without the
++52 skew. See "Embedded images: JPEG, float formats, and a 52-byte error".
+
 **Validation.** Running the model over the corpus:
 
     files with embedded bitmaps      92
@@ -15817,3 +15820,71 @@ counts was ever going to work.
 
 Reading two programs produced more than every counting pass before them: the execution model,
 the shared variable frame, the placement computation, and now the role of the second node type.
+
+## Embedded images: JPEG, float formats, and a 52-byte error
+
+A parallel effort in this project produced `sbsarx/`, a packaged reader built on this format
+description. Reading it exposed three things wrong or missing in the account above - the first
+of which had been reported here as a verified result.
+
+### Resource offsets carry the +52 skew
+
+`extract_bitmaps.py` read a resource offset raw. It should be skewed like every other pointer in
+the format:
+
+    raw       base 4     first bytes  00000500 b4f24072
+    raw + 52  base 56    first bytes  d6520000 ffd8ffe0
+
+Fifty-six is `0x38`, the end of the header, which is exactly where the resource segment begins.
+Reading raw places the first image **inside the file header**.
+
+Why this survived a verification pass: the earlier check confirmed 516 images with "zero reads
+past end of file" and plausible byte statistics. A 52-byte shift satisfies both - the data is
+still inside the resource segment, and the byte histogram of an image shifted by 52 bytes looks
+like the byte histogram of an image. Nothing in that check could see it.
+
+What does see it is a format with a **magic number**. JPEG resources begin `FF D8`, and under
+the corrected offset 45 of 45 land on it exactly. **A self-validating format is worth more than
+a plausibility check**, and this document had one available and did not use it.
+
+### Format 8 is JPEG
+
+    [u32 length][JPEG stream]
+
+Forty-five resources, 16.2 MB of compressed data across 10 specimens, every one beginning
+`FF D8 FF E0` - SOI followed by a JFIF APP0 marker. The claim above that embedded images are
+"raw and uncompressed" is true of the other formats and false of this one.
+
+The tag's declared geometry is the *output* size and need not match the stream's own SOF header,
+so a reader should take the geometry from the JPEG.
+
+### The format code is base plus depth
+
+Two more codes appear that the earlier table missed, both with depth byte `0x38`:
+
+    code  depth   format     bytes/px   samples   agreement
+      1   0x08    L8            1         142      100%
+      2   0x08    RGB8          3         139      100%
+      3   0x08    RGBA8         4         109      100%
+      5   0x18    L16           2         120      100%
+      6   0x18    RGB16         6          26      100%
+      7   0x18    RGBA16        8          31      100%
+     33   0x38    L32F          4           3      100%
+     35   0x38    RGBA32F      16           9      100%
+      8   0x08    JPEG          -          45      length-prefixed
+
+The scheme is a **base plus a depth offset**: 1 = L, 2 = RGB, 3 = RGBA, plus 0 for 8-bit, 4 for
+16-bit, 32 for 32-bit float, with the class low byte repeating the depth as `0x08` / `0x18` /
+`0x38`. Code 34 (RGB32F, 12 bytes) is predicted by the scheme and does not occur here.
+
+The 32-bit float resources are where one would expect them: `NightSkyHDRISubstance001` - an HDRI
+- carries the RGBA32F images.
+
+### Effect
+
+    resources located    516  ->  794      in 123 files
+    bytes addressed    1,811  -> 3,582 MB
+    short reads            0  ->     0
+    JPEGs verified by SOI            45 of 45
+
+The corrected table and the JPEG and float handling are in `tools/extract_bitmaps.py`.
