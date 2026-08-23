@@ -15513,3 +15513,49 @@ and what was missing was the selector, not the slots.
 The remaining 91.7% of `fxmaps` records genuinely have no input edge in any slot, which is
 consistent with an FX-Map that generates rather than transforms - and with the tree, not the
 record, carrying whatever input references those records use.
+
+## `0x89` nodes carry programs too, and the FX-Map program count resolves
+
+The `0x89` node's second word was recorded above as a "data pointer" because
+`valid_program` rejected what it pointed at. That was wrong, and the reason is narrow: those
+programs are reached **through the tree**, and the program finder only followed record slots.
+
+Decoding a `0x89` target as a length-prefixed program:
+
+    +368   declared 50 instructions   decoded 50 of 50   ends at +644
+    +660   declared 74 instructions   decoded 74 of 74   ends at +1092
+
+Both decode completely, with zero invalid opcodes, and each ends **exactly** at the next node's
+offset. So both node types carry a program:
+
+    0x18B    [header][program][next]           addnode
+    0x89     [header][program][0][next]        still unnamed, but not a data node
+
+### Programs per record, counted properly
+
+Including tree-reached programs across all 110 records of `ie_pcloud`:
+
+    binary programs per record   {3: 2,  4: 1,  5: 4,  6: 100, 7: 2, 8: 1}
+    source dynamicValue per node {5: 3,  6: 4,  7: 102, 8: 1}
+
+    total binary programs    652
+    total source dynamicValue 761
+    difference               109, against 110 records
+
+**One program per `<dynamicValue>`, less one per record** - to within a single program over 110
+records. The modal record has six programs against seven dynamic values, and the 6-against-4
+bucket matches exactly.
+
+The missing one per record is most likely `outputsize`: it is a `dynamicValue` in the source like
+any other, but the record resolves its own size through the parameter slot rather than through
+the FX-Map tree, which is exactly the mechanism documented for every other filter.
+
+### Two corrections this forces
+
+The relation reported earlier - "one program per `addnode`, plus the record's own two" - was
+built on an undercount that missed every tree-reached program. The correct statement is the one
+above, and it is both simpler and closer to exact.
+
+More generally, **the record-slot program count is not the record's program count** for
+`fxmaps`. Any measurement of program density, CSE rates or bytecode volume that walked only
+record slots has undercounted `fxmaps`, which is 4.6% of records.
