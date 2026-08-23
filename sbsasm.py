@@ -49,7 +49,7 @@ EDGES = {0: [1, 2], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 10: [1],
 
 # Filters whose input list is not fully resolved. Listing them beats guessing.
 PARTIAL_EDGES = {3: 'shuffle takes up to 4 inputs; only slot 3 resolves reliably',
-                 4: 'fxmaps inputs are layout-dependent and unresolved',
+                 4: 'fxmaps inputs resolve only in the bit-12 layout (8.3% of its records)',
                  21: 'distance slot 3 is a shared control input, not a tree edge',
                  16: 'bitmap has no image input'}
 
@@ -145,6 +145,14 @@ class Record:
 
     def _compute_layout(self):
         f = self.filter_id
+        if f == 4:
+            # fxmaps has two record layouts, selected by bit 12 of the parameter word.
+            # With it set, slots 3-8 are input edges (100% valid or zero, 94-99.8%
+            # resolution agreement) and the program sits at slot 9. With it clear, no
+            # slot resolves as an edge and the program is at slot 3.
+            if len(self.words) > 1 and (self.words[1] >> 12) & 1:
+                return ([3, 4, 5, 6, 7, 8], 9)
+            return ([], 3)
         if f == 20:
             n = self.arity
             return (list(range(2, 2 + n)), 2 + n) if n is not None else ([], None)

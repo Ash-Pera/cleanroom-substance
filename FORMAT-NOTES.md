@@ -15455,3 +15455,61 @@ map, and scoring it against images that ship in the same archive.
 
 The one dependency that is still research rather than engineering is FX-Map evaluation, and
 FX-Maps appear in 4.6% of records.
+
+## `fxmaps` input edges resolved, in the layout that has them
+
+`fxmaps` inputs have been listed as unresolved since the segmenter was written, and three
+attempts failed - all to the small-integer artifact, since a 331-slot record makes any small
+value a valid backward index by construction.
+
+The discriminator that works is the one that established the edge map in the first place:
+**a real edge's target shares the record's resolution.** Applied per slot:
+
+    slot   valid backward index   resolution agreement
+      1        66.2%                    27.8%      <- the parameter word, chance agreement
+      3        13.3%                    75.4%
+      4         9.5%                    96.1%
+      6         9.3%                    98.1%
+      7         8.9%                    96.9%
+
+    control: blend slot 2                100.0%
+
+Slots 4, 6 and 7 agree at 96-98% - far too high for chance - but qualify in under 10% of
+records. Restricting to records with index above 200, in case low indices were forcing
+agreement, gives 96.2% and 98.0%: **the effect is real and not a position artifact.**
+
+### The layout is selected by a bit in the parameter word
+
+Grouping records by whether slot 6 resolves, the parameter word separates them almost
+perfectly. Testing each bit:
+
+    bit 12 set    1,271 have a slot-6 edge,      6 do not
+    bit 12 clear    141 have one,           14,076 do not      99.1% accurate
+
+Within the bit-12 layout, every slot behaves:
+
+    slot  3   valid or zero 100.0%   resolution agreement 94.7%
+    slot  4                 100.0%                        99.6%
+    slot  5                 100.0%                        99.7%
+    slot  6                 100.0%                        99.8%
+    slot  7                  99.9%                        99.8%
+    slot  8                  99.9%                        99.8%
+
+and the program moves to slot 9 (94%), where the other layout keeps it at slot 3 (94%).
+
+    fxmaps, bit 12 set     edges [3,4,5,6,7,8], program at slot 9    8.3% of records
+    fxmaps, bit 12 clear   no resolvable edges, program at slot 3
+
+**The hand-written edge map this project started with had `0x08: [3,4,5,6,7,8]`.** It was
+dropped during the empirical derivation as unsupported. It was right - for one of two layouts -
+and what was missing was the selector, not the slots.
+
+### Effect
+
+    main parameter resolved   94.7%  ->  95.0%
+    fxmaps records with none    13%  ->     5%
+    edge slots              1,271,419 -> 1,291,651   (20,232 new edges, still 99.96% resolved)
+
+The remaining 91.7% of `fxmaps` records genuinely have no input edge in any slot, which is
+consistent with an FX-Map that generates rather than transforms - and with the tree, not the
+record, carrying whatever input references those records use.
