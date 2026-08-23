@@ -11,16 +11,19 @@ tools could read Substance materials without the proprietary engine.
     FORMAT-NOTES.md        the findings — 15,000 lines, written as a lab notebook
     OPCODES.md             the bytecode instruction catalogue
 
-    sbsasm.py              segmenter: parses a .sbsasm into records, edges and programs
-    disasm.py              disassembler for the bytecode
-    standalone_parse.py    header, interface block and value table
-    extract_bitmaps.py     locates and extracts embedded images
-    expand_instances.py    expands sub-graph instances using only in-file graphs
-    audit_corpus.py        runs the model over a corpus and reports what it cannot explain
-    validate_corpus.py     structural checks against the .sbsar manifests
-    isa.py                 instruction lengths
+    tools/                 the finished tools — see tools/README.md
+      sbsasm.py            the file model: records, layouts, edges, parameters, programs
+      disasm.py            bytecode disassembler
+      fxdisasm.py          walks an FX-Map tree and disassembles each node's program
+      standalone_parse.py  header, interface block and value table
+      extract_bitmaps.py   embedded images, and graph inputs by manifest uid
+      expand_instances.py  expands sub-graph instances using only in-file graphs
+      audit_corpus.py      runs the model over a corpus and reports every gap
+      validate_corpus.py   structural checks against the .sbsar manifests
 
-Plus assorted analysis scripts used along the way.
+Exploratory scripts that produced individual findings are left in the root. They are one-off
+analyses rather than maintained interfaces, and several encode assumptions the notes later
+correct.
 
 ## What is not here
 

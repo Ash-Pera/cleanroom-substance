@@ -1,0 +1,42 @@
+# tools
+
+The finished tools. Each runs from the repository root, where the corpus lives:
+
+    python3 tools/sbsasm.py <file.sbsasm> [record limit]
+    python3 tools/fxdisasm.py <file.sbsasm> <record index>
+    python3 tools/extract_bitmaps.py <file.sbsasm>
+    python3 tools/audit_corpus.py
+    python3 tools/validate_corpus.py
+
+## The model
+
+    isa.py                instruction lengths, from the opcode length rule
+    standalone_parse.py   header, footer, interface block and value table
+    disasm.py             bytecode disassembler
+    sbsasm.py             the file model: records, layouts, edges, parameters, programs
+
+`sbsasm.py` is the one to read first. It is strict by default: where a record's layout is
+known it reads it, and where it is not it returns `None` and counts it. `coverage()` classifies
+every byte and reports what it cannot explain, so a wrong assumption surfaces as a number rather
+than as a plausible-looking result.
+
+## Extraction
+
+    extract_bitmaps.py    embedded images, and graph inputs by manifest uid
+    fxdisasm.py           walks an FX-Map tree and disassembles each node's program
+    expand_instances.py   expands sub-graph instances using only in-file graphs
+
+## Checking
+
+    audit_corpus.py       runs the model over a corpus and reports every gap
+    validate_corpus.py    structural checks against the .sbsar manifests
+    attribute_outputs.py  the output-attribution constraint system (resolves ~5%; see the notes)
+    standalone_parse_ref.py
+                          the pre-optimisation parser, kept so the 59x rewrite can be
+                          re-verified as output-identical on demand
+
+## Not here
+
+The exploratory scripts that produced individual findings are left in the repository root.
+They are one-off analyses, not maintained interfaces, and several encode assumptions that later
+sections of FORMAT-NOTES.md correct.

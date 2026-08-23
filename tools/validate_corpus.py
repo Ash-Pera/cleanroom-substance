@@ -49,7 +49,8 @@ def pack(t, dv):
 def specimens():
     seen = set()
     for pat in ("x_*", "corpus/x_*", "pairs/x_*", "pairs2/x_*", "pairs3/x_*",
-                "pairs4/x_*", "pairs5/x_*", "pairs6/x_*", "tiny/x_*", "tiny2/x_*"):
+                "pairs4/x_*", "pairs5/x_*", "pairs6/x_*", "tiny/x_*", "tiny2/x_*",
+                "acg2/x_*"):
         for xd in sorted(glob.glob(pat)):
             a = glob.glob(os.path.join(xd, "**", "*.sbsasm"), recursive=True)
             x = glob.glob(os.path.join(xd, "**", "*.xml"), recursive=True)
