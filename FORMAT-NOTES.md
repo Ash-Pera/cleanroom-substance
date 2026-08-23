@@ -15385,3 +15385,73 @@ count is the right one and the identification stands.
     0x89                    real, four-word shape, ~2 per record, unidentified
     programs                one per addnode, plus two from the record's own slots
     the data regions        pointed at by 0x89 nodes, still undecoded
+
+## What output attribution would actually require
+
+Five approaches have failed to associate outputs with records, and the reason is settled: the
+binary does not store the association. The remaining question is what *would* recover it.
+
+### Constraint propagation is not enough
+
+The manifest publishes, for every input, the set of outputs it alters. The bytecode says which
+records read which input uid. That gives two constraints per pair:
+
+    p alters o          =>  o's record is downstream of some record reading p
+    p does not alter o  =>  o's record is downstream of NO record reading p
+
+The second is the eliminating one. `attribute_outputs.py` implements both. Over 901 outputs:
+
+    narrowed to exactly one record      41    4.6%
+    narrowed to zero (contradiction)    49    5.4%
+    still 20 or more candidates        664   73.7%
+
+**It solves 5% and contradicts itself on another 5%.** The contradictions are the useful part -
+they mean the negative constraint is not sound as stated. Common subexpression elimination is
+the likely cause: a program shared between records makes "the records reading p" ambiguous, so
+a record can sit downstream of a reader of p without carrying p's influence. Until that is
+modelled, the elimination rule over-prunes.
+
+An earlier and weaker version of this test - parameters that alter exactly one output - pins
+every output in only **3% of graphs**, median 40% of outputs per graph. Neither version is a
+solution.
+
+### So it needs evaluation, and here is the shape of it
+
+The thing that distinguishes one output from another is **what it looks like**. Nothing else in
+the format separates them: they have no records, no uids in the body, no reliable resolution,
+and 6.7% of files have fewer sinks than outputs.
+
+Three properties make this much cheaper than it first appears:
+
+**1. The renderer does not need to be correct, only discriminative.** The task is to match each
+output to one of a few dozen candidate records. A 64x64 evaluation that gets blend modes
+approximately right will separate a base colour from a roughness map from a normal map. Pixel
+accuracy buys nothing here.
+
+**2. Reference images ship with the material.** ambientCG materials include rendered PNG maps
+per output, and every `.sbsar` carries a thumbnail. So candidate assignments can be *scored*
+rather than derived - render candidates, compare, rank. Scoring tolerates a poor renderer in a
+way that deriving does not.
+
+**3. Most of the machinery already exists here.** The bytecode VM needs the 41 catalogued
+operations, whose operand types are verified across 7 million instructions; the disassembler
+already decodes them. Graph traversal, record layouts, parameters and inputs are all resolved.
+
+What is missing is per-filter image semantics for roughly fourteen filters - `blend`, `levels`,
+`transformation`, `blur`, `warp`, `directionalwarp`, `gradient`, `uniform`, `normal`, `hsl`,
+`sharpen`, `distance`, `shuffle`, `bitmap` - plus FX-Map iteration, which is the only genuinely
+unresolved piece since its tree is only partly decoded.
+
+**Note what is *not* required**: `blendingmode` values are known (0-11) but their formulas are
+not, and they do not need to be recovered from the format - they are the standard Porter-Duff
+and photoshop-style blend operations, and approximating them is enough to discriminate.
+
+### Assessment
+
+Output attribution is not a reverse-engineering problem any more; it is a build problem. The
+format is understood well enough to walk the graph, resolve every input, and reach every
+program. What remains is writing an evaluator good enough to tell a normal map from a height
+map, and scoring it against images that ship in the same archive.
+
+The one dependency that is still research rather than engineering is FX-Map evaluation, and
+FX-Maps appear in 4.6% of records.
