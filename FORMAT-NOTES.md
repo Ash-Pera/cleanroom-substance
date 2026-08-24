@@ -29603,3 +29603,71 @@ distribution for `fxmaps`, quantised ramp positions for `gradient`, and matched-
 recall for `warp` and `blur`. The withdrawn count-exact figures are marked as withdrawn in
 the identification table rather than deleted, since what they measured was real; it was their
 specimens that were not usable.
+
+## FX-Map: the node side closes, and the table side turns out not to be measurable yet
+
+### The node vocabulary is effectively finished
+
+Re-censusing chain stops with the deeper walk — `0x1B` branching, `0x99` continuing,
+`0x0B` a leaf — the unhandled population collapses:
+
+    unhandled node stops    2,261  (5.5%)   ->   216  (0.5%)
+
+Seven node types now cover 99.5% of chain positions: `0x18B` (`addnode`), `0x89`
+(`markov2`), `0x1AB`, `0x1CB`, `0x1B`, `0x99`, `0x0B`. What remains is `0x9B` (90),
+`0x09` (64), `0xDB` (23), `0x4B` (23), `0x3B` (10), `0x49` (6) — 216 nodes between them,
+and `0x09` still the interesting one at three successors and no program.
+
+### The table side: a measurement I am not reporting
+
+With the nodes nearly closed, the table the chain hands off to is 99.4% of what is left,
+so I went at it. `FX_TABLE` is 25 exact tag words, and a scan found 67,363 entries with
+9,215 distinct tags — 19 of them in the table — whose program offsets formed a consecutive
+run in 98.0% of cases. That looked like a result: replace a 25-entry hand table with a run
+scan and take entry coverage from 38.6% to 74.5%.
+
+**None of it is reported, because the entry population cannot be enumerated safely.**
+
+`fx_table` finds entries by stepping 8 bytes and testing `(tag & 0xF) == 8`. Program
+pointers in this format are **4-aligned** — established elsewhere in this document, and the
+subject of its own correction — so a pointer VALUE ends in 0, 4, 8 or C. Measured inside
+`fxmaps` records:
+
+    low nibble 8, over all words                        6.6%
+    low nibble 8, over POINTER-VALUED words            11.8%
+    nibbles 0/4/8/C over pointer-valued words          57.0%
+
+An entry holds several pointers, so the chance it contains at least one word that reads as
+a tag is around half. And measuring the stride directly from a chain handoff — an entry
+start whose position is not in doubt — gives no stride at all:
+
+    bytes to the next low-nibble-8 word:  8 -> 27.0%   4 -> 24.0%
+                                         12 -> 14.6%  24 -> 11.2%   none -> 11.7%
+
+If entries were 8 bytes that column would be 8. It is a scatter, which is what a decoy
+rate of one in eight to one in four produces.
+
+So the 67,363 and the 9,215 and the 98.0% are all counts of a population defined by a test
+that fires on ordinary pointers. The 98.0% may even be true; it cannot be claimed from
+this. I have written the caveat into `FX_TABLE` itself rather than only here, because the
+next person to look will start from the code.
+
+### What survives, and why the distinction matters
+
+The handoff itself is fine. Of the chain stops whose word has low nibble 8, **86.4% do not
+resolve as pointer values** — they are packed tag words, not pointers that happen to end in
+8. That the chain ends in a table is not in doubt. Where one entry stops and the next
+begins is.
+
+The difference between the two halves is worth stating, because both used the same nibble:
+
+* At a CHAIN STOP the word is *fetched from a position the walk validated*, and can be
+  tested for whether it is itself a pointer. It usually is not. That is evidence.
+* Inside an ENTRY the word is *one of several at a guessed stride*, most of which are
+  pointers by design. That is not evidence, however many of them there are.
+
+The same predicate is load-bearing in one place and worthless in the other, and the
+difference is not in the predicate — it is in whether the position was independently
+established. Every FX result that has held up in these sections was probed at a position
+reached by following a validated pointer, and every one that has not was probed at a
+guessed offset.

@@ -480,6 +480,25 @@ PARAM_POPCOUNT = {10: 0x2881, 7: 0x0881}
 # predicts it 47.3% of the time, so this is a lookup and not a rule.
 #
 # tag -> byte offset of the program within the pointed-at structure
+# WARNING, measured: this table is 25 exact tag words, and the entry population it is
+# meant to describe cannot currently be enumerated safely.
+#
+# `fx_table` finds entries by stepping 8 bytes and testing `(tag & 0xF) == 8`. That test
+# is weak on this data. Program pointers here are 4-ALIGNED, so a pointer VALUE ends in
+# 0, 4, 8 or C, and 11.8% of pointer-valued words inside `fxmaps` records end in 8. A
+# table entry holds several pointers, so roughly half of them contain at least one word
+# that reads as a tag. Stepping by 8 from a known entry start reaches the next
+# low-nibble-8 word at 8 bytes only 27% of the time, and at 4, 12 or 24 bytes the rest.
+#
+# So the entry stride is not established, and any census built on it is not either. A
+# scan of that kind produced "67,363 entries, 9,215 distinct tags, 98% of their program
+# offsets forming a consecutive run" and none of it is reported, because the denominator
+# is unsafe. What a real entry-boundary rule has to beat is that 11.8%.
+#
+# What DOES survive is the handoff itself: of the chain stops whose word has low nibble 8,
+# 86.4% do not resolve as pointer values, so they are packed tag words rather than
+# pointers that happen to end in 8. The chain ending in a table is not in doubt; where one
+# entry stops and the next begins is.
 FX_TABLE = {
     # program at +4
     0x100048: 4, 0x410008: 4, 0x420008: 4, 0x4000148: 4, 0x8000248: 4, 0x8000848: 4,
@@ -920,7 +939,7 @@ class Record:
                 es = []
             if es and min(es) == 1:
                 w1 = None
-        n = record_layout.header_words(self.filter_id, self.cls, w1)
+        n = record_layout.header_words(self.filter_id, self.words[0], w1)
         if n is not None:
             return n
         return HEADER_WORDS.get((self.filter_id, self.cls,
