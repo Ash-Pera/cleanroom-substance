@@ -33,6 +33,7 @@ FILTERS = {
     11: 'dirmotionblur', 22: 'curve',
     14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
     20: 'pixelprocessor', 21: 'distance',
+    19: 'dyngradient',
 }
 # Filter 11 is `dirmotionblur`, named from the permitted sources alone. It declares exactly
 # two Float1 parameters and nothing else, which is filter 11's shape:

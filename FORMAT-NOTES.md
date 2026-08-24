@@ -24854,3 +24854,48 @@ carry four, and 113 carry seven. `pixelprocessor` is the extreme case, with 55,4
 The 0.14% that differ do so by -2: fewer programs than slots. That is expected and not a
 failure of the rule - a class-word slot holds a baked constant instead of a pointer. The rule
 predicts SLOTS; programs are what most of those slots happen to contain.
+
+## filter 19 is `dyngradient`, and the evidence is the shape of its second input
+
+Four filter ids had no name - 19, 8, 5, 9 - accounting for the 2,916 records the audit could
+not identify. Filter 19 is much the largest at 2,225, and it is now settled.
+
+Its wiring is unambiguous once measured:
+
+    inputs                        2, in 2,177 of 2,225 records
+    the pair it combines          (blend, pixelprocessor)  2,070 of 2,177
+    what reads its output         blend 2,125
+
+Arity 2 disposes of two of the five unassigned source names on its own: `passthrough` and
+`grayscaleconversion` both take one input. That leaves `emboss` (source + height) and
+`dyngradient` (image + gradient), and those differ in the SHAPE of the second input - a height
+map is a full image, a gradient is a strip.
+
+    the pixelprocessor input's size
+        2048 x 16     2,024   94.6%
+        256 x 1          73    3.4%
+        256 x 256        23    1.1%
+
+    the other input   256 x 256 in 89.4%
+
+Wide and sixteen pixels tall is a gradient LUT, not a height map. The control confirms the
+shape is specific to this consumer rather than to pixelprocessor in general:
+
+    pixelprocessor outputs that are strip-shaped (2048x16 or 256x1)
+        when feeding filter 19       88.5%
+        when feeding anything else    2.4%
+
+An 86-point lift, so **filter 19 is `dyngradient`** - a gradient map whose gradient arrives as
+an image rather than being baked in.
+
+Corroboration that was already in the source: `sbsasm.py` carried a note describing filter 19
+as "one input from blend + shared pixelprocessor map". The wiring had been seen and written
+down; what was missing was the observation that the map is strip-shaped, which is the part
+that names it.
+
+    filter identified   901,215 (99.7%)  ->  903,440 (99.9%)
+
+Left unnamed: 8 (546 records), 5 (140) and 9 (5). Filter 8 takes THREE image inputs and no
+remaining candidate name takes three - `valueprocessor` takes none, `emboss` two, the rest one
+- so it is either not an atomic filter or its name is not in the vocabulary these 430 sources
+use.
