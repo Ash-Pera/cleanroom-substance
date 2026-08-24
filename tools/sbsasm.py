@@ -922,15 +922,21 @@ class Record:
     def matrix(self):
         """For filter 2: the `matrix22` transform, as four float32, or None.
 
-        Slots 4 to 7 hold the 2x2 matrix. Source matrices appear verbatim here in 66 of
-        72 cases across 23 permitted files, the misses being nodes the cooker eliminated.
+        Slots 4 to 7 hold the 2x2 matrix when class bit 0 is set, and slots 3 to 6 when it
+        is clear. Source matrices appear verbatim here in 66 of 72 cases across 23 permitted
+        files, the misses being nodes the cooker eliminated.
         The values read as transforms should - `2 0 0 2`, `-1 0 0 -1`, `1.4014 0 0 1.4014`
         - and the off-diagonals are zero in 94% and 76% of records, since most transforms
         scale or flip without shear.
         """
         if self.filter_id != 2 or len(self.words) < 8:
             return None
-        m = struct.unpack_from('<4f', self.asm.data, self.offset + 16)
+        # The block starts one slot earlier when class bit 0 is clear - the same shift this
+        # file records for the header. Reading slot 4 unconditionally is wrong for those
+        # records: a valid matrix sits at slot 4 in 93.4% of bit-0-SET records but only
+        # 26.6% of bit-0-clear ones, where slot 3 gives 73.5%.
+        base = 16 if self.cls & 1 else 12
+        m = struct.unpack_from('<4f', self.asm.data, self.offset + base)
         if not all(-1e4 < x < 1e4 and x == x for x in m):
             return None
         # A transform cannot be singular: a zero determinant collapses the image to a

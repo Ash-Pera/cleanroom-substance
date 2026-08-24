@@ -21107,3 +21107,72 @@ graph from their own file, 3 are paired, and exactly one - `ie_pcloud`, 102 self
 one specimen in this corpus where the same source graph can be compared against both its
 standalone compilation and its inlined copies, and it is the obvious next target. It has no
 `SHARED` filters at all, so whatever marks it, slot 1 is not it.
+
+## `transformation`: its parameters are multi-word, which is why nothing fitted
+
+`transformation` was the last filter with no named parameter mechanism, and the reason it
+resisted every model is one line from its sources:
+
+    matrix22    constantValueFloat4    416 constant,  38 dynamic
+    offset      constantValueFloat2    264 constant,  40 dynamic
+
+**Four slots and two slots.** Every filter modelled up to here spends one slot per parameter,
+so a bit-pair model that consumes one slot per set bit, and a popcount that counts slots, are
+both counting the wrong things. `matrix22` alone is as wide as `levels`' entire block.
+
+### The pair is bits 6 and 7, and it names the matrix
+
+Testing what predicts whether slots 4-7 hold a *valid* 2x2 matrix - in range, non-singular:
+
+    w1.bit6   MCC +0.962   98.7%   lift +20.1 over the trivial predictor
+
+which is the same exclusive 6/7 pair found earlier and left unnamed. With bit 6 set the
+matrix is valid in 33,605 of 35,424 (94.9%); with bit 7 set slot 4 holds a program in 89.6%.
+So **bit 6 is `matrix22` baked and bit 7 is `matrix22` as a program**, the ordinary pair
+convention, applied to a four-slot parameter.
+
+### `offset` packs immediately after it
+
+Containment on declared `Float2` values puts `offset` in two different places, and the split
+is exactly the packing:
+
+    matrix present    offset at slots 8 and 9      25 + 29 hits
+    matrix absent     offset at slots 4 and 5      20 + 20 hits
+
+with `matrix22` itself landing at 4, 5, 6, 7 (38, 15, 15, 50 hits). The block is packed, not
+positional: `offset` follows `matrix22` and moves up four slots when it is not there.
+
+### The block base shifts with class bit 0, and `Record.matrix` did not
+
+`Record.matrix` read slots 4-7 unconditionally. It should not:
+
+    class bit 0 set     valid matrix at slot 4   93.4%     at slot 3    2.3%
+    class bit 0 clear   valid matrix at slot 4   26.6%     at slot 3   73.5%
+
+This is the same one-slot shift this file already records for the header, and the accessor
+was missing it. Slot 5 also scores 73.2% on the clear side, which the determinant test cannot
+separate from slot 3 - a matrix with zero off-diagonals stays non-singular under a shift - so
+containment breaks the tie: all 3 hits in bit-0-clear records land on **slot 3**, none on 5.
+Three hits is thin, and it is thin in the same direction as a 47-point gap in the determinant
+rate, which is what makes it usable.
+
+Fixing the base:
+
+    matrices found, all records            34,008  ->  47,703    (18.2% -> 25.5%)
+    restricted to records whose bit 6 says the matrix is baked
+                                           33,709  ->  47,412    (59.2% -> 83.2%)
+
+**+13,695 matrices.** Part of the 120,763 records that "declined" the matrix were never
+malformed; the reader was looking one slot too far in.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
+
+### What is still open
+
+`offset` has no presence bit. Searching every bit of the class word and slot 1 for one that
+says whether it is there gives a best lift of **-2.2 points** - worse than guessing - so
+either it is always notionally present, or its flag is somewhere neither word reaches.
+
+And 16.8% of records whose bit 6 says the matrix is baked still yield no valid matrix at
+either base. That is down from 40.8%, and it is the remainder of `transformation`.
