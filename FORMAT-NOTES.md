@@ -25080,3 +25080,63 @@ a compiled assembly and an allowed source. So there is no evidence either way, a
 
 Filters 5, 8 and 9 stay unnamed. All three now have their structure recorded, which is what
 the corpus can support; naming them needs a source that uses them.
+
+## The class word is not a weight vector: it enables base parameters
+
+The rule recorded above - `bit0 +1, bit7 +1, bit11 +1, bit13 +1, bit10 +2` - is a fitted
+weight vector. Nobody designs that. Measuring what the bits actually DO gives something a
+person would plausibly have written.
+
+### bit 7 says the first parameter is one component wide
+
+Take the first program of each record and ask how many components it returns:
+
+    cls bit 7 SET     returns 1 component    100%
+    cls bit 7 CLEAR   returns 2 components   100%
+
+No exceptions either way. That is not a slot count - it is a statement about WHICH parameter
+comes first.
+
+### The bits are an ordered list, and the order is fixed
+
+Grouping records by which of bits 0, 7, 10, 11, 13 are set, and listing the widths their
+programs return in order:
+
+    bits set        widths returned    share
+    (0,)            (2,)               83.0%   of 539,461
+    (7,)            (1, 2)             67.3%   of  19,429
+    (0, 7)          (1, 2, 4)          43.2%   of 100,472
+    (0, 11)         (2, 2)             95.4%   of  75,450
+    (0, 7, 11)      (1, 2, 2)          84.6%   of   1,451
+    (0, 11, 13)     (2, 2)             97.1%   of  18,331
+    (0, 13)         (2,)               98.8%   of   6,257
+
+Read down the table: bit 7 contributes a 1-component value and it always comes FIRST; bit 0
+contributes a 2-component value; bit 11 contributes another 2-component value. Those are the
+widths of the inherited base parameters a Substance node carries - `$outputsize` is two
+integers, `$randomseed` is one - and the class word is a mask saying which of them this record
+overrides.
+
+### Why the fitted weights looked arbitrary
+
+Because they counted SLOTS, and a slot is not a parameter. A parameter driven by a program
+occupies ONE slot whatever its width - the slot holds a pointer. A parameter baked to a
+constant occupies its width. So the same parameter costs 1 or 2 slots depending on how it is
+supplied, and averaging that across a corpus produces weights like +1 and +2 that correspond
+to nothing anyone designed.
+
+Bit 0 shows it directly:
+
+    first class-word slot is a program   mean 2.23 parameter slots
+    first class-word slot is baked       mean 4.25 parameter slots
+
+Two more slots when baked, which is exactly the width of a 2-component value.
+
+### Where this does not yet close
+
+Bits 10 and 13 contribute no program at all - `(0,13)` returns the same `(2,)` as `(0,)` - and
+bit 10's slot is a baked float 32.6% of the time against 0.0% for bits 7, 11 and 13. So they
+are parameters that are nearly always baked rather than driven. But bit 10 does not follow the
+rule cleanly: its records average 3.01 slots when baked and 4.02 when driven, the opposite
+direction to bit 0. The reframing is right about what the class word IS; the exact slot
+accounting for bit 10 is still not derived.
