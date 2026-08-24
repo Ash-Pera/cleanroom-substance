@@ -90,7 +90,8 @@ class Python(Backend):
     name = "python"
     header = ("import numpy as np\n"
               "from sbsruntime import (sysvar, sample_lum, sample_col, vec, swizzle,\n"
-              "                        select, rand, cartesian, lerp, sbs_mod,\n"
+              "                        select, rand, cartesian, lerp, sbs_mod, atan2, cvt,\n"
+              "                        dot,\n"
               "                        cache_read, cache_write)\n")
 
     def const(self, values, ty):
@@ -153,8 +154,10 @@ PY_FUNCS = {"abs": "np.abs", "floor": "np.floor", "ceil": "np.ceil", "cos": "np.
             "sin": "np.sin", "sqrt": "np.sqrt", "log": "np.log", "log2": "np.log2",
             "exp2": "np.exp2",
             "pow": "np.power",
-            "atan2": "np.arctan2", "minimum": "np.minimum", "maximum": "np.maximum",
-            "dot": "np.dot"}
+            # atan2 is NOT np.arctan2: one operand of two components, not two scalars.
+ "minimum": "np.minimum", "maximum": "np.maximum",
+            # dot is row-wise, not np.dot, which is a matrix product.
+            }
 
 PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or"}
 
@@ -250,7 +253,10 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             mask = swizzle_mask(toks[1], ncomp)
             rhs = be.call("swizzle", [arg(0), str(mask)])
         elif oid == 0x11:                                  # type conversion
-            rhs = be.call("float" if ty == 1 else "int", [arg(0)])
+            if backend == "python":
+                rhs = be.call("cvt", [arg(0), "True" if ty == 2 else "False"])
+            else:
+                rhs = be.call("float" if ty == 1 else "int", [arg(0)])
         elif oid == 0x09:                                  # select(cond, a, b)
             rhs = be.call("select", [arg(0), arg(1), arg(2)])
         elif oid == 0x1C:                                  # not

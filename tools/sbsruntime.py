@@ -67,10 +67,23 @@ def unresolved():
 
 
 def vec(*parts):
+    """Concatenate components into one (N, k) array.
+
+    Scalars have to be promoted, not just 1-d arrays. The Python backend emits a
+    single-valued `const` as a plain float -- `0.5`, not an array -- so `vec(0.5, x)`
+    arrives with a 0-dimensional operand, which `np.concatenate` refuses. That accounted
+    for 28,136 of the runtime failures in an execution sweep of the corpus.
+    """
     cols = []
     for p in parts:
-        a = np.asarray(p)
-        cols.append(a[:, None] if a.ndim == 1 else a)
+        a = np.asarray(p, dtype=np.float32) if np.isscalar(p) else np.asarray(p)
+        if a.ndim == 0:
+            a = a.reshape(1, 1)
+        elif a.ndim == 1:
+            a = a[:, None]
+        cols.append(a)
+    n = max(c.shape[0] for c in cols)
+    cols = [np.repeat(c, n, axis=0) if c.shape[0] == 1 and n > 1 else c for c in cols]
     return np.concatenate(cols, axis=-1)
 
 
@@ -97,6 +110,43 @@ def sbs_mod(a, b):
 
 def lerp(a, b, t):
     return a + (b - a) * t
+
+
+def dot(a, b):
+    """Row-wise dot product, one value per row.
+
+    `np.dot` is a matrix product and raises on two (N, k) operands -- 330 runtime
+    failures in the corpus sweep. This ISA's `dot` pairs components within a row.
+    """
+    x = np.atleast_2d(np.asarray(a, dtype=np.float32))
+    y = np.atleast_2d(np.asarray(b, dtype=np.float32))
+    return np.sum(x * y, axis=-1, keepdims=True)
+
+
+def cvt(x, to_int):
+    """`0x11`, type conversion. A numpy cast, not Python's `float()`/`int()`.
+
+    The transpiler emitted `float(v)` and `int(v)`, which raise
+    `TypeError: only length-1 arrays can be converted to Python scalars` on every
+    multi-element operand -- 27,354 runtime failures in the corpus sweep.
+    """
+    a = np.asarray(x)
+    return a.astype(np.int32) if to_int else a.astype(np.float32)
+
+
+def atan2(v):
+    """The polar angle of a 2-vector, in radians.
+
+    `0x2D` takes ONE operand and that operand has two components, in 3,013 of 3,013
+    instances corpus-wide -- it is not numpy's two-argument `arctan2`, which is what it
+    was transpiled to, and which raised `TypeError` on every one of them.
+
+    Component order is y then x: recovering `directionalwarp`'s baked warp angles as
+    `atan2(c[1], c[0]) / 2*pi` yields clean fractions of a turn -- 45, 90, 180, 22.5
+    degrees -- and the other order does not. See FORMAT-NOTES.md.
+    """
+    a = np.atleast_2d(np.asarray(v, dtype=np.float32))
+    return np.arctan2(a[:, 1], a[:, 0]).reshape(-1, 1)
 
 
 def cartesian(r, theta):

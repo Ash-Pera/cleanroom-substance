@@ -22528,3 +22528,55 @@ exactly, at every count.
 
 Tests: 12 passed, 0 failed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes,
 edges 100.00%, validator 437/437.
+
+## Executing every program, not just transpiling it
+
+The `while` work ended with a bug that a 1,206,800-program sweep could not see, because the
+sweep transpiled and never ran anything. So the next measurement is the one that would have
+caught it: transpile every program, execute it, and count what happens.
+
+    before      40,290 of 107,419 ran     37.5%
+    after       97,138 of 107,419 ran     90.4%
+
+Four defects, all real, none visible to a transpile-only sweep.
+
+**`atan2` had the wrong arity.** `0x2D` was mapped to `np.arctan2`, which takes two scalars.
+This ISA's takes **one operand of two components, in 3,013 of 3,013 instances** - so every
+call raised `TypeError`. Component order is y then x, which is not a guess: recovering
+`directionalwarp`'s baked angles as `atan2(c[1], c[0]) / 2*pi` gives clean fractions of a
+turn and the other order does not.
+
+**`vec` could not take a scalar.** The Python backend emits a single-valued `const` as a
+plain float, so `vec(0.5, x)` arrives with a 0-dimensional operand and `np.concatenate`
+refuses. 28,136 failures.
+
+**`cvt` used Python's `float()` and `int()`**, which raise on any multi-element array.
+27,354 failures.
+
+**`dot` was `np.dot`**, a matrix product, which refuses two `(N, k)` operands. This ISA's is
+row-wise. 330 failures.
+
+### What is left is mostly not failure
+
+    ran                      97,138    90.4%
+    needs a seeded slot       9,806     9.1%   reads a slot the caller supplies
+    needs the shared cache      457     0.4%   the documented refusal, not a defect
+    genuine failures             18     0.0%
+
+The 9,806 are sub-programs whose slots are written by another program - `Record.programs`
+returns several per record and they share slot state - so running one alone with an empty
+slot dict is the harness's limitation, not the transpiler's. The 457 are `cache_read`
+raising rather than guessing, which is what it is for.
+
+**18 genuine failures**, all `IndexError` on a swizzle component the harness's narrow
+declared inputs do not have.
+
+### The pattern
+
+Every one of the four defects had been sitting behind a green sweep. "1,206,800 of 1,206,800
+transpiled" was true and told me nothing about whether any of them computed the right thing,
+or anything at all. A measurement that only exercises the first half of a pipeline reports
+the first half.
+
+Tests: 12 passed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
+validator 437/437.
