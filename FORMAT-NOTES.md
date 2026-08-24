@@ -22330,3 +22330,47 @@ carries two edges and a parameter where a passthrough has one input and none.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## The transpiler, measured against the corpus rather than eleven tests
+
+The transpiler is the one artifact in this project that can be tested outright, and it has
+been - eleven unit tests, plus a mutation table recording which table corruptions they catch
+and which they miss. What it had never been given is a coverage number. Running it over every
+program the corpus names:
+
+    programs attempted     1,206,800
+    transpiled             1,206,282     99.9571%
+    unsupported                  518     in 20 files
+    other errors                   0
+
+Zero other errors matters as much as the 99.96%: no program crashes the transpiler, runs off
+the end, or produces an exception that is not a deliberate refusal. Whatever it declines, it
+declines on purpose.
+
+### Every failure is one opcode
+
+    194B   float2   235        190B   float1    93
+    150B   float1   156        184B   bool2     34
+
+All `0x0B` - `while`, the loop. Nothing else in the ISA is unimplemented, which is a stronger
+statement about the ISA work than any single opcode's proof: 1,206,282 programs use only
+operations this project has named and can execute.
+
+### And it is a knowledge gap, not missing code
+
+`while`'s shape is recorded in `OPCODES.md` as `(init, condition, body, ...)`, established
+by argument rather than assumed - position 1 is bool in 616 of 616 and no other position ever
+is, and position 2 self-references in 56.5% against position 0's 0.4%, which is what
+separates a body from an initialiser.
+
+But **positions 3-5 have no reading at all**. They are dominated by `const`/`sysvar`, never
+`seq`, and position 4 is literally the same value number as position 0 in 43% of instances -
+recorded there as "a real structural fact with no interpretation attached to it yet".
+
+So the transpiler cannot emit a loop because nobody yet knows what two or three of its
+operands are for. Implementing it would mean inventing semantics for them, which is the one
+thing this file's method does not permit. The 518 programs stay unsupported until positions
+3-5 are read.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
