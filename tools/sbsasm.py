@@ -148,12 +148,27 @@ PARAM_BIT_MASK = {15: 0x155, 1: 0x10}
 # random angle, 6.28 being 2*pi, which is what a pattern generator computes per instance.
 # `const.f1 1 ; rand.f1` is the same two-instruction form the version-2 prologue emits.
 #
+# The first derivation searched offsets 4, 8, 12 and 16 only, and found 15 tags. Widening
+# the search to 40 shows +20 and +24 are common, and finds 22 - the earlier window was a
+# search range mistaken for a property of the data, the same error as scanning programs on
+# 4-byte alignment. No bitfield of the tag computes the offset: the best contiguous field
+# predicts it 47.3% of the time, so this is a lookup and not a rule.
+#
 # tag -> byte offset of the program within the pointed-at structure
 FX_TABLE = {
-    0x420008: 4, 0x100048: 4, 0x8000848: 4, 0x8000248: 4, 0x410008: 4, 0x4000148: 4,
-    0x2000448: 8, 0x2000248: 8, 0x2000048: 8,
+    # program at +4
+    0x100048: 4, 0x410008: 4, 0x420008: 4, 0x4000148: 4, 0x8000248: 4, 0x8000848: 4,
+    # +8
+    0x2000048: 8, 0x2000248: 8, 0x2000448: 8,
+    # +12
     0x1520248: 12, 0x22000D48: 12,
-    0x12400448: 16, 0x14520248: 16, 0x12440248: 16, 0x2520448: 16,
+    # +16
+    0x2520448: 16, 0x12400448: 16, 0x12440248: 16, 0x14520248: 16,
+    # +20
+    0x20018: 20, 0xA800048: 20, 0x124A0648: 20, 0x12540A48: 20, 0x34520A48: 20,
+    0x54540088: 20,
+    # +24
+    0x13120658: 24,
 }
 
 

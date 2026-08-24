@@ -17685,3 +17685,48 @@ yield `None` rather than a guessed offset.
 The earlier note that FX-Map internals were "blocked on instance-free specimens" was
 wrong about the obstacle. Nothing was needed but reading the structure that was already
 there, in records this project had been treating as empty.
+
+### Widening the offset search, and what the low nibble means
+
+The first derivation searched program offsets 4, 8, 12 and 16 only. Widening the search to
+40 shows **+20 and +24 are among the commonest offsets**, and the table grows from 15 tags
+to 22, still all at 100.0% purity. The original window was a search range mistaken for a
+property of the data - the same error as scanning programs on 4-byte alignment.
+
+No bitfield of the tag computes the offset: the best contiguous field predicts it 47.3% of
+the time. It is a lookup, not a rule.
+
+Entry coverage, stated honestly:
+
+    0x20008, which links to another entry     24,609  (48.1%)
+    known tag, program resolved               13,259  (25.9%)
+    tag not in the table                      13,256  (25.9%)
+
+The unknown quarter is **7,678 distinct tags with a median of one entry each** - a genuine
+long tail, not a table waiting to be filled in. Only 15 of them reach 50 entries.
+
+### The low nibble says what kind of word it is
+
+The largest tail tags share a suffix - `0x190b`, `0xe10b`, `0x3490b`, `0x770b` - and that
+turns out to be the classifier:
+
+| low nibble | entries | specimens | a program is found |
+|---|---|---|---|
+| `0xB` | 1,836 | 186 | **95%** (+24 50%, +28 36%, +36 8%) |
+| `0x8` | 3,903 | 318 | 56% |
+| `0x0` | 2,679 | 270 | 31% |
+| `0x4` | 2,407 | 266 | 27% |
+| `0xC` | 2,346 | 256 | 29% |
+
+And the two known vocabularies are exactly disjoint on it:
+
+    FX_NODES low nibbles   9, 0xB        node headers
+    FX_TABLE low nibbles   8             table entries
+
+So a word ending in 9 or B is a node header and a word ending in 8 is a table entry. The
+tail tags ending in B are **nodes sitting in the table region**, which is why they find a
+program almost always while the other nibbles do not.
+
+That also explains why the earlier probe of unknown node shapes failed its control: it
+accepted any header whose low nibble was 8, 9 or B, which mixes two different structures
+into one test.
