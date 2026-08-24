@@ -26461,3 +26461,89 @@ comparison was run against 42,959 programs rather than the nine that changed.
 
     execution   137,913 of 137,951   99.9725%
     remaining   11 ValueError, 2 IndexError, 25 NoSharedCache cascades
+
+## What bounds a condition-less loop: operand 3 is the trip count, and it is a scan radius
+
+Retracting most of the previous section in the process, for a reason worth recording.
+
+### The structure that gives it away
+
+All 164 condition-less whiles are the same opword, `0x150B`, in the 5-operand form, and
+none of them is ever the outermost loop:
+
+    enclosed by a while that HAS a condition     164 of 164
+    outermost                                      0 of 164
+    init operand produced by `seq`                164 of 164
+
+Reading the smallest one end to end - `pratice_01_12_07` record 371, a `pixelprocessor` -
+shows what they are. The inner loop initialises `slot12 = -1`, increments it by one per
+iteration, and uses it as a sampling offset:
+
+    %31  div.f2      cellsize
+    %34  vec.f2      get(10), get(12)          <- the two loop counters
+    %35  mul.f2      %31, %34
+    %36  add.f2      $size, %35
+    %37  samplecol.f4  %36, #0
+
+A counter starting at **-1** and used as a neighbour offset is a 3x3 cell scan, which wants
+exactly three iterations: -1, 0, +1. And this while's operand 3 is **3**.
+
+### The relation, and it is exact
+
+If operand 3 is the trip count `n` of a symmetric scan, the counter must start at
+`-(n-1)/2`. Finding, for each condition-less while, the slot its body increments by one and
+the constant assigned to that slot before the loop:
+
+    operand 3   counter starts at   records   -(n-1)/2
+        1             0.0                2      0.0     match
+        3            -1.0              158     -1.0     match
+        5            -2.0                4     -2.0     match
+
+    TEST     condition absent    164 of 164   100.0%
+    CONTROL  condition present    64 of 757     8.5%
+
+**164 of 164**, across three different values of `n`, against 8.5% on the loops that have a
+condition. Three operand-3 values and three matching counter starts is not a coincidence
+that one number could produce: these are 1x1, 3x3 and 5x5 neighbourhood scans, and operand
+3 is the scan width.
+
+So a condition-less `while` runs exactly `operand 3` times. The bound was in the
+instruction all along.
+
+### Correction: the previous section was wrong, by the error it was warning about
+
+*Loop semantics re-derived independently* concluded "operand 3 is a value reference, not a
+trip count", on this:
+
+    operand 3 names a valid earlier value    921 of 921
+
+**That predicate has no power.** Every operand of a `while` is a small integer, and every
+small integer below the instruction's own index "names a valid earlier value" by
+construction - which is exactly the too-permissive test that manufactured the shared
+reference, and which the same commit message cited as the cautionary example. Writing it
+down as 921 of 921 gave a null result the appearance of evidence, and no null was reported
+beside it.
+
+What survives from that section is the part that did have a discriminator: **operand 3 is 0
+in 617 of the 757 whiles that have a condition**, and a trip count of zero is meaningless.
+That is now explained rather than contradicted - operand 3 is consulted only when the
+condition operand is absent. Where a condition is present and operand 3 is non-zero, 64 of
+those loops show the same neighbourhood relation, which reads as a fixed scan count with an
+early-out over it; the rest are not settled here.
+
+    operand 3, condition ABSENT     the trip count            164 of 164
+    operand 3, condition present    unused; 0 in 617 of 757
+
+### Consequence for the transpiler
+
+`transpile.py` reads operand 3 as a fixed trip count for exactly these loops, with the
+guard `1 <= trip <= 64`, and adopted it on the frequency observation alone while recording
+that the count was "NOT established". It is established now, and the guard is right: the
+only values that occur are 1, 3 and 5. The convergence measurement recorded there -
+identical results at 1, 3 and 9 iterations in 14 of 15 programs - is consistent, because a
+neighbourhood scan that has already covered the nearest cells changes little when it covers
+more.
+
+The remaining looseness is that the guard admits 1..64 while the format uses 1, 3 and 5.
+A value outside those would be a scan of even width, which the `-(n-1)/2` relation cannot
+produce, and is worth rejecting rather than running.
