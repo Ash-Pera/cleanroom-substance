@@ -21176,3 +21176,65 @@ either it is always notionally present, or its flag is somewhere neither word re
 
 And 16.8% of records whose bit 6 says the matrix is baked still yield no valid matrix at
 either base. That is down from 40.8%, and it is the remainder of `transformation`.
+
+## `transformation`'s block base takes two class bits, not one
+
+The previous section fixed `Record.matrix` to shift with class bit 0 and left 16.8% of
+bit-6 records yielding no matrix. Reading one of them settles what the remaining shift is.
+
+A `flowingLava` record, class 920 so class bit 0 is CLEAR, which the rule says means base 3:
+
+    slot  3   3754808      PROGRAM              <- the size expression
+    slot  4   1048576000   0.25
+    slot  5   0            0
+    slot  6   0            0
+    slot  7   1048576000   0.25
+    slot  8   3754716      PROGRAM
+
+`[0.25, 0, 0, 0.25]` at slots 4 to 7 is a uniform scale, unmistakably the matrix, and slot 3
+is a program. The base is 4 despite bit 0 being clear.
+
+### The second bit
+
+Restricting to class-bit-0-clear records - exactly where the rule fails - and asking what
+separates base 3 from base 4 across the 29,191 where only one of them works:
+
+    cls.bit7    MCC +1.000   100.0%   lift +26.5
+
+Over every bit-6 record:
+
+    slot 4 always                        33,709   59.2%
+    slot 4 if class bit 0 else slot 3     47,410   83.2%
+    slot 4 if bit 0 OR bit 7 else slot 3  55,155   96.8%
+
+`w1` bit 26 also scores 100.0% on that restricted subset and **53.8%** corpus-wide. That is
+what a coincidence inside a restricted population looks like, and the only reason it did not
+end up in the code is that testing the candidates outside the subset they were found in is
+cheap. Two bits tied at a perfect score on 29,191 records and one of them was worthless.
+
+### Result
+
+    matrices, all transformation records      34,008  ->  55,448
+    restricted to records whose bit 6 says the matrix is baked
+                                              33,709  ->  55,157   (59.2% -> 83.3%)
+
+**+21,440 matrices** across the two fixes in this session. The 120,763 "malformed" matrices
+recorded earlier were largely a reader looking in the wrong place.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
+
+### The other reading of the `(3,5)` pattern
+
+Scanning which bases yield a valid matrix produced a puzzle worth writing down: 21,376
+records accept base 3 AND base 5 while rejecting base 4. That is not two matrices. A
+diagonal matrix `[A, 0, 0, D]` at base 3 puts zeros at slots 4 and 5, so the window at base 4
+is `[0, 0, D, E]` with determinant `0*E - 0*D = 0` - singular, rejected - while base 5 is
+`[0, D, E, F]`, which is generally not. The determinant test cannot distinguish the real base
+from an artifact two slots along, which is why the tie was broken by containment and by
+asking a separate question (which bit predicts it) rather than by scoring windows.
+
+### Still open
+
+`offset` still has no presence bit - best lift -2.2 points across every bit of both words.
+And 16.7% of bit-6 records yield no valid matrix at the elected base, down from 40.8%.
