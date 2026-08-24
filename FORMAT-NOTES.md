@@ -22915,3 +22915,50 @@ above: the readers need slots 12 and 16, nothing in their own record writes them
 Slot 38 is the same slot the earlier static scan flagged for `pixelprocessor` alongside slot
 41. Nothing in the corpus writes it, so it is engine state of a kind the file does not
 contain - which is where this line of investigation ends rather than continues.
+
+## The audit was counting correct answers as misses
+
+Two accounting defects, both of which overstated how much is unread. Neither changes what any
+reader does - the records were always handled correctly - but the numbers this file has been
+quoting were wrong in the pessimistic direction.
+
+### The per-filter column counted every `None`
+
+    filter          records    "no param"   genuinely unread
+    bitmap            1,335        66%           0.00%
+    uniform          16,651        16%           0.00%
+    blend           307,738         6%           0.00%
+    transformation  232,966         6%           0.02%
+
+`bitmap` at 66% was the worst-looking filter in the table. **872 of its 1,335 records are two
+words long** - `[tag][flags]` - with no room for a parameter slot to exist. The audit's own
+summary already classified those correctly as "record has no parameter slot"; the per-filter
+column below it counted them as failures anyway.
+
+The column now counts only the genuine-miss branch, and reads 0% for every filter except
+`gradient`.
+
+### A null parameter slot is not a miss either
+
+`gradient`'s remaining 1% was 155 records. 117 of them have **no parameter slot in their
+layout at all** - `layout[1]` is `None` - which is the same fact as "the block ends before one
+could exist" and was not being tested for. And 150 of the 155 return a ramp, so the record's
+payload is read; the parameter slot is simply not where a gradient keeps anything.
+
+    genuinely unread    512 (0.06%)  ->  56 (0.01%)
+    no parameter slot   38,115       ->  38,571
+
+### What this leaves
+
+**56 records** in 895,674 whose parameter this model cannot read. That is the honest figure,
+and it is nine times smaller than the one this file quoted a section ago - not because
+anything was decoded, but because four hundred and fifty-six correct answers were being
+counted as failures.
+
+Worth separating from the decoding work: a measurement that flatters itself is a familiar
+risk and this project checks for it, but a measurement that *maligns* itself hides how close
+the remaining gap is, and sends effort at records that were never broken. I spent part of an
+iteration on `bitmap` before noticing its records are two words long.
+
+Audit unchanged otherwise: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
+validator 437/437.

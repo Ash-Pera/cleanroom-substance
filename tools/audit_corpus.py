@@ -60,7 +60,6 @@ def main(paths):
                     tot[side + '_records_gaining'] += 1
             par = r.parameter
             if par is None:
-                byfilter[f][1] += 1
                 tot['no_param'] += 1
                 # Distinguish a record that HAS no parameter slot from one whose
                 # parameter this model failed to read. A four-word blend is
@@ -74,6 +73,12 @@ def main(paths):
                 if hit and not hit[1] and len(r.words) <= max(list(hit[0]) + [1]) + 1:
                     tot['param_absent'] += 1
                 elif sl is not None and sl >= len(r.words):
+                    tot['param_absent'] += 1
+                elif sl is None:
+                    # The layout names no parameter slot at all. That is the same fact as
+                    # "the block ends before one could exist", and was being counted as a
+                    # miss: 117 of `gradient`'s 155 supposed misses, whose payload is the
+                    # ramp and is read - 150 of the 155 return one.
                     tot['param_absent'] += 1
                 elif (sl is not None and sl < len(r.words)
                       and (r.words[sl] in [e for e in r.edges if e is not None]
@@ -96,6 +101,12 @@ def main(paths):
                     # an edge slot as the parameter slot.
                     tot['param_is_edge'] += 1
                 else:
+                    # The per-filter column counts only this branch. Counting every
+                    # `None` there reported `bitmap` at 66% and `blend` at 6% where the
+                    # genuine miss is 0.00%: 872 of 1,335 bitmap records are two words
+                    # long, `[tag][flags]`, with no room for a parameter slot at all, and
+                    # the audit's own summary already classifies those as correct.
+                    byfilter[f][1] += 1
                     tot['param_unread'] += 1
             elif par[0] == 'program':
                 # Not every program-valued parameter is a size expression. A size is a
@@ -162,7 +173,7 @@ def main(paths):
     print('files with any unexplained bytes: %d' % len(unexplained))
     print()
     print('per filter (records, no program, unresolved edge slots):')
-    print('  %-28s %10s %10s %12s' % ('filter', 'records', 'no param', 'unres edges'))
+    print('  %-28s %10s %10s %12s' % ('filter', 'records', 'unread', 'unres edges'))
     for f, (n, np_, ue) in sorted(byfilter.items(), key=lambda kv: -kv[1][0])[:22]:
         name = FILTERS.get(f) or 'fid %d *' % f
         print('  %-28s %10d %9.0f%% %11.1f%%' % (name, n, 100 * np_ / n, 100 * ue / n))
