@@ -27418,3 +27418,74 @@ has to be large enough. Corrected, the same sweep gives 99.9935%.
 That is the second time in two sessions that a figure disagreeing with the notes turned
 out to be the measurement rather than the format. The rule stands: check the harness
 before rewriting the claim.
+
+## Why the cooker inlines everything: the archive is an image cache with a code appendix
+
+The instancing results read as waste - fifty byte-identical copies of one graph, no sharing
+between graphs, no provenance kept - and a compiler shipped for two decades does not do
+that without a reason. Measured, the reason is simple and the design is rational.
+
+### The copies really are redundant
+
+Grouping records within a file by `(filter, class word, word count)` - records that could in
+principle be shared - and comparing them:
+
+    records sharing that key with another in the same file    873,681
+      byte-identical to another                                  1.01%
+      identical once edge slots and self-pointers are masked    65.51%
+
+So two thirds of records differ from a sibling **only in their wiring**: which record they
+read, and where their own bytecode sits. Their parameters and packed fields are the same.
+This is not a case of copies being secretly different.
+
+The bytecode is worse:
+
+    programs                                    432,109
+    distinct program bodies                      32,033
+    programs that are a byte-identical copy       92.6%
+    program bytes in duplicate bodies             86.4%
+
+**Nine programs in ten are an exact copy of another program in the same file.** And sharing
+is not unsupported - 265 programs *are* named by more than one record, so the format allows
+it and the compiler simply almost never does.
+
+### And it costs almost nothing
+
+    file bytes                              1,076,483,492
+    resource (image) bytes                  1,007,347,716    93.6%
+    record bytes, programs included             68,075,557     6.3%
+    program bytes                               56,775,562     5.3%
+      of which duplicate bodies                 49,040,176     4.6%
+
+**Deduplicating every identical program in the corpus would save 4.56% of the archive.** A
+`.sbsar` is overwhelmingly cached output images; the compiled graph is a rounding error
+beside them. Spending indirection, relocation and a shared-object table to recover 4.6% of a
+file that is 93.6% PNG and JPEG is a bad trade, and the cooker does not make it.
+
+What it buys instead is that **95.0% of programs are emitted inline in their own record**.
+A record is contiguous and self-contained: tag, slots, and the code those slots point at,
+all in one extent, reachable by absolute offset with no indirection.
+
+### The compiler optimises evaluation, never storage
+
+The same file shows both halves of that policy:
+
+* it **does** eliminate dead code - nodes that cannot reach an output are culled, and
+  `passthrough` never survives. That saves work at render time.
+* it **does** have a cross-record value cache, `0x03`/`0x06` - and uses it 490 times in
+  9,124,454 instructions, **0.0054%**. A narrow escape hatch for values that genuinely
+  cannot be recomputed locally, not a general common-subexpression pass.
+* it does **not** deduplicate records, programs, or graphs, because none of that would save
+  a single evaluation - only bytes, and bytes are what this format has spare.
+
+Which makes the instancing results ordinary rather than strange. Inlining an instance is the
+same decision at graph scale as inlining its code: the runtime wants a flat, self-contained,
+absolutely-addressed DAG, and it is cheaper to emit one than to maintain sharing. That the
+records carry no instance provenance follows too - **the format keeps what it evaluates and
+nothing else**, which is why output-to-record attribution had to be found in a table the
+engine needs rather than in the records, and why five approaches looking for it in the
+records failed.
+
+The one thing this does not explain is `passthrough`'s cull rule, which remains
+undetermined. Everything else about the pipeline's shape follows from a format sized by its
+textures.
