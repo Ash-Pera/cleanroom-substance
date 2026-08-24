@@ -17349,3 +17349,56 @@ token-count forms, which is too little to split on, and it is left as it is.
 This is worth recording because the test was persuasive twice today and has a stated
 domain: it detects immediates that exceed their instruction's value number, and is silent
 about every immediate that does not.
+
+## Chasing the manifest violations to their source
+
+The manifest cross-check produces 716 violations, almost all "alters but unreachable" -
+the direction that blames a missing edge rather than the output table. Those name specific
+files, which makes them a better lead than a corpus-wide average. `triDraw` has 58
+violations in 73 records, small enough to read completely.
+
+### A lead that looked good in one file and died in the corpus
+
+Record 16 of `triDraw` is a `shuffle` whose **slot 1 holds 10, a valid backward record
+index**, which the layout table does not claim as an edge. An unclaimed input edge is
+exactly what a missing link should look like.
+
+Measured across the corpus, over shuffle records whose slot 1 the table does not already
+claim:
+
+    backward index   37.2%        other   62.8%
+
+and per key, the best is `(3, 281, 0)` at **65.2% backward with diversity 0.348** - against
+the rule's requirement of 90% backward. **No shuffle key qualifies.** Slot 1 is not an
+edge; `triDraw`'s record 16 is one of the 37% that happen to hold a value in index range,
+and the other 63% do not.
+
+This is the small-integer trap presenting itself for the eighth time, and the only reason
+it did not land is that a single file is never enough to establish an edge.
+
+### What the stranded records actually are
+
+Classifying every record by whether an output reaches it, whether anything names it, and
+whether it is an input-free `pixelprocessor` generator (slot 1 low half = 0):
+
+    reachable, named, has edges      540,133  (91.7%)
+    reachable, named, no edges        36,874  (6.3%)
+    UNREACHABLE, named, has edges      6,667  (1.1%)
+    UNREACHABLE, named by nobody       2,286  (0.4%)
+
+Most unreachable records are **named** - they are stranded below a root, not roots
+themselves. Only 2,286 are true roots.
+
+And the generators are concentrated among them:
+
+    input-free generators among UNREACHABLE records   687 of  9,701   (7.1%)
+    input-free generators among reachable records   1,215 of 579,253  (0.2%)
+
+**A 34-fold enrichment.** A generator with no consumer is dead by construction, so this is
+consistent either with the cooker retaining dead code or with a reference mechanism not yet
+read. The enrichment does not distinguish those, and 687 records do not account for 9,701,
+so it is not the whole story either way.
+
+What it does rule out is the tidy version - that one missing edge slot explains the
+residue. The stranded population is mostly ordinary records hanging below a small number
+of unreferenced roots, and those roots are disproportionately, but not mostly, generators.
