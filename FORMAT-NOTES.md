@@ -28703,3 +28703,93 @@ reference worth chasing. It is not this node's: words with high half `0x0A42` oc
 **670,528 times in files that contain no filter 5 at all**, against 64,266 in files that
 do. That is the container's general tagging scheme, and it is recorded here so the next
 person does not spend the same hour on it.
+
+## The logical design: a record is a struct with presence masks, and there is one rule
+
+The eight slot rules and five corrections are not the format. The format has one rule,
+and it is the same trick a protobuf or a C struct with optional fields uses: **the two
+leading words are presence masks, and every field's position is implied by the bits set
+before it.** Nothing stores a slot number anywhere, because nothing needs to — reader
+and writer both walk the masks.
+
+    word 0   tag      filter id, plus cls: a bitmask over the INHERITED parameters
+                      ($outputsize, $randomseed, format, pixel size, ...)
+    word 1   w1       a vector of two-bit codes over the FILTER's own parameters
+                      (00 absent, 01 baked, 10 program, 11 image input)
+                      -- present only when the filter has such parameters at all
+    then     inputs               contiguous; count fixed per filter, or stated in an
+                                  arity field of w1 (pixelprocessor low nibble,
+                                  fxmaps bits 10-13)
+    then     inherited params     one slot per set cls bit, in canonical order
+    then     filter params        one slot per nonzero w1 field, in field order;
+                                  a field coded 11 is an EXTRA INPUT and its slot is
+                                  an edge
+    tail     payload filters end with [count][start][end] pointing at their table
+                                  (ramp, curve points, filter 5's strips)
+
+A parameter costs the width it needs when baked and one slot when a program — already
+recorded — and its position is `2 + inputs + (set cls bits before it)` or
+`2 + inputs + g + (nonzero w1 fields before it)`. Positional encoding by popcount.
+
+### Every rule is this rule, seen partially
+
+    generative walk        IS the rule, for the 4 filters whose w1 field lists
+                           (PARAM_SPEC) have been derived
+    layouts.json           a MEMO of what the walk would compute, for the filters whose
+                           field lists have not been derived. That is why the slot rule
+                           scores 99.992% against the records while the table carries
+                           2,806 wrong entries: the table memorised the rule's output,
+                           keyed lossily
+    fxmaps / pixelproc     the rule, plus "the input count lives in w1" (fxmaps also
+                           carries one fixed pointer, its tree root, before the inputs)
+    emboss fixed (2,3)     the rule with base=2 and no derived field list
+    EDGES fallback         the rule's input count, memorised per filter
+    ALT_LAYOUTS probe      the rule, brute-forced where nothing was derived
+    the five corrections   not format at all -- table bugs, each one keying on a word
+                           that is not what the key thought it was
+
+### The measurements that make this a finding rather than a story
+
+**Every edge run in 904,131 records is contiguous, and starts at slot 1, 2, or 3.**
+Nothing else occurs. Start 3 is exactly fxmaps (its tree-root pointer). Start 1 versus
+start 2 is exactly "does this record have a w1 word":
+
+    start-2 records, slot 1 contents      dirmotionblur   small<64 in 14,990 of 14,993
+                                          normal          small or zero in 1,310 of 1,310
+                                          shuffle         a big field word in 3,731 of 3,731
+                                          warp            ZERO in 1,513 of 1,513
+    start-1 filters                       gradient, curve, blur, sharpen, hsl,
+                                          dyngradient -- filters with no w1-coded
+                                          parameters; their inputs begin at slot 1
+
+**The w1 word's presence is a (filter, version) fact, not a mystery.** Warp has no w1
+word in version 0x50000/0x60000 files (21,738 records, zero exceptions) and carries one
+-- so far always zero -- in 0x90000 (1,513 records, with a 197-record residue). The
+format grew a field between versions; old readers of this project treated the two
+shapes as one and got "warp slot 3" wrong for a day.
+
+**The one deliberately-noncontiguous case is the rule working, not failing.** 8,210
+blend records have edges (2,3) plus extras beyond the class block. In 8,210 of 8,210
+the base is exactly (2,3) and the extra count is exactly the number of w1 fields in
+state 11. The walk PREDICTS noncontiguous inputs whenever a filter parameter is an
+image; contiguity of the base run plus mask-driven extras is what a presence-mask
+struct looks like.
+
+**And the table's defects say the same thing backwards.** layouts.json keys on
+`w1 & LAYOUT_MASK` -- but gradient and old warp have NO w1 word, so their keys were
+built from an edge value. That is the "gradient/warp key on meaningless word1 bits"
+defect recorded long before the design was understood. The defect was the design,
+announcing itself.
+
+### What is still not simple
+
+Two honest residues. Shuffle's w1 presence is per-record (its slot 1 is
+self-discriminating: a backward index or a big field word), not per version, and no
+version or cls bit has been found that states it; either its two forms are 1-input and
+multi-input variants of the filter, or a discriminator exists that has not been located.
+And warp's 197 start-1 records inside 0x90000 files sit against 1,513 start-2 -- the
+old shape persisting inside new files, unexplained.
+
+The practical consequence: deriving PARAM_SPEC for the remaining filters would delete
+layouts.json, EDGES, ALT_LAYOUTS and the corrections outright. The scaffolding is not
+protecting anything except the not-yet-derived field lists.
