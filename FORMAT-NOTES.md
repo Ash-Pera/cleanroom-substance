@@ -30179,3 +30179,44 @@ gap positions and may be misparses; and no field has a NAME yet — the paired .
 sources are the instrument for that, as they were for emboss.
 
 `tools/node_census.py` reproduces all of it.
+
+## `shuffle`'s channel selectors are four bytes in slot 1
+
+`shuffle` blocked 293 declared outputs and was the **sole** unimplemented filter in the
+dependency closure of 43 of them — nearly matching `fxmaps` at 45, for a fraction of the
+work. Slot 1 holds four selector bytes, one per output channel, ordered red, green, blue,
+alpha; a selector 0-3 takes that channel from the first input, 4-7 takes channel `s - 4`
+from the second.
+
+The reading comes off a permitted paired specimen exactly, on all five of its records, and
+the defaults are what settle it. `SubstanceDesigner__color` declares five `shuffle` nodes and
+compiles to five `shuffle` records:
+
+    source {channelgreen: 4}                  ->  R=0  G=4  B=0  A=0     (x3)
+    source {channelblue: 4}                   ->  R=0  G=1  B=4  A=3
+    source {channelblue: 4, channelalpha: 5}  ->  R=0  G=1  B=4  A=5
+
+Every declared channel lands in the byte its name picks, and the channels the source does
+NOT declare come back as 0, 1, 2, 3 — identity — which is exactly what a defaults-omitted
+serialisation predicts. Three nodes declaring only `channelgreen: 4` produce three records
+with the same word, so the correspondence is not a one-off alignment.
+
+    shuffle records corpus-wide                                  1,075
+      all four selector bytes <= 7 (readable)                      664
+      not readable                                                411
+        ...of which the single-input layout, EDGE in slot 1        409
+
+The 409 are refused rather than misread: their slot 1 is an input index, not a selector
+word, so the same bytes would decode to nonsense. Where that layout keeps its selectors is
+not established.
+
+Verified end to end rather than by inspection: feeding record 6 of that specimen two
+constant inputs `(0.1, 0.2, 0.3, 0.4)` and `(0.5, 0.6, 0.7, 0.8)`, with selectors
+`[0, 1, 4, 3]`, returns `[0.1, 0.2, 0.5, 0.4]` — each output channel carrying the value its
+selector names, including the cross-input one.
+
+A selector naming a channel its input does not carry raises instead of clamping to a
+neighbouring channel: a wrong image is worse than a refusal, and this is the filter whose
+whole job is which-channel-goes-where.
+
+    declared outputs produced   129 -> 143 of 598      files fully rendering   11 -> 12

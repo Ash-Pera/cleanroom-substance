@@ -918,6 +918,71 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 if tainted:
                     synthetic.add(i)
 
+            elif rec.filter_name == "shuffle":
+                # Slot 1 is four selector BYTES, one per output channel, in the order
+                # red, green, blue, alpha. A selector 0-3 takes that channel from the
+                # first input, 4-7 takes channel (s - 4) from the second.
+                #
+                # Read off a permitted paired specimen, exact on all five of its records
+                # including the values the source leaves at their defaults
+                # (SubstanceDesigner__color, 5 source nodes against 5 binary records):
+                #
+                #   source {channelgreen: 4}            -> R=0 G=4 B=0 A=0   x3
+                #   source {channelblue: 4}             -> R=0 G=1 B=4 A=3
+                #   source {channelblue: 4, alpha: 5}   -> R=0 G=1 B=4 A=5
+                #
+                # The undeclared channels come back as 0,1,2,3 -- identity -- which is what
+                # a defaults-omitted serialisation predicts, and the declared ones land in
+                # the byte their name picks. Corpus-wide the reading holds where it applies:
+                # 664 of 1,075 shuffle records have all four bytes <= 7, and of the 411 that
+                # do not, 409 are the single-input layout whose EDGE sits in slot 1 -- so
+                # slot 1 is not a selector word there and is refused rather than misread.
+                # Where those records keep their selectors is not established.
+                if len(rec.words) < 2:
+                    raise Unsupported("shuffle record too short for a selector word")
+                if 1 in (rec.layout[0] or ()):
+                    raise Unsupported("shuffle single-input layout: slot 1 is the edge, "
+                                      "and where its selectors live is not established")
+                w1 = rec.words[1]
+                sels = [(w1 >> (8 * k)) & 0xFF for k in range(4)]
+                if not all(s <= 7 for s in sels):
+                    raise Unsupported("shuffle slot 1 %#010x is not a selector word" % w1)
+
+                nout = 4 if rec.colour else 1
+                sels = sels[:nout]
+                need = {s // 4 for s in sels}
+                for k in sorted(need):
+                    if k >= len(rec.edges) or rec.edges[k] is None:
+                        raise Unsupported("shuffle wants input %d, which this record "
+                                          "does not have" % (k + 1))
+                    if rec.edges[k] not in outputs:
+                        raise Unsupported("edge -> record %s has no output yet"
+                                          % rec.edges[k])
+                tainted = any(rec.edges[k] in synthetic for k in need)
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+                src = {k: sbsruntime.image_sampler(outputs[rec.edges[k]])(pos)
+                       for k in need}
+
+                cols = []
+                for s in sels:
+                    a = src[s // 4]
+                    c = s % 4
+                    if c >= a.shape[-1]:
+                        # Not silently clamped to an existing channel: a selector naming a
+                        # channel the input does not carry means the reading is wrong here,
+                        # and a wrong image is worse than a refusal.
+                        raise Unsupported("shuffle selects channel %d of an input with "
+                                          "only %d" % (c, a.shape[-1]))
+                    cols.append(a[:, c:c + 1])
+                outputs[i] = to_image(np.concatenate(cols, axis=-1), N, H, W)
+                if tainted:
+                    synthetic.add(i)
+
             else:
                 raise Unsupported("filter %r not implemented" % rec.filter_name)
 
