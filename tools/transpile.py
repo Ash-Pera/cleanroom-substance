@@ -138,14 +138,16 @@ BACKENDS = {b.name: b for b in (Python, GLSL, OSL)}
 
 BINOP = {0x12: "+", 0x13: "-", 0x14: "*", 0x15: "/",
          0x1A: "and", 0x1B: "or",
-         0x1D: "==", 0x1F: ">", 0x20: ">=", 0x21: "<", 0x22: "<="}
+         0x1D: "==", 0x1E: "!=", 0x1F: ">", 0x20: ">=", 0x21: "<", 0x22: "<="}
 
 FUNCS = {0x16: "sbs_mod", 0x17: "-", 0x18: "dot", 0x23: "abs", 0x24: "floor",
+         0x2A: "exp",
          0x25: "ceil", 0x26: "cos", 0x27: "sin", 0x28: "sqrt", 0x29: "log",
          0x2B: "exp2", 0x2C: "not", 0x2D: "atan2", 0x2E: "cartesian",
          0x2F: "lerp", 0x30: "minimum", 0x31: "maximum", 0x32: "rand"}
 
 PY_FUNCS = {"abs": "np.abs", "floor": "np.floor", "ceil": "np.ceil", "cos": "np.cos",
+            "exp": "np.exp",
             "sin": "np.sin", "sqrt": "np.sqrt", "log": "np.log", "exp2": "np.exp2",
             "atan2": "np.arctan2", "minimum": "np.minimum", "maximum": "np.maximum",
             "dot": "np.dot"}
@@ -156,10 +158,9 @@ PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or"}
 #: Operations whose meaning is not established. Their operand shape is known and comes
 #: from the disassembler's IMM table -- 0x06 takes a value in position 0 and an index in
 #: position 1; the rest take ordinary value numbers throughout, verified at 0% "operand
-#: >= own index" over the corpus. 0x1E is bool with two operands and sits in the
-#: comparison block (1D eq, __, 1F gt, 20 gteq, 21 lt, 22 lteq), where `neq` is the only
-#: missing member; that is structural inference, not proof, so it stays opaque too.
-UNNAMED = {0x06, 0x1E, 0x2A, 0x35, 0x36}
+#: >= own index" over the corpus. 0x1E and 0x2A were here and have since been named in
+#: OPCODES.md as `neq` and `exp`, so they are emitted properly now.
+UNNAMED = {0x06, 0x35, 0x36}
 
 
 class Unsupported(Exception):
@@ -204,7 +205,12 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             rhs = arg(0)
         elif oid == 0x0C:                                  # sequence
             rhs = arg(len(toks) - 1)
-        elif oid == 0x0D:                                  # construct vector
+        elif oid == 0x0D:                                  # construct vector, by
+            # concatenation: always exactly two operands whatever the result width.
+            rhs = be.call("vec", [arg(i) for i in range(len(toks))])
+        elif oid == 0x0F:                                  # build a 4-vector from four
+            # scalars. Probable rather than confirmed -- 28 instances, all terminal, all
+            # in `levels`, all of the shape (x, x, x, 1). See OPCODES.md.
             rhs = be.call("vec", [arg(i) for i in range(len(toks))])
         elif oid == 0x10:                                  # swizzle
             mask = swizzle_mask(toks[1], ncomp)
