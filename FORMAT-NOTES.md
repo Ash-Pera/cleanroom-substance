@@ -22423,3 +22423,47 @@ So the position stands where the previous section put the whole tail, only narro
 transpiler could emit a loop from positions 0, 1 and 2 and be right about positions 4 and 5,
 and would still be guessing about position 3 in one instance out of eight.** That is a
 smaller gap than "positions 3-5 have no reading at all", and it is the same kind of gap.
+
+## `while`'s trailing operands are redundant, all of them
+
+The previous section got positions 4 and 5 to padding and left position 3 open, since it
+references a live `seq`/`set` chain in 12.7% of instances. That 12.7% has an account now, and
+it is the same account.
+
+### They point at things the loop already has
+
+For each `while`, take the three real operands, walk their whole dependency graph, and ask
+whether the trailing operands are inside it:
+
+    position 3    543 / 543    100.0%   already reachable from operands 0-2
+    position 4    542 / 543     99.8%
+    position 5    363 / 363    100.0%
+
+Every trailing operand names a value the loop already computes. The single exception is a
+`const` in `TatamiSubstance001`, and a constant carries no state.
+
+Two intermediate readings that were wrong on the way here, both discarded by measurement:
+
+**"Position 3 is an operand of the condition."** True of the bisection program, which is
+where the idea came from, and true of **1 of 69** live cases.
+
+**"Position 3 is a value computed before the initialiser."** True of 68 of 69 - but so is
+value 0, so it does not separate the live cases from the padding. It was a description, not
+a reading.
+
+The reachability test is what covers both the 87.3% that are value 0 and the 12.7% that are
+not, at 100.0%, because it asks the question that matters: does this operand tell the loop
+anything it does not already know?
+
+### What that unblocks
+
+A transpiler that emits `while` from operands 0, 1 and 2 and ignores the rest **cannot lose
+information** - not by assumption, but because every value the ignored operands name is
+already in the loop's dependency graph. That is the thing the previous two sections could not
+say, and the reason `0x0B` was left unimplemented.
+
+What remains is engineering rather than reading. The transpiler emits straight-line
+assignments with slots as a dict, so a loop needs the body's instruction range re-emitted
+inside a `while`, and the condition re-evaluated per iteration. The instruction ranges are
+derivable from the same dependency walk used above. 518 programs, 0.043% of the corpus, wait
+on that and on nothing else that is unknown.
