@@ -137,3 +137,27 @@ def text(d, ptr, hi, mark=()):
         lines.append('  %%%-4d %04X  %-14s %-34s%s' % (k, op, nm, args,
                      '   <<<' if op in mark else ''))
     return '\n'.join(lines)
+
+def immediate(addr, toks):
+    """The immediate bytes an instruction carries, with the alignment pad removed.
+
+    Any tool reading an immediate must go through this. Immediate-carrying opcodes have
+    two forms differing by 0x0400; the longer emits a 2-byte pad when the instruction
+    lands at 0 mod 4 so the immediate stays 4-aligned. Reading from the first operand
+    byte regardless splices two halves of different words together.
+    """
+    pad = 2 if addr % 4 == 0 else 0
+    return b''.join(struct.pack('<H', t) for t in toks)[pad:]
+
+
+def uid(addr, toks):
+    """The u32 uid carried by an inputref (op id 0x02), or None."""
+    raw = immediate(addr, toks)
+    return struct.unpack_from('<I', raw)[0] if len(raw) >= 4 else None
+
+
+def floats(addr, toks, n=None):
+    """The float32 immediates a const.f instruction carries."""
+    raw = immediate(addr, toks)
+    out = [struct.unpack_from('<f', raw, i)[0] for i in range(0, len(raw) - 3, 4)]
+    return out[:n] if n else out

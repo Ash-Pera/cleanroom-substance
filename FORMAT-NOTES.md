@@ -17228,3 +17228,58 @@ Corpus-wide, float constants decoding to a plausible magnitude go from **91.28% 
 
 The last is **ln 2**. A misread float distribution does not produce a mathematical
 constant, so that single value corroborates the fix better than the aggregate does.
+
+## Bringing the rest of the tools up to the model
+
+Fixing the disassembler exposed the same defect elsewhere: tools carrying their own copy
+of logic that had since moved on.
+
+### `fxdisasm.py` had drifted three ways
+
+It carried its own tree walk, its own node table knowing **two** of the four node shapes,
+and its own program validator predating the operand-possibility check. All three now come
+from `sbsasm`. Its output is readable for the first time:
+
+    === node 0x18B at +52  program @+64
+      %0    0900  const.f1       0
+      %1    0907  set.f1         %0, #12
+      %2    1140  const.f2       2.82, 2.82
+      %3    0947  set.f2         %2, #13
+      %5    0D00  const.f1       0.125
+
+Those constants are right only because of the alignment-pad fix.
+
+### `attribute_outputs.py` was solving a problem that no longer exists
+
+It opened by stating that the binary stores no output-to-record association and tried to
+*constrain* the answer by elimination, resolving about 5%. The output table names the
+record outright, so the tool's job is now **verification**, and the manifest supplies an
+independent check: each input carries `alteroutputs`, the set of outputs it affects.
+
+    p alters o         =>  o's record is reachable from some record reading p
+    p does not alter o =>  o's record is NOT reachable from any record reading p
+
+    specimens checked          639
+    (input, output) pairs   39,855
+       agree with the table 39,139   (98.20%)
+       violations              716
+
+**The violations are asymmetric, and that is the informative part.** Of those sampled,
+**321 are "alters but unreachable" against 2 "reachable but does not alter"**. The second
+direction is the one that would indict the output table - an output attributed to a record
+that the altering input cannot influence - and it is essentially absent. The first says
+edges are still missing, which the 1.63% unreachable residue already says.
+
+So a manifest relation that had no part in deriving the output table agrees with it 98.2%
+of the time, and disagrees almost entirely in the one direction that blames something else.
+
+The tool also had two of the defects found this session in miniature: it read only the
+main parameter program, missing every record that carries more than one, and it built uids
+by splicing operand tokens without removing the alignment pad.
+
+### A shared helper, so this stops recurring
+
+`disasm.immediate`, `disasm.uid` and `disasm.floats` are now the only supported way to read
+an immediate. Every instance of this class of bug - `program_span` versus `valid_program`,
+`fxdisasm`'s private validator, `attribute_outputs`' hand-built uid - came from a second
+copy of logic that was correct when written and silently stopped being correct.
