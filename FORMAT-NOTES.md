@@ -25388,3 +25388,55 @@ requires a package that exposes one of those parameters, and none of these does.
 
 Attempting it anyway would mean arguing from the shape alone, which in this file has produced
 `passthrough`, `grayscaleconversion` and `svg` - three plausible names, all withdrawn.
+
+## The regeneration, and why it is not a rewritten table
+
+The obvious move, once the slot rule was exact against the records, was to rewrite
+`layouts.json` from it. That turns out to be impossible, and the reason is the same defect
+found in `fxmaps`, generalised.
+
+The table's key is `(filter_id, cls, word1 & LAYOUT_MASK[filter])`. The rule needs the FULL
+word1 - every two-bit field. Where the mask drops a field bit, two records with different
+parameters collide on one key and must share one answer:
+
+    filter            LAYOUT_MASK   field bits   lost by the key
+    blend                   0x230        0x230              0x0   complete
+    directionalwarp          0x1e         0x1e              0x0   complete
+    dirmotionblur             0x4          0xf              0xb   LOSSY
+    levels                  0x3fd        0x3ff              0x2   LOSSY
+
+Two of the four catalogued filters, and `fxmaps` is a fifth. So the regeneration happens in
+`Record._compute_layout`, which sees the whole word; the table stays only as the fallback for
+filters whose fields are not catalogued. `tools/gen_layouts.py` reports the above rather than
+writing anything.
+
+### Two bugs the measurements caught
+
+Both would have shipped silently.
+
+**The walk placed state-11 edges too early.** The class-word parameters sit between the base
+inputs and the fields, and the first version skipped them. Result: 8,188 `blend` records had
+their mask input placed at the wrong slot, and the edge list lost 8,356 entries of which
+**8,355 were valid backward record indices** - real edges, deleted. The audit showed edge slots
+falling from 1,302,869 to 1,294,837 and still reporting "100.00% resolved", because resolution
+measures the slots claimed, not the slots that exist.
+
+**A guard raised NameError on every unruled filter.** Restructuring the slot-1 check left `w1`
+undefined when the first branch did not run; callers wrap layout access in `try`, so nothing
+crashed. The only visible sign was the validator's `size expression vs manifest` line reading
+`0/0` where it had read `1,564/1,564`. A check that silently evaluates nothing looks exactly
+like a check that passes.
+
+### Where it ends up
+
+    edge slots           1,302,869  ->  1,302,890     +21, and no real edge lost
+      dropped                                          1  (0 were real)
+      added                                            5  (5 were real)
+    parameters read        865,477  ->    865,479      +2
+    size expr vs manifest    1,564  ->      1,568      +4, still 100%
+    edge resolution                          100.00%
+    validator, tests                         unchanged, 13 pass
+
+A small gain, honestly. The value is not the twenty-one slots - it is that for the ruled
+filters the layout is now computed from the bytes rather than recalled from a table that is
+known wrong in four distinct ways.

@@ -356,6 +356,10 @@ FX_TABLE = {
 }
 
 
+# Base image inputs for the filters whose parameter fields are catalogued.
+_RULED_PARAMS = {1: 2, 12: 2, 15: 1, 11: 1}
+
+
 class Record:
     __slots__ = ('index', 'offset', 'end', 'tag', 'cls', 'asm', '_words', '_layout')
 
@@ -492,6 +496,53 @@ class Record:
             if all(_bw8(self.words[s]) for s in (1, 2, 3)):
                 return ([1, 2, 3], 4)
 
+        # The parameter slots of the four filters whose two-bit fields are catalogued,
+        # computed from the FULL word1 rather than looked up.
+        #
+        # The table cannot hold this rule for two of them. Its key masks word1, and the
+        # mask drops field bits the rule needs:
+        #
+        #     blend            LAYOUT_MASK 0x230   fields 0x230   loses nothing
+        #     directionalwarp              0x1e           0x1e    loses nothing
+        #     dirmotionblur                0x4            0xf     loses 0xb
+        #     levels                       0x3fd          0x3ff   loses bit 1
+        #
+        # so for dirmotionblur and levels two records with different parameter states
+        # collide on one key and must share one answer. That is the same defect as
+        # fxmaps' halved arity field, and it cannot be repaired by rewriting entries.
+        #
+        # The allocation order puts the class-word parameters immediately after the base
+        # image inputs, so the first of them - the slot a reader wants - is at 2 + arity.
+        # Slot 1 is the parameter word only when it is not an EDGE. levels and
+        # dirmotionblur put an input there in some records, exactly as shuffle does, and
+        # reading it as a bitfield loses that edge - 167 real backward record indices
+        # dropped before this guard was added. Those records fall through to the table.
+        _ruled = (f in _RULED_PARAMS and len(self.words) > 1
+                  and not (self.words[1] == 0
+                           or (self.words[1] < self.index
+                               and self.words[1] < len(self.asm.records))))
+        if _ruled:
+            base = _RULED_PARAMS[f]
+            w1 = self.words[1]
+            edges = list(range(2, 2 + base))
+            # The class-word parameters sit between the base inputs and the fields, so a
+            # state-11 field's edge lands after them. Omitting this placed the mask input
+            # of 8,188 blend records too early, and 99.99% of the slots that dropped out
+            # of the edge list were valid backward record indices - real edges, lost.
+            g = ((self.cls & 1) + ((self.cls >> 7) & 1) + ((self.cls >> 11) & 1)
+                 + ((self.cls >> 13) & 1) + 2 * ((self.cls >> 10) & 1))
+            s = 2 + base + g
+            for _nm, mask, hi in PARAM_SPEC[f]:
+                x = w1 & mask
+                if not x:
+                    continue
+                if x == mask:                      # state 11: an image input
+                    edges.append(s)
+                s += 1
+            prog = 2 + base
+            if prog < len(self.words):
+                return (edges, prog)
+
         if LAYOUTS and len(self.words) > 1:
             hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
             if hit:
@@ -544,8 +595,7 @@ class Record:
         decl = {u: v for t, u, v in (self.asm.header.get('inputs') or [])}
         vals = []
         for k, addr, op, toks in disasm.decode(self.asm.data, par[1], self.end):
-            f = disasm.fields(op)
-            oid, n = f['id'], f['comps']
+            _ntok, _ty, n, oid = disasm.fields(op)
             if oid == 0x02:
                 v = decl.get(disasm.uid(addr, toks))
                 if v is None or len(v) < n:
