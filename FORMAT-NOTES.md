@@ -22068,3 +22068,55 @@ produce the large values, and it does not track the format fields it would have 
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## Correction: the seed reading is not established. One property did the work, and it does not discriminate
+
+The previous section concluded these 123,158 records hold a random seed, on four properties.
+Testing the readings directly weakens that to a guess, and gives the rival reading the only
+direct evidence there is.
+
+### The one direct test
+
+Searching the permitted sources for a parameter whose *function has our programs' shape* -
+an integer input read, an integer constant, an add, and nothing else - returns exactly one
+match in the whole clean set:
+
+    pixelprocessor   format   get_integer1("HDR") + ...
+
+`format` reading an HDR toggle is precisely `input + const` producing 0 or 1. That is one
+instance, which is thin, and it is the only direct shape evidence in either direction.
+
+### The property that carried the seed reading does not discriminate
+
+The strongest of the four was that every record of a file references **one** graph input -
+343 of 357 files - which I read as a package-level `$randomseed`. An HDR toggle is *also* a
+package-level input referenced by every node that cares about it. The property distinguishes
+"a global" from "a per-node parameter"; it does not distinguish which global.
+
+Of the remaining three: zero-dominance fits both readings equally. Not tracking the record's
+format fields argues against `format`. Only the large values argue for a seed.
+
+### The large values are real, and unexplained
+
+Two ways they could have been an artifact, both ruled out:
+
+**A decode error.** The alignment-pad rule was derived from float immediates, so it might not
+hold for integers. It does - on the 48,422 three-token integer constants, skipping the pad
+gives a small value 66.7% of the time and reading from byte 0 gives one **0.0%** of the time.
+The pad rule is right for integers too, and 23,455 constants are genuinely large.
+
+**Node identities.** A per-node seed built from a node's uid would show up as constants
+matching uids. Of 23,455 large constants, **0** equal a declared input or output uid, and 0
+are within 4 of one.
+
+### Where this leaves it
+
+    format    the only direct evidence, one source instance, explains 78% of values
+    a seed    explains the large 22%, supported by nothing that distinguishes it from
+              any other package-level input
+    both      no bit separates the two populations - best MCC 0.181, negative lift
+
+So: an integer parameter computed from a package-level graph input plus a per-node constant,
+whose small values look like `format` and whose large values look like nothing yet
+identified. Calling it a seed was reading four properties as four pieces of evidence when
+one of them was doing all the work and does not, on inspection, do it.
