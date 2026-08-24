@@ -22580,3 +22580,49 @@ the first half.
 
 Tests: 12 passed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
 validator 437/437.
+
+## The execution sweep, corrected twice
+
+The previous section put 9,806 programs in a category called "needs a seeded slot", on the
+strength of the exception type. Both halves of that were wrong.
+
+### A record's programs do share slot state
+
+They are written and read across programs, not within one:
+
+    each program with an empty slot dict     97,174 of 107,456    90.4%
+    a shared slot dict per record           102,489 of 107,456    95.4%
+
+That is a fact about the format, not just a harness convenience: `Record.programs` returns up
+to five programs per record and they communicate through the slot file.
+
+### The remaining `KeyError`s were never about slots
+
+They were `SAMPLERS[index]` - **no image sampler bound**. The failing program reads
+
+    v1 = sample_lum(0, v0)      <- KeyError: 0, the sampler, not the slot
+    v2 = slots[0]               <- fine; slot 0 was written by an earlier program
+
+and I had read `KeyError: 0` as the slot because the slot index in these programs is also 0.
+The static check should have caught it earlier: scanning for slots read before any program in
+the record writes them finds **43 occurrences in 60 files**, not thousands. I had that number
+and did not reconcile it with 4,448 before naming the category.
+
+With a stub sampler bound:
+
+    ran                          104,501    97.25%
+    needs the shared cache           483     0.45%   the documented refusal
+    other                          2,442     2.27%   harness: the stub returns one
+                                                     component, programs swizzle to more
+    missing slot or input             30     0.03%
+
+### Where the transpiler and runtime now stand
+
+    transpiles     1,206,800 of 1,206,800    100.00%
+    executes         104,501 of 107,456       97.25%   (sampled, 40 files)
+
+with the residual dominated by a one-component stub sampler rather than anything unexplained.
+
+The lesson is narrower than last section's and worth separating from it: an exception's
+*type* is not its cause. `KeyError: 0` had two possible sources in the same line of
+generated code, and I picked the one that fit the story I was already telling.
