@@ -23921,3 +23921,66 @@ The eight are not stragglers. Every one is a `pixelprocessor` whose class word i
 unexplained exceptions - an exact partition. The two-exception version was the same fact seen
 through a corpus too small to show the pattern, and a stable-looking count across a growing
 corpus was the thing that made it look settled.
+
+## Slots: word1 is a vector of two-bit type codes
+
+Slot resolution has been a 809-key lookup table (`tools/layouts.json`), keyed on
+`(filter_id, cls, word1 & mask)`. A table is not an understanding, and the question of what
+rule it memorises has an answer for the largest part of it.
+
+Reduce the key. Those 809 keys cover only **151 distinct (filter, cls) pairs**, and for 122 of
+them the edge list is the same whatever word1 holds. The 29 that genuinely need word1 cover
+**49.59% of all records**, so word1 is not a detail - it decides the layout of half the corpus.
+
+Line up `blend`'s keys and the pattern is immediate:
+
+    cls 0x0008  w1 & 0x30 = 0x00   edges [2, 3]      params []
+    cls 0x0008  w1 & 0x30 = 0x10   edges [2, 3]      params [4]
+    cls 0x0008  w1 & 0x30 = 0x20   edges [2, 3]      params [4]
+    cls 0x0008  w1 & 0x30 = 0x30   edges [2, 3, 4]   params []
+
+Every mask in `PARAM_SPEC` is a pair of ADJACENT bits - `0x30`, `0x03`, `0x0c`, `0x06`,
+`0x300`. They are not two independent flags. They are one **two-bit field per parameter**:
+
+    00   absent                       consumes no slot
+    01   a baked constant             consumes a parameter slot
+    10   a program                    consumes a parameter slot
+    11   AN IMAGE INPUT               consumes an EDGE slot
+
+The fourth state is the one the earlier reading missed. This file recorded the pair as
+"presence = low | high, kind = high", which handles 01 and 10 and silently folds 11 into
+"present, and a program". It is not a program - it is a mask input, and it changes the record's
+arity. Measured over `blend`:
+
+    00  absent            102,670 records    always 2 edges
+    01  baked constant    137,729 records    always 2 edges
+    10  a program          61,928 records    always 2 edges
+    11  an image input      8,510 records    3 edges, and the third is a valid backward
+                                             record index in 8,471 of 8,471
+
+### The rule is stronger than the table it came from
+
+39 of those 8,510 got only two edges from the table, because their word1 carries further bits
+(`0x330`, `0x333`, `0x130`) that no key covers. The rule says a third input is there anyway.
+Looking just past the two base edges finds a valid backward record index in **39 of 39** - at
+slot 4, 5 or 6, exactly where the cls-driven header length puts it. So these were never
+counterexamples; they were missing table entries, and the rule fills them.
+
+### What this does and does not settle
+
+It settles what word1 is, which is the half of the table that was pure memorisation, and it
+explains why `blend` alone among the filters has a variable arity: it is the only filter in
+the corpus with a parameter that can take an image. Every other two-bit field - all five of
+`levels`, both of `directionalwarp`, both of `dirmotionblur` - is 00, 01 or 10 in every record
+and **never** 11.
+
+It does not settle the other half. The class word still drives header growth on its own
+(`transformation`'s `3 + cls bit0 + cls bit7`, the popcount mechanism in `blur` and `warp`),
+and that remains a separate mechanism keyed on cls rather than word1. And 7.27% of records
+still have an edge block that is not contiguous-from-2. The shape is:
+
+    word 0    filter id and class word
+    word 1    a vector of two-bit type codes, one per parameter, in a fixed per-filter order
+    then      a header whose length grows with certain cls bits
+    then      the edge block, contiguous
+    then      parameters, anchored at the tail
