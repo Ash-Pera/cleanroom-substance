@@ -24432,3 +24432,54 @@ table stored `[6, 4]` for the parameters of one such key - unsorted, and read as
 disorder. It is just the allocation order.
 
 This is what the 809-key table was: an ordered walk, memorised one outcome at a time.
+
+## The uncatalogued filters, and a parameter property nobody had looked for
+
+`blend`'s bit 9 was found because `LAYOUT_MASK` carried a bit `PARAM_SPEC` did not list. That
+comparison is worth running for every filter:
+
+    filter            LAYOUT_MASK   PARAM_SPEC covers   undocumented   distinct w1
+    warp                   0x2ff8                 0x0         0x2ff8           281
+    shuffle             0x6001fe0                 0x0      0x6001fe0            38
+    gradient               0x3fff                 0x0         0x3fff            13
+    transformation      0x60000c0                 0x0      0x60000c0             8
+    uniform              0x36ffe0                 0x0       0x36ffe0             7
+    pixelprocessor            0xb                 0x0            0xb             6
+    distance                  0x1                 0x0            0x1             2
+
+Seven filters have word1 bits the table keys on and nothing describes. `warp` alone has 281
+distinct word1 values.
+
+The adjacent-pair model was tried first, and its own control shows why it is not the answer
+everywhere: it recovers `directionalwarp` at 100% with masks `0x6, 0x18` - exactly its known
+spec - and recovers `levels`' five masks, but scores 0-8% on `gradient`, `uniform`, `warp` and
+`shuffle`. So those filters are not simply more two-bit fields.
+
+### gradient: word1 does not matter at all
+
+Reading its 15 keys, the parameters are `[4]` whenever cls bit 0 is set and `[]` when it is
+not, across all 13 word1 values. Over the corpus:
+
+    params == g(cls), word1 ignored          375 of 375   100.00%
+      and the predicted slot is parameter-like  375 of 375
+
+The split is not degenerate - 117 records take no parameter and 258 take one, so a constant
+predictor caps at 68.8%. `LAYOUT_MASK[gradient] = 0x3fff` is spurious: it turns two real cases
+into fifteen keys, and every one of the thirteen word1 values is noise the table memorised.
+
+### uniform: parameters have a WIDTH
+
+`uniform` takes one parameter, except for 229 records that take four. Bits 8 and 16 separate
+them perfectly - 0.0% of the one-parameter records against 100.0% of the four - and the two
+bits agree with each other in 3,424 of 3,424.
+
+    params = 4 if word1 bit 8 else 1          3,424 of 3,424   100.00%
+
+Four slots holding a constant colour, one holding a grey. The four-parameter records all start
+at 0.5, which is what an RGBA default looks like.
+
+This is the property the model was missing. Everywhere above, a field was present or absent and
+took one slot. It also has a WIDTH, and the width is carried separately from the state. That is
+the same mechanism as `transformation`'s `matrix22` at 4 slots and `offset` at 2 - recorded
+long ago as an exception to one-slot-per-field, and it is not an exception. It is a second
+attribute every parameter has.
