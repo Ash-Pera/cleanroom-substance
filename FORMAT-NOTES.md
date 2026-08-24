@@ -20690,3 +20690,90 @@ which is the right default when only one of the two can be checked.
 What this leaves: `pixelprocessor`'s pairs at bits 0 and 4 are 97.2% and 97.1% predictive
 while its pairs at 6 and 8 are exact. Why two of a filter's four pairs should be reliable
 and two not is unexplained.
+
+## Tracing one instance end to end, and the reader bug it exposed
+
+The question was whether the full node flow can be traced well enough to say where an
+instance's records come from. On a small paired specimen it can, exactly - and the answer
+to the second half, whether the *binary* says so, is no.
+
+### `ie_particles` reconciles to the record
+
+`ie_particles.sbs` has two graphs. Only `particle_system` is cooked into the archive;
+`sandbox` is the author's test scene and is not in the package. `particle_system` holds 29
+`compNode`s, one of which is an instance of `pkg:///switch` - and that dependency is
+`sbs://blend_switch.sbs`, an Adobe library file this project excludes, so its contents are
+not read here. It does not need to be:
+
+    source compNode              count      binary records
+    inputBridge                     22      21 bitmap
+    outputBridge                     3       0        (outputs are not records)
+    filter:fxmaps                    2       2 fxmaps
+    filter:valueprocessor            1       1 pixelprocessor
+    instance:switch                  1       3   <- uniform + blend + pixelprocessor
+                                    29      27
+
+Every record is accounted for, and the residue is the instance. `particle_system` declares
+no `blend` and no `uniform` anywhere in its own graph; the binary has one of each, plus a
+second `pixelprocessor` beyond the one its `valueprocessor` compiles to. Those three are
+what `switch` inlined to, identified without reading `blend_switch.sbs` at all - by
+subtraction from a complete accounting.
+
+The 22nd input bridge is `pcloud_meta`, manifest type 1024. The other 21 are image inputs
+and each has a record; a non-image input does not. So the arity is exact too.
+
+### The binary does not mark the boundary
+
+Having found the three instance records, the obvious next question is whether anything
+distinguishes them. Nothing here does:
+
+    record 23  uniform          slot 1 = 0x3018     shared_refs []
+    record 24  blend            slot 1 = 0x27       shared_refs []
+    record 25  pixelprocessor   slot 1 = 0x30001    shared_refs []
+    record 26  pixelprocessor   slot 1 = 0x30000    shared_refs []   <- NOT from the instance
+
+Records 25 and 26 have adjacent slot-1 values and opposite provenance. `shared_refs` is
+empty for all 27 records - the hierarchy that *The shared reference is a hierarchy* found
+does not appear in a file this small, which is consistent with its own finding that the
+group count tracks the number of dependencies.
+
+So: **instance membership is recoverable by reconciling against the source, and is not
+marked in the binary.** That is the same shape as the output-attribution result - the
+information exists in the toolchain and is not carried in the file - and it means an
+importer can un-inline a graph only for materials whose sources it also has.
+
+### The single short-form bitmap was not about instances, and was a reader bug
+
+The specimen has one bitmap record unlike the other twenty: record 16, two words where the
+rest have five, `cls` 0x38 where the rest have 0x9. It looked like the instance's own
+input. It is not - it is `pcloud_data`, an ordinary declared graph input of the host graph.
+What made it stand out is that `Record.bitmap` returned **None** for it.
+
+The method decided by record length: eight bytes meant the "short form addresses raw
+pixels" reading recorded earlier, so it decoded `cls` as a channel code, found nothing in
+`CHANNELS`, and gave up. But a third of short-form records name a declared graph input.
+
+Length is the wrong discriminator. What decides it is whether slot 1 **can be a file
+offset**: a resource offset points into this file, a graph-input uid is a 32-bit
+identifier that lands far outside it. Over 463 short-form records in 484 paired specimens,
+scored against the uids each one's own manifest declares:
+
+    slot 1 >= file size   -> graph input     157 of 157      0 false positives
+    slot 1 <  file size   -> pixels          306 of 306      0 false negatives
+
+100.00% both ways. For comparison the intrinsic rule that motivated the search - "the
+channel decode fails, so it is not pixels" - scores 92.4% against a 0.0% control, which is
+good but not this. The file-offset test needs no manifest, so the reader can apply it.
+
+    bitmap records            1,373
+      returned None            170   ->   0
+      graph inputs             910   -> 1,067   (1,060 match a declared uid)
+      pixels                   293   ->   306
+
+The 13 records whose channel code `CHANNELS` cannot decode are all `cls` 0x808 and all
+2048x2048. They sit on the pixels side of the offset rule and stay there, now reporting
+`channels: None` instead of disappearing - where the pixels are is known even where their
+layout is not.
+
+Corpus audit after the change: 435 files, 0 failures, edge slots 100.00%, 0 unexplained
+bytes, transpiler 11 passed.

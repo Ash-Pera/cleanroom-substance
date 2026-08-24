@@ -976,21 +976,39 @@ class Record:
     # ---- bitmap specialisation
     @property
     def bitmap(self):
-        """For filter 16: either stored pixels or a named graph input."""
-        if self.filter_id != 16:
+        """For filter 16: either stored pixels or a named graph input.
+
+        Record LENGTH does not decide this. The 8-byte form was read as pixels outright,
+        on the reading that the long form names an input and the short form addresses
+        raw data - but a third of short records name a declared graph input too, and
+        they were being lost: `CHANNELS` has no entry for their channel code, so the
+        method returned None for 170 records rather than the input uid.
+
+        What decides it is whether slot 1 CAN be a file offset. A resource offset is an
+        offset into this file; a graph-input uid is a 32-bit identifier the cooker
+        assigns, and lands far outside it. Over 463 short-form records in 484 paired
+        specimens, checked against the uids their own manifest declares:
+
+            slot 1 >= file size  ->  graph input     157 of 157, no false positives
+            slot 1 <  file size  ->  pixels          306 of 306
+
+        100% both ways, so the length reading was not merely incomplete, it was the
+        wrong discriminator. The 13 records with a channel code `CHANNELS` cannot decode
+        (`cls` 0x808, all 2048x2048) sit on the pixels side of that rule and stay there;
+        they report `channels: None` rather than vanishing, since where the pixels are
+        is known even when their layout is not.
+        """
+        if self.filter_id != 16 or len(self.words) < 2:
             return None
-        if self.end - self.offset == 8:
+        v = self.words[1]
+        if self.end - self.offset == 8 and v < len(self.asm.data):
             hi = (self.cls >> 8) & 0xFF
             ch = CHANNELS.get(hi & 3)
-            if ch is None:
-                return None
             bpc = 2 if hi & 4 else 1
-            size = self.width * self.height * ch * bpc
-            return {'kind': 'pixels', 'offset': self.words[1], 'size': size,
-                    'channels': ch, 'depth': bpc * 8}
-        if len(self.words) > 1:
-            return {'kind': 'graph_input', 'uid': self.words[1]}
-        return None
+            return {'kind': 'pixels', 'offset': v,
+                    'size': self.width * self.height * ch * bpc if ch else None,
+                    'channels': ch, 'depth': bpc * 8 if ch else None}
+        return {'kind': 'graph_input', 'uid': v}
 
     def describe(self):
         name = self.filter_name or ('fid %d (%s)' % (self.filter_id,
