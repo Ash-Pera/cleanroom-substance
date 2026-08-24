@@ -488,8 +488,10 @@ class Record:
     def edge_slots(self):
         """Slots holding this record's input edges.
 
-        `pixelprocessor` states its own arity instead of relying on the layout table:
-        slot 1 is the input count and the inputs occupy slots 2 onward. Over the corpus,
+        `pixelprocessor` states its own arity instead of relying on the layout table: the
+        low nibble of slot 1 is the input count and the inputs occupy slots 2 onward. The
+        nibble IS the count, not a code for it - it equals the resolved edge count in
+        56,934 of 57,118 records (99.68%). Over the corpus,
         records with a count of 1 to 8 have every one of those slots holding a valid
         backward record index in 41,350 of 41,453 - 99.8%. The derived table saw only the
         slots that were populated often enough to pass a threshold and missed the rest,
@@ -501,6 +503,18 @@ class Record:
                 return list(range(2, 2 + n))
             if n == 0:
                 return []                  # a generator: no image input at all
+            # The count is the low NIBBLE, not the whole word. Reading the whole word works
+            # only while no other bit of slot 1 is set, and 437 records have one. In every
+            # one of those 437, slots 2..2+nibble hold a backward record index - so the
+            # nibble is right where the whole word is unusable, and 32 of them get more
+            # edges than the layout table offers.
+            #
+            # Applied only when the whole-word rule does not fire, so this cannot change
+            # any record that was already being read.
+            k = n & 0xF
+            if 1 <= k <= 8 and len(self.words) >= 2 + k \
+                    and all(0 <= self.words[2 + j] < self.index for j in range(k)):
+                return list(range(2, 2 + k))
         return self.layout[0]
 
     @property

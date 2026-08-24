@@ -21803,3 +21803,56 @@ replaces "step past whatever looks like an edge" with a field the format actuall
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## The input-count nibble is `pixelprocessor`'s alone, and `edge_slots` was reading it wide
+
+Having found `pixelprocessor` states its input count in the low nibble of slot 1, the obvious
+question is whether other filters do. Tested across every filter:
+
+    pixelprocessor    99.7%          fxmaps          20.8%
+    uniform           27.5%          blend           13.8%
+    filter 11         22.3%          everything else under 8%
+
+**Only `pixelprocessor`.** `fxmaps` was the plausible second - `_compute_layout` already
+knows it has two record layouts selected by slot-1 bit 12 - but splitting on that bit shows
+its arity is fixed, not counted: with bit 12 set, 3,189 of 3,372 records have exactly 6
+edges, which is the six slots 3-8 that layout occupies. A fixed six, not a stated six.
+
+### And it was already known, at the wrong width
+
+`Record.edge_slots` has used slot 1 as `pixelprocessor`'s input count all along. It read the
+**whole word**:
+
+    n = self.words[1]
+    if 1 <= n <= 8 ...
+
+which is right exactly while no other bit of slot 1 is set. 437 records have one, and the
+rule silently falls through to the layout table for them. In all 437, slots `2 .. 2+nibble`
+hold a backward record index, so the nibble is correct precisely where the whole word is
+unusable, and 32 of them get more edges than the table offers.
+
+The fix applies the nibble only when the whole-word rule does not fire, so no record that
+was already being read can change:
+
+    edge slots     1,289,546  ->  1,289,648    still 100.00% resolved
+
+### Where reachability stands
+
+    records reachable from the output table    878,588 / 895,674 = 98.09%
+    per-file median                                                99.85%
+
+### The pattern worth naming
+
+This is the third time in this session that a hole turned out to be a reader applying a rule
+at the wrong width or scope, where the rule itself was already recorded:
+
+    ramp        required its table INSIDE the record, against the partition rule
+    matrix      read slot 4 always, against the header-size rule
+    edge_slots  read the whole word, where only the nibble is the count
+
+None was a gap in what the format was known to do. Each was a place where a known rule had
+been written down once and implemented narrowly, and the narrow implementation kept working
+well enough that nothing pointed at it until the residual was chased.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
