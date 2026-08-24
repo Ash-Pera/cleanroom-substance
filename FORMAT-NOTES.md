@@ -27530,3 +27530,90 @@ do not.
 The list is now deduplicated by content, and `tools/corpus.py` exists so that reading it
 any other way is the exception rather than the default. That is the actual fix — the
 figure was wrong for as long as it was, precisely because nothing ever checked.
+
+## When is a program shared? Characterised, not predicted — and not by version
+
+*Blocks are occasionally shared* claimed the compiler does common-subexpression elimination
+across nodes, on "of 285,064 distinct bytecode blocks, 95.3% are pointed at by exactly one
+record", leaving 4.7% shared. Re-measured over `Record.programs` on the current model:
+
+    programs (record slot -> offset)            1,611,781
+    named by more than one record                     792     0.049%
+
+Not 4.7%. The old figure counted distinct *bodies*, and 92.6% of programs are byte-identical
+copies of another - so "one block, many records" was mostly one *expression* compiled many
+times, which is the opposite of sharing. Genuine pointer sharing is fifty times rarer than
+that number suggested, and consistent with the duplication result: the cooker emits a fresh
+copy and only occasionally points two records at one program.
+
+### What sharing looks like where it happens
+
+    files with at least one shared program       223 of 433     51.5%
+    shared programs per file                     median 1, 90th pct 5, max 29
+    sharers per shared program                   2: 251   3-9: 243   10-99: 204   100+: 94
+    most sharers of one program                  7,953
+
+Half the files share nothing at all, and the median sharing file shares exactly one program
+- but where it happens it can be total. `ChewingGumSubstance001` points 7,953 of its 29,794
+records at one six-instruction program:
+
+    %0  const.f1  1
+    %1  rand.f1   %0
+    %2  const.f1  1
+    %3  add.f1    %1, %2
+    %4  const.f1  2
+    %5  vec.f2    %3, %4
+
+a jitter derived from the graph's random seed, reached from a **later** slot by `blend`,
+`directionalwarp`, `transformation`, `pixelprocessor` and `levels` alike. Sharing is
+overwhelmingly cross-filter (656 of 792 involve more than one filter type), almost never
+between adjacent records (1 of 792), and almost never the size expression (5 of 792 are the
+first program for all their sharers; 414 are reached only from later slots).
+
+### The obvious condition is the base rate
+
+The natural reading of that program is that it can be shared because it depends on nothing
+record-local - only a constant and the file's seed. Measured against a control, that
+explains nothing:
+
+    reads only globals and constants, shared programs      98.4%
+    reads only globals and constants, unshared programs    96.7%     lift 1.02x
+
+**Ninety-seven percent of all programs read only globals and constants**, so the property
+every shared program has is a property almost every program has. Recorded because it is a
+good-looking hypothesis with no power, and this document has now caught four of those.
+
+One thing does associate, and it explains only a fifth:
+
+    shared programs that are out of line       18.7%
+    unshared programs that are out of line      0.6%     31x
+
+A shared program is usually still inline in *one* record's extent, with the other sharers
+pointing into it - the same physical arrangement seen in `Grid`, where a record's slots
+reach backwards into its predecessor's bytes. Nor is there a population split: banding by
+sharer count, out-of-line rate declines smoothly (25.5% at two sharers to 8.5% at a hundred
+plus) and instruction count, filter diversity and `rand` usage are flat across every band.
+
+**So sharing is characterised and not predicted.** Nothing measured here says which of two
+byte-identical programs will be emitted twice and which will be pointed at twice.
+
+### And it does not change with version
+
+    version    files   programs    shared    pooled   median per file
+    0x20000       85     23,971       122    0.509%        0.000%
+    0x30000        5      9,993         4    0.040%        0.000%
+    0x40000       41     44,711        25    0.056%        0.000%
+    0x50000      232    913,429       365    0.040%        0.027%
+    0x60000       39    411,346       200    0.049%        0.033%
+    0x80000        7     16,291         7    0.043%        0.000%
+    0x90000       24    192,040        69    0.036%        0.023%
+
+Version 2 looks like a tenfold outlier and is not one. Its **median file shares nothing**,
+while versions 5, 6 and 9 have nonzero medians - the pooled and per-file orderings disagree,
+so the pooled figure is a handful of small v2 files with a few shared programs each. The
+size effect that would explain it is weak on its own (corr(log program count, per-file rate)
+= -0.158), and a size-matched comparison cannot separate the versions because the small-file
+subsets run to three or four files apiece.
+
+**No version trend is established, in either direction.** Whatever governs sharing was the
+same in the version-2 files as in the version-9 ones, or is too rare here to show a change.
