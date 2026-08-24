@@ -17775,3 +17775,38 @@ then `('entry', ...)`.
 That "98% of chains stop at an unrecognised header", carried in these notes as the central
 FX-Map obstacle, was never a failure. The walk was arriving at the next structure and
 being told it had crashed.
+
+### Closing the last of it: two wrong stop conditions and a wrong bound
+
+**The stop condition was testing the payload, not the entry.** `fx_table` stopped when an
+entry's `+4` pointer failed to land in the record. That discarded 1,974 records whose
+*first* entry has an unusable pointer, reporting them as having no readable content at all.
+
+Replacing it with the nibble rule alone - stop when the tag does not end in 8 - was worse:
+it cut 32,854 entries and 1,026 programs, so words with other nibbles are genuinely part
+of the run. **Neither signal subsumes the other**, and recognising an entry by *either*
+beats both:
+
+    stop rule                        records with nothing   entries   programs
+    payload pointer must resolve            2,844 (5.8%)    113,984    102,492
+    tag nibble must be 8                    2,785 (5.7%)     81,130    101,466
+    either signal                             870 (1.8%)    125,643    102,524
+
+**And the walk was bounded by the wrong thing.** Of the 870 that remained, **805 address a
+table lying outside their own record**, and in 757 of 757 resolvable cases it sits inside
+an *earlier* record - usually a `blend` or a `transformation`, which cannot own an FX table.
+
+A record's extent is a **directory partition, not an allocation**. The table is a
+body-level structure and the partition simply attributes it to whichever record happens to
+precede it. Bounding the walk by the body rather than the record:
+
+    fxmaps records yielding nothing    141 of 49,241   (0.29%)
+    table entries walked           127,898
+    programs resolved              102,524
+
+**From 33.7% unreadable to 0.29%.** The longest walk in the corpus is 17 items against a
+runaway guard of 64.
+
+That the record extent is a partition was established early in these notes and used to
+derive record lengths. It took until now to notice that the same fact means a structure a
+record points at need not lie inside it.

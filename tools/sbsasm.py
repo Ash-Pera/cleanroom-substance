@@ -482,22 +482,43 @@ class Record:
         """
         if self.filter_id != 4 or len(self.words) < 3:
             return
-        d, o, e = self.asm.data, self.offset, self.end
+        d = self.asm.data
         q = self.words[2] + 52 if start is None else start
+        # Bounded by the BODY, not by this record. A record's extent is a directory
+        # partition, not an allocation: 805 fxmaps records address a table that lies
+        # outside them, and in 757 of 757 resolvable cases it sits inside an earlier
+        # record -- usually a blend or transformation, which cannot own an FX table. The
+        # table is a body-level structure and the partition simply attributes it to
+        # whichever record precedes it.
+        o, e = self.asm.body_lo, self.asm.body_hi
         if not (o <= q < e - 7):
             return
         if start is None and struct.unpack_from('<I', d, q)[0] in FX_NODES:
             return
-        while q + 8 <= e:
+        limit = 64                       # runaway guard: the longest real walk is 17
+        while q + 8 <= e and limit > 0:
+            limit -= 1
             tag = struct.unpack_from('<I', d, q)[0]
             if tag in FX_NODES:
                 break
+            # Stop on what is not an entry, not on an entry whose payload is unusable.
+            # A table entry's tag ends in nibble 8 -- that is what separates entries from
+            # node headers, which end in 9 or 0xB. Stopping when the +4 pointer failed to
+            # land in-record instead discarded 1,974 records whose FIRST entry has an
+            # unusable pointer, reporting them as having no readable content at all.
             t = struct.unpack_from('<I', d, q + 4)[0] + 52
-            if not (o <= t < e - 3):
+            # An entry is recognised by EITHER signal: a tag whose low nibble is 8 -- what
+            # separates entries from node headers, which end in 9 or 0xB -- or a payload
+            # pointer that lands in the record. Requiring the pointer alone discarded 1,974
+            # records whose first entry has an unusable one; requiring the nibble alone cut
+            # 32,854 entries and 1,026 programs, so words with other nibbles are part of
+            # the run too. Neither signal subsumes the other.
+            if (tag & 0xF) != 8 and not (o <= t < e - 3):
                 break
             off = FX_TABLE.get(tag)
             prog = None
-            if off is not None and t + off + 4 <= e and self.asm.program_span(t + off, e):
+            if off is not None and o <= t < e - 3 and t + off + 4 <= e \
+                    and self.asm.program_span(t + off, e):
                 prog = t + off
             yield q - o, tag, prog
             q += 8
