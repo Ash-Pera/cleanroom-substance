@@ -56,8 +56,17 @@ tokens directly joins halves of two different words.
 
 `Record.fx_tree()` walks an FX-Map's linked node chain. It stops at an unknown node header rather
 than guessing the node's size, because guessing is how earlier walks wandered into bytecode and
-invented node types. It reaches 95.7% of the node headers present; the gap is that 34% of fxmaps
-records carry no node of a known shape at all.
+invented node types.
+
+It returns nothing for 34.2% of `fxmaps` records, and that is **not** a gap. Slot 2 is a
+discriminated union: it addresses a node chain in 65.8% of records and the parameter table
+directly in the other 34.2%, and the two figures partition exactly. Those records have no node
+because their FX-Map has no `addnode` — `paramset`, which is 69 of 155 nodes across the
+ground-truth sources, compiles to no tree node at all. Use `fx_walk()`, which follows whichever
+structure the root addresses; `fx_tree()` alone sees only the chain half.
+
+Counting nodes from either one wants **distinct offsets**: both yield once per program slot, so a
+`0x1AB` node (two programs) is yielded twice at the same offset.
 
 `Assembly.strings()` reads the `text` filter's embedded strings from the head of the resource
 segment.
