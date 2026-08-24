@@ -18248,3 +18248,58 @@ is what a small set of fixed sampling angles looks like.
 and the unclassified are dominated by those four trig coefficients plus a tail of epsilons
 around 1e-08. Nothing in the audit points at a decoding error; the residue is the window's
 arbitrariness, not the reader's.
+
+## Are the headers locked down? No, and the gap is the boundary
+
+Three questions, in order of strictness.
+
+### 1. Do we know where the header ends?
+
+    header size stated by the descriptor   871,050  (80.15%)
+    not stated, but a program bounds it     69,290  ( 6.38%)
+    not stated and nothing bounds it       143,095  (13.17%)
+    record shorter than two words            3,398  ( 0.31%)
+
+**For one record in five the boundary is unknown.**
+
+### 2. Where it is known, is the header read?
+
+Restricted to those 871,050 records, and crediting every decoder the segmenter has - the
+layout table's slots, `matrix22`, the gradient ramp, the FX root, `pixelprocessor`'s arity,
+the named parameter blocks:
+
+    header slots past the tag and layout word   3,433,195
+       read by some decoder                     3,377,863   (98.39%)
+       unclassified                                55,332   ( 1.61%)
+
+The residue is `fxmaps` slots 4-9, `transformation` 5-8 and `shuffle` 3/5.
+
+So where the boundary is known the header is essentially read. **The gap is the boundary,
+not the contents.**
+
+### 3. Correction: the 91.88% regularity does not generalise
+
+An earlier section reports that `(filter, layout bits)` accounts for **91.88%** of the slot
+count `k`, offered as evidence that the table is a rule rather than a lookup. That figure
+is an **in-sample fit**: it was measured across the same keys the table was derived from.
+
+Tested properly - build the `(filter, bits)` map from keys that have a stated header, then
+apply it to records whose key does not, and compare against the header end those records
+independently reveal through their inline program:
+
+    (filter, bits) groups                      469
+       of which >=90% internally consistent    303
+    records it offers a header size for     134,596
+    records it offers nothing                77,789
+
+    where the answer is independently observable:
+       fallback agrees      3,997
+       fallback disagrees  10,106      (28.3% correct)
+
+**28.3%.** The regularity is real within the keys it was fitted to and worthless outside
+them, which is the difference between a rule and a summary of a lookup. No fallback is
+adopted; a header size is used only where it was directly observed.
+
+That also revises the answer to "how much of the table is understanding": the 93.55%
+held-out figure stands, because it measures key coverage, but the 91.88% should not be read
+as evidence of an underlying rule. It is not one.
