@@ -25869,3 +25869,55 @@ which is what two weakly anticorrelated common bits produce.
 Nine of fourteen accounted for. The two large unknowns are bits 8 and 9, which are equal in
 97.2% of records, do not propagate, and are not output format bits - four hypotheses tested and
 rejected, now five.
+
+## cls bits 8 and 9 encode the filter's sampling class
+
+Bits 8 and 9 were the two large unknowns - 46.20% and 42.68% of records, equal in 97.2% of
+them, with five hypotheses tested and rejected. A sixth, `dynamicsize` from the manifest, dies
+too: 66.6% value 0 when `yes` against 66.2% when absent.
+
+The answer is that they carry no per-record information at all. Tabulated by filter:
+
+    value 0                blend, levels, pixelprocessor, curve, dyngradient
+    value 3                transformation, directionalwarp, warp, blur, dirmotionblur,
+                           distance, normal, sharpen, fxmaps, text
+    value 1                gradient (88.2%), shuffle (92.1%)
+    mixed                  uniform, bitmap, hsl
+
+    records taking their filter's majority value   875,406 / 904,131   96.82%
+
+The partition is not arbitrary. Value 0 is every filter that works **pixel by pixel** - a
+blend, a levels curve, a gradient map lookup - and needs only the co-located pixel of each
+input. Value 3 is every filter that **samples elsewhere**: a transformation reads a
+transformed coordinate, a blur, sharpen, normal and distance read a neighbourhood, a warp
+reads a displaced position.
+
+That distinction matters to an engine. Whether a node reads outside its own pixel decides
+whether it can be tiled, fused with its neighbours, or evaluated in a single pass, and the
+class word states it so the scheduler does not have to know what every filter id means.
+
+It also explains why the bit looked meaningless for so long: it is **redundant with the filter
+id** for 96.82% of records, so nothing about a record's contents predicts it - only what kind
+of filter it is.
+
+### The residual is the interesting part
+
+3.18% of records disagree with their filter's usual value - `directionalwarp` is value 0 in
+10.8% of its records, `transformation` in 2.4%. A spatial filter declaring itself pixel-local
+is worth understanding, and is a much smaller question than the one this started as.
+
+`uniform`, `bitmap` and `hsl` are genuinely mixed, and all three are unusual: `uniform` and
+`bitmap` have no image input at all, so "does it sample elsewhere" has no meaning for them.
+
+### The class word now
+
+    bit  0   $outputsize            bit  8  }  the filter's sampling class
+    bit  3   set iff cls != 0x80    bit  9  }  0 per-pixel, 3 spatial
+    bit  4   output format bit 4    bit 12   UNEXPLAINED (1.82%)
+    bit  5   output format bit 6    bit 14   UNEXPLAINED (0.12%)
+    bit  7   $randomseed            bit  6   UNEXPLAINED (3 records)
+    bit 10   a baked 2-component value
+    bit 11   $pixelsize
+    bit 13   a computed 1-component value
+
+Eleven of fourteen. The three left are set on 1.82%, 0.12% and 0.0003% of records.
