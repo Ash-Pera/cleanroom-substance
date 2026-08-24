@@ -16148,3 +16148,62 @@ It was found this time only because the corrected coverage metric made `gradient
 
     gradient record bytes interpreted   43.3%  ->  91.7%
     edge slots resolved                99.96%  ->  99.98%
+
+## What the file says about layout, which this project spent a long time guessing
+
+A fair objection to everything above: the engine that reads these files does not probe, does not
+try alternates, and does not fall back. It decodes deterministically. So the layout of a record
+must be **stated in the file**, and every layout heuristic in this document is a substitute for
+reading something that is already there.
+
+It is there. Measuring how well each candidate key determines a record's header size - the offset
+of the first program it emits, which is where the header ends:
+
+    key                       distinct keys    purity
+    filter                              20     61.4%
+    filter + class                      84     68.0%
+    filter + slot 1                    134     91.2%
+    filter + class + slot 1            195     99.0%
+
+**Ninety-nine percent, from 195 combinations.** The layout is determined by three fields that all
+sit in the record's first eight bytes:
+
+    word 0 low   tag     filter id, colour bit, resolution nibbles
+    word 0 high  class   the layout family
+    word 1       the parameter word, which selects the variant within it
+
+No probing is required, and none of the alternates, fallbacks or diversity heuristics in this
+document were ever necessary.
+
+### Every layout finding here is a special case of this
+
+Read back, the pattern is unmistakable. Each was found separately, none recognised as the same
+mechanism:
+
+    pixelprocessor   slot 1 is the input arity, and the edges and program follow it
+    shuffle          two layouts, probed by which program slot validates
+    fxmaps           slot 1 bit 12 selects whether slots 3-8 are edges
+    blend            slot 1 bits 4 and 8 track a 5- or 6-slot header
+    gradient         slot 2 is the ramp stop count; class bit 8 sets the entry width
+    bitmap           class is the pixel format
+
+Six filters, six separate investigations, one mechanism: **the record's first two words are a
+layout descriptor**, and the parameter word is doing double duty as parameter storage and as the
+variant selector. The blend bits 4 and 8 that were recorded as "resolution-mode bits,
+unidentified" are, at minimum, layout bits - which is why they predicted header size at 98% and
+resisted every attempt to match them to a source parameter.
+
+### What this changes
+
+`ALT_LAYOUTS` probing, the diversity threshold used to derive the edge map, and the
+`parameter` union's fallback are all workarounds for not having read the descriptor. A segmenter
+built on a `(filter, class, slot 1) -> layout` table would be **deterministic rather than
+heuristic**, and would fail loudly on an unknown key instead of silently guessing - which is what
+let six false edges into the tables.
+
+The table has to be derived from a corpus, so a key not seen before is still unknown. But that is
+a different and much better failure mode than probing: an unrecognised descriptor is a fact about
+coverage, where a wrong probe is a fact that looks like a finding.
+
+**Recorded as the single largest structural insight to come out of questioning the method rather
+than the data.**
