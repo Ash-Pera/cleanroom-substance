@@ -23595,3 +23595,38 @@ of the apparent need for the first.
     a record's slot state is its own                99.79% of reads, 99.949% at runtime
     its programs run before its fx programs         99.08% vs 30.68%
     slot writes are not a graph edge                spurious violations 6 -> 432 if added
+
+## The order is dependency-driven, not a fixed sequence
+
+94 records have no valid order under either fixed sequence. Taking them apart:
+
+    reads a slot NOTHING in the record writes        13
+    a greedy interleaving runs everything            81
+
+So for 81 of the 94 a valid order exists - it is simply not "programs then fx" or "fx then
+programs" but an interleaving of the two. That is what a dataflow scheduler produces, and it
+is a better model than any fixed sequence.
+
+Running each record's programs by dependency - repeatedly executing whichever ones have all
+their slot reads satisfied - over the same 56,981 programs:
+
+    fx LAST            56,952 ran   99.949%   29 failures
+    dependency order   56,973 ran   99.986%    8 failures
+
+**With per-record slots and no per-file sharing.** That reaches what per-file sharing bought
+(99.989%, 6 failures) without the assumption that slot state crosses records.
+
+### The three claims, finally consistent
+
+    slot state is per RECORD              99.79% of reads never leave it
+    programs run in DEPENDENCY order      81 of 94 hard records need an interleaving
+    slot writes are NOT a graph edge      spurious violations 6 -> 432 if added
+
+Each of the earlier framings was a partial view of this. "Per file" was compensating for a
+fixed order; "programs then fx" was the best fixed approximation to a dataflow schedule
+(99.08%); and the apparent need to share state across records was 207 reads out of 99,456.
+
+    records with fx programs                    10,270
+      a fixed order suffices                    10,176    99.08%
+      an interleaving is required                   81     0.79%
+      no order within the record suffices           13     0.13%
