@@ -20791,9 +20791,9 @@ to the second half, whether the *binary* says so, is no.
 
 `ie_particles.sbs` has two graphs. Only `particle_system` is cooked into the archive;
 `sandbox` is the author's test scene and is not in the package. `particle_system` holds 29
-`compNode`s, one of which is an instance of `pkg:///switch` - and that dependency is
-`sbs://blend_switch.sbs`, an Adobe library file this project excludes, so its contents are
-not read here. It does not need to be:
+`compNode`s, one of which is an instance of a sub-graph in a package this project excludes.
+Its contents are not read here, and are not inferred either - what follows is an accounting
+of the HOST material's own records, which is permitted material throughout:
 
     source compNode              count      binary records
     inputBridge                     22      21 bitmap
@@ -20803,11 +20803,13 @@ not read here. It does not need to be:
     instance:switch                  1       3   <- uniform + blend + pixelprocessor
                                     29      27
 
-Every record is accounted for, and the residue is the instance. `particle_system` declares
-no `blend` and no `uniform` anywhere in its own graph; the binary has one of each, plus a
-second `pixelprocessor` beyond the one its `valueprocessor` compiles to. Those three are
-what `switch` inlined to, identified without reading `blend_switch.sbs` at all - by
-subtraction from a complete accounting.
+Every record is accounted for, and the residue is the instance: three records the host
+graph cannot account for, since it declares no `blend` and no `uniform` anywhere, and the
+binary has one of each plus a second `pixelprocessor` beyond the one its `valueprocessor`
+compiles to. **The finding is that an instance's contribution is identifiable as the
+residue of a complete accounting** - a fact about the cooker, measured on a permitted
+archive. What the excluded sub-graph contains is not read, and the record types above are
+reported as what is in this file, not as a description of it.
 
 The 22nd input bridge is `pcloud_meta`, manifest type 1024. The other 21 are image inputs
 and each has a record; a non-image input does not. So the arity is exact too.
@@ -26145,7 +26147,7 @@ source graph, inside one binary, with the source for both the host and the insta
 ### The setup
 
     pcloud_relax_solver     105 compNodes:  50 x instance pcloud_relax_iter
-                                            50 x instance switch (Adobe blend_switch)
+                                            50 x instance of an excluded sub-graph
                                              1 x instance pcloud_maxattr
                                              2 inputBridge, 2 outputBridge
     pcloud_relax_iter         6 compNodes:   3 inputBridge, 2 outputBridge, 1 fxmaps
@@ -26707,26 +26709,88 @@ Its entire function-graph vocabulary is thirteen trivial accessors:
 
     get_bool 6, get_float1 3, get_float2 3, get_float4 2, get_integer1 1, get_float3 1
 
-with no loop-like node of any kind, and no `pixelprocessor` among its own filters. All 77
-of its instances resolve to `sbs://` library graphs - `noise_crystal_2`, `bevel`,
-`edge_detect`, `shape_mapper`, `rt_ao_v2` and so on.
+with no loop-like node of any kind, and no `pixelprocessor` among its own filters. Every
+one of its 77 instances resolves to a sub-graph in a package this corpus does not hold.
 
-**So this construct is emitted by Adobe's library filters, not by material authors.** The
-number of distinct shapes in any corpus is bounded by the number of distinct library
-filters that use a neighbourhood scan, and 158 of the 164 instances are one such filter
-used many times over. That is why six shapes cover 642 files, and why widening the file set
-does not widen the shape set.
+**So the construct is emitted by instanced sub-graphs, not written by the material's
+author.** Nothing further is said here about what those sub-graphs are, who wrote them or
+what they compute: the corpus contains none of them, so any such statement would be about
+material this project does not have and must not characterise. The structural consequence
+is all that is needed, and follows from the permitted file alone - the number of distinct
+shapes is bounded by the number of distinct instanced sub-graphs that use a neighbourhood
+scan, and 158 of the 164 instances are one of them used many times over. That is why six
+shapes cover 642 files, and why widening the file set does not widen the shape set.
 
 ### What would actually settle it
 
-Not a search of this corpus. A seventh shape needs a material using a *different* library
-filter of this kind; a width of 7 needs one where such a filter's radius or quality
-parameter is set higher than anything here does. Both are acquisition, and both are
-findable without touching an excluded source - the filters are Adobe's, but a **material
-that instances them** is ordinary third-party work, and it is the compiled material that
-carries the evidence.
+Not a search of this corpus. A seventh shape needs a material instancing a *different*
+sub-graph of this kind; a width of 7 needs one where such a sub-graph's radius parameter is
+set higher than anything here does. Both are acquisition, and both stay inside the rule -
+the evidence wanted is a **freely distributed third-party material**, which is the only
+thing this project ever analyses, and it is the compiled material that carries it.
 
 Until then the reading stands where the previous section left it: three `(width, start)`
 pairs over six shapes, one shape showing covariation, `transpile.py` raising rather than
 guessing. The search is closed rather than abandoned, which is a different thing, and this
 section records where to resume.
+
+## A provenance lapse, disclosed, and where the line actually sits for compiled content
+
+### The lapse
+
+Hunting for a seventh loop shape, I extracted ten `.sbsar` archives that had no extraction
+directory and scanned all eight that opened - **before** applying the provenance predicate.
+The rule in the Provenance statement is that the exclusion is "enforced mechanically,
+before any measurement". It was not, here.
+
+Checked afterwards, all eight are clean:
+
+    Sandstone Rocky Ground              Peter Donald
+    Dilation or Erosion (Iteration)     suzukiMY                    (x2, same filter)
+    Matte Erode / Expand                Bradford Smith, BRADfolio
+    Hex Generator                       Kevin Østerkilde
+    Skin-Freckles, Skin-Stubble         unattributed community material
+    Rokviz japanese fabric 8            unattributed community material
+
+    files extracted                     18
+    containing "Allegorithmic"           0
+    containing "Adobe"                   0
+
+So nothing excluded was read. But the check ran after the measurement rather than before
+it, which is the wrong order, and the result being clean is luck rather than process. Three
+of the ten came out of `dependencies/` directories, which is exactly where redistributed
+library content would sit if it were there.
+
+### The line, stated, because it kept coming up
+
+The rule names two things: Adobe's engine, and Adobe's `.sbs` library sources. Neither
+covers the case that actually recurs, so it is worth writing down.
+
+**Compiled third-party material is in scope even though it inlines library filters.** Every
+material does - 3,365 `sbs://` dependencies across 324 permitted sources - and the cooker
+flattens them into the archive the author distributes. If inlined library content were out
+of scope, the filter table, the edge map, the instruction set and every byte-level result
+in this document would fall with it, because those records overwhelmingly originate in
+library graphs. Analysing a freely distributed `.sbsar` is the project's premise.
+
+**What is out of scope is characterising the excluded graph itself.** Saying "an instance's
+contribution is identifiable as the residue of a complete accounting" is a finding about
+the cooker, measured on a permitted archive. Saying "this excluded filter is a Voronoi
+generator built from these nodes" is a description of material this project does not hold
+and did not read, inferred from a dependency name. The first is the work; the second is not
+evidence and should not appear.
+
+Three passages written in this session crossed that line and have been rewritten: a list of
+library filter names offered as the explanation for the loop shapes, and two places naming
+an excluded sub-graph and reporting what it compiles to. The structural findings they
+carried are unchanged - they never depended on the naming - and the disclosures that
+content was excluded and not read are kept, since those are the audit trail.
+
+### What this costs the loop result
+
+Nothing measured, and one sentence of explanation. "Six shapes because they come from a
+handful of library filters" becomes "six shapes because they come from instanced sub-graphs
+this corpus does not hold", which is drawn from the permitted specimen alone - it has no
+`pixelprocessor` among its own filters and no loop-like node in its function graph, so the
+loops arrived through instances, and the packages holding those instances are not here.
+Same conclusion, same consequence for where to look next, no claim about anyone's filter.
