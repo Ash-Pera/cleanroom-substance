@@ -22224,3 +22224,56 @@ needs distinctive values is silent on parameters that do not have any.
 `passthrough` declares no float parameters to test, `valueprocessor`'s are dynamic, and
 `emboss` appears twice in the whole permitted set. The method has run out of evidence rather
 than run out of candidates.
+
+## Correlating node counts, and the control that has to go with it
+
+Value containment could not reach the last five ids, so the next thing to try is whether a
+source name's node count per file tracks a filter id's record count. It produces one very
+strong number and one moderate one, and only the moderate one survives.
+
+    passthrough  -> id 19    r = +0.84    across 34 files
+    curve        -> id 22    r = +0.43    across 17 files
+
+### The strong one is an artifact
+
+Two checks kill it.
+
+**The correlation is a family effect.** Of the 34 files declaring `passthrough`, 12 are one
+author's - `DLG-Tools`. Dropping them:
+
+    all files              r(passthrough, id 19) = +0.84
+    excluding DLG-Tools    r(passthrough, id 19) = +0.30
+
+**And the control was never run.** Correlating the same node count against a file's TOTAL
+record count - which any name would track, since bigger graphs have more of everything -
+gives `+0.45`. A signal of +0.84 against a null of +0.45 is a much smaller claim than +0.84
+against zero.
+
+**The structure disagrees anyway.** A `passthrough` has one input and no parameters. Id 19
+has **two edges in 2,153 of 2,201 records and a parameter in 2,127**. Whatever id 19 is, it
+is not a node that passes its input through untouched.
+
+### The moderate one holds up
+
+    curve -> id 22          r = +0.43        control r(curve, TOTAL records) = -0.02
+
+The control is what makes this worth something: `curve`'s node count does not track file size
+at all, so the association with id 22 is specific rather than a by-product of bigger graphs.
+And the structure fits - id 22 has **one edge in 1,173 of 1,267 records** and a parameter in
+1,264, where `curve` takes one input and declares `position`, `left` and `right` as `Float2`,
+which is what slots 6-11 look like.
+
+So id 22 now has three independent supports - containment exclusivity (33 hits against 3),
+a size-controlled correlation, and a matching input and parameter shape - against one
+argument that it is still short of `dirmotionblur`'s standard, that its containment hit rate
+is 14% where the method's own controls run at 98-100%.
+
+**It stays a candidate.** Three weak supports are not one strong one, and the thing that made
+`dirmotionblur` a name rather than a candidate was a single column with no exceptions.
+
+### The lesson
+
+A correlation between "how many X in the source" and "how many Y in the compiled file" needs
+the null run alongside it, because both quantities scale with the size of the graph. Without
+`r(passthrough, TOTAL) = +0.45` beside `r(passthrough, id 19) = +0.84`, the first number
+reads as decisive. It is not.
