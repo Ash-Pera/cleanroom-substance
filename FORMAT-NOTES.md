@@ -21346,3 +21346,63 @@ per-record data, which is not what a missing parameter looks like.
                present, at the block base when not - presence unexplained
     the matrix-absent records                                       unexplained, and
                probably not parameter data
+
+## `offset` closes: bits 25 and 26, and why two searches missed them
+
+The previous section guessed that the matrix-absent `transformation` records were "a different
+record shape wearing the same filter id", on the strength of byte-identical words repeating
+across a hundred files. That guess was wrong, and the real answer explains both halves.
+
+### The repeated words are bytecode
+
+`Record.words` spans the WHOLE record, and a record's span contains the programs it names. So
+reading past the parameter block lands in instruction stream, and the same compiled program
+appearing in many materials repeats byte-for-byte - exactly the "shared structure" I saw.
+
+    the slot after the block, in matrix-absent records:
+        lies inside a program this record itself names    121,778 / 125,021 = 97.4%
+
+Structure ruled it out too, before the test: matrix-present and matrix-absent records have the
+same edge count and share 19 of 27 class values. They are the same shape. What differs is only
+how far the parameter block extends.
+
+### Which is why the offset search kept failing
+
+Both earlier searches pooled 125,021 records where the offset position is not a parameter slot
+at all. Scoped to matrix-present records and asking which slots are real parameter slots rather
+than bytecode:
+
+    w1.bit25   MCC +0.974   98.7%   lift +43.1
+
+and for the kind:
+
+    w1.bit26   MCC +0.994   99.8%   lift +17.1
+
+Mutually exclusive - 26,700 baked against 10,692 program, never both. The ordinary pair
+convention, at bits 25 and 26.
+
+**Confirmed independently.** The bit was found by a bytecode-span test; containment is a
+different kind of evidence entirely, and of 96 distinct declared `offset` values in the
+permitted sources, **54 appear in bit-25 records and 0 in bit-25-clear records**.
+
+`Record.translation` returns it - named that because `offset` is already the record's byte
+offset - and reads 26,700 offsets, matching the bit exactly: `(0.5, 0.5)`, `(2.0, 2.0)`,
+`(1.6279, 2.0)`.
+
+### On bit 26
+
+Bit 26 is the bit dismissed two sections ago as "a coincidence inside a restricted population"
+when it scored 100% on the matrix-base question and 53.8% corpus-wide. Both readings were
+right: it is a real bit that says nothing about the matrix base and everything about `offset`.
+A bit that correlates with the wrong question is not a false positive - it is a true fact about
+a different parameter, and the way to tell is to test it where it was not found.
+
+### `transformation`, complete
+
+    matrix22   4 slots at 3 + class bit 0 + class bit 7    w1 bit 6 baked / bit 7 program
+                                                           66,210 of 66,211
+    offset     2 slots, packed 4 after the matrix          w1 bit 25 baked / bit 26 program
+                                                           26,700 baked, 10,692 program
+
+The last filter with no named parameter mechanism now has one. Unchanged: 435 files, 0
+failures, 0 unexplained bytes, edges 100.00%, validator 437/437, transpiler 11 passed.

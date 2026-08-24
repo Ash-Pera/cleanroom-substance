@@ -960,6 +960,43 @@ class Record:
         return m
 
     @property
+    def translation(self):
+        """For filter 2: the `offset` parameter, as two float32, or None.
+
+        Named `translation` because `offset` is already this record's byte offset.
+
+        `transformation` is the one filter whose parameters are MULTI-WORD - `matrix22` is a
+        Float4 and `offset` a Float2 - which is why a one-slot-per-parameter model never fitted
+        it. `offset` packs immediately after the matrix, four slots along.
+
+        Its bits follow the ordinary pair convention, at 25 and 26 of slot 1:
+
+            bit 25   offset, baked        MCC +0.974 for "this is a parameter slot", 98.7%
+            bit 26   offset, a program    MCC +0.994, 99.8%
+
+        They are mutually exclusive - 26,700 baked against 10,692 program, never both. The
+        presence bit was found by asking which slots lie inside bytecode the record itself
+        names, and confirmed independently by containment: of 96 distinct declared `offset`
+        values in the permitted sources, **54 appear in bit-25 records and 0 in bit-25-clear
+        ones**.
+
+        Returns None when the matrix is absent: those records have no parameter block to pack
+        against, and the slot lands in bytecode 97.4% of the time.
+        """
+        if self.filter_id != 2 or len(self.words) < 2:
+            return None
+        w = self.words[1]
+        if not (w >> 6 & 1 or w >> 7 & 1):      # no matrix: nothing to pack after
+            return None
+        if not (w >> 25 & 1):                   # not baked (bit 26 means it is a program)
+            return None
+        s = 3 + (self.cls & 1) + (self.cls >> 7 & 1) + 4
+        if s + 1 >= len(self.words):
+            return None
+        o = struct.unpack_from('<2f', self.asm.data, self.offset + 4 * s)
+        return o if all(x == x and abs(x) < 1e4 for x in o) else None
+
+    @property
     def ramp(self):
         """For filter 0: the gradient's colour ramp, or None.
 
