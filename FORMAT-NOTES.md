@@ -24590,3 +24590,66 @@ fxmaps' arity, and every attempt to fit one was fitting to a mangled feature.
 That is the third structural defect found in the derived table - after `gradient`'s and
 `warp`'s spurious word1 masks, and 2,843 wrong `levels` entries. The pattern is consistent:
 where the table disagrees with a rule read off the bytes, the table has been wrong every time.
+
+# THE RECORD LAYOUT RULE
+
+Consolidating everything above. A record is:
+
+    word 0    filter id and class word
+    word 1    parameter states, widths, and for two filters an explicit arity
+    slots     allocated in one pass, in a fixed order
+    bytecode  programs, each preceded by a u16 holding its instruction count
+
+## Slot allocation
+
+Walk the following in order from slot 2. Each item present takes the next slot(s); its KIND -
+edge or parameter - comes from its state.
+
+    1.  IMAGE INPUTS
+          fxmaps          (word1 >> 10) & 0xF          an explicit 4-bit arity
+          pixelprocessor   word1 & 0xF                 an explicit low nibble
+          everything else  a per-filter constant:
+              3 fid 8
+              2 blend, directionalwarp, warp, shuffle, distance, fid 19
+              1 transformation, levels, blur, dirmotionblur, sharpen, hsl, normal, curve
+              0 uniform, bitmap, gradient, text, fid 5
+          plus one more for every two-bit field in state 11
+
+    2.  CLASS-WORD PARAMETERS
+          cls bit 0   +1        cls bit 7   +1
+          cls bit 11  +1        cls bit 13  +1
+          cls bit 10  +2                    <- the width bit
+
+    3.  EACH TWO-BIT FIELD of word1, in the filter's fixed order
+          00  absent            no slot
+          01  baked constant    a parameter slot
+          10  program           a parameter slot, holding a pointer at the +52 skew
+          11  image input       an EDGE slot (counted in step 1)
+
+    4.  WIDTHS
+          uniform         word1 bit 8   -> the parameter is 4 slots, not 1 (RGBA vs grey)
+          transformation  word1 bit 6   -> +2   (offset)
+          transformation  word1 bit 25  -> +2
+
+    5.  TWO SPECIAL CASES
+          blend   word1 bit 9  -> one further parameter slot
+          levels  outlow and outhigh both active with cls bit 0 clear -> they share one slot
+
+## How well it holds
+
+    edge count      850,267 / 853,916   99.57%    every record with a layout key
+    parameter count 471,627 / 474,470   99.40%    filters with catalogued fields, plus uniform
+
+The parameter shortfall is 2,843 records, and every one was shown by direct inspection of the
+bytes to be a `layouts.json` error rather than a rule failure: against the records the
+parameter rule is exact.
+
+## What is NOT in the rule
+
+Word1 is irrelevant to `gradient` and `warp` - their `LAYOUT_MASK` entries (0x3fff and 0x2ff8)
+are noise, memorising 13 and 281 meaningless keys. `warp` alone is
+`1 + bit7 + 2*bit10 + bit11 + bit13`, exact on 396 of 396 keys and 15,569 of 15,569 records.
+
+Field catalogues exist for only six filters. For the rest the base arity is measured rather
+than derived, and their word1 fields are still unnamed - `shuffle`'s 38 values and
+`transformation`'s bits beyond 6 and 25 are the largest unread areas remaining.
