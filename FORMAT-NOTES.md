@@ -28045,3 +28045,63 @@ and the property to test them against is how each parameter is stored, not what 
 That reframes the residue. It does not close it - the scan that would settle it needs each
 filter's parameter slots identified first, and for eight of the twelve commonest filters the
 model cannot name them, which is the same gap the forward-compiler audit ranked first.
+
+## Filter 5 points at a tagged structure that nothing else in the format points at
+
+Filter 5 has been carried as `UNNAMED` with a guess attached — "generator, greyscale
+(svg?)" — and no structure at all. It is 140 records in 9 files, and it has never had an
+input edge: 0 resolved edges across every one of them, so "generator" is at least right.
+
+Its record begins with two pointers, and they bracket a blob:
+
+    slot 0   tag
+    slot 1   blob start, at the universal +52 skew
+    slot 2   blob end
+    ...      the blob itself, where it lives inside the record
+
+Where the blob is in-record, the fit is exact rather than approximate. `RoadLines`
+record 411 is 1,424 bytes; `slot2 - slot1` is 1,404; the blob begins 12 bytes into the
+record and ends 8 bytes before it does. That 12-and-8 holds across classes, with the
+header widening to 16 for two of the five class words:
+
+    header before the blob    12 bytes (3 words)   56 records
+                              16 bytes (4 words)    8 records
+    tail after the blob        8 bytes             42 records
+
+The other 70 records point OUTSIDE their own extent, mostly *below* the first record
+entirely, into the region the coverage report shows as 92.57% unclaimed and which the
+archive is now understood to fill with cached image data. That is not an anomaly here —
+`ramp` already records that a gradient's table "need not lie inside this record. The
+record directory is a sorted PARTITION, not an allocation."
+
+### What the blob is, and the control that makes it a finding
+
+The blob starts with the word `0x07FFFFFB`. That is worth nothing on its own — a
+recognisable constant turns up somewhere in any 4 GB — so the probe was run at every
+other filter's slot 1 as well:
+
+    at filter 5's   slot1+52       118 of     140    84.3%
+    at every other filter's        0 of 897,257    0.0000%
+    occurrences anywhere in 4.09 GB      1,701      one per 2.4 MB
+
+Nothing else in this format points at one of these. The marker is rare, the control had
+897,257 chances to fire and never did, and the 22 filter-5 records that miss are the ones
+whose pointer resolves outside the file.
+
+There are 1,701 of these structures and filter 5 names 118 of them, so the great majority
+are reached some other way — chained from each other, or pointed at from the image cache.
+That is a thread, not a conclusion.
+
+### What is NOT established
+
+The second blob word satisfies `w == 2*(slot2 - slot1) - 23` in **37 of 118**, and
+`(w + 23)` is even in all 118. It is tempting to read `L = (w + 23) / 2` as the blob's
+self-declared length, with `slot2` an upper bound — which is exactly how `ramp` and
+`curve_points` both behave. It does not survive its own check: `L <= span` holds 118 of
+118, but the median `L/span` is 0.0002, so a span that large admits almost any L and the
+100% is close to vacuous. Recorded as unexplained rather than dressed up.
+
+Filter 5 is still not named. It is not SVG, XML, PNG, JPEG, BMP, TIFF, DDS, gzip or
+zlib — every one of those magics was checked against the blob start and none matched.
+What it now has is a record layout, a confirmed sub-structure with a tag of its own, and
+a control strong enough that the next person does not have to re-establish any of it.
