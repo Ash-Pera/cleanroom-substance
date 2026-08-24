@@ -18361,3 +18361,73 @@ That is a description of what it computes, arrived at from a permitted specimen.
 name for it stays out of these notes, because naming it would need the bundled library
 sources the provenance rule excludes. The earlier guess in these notes that its profile
 matches `motionblur` is not supported by this reading: motion blur needs no pyramid.
+
+## Where the remaining mysteries are
+
+Measured, not recalled. Over 1,086,833 records in 641 specimens.
+
+### What is settled
+
+    bytes unexplained                        0        (0.000%)
+    edge slots unresolved                   23        (0.000%)
+    fxmaps records yielding no structure    141       (0.01%)
+    output table entries fully decoded       3,249 of 3,249
+    validator                                436 of 436
+
+### What is not, by size
+
+    records whose header END is unknown    212,385    19.54%
+    records with no layout table entry      55,765     5.13%
+    records with no parameter read          49,079     4.52%
+    records not reachable from any output   28,346     2.61%
+    records whose filter is unnamed         23,408     2.15%
+
+The 4.52% is mostly not a failure: 4.34% of records have no parameter slot to read, and
+0.18% are a genuine miss.
+
+### The biggest mystery is not structural
+
+Structure is in good shape. **Meaning is not.** Counting parameter-slot readings by whether
+a reader could act on them:
+
+    the parameter program - a value, not a meaning    983,215   43.3%
+    a value whose meaning is unknown                  893,752   39.3%
+    a NAMED parameter                                 395,696   17.4%
+
+**Only 17.4% of the parameters this project can read, it can name.** The rest is "a float
+sits at blend slot 5" without knowing whether it is an opacity, a threshold or a mask
+level. The largest such groups:
+
+    blend slot 5            76,750      directionalwarp slots 5,6,7   196,152
+    pixelprocessor 4,5     105,932      transformation 4, 6, 8        130,317
+    fxmaps 4, 5, 6          104,420
+
+For an importer this is the binding constraint. Reading a value you cannot name is no more
+useful than not reading it.
+
+### The named unknowns
+
+**Six filters have no name.** `fid11` (18,557 records) is now characterised - an iterated
+pass in a multi-scale pyramid - but not named; `fid19` (2,412), `fid22` (1,528), `fid8`
+(758), `fid5` (140), `fid9` (13). Naming them needs the bundled library sources the
+provenance rule excludes, so this is a cost of the boundary and not a gap in the work.
+
+**The layout table has no rule behind it.** It generalises to 93.55% of records in held-out
+specimens, and the regularity that appeared to explain 91.88% of it collapses to 28.3% out
+of sample. It is a lookup that covers most records.
+
+**The FX table's tags are a long tail.** 22 of them are decoded, covering 25.9% of entries;
+7,678 more have a median of one entry each and cannot be established at any sample size.
+
+**Two opcodes read something by index and it is not known what.** `0x03` (6,177 uses) and
+`0x06` (762) index a space of 220 distinct values that is not the variable frame - `get`
+names a `set`-written slot in 4,300 of 4,300 cases, these in 7%.
+
+### Ranked
+
+1. **What the parameters mean** - 39.3% of readings, and the only one that blocks a renderer.
+2. **Where headers end** - 19.54% of records; the contents are 98.39% read where the
+   boundary is known, so this is one question, not many.
+3. **Filter names** - 2.15%, blocked by provenance rather than by evidence.
+4. **Reachability** - 2.61%, mostly clumps below unreferenced roots.
+5. Everything else is under a tenth of a percent.
