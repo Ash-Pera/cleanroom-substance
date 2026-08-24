@@ -17461,3 +17461,39 @@ to read either program, so it is left as it is.
 
 This closes the region for 30 of 50 files. The other 20 have larger, file-specific
 prologues and are still open.
+
+### The larger prologues are the same structure, and programs are 2-byte aligned
+
+The 20 layout-B files without the 72-byte preamble have prologues from 16 to 1,440 bytes.
+They are the same idea scaled up: every `inputref` in them names a real graph input -
+**36 of 36, 100%** - so the prologue's job is binding graph inputs to programs in all of
+them, not just the constant form.
+
+But the coverage looked wrong. `Crystal_2_Animated` reported **2% of its 1,440-byte
+prologue as programs**, and `Plasma_Animated` 29%, while `Cells_Animated` reported 97%.
+A structure does not vary that much.
+
+The scan was stepping **four bytes**. Programs are not 4-aligned - the alignment pad
+exists precisely because instructions legitimately sit at 2 mod 4 - so a 4-byte scan
+cannot see half the possible starts. In `Crystal_2_Animated` the first unclaimed run
+begins at `+50`, which is 2 mod 4.
+
+Rescanning on 2-byte alignment:
+
+| file | 4-byte scan | 2-byte scan | programs found |
+|---|---|---|---|
+| `Crystal_2_Animated` | 2% | **91%** | 1 -> 14 |
+| `Plasma_Animated` | 29% | **97%** | 2 -> 6 |
+| `Perlin_Noise_Animated` | 28% | **97%** | 2 -> 6 |
+| `Wood_Planks_01` | 11% | **71%** | 2 -> 10 |
+| `Clouds_Animated` | 11% | **83%** | 1 -> 5 |
+| corpus | 42.7% | **84.8%** | |
+
+`coverage()` had the same 4-byte assumption, and its own comment already said "the
+prologue is 85% programs" - which is the 2-aligned figure. It was painting the difference
+as a named gap rather than reading it. Corrected, **11,118 of 13,868 prologue bytes move
+from "acknowledged gap" to "decoded program"**, leaving 2,750 - the index table.
+
+The alignment mistake is the same shape as the others found today: a convenience that was
+true of most cases, applied as though it were a property of the format. Records are
+4-aligned; the programs inside them are not.
