@@ -27643,6 +27643,20 @@ contribute to real channel count. Only the unambiguous case -- `colour=False`, w
 value per stop, no trailing field at all (19 of the records sampled) -- is safe to render
 without guessing at the rest; `gradient` is not implemented in render.py yet.
 
+**A likely name for the trailing field, found afterward.** A real paired source's gradient
+node (DLG-Tools__Damaged_Iron_01.sbs) declares its ramp as a `paramsArray` named
+`gradientrgba`, each cell carrying exactly three parameters: `position` (Float1), `midpoint`
+(Float1), `value` (Float4, RGBA). That is a per-stop INTERPOLATION BIAS control -- the same
+concept as a Photoshop gradient's midpoint slider -- not a color channel, which fits the
+98.5%-constant observation exactly: `midpoint` sits at its own default in nearly every real
+stop, the same default-omission pattern already established elsewhere in this codebase for
+blend mode and blend opacity. It does not, on its own, resolve the channel-count question --
+the authored shape is 6 components a stop (position + midpoint + 4-component value) and the
+richest compiled shape measured is 4 (position + 3 values), so the compiled table is more
+compressed than a literal position+midpoint+RGBA encoding, not merely that plus 2 unread
+components. Still not implemented; recorded so the next attempt starts from "probably
+midpoint, and still doesn't add up to RGBA" instead of from nothing.
+
 ## Correction to the correction: this was not a discovery, it was a correction that did not propagate
 
 The section above says the duplicated corpus survived "precisely because nothing ever
