@@ -18431,3 +18431,67 @@ names a `set`-written slot in 4,300 of 4,300 cases, these in 7%.
 3. **Filter names** - 2.15%, blocked by provenance rather than by evidence.
 4. **Reachability** - 2.61%, mostly clumps below unreferenced roots.
 5. Everything else is under a tenth of a percent.
+
+## Digging into the biggest mystery: what the parameters mean
+
+39.3% of parameter-slot readings are values whose meaning is unknown, and that is the one
+gap that blocks a renderer. Attacking it directly produced a small result and a large
+reframing.
+
+### The containment method runs out of evidence
+
+Naming a slot by containment - find a declared value from a permitted source, see which
+slot holds it - is what named `levels` and `blend`'s `opacitymult`. Extended to the biggest
+unknown groups it yields little:
+
+    transformation   141 unambiguous values / 28 specimens
+    blend            117 / 17
+    directionalwarp   17 /  6
+    warp              13 /  4
+    blur               2 /  9
+
+Matching a whole node's declared set against a whole record's block - far more specific
+than single values, and needing no distinctiveness filter - does better but stays small:
+
+    transformation   19 nodes matched uniquely -> block position 0 = offset[0],
+                                                  position 1 = offset[1]   100%
+    directionalwarp   1 node                   -> position 0 = intensity,
+                                                  position 1 = warpangle
+
+Fitting bit-to-name maps the way `levels` was cracked gives one solid result -
+**`transformation` bit 6 names `matrix22`, 310 observations, 100%** - and nothing else
+above noise.
+
+### It is not the provenance boundary
+
+The obvious suspect was the excluded library sources. Measured, they are not the
+constraint:
+
+    paired sources with declared filter parameters   permitted 1,971   excluded 994
+
+The permitted half has **twice** the labelled evidence. Only `warp` is genuinely
+provenance-limited, at 7.2 excluded nodes per permitted one; `blend`, `transformation`,
+`fxmaps`, `pixelprocessor` and `uniform` all have more permitted than excluded.
+
+### The parameters are mostly not there to be matched
+
+Diagnosing all 1,585 labelled source nodes by why they fail:
+
+    no record of that filter has a parameter block    646   40.8%
+    values do not appear in any block                 562   35.5%
+    matched uniquely                                  127    8.0%
+    several blocks match exactly (duplicates)          88    5.6%
+    values present but the block is longer             60    3.8%
+
+**Three quarters of declared parameters are not stored as baked constants anywhere.** They
+are computed by the record's parameter program. `blend` already showed this and it was not
+recognised at the time: of its records, 50,346 hold a *program* in the parameter slot and
+only 7,612 a baked float.
+
+So containment cannot name most parameters, however much source is available, because the
+value it is looking for was never written down. **The meaning lives in the program that
+computes the parameter, not in a slot.**
+
+That is why this line stalled, and it says what to do instead: read the parameter programs
+and infer from what they compute, as was done for filter 11. The reframing is worth more
+than the two names it produced.
