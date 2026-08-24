@@ -31,6 +31,7 @@ FILTERS = {
     0: 'gradient', 1: 'blend', 2: 'transformation', 3: 'shuffle', 4: 'fxmaps',
     6: 'uniform', 7: 'warp', 10: 'blur', 12: 'directionalwarp', 13: 'sharpen',
     11: 'dirmotionblur', 22: 'curve',
+    8: 'emboss',
     14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
     20: 'pixelprocessor', 21: 'distance',
     19: 'dyngradient',
@@ -69,8 +70,30 @@ FILTERS = {
 # The 14% was never evidence against the identification. It measured "does this value survive
 # the cooker" and "does it land at the right filter" as one number.
 # Unnamed ids, with what is known. Never rendered as a name.
-UNNAMED = {5: 'generator, greyscale (svg?)', 8: 'two inputs, greyscale control (emboss?)',
+UNNAMED = {5: 'generator, greyscale (svg?)',
            9: 'legacy, version 0x20000 only'}
+# Filter 8 was here as "two inputs, greyscale control (emboss?)" and is now `emboss`,
+# named by containment against the one permitted source that declares an emboss node.
+#
+# `Hard-Science-Old__CrustyLava` declares exactly one, with intensity = 1.91999996 and
+# lightangle = 0.560000002, and its binary holds exactly one filter-8 record, whose two
+# parameter slots - 5 and 6, immediately after the program slot the layout names - hold
+# those two values in that order.
+#
+#     records in the corpus carrying BOTH values          1 of 904,131
+#     ...and they are adjacent, at slots 5 and 6          the same record
+#
+# One observation, so the control is what carries it: no other record anywhere holds the
+# pair. `lightangle` alone is worthless here (0.56 lands 270 times corpus-wide); it is the
+# co-occurrence that discriminates.
+#
+# Corroborated three ways. By ELIMINATION: of the source filter names never mapped to a
+# filter id, `grayscaleconversion` is `shuffle` with luminance weights, `valueprocessor`
+# compiles to `pixelprocessor`, and `passthrough` is culled - leaving `emboss` as the only
+# unmapped name. By COUNT: emboss = 1 and filter 8 = 1 in that specimen. By ARITY: filter 8
+# takes two image inputs, and they are asymmetric in the way an emboss is - slot 2 carries
+# the record's own channel mode in 546 of 546, slot 3's target is grayscale in 546 of 546.
+# It preserves resolution (1,090 of 1,092) and feeds `blend` in 482 of 521 uses.
 # 19 was here and is now `dyngradient` in FILTERS. An id in both tables is read as known
 # by `Record.known` and as unknown by `describe()`, so the stale entry was a live
 # contradiction rather than a harmless leftover.
@@ -108,8 +131,11 @@ EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 10: [1],
 # `bitmap` was listed here too and is not a gap: 1,345 records, 0 edge slots, no image input
 # at all. That is a fact about the filter, and listing it under "not fully resolved" invited
 # the opposite reading.
-PARTIAL_EDGES = {8: 'three inputs in slots 1-3; 7 of 546 carry a forward index in slot 1',
-                 21: 'distance slot 3 is a shared control map, not a data edge'}
+PARTIAL_EDGES = {21: 'distance slot 3 is a shared control map, not a data edge'}
+# `emboss` was listed here on the reading that it takes three image inputs in slots 1-3.
+# It takes two, in slots 2 and 3, and `_real_edges` already drops slot 1: that slot takes
+# **22 distinct values across the entire corpus**, at most 7 in any one file, which is a
+# packed parameter word and not a reference. 1,092 edge slots, 0 unresolved.
 
 # Shared references: slots pointing at one record used by many (refs/target >> 1).
 #
@@ -162,7 +188,7 @@ ALT_LAYOUTS = {
 }
 
 # Filters whose slot 1 is a packed parameter word rather than a reference.
-PARAM_WORD = {1, 2, 4, 11, 12, 15, 18, 20, 21, 22}
+PARAM_WORD = {1, 2, 4, 8, 11, 12, 15, 18, 20, 21, 22}
 
 CHANNELS = {1: 1, 2: 3, 3: 4}          # bitmap class -> channel count
 
@@ -1761,6 +1787,21 @@ class Assembly:
         """
         d, hi = self.data, self.body_hi
         if p + 4 > hi:
+            return False
+        # 4. the address is even. Instructions are u16 tokens, so a program cannot begin
+        # on an odd byte - and the count that check 1 reads is itself a u16. This is the
+        # cheapest check and it was missing, which let 142 impossible programs into every
+        # figure. They are not evenly spread: over the corpus, 1,915,402 of the 1,915,613
+        # programs that transpile start 4-aligned, while misaligned starts are 12% of the
+        # 125 that fail - an enrichment of about 1,800x.
+        #
+        # Odd is rejected here because it is impossible. The 84 that are even but not
+        # 4-aligned are left in deliberately: 71 of them lie INSIDE a program that is
+        # 4-aligned, so they are the same bytes read at an offset rather than programs of
+        # their own, but "suspicious" is not "impossible" and the remaining 13 stand
+        # alone. Rejecting those needs the 4-alignment claim, which holds at 99.988% and
+        # not 100%. See FORMAT-NOTES.md.
+        if p & 1:
             return False
         n = struct.unpack_from('<H', d, p)[0]
         if not (1 <= n <= 20000):

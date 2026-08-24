@@ -27190,3 +27190,80 @@ indexed) is record k for k < 6, and output 6 is record 0. Seen identically in bo
 specimens, for whatever that is worth at n=2. Assuming record index tracks manifest
 declaration order directly (record 0 = first output) is wrong on both; use
 `Assembly.outputs()`, which reads the file's own output table, not that assumption.
+
+## Filter 8 is `emboss`, and its slot 1 caught me with the small-integer artifact again
+
+### Named by containment, on one observation and a corpus-wide control
+
+`emboss` was filter 8's standing lead for a long time, on nothing but the shape of the
+guess. Containment settles it. Exactly one permitted source declares an `emboss` node -
+`Hard-Science-Old__CrustyLava` - with two `Float1` parameters:
+
+    intensity    1.91999996
+    lightangle   0.560000002
+
+That specimen's binary holds exactly one filter-8 record, and its two parameter slots -
+5 and 6, immediately after the program slot at 4 that the layout names - hold
+
+    [ 5] 3FF5C28F   1.92     the declared intensity
+    [ 6] 3F0F5C29   0.56     the declared lightangle
+
+with slots 2 and 3 its two edges. The control is the corpus:
+
+    records carrying BOTH declared values             1 of 904,131
+    ...at consecutive slots                           the same one
+
+`lightangle` on its own carries nothing - 0.56 lands 270 times across the corpus, at
+`warp` slot 5, `fxmaps` slots 7 and 8, `blend` slot 5 and elsewhere. `intensity` at 1.92
+lands 9 times. It is the **pair, adjacent, in the file that declares the node** that
+discriminates, and one record in 904,131 is the whole of it.
+
+Corroborated three ways, none of which needed the excluded sources:
+
+* **Elimination.** Of the source filter names never mapped to a filter id -
+  `grayscaleconversion`, `valueprocessor`, `passthrough`, `emboss` - the first is `shuffle`
+  carrying luminance weights, the second compiles to `pixelprocessor`, and the third is
+  culled by the compiler. `emboss` is the only one left, and filters 5 and 9 are a
+  no-input generator and a version-2 legacy tag respectively.
+* **Count.** emboss = 1 and filter 8 = 1 in that specimen.
+* **Arity, and its asymmetry.** Filter 8 takes two image inputs and they are not
+  interchangeable: **slot 2 carries the record's own channel mode in 546 of 546**, and
+  **slot 3's target is grayscale in 546 of 546** regardless of the record's mode. A source
+  image plus a grayscale relief input. It preserves resolution (1,090 of 1,092 inputs
+  share the record's) and feeds `blend` in 482 of its 521 uses.
+
+`filter identified` goes to **100.0%** - 903,986 of 904,131 records - with filters 5 and 9
+accounting for the remaining 145.
+
+### And slot 1 is a packed parameter word, which I got wrong twice in one session
+
+Filter 8's slot 1 has now been called three things. The record of that is the useful part.
+
+It was `SHARED[8]` - a shared control reference - from the shared-reference work. The
+previous session's audit removed it after `_compute_layout` claimed slots 1, 2 and 3 as
+three image inputs, a rule justified by "slot 1 holds a valid backward record index in
+217 of 217" - the predicate with no power, since every small integer passes it.
+
+Then I measured it as a shared control map and was about to reinstate it, on:
+
+    refs per target      2.25   against 1.00 and 1.08 for slots 2 and 3
+    max fan-in             11
+    targets grayscale     72%
+    resolution agreement 49.4%   against 100% and 99.6%
+
+**Every one of those numbers is the small-integer artifact.** Slot 1 takes **22 distinct
+values across the entire corpus** and at most 7 in any one file. Treating those 22 values
+as record indices necessarily produces high fan-in, and the "targets" whose colour and
+resolution I was reporting are records the values happen to land on. I computed properties
+of an arbitrary sample and read them as properties of a reference.
+
+The test that settles it is the one already in `_real_edges`: a genuine edge's value rises
+with the record's own index, at 0.936 or better for 37 of 40 (filter, slot) pairs. Filter 8
+slot 1 correlates **0.067**. It is `words[1]`, a packed parameter word, and it is now in
+`PARAM_WORD` where that is recorded.
+
+So the previous removal of `SHARED[8]` was right and its stated reason was wrong, and my
+replacement reason was wrong in a more interesting way: **I applied a discriminator that
+assumes what it is testing.** Refs-per-target only means anything once the values are known
+to be references. Distinctness comes first - 22 values across 93 specimens is not a
+reference, and no amount of downstream statistics on those 22 values can make it one.
