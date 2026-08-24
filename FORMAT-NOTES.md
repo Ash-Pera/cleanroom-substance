@@ -21009,3 +21009,93 @@ holds whatever the filter's own parameter mechanism puts first.
 
 `transformation` at 88.4% is the one that does not resolve this way, and it is also the
 filter with no named parameter mechanism at all.
+
+## The provenance reading of the shared reference does not survive its own correction
+
+*The shared reference is a hierarchy* concluded that slot 1 identifies **which source graph
+a record was compiled from**, on r = 0.902 between a file's dependency count and its number
+of distinct slot-1 parents, over 58 paired files. It called that "the eighth hypothesis and
+the first to survive", and drew the practical consequence that **"the compiled assembly
+retains the provenance of every record"**, so an importer could group a flattened graph back
+into the library subgraphs the artist placed.
+
+*Slot 1 is two different things* then showed that for eight filters slot 1 is a packed
+parameter word and not a reference at all, and listed the consequence explicitly: the
+hierarchy and its correlation "are now suspect for the bitfield filters and need re-deriving
+over the pointer group alone". That re-derivation was never run. Running it kills the
+provenance reading.
+
+### The correlation is real and belongs to the wrong population
+
+Over 140 paired permitted specimens, splitting slot 1 by the two populations that section
+established - pointer group `{gradient, shuffle, uniform, warp, 10, 19}`, bitfield group
+`{blend, transformation, fxmaps, 11, directionalwarp, levels, pixelprocessor, 21}`:
+
+    corr(dependency count, distinct slot-1, BITFIELD group)   +0.899
+    corr(dependency count, distinct slot-1, POINTER  group)   +0.381
+    corr(dependency count, record count)                      +0.738
+
+The original figure reproduces almost exactly - **+0.899 against the reported 0.902** - and
+it is carried entirely by the filters whose slot 1 is *not a reference*. The filters whose
+slot 1 genuinely is a backward reference, which are the only ones the provenance reading
+could be about, correlate at 0.381. They are also absent altogether from 42 of the 140
+specimens, and hold 17.7% of the records.
+
+It is not merely a size effect, which is worth stating because that was the obvious
+alternative:
+
+    partial corr(deps, distinct bitfield slot-1 | record count)   +0.784
+    partial corr(deps, record count | distinct bitfield slot-1)   +0.296
+
+So dependency count really does predict the **diversity of packed parameter words** beyond
+file size. That is a sensible thing to be true - a material drawing on forty library graphs
+uses more distinct blend modes, level settings and warp configurations than one drawing on
+three - and it is a fact about parameter variety, not a pointer. A packed enum cannot be
+dereferenced, so it cannot group records by origin however well it correlates.
+
+**The hierarchy was an artifact of reading a bitfield as a pointer, and the r = 0.902 was
+measuring how varied a file's parameters are.** Eight hypotheses had been eliminated before
+it; this is the ninth.
+
+### What that leaves for instancing
+
+Nothing in the binary, on present evidence. Two independent results now agree:
+
+* *Tracing one instance end to end* found that `ie_particles`' three instance-derived
+  records carry no marker separating them from the host graph's own - the instance's
+  `pixelprocessor` and the graph's own hold adjacent slot-1 values, 0x30001 and 0x30000.
+* The hierarchy that was supposed to carry provenance at scale is the wrong field.
+
+Instance membership is recoverable by reconciling a binary against its source, which is
+what the `ie_particles` trace did exactly, and is not recoverable from the binary alone.
+That puts it with output-to-record attribution: information the toolchain has and the file
+does not keep.
+
+### Why the decisive test cannot be run here, stated precisely
+
+The provenance reading's own proposed test was records from the same library graph sharing
+a marker, "checkable by anyone whose corpus includes those files". Surveying what this
+corpus actually holds:
+
+    permitted .sbs sources                                        324
+    their dependencies: sbs:// (Adobe bundled, excluded)        3,365
+                        relative path to another .sbs             264
+                        ?himself (a graph in the same file)       121
+
+    sources with a dependency resolving to a permitted .sbs we hold   25
+      ...of those, paired with a compiled .sbsasm                      0
+
+Twenty-five materials reference a non-Adobe library whose source is in this corpus, and not
+one of them is paired with a binary - they are all in `pairs6/`, which is sources without
+archives. One looked like a pair on filename and was not: `Lava.sbs` from the *Free
+Substance Designer Material Pack* matches `tiny/x_textures__LavaSubstance001` by stem only,
+and their graph outputs disagree (`AO`, `height_1` against `emission`, `height`). **Stem
+matching is not pairing**, and that check should be run on any future acquisition before it
+is counted.
+
+The self-instance route is better and is also nearly empty: 78 permitted sources instance a
+graph from their own file, 3 are paired, and exactly one - `ie_pcloud`, 102 self-instances,
+23 source graphs, 20 of them cooked into one package - is a multi-graph binary. That is the
+one specimen in this corpus where the same source graph can be compared against both its
+standalone compilation and its inlined copies, and it is the obvious next target. It has no
+`SHARED` filters at all, so whatever marks it, slot 1 is not it.
