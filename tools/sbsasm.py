@@ -425,6 +425,53 @@ class Record:
 
     def _compute_layout(self):
         f = self.filter_id
+
+        # ---- rules that replace memorised table entries
+        #
+        # These run BEFORE the table because layouts.json is demonstrably wrong for them,
+        # in ways a (filter, cls, word1) key cannot express. Each is measured in
+        # FORMAT-NOTES.md against the records rather than against the table.
+
+        # fxmaps states its input count in a 4-bit field. The table cannot hold it:
+        # LAYOUT_MASK[4] is 0xe55, which keeps bits 10 and 11 of the field and discards
+        # 12 and 13, so a four-bit number arrives cut in half.
+        #
+        #     (word1 >> 10) & 0xF == the leading run of backward record indices
+        #         41,198 / 41,212  99.97%   all records
+        #          5,152 /  5,165  99.75%   records whose field is NONZERO, where a
+        #                                   constant predictor scores nothing
+        #
+        # The previous reading - bit 12 set means slots 3-8 are edges - is the single
+        # case k == 6 of this field, and missed every other arity.
+        if f == 4 and len(self.words) > 1:
+            k = (self.words[1] >> 10) & 0xF
+            if k and 3 + k < len(self.words):
+                return (list(range(3, 3 + k)), 3 + k)
+            if not k:
+                return ([], 3)
+
+        # shuffle puts an input in SLOT 1 - where the parameter word would be - and the
+        # table keyed on it, memorising 38 record indices as if they were configurations.
+        # The slot is self-discriminating, as bitmap's is.
+        #
+        #     the table calls slot 1 an edge, and it IS a backward index   883 / 883
+        #     the table gives 175 records no input at all, impossible for a channel
+        #       shuffle: 143 have the index in slot 1, 32 in slots 2 and 3
+        #     control: slots the table calls PARAMETERS pass the same test 1.46% of the
+        #       time, so this is 56x the false-positive rate
+        #
+        #     finds an input for 4,605 / 4,605 records, against the table's 4,430
+        if f == 3 and len(self.words) > 3:
+            n = len(self.asm.records)
+
+            def _backward(v):
+                return v == 0 or (v < self.index and v < n)
+
+            if _backward(self.words[1]):
+                return ([1], 2)
+            if _backward(self.words[2]) and _backward(self.words[3]):
+                return ([2, 3], 4)
+
         if LAYOUTS and len(self.words) > 1:
             hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
             if hit:
@@ -447,12 +494,8 @@ class Record:
                         sl = k
                 return (list(edges), sl)
         if f == 4:
-            # fxmaps has two record layouts, selected by bit 12 of the parameter word.
-            # With it set, slots 3-8 are input edges (100% valid or zero, 94-99.8%
-            # resolution agreement) and the program sits at slot 9. With it clear, no
-            # slot resolves as an edge and the program is at slot 3.
-            if len(self.words) > 1 and (self.words[1] >> 12) & 1:
-                return ([3, 4, 5, 6, 7, 8], 9)
+            # Superseded by the arity field above; reachable only for a record too short
+            # to hold the inputs its field claims.
             return ([], 3)
         if f == 20:
             n = self.arity

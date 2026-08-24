@@ -24796,3 +24796,61 @@ rate, not coincidence.
 This is the fourth structural defect in `layouts.json`, and a new kind: `gradient` and `warp`
 key on word1 bits that mean nothing, `fxmaps` keys on a field cut in half, `levels` has 2,843
 wrong entries - and `shuffle` keys on a slot that is not a bitfield at all, but an edge.
+
+## Regenerating the layout: rules ahead of the table
+
+Two of the table's four defects cannot be repaired by rewriting entries, because a
+`(filter, cls, word1)` key cannot express the rule at all. Those are now computed in
+`_compute_layout` before the table is consulted.
+
+**fxmaps.** `LAYOUT_MASK[4]` is `0xe55`, which keeps bits 10 and 11 of the arity field and
+discards 12 and 13, so the count arrives cut in half. The rule is `(word1 >> 10) & 0xF`. The
+reading it replaces - "bit 12 set means slots 3-8 are edges" - is the single case k == 6 of
+that field, and missed every other arity.
+
+**shuffle.** Slot 1 holds an input when it holds a valid backward record index, and the table
+had memorised 38 such indices as configurations.
+
+Measured before and after, on 438 files and 904,131 records:
+
+    parameters read              865,365  ->  865,443     +78
+    records with no param slot    38,688  ->   38,610     -78
+    the parameter is a program   787,962  ->  788,060     +98
+    genuinely unread                   7  ->        7
+    edge slots resolved                       100.00%
+    unexplained bytes                              0
+    validator                    every check 437/437, unchanged
+    tests                        12 passed
+
+A small net gain and no regression anywhere. That is the honest size of it: the table was
+wrong in ways that mattered for reading individual records - shuffles with no input, fxmaps
+with the wrong arity - more than for the aggregate totals.
+
+## How three programs are represented
+
+A program is what a field in state 10 puts in its slot, so the count follows from the same
+rule that gives the slots:
+
+    programs per record = g(cls) + (number of fields in state 10)
+
+    overall            473,305 / 474,008   99.85%
+      blend            310,836 / 310,837  100.00%
+      levels            85,842 /  85,889   99.95%
+      dirmotionblur     14,989 /  15,109   99.21%
+      directionalwarp   61,638 /  62,173   99.14%
+
+The `g(cls)` term is the record's own program - its size expression - and it is not always
+one: a class word with two of bits 0, 7, 11, 13 set gets two class-word slots and two
+programs, which is the "second program named by its own slot" recorded earlier at 300,161
+records. So three programs arises two ways, and both occur:
+
+    g = 1, two fields in state 10          e.g. blend and levels
+    g = 2, one field in state 10
+
+The observed distribution bears it out - 66,717 records carry exactly three programs, 30,033
+carry four, and 113 carry seven. `pixelprocessor` is the extreme case, with 55,424 of its
+57,965 records carrying exactly three.
+
+The 0.14% that differ do so by -2: fewer programs than slots. That is expected and not a
+failure of the rule - a class-word slot holds a baked constant instead of a pointer. The rule
+predicts SLOTS; programs are what most of those slots happen to contain.
