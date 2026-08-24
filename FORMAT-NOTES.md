@@ -17402,3 +17402,62 @@ so it is not the whole story either way.
 What it does rule out is the tidy version - that one missing edge slot explains the
 residue. The stranded population is mostly ordinary records hanging below a small number
 of unreferenced roots, and those roots are disproportionately, but not mostly, generators.
+
+## The layout-B prologue is a constant preamble
+
+The region between `0x38` and the first record in version-2 files has been carried in
+these notes as "holding programs and FX-Map trees", with about a fifth reachable from a
+record slot and the rest an acknowledged gap. Re-measured with the stricter validator:
+
+    layout-B files with a prologue    50
+    prologue bytes                13,868
+       programs and FX node headers  5,722  (41.3%)
+       unexplained                   8,146  (58.7%)
+
+The prologue sizes cluster hard: **30 of the 50 files have exactly 72 bytes**, and the rest
+are one-offs between 16 and 1,440.
+
+### Those 30 are the same 72 bytes
+
+Byte-for-byte, across 30 files by unrelated authors, there is **one distinct 68-byte
+prefix** and 15 distinct final words. It is a fixed preamble the compiler emits, not
+per-file data.
+
+    +0   0x00020008   +4   12
+    +8   0x00020008   +12  20
+    +16  0x00020008   +20  28
+    +24  0x00020008   +28  36
+    +32  0x00020008   +36  60
+    +40  0x09000002   +44  1.0f
+    +48  0x00000532   +52  44
+    +56  0x00100048   +60  56
+    +64  0x0A020001   +68  <varies>
+
+### Two of those entries are programs, and they decode
+
+    +40   program, 2 instructions
+            %0    0900  const.f1       1
+            %1    0532  rand.f1        %0
+
+    +64   program, 1 instruction
+            %0    0A02  inputref.i1    uid=4001147441
+
+So the preamble carries **a random-number generator and a read of one graph input**, and
+the single word that varies between files is that input's uid.
+
+### The varying word is the random seed
+
+    files with the 72-byte prologue                     30
+    final word is a declared graph input uid       30 (100%)
+    type code of that input                        4 in all 30
+
+An integer graph input read immediately alongside `rand` is the random seed. Every version-2
+package emits the same preamble to bind it.
+
+The remaining entries are a table of `(tag, byte offset)` pairs whose offsets point inside
+the prologue - `+52` holds 44, which is exactly where the `const.f1` immediate sits. The
+tag values `0x20008`, `0x532` and `0x100048` are not decoded, and the table is not needed
+to read either program, so it is left as it is.
+
+This closes the region for 30 of 50 files. The other 20 have larger, file-specific
+prologues and are still open.
