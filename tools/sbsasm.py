@@ -1009,7 +1009,8 @@ class Record:
 
         The entry width follows the channel count - `4 + 2*colour + 2*(class bit 8)` -
         giving 4, 6 or 8 bytes: a stop position followed by one, two or three values.
-        The formula holds for 94.4% of the 17,151 records carrying a ramp pointer.
+        The formula holds for 94.4% of the 17,151 records carrying a ramp pointer; the
+        rest are recovered by treating slot 4 as an upper bound rather than the exact end.
 
         Slot 2 is *not* an input edge. It reads as one - a small backward value - but
         its resolution agreement with the record is 35.5%, which is chance, where a real
@@ -1025,11 +1026,19 @@ class Record:
         if not (self.offset < end <= self.end):
             end = self.end
         width = 4 + 2 * (1 if self.colour else 0) + 2 * ((self.cls >> 8) & 1)
-        if (end - start) != count * width:
-            return None                     # the 5.6% the formula does not cover
+        # Slot 4 is not always the table's end. Requiring `end - start == count * width`
+        # rejected 968 records; in every one of them the span is LARGER than the table
+        # needs, never smaller, and the table fits inside it at the formula width. So the
+        # guard is containment, not equality - plus the check that only a ramp can pass:
+        # stop positions must ascend. 958 of the 968 do, and those are recovered.
+        if start + count * width > end:
+            return None
         n = width // 2
-        return [struct.unpack_from('<%dH' % n, self.asm.data, start + i * width)
-                for i in range(count)]
+        out = [struct.unpack_from('<%dH' % n, self.asm.data, start + i * width)
+               for i in range(count)]
+        if any(out[i][0] > out[i + 1][0] for i in range(len(out) - 1)):
+            return None                     # not a ramp: positions do not ascend
+        return out
 
     # ---- bitmap specialisation
     @property

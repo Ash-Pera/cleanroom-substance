@@ -21466,3 +21466,52 @@ the next attempt starts there.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## `gradient`: slot 4 is an upper bound, not the table's end
+
+`gradient` is filter 0, the one the mislabelling hid, and it had never been looked at. It
+barely uses the layout table at all - only **375 of 17,877 records (2.1%)** have a layout key,
+because its content is not a parameter block but a ramp table, which `Record.ramp` reads.
+
+    ramps read     16,183 / 17,877 = 90.5%      351,133 stops
+
+### The 968
+
+`ramp` required the table to end exactly where slot 4 points:
+
+    if (end - start) != count * width: return None
+
+Every one of the 968 records that failed this fails it the same way:
+
+    the table fits inside the span at the formula width     968 / 968
+    the span is LARGER than count * width                   968 / 968
+    the span is smaller                                       0 / 968
+    stop positions ascend                                   958 / 968
+
+The span is never too small, only too large. Slot 4 does not point at the table's end; it
+points somewhere after it, and the docstring's "table end, which is also where the record's
+program begins" is true of the 94.4% and not of the rest.
+
+So the guard becomes containment rather than equality - `start + count * width <= end` - plus
+the one check only a ramp can pass, that **stop positions ascend**. That check is what makes
+the relaxation safe rather than merely permissive: a looser bound with no validity test would
+read whatever happened to be there.
+
+    ramps read     17,141 / 17,877 = 95.9%      361,732 stops
+
+**+958 ramps and +10,599 stops**, and the count is exactly the 958 that ascend - no
+previously-readable ramp was rejected by the new test, which is the check worth doing when
+relaxing a guard and adding one at the same time.
+
+### What is left of `gradient`
+
+    654   the table pointer lands outside the record
+     72   fewer than 5 words
+     10   positions do not ascend at the formula width
+
+736 records, 4.1%. The 654 are the interesting group: a ramp pointer that does not point into
+its own record is either a shared table or a pointer this reader is computing wrongly, and
+nothing yet distinguishes those.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
