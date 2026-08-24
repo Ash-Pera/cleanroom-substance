@@ -16500,3 +16500,99 @@ notes; the `v and` guarding it was never argued for at all, and it was the part 
 
 It also means the "neither" queue is not a list of unknown fields. Some of its entries are
 fields the classifier already understood and threw away.
+
+## Where the presence bits live differs by filter
+
+The `levels` result raised an obvious question: is slot 1 a parameter-presence bitfield
+for every filter? Partly. The answer is per-filter, and finding that out required a
+control that earlier work in this notebook did not use.
+
+### The control matters more than the fit
+
+Fitting a mask so that `popcount(word & M)` equals a filter's float-parameter count is a
+search with many degrees of freedom, and a high score proves nothing on its own. The
+control is the **best constant predictor** - "this filter always has *k* parameters".
+A mask that cannot beat that has explained nothing, however well it scores:
+
+| filter | records | constant | slot 1 | class word | verdict |
+|---|---|---|---|---|---|
+| `blend` | 372,482 | 55.5% | **97.4%** | 55.5% | slot 1, `0x10` |
+| `transformation` | 282,523 | 56.9% | 59.7% | 58.8% | **unexplained** |
+| `levels` | 99,056 | 52.8% | **90.5%** | 53.6% | slot 1, `0x1dd` |
+| `directionalwarp` | 69,998 | 89.6% | **99.3%** | 88.8% | slot 1, `0x1a` |
+| `pixelprocessor` | 65,049 | 59.4% | **69.6%** | 59.4% | slot 1, `0x1` |
+| `fxmaps` | 48,236 | 46.5% | **80.9%** | 29.4% | slot 1, `0x15` |
+| filter 11 | 17,772 | 72.4% | **95.9%** | 75.1% | slot 1, `0x7` |
+| `blur` | 18,297 | 58.8% | 30.6% | **61.2%** | class bit 12 |
+| `sharpen` | 1,418 | 90.0% | 53.8% | **100%** | class bit 12 |
+| `hsl` | 565 | 81.2% | 81.2% | **100%** | class bit 12 |
+| `warp` | 2,373 | **100%** | 21.1% | 100% | constant: always 1 |
+| `uniform` | 3,704 | **88.2%** | 10.6% | 11.8% | constant |
+| `normal` | 1,476 | **100%** | 92.2% | 100% | constant: always 1 |
+| `distance` | 2,333 | **100%** | 100% | 100% | constant: always 1 |
+
+Three groups. Six filters carry the count in slot 1. Three carry it in **class-word bit
+12** - the same bit for all three, which is not something a per-filter fit was told to
+find. Four have a fixed parameter count and need no bits at all.
+
+`transformation` is the honest failure: 59.7% against a 56.9% baseline is nothing, over
+the second-largest filter in the corpus. Its `matrix22` is read positionally and that
+still works, but what selects between its layouts is not in either word.
+
+### `warp` shows the question was mis-stated
+
+`warp`'s slot 1 is **zero in 1,786 of its 2,373 records** while those records still carry
+parameters. No mask over slot 1 can count them. Its class word tracks the count exactly:
+`cls 8985` has one float parameter, `11033` two, `10009` three. Whatever slot 1 is for
+`warp`, it is not this.
+
+That also killed a plausible-looking diagnosis. When `warp` scored *below* its constant
+baseline - impossible for a correct optimiser - the obvious cause was that the search
+only considered bits that vary, making "a parameter every record has" unreachable. That
+was a real bug and it was fixed. It was **not** the cause: `warp` has no always-set bit
+in slot 1 either, and the output was byte-identical after the fix. Two defects in the
+same place, and fixing the visible one changed nothing.
+
+### `LAYOUT_MASK` cannot be reused for this
+
+The first attempt fitted within `LAYOUT_MASK`, and `blur`, `normal` and filter 11 scored
+near zero because their entry is `0x0` or a single bit - there was nothing to fit. That
+mask was derived to be the *minimal* set of bits that determines a record's layout, so any
+bit co-varying with another was dropped as redundant. Minimal-for-discrimination and
+complete-for-decoding are different objectives over the same word, and a table built for
+one is misleading when read for the other.
+
+### `blend` bit 4, checked out of sample
+
+A fitted mask needs an independent test. For `blend` the fit is a single bit, so the
+prediction is sharp: a record carrying a declared `opacitymult` should have slot-1 bit 4
+set. Over the permitted paired sources, **236 of 236 do - 100%**, with no counterexample
+among bit-4-clear records. The value lands at the slot the layout table names, and
+decoding gets **177 of 177 right**.
+
+Only 26.9% of `blend` records decode a parameter at all, which is the rule working:
+`opacitymult` defaults to 1 and an unset parameter is simply absent, not stored as its
+default. That is the same economy as the tagged parameter union.
+
+### A parsing bug worth recording, because it inverted a result
+
+`blend` first scored **13.8%**, with every disagreement of the form "decoded
+`opacitymult` matched a declared `blendingmode`". The defect was in the *source* reader,
+not the decoder:
+
+    <parameter><name v="([a-z0-9]+)"/>.*?<constantValueFloat(\d) v="([^"]+)"/>
+
+With `re.S` the `.*?` crosses `</parameter>` boundaries, so `blendingmode` - an `Int32`
+parameter with no float of its own - was paired with the float belonging to the parameter
+after it. It produced 112 false attributions and made a correct decoder look broken.
+Parsing each `<parameter>` element separately took the score from 13.8% to **100%**.
+
+`levels` was re-checked against the fixed reader and is **unchanged**, because `levels`
+declares only float parameters and there was no `Int32` in between to steal a value from.
+The bug was invisible until a filter with a mixed parameter list came along.
+
+This is the too-permissive predicate again, in a place none of the earlier instances of it
+would have suggested looking: not in a test over binary data, but in the regex reading the
+ground truth. **The ground truth needs auditing to the same standard as the format.** A
+lenient parser on the source side manufactures disagreements and would have been read as
+evidence against a correct hypothesis.

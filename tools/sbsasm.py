@@ -131,8 +131,9 @@ FX_NODES = {
 PARAM_BITS = {
     15: {0: 'levelinlow', 2: 'levelinhigh', 4: 'levelinmid',
          6: 'leveloutlow', 8: 'levelouthigh'},
+    1: {4: 'opacitymult'},
 }
-PARAM_BIT_MASK = {15: 0x155}
+PARAM_BIT_MASK = {15: 0x155, 1: 0x10}
 
 
 class Record:
@@ -302,13 +303,20 @@ class Record:
         bits = PARAM_BITS.get(f)
         if not bits or len(self.words) < 3:
             return []
-        start = 3 + (self.cls & 1)
+        # Slot positions come from the layout table, not from a per-filter formula.
+        # The table's first parameter entry is the program slot; the baked constants
+        # follow it, and that is where the block sits. Falling back to a formula would
+        # be a guess exactly where the table already knows the answer.
+        hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
+        if not hit or len(hit[1]) < 2:
+            return []
+        slots = list(hit[1])[1:]
         w = self.words[1] & PARAM_BIT_MASK[f]
         out = []
         for j, b in enumerate(i for i in range(16) if w >> i & 1):
-            if start + j >= len(self.words):
-                break                      # truncated: report what is readable
-            v = self.words[start + j]
+            if j >= len(slots) or slots[j] >= len(self.words):
+                break                      # more bits than slots: report the readable
+            v = self.words[slots[j]]
             out.append((bits[b], struct.unpack('<f', struct.pack('<I', v))[0]))
         return out
 
