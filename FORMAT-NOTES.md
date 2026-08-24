@@ -29717,3 +29717,37 @@ multiplier on every baked colour-typed field.
 
 Emboss stays out (75.6%): its w1 is a packed word of another shape, already
 established. Every remaining number is attached to a mechanism or to a named file.
+
+## Filter 9's inputs were unread, not absent
+
+`EDGES` had no entry for filter 9, so `Record.edges` returned `[]` for all five of its
+records while slots 2 and 3 plainly held backward record indices. The filter was described
+as "5 records, version `0x20000` only" and left there; nobody looked at what it points at.
+
+It is the corpus's rarest filter, so the published edge control — the correlation between a
+slot's value and the record's own index, over (filter, slot) pairs with **n >= 200** —
+cannot be run on it at all. What can be shown at n=5 is reported instead:
+
+    slots holding a valid backward index in all 5 records     1, 2, 3
+    slot 2 correlation with record index                      0.998   (n=5)
+    slot 3 correlation with record index                      1.000   (n=5)
+    distance back from own index                              1 to 21 records, and one of
+                                                              the two is index-1 or index-2
+                                                              in every single record
+
+**Slot 1 is the control, and it fails.** It passes "valid backward index" in all five
+records too — but it holds the constant 1 or 5, and does not track the record's index. That
+is precisely the small-integer artifact the edge control was written to catch, appearing here
+in the same records that carry the real edges, which is the strongest thing available at this
+sample size: the test discriminates within the specimen rather than across a population.
+
+`[2, 3]` is the layout `blend`, `shuffle`, `emboss` and `directionalwarp` already use, so no
+new shape is claimed. The correlations are reported, not relied on; what the entry rests on
+is 5-of-5 agreement plus slot 1 failing the same test in the same records.
+
+    filter 9 edges recovered   10 (2 per record)
+    corpus edge slots          1,301,634, unresolved 0 (unchanged at 100%)
+
+This does not name filter 9 and nothing here could: naming needs a permitted source that
+declares it, and the corpus contains none. It does mean the filter is a **two-input**
+greyscale node whose inputs are now readable, which is one more fact than "legacy tag".
