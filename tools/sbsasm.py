@@ -233,7 +233,29 @@ PARAM_SPEC = {
     # already produced one withdrawn reading in this file; it does not get to produce
     # another.
     11: [('fid11_param0', 0x003, 0x002), ('fid11_param1', 0x00c, 0x008)],
+    # `pixelprocessor` has four, derived the same way. Two of the pairs are exact and two
+    # are near it, over 92,815 slot reads:
+    #
+    #     bit 6 pair   27,984 / 27,984   100.00%      bit 0 pair    9,774 / 10,054  97.22%
+    #     bit 8 pair   27,467 / 27,467   100.00%      bit 4 pair   26,507 / 27,310  97.06%
+    #
+    # The pairs at 6 and 8 are all but always the PROGRAM form - bit 8 alone is never set
+    # in 39,942 records, only bit 9 - and the clean sources agree: `pixelprocessor`'s
+    # `perpixel` parameter is declared as a `dynamicValue` 229 times out of 229, never as a
+    # constant. A filter whose defining parameter is a function is exactly the filter whose
+    # kind bits should be stuck on "program".
+    #
+    # The source also declares `format` (Int32), `colorswitch` (Bool) and `outputsize`
+    # (Int2). Those are NOT floats, which is why this filter is in PARAM_RAW below.
+    4:  [('pp_param0', 0x003, 0x002), ('pp_param1', 0x030, 0x020),
+         ('pp_param2', 0x0c0, 0x080), ('pp_param3', 0x300, 0x200)],
 }
+
+# Filters whose baked parameter values are reported as the raw u32 rather than as a float.
+# `pixelprocessor`'s declared parameters include Int32, Bool and Int2 types, so decoding
+# every constant as a float32 would invent numbers like 1.5e-33 out of small integers. Where
+# a filter's parameter types are not established, the raw word is the honest value.
+PARAM_RAW = frozenset({4})
 
 
 # FX-Map parameter table: the OTHER thing an fxmaps record's slot 2 can address.
@@ -568,6 +590,8 @@ class Record:
         if (self.asm.body_lo <= ptr < self.asm.body_hi
                 and self.asm.valid_program(ptr)):
             return (name, 'program', ptr)
+        if self.filter_id in PARAM_RAW:
+            return (name, 'baked', raw)
         return (name, 'baked', struct.unpack('<f', struct.pack('<I', raw))[0])
 
     def _parameters_paired(self, spec):

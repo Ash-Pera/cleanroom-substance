@@ -20338,3 +20338,80 @@ The findings are unchanged in kind, only in size:
 Those rest on correlations and base rates, which duplicates inflate the confidence of but do
 not reverse. They should still be re-derived on the 435-specimen list before any of their
 numbers is quoted again, and until that is done every count in them is provisional.
+
+## Re-derived on the deduplicated corpus: `pixelprocessor` joins
+
+Paying the debt from the correction above - re-running the mechanical derivation over the
+435-specimen list against the regenerated table, rather than the 641 with its duplicates.
+
+Three things changed, and only one of them was a number getting smaller.
+
+### The known filters read cleaner, not dirtier
+
+    blend            [4]              100.00%   (was 100.00%)
+    directionalwarp  [1, 3]           100.00%   (was  99.92%)
+    fid11            [0, 2]           100.00%   (was 100.00%)
+    levels           [0,2,4,6,8]       99.98%   (was  99.96%)
+
+`directionalwarp`'s 104 misses are gone entirely. They were duplicates - the same handful of
+records counted several times over - which is exactly the failure mode duplicates produce:
+they do not invent errors, they multiply whichever ones you have.
+
+### `pixelprocessor` passes now and did not before
+
+    pixelprocessor   [0, 4, 6, 8]      98.83%   over 92,815 reads
+
+On the inflated corpus this filter was reported as "no pair model passes", and the
+mechanism was described as being at absolute slots instead. Both halves of that were an
+artifact of **greedy forward selection**, which can only find a set whose FIRST member
+already clears the thresholds on its own. No single pair cleared them on 641 specimens; one
+does on 435, and then the rest follow. The earlier absolute-slot reading - bit 7 for slot 3,
+bit 9 for slot 5 - was seeing the same bits from the other side.
+
+Its four pairs are not equal:
+
+    bit 6 pair   27,984 / 27,984   100.00%      bit 0 pair    9,774 / 10,054   97.22%
+    bit 8 pair   27,467 / 27,467   100.00%      bit 4 pair   26,507 / 27,310   97.06%
+
+The pairs at 6 and 8 are all but always the program form - bit 8 alone is never set in
+39,942 records, only bit 9 - and the sources agree: `pixelprocessor`'s `perpixel` parameter
+is declared `dynamicValue` **229 times out of 229**, never once as a constant. A filter
+whose defining parameter is a function is the filter whose kind bits should be stuck on
+"program".
+
+Keeping all four costs accuracy for coverage: 93,269 reads at 98.46% against 55,905 at
+99.59% for the two exact pairs alone. The extra 37,364 reads are 96.8% right, so they are
+kept, and `pixelprocessor` is the weakest member of the table by an order of magnitude:
+
+    blend           100.0000%        levels           99.9823%
+    directionalwarp 100.0000%        pixelprocessor   98.4647%
+    fid11            99.9961%
+
+### Its constants are not floats
+
+The clean sources declare `format` (Int32), `colorswitch` (Bool) and `outputsize` (Int2) on
+`pixelprocessor`. Decoding those as float32 manufactures numbers like 1.5e-33 out of small
+integers - which is precisely what the 45 `levelinhigh` "disagreements" earlier turned out
+to be on inspection. So `PARAM_RAW` now marks filters whose parameter types are not
+established, and `parameters` reports the raw u32 for them instead of inventing a float.
+
+### Where it stands
+
+    filter            baked    program
+    blend           117,182     60,262
+    pixelprocessor   36,527     56,742
+    levels          156,695      1,921
+    directionalwarp 111,441      5,632
+    fid11            24,789        816
+
+**572,007 named parameter readings, 99.7446% agreement between the bits and the slots.**
+
+435 files parsed, 0 failures, 0 unexplained bytes, edge slots 100.00%, validator 437/437 on
+every structural check, 0 unexplained value-table entries, transpiler 11 passed 0 failed.
+
+### Still out
+
+`transformation` (needs no kind bits - its parameters are baked 98.8-99.8% of the time),
+`fxmaps` and `gradient` (no bit of slot 1 predicts their slots, best correlation 0.225).
+Those three diagnoses were made on the inflated corpus and are correlation-based, so they
+survive in kind; `fxmaps` and `gradient` remain the real hole.
