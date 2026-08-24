@@ -26547,3 +26547,38 @@ more.
 The remaining looseness is that the guard admits 1..64 while the format uses 1, 3 and 5.
 A value outside those would be a scan of even width, which the `-(n-1)/2` relation cannot
 produce, and is worth rejecting rather than running.
+
+## Clamping the operands, not just the result
+
+Clamping each instruction's result left eight failures of the form
+
+    v1545 = clamp((v1510 * v1544), 2)      operands could not be broadcast
+
+which is the fix arriving too late: the multiplication runs first, and clamping what it
+produces cannot help if its inputs already disagree. The operands need trimming, and the same
+census licenses it - both operands of all 3,248,836 `add` instructions declare the
+instruction's own width, zero exceptions - so trimming each to that width can only undo drift,
+never discard something the format put there.
+
+    ValueError    11  ->  3
+    ran to a value    137,913  ->  137,921
+    execution rate    99.9725%  ->  99.9783%
+
+Checked the same way as before, against the version with no clamping at all:
+
+    ran both ways   42,959      identical  42,959      different  0
+    ran only WITH the change  3            only WITHOUT  0
+
+### What is actually left
+
+    3   `vec: concatenation gave 2 components, declared 3`
+    2   IndexError, indexing a 0-dimensional array
+    25  NoSharedCache, cascading from a writer whose own program failed
+
+The three `vec` cases are the real remainder. `vec`'s guard was written saying "no observed
+case of concatenation falling short of the declared width", and after removing twenty
+harness-caused instances and eight drift-caused ones, three survive. Those are worth taking
+seriously precisely because everything else that looked like them turned out not to be: they
+are the first evidence that a declared width can genuinely exceed what the operands supply.
+
+    execution   137,921 of 137,951   99.9783%

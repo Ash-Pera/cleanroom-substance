@@ -304,11 +304,22 @@ def transpile(data, start, end, backend="python", name="program", result=None):
         elif oid == 0x34:                                  # sample colour
             rhs = be.call("sample_col", [str(toks[1]), arg(0)])
         elif oid in BINOP:
+            # Clamp the OPERANDS, not just the result. A corpus census found both
+            # operands of all 3,248,836 `add` instructions declare the instruction's own
+            # width, with zero exceptions -- so trimming each to that width can only undo
+            # drift, never discard something the format put there. Clamping the result
+            # alone is too late: the operation runs first, and eight failures were a
+            # mismatch inside `clamp((a * b), 2)`.
             sym = BINOP[oid]
+
+            def _w(i, n=ncomp):
+                a = arg(i)
+                return "clamp(%s, %d)" % (a, n) if n and n > 1 else a
+
             if backend == "python" and sym in PY_LOGIC:
-                rhs = be.call(PY_LOGIC[sym], [arg(0), arg(1)])
+                rhs = be.call(PY_LOGIC[sym], [_w(0), _w(1)])
             else:
-                rhs = be.binop(sym, arg(0), arg(1))
+                rhs = be.binop(sym, _w(0), _w(1))
         elif oid in FUNCS:
             fn = FUNCS[oid]
             if fn == "-":
