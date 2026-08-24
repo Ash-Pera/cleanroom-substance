@@ -25921,3 +25921,36 @@ is worth understanding, and is a much smaller question than the one this started
     bit 13   a computed 1-component value
 
 Eleven of fourteen. The three left are set on 1.82%, 0.12% and 0.0003% of records.
+
+## The sampling-class residual: characterised, not explained
+
+3.18% of records disagree with their filter's usual value for bits 9:8. `directionalwarp` is
+the largest case - pixel-local in 6,732 of its 62,156 records - and five probes fail to
+explain it.
+
+    parameter STATES        pixel-local: intensity {absent 20, baked 6,306, program 406}
+                            spatial:     intensity {absent 439, baked 51,929, program 3,056}
+                            the same distribution
+
+    parameter VALUES        both roughly 65% programs, both with varied constants
+                            (pixel-local: 2, 32, 13.43, 1, 0.45 ...
+                             spatial:    -0.25, 64, 25.72, 5.22, 11.59 ...)
+
+    file format version     0x80000 is 100% pixel-local, but on only 138 records;
+                            0x50000 12.02%, 0x60000 12.85%, 0x90000 2.58%, 0x40000 0.70%
+                            - a real effect, far from the whole story
+
+    per-file concentration  210 files have no pixel-local directionalwarp, 5 have only
+                            pixel-local, and 62 contain BOTH - so it varies inside a file
+
+    input size agreement    same size as all inputs: 99.97% pixel-local, 98.01% spatial
+                            - a two-point difference, not a cause
+
+So the residual is a genuine per-record variation with no identified cause. What can be said
+is what it is not: not the parameters, not their values, not the version alone, not the file,
+not the input geometry.
+
+The sampling-class reading survives this. It explains 96.82% of records and partitions the
+filters exactly along the pixel-local / samples-elsewhere line, which is a meaningful engine
+distinction. A rule that holds for 96.82% of a field and has a stubborn, well-characterised
+3.18% is in better shape than one that holds everywhere for reasons nobody has checked.
