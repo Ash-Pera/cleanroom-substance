@@ -23558,3 +23558,40 @@ and "which slot reads are satisfied" cannot be answered independently of it.
 
 What is settled: slot reads are overwhelmingly intra-record, and slot writes do not imply a
 graph edge.
+
+## The execution order: a record's own programs, then its fx programs
+
+The previous section flagged that "which slot reads are satisfied" cannot be answered
+independently of execution order, and left the order unestablished. It is decidable from the
+data: a valid order is one where every slot is written before it is read.
+
+Testing the two candidate orders per record, over 214,677 records:
+
+    r.programs order alone works                214,544 / 214,677   99.94%
+
+    of the 10,270 records that also have fx programs
+      r.programs THEN fx works                   10,176 / 10,270    99.08%
+      fx THEN r.programs works                    3,151 / 10,270    30.68%
+      neither works                                  94
+
+Three to one, and it holds at runtime:
+
+    per record, fx FIRST     54,030 / 56,981    94.821%    2,951 failures
+    per record, fx LAST      56,952 / 56,981    99.949%       29 failures
+    per file,   fx LAST      56,975 / 56,981    99.989%        6 failures
+
+### What that resolves
+
+The per-file slot dict was adopted several sections ago because it took execution from 90.4%
+to 95.4%, with a warning attached that the pass rate was not the argument. The warning was
+right. **With the correct order, per-record slots reach 99.949%** and per-file buys a further
+0.04% - the 207 reads that genuinely cross a record boundary.
+
+So the per-file advantage was mostly compensating for running the fx programs at the wrong
+time. Two things were being conflated: whether slot state is per record, and whether the
+programs were being run in the order the format expects. Fixing the second removed almost all
+of the apparent need for the first.
+
+    a record's slot state is its own                99.79% of reads, 99.949% at runtime
+    its programs run before its fx programs         99.08% vs 30.68%
+    slot writes are not a graph edge                spurious violations 6 -> 432 if added
