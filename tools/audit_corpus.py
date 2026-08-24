@@ -5,6 +5,8 @@ The point is the failure columns. A segmenter that silently guesses looks perfec
 this one is meant to make its own gaps countable.
 """
 import collections, sys
+
+import disasm
 from sbsasm import Assembly, FILTERS, UNNAMED, LAYOUTS, LAYOUT_MASK
 
 # Which slots the layout table registers as EDGE slots, per filter, across all its keys.
@@ -96,7 +98,21 @@ def main(paths):
                 else:
                     tot['param_unread'] += 1
             elif par[0] == 'program':
+                # Not every program-valued parameter is a size expression. A size is a
+                # TWO-component integer -- (log2 width, log2 height) -- and that is what
+                # 90-99.5% of them return for every filter except two. `pixelprocessor`
+                # returns a ONE-component integer in 99.7% and `fxmaps` in 99.3%, so for
+                # those the slot holds something else entirely and calling it a size was
+                # a label this audit applied, not a fact it measured.
                 tot['param_program'] += 1
+                last = None
+                for last in disasm.decode(r.asm.data, par[1], r.asm.body_hi):
+                    pass
+                if True:
+                    if last is not None and (((last[2] >> 6) & 3) + 1) == 2:
+                        tot['param_size2'] += 1
+                    else:
+                        tot['param_size1'] += 1
             elif par[0] == 'float':
                 tot['param_float'] += 1
             else:
@@ -120,8 +136,10 @@ def main(paths):
           % (tot['param_is_edge'], 100 * tot['param_is_edge'] / max(1, r_)))
     print('    genuinely unread     : %d  (%.2f%%)'
           % (tot['param_unread'], 100 * tot['param_unread'] / max(1, r_)))
-    print('    an output size expression: %d  (%.1f%%)' % (tot['param_program'],
+    print('    the parameter is a program: %d  (%.1f%%)' % (tot['param_program'],
           100 * tot['param_program'] / max(1, r_)))
+    print('      returning 2 components -- an output size : %d' % tot['param_size2'])
+    print('      returning 1 component  -- not a size     : %d' % tot['param_size1'])
     print('    a baked filter parameter : %d  (%.1f%%)' % (tot['param_float'],
           100 * tot['param_float'] / max(1, r_)))
     print('    as zero / absent    : %d  (%.1f%%)' % (tot['param_zero'],

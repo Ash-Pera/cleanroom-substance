@@ -21908,3 +21908,64 @@ ever loosens cannot be checked by watching a coverage number go up.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## 123,158 "output size expressions" are not sizes
+
+Auditing my own relaxations for the failure mode the float ramp exposed - a looser guard
+admitting wrong readings - cleared both of them. Containment-admitted ramps are
+indistinguishable from exact ones (92.8% start at position 0 against 95.2%, 99.9% ascending
+in both), and the multi-input parameter fallback's programs are indistinguishable from the
+ones the key finds (93.9% of 1-3 instructions against 92.1%). The float ramp was the only bad
+admission.
+
+But comparing those programs turned up something the audit had been asserting without
+measuring.
+
+### A size is two components
+
+`Record.output_size` returns `(log2 width, log2 height)` and requires a two-component result.
+Checking what each filter's parameter program actually returns:
+
+    filter            programs   1 comp   2 comp
+    blend              268,178     1.6%    98.4%
+    levels              74,059     0.6%    99.4%
+    directionalwarp     60,761     1.0%    99.0%
+    warp                26,101     1.0%    99.0%
+    transformation     187,878     9.6%    90.2%
+    pixelprocessor      57,026    99.7%     0.1%
+    fxmaps              40,845    99.3%     0.1%
+
+Every filter but two returns a pair. `pixelprocessor` and `fxmaps` return a single integer,
+and a single integer is not a size.
+
+Their programs are integer arithmetic on a graph input:
+
+    57.4%   inputref.i1
+    34.5%   inputref.i1 ; const.i1 ; add.i1
+     7.6%   inputref ; const ; add ; const ; add
+
+Three shapes cover 99.5% of 57,026 `pixelprocessor` programs. The uid is a declared graph
+input in 56,921 of 56,921, and the ops are all ones this reader handles - so `output_size`
+declines them for exactly one reason, that the result has one component instead of two.
+
+### What the audit was saying
+
+It printed every program-valued parameter as "an output size expression": 779,917 records.
+**123,158 of those return one component and are not sizes.** That was a label the audit
+applied, not a fact it measured - the 99.83% agreement figure that justified the label is
+computed only over the records where `output_size` evaluates, which by construction excludes
+every one of these.
+
+The audit now splits them:
+
+    the parameter is a program: 779,917
+      returning 2 components -- an output size : 656,759
+      returning 1 component  -- not a size     : 123,158
+
+What the single integer means is not established. It reads a user-exposed graph input and
+adds small constants, and `pixelprocessor` declares `format` and `randomseed` as `Int32`
+while `fxmaps` declares `patterntype`, `blendingmode` and `imageindex` - but nothing yet
+picks between them.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
