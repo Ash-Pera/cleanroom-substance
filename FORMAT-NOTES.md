@@ -26990,3 +26990,154 @@ docstring, or a section of these notes - catchable by reading, needing no corpus
 project's discipline is strong at the point a finding is made and weak at propagating a
 retraction into the artifacts that encode it. A retraction that reaches only the notes
 leaves the code asserting the thing that was withdrawn, and the code is what a reader runs.
+
+## A control for edge slots: a real edge tracks the record's own index
+
+Every figure about input edges in this document rests on one predicate — "the value in
+this slot is a backward record index" — and that predicate is weak in a way that had not
+been stated. `word1` is a vector of two-bit type codes, so it is a small integer, and a
+small integer in a record two thousand records deep passes "is a valid backward index"
+without meaning anything. That conflation has already produced one error here, recorded
+against `EDGES`: the shared-reference reading. Nothing stopped it producing more, because
+the only figure being watched was the resolution rate, and the artifact *raises* it.
+
+So here is a control the resolution rate cannot supply. A genuine edge points at a
+NEARBY record, so its value has to rise with the record's own index; a packed field does
+not. Over the 40 (filter, slot) pairs the layout names as edges with 200 or more
+observations, the correlation between the slot's value and the record's index is:
+
+    0.99 or better    34 of 40
+    0.936 or better   37 of 40
+
+and three fail outright:
+
+    transformation slot 1     corr -0.319    n   287
+    filter 8       slot 1     corr  0.067    n   758
+    warp           slot 3     corr -0.005    n 1,867
+
+The control is worth what it can lose, and it loses here. It also survives its own
+sanity check: `curve` slot 1 has a value histogram identical to curve's `words[1]`
+histogram, which looks damning until you notice that slot 1 *is* `words[1]`, so the
+identity is a tautology and proves nothing either way. Only the correlation speaks, and
+at 0.991 it says curve slot 1 is a real edge — which is what `EDGES[22]` already said.
+
+### The three, identified
+
+**transformation and filter 8, slot 1 — the type-code vector.** 263 of transformation's
+287 hold `0x3f`, which is the modal `words[1]` across all 284,131 transformation records
+(119,919 of them). Filter 8's 758 take 22 distinct small values. Nothing is lost by
+dropping them: all 287 transformation records keep their one other edge slot, all 758
+filter-8 records keep their two, and every one of those resolves.
+
+**warp slot 3 — not a defect but a second record shape.** `words[1]` separates the two
+exactly:
+
+    words[1] == 0     1,801 records    slot 3 is a backward index    1,801   100.0%
+    words[1] != 0        66 records    slot 3 is a program pointer      65    98.5%
+                                       slot 1 is a backward index       66   100.0%   corr 0.998
+
+When `words[1]` is nonzero the record is shifted one slot earlier: the edges sit at slots
+1 and 2 and slot 3 holds the pointer. The tracking is within file, not an artefact of
+pooling — in `BricksSubstance005` records 4099, 4101 and 4103 carry 4097, 4099 and 4101,
+always index minus two.
+
+This leaves one question open rather than answering it. In the `words[1] == 0`
+population slot 1 holds zero, and zero is both "no type codes" and "an edge to record 0".
+The value cannot distinguish them. Warp takes two image inputs and slots 2 and 3 already
+supply them, so slot 1 is read as the type-code vector — an inference from arity, not a
+measurement, and it is marked as one in the code.
+
+### Two more the control was too small to reach, found the same way
+
+`levels` slot 1 (n=68, corr 0.108) and `distance` slot 1 (n=21, corr -0.431) are the same
+defect below the 200-observation threshold. Both keep their slot-2 edge, which resolves in
+every record.
+
+The last two are not type codes but **counts**, which pass for record indices for exactly
+the same reason:
+
+**gradient slot 2** — 166 records. This is the ramp's stop count, and `Record.ramp`'s own
+docstring already said so: *"resolution agreement 35.5%, which is chance."* The reading
+was written down and then never enforced anywhere, so the layout table went on calling it
+an edge in every one of those records. Dropping it alone would have left those 166 with no input at all — the
+trap that cost 8,355 real edges the last time this walk was changed. Their real edge is
+slot 1, which the table never named and which holds a backward index in all 166.
+
+**curve slot 2** — 119 records. The count of spline control points, repeated again in the
+record's final slot. Curve's three shapes are `(1,2,4)`, `(1,2,5)` and `(1,2,6)`, and in
+every one slot 1 is the edge, slot 2 the count, the middle slots are table pointers and
+the last slot repeats the count. Curve has exactly one input, which is what `EDGES` said.
+
+### What it cost and what it bought
+
+    unresolved edge slots        50  ->  0
+    edge slots claimed    1,559,355  ->  1,558,119     (-1,236)
+    worst correlation, all 48 slots with 200+ obs      0.936
+
+The count went DOWN. That is the point: 1,236 of the edges being counted were type-code
+vectors and table counts reading as record indices, and the resolution rate was 100%
+*because* of them, not despite them.
+
+## The escape hatch in `edges`, measured
+
+`Record.edges` silently drops a named slot whose value+52 is a valid program, or which
+reads as a plausible float. Neither drop is counted as an edge or as a failure, so
+"resolved 100.00%" is computed after discarding whatever could not be read — a headline
+that cannot fall below its own floor is not worth much. It had never been measured:
+
+    slots the layout names as edges        1,559,664
+      read as an edge                      1,559,305    99.977%
+      absent sentinel (0xFFFFFFFF)               121     0.008%
+      slot not present in this record            112     0.007%
+      DROPPED: reads as a program                 76     0.005%
+      DROPPED: reads as a float                    0     0.000%
+      unresolved                                  50     0.003%
+
+So the hatch was 0.005% and the float branch never fired at all — the figure was not
+materially inflated. Worth knowing rather than assuming, in both directions. After the
+rules above the program branch stops firing too: the 65 warp cases it was absorbing are
+now identified positively, and the remaining drops are zero.
+
+## The curve filter's spline table, decoded
+
+`curve` carries its curve inline the way `gradient` carries its ramp:
+
+    slot 1    the image input, and curve's only one
+    slot 2    the number of control points
+    slot 3    the table, at the universal +52 skew
+    ...       one or two more pointers, filter-specific
+    last      the point count again
+
+At `slot3 + 52` there is a u32 count followed by that many 24-byte entries of six floats.
+The first one read out is the identity curve: point 0 at (0, 0) with both tangents zero,
+point 1 at (1, 1) with handles (0.303, 1) and (1, 1) — a position pair followed by an
+incoming and an outgoing tangent, which is a cubic Bezier knot.
+
+Over the 1,519 curve records that declare a count:
+
+    u32 at slot3+52 equals slot 2            1,499    98.68%
+    all 6n floats finite and |v| <= 1e3      1,519   100.00%
+    x coordinates non-decreasing             1,507    99.21%
+    CONTROL: the same u32 one word earlier       0     0.00%
+
+The control carries this one. Count-shaped small integers are everywhere in these
+records, so "there is a plausible count here" is worth nothing by itself; the same probe
+four bytes earlier had to be able to succeed, and it never does.
+
+`slot4 - slot3 == 24n + 4` holds for 88.55% — slot 4 is an upper bound rather than the
+exact end, exactly as it is for `ramp`. Reading the count from the table itself avoids
+depending on it. Exposed as `Record.curve_points`, decoding 1,499 of 1,528 curve records
+(98.1%).
+
+## pixelprocessor's arity field is four bits wide, and the reader capped it at eight
+
+`edge_slots` read pixelprocessor's declared input count from the low nibble of `words[1]`
+but accepted only counts of 1 to 8. The field is four bits, so 9 to 15 are expressible and
+do occur: 81 records declare 9, 12 or 13. In all 81, every one of slots `2..2+k-1` holds a
+backward record index, so the declared count is right there too — the cap was the reader's,
+not the format's. Those records had been falling through to the layout table, which named
+slots 11, 12 and 13 as edges when they hold the pointer.
+
+    arity  9      3 records    slots 2..10 all backward indices     3   100%
+    arity 12     37 records    slots 2..13 all backward indices    37   100%
+    arity 13     41 records    slots 2..14 all backward indices    41   100%

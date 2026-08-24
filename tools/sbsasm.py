@@ -408,6 +408,38 @@ _RULED_PARAMS = {1: 2, 12: 2, 15: 1, 11: 1}
 
 
 class Record:
+    """One compiled filter node: a tag, a class word, and a run of 32-bit slots.
+
+    Three properties used to share a name up to pluralization -- `params`,
+    `parameter`, `parameters` -- for three unrelated things, which cost real
+    debugging time more than once (render.py read `size_or_baked`'s program as
+    a filter's opacity; it is the record's OUTPUT SIZE expression in 91.3% of
+    records and only incidentally a real parameter in the rest). Renamed so a
+    plain read of the name says which:
+
+        slot1_flags       decoded bits of the slot-1 class/parameter word
+                          (blend mode, "computes own size", etc.)
+        size_or_baked     the first slot after the record's inputs -- a
+                          size-expression PROGRAM in 91.3% of records, a
+                          baked FLOAT parameter in the rest; the tag says
+                          which, a caller must still check it
+        named_parameters  real per-filter parameters with names, e.g.
+                          directionalwarp's `intensity`/`angle`; empty
+                          unless the filter is in PARAM_SPEC
+
+    Two more properties are easy to reach for wrong in the same way:
+
+        programs          every program this record's slots name, including
+                          the size expression -- wants counting bytes
+        filter_programs   `programs` with the size expression (if identified
+                          as `size_or_baked`'s target) removed -- wants
+                          knowing what the filter actually computes
+
+    And `matrix`/`translation` (filter 2 only) both return None for three
+    different reasons alike -- not this filter, slot out of range, or the
+    value is computed by a program rather than baked -- which their own
+    docstrings cover but a caller cannot recover from the None alone.
+    """
     __slots__ = ('index', 'offset', 'end', 'tag', 'cls', 'asm', '_words', '_layout')
 
     def __init__(self, asm, index, offset, end):
@@ -512,6 +544,29 @@ class Record:
         file, not an artefact of pooling - in BricksSubstance005 records 4099, 4101 and
         4103 carry 4097, 4099 and 4101, always index minus two.
 
+        `levels` and `distance` are the same defect as transformation and filter 8 at a
+        smaller scale - 68 and 21 records, correlating 0.108 and -0.431 - and both keep
+        their slot-2 edge, which resolves in every one.
+
+        The last two are not type codes but COUNTS, and the layout table read a count as
+        an edge because a small number passes for a small record index:
+
+            gradient slot 2   166 records   the ramp's stop count. `ramp` already says so
+                                            - "resolution agreement 35.5%, which is
+                                            chance" - but nothing enforced it. Dropping it
+                                            alone would leave those records with no input
+                                            at all; their real edge is slot 1, which the
+                                            table never named and which holds a backward
+                                            index in all 166.
+
+            curve slot 2      119 records   the count of spline control points, repeated
+                                            again in the record's last slot. Curve's three
+                                            shapes are (1,2,4), (1,2,5) and (1,2,6), and
+                                            in every one slot 1 is the edge, slot 2 the
+                                            count, the middle slots are table pointers and
+                                            the final slot repeats the count. So curve has
+                                            exactly one input, which is what EDGES says.
+
         What that does NOT settle is the words[1] == 0 population, where slot 1 holds 0.
         Zero is both "no type codes" and "an edge to record 0", and the value cannot
         distinguish them. Warp takes two image inputs and slots 2 and 3 already supply
@@ -519,10 +574,14 @@ class Record:
         not a measurement.
         """
         f = self.filter_id
-        if f in (2, 8):
+        if f in (2, 8, 15, 21):
             return [s for s in slots if s != 1]
         if f == 7 and len(self.words) > 1 and self.words[1] != 0 and 3 in slots:
             return sorted({1} | {s for s in slots if s != 3})
+        if f == 0 and 2 in slots:
+            return sorted({1} | {s for s in slots if s != 2})
+        if f == 22 and 2 in slots:
+            return [1]
         return slots
 
     def _compute_layout(self):
@@ -694,7 +753,7 @@ class Record:
         Where it does evaluate, it agrees with the tag in 99.81% of records -- so this is a
         cross-check on the tag, not a substitute for it.
         """
-        par = self.parameter
+        par = self.size_or_baked
         if not par or par[0] != 'program':
             return None
         decl = {u: v for t, u, v in (self.asm.header.get('inputs') or [])}
@@ -829,8 +888,14 @@ class Record:
                 if s < len(self.words)]
 
     @property
-    def params(self):
-        """The slot-1 parameter word, decoded as far as it is understood."""
+    def slot1_flags(self):
+        """The slot-1 parameter word, decoded as far as it is understood.
+
+        Was `params` -- renamed to stop it colliding by name, not just by
+        near-miss reading, with `size_or_baked` and `named_parameters`, three
+        unrelated things a plain grep for "param" could not tell apart. See
+        the class docstring for what each one actually holds.
+        """
         if self.filter_id not in PARAM_WORD or len(self.words) < 2:
             return None
         v = self.words[1]
@@ -842,13 +907,19 @@ class Record:
         return d
 
     @property
-    def parameter(self):
+    def size_or_baked(self):
         """The first slot after the record's inputs. It is one of two different things.
 
-        **Not "the main parameter"**, which is what these notes called it for a long time.
-        In 91.3% of records it holds the record's OUTPUT SIZE expression - see
-        `output_size` - and in the rest a baked float that is a genuine filter parameter.
-        The two are not variants of one idea; they are different fields.
+        Was `parameter` -- renamed because that name reads as "the meaningful
+        setting", and it usually is not. **Not "the main parameter"**, which is
+        what these notes called it for a long time before that too. In 91.3%
+        of records it holds the record's OUTPUT SIZE expression - see
+        `output_size`, and `filter_programs`, which exists specifically to
+        strip this program back out of `programs` for callers that want what
+        the filter actually computes - and in the rest a baked float that is
+        a genuine filter parameter. The two are not variants of one idea;
+        they are different fields, which is exactly what the tagged return
+        forces a caller to handle rather than guess at.
 
         Which one it is, is **stated by the layout descriptor**: over 1,031,041 records
         and 20,970 keys the key predicts it in 100.00%, with a single mixed key of 278
@@ -905,8 +976,13 @@ class Record:
         return None
 
     @property
-    def parameters(self):
+    def named_parameters(self):
         """Named parameters this record carries, as [(name, kind, value), ...].
+
+        Was `parameters` -- renamed alongside `size_or_baked` (was `parameter`)
+        and `slot1_flags` (was `params`) so the three no longer share a name up
+        to pluralization. This is the only one of the three actually NAMED --
+        real per-filter parameters like directionalwarp's `intensity`/`angle`.
 
         `kind` is 'baked' for a constant, whose value is the float in the slot, or
         'program', whose value is the program's offset.
@@ -1152,7 +1228,7 @@ class Record:
         accounting for bytes wants `programs`.
         """
         out = list(self.programs)
-        par = self.parameter
+        par = self.size_or_baked
         if out and par and par[0] == 'program' and out[0] == par[1]:
             out = out[1:]
         return out
@@ -1435,6 +1511,53 @@ class Record:
             return None                     # not a ramp: positions do not ascend
         return out
 
+    # ---- curve specialisation
+    @property
+    def curve_points(self):
+        """For filter 22: the spline's control points, or None.
+
+        A curve record carries its curve inline, the way a gradient carries its ramp:
+
+            slot 1   the image input, and curve's only one
+            slot 2   the number of control points
+            slot 3   the table, at the universal +52 skew
+            ...      one or two more pointers, filter-specific
+            last     the point count again
+
+        The table is a u32 count followed by that many 24-byte entries, each six floats.
+        The first curve read out is the identity: point 0 at (0, 0) with both tangents
+        zero, point 1 at (1, 1) with handles (0.303, 1) and (1, 1) - a position pair
+        followed by an incoming and an outgoing tangent, which is a cubic Bezier knot.
+
+        Measured over the 1,519 curve records that declare a count:
+
+            u32 at slot3+52 equals slot 2        1,499   98.68%
+            all 6n floats finite and |v| <= 1e3  1,519  100.00%
+            x coordinates non-decreasing         1,507   99.21%
+            CONTROL: same u32 one word earlier       0    0.00%
+
+        The control is the point. A count-shaped small integer turns up all over these
+        records, so "there is a plausible count here" is worth nothing on its own; the
+        same probe four bytes earlier had to be able to succeed, and it never does.
+
+        Slot 4 is an upper bound rather than the exact end, exactly as it is for `ramp`:
+        span == 24n + 4 holds for 88.55%, and the misses are records where slot 4 is a
+        second pointer or where the table simply has room after it. Reading the count
+        from the table itself avoids depending on that.
+        """
+        if self.filter_id != 22 or len(self.words) < 4:
+            return None
+        n = self.words[2]
+        if not (1 <= n <= 16):
+            return None
+        off = self.words[3] + 52
+        if not (self.asm.body_lo <= off and off + 4 + 24 * n <= self.asm.body_hi):
+            return None
+        if struct.unpack_from('<I', self.asm.data, off)[0] != n:
+            return None                     # the table does not confirm the count
+        v = struct.unpack_from('<%df' % (6 * n), self.asm.data, off + 4)
+        return [tuple(v[i * 6:i * 6 + 6]) for i in range(n)]
+
     # ---- bitmap specialisation
     @property
     def bitmap(self):
@@ -1502,12 +1625,12 @@ class Record:
         if e:
             s += '  inputs=' + ','.join('-' if v == 0 else ('?' if v is None else str(v))
                                         for v in e)
-        p = self.params
+        p = self.slot1_flags
         if p and 'blendingmode' in p:
             s += '  mode=%d' % p['blendingmode']
         if self.programs:
             s += '  prog@%d' % self.programs[0]
-        p2 = self.parameter
+        p2 = self.size_or_baked
         if p2 and p2[0] == 'float':
             s += '  param=%g' % p2[1]
         mx = self.matrix
@@ -1720,8 +1843,8 @@ class Assembly:
     def referenced_programs(self):
         """Every program some 4-aligned word in the file points at, as {start: end}.
 
-        The layout-based `Record.parameter` finds a record's *own* parameter program and
-        is the strict reading. It is not the whole story: FX-Map records reach programs
+        The layout-based `Record.size_or_baked` finds a record's *own* parameter program
+        and is the strict reading. It is not the whole story: FX-Map records reach programs
         through their tree, the version-2 prologue holds programs no record slot names,
         and both looked like undecoded regions until this was measured.
 
