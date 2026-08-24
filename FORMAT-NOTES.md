@@ -21695,3 +21695,65 @@ genuinely cannot read (547).
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## Correction: those records have parameters. The layout key does not encode input count
+
+The previous two sections reclassified 772 records as having **no parameter**, on the
+grounds that the slot the layout calls the parameter slot holds an edge. The evidence for
+"that word is an edge" was sound - three independent properties agreed. The conclusion drawn
+from it was not.
+
+### What made it wrong
+
+I framed it as a property of the layout keys: *"the layout entry for those keys names an edge
+slot as its parameter slot."* That is checkable and false:
+
+    layout keys whose progs[0] is also in their own edge list        0 of 809
+    keys where progs[0] holds a backward record index in >90% of records   0
+    median share of a key that the flagged records make up            2.6%
+
+The keys are right about the overwhelming majority of their records. Whatever was happening
+was per-record, not per-key - so I should not have described it as a defect in the table.
+
+### What is actually happening
+
+The flagged records differ from their key-mates in a way the key does not capture:
+
+                 median edges   median words   median programs
+    flagged            5             350              0
+    normal             1              28              1
+
+and 10 of the 16 affected keys have *disjoint* word counts between the two groups. They are
+multi-input `pixelprocessor` records. **The layout key does not encode how many inputs a
+record has**, so a record with more inputs than its key's edge list covers has its program
+slot pushed along by the extra edges, and the key's index lands on one of them.
+
+Stepping past the run of edge-shaped words:
+
+    lands on a valid program     327 of 327     no exceptions
+
+The parameter was never absent. It was four slots further on - 304 of the 327 skip exactly
+four.
+
+### The fix, and its guard
+
+`Record.parameter` now falls back when its slot holds a backward record index AND that slot
+is one the filter uses as an edge slot under other keys, stepping past the run and requiring
+a valid program at the end. All three conditions are needed: the first two are what made the
+records identifiable, and the third is what makes the answer checkable rather than assumed.
+
+    parameters read      856,240  ->  856,979    (+739)
+    slot is an edge          772  ->       33
+    genuinely unread         547        unchanged
+
+So of the 772 I had written off, **739 have a parameter** and 33 do not.
+
+### The lesson
+
+The three tests in the previous section did establish what they claimed - the word in that
+slot is an edge. What they could not establish, and what I asserted anyway, is that the
+record therefore has no parameter. "This slot holds an edge" and "this record has no
+parameter" are different propositions, and only the first was measured.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.

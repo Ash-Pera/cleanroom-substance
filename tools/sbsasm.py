@@ -122,6 +122,13 @@ def _load_layouts():
 
 LAYOUTS, HEADER_WORDS = _load_layouts()
 
+# Every slot any layout key registers as an EDGE slot, per filter. Used to recognise a
+# record whose input count the key does not encode, where the key's program slot has been
+# pushed along by extra edges.
+EDGE_SLOTS = {}
+for _k, _v in LAYOUTS.items():
+    EDGE_SLOTS.setdefault(_k[0], set()).update(_v[0])
+
 # FX-Map tree node shapes: header -> (offset of the next pointer, program slots).
 # The tree is a singly linked list entered from record slot 2, and each node carries a
 # program. 0x18B is `addnode` (exact count against source over 110 records) and its
@@ -586,6 +593,27 @@ class Record:
         addr = self.offset + 4 * sl
         if self.asm.program_span(addr, self.end):
             return ('program', addr)
+        # The layout key does not encode how many INPUTS a record has. A record with more
+        # inputs than its key's edge list covers has its program slot pushed along, and the
+        # slot the key names holds another edge - a backward record index.
+        #
+        # Recognised by three things together, none of which is enough alone: the word is a
+        # backward record index, the slot is one this filter uses as an edge slot under
+        # other keys, and stepping past the run of such words lands on a valid program.
+        # That last is the one that pays: it holds in 327 of 327 records, no exceptions.
+        #
+        # These records are `pixelprocessor` with a median of 5 edges against 1 for the
+        # rest, and 350 words against 28. Multi-input records, in other words.
+        if not (0 <= v < self.index and sl in EDGE_SLOTS.get(self.filter_id, ())):
+            return None
+        k = sl
+        while k < len(self.words) and 0 <= self.words[k] < self.index:
+            k += 1
+        if k >= len(self.words):
+            return None
+        q = self.words[k] + 52
+        if self.asm.body_lo <= q < self.asm.body_hi and self.asm.valid_program(q):
+            return ('program', q)
         return None
 
     @property
