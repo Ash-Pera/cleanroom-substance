@@ -17497,3 +17497,60 @@ from "acknowledged gap" to "decoded program"**, leaving 2,750 - the index table.
 The alignment mistake is the same shape as the others found today: a convenience that was
 true of most cases, applied as though it were a property of the format. Records are
 4-aligned; the programs inside them are not.
+
+## The other 34% of fxmaps records hold a value table, not a node chain
+
+### First, alignment is not the explanation
+
+The layout-B prologue was misread because programs are 2-byte aligned and the scan stepped
+4. The obvious next question was whether FX nodes are the same. They are not:
+
+    node headers found at 0 mod 4    43,456  (99.81%)
+    at 2 mod 4                           83  (0.19%)
+    tree root pointer target, 4-aligned  27,637 of 27,637
+
+Rescanning every fxmaps record on 2-byte alignment leaves the count of records with no
+known node **unchanged at 9,437**. A quick negative, and worth having: it stops the
+alignment finding from being over-applied.
+
+### The tag that appears in two places
+
+For those 9,111 records whose slot-2 target is not a known node header, the commonest
+header is `0x20008` (4,044 records). **That is the same tag that fills the layout-B
+prologue's index table**, where it appears as `(0x20008, offset)` pairs.
+
+The shape matches. In 88.1% of those records the word at +4 is a pointer - `w1 + 52` lands
+inside the record - and it points **forward in 8,027 of 8,027 cases**. Following it, what
+it reaches is not a node and not a program:
+
+    0x20008     3,249      0x3e800000  411   =  0.25
+    0x420008      625      0x3f400000  388   =  0.75
+                           0x40000000  299   =  2.0
+                           0xbe800000  209   = -0.25
+
+Either another entry of the same kind, or a **float**. This is the same structure as the
+prologue's `(0x532, 44)` entry, whose offset pointed at a `const.f1` immediate of 1.0.
+
+### Following the chain, with a control
+
+Walking entry to entry until something that is not an entry is reached:
+
+    reaches a float                2,058  (22.6%)
+    pointer leaves the record      7,052  (77.4%)
+
+and the values reached are artists' numbers: 0.25, 0.75, 2.0, -0.25, 0.5, 1.5, 1.0, -1.0.
+
+The control is the same walk started from an arbitrary word in the same record:
+
+    slot-2 target    reaches a float  22.6%
+    arbitrary word   reaches a float   2.4%
+
+**A 9.4-fold enrichment.** The structure is real - these records carry a table of tagged
+values reached by forward pointers, and it is the same table kind the version-2 prologue
+uses. What is not established is the traversal: 77.4% of chains walk out of the record,
+so the rule for stepping between entries is incomplete, and the entry tags themselves
+(`0x20008`, `0x420008`, `0x100048`, `0x248`, `0x8000848`) are undecoded.
+
+So the 34% is no longer "fxmaps records with no readable content". It is **fxmaps records
+whose slot 2 addresses a value table rather than a node chain**, one that also appears in
+the version-2 prologue, partially traversable and not yet decoded.
