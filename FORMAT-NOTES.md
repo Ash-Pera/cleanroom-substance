@@ -30220,3 +30220,77 @@ neighbouring channel: a wrong image is worse than a refusal, and this is the fil
 whole job is which-channel-goes-where.
 
     declared outputs produced   129 -> 143 of 598      files fully rendering   11 -> 12
+
+## What the FX table is: `paramset`, found by a natural experiment
+
+`paramset` is the third declared FX-Map node type and the only one with no header. It
+declares eight parameter kinds and this document has said since early on that it "compiles
+to no tree node". True, and incomplete — it compiles to a TABLE ENTRY.
+
+### Two files settle it
+
+Of the eight permitted sources carrying FX-Map node data, two declare `paramset` and
+**nothing else**:
+
+    Simulator__Grid              paramset=4   8 parameters, 0 dynamic
+      compiled: 6 fxmaps records, 0 chain nodes, 7 table entries
+    Clouds_3_Animated            paramset=6  11 parameters, 7 dynamic
+      compiled: 2 fxmaps records, 0 chain nodes, 9 table entries
+
+Zero chain nodes in both, from graphs whose only content is `paramset`. That is the
+experiment: a graph made entirely of the node type with no header produces entries and no
+nodes. `paramset` is the table.
+
+### Two things that were tried and failed, recorded because they look plausible
+
+**Predicting entry programs from paramset's declared graphs.** Push each dynamic paramset
+parameter through `FX_LOWERING` and look for a table-entry program with that exact opcode
+multiset: **0 of 98 matched**. The dictionary is fitted on `addnode`/`markov2` graphs, so
+this was a genuine out-of-sample test, and it failed.
+
+**Sub-multiset containment,** on the theory that a paramset parameter is folded into a
+neighbouring node's program. 98 of 98 predicted multisets are contained in some program in
+their own file — and **98 of 98 are also contained in a program from a DIFFERENT file**.
+The test has no power: these multisets are small enough to sit inside almost any program.
+Recorded rather than reported as a finding, which is what the 100% in the control column is
+for.
+
+### The tag determines the program slots exactly
+
+The earlier attempt at this — `FX_TABLE`, 25 tags with one offset each — was derived when
+entries were found by stepping 8 bytes, and was withdrawn with the population it rested on.
+Walking entries by the tag-stated length instead makes the answer far sharper. Per tag, the
+fraction of its entries holding a program at each word offset:
+
+    0x00420008   25,443 entries  len 24    k3:100%
+    0x15400348    3,600           terminal k2:100% k3:100% k4:100% k5:100%
+    0xD4540088      807           len 88   k3..k8, 100% each
+    0x00020008   50,965           len 8    none -- a data-only entry
+    0x02440248    1,110                    k2:100%
+
+Not 60%, not 88% — 100%. The claim worth checking is that there is no MIDDLING slot: a slot
+holding a program in 60% of a tag's entries would mean the tag does not decide.
+
+    tags with 20+ entries                                        100
+    ...whose every offset is either 95%+ or under 5%              83
+    entries those tags cover                       111,109 of 112,012
+    tags carrying at least one program                            66
+
+83 of 100 tags have no middling slot at all. That is what a fixed record layout looks like
+from outside, and it is the check that separates this from the version that was withdrawn.
+
+`0x00020008` is worth noting on its own: 50,965 entries, the commonest tag in the corpus,
+8 bytes long and carrying **no program**. It is a pure data entry — which is exactly what
+`Simulator__Grid` should produce, since all four of its paramset nodes have constant
+parameters and nothing to compute.
+
+### Where the FX-Map decode now stands
+
+    fxmaps records                41,164
+      yielding nothing at all         70    0.17%
+      chain nodes                  63,830   their programs   66,314
+      table entries               112,012   their programs  104,345
+      total FX programs                                     170,659
+
+Entry programs went from 34,857 to 104,345 in this section, because an entry with six
+program slots used to be reported as carrying at most one.

@@ -608,6 +608,47 @@ FX_TABLE = {
 #        step landed on a vocabulary tag            68,521    85.7%
 #        step landed elsewhere                      11,399
 #        CONTROL: a stride the table did not state             24.6%
+# Where a table entry keeps its programs, by tag, as WORD offsets from the entry start.
+#
+# `FX_TABLE` above is the earlier attempt at this: 25 tags, one offset each, derived when
+# entries were enumerated by stepping 8 bytes. That population was unsafe and the result
+# was withdrawn. With entries walked by the tag-stated length instead, the same question
+# has a much sharper answer -- the tag does not merely suggest an offset, it DETERMINES
+# the set:
+#
+#     tags with 20+ entries                                            100
+#     ...whose every offset is either 95+ percent or under 5 -- no
+#        middling slot                                                  83
+#     entries those tags cover                            111,109 of 112,012
+#     tags carrying at least one program                                66
+#
+# "No middling slot" is the claim worth checking. A slot holding a program in 60 percent
+# of a tag's entries would mean the tag does not decide; 83 of 100 tags have no such slot,
+# each offset either always holding one or never. That is what a fixed record layout looks
+# like from outside, and it is the check that separates this from the withdrawn version.
+FX_ENTRY_PROGS = {
+    0x00000008: [2, 3, 4, 5, 6], 0x0000019B: [2], 0x0000100B: [5], 0x0000190B: [4],
+    0x0000770B: [4, 5, 8], 0x0001900B: [4, 5, 8], 0x00024D0B: [4, 5, 6, 7, 8], 0x0006910B:
+    [4], 0x000E100B: [4, 5, 8], 0x00100048: [2], 0x00410008: [6], 0x0041010B: [4],
+    0x00420008: [3], 0x00420018: [4], 0x00500248: [2, 3], 0x00500E48: [2, 3], 0x00520158:
+    [4, 5], 0x01520248: [3, 4, 5], 0x02400448: [2], 0x02440248: [2], 0x02520448: [3, 4],
+    0x03520248: [3, 4, 5], 0x04000048: [2], 0x04000148: [2], 0x04000E48: [2], 0x04440048:
+    [2, 3], 0x04540048: [2, 3, 4], 0x05140048: [2, 3, 4], 0x05400348: [2, 3, 4], 0x08520158:
+    [4, 5], 0x0C520958: [4, 5, 6], 0x124A0648: [4, 7], 0x12520448: [3, 4, 7], 0x13120658:
+    [4, 5, 8], 0x13520248: [3, 4, 5, 8], 0x13520658: [4, 5, 6, 9], 0x13520948: [3, 4, 5, 8],
+    0x13520958: [4, 5, 6, 9], 0x14120648: [3, 4, 5], 0x14420248: [3, 4, 5], 0x14420448: [3,
+    4, 5], 0x14520248: [3, 4, 5, 6], 0x14540E48: [2, 3, 4, 5], 0x15000448: [2, 3, 4],
+    0x150A0248: [4, 5, 6], 0x15140848: [3, 4, 5], 0x15400348: [2, 3, 4, 5], 0x34520A48: [3,
+    4, 5, 6], 0x34520A58: [4, 5, 6, 7], 0x35520A48: [3, 4, 5, 6, 7], 0x54500048: [2, 3, 4,
+    5, 6], 0x54500148: [2, 3, 4, 5, 6], 0x54500248: [2, 3, 4, 5, 6], 0x54500448: [2, 3, 4,
+    5, 6], 0x54500748: [2, 3, 4, 5, 6], 0x54500848: [2, 3, 4, 5, 6], 0x54500C48: [2, 3, 4,
+    5, 6], 0x54540248: [2, 3, 4, 5, 6], 0x54540748: [2, 3, 4, 5, 6], 0x54540848: [2, 3, 4,
+    5, 6], 0x54540E48: [2, 3, 4, 5, 6], 0x55140048: [2, 3, 4, 5, 6], 0x95140088: [3, 4, 5,
+    6, 7], 0xD4500088: [3, 4, 5, 6, 7, 8], 0xD4540088: [3, 4, 5, 6, 7, 8], 0xD5140088: [3,
+    4, 5, 6, 7, 8],
+}
+
+
 FX_TAG_LOW16 = frozenset({
     0x0008, 0x0018, 0x0048, 0x0088, 0x0148, 0x0248, 0x0288, 0x0348, 0x0448,
     0x0548, 0x0648, 0x0748, 0x0848, 0x0B48, 0x0C48, 0x0D48, 0x0E48,
@@ -1576,12 +1617,27 @@ class Record:
             # the run too. Neither signal subsumes the other.
             if (tag & 0xF) != 8 and not (o <= t < e - 3):
                 break
-            off = FX_TABLE.get(tag)
-            prog = None
-            if off is not None and o <= t < e - 3 and t + off + 4 <= e \
-                    and self.asm.program_span(t + off, e):
-                prog = t + off
-            yield q, tag, prog
+            slots = FX_ENTRY_PROGS.get(tag)
+            if slots:
+                # One yield PER PROGRAM SLOT, the way `fx_tree` does it. An entry with six
+                # programs was previously reported as carrying at most one.
+                any_ = False
+                for sl in slots:
+                    if q + 4 * sl + 4 > e:
+                        break
+                    pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
+                    if o < pv < e and self.asm.program_span(pv, e):
+                        yield q, tag, pv
+                        any_ = True
+                if not any_:
+                    yield q, tag, None
+            else:
+                off = FX_TABLE.get(tag)
+                prog = None
+                if off is not None and o <= t < e - 3 and t + off + 4 <= e \
+                        and self.asm.program_span(t + off, e):
+                    prog = t + off
+                yield q, tag, prog
             # The tag states the entry's length; 8 was a guess that happened to be the
             # second commonest. Falls back to 8 for a tag the table does not carry, so a
             # record with an unlisted tag degrades to the old behaviour rather than
