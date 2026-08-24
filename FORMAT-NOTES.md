@@ -26249,3 +26249,49 @@ What that leaves as genuinely open is narrower and worth stating: whether *anyth
 downstream needs instance boundaries. A renderer does not - the flattened graph computes
 the same image. Only a round-trip back to editable `.sbs` does, and that was never
 achievable from the archive alone.
+
+## What the harness measures, and what still fails
+
+With `run_file.py` threading a cache through a whole file, execution is measurable for the
+first time. Over the first 60 files:
+
+    programs            137,951
+    ran to a value      137,887    99.954%
+    all values finite   137,717    99.830%
+
+    failures            ValueError      37
+                        NoSharedCache   25
+                        IndexError       2
+
+### The failures are three things, and two of them are one thing
+
+**Sampler indices are not small.** The first version installed sixteen and every index beyond
+that raised `KeyError` - eight programs scored as failures for a fault in the harness rather
+than the file. The corpus references indices up to **8,688**, so `SAMPLERS` now answers for any
+index. That is a measurement bug of exactly the kind this file keeps finding: a control that
+fails for its own reasons looks like a result.
+
+**The 25 cache failures are cascades, not cache problems.** Tracing each one to the record that
+writes its index:
+
+    the writer exists and is EARLIER in record order   20 of 25
+    the index is never written anywhere in the file     5 of 25
+    the writer exists but is LATER                      0 of 25
+
+So `cache_read`'s documented guarantee - writers precede readers in record order - holds here
+too, and these failed because the writer's own program failed first and never wrote. Fixing the
+root causes would take most of the 25 with them.
+
+**The root cause is component width.** The messages are all one shape:
+
+    vec: concatenation gave 2 components, declared 4       17
+    operands could not be broadcast, shapes (1,2) (1,8)     5
+    operands could not be broadcast, shapes (1,8) (1,2)     4
+    vec: concatenation gave 2 components, declared 3        3
+
+Something builds a two-component value where four are declared, or an eight-component one meets
+a two. `vec`'s guard says "no observed case" - it was written for a situation that had never
+arisen, and now has. These are transpiler and runtime questions rather than format ones: the
+bytes are decoded, the instruction is known, the width bookkeeping around it is wrong.
+
+39 root-cause failures in 137,951 programs, 0.028%.

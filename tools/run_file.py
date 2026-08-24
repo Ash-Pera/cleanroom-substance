@@ -46,11 +46,28 @@ def _namespace():
     return ns
 
 
-def install_samplers(count=16, size=8):
-    """A constant frame for every sampler index a program might reach."""
-    frame = np.full((size, size, 4), 0.5, dtype=float)
-    for i in range(count):
-        sbsruntime.SAMPLERS[i] = sbsruntime.image_sampler(frame)
+class _Samplers(dict):
+    """Any sampler index resolves to a constant frame.
+
+    Indices are not small: the corpus references up to 8,688, so pre-installing a fixed
+    count leaves holes that surface as KeyError and look like program failures. They are
+    not - the point of this harness is whether a program EVALUATES, and every index it
+    reaches must therefore answer.
+    """
+
+    def __init__(self, size=8):
+        super().__init__()
+        self._frame = np.full((size, size, 4), 0.5, dtype=float)
+
+    def __missing__(self, index):
+        fn = sbsruntime.image_sampler(self._frame)
+        self[index] = fn
+        return fn
+
+
+def install_samplers(count=None, size=8):
+    """Install a mapping that answers for every sampler index."""
+    sbsruntime.SAMPLERS = _Samplers(size)
 
 
 def programs_of(asm, rec):
