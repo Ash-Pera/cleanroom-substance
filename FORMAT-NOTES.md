@@ -26912,3 +26912,81 @@ defensible reading of operand 3 is:
 `transpile.py` currently raises `Unsupported` for these loops rather than choosing any
 bound, which remains defensible while the reading rests on 6 shapes. If it is ever wired
 up, the condition to test is parity, not membership.
+
+## Audit: what the segmenter still asserts that this document has withdrawn
+
+Retractions land in the notes and not always in the code. Seven things were still standing;
+five are internal contradictions a reader could have caught without new measurement.
+
+### 1. `SHARED` still carried the refuted shared-reference reading
+
+*The shared reference is not provenance* refuted the hierarchy, and *Slot 1 is two different
+things* gave the discriminator that separates a packed parameter word from a real reference.
+Neither was applied to the `SHARED` table itself. Applying it now:
+
+    filter slot  records  distinct  max/file    bit6     bit7
+      19    2      2,225      362        28    49.26%   48.67%   reference
+       8    1        546       22         7     0.37%   45.42%   ambiguous
+      11    1     15,109        7         6     0.00%    0.00%   bitfield
+      22    2      1,273       12         6     0.00%    0.00%   bitfield
+
+Filters 11 and 22 have the packed-parameter shape outright - seven and twelve distinct
+values across the whole corpus, never more than six in one file, bits 6 and 7 dead at
+0.00%. **Filter 11 was simultaneously in `PARAM_WORD`**, so one file claimed the same slot
+as both a reference and a bitfield. Both are removed. Filter 19 is reference-shaped and
+stays. Filter 8 resolves neither way and stays with the measurement written beside it.
+
+`Record.shared_refs` is consumed nowhere, so nothing downstream was corrupted - the table
+was a refuted claim sitting in a header, which is its own kind of harm in a document whose
+value is that its conclusions carry their tests.
+
+### 2. Filter 19 was in `FILTERS` and `UNNAMED` at once
+
+`Record.known` reads it as identified, `describe()` renders it as unknown. Named
+`dyngradient`; the `UNNAMED` entry was a leftover. Removed.
+
+### 3. `fx_tree`'s docstring claimed one yield per node
+
+It yields once per **program slot**, so a `0x1AB` node with two of them is yielded twice at
+the same offset. Recorded in `tools/README.md` when it was found and never in the method
+itself, which is where a caller building a census would look. Corrected.
+
+### 4. `coverage()` presented a figure this document retracts
+
+Its docstring says "anything unexplained is reported, not hidden", which is the reading
+*"0 unexplained bytes" was measuring the directory* withdrew: record extents are marked on
+enumeration and the directory partitions the body, so the count is circular by
+construction. The retraction was in the notes and the README; the method a reader actually
+calls said the opposite. It now carries the qualification and points at 92.5% of record
+bytes.
+
+### 5. `README.md` said filter 11 cannot be named
+
+The provenance-cost paragraph named filter 11 as a specimen the exclusion rule costs us.
+It is `dirmotionblur`, named from permitted sources alone. Corrected, and the second
+boundary lapse - eight archives scanned before the predicate was applied - added beside the
+first, since that paragraph is where such things are supposed to be disclosed.
+
+### 6. The filter counts were stale within hours
+
+`README.md` said "17 of 23 filter ids" and "six filter ids (2.9% of records)" not decoded.
+Three more were named in the same session. It is 20 of 23, three unnamed - 5, 8 and 9 - at
+**0.09% of records**. Also corrected: the corpus is 438 specimens, not the 435 the headline
+figures were measured over, and the headline now says so rather than implying it is current.
+
+### 7. `PARTIAL_EDGES` understates what is known, and is read by nothing
+
+Its `fxmaps` entry says inputs "resolve only in the bit-12 layout (8.3% of its records)".
+*`fxmaps` inputs, settled per layout* resolves them across four size classes - six slots at
+100% in the 52-byte records, slot 5 in the 32-byte, slot 6 in the 40-byte, none in the
+36-byte. The table is consumed by no code at all, so this is documentation drift rather
+than a decoding error, and it is left for whoever rewrites that entry with the layout split
+it now needs.
+
+### The pattern
+
+Five of the seven are a table or docstring disagreeing with another table, another
+docstring, or a section of these notes - catchable by reading, needing no corpus. The
+project's discipline is strong at the point a finding is made and weak at propagating a
+retraction into the artifacts that encode it. A retraction that reaches only the notes
+leaves the code asserting the thing that was withdrawn, and the code is what a reader runs.

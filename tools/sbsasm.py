@@ -70,8 +70,10 @@ FILTERS = {
 # the cooker" and "does it land at the right filter" as one number.
 # Unnamed ids, with what is known. Never rendered as a name.
 UNNAMED = {5: 'generator, greyscale (svg?)', 8: 'two inputs, greyscale control (emboss?)',
-           9: 'legacy, version 0x20000 only',
-           19: 'one input from blend + shared pixelprocessor map'}
+           9: 'legacy, version 0x20000 only'}
+# 19 was here and is now `dyngradient` in FILTERS. An id in both tables is read as known
+# by `Record.known` and as unknown by `describe()`, so the stale entry was a live
+# contradiction rather than a harmless leftover.
 
 # Data edges: slots whose targets are used once each (refs/target ~= 1).
 # Derived by measuring, per filter, the rate at which a slot holds a valid backward
@@ -89,7 +91,23 @@ PARTIAL_EDGES = {3: 'shuffle takes up to 4 inputs; only slot 3 resolves reliably
                  16: 'bitmap has no image input'}
 
 # Shared references: slots pointing at one record used by many (refs/target >> 1).
-SHARED = {8: [1], 11: [1], 19: [2], 22: [2]}
+#
+# Audited with the discriminator from "Slot 1 is two different things", which separates a
+# packed parameter word (small global vocabulary, bits 6 and 7 structurally dead) from a
+# real reference (many values, high bits set about half the time):
+#
+#     filter slot  records  distinct  max/file    bit6     bit7
+#       19    2      2,225      362        28    49.26%   48.67%   reference - KEPT
+#        8    1        546       22         7     0.37%   45.42%   ambiguous - kept, flagged
+#       11    1     15,109        7         6     0.00%    0.00%   bitfield  - REMOVED
+#       22    2      1,273       12         6     0.00%    0.00%   bitfield  - REMOVED
+#
+# 11 and 22 are the packed-parameter-word shape, and 11 was additionally in PARAM_WORD, so
+# the same slot was claimed as both a reference and a bitfield in one file. Those two are
+# what the "shared reference is a hierarchy" reading left behind after it was refuted.
+# Filter 8 does not resolve cleanly either way - 22 values is a small vocabulary, but bit 7
+# is set 45% of the time - so it stays and says so.
+SHARED = {8: [1], 19: [2]}
 
 # The slot holding the record's OUTPUT SIZE expression -- not a filter parameter.
 #
@@ -1147,7 +1165,11 @@ class Record:
             q += 8
 
     def fx_tree(self):
-        """For filter 4: yield (offset, header, program offset or None) per tree node.
+        """For filter 4: yield (offset, header, program offset) once PER PROGRAM SLOT.
+
+        NOT once per node, which this said for a long time: a node with two program slots
+        (`0x1AB`) is yielded twice at the same offset, so any census built on this
+        over-counts multi-program nodes. Count distinct offsets.
 
         Nodes whose header is not in FX_NODES stop the walk - the vocabulary is open,
         and guessing a node's size to continue past one is how earlier walks wandered
@@ -1670,6 +1692,14 @@ class Assembly:
     # ---- accounting
     def coverage(self, unreached=True):
         """Classify every byte. Anything unexplained is reported, not hidden.
+
+        **The `unexplained` count is a weak measure and reads far stronger than it is.**
+        Record extents are marked accounted for on enumeration, and the record directory is
+        a sorted partition of the body, so every body byte is inside some record by
+        construction. Reporting 0 unexplained therefore measures the directory's
+        completeness, not the segmenter's understanding. The figure to quote is 92.5% of
+        record bytes interpreted; see FORMAT-NOTES.md, "0 unexplained bytes was measuring
+        the directory".
 
         `unreached` also credits programs that no record slot points at - FX-Map tree
         programs and the layout-B prologue. It costs a scan of the file; pass False for

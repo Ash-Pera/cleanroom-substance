@@ -45,10 +45,13 @@ this project is built on. Two things were excluded throughout:
   individual graphs gave up 12 graphs that were the material author's own work.
 
 That exclusion has a measured cost, and the notes record it rather than hiding it: filter
-id 11 (1.7% of all records) and filter id 5 cannot be named, because every specimen that
-would identify them is excluded. One occasion where the boundary was brushed — aggregate
-counts read from two excluded files before it was noticed — is disclosed too, along with
-the fact that the observation was not used.
+id 5 cannot be named, because every specimen that would identify it is excluded. Filter 11
+was in that sentence for a long time and no longer belongs there — it is `dirmotionblur`,
+named from the permitted sources alone once containment was applied to its two declared
+`Float1` parameters. Two occasions where the boundary was brushed are disclosed as well:
+aggregate counts read from two excluded files before it was noticed, and eight archives
+extracted and scanned before the predicate was applied rather than after. Neither
+observation is used, and both are recorded in FORMAT-NOTES.md.
 
 The **Provenance statement** at the top of `FORMAT-NOTES.md` is the auditable version of
 all of this in one place. The exclusion predicate is a single string match and can be
@@ -56,7 +59,8 @@ re-run against any corpus.
 
 ## Where the format stands
 
-Measured over 435 specimens, 895,674 records, 4.09 GB:
+Measured over 435 specimens, 895,674 records, 4.09 GB (the corpus has since grown to 438;
+the figures below are the last full audit):
 
     filter identified              97.9%
     size expression or first
@@ -71,14 +75,14 @@ so every body byte is inside some record by construction. That measured the dire
 completeness, not the segmenter's. 92.5% counts only bytes the model can put a meaning to.
 
 Decoded: the container, the record directory as a sorted extent map, the tag's filter and
-resolution fields, 17 of 23 filter ids, the edge map, the parameter word for `blend`
+resolution fields, 20 of 23 filter ids, the edge map, the parameter word for `blend`
 (including `blendingmode`), the instruction set at 41 operations, the embedded bitmap format,
 graph inputs by uid, the system variables, and the output-to-record attribution — a table
 between the directory and the first record that five earlier approaches had all missed,
 naming each output's record in 3,249 of 3,249 with a colour-mode check it could have failed
 and did not (`Assembly.outputs()`).
 
-Not decoded: six filter ids (2.9% of records), the FX-Map node vocabulary beyond `addnode`,
+Not decoded: three filter ids (0.09% of records), the FX-Map node vocabulary beyond `addnode`,
 and what most filter parameters mean once their record and program are known — the gap that
 actually blocks a renderer. The version-2 prologue is no longer on this list: it is a
 constant 72-byte preamble of programs, one of which binds the graph's random seed. Neither
