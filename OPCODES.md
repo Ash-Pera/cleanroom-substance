@@ -5,7 +5,11 @@
 `1EB8` - were shown by direct test to be misread data, not instructions. See "The five
 unnamed opcodes are not instructions" below.) (The catalogue table below
 has one row per type-operation pair; its 67 rows have previously been quoted as an operation
-count, which conflates the two. See "The operation-by-type matrix" in FORMAT-NOTES.) Measured over 382 distinct specimens (the corpus holds 579
+count, which conflates the two. See "The operation-by-type matrix" in FORMAT-NOTES.)
+**This headline is scoped to the ≥50-specimen filter below it, not to every real operation
+in the ISA** - `0x0B` (a loop, see "`0x0B` is a loop" below), `0x35` and `0x36` (real,
+appear in 37 and 8 files, meaning not established) all fall under that threshold and are
+not part of the "41". "Confirmed below the catalogue threshold" lists what else does. Measured over 382 distinct specimens (the corpus holds 579
 `.sbsasm` files, 34% of them duplicate content) and 11,845,287 instructions decoded by
 `isa_census.py`, which **scans** code regions run-by-run. An earlier version of this line
 claimed the census walked records to their bytecode; it does not, and that mattered - the
@@ -134,8 +138,11 @@ These are established structurally, not by frequency:
 | `052A` | float | 1 | `2A` | 3,733 | 45 | `exp` — 578/578 exact in `ie_processing` |
 | `085E` | bool | 1 | `1E` | 2,927 | 21 | **`neq`** — deepest-embedded opcode tested (median containing run 21,102) |
 | `0525` | float | 1 | `25` | 17,493 | 287 | `ceil` — 17/17 exact in `ie_processing` |
-| `0503` | float | 1 | `03` | 3,603 | 34 | a distinct variable-access kind |
+| `0503` | float | 1 | `03` | 3,603 | 34 | reads the cross-record cache `0x06` writes — see FORMAT-NOTES.md, "`0x03`/`0x06` are cross-record common-subexpression elimination" |
+| `150B` | float | 1 | `0B` | 542 | 20 | `while` — a loop, no immediate; see "`0x0B` is a loop" below |
 | `11CF` | float | 4 | `0F` | 28 | 6 | **probably `vec4`** — build a 4-vector from four scalars |
+| `0535` | float | 1 | `35` | 3,903 | 37 | unary, always immediately `ceil`/`floor`'d, fed 73% by `cvt` — **probably `log2`**, not confirmed numerically |
+| `0936` | float | 1 | `36` | 53 | 8 | unnamed |
 
 `0x0F` is the only operation that takes four operands and returns four components. It
 appears in one form only, is the **terminal instruction in 28 of 28** instances, and is

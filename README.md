@@ -66,11 +66,15 @@ Measured over 435 specimens, 895,674 records, 4.09 GB:
 Decoded: the container, the record directory as a sorted extent map, the tag's filter and
 resolution fields, 17 of 21 filter ids, the edge map, the parameter word for `blend`
 (including `blendingmode`), the instruction set at 41 operations, the embedded bitmap format,
-graph inputs by uid, and the system variables.
+graph inputs by uid, the system variables, and the output-to-record attribution — a table
+between the directory and the first record that five earlier approaches had all missed,
+naming each output's record in 3,249 of 3,249 with a colour-mode check it could have failed
+and did not (`Assembly.outputs()`).
 
-Not decoded: FX-Map tree internals, four filter ids, the version-2 prologue, and the
-association between a graph's outputs and the records that produce them — which five
-independent approaches failed to find, because the binary does not store it.
+Not decoded: FX-Map tree internals, four filter ids, the version-2 prologue, and what most
+filter parameters mean once their record and program are known — the gap that actually
+blocks a renderer. See FORMAT-NOTES.md's most recent status section for the current ranking;
+this paragraph is a summary and falls behind it.
 
 ## On the notebook style
 

@@ -35,6 +35,7 @@ NAMES = {
  (1,0x31):'max',     (2,0x31):'max',
  (1,0x32):'rand',
  (1,0x33):'samplelum',(1,0x34):'samplecol',
+ (1,0x0B):'while',    (0,0x0B):'while',
  (0,0x1A):'and',     (0,0x1B):'or',      (0,0x1C):'not',
  (0,0x1D):'eq',      (0,0x1F):'gt',      (0,0x20):'gteq',
  (0,0x21):'lt',      (0,0x22):'lteq',
