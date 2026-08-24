@@ -24276,3 +24276,57 @@ the rule correct, so against the records it is 100% too. What is left is 98 reco
 more slots than the rule offers. Bit 10 is the obvious candidate for a fourth `g` term, but 98
 records across two class words is not enough to claim it, and adding a term per unexplained
 class word is how a rule turns back into a table.
+
+## Reading the last 138 one at a time
+
+The 98 records left over were worth looking at individually rather than fitting. They are two
+different things that a count could not separate.
+
+**Group A - the table over-claims a junk slot.** 42 records, `levels` and `dirmotionblur`:
+
+    levels cls 0x19  states (0,2,0,0,0)  table 3  rule 2
+      slot 3 PROGRAM   slot 4 PROGRAM   slot 5  0x9020001 = 1.56e-33
+
+Slot 5 is not a float. Across these it is `0x9020001`, `0x9020003`, `0x9020005`, `0xa020005`,
+`0xa420044` - a `0x0?02000?` tag, the same shape as a node header. The rule is right and the
+table has one slot too many.
+
+**Group B - every slot is a real parameter.** 95 records, `dirmotionblur` and
+`directionalwarp`, all at `cls 0x719` and `0x739`:
+
+    dirmotionblur cls 0x739  states (1,1)  table 5  rule 3
+      slot 3 PROGRAM   slot 4 0.99   slot 5 1   slot 6 1.815   slot 7 0.125
+
+Nothing junk there, and the sibling records differ only in the last slot - 0.125, 0.25,
+-0.125 - which is a three-tap blur written out. Both class words carry **bit 10**, and the
+record-level check confirms it:
+
+    cls bit 10 clear   988,036 table slots   junk 0.2%
+    cls bit 10 SET         475 table slots   junk 0.0%   (param 79.4%, program 20.6%)
+
+So bit 10 contributes two extra parameter slots. It is the only one that contributes two;
+bits 0, 7 and 11 contribute one each.
+
+### The rule, final
+
+    slots = |fields in state 1 or 2|
+          + (cls bit 0) + (cls bit 7) + (cls bit 11) + 2 * (cls bit 10)
+          + (blend only:  word1 bit 9)
+          - (levels only: 1 when outlow and outhigh are both active and cls bit 0 is clear)
+
+    against layouts.json        468,203 / 471,046   99.396%
+      blend                     310,631 / 310,631  100.000%
+      directionalwarp            60,365 /  60,365  100.000%
+      dirmotionblur              14,823 /  14,837   99.906%
+      levels                     82,384 /  85,213   96.680%
+
+The table is the wrong scoreboard, though. Judging the 2,843 disagreements against the records:
+
+    rule claims a slot and it IS parameter-like   2,764    rule right, table short
+    table claims a slot and it is JUNK               42    rule right, table over-claims
+    rule claims a slot and it is not                 36    rule wrong
+    table claims a slot that is parameter-like        1    rule short
+
+2,806 of 2,843 go to the rule. **Against the records the rule is right on 471,009 of 471,046 -
+99.992%** - and `layouts.json` carries 2,806 entries that disagree with the bytes they
+describe. 37 records remain genuinely unexplained.

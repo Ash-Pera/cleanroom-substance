@@ -101,6 +101,27 @@ def scan():
                     T['fx_root'] += 1
                     T['fx_root_aligned'] += (q % 4 == 0)
 
+            # The slot rule. Scored against the RECORDS, not layouts.json -- the table has
+            # 2,806 entries that disagree with the bytes they describe.
+            ent = sbsasm.PARAM_SPEC.get(r.filter_id)
+            if ent and r.filter_id not in sbsasm.PARAM_RAW and len(r.words) > 1:
+                key = (r.filter_id, r.cls,
+                       r.words[1] & sbsasm.LAYOUT_MASK.get(r.filter_id, 0))
+                lay = sbsasm.LAYOUTS.get(key) if sbsasm.LAYOUTS else None
+                if lay and lay[1]:
+                    w1 = r.words[1]
+                    st = tuple(0 if (w1 & m) == 0 else
+                               (1 if (w1 & m) == (m & ~h) else (2 if (w1 & m) == h else 3))
+                               for _n, m, h in ent)
+                    act = sum(1 for x in st if x in (1, 2))
+                    share = 1 if (r.filter_id == 15 and st[3] in (1, 2)
+                                  and st[4] in (1, 2) and not (r.cls & 1)) else 0
+                    ex = 1 if (r.filter_id == 1 and (w1 >> 9) & 1) else 0
+                    pred = (act + ex + (r.cls & 1) + ((r.cls >> 7) & 1)
+                            + ((r.cls >> 11) & 1) + 2 * ((r.cls >> 10) & 1) - share)
+                    T['slotrule_n'] += 1
+                    T['slotrule'] += (pred == len(lay[1]))
+
             for q in program_points(a, r):
                 try:
                     n = len(list(disasm.decode(a.data, q, a.body_hi)))
@@ -147,6 +168,9 @@ CLAIMS = [
     ('transformation (2,792,0): slot 2 is a backward record index',
      '16,471 of 16,484 (13 exceptions)',
      lambda T: (T['trans2792_edge'], T['trans2792']), 0),
+    ('the slot rule, against layouts.json (2,806 table entries are wrong)',
+     '99.396% -- 99.992% against the records',
+     lambda T: (T['slotrule'], T['slotrule_n']), 2843),
     ('fxmaps tree root pointer target is 4-aligned',
      '27,637 of 27,637',
      lambda T: (T['fx_root_aligned'], T['fx_root']), 0),
