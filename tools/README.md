@@ -7,6 +7,7 @@ The finished tools. Each runs from the repository root, where the corpus lives:
     python3 tools/extract_bitmaps.py <file.sbsasm>
     python3 tools/audit_corpus.py
     python3 tools/validate_corpus.py
+    python3 tools/test_transpile.py
 
 ## The model
 
@@ -58,6 +59,7 @@ segment.
 
 ## Checking
 
+    test_transpile.py     the only outright pass/fail test here -- see below
     audit_corpus.py       runs the model over a corpus and reports every gap
     validate_corpus.py    structural checks against the .sbsar manifests
     attribute_outputs.py  cross-checks the output table against the manifest's alteroutputs
@@ -65,6 +67,28 @@ segment.
     standalone_parse_ref.py
                           the pre-optimisation parser, kept so the 59x rewrite can be
                           re-verified as output-identical on demand
+
+## The one thing that is actually tested
+
+Nearly every claim in this project is a distribution match: a decode is believed because the
+numbers it produces line up with something independently known. `transpile.py` is the exception.
+A program's bytecode *is* its semantics, so a program whose algorithm is known can be transpiled,
+run, and compared against the closed form.
+
+`test_transpile.py` does that for the sRGB transfer function in both directions -- the encode in
+`LGMLtools__sRGB_colorchart` and the decode in `DLG-Tools__Embroidery_Legacy`, the second a
+specimen the instruction table was not built from. Maximum deviation 5.22e-08 and 1.19e-07,
+which is float32 rounding. It also covers the immediate decoding, where two bugs have been found.
+
+It runs under `pytest` or on its own, and **skips rather than fails** when a specimen is absent,
+since the corpus is not in this repository. Point `SBS_CORPUS` at an unpacked collection.
+
+The file records what the tests catch and what they cannot, measured by mutating the operation
+table one entry at a time. `lteq -> lt`, `sub -> add`, `div -> mul`, `ln -> exp` and `exp2 -> exp`
+are all caught; `gt -> gteq` is not, because sRGB is continuous at its threshold and both branches
+meet there. Two specimens is thin evidence for a 41-operation ISA, and the coverage figure --
+99.958% of 644,282 programs -- measures the table's completeness, not whether the output computes
+the right thing.
 
 ## Not here
 
