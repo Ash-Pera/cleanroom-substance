@@ -29751,3 +29751,51 @@ is 5-of-5 agreement plus slot 1 failing the same test in the same records.
 This does not name filter 9 and nothing here could: naming needs a permitted source that
 declares it, and the corpus contains none. It does mean the filter is a **two-input**
 greyscale node whose inputs are now readable, which is one more fact than "legacy tag".
+
+## The levels mismatches, read one by one: the fx tree's node encoding is not fxmaps'
+
+The colour-interaction model left levels at 99.970% — 57 records. Read individually,
+they are two things, and the larger one reaches well beyond levels.
+
+**The −2 population (13 records)** is cls 0x18: class bit 0 clear, so no size program at
+all, and the record's first inline program is a PARAMETER program. These are rare keys
+(two or three records each) losing the weighted fit to the 0x19 majority — fit weakness,
+not structure.
+
+**The +2k population (43 records, k = 1..6)** carries k extra word-PAIRS between the
+mask-declared header and the bytecode:
+
+    [0x00020008] [pointer]      repeated k times
+
+The first read of that pair was wrong twice — the pointer is not a program (0 of 113
+validate), and the pair is not a flat descriptor. It is a NODE, and the nodes CHAIN:
+each pointer's target is another 8-byte node, `[tag][next]`, until a terminal node whose
+tag is of a different kind. Walked corpus-wide:
+
+    chains                                    82
+    terminate at a non-chain tag              82 of 82   100.0%
+    every node inside its own record          82 of 82   100.0%
+    terminal tag is an FX_TABLE entry         53 of 82    64.6%
+
+That last line is the finding. `FX_TABLE` — 0x00100048 at +4, 0x14520248 at +16 — was
+derived from fxmaps records, as the lookup from a tree-node tag to where the node's
+program sits, and was believed to be fxmaps' own encoding. Levels records embed nodes
+carrying THE SAME TAGS. The remaining 29 terminal tags (0x15000448, 0x0c520658, ...)
+have the family's shape and are simply tags fxmaps never exhibited, so the table never
+learned them.
+
+**So the tagged-node encoding is not an fxmaps feature — it is the format's general
+structure for a parameter too complex for one program pointer,** and any filter can
+carry an inline node region between its header and its bytecode. That one sentence
+plausibly accounts for most of what remains open in the cost model at once:
+
+    fxmaps class 0's -3/-10 inline blocks         nodes
+    pixelprocessor's 264 records at err > +40     a large node region before the
+                                                  first program the probe can see
+    blend/transformation/levels +2..+10           node appendices, k pairs each
+    concrete_049 recurring across four filters    one file whose graphs use dynamic
+                                                  parameters heavily
+
+None of that is proven beyond levels yet — the node SCHEMA is still undecoded (what the
+terminal tags mean, where each node's program lives, what selects chain length). But the
+mechanism now has a name, a shape, and a table that already partially reads it.
