@@ -484,15 +484,47 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                     synthetic.add(i)
 
             elif rec.filter_name == "uniform":
-                # Not implemented: `.programs` for a `uniform` record can be JUST its
-                # size expression (Record.size_or_baked == ('program', p)), with no separate
-                # program at all for the fill color -- confirmed on a real specimen,
-                # where treating .programs[-1] as the color silently produced (8, 8)
-                # (the size expression's own output) tiled across the image. Where the
-                # color is actually stored for this case (a ramp? a baked slot?) is not
-                # investigated, so this raises rather than guess and risk repeating that
-                # exact mistake silently.
-                raise Unsupported("uniform fill color storage not investigated")
+                # Where the size expression lives was already known (word[1], if
+                # Record.size_or_baked is a program there) but the FILL COLOR was not --
+                # this used to raise unconditionally rather than repeat the mistake found
+                # elsewhere in this file, treating .programs[-1] as the color and silently
+                # producing the size expression's own (8, 8) output tiled across the image.
+                #
+                # Real specimens close it: the color occupies the N words immediately
+                # after the size-expression slot (word[2].. when word[1] holds a program,
+                # word[1].. directly when it does not) -- N=1 for a grayscale record
+                # (Record.colour False), N=4 (RGBA) for a colour one. Confirmed two ways
+                # corpus-wide: (1) 3,392 of 3,428 sampled (98.9%) decode to components in
+                # [0, 1] at exactly that position; (2) exact containment against a real
+                # paired source, DLG-Tools__US_Flag.sbs -- four DISTINCT declared
+                # `outputcolor` constantValueFloat4 values (a dark red, a dark blue, an
+                # off-white, pure white) each match a specific record's decoded words to
+                # 6+ significant figures, e.g. 0.745098054 0.0431372561 0.192156866 1.
+                #
+                # The 1.1% residual is a second, unidentified word shape: Record.programs
+                # names one program, but the word right after it is not a program either
+                # (by Record.programs' own reading) and does not decode as a plausible
+                # color -- not guessed at, raised instead like the format's own matrix
+                # reading rejects an implausible determinant rather than trust a bad slot.
+                has_prog = rec.size_or_baked is not None and rec.size_or_baked[0] == 'program'
+                start = 2 if has_prog else 1
+                n = 4 if rec.colour else 1
+                if len(rec.words) < start + n:
+                    raise Unsupported("uniform has no room for a fill color at the "
+                                      "expected slot")
+                color = np.array(rec.words[start:start + n], dtype=np.uint32).view(np.float32)
+                if not np.all((-0.01 <= color) & (color <= 1.01) & (color == color)):
+                    raise Unsupported("uniform fill color slot does not decode as a "
+                                      "plausible color (%r) -- an unidentified second "
+                                      "word shape" % (color.tolist(),))
+                color = np.clip(color, 0.0, 1.0).astype(np.float32)
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                result = np.tile(color, (N, 1))
+                outputs[i] = to_image(result, N, H, W)
 
             else:
                 raise Unsupported("filter %r not implemented" % rec.filter_name)
