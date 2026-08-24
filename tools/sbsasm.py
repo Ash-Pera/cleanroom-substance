@@ -56,7 +56,17 @@ PARTIAL_EDGES = {3: 'shuffle takes up to 4 inputs; only slot 3 resolves reliably
 # Shared references: slots pointing at one record used by many (refs/target >> 1).
 SHARED = {8: [1], 11: [1], 19: [2], 22: [2]}
 
-# The slot holding the pointer to the record's parameter program.
+# The slot holding the record's OUTPUT SIZE expression -- not a filter parameter.
+#
+# This slot was called "the main parameter" throughout the earlier notes. It is not one.
+# 81.9% of the programs it points at read a graph input of type 8 whose declared value is
+# (8, 8) -- log2 256, the output size -- and 81.3% return an int2. Evaluating them and
+# comparing with the log2 dimensions the record's TAG independently carries: **434,167 of
+# 435,013 agree, 99.81%**.
+#
+# So a record's parameters are the slots AFTER this one, and `blend`'s `opacitymult` sits
+# at the first of them, which is why it kept landing at "block position 0".
+#
 # Measured: the slot holding a valid program pointer in the largest share of records.
 PROG_SLOT = {0: 4, 1: 4, 2: 3, 4: 3, 6: 1, 7: 3, 10: 2, 11: 3, 12: 4, 13: 2, 14: 2,
              15: 3, 18: 3, 19: 3, 21: 4, 22: 4}
@@ -281,6 +291,46 @@ class Record:
                         return (edges, prog)
             return alts[0]                       # nothing validated; report the default
         return (EDGES.get(f, []), PROG_SLOT.get(f))
+
+    @property
+    def output_size(self):
+        """(log2 width, log2 height) as the record's own size expression computes it.
+
+        Returns None when the expression uses an operation this reader does not evaluate.
+        Where it does evaluate, it agrees with the tag in 99.81% of records -- so this is a
+        cross-check on the tag, not a substitute for it.
+        """
+        par = self.parameter
+        if not par or par[0] != 'program':
+            return None
+        decl = {u: v for t, u, v in (self.asm.header.get('inputs') or [])}
+        vals = []
+        for k, addr, op, toks in disasm.decode(self.asm.data, par[1], self.end):
+            f = disasm.fields(op)
+            oid, n = f['id'], f['comps']
+            if oid == 0x02:
+                v = decl.get(disasm.uid(addr, toks))
+                if v is None or len(v) < n:
+                    return None
+                vals.append(tuple(int(x) for x in v[:n]))
+            elif oid == 0x00:
+                raw = disasm.immediate(addr, toks)
+                if len(raw) < 4 * n:
+                    return None
+                vals.append(tuple(struct.unpack_from('<i', raw, 4 * i)[0] for i in range(n)))
+            elif oid in (0x12, 0x13):
+                if len(toks) < 2:
+                    return None
+                try:
+                    x, y = vals[toks[0]], vals[toks[1]]
+                except IndexError:
+                    return None
+                if len(x) != len(y):
+                    return None
+                vals.append(tuple(p + q if oid == 0x12 else p - q for p, q in zip(x, y)))
+            else:
+                return None
+        return vals[-1] if vals and len(vals[-1]) == 2 else None
 
     @property
     def header_words(self):

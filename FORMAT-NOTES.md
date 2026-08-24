@@ -18495,3 +18495,63 @@ computes the parameter, not in a slot.**
 That is why this line stalled, and it says what to do instead: read the parameter programs
 and infer from what they compute, as was done for filter 11. The reframing is worth more
 than the two names it produced.
+
+## The "main parameter" is the record's output size
+
+Reading the parameter programs, as the previous section concluded was the only way left,
+answered a different question than the one asked - and a bigger one.
+
+### What the programs actually compute
+
+Grouping `blend`'s parameter programs by shape, the six commonest cover 89% of its records
+and not one of them is an opacity:
+
+    54.5%   inputref.i2 uid=2888477336
+    13.3%   inputref.i2 ; sub %0,%0 ; add %0,%1                (an identity, x + (x-x))
+    11.9%   inputref.i1 ; const.i1 -1689646885 ; add
+     4.2%   inputref.i2 ; const.i2 -1,-1 ; add ; sub ; add
+     2.4%   inputref.i2 ; const.i2 -1,-1 ; add ; const -2,-2 ; add ; const 1,1 ; add
+
+Every one is integer arithmetic on a graph input with small offsets. That is log2 size
+arithmetic.
+
+### The inputs confirm it
+
+    the graph input a parameter program reads, by type code
+       type 8                                    756,721   (81.9%)
+       type 4                                    162,488   (17.6%)
+    when the type is 8, its declared value
+       (8, 8)                                    756,681 of 756,721
+
+`(8, 8)` is log2 256 - the default output size. And the programs return int2 in 81.3% of
+records.
+
+### The consequence test
+
+A record's **tag** already carries its log2 dimensions, and the tag is not involved in the
+program. So evaluating the program and comparing is a test that can fail:
+
+    records with a parameter program                        941,939
+       the program uses an operation this reader evaluates  435,013
+          reproduces the record's own resolution            434,167   (99.81%)
+          does not                                              846   ( 0.19%)
+
+**99.81%.**
+
+### What this changes
+
+The slot called "the main parameter" throughout these notes is **the record's output size
+expression**. It is not a filter parameter at all, and 43.3% of parameter-slot readings -
+counted earlier as "a value, not a meaning" - now have one.
+
+It also explains a detail that never made sense: `blend`'s `opacitymult` kept landing at
+"block position 0", one slot past the program. Of course it did. The program slot is the
+size; the filter's own parameters are the slots after it.
+
+And it explains filter 11's three-instruction program - `inputref.i2 ; const.i2 -1,-1 ;
+add` - which was read as "half resolution" without recognising that *every* record carries
+such an expression. Filter 11 was not doing something unusual; it was doing the ordinary
+thing, in a chain where the ordinary thing halves each level.
+
+`Record.output_size` returns it. Where it evaluates it agrees with the tag, so it is a
+cross-check rather than a substitute.
