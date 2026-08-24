@@ -23310,3 +23310,44 @@ hypotheses about this residual and leave it measured instead.
     output attribution   28,554 / 28,896   98.82%
       alters but unreachable         131
       reachable but does not alter     6
+
+## The 2,882 inputs no program reads
+
+`attribute_outputs` reports these alongside its violations and nothing had ever looked at
+them. Most have a structural reason:
+
+    declared inputs                              8,441
+    read by some program                         5,559
+    not read                                     2,882
+      an IMAGE input, arriving as a sampler        527   type 5, and only 15 of 791 such
+                                                         inputs carry a default at all
+      a $global, read as a sysvar                   75   `$time` is 20 of 20 unread
+      a STRING input                                17
+      an ordinary scalar                         2,263
+
+Manifest input types are `0-3` float1..float4 and `4, 8, 9, 10` int1..int4, which
+`validate_corpus` already knew. **Type 5 is the image type** - `input`, `pcloud_data`, `back`,
+`input_1` - and images reach a program through `sample_lum`/`sample_col` with a sampler index,
+never through `inputref` by uid. `readers()` looks only at `inputref`, so it cannot see them
+by construction, and `$time` is invisible for the same reason one level up: it is `sysvar #0`,
+not an input read.
+
+### A consistency check that came out perfect
+
+An input that no program reads should, if it truly does nothing, alter no output. Splitting on
+whether the manifest's `alteroutputs` is empty:
+
+    read by a program     4,533 inputs      0 with an empty alteroutputs    0.0%
+    NOT read              2,263 inputs    401 with an empty alteroutputs   17.7%
+
+**Not one** of the 4,533 inputs some program reads is marked as altering nothing. The relation
+runs one way and never breaks, over a source neither side was derived from.
+
+So 401 of the unread scalars are inputs that genuinely affect nothing - exposed and unused,
+which a published material may well contain - and they are consistent rather than missing.
+
+### What is left
+
+1,862 inputs that no program reads and that the manifest says alter something. That is the
+honest residual, and it is a different question from the 131 unreachable pairs: there the
+input is read and the path is missing, here the input is never read at all.
