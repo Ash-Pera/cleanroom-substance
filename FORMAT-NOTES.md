@@ -5545,7 +5545,7 @@ distinctive count; matching it by chance among four candidate pairs is unlikely.
 
 | filter | type (gray/colour) | records | evidence |
 |---|---|---:|---|
-| **gradient** | `0x00` / `0x01` | 9,367 | 3/3 exact (1, 1, 6) |
+| **gradient** | `0x00` / `0x01` | 9,367 | 3/3 exact (1, 1, 6) — **withdrawn, the distinctive 6 is `Electric_Liquid`**; re-established on permitted sources by quantised ramp-position containment, 15,293/15,369 against a 7.7% control |
 | **warp** | `0x0E` / `0x0F` | 15,182 | 3/3 exact — `Crystal_Animated` and `Crystal_2_Animated` each 1=1, plus `Electric_Liquid` |
 | **blur** | `0x14` / `0x15` | 8,313 | 11 = 11 in a file with four unnamed candidates |
 | **normal** | `0x24` / `0x25` | — | 2/2 exact |
@@ -29036,13 +29036,10 @@ exclusively. The corrected run is the one above: more specimens, a larger sample
 lower `levels` figure. `warp` moved the other way, from an apparent 90.9% to 67.6%, and is
 no longer strong enough to call recovered on containment alone.
 
-`gradient`'s 0.0% is **not** a refutation. Its values live in the ramp table, which
-`Record.ramp` reaches through a slot pointer, not in the record's own slots where this test
-looks; and the table stores u16 quantised values, so a source float cannot round-trip to an
-exact match anyway. The test simply cannot see them. Reading the ramps directly finds 1,987
-of 18,328 declared values, which is what exact comparison against quantised storage should
-be expected to yield. A quantisation-aware test would settle `gradient`; it has not been
-written.
+`gradient`'s 0.0% is **not** a refutation, and Route 3 below settles it. Its values live
+in the ramp table, which `Record.ramp` reaches through a slot pointer, not in the record's
+own slots where this test looks; and the table stores u16 quantised values, so a source
+float cannot round-trip to an exact float32 match anyway. The test cannot see them.
 
 ### Route 2: structure, for `fxmaps`, which declares almost no scalars
 
@@ -29079,15 +29076,43 @@ still less a 1.
 the excluded 8/9 count-exact it replaces: a per-record structural distribution over 110
 records rather than agreement of three totals.
 
+### Route 3: quantised containment, for `gradient`
+
+`gradient` stores its values where the confusion matrix cannot look — a ramp table addressed
+through a slot pointer — and stores them as u16. Reading the table and comparing in u16 space
+instead resolves it, and the discriminating column is the stop POSITION: a gradient cell
+declares `position`, `midpoint` and `value`, and while the colours are overwhelmingly round
+(`0 0 0 1`, `1 1 1 1`) the positions are authored numbers like `0.447257012` that quantise to
+one specific u16. Over 27 permitted specimens, allowing the one-unit rounding difference
+between the cooker and this reader:
+
+    declared stop positions found in the filter-0 position column   15,293 / 15,369   99.5%
+    declared colour values found anywhere in filter-0 ramps           1,302 /  2,609   49.9%
+    CONTROL: other filters' declared values, same pool, same
+             quantisation, tested against the same ramps                 55 /    710    7.7%
+
+**99.5% against a 7.7% floor.** The control is doing real work here: a ramp pool holds
+thousands of u16 values, so some collision is guaranteed, and 7.7% is what that costs. The
+position column clears it by an order of magnitude.
+
+`gradient` = filter 0 is identified on permitted evidence, replacing a withdrawn "3/3 exact
+(1, 1, 6)" whose distinctive count of six came from `Electric_Liquid`.
+
+The colour figure — 49.9%, far below the positions — is **not** a second result and should
+not be read as one. It is the open channel-layout question recorded elsewhere in this
+document: the trailing per-stop field is near-constant at 32768 and reads as `midpoint` (a
+Substance gradient cell declares exactly `position`, `midpoint`, `value`), while the compiled
+stop carries fewer components than a `Float4` colour needs. Until that is settled, half the
+declared colours having no matching slot to land in is expected rather than surprising.
+
 ### Where the five stand now
 
     levels    filter 15   RECOVERED   containment, 347/355 over 66 permitted specimens
     fxmaps    filter  4   RECOVERED   ie_pcloud tree-shape distribution, 110 records
+    gradient  filter  0   RECOVERED   ramp positions, 15,293/15,369 against a 7.7% control
     warp      filter  7   OPEN        containment 25/37 (67.6%); was 3/3 exact, all excluded
     blur      filter 10   OPEN        containment 10/21 (47.6%); rested on one "11 = 11"
                                       in Electric_Liquid alone
-    gradient  filter  0   OPEN        containment cannot see ramp tables; a quantisation-
-                                      aware test is the obvious next move, not yet written
 
 ## Three more filters: gradient, curve, dirmotionblur — and a powerless predicate in my own test
 
