@@ -22176,3 +22176,51 @@ method may reach some of them.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## The same method on the remaining five ids: one candidate, not established
+
+Five ids stay unnamed - 5, 8, 9, 19, 22 - against six remaining source names: `passthrough`,
+`grayscaleconversion`, `valueprocessor`, `dyngradient`, `curve`, `emboss`.
+
+Running the containment test that named `dirmotionblur` over all six gives exactly one
+signal, and only for `curve`:
+
+    curve position   111 distinctive values   id 22: 15   directionalwarp: 1   blend: 1
+    curve left       111                      id 22:  9   levels: 1
+    curve right      121                      id 22:  9   -
+
+33 hits at id 22 against 3 scattered elsewhere. `curve` takes one input and id 22 is recorded
+as "one input"; the values land at slots 6-11, which is three `Float2` pairs, and `curve`
+declares `position`, `left` and `right` as `Float2`.
+
+### Why that is not enough
+
+The control says the method should do much better. Running it on filters whose identity is
+already certain:
+
+    transformation offset      96 values    94 hit transformation   (98%)
+    transformation matrix22   101 values   101 hit transformation  (100%)
+    curve position            111 values    15 hit id 22            (14%)
+
+A hit rate of 98-100% is what this test looks like when it is working. 14% is not a weaker
+version of the same thing; it means seven eighths of the declared `curve` values are not
+present in the paired compiled files at all, and nothing here says why. Two readings survive:
+id 22 is `curve` and most `curve` nodes are compiled into something else, or id 22 is not
+`curve` and 15 hits is what coincidence looks like at this sample size.
+
+The exclusivity argues for the first - 15 against 1 and 1 - but exclusivity is what the
+`mblurangle` column also showed, and that column was the one that could not carry an
+identification on its own.
+
+So: **id 22 is probably `curve`, and this is recorded as a candidate, not a name.**
+
+`grayscaleconversion` cannot be tested this way at all: its `channelsweights` are values like
+0.33 and 0.5, and the distinctiveness filter leaves **zero** values to match. A test that
+needs distinctive values is silent on parameters that do not have any.
+
+### The four with nothing
+
+`passthrough`, `valueprocessor`, `dyngradient` and `emboss` produced no hits at any id.
+`passthrough` declares no float parameters to test, `valueprocessor`'s are dynamic, and
+`emboss` appears twice in the whole permitted set. The method has run out of evidence rather
+than run out of candidates.
