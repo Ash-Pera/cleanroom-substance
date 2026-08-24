@@ -66,15 +66,15 @@ def main(paths):
     print('  filter identified   : %d  (%.1f%%)' % (tot['known_records'],
           100 * tot['known_records'] / max(1, tot['records'])))
     r_ = tot['records']
-    print('  main parameter resolved: %d  (%.1f%%)' % (r_ - tot['no_param'],
+    print('  size expression or first parameter read: %d  (%.1f%%)' % (r_ - tot['no_param'],
           100 * (r_ - tot['no_param']) / max(1, r_)))
     print('    record has no parameter slot: %d  (%.2f%%)  -- correct, not a miss'
           % (tot['param_absent'], 100 * tot['param_absent'] / max(1, r_)))
     print('    genuinely unread     : %d  (%.2f%%)'
           % (tot['param_unread'], 100 * tot['param_unread'] / max(1, r_)))
-    print('    as a program        : %d  (%.1f%%)' % (tot['param_program'],
+    print('    an output size expression: %d  (%.1f%%)' % (tot['param_program'],
           100 * tot['param_program'] / max(1, r_)))
-    print('    as a baked float    : %d  (%.1f%%)' % (tot['param_float'],
+    print('    a baked filter parameter : %d  (%.1f%%)' % (tot['param_float'],
           100 * tot['param_float'] / max(1, r_)))
     print('    as zero / absent    : %d  (%.1f%%)' % (tot['param_zero'],
           100 * tot['param_zero'] / max(1, r_)))

@@ -18555,3 +18555,54 @@ thing, in a chain where the ordinary thing halves each level.
 
 `Record.output_size` returns it. Where it evaluates it agrees with the tag, so it is a
 cross-check rather than a substitute.
+
+## What the output-size finding invalidates
+
+The slot is not "the main parameter", so everything that called it one needed correcting.
+
+### The slot holds two different fields, and the descriptor says which
+
+    records with something in that slot        1,031,041
+       an output size expression                 941,939   (91.3%)
+       a baked filter parameter                   89,102   ( 8.7%)
+
+The baked ones are real floats - 0.5 (53,259 records), 1, 2, 4, 8, 0.25, 0.1 - and **not
+one of the 89,102 reads as a plausible packed int2**, so they are not sizes written another
+way. They are a different field in the same slot.
+
+**Which field it is, is stated.** Over 20,970 layout keys the descriptor predicts it in
+**100.00%** of 1,031,041 records, with a single mixed key of 278 records. A reader never
+guesses.
+
+Per filter, the split is characteristic: `pixelprocessor` and `fxmaps` are 100% size
+expressions, `blend` 92.9%, `transformation` 85.7%, `uniform` 80.4%.
+
+### A hypothesis that did not survive
+
+The obvious explanation was that a record with no size expression **inherits** its input's
+resolution. Measured, it is wrong - and wrong in the unhelpful direction:
+
+    records with a size expression   same resolution as their input   83.7%
+    records with a baked float       same resolution as their input   74.2%
+
+Records *lacking* a size expression differ from their input more often, not less. Why
+those 89,102 records carry a float where others carry a size is not established.
+
+### Fixed
+
+* `Record.parameter` no longer claims to be "the main parameter"; its docstring states the
+  two fields and that the key discriminates them.
+* `Record.output_size` evaluates the expression, agreeing with the tag in 99.81%.
+* `audit_corpus.py` now reports "an output size expression" and "a baked filter parameter"
+  rather than "as a program" and "as a baked float", which described the encoding and not
+  the content.
+* `PROG_SLOT`'s comment and the tools README say what the slot is.
+
+### Still to fix, and now visible
+
+The earlier claim that **43.3% of parameter readings are "a value, not a meaning"** is
+resolved for those readings - they are sizes. But the corollary is that the *filter
+parameter* count is much smaller than it looked: of 2,272,663 parameter-slot readings,
+941,939 are sizes, and what remains genuinely unnamed is 893,752 readings in the slots
+after the size. That number did not change; what changed is that it can no longer hide
+behind the program slot.

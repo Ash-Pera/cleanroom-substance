@@ -23,8 +23,11 @@ than as a plausible-looking result.
 
 Two readings sit side by side, deliberately:
 
-* `Record.parameter` is the **strict** one - a record's own parameter program or baked float,
-  found through its layout. `Record.programs` returns *every* program the record's slots name;
+* `Record.parameter` is the **strict** one - the first slot after the record's inputs,
+  found through its layout. It holds the record's **output size expression** in 91.3% of
+  records (`Record.output_size` evaluates it, agreeing with the tag in 99.81%) and a baked
+  filter parameter in the rest; the layout key states which, at 100.00%. It is not "the
+  main parameter", which is what earlier notes called it. `Record.programs` returns *every* program the record's slots name;
   a record can carry up to five, and the two-scalar filters routinely carry two. This is what a
   reader should bind to.
 * `Assembly.referenced_programs()` is **permissive** - every program some word in the file points
