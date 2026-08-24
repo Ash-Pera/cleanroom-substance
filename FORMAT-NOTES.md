@@ -23630,3 +23630,35 @@ fixed order; "programs then fx" was the best fixed approximation to a dataflow s
       a fixed order suffices                    10,176    99.08%
       an interleaving is required                   81     0.79%
       no order within the record suffices           13     0.13%
+
+## The last 13: cross-record slot reads, and what that does and does not mean
+
+The 13 records that no order within themselves can satisfy read slots 0, 4, 8 and 10 - the
+same low-slot family as the `uniform` case that read 12 and 16. Two things they are not:
+
+    an fx_walk over-collection, pulling in another record's program
+        all fx programs are inside their own record        13 of 13
+
+    a read of state no file supplies
+        every missing slot IS written by an EARLIER record  13 of 13
+
+So they are genuine cross-record slot reads - the 207 of 99,456 the intra-record measurement
+left over - and they resolve when slot state carries forward, which is why per-file execution
+ends at 6 failures where per-record dependency order ends at 8.
+
+### The model, complete
+
+    within a record   programs run in DEPENDENCY order, not a fixed sequence
+                      99.08% need no interleaving, 0.79% do, 0.13% need more
+    across records    slot state carries forward; 0.21% of reads use it
+    for the graph     slot writes are NOT a dataflow edge
+
+The last two look contradictory and are not. Slot state does carry across records, and a
+record reading a slot an earlier record wrote still does not depend on that record the way it
+depends on an image input: adding those as edges takes spurious attribution violations from 6
+to 432. What the slots carry is per-invocation context - a cell coordinate, a step, a seed -
+not image data, so the value flows without the output depending on the writer's *result*.
+
+That is a distinction the execution model and the dataflow model have to keep separately, and
+every attempt in this file to collapse them into one has produced a number that improved in
+one direction while breaking the other.
