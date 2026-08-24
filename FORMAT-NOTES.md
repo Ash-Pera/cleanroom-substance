@@ -25440,3 +25440,40 @@ like a check that passes.
 A small gain, honestly. The value is not the twenty-one slots - it is that for the ruled
 filters the layout is now computed from the bytes rather than recalled from a table that is
 known wrong in four distinct ways.
+
+## Union, not replacement
+
+The regeneration above kept only +21 slots because of a guard, and the guard was wrong.
+
+It tried to decide whether slot 1 holds the parameter word or an edge by asking whether the
+value is a valid backward record index. That test is worthless here:
+
+    "slot 1 is a valid backward record index" agrees with the table's verdict
+        blend            6.26%   with 291,188 false positives
+        levels           5.83%           80,246
+        directionalwarp  0.06%           60,326
+        dirmotionblur    0.98%           14,692
+
+A word1 bitfield is a small number and record indices are large, so nearly every record passes
+a test meant to catch a few. Requiring slot 2 to pass as well changes nothing - the same
+records pass both. The guard excluded 94% of records from the rule, which is why the gain
+collapsed to five edges.
+
+Dropping the guard entirely loses 167 real edges to gain 307. Neither is acceptable alone, and
+neither is necessary: the rule and the table can be UNIONED. Every slot the table names is
+kept, every slot the rule finds is added, and the question of which is authoritative never has
+to be answered.
+
+    dropped from the edge list      0    (0 real)
+    added                         307    (307 real - 100.00%)
+    net real edges recovered     +307
+
+    edge slots           1,302,869  ->  1,303,215     +346
+    parameters read        865,477  ->    865,481      +4
+    size expr vs manifest    1,564  ->      1,579     +15, still 100%
+    edge resolution                          100.00%
+    validator, tests                         unchanged, 13 pass
+
+Fifteen more records now have a size expression that can be evaluated and checked against the
+manifest, and all fifteen agree. That is the part worth having: not the slots, but that an
+independent check got more to check and still did not fail.

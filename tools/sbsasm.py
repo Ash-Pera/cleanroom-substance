@@ -513,14 +513,18 @@ class Record:
         #
         # The allocation order puts the class-word parameters immediately after the base
         # image inputs, so the first of them - the slot a reader wants - is at 2 + arity.
-        # Slot 1 is the parameter word only when it is not an EDGE. levels and
-        # dirmotionblur put an input there in some records, exactly as shuffle does, and
-        # reading it as a bitfield loses that edge - 167 real backward record indices
-        # dropped before this guard was added. Those records fall through to the table.
-        _ruled = (f in _RULED_PARAMS and len(self.words) > 1
-                  and not (self.words[1] == 0
-                           or (self.words[1] < self.index
-                               and self.words[1] < len(self.asm.records))))
+        # The rule and the table are UNIONED rather than one replacing the other.
+        #
+        # A value test cannot decide between them: "slot 1 holds a valid backward record
+        # index" is true for 94% of these records, because a word1 bitfield is a small
+        # number and record indices are large - 291,188 false positives on blend alone.
+        # Guarding on it excluded almost every record and reduced the rule to +5 edges.
+        #
+        # Dropping the guard instead loses 167 real edges to gain 307. The union keeps
+        # both: every slot the table names, plus every slot the rule finds. The added
+        # slots were valid backward record indices in 307 of 307, so the union does not
+        # admit junk.
+        _ruled = f in _RULED_PARAMS and len(self.words) > 1
         if _ruled:
             base = _RULED_PARAMS[f]
             w1 = self.words[1]
@@ -541,6 +545,10 @@ class Record:
                 s += 1
             prog = 2 + base
             if prog < len(self.words):
+                hit = (LAYOUTS or {}).get(
+                    (f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
+                if hit:
+                    edges = sorted(set(edges) | set(hit[0] or []))
                 return (edges, prog)
 
         if LAYOUTS and len(self.words) > 1:
