@@ -22876,3 +22876,42 @@ records and it is not the fxmaps walk as currently understood.
 
 Nothing in the remainder is a decoding gap. The 25 are a scheduling question - who runs
 before whom, and what the engine seeds - rather than a question about what the bytes mean.
+
+## Slots are per FILE, not per record
+
+The `uniform` records that read slots 12 and 16 without writing them have a writer after all.
+Counting who touches those two slots anywhere in a file:
+
+    writes slot 16    fxmaps 4,079    blend 252    transformation 249    pixelprocessor 195
+    writes slot 12    fxmaps 3,932    blend 294    transformation 272    pixelprocessor 207
+    reads  slot 16    fxmaps 3,652    pixelprocessor 27
+    reads  slot 12    fxmaps 1,379    pixelprocessor 30
+
+`fxmaps` writes both, thousands of times. The earlier check asked the wrong question - whether
+the `uniform` records' own programs are named by an fxmaps chain, which they are not - and
+concluded no fxmaps connection. What it should have asked is who writes the slot, anywhere.
+
+### Measured
+
+    slots per record    52,334 programs   ran 52,308   99.950%   failed 26
+    slots per file      52,334 programs   ran 52,329   99.990%   failed  5
+    + fx programs       56,980 programs   ran 56,963   99.970%   failed 17
+
+Slot state is shared across records within a file, in record order. That also runs 4,646 more
+programs once the fx node and table programs are included, which are real code that
+`Record.programs` alone never reaches.
+
+**The pass rate is not the argument.** A looser sharing rule can only make more programs run,
+and a stale slot value would run just as happily as a correct one - the same trap as the
+ramp guard that was relaxed without a validity test. The argument is the write/read census
+above: the readers need slots 12 and 16, nothing in their own record writes them, and
+`fxmaps` writes them 8,011 times. The pass rate agrees with that; it does not establish it.
+
+### What is left
+
+    4   pixelprocessor   KeyError on slots[38]
+    1   pixelprocessor   ZeroDivisionError on stub data
+
+Slot 38 is the same slot the earlier static scan flagged for `pixelprocessor` alongside slot
+41. Nothing in the corpus writes it, so it is engine state of a kind the file does not
+contain - which is where this line of investigation ends rather than continues.
