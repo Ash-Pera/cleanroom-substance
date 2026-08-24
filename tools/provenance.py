@@ -29,12 +29,29 @@ WHAT THIS CHECKS: which paired `.sbs` sources carry an excluded author tag. That
 population the rule governs. It says nothing about whether the compiled sibling belongs in
 the corpus -- it does.
 
-COVERAGE LIMIT: the author string lives in the `.sbs` source only. A bare `.sbsar` never
-preserves it (0 of 396 `.sbsar`-only specimens sampled contain the literal string, including
-ones known to be Allegorithmic-authored via a paired source elsewhere). Most of the corpus is
-compiled-only and cannot be checked this way at all -- their authorship is neither confirmed
-nor cleared here, and `audit()` reports them as `unknown` rather than folding them into a
-clean count they were never tested for.
+THE COMPILED SIDE IS ALSO CHECKABLE, contrary to what this file said first. The original
+claim here was that the author string lives in the `.sbs` only, on the evidence that
+grepping 396 `.sbsar`-only specimens for `Allegorithmic` returned nothing. That test was
+worthless: a `.sbsar` is a 7z archive, so no string inside it is greppable from the
+container. The manifest **does** carry authorship -- `<graph ... author="Igor Elovikov">` --
+and `manifest_authors()` reads it from the extracted `.xml` beside each `.sbsasm`. Over
+DISTINCT.txt that finds 56 entries authored by Allegorithmic or Adobe where the source-side
+check finds 42, the extra 14 being compiled-only specimens with no `.sbs` in the corpus at
+all (`Bitmap2Material_3`, an Adobe product, among them).
+
+WHAT COMPILED-SIDE AUTHORSHIP DOES **NOT** MEAN. It is not an exclusion trigger, and the
+distinction is the same one that trips up the source rule. Analysing a freely distributed
+compiled `.sbsar` is the basis of this project whoever authored it; what the rule refuses is
+reading Adobe's `.sbs` graph DEFINITIONS. An Adobe-authored `.sbsar` supplies compiled
+bytecode like any other specimen and supplies no definitions, so it stays in the corpus.
+`compiled_audit()` therefore reports authorship as a fact about the corpus, not as a
+deletion list -- it is the third time in this file's short history that conflating "who
+wrote it" with "may we use it" would have produced a wrong answer.
+
+What it is good for: knowing which specimens would become source-excluded if a `.sbs` for
+them ever entered the corpus; seeing how much of the corpus leans on Adobe-published
+material; and surfacing non-Adobe authors whose terms are not permissive at all, which is
+how `GameTextures.com` was found.
 """
 import glob
 import hashlib
@@ -126,6 +143,55 @@ def audit():
     return excluded, flagged, permitted
 
 
+# --- the compiled side: authorship as recorded in the .sbsar manifest ----------------
+
+# Adobe acquired Allegorithmic; both names appear as authors in compiled manifests and mean
+# the same party. Kept separate from EXCLUDED_AUTHORS because that list governs which .sbs
+# SOURCES may be read, and this one governs nothing -- see the module docstring.
+ADOBE_NAMES = ("Allegorithmic", "Adobe")
+
+AUTHOR_ATTR = re.compile(r'author="([^"]*)"')
+
+
+def manifest_authors(sbsasm_path):
+    """Authors declared in the `.sbsar` manifest(s) sitting beside a compiled specimen.
+
+    The extractor writes `<name>.xml` next to `<name>.sbsasm`; a manifest names an author
+    per graph, so a package built from several authors' graphs returns all of them. Returns
+    an empty set when no manifest is present or none declares an author -- which is a real
+    outcome, not a failure, and is counted separately from "checked and clean".
+    """
+    out = set()
+    for x in glob.glob(os.path.join(os.path.dirname(sbsasm_path), '*.xml')):
+        try:
+            text = open(x, encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        out |= {a for a in AUTHOR_ATTR.findall(text) if a}
+    return out
+
+
+def compiled_audit(listing=None):
+    """Authorship of every DISTINCT.txt entry, read from its compiled manifest.
+
+    Returns (rows, no_author) where rows is [(relpath, {authors}), ...] for entries whose
+    manifest declares at least one author. NOT an exclusion list: see the module docstring.
+    """
+    src = listing or os.path.join(ROOT, 'DISTINCT.txt')
+    rows, no_author = [], []
+    for line in open(src):
+        p = line.strip()
+        if not p:
+            continue
+        full = p if os.path.isabs(p) else os.path.join(ROOT, p)
+        who = manifest_authors(full)
+        if who:
+            rows.append((p, who))
+        else:
+            no_author.append(p)
+    return rows, no_author
+
+
 if __name__ == '__main__':
     excluded, flagged, permitted = audit()
     total = len(excluded) + len(flagged) + len(permitted)
@@ -156,3 +222,32 @@ if __name__ == '__main__':
             print('    %-70s %s' % (rel, who))
         print()
         print('  These are a live question, not a settled exclusion -- see FLAGGED_AUTHORS.')
+
+    # --- compiled side ---------------------------------------------------------------
+    rows, no_author = compiled_audit()
+    if rows or no_author:
+        import collections
+        adobe = [(p, w) for p, w in rows if w & set(ADOBE_NAMES)]
+        flag2 = [(p, w) for p, w in rows if w & set(FLAGGED_AUTHORS)]
+        counts = collections.Counter(a for _p, w in rows for a in w)
+        print()
+        print('COMPILED SIDE -- authorship read from each specimen\'s .sbsar manifest')
+        print('  DISTINCT.txt entries:              %d' % (len(rows) + len(no_author)))
+        print('    manifest declares an author:     %d' % len(rows))
+        print('    no author declared / no manifest: %d' % len(no_author))
+        print()
+        print('  authored by Adobe/Allegorithmic:   %d' % len(adobe))
+        print('  authored by a FLAGGED party:       %d  %s'
+              % (len(flag2), sorted({a for _p, w in flag2 for a in w & set(FLAGGED_AUTHORS)})))
+        print()
+        print('  NOTE: this is NOT an exclusion list. A freely distributed compiled .sbsar')
+        print('  is analysable whoever wrote it; the rule refuses Adobe\'s .sbs DEFINITIONS.')
+        print('  Source-side excluded: %d. Compiled-side Adobe-authored: %d. The %d extra are'
+              % (len(excluded), len(adobe), max(0, len(adobe) - len(excluded))))
+        print('  compiled-only specimens with no .sbs in the corpus to exclude.')
+        print()
+        print('  top authors by specimen count:')
+        for name, n in counts.most_common(8):
+            mark = '  <-- Adobe' if name in ADOBE_NAMES else (
+                   '  <-- flagged' if name in FLAGGED_AUTHORS else '')
+            print('      %-34s %4d%s' % (name[:34], n, mark))

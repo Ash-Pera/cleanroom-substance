@@ -29331,3 +29331,66 @@ the probe. 438 records; parked until a reliable boundary exists.
 
 Both rejections are the probe, not the design. No record has yet contradicted the
 presence-mask rule itself.
+
+## Compiled specimens carry their author too, and the corpus has more Adobe in it than the source check sees
+
+`tools/provenance.py` began by checking only `.sbs` sources, on the stated ground that a
+compiled `.sbsar` does not preserve the author string — evidence being that grepping 396
+`.sbsar`-only specimens for `Allegorithmic` returned nothing.
+
+**That test was worthless and the conclusion was wrong.** A `.sbsar` is a 7z archive, so no
+string inside it is greppable from the container; the grep was measuring compression. The
+manifest carries authorship plainly, one attribute per graph:
+
+    <graph pkgurl="pkg://pcloud_attrib_op" label="IE|PCloud Attrib Op"
+           author="Igor Elovikov" icon="icon1385013876.png">
+
+Reading it from the extracted `.xml` beside each `.sbsasm`, over all 438 DISTINCT.txt
+entries:
+
+    manifest declares an author                246
+    no manifest, or no author declared         192
+
+    authored by Allegorithmic                   52
+    authored by Adobe                            4      56 together
+    authored by GameTextures.com                 5
+
+    source-side check finds                     42
+    compiled-side check finds                   56
+
+The 14 extra are compiled-only specimens with no `.sbs` in the corpus at all, so the source
+rule could never have seen them — `tiny/deep-sea-studios__Shield_Front`,
+`tiny2/IronStar__desert_sand_dune`, `tiny2/INB305__Bitmap2Material_3` (Bitmap2Material is an
+Adobe product), and three declaring `author="Adobe"` outright. A fifth GameTextures specimen
+turns up the same way.
+
+### This is not a deletion list, and the reason is the same one as before
+
+An Adobe-authored `.sbsar` is a freely distributed compiled file. Analysing one is the basis
+of this project; what the rule refuses is reading Adobe's `.sbs` graph **definitions**, which
+a compiled archive does not contain. So these 56 stay in the corpus exactly as the 42
+source-excluded specimens' assemblies do. Conflating "who wrote it" with "may we use it"
+would have produced a wrong answer here for the third time in two days — first by proposing
+to delete 42 corpus entries, then by reading a compressed-file grep as evidence of absence,
+and now this.
+
+What the compiled check is genuinely for: knowing which specimens would become
+source-excluded if a `.sbs` for them ever arrived; measuring how much of the corpus rests on
+Adobe-published material (56 of 438, 12.8%); and catching non-Adobe parties whose terms are
+not permissive, which is how `GameTextures.com` surfaced in the first place.
+
+    ambientCG          129        Chris Ingerson      18
+    Allegorithmic       52        JohnLogostini       12
+    Adobe                4        GameTextures.com     5
+
+### A licence gap this also exposes, not yet resolved
+
+`JohnLogostini`'s twelve specimens are the `DLG-Tools` materials. That repository carries
+**no licence file and no grant in its README**, which describes it as tooling for
+"JohnLogostini and Distant Light Games (DLG), as well as anyone employed with DLG". The
+corpus description in `README.md` says its sources are published "under MIT, CC0 and MPL
+licences"; `DLG-Tools` meets none of them. This is not an Adobe-boundary question — the work
+is the author's own — but it is a permissive-licence assumption that does not hold, and it is
+recorded here rather than quietly acted on. It is load-bearing in one place: the blendingmode
+argument earlier in this document was re-derived on `DLG-Tools__Hammered_Copper_01` after its
+original specimen was withdrawn.
