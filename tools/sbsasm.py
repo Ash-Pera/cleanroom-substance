@@ -179,13 +179,43 @@ FX_NODES = {
 PARAM_BITS = {
     15: {0: 'levelinlow', 2: 'levelinhigh', 4: 'levelinmid',
          6: 'leveloutlow', 8: 'levelouthigh'},
-    1: {4: 'opacitymult'},
-    12: {1: 'intensity', 2: 'intensity', 3: 'warpangle', 4: 'warpangle'},
 }
-PARAM_BIT_MASK = {15: 0x155, 1: 0x10, 12: 0x1e}
+PARAM_BIT_MASK = {15: 0x155}
 
-# Filters whose parameter bits address the END of the block rather than its start.
-PARAM_FROM_END = frozenset({12})
+# The general form of the same field: one parameter per BIT PAIR, where the low bit says
+# the parameter is a baked constant and the high bit says it is a program. A parameter is
+# present when either bit is set.
+#
+# The two forms of a pair are mutually exclusive for `directionalwarp` (0 of 136,470
+# records set both) but not for `blend`, where 10,536 records set both and the program bit
+# wins. So presence is `low | high` and the kind is `high`, which covers both.
+#
+# For `blend` this is exact. Over every record whose last block slot is readable:
+#
+#     bit 4 set, bit 5 clear   140,329 slots   100.0% a baked constant in [0,1]
+#     bit 5 set                 77,386 slots   100.0% a program
+#
+# with no exceptions in 217,715 slots. `opacitymult` really can be a function: the clean
+# paired sources declare it as a `dynamicValue` 176 times against 851 constants, and for
+# the self-contained graphs the counts compile through exactly - `multi_blender` 7 dynamic
+# to 7 bit-5 records, `hblend` 3 to 3, `ie_curve` 14 dynamic + 1 constant to 15 + 1.
+# Source-dynamic implies a bit-5 record in 25 of 25 paired files with no counterexample;
+# the converse fails 24 times, which is what instancing and library dependencies predict.
+#
+# These parameters sit at the END of the block. Where head and tail placement disagree
+# (bits fewer than slots), tail puts all 1,035 `blend` slots on floats, 100% inside [0,1],
+# and head puts all 1,035 on programs.
+#
+# `levels` is NOT in this table. Its odd bits are not program markers: modelling them as
+# pairs moves the fit between bit count and slot count from 81.40% to 82.49%, against
+# 63.78% to 83.32% for `blend`. It keeps the single-bit model and head placement above,
+# and the front-versus-back question stays open for it.
+#
+# filter -> [(name, presence mask, program mask)]
+PARAM_SPEC = {
+    1:  [('opacitymult', 0x30, 0x20)],
+    12: [('intensity', 0x06, 0x04), ('warpangle', 0x18, 0x10)],
+}
 
 
 # FX-Map parameter table: the OTHER thing an fxmaps record's slot 2 can address.
@@ -512,6 +542,8 @@ class Record:
         whether slot 3 holds the parameter program or the first parameter.
         """
         f = self.filter_id
+        if f in PARAM_SPEC:
+            return self._parameters_paired(PARAM_SPEC[f])
         bits = PARAM_BITS.get(f)
         if not bits or len(self.words) < 3:
             return []
@@ -524,24 +556,49 @@ class Record:
             return []
         slots = list(hit[1])[1:]
         w = self.words[1] & PARAM_BIT_MASK[f]
-        set_bits = [i for i in range(16) if w >> i & 1]
-        # Bits address the tail of the block for the filters in PARAM_FROM_END, and its
-        # head for the rest. A record whose bits outnumber its slots is not readable
-        # either way; report what fits rather than guessing an alignment.
-        base = max(0, len(slots) - len(set_bits)) if f in PARAM_FROM_END else 0
         out = []
-        for j, b in enumerate(set_bits):
+        for j, b in enumerate(i for i in range(16) if w >> i & 1):
+            if j >= len(slots) or slots[j] >= len(self.words):
+                break                      # more bits than slots: report the readable
+            out.append(self._read_slot(bits[b], slots[j]))
+        return out
+
+    def _read_slot(self, name, slot):
+        """One parameter slot as (name, kind, value)."""
+        raw = self.words[slot]
+        ptr = raw + 52
+        if (self.asm.body_lo <= ptr < self.asm.body_hi
+                and self.asm.valid_program(ptr)):
+            return (name, 'program', ptr)
+        return (name, 'baked', struct.unpack('<f', struct.pack('<I', raw))[0])
+
+    def _parameters_paired(self, spec):
+        """Parameters for filters whose bits come in (baked, program) pairs.
+
+        The present parameters occupy the LAST k slots of the block, in spec order. A
+        record whose bits imply more parameters than the block has slots is not readable
+        either way, so it reports what fits instead of guessing an alignment.
+        """
+        if len(self.words) < 3:
+            return []
+        f = self.filter_id
+        hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
+        if not hit or len(hit[1]) < 2:
+            return []
+        slots = list(hit[1])[1:]
+        w = self.words[1]
+        present = [nm for nm, pres, _prog in spec if w & pres]
+        base = max(0, len(slots) - len(present))
+        out = []
+        for j, nm in enumerate(present):
             k = base + j
             if k >= len(slots) or slots[k] >= len(self.words):
-                break                      # more bits than slots: report the readable
-            raw = self.words[slots[k]]
-            ptr = raw + 52
-            if (self.asm.body_lo <= ptr < self.asm.body_hi
-                    and self.asm.valid_program(ptr)):
-                out.append((bits[b], 'program', ptr))
-            else:
-                out.append((bits[b], 'baked',
-                            struct.unpack('<f', struct.pack('<I', raw))[0]))
+                break
+            # `kind` comes from the slot itself, not from the bit. The bits predict it in
+            # 99.92% of `directionalwarp` reads and 100% of `blend` reads, so the two
+            # almost always agree - and where they do not, what is actually in the slot is
+            # the honest answer.
+            out.append(self._read_slot(nm, slots[k]))
         return out
 
     @property

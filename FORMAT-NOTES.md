@@ -18644,9 +18644,13 @@ of sample. It is a lookup that covers most records.
 **The FX table's tags are a long tail.** 22 of them are decoded, covering 25.9% of entries;
 7,678 more have a median of one entry each and cannot be established at any sample size.
 
-**Two opcodes read something by index and it is not known what.** `0x03` (6,177 uses) and
-`0x06` (762) index a space of 220 distinct values that is not the variable frame - `get`
-names a `set`-written slot in 4,300 of 4,300 cases, these in 7%.
+**Two opcodes read something by index, and it is now known what.** *(Stale when written -
+resolved later the same session, see "`0x03`/`0x06` are cross-record common-subexpression
+elimination" above: `0x03`/`0x06` are a per-package value cache, populated exclusively from
+`pixelprocessor` records that are never themselves sampled, always populated before they are
+read. What individual values mean case-by-case is still mostly unnamed, but the mechanism is
+not.)* `0x03` (6,177 uses) and `0x06` (762) index a space of 220 distinct values that is not
+the variable frame - `get` names a `set`-written slot in 4,300 of 4,300 cases, these in 7%.
 
 ### Ranked
 
@@ -19112,3 +19116,84 @@ Unchanged after the edit: 641 files parsed, 0 failures, 0 unexplained bytes, edg
 744 records set bits for two parameters but have only one parameter slot. `parameters`
 reports what fits rather than guessing an alignment, so these yield one name instead of
 two. 239 more set no parameter bits at all. Neither is explained.
+
+## The bit pairs are general: `blend`'s opacity is a function 77,386 times
+
+`directionalwarp` turned out to encode each parameter as a bit PAIR - low bit means a baked
+constant, high bit means a program. That is not specific to `directionalwarp`.
+
+### `blend` bit 5
+
+Searching every slot-1 bit for one that predicts "this parameter is a program", only one
+reaches the base rate, and it reaches it exactly:
+
+    blend  bit 4 -> bit 5     precision 100.00%   recall 100.00%   (1,123 programs)
+
+The other bits score 99.2% only because programs are rare, so "always baked" scores 98.5%
+by default. Adding the honest denominators makes the rule exact. Over every `blend` record
+whose last block slot is readable:
+
+    bit 4 set, bit 5 clear    140,329 slots    100.0% a baked constant in [0,1]
+    bit 5 set                  77,386 slots    100.0% a program
+                                                 (76,263 with bit 4 clear, 1,123 with it set)
+
+No exceptions in 217,715 slots. Unlike `directionalwarp`, the two bits are NOT exclusive
+here - 10,536 records set both, and the program bit wins. So the general rule is
+**presence = low | high, kind = high**, which covers both filters.
+
+None of the 77,386 programs is the record's size expression: 0 of 77,386 share its offset.
+
+### `opacitymult` really is a function
+
+The clean paired sources declare `opacitymult` as a `dynamicValue` 176 times against 851
+constants, built from `get_float1`, `const_float1`, `ifelse`, `get_bool`, `gt` and `and` -
+which is exactly the shape the compiled programs have. A typical one is a resolution gate:
+
+    %0  sysvar.f2    3          ; $sizelog2
+    %1  swizzle.f1   %0, #0
+    %2  swizzle.f1   %0, #1
+    %3  max.f1       %1, %2
+    %4  const.f1     11
+    %5  lt.b2        %3, %4
+    %6  const.f1     1
+    %7  const.f1     0
+    %8  select.f1    %5, %6, %7   ; opacity = 1 below 2^11, else 0
+
+A detail layer switched off at low resolution. 73.9% of the programs read `$sizelog2`,
+13.7% read a graph input, 11.2% a shared-cache slot.
+
+For the self-contained graphs the counts compile through exactly:
+
+    multi_blender.sbs      7 dynamic,  0 constant  ->   7 bit-5,   0 bit-4
+    hblend.sbs             3 dynamic,  0 constant  ->   3 bit-5,   0 bit-4
+    ie_curve.sbs          14 dynamic,  1 constant  ->  15 bit-5,   1 bit-4
+
+Source-dynamic implies a bit-5 record in **25 of 25** paired files with no counterexample.
+The converse fails 24 times, which is what instancing and library dependencies predict: a
+compiled package contains blend nodes the user's own `.sbs` never declared.
+
+### Placement, and where `levels` stands
+
+These parameters sit at the END of the block. Where the two placements disagree - bits
+fewer than slots - tail puts all 1,035 `blend` slots on floats, 100% of them inside [0,1];
+head puts all 1,035 on programs.
+
+`levels` does **not** join this table. Modelling its unused odd bits as program markers
+moves the fit between bit count and slot count from 81.40% to 82.49%, where the same change
+for `blend` moves it from 63.78% to 83.32%. One is a mechanism and the other is noise. So
+`levels` keeps the single-bit model and head placement, and the front-versus-back question
+stays open for it - the honest position, not a resolved one.
+
+### Result
+
+`PARAM_SPEC` replaces the per-filter bit tables for `blend` and `directionalwarp`. Named
+parameter readings go from about 310,000 to **526,677**, the jump coming almost entirely
+from `blend` opacities that the old `0x10` mask could not see at all:
+
+    blend            opacitymult   140,329 baked   77,386 program
+    directionalwarp  intensity      65,897 baked    4,400 program
+                     warpangle      63,677 baked    3,240 program
+    levels           five params   171,208 baked      540 program
+
+Audit unchanged: 641 files, 0 failures, 0 unexplained bytes, edge slots 100.00%, validator
+437/437 on every array check, 0 unexplained value-table entries.
