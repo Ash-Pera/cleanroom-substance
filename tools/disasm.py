@@ -84,13 +84,35 @@ def decode(d, ptr, hi):
         yield k, q, op, toks
         q += 2 * L
 
-def _imm(f, toks):
-    """Render the immediate carried by a constant/inputref instruction."""
-    raw = b''.join(struct.pack('<H', t) for t in toks)
+def _imm(f, toks, addr=None):
+    """Render the immediate carried by a constant/inputref instruction.
+
+    Immediate-carrying opcodes come in two forms differing by 0x0400 -- one extra token.
+    The longer form emits a 2-byte pad when the instruction lands at 0 mod 4, so that the
+    immediate itself stays 4-aligned. Reading from the first operand byte regardless
+    misreads every constant in the padded form: it takes the low half of one float32 and
+    the high half of the previous word, which destroys the exponent.
+
+    The correlation is exact in the corpus -- odd token counts occur only at addr%4==0 and
+    even counts only at addr%4==2 -- and the readings separate accordingly. For the
+    9-token form, reading from byte 0 yields values like 7.5e-28 and -3.0e-13; skipping
+    the pad yields 1, 0.001 and 0.333333.
+
+                     plausible magnitude, from byte 0  /  from byte 2
+        3 tokens, addr%4=0          90.8%                   99.8%
+        5 tokens, addr%4=0          98.0%                  100.0%
+        9 tokens, addr%4=0          92.0%                  100.0%
+        4 tokens, addr%4=2         100.0%                   45.6%
+
+    `addr` is the opcode's own offset. It is optional only so old callers keep working;
+    without it the pad cannot be detected and padded constants are misread.
+    """
+    pad = 2 if (addr is not None and addr % 4 == 0) else 0
+    raw = b''.join(struct.pack('<H', t) for t in toks)[pad:]
     if f['id'] == 0x02:
         return 'uid=%d' % struct.unpack_from('<I', raw)[0] if len(raw) >= 4 else '?'
     if f['id'] != 0x00:
-        return ' '.join('%d' % t for t in toks)
+        return ' '.join('%d' % t for t in toks[pad // 2:])
     out = []
     for i in range(0, len(raw) - 3, 4):
         if f['ty'] == 1: out.append('%g' % struct.unpack_from('<f', raw, i)[0])
@@ -106,7 +128,7 @@ def text(d, ptr, hi, mark=()):
         nm = '%s.%s%d' % (name(op), TYPE[f['ty']], f['comps'])
         rule = IMM.get(f['id'])
         if rule == 'all':
-            args = _imm(f, toks)
+            args = _imm(f, toks, addr)
         else:
             pos = rule or ()
             args = ', '.join('#%d' % t if i in pos

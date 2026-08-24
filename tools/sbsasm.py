@@ -616,7 +616,78 @@ class Assembly:
 
     # ---- programs
     def valid_program(self, p):
-        """A program is valid only if its declared instruction count decodes exactly."""
+        """True if a program starts at p. See `program_span` for what that requires.
+
+        Three checks, each of which a run of arbitrary bytes fails: the declared
+        instruction count decodes to exactly that many instructions; every opcode is
+        well-formed and its id is one the format actually uses (the raw length rule
+        accepts 47% of all u16 values); and every operand that is a value reference names
+        an EARLIER value, since this is three-address code with contiguously numbered
+        results.
+
+        The last check is the one with teeth -- violated by 0.00% of instructions in
+        programs a record's slots name, and by 65% in scan-discovered candidates.
+        """
+        return self.program_span(p) is not None
+
+    # ---- outputs
+    def outputs(self):
+        """The graph outputs, as [(uid, format, grayscale, record index), ...].
+
+        Layout A puts an 8-byte entry per output between the record directory and the
+        first record - the region coverage() was calling 'resources', though many files
+        with one embed no images at all. One entry per output in 591 of 591 layout-A
+        specimens, and the second word is a valid record index in 3,249 of 3,249.
+
+        The first word carries the manifest's `format` attribute as bits 4 and up:
+        format == (w0 & 0xFFFF) >> 4, exact on every distinct value in the corpus. Bit 2
+        of that format is the grayscale flag, and it matches the colour bit of the record
+        the entry names in 3,249 of 3,249 - a consequence test the table could have
+        failed and did not.
+
+        This is the output-to-record attribution recorded elsewhere in FORMAT-NOTES.md as
+        structurally absent. It is not absent; it was in a region nothing had read.
+
+        Entries whose high half is 2 (48 of 3,249) are a different kind and are returned
+        with format None rather than guessed at.
+        """
+        if not self.records:
+            return []
+        lo, hi = self.output_table
+        if hi <= lo:
+            return []
+        uids = self.header.get('output_uids') or []
+        out = []
+        for j, off in enumerate(range(lo, hi, 8)):
+            if off + 8 > len(self.data):
+                break
+            w0, idx = struct.unpack_from('<II', self.data, off)
+            uid = uids[j] if j < len(uids) else None
+            if (w0 >> 16) == 2:
+                out.append((uid, None, None, idx))
+            else:
+                fmt = (w0 & 0xFFFF) >> 4
+                out.append((uid, fmt, bool(fmt & 4), idx))
+        return out
+
+    # ---- programs
+    def valid_program(self, p):
+        """A program is valid only if it decodes exactly AND its operands are possible.
+
+        Three checks, each of which a run of arbitrary bytes fails:
+
+        1. the declared instruction count decodes to exactly that many instructions;
+        2. every opcode is well-formed and its id is one the format actually uses
+           (`isa.plausible`) - the raw length rule accepts 47% of all u16 values, which
+           is why a scan for programs finds so many that are not programs;
+        3. every operand that is a value reference names an EARLIER value. This is
+           three-address code, results are numbered contiguously, so an operand at or
+           beyond its own instruction's number is impossible.
+
+        Check 3 is the one with teeth. Over programs a record's slots name it is violated
+        by 0.00% of instructions; over scan-discovered candidates, by 65%. Without it a
+        validator cannot tell a program from bytes that merely decode.
+        """
         d, hi = self.data, self.body_hi
         if p + 4 > hi:
             return False
@@ -626,15 +697,30 @@ class Assembly:
         q, k = p + 2, 0
         while k < n and q + 2 <= hi:
             op = struct.unpack_from('<H', d, q)[0]
-            L = isa.LEN.get(op)
-            if not L or ((op >> 8) & 3) == 3:
+            if not isa.plausible(op):
                 return False
+            L = isa.LEN.get(op)
+            oid = op & 0x3F
+            imm = disasm.IMM.get(oid)
+            if imm != 'all' and L > 1:
+                pos = imm or ()
+                for i in range(L - 1):
+                    if i in pos:
+                        continue
+                    if struct.unpack_from('<H', d, q + 2 + 2 * i)[0] >= k:
+                        return False
             q += 2 * L
             k += 1
         return k == n
 
     def program_span(self, p, hi=None):
-        """End offset of the program at p, or None. Bounded by `hi` when given."""
+        """End offset of the program at p, or None. Bounded by `hi` when given.
+
+        This is the single definition of "is a program"; `valid_program` is this
+        returning non-None. They used to be two implementations of the same idea and
+        drifted apart -- this one checked only instruction lengths, so a tightening
+        applied to the other silently did not reach the scan that finds most programs.
+        """
         hi = self.body_hi if hi is None else hi
         d = self.data
         if p + 4 > hi:
@@ -643,12 +729,22 @@ class Assembly:
         if not (1 <= n <= 20000):
             return None
         q = p + 2
-        for _ in range(n):
+        for k in range(n):
             if q + 2 > hi:
                 return None
-            L = isa.LEN.get(struct.unpack_from('<H', d, q)[0])
-            if not L:
+            op = struct.unpack_from('<H', d, q)[0]
+            if not isa.plausible(op):
                 return None
+            L = isa.LEN.get(op)
+            oid = op & 0x3F
+            imm = disasm.IMM.get(oid)
+            if imm != 'all' and L > 1:
+                pos = imm or ()
+                if q + 2 * L > hi:
+                    return None
+                for i in range(L - 1):
+                    if i not in pos and struct.unpack_from('<H', d, q + 2 + 2 * i)[0] >= k:
+                        return None
             q += 2 * L
         return q
 

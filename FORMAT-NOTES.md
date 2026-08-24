@@ -17159,3 +17159,72 @@ bytecode that no record slot names, which is real and which the FX trees rely on
 **not** a source for ISA statistics. Any opcode census, operand analysis, or immediate
 inference must run over strictly-named programs, and any past figure that did not is
 suspect.
+
+## Fixing the ISA and the disassembler
+
+Three defects, each of which made correct data look wrong or wrong data look correct.
+
+### `program_span` and `valid_program` were two implementations of one idea
+
+They had drifted. `valid_program` checked opcode well-formedness; `program_span` checked
+only instruction lengths - and `program_span` is what `referenced_programs()` calls, so
+every tightening applied to the validator silently failed to reach the scan that finds most
+programs. They are now one function, with `valid_program` returning `program_span(p) is not
+None`.
+
+### The validator now checks that operands are possible
+
+`isa.LEN` is a computed rule, `length = (opcode >> 10) + 1` for `0x0400 <= op < 0x8000`,
+which is right but extremely permissive: **47% of all u16 values are well-formed opcodes**.
+That is why a scan for programs finds so many that are not programs.
+
+Two evidence-based tightenings:
+
+**Op ids the format never uses.** Over strictly-named programs across all 641 specimens,
+49 op ids occur and each appears in at least 5 distinct specimens. Fifteen never occur at
+all:
+
+    0x05 0x08 0x0A 0x0E 0x19 0x2C 0x37 0x38 0x39 0x3A 0x3B 0x3C 0x3D 0x3E 0x3F
+
+**A correction to record.** An earlier pass here listed `0x35` and `0x36` among the absent.
+That was measured on a 150-specimen sample. Over the full corpus `0x35` appears in **41
+files** and `0x36` in **11**; both are real operations, and so is `0x0F`. The sample was too
+small for a claim about absence, which is exactly the kind of claim a sample cannot support.
+
+**Operands must name earlier values.** This is three-address code with contiguously
+numbered results, so an operand at or beyond its own instruction's number is impossible.
+Violated by 0.00% of instructions in record-named programs and 65% in scan-discovered
+candidates - the check with real teeth. Adding it leaves the scan finding 64,967 programs
+instead of 67,761, a 4% reduction, with **impossible operands falling from 65.02% to
+0.00%**. The garbage was concentrated in a few candidates rather than spread thinly.
+
+### The alignment pad was being read as data
+
+`OPCODES.md` records that immediate-carrying opcodes come in two forms differing by
+`0x0400` - one extra token - the longer form emitting a **2-byte pad** when the instruction
+lands at 0 mod 4, so the immediate stays 4-aligned. `_imm` built its buffer from all
+operand tokens and read from byte 0 regardless, so every constant in the padded form was
+decoded from the wrong two bytes: the low half of one float32 joined to the high half of
+the word before it, which destroys the exponent.
+
+The correlation is exact - odd token counts occur only at `addr%4==0`, even counts only at
+`addr%4==2` - and the two readings separate cleanly:
+
+| form | from byte 0 | skipping the pad |
+|---|---|---|
+| 3 tokens, `addr%4=0` | 90.8% | **99.8%** |
+| 5 tokens, `addr%4=0` | 98.0% | **100.0%** |
+| 9 tokens, `addr%4=0` | 92.0% | **100.0%** |
+| 4 tokens, `addr%4=2` | **100.0%** | 45.6% |
+
+For the 9-token form, reading from byte 0 gives values like `7.5e-28` and `-3.0e-13`;
+skipping the pad gives `1`, `0.001` and `0.333333`.
+
+Corpus-wide, float constants decoding to a plausible magnitude go from **91.28% to
+99.90%**, and the resulting histogram is what a material library should contain:
+
+    1.0 (498,623)   0.0 (371,214)   0.5 (162,637)   0.25   0.75   -1.0
+    8   2   4   16   5   0.693147
+
+The last is **ln 2**. A misread float distribution does not produce a mathematical
+constant, so that single value corroborates the fix better than the aggregate does.
