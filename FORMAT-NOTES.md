@@ -22826,3 +22826,53 @@ validator 437/437.
 The two measurements catch different things and neither subsumes the other: the sweep found
 `select` and `dot`, and could not have found the shape bug; the unit tests found the shape
 bug, and would never have exercised `select` on a 4-component branch.
+
+## The last execution failures: slots written outside `Record.programs`
+
+25 failures remain, all a program reading a slot nothing has written. Scanning statically for
+records whose own programs read a slot they never write, across 60 files:
+
+    uniform           42 records
+    fxmaps            34
+    pixelprocessor     3
+
+### `fxmaps`: the node chain writes them
+
+`Record.programs` is not all of an fxmaps record's code - `fx_walk` yields the node chain's
+and the parameter table's programs too. Including those:
+
+    30 of 34 records have the missing slot written by an fx program
+
+So an fxmaps record's slot state spans its node chain, not just the programs its own slots
+name. That is a fact about the format, and it means any evaluator has to walk the chain
+before deciding a slot is unwritten.
+
+### `uniform`: always the same two slots, and the code says what they are
+
+All 42 read **slot 12 and slot 16**, the same pair every time - which is what an
+engine-provided value looks like rather than a missing write. What the code does with them:
+
+    %0  get.f2   16           <- a 2-vector
+    %1  swizzle  %0, #1          its y
+    %3  mod      %1, 2           y mod 2
+    %4  get.f1   12           <- a scalar
+    %5  mul      %3, %4          (y mod 2) * step
+    %7  vec      %5, 0
+    %8  add      %0, %7          shift x on alternate rows
+
+That is a **brick offset**: slot 16 is a cell coordinate and slot 12 the amount alternate
+rows shift by. The reading comes from the arithmetic, which is unambiguous.
+
+Their provenance is not established. The obvious guess - that these are FX-Map per-iteration
+variables, since a cell coordinate is what an FX-Map hands each instance - does not survive
+the check: **none of these 42 records has a program named by any fxmaps node chain or
+parameter table**, in 60 files. So something supplies a coordinate and a step to these
+records and it is not the fxmaps walk as currently understood.
+
+### Where execution stands
+
+    programs   52,334      ran 52,308    99.950%
+    failed         26      25 of these slots, 1 divide by zero on stub data
+
+Nothing in the remainder is a decoding gap. The 25 are a scheduling question - who runs
+before whom, and what the engine seeds - rather than a question about what the bytes mean.
