@@ -13122,16 +13122,70 @@ manifest:  uid 1067702016 -> "time"       uid 1067702033 -> "timescale"
 `(sv0 + #time) * #timescale`, uid for uid, against the source's own function graph. This
 is a structural match to ground truth, not a co-occurrence statistic.
 
-**Checked against every other specimen that uses id 0.** 63 instances in 15 files reduce
-to 7 distinct program shapes (read in full, not sampled); every one is an `add`/`mul`
-combination of `sv0` with one or two `inputref`s, which is what parameterising an
-animation curve looks like and is inconsistent with nothing seen. Of the four other
-files with a paired `.sbs` source available, all four — `fake_anim_curve`,
-`polar_and_polar`, `flowingLava_v35_engine_4_5`, plus `time_var_test` itself — reference
-`$time` exactly once in their source. `fz_explosion` has no paired source but the same
-program shape. Provenance: `fake_anim_curve` and `polar_and_polar` carry no author tag,
-`flowingLava` is authored "Janine SMith", `time_var_test` is "logicalmodelin" — none
-Allegorithmic.
+### Checked against every other specimen that uses id 0
+
+**The first count was inflated by corpus duplication.** "63 instances in 15 files" scanned
+every corpus root separately, and this feature is rare enough that most of its files are
+present in three or four roots at once (`corpus`, `acg2`, `tiny`, `pairs2`, `pairs4`) as
+byte-identical copies — the same effect "Corpus integrity" measures generally, landing
+harder here because the population is small. Deduplicating by content hash: **37 programs
+in 6 distinct files**. The correction changes no conclusion, only the count.
+
+Read in full, the 37 reduce to 7 distinct program shapes, every one an `add`/`mul`
+combination of `sv0` with one or two `inputref`s. Two things settle the rest without
+needing a `.sbs` source at all — the *manifest* names every graph input whether or not the
+source is available, and that alone is enough once the parameter names are read:
+
+    file                  consuming input names (manifest, no .sbs needed)
+    time_var_test         "time", "timescale"                          -- proved above
+    fake_anim_curve       "time", "timescale"
+    fz_explosion          "time_1", "timescale", and "time_offset" (via a cached slot,
+                          see below)
+    polar_and_polar       "timescale", "timeoffset"
+    flowingLava           "mainFlowAutoSpeed" -- multiplied directly by sv0
+    LeakingSubstance004   "running_layer2_loop_every_n", "hitting_droplets_loop_n_seconds"
+
+Every single consumer of `sv0`, across five different packages and at least two different
+authors (`fake_anim_curve`/`polar_and_polar`/`fz_explosion`/`time_var_test` are LGMLtools;
+`flowingLava` is "Janine SMith"; `LeakingSubstance004` carries no author, from ambientCG),
+names it as a clock. None carries an Allegorithmic author tag.
+
+**`fz_explosion` also resolves the `op03`/`op06` pair, locally.** Its second `sv0`
+program reads `op03(6)` rather than an `inputref`; a separate program in the same file
+writes to that slot:
+
+```
+%0  inputref uid=3315878672   ; "time_1"
+%1  inputref uid=3315579545   ; "time_offset"
+%2  add %0, %1
+%3  op06  %2, #6                -- cache "time_1 + time_offset" at slot 6
+```
+
+so the reader is `($time + (time_1 + time_offset)) * timescale` — the identical idiom,
+with a shared subexpression cached across two output-channel programs. Consistent with
+the general finding that `op06`/`op03` share an index space with `set`/`get`'s shape.
+
+**`LeakingSubstance004` has no `.sbs` source at all**, so its manifest names are the only
+evidence — and they resolve the file's own name. Its `pixelprocessor` program computes
+`(sampled_value - sv0/period) mod 1` where `period` is `hitting_droplets_loop_n_seconds`;
+its 15 `transformation` programs compute a vertical translation `(0, -sv0/period)` where
+`period` is `running_layer2_loop_every_n`. Both are `sv0` divided by a parameter named as
+a period in seconds — the textbook `(time / period) mod 1` looping-animation idiom, on a
+package about running and hitting droplets.
+
+**That idiom was checked numerically, not just read.** Transpiling the wrap program and
+evaluating it at `sv0 = $time` with `period = 4`:
+
+    t       0.00   1.00   2.00   4.00   5.00   8.00   100.00
+    output  0.370  0.120  0.870  0.370  0.120  0.370  0.370
+
+Exactly periodic at the named period — `t` and `t + 4` agree bit for bit — which is a
+property of running the actual transpiled bytecode, not of the naming.
+
+**Falsification attempted.** If `#0` were `$randomseed` instead, some program should feed
+it to `rand()` (`0x32`, the only operation this ISA has that consumes a seed). Searched
+across the full deduplicated corpus: zero instances. No support for the alternative the
+source vocabulary count made second-likeliest.
 
 So the five system variables are now five for five:
 
