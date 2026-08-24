@@ -23233,3 +23233,41 @@ and costs 86.
 neither of the two obvious causes accounting for them. The one remaining candidate not yet
 tested is the shared cache: a record reading a value another record computed from the input,
 where the dependency runs through `0x03`/`0x06` and not through any edge.
+
+## The shared cache is a dependency edge
+
+The last section left 142 outputs the manifest says an input alters and the graph could not
+reach, with the two obvious causes tested and rejected. The remaining candidate was the
+shared cache, and it is the answer.
+
+`0x06` writes a value into the per-package cache and `0x03` reads it back by index, **from a
+different record**. So a reader depends on a writer with no edge between them, and a walk over
+edges alone cannot see the path.
+
+Adding those dependencies - 6,888 of them across the corpus:
+
+    output attribution      28,470 / 28,896   98.53%   ->   28,554 / 28,896   98.82%
+      alters but unreachable          142     ->   131
+      reachable but does not alter      6     ->     6
+    records reachable from the output table
+                            878,588 / 895,674  98.09%  ->  880,588 / 895,674  98.32%
+
+Two independent measures move together, and the **sharp** violation count does not move at
+all. That is what separates this from the fx-programs experiment in the previous section,
+which fixed a comparable 11 and took the sharp violations from 426 to 512. A change that
+improves the loose direction while leaving the sharp one alone is adding a real edge; one
+that improves the loose direction by breaking the sharp one is adding a wrong edge and
+getting paid for it in the wrong currency.
+
+`attribute_outputs.forward` now includes them.
+
+### What the cache is, restated
+
+This file already established what `0x03`/`0x06` mean - cross-record common-subexpression
+elimination, a value computed once in a dedicated record and read back by index - and later
+implemented it, verifying that every one of 120 reads finds its value when a file is
+evaluated in record order.
+
+What was missing is that it is also a **graph** relation. The meaning was known, the
+evaluation was implemented, and the dataflow graph still did not have the edge in it. Three
+different things, and knowing the first two did not supply the third.

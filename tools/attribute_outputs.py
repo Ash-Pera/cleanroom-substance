@@ -47,12 +47,44 @@ def readers(asm):
 
 
 def forward(asm):
-    """record index -> records that consume it directly."""
+    """record index -> records that consume it directly.
+
+    Image edges are not the only dependency. `0x06` writes a value into the per-package
+    cache and `0x03` reads it back by index, from a different record - so a reader depends
+    on the writer with no edge between them, and a walk over edges alone cannot see it.
+
+    Adding those, over the corpus:
+
+        edges only            28,470 / 28,896   98.53%   142 unreachable, 6 spurious
+        + cache write->read   28,554 / 28,896   98.82%   131 unreachable, 6 spurious
+
+    6,888 cache edges. The improvement is in the loose direction and the SHARP test - an
+    output reachable from an input the manifest says does not alter it - does not move,
+    which is what distinguishes this from adding the fx node programs as readers: that
+    also fixed 11, and took the sharp violations from 426 to 512.
+    """
     fwd = collections.defaultdict(set)
     for r in asm.records:
         for e in r.edges:
             if e is not None:
                 fwd[e].add(r.index)
+    writer, reader = {}, collections.defaultdict(set)
+    for r in asm.records:
+        for q in r.programs:
+            try:
+                ins = list(disasm.decode(asm.data, q, asm.body_hi))
+            except Exception:
+                continue
+            for _, _addr, op, toks in ins:
+                oid = op & 0x3F
+                if oid == 0x06 and len(toks) > 1:
+                    writer.setdefault(toks[1], r.index)
+                elif oid == 0x03 and toks:
+                    reader[toks[0]].add(r.index)
+    for idx, who in reader.items():
+        w = writer.get(idx)
+        if w is not None:
+            fwd[w] |= who
     return fwd
 
 
