@@ -20415,3 +20415,112 @@ every structural check, 0 unexplained value-table entries, transpiler 11 passed 
 `fxmaps` and `gradient` (no bit of slot 1 predicts their slots, best correlation 0.225).
 Those three diagnoses were made on the inflated corpus and are correlation-based, so they
 survive in kind; `fxmaps` and `gradient` remain the real hole.
+
+## `paramset` compiles to no tree node, and that explains the 34%
+
+The previous FX-Map section closed by naming the obvious next measurement: `paramset` is
+69 of 155 source nodes and no binary header has been matched to it. The answer is that
+none will be. It is not a node.
+
+### First, a correction to how the last section justified itself
+
+It called `ie_particles` "the one material where graphs and records are 1:1 - no instancing
+to unpick". Wrong on the second clause: `ie_particles` has five `<compInstance>` elements.
+Checked properly, **none of the seven materials is instance-free**:
+
+    ie_curve 32   ie_pcloud 202   Bruno 13   ie_particles 5   triDraw 4   Grid 4   Clouds_3 1
+
+What matters is narrower than the file-level count, and is the thing that should have been
+measured: whether the cooker duplicated the **fxmaps filter nodes**. It did everywhere
+except `ie_particles`, whose 5 instances reference external packages that contribute no
+FX-Map of their own:
+
+    material      fxmaps filters -> fxmaps records
+    ie_particles         2  ->   2      counting valid
+    ie_curve            43  ->  74
+    Grid                 3  ->   6
+    Clouds_3             1  ->   2
+    triDraw              2  ->   3
+    Bruno                1  ->   3
+    ie_pcloud           11  -> 110
+
+So the `0x1AB` conclusion stands and its stated reason did not. The rule from *Instance-free
+graphs are the only paired files where counting is valid* needs restating for this
+structure: what has to be instance-free is **the filter being counted**, not the file.
+
+### The consequence test
+
+Two materials carry `paramset` and no `addnode` at all. If `paramset` emitted a node of any
+header - identified or not - their records would be full of them:
+
+    Clouds_3    6 paramset, 0 addnode  ->  2 records,  0 tree nodes
+    Grid        4 paramset, 0 addnode  ->  6 records,  0 tree nodes
+
+Zero, in eight records. And where `addnode` is present the node count tracks it exactly,
+once the cooker's duplication factor is applied:
+
+    ie_particles   6 addnode x1   expect 6   got 6
+    Bruno          1 addnode x3   expect 3   got 3
+    ie_curve      47 addnode x1.72 expect 81  got 55   (walk incomplete)
+    triDraw        2 addnode x1.5  expect 3   got 1    (walk incomplete)
+
+The two shortfalls are walker failures, which the next result explains. Nothing anywhere
+tracks `paramset`.
+
+### Slot 2 is a discriminated union
+
+`Record.fx_tree` reads slot 2 as the tree root and stops when the word there is not a known
+header. In the ground-truth materials, what it finds depends entirely on whether the
+FX-Map has an `addnode`:
+
+    paramset-only records   8 of 8   slot 2 -> a tag word, low nibble 8
+    addnode-bearing         5 of 5   slot 2 -> 0x18B, a node header
+
+Corpus-wide over 40,928 `fxmaps` records:
+
+    slot 2 -> a node header        26,935   65.8%
+    slot 2 -> a tag, low nibble 8  12,471   30.5%
+    slot 2 -> something else        1,522    3.7%
+
+    records where the walker finds no node    13,999   34.2%
+
+**34.2% is 30.5 + 3.7 exactly.** The records the walker cannot enter are precisely the
+records whose slot 2 does not address a node chain.
+
+### What this closes
+
+`tools/README.md` says `fx_tree` "reaches 95.7% of the node headers present; the gap is
+that 34% of fxmaps records carry no node of a known shape at all", and every FX-Map section
+here has treated that third as undecoded structure waiting to be cracked. It is not a gap.
+**Those records have no node because their FX-Map has no `addnode`** - slot 2 addresses the
+parameter table directly, and the walker is right to find nothing.
+
+That also retires the framing that FX-Map records come in two kinds, "a node chain or a
+value table". They come in one kind with one root pointer, and the tag at the root says
+which structure follows - the same discriminated-union shape the record parameter slot
+turned out to have.
+
+### Where the parameters actually go
+
+Reading `Grid` record 18 end to end - 7 words, and its data physically sits in the extent
+of record 17, a `uniform`:
+
+    197208  02000048   tag
+    197212  0003021C   -> 197200, the float32 0.95
+    197216  0A420001   a 1-instruction program, inputref
+    197224  0A020001   a 1-instruction program, inputref
+    197232  03898808   record 18 begins
+    197240  00030224   -> 197208, the tag above
+    197244  00030234   -> 197224
+    197248  0003022C   -> 197216
+
+which is what a `paramset` is in the source: a `<paramsGraphData>` holding `<parameter>`
+elements, each a constant or a `<dynamicValue>` function graph. The constant is the float,
+the function graphs are the programs.
+
+The counts do **not** line up yet and are not claimed: `Grid` sets 8 parameters across its
+graphs and its records expose 6 root entries, `Clouds_3` sets 13 and exposes 9, and every
+`Grid` record shows exactly one entry regardless of whether its graph sets two parameters
+or three. `fx_table` stops early here for the same reason `fx_tree` did, and until it walks
+the table completely the parameter-level correspondence cannot be tested. That is the next
+measurement, and unlike the last one it is not blocked on the corpus.
