@@ -144,12 +144,14 @@ BINOP = {0x12: "+", 0x13: "-", 0x14: "*", 0x15: "/",
 FUNCS = {0x16: "sbs_mod", 0x17: "-", 0x18: "dot", 0x23: "abs", 0x24: "floor",
          0x2A: "exp",
          0x25: "ceil", 0x26: "cos", 0x27: "sin", 0x28: "sqrt", 0x29: "log",
-         0x2B: "exp2", 0x2C: "not", 0x2D: "atan2", 0x2E: "cartesian", 0x36: "pow",
+         0x2B: "exp2", 0x2C: "not", 0x2D: "atan2", 0x2E: "cartesian",
+         0x35: "log2", 0x36: "pow",
          0x2F: "lerp", 0x30: "minimum", 0x31: "maximum", 0x32: "rand"}
 
 PY_FUNCS = {"abs": "np.abs", "floor": "np.floor", "ceil": "np.ceil", "cos": "np.cos",
             "exp": "np.exp",
-            "sin": "np.sin", "sqrt": "np.sqrt", "log": "np.log", "exp2": "np.exp2",
+            "sin": "np.sin", "sqrt": "np.sqrt", "log": "np.log", "log2": "np.log2",
+            "exp2": "np.exp2",
             "pow": "np.power",
             "atan2": "np.arctan2", "minimum": "np.minimum", "maximum": "np.maximum",
             "dot": "np.dot"}
@@ -164,24 +166,23 @@ PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or"}
 #: now handled explicitly above -- its meaning is known even though evaluating it needs
 #: an architecture this transpiler does not have yet.
 #:
-#: 0x35 was briefly here as "log2" in a concurrent edit with no numeric proof behind it --
-#: every avenue tried (literal constants, the 22 size expressions that use it, all of
-#: which trace back to a sampler or cache read with no way to get a hand-computable
-#: value) came up empty. Circumstantial support is real (unary; 99.5%+ of 3,903 instances
-#: feed straight into ceil/floor; 73% fed by an int-to-float cvt) and is recorded as such
-#: in OPCODES.md, but "probably" is not the bar every other name in this table clears.
-#: Emitting it as log2 would make the transpiler compute a plausible, silently unverified
-#: number for 3,903 instructions -- exactly the failure mode the cache_read/cache_write
-#: raise exists to avoid, just without the raise. 0x36 briefly landed in FUNCS the same
-#: unproven way and was pulled back out alongside it.
+#: 0x35 and 0x36 were both here too, briefly and prematurely, before either had real
+#: evidence -- see git history if the story matters. Both are proven now, by two
+#: different methods:
 #:
-#: 0x36 = pow is not in that category: `LeakingSubstance004` and `RoadSubstance002`
-#: compute ((s+0.055)/1.055) ** 2.4 -- the inverse sRGB transfer function, the same
-#: closed form `Embroidery_Legacy` already proved via ln/exp2 -- using op36(x, 2.4)
-#: directly, and the linear branch's 0.0773994 constant is 1/12.92 to 8 decimal places.
-#: Transpiled and evaluated against the closed form: max deviation 1.19e-07, identical to
-#: the ln/exp2 proof. See test_pow_via_srgb_decode.
-UNNAMED = {0x35}
+#: 0x35 = log2, a structural match: `ie_pcloud`'s source computes a graph input's
+#: outputsize override as get_float3 -> swizzle2 -> log2 -> toint2, and the compiled
+#: file has the identical four-instruction shape (inputref -> swizzle -> op35 -> cvt),
+#: byte-identical, four times over -- once per input that declares the override. See
+#: test_log2_matches_ie_pcloud_source.
+#:
+#: 0x36 = pow, a numeric match: `LeakingSubstance004` computes
+#: ((s+0.055)/1.055) ** 2.4 -- the inverse sRGB transfer function, the same closed form
+#: `Embroidery_Legacy` already proved via ln/exp2 -- using op36(x, 2.4) directly, and
+#: the linear branch's 0.0773994 constant is 1/12.92 to 8 decimal places. Transpiled and
+#: evaluated against the closed form: max deviation 1.19e-07, identical to the ln/exp2
+#: proof. See test_pow_via_srgb_decode.
+UNNAMED = set()
 
 
 class Unsupported(Exception):

@@ -8,7 +8,7 @@ has one row per type-operation pair; its 67 rows have previously been quoted as 
 count, which conflates the two. See "The operation-by-type matrix" in FORMAT-NOTES.)
 **This headline is scoped to the ≥50-specimen filter below it, not to every real operation
 in the ISA** - `0x0B` (`while`, a loop), `0x36` (`pow`, proved via the sRGB closed form)
-and `0x35` (real, 37 files, meaning still not established) all fall under that threshold
+and `0x35` (`log2`, source-confirmed via `ie_pcloud`) all fall under that threshold
 and are not part of the "41". "Confirmed below the catalogue threshold" lists what else does. Measured over 382 distinct specimens (the corpus holds 579
 `.sbsasm` files, 34% of them duplicate content) and 11,845,287 instructions decoded by
 `isa_census.py`, which **scans** code regions run-by-run. An earlier version of this line
@@ -50,10 +50,15 @@ emitted once, so instruction counts can be far below authored node counts — in
 `ie_processing` 289 `dot` nodes collapse to a single instruction. Counting evidence is
 unreliable for any node whose inputs repeat.
 
-**Not instructions:** `pow`, `log2`, `length`, `normalize`, `clamp`, and any call. These
-are lowered — `pow2` to `exp2(ln x · p)`, `normalize` to `dot`/`sqrt`/`div` — and
-sub-graph `instance` calls are **inlined**, which is why a `.sbsar` can hold many times
-more instructions than its `.sbs` has nodes.
+**Not instructions:** `length`, `normalize`, `clamp`, and any call. These are lowered —
+`normalize` to `dot`/`sqrt`/`div` — and sub-graph `instance` calls are **inlined**, which
+is why a `.sbsar` can hold many times more instructions than its `.sbs` has nodes.
+
+**`pow` and `log2` were listed here and are wrong to be.** Both turned out to have
+dedicated opcodes — `0x36` and `0x35`, see "Confirmed below the catalogue threshold"
+below — alongside the generic `exp2(ln(x)/ln2 · p)` lowering, which still exists and is
+still used (`ChewingGumSubstance001`'s size expressions, among others). Both paths
+compute the same mathematics; which one a given call compiles to is not established.
 
 ## Operations
 
@@ -142,6 +147,7 @@ These are established structurally, not by frequency:
 | `150B` | float | 1 | `0B` | 542 | 20 | `while` — a loop, no immediate; see "`0x0B` is a loop" below |
 | `11CF` | float | 4 | `0F` | 28 | 6 | **probably `vec4`** — build a 4-vector from four scalars |
 | `0535` | float | 1 | `35` | 3,903 | 37 | unary, always immediately `ceil`/`floor`'d, fed 73% by `cvt` — **probably `log2`**, not confirmed numerically |
+| `0535` | float | 1 | `35` | 3,903 | 37 | unary `log2` — source-confirmed by the `ie_pcloud` `get_float3 -> swizzle2 -> log2 -> toint2` graph |
 | `0936` | float | 1 | `36` | 53 | 8 | **`pow(x, y)`** — proved via the same closed form as `ln`/`exp2`, see below |
 
 ### `0x36` = `pow`, proved the same way `ln`/`exp2` was

@@ -137,18 +137,38 @@ def test_while_carries_no_immediate():
     assert disasm.IMM.get(0x0B) == ()
 
 
-def test_0x35_stays_unnamed_until_proven():
-    """0x35 has real circumstantial support for 'log2' (unary, 99.5%+ of 3,903
-    instances feed straight into ceil/floor, 73% fed by an int-to-float cvt) but no
-    numeric proof -- every literal-constant trace and all 22 size-expression uses
-    bottom out at a sampler or cache read with no hand-computable value. OPCODES.md
-    records it as probable, not confirmed. This test is the guard against a future
-    edit asserting the name here before that proof exists: it should start failing
-    the day someone actually gets one, not before."""
-    assert disasm.name(0x0535) == "op35"
+def test_log2_is_named_and_transpiled():
+    """The source-matched unary 0x35 operation transpiles as log2."""
     data = struct.pack("<6H", 2, 0x0900, 0, 0, 0x0535, 0)
     source = transpile.transpile(data, 0, len(data), "python", "_probe")
-    assert "op35(v0)" in source
+    assert disasm.name(0x0535) == "log2"
+    assert "v1 = np.log2(v0)" in source
+
+
+def test_log2_matches_ie_pcloud_source():
+    """Structural proof, not a numeric one: the compiled shape must match the source
+    graph node-for-node, and the same four-instruction program must recur once per
+    graph input that declares the outputsize override -- a coincidence in decode
+    would not repeat identically four times."""
+    name, start = LOG2_SOURCE_MATCH
+    asm = load(name)
+    end = asm.program_span(start)
+    assert end is not None, "no program at %d" % start
+    rows = list(disasm.decode(asm.data, start, end))
+    assert [disasm.name(op) for _k, _addr, op, _toks in rows] == [
+        "inputref", "swizzle", "log2", "cvt",
+    ]
+    assert disasm.fields(rows[2][2])["id"] == 0x35
+
+    refs = asm.referenced_programs()
+    matches = 0
+    for p_start, p_end in refs.items():
+        r = list(disasm.decode(asm.data, p_start, p_end))
+        if len(r) == 4 and [disasm.name(op) for _k, _a, op, _t in r] == [
+            "inputref", "swizzle", "log2", "cvt",
+        ]:
+            matches += 1
+    assert matches == 4, "expected 4 identical copies, found %d" % matches
 
 
 def test_op06_takes_a_value_then_an_index():
@@ -176,6 +196,15 @@ SRGB_DECODE = ("Embroidery_Legacy.sbsar.sbsasm", 0x1AFC, 74, 0.04045)
 #: `RoadSubstance002` and `RoadLinesSubstance002` carry byte-identical copies of this
 #: program; this specimen is arbitrary among the three.
 SRGB_DECODE_VIA_POW = ("LeakingSubstance004_COMPILED.sbsasm", 460092, 0.04045)
+
+#: `ie_pcloud`'s source computes a graph input's outputsize override as
+#: get_float3("#pcloud_meta") -> swizzle2 -> log2 -> toint2, a node-for-node match
+#: (not a numeric one -- there is no independently known input value to check a result
+#: against) to four identical compiled programs, one per graph input with this override.
+#: Reachable only through the permissive whole-file scan, not any record's own slots --
+#: it is a graph-input default expression, not filter logic, the same category as the
+#: version-2 prologue's programs.
+LOG2_SOURCE_MATCH = ("ie_pcloud.sbsasm", 6656)
 
 TOLERANCE = 1e-6        # float32 rounding is ~1e-7; anything larger is a real error
 
