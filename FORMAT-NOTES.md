@@ -13063,9 +13063,9 @@ Propagating taint forward from each system variable through every non-immediate 
 `pixelprocessor`, and the fact that 18% of its taint cone is `samplecol` - a coordinate is what
 you sample at.
 
-`#0` remains **tentative**. Nineteen occurrences is too few for any test, and its only support is
-a Jaccard of 0.78 against `$time`, which is a presence match of exactly the kind this document
-has now twice found insufficient. It is recorded as a guess and labelled as one.
+`#0` was recorded as **tentative** here — nineteen occurrences, too few for a taint-cone test,
+supported only by a presence match against `$time` of exactly the kind this document has twice
+found insufficient. It is now proved, not inferred; see "`#0` is `$time`" below.
 
 ### Reading the earlier blend result in this light
 
@@ -13093,6 +13093,53 @@ Bits 4 and 8 each **imply** a six-slot header when set and clear respectively, b
 predicts the five-slot case, so no rule of the form "this bit means an extra slot" survives.
 They constrain the layout without determining it, and are recorded as constraints rather than
 identifications. Bits 9-11, set in 0.1-0.3% of records, remain untouched.
+
+## `#0` is `$time`, proved rather than inferred
+
+The corpus holds a file named `time_var_test`, and its paired `.sbs` source settles `#0`
+outright. The graph's `valueprocessor` function, commented in the source itself as
+"時間変数を作る" ("create the time variable"), is:
+
+    get_float1("$time")          -- the ENGINE system variable
+    get_float1("#time")          -- the graph's own exposed "time" parameter
+    add(a, b)
+    get_float1("#timescale")
+    mul(add_result, c)
+
+i.e. `($time + #time) * #timescale`. `time_var_test`'s compiled program, and the manifest
+naming its inputs:
+
+```
+manifest:  uid 1067702016 -> "time"       uid 1067702033 -> "timescale"
+
+%0  0501  sysvar.f1  0
+%1  0902  inputref.f1  uid=1067702016        ; "time"
+%2  0912  add.f1  %0, %1
+%3  0902  inputref.f1  uid=1067702033        ; "timescale"
+%4  0914  mul.f1  %2, %3
+```
+
+`(sv0 + #time) * #timescale`, uid for uid, against the source's own function graph. This
+is a structural match to ground truth, not a co-occurrence statistic.
+
+**Checked against every other specimen that uses id 0.** 63 instances in 15 files reduce
+to 7 distinct program shapes (read in full, not sampled); every one is an `add`/`mul`
+combination of `sv0` with one or two `inputref`s, which is what parameterising an
+animation curve looks like and is inconsistent with nothing seen. Of the four other
+files with a paired `.sbs` source available, all four — `fake_anim_curve`,
+`polar_and_polar`, `flowingLava_v35_engine_4_5`, plus `time_var_test` itself — reference
+`$time` exactly once in their source. `fz_explosion` has no paired source but the same
+program shape. Provenance: `fake_anim_curve` and `polar_and_polar` carry no author tag,
+`flowingLava` is authored "Janine SMith", `time_var_test` is "logicalmodelin" — none
+Allegorithmic.
+
+So the five system variables are now five for five:
+
+    #0  = $time         additive/multiplicative combination with exposed parameters
+    #1  = $size         linear arithmetic, divides to normalise
+    #3  = $sizelog2     log-domain arithmetic, exp2 to return to linear
+    #8  = $pos          feeds samplecol/samplelum as the sampling coordinate
+    #10 = $number       fxmaps-only scalar
 
 ## The colour bit as a filter discriminator, and `hsl` identified at last
 

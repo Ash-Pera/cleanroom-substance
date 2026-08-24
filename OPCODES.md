@@ -90,7 +90,7 @@ more instructions than its `.sbs` has nodes.
 | bool | `21` | · | `0861` | · | · | 79,974 | 0.33 | 327 | lr (less than) |
 | bool | `22` | · | `0862` | · | · | 79,546 | 0.33 | 316 | lreq |
 | bool | `20` | · | `0860` | · | · | 74,169 | 0.31 | 349 | gteq |
-| float | `01` | `0501` | `0541` | · | · | 63,685 | 0.26 | 402 | read system variable ($pos) |
+| float | `01` | `0501` | `0541` | · | · | 63,685 | 0.26 | 402 | read system variable -- five named, by immediate: 0 `$time`, 1 `$size`, 3 `$sizelog2`, 8 `$pos`, 10 `$number` (FX-Map only). See FORMAT-NOTES.md, "The five system variables". |
 | float | `2E` | · | `096E` | · | · | 58,351 | 0.24 | 281 | cartesian (polar to xy) |
 | bool | `07` | · | `0847` | · | · | 55,811 | 0.23 | 232 | set — assign variable slot |
 | bool | `1D` | · | `085D` | · | · | 55,451 | 0.23 | 380 | eq |
