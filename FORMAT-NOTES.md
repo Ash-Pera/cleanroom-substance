@@ -16955,3 +16955,73 @@ systematically blind for the ones that do not.
 The notes already contained the list of which filters resize, in a table about output size
 inheritance, and the same fact was sitting in a different section being used for a
 different purpose. Nothing new had to be discovered to see this - only connected.
+
+## Chasing the unreachable records: one null, one conflation, one arity
+
+With reachability from the output table available as a test, the 5.88% of records it could
+not reach became the next residue. Three findings, one of which is a hypothesis killed by
+its own control.
+
+### The clumps are stranded, not dead
+
+Of the unreachable records, **91.1% are named by another unreachable record**. Genuine
+dead code is scattered; whole connected clumps hanging off unnamed roots is the signature
+of a missing link above them. Only 3,085 of 34,651 were named by nobody.
+
+### A hypothesis its control refuted
+
+The obvious next step: if a stranded root's index appears in some record's header slot
+that the table does not call an edge, that slot is the missing link. It appeared to work -
+**74.4% of stranded roots had their index in a header slot**.
+
+The control says otherwise. Substituting an arbitrary record index for the real one and
+asking the same question:
+
+    stranded roots, index found in a header slot   67.7%
+    an arbitrary index instead                     95.6%
+
+**The control scores higher than the hypothesis.** Small integers are so common in these
+headers that "the index appears somewhere" is worse than uninformative. The 74.4% was
+nothing, and the scatter across many unrelated (filter, slot) pairs - several of them slots
+already identified as `matrix22` and the level points - should have been the giveaway
+before the control was run.
+
+### Edge value 0 is record 0, not 'no input'
+
+Reading the smallest failing files completely settled it. `GrayscaleConvert` has two
+records: a `bitmap` at index 0 and a `pixelprocessor` at index 1 whose input slot holds
+**0**. Its only possible input is record 0.
+
+Two rules in these notes contradicted each other. The corpus settled **0-based** backward
+indices (87.17% resolution agreement against 79.97% for 1-based), which makes 0 a reference
+to record 0; elsewhere 0 was read as 'no input'. Both cannot hold. The genuine absent-input
+marker is `0xFFFFFFFF`, found earlier while clearing the edge residue - a separate value
+that had been folded into the same meaning.
+
+Only **850 of 843,900 edge slots (0.10%)** hold 0, so almost nothing turns on it in
+aggregate. It is decisive for a small graph, where record 0 is the generator everything
+descends from: the per-file median of reachable records rises from 97.6% to **99.8%** while
+the corpus total barely moves. The median is the statistic that matters here, and the total
+would have hidden this entirely.
+
+### `pixelprocessor` states its own arity
+
+The same two-record files showed slot 1 holding the input count, with the inputs following
+in slots 2 onward. `LGML_hsl_adjuster` record 2 has slot 1 = 2 and slots 2, 3 holding
+records 1 and 0; the table claimed only one of them.
+
+    slot 1 in 1..8, and every slot 2..2+n-1 a valid backward index
+        41,350 of 41,453 records   99.8%
+
+The derived table could only see slots populated often enough to pass a threshold, and a
+filter whose arity varies per record defeats that by construction. Reading the count
+directly recovers the rest, and slot 1 = 0 identifies the input-free generators - 1,200
+records that are procedural sources, not records with a missing edge.
+
+    records reachable from the output table
+      start of this pass                 94.12%   (median 97.6%, 5 files below 50%)
+      0 credited as record 0             94.15%   (median 99.8%)
+      pixelprocessor arity               98.37%   (median 99.9%, 3 files below 50%)
+
+Against 34.03% before the resizing-filter correction. Edge readings are now 1,559,361 with
+36 unresolved.
