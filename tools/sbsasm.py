@@ -1000,14 +1000,34 @@ class Record:
         """
         if self.filter_id != 16 or len(self.words) < 2:
             return None
-        v = self.words[1]
-        if self.end - self.offset == 8 and v < len(self.asm.data):
+        asm, v = self.asm, self.words[1]
+
+        def pixels(off):
             hi = (self.cls >> 8) & 0xFF
             ch = CHANNELS.get(hi & 3)
             bpc = 2 if hi & 4 else 1
-            return {'kind': 'pixels', 'offset': v,
+            return {'kind': 'pixels', 'offset': off,
                     'size': self.width * self.height * ch * bpc if ch else None,
                     'channels': ch, 'depth': bpc * 8 if ch else None}
+
+        # Class-word bit 8 says the record carries its own image rather than naming one.
+        # It never names a graph input: 0 of 241 bit-8 records hold a uid their manifest
+        # declares, against 1,060 of 1,132 without it. The long-form ones were the last
+        # 7 records reported as `graph_input` with a uid no manifest knew.
+        if (self.cls >> 8) & 1 and self.end - self.offset != 8:
+            body = self.offset + 8
+            if asm.program_span(body, self.end) is not None:
+                # The image is computed. Grid record 6 is
+                #   select(inputref(uid) > 0, 0.0, 1.0)  -- a parameter-driven toggle.
+                return {'kind': 'computed', 'program': body}
+            for s in range(2, min(len(self.words), 4)):
+                if 0 < self.words[s] < len(asm.data):
+                    return pixels(self.words[s])       # 3-word form: slot 2 is the offset
+            return {'kind': 'inline_pixels', 'offset': body,
+                    'size': self.end - body}           # data stored in the record itself
+
+        if self.end - self.offset == 8 and v < len(asm.data):
+            return pixels(v)
         return {'kind': 'graph_input', 'uid': v}
 
     def describe(self):

@@ -17603,8 +17603,19 @@ repetition: whatever normal-perturbation this rust/tread-wear pattern applies is
 shape at every instance, only its position on the canvas varies, so this is the one thing
 in the three that is a genuine loop-invariant hoist rather than a repeated fetch.
 
-The record's last instruction is `dot(result, (1/3, 1/3, 1/3, 0))` - a plain RGB average,
-turning whatever the eighty unrolled elements composited into a single greyscale channel.
+**Correction, caught on a second read: the last instruction is not RGB averaging.** It
+was first read as `dot(result, (1/3, 1/3, 1/3, 0))` reducing a composited colour to
+greyscale. The instruction immediately before the `dot` is `swizzle.f4(x, mask=0)` -
+`swizzle_mask(0, 4) = [0,0,0,0]`, a broadcast, not a channel selection. Its input is
+already `float1`: tracing it back is nothing but `select`/`lerp`/`mul`/`sub`/`exp2` on
+scalars, six levels deep, gated by an integer local (`get` slot 1) and a boolean local
+(`get` slot 4). So the vector reaching `dot` is `(s,s,s,s)` for one scalar `s`, and
+`dot((s,s,s,s), (1/3,1/3,1/3,0)) = s·(1/3+1/3+1/3+0) = s` - the identity. No distinct
+channel values are being combined, so nothing here is evidence of a colour-to-greyscale
+step; the specific weights are unconfirmed as meaningful; they could be a generic,
+reused constant that would produce this same result for any weighting summing to 1.
+What the scalar `s` itself represents - the output of that six-level branch, keyed by
+the two local-variable flags - is not established.
 
 So the cache mechanism has two roles, not one: the dominant one, cross-record common-
 subexpression elimination (every case surveyed before this one), and this rarer second
@@ -20826,3 +20837,65 @@ layout is not.
 
 Corpus audit after the change: 435 files, 0 failures, edge slots 100.00%, 0 unexplained
 bytes, transpiler 11 passed.
+
+### The last seven: class-word bit 8 says the record carries its own image
+
+The offset rule left 7 records reported as `graph_input` with a uid no manifest declares.
+They are 4 distinct records - `Grid` appears twice in the extraction tree - and they are
+not graph inputs at all.
+
+Cross-tabulating every bitmap record in the 484 paired specimens against the uids its own
+manifest declares:
+
+    class-word bit 8 SET     241 records     0 declared     0.0%
+    class-word bit 8 CLEAR 1,132 records 1,060 declared    93.6%
+
+Zero out of 241. **Bit 8 means the record carries its own image rather than naming one**,
+and the 7 were exactly the bit-8 records long enough to escape the short-form branch:
+
+    bit8=0  long   declared     903      graph input, named
+    bit8=0  short  declared     157      graph input, named   (the offset rule)
+    bit8=0  short  not declared  72      pixels at an offset
+    bit8=1  short  not declared 234      pixels at an offset
+    bit8=1  long   not declared   7      <- these
+
+They carry three different things, and reading them settles what each is:
+
+**Four hold an inline program at word 2**, confirmed by `program_span`, not guessed.
+`Grid` record 6 disassembles to
+
+    %0  0A02  inputref.i1  uid=1098120983
+    %1  0E00  const.i1     0
+    %2  085F  gt.b2        %0, %1
+    %3  0900  const.f1     0
+    %4  0D00  const.f1     1
+    %5  0D09  select.f1    %2, %3, %4
+
+a parameter-driven toggle - the image is *computed* from a graph input, not stored. This
+is the inline-program case from *The parameter program is sometimes inline*, on a filter
+that section did not cover.
+
+**One is a 3-word form where slot 2 is the resource offset.** `ground_rock_face` record 43
+is `[tag][0x00800004][0x009A86D0]` with `cls` 0x908, and 0x9A86D0 is 10,127,056 in an
+11,451,856-byte file. Its 2-word sibling in the same file has `cls` 0x808 and puts the
+offset in slot 1, so bit 8 inserts a leading field ahead of it. What `0x00800004` is, is
+not established - one observation, and it is not claimed.
+
+**Two hold the pixels in the record body.** `Grid` record 5 is 65,544 bytes: an 8-byte
+header and then 65,536 bytes of `0xFF`, which is exactly 256x256 at one byte per pixel for
+a `tag` of 0x8820, grayscale. A uniform white image, stored rather than generated.
+
+### Where the bitmap reading now stands
+
+    bitmap records                 1,373
+      graph_input                  1,060    1,060 match a declared uid   100.00%
+      pixels                         307
+      computed (inline program)        4
+      inline_pixels                    2
+      unreadable                       0
+
+Every bitmap record in every paired specimen now decodes, and every one that claims to
+name a graph input names one the manifest agrees exists. The two rules that got there are
+both intrinsic - no manifest needed at read time - and both were found by chasing a
+residue that a coverage figure would have rounded to zero: 170 records out of 1,373, and
+then 7 out of 1,067.
