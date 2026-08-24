@@ -20953,3 +20953,59 @@ That measurement was over ABSOLUTE slots and this one is over the layout block, 
 includes the size-expression slot at position 0 - so the two are not comparable, and the
 earlier conclusion was narrower than it sounded. `transformation` has real class-word signal.
 83.82% is not a rule, and what the remaining sixth is doing is open.
+
+## The static/dynamic flag, measured: what fills block position 0
+
+`transformation` sat at 88.49% under a hand-built model, and its weakest position was 0 -
+the size-expression slot - at 86.0%. That is the corpus-wide hole the audit reports as
+"a baked filter parameter: 71,848 (8.0%)": records carrying a constant where a size
+expression should be.
+
+Searching every bit for what predicts position 0's kind lands on **class bit 0**, which this
+file already calls the static/dynamic flag and already ties to the header ending one slot
+earlier. So this is a re-derivation, not a discovery. What is new is the size of it and what
+happens when the bit is clear.
+
+### Measured
+
+    filter            reads    accuracy         filter          reads   accuracy
+    levels           84,440    100.00%          gradient       15,231     97.58%
+    directionalwarp  60,036    100.00%          ?20            56,753     96.65%
+    fid19             2,081    100.00%          pixelprocessor 40,497     87.53%
+    fxmaps           15,184     99.94%          transformation 218,009    83.36%
+    blend           287,870     99.07%
+
+    overall   761,143 / 807,508 = 94.258%   MCC +0.7400
+
+But the errors are one-sided, and that is the real shape of it:
+
+    bit set,   program   694,410        bit set,   baked      1,266
+    bit clear, baked      66,733        bit clear, program   45,099
+
+**Class bit 0 set implies block position 0 holds a program, in 694,410 of 695,676 (99.82%).**
+The converse does not hold: a clear bit leaves the slot a program 40% of the time. The flag
+says "this record has a size expression", not "this record has nothing else there".
+
+### What decides it when the flag is clear
+
+Restricting to records with the bit clear and searching again gives a second, filter-specific
+bit - and for two filters it is exact:
+
+    blend       20,737 records   w1.bit4    MCC -1.000   100.0%
+    gradient     5,388 records   cls.bit11  MCC +1.000   100.0%
+    transformation 66,843        w1.bit6    MCC -0.791    88.4%   (lift +34.1)
+    pixelprocessor  5,045        nothing to predict - 100% program
+
+Neither exact case is a new mechanism. `blend`'s `w1.bit4` is the `opacitymult`-is-baked bit
+from `PARAM_SPEC`: with no size expression and no baked opacity, what sits at position 0 is
+the opacity PROGRAM. `gradient`'s `cls.bit11` is a bit of its own popcount mask, so "bit 0
+clear, bit 11 set" is just `popcount >= 1` with the first term ruled out. Both are the
+mechanisms already recorded, seen from position 0 rather than from the block as a whole.
+
+That is the useful part: the "size expression or first parameter" wording the audit has
+carried all along is exactly right, and which of the two it is falls out of bits already
+named. Position 0 holds the size expression when class bit 0 is set; when it is clear, it
+holds whatever the filter's own parameter mechanism puts first.
+
+`transformation` at 88.4% is the one that does not resolve this way, and it is also the
+filter with no named parameter mechanism at all.
