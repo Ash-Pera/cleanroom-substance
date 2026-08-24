@@ -23388,3 +23388,44 @@ So `readers()` is left as it is, and the 591 are recorded as read rather than as
 That last number is the honest one. It is not the same as "unexplained bytes", which is still
 zero - every byte of these files is accounted for structurally. It is a dataflow gap: the
 manifest says these inputs matter and no program in the file references them by uid.
+
+## 98.4% of the unread inputs are read by programs the layout table does not name
+
+`Record.programs` returns the programs a record's *layout-named* slots point at. Scanning
+every slot instead - any word whose `+52` target passes `valid_program` - finds readers for
+**1,833 of the 1,862** unread-but-altering inputs, 98.4%.
+
+That is the same population the audit already reports from the other side: 46,736
+dropped-key records, of which 11,953 gain a program when scanned. The inputs those programs
+read were simply never counted.
+
+### Adopting it wholesale is a trade, and a familiar one
+
+    layout-named slots only    28,554 / 28,896   98.82%   unreachable 131   spurious  6
+    + scan every slot          34,725 / 35,040   99.10%   unreachable  92   spurious 17
+
+Better agreement, 6,144 more testable pairs, 39 fewer unreachable - and the sharp violation
+count nearly triples. This is the third time a change has offered the loose direction in
+exchange for the sharp one:
+
+    fx node/table programs as readers     fixes 11    sharp   6 -> 512    rejected
+    shared cache edges                    fixes 11    sharp   6 ->   6    adopted
+    scan every slot for programs          fixes 39    sharp   6 ->  17    not adopted
+
+The middle one is what a real edge looks like. The first is what a wrong one looks like. This
+one is in between, and being in between is not a reason to take it - 11 new pairs where an
+output is reachable from an input the manifest says does not affect it are 11 statements
+about the graph that are probably false.
+
+So `readers()` keeps the layout-named slots, and the finding is recorded rather than applied:
+the inputs are read, by programs this project can find but does not attribute to a record
+with enough confidence to put an edge in the graph.
+
+### Where the input accounting ends
+
+    declared inputs                                     8,441
+    read by a layout-named program                      5,559
+    an image, a $global, or a string                      619
+    unread and altering nothing - consistent              401
+    read by a program off the layout table              1,833
+    read by nothing this project can find                  29
