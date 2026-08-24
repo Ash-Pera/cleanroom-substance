@@ -23271,3 +23271,42 @@ evaluated in record order.
 What was missing is that it is also a **graph** relation. The meaning was known, the
 evaluation was implemented, and the dataflow graph still did not have the edge in it. Three
 different things, and knowing the first two did not supply the third.
+
+## The last 131 attribution violations: four hypotheses, one adopted, three not
+
+After the cache edges, 131 of 28,896 (input, output) pairs remain where the manifest says an
+input alters an output and the graph cannot reach it. Everything tried, with what it cost:
+
+    PARTIAL_EDGES filters       refuted    5.86% of records in violating files vs 5.82% in
+                                           clean ones - no concentration at all
+    fx node/table programs      rejected   fixes 11, takes sharp violations 426 -> 512
+    shared cache edges          ADOPTED    fixes 11, sharp violations unchanged at 6
+    globals read as sysvar      partial    `$randomseed` is 16 of the 131
+    blanket `alteroutputs`      partial    38.0% of violating inputs claim every output,
+                                           against 31.9% of all inputs
+
+### What the violating inputs are
+
+Not what a single mechanism would predict:
+
+    $randomseed 16   primary_color 10   smudge 5   impact_intensity 5
+    large_rocks_coverage 5   method 5   scuffs_large 5   Smear_1_Strength 4
+
+`$randomseed` is a package global, and the rest are ordinary named parameters with nothing in
+common. 52 files, and many have exactly 5 - one input against a graph's five outputs - which
+is the shape of a single unreached input rather than a systematically missing edge kind.
+
+### Where that leaves it
+
+0.45% of pairs, no single cause, and the two partial explanations together do not reach half
+of them. The measure that matters has not moved through any of this: **6 of 28,896** pairs
+are reachable when the manifest says they should not be, and that is the direction a wrong
+output table would fail in.
+
+Four hypotheses, three of which cost nothing to test and returned nothing. That is the
+expected yield once the cheap causes are gone, and it is the signal to stop generating
+hypotheses about this residual and leave it measured instead.
+
+    output attribution   28,554 / 28,896   98.82%
+      alters but unreachable         131
+      reachable but does not alter     6
