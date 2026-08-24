@@ -22676,3 +22676,50 @@ before running one.
 
 Tests: 12 passed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
 validator 437/437.
+
+## The iteration cap, sized from the format instead of picked
+
+The previous section excluded loop programs from the execution sweep and blamed the
+`1 << 24` iteration cap. That was a guess, and checking it produced two corrections.
+
+### Loops terminate almost immediately
+
+Instrumented over 122 loop programs run with plausible inputs:
+
+    iterations   min 1   median 2   p90 3   max 3      cap reached: 0 of 122
+
+So the cap is never approached in normal use, and "loops run to the cap" was wrong as a
+description of what loops do.
+
+### But it was right about the cost, for a different reason
+
+A loop whose condition depends on an input the caller does not supply can fail to terminate.
+At `1 << 24` one such program burns 16 million iterations, and a sweep that had completed in
+minutes turned into a ten-minute timeout on **six files**. My iteration measurement above
+missed this because it used defaulting dictionaries for inputs and slots - which is exactly
+the difference that makes those loops terminate.
+
+### Sizing it from the format
+
+The tag encodes a dimension as `log2` in four bits, so the largest image a record can declare
+is `2^15 = 32,768` along an axis. A loop that walks a dimension needs at most that many
+iterations, and the cap is now one power of two above it, `1 << 16`.
+
+    12 files, before   did not finish in 10 minutes, loops excluded
+    12 files, after    52,334 programs in 20 seconds, loops included
+
+    ran                52,144    99.64%
+    needs the cache       131     0.25%
+    failed                 59     0.11%
+
+The full 435-file corpus takes roughly twelve minutes at this rate - large rather than
+pathological.
+
+### What the two corrections have in common
+
+Both came from a measurement that changed the thing it measured. Defaulting the inputs made
+every loop terminate, which is why the instrumented run reported a maximum of 3 and the plain
+run hung. A harness that supplies what a program is missing cannot also tell you what happens
+when it is missing.
+
+Tests: 12 passed.

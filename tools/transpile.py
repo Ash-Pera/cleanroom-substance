@@ -315,7 +315,18 @@ def transpile(data, start, end, backend="python", name="program", result=None):
     # limit, so the test is false on entry and the loop would be a no-op whose accumulator
     # is nevertheless read afterwards.
     #
-    # The iteration cap is a runtime guard, not a claim about the format.
+    # The iteration cap is a runtime guard, not a claim about the format, and it is sized
+    # from the format rather than picked: the tag encodes a dimension as `log2`, in four
+    # bits, so the largest image a record can declare is 2^15 = 32,768 along an axis. A
+    # loop that walks a dimension therefore needs at most that many iterations, and the
+    # cap is set one power of two above it.
+    #
+    # It matters that it is not larger. Measured over 122 loop programs run with plausible
+    # inputs, every one terminates in 1 to 3 iterations - so the cap is never approached in
+    # normal use. But a loop whose condition depends on an input the caller does not supply
+    # can fail to terminate, and at 1 << 24 a single such program burns 16 million
+    # iterations: a corpus sweep that completed in minutes before became a ten-minute
+    # timeout on six files.
     loops = {}
     for k, addr, op, toks in ins:
         if (op & 0x3F) == 0x0B:
@@ -340,7 +351,7 @@ def transpile(data, start, end, backend="python", name="program", result=None):
                 # variable need not be bound when the loop ends. Bind it first and assign
                 # inside, rather than after.
                 lines.append(pad + "%s = None" % be.var(kw))
-                lines.append(pad + "for _it%d in range(1 << 24):" % kw)
+                lines.append(pad + "for _it%d in range(1 << 16):" % kw)
                 emit_range(i0 + 1, icond, depth + 1)
                 lines.append(pad + "    if %s: break" % be.var(icond))
                 emit_range(icond + 1, ibody, depth + 1)
