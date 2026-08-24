@@ -18194,3 +18194,57 @@ form - so parity alone already implies the gate:
 
     instructions whose only operand is dropped:  none  (was ~43,700)
     float constants of plausible magnitude:      99.91%
+
+## Auditing the float constants one at a time
+
+"99.91% of float constants have a plausible magnitude" is a rate, not an explanation, and
+the window it measures against - zero, or 1e-4 to 1e4 - is an arbitrary heuristic. The
+0.09% outside it is either genuine values the window excludes or a decode still going
+wrong. Only reading them individually distinguishes the two.
+
+### They are real values, and the decode is right
+
+Of 10,048,032 float constants, 8,930 fall outside the window:
+
+    a power of ten (an epsilon)      3,938   1e-05, 0.0001, 1e-07, 1e-08
+    small, unclassified              3,159
+    12345.x, a sentinel                804
+    a power of two                     476   65536, 34359738368 (2^35)
+    a power of ten                     440   1000000
+    large, unclassified                 95
+    sin of a multiple of pi             18
+
+**Not one is a decode failure.** The check is the raw bytes. In `Sci_fi_Metal_Panel_004`
+record 7, two `const.f1` instructions sit four apart:
+
+    %4    op 0x0900  ntok 2  bytes [00 09 | 00 00 80 bf]  ->  -1.0
+    %12   op 0x0900  ntok 2  bytes [00 09 | f5 ee f2 b6]  ->  -7.23998e-06
+
+Same opcode, same token count, same alignment. The first decodes to exactly `-1.0`, so the
+immediate reading is correct; the second's bytes really are `f5 ee f2 b6`.
+
+### What the odd ones are
+
+The program those come from is a **two-tap sampling filter**:
+
+    %1  = size.x        %3 = 0.5 / size.x     %5  = %3 * -1
+    %9  = size.y        %11 = 0.5 / size.y    %13 = %11 * -7.23998e-06
+    %16 = vec(pos.x + %5, pos.y + %13)
+    %17 = samplelum(%16)      ... a second tap at the mirrored offset ...
+    %33 = lerp(1 - tap1, tap2, 0.5)
+
+The x offset is scaled by `-1` and the y offset by `-7.24e-06`. Those are **`cos` and `sin`
+of an angle near pi**, computed in float32: the filter samples along a direction, and for a
+horizontal direction the perpendicular component is not exactly zero. Four such values
+appear exactly 528 times each - `-7.24e-06`, `1.098e-05`, `1.448e-05`, `-1.798e-05` - which
+is what a small set of fixed sampling angles looks like.
+
+### Where it leaves the decode
+
+    float constants                          10,048,032
+      inside the window or explained          10,044,778   (99.968%)
+      unclassified                                 3,254   ( 0.032%)
+
+and the unclassified are dominated by those four trig coefficients plus a tail of epsilons
+around 1e-08. Nothing in the audit points at a decoding error; the residue is the window's
+arbitrariness, not the reader's.
