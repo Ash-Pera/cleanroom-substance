@@ -395,40 +395,39 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             # and 2 are ordered normally around it. They were reported as "out of order",
             # which named the symptom and hid the cause.
             #
-            # What bounds a condition-less loop is not established: operand 0 points at a
-            # sequence node (0x0C) in 164 of 164, operand 3 is 3 in 158 of 164 but also
-            # appears with the condition present so it is not cleanly a trip count, and
-            # the body carries a cross-iteration dependency in 100% of loops either way,
-            # which is the base rate and so discriminates nothing. Emitting a loop with no
-            # break would be an unbounded loop, and emitting a single pass would assume the
-            # answer, so these stay unsupported until the bound is found.
+            # What bounds a condition-less loop is not established. A later pass read
+            # operand 3 as a literal trip count / scan width (frequently 1, 3 or 5) on the
+            # strength of a counter-start match against -(n-1)/2 for a neighbourhood scan
+            # -- but operand 3 is a VALUE REFERENCE, not an immediate: it names a valid
+            # earlier value in 934 of 934 while instructions sampled, both with a
+            # condition present (770/770) and absent (164/164), and it is reachable from
+            # operand 0 or operand 2 -- already-computed, not new information -- in 164 of
+            # 164 condition-absent instances, the same "trailing operands are redundant"
+            # shape already established for the with-condition form. A literal reading
+            # cannot be right either way: among condition-present loops, which run and are
+            # not in question, operand 3's referenced value is itself value #0 in 630 of
+            # 770 cases -- meaningless as a trip count for a loop that demonstrably
+            # iterates, and not a valid "scan width" (0 is not in {1, 3, 5}) either. The
+            # apparent 1/3/5 pattern for the condition-absent form was almost certainly
+            # the same coincidence in reverse: small SSA indices are common early-program
+            # references regardless of what they denote, not evidence the raw token value
+            # is a meaningful count. So this reverts to raising rather than guessing,
+            # exactly the standard already applied to the with-condition form's own
+            # trailing operands: the body carries a cross-iteration dependency in 100% of
+            # loops either way, which is the base rate and so discriminates nothing.
+            # Emitting a loop with no break would be an unbounded loop, and emitting a
+            # single pass would assume the answer, so these stay unsupported until the
+            # bound is found.
             if len(toks) >= 2 and toks[1] == 0xFFFF:
-                # 164 instructions carry 0xFFFF here - the absent-operand sentinel - so
-                # the loop has no termination test. Operand 3 is read as a fixed trip
-                # count; it is 3 in 158 of them and nothing else in the instruction can
-                # bound the loop.
-                #
-                # The count is NOT established, and this is adopted anyway because the
-                # result does not depend on it. Running these loops at 1, 3 and 9
-                # iterations, with a shared cache threaded through the whole file so the
-                # control group runs too:
-                #
-                #     identical at 1, 3 and 9      14 of 15
-                #     differs                       1  (0.5 at one pass, 0.498047 at
-                #                                       both 3 and 9 - it converges)
-                #
-                # They are iterative refinements that settle, so any count of 3 or more
-                # gives the same answer. Execution rates match the control: 15 of 16 run
-                # against 21 of 22 for loops that do have a condition, each losing one
-                # program to a cache read whose writer runs later.
-                trip = toks[3] if len(toks) > 3 else 0
-                if not (1 <= trip <= 64):
-                    raise Unsupported("opcode %04X at %d: condition absent and operand 3 "
-                                      "= %s is not a usable trip count" % (op, addr, trip))
-                loops[toks[0] + 1] = (k, toks[0], None, toks[2], trip)
-                continue
+                raise Unsupported("opcode %04X at %d: while condition absent (0xFFFF); "
+                                  "what bounds the loop is not known" % (op, addr))
             if not (toks[0] < toks[1] < toks[2] < k):
                 raise Unsupported("opcode %04X at %d: while operands out of order" % (op, addr))
+            # Five-tuple: `emit_range` unpacks a trip count as the fifth element.
+            # The condition-less form, which was the only producer of one, now
+            # raises above, so it is None here and the `icond is None` branch in
+            # `emit_range` is currently unreachable. Storing four elements left
+            # that unpack raising ValueError on EVERY loop.
             loops[toks[0] + 1] = (k, toks[0], toks[1], toks[2], None)
 
     lines = []

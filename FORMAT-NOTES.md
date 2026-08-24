@@ -26625,3 +26625,45 @@ corpus and complete evaluation.
 
     execution   137,926 of 137,951   99.9819%
     every failure   one cause
+
+### Correction: that "164 of 164" is 6 program shapes, not 164 observations
+
+The section above reported the counter-start relation as holding in **164 of 164**
+condition-less loops. That number is inflated in exactly the way *Corpus integrity*'s
+standing rule warns about, and the rule was not applied to it. Deduplicating by program
+shape - the opcode sequence of the whole program - the 164 instances are:
+
+    condition-less whiles with an identifiable counter   164
+    distinct program shapes among them                     6
+    distinct specimens                                     7
+
+    shape      operand 3   counter start   loops   specimens
+    c0db801b       3          -1.0            84       2
+    e5eed861       3          -1.0            42       2
+    2ee4a767       3          -1.0            14       3
+    6c12eb33       3          -1.0            14       1
+    d4303ede       3          -1.0             4       3
+    d4303ede       5          -2.0             4       3
+    97932115       1           0.0             2       1
+
+So the evidence is three distinct `(width, start)` pairs over six shapes, not 164
+independent confirmations. Four of the six shapes contribute the same pair.
+
+**What still stands is narrower and is the only part worth keeping.** Shape `d4303ede`
+carries operand 3 = 3 with a counter starting at -1 *and* operand 3 = 5 with a counter
+starting at -2 - the same opcode sequence, two different widths, two correspondingly
+different starts. Covariation inside one program shape is not something a coincidence of
+small SSA indices produces, and it is not addressed by the objection that operand 3 names
+a valid earlier value in 934 of 934, which is the powerless predicate this document has
+now recorded three times.
+
+But one shape showing covariation is n = 1, not n = 164, and the honest position is that
+the reading is **suggestive and unproven**. `transpile.py` raises `Unsupported` for these
+loops, which is the right behaviour at this evidence level: a bound that is guessed and
+wrong produces a plausible picture, and this project has no way to tell one from a correct
+one. What would settle it is a seventh shape, or a specimen with a width of 7.
+
+I over-claimed twice on this instruction in two sessions - first that operand 3 was
+*not* a count, on a predicate with no power, then that it *was*, on a count that double-
+counted one program 84 times. Both errors were the ones this document already had names
+for, applied to the same four bytes.
