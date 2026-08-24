@@ -5,6 +5,7 @@ The finished tools. Each runs from the repository root, where the corpus lives:
     python3 tools/sbsasm.py <file.sbsasm> [record limit]
     python3 tools/fxdisasm.py <file.sbsasm> <record index>
     python3 tools/extract_bitmaps.py <file.sbsasm>
+    python3 tools/extract_shapes.py <file.sbsasm> [outdir] [--size 512] [--svg]
     python3 tools/audit_corpus.py
     python3 tools/validate_corpus.py
     python3 tools/test_transpile.py
@@ -71,9 +72,18 @@ Counting nodes from either one wants **distinct offsets**: both yield once per p
 `Assembly.strings()` reads the `text` filter's embedded strings from the head of the resource
 segment.
 
+`Record.vector_shape()` decodes filter 5's payload: a triangle strip of 16-bit normalised
+(x, y) vertices, 140 of 140 records. `Record.vector_faces` drops the degenerate triples that
+join one sub-strip to the next. This is what identifies the filter - rasterising the faces
+draws the road markings, filigree ornaments, snowflakes and lettering the materials carrying
+it are named for. The id is labelled `vectorshape` in `PROJECT_LABELS`, not `FILTERS`'
+usual sense of a name: the permitted sources' 24 filter names are all assigned already, so
+no source this project may read names filter 5.
+
 ## Extraction
 
     extract_bitmaps.py    embedded images, and graph inputs by manifest uid
+    extract_shapes.py     filter 5's embedded vector artwork, as PNG or SVG
     fxdisasm.py           walks an FX-Map tree and disassembles each node's program
     expand_instances.py   expands sub-graph instances using only in-file graphs
 

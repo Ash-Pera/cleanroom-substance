@@ -35,7 +35,12 @@ FILTERS = {
     14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
     20: 'pixelprocessor', 21: 'distance',
     19: 'dyngradient',
+    5: 'vectorshape',
 }
+# `vectorshape` is a PROJECT LABEL, not a name recovered from a source file. Every other
+# entry above is a name this format's own `.sbs` sources use; filter 5's is not, and
+# cannot be, because the permitted vocabulary is exhausted - see PROJECT_LABELS.
+PROJECT_LABELS = {5}
 # Filter 11 is `dirmotionblur`, named from the permitted sources alone. It declares exactly
 # two Float1 parameters and nothing else, which is filter 11's shape:
 #
@@ -70,8 +75,15 @@ FILTERS = {
 # The 14% was never evidence against the identification. It measured "does this value survive
 # the cooker" and "does it land at the right filter" as one number.
 # Unnamed ids, with what is known. Never rendered as a name.
-UNNAMED = {5: 'generator, greyscale (svg?)',
-           9: 'legacy, version 0x20000 only'}
+UNNAMED = {9: 'legacy, version 0x20000 only'}
+# Filter 5 was here as "generator, greyscale (svg?)" and is now `vectorshape` in FILTERS.
+# What it does is settled: it is a generator that rasterises an embedded triangle strip,
+# and `Record.vector_shape` decodes all 140 of its records. What is NOT settled is what
+# the format calls it. The 140 permitted paired sources declare exactly 24 filter names,
+# and all 24 are already accounted for by the 21 named ids (with `grayscaleconversion`
+# and `valueprocessor` as aliases of `shuffle` and `pixelprocessor`, and `passthrough`
+# culled). Filter 5 appears in 0 of those 140 files. So no permitted source can name it,
+# and the label above is descriptive - chosen here, and marked as such.
 # Filter 8 was here as "two inputs, greyscale control (emboss?)" and is now `emboss`,
 # named by containment against the one permitted source that declares an emboss node.
 #
@@ -1583,6 +1595,90 @@ class Record:
             return None                     # the table does not confirm the count
         v = struct.unpack_from('<%df' % (6 * n), self.asm.data, off + 4)
         return [tuple(v[i * 6:i * 6 + 6]) for i in range(n)]
+
+    # ---- vector-shape specialisation
+
+    @property
+    def vector_shape(self):
+        """For filter 5: the vector artwork it generates, as a triangle strip.
+
+        Filter 5 is a generator - 0 resolved edge slots in all 140 of its records - and
+        its record begins with a pointer to a payload that nothing else in the format
+        points at:
+
+            slot 0   tag
+            slot 1   payload start, at the universal +52 skew
+            slot 2   payload end, OR a float parameter, depending on the class word
+            ...      the payload, where it lies inside the record
+
+        The payload is `[word0][length word][4-byte vertices...]`, and `word0` takes one
+        of three values partitioned by the class word: 0x07FFFFFB (cls 9, 25, 1545),
+        0x00000003 (cls 9, 537) and 0x04040403 (cls 536). An earlier reading called
+        0x07FFFFFB a magic marker and counted the other 22 records as failures. It is not
+        a marker, it is a variant field, and all 140 records decode.
+
+        `L = (w + 23) / 2` is the payload's own byte count, as it is for `ramp` and
+        `curve_points`; the end pointer, where the class word provides one, bounds it
+        rather than stating it. Over the corpus:
+
+            header decodes, length sane, payload a multiple of 4    140 of 140
+
+        Each 4-byte vertex is two u16s, x in the low half and y in the high half, in a
+        normalised 0..65535 coordinate space. A trailing all-zero vertex terminates the
+        list in 97 of 118 payloads and appears nowhere else in any of them.
+
+        The vertices are a TRIANGLE STRIP, not a path: consecutive triples are faces,
+        and strip joins are made with repeated vertices, which is what produces the
+        run-length spike this data shows against a shuffle of its own values
+
+            run of 2 identical vertices   10,826 observed     1,624 shuffled
+            run of 3                       1,888                379
+            run of 5                       2,073                 33
+
+        and which is why x is far more locally coherent than y (median step 432 against
+        8,395 out of 65,536): the strip zig-zags across a stroke.
+
+        The evidence that this is artwork is not statistical. Rasterising the triples
+        renders the road markings, filigree corner ornaments, snowflakes and hand-drawn
+        lettering the materials are named for. See `tools/extract_shapes.py`.
+
+        Returns `(word0, [(x, y), ...])` with coordinates in 0..1, or None.
+        """
+        if self.filter_id != 5 or len(self.words) < 2:
+            return None
+        off = self.words[1] + 52
+        d = self.asm.data
+        if not (0 <= off <= len(d) - 8):
+            return None
+        kind, w = struct.unpack_from('<2I', d, off)
+        n = (w + 23) // 2
+        # The payload need not lie inside this record: the record directory is a sorted
+        # PARTITION, not an allocation, and 76 of 140 of these point outside their own
+        # extent -- 6 of them below the first record entirely. Same as `ramp`.
+        if n < 12 or (n - 8) % 4 or off + n > len(d):
+            return None
+        v = struct.unpack_from('<%dI' % ((n - 8) // 4), d, off + 8)
+        return kind, [((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0) for x in v if x]
+
+    @property
+    def vector_faces(self):
+        """`vector_shape`'s strip as explicit triangles, with the joins dropped.
+
+        A strip join repeats a vertex, so the triple spanning it is degenerate and
+        covers no area. Dropping those is what separates the shape from the stray
+        slivers that a naive read of every consecutive triple draws across the joins.
+        """
+        got = self.vector_shape
+        if got is None:
+            return None
+        _, p = got
+        out = []
+        for i in range(len(p) - 2):
+            a, b, c = p[i], p[i + 1], p[i + 2]
+            if a == b or b == c or a == c:
+                continue
+            out.append((a, b, c))
+        return out
 
     # ---- bitmap specialisation
     @property

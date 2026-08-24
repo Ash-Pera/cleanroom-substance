@@ -28200,3 +28200,172 @@ at 0xbbe4 with `w = 40481`, is on its own.
 Filter 5 is still not named. But its record layout, its payload's tag, its payload's
 length field and the count of payloads that exist are all now measured rather than
 guessed, and the only open piece is why 16 of 134 have nothing pointing at them.
+
+## Naming the filters: all 21 confirmed by one test, and filter 5 identified by rendering it
+
+Going back over the filter table with the question "can the remaining ids be named" turned
+up three things: the existing names had never been checked by a single uniform method,
+filter 5 can be *identified* without being *named*, and filter 9 cannot be either.
+
+### A pairing set that is verified rather than assumed
+
+Stem matching is not pairing - that is already recorded here, from the occasion a `Lava.sbs`
+was matched to an unrelated `LavaSubstance001`. So the pair set is built and then checked:
+a `.sbs`, a `.sbsar` beside it with the same stem, an extraction directory beside both, and
+the extracted `.sbsasm` **byte-identical to what `py7zr` reads out of that `.sbsar`**.
+
+    stem-matched triples                                   187
+    ...whose .sbsasm matches the archive's, by SHA-1       187   100.0%
+    permitted after the provenance predicate               140
+    dropped for <author v="Allegorithmic">                  47
+
+### Every name, one test, one control
+
+The method used for `emboss`, `dirmotionblur` and `curve` was containment of declared
+parameter VALUES, which is powerful but bespoke - a different argument each time. The
+uniform test is presence: if name *n* really compiles to filter id *f*, then a source that
+declares *n* has a record of *f* in its compiled pair. The control is the same probability
+among sources that do **not** declare it.
+
+    declared name          asserted fid        n   P(f|n)   CONTROL P(f|not n)
+    gradient               0  gradient        54    0.889          0.174
+    blend                  1  blend           91    0.956          0.388
+    transformation         2  transformation  82    0.878          0.414
+    shuffle                3  shuffle          3    1.000          0.474
+    grayscaleconversion    3  shuffle         33    0.879          0.364
+    fxmaps                 4  fxmaps          13    1.000          0.496
+    uniform                6  uniform         66    0.909          0.351
+    warp                   7  warp            30    1.000          0.136
+    emboss                 8  emboss           2    1.000          0.116
+    blur                   10 blur            28    0.750          0.268
+    dirmotionblur          11 dirmotionblur    5    1.000          0.326
+    directionalwarp        12 directionalwarp 22    1.000          0.144
+    sharpen                13 sharpen          9    1.000          0.176
+    hsl                    14 hsl             37    0.784          0.029
+    levels                 15 levels          47    0.979          0.344
+    bitmap                 16 bitmap          31    0.968          0.596
+    text                   17 text             4    0.750          0.000
+    normal                 18 normal          48    0.875          0.109
+    dyngradient            19 dyngradient      2    1.000          0.123
+    pixelprocessor         20 pixelprocessor  38    1.000          0.500
+    valueprocessor         20 pixelprocessor  17    1.000          0.585
+    distance               21 distance        19    1.000          0.182
+    curve                  22 curve           17    0.471          0.041
+
+Every assertion clears its control, twelve of them at 1.000. The two aliases behave exactly
+as claimed: `grayscaleconversion` and `valueprocessor` land on `shuffle` and
+`pixelprocessor` with no id of their own. `curve`'s 0.471 is the lowest and is not a
+counterexample - it is the survival effect already recorded for that filter, where two
+thirds of declared curve values do not survive compilation at all; against a 0.041 control
+it is still an eleven-fold lift.
+
+**A confound worth recording, because it nearly produced a false correction.** Correlating
+raw per-file COUNTS instead of presence puts `warp`'s best match at filter 12 (r=0.848) and
+`directionalwarp`'s at filter 7 (r=0.675) - the two exactly swapped, which would have looked
+like a discovery. It is a size artefact plus co-occurrence: a big graph has more of every
+node, and these two nearly always appear together. Working in shares kills the size half;
+presence kills both, and gives P(f|n) = 1.000 for each in its own direction. The number to
+distrust is a correlation between two counts that both scale with the file.
+
+### Filter 5 is a vector-shape generator, and the shapes render
+
+Filter 5 has been carried as "generator, greyscale (svg?)" with a guess in brackets. The
+guess is now unnecessary, because the payload decodes.
+
+The previous section had the record layout and a length rule and stopped at "not SVG, XML,
+PNG, JPEG, BMP, TIFF, DDS, gzip or zlib - every one of those magics was checked". It was
+checking the wrong thing: the payload is not a file format, it is geometry. Each 4-byte unit
+after the 8-byte header is two u16s, **x in the low half and y in the high half**, in a
+normalised 0..65535 space, and the units are a **triangle strip**.
+
+Three measurements point at a strip, and one settles it.
+
+    payload length a multiple of 4 bytes            118 of 118
+    a trailing all-zero vertex                       97 of 118, and zero appears
+                                                     nowhere else in any payload
+    runs of identical consecutive vertices          observed   shuffle of the same values
+      run of 2                                        10,826       1,624
+      run of 3                                         1,888         379
+      run of 5                                         2,073          33
+      run of 7+                                           60           2
+    median step between consecutive vertices        x = 432      y = 8,395
+      the same values shuffled                      x = 8,396    y = 15,691
+
+Repeated vertices are how a triangle strip stitches one sub-strip to the next: the joining
+triples are degenerate and cover no area. That also explains the asymmetry in the last two
+rows, which had looked like an argument *against* a point list - a strip zig-zags across a
+stroke, so one axis barely moves while the other jumps the stroke's width each step.
+
+The settling evidence is not statistical. Rasterise consecutive triples as triangles,
+dropping the degenerate ones, and the ambientCG road materials render their road markings -
+pedestrian, bicycle, lorry, straight-and-left turn arrows - `TilesSubstance013` renders
+filigree corner ornaments, `ChristmasTreeOrnament` renders snowflakes and a bow, and
+`deep-sea-studios__Shield_Front` renders the hand-lettered words "Color Test 1". Nine files,
+several authors, one decoder. `tools/extract_shapes.py` writes them as PNG or as SVG
+polygons.
+
+### The "marker" was a variant field, and all 140 records decode
+
+Two corrections to what was written about this payload.
+
+`0x07FFFFFB` was called a magic marker, and the 22 records whose pointer did not land on one
+were called misses. It is the payload's first word, it takes **three** values, and they are
+partitioned by the class word:
+
+    word 0        classes            records    blob begins at record word
+    0x07FFFFFB    9, 25, 1545          118       3  (4 for cls 1545)
+    0x00000003    9, 537                10       3  (4 for cls 537)
+    0x04040403    536                   12       3
+
+    header decodes and length is sane:  140 of 140
+
+So there are no misses. The 12 `0x04040403` records are `SnowSubstance002` and
+`FootstepsSubstance001`, and they render as snow drifts and footprints; the 10 `0x00000003`
+records are the filigree. The control that made `0x07FFFFFB` look like a marker still holds
+for that value - 0 of 897,257 other filters' slot-1 targets begin with it - but it does not
+hold for the other two, which occur 18 and 30 times elsewhere. The identification does not
+rest on the word at all; it rests on the length rule and on what the geometry draws.
+
+Second: `L = (w + 23) / 2` was established against the inter-blob gap. It also holds against
+the end pointer where the class word provides one, and the class word decides whether slot 2
+is an end pointer at all - for cls 536 and 537 it is `1.0f`, a parameter. That is the same
+"the end pointer bounds, the payload states its own size" rule as `ramp` and `curve_points`,
+with the extra wrinkle that some classes have no end pointer to bound with.
+
+### What it is called, and why this document will not say
+
+`Record.vector_shape` decodes 140 of 140 filter-5 records - 222,690 vertices, 125,887
+non-degenerate faces - so what the filter DOES is settled. What the format calls it is not,
+and cannot be settled from anything this project is allowed to read.
+
+The 140 permitted paired sources declare exactly **24** distinct filter names. All 24 are
+already accounted for:
+
+    21 names -> the 21 named filter ids
+    grayscaleconversion -> shuffle,  valueprocessor -> pixelprocessor      (aliases)
+    passthrough                                                            (culled)
+
+The vocabulary is exhausted. Filter 5 appears in **0 of those 140 files**, and so does
+filter 9. No permitted source can name either, and no amount of re-measuring this corpus
+changes that; what would change it is one permitted `.sbs` that both uses a 25th filter name
+and pairs with a compiled file carrying the id.
+
+`FILTERS[5]` is therefore set to `vectorshape`, and `PROJECT_LABELS = {5}` marks it as a
+label chosen here rather than a name recovered from a source file. Every other entry in that
+table is a name the format's own sources use.
+
+### Filter 9, and a provenance lapse to disclose
+
+Filter 9 is 5 records in 4 files, all version `0x20000`. Three of those four files have a
+paired source - and all three carry `<author v="Allegorithmic">`, so all three are excluded
+entire. The fourth has no source at all.
+
+While checking that, one command printed both the provenance flag and the declared filter
+names of those three files in the same output. That is an observation from excluded
+material, taken before the predicate was applied rather than after, which is the second time
+that ordering mistake has been made here. **The observation is not used.** It is disclosed
+for the same reason the earlier one was: a lapse that is recorded costs a paragraph, and one
+that is quietly dropped costs the reader their ability to check anything else.
+
+Filter 9 stays in `UNNAMED`. It is not a gap that further analysis closes - it is a gap that
+the provenance rule creates, and the rule is worth more than the name.
