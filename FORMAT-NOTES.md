@@ -30294,3 +30294,78 @@ parameters and nothing to compute.
 
 Entry programs went from 34,857 to 104,345 in this section, because an entry with six
 program slots used to be reported as carrying at most one.
+
+## Reading the table programs: what they compute, and how the two halves connect
+
+The node programs were read in an earlier section and turned out to be node parameters.
+The table programs read just as plainly, and reading a handful answers a question the
+structural work could not.
+
+### Four entry programs from `ie_curve`
+
+    get.f1 3 ; vec.f2 %0, %0                       a scalar broadened to a pair -- a SIZE
+    get.f2 633 ; const.f2 0.5,0.5 ; sub.f2         centred about the origin -- an OFFSET
+    get.f1 17 ; const.f1 6.28319 ; div.f1          divided by 2*pi -- an ANGLE IN TURNS
+    sysvar.f1 10 ; get.i1 36 ; cvt.f1 ; const 1.5 ;
+      sub ; gt.b2 ; inputref.b2 ; and.b2 ;
+      const 1 ; const 0 ; select.i1                a per-iteration CONDITION
+
+The `/ 6.28319` is the same signature already established for `directionalwarp`'s
+`warpangle` and `dirmotionblur`'s `mblurangle` — an angle stored as a fraction of a turn.
+Finding it a third time, in a completely different structure, is what makes it a convention
+rather than a coincidence of two filters.
+
+### A slot is a fixed role
+
+Per (tag, slot), the program's result type is completely consistent, and the angle
+signature is too:
+
+    tag         slot   entries   result type      signature
+    0x15400348     2     3,600   f2  3600/3600
+    0x15400348     3     3,600   f2  3600/3600    /2pi in 100%
+    0x15400348     5     3,600   f1  3600/3600
+    0x13520248     4     1,804   f2  1804/1804    /2pi in 100%
+    0x00420018     4     1,247   f2  1247/1247    /2pi in 100%
+
+So an entry is a fixed record whose slots have types and roles, and the tag names the
+layout — the same shape as everything else in this format.
+
+### Naming the slots by value: tried, failed, recorded
+
+The obvious way to attach parameter NAMES to slots is containment: a declared constant
+`patternsize = 0.975 0.975` should appear in the entry that carries it. In
+`Simulator__Grid` it does, verbatim, as `3f79999a 3f79999a`. Across all permitted sources
+it does not:
+
+    parameter        n     found near an entry
+    frameoffset     58     12 of 58
+    opacity         53     10 of 53
+    patternsize     34      1 of 34
+    imageindex      31      0 of 31
+    CONTROL: values declared in OTHER files, found near an entry   20.0%
+
+With a 20% control, that is not an identification. The likely reason is the default-omission
+convention this document has already established twice — a parameter left at its default is
+simply absent from the compiled form — but "likely" is not measured, and the slot names stay
+open.
+
+### How the two halves connect
+
+Entry programs are dominated by `get <slot>`, and node programs contain `set <slot>`. If
+the chain computes into a shared frame that the table then reads, the two slot sets should
+coincide within a file.
+
+    slot range     read AND written in the same file      CONTROL: written in another file
+    all slots            74.7%                                  52.2%
+    slots < 64           74.1%                                  54.3%
+    slots >= 64          88.1%   (59 of 67)                       0.0%
+
+The whole test lives in the last row. Small slot indices collide by chance, which is why
+the first two rows have a 52-54% control and say nothing. Above 64 the control goes to
+**zero** and the agreement is 88.1%.
+
+**So an FX-Map is two connected halves.** The chain of `addnode` and `markov2` nodes
+computes values into a shared slot frame — which is what all those `set` instructions in
+the node programs are for, including the `set` pair in the very first program read in these
+notes. The `paramset` table then reads that frame and computes the per-pattern parameters:
+size, offset, rotation, and a condition deciding whether the pattern is emitted at all.
