@@ -216,6 +216,19 @@ Position 0 is produced by `seq` or `set` in 616 of 616 — an initialiser chain,
 integer cap. So the shape is `(init, condition, body, ...)`. All 616 are in
 `pixelprocessor` records, in 24 files, across five opcode forms.
 
+**Positions 0 and 2 looked distinguishable only by narrative when first written** — both
+show the identical `seq`/`set` producer mix, so "initialiser" and "body" were a plausible
+reading, not yet a tested one. A body should accumulate — write a slot it also reads,
+`slot += ...` — and an initialiser should not. Checked over 543 instances, corpus-wide:
+position 0 self-references in **0.4%**, position 2 in **56.5%**. That is the separation
+the labels needed and did not have before.
+
+**Positions 3–5 have no reading at all**, and "trailing" was a placeholder, not a finding.
+They are dominated by `const`/`sysvar` — never `seq`, almost never `set` — unlike 0 and 2,
+which are expression chains. Position 4 is *literally the same value number as position 0*
+in 43% of instances (0% for positions 3 and 5), a real structural fact with no
+interpretation attached to it yet.
+
 The five, corpus-wide (438 distinct-content specimens):
 
 | encoding | result | operands | instances | files |

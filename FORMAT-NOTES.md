@@ -17595,13 +17595,21 @@ The three cache entries this record depends on, read start to finish:
 
 `#9` and `#10` are `hblend`'s exact idiom - `max(R,G)` and `1 - max(B,A)` of a fixed
 control pixel at (0,0) - confirming that technique is not specific to one tutorial file.
-`#11` is new: a **normalized shading normal**, not a scalar. It floors a fixed fractional
+`#11` is new: a **normalized 3-vector**, not a scalar - it floors a fixed fractional
 position `(0.551, 0.41)` against `$size` to a texel-centre, builds `(dx, dy, height)` where
 `height = max(1 - 2·|offset|, 0.01)` - a cone/pyramid profile peaking at the centre - and
 normalizes the whole vector. Read once at the top of the unrolled record (`%4`), not per
-repetition: whatever normal-perturbation this rust/tread-wear pattern applies is the same
-shape at every instance, only its position on the canvas varies, so this is the one thing
-in the three that is a genuine loop-invariant hoist rather than a repeated fetch.
+repetition, so this is a genuine loop-invariant hoist rather than a repeated fetch, the
+same as `#9`/`#10`.
+
+**"Shading normal" was this section's own first draft and does not hold up.** The
+formula is consistent with computing a normal, but what the record actually does with
+the value is not: its 81 reads feed 160 `div` and 80 `mul`, one `dot` in the entire
+11,478-instruction program. Lighting math re-uses a normal every iteration, typically as
+`dot(normal, light)`, which would show up close to 80 times if that is what this is; it
+shows up once. Computing something the way a normal is computed does not mean it is
+consumed as one - left as "a normalized 3-vector, used for something geometric", not
+named further.
 
 **Correction, caught on a second read: the last instruction is not RGB averaging.** It
 was first read as `dot(result, (1/3, 1/3, 1/3, 0))` reducing a composited colour to
