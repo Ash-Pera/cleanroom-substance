@@ -20280,3 +20280,61 @@ were each held to - not by reading the name `while` and assuming.
 2. Slice-and-reemit for `0x0B` inside it.
 3. A polarity test on a known-algorithm loop before either is trusted. Until then the
    `Unsupported` raise is the correct behaviour and should stay.
+
+## Correction: the parameter-window measurements were taken on the wrong corpus
+
+Every count in the four sections above - the bit pairs, the mechanical derivation, the
+holdout diagnosis, and the forward-growth case - was measured over **`tools/DISTINCT.txt`,
+641 specimens, about a third of them duplicates**, because those scripts were run from
+inside `tools/` and that is the list a bare `DISTINCT.txt` resolves to from there. The
+deduplicated corpus is the root `DISTINCT.txt`, 435 specimens. The trap is named in
+"Regenerate layouts.json from the deduplicated corpus" above; this is what it cost here.
+
+Re-run over 435 specimens against the regenerated table:
+
+    named parameter readings      576,973  ->  478,738
+    of which programs              88,835  ->   68,631
+    bits agree with the slot       99.966%  ->  99.9939%   (153/46 -> 29 disagreements)
+
+**The mechanism survives, and reads better than reported.** The ratio was never the thing
+duplicates distort; the absolute counts were inflated by roughly a fifth, and every "n
+records" in those sections should be read as an upper bound. The clearest tell was already
+in the text and I explained it away: the forward-growth exceptions were "2 distinct records
+(the corpus holds one of them twice)". A corpus that holds a record twice is a corpus that
+needs checking, not a parenthetical.
+
+### The gapped-block rule is now unexercised
+
+Worse for that section specifically. Key `(15, 25, 513)` - block `(3, 8)`, the one gapped
+layout the whole contiguity rule was derived from - **rests on 13 records in the
+deduplicated corpus and has been dropped from the regenerated table** for falling under the
+20-record floor. So:
+
+    gapped -> backward                 0 records in the deduplicated corpus
+    contiguous -> forward         10,177 ok, 1 bad
+    contiguous, no room -> backward 22,233 ok, 0 bad
+    fits                         446,299 ok, 28 bad
+
+The branch is dead code against the current table. It is kept, because the reasoning stands
+on its own when you look at the record - slots 9 and 10 hold 9.3e-33 and 9.2e+12, slot 7
+holds 0.0 beside the 0, 0, 0.5, 0 that are plainly levels values - but it is now supported
+by no key the table ships, and that is what a rule derived from 25 records, several of them
+copies of each other, is worth. 38 gapped blocks do exist in the regenerated table; none of
+them needs to grow, so none exercises the branch.
+
+The 13 records themselves are no longer read at all: with the key dropped there is no block
+to anchor to. They join the 2,937 records whose layout key the regeneration removed.
+
+### What still holds
+
+The findings are unchanged in kind, only in size:
+
+- bit pairs with presence = `low | high` and kind = `high`, for `blend`, `levels`,
+  `directionalwarp` and filter 11 - now at 99.9939% over 478,738 readings
+- tail placement, and a block that grows when the bits need more slots than it has
+- `transformation` needing no kind bits, `pixelprocessor` addressing absolute slots,
+  `fxmaps` and `gradient` unexplained
+
+Those rest on correlations and base rates, which duplicates inflate the confidence of but do
+not reverse. They should still be re-derived on the 435-specimen list before any of their
+numbers is quoted again, and until that is done every count in them is provisional.
