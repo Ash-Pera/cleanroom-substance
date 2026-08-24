@@ -24483,3 +24483,73 @@ took one slot. It also has a WIDTH, and the width is carried separately from the
 the same mechanism as `transformation`'s `matrix22` at 4 slots and `offset` at 2 - recorded
 long ago as an exception to one-slot-per-field, and it is not an exception. It is a second
 attribute every parameter has.
+
+## The width mechanism, all the way
+
+`uniform` showed that a parameter has a WIDTH as well as a state. Pushed through every filter,
+width turns out to be the thing the slot model was missing, and it is carried in two places.
+
+### cls bit 10 is a width bit, and it is universal
+
+Fitting parameter count against every cls and word1 bit, per filter, the same coefficient
+appears wherever bit 10 varies:
+
+    warp             cls bit 10  +2.00
+    blur             cls bit 10  +2.00
+    directionalwarp  cls bit 10  +2.00
+    dirmotionblur    cls bit 10  +2.14
+
+Every other class-word term is +1. This is the same bit found earlier by reading 95 records one
+at a time and seeing two extra genuine parameters; the regression finds it independently across
+four filters.
+
+### warp: 281 word1 values, none of them relevant
+
+`warp` was the largest uncharted filter. It fits exactly and uses **no word1 bit at all**:
+
+    params = 1 + (cls bit 7) + 2*(cls bit 10) + (cls bit 11) + (cls bit 13)
+
+    396 of 396 keys, 15,569 of 15,569 records, 24.8 observations per coefficient
+
+`LAYOUT_MASK[warp] = 0x2ff8` is spurious exactly as `gradient`'s was: 281 distinct word1 values
+memorised as separate keys, every one of them noise. That also introduces a fourth +1 term,
+cls bit 13, alongside bits 0, 7 and 11.
+
+### transformation: two width-2 parameters in word1
+
+    w1 bit 6   +2.06        w1 bit 25  +1.79        (both round to +2)
+
+which lifts `transformation` from 45.4% to 98.66%. Those are the `offset` (2 words) this file
+recorded long ago, and a second 2-wide parameter beside it.
+
+### Everything, held out
+
+Weights fitted on half the files and scored on the other half - filters with catalogued
+two-bit fields keep their hand-derived rule, `uniform` its width bit, the rest a fitted linear
+model:
+
+    blend           100.000%    warp             100.000%    curve      100.000%
+    directionalwarp 100.000%    uniform          100.000%    hsl        100.000%
+    blur            100.000%    fid 19           100.000%    gradient   100.000%
+    bitmap          100.000%    sharpen          100.000%    fid 5      100.000%
+    dirmotionblur    99.903%    pixelprocessor    99.366%    transformation 98.662%
+    shuffle          98.338%    distance          98.373%    levels      96.705%
+    normal           96.043%    fid 8             66.270%    text        60.000%
+    fxmaps           43.719%
+
+    OVERALL   426,635 / 442,149   96.491%
+
+Twelve filters exact on data their weights never saw.
+
+### What is left
+
+`fxmaps` at 43.7% over 21,423 records is now the largest hole in the format by a wide margin,
+and it is the one filter whose parameters are read raw rather than through two-bit fields
+(`PARAM_RAW`). Its earlier regression showed w1 bit 6 at +3.27 and bit 9 at +1.90 - width
+terms again, and wider ones. `fid 8` and `text` are small enough that their scores rest on 252
+and 10 records.
+
+A caution the numbers above deserve: for filters without catalogued fields these weights are
+FITTED, not derived. Held-out scoring makes them honest predictions rather than restatements,
+but a fitted +1 on a bit is not the same kind of knowledge as knowing what the bit means.
+`warp` is the exception - four terms, 24.8 observations each, and no word1 dependence at all.
