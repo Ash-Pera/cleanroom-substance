@@ -89,7 +89,20 @@ def derive(paths):
             t = sum(c.values())
             if c['X'] / t > 0.05:
                 continue                  # not present often enough to be part of the layout
-            if c['E'] / t > 0.9:
+            if c['E'] / t > 0.9 and (len(targets[k][sl]) > 0.05 * t
+                                     or len(targets[k][sl]) >= 5):
+                # The diversity guard applies HERE too, not only to the resizing-filter
+                # branch below. A slot holding a constant small integer that happens to
+                # name a same-resolution record passes the resolution test at 100% with
+                # zero diversity: directionalwarp key (12,1032,10) has slot 1 = 10 in all
+                # 480 of its records, and record 10 is a directionalwarp, so every one
+                # scored as a valid edge -- including record 10 pointing at itself.
+                #
+                # The absolute alternative matters: a SHARED input has low diversity as a
+                # ratio but many distinct targets. Key (12,2073,10) has slot 1 with 1
+                # distinct target (a constant) and slot 3 with 138 over 4,855 records
+                # (diversity 0.028) -- the ratio alone would discard both, and slot 3 is a
+                # real edge to a shared control map.
                 edges.append(sl)
             elif (c['E'] + c['B']) / t > 0.9 and len(targets[k][sl]) > 0.05 * t:
                 # A resizing filter's edge: almost always a backward reference, but not

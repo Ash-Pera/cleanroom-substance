@@ -17810,3 +17810,56 @@ runaway guard of 64.
 That the record extent is a partition was established early in these notes and used to
 derive record lengths. It took until now to notice that the same fact means a structure a
 record points at need not lie inside it.
+
+## The forward references were a constant, and the ninth small-integer trap
+
+The 15 forward and self references left over from the edge work turned out not to be
+references at all.
+
+`WoodSubstance011` records 2, 4, 6, 8 and 10 are **byte-identical** `directionalwarp`
+records, all carrying slot 1 = 10 - including record 10, which therefore appeared to
+reference itself. They are identical because they are the same node instanced five times,
+so the 10 is the same *constant* in all of them, not an index that happens to be 10 in one
+and 10 in another.
+
+Corpus-wide, key `(12, 1032, 10)` has **slot 1 = 10 in all 480 of its records**. Every
+directionalwarp key claiming slot 1 as an edge has diversity 0.002 to 0.018.
+
+### The guard was on the wrong branch
+
+The value-diversity guard was added when resizing filters' edges were recovered, and it
+was applied **only to that branch**. The original rule - a slot whose target is a
+same-resolution backward record in over 90% of cases - had no guard at all.
+
+A constant small integer that happens to name a same-resolution record passes it at 100%
+with zero diversity. That is the small-integer trap for the **ninth** time in this project,
+and this time it was in the primary edge rule, where it had been since the beginning.
+
+### Constant is not the same as shared
+
+Applying the ratio guard alone over-corrected: reachability fell from 98.37% to 98.02% and
+13,015 edge readings were removed. Looking at one key:
+
+    key (12,2073,10), 4,855 records
+      slot 1     1 distinct target    diversity 0.000    a constant
+      slot 2 1,003 distinct targets   diversity 0.207    an edge
+      slot 3   138 distinct targets   diversity 0.028    a SHARED edge
+
+A ratio threshold discards slot 3 along with slot 1, but 138 distinct targets over 4,855
+records is the shared-control-input pattern these notes already describe - low diversity as
+a ratio, and unmistakably an edge.
+
+Requiring **either** a diversity above 0.05 **or** at least 5 distinct targets separates
+them:
+
+    guard                         reachable   edges removed   directionalwarp forward refs
+    none (as it was)                 98.37%               -   10
+    ratio only                       98.02%          13,015   0
+    ratio or 5 distinct targets      98.31%           4,492   0
+
+It also *recovers* edges the old rule missed - `8,793,0` goes from `[3]` to `[1, 2, 3]` -
+because a shared input with few targets now qualifies.
+
+Unresolved edges fall from 36 to **27**, and none of them is a directionalwarp any more.
+The remaining 27 are spread across `fid8` (10), `fid22` (6), `warp` (4) and four other
+filters, at 0.0017% of 1,554,914 edge slots.
