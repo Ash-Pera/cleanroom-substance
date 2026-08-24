@@ -24226,3 +24226,53 @@ Three predicates were tried on the same question and only the third could answer
 
 The first two were not wrong measurements. They were measurements whose base rate left no room
 for a verdict, and the fix each time was a tighter predicate, not more data.
+
+## One slot rule for all four filters, and an undocumented blend parameter
+
+Unifying what `levels` established with the other three filters gives a single rule.
+
+**The class word contributes three bits, not two.** `levels` needed `bit 0 + bit 7`;
+`directionalwarp` and `dirmotionblur` needed `bit 0 + bit 11`. Neither is a different rule -
+`levels` never sets bit 11 and the other two never set bit 7, so each measurement saw half of
+`bit 0 + bit 7 + bit 11`:
+
+    g = bit0 + bit11         96.98%      dirwarp 99.28   dirmblur 94.43   levels 96.27
+    g = bit0 + bit7          84.49%      dirwarp 14.25   dirmblur 26.41   levels 96.68
+    g = bit0 + bit7 + bit11  97.78%      dirwarp 99.95   dirmblur 99.48   levels 96.68
+
+**State 3 takes an edge, not a parameter slot.** Counting the image-input state as a parameter
+cost `blend` 7,253 records. Excluding it: 99.18% overall, `blend` 99.70%.
+
+**`blend` has a second parameter nobody had written down.** Its remaining 935 records were
+`cls 0x0019` with opacity in state 3, where the table gives 2 slots and the rule said 1 - and
+the same `(cls, state)` also appeared with 1 slot, so unlike `levels` the table was not a
+function of those inputs. Something in word1 was missing. `LAYOUT_MASK[blend]` is `0x230`
+- bits 4, 5 and **9** - while `PARAM_SPEC` listed only `0x30`. Bit 9 separates the two cases
+perfectly:
+
+    blend cls 0x0019, opacity state 3
+        w1 bit 9 clear   6,309 records   1 parameter slot     bit 9 set in   0.0%
+        w1 bit 9 set       765 records   2 parameter slots    bit 9 set in 100.0%
+
+It is a single flag, not a two-bit field: reading it as the pair `0x300` collapses `blend` to
+25%, because bit 8 is set for unrelated reasons.
+
+### The rule
+
+    slots = |fields in state 1 or 2|
+          + (cls bit 0) + (cls bit 7) + (cls bit 11)
+          + (blend only:  word1 bit 9)
+          - (levels only: 1 when outlow and outhigh are both active and cls bit 0 is clear)
+
+    overall            468,108 / 471,046   99.376%
+      blend            310,631 / 310,631  100.000%
+      directionalwarp   60,333 /  60,365   99.947%
+      dirmotionblur     14,760 /  14,837   99.481%
+      levels            82,384 /  85,213   96.680%
+
+`levels` is the lowest only because its 2,829 shortfall was shown above to be table error with
+the rule correct, so against the records it is 100% too. What is left is 98 records at
+`cls 0x0719` and `0x0739` - the two class words carrying bit 10 - where the table wants two
+more slots than the rule offers. Bit 10 is the obvious candidate for a fourth `g` term, but 98
+records across two class words is not enough to claim it, and adding a term per unexplained
+class word is how a rule turns back into a table.
