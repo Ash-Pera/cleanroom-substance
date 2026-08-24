@@ -26794,3 +26794,58 @@ this corpus does not hold", which is drawn from the permitted specimen alone - i
 `pixelprocessor` among its own filters and no loop-like node in its function graph, so the
 loops arrived through instances, and the packages holding those instances are not here.
 Same conclusion, same consequence for where to look next, no claim about anyone's filter.
+
+## Record.programs was written against an older reading of the headers
+
+`Record.programs` finds a record's programs by looking up `layouts.json` and reading the slots
+it names. That was reasonable when it was written. It is not any more, because this file has
+since established two things about that table: it is incomplete - 2.85% of records in files it
+has never seen have no key at all - and it is lossy, since its key masks word1 and the mask
+discards field bits for five filters. A record whose parameter slot the table never learned had
+its program silently dropped.
+
+What a record names does not depend on the table. A program's start appears in one of the
+record's own slots as `offset - 52`, the universal skew, which is checkable directly:
+
+    records with a slot-named program the table path misses     8.50%
+    programs recovered                                         38,543   over 92,907 records
+    by filter   fxmaps 33,768, blend 1,170, transformation 1,048, pixelprocessor 788,
+                directionalwarp 556, levels 460, dirmotionblur 255, blur 154
+
+Not coincidence. Slots the layout calls EDGES hold record indices, and they pass
+`valid_program` 63 times in 95,891 - **0.066%**, about one in fifteen hundred.
+
+    corpus programs   1,308,358  ->  1,768,610      +35%
+    the u16 at a program pointer is its instruction count   1,768,610 of 1,768,610
+    every program transpiles                               1,768,442 of 1,768,610   99.9905%
+
+### It closes the execution gap
+
+Every one of the 25 remaining execution failures read a cache index that nothing appeared to
+write. In each case the writer WAS a slot-named program this method did not return - checked
+on `fz_explosion`, where indices 3, 7 and 11 are written by programs at offsets the record
+names in slots 4 and beyond. With them enumerated:
+
+    NoSharedCache   25  ->  0
+    execution       185,022 of 185,054   99.9827%
+
+The 168 programs that now fail to transpile are new work, mostly truncated immediates
+(`2 immediate bytes, wanted 4`), and are the honest cost of finding 460,252 more programs.
+
+## Correction: my trip-count evidence was 3 shapes, not 15 observations
+
+While doing this I re-adopted the reading that operand 3 of a condition-less `while` is a trip
+count, on the grounds that the output does not depend on it: running each such loop at 1, 3 and
+9 iterations gave identical results in 14 of 15 programs.
+
+`transpile.py` already carried a comment warning against exactly this, recording that an
+earlier "164 of 164" figure for the same instruction was inflated - deduplicated by program
+shape, those 164 instances are 6 distinct shapes over 7 specimens. My 15 are worse:
+
+    condition-less-loop programs in the corpus   110
+    distinct program shapes                        6      over 7 specimens
+    the 15 I measured                              3 shapes - fourteen of them identical
+
+So "14 of 15 agree" was one shape observed fourteen times. The live code raises rather than
+guess, and that is better supported than my adoption was. The transpiler stays at 99.99% rather
+than 100%, and the reason is on the record twice now.

@@ -955,6 +955,39 @@ class Record:
             for p in self.classified_programs():
                 if p not in out:
                     out.append(p)
+
+        # Then every OTHER slot that names a program.
+        #
+        # The slots above come from layouts.json, and this file has since established that
+        # the table is both incomplete - 2.85% of records in unseen files have no key at
+        # all - and lossy, since its key masks word1 and the mask discards field bits for
+        # five filters. A record whose parameter slot the table never learned therefore had
+        # its program dropped, and nothing above would notice.
+        #
+        # What a record names does not depend on the table: a program's start appears in a
+        # slot as `offset - 52`, the universal skew, and that is checkable directly.
+        #
+        #     records with a slot-named program the table path misses   8.50%
+        #     programs recovered                                       38,543 of 92,907
+        #                                                              records examined
+        #     by filter   fxmaps 33,768, blend 1,170, transformation 1,048,
+        #                 pixelprocessor 788, directionalwarp 556, levels 460
+        #
+        # Not coincidence. Slots the layout calls EDGES hold record indices, and they pass
+        # `valid_program` 63 times in 95,891 - 0.066%, about one in fifteen hundred.
+        #
+        # It matters because the missing programs WRITE. Every one of the 25 execution
+        # failures left after the width work read a cache index that nothing appeared to
+        # write, and in each case the writer was a slot-named program this method did not
+        # return. Enumerating them takes those failures to zero.
+        seen = set(out)
+        for word in self.words:
+            p = word + 52
+            if p in seen:
+                continue
+            if asm.body_lo <= p < asm.body_hi and asm.valid_program(p):
+                out.append(p)
+                seen.add(p)
         return out
 
     def classified_programs(self):

@@ -133,6 +133,11 @@ def install_samplers(count=None, size=8):
 
 
 def programs_of(asm, rec):
+    """Every program this record names, including ones `Record.programs` misses.
+
+    `Record.programs` now returns slot-named programs itself, so this only adds the
+    fx-map tree on top of it.
+    """
     pts = []
     try:
         pts = list(rec.programs)
