@@ -16312,3 +16312,53 @@ Every heuristic this replaces - probing alternates, diversity thresholds, global
 existed because the descriptor was not being read. Reading it is faster *and* more accurate, and
 the accuracy is not a coincidence: a heuristic that guesses per filter cannot represent a layout
 that varies per record, so it must be wrong somewhere, and it was wrong in seven places.
+
+## Mining the layout table: the transformation matrix
+
+The layout table classifies each slot as an edge or the parameter. The slots it classifies as
+**neither** are the format's remaining unexplained fields, and listing them by volume is a
+systematic way to find what is left - something no amount of staring at records produced.
+
+Restricted to header slots, before the first inline program:
+
+    filter            slot    records   holds
+    transformation      2      44,241   other 96%
+    fxmaps              2      11,091   other 100%     (the tree root, known)
+    levels              5      10,665   float 82%
+    transformation      5       9,745   zero 81%, float 17%
+    transformation      6       9,740   zero 87%, float 13%
+    transformation      4       7,178   float 88%
+    transformation      7       7,365   float 82%
+
+Four float slots in a row on `transformation`, mostly zero in the middle two.
+
+### Slots 4 to 7 are `matrix22`
+
+    2.0000  0.0000  0.0000  2.0000      uniform scale
+   -1.0000  0.0000  0.0000 -1.0000      180 degrees
+    0.0000 -1.0000  1.0000  0.0000      90 degrees
+    1.4014  0.0000  0.0000  1.4014
+    2.0000  0.0000  0.0000  1.0000      non-uniform scale
+
+Off-diagonals are zero in 94% and 76% of records, which is what a corpus of scales and flips
+looks like. Verified against the sources: **66 of 72 declared `matrix22` values appear verbatim
+at slots 4-7, across 23 permitted files - 91.7%**, the misses being nodes the cooker eliminated.
+
+A determinant test does the filtering. A transform cannot be singular, so a record whose slots
+4-7 are something else - a different layout - is rejected by `|det| < 1e-9`. Applying it drops
+the readable share from 58.8% to 14.3% while **keeping all 66 source matches**, which is the
+signature of a filter removing noise rather than signal: the rejected values included
+`(0, 0, 0.5, -0.25)`, which collapses an image to a line.
+
+`Record.matrix` returns it.
+
+### What this says about method
+
+`transformation` slots 4-7 have been present in every record this project has read since the
+beginning. They were never examined because nothing pointed at them: the edge map did not claim
+them, the parameter union did not claim them, and the coverage metric - marking whole record
+extents - reported them as accounted for.
+
+**The layout table found them by exclusion.** Once every slot has to be classified as edge,
+parameter, or neither, the "neither" list is short, ordered by volume, and reads as a work
+queue. `levels` slot 5 at 82% float is the next entry on it.
