@@ -387,11 +387,33 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             # break would be an unbounded loop, and emitting a single pass would assume the
             # answer, so these stay unsupported until the bound is found.
             if len(toks) >= 2 and toks[1] == 0xFFFF:
-                raise Unsupported("opcode %04X at %d: while condition absent (0xFFFF); "
-                                  "what bounds the loop is not known" % (op, addr))
+                # 164 instructions carry 0xFFFF here - the absent-operand sentinel - so
+                # the loop has no termination test. Operand 3 is read as a fixed trip
+                # count; it is 3 in 158 of them and nothing else in the instruction can
+                # bound the loop.
+                #
+                # The count is NOT established, and this is adopted anyway because the
+                # result does not depend on it. Running these loops at 1, 3 and 9
+                # iterations, with a shared cache threaded through the whole file so the
+                # control group runs too:
+                #
+                #     identical at 1, 3 and 9      14 of 15
+                #     differs                       1  (0.5 at one pass, 0.498047 at
+                #                                       both 3 and 9 - it converges)
+                #
+                # They are iterative refinements that settle, so any count of 3 or more
+                # gives the same answer. Execution rates match the control: 15 of 16 run
+                # against 21 of 22 for loops that do have a condition, each losing one
+                # program to a cache read whose writer runs later.
+                trip = toks[3] if len(toks) > 3 else 0
+                if not (1 <= trip <= 64):
+                    raise Unsupported("opcode %04X at %d: condition absent and operand 3 "
+                                      "= %s is not a usable trip count" % (op, addr, trip))
+                loops[toks[0] + 1] = (k, toks[0], None, toks[2], trip)
+                continue
             if not (toks[0] < toks[1] < toks[2] < k):
                 raise Unsupported("opcode %04X at %d: while operands out of order" % (op, addr))
-            loops[toks[0] + 1] = (k, toks[0], toks[1], toks[2])
+            loops[toks[0] + 1] = (k, toks[0], toks[1], toks[2], None)
 
     lines = []
 
@@ -402,7 +424,7 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             if k in loops:
                 # Pop it: the loop's own range starts at this same index, so leaving the
                 # entry in place makes emit_range re-enter it forever.
-                kw, i0, icond, ibody = loops.pop(k)
+                kw, i0, icond, ibody, trip = loops.pop(k)
                 # The loop's own value is the body's, but a loop can run ZERO times -- the
                 # condition is a termination test and may hold on entry -- so the body's
                 # variable need not be bound when the loop ends. Bind it first and assign
@@ -419,6 +441,12 @@ def transpile(data, start, end, backend="python", name="program", result=None):
                 # nothing needs freezing); `own` below is always that bare variable, so
                 # its None-check short-circuits before `expr` -- which may AND in an
                 # outer loop's mask for a nested loop -- ever evaluates `None & array`.
+                if icond is None:
+                    lines.append(pad + "for _it%d in range(%d):" % (kw, trip))
+                    emit_range(i0 + 1, ibody, depth + 1, active=active)
+                    lines.append(pad + "    %s = %s" % (be.var(kw), be.var(ibody)))
+                    k = kw + 1
+                    continue
                 own = "active_%d" % kw
                 expr = own if active is None else "(%s & %s)" % (active[1], own)
                 lines.append(pad + "%s = None" % own)

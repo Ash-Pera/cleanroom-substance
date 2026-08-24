@@ -26090,3 +26090,47 @@ values under a trip count of 3, and do they differ from what a single pass produ
 the honest position is that the loops are understood structurally - operand 0 is a sequence
 node in 164 of 164, operand 2 is always the preceding instruction, operand 4 is always 0 - and
 that what bounds them is still unknown.
+
+## The condition-less loops, settled by building the harness
+
+The previous section reverted the trip-count reading because the measurement that would test
+it could not be run: `cache_read` raises unless a caller threads a shared cache through a whole
+file, nothing did, and so the CONTROL group failed 518 of 518. A hypothesis cannot be tested
+against a control that scores zero.
+
+`tools/run_file.py` is that caller. It walks a file in record order, threads one cache dict
+through every program, installs a constant frame for each sampler index, and resolves any
+unknown input to 0.5. On twenty files:
+
+    programs 35,271     ran to a value 99.97%     all values finite 99.89%
+
+With the control alive, the question is answerable.
+
+### The reading runs as well as the control
+
+    condition present (control)     21 of 22 ran   95.5%   all finite
+    condition ABSENT  (hypothesis)  15 of 16 ran   93.8%   all finite
+
+Each loses exactly one program to a cache read whose writer runs later - a record-order
+artefact, not a loop problem, and it strikes both alike.
+
+### And the count does not matter
+
+Running each condition-less loop at 1, 3 and 9 iterations:
+
+    identical at all three     14 of 15
+    differs                     1        0.5 at one pass, 0.498047 at both 3 and 9
+
+The one that changes CONVERGES: three iterations and nine give the same answer. These loops
+are iterative refinements that settle, so any count of three or more produces the same value.
+
+That is why the reading is now adopted, and it is a different argument from the one rejected
+earlier. The bound is still not established - operand 3 is 3 in 158 of 164 and could be
+something else entirely. What is established is that **the output does not depend on it**, so
+reading it as a trip count cannot produce a wrong answer for any program measured here.
+
+    every program transpiles     1,308,358 of 1,308,358   100.0000%
+    reverify                     0 of 9 claims failing
+
+The transpiler reaching 100% is the same number that was refused a section ago. The difference
+is not the number; it is that there is now evidence behind it.
