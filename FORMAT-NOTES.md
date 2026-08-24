@@ -17595,6 +17595,28 @@ The three cache entries this record depends on, read start to finish:
 
 `#9` and `#10` are `hblend`'s exact idiom - `max(R,G)` and `1 - max(B,A)` of a fixed
 control pixel at (0,0) - confirming that technique is not specific to one tutorial file.
+
+**Checked against `SBRustyTreadPlate`'s own source, since it has one and `hblend` does
+not.** `#9`/`#10` both sample record 3232, and that record is not an ordinary node - it
+is a `pixelprocessor` whose declared resolution is **1x1**, and whose program is an
+explicit 4-tap `max` of its own input at four offset positions: a max-pool downsample
+step, not incidental math. Walking its edge back: `3231(1x1) -> 3230(1x1) -> 3229(1x1)
+-> 3228(4x4) -> 3227(16x16) -> 3226(64x64) -> 3216(256x256) -> 3215(256x256) ->
+3207(blend, 256x256)`. Every step from 256 to 1 is exactly this max-pool, one 4x
+reduction per step (256/64/16/4/1). This is a **textbook max-reduction pyramid**: reduce
+a 256x256 `blend` composite down to the single pixel holding its peak value, structural
+and unambiguous - not a plausible-looking coincidence read into arithmetic.
+
+**What is not confirmed is what that peak value means.** The `.sbs` carries no
+`GUIName`/comment annotations at all (checked; zero in the whole file, unlike
+`time_var_test`'s Japanese comments), and the one named input feeding the surrounding
+grid math is `$outputsize` - a generic system parameter, not a `rust`/`wear`-specific
+one. So the *mechanism* - bake a scalar into a 1x1 image via reduction, read it back
+elsewhere - is now source-confirmed as deliberate, upgraded from "the same bytecode
+shape recurs in two files" to "an explicit, purpose-built reduction pyramid". Which
+specific thing it is peak-detecting - and `hblend`'s own instance of the same idiom,
+which has no `.sbs` to check at all - remain open.
+
 `#11` is new: a **normalized 3-vector**, not a scalar - it floors a fixed fractional
 position `(0.551, 0.41)` against `$size` to a texel-centre, builds `(dx, dy, height)` where
 `height = max(1 - 2·|offset|, 0.01)` - a cone/pyramid profile peaking at the centre - and
