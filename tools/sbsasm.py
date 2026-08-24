@@ -152,12 +152,40 @@ FX_NODES = {
 #
 # Note the order is in-low, in-high, in-mid, out-low, out-high - not the order the
 # parameters are declared in a `.sbs`, and not the order they are applied in.
+# For `directionalwarp` the same slot-1 field carries TWO bits per parameter, and the
+# second bit is what the parameter is stored as:
+#
+#     bit 1  intensity, baked constant      bit 2  intensity, program
+#     bit 3  warpangle, baked constant      bit 4  warpangle, program
+#
+# The two bits of a pair are mutually exclusive in 136,470 of 136,470 records, and only
+# seven of the sixteen mask values occur (0, 2, 4, 8, 10, 12, 20); the never-seen
+# combination is 18, a baked intensity beside a warpangle program.
+#
+# Predicting from the bits BOTH which parameters are present and whether each is a
+# program or a constant is correct in 136,366 of 136,470 slot reads (99.92%). The 104
+# misses all predict a program where `valid_program` declines.
+#
+# These occupy the LAST k slots of the block, not the first k -- which is the opposite
+# of what this table's `levels` derivation assumed. For `directionalwarp` the tail
+# placement is what the 99.92% above measures. For `levels` and `blend` the question is
+# genuinely open: front and back differ on 20.9% of `blend` records, and the only
+# parameter with enough distinctive source values to test (`opacitymult`, n=41) splits
+# 32 front / 33 back, which decides nothing. They are left on front placement.
+#
+# `warpangle` is in TURNS, and that is not an inference from the value distribution --
+# the programs that compute it end in `atan2(v) / 6.28319`, dividing by a full turn in
+# 3,336 of 3,336 angle-shaped programs.
 PARAM_BITS = {
     15: {0: 'levelinlow', 2: 'levelinhigh', 4: 'levelinmid',
          6: 'leveloutlow', 8: 'levelouthigh'},
     1: {4: 'opacitymult'},
+    12: {1: 'intensity', 2: 'intensity', 3: 'warpangle', 4: 'warpangle'},
 }
-PARAM_BIT_MASK = {15: 0x155, 1: 0x10}
+PARAM_BIT_MASK = {15: 0x155, 1: 0x10, 12: 0x1e}
+
+# Filters whose parameter bits address the END of the block rather than its start.
+PARAM_FROM_END = frozenset({12})
 
 
 # FX-Map parameter table: the OTHER thing an fxmaps record's slot 2 can address.
@@ -472,7 +500,11 @@ class Record:
 
     @property
     def parameters(self):
-        """Named parameters this record carries, as [(name, value), ...].
+        """Named parameters this record carries, as [(name, kind, value), ...].
+
+        `kind` is 'baked' for a constant, whose value is a float, or 'program', whose
+        value is the program's offset. Only `directionalwarp` currently yields
+        'program'; the other filters in PARAM_BITS carry constants only.
 
         Only for filters in PARAM_BITS; [] otherwise, and [] is not a claim that the
         record has no parameters. The block starts after the header: slot 3 when the
@@ -492,12 +524,24 @@ class Record:
             return []
         slots = list(hit[1])[1:]
         w = self.words[1] & PARAM_BIT_MASK[f]
+        set_bits = [i for i in range(16) if w >> i & 1]
+        # Bits address the tail of the block for the filters in PARAM_FROM_END, and its
+        # head for the rest. A record whose bits outnumber its slots is not readable
+        # either way; report what fits rather than guessing an alignment.
+        base = max(0, len(slots) - len(set_bits)) if f in PARAM_FROM_END else 0
         out = []
-        for j, b in enumerate(i for i in range(16) if w >> i & 1):
-            if j >= len(slots) or slots[j] >= len(self.words):
+        for j, b in enumerate(set_bits):
+            k = base + j
+            if k >= len(slots) or slots[k] >= len(self.words):
                 break                      # more bits than slots: report the readable
-            v = self.words[slots[j]]
-            out.append((bits[b], struct.unpack('<f', struct.pack('<I', v))[0]))
+            raw = self.words[slots[k]]
+            ptr = raw + 52
+            if (self.asm.body_lo <= ptr < self.asm.body_hi
+                    and self.asm.valid_program(ptr)):
+                out.append((bits[b], 'program', ptr))
+            else:
+                out.append((bits[b], 'baked',
+                            struct.unpack('<f', struct.pack('<I', raw))[0]))
         return out
 
     @property

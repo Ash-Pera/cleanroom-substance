@@ -18916,6 +18916,12 @@ groups are `fxmaps` (66,177), `pixelprocessor` (57,125) and `blend` (18,905).
 
 ## `directionalwarp`'s two baked parameters, named
 
+> **Superseded by "`directionalwarp`'s parameters are bit-selected, like `levels`'"
+> at the end of this file.** The two parameters below are the right two, and the
+> unit is right, but naming them by FIXED block position is wrong: the block
+> shrinks when a parameter is absent, so the positions move. The distribution
+> figures in this section are averages over layouts that disagree.
+
 Scanning the 401,188 baked values with no known meaning, the largest group is
 `directionalwarp` at 130,284. Its block positions separate cleanly.
 
@@ -18970,3 +18976,139 @@ validation.
 A distribution test needs the near-zero values excluded before it means anything - a
 denormal sits inside any symmetric interval and is negative half the time. Here it happened
 not to change the numbers, because the values were genuine. It will not always.
+
+## `directionalwarp`'s parameters are bit-selected, like `levels`'
+
+Reading the programs, rather than scanning the values, settled what the value scan had
+only approximated - and corrected it.
+
+### What the programs say
+
+Two slots of a `directionalwarp` record hold programs that are near-duplicates, differing
+only in their last few instructions. Record 818 of `LeakingSubstance004`:
+
+    slot 6                                    slot 7
+      %0  inputref.f1  uid=3390617898           %0  inputref.f1  uid=3390617898
+      %1  const.f1     10                       %1  const.f1     10
+      %2  mul.f1       %0, %1                   %2  mul.f1       %0, %1
+      %3  const.f1     -3.34849e-08             %3  const.f1     -3.34849e-08
+      %4  mul.f1       %2, %3                   %4  mul.f1       %2, %3
+      %5  const.f1     0.766044                 %5  const.f1     0.766044
+      %6  mul.f1       %2, %5                   %6  mul.f1       %2, %5
+      %7  vec.f2       %4, %6                   %7  vec.f2       %4, %6
+      %8  swizzle.f1   %7, #0                   %8  atan2.f1     %7
+      %9  mul.f1       %8, %8                   %9  const.f1     6.28319
+      %10 swizzle.f1   %7, #1                   %10 div.f1       %8, %9
+      %11 mul.f1       %10, %10
+      %12 add.f1       %9, %11
+      %13 sqrt.f1      %12
+
+The same Cartesian vector, decomposed two ways: `sqrt(x^2 + y^2)` is its magnitude,
+`atan2(v) / 6.28319` its angle **divided by a full turn**.
+
+So the unit of the angle is not an inference from how the baked values are distributed.
+It is in the bytecode: **3,336 of 3,336 angle-shaped programs divide by 2*pi**, 3,088 by
+the float nearest it and 248 by its neighbour.
+
+The constants say what the author typed. Both records above carry a vector proportional to
+`(-4.37e-8, 1)`, and `cos(float(pi/2))` is exactly `-4.371139e-08` - a 90-degree angle,
+with the magnitude carried in the shared scale factor. Recovering the angle from the
+constants as `atan2(c2, c1) / 2*pi` over all 3,248 programs where both are readable gives
+
+    0.125  (45 deg)  593     0.0625 (22.5 deg)  40
+    0.0    ( 0 deg)  126    -0.475 (-171 deg)   28
+   -0.5    (180 deg)  98     0.2625 ( 94.5 deg) 27
+    0.25   ( 90 deg)  59     0.05   ( 18 deg)   25
+   -0.25   (-90 deg)  48     0.0833 ( 30 deg)   25
+
+34.6% are clean fractions of a turn. The rest are values like 94.5 and -171 degrees, which
+are authored numbers that simply are not round, so 34.6% is a floor and not a rate.
+
+### The parameters are selected by bits in slot 1, two bits each
+
+`LAYOUT_MASK[12]` is `0x1e`, and those four bits are two per parameter:
+
+    bit 1  intensity, baked constant      bit 2  intensity, program
+    bit 3  warpangle, baked constant      bit 4  warpangle, program
+
+The two bits of a pair are **mutually exclusive in 136,470 of 136,470 records**. Only seven
+of the sixteen values occur, and the missing one is telling:
+
+    mask    0      239   neither parameter          mask   10   63,630   both baked
+    mask    2    2,394   intensity, baked           mask   12      486   int prog, ang baked
+    mask    4      595   intensity, program         mask   20    3,344   both programs
+    mask    8      291   warpangle, baked           mask   18        0   int baked, ang prog
+
+Predicting from the bits both **which** parameters a record has and **how each is stored**
+is correct in **136,366 of 136,470 slot reads (99.92%)**. All 104 misses predict a program
+where `valid_program` declines.
+
+This is the same mechanism `levels` and `blend` already use - one presence field in slot 1,
+parameters packed into consecutive slots - with the refinement that a second bit per
+parameter distinguishes a constant from a program.
+
+### Why the fixed-position naming was wrong
+
+The earlier section named these by fixed block position, measured on the dominant layout.
+The block **shrinks when a parameter is absent**, so the positions move:
+
+    block 4, mask 10   intensity at 2, warpangle at 3     53,182 records
+    block 3, mask 10   intensity at 1, warpangle at 2      9,092
+    block 3, mask  2   intensity at 2         (last)       1,835
+    block 3, mask  8   warpangle at 2         (last)         238
+
+Under the fixed labelling, every block-length-3 record with both parameters had them
+swapped. That is roughly 12,000 mislabelled readings, with another 11,000 left unnamed.
+
+The containment test is what exposed it. Restricted to distinctive declared values, the
+declared `warpangle` lands at the last block slot 8 times out of 8 - but so does the
+declared `intensity`, 5 times out of 7, which cannot be true of one slot. Splitting the
+same hits by layout key resolves it immediately:
+
+    intensity   5.73, 15.82        key (12, 2841, 10)  block 4   pos 2
+    intensity  21.17, 27.98, 84.68 key (12, 2841,  2)  block 3   pos 2   (last: no angle)
+    warpangle  -0.1666, 0.3775 ... key (12, 2841, 10)  block 4   pos 3
+    warpangle  -0.6715, 0.6884     key (12, 2841,  8)  block 3   pos 2   (last: no intensity)
+
+Both parameters really are "last" - in the records where the other one is absent. The
+layout key, not the position, is what distinguishes them, and the key's third component is
+exactly the mask above.
+
+### Head or tail: settled for this filter, open for the others
+
+`directionalwarp`'s parameters occupy the **last** k slots of the block, which is the
+opposite of the head placement the `levels` derivation assumed. For `directionalwarp` the
+99.92% above measures the tail placement directly.
+
+For `levels` and `blend` the question is genuinely open. The two rules differ on 20.9% of
+`blend` records (bits fewer than slots), and the only parameter with enough distinctive
+source values to test - `opacitymult`, n=41 - splits **32 front / 33 back**, which decides
+nothing. They are left on head placement, and this is a real hole, not a resolved question.
+
+### What it costs and what it buys
+
+`Record.parameters` now returns `(name, kind, value)`, where `kind` is `'baked'` with a
+float or `'program'` with an offset. Named parameter readings go from about 310,000 to
+**450,414**:
+
+    blend  opacitymult      139,294 baked    2,158 program
+    levels levelouthigh      48,015 baked      384 program
+           leveloutlow       47,470 baked
+           levelinlow        33,552 baked      122 program
+           levelinhigh       33,254 baked        5 program
+           levelinmid         8,917 baked       29 program
+    directionalwarp
+           intensity         65,897 baked    4,400 program
+           warpangle         63,677 baked    3,240 program
+
+Distinguishing the two kinds also fixes `levels` and `blend`, whose 2,698 program slots were
+previously being read as constants and reported as meaningless floats.
+
+Unchanged after the edit: 641 files parsed, 0 failures, 0 unexplained bytes, edge slots
+100.00%, validator 437/437.
+
+### The residual
+
+744 records set bits for two parameters but have only one parameter slot. `parameters`
+reports what fits rather than guessing an alignment, so these yield one name instead of
+two. 239 more set no parameter bits at all. Neither is explained.
