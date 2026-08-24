@@ -526,6 +526,84 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 result = np.tile(color, (N, 1))
                 outputs[i] = to_image(result, N, H, W)
 
+            elif rec.filter_name == "directionalwarp":
+                # Parameter LOCATIONS are corpus-verified (FORMAT-NOTES.md,
+                # "directionalwarp's parameters are bit-selected, like levels'", 99.92%
+                # tail-placement accuracy) and warpangle's UNIT is confirmed directly
+                # from real bytecode, not inferred: programs that compute it end in
+                # `atan2(...) / 6.28319` -- 3,336 of 3,336 angle-shaped programs divide
+                # by 2*pi, i.e. the value is a FRACTION OF A FULL TURN.
+                #
+                # NOT corpus-verified: the displacement FORMULA itself (this filter's
+                # core math is fixed in the engine, not carried in bytecode the way a
+                # pixelprocessor's is) and intensity's absolute scale. This implements
+                # the standard directional-warp shape -- sample a second, grayscale
+                # "intensity map" input, centre it at 0 (0.5 -> no displacement), scale
+                # by `intensity` and a fixed direction from `warpangle`, and offset the
+                # main input's sampling position by the result -- with intensity taken
+                # against a fixed 256-pixel reference scale independent of the record's
+                # own resolution, matching the convention several public shader ports of
+                # this Substance node use. That constant is NOT re-derived from this
+                # corpus and could be wrong by a constant factor; real program-computed
+                # `intensity` specimens (DLG-Tools__Rusted_Metal_01 records 13/51/60/
+                # 73/74) confirm only that SOME resolution-independent normalization is
+                # real -- authors compute intensity as `min(K, K*$size.x/$size.y)` for K
+                # from 10 to 128, an aspect-ratio cap wrapped around a per-record
+                # constant, not evidence of the divisor itself.
+                #
+                # Edge order (which input is warped, which supplies the intensity map)
+                # is likewise the declared, unverified-at-the-bytecode-level convention:
+                # a real paired source (DLG-Tools__Camouflage.sbs) declares this node's
+                # connections as `input1` first, `inputintensity` second, matching
+                # Record.edges[0]/[1] in that order without independent proof -- the
+                # same epistemic stance already taken for blend's destination/source
+                # pair. Wrong here means a plausible-looking but misdirected warp, not a
+                # crash.
+                if len(rec.edges) < 2:
+                    raise Unsupported("directionalwarp has fewer than 2 edges")
+                for edge_rec in rec.edges[:2]:
+                    if edge_rec not in outputs:
+                        raise Unsupported("edge -> record %s has no output yet" % edge_rec)
+                tainted = any(e in synthetic for e in rec.edges[:2])
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+
+                DEFAULTS = {'intensity': 0.0, 'warpangle': 0.0}
+                params = dict(DEFAULTS)
+                for name, kind, value in rec.named_parameters:
+                    if name not in DEFAULTS:
+                        continue
+                    if kind == 'baked':
+                        params[name] = np.float32(value)
+                    else:
+                        for slot_i, edge_rec in enumerate(rec.edges[:2]):
+                            sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
+                                outputs[edge_rec])
+                        params[name] = to_image(
+                            eval_program(asm, value, default_inputs(asm, N), {}, N,
+                                        pos=pos, W=W, H=H),
+                            N, H, W).reshape(N, -1)[:, :1]
+
+                intensity, angle = params['intensity'], params['warpangle']
+
+                height = sbsruntime.image_sampler(outputs[rec.edges[1]])(pos)[:, :1]
+                signed = 2.0 * height - 1.0
+                turn = 2.0 * np.pi * angle
+                REFERENCE_PX = 256.0
+                disp = signed * intensity / REFERENCE_PX
+                in_pos = pos + np.concatenate(
+                    [disp * np.cos(turn) * np.ones((N, 1), dtype=np.float32),
+                     disp * np.sin(turn) * np.ones((N, 1), dtype=np.float32)], axis=-1)
+
+                result = sbsruntime.image_sampler(outputs[rec.edges[0]])(in_pos)
+                outputs[i] = to_image(result, N, H, W)
+                if tainted:
+                    synthetic.add(i)
+
             else:
                 raise Unsupported("filter %r not implemented" % rec.filter_name)
 
