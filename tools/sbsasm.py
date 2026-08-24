@@ -811,7 +811,15 @@ class Record:
     def fx_walk(self):
         """The whole FX-Map structure: the node chain, then the table it hands off to.
 
-        Yields ('node', offset, header, program) then ('entry', offset, tag, program).
+        Yields ('node', offset, header, program) then ('entry', offset, tag, program),
+        with every offset ABSOLUTE - a file position, not relative to anything.
+
+        The two halves used to disagree: `fx_tree` subtracted the record's start and
+        `fx_table` subtracted `body_lo`, so one interface returned two coordinate systems.
+        Over 2,776 records yielding both kinds, every node offset landed inside the record
+        and 2,753 of the entry offsets did not - a 792-byte record reporting a node at +32
+        beside entries at +2444, +14116 and +36020. Any caller treating them alike was
+        wrong, and `fxdisasm` printed both under the same `+%d`.
 
         These were treated as two unrelated things, and as two failures: the chain
         "stopped at an unrecognised header" and a third of records "had no readable
@@ -826,7 +834,7 @@ class Record:
             yield ('node', off, hdr, prog)
         start = None
         if last is not None:
-            q = self.offset + last
+            q = last                      # fx_tree yields absolute offsets
             h = struct.unpack_from('<I', self.asm.data, q)[0]
             sh = FX_NODES.get(h)
             if sh:
@@ -889,7 +897,7 @@ class Record:
             if off is not None and o <= t < e - 3 and t + off + 4 <= e \
                     and self.asm.program_span(t + off, e):
                 prog = t + off
-            yield q - o, tag, prog
+            yield q, tag, prog
             q += 8
 
     def fx_tree(self):
@@ -914,7 +922,7 @@ class Record:
                 if q + sl + 4 > e:
                     return
                 p = struct.unpack_from('<I', d, q + sl)[0] + 52
-                yield q - o, h, (p if (o < p < e and self.asm.program_span(p, e)) else None)
+                yield q, h, (p if (o < p < e and self.asm.program_span(p, e)) else None)
             if q + nxt_off + 4 > e:
                 return
             q = struct.unpack_from('<I', d, q + nxt_off)[0] + 52

@@ -14,10 +14,11 @@ from sbsasm import Assembly, FX_NODES
 
 
 def tree(asm, r):
-    """(offset within record, header, program offset or None) per node, in chain order.
+    """(absolute offset, header, program offset or None) per node, in chain order.
 
-    `Record.fx_tree` already yields the offset relative to the record, so nothing is
-    subtracted here -- doing so once printed node positions as large negative numbers.
+    `Record.fx_tree` yields absolute file offsets, as `fx_table` does. They used to
+    disagree - one relative to the record, one to `body_lo` - which this front end printed
+    under a single `+%d` as though they matched.
     """
     return r.fx_tree()
 
@@ -33,11 +34,14 @@ def main(path, idx):
     for kind, off, tag, prog in r.fx_walk():
         n += 1
         label = 'node' if kind == 'node' else 'table entry'
-        print('\n=== %s 0x%X at +%d%s' %
-              (label, tag, off,
-               '  program @+%d' % (prog - r.offset) if prog else '  [shape not known]'))
+        where = ('+%d' % (off - r.offset) if r.offset <= off < r.end
+                 else '0x%X (outside this record)' % off)
+        print('\n=== %s 0x%X at %s%s' %
+              (label, tag, where,
+               '  program @0x%X' % prog if prog else '  [shape not known]'))
         if prog:
-            print(disasm.text(a.data, prog, r.end))
+            # bound by the body, not by this record: an entry's program need not be inside
+            print(disasm.text(a.data, prog, a.body_hi))
     if not n:
         print('  slot 2 addresses neither a known node chain nor a parameter table')
         print('  (5.1%% of fxmaps records; see FORMAT-NOTES.md)')

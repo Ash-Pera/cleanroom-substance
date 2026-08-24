@@ -21566,3 +21566,46 @@ rejected records have in common, which they answered unanimously.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## Auditing for the bug class, and finding a different one
+
+The ramp fix was an instance of a class - a reader enforcing allocation semantics on a
+partition - so the next thing worth doing was looking for the rest of that class rather than
+waiting to trip over it. Grepping every `self.offset`/`self.end` bound in the module:
+
+    fx_table    already bounded by body_lo/body_hi           correct
+    fx_tree     bounded by the record                        affects 6 records
+    programs    bounded by the record, deliberately          correct - it is finding
+                                                             where the header ends, which
+                                                             is defined by programs INSIDE
+
+So the class had exactly one real instance and it was already fixed. `fx_tree`'s bound costs
+6 records, each a single-node chain, and 410 `fxmaps` records whose slot 2 points outside
+their own record already read fine - 371 of them yield 898 entries through `fx_table`, which
+was body-bounded all along.
+
+That is a negative result, and worth recording as one: the audit was cheap and the answer is
+that there is nothing else of this kind to find.
+
+### What the audit did find
+
+Checking the bounds put the two walkers side by side, which is how this surfaced:
+
+    fx_tree    yielded  q - self.offset      relative to the record
+    fx_table   yielded  q - body_lo          relative to the body
+
+**`fx_walk` returned both through one interface.** Over 2,776 records yielding both kinds,
+every node offset fell inside the record and 2,753 of the entry offsets did not - a 792-byte
+record reporting a node at `+32` beside entries at `+2444`, `+14116`, `+36020`. `fxdisasm`
+printed both under the same `+%d`, and bounded every disassembly by `r.end` even for an
+entry whose program is not in that record.
+
+Both now yield **absolute** offsets. `fxdisasm` prints a record-relative `+N` when the target
+is inside the record and `0x...  (outside this record)` when it is not, and disassembles
+against `body_hi`.
+
+Counts are unchanged - 60,605 nodes and 104,938 entries, 40,841 of 40,928 records with
+content - which is the check that matters: the coordinates were wrong, not the walk.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
