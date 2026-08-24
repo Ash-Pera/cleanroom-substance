@@ -29928,3 +29928,50 @@ points at is a TYPE TABLE per filter (name, type, width) from which costs.json i
 generated rather than fitted; the fit remains only as the instrument that recovers
 types where no declaration is known, and as the check that a claimed type table
 reproduces every header.
+
+## Git history: no new pairs, but the serverhouse provenance stops being an inference
+
+GitHub's code search indexes only HEAD, so a file deleted in a later commit is invisible to
+it. Blobless clones of five Substance repositories, comparing every path ever committed
+against the current tree:
+
+    grondag/Hard-Science-Old                 246 ever   225 at HEAD    21 gone
+    pmpu/serverhouse                          87 ever    49 at HEAD    38 gone
+    igor-elovikov/sd-ie-lib                   14 ever    12 at HEAD     2 gone
+    JoshLiu-skairobot/Substance-Designer-Toolsets  544   544           0
+    frugbug/sd-nodes-fj                       30 ever    30 at HEAD     0
+
+**Sixty-one files exist only in history — and none of them is a usable new pair.**
+Hard-Science-Old's 21 are almost entirely `.autosave/` copies of graphs already in the
+corpus, with no `.sbsar` among them. `sd-ie-lib`'s two are example files, also unpaired.
+
+### What serverhouse's 38 actually are
+
+The paths say it outright:
+
+    art_code_with_textures/post/Assets/Substances_Free/Substance_Free_Collection_sbs/
+    art_code_with_textures/post/Assets/Substances_Free/Substance_Free_Collection_sbsar/
+
+Nineteen `.sbs` and eighteen `.sbsar`, named `BrickWall_02`, `Electric_Liquid`, `Road_01`,
+`Shutter_01`, `Cereals`, `concrete_049`, `roofing_007`, `metal_plate_005/008`, `bricks_032`,
+`Pavement_01`, `Pavement_Path`, `Stones_01`, `Wood_Planks_01`, `sci_fi_003`, `Camouflage_02`,
+`Desert_Sand_01`, `metal_floor_003`. Every one of those is in this corpus as a
+`serverhouse__*` specimen, and every one carries `author="Allegorithmic"` in its compiled
+manifest.
+
+They are Allegorithmic's **Substance Free Collection**, redistributed inside a game project.
+That was already inferred from the author tags; the repository's own deleted directory names
+it. The corpus's `serverhouse__*` materials are not the repository author's work at all,
+which is why thirteen of them sit in the source-excluded set and why `Electric_Liquid` — the
+specimen four filter identifications once rested on — was Adobe's to begin with.
+
+Nothing about their handling changes: the compiled archives stay in the corpus as freely
+distributed compiled files, and their sources stay excluded. What changes is that the
+provenance is now documented rather than deduced from a metadata field.
+
+### The search itself
+
+Git history is worth checking once per repository and not again — it is cheap, it is
+invisible to code search, and here it returned a provenance chain rather than corpus. Two
+larger repositories (`inexorgame/textures` and one other) exceeded a five-minute clone budget
+and were not completed; they are the only untested part of this sweep.
