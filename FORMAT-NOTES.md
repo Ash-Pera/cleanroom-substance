@@ -24753,6 +24753,95 @@ to duplicate.
 Tests: 12 passed. Audit unchanged: 437 specimens, 0 unexplained value-table bytes, edges and
 directory both 437/437.
 
+## `while` gave every lane the same answer only by accident, until it was batched
+
+The three fixes above were checked against 60 random files as a bounded resweep - 2,135
+programs, 99.2%. Scaling that to the full corpus (`DISTINCT.txt`, uncapped) rather than
+trusting the small sample changed the picture:
+
+    programs attempted    1,611,933
+    succeeded              1,609,691   99.86%
+    NoSharedCache               1,198   the documented cross-record refusal
+    ValueError                    949   see below
+    KeyError                       95   see below
+
+None of the 60 sampled files happened to contain a `while` loop or a sampler index above 7,
+so a 0.14% miss rate at 60 files hid three distinct causes entirely. Clustering the 2,242
+failures by (type, message) rather than trusting the three examples-per-type the smaller run
+had shown:
+
+    1,198  NoSharedCache   the documented cache_read refusal
+      509  ValueError      "The truth value of an array ... is ambiguous"
+      255  ValueError      operands could not be broadcast together, shapes (N,4)+(N,4)=(N,8)
+      185  ValueError      vec: concatenation gave N components, declared N (the harness-stub
+                            case from the section above, recurring at scale)
+       95  KeyError        small integers (8, 10, 11, 25, ...)
+
+**The 255 and the 95 are both the test harness, confirmed rather than assumed.** The 255 has
+the same signature as the `Brick02` case worked through above - `cartesian`'s `vec` call
+receiving two operands that are each `(N, 4)` instead of `(N, 1)`. Every one of a random
+25-sample traces to `sample_lum(index, pos)` returning the same four-channel stub frame as
+`sample_col`, when its own call sites declare `ncomp=1` throughout - `sample_lum` (luminance)
+and `sample_col` (colour) are different opcodes (`0x33` vs `0x34`) precisely because they are
+not the same kind of read, and the sweep's stub had them sharing one frame. Giving `sample_lum`
+its own single-channel stub fixed the traced instance outright. The 95 `KeyError`s are sampler
+indices the stub never populated - confirmed directly against the bytecode: `ie_curve`'s
+program at 3048 calls `sample_col` with index 8, and the harness only stubbed `range(8)`,
+i.e. 0-7. Neither is a transpiler defect; both are a fixed-size test double meeting a program
+that needed more of it.
+
+**The 509 is not the harness. It is `while` itself, run the way an image actually would be.**
+Every one of a random 25-sample fails at the same generated line, `if v17: break`, with `v17`
+a `>=` comparison - i.e. exactly the `if v_cond: break` the `while` emission writes. The
+previous verification of `while` (the "Two bugs the corpus sweep could not have found"
+section above) ran every test one sample at a time - a single `(1,1)` slot value in the
+synthetic test, a single scalar `sysvar8`/`slot1` pair per row of the closed-form table. A
+real image evaluates every pixel of a record in one call, hundreds of thousands of samples
+sharing the one Python `for`, and `v_cond` is one boolean *per sample*, not one boolean total
+- `if` cannot take an array condition, and numpy says so rather than picking a lane.
+
+Forcing `.all()` or `.any()` on the array would silence the exception, but not correctly: this
+is one shared `for` running every lane, so a lane whose own condition went true on iteration 3
+does not stop there unless something stops IT specifically - left alone, it keeps re-running
+the body in lockstep with every other lane until the last one finishes, and ends up wherever
+that leaves it instead of at its own correct answer. Wrong numbers under a clean exit are worse
+than the exception was, so the fix is a per-lane mask, not a laxer termination check:
+
+- Each loop gets its own `active_N`, `None` on the loop's first pass and, from then on, which
+  lanes have NOT yet had their condition go true.
+- Every `slots[K] = ...` inside the loop's condition or body range becomes `... if active_N is
+  None else select(active_N, new_value, slots[K])` - a lane keeps whatever it last had once its
+  own condition holds, instead of continuing to track the lanes still running.
+- The loop's own carried value (`v_kw`, already the mechanism `while` used for its result) is
+  frozen the same way.
+- Nested loops (14 in the corpus, all nested rather than overlapping - see the earlier `0x0B`
+  section) AND the enclosing loop's mask into the inner one's, so a lane the outer loop has
+  already retired cannot have its slots written by an inner loop that does not know that.
+
+`sbsruntime.select` already existed and already does the right thing with a narrower condition
+- broadcasting it to the branches' width is exactly its documented, already-proven behaviour -
+so the fix reuses it rather than adding a new primitive.
+
+### Verification
+
+A new synthetic test runs the SAME hand-built counter-loop bytecode as the existing scalar
+test, but once, batched, with four different limits (0, 1, 5, 17) in one `(4, 1)` slot array
+instead of four separate calls. Without masking this either raises (an `(4,1)` condition in an
+`if`) or - if `.any()`/`.all()` papered over that - would leave every row at the SAME final
+count, since one shared loop only stops once every row agrees. It asserts each row ends at its
+own limit: `[0.0, 1.0, 5.0, 17.0]`, exactly.
+
+The real failure that started this - `MetalSubstance009`'s program at offset 18109404 - now
+runs at `N = 500` instead of raising. That alone proves it stops crashing, not that it computes
+the right thing, so it was run a second way: 64 rows, each fed a genuinely different value
+(`np.linspace(0.05, 3.0, 64)`, scaled differently per slot) through the SAME batched call, then
+each of the 64 rows re-run in complete isolation (`N = 1`, that row's own slot values only) and
+compared. **0 mismatches out of 64** - batched and isolated agree exactly, row for row, on a
+real corpus program the previous `while` support could not even execute past `if v_cond:`.
+
+Tests: 13 passed (the new batched test included). Audit unchanged: 437 specimens, edges and
+directory both 437/437.
+
 ## shuffle: slot 1 is sometimes an edge, and the table keyed on it
 
 `shuffle` had the weakest base arity of any filter - a per-filter constant held for only 77% -
@@ -24942,3 +25031,52 @@ this corpus does not contain.
 
 Filters 5 (140 records) and 9 (5) remain untouched for the same reason - both take no inputs
 at all, which leaves nothing to measure but their programs.
+
+## filters 5 and 9: characterised, not named
+
+The last two unnamed ids take no image input, so there is nothing to correlate - only what they
+contain and what they feed.
+
+    filter 5   140 records    filter 9   5 records
+      no image inputs            no image inputs
+      produces an IMAGE          produces an IMAGE
+        256x256   82               256x256  3
+        256x512   45               128x128  2
+        2048x4096 12
+      consumed by blend 110      consumed by blend 3
+                transformation 21           transformation 2
+      1 program in 127 of 140    1 program in 5 of 5
+      programs are 1-5 instructions, which is a size expression, not pixel work
+
+Both produce images, so `valueprocessor` - the one remaining candidate that takes no image
+input - is ruled out for both.
+
+### filter 5 carries embedded data
+
+Its record lengths are 3, 8 and 13 words for most records, and then 356, 512, 634, 5,392 and
+9,874 for 59 of them. Those long records hold binary content, and words 1 and 2 are a start and
+end offset into the file whose difference matches the record length.
+
+What the content is remains open. Read as float32 at word alignment it is 49% inside [-1, 1]
+and 45% larger than 1e4, which is not a coordinate array; and there is no interleaving to find:
+
+    stride 2   position 0  41.13%   position 1  40.92%
+    stride 3   41.03%  41.10%  40.96%
+    stride 4   41.15%  40.86%  41.11%  40.99%
+
+Every position at every stride reads the same, so the data is not word-aligned floats mixed
+with anything else. The byte pattern - `8b ab 77 bc`, `8d ab 7c b9`, `8e ab e8 bb` - repeats a
+value in the second byte of each word, which suggests 16-bit quantities rather than 32-bit.
+That is a hypothesis, not a finding.
+
+### `svg` cannot be tested against this corpus
+
+A no-input generator carrying embedded geometry is what an SVG node looks like, and `svg` is
+one of the atomic types absent from the 430 sources' vocabulary. But the hypothesis is
+untestable here: **no paired file contains filter 5 at all** - 0 of the 95 files that have both
+a compiled assembly and an allowed source. So there is no evidence either way, and calling it
+`svg` on the strength of the shape alone would be exactly the reasoning that produced the
+`passthrough` and `grayscaleconversion` mistakes earlier in this file.
+
+Filters 5, 8 and 9 stay unnamed. All three now have their structure recorded, which is what
+the corpus can support; naming them needs a source that uses them.
