@@ -18748,3 +18748,44 @@ the size expression when it is the first entry:
 
 318,762 records whose only program was the size expression now correctly report zero
 filter programs.
+
+## The unnamed-parameter hole is smaller than reported, and differently shaped
+
+The previous status put 893,752 parameter-slot readings in the slots after the size
+expression as "meaning unknown". Splitting them by what they actually hold:
+
+    a baked value, meaning unknown                          401,188   44.9%
+    a program reading $size or $sizelog2 -- size machinery  218,784   24.5%
+    a program returning an integer -- probably size too     116,662   13.1%
+    a program, meaning unknown                              157,118   17.6%
+
+**A third of the residue is size machinery, not parameters.** 218,784 readings are programs
+that read `$size` or `$sizelog2`, and another 116,662 return an integer, which for these
+filters is almost always a resolution. Those are not unnamed filter parameters; they are
+more of the size reconciliation the compiler emits along a chain.
+
+The genuine hole is **558,306 readings** - 401,188 baked values and 157,118 programs - not
+893,752.
+
+### It also re-confirms a conclusion rather than finding a new one
+
+Reading `blend`'s block-position-0 programs directly, 38,485 of them end in
+`select(condition, 1, 0)` after comparing `sysvar #3` against a constant - `12` for 4096,
+`5` for 32, `3` for 8. Every one of those 38,485 sits under **layout bit 5**, with no
+exception.
+
+That is the bit these notes already identified as *"the record computes its own output
+size"*, established on a one-directional test: zero of 102,869 bit-5-clear blend records
+read a size variable. The programs read here are exactly that machinery, so this is
+confirmation from a different direction, not a new parameter. Worth stating because the
+0/1 select shape looks like a boolean parameter and is not one.
+
+### The two halves need different methods
+
+    401,188 baked values    a value scan can work on these -- it is how matrix22, the
+                            gradient ramp and uniform's outputcolor were found
+    157,118 programs        only reading them works, as with filter 11
+
+Split per filter, the largest baked groups are `directionalwarp` (130,284),
+`transformation` (111,268), `fxmaps` (71,833) and `fid11` (31,080); the largest program
+groups are `fxmaps` (66,177), `pixelprocessor` (57,125) and `blend` (18,905).
