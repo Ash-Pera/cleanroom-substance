@@ -48,6 +48,20 @@ def derive(paths):
                 continue
             k = (r.filter_id, r.cls, r.words[1] & LAYOUT_MASK.get(r.filter_id, 0))
             seen[k] += 1
+            # Slots 1..11. The cap is arbitrary and it does hide real parameter slots --
+            # fxmaps key (4,921,2564) holds a program at slot 17 in 100% of its 175
+            # records -- but every attempt to widen it over-claimed badly, because slots
+            # past the header lie inside the record's own bytecode, where any 4-byte
+            # position that happens to decode looks like a parameter slot.
+            #
+            # Widening to 24 gained 1,163,373 parameter readings, of which a control found
+            # 3.5% in the header and 96.5% inside bytecode. Bounding by the record's first
+            # inline program did not help: a record whose program lives elsewhere has no
+            # inline program, so the bound degenerates to the whole record, and the gain
+            # rose to 1,639,145 with slots like blend 12 and levels 21 appearing.
+            #
+            # The cap stays until there is a reliable way to find where a record's header
+            # ends. That is the real missing piece, not the number 11.
             for sl in range(1, 12):
                 if sl >= len(r.words):
                     # The slot does not exist in this record. That is evidence about the
@@ -60,6 +74,13 @@ def derive(paths):
                 q = v + 52
                 if a.body_lo <= q < a.body_hi and a.program_span(q) is not None:
                     role[k][sl]['P'] += 1
+                # NOT counted here: a program starting AT the slot. `Record.parameter`
+                # does try that reading, and it is right there -- one named slot, tried
+                # only after the pointer and float readings fail, with 2 slots in
+                # 1,037,401 satisfying both. Applied to EVERY slot here it is a different
+                # test entirely: slots past the header lie inside the record's bytecode,
+                # where positions that decode are everywhere, and it claimed 955,857
+                # parameter readings including slot 6 of blend across 129,610 records.
                 elif 0 < v < r.index and v in tags and (r.tag >> 8) == (tags[v] >> 8):
                     role[k][sl]['E'] += 1
                     targets[k][sl].add(v)

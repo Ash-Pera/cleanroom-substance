@@ -17988,3 +17988,51 @@ A threshold on a graph input, then a scale - and their opcode distribution is `c
 
 The remaining 1,932 split as 789 slots that hold neither reading and 1,143 records whose
 key has an empty parameter list in the table although the record has room for one.
+
+## Two attempts to find the missing parameter slots, both refuted
+
+The 973 records whose key has an empty parameter list although the record has room split
+into two clear causes, and neither fix survived its control.
+
+### Cause 1: the derive only ever looks at slots 1 to 11
+
+    key (4, 921, 2564)   fxmaps          175 records   slot 17 is a program in 100.0%
+    key (20, 185, 9)     pixelprocessor   44 records   slots 15-17 are programs in 93.2%
+
+Both keys came out with an empty parameter list purely because nothing looked that far.
+
+Widening the range to 24 gained **1,163,373 parameter readings**. That is half again the
+entire parameter table, from a change meant to fix 219 records - implausible on its face,
+and the control confirms it: of the newly added slots, **96.5% lie inside the record's own
+bytecode**, where any 4-byte position that happens to decode looks like a parameter slot.
+Only 3.5% were in the header.
+
+Bounding the scan by the record's first inline program did not rescue it. A record whose
+program lives elsewhere has no inline program, so the bound degenerates to the whole
+record, and the gain **rose** to 1,639,145, with slot 12 of `blend` appearing across
+129,610 records.
+
+### Cause 2: inline programs, and why the same reading is right in one place and wrong in another
+
+`(2, 792, 0)` holds an inline program at slot 3 in 95.6% of its records, which the derive
+does not recognise. Counting an inline program as a parameter slot there gained **955,857
+readings** on its own.
+
+`Record.parameter` makes exactly this reading and it is correct there. The difference is
+the scope:
+
+* In `Record.parameter` it is tried on **one** slot - the one the layout names - and only
+  after the pointer and float readings have failed. Control: 2 slots in 1,037,401 satisfy
+  both readings.
+* In the derive it is tried on **every** slot, and slots past the header are inside the
+  bytecode, where decodable positions are everywhere.
+
+Same predicate, opposite verdicts, because a test's validity depends on where it is
+applied and not only on what it tests. The narrow use stays; the broad one is reverted.
+
+### What is actually missing
+
+Both failures have one root: **there is no reliable way to find where a record's header
+ends.** The slot-11 cap is a stand-in for that, and it is doing real work despite being
+arbitrary - which is why widening it hurts. The genuine open problem is the header
+boundary, not the number 11.
