@@ -22763,3 +22763,66 @@ width. Nothing in the remainder is a gap in what the format is understood to do.
 
 Tests: 12 passed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
 validator 437/437.
+
+## `select`, `dot`, and a shape convention I broke while fixing them
+
+The 66 remaining execution failures, taken apart by their actual failing line rather than
+their exception type:
+
+    44   IndexError in select      v18 = select(v5, v17, v16)
+    21   KeyError   in f           v0 = slots[0]
+     1   ZeroDivisionError
+
+### `select` must broadcast its condition
+
+Checked statically, where the opcodes declare their widths:
+
+    selects measured                      89,080
+    the two branches have equal width     89,080     100.00%
+    the condition is narrower              55,596      62.41%
+
+    cond 2, branches 4    54,013        cond 2, branches 1    16,454
+    cond 2, branches 2    17,030        cond 2, branches 3     1,583
+
+The branches always agree, so the result's width is theirs. The condition's declared width
+is **2 in every one of the 89,080**, whatever the branches are - a bool's width field does
+not track the value it selects. The old code did `c[:, None]` when `a.ndim > c.ndim`, which
+compares dimensions rather than widths and raises on a 0-dimensional condition.
+
+### `dot` on unequal widths, where two rules agree again
+
+    dots measured                     2,736
+    operands of equal width           2,511     91.78%
+    the other 225 are all (2, 3)
+
+Truncating to the common width and zero-padding the narrower give the same number, since a
+zero term adds nothing; repeating the narrower operand's first component does not. The pair
+that agree is taken - the same situation as the swizzle clamp, and resolved the same way.
+
+### The bug I introduced doing it
+
+`vec`, `dot`, `atan2` and `select` all reached for `np.atleast_2d`. That is the wrong
+promotion here: this runtime works in `(N, components)`, so a 1-dimensional array is **N
+samples of one component**, `(N, 1)`. `np.atleast_2d` makes it `(1, N)` - one sample of N
+components.
+
+Nothing in the corpus sweep noticed, because programs there are fed `(N, 1)` arrays already.
+The closed-form sRGB tests feed a **200,000-sample 1-D ramp**, so `select` read it as a
+200,000-component value and tried to repeat a condition to `(200000, 200000)`. Both tests
+were killed outright - exit 137, no output, no traceback.
+
+One `_col` helper now does the promotion, and the original `swizzle` had it right all along
+with `a[:, None]`; the helpers added later did not.
+
+### Where it lands
+
+    programs   52,334      ran 52,308    99.950%
+    failed         26      25 slot reads the record's own programs never write, 1 divide
+                           by zero on stub data
+
+Tests: 12 passed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
+validator 437/437.
+
+The two measurements catch different things and neither subsumes the other: the sweep found
+`select` and `dot`, and could not have found the shape bug; the unit tests found the shape
+bug, and would never have exercised `select` on a 4-component branch.

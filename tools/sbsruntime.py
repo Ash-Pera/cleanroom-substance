@@ -66,6 +66,23 @@ def unresolved():
     return sorted(_unresolved)
 
 
+def _col(x):
+    """As an (N, components) array, the shape every runtime helper works in.
+
+    A 1-dimensional array is N SAMPLES of one component, `(N, 1)` - not one sample of N
+    components. `np.atleast_2d` makes the opposite choice, and using it here made
+    `select` read a 200,000-sample ramp as a 200,000-component value and try to repeat a
+    condition to (200000, 200000). The original `swizzle` had it right with `a[:, None]`
+    and the helpers added later did not.
+    """
+    a = np.asarray(x)
+    if a.ndim == 0:
+        return a.reshape(1, 1)
+    if a.ndim == 1:
+        return a[:, None]
+    return a
+
+
 def vec(*parts):
     """Concatenate components into one (N, k) array.
 
@@ -76,12 +93,7 @@ def vec(*parts):
     """
     cols = []
     for p in parts:
-        a = np.asarray(p, dtype=np.float32) if np.isscalar(p) else np.asarray(p)
-        if a.ndim == 0:
-            a = a.reshape(1, 1)
-        elif a.ndim == 1:
-            a = a[:, None]
-        cols.append(a)
+        cols.append(_col(p))
     n = max(c.shape[0] for c in cols)
     cols = [np.repeat(c, n, axis=0) if c.shape[0] == 1 and n > 1 else c for c in cols]
     return np.concatenate(cols, axis=-1)
@@ -100,11 +112,7 @@ def swizzle(value, indices):
     `[x,x]` either way, and `[x,y]` read as `(0,3)` gives `[x,y]`. Clamping is chosen
     because it is the one that needs no reshaping.
     """
-    a = np.asarray(value)
-    if a.ndim == 0:
-        a = a.reshape(1, 1)
-    elif a.ndim == 1:
-        a = a[:, None]
+    a = _col(value)
     w = a.shape[1] - 1
     idx = [i if i <= w else w for i in indices]
     out = a[:, idx]
@@ -112,11 +120,28 @@ def swizzle(value, indices):
 
 
 def select(cond, a, b):
-    """select(c, a, b) is `c ? a : b`."""
-    c = np.asarray(cond)
-    a, b = np.asarray(a), np.asarray(b)
-    if a.ndim > c.ndim:
-        c = c[:, None]
+    """`c ? a : b`, with the condition broadcast to the branches' width.
+
+    The two branches always have the SAME width - 89,080 of 89,080 selects in the corpus -
+    so the result's width is theirs. The condition's is not: it is narrower in 62.4% of
+    them, and its declared width is 2 in every single one, whatever the branches are:
+
+        cond 2, branches 4     54,013        cond 2, branches 1     16,454
+        cond 2, branches 2     17,030        cond 2, branches 3      1,583
+
+    A bool's width field does not track the value it selects, so the condition is taken
+    one column wide and repeated. The previous version did `c[:, None]` when `a.ndim >
+    c.ndim`, which compares dimensions rather than widths and raises `IndexError` on a
+    0-dimensional condition - 44 of the 66 remaining execution failures.
+    """
+    a, b, c = _col(a), _col(b), _col(cond)
+    w = max(a.shape[1], b.shape[1])
+    if a.shape[1] < w:
+        a = np.repeat(a[:, :1], w, axis=1)
+    if b.shape[1] < w:
+        b = np.repeat(b[:, :1], w, axis=1)
+    if c.shape[1] != w:
+        c = np.repeat(c[:, :1], w, axis=1)
     return np.where(c, a, b)
 
 
@@ -134,9 +159,14 @@ def dot(a, b):
     `np.dot` is a matrix product and raises on two (N, k) operands -- 330 runtime
     failures in the corpus sweep. This ISA's `dot` pairs components within a row.
     """
-    x = np.atleast_2d(np.asarray(a, dtype=np.float32))
-    y = np.atleast_2d(np.asarray(b, dtype=np.float32))
-    return np.sum(x * y, axis=-1, keepdims=True)
+    x, y = _col(a).astype(np.float32), _col(b).astype(np.float32)
+    # Operands are the same width in 2,511 of 2,736 dots; the other 225 are all (2, 3).
+    # Two of the three candidate rules agree there and one does not: truncating to the
+    # common width and zero-padding the narrower give the same number, because a zero term
+    # adds nothing, while repeating the narrower operand's first component does not. The
+    # pair that agree is taken.
+    w = min(x.shape[1], y.shape[1])
+    return np.sum(x[:, :w] * y[:, :w], axis=-1, keepdims=True)
 
 
 def cvt(x, to_int):
@@ -161,7 +191,9 @@ def atan2(v):
     `atan2(c[1], c[0]) / 2*pi` yields clean fractions of a turn -- 45, 90, 180, 22.5
     degrees -- and the other order does not. See FORMAT-NOTES.md.
     """
-    a = np.atleast_2d(np.asarray(v, dtype=np.float32))
+    a = _col(v).astype(np.float32)
+    if a.shape[1] < 2:
+        a = np.repeat(a, 2, axis=1)
     return np.arctan2(a[:, 1], a[:, 0]).reshape(-1, 1)
 
 
