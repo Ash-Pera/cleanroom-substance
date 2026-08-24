@@ -91,7 +91,13 @@ def derive(paths, headers=None):
             # Bounded by the header, which the descriptor states. Falls back to the
             # old cap of 11 only for keys with no observable header size -- that cap is
             # arbitrary and both hides real slots and, if widened blindly, claims bytecode.
-            hi = headers.get(k, 12)
+            # Capped at 32 slots even when a larger header is observed. Two keys have a
+            # record whose inline program genuinely starts thousands of words in --
+            # pixelprocessor (20,185,8) has ~11,634-word records with the program at word
+            # 11,434 -- but what lies between is a data blob, not 11,432 layout slots. The
+            # derive duly invented 1,200 parameter slots for it. A header that large is
+            # not a layout, whatever the program's position says.
+            hi = min(headers.get(k, 12), 32)
             for sl in range(1, max(hi, 2)):
                 if sl >= len(r.words):
                     # The slot does not exist in this record. That is evidence about the

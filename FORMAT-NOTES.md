@@ -18092,3 +18092,66 @@ information that the file had been supplying all along, in a field this project 
 derived, named, and been using for something else. Two rounds of over-claiming came from
 treating "I do not know where the header ends" as a fact about the format rather than a
 fact about my table.
+
+## How much of the layout table is a rule, and how much is memorised
+
+The table has 1,031 entries. A derived lookup is not the same as understanding the format,
+and the difference is measurable two ways.
+
+### Held-out specimens: 93.55%
+
+Splitting the corpus by **specimen** - never by record, since records from one file are not
+independent - deriving from one half and applying to the other:
+
+    specimens                    321 train, 320 test
+    keys derived from training   611
+    records in the held-out half 582,302
+       key known from training   544,763   (93.55%)
+       key never seen before      37,539   ( 6.45%)
+
+So on a file it has never seen, the table recognises the layout of about 19 records in 20.
+The remaining 6.45% is the memorisation cost, and it is the honest bound on what this table
+can claim.
+
+### Is there a rule behind it?
+
+If the descriptor **determines** the layout rather than merely indexing it, the
+relationship should be computable. Weighted by records:
+
+    header size = 1 + the last slot named          84.01%
+    slots packed contiguously                      86.80%
+    slots packed contiguously from slot 2          80.94%
+    header size = 2 + edges + parameters           72.94%
+    parameter count = popcount(bits) + 1           56.85%
+
+None is a rule. The layout does reduce to `[tag][slot 1][k slots][code]`, so the whole
+question is what fixes **k**:
+
+    filter alone                    17 groups   65.61%
+    class word alone                61 groups   66.43%
+    (filter, class)                110 groups   70.92%
+    layout bits alone              375 groups   76.84%
+    **(filter, layout bits)**      469 groups   **91.88%**
+    (filter, class, bits)          812 groups  100.00%  (this is the key itself)
+
+**`(filter, layout bits)` accounts for 91.88% of k**, and the class word supplies the rest.
+So the table is not arbitrary - the bits largely do state the slot count, which is what a
+descriptor should do - but no closed form has been found, and 8% genuinely depends on the
+class word for reasons not understood.
+
+That is the honest position: **a 1,031-entry lookup that generalises to 93.55% of unseen
+records, and whose largest single regularity explains 91.88% of its content.**
+
+### One entry that was not a layout at all
+
+The header measurement also exposed `pixelprocessor (20,185,8)`: records of ~11,634 words
+whose inline program starts at word 11,434. The header size is technically observed, but
+nothing between slot 2 and slot 11,434 is a layout slot - it is a data blob - and the
+derive duly invented **1,234 parameter slots** for it.
+
+Capping the scan at 32 slots regardless of the observed header removes them:
+
+    parameter slots in the table   3,710  ->  2,478
+
+1,231 of the 1,232 removed came from that one key. A header that large is not a layout,
+whatever the program's position says.
