@@ -21654,3 +21654,44 @@ are parameters that happen to be small. Nothing yet separates those.
 
 By filter: `pixelprocessor` 432, `fxmaps` 311, `warp` 196, `gradient` 155, `transformation`
 52, `bitmap` 35.
+
+## The other 469 are edges too, on two independent tests
+
+The previous section reclassified 303 records whose "parameter slot" was a word
+`Record.edges` had already resolved as an edge, and left 471 that hold a backward record
+index no edge reader claims. Those are edges as well.
+
+The value having the edge *shape* proves nothing on its own - a record index is a small
+integer, and this format punishes anyone who trusts small integers. Two tests that do not
+depend on the shape:
+
+**Structural.** Is that slot registered as an edge slot for the same filter under other
+layout keys?
+
+    469 of 469   (100.0%)
+
+    fxmaps          slot 3   223        blend           slot 4    17
+    warp            slot 3   188        fxmaps          slot 9    10
+    shuffle         slot 2    19        pixelprocessor  slot 3    10
+
+**Reachability.** Is the target record reachable from the output table without this edge? A
+record that nothing reaches is what a missing edge leaves behind:
+
+    candidate targets unreachable                        323 / 469   68.9%
+    control - a random backward index from the same record        21.1%
+
+3.3x the control. Neither test alone would settle it: the structural one shows the slot
+*can* be an edge, and reachability alone would be satisfied by any backward edge. Together
+with the value's shape, three independent properties agree.
+
+So the layout entry for those keys names an **edge slot as its parameter slot**. The records
+have no parameter.
+
+    genuinely unread   1,319 (0.15%)  ->  1,016 (0.11%)  ->  547 (0.06%)
+
+The audit now separates three things it used to conflate: a record with no parameter slot
+(38,115), a record whose parameter slot is really an edge (772), and a parameter this model
+genuinely cannot read (547).
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.

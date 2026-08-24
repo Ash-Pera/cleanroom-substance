@@ -7,6 +7,12 @@ this one is meant to make its own gaps countable.
 import collections, sys
 from sbsasm import Assembly, FILTERS, UNNAMED, LAYOUTS, LAYOUT_MASK
 
+# Which slots the layout table registers as EDGE slots, per filter, across all its keys.
+# Used to recognise a layout entry that names an edge slot as its parameter slot.
+EDGE_SLOTS = {}
+for _k, _v in LAYOUTS.items():
+    EDGE_SLOTS.setdefault(_k[0], set()).update(_v[0])
+
 def main(paths):
     tot = collections.Counter()
     byfilter = collections.defaultdict(lambda: [0, 0, 0])   # records, no prog, unresolved edges
@@ -68,7 +74,9 @@ def main(paths):
                 elif sl is not None and sl >= len(r.words):
                     tot['param_absent'] += 1
                 elif (sl is not None and sl < len(r.words)
-                      and r.words[sl] in [e for e in r.edges if e is not None]):
+                      and (r.words[sl] in [e for e in r.edges if e is not None]
+                           or (0 <= r.words[sl] < r.index
+                               and sl in EDGE_SLOTS.get(r.filter_id, ())))):
                     # The slot the layout calls the parameter is already claimed as an
                     # EDGE by this same record - it holds a backward record index that
                     # `Record.edges` resolved. That is a record with no parameter, not one
@@ -76,6 +84,14 @@ def main(paths):
                     # unread, 828 have a readable slot, 774 of those hold a valid record
                     # index and 772 point backward, which is the edge signature; 303 are
                     # edges this record already lists.
+                    #
+                    # The other 469 are edges too, on two independent tests. Their slot is
+                    # registered as an EDGE slot for the same filter under other layout
+                    # keys in 469 of 469 (100.0%), and their target record is unreachable
+                    # from the output table in 68.9% against 21.1% for a random backward
+                    # index from the same record - a record nothing reaches is what a
+                    # missing edge leaves behind. So the layout entry for those keys names
+                    # an edge slot as the parameter slot.
                     tot['param_is_edge'] += 1
                 else:
                     tot['param_unread'] += 1
