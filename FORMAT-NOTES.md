@@ -24553,3 +24553,40 @@ A caution the numbers above deserve: for filters without catalogued fields these
 FITTED, not derived. Held-out scoring makes them honest predictions rather than restatements,
 but a fitted +1 on a bit is not the same kind of knowledge as knowing what the bit means.
 `warp` is the exception - four terms, 24.8 observations each, and no word1 dependence at all.
+
+## fxmaps: the arity is a 4-bit field, and the table's own key destroys it
+
+`fxmaps` was the largest hole left - 43.7% under the slot model, over 21,423 records - and it
+is the one filter whose inputs are genuinely variable. Reading its 43 keys, the edge counts run
+0, 1, 2, 3, 6, 9, 14, which looks like nothing.
+
+Two measurements narrowed it. First, the layout IS a function of `(cls, word1)` - 58 pairs,
+none ambiguous - even though record LENGTH varies wildly inside a pair (324, 326, 329, 331,
+333 for one key), because an fxmaps record carries a node tree after its slots and the tree
+grows independently of the layout. Second, the arity is constant per key in 40 of 43 keys and
+99.93% of records, so it is not per-record after all.
+
+A constant per key that no cls bit explains suggests it is written down somewhere, as
+`pixelprocessor` writes its arity in a nibble. It is:
+
+    fxmaps arity = (word1 >> 10) & 0xF
+
+    against the observed leading run of backward record indices   41,198 / 41,212   99.97%
+    control, always predict 0                                     36,046 / 41,212   87.46%
+    records whose field is NONZERO                                 5,152 /  5,165   99.75%
+
+The last line is the one that counts. Most fxmaps take no image input, so a predictor that
+always says zero scores 87%; on the 5,165 records where the field is not zero, a constant
+predictor scores nothing and the field is right 99.75% of the time. The values it takes -
+0, 1, 2, 3, 6, 7, 13, 14 - are exactly the erratic edge counts the key table showed.
+
+### Why nobody could see it
+
+`LAYOUT_MASK[fxmaps]` is `0xe55` - bits 0, 2, 4, 6, 8, 9, 10 and 11. The arity field occupies
+bits 10 to 13, so the key **keeps bits 10 and 11 and throws away 12 and 13**. A four-bit
+number cut in half mid-field cannot be recovered, so no table keyed this way can express
+fxmaps' arity, and every attempt to fit one was fitting to a mangled feature.
+
+That is the third structural defect found in the derived table - after `gradient`'s and
+`warp`'s spurious word1 masks, and 2,843 wrong `levels` entries. The pattern is consistent:
+where the table disagrees with a rule read off the bytes, the table has been wrong every time.
