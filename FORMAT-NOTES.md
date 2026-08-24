@@ -26582,3 +26582,46 @@ seriously precisely because everything else that looked like them turned out not
 are the first evidence that a declared width can genuinely exceed what the operands supply.
 
     execution   137,921 of 137,951   99.9783%
+
+## Slots have declared widths too, and then one cause is left
+
+The three surviving `vec` failures were the same harness fault as the inputs, one layer down.
+Tracing one:
+
+    instr 5   op 0x0544  id 0x04 (get slot 0)   declared 2 components
+    instr 6   constant 1.0                      declared 1
+    instr 7   op 0x098d  id 0x0D (vec)          declared 3     <- 2 + 1
+
+Correct arithmetic, and it failed because the harness answered `slots[0]` with a scalar. A
+`get` carries a declared width in its own size field exactly as an input reference does, so
+`slots_for` now builds each slot at the width its own `get` declares.
+
+That was not the first place to look. The failure said `vec`, the guard that raised said "no
+observed case of concatenation falling short", and both pointed at the constructor rather than
+at what fed it. Reading the declared widths off instructions 5 and 6 - 2 and 1, summing to
+exactly the 3 that instruction 7 declares - showed the format was consistent and the caller was
+not.
+
+    ValueError   3  ->  0
+    IndexError   2  ->  0
+    ran to a value    137,921  ->  137,926      99.9819%
+    all values finite 137,751  ->  137,756      99.8586%
+
+### Every remaining failure is one thing
+
+    failures                                        25
+    reads a cache index NOTHING in the file writes   25
+    all indices it reads are written somewhere        0
+
+Not cascades, not ordering. The writer for index 12 does run and does populate the cache -
+checked directly on `fz_explosion` record 76, whose third program writes it - but the reader at
+record 78 also reads index 11, which no program in the file writes at all. It fails on that
+one and the successful write never gets a chance to matter.
+
+So the whole of the remaining execution gap is a single question: **what writes these indices?**
+Either a program this evaluator does not enumerate, or something outside the file. That is a
+much sharper question than "25 runtime failures", and it is the last one standing between the
+corpus and complete evaluation.
+
+    execution   137,926 of 137,951   99.9819%
+    every failure   one cause

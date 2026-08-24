@@ -62,6 +62,33 @@ def input_widths(data, start, end):
     return out
 
 
+def slot_widths(data, start, end):
+    """slot index -> component count, from each `get`'s own size field.
+
+    Slots have declared widths exactly as inputs do: a `get` of slot 0 declaring two
+    components wants a two-wide value, and handing it a scalar makes the next `vec` short
+    by one. Same failure as the inputs case, same cause, one layer down.
+    """
+    out = {}
+    try:
+        ins = list(disasm.decode(data, start, end))
+    except Exception:
+        return out
+    for _k, _addr, op, toks in ins:
+        if (op & 0x3F) == 0x04 and toks:
+            n = ((op >> 6) & 3) + 1
+            out[toks[0]] = max(out.get(toks[0], 0), n)
+    return out
+
+
+def slots_for(data, start, end, value=0.5):
+    """A slot mapping whose every index answers at the width that program declared."""
+    m = Permissive()
+    for idx, n in slot_widths(data, start, end).items():
+        m[idx] = np.full((1, n), value, dtype=float) if n > 1 else value
+    return m
+
+
 def inputs_for(data, start, end, value=0.5):
     """A mapping whose every uid answers at the width that program declared."""
     m = Permissive()
@@ -142,7 +169,7 @@ def run_file(path, stats):
                     exec(src, ns)
                     val = ns['program'](
                         inputs=inputs_for(asm.data, q, asm.body_hi),
-                        slots=Permissive())
+                        slots=slots_for(asm.data, q, asm.body_hi))
                 except Exception as exc:
                     stats['failed: ' + type(exc).__name__] += 1
                     continue
