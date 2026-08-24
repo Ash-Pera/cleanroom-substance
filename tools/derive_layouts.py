@@ -57,7 +57,15 @@ def header_sizes(paths):
         for r in a.records:
             if len(r.words) < 2:
                 continue
-            inline = [q for q in r.programs if r.offset <= q < r.end]
+            # NOT `r.programs`: that reads layouts.json, which is the file this script
+            # writes, so the derivation was seeded by its own previous output and the
+            # table was a fixed point of its own history rather than a function of the
+            # corpus. Blinding the model to it moved 29 of 842 keys and 94 header sizes.
+            # A record's inline programs are observable without any table: a slot whose
+            # +52 target is a decodable program lying inside this same record.
+            inline = [r.words[s] + 52 for s in range(1, len(r.words))
+                      if r.offset <= r.words[s] + 52 < r.end
+                      and a.program_span(r.words[s] + 52, r.end)]
             if not inline:
                 continue
             k = (r.filter_id, r.cls, r.words[1] & LAYOUT_MASK.get(r.filter_id, 0))
@@ -77,7 +85,8 @@ def derive(paths, headers=None):
     role = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
     targets = collections.defaultdict(lambda: collections.defaultdict(set))
     seen = collections.Counter()
-    for p in paths:
+    files = collections.defaultdict(set)
+    for fi, p in enumerate(paths):
         try:
             a = Assembly(p)
         except Exception:
@@ -88,6 +97,7 @@ def derive(paths, headers=None):
                 continue
             k = (r.filter_id, r.cls, r.words[1] & LAYOUT_MASK.get(r.filter_id, 0))
             seen[k] += 1
+            files[k].add(fi)
             # Bounded by the header, which the descriptor states. Falls back to the
             # old cap of 11 only for keys with no observable header size -- that cap is
             # arbitrary and both hides real slots and, if widened blindly, claims bytecode.
@@ -139,7 +149,12 @@ def derive(paths, headers=None):
                         role[k][sl]['.'] += 1
     out = {}
     for k, slots in role.items():
-        if seen[k] < MIN:
+        # Both guards, not just the record count. `header_sizes` has required three
+        # distinct specimens all along; `derive` did not, so a key resting entirely on
+        # near-duplicate files could reach MIN=20 on what is really one observation.
+        # That is the standing rule from "Corpus integrity", applied to this table:
+        # 49 shipped keys rest on fewer than 3 specimens, 19 of them on exactly one.
+        if seen[k] < MIN or len(files[k]) < 3:
             continue
         edges, progs = [], []
         for sl, c in slots.items():
