@@ -16682,3 +16682,56 @@ Worth stating plainly because the suspicion was the right one to have: a constan
 distance between a discovered structure and a boundary is normally the signature of a
 validator accepting whatever sits at a fixed offset. Here the distance is the program's
 own length, and it varies from 8 bytes to 468 across the corpus.
+
+## Two programs in a record are pointed at, not delimited
+
+The natural question about `[header][program][program]` is what separates the two. The
+answer is that nothing does, and nothing needs to.
+
+**Each program is named by its own slot.** Over 36,614 records carrying a second program,
+the second program's start address appears in a record slot - as `offset - 52`, the
+universal skew - in **36,614 of 36,614, and both programs are named in all of them**:
+
+    slot holding the second program pointer: {5: 21683, 4: 10887, 3: 3933, 7: 109, 8: 2}
+
+So a reader never scans for the second program and never has to decide whether what
+follows the first is code or something else. It follows a pointer, exactly as it does for
+the first.
+
+**And each program is self-delimiting anyway.** The leading `u16` instruction count plus
+the per-opcode lengths take a decoder to the program's exact end. The two mechanisms are
+independent: the pointer says where a program starts, the count says where it stops.
+Contiguity in the record tail is a layout convenience, not a structure a reader relies on.
+
+The filters involved are the ones that take two scalar parameters:
+
+    directionalwarp 19,590   warp 8,303   blur 3,497   fid11 3,435
+    distance 720   sharpen 435   normal 383   fid8 135
+
+`directionalwarp` has both an intensity and an angle, and it is the largest group by a
+wide margin.
+
+### A reframe that failed, recorded because it was plausible
+
+This suggested a tidier model: a parameter slot holds *either* a program pointer or a
+baked float - the tagged union - so counting only the float slots undercounts every
+record whose parameter is dynamic, and the presence bits should count both.
+
+Measured, it is worse everywhere. `levels` falls from 90.5% to 12.5%, `blend` from 97.4%
+to 66.5%, and no filter improves. The earlier model - presence bits count the *baked*
+parameters, program-valued parameters being named separately - is the one that survives,
+and it is the one with independent confirmation against the sources (levels 96.4%, blend
+177 of 177).
+
+The direct test says why. For `blend`, split by slot-1 bit 4:
+
+    bit4=0 : 63,882 records - none 5,795, program 58,087, float 0
+    bit4=1 : 58,147 records - float 7,612, program 50,346, none 188
+
+**No bit-4-clear record carries a baked float, in 63,882 records.** All 7,612 baked
+floats have the bit set. So the bit says the parameter is present *as a record field*;
+when it is clear, the opacity is either the default or computed by the program. Counting
+program slots toward the same total merges two different things and destroys the signal.
+
+Both models predict the 236-of-236 containment result equally well, which is why the
+containment test alone could not separate them. The record-level split could.
