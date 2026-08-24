@@ -24384,3 +24384,51 @@ Every dead end in this investigation was a predicate too narrow or too loose for
 Each time the measurement was sound and the category was wrong. The residual that survives
 three good measurements is worth reading one record at a time, because what is left is
 usually not a smaller version of the same thing - it is a different thing.
+
+## The whole layout, generated rather than looked up
+
+The slot COUNT rule is exact. Positions are the other half, and they follow from one idea:
+**slots are allocated in a fixed order, and each item's KIND depends on its state.** Nothing
+is placed by table.
+
+Starting at slot 2, in this order:
+
+    1.  base image inputs        one slot each, arity per filter
+                                 blend 2, directionalwarp 2, levels 1, dirmotionblur 1
+    2.  class-word parameters    bit 0 -> 1 slot   bit 7 -> 1   bit 11 -> 1   bit 10 -> 2
+    3.  each two-bit field       in the filter's fixed field order:
+                                   00  absent          no slot
+                                   01  baked constant  a PARAMETER slot
+                                   10  program         a PARAMETER slot (pointer, +52 skew)
+                                   11  image input     an EDGE slot
+    4.  blend only               word1 bit 9 -> one more parameter slot
+    5.  levels only              outlow and outhigh, both active with cls bit 0 clear,
+                                 share a single slot
+
+Predicting both the edge list and the parameter list from scratch, with no lookup:
+
+    blend              310,631 / 310,631   100.000%
+    directionalwarp     60,058 /  60,365    99.491%
+    dirmotionblur       14,713 /  14,837    99.164%
+    levels              82,335 /  85,213    96.623%
+    OVERALL            467,737 / 471,046    99.298%
+
+`levels` again scores lowest only against `layouts.json`, whose 2,843 wrong entries are all in
+this filter; against the records it is exact.
+
+### Why the odd-looking entries are not odd
+
+`blend` cls 0x19 with the opacity in state 3 has edges `[2, 3, 5]` and parameters `[4]`, which
+looks scrambled. Generated in order it is not:
+
+    slot 2   base input
+    slot 3   base input
+    slot 4   parameter, because cls bit 0 is set
+    slot 5   EDGE, because the opacity field is in state 11
+    slot 6   parameter, when word1 bit 9 is set
+
+The mask input sits between two parameter slots because that is where its turn comes. The
+table stored `[6, 4]` for the parameters of one such key - unsorted, and read as evidence of
+disorder. It is just the allocation order.
+
+This is what the 809-key table was: an ordered walk, memorised one outcome at a time.
