@@ -22374,3 +22374,52 @@ thing this file's method does not permit. The 518 programs stay unsupported unti
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## `while`'s positions 4 and 5 carry nothing; position 3 is not settled
+
+The transpiler's only gap is `0x0B`, and the reason given was that positions 3-5 have no
+reading. Two of the three now do: they are padding.
+
+### The measurement
+
+Over 543 `while` instances, how often each operand position references **value 0** - the
+program's first instruction, which is what a fixed-arity encoder would reach for as filler:
+
+    position 0      0 / 543     0.0%        position 3    474 / 543    87.3%
+    position 1      0 / 543     0.0%        position 4    305 / 543    56.2%
+    position 2      0 / 543     0.0%        position 5    362 / 363    99.7%
+
+The three real operands never do it and the trailing three overwhelmingly do. Breaking down
+what is there when it is not value 0:
+
+    position 3    value 0 87.3%   duplicates a real operand  0.0%   a live chain 12.7%
+    position 4    value 0 56.2%   duplicates a real operand 43.3%   other         0.6%
+    position 5    value 0 99.7%   -                                 other         0.3%
+
+**Position 4 is value 0 or a copy of position 0 in 99.5% of instances**, which also explains
+the fact recorded earlier as uninterpreted - "position 4 is literally the same value number
+as position 0 in 43%". It is 43.3%, and the other 56.2% is value 0. Neither is an operand.
+Position 5 is value 0 in 362 of 363.
+
+### Reading two of them confirms the shape
+
+    %15  init       slot0 = 0.5/size ; slot2 = uv ; slot4 = size.x ; slot5 = 0 ; slot6 = 0
+    %19  condition  get(slot5) >= sizelog2.x
+    %46  body       sample at slot2 ; slot2 += ±0.5 / 2^slot5 ; slot5 += 1
+    %47  while.f1   %15, %19, %46, %16, %0
+
+That is a bisection - a binary search refining `slot2` by a halving step, `sizelog2` times.
+The other program read is an accumulation: `slot3 += samplelum(slot4/slot1)/slot0` with
+`slot4` counting to `floor(size.x * slot1) + 1`. Both are complete as `(init, condition,
+body)`; nothing in either needs a fourth operand.
+
+### Position 3 is still open
+
+In 12.7% of instances it references a live `seq` or `set` chain rather than value 0, and in
+the bisection above it is `%16 = get(slot5)` - the counter, the same value the condition
+reads. Padding does not explain that, and one instance does not explain what it is for.
+
+So the position stands where the previous section put the whole tail, only narrower: **the
+transpiler could emit a loop from positions 0, 1 and 2 and be right about positions 4 and 5,
+and would still be guessing about position 3 in one instance out of eight.** That is a
+smaller gap than "positions 3-5 have no reading at all", and it is the same kind of gap.
