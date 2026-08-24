@@ -22626,3 +22626,53 @@ with the residual dominated by a one-component stub sampler rather than anything
 The lesson is narrower than last section's and worth separating from it: an exception's
 *type* is not its cause. `KeyError: 0` had two possible sources in the same line of
 generated code, and I picked the one that fit the story I was already telling.
+
+## Swizzle clamps, and the last 2,442 were the harness after all
+
+The execution sweep's remaining 2,442 failures were `IndexError` on swizzle - a program
+reading component 1 of a one-component value. Two possible causes: the programs are
+malformed, or the runtime is stricter than the engine.
+
+The static check settles which, because the opcode declares both widths:
+
+    swizzles measured                       210,228
+    index within the operand's width        210,166    99.97%
+    index PAST the operand's width               62     0.03%
+
+So the runtime failures were almost entirely my stub sampler returning one component where
+the real image has more - the harness, not the format. But 62 are genuinely out of range,
+and those programs exist, so the engine does something with them.
+
+### The ambiguity does not matter
+
+Two candidate rules - clamp the index to the last component, or broadcast the last component
+outward - **agree on every one of the 62**:
+
+    47 instances   operand 1 wide, read as (0, 1)   ->  [x, x]      either way
+    15 instances   operand 2 wide, read as (0, 3)   ->  [x, y]      either way
+
+Clamping is implemented because it needs no reshaping. The rule is recorded as unestablished,
+and it is unestablished in a way that cannot change any result in this corpus.
+
+### Where execution stands
+
+    programs                52,334
+    ran                     52,100    99.55%
+    skipped, has a loop         66     0.13%
+    needs the shared cache     131     0.25%
+    failed                      37     0.07%
+
+The 37 are 21 graph inputs the harness does not supply, 15 shape mismatches from the stub,
+and **one genuine `ZeroDivisionError`** - a program that divides by zero on stub data, which
+real data need not reproduce.
+
+### A note on the loop cap
+
+Loop programs are excluded above because the iteration cap is `1 << 24`, and under stub data
+a condition that never becomes true burns 16 million iterations. That cap is a runtime guard
+rather than a claim about the format - the loops read in full iterate on the order of the
+image size - but it makes a sweep with synthetic inputs impractical, which is worth knowing
+before running one.
+
+Tests: 12 passed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
+validator 437/437.

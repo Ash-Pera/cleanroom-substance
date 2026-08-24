@@ -88,11 +88,27 @@ def vec(*parts):
 
 
 def swizzle(value, indices):
+    """Select components by index, clamping an index past the operand's width.
+
+    62 of 210,228 swizzles in the corpus name a component their operand does not have -
+    47 are a 1-wide operand read as `(0, 1)` and 15 a 2-wide operand read as `(0, 3)`.
+    They are real programs, so the engine does something with them rather than failing.
+
+    What it does is not established, but it does not matter for any of them: the two
+    candidate rules - clamp the index to the last component, or broadcast the last
+    component outward - **agree on every one of the 62**. `[x]` read as `(0,1)` gives
+    `[x,x]` either way, and `[x,y]` read as `(0,3)` gives `[x,y]`. Clamping is chosen
+    because it is the one that needs no reshaping.
+    """
     a = np.asarray(value)
-    if a.ndim == 1:
+    if a.ndim == 0:
+        a = a.reshape(1, 1)
+    elif a.ndim == 1:
         a = a[:, None]
-    out = a[:, indices]
-    return out[:, 0] if len(indices) == 1 else out
+    w = a.shape[1] - 1
+    idx = [i if i <= w else w for i in indices]
+    out = a[:, idx]
+    return out[:, 0] if len(idx) == 1 else out
 
 
 def select(cond, a, b):
