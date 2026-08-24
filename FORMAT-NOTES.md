@@ -25188,3 +25188,37 @@ quantity looks like - `$pixelsize` is a float2 and equals 1/size on a square out
 
 Five fitted numbers replaced by one mechanism, and the one bit that looked anomalous is the
 one that shows the mechanism most clearly.
+
+## Why bit 7's parameter comes first
+
+The order is not the bit order, in either direction. Measured pairwise:
+
+    bits (0, 7) set   ->  widths in slot order (1, 2)     bit 7's parameter is FIRST
+    bits (0, 13) set  ->  widths in slot order (2, 1)     bit 0's is first
+    so the order is   7, 0, 13
+
+Ascending bit order would put 0 first; descending would put 13 first. Neither does. And the
+1-component program really does sit in the lower slot - it is at slot 3 in 74,687 of 111,018
+records, with the 2-component one at slot 4 - so this is slot order, not an artifact of how
+programs are collected.
+
+The reason is that the two are not the same KIND of parameter. Taking only records where both
+bits are set, so nothing is confounded, and profiling each bit's own program:
+
+                                              bit 7        bit 0
+    uses only constant / inputref / add       99.99%       11.62%
+    contains an input reference (op 0x02)    100.00%       96.11%
+    mean instructions                           2.34        61.45
+
+Both read a declared graph input. But bit 7's program does nothing else - a uid, sometimes a
+constant added, and that is all, in two instructions. Bit 0's is a computed expression twenty-
+six times longer, using `sub`, `swizzle` and `ifelse`, which is what an `$outputsize`
+expression looks like when it has to resolve relative sizes against a parent.
+
+So bit 7 carries a **direct binding to a declared input**, and bit 0 carries a **computed
+size**. A record emits its bindings before its computed values, and that is the order.
+
+What this does not establish is why the designers chose that order rather than the reverse. It
+establishes that the two bits hold categorically different things, which is enough to explain
+why the sequence is not the bit sequence - the class word is a mask over a list ordered by what
+the parameters ARE, and bit position carries no ordering information at all.
