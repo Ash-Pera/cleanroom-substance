@@ -162,6 +162,21 @@ PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or"}
 #: here and have since been named in OPCODES.md as `neq` and `exp`; 0x06 was here and is
 #: now handled explicitly above -- its meaning is known even though evaluating it needs
 #: an architecture this transpiler does not have yet.
+#:
+#: 0x35 was briefly here as "log2" in a concurrent edit with no numeric proof behind it --
+#: every avenue tried (literal constants, the 22 size expressions that use it, all of
+#: which trace back to a sampler or cache read with no way to get a hand-computable
+#: value) came up empty. Circumstantial support is real (unary; 99.5%+ of 3,903 instances
+#: feed straight into ceil/floor; 73% fed by an int-to-float cvt) and is recorded as such
+#: in OPCODES.md, but "probably" is not the bar every other name in this table clears.
+#: Emitting it as log2 would make the transpiler compute a plausible, silently unverified
+#: number for 3,903 instructions -- exactly the failure mode the cache_read/cache_write
+#: raise exists to avoid, just without the raise.
+#:
+#: 0x36 briefly named "pow" in FUNCS the same way, with no investigation behind it at all
+#: that I've found -- no commit, no test, no corpus measurement, and FUNCS is checked
+#: before UNNAMED in the dispatch below, so the membership here was dead code while it
+#: sat in FUNCS: it would have silently emitted `pow(...)` regardless of this comment.
 UNNAMED = {0x35, 0x36}
 
 

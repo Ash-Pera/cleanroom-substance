@@ -137,6 +137,20 @@ def test_while_carries_no_immediate():
     assert disasm.IMM.get(0x0B) == ()
 
 
+def test_0x35_stays_unnamed_until_proven():
+    """0x35 has real circumstantial support for 'log2' (unary, 99.5%+ of 3,903
+    instances feed straight into ceil/floor, 73% fed by an int-to-float cvt) but no
+    numeric proof -- every literal-constant trace and all 22 size-expression uses
+    bottom out at a sampler or cache read with no hand-computable value. OPCODES.md
+    records it as probable, not confirmed. This test is the guard against a future
+    edit asserting the name here before that proof exists: it should start failing
+    the day someone actually gets one, not before."""
+    assert disasm.name(0x0535) == "op35"
+    data = struct.pack("<6H", 2, 0x0900, 0, 0, 0x0535, 0)
+    source = transpile.transpile(data, 0, len(data), "python", "_probe")
+    assert "op35(v0)" in source
+
+
 def test_op06_takes_a_value_then_an_index():
     """Position 0 is an ordinary value reference (0.0% impossible over the corpus),
     position 1 is an index -- the shape of `set` and `swizzle`, not of `sysvar`."""

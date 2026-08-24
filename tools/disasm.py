@@ -40,6 +40,15 @@ NAMES = {
  (0,0x1D):'eq',      (0,0x1F):'gt',      (0,0x20):'gteq',
  (0,0x21):'lt',      (0,0x22):'lteq',
 }
+# 0x35 and 0x36 are deliberately absent, not overlooked. 0x35 has real circumstantial
+# support for 'log2' -- unary, 99.5%+ of 3,903 instances feed straight into ceil/floor,
+# 73% fed by an int-to-float cvt -- but every avenue tried for a hard numeric proof
+# (literal constants; the 22 size expressions that use it, all of which trace back to a
+# sampler or cache read with no hand-computable value) came up empty, and OPCODES.md
+# records it as "probably", not confirmed. 0x36 (53 instances, 8 files) has no lead at
+# all behind the name 'pow' beyond having been typed once. Every other entry in this
+# table clears a materially higher bar -- an exact corpus-wide count, a closed-form
+# proof, or a source match. Naming these here would make that bar mean nothing.
 TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
 
 # Operations whose operand tokens are immediates rather than value numbers.
