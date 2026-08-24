@@ -22277,3 +22277,56 @@ A correlation between "how many X in the source" and "how many Y in the compiled
 the null run alongside it, because both quantities scale with the size of the graph. Without
 `r(passthrough, TOTAL) = +0.45` beside `r(passthrough, id 19) = +0.84`, the first number
 reads as decisive. It is not.
+
+## Filter 22 is `curve`: the 14% was two questions asked as one
+
+The previous section left id 22 as a candidate on the strength of three weak supports, held
+back by one objection - a containment hit rate of 14% where the method's controls reach
+98-100%. The objection dissolves once the rate is decomposed.
+
+### Two thirds of the values never reach the file
+
+Searching the compiled file's raw bytes rather than its record slots:
+
+    declared distinctive `curve` values          271
+    present anywhere in the compiled file         89   (32.8%)
+    present in a record slot                      90   (33.2%)
+
+The two figures are the same set. So the missing values are not being missed by the search -
+they are not in the file. Two thirds of what a `curve` node declares does not survive
+compilation, which is what a node whose control points get baked into a lookup would look
+like.
+
+### Conditional on surviving, the landing is decisive
+
+    88 of 90 surviving values land at filter 22    97.8%
+    2 at pixelprocessor, 1 each at directionalwarp, levels, blend
+
+against the controls:
+
+    transformation offset      94 of 96 declared values    98%
+    transformation matrix22   101 of 101                  100%
+
+97.8% is the same number the controls produce. The identification is as strong as
+`dirmotionblur`'s; it only looked weak because "does this value survive the cooker" and "does
+it land at the right filter" were being measured as one quantity.
+
+My own earlier tally also undercounted the hits - 33 rather than 88 - because it listed the
+top rows per parameter and summed those, rather than counting each surviving value once.
+
+With the structure agreeing - one edge in 1,173 of 1,267 records, a parameter in 1,264, and
+`position`/`left`/`right` as three `Float2` pairs at slots 6 to 11 - filter 22 is `curve`.
+
+    filter identified   891,517 (99.5%)  ->  892,784 (99.7%)
+
+### What is left
+
+Four ids unnamed: 5, 8, 9, 19. Their candidate names are `passthrough`,
+`grayscaleconversion`, `valueprocessor`, `dyngradient` and `emboss`, and none can be tested
+this way - `passthrough` declares no float parameters, `valueprocessor`'s are dynamic,
+`grayscaleconversion`'s are round numbers leaving zero distinctive values, and `emboss`
+appears twice in the entire permitted set. Id 19 is positively **not** `passthrough`: it
+carries two edges and a parameter where a passthrough has one input and none.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.

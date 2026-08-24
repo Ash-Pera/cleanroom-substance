@@ -30,7 +30,7 @@ import disasm
 FILTERS = {
     0: 'gradient', 1: 'blend', 2: 'transformation', 3: 'shuffle', 4: 'fxmaps',
     6: 'uniform', 7: 'warp', 10: 'blur', 12: 'directionalwarp', 13: 'sharpen',
-    11: 'dirmotionblur',
+    11: 'dirmotionblur', 22: 'curve',
     14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
     20: 'pixelprocessor', 21: 'distance',
 }
@@ -49,10 +49,28 @@ FILTERS = {
 # This also confirms a reading left open earlier. Filter 11's second parameter was recorded
 # as "angle-SHAPED but unconfirmed - none of its 25 programs divides by 2*pi, so nothing
 # confirms it". It is `mblurangle`, and it is an angle.
+#
+# Filter 22 is `curve`, named the same way but only after separating two questions the first
+# measurement ran together. Of 271 distinct declared `curve` values, just 90 appear anywhere
+# in the paired compiled file - two thirds do not survive compilation, which put the apparent
+# hit rate at 14% against the 98-100% the method's controls reach.
+#
+# Conditional on surviving, the landing is decisive:
+#
+#     88 of 90 surviving values land at filter 22          97.8%
+#     2 at pixelprocessor, 1 each at directionalwarp, levels, blend
+#
+# against `transformation`'s `offset` at 94 of 96 and `matrix22` at 101 of 101. The structure
+# agrees: filter 22 has one edge in 1,173 of 1,267 records and a parameter in 1,264, and
+# `curve` takes one input and declares `position`, `left` and `right` as `Float2` - which is
+# what its slots 6 to 11 hold, three pairs.
+#
+# The 14% was never evidence against the identification. It measured "does this value survive
+# the cooker" and "does it land at the right filter" as one number.
 # Unnamed ids, with what is known. Never rendered as a name.
 UNNAMED = {5: 'generator, greyscale (svg?)', 8: 'two inputs, greyscale control (emboss?)',
            9: 'legacy, version 0x20000 only',
-           19: 'one input from blend + shared pixelprocessor map', 22: 'one input'}
+           19: 'one input from blend + shared pixelprocessor map'}
 
 # Data edges: slots whose targets are used once each (refs/target ~= 1).
 # Derived by measuring, per filter, the rate at which a slot holds a valid backward
