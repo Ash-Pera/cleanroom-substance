@@ -120,7 +120,7 @@ def derive(paths, headers=None):
                 q = v + 52
                 if a.body_lo <= q < a.body_hi and a.program_span(q) is not None:
                     role[k][sl]['P'] += 1
-                # NOT counted here: a program starting AT the slot. `Record.parameter`
+                # NOT counted here: a program starting AT the slot. `Record.size_or_baked`
                 # does try that reading, and it is right there -- one named slot, tried
                 # only after the pointer and float readings fail, with 2 slots in
                 # 1,037,401 satisfying both. Applied to EVERY slot here it is a different

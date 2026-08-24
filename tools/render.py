@@ -254,7 +254,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # this takes the conventional order (destination = edges[0], source =
                 # edges[1], source laid over destination) without independent proof.
                 # Wrong here means a plausible-looking but swapped image, not a crash.
-                mode = rec.params.get("blendingmode") if rec.params else None
+                mode = rec.slot1_flags.get("blendingmode") if rec.slot1_flags else None
                 if mode != 0:
                     raise Unsupported("blend mode %r not implemented (only mode 0)" % mode)
                 if len(rec.edges) < 2:
@@ -277,18 +277,44 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                     raise Unsupported("blend inputs disagree on channel count (%d vs %d)"
                                       % (dst.shape[-1], src.shape[-1]))
 
-                par = rec.parameter
+                # Record.size_or_baked's own docstring: its 'program' case is the
+                # record's OUTPUT SIZE expression in 91.3% of records, not a filter
+                # parameter -- confirmed the hard way here, evaluating it as opacity
+                # directly on a real 7-blend chain gave values in the hundreds of
+                # thousands (repeated out-of-[0,1] lerp compounding across stages)
+                # before this was traced back to the parameter program reading a
+                # ($outputsize-shaped) (8, 8) input, not an opacity. filter_programs is
+                # the property that already excludes exactly that size program (its own
+                # docstring says so directly); the real opacity computation, when the
+                # compiler emits one at all, is there instead.
+                par = rec.size_or_baked
                 if par and par[0] == "float":
                     opacity = np.full((N, 1), par[1], dtype=np.float32)
-                elif par and par[0] == "program":
-                    for slot_i, edge_rec in enumerate(rec.edges):
-                        sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(outputs[edge_rec])
-                    opacity = to_image(
-                        eval_program(asm, par[1], default_inputs(asm, N), {}, N,
-                                    pos=pos, W=W, H=H),
-                        N, H, W).reshape(N, -1)[:, :1]
                 else:
-                    raise Unsupported("blend parameter kind %r" % (par,))
+                    fprogs = rec.filter_programs
+                    if fprogs:
+                        for slot_i, edge_rec in enumerate(rec.edges):
+                            sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
+                                outputs[edge_rec])
+                        slots = {}
+                        for p in fprogs[:-1]:
+                            eval_program(asm, p, default_inputs(asm, 1), slots, 1)
+                        opacity = to_image(
+                            eval_program(asm, fprogs[-1], default_inputs(asm, N), slots, N,
+                                        pos=pos, W=W, H=H),
+                            N, H, W).reshape(N, -1)[:, :1]
+                    else:
+                        # No program at all beyond (possibly) the size expression:
+                        # confirmed on a real specimen (record 322) whose only program
+                        # IS the one Record.size_or_baked names, so filter_programs
+                        # correctly excludes it and leaves nothing. The compiler's own
+                        # apparent convention -- proven elsewhere in this file for
+                        # blend mode, which is never in the bytecode either when it is
+                        # the default -- is to skip emitting code for a parameter left
+                        # at its default, so absent any other information this takes
+                        # full (100%) opacity as that default rather than 0%, which
+                        # would make the blend a no-op and the edge pointless.
+                        opacity = np.full((N, 1), 1.0, dtype=np.float32)
 
                 if len(rec.edges) > 2:
                     if rec.edges[2] not in outputs:
@@ -377,7 +403,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
 
             elif rec.filter_name == "uniform":
                 # Not implemented: `.programs` for a `uniform` record can be JUST its
-                # size expression (Record.parameter == ('program', p)), with no separate
+                # size expression (Record.size_or_baked == ('program', p)), with no separate
                 # program at all for the fill color -- confirmed on a real specimen,
                 # where treating .programs[-1] as the color silently produced (8, 8)
                 # (the size expression's own output) tiled across the image. Where the

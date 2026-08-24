@@ -58,7 +58,7 @@ def main(paths):
                 tot[side + '_recovered'] += len(extra)
                 if extra:
                     tot[side + '_records_gaining'] += 1
-            par = r.parameter
+            par = r.size_or_baked
             if par is None:
                 tot['no_param'] += 1
                 # Distinguish a record that HAS no parameter slot from one whose
