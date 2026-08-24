@@ -26339,3 +26339,79 @@ killed processes then and twenty scored failures now.
 cases rather than twenty, and they are real: three programs where the declared width genuinely
 exceeds what the operands supply. Those and the seventeen broadcast mismatches are the honest
 remainder, 22 root causes in 137,951 programs, **0.016%**.
+
+## Loop semantics, independently re-derived — and operand 3 is not a trip count
+
+Returning to `0x0B` after the runtime work landed. Most of what this pass measured
+confirms what the transpiler now implements, which is worth recording as independent
+corroboration rather than as news. One thing does not.
+
+### Confirmed independently
+
+**The condition is a termination test.** `transpile.py` states this; here is a proof by
+consequence on a specimen read end to end, `MetalSubstance009` record 4059:
+
+    init   slot2 = floor($size.x * get(1)) + 1     slot3 = slot4 = slot5 = 0
+    cond   eq(get(4), get(2))                      counter == limit
+    body   slot3 = samplelum(get(4)/get(1)) / get(0) + get(3)      accumulate
+           slot4 = get(4) + 1                                      increment
+
+At entry `slot4` is 0 and `slot2` is at least 1, so the condition is **false**. Read as
+"continue while true" the body never executes, the accumulator stays 0, and the program's
+result - `get(3)` - is the constant zero, which would make all 41 instructions dead code.
+Read as "repeat until true" it is a row sum of `samplelum`, which is what a box filter
+looks like. An `eq` against a computed limit is a termination test or it is nothing.
+
+**The operand order.** Over the whole corpus, `init < cond < body < self` holds in
+**757 of 757** whiles that have a condition. The exceptions the transpiler guards against
+are exactly the 164 whose condition operand is `0xFFFF`, the absent-operand sentinel this
+format uses everywhere, and there the remaining operands are ordered normally.
+
+    whiles                          921
+      with a condition              757     init < cond < body < self, 757 of 757
+      condition absent (0xFFFF)     164
+    programs containing a while     628     one while in 504 of them
+
+**The frame is shared across a record's programs.** Every program containing a `while` -
+195 of 195 - reads a slot it never writes, and in all 195 a sibling program in the same
+record writes it. So a `while` program is never a closed unit. The same is true of
+ordinary programs, 22,974 of 23,020, so this is a property of the ISA rather than of loops.
+`render.py` already threads one `slots` dict through a record's programs, which is what
+this requires.
+
+### Operand 3 is a value reference, not a trip count
+
+The condition-less form is bounded in `transpile.py` by reading operand 3 as a fixed trip
+count, on the observation that it is 3 in 158 of the 164. That reading is wrong, and the
+same instruction stream says so.
+
+    operand 3 names a valid earlier value    921 of 921
+      absent-condition whiles                164 of 164   producer: set 156, add 4, const 4
+      with-condition whiles                  757 of 757   producer: const 414, sysvar 207,
+                                                                    set 87, seq 44, add 4, get 1
+
+It is never out of range, in either group - which is what an operand checked by
+`valid_program` looks like, and not what a small integer count would look like. The
+decisive figure is the other one:
+
+    operand 3 == 0 in 617 of the 757 whiles that DO have a condition
+
+A trip count of zero is meaningless; `%0` as a value reference is ordinary, and `%0` is a
+`const` or a `sysvar` in every one of those programs. The "3 in 158 of 164" is not a count
+either - it is the value number 3, and in those programs `%3` is a `set`, which is the
+shape of a prologue that ends in a store. Reading a value number as a literal is the same
+category error as reading a packed bitfield as a record index, which cost this document
+the shared-reference hierarchy.
+
+**What this does and does not change.** It does not change the transpiler's output: the
+guard `1 <= trip <= 64` admits all 164, they run 1, 3 or 5 iterations, and the measurement
+already recorded there - identical results at 1, 3 and 9 in 14 of 15 programs, the
+fifteenth converging - shows these are iterative refinements whose answer does not depend
+on the count. The justification is what changes. "Any count of three or more gives the same
+answer, and these loops converge" is supported. "Operand 3 is the trip count" is not, and
+if it were relied on later - by a reader trusting the bound, or by a guard that rejects a
+loop whose operand 3 falls outside 1..64 - it would be relied on wrongly.
+
+**What actually bounds a condition-less loop is still unknown.** The candidates this pass
+can rule out are operand 3, and any reading in which the bound is a literal in the
+instruction: every operand of `0x0B` is a value reference in 921 of 921.
