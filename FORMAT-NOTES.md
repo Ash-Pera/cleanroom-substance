@@ -16258,3 +16258,57 @@ tables.
 
 The masks are derived from this corpus and a key not seen here remains unknown. That limit is
 real, and it is the same one that applies to the filter table and the opcode catalogue.
+
+## A table-driven segmenter: faster, and it corrects the tables it replaces
+
+`tools/derive_layouts.py` derives `(filter, class, masked slot 1) -> (edge slots, parameter
+slot)` from a corpus; `sbsasm.py` looks it up instead of probing. 842 keys cover 848,674 of
+895,674 records.
+
+### Speed
+
+Over 120 files and 161,171 records:
+
+    table lookup, no probe and no scan     0.23 s     196,388 programs
+    probing the layout (Record.parameter)  0.49 s     153,017
+    whole-file reference scan              5.51 s     277,876
+
+**Twenty-four times faster than the scan and twice as fast as probing, while finding 28% more
+programs than probing.** Verification: 99.96% of the table's parameter slots decode as a valid
+program, 100% of those are a subset of what the scan finds - so the table adds no false
+positives - and 99.7% of its edge slots pass resolution agreement.
+
+### It corrects the hand-written tables
+
+The derived table lists 267,000 fewer edges than the hand-written `EDGES`. Checking what it
+dropped:
+
+    dropped              records   resolution agreement
+    transformation  s2    37,236          34.5%
+    shuffle         s2       251          10.4%
+    shuffle         s3       111          23.4%
+
+    kept, for comparison
+    blend           s2    55,405         100.0%
+    levels          s2    16,210          99.7%
+    transformation  s2     5,463          99.9%
+
+**`transformation` slot 2 is a real edge in some layouts and not in others** - 99.9% agreement
+under one key, 34.5% under another. The hand table said "always an edge" and was wrong for
+37,236 records. That is the seventh false edge in this document, and the first found without
+anyone looking for it: the table is per-key, so it can express what a global table cannot.
+
+### Effect
+
+    main parameter resolved   95.0%  ->  95.5%
+    edge slots resolved      99.96%  ->  99.97%   on 267,000 fewer, cleaner edges
+
+The audit still takes ~51s because `coverage()` retains the whole-file scan; the walk itself no
+longer needs it, and that is the obvious next saving.
+
+### The general point
+
+Every heuristic this replaces - probing alternates, diversity thresholds, global edge tables -
+existed because the descriptor was not being read. Reading it is faster *and* more accurate, and
+the accuracy is not a coincidence: a heuristic that guesses per filter cannot represent a layout
+that varies per record, so it must be wrong somewhere, and it was wrong in seven places.

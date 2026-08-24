@@ -74,6 +74,30 @@ PARAM_WORD = {1, 2, 4, 11, 12, 15, 18, 20, 21, 22}
 
 CHANNELS = {1: 1, 2: 3, 3: 4}          # bitmap class -> channel count
 
+# Slot 1 holds both parameter values and layout bits. These masks keep the layout bits
+# and drop the rest, found by dropping any bit whose removal does not cost determinism.
+# For `blend` the search independently rejected bits 0-3 - the `blendingmode` nibble -
+# and kept 4, 5 and 9, which is what the layout actually varies on.
+LAYOUT_MASK = {0: 0x3FFF, 1: 0x230, 2: 0x060000C0, 3: 0x06001FE0, 4: 0xE55,
+               6: 0x0036FFE0, 7: 0x2FF8, 10: 0x0, 11: 0x04, 12: 0x1E, 15: 0x3FD,
+               19: 0x0, 20: 0x0B, 21: 0x01}
+
+
+def _load_layouts():
+    """(filter, class, masked slot 1) -> (edge slots, program slots), or {} if absent."""
+    import json
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'layouts.json')
+    try:
+        with open(path) as f:
+            return {tuple(int(x) for x in k.split(',')): (tuple(v[0]), tuple(v[1]))
+                    for k, v in json.load(f).items()}
+    except Exception:
+        return {}
+
+
+LAYOUTS = _load_layouts()
+
 # FX-Map tree node shapes: header -> (offset of the next pointer, program slots).
 # The tree is a singly linked list entered from record slot 2, and each node carries a
 # program. 0x18B is `addnode` (exact count against source over 110 records) and its
@@ -162,6 +186,11 @@ class Record:
 
     def _compute_layout(self):
         f = self.filter_id
+        if LAYOUTS and len(self.words) > 1:
+            hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
+            if hit:
+                edges, progs = hit
+                return (list(edges), progs[0] if progs else None)
         if f == 4:
             # fxmaps has two record layouts, selected by bit 12 of the parameter word.
             # With it set, slots 3-8 are input edges (100% valid or zero, 94-99.8%
