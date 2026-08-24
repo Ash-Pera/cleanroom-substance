@@ -33,6 +33,7 @@ class Assembly:
     uid: int
     declared_size: int
     record_offsets: tuple[int, ...]
+    directory_offset: int
     table_start: int
 
     @property
@@ -42,8 +43,24 @@ class Assembly:
 
     @property
     def body_start(self) -> int:
-        """Where the record body begins, i.e. where a resource segment ends."""
+        """Where the record body begins."""
         return min(self.record_offsets) if self.record_offsets else len(self.data)
+
+    @property
+    def segment_end(self) -> int:
+        """Where a resource segment, if there is one, ends.
+
+        The layout is header, resource segment, record directory, record body. The
+        directory sits immediately ahead of the body, so it is the directory -- not the
+        first record -- that bounds the segment. Taking the first record instead counts
+        the directory as unexplained segment bytes, and invents a segment entirely for
+        the many packages whose directory starts at the top of the body at 0x38.
+        """
+        return self.directory_offset
+
+    @property
+    def has_segment(self) -> bool:
+        return self.segment_end > BODY
 
     def record_tag(self, offset: int) -> int | None:
         if offset + 8 > len(self.data):
@@ -95,6 +112,7 @@ def parse(data: bytes) -> Assembly:
         uid=uid_lo | (uid_hi << 32),
         declared_size=declared,
         record_offsets=tuple(sorted(o + SKEW for o in offsets)),
+        directory_offset=dir_at,
         table_start=table_start,
     )
 

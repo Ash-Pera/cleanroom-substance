@@ -136,7 +136,7 @@ def jpeg_geometry(payload: bytes) -> tuple[int, int] | None:
 
 def _candidates(asm: Assembly) -> list[tuple[int, int, int, int, int]]:
     """(offset, format code, resolution byte, colour byte, reference count)."""
-    data, segment_end = asm.data, asm.body_start
+    data, segment_end = asm.data, asm.segment_end
     seen: dict[int, list] = {}
     for record_offset in asm.record_offsets:
         tag = asm.record_tag(record_offset)
@@ -158,7 +158,7 @@ def _candidates(asm: Assembly) -> list[tuple[int, int, int, int, int]]:
 
 def resources(asm: Assembly) -> list[Resource]:
     """Every embedded image the assembly describes, in segment order."""
-    data, segment_end = asm.data, asm.body_start
+    data, segment_end = asm.data, asm.segment_end
     found: list[Resource] = []
 
     candidates = _candidates(asm)
@@ -215,7 +215,7 @@ def segment_report(asm: Assembly, found: list[Resource]) -> dict:
     tile it exactly are the strongest available check on the decode: a single misparsed
     descriptor breaks the total.
     """
-    end = asm.body_start
+    end = asm.segment_end
     covered = sum(r.size for r in found)
     # Resources are 4-aligned, so a few bytes of padding between two of them is the
     # layout rather than an unexplained hole. More than that is a real gap, and an
