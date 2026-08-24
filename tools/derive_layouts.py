@@ -14,6 +14,12 @@ plausible float32 - the tagged union documented in FORMAT-NOTES.md - since a rec
 whose parameter is a baked constant has no program there at all. Requiring a program
 alone loses every constant-valued record, which cost 70,000 of them on the first try.
 
+Zero counts as a float. It is the default of `levelinlow`, of every offset and of the
+matrix off-diagonals, so a slot whose value is legitimately 0.0 in a fifth of records
+fails a 90% float test and vanishes from the table - which is how `levels`'s
+`levelouthigh` stayed hidden in 36,818 records. Because padding also reads zero, a slot
+is claimed only when zero is the minority reading.
+
 Keys seen fewer than `MIN` times are dropped rather than guessed at.
 """
 import collections
@@ -48,9 +54,11 @@ def derive(paths):
                     role[k][sl]['P'] += 1
                 elif 0 < v < r.index and v in tags and (r.tag >> 8) == (tags[v] >> 8):
                     role[k][sl]['E'] += 1
+                elif v == 0:
+                    role[k][sl]['Z'] += 1
                 else:
                     f32 = struct.unpack('<f', struct.pack('<I', v))[0]
-                    if v and math.isfinite(f32) and 1e-6 <= abs(f32) <= 1e6:
+                    if math.isfinite(f32) and 1e-6 <= abs(f32) <= 1e6:
                         role[k][sl]['F'] += 1
                     else:
                         role[k][sl]['.'] += 1
@@ -63,8 +71,13 @@ def derive(paths):
             t = sum(c.values())
             if c['E'] / t > 0.9:
                 edges.append(sl)
-            elif (c['P'] + c['F']) / t > 0.9:
-                progs.append(sl)          # the parameter union: a program or a float
+            elif (c['P'] + c['F'] + c['Z']) / t > 0.9 and (c['P'] + c['F']) / t > 0.5:
+                # The parameter union: a program, a float, or zero. Zero is a real
+                # parameter value - it is the default of `levelinlow`, of every offset
+                # and of the matrix off-diagonals - so excluding it drops genuine
+                # parameter slots. It is also what padding looks like, so a slot is
+                # only claimed when zero is the minority reading.
+                progs.append(sl)
         edges.sort()
         progs.sort()
         # The parameter slot is the one immediately after the inputs. Requiring it to

@@ -16362,3 +16362,141 @@ extents - reported them as accounted for.
 **The layout table found them by exclusion.** Once every slot has to be classified as edge,
 parameter, or neither, the "neither" list is short, ordered by volume, and reads as a work
 queue. `levels` slot 5 at 82% float is the next entry on it.
+
+## The parameter block is a bitfield, not a fixed layout
+
+`levels` slot 5 was the next entry on that queue. Reading it settled the slot, then
+immediately generalised past it: **slot 1 states which parameters the record carries, and
+the ones it carries are packed into consecutive slots.** There is no fixed position for a
+named parameter, which is why every earlier attempt to find one produced a different answer
+depending on how the records were grouped.
+
+### Slot 5 is not what the size-stratified reading said
+
+The largest `levels` layout key - class 25, layout bits `0x140`, 36,818 records - holds a
+float at slot 4 in 99.9% of records and at slot 5 in 80.3%, with the other 19.7% exactly
+zero. The two slots are complementary:
+
+    slot 4 : 1(21.4%)  0.25(13.0%)  0.375(5.8%)  0.4375(5.8%)  0.46875(5.8%) ...
+    slot 5 : 0(19.7%)  0.75(13.0%)  0.625(5.8%)  0.5625(5.8%)  0.53125(5.8%) ...
+
+They sum to exactly 1.0 all the way down a binary-search sequence converging on 0.5. An
+earlier section read the modal pair `(1, 0)` as `levelinhigh`/`levelinlow` on the strength of
+those being their documented defaults. **That was wrong**, and the values alone cannot settle
+it: `(1, 0)` is either an identity levels or a full inversion depending on which slot is which,
+and both are things a material does constantly.
+
+### Containment settles it, but only on distinctive values
+
+Pooled containment against the permitted paired sources says nothing useful:
+
+    levelinhigh   declared 55   slot 4: 47%  slot 5: 45%  absent: 18%
+    levelinlow    declared 48   slot 4: 79%  slot 5: 27%  slot 6: 27%
+
+because `0.0`, `1.0` and `0.5` are the defaults *of these very parameters* and occur in every
+slot of every filter. Restricting to values an artist typed - not 0, 1 or 0.5, and not any
+`k/2^n` a slider can land on - and requiring the value to be unambiguous on both sides (declared
+for exactly one parameter in that file, found at exactly one slot) leaves 96 usable values:
+
+    levelinlow     29   slot 4: 29 (100%)
+    levelinhigh    31   slot 4: 16 (52%)   slot 5: 14 (45%)
+    levelinmid     17   slot 5: 6 (35%)    slot 6: 6 (35%)   slot 4: 5 (29%)
+
+`levelinlow` is pinned to slot 4 in 29 of 29. Everything else splits. A parameter that has one
+position and a parameter that has three cannot both be true of a fixed layout - which is the
+clue that the layout is not fixed.
+
+### The layout word counts the parameters
+
+Per layout key, the popcount of the masked slot-1 word equals the number of float slots
+following the header:
+
+    cls     bits  popcount   records   float slots
+     25    0x140         2     36818             2
+     25      0x5         2      9184             2
+     25    0x105         3      5567             3
+     25      0x0         0      4635             0
+     25      0x1         1      4331             1
+     25     0x155        5       517             5
+
+Over the 52 `levels` keys with 100+ records this holds for **44 keys and 96.5% of records**.
+The header ends one slot earlier when the class word's bit 0 is clear - that bit is what says
+whether slot 3 holds the parameter program or the first parameter, and using it lifts the
+agreement from 85.5% to 96.5%.
+
+Fitting which bits count gives mask **`0x155`** at 97.5%: bits 0, 2, 4, 6 and 8, **every even
+bit, and exactly five bits for `levels`'s exactly five parameters**. The odd bits are something
+else; keys carrying bits 3, 5 or 9 are where the count still fails.
+
+### Which bit names which parameter
+
+If the presence bits are packed in order, then for a record holding a value the source
+declares, the parameter's index in the block is `slot - start`, and the bit naming it is the
+`(slot - start)`-th set bit. That maps names to bits without assuming an order:
+
+| bit | parameter | agreement |
+|---|---|---|
+| 0 | `levelinlow` | 92% (37) |
+| 2 | `levelinhigh` | 97% (35) |
+| 4 | `levelinmid` | 100% (19) |
+| 6 | `leveloutlow` | 100% (11) |
+| 8 | `levelouthigh` | 100% (9) |
+
+Decoding every `levels` record this way and checking each read against a declared value gets
+**107 of 111 correct - 96.4%**. `Record.parameters` returns it:
+
+    cls=25 bits=0x15   levelinlow=0.68  levelinhigh=0.849338  levelinmid=0.241618
+    cls=25 bits=0x140  leveloutlow=1    levelouthigh=0
+    cls=25 bits=0x14   levelinhigh=0.971222  levelinmid=0.52078
+
+Note the order is in-low, in-high, in-mid, out-low, out-high - neither the order a `.sbs`
+declares them in nor the order they are applied in.
+
+So the largest `levels` key is `leveloutlow` and `levelouthigh`, not the in-levels, and its
+modal `(1, 0)` is `leveloutlow=1, levelouthigh=0` - **the standard invert idiom**. That is why
+it is the single commonest configuration in the corpus, and it is a reading that makes sense of
+the value distribution instead of merely fitting it.
+
+### The bug that hid all of this: zero is a value
+
+`derive_layouts.py` classified a slot as a parameter when it held a program or a float in over
+90% of records, and its float test was `if v and math.isfinite(f32) and ...`. The leading `v`
+excludes zero.
+
+Zero is not padding. It is the default of `levelinlow`, of every offset, and of the `matrix22`
+off-diagonals. A slot holding a legitimate `0.0` in a fifth of its records scores 80% on that
+test and drops out of the table - which is exactly what happened to `levelouthigh` across 36,818
+records, and it is why slot 5 appeared on the "neither" queue at all.
+
+Counting zero as a float, while requiring it to be the *minority* reading so that genuine
+padding is not claimed, changes the table substantially:
+
+    layout keys                                   842  ->  1031   (+189)
+    parameter-slot readings over shared keys  1,861,038 -> 2,368,466   (+27.3%)
+    keys whose parameter list changed                        50
+
+The corrections are not confined to `levels`. `uniform` gains a four-slot run - its
+`outputcolor` - and `transformation` gains slots the matrix work had to find by hand:
+
+    15,25,320        [3, 4]          -> [3, 4, 5]          n=36818
+    2,793,64         [3]             -> [3, 4, 7]          n=21847
+    4,921,532        [3, 4, 6, 7, 8] -> [3, 4, 5, 6, 7, 8] n=11730
+    6,280,0          [1]             -> [1, 2, 3, 4]       n=2884
+
+The validator still passes 436/436.
+
+### What this changes about method
+
+Twice now the obstacle has been a predicate that was too strict rather than too permissive.
+The recurring failure in this project has been the opposite - a small integer passing "is a
+valid backward record index" by construction, seven times over - so the reflex was to tighten.
+Here tightening was the error: `if v and ...` looks like ordinary defensive code and silently
+deleted a fifth of a parameter slot's evidence.
+
+The general lesson is narrower than "don't exclude zero". It is that **a test's exclusions need
+the same justification as its inclusions.** `1e-6 <= abs(f32) <= 1e6` was argued for in the
+notes; the `v and` guarding it was never argued for at all, and it was the part that cost
+507,428 readings.
+
+It also means the "neither" queue is not a list of unknown fields. Some of its entries are
+fields the classifier already understood and threw away.

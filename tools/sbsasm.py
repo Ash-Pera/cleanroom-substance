@@ -116,6 +116,25 @@ FX_NODES = {
 }
 
 
+# Named parameter blocks: slot 1 carries one presence bit per parameter, and the
+# parameters that are present are packed into consecutive slots after the header.
+#
+# For `levels` the presence bits are the even bits of the layout word, which is exactly
+# five bits for exactly five parameters. The mapping was established by containment:
+# for a record holding a value the source declares, the parameter's position in the
+# block is (slot - start), and the bit naming it is the (slot - start)-th set bit. Over
+# the permitted paired sources that names 107 of 111 checked reads correctly (96.4%),
+# with each individual bit agreeing 92-100%.
+#
+# Note the order is in-low, in-high, in-mid, out-low, out-high - not the order the
+# parameters are declared in a `.sbs`, and not the order they are applied in.
+PARAM_BITS = {
+    15: {0: 'levelinlow', 2: 'levelinhigh', 4: 'levelinmid',
+         6: 'leveloutlow', 8: 'levelouthigh'},
+}
+PARAM_BIT_MASK = {15: 0x155}
+
+
 class Record:
     __slots__ = ('index', 'offset', 'end', 'tag', 'cls', 'asm', '_words', '_layout')
 
@@ -269,6 +288,29 @@ class Record:
         if math.isfinite(f) and (f == 0 or 1e-6 <= abs(f) <= 1e6):
             return ('float', f)
         return None
+
+    @property
+    def parameters(self):
+        """Named parameters this record carries, as [(name, value), ...].
+
+        Only for filters in PARAM_BITS; [] otherwise, and [] is not a claim that the
+        record has no parameters. The block starts after the header: slot 3 when the
+        class word's bit 0 is clear, slot 4 when it is set - that bit is what says
+        whether slot 3 holds the parameter program or the first parameter.
+        """
+        f = self.filter_id
+        bits = PARAM_BITS.get(f)
+        if not bits or len(self.words) < 3:
+            return []
+        start = 3 + (self.cls & 1)
+        w = self.words[1] & PARAM_BIT_MASK[f]
+        out = []
+        for j, b in enumerate(i for i in range(16) if w >> i & 1):
+            if start + j >= len(self.words):
+                break                      # truncated: report what is readable
+            v = self.words[start + j]
+            out.append((bits[b], struct.unpack('<f', struct.pack('<I', v))[0]))
+        return out
 
     @property
     def programs(self):
