@@ -25309,3 +25309,45 @@ smaller than the headline, and nothing like the 29 previously recorded.
 
 The old figure is withdrawn rather than corrected: without the method that produced it there is
 no way to tell whether it measured something narrower or was simply wrong.
+
+## The class-word bits, named
+
+Everything above about the class word was inferred from widths and program shapes. The manifest
+names them outright, and it agrees.
+
+Taking records where exactly ONE of bits 0, 7, 10, 11, 13 is set - so the first program is
+unambiguously that bit's - and looking up which declared input its program references:
+
+    bit  0    n = 538,793     $outputsize   97%
+    bit  7    n =  19,424     $randomseed  100%
+    bit 11    n =     475     $pixelsize   100%
+    bit 10    n =      10     (too few to say; bit 10 is normally never a program at all)
+
+Every inference made from the bytes alone is confirmed:
+
+    inferred                                    manifest says
+    bit 7  1 component, a direct binding        $randomseed - an integer, passed through
+    bit 0  2 components, computed, 29 instr     $outputsize - two integers, and it must
+                                                resolve relative sizes against a parent
+    bit 11 2 components, inputref * constant    $pixelsize  - two floats, and it IS a
+                                                scaled size: pixelsize = 1/outputsize
+    bit 10 2 components, never computed         a baked pair, equal 72.7% of the time,
+                                                which is what a resolved $pixelsize looks
+                                                like on a square output
+
+The widths match, the program shapes match, and the multiplication in bit 11's three-
+instruction program is exactly the reciprocal relationship between `$pixelsize` and
+`$outputsize`.
+
+### And it answers the ordering question
+
+`$randomseed` is emitted before `$outputsize`. That is why bit 7 comes first - not a property
+of bit positions, but the order the engine lists its inherited base parameters in. The earlier
+finding that bit 7 carries "a direct binding" and bit 0 "a computed size" was the same fact
+seen from the bytecode side: a seed is passed through unchanged, a size has to be computed.
+
+The most-referenced declared inputs across the corpus, independent of any of this:
+
+    $outputsize 509 files    $randomseed 467    $pixelsize 39
+
+The three commonest inputs in the format are the three the class word encodes.
