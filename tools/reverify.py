@@ -66,6 +66,7 @@ def scan():
             T['records'] += 1
             T['aligned'] += (r.offset % 4 == 0)
             T['cls_bit3'] += bool(r.cls >> 3 & 1)
+            T['bit3_iff'] += (bool(r.cls >> 3 & 1) == (r.cls != 0x80))
             try:
                 slots = r.edge_slots
             except Exception:
@@ -75,6 +76,31 @@ def scan():
                 T['edge_absent'] += (s >= len(r.words) or r.words[s] == 0xFFFFFFFF)
                 if s < len(r.words) and r.words[s] == 0:
                     T['edge_zero'] += 1
+            # A second program is named by one of the record's own slots, at the
+            # universal offset-52 skew, so a reader follows a pointer rather than
+            # scanning for where the first program ends.
+            try:
+                pts = list(r.programs)
+            except Exception:
+                pts = []
+            if len(pts) >= 2:
+                T['second_prog'] += 1
+                T['second_prog_named'] += ((pts[1] - 52) in r.words)
+
+            # The three-word transformation key that looked edgeless: slot 2 is its
+            # input edge. Recorded at 16,471 of 16,484; the 13 exceptions are gone.
+            if r.filter_id == 2 and r.cls == 792 and len(r.words) == 3:
+                T['trans2792'] += 1
+                v = r.words[2]
+                T['trans2792_edge'] += (v < r.index and v < len(a.records))
+
+            # fxmaps tree root pointer target, under the +52 skew.
+            if r.filter_id == 4 and len(r.words) > 2:
+                q = r.words[2] + 52
+                if 0 <= q < len(a.data):
+                    T['fx_root'] += 1
+                    T['fx_root_aligned'] += (q % 4 == 0)
+
             for q in program_points(a, r):
                 try:
                     n = len(list(disasm.decode(a.data, q, a.body_hi)))
@@ -98,15 +124,32 @@ CLAIMS = [
     ('every record starts on a 4-byte boundary',
      '418,840 of 418,840',
      lambda T: (T['aligned'], T['records']), 0),
-    ('class-word bit 3 is set on all but two records',
-     '651,741 of 651,743',
-     lambda T: (T['cls_bit3'], T['records']), 2),
+    # Recorded as "all but two". The two were an artefact of an incomplete corpus: adding
+    # three assemblies that had never been scanned took it to eight. All eight are
+    # pixelprocessor records whose class word is exactly 0x80, and bit 3 is clear IFF the
+    # class word is 0x80 - no counterexample either way in 904,131 records. So this is not
+    # a near-universal flag with stragglers, it is an exact partition.
+    ('class-word bit 3 is set except where cls == 0x80',
+     '651,741 of 651,743 (two exceptions)',
+     lambda T: (T['cls_bit3'], T['records']), 8),
+    ('bit 3 is clear IFF the class word is exactly 0x80',
+     'not previously stated',
+     lambda T: (T['bit3_iff'], T['records']), 0),
     ('the u16 at a program pointer is its instruction count',
      '291,802 of 291,802',
      lambda T: (T['lenprefix'], T['programs']), 0),
     ('every program transpiles',
      '1,206,800 of 1,206,800',
      lambda T: (T['transpiled'], T['programs']), 0),
+    ('a second program is named by one of the record\'s own slots',
+     '36,614 of 36,614',
+     lambda T: (T['second_prog_named'], T['second_prog']), 0),
+    ('transformation (2,792,0): slot 2 is a backward record index',
+     '16,471 of 16,484 (13 exceptions)',
+     lambda T: (T['trans2792_edge'], T['trans2792']), 0),
+    ('fxmaps tree root pointer target is 4-aligned',
+     '27,637 of 27,637',
+     lambda T: (T['fx_root_aligned'], T['fx_root']), 0),
 ]
 
 # Claims whose recorded figure is a small RATE, not a near-100% share. Printed separately

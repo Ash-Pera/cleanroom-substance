@@ -23885,3 +23885,39 @@ testing it for exact equality would fail it for being true.
 
 It covers only what can be recomputed from the corpus, which is a minority of the 133 `N of N`
 claims here. The rest still need re-running by hand.
+
+## The corpus was missing three files, and they moved a headline number
+
+`tools/DISTINCT.txt` listed 641 paths but only **438 distinct files** - 203 entries were the
+same assembly reached by a different path, so about a third of every measurement taken on it
+counted some files two or three times. The root list replaced it with 435 genuinely distinct
+files. That much was known.
+
+What was not: the root list is a strict SUBSET. Four distinct assemblies on disk appear in no
+corpus list at all - three under `pairs6/`, one under `pairs5/` - because those directories
+were never scanned when the list was rebuilt. Three were added (438 files, 904,131 records).
+
+`Wood_Planks` was held out. It is clean itself, but a same-named source in a different package
+(`pairs2/serverhouse__Wood_Planks_01.sbs`) carries `<author v="Allegorithmic"/>`. The match is
+a substring coincidence and the other file is already excluded on its own, so this is probably
+over-cautious - but the provenance rule is deliberately over-broad and that is a call to make
+deliberately, not in passing.
+
+### The three files broke an invariant that had looked solid
+
+Bit 3 of the class word was recorded as set on all but **two** records, and re-running it on
+435 files returned exactly two - across a corpus that had grown by 244,000 records. That
+looked like a strong invariant. It was incompleteness: the three new files take it to **eight**.
+
+The eight are not stragglers. Every one is a `pixelprocessor` whose class word is exactly
+`0x80`, and over all 904,131 records:
+
+    cls == 0x80 and bit 3 clear        8
+    cls == 0x80 and bit 3 set          0
+    cls != 0x80 and bit 3 clear        0
+    cls != 0x80 and bit 3 set    904,123
+
+**Bit 3 is clear if and only if the class word is 0x80.** Not a near-universal flag with
+unexplained exceptions - an exact partition. The two-exception version was the same fact seen
+through a corpus too small to show the pattern, and a stable-looking count across a growing
+corpus was the thing that made it look settled.
