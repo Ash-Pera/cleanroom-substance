@@ -482,24 +482,72 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # consistent with the pattern tiling/repeating, as scale greater than 1
                 # should. Both directions behave as the convention predicts; neither
                 # proves the format's own engine does not do the opposite.
+                # Which program is which, settled by the format's own bits plus one
+                # structural fact. Slot 1 bit 6 or 7 says a matrix parameter exists at all
+                # and bit 26 says the offset is program-computed (Record.translation's
+                # docstring derives both). Evaluating each filter program once at N=1 then
+                # separates them by COMPONENT WIDTH, and the widths do not overlap:
+                #
+                #   bit 26 set, exactly one program    2,007 of 2,007 return 2 components
+                #   bit 26 clear, exactly one program  4 components (405), 2 (162), 1 (79)
+                #
+                # 100% against a control that is mostly 4-wide -- a 4-vector is a matrix22,
+                # a 2-vector is an offset. This is what makes the assignment safe where an
+                # earlier attempt was not: that one trusted ANY 2-component result as an
+                # offset without consulting bit 26, and on a real specimen (record 167,
+                # matrix (1,0,0,-1), a pure Y-flip) picked up a program computing
+                # (0.2199, min(0.3905, 0.3905*$size.x/$size.y)) -- an aspect-ratio
+                # expression, not a translation. Bit 26 is clear on that record, so the
+                # rule below never reaches it.
+                #
+                # Not verified against the source: a source that declares a CONSTANT offset
+                # compiles to a baked one (bit 25), so a containment check against declared
+                # constants tests the wrong population -- it scored 6 of 67 and that number
+                # says nothing either way. The evidence here is the width split and the bits.
                 m = rec.matrix
                 fprogs = rec.filter_programs
+                w1 = rec.words[1] if len(rec.words) > 1 else 0
+                has_matrix_param = bool((w1 >> 6 & 1) or (w1 >> 7 & 1))
+                offset_is_program = bool(w1 >> 26 & 1)
+
+                by_width = {}
+                if (m is None and has_matrix_param) or offset_is_program:
+                    for p in fprogs:
+                        try:
+                            a = np.asarray(eval_program(asm, p, default_inputs(asm, 1),
+                                                        {}, 1)).reshape(-1)
+                        except Exception:
+                            continue
+                        # a width seen twice cannot be assigned to one parameter
+                        by_width[a.size] = None if a.size in by_width else tuple(
+                            float(x) for x in a)
+
                 if m is None:
-                    if fprogs:
-                        raise Unsupported("matrix is not baked (computed by a program of "
-                                          "unidentified shape)")
-                    m = (1.0, 0.0, 0.0, 1.0)
+                    if not has_matrix_param:
+                        m = (1.0, 0.0, 0.0, 1.0)      # no matrix parameter: identity
+                    elif by_width.get(4):
+                        m = by_width[4]
+                    else:
+                        raise Unsupported("matrix is a program this cannot single out "
+                                          "(%d programs, widths %s)"
+                                          % (len(fprogs), sorted(k for k in by_width)))
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise Unsupported("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
 
                 offset = rec.translation
                 if offset is None:
-                    if fprogs:
-                        raise Unsupported("translation is a program, and which of "
-                                          "%d programs computes it is not identified"
-                                          % len(fprogs))
-                    offset = (0.0, 0.0)
+                    if offset_is_program:
+                        if by_width.get(2):
+                            offset = by_width[2]
+                        else:
+                            raise Unsupported("offset is a program this cannot single out "
+                                              "(%d programs, widths %s)"
+                                              % (len(fprogs), sorted(k for k in by_width)))
+                    elif fprogs and has_matrix_param:
+                        raise Unsupported("no offset bit set but programs remain unread")
+                    else:
+                        offset = (0.0, 0.0)
 
                 W, H = rec.width, rec.height
                 if max_dim:
