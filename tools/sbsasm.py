@@ -288,6 +288,52 @@ FX_NODES = {
     0x1CB: (12, (4,)),        # [header][program][0][next]                    -> i1
 }
 
+# The FX-Map source language, mapped onto this ISA.
+#
+# A node's program IS its parameter's function graph -- `addnode` declares one parameter,
+# `numberadded`; `markov2` declares one, `switch`. That gives IDENTIFIED pairs: an addnode
+# program can only be a `numberadded` graph. Comparing multisets within a node type yields
+# seven equations, from 3 elements up to 37.
+#
+# Pairing by SIZE instead of by type is not good enough and was tried first: it produced
+# `sub -> cache_read` and `get_float2 -> const`, because two unrelated graphs of the same
+# length get matched. Same permissiveness problem as everywhere else in this document.
+#
+# Solved from three independent axes, none of which is name similarity:
+#
+#   MULTISET    cancel bound pairs; when one term remains on each side they are equal.
+#               Nested equations subtract: the size-5 graph minus the size-4 one is
+#               `not = not`, which is the only way that binding was obtained.
+#   ARITY       the source declares each node's <connection> count; the ISA gives each
+#               opcode its operand count. `ifelse` has 3 and only `select` has 3.
+#   RESULT TYPE the source's <type v="N"/> against the ISA type field. This is what fixes
+#               `div`, whose modal type is f1 where the rest of its group is f2.
+#
+# Four bindings are NOT determined by any of the three: {add, sequence, set, vector2} and
+# {add, seq, set, vec} tie on all of count, arity and modal type. They are assigned by the
+# obvious name correspondence, and that is the one place here where a name is doing the
+# work. Flagged rather than hidden.
+#
+# Verification: pushing every source graph through this map reproduces the compiled opcode
+# multiset EXACTLY in 7 of 7 equations, including the 37-element one.
+#
+# `get_float1` is the interesting row. It maps to `sysvar`, not to `get` -- reading a
+# named float compiles to a system-variable fetch when the name is a system variable, and
+# `get_float2` maps to `get`. So the lowering depends on the ARGUMENT, not only the
+# function, which is why one source name can reach two opcodes.
+FX_LOWERING = {
+    'const_float1': 'const',  'const_int1': 'const',   'const_float2': 'const',
+    'get_float3':   'inputref', 'get_integer1': 'inputref',
+    'get_bool':     'get',    'get_float2': 'get',     'get_float1': 'sysvar',
+    'swizzle1':     'swizzle', 'toint1': 'cvt',        'tofloat': 'cvt',
+    'ifelse':       'select', 'lr': 'lt',              'not': 'not',
+    'mul':          'mul',    'div': 'div',            'mod': 'mod',
+    'samplecol':    'samplecol',
+    # name-fixed, see above
+    'add': 'add', 'sequence': 'seq', 'set': 'set', 'vector2': 'vec',
+}
+
+
 # A SECOND family, keyed by the header's low BYTE rather than the whole word. The two
 # families are cleanly separated by how much their headers vary: each of the four above
 # occurs as exactly ONE word (0x18B is 14,705 sightings and 1 distinct value), while

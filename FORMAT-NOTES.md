@@ -29975,3 +29975,71 @@ Git history is worth checking once per repository and not again — it is cheap,
 invisible to code search, and here it returned a provenance chain rather than corpus. Two
 larger repositories (`inexorgame/textures` and one other) exceeded a five-minute clone budget
 and were not completed; they are the only untested part of this sweep.
+
+## The FX-Map source language, mapped onto the ISA
+
+The previous section established that a node's program is its parameter's function graph,
+on three exact shape matches. That is enough to derive the whole lowering, because it gives
+IDENTIFIED pairs: an `addnode` program can only be a `numberadded` graph, and a `markov2`
+program can only be a `switch` one.
+
+### Pairing by size does not work, and says so loudly
+
+The first attempt paired source graphs to compiled programs by having the same number of
+elements. It produced `sub -> cache_read` and `get_float2 -> const`. Two unrelated graphs of
+the same length get matched, and the solver then propagates the error. Same permissiveness
+failure as everywhere else in this document, and the giveaway was that the output contained
+bindings no reading of the format could support.
+
+Pairing within a node type gives 7 clean equations, from 3 elements to 37.
+
+### Three axes, none of them name similarity
+
+    MULTISET     cancel bound pairs; when one term remains on each side they are equal.
+                 Nested equations subtract -- the size-5 graph minus the size-4 one is
+                 `not = not`, which is the only way that binding was obtained.
+    ARITY        the source declares each node's <connection> count, the ISA gives each
+                 opcode its operand count. `ifelse` has 3 and only `select` has 3.
+    RESULT TYPE  the source's <type v="N"/> against the ISA type field. This fixes `div`,
+                 whose modal type is f1 where the rest of its group is f2.
+
+### The dictionary
+
+    const_float1  -> const       get_float3   -> inputref     swizzle1 -> swizzle
+    const_int1    -> const       get_integer1 -> inputref     toint1   -> cvt
+    const_float2  -> const       get_bool     -> get          tofloat  -> cvt
+    ifelse        -> select      get_float2   -> get          lr       -> lt
+    not           -> not         get_float1   -> sysvar       mod      -> mod
+    mul           -> mul         div          -> div          samplecol-> samplecol
+    add -> add    sequence -> seq    set -> set    vector2 -> vec
+
+**Verification.** Pushing every source graph through this map reproduces the compiled
+opcode multiset **exactly in 7 of 7 equations**, including the 37-element one. That is a
+test that could have failed at any of 22 bindings and did not.
+
+### What one name is doing the work for
+
+Four bindings are not determined by any of the three axes: `{add, sequence, set, vector2}`
+and `{add, seq, set, vec}` tie on count, on arity (all 2) and on modal result type (all f2).
+They are assigned by the obvious name correspondence. That is the single place in this
+derivation where a name decides anything, and it is flagged in the code rather than folded
+in silently — if the assignment is wrong it is wrong as a 4-cycle, and every equation would
+still balance.
+
+### The row that is not a function of the function
+
+`get_float1` maps to **`sysvar`**, not to `get`, while `get_float2` maps to `get`. Reading a
+named float compiles to a system-variable fetch when the name *is* a system variable. So the
+lowering depends on the ARGUMENT and not only on the function, which is why one source name
+reaches two different opcodes and why a naive one-to-one table would have to be wrong
+somewhere. In the size-46 equation `get_float1` appears twice against one `get` and one
+`sysvar`, which is the same fact showing up as an imbalance.
+
+### Scale
+
+56 distinct function names are declared across the 8 permitted sources that carry FX-Map
+node data; 41 distinct opcodes appear in their compiled node programs. This maps 22 of the
+56. The unmapped ones are mostly rare (`cartesian` 3, `pow2` 3, `floor` 2, `sqrt` 2,
+`cos` 2, `const_float3` 1, `vector3` 1) and the equations that would bind them do not exist
+in this corpus — they need a source that uses them inside an `addnode` or `markov2`
+parameter, which none of these eight does.
