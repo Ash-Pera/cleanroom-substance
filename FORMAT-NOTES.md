@@ -20203,3 +20203,80 @@ READMEs are back in line with the notes. Two remain:
   OPCODES.md - `neq` on the deepest-embedded-opcode test, `exp` at 578/578 exact in
   `ie_processing` - and neither is in `disasm.NAMES`, which is keyed `(type, id)` and wants
   `(0, 0x1E)` and `(1, 0x2A)`. `0x0F` is correctly absent: OPCODES.md marks it *probable*.
+
+## What making loops executable actually requires
+
+`0x0B` is decoded - it disassembles as `while` and carries no immediate, both established
+above - and `transpile.py` still raises `Unsupported` on a real `0x150B`. That gap is not
+a missing case in a dispatch table. Reading one settles what it is.
+
+`MetalSubstance009` record 4056, the tail of a 68-instruction program:
+
+    %14   090C  seq.f1      %11, %13        <- init: sets slots 2, 3, 4, 5
+    %17   0860  gteq.b2     %15, %16        <- cond: get(4) >= get(1)
+    %62   0907  set.f1      %61, #5         <- body: accumulates, and set(get(4)+1, #4)
+    %63   190B  while.f1    %14, %17, %62, %0, %0, %0
+    %64   0504  get.f1      5
+    %65   090C  seq.f1      %63, %64
+
+The three operands are initialiser, condition and body, matching the operand-position
+analysis recorded earlier. What the listing adds is *why* this cannot be emitted as
+straight-line code.
+
+### Value numbers name sub-expressions, not single assignments
+
+`%17` is `gteq(get(4), get(1))` and `%62` writes `get(4) + 1` back to slot 4. For the loop
+to terminate, `%17` must be **re-evaluated** on each iteration - and re-evaluating it means
+re-running the DAG slice rooted at it, because its operands read frame slots the body
+mutates.
+
+Everywhere else in this ISA a value number is computed once and referenced. This document
+has leaned on that: it is what makes `valid_program`'s operand-possibility check work, and
+what lets the transpiler emit one assignment per value number in order. `while` is the one
+operation where an operand is a *thunk* rather than a value. A transpiler that emits
+`v63 = while(v14, v17, v62)` has already evaluated `v17` once, at its own line, and the
+loop cannot see it change.
+
+So the implementation is: compute the slice reachable from the condition and body
+operands, emit it inside a real loop body rather than at its value number's position, and
+leave the rest of the program straight-line.
+
+### It needs the frame the transpiler does not have
+
+`get.f1 1` in that program reads slot 1, and **nothing in the program writes it**. The
+variable frame persists across the programs of a record - which is the same execution model
+the FX-Map section arrived at from the other direction, a straight-line program over a
+shared frame.
+
+That is the same architecture gap `cache_read`/`cache_write` raise for: a single program is
+not a closed unit, and evaluating one needs the record's programs run in order against
+shared state. Loops and the `0x03`/`0x06` cache are two symptoms of one missing thing, and
+building it once serves both.
+
+### Polarity is not settled, and this corpus may not settle it
+
+Whether the operand is "continue while true" or "exit when true" is undetermined. In the
+listing above the counter starts at 0 and the condition is `counter >= limit`, which reads
+as an *exit* test, but a single specimen cannot carry that. Across 189 `while` instructions
+in 200 specimens the condition is produced by:
+
+    get   48.1%    gteq  22.2%    eq  21.2%    or  8.5%
+
+Half read a boolean straight out of a frame slot, which says nothing about direction. The
+instruction also takes 5 or 6 operands (138 and 51), and what the trailing ones are for is
+unknown - in the listing they are all `%0`, the program's first `sysvar`, which looks like
+padding rather than data.
+
+Getting this wrong inverts every loop silently, which is exactly the failure mode
+`cache_read`'s raise exists to avoid. It should be settled by a specimen whose loop has a
+known closed form and transpiled against it - the standard `ln`/`exp2`, `exp` and `pow`
+were each held to - not by reading the name `while` and assuming.
+
+### Scope
+
+1. A record-level evaluator: programs in order, one shared variable frame, one package
+   value cache. This is the prerequisite, and it retires `cache_read`/`cache_write`'s raise
+   at the same time.
+2. Slice-and-reemit for `0x0B` inside it.
+3. A polarity test on a known-algorithm loop before either is trusted. Until then the
+   `Unsupported` raise is the correct behaviour and should stay.
