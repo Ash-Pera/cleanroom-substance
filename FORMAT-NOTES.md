@@ -24815,7 +24815,7 @@ than the exception was, so the fix is a per-lane mask, not a laxer termination c
 - The loop's own carried value (`v_kw`, already the mechanism `while` used for its result) is
   frozen the same way.
 - Nested loops (14 in the corpus, all nested rather than overlapping - see the earlier `0x0B`
-  section) AND the enclosing loop's mask into the inner one's, so a lane the outer loop has
+  section) AND the enclosing loop's mask into the inner one's own, so a lane the outer loop has
   already retired cannot have its slots written by an inner loop that does not know that.
 
 `sbsruntime.select` already existed and already does the right thing with a narrower condition
@@ -25524,3 +25524,33 @@ What the refinement bought is the boundary itself: the rule is complete for `ble
 `directionalwarp`, whose keys lose no field bits, and incomplete for `levels` and
 `dirmotionblur` in exactly 168 records, for a reason that is now understood rather than
 suspected.
+
+## Cross-record evidence: a real signal, not a usable rule
+
+The previous section ended by suggesting the way past the 168 undecidable records was not a
+better predicate on word1 but evidence from outside the record - for instance, whether the
+record slot 1 points at is consumed by anything else. If it is not, something must consume it,
+and this edge is the candidate.
+
+Measured, excluding the disputed slot itself from the consumer count:
+
+    table says slot 1 is an EDGE       167 records   target otherwise unconsumed  13.77%
+    table says it is a bitfield     94,938 records   target otherwise unconsumed   1.37%
+
+A tenfold enrichment. The signal is real and it confirms the table's verdicts are not
+arbitrary. It is still not a rule: applied as one it would find 23 true edges and claim 1,301
+false ones, a precision of 1.7%. The disputed population is five hundred times larger than the
+thing being looked for, so even a 10x enrichment cannot separate them.
+
+That is the fourth discriminator tried on these 168 records and the fourth to fail, and the
+failures now cover every kind of evidence available: the value itself, its validity as an
+index, the size of what it points at, and the graph around it.
+
+**The conclusion is that per-record information is insufficient, and that is a fact about the
+format rather than a gap in the analysis.** The table succeeds where the rule cannot because it
+aggregates - many records sharing a key vote on one answer. Reproducing that inside the rule
+would mean rebuilding the table, which is where this started.
+
+So the union stands, and its cost is now known exactly: 168 records out of 100,050 for the two
+affected filters, 0.17%, where the layout is taken from aggregated evidence rather than
+computed. Everywhere else the rule computes it.
