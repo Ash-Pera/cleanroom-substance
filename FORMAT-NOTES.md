@@ -16035,3 +16035,61 @@ program over a shared variable frame, `$number` in, instance position and colour
 types are identified by shape and return type, one of them by name. The chain topology beyond a
 few nodes is not, and it is blocked on the same thing everything else about FX-Maps is blocked
 on: a second material whose source composition can be read before the binary.
+
+## Correction: "0 unexplained bytes" was measuring the directory, not understanding
+
+Every audit in this document has reported **0 unexplained bytes of 4.09 GB**. That figure is
+much weaker than it reads, and the reason is structural.
+
+`coverage()` marks a whole record extent as accounted for the moment the record is enumerated:
+
+    mark(r.offset, r.end, 5)      # record
+
+The record directory is a sorted partition of the body - established early and re-verified
+often - so *every* body byte is inside some record by construction. Marking record extents and
+then reporting no unexplained bytes is therefore **circular**: it measures the directory's
+completeness, which is a fact about the format, not about the segmenter.
+
+The same measurement with the permissive reference scan disabled gives 100.00% as well, and the
+scan is worth 0.00 points. That should have been the tell: a scan that demonstrably recovers
+programs nothing else reaches cannot be worth nothing.
+
+### The honest measure
+
+Counting only bytes the segmenter can put a meaning to - the tag, the slots its layout names,
+decoded programs, FX-Map tree nodes, and bitmap pixel data:
+
+    record bytes interpreted      92.5%      of 65 MB of record bytes
+
+    blend               98.2%        gradient            43.3%
+    warp                96.6%        fxmaps              90.9%
+    distance            96.6%        pixelprocessor      90.8%
+    transformation      95.5%        fid 5                0.0%
+    levels              95.1%        shuffle             93.5%
+
+Ninety-two and a half, not a hundred. The directory does tell us where everything is; it does
+not tell us what any of it means, and conflating the two flattered every coverage figure here.
+
+### What the honest measure surfaces
+
+**`gradient` at 43.3%** was invisible under the old metric and is the largest gap after the
+unnamed filters. Reading one:
+
+    [1] 40          [3] -> +2984
+    [2] 256         [4] -> +4520
+    [5..]  u16 triples: (0000, FFFF, 8000) (0101, FFFF, 8000) (0202, FFFF, 8000)
+                        (0303, FFFF, 8000) (0404, FF7F, 8000) (0505, ...)
+
+The first component steps by `0x0101` per entry and the others carry values. **A gradient
+record embeds its colour ramp** as a table of `u16` triples - a stop position and two
+components - which is exactly what a Gradient Map needs and what nothing in the segmenter
+models. Word 2 is a count: 4 in 1,696 records, 64 in 664, and 256, 6, 3, 2 elsewhere. For the
+64-entry records a 6-byte stride fits the triple reading; the 4-entry records do not fit a
+constant stride, so the table format is not uniform and is not yet settled.
+
+**`fid 5` at 0.0%** is correct and expected: those records are almost entirely the embedded
+vector geometry described earlier, which is located but not decoded.
+
+`coverage()` keeps its byte classification, which is still useful for locating a resource
+segment or a prologue. But **the number to quote for how much of the format is understood is
+92.5% of record bytes, not 100% of file bytes.**
