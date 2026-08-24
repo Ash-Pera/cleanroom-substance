@@ -17947,3 +17947,44 @@ tell a texture output from a number without consulting the manifest.
 
 With this the output table is fully decoded: every entry's kind, type and record are read,
 in 3,249 of 3,249.
+
+## The parameter program is sometimes inline, not pointed at
+
+With the residue split honestly, 2,285 records had a parameter this model genuinely failed
+to read. Half of them held values like these in the parameter slot:
+
+    0x09000022    0x09000012    0x05410016
+
+Read as pointers or floats they are nonsense - denormals, which is why they were discarded.
+Read as what they look like, they are **program headers**: `0x09000022` is 34 instructions
+beginning `const.f1`, `0x05410016` is 22 beginning `sysvar`.
+
+The program is **at the slot**, not pointed at by it.
+
+    unread parameter slots examined            1,142
+       a program starts AT the slot              353  (30.9%)
+       still nothing                             789  (69.1%)
+
+    control: slots that DO resolve as a pointer   1,037,401
+       ...and also start a program                       2  (0.00%)
+
+**The two readings are disjoint** - 2 slots in a million satisfy both - so trying the
+inline reading when the pointer reading fails cannot corrupt anything already understood.
+351 of the 353 are `gradient`.
+
+The recovered programs are ordinary code:
+
+    %0    0902  inputref.f1    uid=2720279195
+    %1    0D00  const.f1       0.5
+    %2    0860  gteq.b2        %0, %1
+    %4    0912  add.f1         %0, -0.5
+    %6    0914  mul.f1         1.8, %4
+    %8    0D09  select.f1      %2, %6, 0
+
+A threshold on a graph input, then a scale - and their opcode distribution is `const`,
+`div`, `swizzle`, `floor`, `vec`, `select`, `mul`, `rand`, with no phantom among them.
+
+    genuinely unread parameters   2,285  ->  1,932   (0.21% -> 0.18%)
+
+The remaining 1,932 split as 789 slots that hold neither reading and 1,143 records whose
+key has an empty parameter list in the table although the record has room for one.

@@ -375,6 +375,16 @@ class Record:
         f = struct.unpack('<f', struct.pack('<I', v))[0]
         if math.isfinite(f) and (f == 0 or 1e-6 <= abs(f) <= 1e6):
             return ('float', f)
+        # The program can be INLINE at the slot rather than pointed at by it. The slot
+        # then holds a program header -- 0x09000022 is [34 instructions][const.f1] -- which
+        # reads as a denormal float and was being discarded.
+        #
+        # Safe to try only because the two readings are disjoint: of 1,037,401 slots that
+        # resolve as a pointer, 2 also start a program, 0.00%. Almost all of these are
+        # `gradient` (351 of 353).
+        addr = self.offset + 4 * sl
+        if self.asm.program_span(addr, self.end):
+            return ('program', addr)
         return None
 
     @property
