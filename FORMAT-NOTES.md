@@ -26667,3 +26667,66 @@ I over-claimed twice on this instruction in two sessions - first that operand 3 
 *not* a count, on a predicate with no power, then that it *was*, on a count that double-
 counted one program 84 times. Both errors were the ones this document already had names
 for, applied to the same four bytes.
+
+### Looking for a seventh shape: exhausted, and the reason is structural
+
+Three searches, all negative, and the third explains the first two.
+
+**1. Every assembly on disk, scanned permissively.** Not just `DISTINCT.txt`: all 642
+`.sbsasm` files present, and within each, every program `referenced_programs()` reaches -
+FX-Map tree programs and the layout-B prologue included, which the strict record walk never
+sees. A permissive hit would be a lead to read, not a statistic, so the widening is safe
+here in a way it is not for an opcode census.
+
+    files scanned                                        642
+    distinct condition-less shapes                         6
+    shapes visible only permissively                       0
+    operand-3 values                          {1: 2, 3: 158, 5: 4}
+
+Same six shapes, same three widths. The strict walk was not hiding a seventh.
+
+**2. Eight specimens the corpus never had.** Of 610 `.sbsar` archives on disk, 600 have an
+extraction directory. The ten that do not:
+
+    extract with bsdtar, simply never run                   4
+    bsdtar reports "Damaged 7-Zip archive", py7zr reads     4
+    not a 7-zip file at all                                 1
+    duplicate of a specimen already extracted               1
+
+All eight recovered are new by content hash, one of them 8,425 records. They hold **one**
+`while` between them, and it has a condition. No new shape, no new width.
+
+Worth recording on its own: *Container (.sbsar)* says the format is "a plain 7-zip archive,
+extractable with libarchive (`bsdtar -xf`)". That is true of 606 of 610 and false of four,
+and **the failure is silent** - the extraction pipeline dropped them and nothing counted the
+loss. `py7zr` reads all four.
+
+**3. Why there are only six shapes.** `pratice_01_12_07` is the one specimen carrying
+condition-less loops that is paired with its source, and its source does not contain them.
+Its entire function-graph vocabulary is thirteen trivial accessors:
+
+    get_bool 6, get_float1 3, get_float2 3, get_float4 2, get_integer1 1, get_float3 1
+
+with no loop-like node of any kind, and no `pixelprocessor` among its own filters. All 77
+of its instances resolve to `sbs://` library graphs - `noise_crystal_2`, `bevel`,
+`edge_detect`, `shape_mapper`, `rt_ao_v2` and so on.
+
+**So this construct is emitted by Adobe's library filters, not by material authors.** The
+number of distinct shapes in any corpus is bounded by the number of distinct library
+filters that use a neighbourhood scan, and 158 of the 164 instances are one such filter
+used many times over. That is why six shapes cover 642 files, and why widening the file set
+does not widen the shape set.
+
+### What would actually settle it
+
+Not a search of this corpus. A seventh shape needs a material using a *different* library
+filter of this kind; a width of 7 needs one where such a filter's radius or quality
+parameter is set higher than anything here does. Both are acquisition, and both are
+findable without touching an excluded source - the filters are Adobe's, but a **material
+that instances them** is ordinary third-party work, and it is the compiled material that
+carries the evidence.
+
+Until then the reading stands where the previous section left it: three `(width, start)`
+pairs over six shapes, one shape showing covariation, `transpile.py` raising rather than
+guessing. The search is closed rather than abandoned, which is a different thing, and this
+section records where to resume.
