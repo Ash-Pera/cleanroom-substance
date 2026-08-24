@@ -28315,6 +28315,26 @@ triples are degenerate and cover no area. That also explains the asymmetry in th
 rows, which had looked like an argument *against* a point list - a strip zig-zags across a
 stroke, so one axis barely moves while the other jumps the stroke's width each step.
 
+**The strip reading, controlled.** `strip` was the first convention tried and it worked,
+which is not the same as it being the one that fits, so it is checked against the
+alternatives by coverage: a tessellation covers each interior pixel exactly once, and a
+wrong convention shows up as pixels covered many times over.
+
+    convention                 covered exactly once    area covered
+    strip                              73.3%              46.4%
+    fan                                17.2%              50.6%
+    list (every third triple)          79.3%              11.4%
+
+`fan` is refuted outright. `list` is not refuted by what it draws — it draws a clean third
+of the same picture, which is exactly what a list reading of a strip should do — but it
+leaves two thirds of the vertices unaccounted for, and `strip` does not.
+
+73.3% is not the ~100% a clean tessellation would give, and that residue is the open part:
+some triples read as faces do overlap, and whether that is the joins, a winding rule this
+ignores, or a convention close to a strip without being one is not settled. **The vertex
+ORDER is provisional; what the vertices DRAW is not.** The two are separable, and the
+identification rests only on the second.
+
 The settling evidence is not statistical. Rasterise consecutive triples as triangles,
 dropping the degenerate ones, and the ambientCG road materials render their road markings -
 pedestrian, bicycle, lorry, straight-and-left turn arrows - `TilesSubstance013` renders

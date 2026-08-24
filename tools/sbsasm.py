@@ -1642,6 +1642,27 @@ class Record:
         renders the road markings, filigree corner ornaments, snowflakes and hand-drawn
         lettering the materials are named for. See `tools/extract_shapes.py`.
 
+        STRIP is the working reading, and it is controlled against the alternatives by
+        coverage rather than by eye: a tessellation covers each interior pixel exactly
+        once, so a wrong convention shows up as pixels covered many times over.
+
+            convention                 covered exactly once   area covered
+            strip                              73.3%             46.4%
+            fan                                17.2%             50.6%
+            list (every third triple)          79.3%             11.4%
+
+        `fan` is refuted outright. `list` is not refuted by what it draws - it draws a
+        clean third of the same picture, which is what a list reading of a strip should
+        do - but it leaves two thirds of the vertices unaccounted for, and `strip` does
+        not. This control exists because `strip` was the first convention tried and it
+        worked, which is not the same as it being the one that fits.
+
+        73.3% is not the ~100% a clean tessellation would give, and that residue is the
+        open part: some triples read as faces do overlap, and whether that is the joins,
+        a winding rule this ignores, or a convention close to a strip without being one
+        is not settled. So the vertex ORDER is provisional even though what the vertices
+        DRAW is not.
+
         Returns `(word0, [(x, y), ...])` with coordinates in 0..1, or None.
         """
         if self.filter_id != 5 or len(self.words) < 2:
