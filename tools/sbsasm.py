@@ -486,6 +486,45 @@ class Assembly:
             self.records.append(Record(self, i, o, min(nxt, len(d))))
         self.resource_end = min(offs) if self.layout == 'A' and offs else None
 
+    # ---- outputs
+    def outputs(self):
+        """The graph outputs, as [(uid, format, grayscale, record index), ...].
+
+        Layout A puts an 8-byte entry per output between the record directory and the
+        first record - the region coverage() was calling 'resources', though many files
+        with one embed no images at all. One entry per output in 591 of 591 layout-A
+        specimens, and the second word is a valid record index in 3,249 of 3,249.
+
+        The first word carries the manifest's `format` attribute as bits 4 and up:
+        format == (w0 & 0xFFFF) >> 4, exact on every distinct value in the corpus. Bit 2
+        of that format is the grayscale flag, and it matches the colour bit of the record
+        the entry names in 3,249 of 3,249 - a consequence test the table could have
+        failed and did not.
+
+        This is the output-to-record attribution recorded elsewhere in FORMAT-NOTES.md as
+        structurally absent. It is not absent; it was in a region nothing had read.
+
+        Entries whose high half is 2 (48 of 3,249) are a different kind and are returned
+        with format None rather than guessed at.
+        """
+        if self.layout != 'A' or not self.records:
+            return []
+        lo = self.header['dir_at'] + 4 * self.header['dir_count']
+        hi = min(r.offset for r in self.records)
+        uids = self.header.get('output_uids') or []
+        out = []
+        for j, off in enumerate(range(lo, hi, 8)):
+            if off + 8 > len(self.data):
+                break
+            w0, idx = struct.unpack_from('<II', self.data, off)
+            uid = uids[j] if j < len(uids) else None
+            if (w0 >> 16) == 2:
+                out.append((uid, None, None, idx))
+            else:
+                fmt = (w0 & 0xFFFF) >> 4
+                out.append((uid, fmt, bool(fmt & 4), idx))
+        return out
+
     # ---- programs
     def valid_program(self, p):
         """A program is valid only if its declared instruction count decodes exactly."""

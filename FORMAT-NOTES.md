@@ -16596,3 +16596,89 @@ would have suggested looking: not in a test over binary data, but in the regex r
 ground truth. **The ground truth needs auditing to the same standard as the format.** A
 lenient parser on the source side manufactures disagreements and would have been read as
 evidence against a correct hypothesis.
+
+## Correction: the output table exists, and it was never hidden
+
+Reading one small file completely - every byte claimed by name, overlaps and gaps
+reported rather than summed - found two things that no amount of corpus-wide statistics
+had turned up. The specimen was chosen for checkability: `SubstanceDesigner__color`,
+3,812 bytes, 17 records, **zero `compInstance` nodes**, so source-to-binary
+correspondence survives intact.
+
+### An explicit byte map, not a coverage total
+
+`coverage()` reports one `unexplained` number, and for this file it reported **zero**.
+That is not the same as understanding the file. Claiming each byte by name instead:
+
+    0x0000 .. 0x0038      56  file header
+    0x0038 .. 0x007c      68  record directory
+    0x007c .. 0x0094      24  *** UNCLAIMED ***
+    0x0094 .. 0x00a8      20  record 0 (bitmap)
+    ...
+    0x0d54 .. 0x0ed4     384  value table
+    0x0ed4 .. 0x0ee4      16  footer
+
+A total that sums correctly can hide both an unclaimed region and overlapping claims.
+Here it hid one of each.
+
+### The 24 unclaimed bytes are the output table
+
+Three 8-byte entries, first words identical, second words **1, 16 and 8** - which are
+exactly the three `pixelprocessor` records, and the source declares exactly three
+`pixelprocessor` nodes. Measured across the corpus:
+
+| prediction | result |
+|---|---|
+| every layout-A file has the region | **591 / 591** |
+| its size is a multiple of 8 | **591 / 591** |
+| entry count equals `n_out` | **591 / 591** |
+| second word is a valid record index | **3,249 / 3,249** |
+| distinct outputs name distinct records | 3,242 / 3,249 (99.8%) |
+
+Counting is not enough - a table of the right length could hold anything - so the
+consequence test is the channel type. The first word carries the manifest's `format`
+attribute in its upper bits:
+
+    format == (w0 & 0xFFFF) >> 4
+
+exact on every distinct value in the corpus: `0x1c0`->28, `0x100`->16, `0xc0`->12,
+`0x400`->64, `0x4c0`->76, `0x5c0`->92, `0x500`->80. Bit 2 of that format is the grayscale
+flag, and it agrees with the colour bit of the record the entry names in **3,249 of
+3,249**. A grayscale output cannot be produced by a colour record, so this is a test the
+hypothesis could have failed.
+
+Entries whose high half is 2 (48 of 3,249) are a different kind; `Assembly.outputs()`
+returns them with format `None` rather than guessing.
+
+**This reverses a documented conclusion.** The notes above record output-to-record
+attribution as structurally absent, after five approaches failed and 0 of 183,160 uid
+references resolved, and propose a discriminative renderer scored against shipped PNGs as
+the only way forward. That was wrong. The attribution is stated outright, one entry per
+output, in a region that `coverage()` labelled "resources" - a label that no file with an
+empty resource segment ever contradicted, because the region was never read.
+
+The five failed approaches all searched *within* the structures already known: records,
+uid tables, bridges. None asked what the bytes between the directory and the first record
+were. **The region was not hidden; it was mislabelled, and the label was never tested.**
+
+### The record extent is header plus one or two programs
+
+The byte map also showed every record overlapping a program at its tail, always 8 bytes
+before the record's declared end - which looks exactly like a fixed-offset artifact
+manufacturing false programs. It is not:
+
+| `record_end - program_end` | share |
+|---|---|
+| 0 bytes, flush | 57.0% |
+| 2 bytes, 4-byte alignment padding | 32.9% |
+| more than padding | 10.1% |
+
+and of that last 10.1%, **99.8% is a second program**, itself flush with the record end.
+So a record is `[header][program]` or `[header][program][program]`, and the directory
+extent covers all of it. The constant 8 in this specimen was a property of the specimen -
+every one of its records carries a minimum-size program - not of the format.
+
+Worth stating plainly because the suspicion was the right one to have: a constant
+distance between a discovered structure and a boundary is normally the signature of a
+validator accepting whatever sits at a fixed offset. Here the distance is the program's
+own length, and it varies from 8 bytes to 468 across the corpus.
