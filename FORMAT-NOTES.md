@@ -28153,3 +28153,50 @@ Adobe's engine binary; **it was not opened, downloaded or inspected**, and the r
 covers it is the first line of the Provenance statement. No format knowledge was taken from
 any of the three - there was none to take, which is the finding - and nothing in this
 document derives from them.
+
+## Filter 5's blob states its own length, and 92% of the "1,701 structures" were never structures
+
+Two things recorded in the section above were wrong, and the same fact fixes both.
+
+**There are not 1,701 of these structures.** The marker `0x07FFFFFB` occurs 1,701 times,
+but only 134 of those occurrences are 4-aligned:
+
+    unaligned, unreferenced         1,567    92.1%
+    aligned, named by filter 5        118     6.9%
+    aligned, unreferenced              16     0.9%
+
+The 1,567 are byte coincidences. `fb ff ff 07` is an easy sequence to hit inside image
+data, and they cluster in exactly the files that carry the most of it — 444 in
+`Small_Rocks`, 345 in `cc0_chainmail_01` — 96.8% of them in the pre-record region the
+archive fills with cached images. So the claim "most are reached some other way, a
+thread" was a thread I invented: there are 134 structures, filter 5 names 118, and **16
+are unaccounted for, not 1,583**. This is the third time today that 4-alignment has
+separated real structure from plausible bytes, after the program pointers; the lesson
+generalises further than the place it was learned.
+
+**And the length field is established after all.** It was recorded as unestablished
+because it was tested against the wrong quantity. `w == 2*(slot2 - slot1) - 23` fails
+because `slot2` is an end pointer, and this format's end pointers are upper bounds. The
+right comparison is the blob's ACTUAL extent — the distance to the next blob:
+
+    gap >= L, where L = (w + 23) / 2        128 of 128   100.0%
+    gap == L exactly                         66 of 128    51.6%
+    CONTROL: same arithmetic on the next word 0 of 128     0.0%
+
+A length that never overshoots the space available in 128 of 128, is exact half the time,
+and whose control never fires once, is a length. The residual when it is not exact is
+small and always positive (176, 96, 116 bytes) — inter-blob padding, not error. So
+`L = (w + 23) / 2` is the blob's own byte count, and `slot2` is an upper bound exactly as
+it is for `ramp` and for `curve_points`. **All three of this format's payload tables
+behave the same way: the end pointer bounds, the payload states its own size.**
+
+The 16 unaccounted structures are nearly one thing. Fifteen sit in two related specimens,
+`RoadLinesSubstance002` and `RoadSubstance002`, all carrying `w = 1745` and therefore
+`L = 884` — and 884 is one of the commonest marker-to-marker gaps in the corpus, so they
+are packed tight. They share a common prefix and diverge at byte 884, which is the same
+number arrived at from the other direction. The sixteenth, in `ChristmasTreeOrnament`
+at 0xbbe4 with `w = 40481`, is on its own.
+
+Filter 5 is still not named. But its record layout, its payload's tag, its payload's
+length field and the count of payloads that exist are all now measured rather than
+guessed, and the only open piece is why 16 of 134 have nothing pointing at them.
