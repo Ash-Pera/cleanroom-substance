@@ -17524,16 +17524,56 @@ occurrences are that one specimen. This is compiler bookkeeping, assigned fresh 
 not a symbol table with stable meanings across files - which is also why containment against
 declared parameter names never found it.
 
+### Why `pixelprocessor` specifically - one part of it is no longer a guess
+
+The previous section left this as "plausible, not established": `pixelprocessor` is the
+only record type flexible enough to host arbitrary computation. That is still the general
+account, but at least one concrete reason is now checkable rather than assumed.
+
+**Sampling an image is confined to `pixelprocessor`, almost without exception.**
+`samplelum`/`samplecol` appear in 61,199 records corpus-wide; 61,199 of them are
+`pixelprocessor`, and 48 are `fxmaps`. Zero in `blend`, `transformation`, `levels`, or
+anything else. So a value that legitimately requires reading pixel data has nowhere else
+to be computed - if a `blend` node's own logic needs something derived from a sampled
+pixel, the compiler has no choice but to compute it in a `pixelprocessor` program and
+relay the number through this same cache.
+
+`hblend` (SubstanceDesigner tutorial content, no author tag, three `op06` writes) shows
+exactly this. Each writer samples a fixed reference pixel and each corresponding `blend`
+reads the result straight into boolean logic:
+
+```
+pixelprocessor  samplecol((0,0)) -> max(B,A) -> 1 - that  -> op06 #0
+blend           op03 #0 ; (#0 < 0) or FALSE ; AND with a boolean graph input ; select(0, 1)
+```
+
+Three `pixelprocessor`/`blend` pairs, each 1:1 - a control value baked into pixel (0,0) of
+some upstream image (a known Substance Designer technique for smuggling a scalar through
+an image channel), sampled once, and combined with a boolean toggle to switch a blend
+layer on or off. A different category of cached value from the arithmetic and system
+variables seen so far: the result of a sampler read, not a computation on values already
+in hand.
+
+**An attempt to name which *parameter* the cached value fills, in `Obsidian_01`, did not
+resolve.** Two `blend` records there read a shared cached `0.5` at what should be the
+first filter-parameter slot after the size expression. A first pass through the source
+guessed `opacitymult`, matching on `<name v="opacity"/>` - the wrong element name, one
+character short of the real one, and exactly the class of bug the earlier "blendingmode
+paired with the wrong float" correction warned about. Read correctly, the file's ~50
+`blend` nodes declare `opacitymult` explicitly and mostly with *distinct* values (0.03,
+0.28, 0.13, 0.47, ...), so the cached `0.5` is not a shared default landing widely - it
+is something else, still unidentified, and left that way rather than guessed twice.
+
 ### What is still open
 
-Why the compiler specifically routes this through a `pixelprocessor` record rather than some
-dedicated non-image record kind is not established from the binary alone - the plausible
-account is that `pixelprocessor` is the only record type whose body is a bare, arbitrary VM
-program, so it is what is available when a value needs computing without needing an image.
 12.6% of writes (134 of 1,063) are never read in the same file; in the one instance checked
 closely the unread indices formed a step-8 arithmetic sequence, consistent with a generically
 inlined template writing a slot that only some instances actually consume - dead code from
-instantiation, not a sign the table crosses file boundaries, but not confirmed as such.
+instantiation, not a sign the table crosses file boundaries, but not confirmed as such. And
+the constant/arithmetic cases (the majority of writes) still have no source-level comparison
+as direct as `hblend`'s - only 14 of the 53 corpus files with an `op06` write have a paired
+`.sbs` at all, most of that budget went to characterising what the *mechanism* is rather than
+naming individual cached values, and the one specific attribution attempted did not land.
 
 ## Chasing the manifest violations to their source
 
