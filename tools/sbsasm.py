@@ -533,6 +533,52 @@ FX_TABLE = {
 }
 
 
+# FX-Map table entry LENGTH, stated by the whole tag word. `'T'` means the entry is the
+# last in its table.
+#
+# The 8-byte stride this replaces was not a stride. Measured from a chain handoff -- the
+# one entry position established by pointer-following rather than by guessing -- the
+# distance to the next entry is 8 bytes in 16% of records and 24 in 40%, with a long tail.
+#
+# Two things had to be fixed before the length was visible.
+#
+# 1. The TAG TEST. `(w & 0xF) == 8` fires on 11.8% of pointer-valued words, because
+#    program pointers are 4-aligned and so end in 0, 4, 8 or C. The vocabulary below was
+#    learned at handoff positions ONLY, where the position is not in doubt, and it is
+#    small in a way a noise population is not:
+#
+#        at validated positions   39,320 sightings   146 distinct words   20 distinct low-16
+#        by stepping 8 bytes      28,879 sightings 9,097 distinct words 3,677 distinct low-16
+#
+#    Testing the low 16 bits against the 17 values seen 20+ times drops the false-positive
+#    rate on pointer-valued words from 11.8% to 2.42%.
+#
+# 2. The GRANULARITY. The low 16 bits alone do not state the length (63.0% pure against a
+#    40.0% control). The WHOLE tag word does: 88.4% over 146 tags.
+#
+# Learned from FIRST entries only and then tested by walking to the second, third and
+# beyond -- an extrapolation to positions it was not fitted on:
+#
+#        step landed on a vocabulary tag            68,521    85.7%
+#        step landed elsewhere                      11,399
+#        CONTROL: a stride the table did not state             24.6%
+FX_TAG_LOW16 = frozenset({
+    0x0008, 0x0018, 0x0048, 0x0088, 0x0148, 0x0248, 0x0288, 0x0348, 0x0448,
+    0x0548, 0x0648, 0x0748, 0x0848, 0x0B48, 0x0C48, 0x0D48, 0x0E48,
+})
+FX_ENTRY = {
+    0x00000048: 64, 0x00000448: 64, 0x00000E48: 64, 0x00020008: 8,
+    0x00020018: 16, 0x00420008: 24, 0x02000048: 76, 0x02510448: 80,
+    0x05140048: 56, 0x54500148: 80, 0x54500248: 80, 0x54500448: 80,
+    0x54500848: 80, 0x54500C48: 80, 0x54540248: 80, 0x54540748: 80,
+    0x54540848: 80, 0x54540E48: 80, 0x95540288: 4,  0xD4540088: 88,
+    # terminal - the last entry of its table
+    0x02520448: 'T', 0x04440048: 'T', 0x04540048: 'T', 0x05400348: 'T',
+    0x08000248: 'T', 0x08000848: 'T', 0x0A800048: 'T', 0x15140848: 'T',
+    0x15400348: 'T', 0x22000248: 'T', 0x22000D48: 'T', 0x55140048: 'T',
+}
+
+
 # Base image inputs for the filters whose parameter fields are catalogued.
 _RULED_PARAMS = {1: 2, 12: 2, 15: 1, 11: 1}
 
@@ -1490,7 +1536,19 @@ class Record:
                     and self.asm.program_span(t + off, e):
                 prog = t + off
             yield q, tag, prog
-            q += 8
+            # The tag states the entry's length; 8 was a guess that happened to be the
+            # second commonest. Falls back to 8 for a tag the table does not carry, so a
+            # record with an unlisted tag degrades to the old behaviour rather than
+            # stopping - but a TERMINAL tag ends the table, which is what it means.
+            # An unknown tag STOPS the walk rather than falling back to 8. Falling back
+            # keeps 17% more entries and ruins them: the yielded tags then number 9,719
+            # distinct values with 81.0% in the vocabulary, against 228 and 96.5% when it
+            # stops. A small vocabulary is what a real entry population looks like, so the
+            # policy that shrinks it by a factor of 40 is the one telling the truth.
+            step = FX_ENTRY.get(tag)
+            if step is None or step == 'T':
+                return
+            q += step
 
     def fx_tree(self):
         """For filter 4: yield (offset, header, program offset) once PER PROGRAM SLOT.
