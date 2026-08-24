@@ -331,24 +331,40 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
 
             elif rec.filter_name == "transformation":
                 # Record.matrix is baked in only 644 of 2,635 transformation records in
-                # a real specimen (24%); the rest compute it from a program. Reading the
-                # largest of those programs (record 3182, 97 instructions) showed it is
-                # not a 6-float matrix+offset computation at all -- it initializes dozens
-                # of slots with rand() calls and values like scale ranges and iteration
+                # a real specimen (24%); most of the rest compute it from a program. The
+                # largest such program found (record 3182, 97 instructions) is not a
+                # 6-float matrix+offset computation at all -- it initializes dozens of
+                # slots with rand() calls and values like scale ranges and iteration
                 # counts, the shape of a randomized tile/scatter generator's parameter
-                # block, not a plain 2D transform. That is out of scope here: this
-                # implements only the baked-matrix case.
+                # block. That general case is out of scope here.
                 #
-                # Also tried and reverted: trusting a `translation`-adjacent program for
-                # the offset whenever its result happened to come out as two components.
-                # On a real specimen (record 167, matrix (1,0,0,-1), a pure Y-flip) that
-                # produced a visible, wrong X-shift -- the program it picked turned out to
-                # compute (0.2199, min(0.3905, 0.3905 * $size.x/$size.y)), a function of
-                # the record's own aspect ratio, not a translation at all. "Has two
-                # components" is not evidence of being an offset; Record.translation's own
-                # docstring gives the real discriminator (bit 26 of slot 1 means the offset
-                # is a program) but not which program computes it when several are present,
-                # which is not solved here. So: baked translation, or none at all.
+                # A slice of the "not baked" population is NOT that case, though: 3,103 of
+                # 3,103 sampled (x_DLG-Tools__* and a sample of x_serverhouse__*) have
+                # `rec.filter_programs` empty AND slot-1 bits 6 and 7 both clear -- the
+                # same bits Record.translation's own docstring reads as "no [matrix]
+                # parameter block to pack against". `rec.programs` being non-empty there
+                # is the record's SIZE-EXPRESSION program (filter_programs already
+                # excludes it, same trap as the blend-opacity bug elsewhere in this file)
+                # -- there is no matrix-computing code at all, only a size computation.
+                # Same compiler convention already established for blend mode (absent =
+                # 0) and blend opacity (absent = 1.0): a parameter left at its default is
+                # not emitted, so this takes identity (no scale/rotate/shear) rather than
+                # raising for that specific, corpus-confirmed shape.
+                #
+                # `translation` had the identical bug, independently of the above: it
+                # checked `rec.programs` (482 of 729 real "baked matrix, no baked
+                # translation" specimens have ONLY a size-expression program there, no
+                # program that could compute a translation at all) instead of
+                # `rec.filter_programs`, so it was raising "translation is a program" on
+                # records with no translation program whatsoever. Fixed the same way.
+                #
+                # Genuinely program-computed matrices/translations (filter_programs
+                # non-empty) are still out of scope -- which of possibly several programs
+                # computes what is not identified, and "has 2 components" was already
+                # tried and found wrong as a discriminator (record 167, matrix (1,0,0,-1),
+                # a pure Y-flip: the 2-component program picked this way turned out to
+                # compute (0.2199, min(0.3905, 0.3905*$size.x/$size.y)), a function of the
+                # record's own aspect ratio, not a translation).
                 #
                 # Which direction the matrix applies: the conventional raster
                 # backward-mapping convention -- for each OUTPUT position, transform it
@@ -372,19 +388,22 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # should. Both directions behave as the convention predicts; neither
                 # proves the format's own engine does not do the opposite.
                 m = rec.matrix
+                fprogs = rec.filter_programs
                 if m is None:
-                    raise Unsupported("matrix is not baked (computed by a program of "
-                                      "unidentified shape)")
+                    if fprogs:
+                        raise Unsupported("matrix is not baked (computed by a program of "
+                                          "unidentified shape)")
+                    m = (1.0, 0.0, 0.0, 1.0)
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise Unsupported("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
 
                 offset = rec.translation
                 if offset is None:
-                    if rec.programs:
+                    if fprogs:
                         raise Unsupported("translation is a program, and which of "
                                           "%d programs computes it is not identified"
-                                          % len(rec.programs))
+                                          % len(fprogs))
                     offset = (0.0, 0.0)
 
                 W, H = rec.width, rec.height
@@ -398,6 +417,69 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
 
                 result = sbsruntime.image_sampler(outputs[rec.edges[0]])(in_pos)
                 outputs[i] = to_image(result, W * H, H, W)
+                if tainted:
+                    synthetic.add(i)
+
+            elif rec.filter_name == "levels":
+                # Where the five parameters live (levelinlow/levelinhigh/levelinmid/
+                # leveloutlow/levelouthigh, each independently baked-or-program) is
+                # settled corpus-wide -- FORMAT-NOTES.md, "`levels` joins after all, and
+                # the front/back question closes", 174,329/174,396 (99.96%) tail-placement
+                # reads, containment-verified against declared Float4 sources 105/132. Not
+                # settled by that research, and not re-derived here: the FORMULA itself.
+                # This is the standard Photoshop/Substance "Levels" remap -- clamp-normalize
+                # to [in_low, in_high], an optional gamma pivot around in_mid, then rescale
+                # to [out_low, out_high] -- taken as industry-standard, ubiquitous, known
+                # math rather than something needing corpus mining the way the parameter
+                # LOCATIONS did. Checked only for internal self-consistency (a controlled
+                # ramp input, below), not against a ground-truth reference renderer.
+                if len(rec.edges) < 1 or rec.edges[0] not in outputs:
+                    raise Unsupported("edge has no output yet")
+                tainted = rec.edges[0] in synthetic
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+
+                src = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos)
+
+                # Compiler default-omission convention (already established for blend
+                # mode and blend opacity elsewhere in this file): a parameter left at
+                # its default is simply absent from the bytecode. Levels' identity
+                # transform is in_low=0, in_mid=0.5, in_high=1, out_low=0, out_high=1.
+                DEFAULTS = {'levelinlow': 0.0, 'levelinmid': 0.5, 'levelinhigh': 1.0,
+                           'leveloutlow': 0.0, 'levelouthigh': 1.0}
+                params = dict(DEFAULTS)
+                for name, kind, value in rec.named_parameters:
+                    if name not in DEFAULTS:
+                        continue
+                    if kind == 'baked':
+                        params[name] = np.float32(value)
+                    else:
+                        sbsruntime.SAMPLERS[0] = sbsruntime.image_sampler(outputs[rec.edges[0]])
+                        params[name] = to_image(
+                            eval_program(asm, value, default_inputs(asm, N), {}, N,
+                                        pos=pos, W=W, H=H),
+                            N, H, W).reshape(N, -1)[:, :1]
+
+                in_low, in_mid, in_high = (params['levelinlow'], params['levelinmid'],
+                                           params['levelinhigh'])
+                out_low, out_high = params['leveloutlow'], params['levelouthigh']
+
+                span = in_high - in_low
+                span = np.where(np.abs(span) < 1e-6, 1.0, span)
+                t = np.clip((src - in_low) / span, 0.0, 1.0)
+
+                mid_norm = np.clip((in_mid - in_low) / span, 1e-4, 1 - 1e-4)
+                with np.errstate(all="ignore"):
+                    exponent = np.log(0.5) / np.log(mid_norm)
+                    gamma_t = np.power(t, exponent)
+                t = np.where(np.abs(mid_norm - 0.5) < 1e-6, t, gamma_t)
+
+                result = out_low + t * (out_high - out_low)
+                outputs[i] = to_image(result, N, H, W)
                 if tainted:
                     synthetic.add(i)
 
