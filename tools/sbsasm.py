@@ -1795,13 +1795,22 @@ class Assembly:
         # programs that transpile start 4-aligned, while misaligned starts are 12% of the
         # 125 that fail - an enrichment of about 1,800x.
         #
-        # Odd is rejected here because it is impossible. The 84 that are even but not
-        # 4-aligned are left in deliberately: 71 of them lie INSIDE a program that is
-        # 4-aligned, so they are the same bytes read at an offset rather than programs of
-        # their own, but "suspicious" is not "impossible" and the remaining 13 stand
-        # alone. Rejecting those needs the 4-alignment claim, which holds at 99.988% and
-        # not 100%. See FORMAT-NOTES.md.
-        if p & 1:
+        # The requirement is 4, not 2. A pointer is a slot value plus the universal skew
+        # of 52, and 52 is 0 mod 4, so a program that begins at a record word boundary
+        # arrives 4-aligned. Of the 226 starts that were not, 218 (96.5%) are positively
+        # accounted for as not being programs at all:
+        #
+        #     odd, impossible for a u16 stream                142
+        #     even, but the span overlaps a 4-aligned program  74
+        #     even, standalone, and malformed - these two are   2
+        #       the ONLY remaining truncated-immediate failures
+        #                                                    ---
+        #                                                     218   of 226
+        #
+        # Eight are unexplained and are lost by this check. That is the trade taken:
+        # 0.0004% of programs against 218 that are demonstrably not programs, one of
+        # which was inflating the transpiler's failure list. See FORMAT-NOTES.md.
+        if p & 3:
             return False
         n = struct.unpack_from('<H', d, p)[0]
         if not (1 <= n <= 20000):

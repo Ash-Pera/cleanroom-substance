@@ -27343,3 +27343,78 @@ Every piece of the mechanism that could be checked against material we hold chec
 exactly. The missing part is **corpus**: to predict a real material end to end we would
 need the packages it instances, and the one measurement that matters is that those account
 for 96.4% of what gets compiled.
+
+## Program pointers are 4-aligned, and 226 that were not had been counted all along
+
+`valid_program` had three checks and the cheapest one was missing: the address. An
+instruction stream is made of u16 tokens and the count that check 1 reads is itself a
+u16, so a program cannot begin on an odd byte. 142 did.
+
+They are not spread evenly, which is how they surfaced. Sorting every program in the
+corpus by whether it transpiles:
+
+    mod 4    transpiles              fails
+      0      1,915,402   100.0%        110    88.0%
+      1            129     0.0%         13    10.4%
+      2             82     0.0%          2     1.6%
+      3              0                    0
+
+Misaligned starts are 0.011% of programs that transpile and 12% of those that fail — an
+enrichment of about 1,800x. A predicate that admits impossible addresses will admit
+plausible garbage, and the garbage shows up downstream as decode failures.
+
+### Why 4 and not 2
+
+A pointer is a slot value plus the universal skew of 52, and 52 is 0 mod 4, so a program
+starting at a record word boundary arrives 4-aligned. Requiring 4 rather than merely
+even costs 84 more candidates, and 76 of those are positively accounted for:
+
+    odd, impossible for a u16 stream                    142
+    even, but its span overlaps a 4-aligned program      74
+    even, standalone, and malformed                       2
+                                                        ---
+                                                        218   of 226   (96.5%)
+
+The 74 are the same bytes read at an offset — they transpile precisely *because* a
+suffix of real three-address code is itself valid three-address code, so "it transpiles"
+is not evidence of being a program's entry point. Eight are unexplained and this check
+loses them. That is the trade: 0.0004% of programs against 218 that demonstrably are not
+programs.
+
+### What it was costing
+
+The two malformed ones are the whole of the remaining truncated-immediate story. Both
+are single-instruction `const`s declaring two float components with two and four
+immediate bytes, where eight are required. The shape is not itself impossible — `0x0440`
+carries two immediate bytes for two declared components 56,009 times without complaint,
+because its type field is 0, which means boolean, and *"the component field is unused for
+booleans"*. These two have type 1, which means float, and are simply short.
+
+    distinct corpus programs   1,915,738  ->  1,915,512
+    transpiled                  99.9935%  ->    99.9943%
+    failures                          125  ->        110
+    of which truncated immediates      15  ->          0
+
+**Every remaining transpile failure in the corpus is now one cause**: the 110
+condition-less `while` programs, which the transpiler refuses to guess at rather than
+inventing a trip count — the reading withdrawn twice in this document already.
+
+### A correction to what the last session recorded
+
+The 168 failures written down as "the honest cost of finding 460,252 more programs,
+mostly truncated immediates" were not that. Fifteen were impossible addresses that
+`valid_program` should never have admitted, and the rest were the condition-less loops,
+already known. The measurement that produced "168" also ran before this session's
+corpus grew from 438 files to 641.
+
+A second measurement error is worth recording because it nearly became a third false
+claim. Re-measuring the transpiler here first gave **98.67%**, a large regression, with
+26,382 failures reading "empty program". That was the harness: it passed `record.end` as
+the decode limit, and a program named by a record's slot may live in a NEIGHBOURING
+record — a fact this document already states for ramps. `run_file.py` had it right,
+using `body_hi`, because a program's own instruction count bounds it and the limit only
+has to be large enough. Corrected, the same sweep gives 99.9935%.
+
+That is the second time in two sessions that a figure disagreeing with the notes turned
+out to be the measurement rather than the format. The rule stands: check the harness
+before rewriting the claim.
