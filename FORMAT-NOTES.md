@@ -29088,3 +29088,80 @@ records rather than agreement of three totals.
                                       in Electric_Liquid alone
     gradient  filter  0   OPEN        containment cannot see ramp tables; a quantisation-
                                       aware test is the obvious next move, not yet written
+
+## Three more filters: gradient, curve, dirmotionblur — and a powerless predicate in my own test
+
+Picked by which payloads are actually DECODED, not by which sound easy. `gradient` has
+`Record.ramp`, `curve` has `Record.curve_points`, and `dirmotionblur` has named,
+containment-verified parameters. The filters that merely sound cheap — `shuffle`, `hsl`,
+`sharpen` — have no decoded parameter slots, so implementing them would be invention.
+
+    records with an implemented filter    85.2%  ->  89.0%   (769,990 -> 804,335)
+    outputs with a complete closure       18.81% ->  19.37%  (468 -> 482)
+
+The record figure moves and the output figure barely does, which is the `fxmaps` gate
+again, exactly as the previous section predicted. This was not done for the output figure.
+
+### What each one rests on
+
+**gradient** is a ramp lookup. Which component of a ramp entry is the POSITION was not
+assumed: over every table with 3+ stops, component 0 ascends monotonically in **100%** of
+tables in all four width classes and no other component beats 25%. Only the greyscale
+widths are implemented — the colour widths carry position plus **two** value components,
+not three, so an RGB reading of them would be invention and the implementation refuses
+them by name. The trailing `32768` that class-bit-8 adds is constant in 3,175 of 3,175
+reads, so it is a field this does not need rather than a channel.
+
+**curve** evaluates the cubic Bezier that `curve_points` decodes. The handles are absolute
+positions rather than offsets — a real S-curve knot reads (0.464, 0.382) with handles
+(0.379, 0.119) and (0.549, 0.645), which brackets the knot on both sides only under the
+absolute reading.
+
+**dirmotionblur** is a straight, uniformly weighted line kernel. `mblurangle` is in TURNS,
+the same unit confirmed from bytecode for `directionalwarp`'s `warpangle` (3,336 of 3,336
+angle-shaped programs divide by 2*pi). It inherits `directionalwarp`'s unverified
+256-pixel intensity reference, and the same possible constant-factor error.
+
+### The test that failed, and why the test was wrong
+
+The obvious check for `curve` is that an identity spline returns its input. Detecting
+"identity" as *every knot lies on the diagonal* found 215 records — and **39 of 40 failed**.
+
+The predicate was the problem, not the code. It says nothing about the HANDLES, and a
+knot-on-diagonal spline with curved handles is not the identity at all: `MetalSubstance009`
+record 4062 has knots (0,0) and (1,1) with an in-handle at (0.2, 0.95), which is a hard
+curve. Requiring knots *and* handles on the diagonal leaves **1 record in the whole
+corpus**, and that one passes exactly, at 0.00e+00.
+
+So 214 of the 215 were right to disagree with me. This is the project's signature failure
+mode — a predicate that admits almost everything and therefore discriminates nothing —
+found this time in my own test rather than in the format. The lesson that generalises: the
+same rule applies to test predicates as to findings, and a test is a claim about what
+*should* fail.
+
+### What replaced it
+
+`tools/test_filters.py`, three checks with power:
+
+    STRICT identity        n=1     worst |out - in|          0.00e+00
+    ENDPOINTS              n=61    worst |curve(0) - y0|     1.91e-03
+                                   worst |curve(1) - y1|     0.00e+00
+    INDEPENDENT bisection  n=61    median 1.28e-06, worst    2.33e-04
+
+The third is the useful one: `render.py` tabulates the Bezier and samples it, while the
+test solves `x(t) = X` by bisection per sample. Agreeing to 1e-3 over 61 records means the
+tabulation is a faithful evaluation of the reading, independent of whether the reading is
+what the engine does.
+
+Plus two bound checks that can fail: a blur averages, so it cannot leave its input's range
+(200 records, holds); a ramp lookup returns table values, so it is bounded by the table
+(20 records, holds).
+
+### A note on how these had to be tested
+
+None of the three can be tested by sweeping the corpus and rendering. `gradient` computes
+**zero** times that way — all 1,230 of its records sit behind an unimplemented upstream
+filter, and the sweep reports "edge has no output yet" for every one. The tests seed the
+input through `render(precomputed=...)` instead. A filter that never runs cannot be
+validated by running the renderer at it, and a coverage number that counts it as
+"implemented" is measuring the wrong thing.

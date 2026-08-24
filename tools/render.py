@@ -699,6 +699,177 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 if tainted:
                     synthetic.add(i)
 
+            elif rec.filter_name == "gradient":
+                # A gradient map: the input's luminance indexes an embedded ramp.
+                # `Record.ramp` is decoded and corpus-verified (FORMAT-NOTES.md); what
+                # is added here is only the lookup.
+                #
+                # Which component is the POSITION was not assumed. Over every ramp with
+                # 3+ stops, component 0 ascends monotonically in 100% of tables in all
+                # four width classes, and no other component does better than 25% -- so
+                # component 0 is the stop position and the rest are values.
+                #
+                # Only the GREYSCALE widths are implemented. The colour widths carry
+                # position plus TWO components, not three, so an RGB reading of them
+                # would be invention:
+                #
+                #     (pos, value)                greyscale            603 records
+                #     (pos, value, 32768)         greyscale + cls b8 2,683
+                #     (pos, v1, v2)               colour                 144   refused
+                #     (pos, v1, v2, 32768)        colour + cls bit 8     457   refused
+                #
+                # The trailing 32768 is constant in 3,175 of 3,175 reads, so the bit-8
+                # width adds a field this does not need rather than a channel.
+                if len(rec.edges) < 1 or rec.edges[0] not in outputs:
+                    raise Unsupported("edge has no output yet")
+                table = rec.ramp
+                if not table:
+                    raise Unsupported("gradient record carries no readable ramp")
+                if rec.colour:
+                    raise Unsupported("colour ramp width carries 2 value components, "
+                                      "not 3 -- an RGB reading is not established")
+                if isinstance(table[0][0], float):
+                    stops = np.array([e[0] for e in table], dtype=np.float32)
+                    vals = np.array([e[1] for e in table], dtype=np.float32)
+                else:
+                    stops = np.array([e[0] for e in table], dtype=np.float32) / 65535.0
+                    vals = np.array([e[1] for e in table], dtype=np.float32) / 65535.0
+                tainted = rec.edges[0] in synthetic
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+                src = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos)
+                t = np.clip(src[:, :1], 0.0, 1.0)
+                result = np.interp(t.ravel(), stops, vals).astype(np.float32)
+                outputs[i] = to_image(result.reshape(N, 1), N, H, W)
+                if tainted:
+                    synthetic.add(i)
+
+            elif rec.filter_name == "curve":
+                # A per-channel tone curve. `Record.curve_points` is decoded and
+                # corpus-verified: six floats per knot, read there as a position pair
+                # followed by an incoming and an outgoing tangent, and the first table
+                # read out was the identity.
+                #
+                # The handles are ABSOLUTE positions, not offsets -- a real S-curve knot
+                # reads (0.464, 0.382) with handles (0.379, 0.119) and (0.549, 0.645),
+                # which brackets the knot on both sides only under the absolute reading.
+                # So a segment is the cubic Bezier P0=knot_i, P1=out_i, P2=in_{i+1},
+                # P3=knot_{i+1}, and y is found by inverting x(t) for t.
+                #
+                # NOT verified: that the engine inverts the same way. A Bezier segment is
+                # not a function of x in general, and this bisects x(t) rather than
+                # solving it, so a curve with a non-monotonic x would differ. Every table
+                # read here has ascending x (`curve_points` checks it), where the two
+                # agree.
+                if len(rec.edges) < 1 or rec.edges[0] not in outputs:
+                    raise Unsupported("edge has no output yet")
+                knots = rec.curve_points
+                if not knots or len(knots) < 2:
+                    raise Unsupported("curve record carries no readable spline")
+                tainted = rec.edges[0] in synthetic
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+                src = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos)
+
+                # Sample the spline onto a fixed table once, then look up per pixel --
+                # bisecting per pixel would be the same answer far slower.
+                TAPS = 1024
+                xs, ys = [], []
+                for k in range(len(knots) - 1):
+                    p0 = (knots[k][0], knots[k][1])
+                    p1 = (knots[k][4], knots[k][5])
+                    p2 = (knots[k + 1][2], knots[k + 1][3])
+                    p3 = (knots[k + 1][0], knots[k + 1][1])
+                    u = np.linspace(0.0, 1.0, TAPS // max(1, len(knots) - 1),
+                                    dtype=np.float32)
+                    b0 = (1 - u) ** 3
+                    b1 = 3 * u * (1 - u) ** 2
+                    b2 = 3 * u * u * (1 - u)
+                    b3 = u ** 3
+                    xs.append(b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0])
+                    ys.append(b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1])
+                cx = np.concatenate(xs)
+                cy = np.concatenate(ys)
+                order = np.argsort(cx)
+                cx, cy = cx[order], cy[order]
+
+                flat = np.clip(src, 0.0, 1.0)
+                result = np.interp(flat.ravel(), cx, cy).astype(np.float32)
+                outputs[i] = to_image(result.reshape(flat.shape), N, H, W)
+                if tainted:
+                    synthetic.add(i)
+
+            elif rec.filter_name == "dirmotionblur":
+                # Parameter locations and UNITS are settled: filter 11 declares exactly
+                # `intensity` and `mblurangle`, named by containment against the
+                # permitted sources (FORMAT-NOTES.md, the filter-naming section), and
+                # `mblurangle` is an angle in TURNS -- the same convention confirmed from
+                # bytecode for directionalwarp's `warpangle`, where 3,336 of 3,336
+                # angle-shaped programs divide by 2*pi.
+                #
+                # NOT verified, and shared with directionalwarp above: the absolute pixel
+                # scale of `intensity`. This uses the same fixed 256-pixel reference and
+                # inherits the same possible constant-factor error. Wrong here means a
+                # blur of the wrong LENGTH along the right direction, not a wrong shape.
+                #
+                # The kernel is a straight, uniformly weighted line through the sample
+                # point, symmetric about it -- that is what a directional motion blur is,
+                # and it is engine math rather than anything carried in this file.
+                if len(rec.edges) < 1 or rec.edges[0] not in outputs:
+                    raise Unsupported("edge has no output yet")
+                tainted = rec.edges[0] in synthetic
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+
+                DEFAULTS = {'intensity': 0.0, 'mblurangle': 0.0}
+                params = dict(DEFAULTS)
+                for name, kind, value in rec.named_parameters:
+                    if name not in DEFAULTS:
+                        continue
+                    if kind == 'baked':
+                        params[name] = np.float32(value)
+                    else:
+                        sbsruntime.SAMPLERS[0] = sbsruntime.image_sampler(
+                            outputs[rec.edges[0]])
+                        params[name] = to_image(
+                            eval_program(asm, value, default_inputs(asm, N), {}, N,
+                                        pos=pos, W=W, H=H),
+                            N, H, W).reshape(N, -1)[:, :1]
+
+                intensity = np.asarray(params['intensity'], dtype=np.float32)
+                angle = np.asarray(params['mblurangle'], dtype=np.float32)
+                REFERENCE_PX = 256.0
+                length = np.clip(np.abs(intensity), 0.0, 256.0) / REFERENCE_PX
+                turn = 2.0 * np.pi * angle
+                sampler = sbsruntime.image_sampler(outputs[rec.edges[0]])
+
+                TAPS = 17
+                acc = None
+                for k in range(TAPS):
+                    f = (k / (TAPS - 1.0)) - 0.5          # -0.5 .. +0.5, centred
+                    dx = (length * f) * np.cos(turn)
+                    dy = (length * f) * np.sin(turn)
+                    off = np.concatenate(
+                        [dx * np.ones((N, 1), dtype=np.float32),
+                         dy * np.ones((N, 1), dtype=np.float32)], axis=-1)
+                    v = sampler(pos + off)
+                    acc = v if acc is None else acc + v
+                outputs[i] = to_image(acc / float(TAPS), N, H, W)
+                if tainted:
+                    synthetic.add(i)
+
             else:
                 raise Unsupported("filter %r not implemented" % rec.filter_name)
 
