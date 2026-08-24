@@ -5506,7 +5506,7 @@ Perlin_Noise_Animated fxmaps 1  ->  08=1
 |---|---|---:|---|
 | `0x02` / `0x03` | **blend** | 154,400 | exact counts + two-input arity, independently derived |
 | `0x04` / `0x05` | **transformation** | 108,959 | exact 5+2 split alongside bitmap |
-| `0x1E` / `0x1F` | **levels** | 42,865 | 9/10 exact, incl. a 4+2 channel split |
+| `0x1E` / `0x1F` | **levels** | 42,865 | 9/10 exact (all five named specimens source-excluded); **re-derived from permitted sources by containment, 112/113 — see "`levels`, re-established without the excluded specimens"** |
 | `0x28` / `0x29` | **pixelprocessor** | 24,994 | exact on 2 specimens |
 | `0x08` / `0x09` | **fxmaps** | 19,983 | 8/9 exact |
 | `0x0C` / `0x0D` | **uniform** | 12,759 | exact counts + direct byte read of RGBA floats |
@@ -28892,3 +28892,68 @@ Reading a `.sbsar`'s stored images: done, and correct. Evaluating a real materia
 end to end: 4.7% of outputs, none deeper than 20 records, against a median requirement of
 394. The distance is not spread across sixteen filters. It is one filter, and it is the
 one this document knows least about.
+
+## `levels`, re-established without the excluded specimens
+
+The identification of `levels` as filter 15 (`0x1E` / `0x1F`, 42,865 records) rested on
+exact-count matching over instance-free specimens, and **every specimen it names is
+Allegorithmic-authored**: `BnW_Spots_Animated`, `Cells_Animated`, `Clouds_Animated`,
+`Crystal_Animated` and `Electric_Liquid` — the last of which this document twice calls "the
+decisive specimen". All five are source-excluded by the provenance rule. The rule was
+applied once and never saved as code (see `tools/provenance.py`), so this went unnoticed:
+the identification stood on evidence the project's own boundary forbids.
+
+Exact-count matching cannot be re-run clean. It needs an instance-free specimen, and **no
+permitted instance-free specimen in the corpus contains a `levels` node at all** — that is
+precisely why the excluded `pairs5` animated samples were such a windfall when they were
+extracted. A different route was needed, not a re-run.
+
+### Containment, and the control that makes it evidence
+
+A permitted source declares a distinctive float on a `levels` node; the compiled binary
+stores that value in a record of some filter id. Finding it again in a filter-15 record is
+evidence — but only if the same procedure does not put every other filter's values there
+too. A large filter would otherwise win by being large. So the diagonal is reported beside
+the off-diagonal, over 38 permitted paired specimens, values with fewer than five decimal
+digits dropped as indiscriminate, and values a file declares on two different source
+filters dropped as unable to separate them:
+
+    declared on       targets   found   on-target
+    levels                124     113    112   99.1%     levels=112, fxmaps=1
+    transformation        163     165    162   98.2%
+    uniform               280     279    263   94.3%
+    directionalwarp        15      16     15   93.8%
+    warp                   10      11     10   90.9%
+    blend                 119     190     99   52.1%     blend=99, fxmaps=30, levels=24
+
+**`levels` scores 112 of 113, the highest of any filter with a substantial sample.** One
+stray value landed in an `fxmaps` record; eleven of the 124 targets were never found at all,
+which is what a compiler-eliminated node or a program-valued parameter looks like.
+
+`blend`'s 52% is the reason to trust the rest. Its declared opacities are shallow decimals
+that recur across the whole corpus, and `blend` is the commonest filter, so the method fails
+on it — visibly, in the same table. A test that scored everything at 99% would be measuring
+its own construction. `tools/containment.py` re-runs the whole matrix.
+
+### What this settles, and what it does not
+
+**`levels` = filter 15 is re-established on permitted evidence alone.** The published
+9/10 count-exact figure should be read as withdrawn — its specimens are excluded — and this
+containment result read in its place.
+
+`warp` comes along with it at 10/11, which matters because its published evidence (3/3
+exact) names `Crystal_Animated`, `Crystal_2_Animated` and `Electric_Liquid`, all excluded.
+Ten permitted values is a thinner base than `levels`' 124 and is recorded as suggestive.
+
+Three identifications are **not** rescued and stay open, all of them resting on excluded
+specimens with no permitted containment evidence to replace it:
+
+    fxmaps    0x08/0x09   19,983 records   3/3 exact, all excluded; no permitted values
+    blur      0x14/0x15    8,313 records   "11 = 11" in Electric_Liquid alone; 3/5 here
+    gradient  0x00/0x01    9,367 records   the distinctive count of 6 is Electric_Liquid;
+                                           one permitted value declared, not found
+
+`fxmaps` is the awkward one: it is where stray values from every other filter tend to land
+(30 from `blend`, 6 from `uniform`), which is the signature of a parameter-dense record
+rather than of a wrong identification — but it is not evidence *for* the identification
+either, and none of the containment work bears on it.
