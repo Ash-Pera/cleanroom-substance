@@ -27861,3 +27861,91 @@ that some other piece of code never received.** The docstring said the root list
 canonical. The loader honoured it. The path resolution did not, and nothing compared what
 was asked for against what arrived. Every one of these has been silent, and every one has
 been caught by a count that looked slightly off rather than by anything failing.
+
+## The class word: 83.4% predictable, and the residue is six bits
+
+Attempting to lock it down for the forward direction. It did not lock down, but it moved
+from "442 values, 38.2% of configurations ambiguous" to a stated rule with a measured
+error, and the residue is now localised to six bits rather than sixteen.
+
+### It is largely a function of the record's shape
+
+Splitting by **specimen**, learning the modal class word per key on one half and predicting
+the other:
+
+    predictor                                    test records    exact
+    filter + program count + edge count               468,336    83.4%     23 keys unseen
+      + colour and resolution                         468,336    86.4%   6,516 unseen
+      + header size and record length                 468,336    87.9%  23,927 unseen
+
+**83.4% from three properties, held out, with 23 unseen keys in 468,336 records.** That is
+a rule and not a lookup - the later rows buy three points by memorising, which the unseen
+counts give away. For a forward compiler this is the operative number: compute the shape you
+want, look up the class word, and be right five times in six.
+
+### Bit 0 is the program flag, confirmed broadly
+
+    bit 0 == "this record carries a program"      94.9% over 903,927 records
+
+    shuffle, sharpen, curve, dyngradient   100.0%      blend    99.4%
+    bitmap 99.9%   levels 99.9%   warp 99.8%           gradient 99.1%
+    transformation  84.4%          fxmaps  87.6%
+
+The two weak filters read differently and consistently: `transformation`'s bit 0 tracks
+"has parameters beyond the header" at 85.7%, and `fxmaps`'s tracks "total instruction count
+above 8" at 94.6%. So the bit is about *carrying code*, and on the two filters where a
+record can have a program without that meaning anything it tracks the thing that does.
+
+Bit 3 is universal - set in every record, and never once wrong in 468,336 predictions.
+
+### Bit 11 is not a general flag
+
+It looked like ">1 program", at 97.5% for `warp`, 97.9% `directionalwarp`, 96.7% `blur`,
+98.2% `sharpen`. It is not: `pixelprocessor` scores **0.4%** and `fxmaps` **6.7%** - the two
+filters that routinely carry several programs, which is exactly where a program-count flag
+would have to work. Overall 74.6%. It holds only for filters that never exceed two programs,
+which makes it a fact about those filters and not about the bit.
+
+### The residue is six bits, and four of them resist everything
+
+Taking the 16.6% the shape rule gets wrong and asking which bits differ:
+
+    bit    flips in mispredictions    share of all test records
+     0            21,616                      4.62%
+     4            19,729                      4.21%
+     5            18,211                      3.89%
+     8            16,140                      3.45%
+     7            10,924                      2.33%
+     9            10,016                      2.14%
+     3, 6                 11                      0.00%
+     10-14         under 2,000 each        under 0.42%
+
+Bits 10 to 14 are essentially solved by the shape rule; bits 3 and 6 are constants. What is
+left is **0, 4, 5, 7, 8, 9**, and bit 0 is understood. Scanning bits 4, 5, 7, 8 and 9
+against fifteen observable properties - program count, total and longest instruction count,
+inline-ness, parameter count, colour, resolution inheritance, squareness - with the bit's
+own marginal rate as the baseline, **nothing clears it** except a weak `uniform` bit 8
+against colour (68.2%, lift +8.2%).
+
+Those are the same bits the earlier census left open: *Class bits 4 and 5: associated with
+program length, not identified*, and *Class-word bits 7, 8 and 9*. Two independent passes
+have now failed on the same four bits.
+
+### Where prediction is worst
+
+    uniform 38.5%    shuffle 63.6%    pixelprocessor 69.2%    transformation 76.4%
+    blend   91.7%    levels  96.4%    fxmaps         89.4%    gradient       84.7%
+
+`uniform` is the outlier and the most tractable specimen: 23 class words over 16,771
+records, no inputs, one constant output. Its values separate cleanly on bits 8 and 9 -
+records with neither set are 1-9% colour, records with either are 55-94% - so those two bits
+carry something about the constant's channel count. That is a lead with a mechanism behind
+it, and the obvious next probe.
+
+### For the forward compiler
+
+The practical position is unchanged and now has a number on it. A compiler does not need to
+derive the class word: it needs to emit one whose layout it can honour. Predicting from
+shape is right 83.4% of the time, and lifting a `(class word, layout)` pair from an already
+decoded record is right always. What is not available is *understanding*, and four bits of
+it have now defeated two separate attempts.
