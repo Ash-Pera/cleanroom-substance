@@ -23429,3 +23429,49 @@ with enough confidence to put an edge in the graph.
     unread and altering nothing - consistent              401
     read by a program off the layout table              1,833
     read by nothing this project can find                  29
+
+## The last 29 inputs, and what they have in common
+
+Listing them - the same move that worked on the 7 unread parameters - shows they are not
+scattered:
+
+    Perlin_Noise_Animated    scale, speed, loop_duration, directionnal, Angle
+    Plasma_Animated          speed, loop_duration, directionnal, angle
+    Crystal_Animated         speed, loop_duration
+    Crystal_2_Animated       speed, loop_duration
+    Cells_Animated           distance, speed, loop_duration
+    radial blur grayscale    _Iterations, _Center, _Radius
+    radial blur color        _Iterations, _Center, _Radius
+    RoadSubstance002         road_lines_edge_warping
+    RoadLinesSubstance002    edge_warping
+    DeepVectorWarpMorph      intensity
+    find_alpha0_pixel        offset
+
+Two clusters carry most of it: **animation parameters** in five `*_Animated` packages -
+`speed`, `loop_duration`, `angle`, and a `$time`-driven cycle is what those name - and
+**`_Iterations`, `_Center`, `_Radius`** in two radial blurs.
+
+### Not a multi-graph artifact
+
+The obvious structural explanation is that the input belongs to a graph whose records are not
+in the assembly being read. It is not:
+
+    the 7 files holding these inputs    0 multi-graph   (0%)
+    every other file                   30 multi-graph   (7%)
+
+Every one is single-graph, and *less* likely to be multi-graph than the corpus at large.
+
+### Where it stops
+
+29 inputs of 8,441, 0.34%, declared in single-graph packages, claiming to alter outputs, and
+referenced by no program in the file by uid. The animation cluster suggests a reading that
+this corpus cannot test - that a host modulates `$time` from `speed` and `loop_duration`
+before the graph runs, so the graph never reads them - and suggesting it is as far as the
+evidence goes.
+
+    declared inputs                          8,441
+    read by a layout-named program           5,559
+    an image, a $global, or a string           619
+    unread and altering nothing, consistent    401
+    read by a program off the layout table   1,833
+    read by nothing this project can find       29
