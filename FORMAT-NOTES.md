@@ -27489,3 +27489,44 @@ records failed.
 The one thing this does not explain is `passthrough`'s cull rule, which remains
 undetermined. Everything else about the pipeline's shape follows from a format sized by its
 textures.
+
+## Correction: the corpus is 438 files, not 641, and every count this session was inflated
+
+`DISTINCT.txt` is distinct by PATH. It had quietly stopped being distinct by content.
+
+    lines in DISTINCT.txt              641
+    distinct path strings              641
+    distinct file contents (sha1)      438
+    hashes appearing more than once    138
+
+Extraction had written the same `.sbsasm` into more than one place — 120 redundant
+copies under `tiny/`, 78 under `pairs/`, 4 in the main corpus directory and 1 in
+`acg2/`, with single files appearing as many as five times. Nothing failed and nothing
+looked wrong, which is why it survived: a duplicate file is a perfectly fair sample of
+itself, so every ratio stayed about right. What broke was every COUNT, inflated by
+about 20%, and the weighting, which silently gave whichever files happened to be
+extracted more than once up to five times their share of the evidence.
+
+Deduplicated by content, the audit returns exactly the figures recorded before this
+session, which is the strongest evidence that 438 is the real number:
+
+                                   as counted (641)     deduplicated (438)
+    records                             1,086,833                904,165
+    edge slots                          1,558,119              1,302,465
+    genuinely unread parameters                12                      7
+    distinct programs                   1,915,512              1,611,534
+    transpiled                          99.9943%               99.9932%
+    transpile failures                        110                    110
+
+The failure count is identical because those seven files were not among the duplicated
+ones — a reminder that the inflation was not uniform across any particular finding.
+
+**Every count in this session's two earlier commits is affected** and should be read as
+the 641-path figure. The ratios and the correlations are not: a correlation between a
+slot's value and a record's index is unchanged by counting some files twice, and so is
+"218 of 226 misaligned starts are accounted for". The conclusions stand; the magnitudes
+do not.
+
+The list is now deduplicated by content, and `tools/corpus.py` exists so that reading it
+any other way is the exception rather than the default. That is the actual fix — the
+figure was wrong for as long as it was, precisely because nothing ever checked.

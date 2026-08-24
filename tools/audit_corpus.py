@@ -194,5 +194,9 @@ def main(paths):
             print('   %-52s %s' % (p.split('/')[-1][:52], e))
 
 if __name__ == '__main__':
-    paths = [l.strip() for l in open('DISTINCT.txt') if l.strip()]
+    # Through `corpus.paths`, not by reading DISTINCT.txt directly: that list is distinct
+    # by PATH, and 641 of its paths were 438 distinct files. Every count printed below
+    # was inflated by about 20% until this went through the deduplicating loader.
+    import corpus
+    paths = corpus.paths(verbose=True)
     main(paths[:int(sys.argv[1])] if len(sys.argv) > 1 else paths)
