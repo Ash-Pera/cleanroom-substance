@@ -21515,3 +21515,54 @@ nothing yet distinguishes those.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## The ramp table can live in a neighbouring record
+
+`Record.ramp` required its table to start inside the record that names it:
+
+    if not (self.offset < start < self.end): return None
+
+That is allocation semantics, and this file establishes the opposite in its own section on
+the record directory: **the directory is a sorted PARTITION, not an allocation, and a
+structure a record points at need not lie inside it.** The reader contradicted a rule the
+notes already had.
+
+654 records failed on it. Every one of them:
+
+    lands inside another record        654 / 654
+    that record is exactly ONE back    654 / 654
+    the table fits at the formula width  654 / 654
+    stop positions ascend              654 / 654
+
+Unanimous on all four. Their positions read like `[0, 32768, 33044, 65535]` - a full-range
+ramp - and the record they point into is usually *not* a gradient (64 of 654 are), so this is
+a table parked in a neighbour's span rather than a ramp shared between two gradients.
+
+Relaxing the bound from the record to the body:
+
+    ramps read     16,183  ->  17,141  ->  17,795     90.5%  ->  95.9%  ->  99.5%
+    stops         351,133  -> 361,732  -> 368,403
+
++654 exactly, the same 654 that failed. Together with the previous section, `gradient` goes
+from 90.5% to 99.5% on two guards that were each stricter than the format.
+
+### The two guards, and why they failed differently
+
+    slot 4 treated as the table's END     -> too tight by an amount that varies
+    the table required to be INSIDE       -> a rule the notes had already disproved
+
+The first was an over-reading of a correlation - slot 4 *is* the table end in 94.4% of
+records, and calling that the definition cost the other 5.6%. The second was not a
+measurement error at all: the general principle was recorded, and this reader was written as
+if it were not. Neither was found by looking for it. Both surfaced by asking what the
+rejected records have in common, which they answered unanimously.
+
+### What is left
+
+    72   records with fewer than 5 words
+    10   positions that do not ascend at the formula width
+
+82 records, 0.5% of `gradient`.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.

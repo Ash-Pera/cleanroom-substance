@@ -1004,8 +1004,8 @@ class Record:
         A gradient record embeds its ramp as a table of u16 entries:
 
             slot 2   number of stops
-            slot 3   table start
-            slot 4   table end, which is also where the record's program begins
+            slot 3   table start - which may lie in a NEIGHBOURING record
+            slot 4   an upper bound on the table, usually where the record's program begins
 
         The entry width follows the channel count - `4 + 2*colour + 2*(class bit 8)` -
         giving 4, 6 or 8 bytes: a stop position followed by one, two or three values.
@@ -1021,10 +1021,21 @@ class Record:
         count = self.words[2]
         start = self.words[3] + 52
         end = self.words[4] + 52
-        if not count or not (self.offset < start < self.end):
+        if not count or not (self.asm.body_lo <= start < self.asm.body_hi):
             return None
-        if not (self.offset < end <= self.end):
-            end = self.end
+        # The table need not lie inside this record. The record directory is a sorted
+        # PARTITION, not an allocation - a fact this file establishes elsewhere and this
+        # reader used to contradict, by requiring `self.offset < start < self.end`. That
+        # rejected 654 records, and every one of them points exactly ONE record back:
+        #
+        #     one record back    654 / 654        the table fits    654 / 654
+        #     positions ascend   654 / 654
+        #
+        # unanimous on all three. Their stop positions read like `[0, 32768, 33044, 65535]`,
+        # a full-range ramp, and the record they point into is usually not a gradient at all
+        # (64 of 654) - so this is a table sitting in a neighbour's span, not a shared ramp.
+        if not (start < end <= self.asm.body_hi):
+            end = self.end if self.offset < start < self.end else self.asm.body_hi
         width = 4 + 2 * (1 if self.colour else 0) + 2 * ((self.cls >> 8) & 1)
         # Slot 4 is not always the table's end. Requiring `end - start == count * width`
         # rejected 968 records; in every one of them the span is LARGER than the table
