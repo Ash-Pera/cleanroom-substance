@@ -120,3 +120,36 @@ def sample_lum(index, pos):
 
 def sample_col(index, pos):
     return SAMPLERS[index](pos)
+
+
+class NoSharedCache(NotImplementedError):
+    """cache_read/cache_write need cross-record state this transpiler does not model."""
+
+
+def cache_read(index):
+    """The read half of the per-package value cache 0x03/0x06 implement.
+
+    0x06 (cache_write) writes a value once, from a dedicated `pixelprocessor` record that
+    is never itself sampled as an image; any record's own program reads it back by index
+    instead of recomputing it -- cross-record common-subexpression elimination. See
+    FORMAT-NOTES.md, "0x03/0x06 are cross-record common-subexpression elimination".
+
+    The MEANING is established. This function still cannot answer, because a
+    single-program transpile has no access to the writer -- the value was computed by a
+    different program, possibly in a different record, guaranteed only to appear earlier
+    in record order (verified over 7,074 matched writer/reader pairs, zero exceptions).
+    Answering needs a caller that transpiles a whole file in record order and threads one
+    cache dict through every program's evaluation. Raising here beats guessing zero: a
+    silently wrong cached value is exactly the failure mode this project's own tests
+    exist to catch.
+    """
+    raise NoSharedCache(
+        "cache index %r: needs the whole file evaluated in record order with a shared "
+        "cache, not a single program" % index)
+
+
+def cache_write(value, index):
+    """The write half of `cache_read`. See there."""
+    raise NoSharedCache(
+        "cache index %r: needs the whole file evaluated in record order with a shared "
+        "cache, not a single program" % index)

@@ -90,7 +90,8 @@ class Python(Backend):
     name = "python"
     header = ("import numpy as np\n"
               "from sbsruntime import (sysvar, sample_lum, sample_col, vec, swizzle,\n"
-              "                        select, rand, cartesian, lerp, sbs_mod)\n")
+              "                        select, rand, cartesian, lerp, sbs_mod,\n"
+              "                        cache_read, cache_write)\n")
 
     def const(self, values, ty):
         if ty == 0:
@@ -155,12 +156,13 @@ PY_FUNCS = {"abs": "np.abs", "floor": "np.floor", "ceil": "np.ceil", "cos": "np.
 PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or"}
 
 
-#: Operations whose meaning is not established. Their operand shape is known and comes
-#: from the disassembler's IMM table -- 0x06 takes a value in position 0 and an index in
-#: position 1; the rest take ordinary value numbers throughout, verified at 0% "operand
-#: >= own index" over the corpus. 0x1E and 0x2A were here and have since been named in
-#: OPCODES.md as `neq` and `exp`, so they are emitted properly now.
-UNNAMED = {0x06, 0x35, 0x36}
+#: Operations whose meaning is not established. Operand shape comes from the
+#: disassembler's IMM table where it names one; the rest take ordinary value numbers
+#: throughout, verified at 0% "operand >= own index" over the corpus. 0x1E and 0x2A were
+#: here and have since been named in OPCODES.md as `neq` and `exp`; 0x06 was here and is
+#: now handled explicitly above -- its meaning is known even though evaluating it needs
+#: an architecture this transpiler does not have yet.
+UNNAMED = {0x35, 0x36}
 
 
 class Unsupported(Exception):
@@ -192,12 +194,17 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             rhs = be.call("sysvar", [str(toks[0]), str(ncomp)])
         elif oid == 0x02:                                  # graph input by uid
             rhs = "inputs[%d]" % (immediate(op, addr, toks)[0] & 0xFFFFFFFF)
-        elif oid == 0x03:                                  # indexed read, operand is an
-            # immediate. In 74.8% of instances the operand is >= the instruction's own
-            # value number, which no value reference can be, and 45.6% of instances are
-            # the program's first instruction. So it reads something by index, like
-            # `sysvar` and `get` do; what it reads is not established.
-            rhs = be.call("read_indexed", [str(toks[0]) if toks else "0", str(ncomp)])
+        elif oid == 0x03:                                  # cache_read: 0x03/0x06 are a
+            # per-package indexed value cache used for cross-record common-subexpression
+            # elimination -- 0x06 (below) writes a value once, from a dedicated
+            # pixelprocessor record that is never itself sampled as an image, and any
+            # record's own program reads it back by index rather than recomputing it.
+            # See FORMAT-NOTES.md, "0x03/0x06 are cross-record common-subexpression
+            # elimination". The MEANING is known; a single-program transpile still
+            # cannot EVALUATE it, because the value lives in a different program,
+            # possibly a different record, evaluated earlier in record order. cache_read
+            # raises rather than guessing -- see sbsruntime.cache_read's docstring.
+            rhs = be.call("cache_read", [str(toks[0]) if toks else "0"])
         elif oid == 0x04:                                  # get variable slot
             rhs = "slots[%d]" % toks[0]
         elif oid == 0x07:                                  # set variable slot
@@ -239,6 +246,11 @@ def transpile(data, start, end, backend="python", name="program", result=None):
                 if backend == "python":
                     fn = PY_FUNCS.get(fn, fn)
                 rhs = be.call(fn, [arg(i) for i in range(len(toks))])
+        elif oid == 0x06:                                  # cache_write: the other half
+            # of 0x03's pair. Position 0 is the value (an ordinary reference); position 1
+            # is the cache index (immediate). Meaning known, same evaluation limit as
+            # cache_read -- see there.
+            rhs = be.call("cache_write", [arg(0), str(toks[1])])
         elif oid in UNNAMED:
             # The operation is not identified, but its operand *shape* is: positions the
             # disassembler's IMM table names are immediates, the rest are value numbers.
