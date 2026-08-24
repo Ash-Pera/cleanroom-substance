@@ -22603,6 +22603,42 @@ the first half.
 Tests: 12 passed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
 validator 437/437.
 
+## `directionalwarp`'s `atan2` is a branchless sign-to-180° angle selector
+
+Reading actual transpiled output, not just running the sweep above. `FootstepsSubstance001`,
+9 instructions:
+
+```
+v0 = inputs[uid]                    the graph's own exposed scalar
+v2 = v0 * -0.0784592                a fixed constant pair -- sin^2+cos^2 = 0.99999996
+v4 = v0 * 0.9969173                 a genuine unit vector, not a coincidence
+v6 = atan2(vec(v2, v4))
+v8 = v6 / 2*pi                      -> turns
+```
+
+Multiplying a fixed unit vector by a scalar does not change the vector's *direction* when
+the scalar is positive, and rotates it by exactly 180° when the scalar is negative -
+`atan2` recovers that angle either way. So the whole expression is a branchless two-way
+switch: **the sign of one exposed parameter picks between a baked angle and that angle
+plus 180°**, with no `select` anywhere in the program. Confirmed numerically on two
+independent instances, magnitude-invariant as the theory requires (1.0 and 5.0 give the
+same result on one; 2.0 and -2.0 differ by exactly 180.000° on the other, not "close to").
+
+**Not a one-off.** Corpus-wide, of the 160 nine-instruction `directionalwarp` programs using
+`atan2`, **147 (91.9%) carry a genuine unit-vector constant pair** - checked by decoding
+every scalar constant in the program and requiring the sum of two squares to land within
+0.01 of 1.0. The first version of this check found zero, because it filtered constants by
+raw token count, and a padded single-float constant has three tokens, not two - the
+alignment-pad bug from earlier this session, recurring in a different piece of code with
+the same signature: a plausible-looking number from a filter that quietly excludes the
+padded form.
+
+This is a source-language technique for a discrete choice - direction or its opposite -
+implemented at the compiled level with pure arithmetic, no branch, no `select`. It also
+settles the calling convention beyond the TypeError evidence that first fixed it: the
+transpiled program is not merely runnable, it is legible, and what it says matches what
+`directionalwarp` is for.
+
 ## The execution sweep, corrected twice
 
 The previous section put 9,806 programs in a category called "needs a seeded slot", on the
