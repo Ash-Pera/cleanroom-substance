@@ -1314,9 +1314,13 @@ class Assembly:
 
         The first word carries the manifest's `format` attribute as bits 4 and up:
         format == (w0 & 0xFFFF) >> 4, exact on every distinct value in the corpus. Bit 2
-        of that format is the grayscale flag, and it matches the colour bit of the record
-        the entry names in 3,249 of 3,249 - a consequence test the table could have
-        failed and did not.
+        of that format is the grayscale flag. It was recorded as matching the colour bit of
+        the record the entry names in 3,249 of 3,249 - but that count comes from the
+        withdrawn 641-file corpus (tools/DISTINCT.txt, a third duplicates); the 435-file
+        corpus yields 2,442 entries, and no bit of words 0-2 of the named record agrees
+        better than 59.71%, which is chance for a flag this skewed. UNVERIFIED: the
+        grayscale flag is read from the output table alone, and the record-side bit it was
+        said to agree with has not been located.
 
         This is the output-to-record attribution recorded elsewhere in FORMAT-NOTES.md as
         structurally absent. It is not absent; it was in a region nothing had read.
