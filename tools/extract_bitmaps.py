@@ -135,3 +135,28 @@ def graph_inputs(path):
         yield {'record': i, 'uid': struct.unpack_from('<I', d, o + 4)[0],
                'width': 1 << ((tag >> 8) & 0xF), 'height': 1 << ((tag >> 12) & 0xF),
                'colour': bool(tag & 1)}
+
+
+def strings(path, limit=4096):
+    """Yield the text strings a package embeds, in resource-segment order.
+
+    The `text` filter's strings are stored at the head of the resource segment, before
+    the images, as a run of length-prefixed UTF-32:
+
+        [u32 character count][u32 per character] ...
+
+    Verified over the corpus: every file whose segment begins this way contains
+    `text` records, and no file without them does. The strings are the rendered
+    content - "STOP", "YIELD", "ONE WAY".
+    """
+    d = open(path, 'rb').read()
+    q, hi = 0x38, len(d)
+    while q + 4 <= hi:
+        n = struct.unpack_from('<I', d, q)[0]
+        if not (1 <= n <= limit) or q + 4 + 4 * n > hi:
+            return
+        chars = struct.unpack_from('<%dI' % n, d, q + 4)
+        if not all(9 <= c < 0x110000 for c in chars):
+            return
+        yield ''.join(chr(c) for c in chars)
+        q += 4 + 4 * n

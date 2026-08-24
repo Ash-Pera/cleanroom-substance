@@ -15888,3 +15888,61 @@ The 32-bit float resources are where one would expect them: `NightSkyHDRISubstan
     JPEGs verified by SOI            45 of 45
 
 The corrected table and the JPEG and float handling are in `tools/extract_bitmaps.py`.
+
+## Where the `text` filter's strings live
+
+Measuring how much of the resource segment the image descriptors account for:
+
+    resource segment (0x38 .. first record)   3,579.6 MB
+    covered by located resources              3,571.6 MB   99.78%
+    resources ending past the first record             0
+    trailing uncovered bytes                           0    in all 123 files
+
+The segment tiles exactly and ends flush against the records. **In 120 of 123 files the first
+resource begins at `0x38` itself**, which is the independent confirmation that resource offsets
+carry the +52 skew - without it the first image would start 52 bytes inside the header.
+
+Three files have something before the first image. One is a JPEG with no short-form descriptor;
+one is unidentified; the third decodes as:
+
+    16, 83, 76, 79, 87, 10, 49, 50, 51, 52, 53, 10, 54, 55, 56, 57, 48
+
+A count of 16, then exactly sixteen values: `S L O W \n 1 2 3 4 5 \n 6 7 8 9 0`.
+
+### The format
+
+    [u32 character count][u32 per character]   repeated
+
+Length-prefixed UTF-32, at the head of the resource segment, before the images.
+
+Scanning every specimen for a segment that begins this way:
+
+    files whose segment starts with such strings   9
+      containing text (filter 17) records          9
+      containing none                              0
+
+    Stop_Sign                  "STOP"
+    Yield                      "YIELD"
+    One Way                    "ONE WAY"
+    Do Not Enter               "DO NOT"
+    Speed Limit                "SPEED"
+    Lane Markings - Stop Ahead "STOP"
+    RoadLinesSubstance002      "SLOW\n12345\n67890"
+
+Nine for nine, none without. And the strings are the rendered content of the materials they
+come from.
+
+**This independently re-confirms filter 17 = `text`.** That identification was made on counts,
+rejected when the counts turned out to come from a single repository, and reinstated on
+structural grounds. It now has a third and much more direct line: the files carrying filter-17
+records are exactly the files carrying embedded strings, and the strings say `STOP` and `YIELD`
+in materials called `Stop_Sign` and `Yield`.
+
+`tools/extract_bitmaps.py` gained a `strings()` reader.
+
+### What is left in the resource segment
+
+    8.0 MB of 3,579.6, or 0.22%
+
+almost all of it the two unexplained leading regions in `GravelSubstance002` (a JPEG that no
+short-form descriptor names) and `SnowSubstance002`.
