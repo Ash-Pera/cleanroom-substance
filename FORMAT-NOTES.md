@@ -24042,3 +24042,51 @@ Two mechanisms, both small, against an 809-key table. What is left unexplained i
 residual concentrated in `levels`, the 7.27% of records whose edge block is not
 contiguous-from-2, and the multi-word parameters (`transformation`'s matrix22 and offset)
 which occupy 4 and 2 slots rather than 1 and so break the one-slot-per-field count.
+
+## The levels residual: a rule/table disagreement that stays open
+
+`levels` scored 90.57% against the slot rule, worst of the four filters, and the residual is
+one-sided: in 7,657 records the rule claims one MORE parameter slot than `layouts.json` gives.
+The blend precedent said the rule wins those - there, 39 records the table under-served turned
+out to have the predicted input in 39 of 39. The same argument does not survive here.
+
+Which field combinations disagree is structured, not random:
+
+    inhigh, outlow, outhigh    3 active fields  ->  2 slots   1,955 of 1,955
+    inlow,  outlow, outhigh    3 active fields  ->  2 slots     839 of 839
+    inlow,  inhigh, outhigh    3 active fields  ->  3 slots   9,812 of 9,812
+    outlow, outhigh            2 active fields  ->  2 slots  33,423 of 36,783
+
+So `outlow`+`outhigh` together appear to collapse into one slot, except when they are the only
+two active, where they do not. No single reading covers both.
+
+### The test that worked for blend does not work here
+
+Checking whether the disputed slots hold usable values returns 100% - 7,621 baked floats and
+36 programs. **The control kills it.** Taking the same number of slots from further along the
+same records:
+
+    slots the rule claims and the table does not   float 99.53%   program 0.47%   absent 0%
+    the next slots beyond those                    float 87.33%   other   0.02%   absent 12.65%
+
+87% of arbitrary slots read as a plausible float, because almost any small bit pattern does.
+The only real signal is the absent column - the rule never claims a slot past the record end,
+where the control does 12.65% of the time. That says the rule does not over-reach; it does not
+say the rule is right.
+
+Record length is independent and slightly favours the rule: under the rule the leftover after
+the parameter block is never 1 or 3 words, while the table leaves 1 or 3 in 5,716 records. It
+is a hint, not a decision. **The levels residual stays open.**
+
+### Checking the blend claim the same way
+
+The blend result was committed on the strength of "39 of 39", so it deserves the same control.
+Searching slots 4-8 for a valid backward record index:
+
+    state 11, where the rule says a third input exists      39 of 39         100.0%
+    states 00/01/10, where the rule says there is none      117,907/302,327   39.0%
+
+Lift +61 points, so the test discriminates and the claim stands. But 39% is the base rate, not
+zero, and the bare "39 of 39" oversold it. The general lesson is the one this file keeps
+relearning: a 100% result means nothing until the same measurement is run where the rule
+predicts failure. Two of the last three such results survived that check. One did not.
