@@ -23009,3 +23009,47 @@ about. Both duplicates are removed.
 
 Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437 on every
 check, transpiler 12 tests passed.
+
+## The last seven, and a two-point fit that could not have failed
+
+Seven records in 895,674 have a parameter slot this model cannot read:
+
+    roofing_007        record  325   shuffle          slot 4 = 1547        in body
+    PlanksSubstance004 record    2   curve            slot 4 = 3           outside
+    fake_anim_curve    record    2   curve            slot 4 = 7           outside
+    Texture_Randomizer records 0,2,5 fxmaps           slot 3 = 515         outside
+    Rockface           record 2135   transformation   slot 3 = 3017139118  outside
+
+### The fit that proved nothing
+
+The two `curve` records have slot 4 = **3** and **7**, and record lengths of **27** and **47**
+words. Solving `words = a + b * count` gives `b = 5`, `a = 12`, and both records fit exactly.
+A control-point count with five words per point is a good story: `curve` declares `position`,
+`left` and `right` as `Float2` per point.
+
+Two unknowns fitted to two observations cannot fail. Tested against all 1,267 `curve` records:
+
+    slot 4 within 1..64            26 of 1,267
+    of those, words == 12 + 5n     11         42.3%
+    count 4, words 29  (n=8)       the formula says 32
+    count 2, words 17  (n=4)       the formula says 22
+
+So slot 4 is not a control-point count, and the exact agreement on the first two records was
+arithmetic rather than evidence. This file has a rule for that - a claim needs more
+observations than parameters - and I fitted a two-parameter model to two points before
+checking whether the population it came from had more.
+
+### Where the parameter accounting ends
+
+    records                     895,674
+    parameter read              857,025    95.7%
+    no parameter slot            38,571     4.31%   correct, not a miss
+    slot is an edge or a bound       71     0.01%   read, not a parameter
+    genuinely unread                  7     0.00%
+
+Seven records, in five files, across four filters, with no shared shape between them - three
+of them the same slot 3 = 515 in one file, and the rest unrelated. That is where this line
+stops being a pattern and becomes a list.
+
+Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 12 tests passed.
