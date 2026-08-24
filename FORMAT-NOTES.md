@@ -21291,3 +21291,58 @@ transpiler 11 passed.
 trivial predictor, best lift -2.2 points. Its POSITION is settled - it packs immediately
 after `matrix22`, four slots along when the matrix is present and at the block base when it
 is not - but nothing says whether it is there.
+
+## `offset`'s presence, and what the no-matrix records actually hold
+
+With the base now exact, the `offset` question can be asked properly. It does not resolve,
+but it fails in an informative way.
+
+### Re-measured with the correct base
+
+    matrix present     36,754 plausible offset    10,618 program    14,534 implausible
+    matrix absent      28,969 plausible offset    53,487 program    64,672 implausible
+
+Best predictor of "something offset-shaped is there": `w1.bit26`, lift **+6.5 points** over
+the trivial predictor - up from -2.2 with the old base, so fixing the base helped, and not
+nearly enough. Nothing in either word says whether `offset` is present.
+
+The matrix-present half is respectable: 36,754 plausible plus 10,618 programs against 14,534
+implausible, which is 76.5% accounted. The matrix-absent half is where it falls apart.
+
+### The matrix-absent records are not holding parameters
+
+Dumping them shows the same words over and over, in different records and different files:
+
+    slot base+0   172097550 / 172097628
+    slot base+1   2147019363      (a NaN bit pattern)
+    slot base+2   1361
+    slot base+3   67856
+    slot base+4   152043520
+    slot base+5   65537
+
+Across 117,497 such records there are **2,808 distinct signatures** at `base+1 .. base+5`,
+and the most common covers 19,987 records in 108 files:
+
+    19,987 in 108 files   (88145940, 152043521, 0, 2320, 140443649)
+     7,924 in  62 files   (2109889828, 1361, 67856, 152043520, 65537)
+     5,753 in  56 files   (2109889828, 5696, 4294967295, 4294967295, 68178)
+     5,568 in 178 files   (88145926, 152043521, 0, 3328, 3212836864)
+
+Parameter data does not repeat byte-for-byte across a hundred unrelated materials. Whatever
+occupies this region is a shared structure, and `4294967295` appearing in it is the same
+`0xFFFFFFFF` sentinel the edge slots use. So the reason no bit predicts an `offset` here is
+most likely that there is no `offset` here at all, and the "matrix absent" case is not a
+transformation with fewer parameters but a different record shape wearing the same filter id.
+
+That is a hypothesis with one piece of evidence - repetition - and it is recorded as such.
+What is established is narrower and firmer: the region is structured and shared rather than
+per-record data, which is not what a missing parameter looks like.
+
+### Where `transformation` stands
+
+    matrix22   position exact (3 + class bit 0 + class bit 7), presence from w1 bits 6/7,
+               kind from the same pair                              66,210 of 66,211
+    offset     position confirmed by containment - packed four slots after matrix22 when
+               present, at the block base when not - presence unexplained
+    the matrix-absent records                                       unexplained, and
+               probably not parameter data
