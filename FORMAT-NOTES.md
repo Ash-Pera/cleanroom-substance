@@ -23351,3 +23351,40 @@ which a published material may well contain - and they are consistent rather tha
 1,862 inputs that no program reads and that the manifest says alter something. That is the
 honest residual, and it is a different question from the 131 unreachable pairs: there the
 input is read and the path is missing, here the input is never read at all.
+
+## The fx programs read a third of the "unread" inputs - but attributing them breaks the graph
+
+Of the 1,862 scalars no program reads that the manifest says alter an output, **591 (31.7%)
+are read once an fxmaps record's node-chain and parameter-table programs are included**.
+`readers()` walks `Record.programs` only, and those are 4,646 further programs it never sees.
+
+That looks like a straightforward fix, and it is not - because an earlier section already
+tested exactly this change against the attribution check and rejected it:
+
+    r.programs only               28,470 / 28,896   98.53%   sharp violations 6
+    + fx node and table programs  29,875 / 30,387   98.32%   sharp violations rose to 512
+
+Both results are true, and they are answers to different questions:
+
+    "is this input read anywhere?"        including fx programs is right - 591 more inputs
+                                          are accounted for
+    "does THIS RECORD depend on it?"      including fx programs is wrong - attributing an
+                                          fx program's input read to the enclosing fxmaps
+                                          record makes outputs reachable from inputs the
+                                          manifest says do not affect them
+
+An fx node chain is a structure a record points at, and a program inside it reading an input
+does not put that input on the path from the record to its output the way an edge does. The
+read is real; the dependency it implies is not the one `readers()` is used for.
+
+So `readers()` is left as it is, and the 591 are recorded as read rather than as a gap.
+
+### What is left
+
+    1,862   scalars unread by r.programs that alter an output
+      591   read by fx node or table programs
+    1,271   read by nothing this project can find
+
+That last number is the honest one. It is not the same as "unexplained bytes", which is still
+zero - every byte of these files is accounted for structurally. It is a dataflow gap: the
+manifest says these inputs matter and no program in the file references them by uid.
