@@ -84,11 +84,32 @@ EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 10: [1],
          11: [2], 12: [2, 3], 13: [1], 14: [1], 15: [2], 18: [2], 19: [1],
          21: [2], 22: [1]}
 
-# Filters whose input list is not fully resolved. Listing them beats guessing.
-PARTIAL_EDGES = {3: 'shuffle takes up to 4 inputs; only slot 3 resolves reliably',
-                 4: 'fxmaps inputs resolve only in the bit-12 layout (8.3% of its records)',
-                 21: 'distance slot 3 is a shared control input, not a tree edge',
-                 16: 'bitmap has no image input'}
+# Filters whose input list is still not fully resolved, with the residue measured over the
+# corpus. **Read by no code**: this is a hand-kept register of known gaps, which means it
+# goes stale silently and has to be re-measured when the edge rules change. It just did.
+#
+#     filter     records   edge slots   unresolved
+#     fid 8          546        1,637            7
+#     distance     2,277        3,838            1
+#
+# Two entries were removed because the gaps they named are closed, both now resolving every
+# slot they claim:
+#
+#     shuffle    7,687 records, 11,385 slots, 0 unresolved
+#         Said "takes up to 4 inputs; only slot 3 resolves reliably". Slot 1 is
+#         self-discriminating and `_compute_layout` reads it directly; arity is 1 or 2, with
+#         33 records having no input slot at all.
+#
+#     fxmaps    41,212 records, 24,423 slots, 0 unresolved
+#         Said "inputs resolve only in the bit-12 layout (8.3% of its records)". The input
+#         count is a 4-bit field in word 1 and bit 12 was the single case k == 6; arities 1
+#         to 14 all occur. 36,047 records carry k == 0 and genuinely have no input.
+#
+# `bitmap` was listed here too and is not a gap: 1,345 records, 0 edge slots, no image input
+# at all. That is a fact about the filter, and listing it under "not fully resolved" invited
+# the opposite reading.
+PARTIAL_EDGES = {8: 'three inputs in slots 1-3; 7 of 546 carry a forward index in slot 1',
+                 21: 'distance slot 3 is a shared control map, not a data edge'}
 
 # Shared references: slots pointing at one record used by many (refs/target >> 1).
 #
@@ -98,16 +119,24 @@ PARTIAL_EDGES = {3: 'shuffle takes up to 4 inputs; only slot 3 resolves reliably
 #
 #     filter slot  records  distinct  max/file    bit6     bit7
 #       19    2      2,225      362        28    49.26%   48.67%   reference - KEPT
-#        8    1        546       22         7     0.37%   45.42%   ambiguous - kept, flagged
 #       11    1     15,109        7         6     0.00%    0.00%   bitfield  - REMOVED
 #       22    2      1,273       12         6     0.00%    0.00%   bitfield  - REMOVED
+#        8    1        546       22         7     0.37%   45.42%   an EDGE    - REMOVED
 #
 # 11 and 22 are the packed-parameter-word shape, and 11 was additionally in PARAM_WORD, so
 # the same slot was claimed as both a reference and a bitfield in one file. Those two are
 # what the "shared reference is a hierarchy" reading left behind after it was refuted.
-# Filter 8 does not resolve cleanly either way - 22 values is a small vocabulary, but bit 7
-# is set 45% of the time - so it stays and says so.
-SHARED = {8: [1], 19: [2]}
+#
+# Filter 8 read as ambiguous on this test alone - a 22-value vocabulary says bitfield, bit 7
+# at 45% says reference - and the tie is broken elsewhere in this same file: the rule in
+# `_compute_layout` reads slot 1 as one of filter 8's three IMAGE INPUTS, valid backward
+# indices in 538 of 546. Its high bits are set half the time because record indices in a
+# large file are, which is what made it look reference-like here. `Record.edges` and
+# `Record.shared_refs` were returning the same slot under two readings.
+#
+# That leaves one entry, consumed by nothing. It is kept rather than deleted only because
+# slot 2 of `dyngradient` is a real shared reference and there is nowhere else to record it.
+SHARED = {19: [2]}
 
 # The slot holding the record's OUTPUT SIZE expression -- not a filter parameter.
 #
@@ -443,8 +472,58 @@ class Record:
         """
         if self._layout is not None:
             return self._layout
-        self._layout = r = self._compute_layout()
+        edges, prog = self._compute_layout()
+        self._layout = r = (self._real_edges(edges), prog)
         return r
+
+    def _real_edges(self, slots):
+        """Drop slots the layout names as edges that measurably are not edges.
+
+        A genuine edge holds a NEARBY record index, so its value has to rise with the
+        record's own index. Over the 40 (filter, slot) pairs the layout names as edges
+        with 200+ observations, the correlation between the slot's value and the
+        record's index is 0.936 or better for 37 of them and 0.99+ for 34. Three fail:
+
+            transformation slot 1   corr -0.319   n   287
+            fid 8          slot 1   corr  0.067   n   758
+            warp           slot 3   corr -0.005   n 1,867
+
+        This is a control that can fail, and it is the only thing that found these. The
+        100%-resolution figure could not: a two-bit type-code vector is a small integer,
+        so it passes "is this a backward record index" trivially. That is the same
+        conflation that produced the shared-reference error recorded against EDGES.
+
+        Slot 1 of `transformation` and of filter 8 is words[1], the type-code vector.
+        263 of transformation's 287 hold 0x3f, which is the modal words[1] across all
+        284,131 transformation records (119,919 of them); filter 8's 758 take 22 distinct
+        small values whose histogram is its words[1] histogram. Nothing real is dropped:
+        all 287 transformation records keep their one other edge slot, all 758 filter-8
+        records keep their two, and every one of those resolves.
+
+        Warp is not a defective entry but two record shapes, and words[1] separates them
+        exactly:
+
+            words[1] == 0    1,801 records   slot 3 is a backward index   1,801  100.0%
+            words[1] != 0       66 records   slot 3 is a program pointer     65   98.5%
+                                             slot 1 is a backward index      66  100.0%  corr 0.998
+
+        So when words[1] is nonzero the whole record is shifted one slot earlier: the two
+        edges are at slots 1 and 2 and slot 3 holds the pointer. The tracking is within
+        file, not an artefact of pooling - in BricksSubstance005 records 4099, 4101 and
+        4103 carry 4097, 4099 and 4101, always index minus two.
+
+        What that does NOT settle is the words[1] == 0 population, where slot 1 holds 0.
+        Zero is both "no type codes" and "an edge to record 0", and the value cannot
+        distinguish them. Warp takes two image inputs and slots 2 and 3 already supply
+        them, so this reads it as the type-code vector; that is an inference from arity,
+        not a measurement.
+        """
+        f = self.filter_id
+        if f in (2, 8):
+            return [s for s in slots if s != 1]
+        if f == 7 and len(self.words) > 1 and self.words[1] != 0 and 3 in slots:
+            return sorted({1} | {s for s in slots if s != 3})
+        return slots
 
     def _compute_layout(self):
         f = self.filter_id
@@ -684,8 +763,14 @@ class Record:
             #
             # Applied only when the whole-word rule does not fire, so this cannot change
             # any record that was already being read.
+            #
+            # The cap is 16, the width of the field, not 8. Capping it at 8 stranded 81
+            # records with a declared arity of 9, 12 or 13 - and in all 81, every one of
+            # slots 2..2+k-1 holds a backward record index, so the declared count is
+            # right there too. Those records were falling through to the layout table,
+            # which named slots 11, 12 and 13 as edges when they hold the pointer.
             k = n & 0xF
-            if 1 <= k <= 8 and len(self.words) >= 2 + k \
+            if 1 <= k <= 16 and len(self.words) >= 2 + k \
                     and all(0 <= self.words[2 + j] < self.index for j in range(k)):
                 return list(range(2, 2 + k))
         return self.layout[0]
