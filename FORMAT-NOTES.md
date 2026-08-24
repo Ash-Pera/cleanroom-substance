@@ -23818,3 +23818,48 @@ Three things measured, none sufficient:
 Emitting a loop with no break makes an unbounded loop; emitting a single pass assumes the
 answer. Both are guesses, so the diagnostic now says what is actually wrong and these 110
 stay unsupported. The honest count is 99.9915%.
+
+## Re-running the headline claims, and a tool so it keeps happening
+
+Two claims in this file were found stale within an hour of each other, both sharing a
+signature: they were 100%-shaped, so nothing ever re-read them. Their denominators came from
+the withdrawn 641-file `tools/DISTINCT.txt` and survived the correction to the 435-file root
+list untouched. Six were checked by hand:
+
+    claim                                            recorded            now
+    every record on a 4-byte boundary                418,840/418,840     895,674/895,674    ok
+    class-word bit 3 set, all but two records        651,741/651,743     895,672/895,674    ok
+    u16 at a program pointer is its instr count      291,802/291,802     1,294,752/1,294,752 ok
+    edge slots holding 0                             850/843,900 0.10%   1,523/1,290,011 0.118%
+    every program transpiles                         1,206,800/1,206,800 1,294,642/1,294,752 FAIL
+    output grayscale == the record's colour bit      3,249/3,249         not reproducible   FAIL
+
+So four of six survive the corpus change with only their denominators wrong. The failure rate
+is not the story - the fact that nobody could tell which was which without re-running is.
+
+One of the four is worth pausing on. Class-word bit 3 has **exactly two** exceptions in the
+895,674-record corpus, as it had exactly two in the 651,743-record one. The corpus grew by
+244,000 records and the exception count did not move.
+
+### The measurement I got wrong
+
+The length-prefix claim first came back at **1.1%**, which looked like a third stale claim.
+It was not: `Record.programs` yields the pointer TARGET, where the count word sits, and I read
+the u16 two bytes before it. Reading at the target itself gives 100.0000% of 1,294,752. The
+claim was right and had been right all along; the check was wrong by two bytes.
+
+Worth stating plainly, because it cuts both ways: this afternoon produced two claims that
+looked settled and were stale, and one claim that looked stale and was settled. A number
+disagreeing with the notes is a reason to check the measurement before rewriting the note.
+
+### tools/reverify.py
+
+Each entry states the number as RECORDED, recomputes it, and prints both. A claim that stops
+reproducing is not edited away - it prints FAIL so it gets investigated. Claims carry an
+expected-exception count, because "all but two records" is a claim ABOUT two exceptions and
+testing it for exact equality would fail it for being true.
+
+    python3 tools/reverify.py
+
+It covers only what can be recomputed from the corpus, which is a minority of the 133 `N of N`
+claims here. The rest still need re-running by hand.
