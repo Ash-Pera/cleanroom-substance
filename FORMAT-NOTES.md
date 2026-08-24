@@ -28793,3 +28793,102 @@ old shape persisting inside new files, unexplained.
 The practical consequence: deriving PARAM_SPEC for the remaining filters would delete
 layouts.json, EDGES, ALT_LAYOUTS and the corrections outright. The scaffolding is not
 protecting anything except the not-yet-derived field lists.
+
+## How far from a real render: 4.7%, and one filter is the gate
+
+"Can we render yet" has a number, and the first number I computed for it was flattering
+enough to be misleading. Recording both, because the decomposition is the finding.
+
+### The flattering number
+
+`render.py` implements seven filters — `bitmap`, `pixelprocessor`, `blend`,
+`transformation`, `levels`, `uniform`, `directionalwarp` — which is **85.2%** of all
+904,131 records. That figure is worthless on its own. An output renders only if EVERY
+record in its transitive closure is implemented, so per-record coverage can sit at 85%
+while nothing at all renders.
+
+The closure metric:
+
+    declared outputs in the corpus                        2,488
+      closure fully implemented                             468    18.81%
+      median closure size, over all outputs                 394 records
+      largest closure                                    37,925 records
+    files with at least one such output                     156 of 438
+
+18.81% sounded like a third of the way there. It is not.
+
+### The decomposition
+
+    closure fully implemented                               468    18.81%
+      ...and the closure contains a COMPUTING filter        333    13.38%
+      ...and the file is a real material (100+ records)     117     4.70%
+
+Two things were hiding in the 18.81%.
+
+**Most of it is not computation.** 381 of the 468 have a closure of one or two records —
+an output record reading an embedded `bitmap` straight back out. That is a real capability
+and the images are real (`brown_mud_leaves_01` yields its ambient-occlusion, roughness and
+height maps correctly), but it is `extract_bitmaps.py` with extra steps, not a renderer.
+Excluding closures whose only filters are `bitmap` and `uniform` — a stored image and a
+flat fill — leaves 333.
+
+**And it is concentrated in small files.** Renderability by file size:
+
+    file size        outputs   renderable    share
+    1-9 records           63           48    76.2%
+    10-99                324          218    67.3%
+    100-999              715           86    12.0%
+    1000+              1,386          116     8.4%
+
+The corpus's outputs live overwhelmingly in the 100+ bucket and the renderable ones live
+overwhelmingly outside it. The 1-9 bucket is SDK sample graphs — `Substance_graphC`,
+`AnimatedExample`, `EngineInitialization` — and rendering those produces flat red, flat
+magenta and a dither pattern. They are not materials.
+
+Deepest closure actually rendered: 20 records. Median closure needed: 394.
+
+### One filter is the gate
+
+The greedy question — which filter buys the most if implemented next — has an unusual
+answer: **none of them, individually.**
+
+    with the 7 implemented today                18.81%
+    + every remaining filter EXCEPT fxmaps      23.71%
+    + fxmaps as well                           100.00%
+
+`fxmaps` appears in the closure of **76.3%** of all declared outputs. Implementing
+`gradient`, `blur`, `warp`, `shuffle`, `normal`, `distance`, `sharpen`, `curve`, `hsl`,
+`dyngradient`, `emboss`, `dirmotionblur`, `text` and filter 5 — every single one, perfectly
+— moves the total by 4.9 points. Adding `fxmaps` alone to today's seven moves it by 3.4.
+The two together move it to 100%, because almost every output that needs anything needs
+`fxmaps` too.
+
+That is the single most useful thing this measurement produced, and it inverts the natural
+work order. The cheap filters are cheap and nearly worthless on their own; the expensive
+one is the whole gap. It is also the filter whose semantics are least decoded — the FX-Map
+node vocabulary beyond `addnode` is still open, and 34.2% of `fxmaps` records address the
+parameter table rather than a node chain.
+
+### The cheap failures, which are worth fixing anyway
+
+Running the renderer over 41 files with closure-complete outputs: 55 evaluated to a
+non-constant image, 57 to a constant one, and 28 did not evaluate despite a complete
+closure. Those 28 are not filter gaps:
+
+    11   bitmap kind 'graph_input' has no supplied output
+     9   bitmap has pixels but an undecoded channel code
+     5   uniform has no room for a fill color at the expected slot
+     1   slot read but never set
+     1   cache index read before anything wrote it
+     1   matrix is not baked
+
+25 of 28 are three known, bounded gaps rather than unimplemented filters. They are worth
+closing because they are small, not because they change the headline — the headline is
+`fxmaps`.
+
+### The honest answer
+
+Reading a `.sbsar`'s stored images: done, and correct. Evaluating a real material's graph
+end to end: 4.7% of outputs, none deeper than 20 records, against a median requirement of
+394. The distance is not spread across sixteen filters. It is one filter, and it is the
+one this document knows least about.
