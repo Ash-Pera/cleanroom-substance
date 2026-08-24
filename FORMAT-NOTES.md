@@ -26046,3 +26046,47 @@ That is worth knowing because it bounds the layout problem. For a reader that on
 find the slots, `directionalwarp` is finished - 100.000% - and the bits still unaccounted for
 are irrelevant to it. The remaining word1 questions are about what a record MEANS, not where
 its parameters are.
+
+## The 110 condition-less loops: a reading that reaches 100%, and why it was reverted
+
+The transpiler's only remaining failures are 110 programs containing opcode `0x0B` with the
+condition operand absent (`0xFFFF`). Operand 3 was dismissed earlier as a trip count because it
+also appears when a condition IS present - but that does not rule it out for the form that has
+no condition, so it was implemented and measured.
+
+Reading operand 3 as a fixed trip count, and emitting a plain counted loop (no per-lane mask is
+needed, since without a condition no lane can stop early):
+
+    programs   1,308,358
+    transpiled 1,308,358    100.0000%
+    failures            0
+
+A clean 100%. It was reverted anyway.
+
+### Because the number is not evidence
+
+Transpiling proves the emitter accepted the instruction, not that the reading is right. The
+test that would be evidence is execution: run the 110 and see whether they produce finite,
+sane values. That test cannot be run here.
+
+    condition ABSENT   110 programs   ran 0   KeyError 60, NoSharedCache 50
+    condition present  518 programs   ran 0   KeyError 518
+
+The control fails as completely as the hypothesis. These programs need sampler state and a
+populated shared cache that the standalone harness does not supply, so both groups fail for
+reasons that have nothing to do with loop bounds. A measurement where the control scores zero
+cannot discriminate anything.
+
+Keeping the change would have moved a headline figure from 99.9916% to 100% on the strength of
+a guess, and this file has spent a long time correcting exactly that: a settled-looking number
+nobody re-derived. `every program transpiles` stays at **1,308,248 of 1,308,358, 99.9916%**,
+and `reverify` keeps reporting it as the one claim that does not hold.
+
+### What would settle it
+
+An execution harness that supplies sampler state and shared-cache contents, so the control
+group runs. Then the question is answerable in one measurement: do the 110 produce finite
+values under a trip count of 3, and do they differ from what a single pass produces? Until then
+the honest position is that the loops are understood structurally - operand 0 is a sequence
+node in 164 of 164, operand 2 is always the preceding instruction, operand 4 is always 0 - and
+that what bounds them is still unknown.
