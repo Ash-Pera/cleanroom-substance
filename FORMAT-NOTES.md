@@ -27799,3 +27799,65 @@ The order is the useful part. The format's *shape* is well enough understood to 
 is not understood is what most of its numbers mean, which is the same conclusion the reader
 side reached from the other direction - 39.3% of parameter readings are values whose meaning
 is unknown, and that is what blocks a renderer too.
+
+## The tool built to stop claims going stale was checking three files out of 438
+
+`tools/reverify.py` exists because two headline claims went stale unnoticed. It re-runs
+each claim against the corpus and prints FAIL rather than editing the claim away. It has
+been reporting two FAILs, and I read them earlier this session, checked they predated my
+changes, and moved on.
+
+They predated my changes because they were not real. Its `corpus()` opened the root list
+and handed each line straight to `Assembly`. Those lines are RELATIVE paths, so they
+resolve against the working directory — and run from `tools/`, where every other tool in
+this project is run from, 435 of the 438 failed to open. A bare `except Exception:
+continue` swallowed every one, and the header printed
+
+    corpus: 3 files, 8457 records
+
+in a line that reads like provenance rather than an error.
+
+So the verifier was verifying **0.7% of the corpus**. Its exception counts are
+full-corpus numbers — "expected 8", "expected 2843" — so against a 3-file sample two
+claims failed arithmetic that had nothing to do with the format. That is worse than not
+having the tool: a checker that cries wolf teaches you to skim its output, which is
+exactly what I did with it.
+
+### What the real corpus says
+
+Run properly, all nine claims hold, and one of them had genuinely gone stale — which is
+the tool doing its job for the first time:
+
+    every record starts on a 4-byte boundary        904,131 / 904,131   100.0000%
+    class-word bit 3 set except cls == 0x80         904,123 / 904,131    99.9991%   8 exceptions
+    u16 at a program pointer is its instr count   1,761,533 / 1,761,533  100.0000%
+    every program transpiles                      1,761,423 / 1,761,533   99.9938%  <- was 100%
+    a second program named by the record's slots    324,717 / 324,717    100.0000%
+    the slot rule against layouts.json              448,458 / 451,301     99.3700%
+    fxmaps tree root pointer target is 4-aligned     41,212 / 41,212     100.0000%
+    edge slots holding 0                              1,302 / 1,302,469    0.1000%  recorded 0.10%
+
+"Every program transpiles, 1,206,800 of 1,206,800" is no longer true, and the 110 misses
+are one cause rather than a frayed edge: the condition-less `while` programs, whose trip
+count the transpiler refuses to guess. That refusal is deliberate and twice-corrected in
+this document — a reading that reached 100% was adopted and withdrawn on two separate
+occasions, each time on evidence that turned out to be a few program shapes repeated. So
+the claim is restated with its exception count rather than its old denominator, and if
+110 ever moves it is worth knowing in both directions: down means the loops were
+understood, up means something else broke.
+
+### The fix, and the shape of the bug
+
+`corpus.paths` resolves relative paths against the repository root, so the answer no
+longer depends on where the command was typed. And `reverify.py` now refuses to report
+at all when it loads fewer files than the corpus offers:
+
+    REFUSING TO REPORT: loaded 3 files, expected 438.
+    Nothing below would be a verification. Check that the corpus paths resolve.
+
+This is the same shape as the withdrawn corpus list two sections above, and the third
+instance today of one specific failure: **a correct fact, recorded in the right place,
+that some other piece of code never received.** The docstring said the root list was
+canonical. The loader honoured it. The path resolution did not, and nothing compared what
+was asked for against what arrived. Every one of these has been silent, and every one has
+been caught by a count that looked slightly off rather than by anything failing.

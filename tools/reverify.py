@@ -30,16 +30,27 @@ LIST = os.path.join(ROOT, 'DISTINCT.txt')
 
 
 def corpus():
-    """The 435-file root list. NOT tools/DISTINCT.txt, which is withdrawn."""
-    with open(LIST) as fh:
-        for line in fh:
-            p = line.strip()
-            if not p:
-                continue
-            try:
-                yield sbsasm.Assembly(p)
-            except Exception:                    # a parse failure is its own claim, below
-                continue
+    """The canonical corpus, through `corpus.paths`.
+
+    This used to open the root list and hand each line straight to `Assembly`. The lines
+    are RELATIVE paths, so they resolved against the working directory - and run from
+    `tools/`, which is where every other tool here is run from, all but three of the 438
+    failed to open. The `except Exception: continue` below swallowed it, and the header
+    printed "corpus: 3 files" in a line nobody read as an error.
+
+    So the tool whose entire purpose is to stop settled claims going stale was checking
+    0.7% of the corpus, and reporting FAIL for claims whose expected exception counts are
+    full-corpus numbers. Two claims read FAIL for that reason alone.
+
+    `corpus.paths` resolves relative paths against the repository root, so the answer no
+    longer depends on where the command was typed.
+    """
+    import corpus as _corpus
+    for p in _corpus.paths():
+        try:
+            yield sbsasm.Assembly(p)
+        except Exception:                        # a parse failure is its own claim, below
+            continue
 
 
 def program_points(a, r):
@@ -159,9 +170,17 @@ CLAIMS = [
     ('the u16 at a program pointer is its instruction count',
      '291,802 of 291,802',
      lambda T: (T['lenprefix'], T['programs']), 0),
-    ('every program transpiles',
-     '1,206,800 of 1,206,800',
-     lambda T: (T['transpiled'], T['programs']), 0),
+    # Recorded as 100% and no longer true, which is what this tool exists to surface. The
+    # 110 misses are one cause, not a frayed edge: the condition-less `while` programs,
+    # whose trip count the transpiler REFUSES to guess. That refusal is deliberate and
+    # twice-corrected in FORMAT-NOTES.md - a reading giving 100% was adopted and withdrawn
+    # two separate times on evidence that turned out to be a handful of program shapes
+    # repeated. So the exception count is the honest statement of the claim, and if it
+    # ever moves off 110 in either direction that is worth knowing: down means the loops
+    # were understood, up means something else broke.
+    ('every program transpiles, bar the condition-less loops',
+     '1,761,423 of 1,761,533 = 99.9938%, the 110 being condition-less `while`',
+     lambda T: (T['transpiled'], T['programs']), 110),
     ('a second program is named by one of the record\'s own slots',
      '36,614 of 36,614',
      lambda T: (T['second_prog_named'], T['second_prog']), 0),
@@ -186,10 +205,24 @@ RATES = [
 ]
 
 
+# How many files the corpus list currently offers. A run that loads materially fewer than
+# this has not verified the claims below, whatever it prints next to them.
+EXPECTED_FILES = 438
+
+
 def main():
     T = scan()
     print('corpus: %d files, %d records, %d programs\n'
           % (T['files'], T['records'], T['programs']))
+    # Refuse to report on a corpus that quietly shrank. Every claim here is a proportion,
+    # so a smaller corpus does not look wrong - it looks like slightly different
+    # percentages against exception counts that are full-corpus numbers, which is how a
+    # 3-file run came to print two confident FAILs. The failure mode is silence, so the
+    # check has to be loud and it has to be first.
+    if T['files'] < EXPECTED_FILES:
+        print('REFUSING TO REPORT: loaded %d files, expected %d.' % (T['files'], EXPECTED_FILES))
+        print('Nothing below would be a verification. Check that the corpus paths resolve.')
+        return 2
     print('%-52s %-22s %s' % ('claim', 'recorded', 'now'))
     bad = 0
     for name, recorded, fn, expected in CLAIMS:
