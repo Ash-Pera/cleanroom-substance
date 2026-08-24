@@ -74,6 +74,13 @@ def main(paths):
                     tot['param_absent'] += 1
                 elif sl is not None and sl >= len(r.words):
                     tot['param_absent'] += 1
+                elif (r.filter_id == 0 and sl in (2, 3, 4) and r.ramp):
+                    # For `gradient` the layout's parameter slot is one the RAMP uses --
+                    # slot 2 is the stop count, 3 the table start, 4 its end. All 38 of
+                    # these records return a ramp, and in all 38 the slot is 4, the end
+                    # pointer. The field is read; it is just not a parameter. Same class
+                    # as "the slot is an edge" above.
+                    tot['param_is_edge'] += 1
                 elif sl is None:
                     # The layout names no parameter slot at all. That is the same fact as
                     # "the block ends before one could exist", and was being counted as a
@@ -143,7 +150,7 @@ def main(paths):
           100 * (r_ - tot['no_param']) / max(1, r_)))
     print('    record has no parameter slot: %d  (%.2f%%)  -- correct, not a miss'
           % (tot['param_absent'], 100 * tot['param_absent'] / max(1, r_)))
-    print('    slot is an edge      : %d  (%.2f%%)  -- no parameter, not a miss'
+    print('    slot is an edge or a ramp bound: %d  (%.2f%%)  -- read, not a parameter'
           % (tot['param_is_edge'], 100 * tot['param_is_edge'] / max(1, r_)))
     print('    genuinely unread     : %d  (%.2f%%)'
           % (tot['param_unread'], 100 * tot['param_unread'] / max(1, r_)))

@@ -1297,68 +1297,7 @@ class Assembly:
                              else self.header['table_start'])
 
     # ---- outputs
-    def outputs(self):
-        """The graph outputs, as [(uid, format, grayscale, record index), ...].
-
-        Layout A puts an 8-byte entry per output between the record directory and the
-        first record - the region coverage() was calling 'resources', though many files
-        with one embed no images at all. One entry per output in 591 of 591 layout-A
-        specimens, and the second word is a valid record index in 3,249 of 3,249.
-
-        The first word carries the manifest's `format` attribute as bits 4 and up:
-        format == (w0 & 0xFFFF) >> 4, exact on every distinct value in the corpus. Bit 2
-        of that format is the grayscale flag, and it matches the colour bit of the record
-        the entry names in 3,249 of 3,249 - a consequence test the table could have
-        failed and did not.
-
-        This is the output-to-record attribution recorded elsewhere in FORMAT-NOTES.md as
-        structurally absent. It is not absent; it was in a region nothing had read.
-
-        Entries whose high half is 2 - 48 of 3,249 - are numeric VALUE outputs rather
-        than images, and are returned with format `('value', type)`. The manifest declares
-        each with a `type` attribute, `typegui="float"` and no format/width/height; the
-        entry's low half equals that type in 48 of 48. All 48 name a pixelprocessor.
-        """
-        if not self.records:
-            return []
-        lo, hi = self.output_table
-        if hi <= lo:
-            return []
-        uids = self.header.get('output_uids') or []
-        out = []
-        for j, off in enumerate(range(lo, hi, 8)):
-            if off + 8 > len(self.data):
-                break
-            w0, idx = struct.unpack_from('<II', self.data, off)
-            uid = uids[j] if j < len(uids) else None
-            if (w0 >> 16) == 2:
-                # A numeric VALUE output, not an image: the manifest declares it with a
-                # `type` and `typegui="float"` and no format, width or height. The entry's
-                # low half is that type code, in 48 of 48 across the corpus, and all 48
-                # name a pixelprocessor record - the only filter that computes a number
-                # rather than an image.
-                out.append((uid, ('value', w0 & 0xFFFF), None, idx))
-            else:
-                fmt = (w0 & 0xFFFF) >> 4
-                out.append((uid, fmt, bool(fmt & 4), idx))
-        return out
-
     # ---- programs
-    def valid_program(self, p):
-        """True if a program starts at p. See `program_span` for what that requires.
-
-        Three checks, each of which a run of arbitrary bytes fails: the declared
-        instruction count decodes to exactly that many instructions; every opcode is
-        well-formed and its id is one the format actually uses (the raw length rule
-        accepts 47% of all u16 values); and every operand that is a value reference names
-        an EARLIER value, since this is three-address code with contiguously numbered
-        results.
-
-        The last check is the one with teeth -- violated by 0.00% of instructions in
-        programs a record's slots name, and by 65% in scan-discovered candidates.
-        """
-        return self.program_span(p) is not None
-
     # ---- outputs
     def outputs(self):
         """The graph outputs, as [(uid, format, grayscale, record index), ...].
@@ -1443,7 +1382,17 @@ class Assembly:
                 for i in range(L - 1):
                     if i in pos:
                         continue
-                    if struct.unpack_from('<H', d, q + 2 + 2 * i)[0] >= k:
+                    v = struct.unpack_from('<H', d, q + 2 + 2 * i)[0]
+                    # 0xFFFF is the absent marker, not a value number - the u16 form of the
+                    # 0xFFFFFFFF an absent edge uses. Rejecting it as an impossible forward
+                    # reference threw away 10 `pixelprocessor` programs in `US_Flag`,
+                    # consecutive records at a 356-byte stride, each pointing at a
+                    # 56-instruction program inside its own record.
+                    #
+                    # This does not weaken check 3. Over 622,587 slot targets that land in
+                    # the body, 126,700 are valid strictly and allowing 0xFFFF admits
+                    # exactly ONE more - the exemption reaches the sentinel and nothing else.
+                    if v >= k and v != 0xFFFF:
                         return False
             q += 2 * L
             k += 1

@@ -22962,3 +22962,50 @@ iteration on `bitmap` before noticing its records are two words long.
 
 Audit unchanged otherwise: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
 validator 437/437.
+
+## `0xFFFF` is an absent operand, and two methods were defined twice
+
+Listing all 56 remaining unread records - small enough to read individually - found two things.
+
+### 38 were a ramp bound, not a parameter
+
+All 38 `gradient` records among them have their layout's parameter slot at **slot 4**, which
+is the ramp's table-end pointer, and all 38 return a ramp. The field is read; it is simply
+not a parameter. Classified with "the slot is an edge", for the same reason.
+
+    genuinely unread   56  ->  18
+
+### 10 more were a validator false negative
+
+Ten consecutive `pixelprocessor` records in `US_Flag`, at a **356-byte stride** - the size of
+each record - each pointing at a 56-instruction program **inside its own record**. The
+program decodes cleanly and `valid_program` rejected it at instruction 12:
+
+    094D  vec.f2   %11, %65535
+
+`0xFFFF` is not a value number. It is the absent marker, the u16 form of the `0xFFFFFFFF` an
+absent edge uses, and check 3 - "every operand names an earlier value" - read it as an
+impossible forward reference.
+
+Exempting it does **not** weaken the check that this file calls the one with teeth. Over
+622,587 slot targets that land in the body, 126,700 are valid strictly and allowing `0xFFFF`
+admits **exactly one more**. The exemption reaches the sentinel and nothing else.
+
+    genuinely unread   18  ->  7        parameters read  857,014  ->  857,025
+
+### Two methods were defined twice in the same class
+
+`Assembly.valid_program` and `Assembly.outputs` each had two definitions. Python keeps the
+later one silently, so half of each pair was dead code. The `outputs` pair was byte-identical;
+the `valid_program` pair was not - one delegated to `program_span` and the live one
+reimplemented the three checks inline.
+
+That is the defect `fxdisasm`'s own docstring already warns about, in those words: *"Every one
+of those had drifted from the module they were copied from, which is the same defect that let
+`program_span` and `valid_program` disagree."* It had drifted back into the module it warns
+about. Both duplicates are removed.
+
+**7 records in 895,674** whose parameter this model cannot read.
+
+Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437 on every
+check, transpiler 12 tests passed.
