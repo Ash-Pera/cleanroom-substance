@@ -18,6 +18,7 @@ The second is the sharp one - it can fail, and a wrong table would fail it often
     python3 attribute_outputs.py <file.sbsasm> <manifest.xml>
     python3 attribute_outputs.py --corpus <list-file>
 """
+import struct
 import collections
 import sys
 import xml.etree.ElementTree as ET
@@ -116,6 +117,7 @@ def main(argv):
         import glob, os
         paths = [l.strip() for l in open(argv[1]) if l.strip()]
         tot = collections.Counter(); files = 0
+        unreadable = []
         for p in paths:
             xs = glob.glob(os.path.join(os.path.dirname(p), '*.xml'))
             if not xs:
@@ -123,13 +125,22 @@ def main(argv):
             try:
                 a = Assembly(p)
                 ok, bad, skip, _, v1, v2 = check(a, xs[0])
-            except Exception:
+            except (OSError, ET.ParseError, struct.error) as e:
+                # Only what a malformed specimen raises. A bare `except` here swallows a
+                # bug in `check` as a smaller file count -- measured, it currently drops
+                # exactly 2 files, both the manifests the audit already reports as
+                # unparseable, and it would hide anything else just as quietly.
+                unreadable.append((p, e))
                 continue
             files += 1
             tot['ok'] += ok; tot['bad'] += bad; tot['skip'] += skip
             tot['vac_ok'] += v1; tot['vac_bad'] += v2
         n = tot['ok'] + tot['bad']
         print('specimens checked        : %d' % files)
+        if unreadable:
+            print('unreadable specimens     : %d' % len(unreadable))
+            for _p, _e in unreadable[:4]:
+                print('   %-44s %s' % (_p.split('/')[-1][:44], type(_e).__name__))
         print('(input, output) pairs    : %d' % n)
         print('   agree with the table  : %d  (%.2f%%)' % (tot['ok'], 100*tot['ok']/max(n, 1)))
         print('   violations            : %d' % tot['bad'])

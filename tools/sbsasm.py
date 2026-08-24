@@ -143,8 +143,13 @@ def _load_layouts():
     try:
         with open(path) as f:
             raw = json.load(f)
-    except Exception:
-        return {}, {}
+    except FileNotFoundError:
+        return {}, {}           # no table shipped: every reader falls back to probing
+    except (json.JSONDecodeError, OSError):
+        raise                   # a table that exists and will not load is a defect, not
+                                # a reason to silently run without one. Returning {} here
+                                # disables every layout lookup in the module and every
+                                # count downstream drops without saying why.
     lay, hdr = {}, {}
     for k, v in raw.items():
         key = tuple(int(x) for x in k.split(','))

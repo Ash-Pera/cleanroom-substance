@@ -23138,3 +23138,47 @@ number cannot warn you about.
 
 Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 12 tests passed.
+
+## Auditing the bare `except`s
+
+The manifest cross-check was broken for half its run by a bare `except` that turned a
+`NameError` into a smaller number. That is a bug class, so the next thing is to look for the
+rest of it. There are five in the tools:
+
+    sbsasm.py           loading layouts.json
+    attribute_outputs   Assembly() AND check(), per specimen
+    derive_layouts x2   Assembly() only
+    validate_corpus     rec.output_size only
+
+Two were worth changing.
+
+**`sbsasm.py`, loading `layouts.json`.** On any failure it returned `{}, {}` - which does not
+disable one check, it disables **every layout lookup in the module**, and every count
+downstream drops without saying why. A missing file is a real fallback: no table shipped, so
+readers probe instead. A file that exists and will not parse is a defect. Those are now
+separate: `FileNotFoundError` returns empty, everything else raises.
+
+**`attribute_outputs.py`.** It wrapped the parse *and* the check, so a bug in `check` would
+present as a smaller specimen count. Measured before changing it: exactly **2** files are
+being dropped, both the `advanced_transform` manifests the validator already reports as
+unparseable. So it was not hiding anything today. It is now narrowed to what a malformed
+specimen raises, and - the part that matters more - the skipped files are **printed** rather
+than merely tolerated:
+
+    specimens checked        : 433
+    unreadable specimens     : 2
+       advanced_transform_greyscale.sbsasm          ParseError
+       advanced_transform_colour.sbsasm             ParseError
+
+The other three wrap a single call each, where the exception type and the failure mean the
+same thing, and were left alone.
+
+### It caught something immediately
+
+Narrowing the `attribute_outputs` clause made it raise on the very next run - `NameError:
+unreadable is not defined`, because the list I added to record the skips was declared in the
+wrong function. Under the old bare `except` that would have been swallowed as two more
+skipped files. The change justified itself on its first execution, against its own author.
+
+Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437, tag vs
+manifest 2,467/2,468, size expression vs manifest 1,564/1,564, transpiler 12 tests passed.
