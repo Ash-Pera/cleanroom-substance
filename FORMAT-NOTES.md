@@ -29274,3 +29274,60 @@ suggests it carries the most parameters and may not have a fixed shape at all.
 
 Node types still unhandled, in size order: `0x0B` (1,538), `0x99` — now handled — `0x9B`
 (90), `0x09` (59), `0xDB` (23), `0x4B` (8). Between them, under 2,000 nodes.
+
+## Digging into the cost-model residuals: three were the harness, one was the fit, two remain
+
+The first cost derivation covered 72.25% of records and rejected eight filters. Every
+rejection has now been run down, and the pattern repeats this session's lesson: most of
+the residual was the measurement, not the format.
+
+**levels (48% -> 99.7%) — the fit was unweighted over keys.** Its dominant key holds
+32,735 records at header 6; a two-record junk key claiming header 14 counted exactly as
+much. With cls held fixed the structure is legible by eye: `header = 4 + one slot per
+non-absent field`, with field 5's baked state costing zero. A cost table must answer for
+records, so the fit must be weighted by records.
+
+**pixelprocessor (0.15% -> 99.7%) — squared error handed the objective to junk.** Its
+real headers are exactly `5 + arity` (+1 for cls bit 0). But a few keys claimed headers
+of 33,687 words — records where the first-program probe measured to some later program —
+and 10 records x 30,000^2 outweighs 23,000 records x 1^2, so weighting alone could not
+save it: the fit came back const = -110.5, arity cost 63. A header is a struct's slot
+count; no observed header above 64 words informs the fit now. It still counts against
+the score — exclusion is for the fit, never for the reported exactness.
+
+**warp, shuffle, uniform, sharpen (94/67/73/99.4% -> 99.99/100/99.97/100%) — the key was
+an edge value.** For the no-w1 shape, words[1] is the first INPUT, so keying on it gave
+warp 12,366 keys for 26,416 records and sharpen 1,127 for 1,264 — one key per record,
+each "deterministic" and none generalising. Marking w1 absent (per filter, or per record
+via the edge run starting at slot 1) collapsed warp to 43 keys and sharpen to 16.
+
+**A silent runtime bug found by the digging.** `record_layout.header_words` predicted
+from const + cls + code-pairs regardless of what the spec held: the new arity and
+presence terms would have been silently ignored, making every pixelprocessor answer
+wrong by its input count with no sign anything was missing. The function and the fit now
+share one term list by construction, and the spec records each filter's w1 mode
+(codes / arity / absent / per_record) so the caller cannot decode an edge value as
+field codes.
+
+### Where it stands
+
+    RULE     answers 94.7% of records   correct 99.589% of those
+    MEMO     answers 92.1%              correct 99.778%
+    COMBINED 98.214%        (was 94.700% before the digging)
+
+    kept: 17 filters at >= 99.5% exact, ten of them at exactly 100%
+
+### The two residuals that are real, and why they stay
+
+**fxmaps (49.0%).** Its programs live in the fx TREE, reached through FX_TABLE offsets,
+so "the record's first inline program" does not mark its header boundary at all. The
+probe is wrong for this filter, and fitting to a wrong observable would memorise noise.
+It needs its own boundary observable, not a better fit.
+
+**emboss (60.5%).** Its observation table contradicts ITSELF within single keys — one
+(cls, w1) shows headers {10, 7} two records each, another {12, 24, 20, 10}. No function
+of (cls, w1) can reproduce a table that is not a function, so the defect is upstream in
+the probe. 438 records; parked until a reliable boundary exists.
+
+Both rejections are the probe, not the design. No record has yet contradicted the
+presence-mask rule itself.

@@ -55,18 +55,40 @@ def header_words(filter_id, cls, w1):
 
     None means "this filter's costs were not established", never "zero" -- callers must
     fall back rather than treat a missing rule as an answer.
+
+    `w1` follows the filter's mode, recorded in the spec by derive_costs:
+
+        codes       words[1], a vector of two-bit fields
+        arity       words[1]; an integer sub-field adds one slot per unit
+        absent      the filter has no w1 word; the argument is ignored
+        per_record  the record either has a w1 word or does not, and only the CALLER
+                    can tell (the edge run starting at slot 1 is the no-w1 shape) --
+                    pass words[1], or None for the no-w1 shape
+
+    The first version of this function silently ignored the arity and presence terms:
+    it predicted from const+cls+codes whatever the spec held, so a pixelprocessor
+    answer would have been wrong by the input count with no sign anything was missing.
+    Terms and spec are now the same shape by construction -- everything the fit can
+    emit, this applies.
     """
     spec = costs().get(str(filter_id))
     if spec is None:
         return None
+    if spec.get('mode') == 'absent':
+        w1 = None
     total = spec['const']
     for b, c in spec['cls'].items():
         if cls >> int(b) & 1:
             total += c
-    for j, states in spec['w1'].items():
-        st = (w1 >> (2 * int(j))) & 3
-        if st:
-            total += states.get(str(st), 0.0)
+    if w1 is not None:
+        total += spec.get('w1_present', 0.0)
+        ar = spec.get('arity')
+        if ar:
+            total += ar['cost'] * ((w1 >> ar['shift']) & ar['mask'])
+        for j, states in spec['w1'].items():
+            st = (w1 >> (2 * int(j))) & 3
+            if st:
+                total += states.get(str(st), 0.0)
     n = int(round(total))
     return n if n > 0 else None
 
