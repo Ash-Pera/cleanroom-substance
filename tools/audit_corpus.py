@@ -67,6 +67,16 @@ def main(paths):
                     tot['param_absent'] += 1
                 elif sl is not None and sl >= len(r.words):
                     tot['param_absent'] += 1
+                elif (sl is not None and sl < len(r.words)
+                      and r.words[sl] in [e for e in r.edges if e is not None]):
+                    # The slot the layout calls the parameter is already claimed as an
+                    # EDGE by this same record - it holds a backward record index that
+                    # `Record.edges` resolved. That is a record with no parameter, not one
+                    # whose parameter went unread. Of the 1,319 previously counted as
+                    # unread, 828 have a readable slot, 774 of those hold a valid record
+                    # index and 772 point backward, which is the edge signature; 303 are
+                    # edges this record already lists.
+                    tot['param_is_edge'] += 1
                 else:
                     tot['param_unread'] += 1
             elif par[0] == 'program':
@@ -90,6 +100,8 @@ def main(paths):
           100 * (r_ - tot['no_param']) / max(1, r_)))
     print('    record has no parameter slot: %d  (%.2f%%)  -- correct, not a miss'
           % (tot['param_absent'], 100 * tot['param_absent'] / max(1, r_)))
+    print('    slot is an edge      : %d  (%.2f%%)  -- no parameter, not a miss'
+          % (tot['param_is_edge'], 100 * tot['param_is_edge'] / max(1, r_)))
     print('    genuinely unread     : %d  (%.2f%%)'
           % (tot['param_unread'], 100 * tot['param_unread'] / max(1, r_)))
     print('    an output size expression: %d  (%.1f%%)' % (tot['param_program'],

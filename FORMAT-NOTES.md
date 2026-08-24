@@ -21609,3 +21609,48 @@ content - which is the check that matters: the coordinates were wrong, not the w
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## 303 of the "genuinely unread" parameters are edges
+
+The audit's smallest residual was 1,319 records (0.15%) whose parameter it could not read,
+already separated from the 38,115 that correctly have no parameter slot at all. Looking at
+what is actually in those slots:
+
+    fur_var_001      record   22   slot 3   raw    21
+    concrete_049     record  862   slot 2   raw   861
+    Asphalt002       record  815   slot 2   raw   811
+
+The raw values are record indices, near the record's own index and below it. That is the
+edge encoding, not a parameter pointer. Measured over the 828 with a readable slot:
+
+    the value is a valid record index                774 / 828   (93.5%)
+    it points BACKWARD, as an edge must              772 / 828
+    it is already listed among this record's edges   303 / 828
+    it is exactly one record back                    259 / 828
+
+The 303 are unambiguous - `Record.edges` resolved that same word as an edge for that same
+record. So the layout table's "parameter slot" is, for those records, an edge slot: they have
+no parameter, which is a different fact from having one this model failed to read.
+
+    genuinely unread   1,319 (0.15%)  ->  1,016 (0.11%)
+
+The "valid record index" figure on its own would not have carried this. A record index is a
+small integer, and small integers are the standard way to fool a test in this format - it is
+why `Record.edges` has a diversity guard and why the ramp's slot 2 was shown *not* to be an
+edge despite reading like one. What makes the 303 solid is not that the value looks like an
+index but that an independent reader already claimed it as one.
+
+### What is left in the 1,016
+
+    706   no layout key at all
+    491   the layout's parameter slot is None
+    794   the slot's +52 target lands outside the body
+     34   lands in the body but is not a valid program
+    471   holds a backward record index that is NOT among this record's edges
+
+The last group is the interesting one: the value has the edge signature but no edge reader
+claims it. Either the layout table names an edge slot it has not registered as one, or these
+are parameters that happen to be small. Nothing yet separates those.
+
+By filter: `pixelprocessor` 432, `fxmaps` 311, `warp` 196, `gradient` 155, `transformation`
+52, `bitmap` 35.
