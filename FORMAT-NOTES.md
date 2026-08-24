@@ -23475,3 +23475,39 @@ evidence goes.
     unread and altering nothing, consistent    401
     read by a program off the layout table   1,833
     read by nothing this project can find       29
+
+## The slot file is a one-way channel into `pixelprocessor` and `fxmaps`
+
+Filter 19 - the largest still-unnamed filter, 2,201 records - writes slots and reads none.
+That looked like a distinctive identity: a record that only initialises state for others.
+
+It is not distinctive. Profiling every filter's slot traffic:
+
+    filter            records touching slots   write-only   slot reads   slot writes
+    blend                          23,818        23,818             0       136,068
+    transformation                 12,792        12,792             0        75,206
+    levels                          7,695         7,694             1        39,856
+    directionalwarp                 4,480         4,480             0        21,760
+    warp                            2,982         2,982             0        16,541
+    dirmotionblur                   1,825         1,825             0         9,071
+    id 19                             227           227             0         1,278
+    pixelprocessor                  7,347         5,698        15,962        68,001
+    fxmaps                          7,562           180        14,678        38,049
+
+**Every ordinary filter is write-only.** `blend` reads a slot 0 times in 136,068 writes;
+`levels` once in 39,856. Only `pixelprocessor` and `fxmaps` read slots at all, and between
+them they account for essentially every read in the corpus.
+
+So the slot file is not general scratch space shared symmetrically between records. It is a
+**one-way channel**: a filter's parameter programs write values into it, and the per-pixel and
+fx-map programs read them back. That is why sharing one slot dict per file took execution from
+90.4% to 95.4% while sharing per record did not - the writers and the readers are different
+records, by design, and almost always different *filters*.
+
+It also explains the shape of the `uniform` case found earlier: those records read slots 12
+and 16 written by `fxmaps`, which looked like an anomaly and is the normal direction of travel
+seen from the reading end.
+
+Filter 19 remains unnamed. What is now known about it: two input edges, a parameter, no slot
+reads, and programs that initialise a block of slots with ranges like `(-2.5, 3.5, -2.5,
+3.5)`, a count, and a step - scatter or tile setup, handed to something else to execute.
