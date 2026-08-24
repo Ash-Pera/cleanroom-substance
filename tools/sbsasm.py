@@ -1103,6 +1103,29 @@ class Record:
         if not (start < end <= self.asm.body_hi):
             end = self.end if self.offset < start < self.end else self.asm.body_hi
         width = 4 + 2 * (1 if self.colour else 0) + 2 * ((self.cls >> 8) & 1)
+        # There is a SECOND ramp encoding, in float32. Its entries are a position followed
+        # by the channels and a trailing -1.0 - six floats for colour, three for greyscale:
+        #
+        #     (0.0,    0.2891, 0.3231, 0.3265, 1.0, -1.0)
+        #     (0.0051, 0.2852, 0.3158, 0.3225, 1.0, -1.0)
+        #
+        # 21 records use it, every one of them class 825, and the split is total: those 21
+        # match the float width exactly and never the u16 width, while all 12,879 other
+        # gradient records match the u16 width and never the float one.
+        #
+        # The format is chosen by which width the span matches, not by the class value - 21
+        # records is far too thin to name a bit from, and the span says it outright.
+        #
+        # This also repairs a regression. Relaxing the guard to containment let 11 of these
+        # through as u16 tables, since a float table always FITS a u16 reading; they were
+        # being reported as ramps and read as nonsense. Exact match has to be tried first.
+        fwidth = 4 * (6 if self.colour else 3)
+        if (end - start) != count * width and (end - start) == count * fwidth:
+            out = [struct.unpack_from('<%df' % (fwidth // 4), self.asm.data,
+                                      start + i * fwidth) for i in range(count)]
+            if any(out[i][0] > out[i + 1][0] for i in range(len(out) - 1)):
+                return None
+            return out
         # Slot 4 is not always the table's end. Requiring `end - start == count * width`
         # rejected 968 records; in every one of them the span is LARGER than the table
         # needs, never smaller, and the table fits inside it at the formula width. So the

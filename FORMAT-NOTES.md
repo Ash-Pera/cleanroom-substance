@@ -21856,3 +21856,55 @@ well enough that nothing pointed at it until the residual was chased.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## A second ramp encoding, and a regression my own relaxation caused
+
+Auditing the readers for hard-coded slots turned up nothing in `ramp` - its base does not
+shift with class bit 0, unlike the header, and it reads at slot 2 for both values (12,607
+set, 5,188 clear). But chasing the 82 records it still rejected found something else.
+
+72 of the 82 have four words, too short to hold count/start/end at all. The other 10 divide
+cleanly, at widths the formula cannot produce:
+
+    span / count = 24    where the formula gives 8
+    span / count = 12    where the formula gives 6
+
+Read as float32 they are ramps in a second encoding - a position, the channels, and a
+trailing `-1.0`:
+
+    (0.0,    0.2891, 0.3231, 0.3265, 1.0, -1.0)
+    (0.0051, 0.2852, 0.3158, 0.3225, 1.0, -1.0)
+    (0.0152, 0.2775, 0.3079, 0.3147, 1.0, -1.0)
+
+Six floats for colour, three for greyscale. Positions ascend, as a ramp's must.
+
+### The split is total
+
+    class 825      21 records   match the float width 100%   match u16   0%
+    every other   12,879 records match u16              90.4%   match float 0%
+
+Every record using it is class 825. The format is nonetheless selected by **which width the
+span matches**, not by the class value: 21 records is far too thin to name a bit from, and
+the span states it outright. This is the same choice made for `transformation`'s two layouts
+under one key, and for the opposite reason - there, no field distinguished them and the
+count was two.
+
+### The regression
+
+Relaxing this guard from equality to containment, two sections ago, let **11 of these 21
+through as u16 tables**. A float table always fits a u16 reading - it is three times wider -
+so containment passes, the ascending check passes on reinterpreted bytes, and the record was
+reported as a ramp with nonsense values.
+
+The relaxation was right; trying containment *before* exact match was not. Exact width now
+decides first, u16 then float, and containment is the fallback it was meant to be.
+
+    ramps read     17,795  ->  17,805       stops   368,403  ->  371,780
+    of which float format        25
+
+That is +10 records read and **11 read correctly that were being read wrongly** - the second
+number matters more, and nothing in the corpus totals would have shown it. A guard that only
+ever loosens cannot be checked by watching a coverage number go up.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
