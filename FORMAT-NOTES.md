@@ -25351,3 +25351,40 @@ The most-referenced declared inputs across the corpus, independent of any of thi
     $outputsize 509 files    $randomseed 467    $pixelsize 39
 
 The three commonest inputs in the format are the three the class word encodes.
+
+## Why bits 10 and 13 cannot be named from this corpus
+
+Bits 0, 7 and 11 are named outright. Bits 10 and 13 are not, and the reason is now clear rather
+than merely unknown.
+
+Every `$`-prefixed base parameter referenced by any program in the corpus, with the class-word
+bits of the records that reference it:
+
+    $outputsize    732,145 references    (0,) 73%   (0,7) 13%   (0,11) 10%
+    $randomseed    121,584               (0,7) 83%  (7,) 16%
+    $pixelsize       7,069               (0,11) 70% (0,11,13) 22%  (11,) 7%
+    $normalformat       76               (0,) 75%   (0,11) 25%
+
+Four, and only four. `$normalformat` is not associated with a bit of its own - it appears under
+the same bit patterns as `$outputsize`, so it is an ordinary parameter of the `normal` filter
+rather than something the class word encodes.
+
+So the class word's named content is exactly three inherited parameters, and the remaining two
+bits describe parameters **no file in this corpus exposes as a declared input**:
+
+    bit 10   a 2-component value, baked in 681 of 681 records, an equal pair 72.7% of the
+             time. Never a program, so it never references a uid, so the manifest can never
+             name it. The values - powers of two, and fractions near 0.5 - are what a resolved
+             `$pixelsize` looks like.
+    bit 13   a 1-component computed value, ~7 instructions. Its program references
+             `$outputsize` in 33% of 70 cases and assorted user parameters otherwise, so it is
+             derived from other quantities rather than bound to one of its own.
+
+Substance nodes inherit more base parameters than these - `$tiling`, `$outputformat`, `$time`
+among them - and none is declared as an input anywhere in the 438 files. A parameter that is
+inherited but never exposed is referenced by no uid, and uid references are the only channel
+the manifest gives us. That is a limit of the corpus, not of the method: naming bits 10 and 13
+requires a package that exposes one of those parameters, and none of these does.
+
+Attempting it anyway would mean arguing from the shape alone, which in this file has produced
+`passthrough`, `grayscaleconversion` and `svg` - three plausible names, all withdrawn.
