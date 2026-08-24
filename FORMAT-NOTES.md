@@ -26849,3 +26849,66 @@ shape, those 164 instances are 6 distinct shapes over 7 specimens. My 15 are wor
 So "14 of 15 agree" was one shape observed fourteen times. The live code raises rather than
 guess, and that is better supported than my adoption was. The transpiler stays at 99.99% rather
 than 100%, and the reason is on the record twice now.
+
+## The condition-less loops are the axes of a two-dimensional window
+
+Which settles what the width means, and changes the guard that follows from it.
+
+### The test
+
+For each condition-less `while`: find its innermost enclosing `while`, then each loop's
+counter - the slot its body increments by one - and that counter's initial constant. Then
+look for an instruction that combines **both** counters into one value: a `vec` whose two
+operands are `get(outer)` and `get(inner)`. Two nested loops whose counters are joined into
+a 2-vector are two axes of one scan; anything else is not.
+
+    condition-less loops                          164
+    both counters identified                      164
+    counters combined by a `vec`                  114
+    inner width == outer width          114 of 114
+    inner counter start == outer start  114 of 114
+
+The 50 that do not combine are the **outer** member of such a pair, seen from the other
+side: their own enclosing loop is a different construct (a conditioned `while` whose operand
+3 is 0), and their partner is one of the 114. The nesting depths agree - 64 at depth 1, 50
+at depth 2, 50 at depth 3 - so the shape is
+
+    conditioned while, operand 3 = 0
+      condition-less while, width n          axis 1
+        condition-less while, width n        axis 2
+          ... vec(get(axis1), get(axis2)) ...
+
+and in the 114 paired cases the two axes always have the **same width and the same start**.
+Every window in this corpus is square; no anisotropic one occurs.
+
+### Why this is a structural argument, not a frequency one
+
+The counting caveat from the previous sections still applies - these 164 loops come from
+6 program shapes, and no amount of re-counting changes that. But the argument here does not
+rest on the count. **A single program suffices**: two nested loops whose counters are
+combined into a coordinate and used as a sampling offset are a two-axis window, and that is
+readable off one disassembly. The 114 of 114 shows the construct is uniform among these
+loops, not that it is independently attested 114 times.
+
+That is a different kind of evidence from "operand 3 is 3 in 158 of 164", and it is the
+kind this document should have been looking for the whole time.
+
+### Consequence: the constraint is parity, not a whitelist
+
+A window of width `n` centred on the sample runs its counter over `-(n-1)/2 .. +(n-1)/2`.
+For that start to be an integer, **`n` must be odd** - and that is the entire constraint.
+`{1, 3, 5}` is not a property of the format; it is the set of widths that happen to occur
+in 6 program shapes. A width of 7 or 9 is an ordinary centred window and would be expected
+in any corpus containing a wider one.
+
+So the guard proposed earlier in this session - accept exactly 1, 3 and 5 - was wrong, and
+would have rejected a legitimate wider window as if it were a decode failure. The
+defensible reading of operand 3 is:
+
+    odd and positive        required by the counter-start relation
+    equal to its partner    in 114 of 114 paired axes
+    {1,3,5}                 what this corpus contains, and nothing more
+
+`transpile.py` currently raises `Unsupported` for these loops rather than choosing any
+bound, which remains defensible while the reading rests on 6 shapes. If it is ever wired
+up, the condition to test is parity, not membership.
