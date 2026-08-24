@@ -25608,3 +25608,49 @@ short of bytecode. They need `.sbs` SOURCES that use those filters, and packages
 `$tiling` or `$outputformat` as declared inputs. Zero of the 438 files do either. That is a
 provenance problem, not a volume problem: another thousand compiled assemblies of the same
 kind would answer none of them.
+
+## transformation's fields, catalogued
+
+`transformation` is the second largest filter - 235,010 records - and the largest whose word1
+fields were never catalogued. Its `LAYOUT_MASK` is `0x60000c0`: bits 6, 7 and 25, 26. Two
+adjacent pairs, which is what a two-bit field looks like.
+
+Reading them that way and applying the width mechanism - a baked parameter costs its width, a
+program costs one slot for its pointer - the width is settled by measurement rather than
+assumed:
+
+    baked parameters occupy 1 slot     165,567 / 234,378   70.64%
+    baked parameters occupy 2 slots    231,238 / 234,378   98.66%
+    baked parameters occupy 3 slots    165,478 / 234,378   70.60%
+    baked parameters occupy 4 slots    165,590 / 234,378   70.65%
+
+So `transformation` has two 2-component parameters, at masks `0xc0` and `0x6000000`. The 2 is
+not fitted - 1, 3 and 4 all collapse to the same 70%, which is the score for ignoring the
+fields entirely.
+
+This is the width mechanism working on a filter it was never derived from. It was found on
+`uniform` (a colour is 4 slots, a grey is 1), confirmed on the class word (bit 10's pair), and
+now predicts a third filter's layout to 98.66% with no new parameters.
+
+### The derived mask corroborates it
+
+`LAYOUT_MASK[transformation]` is `0x60000c0`, and `0xc0 | 0x6000000` is `0x60000c0` exactly -
+nothing lost, nothing spare. A mask built from data by an earlier process covers precisely
+these two pairs and no other bit. Unlike `gradient` (0x3fff) and `warp` (0x2ff8), whose masks
+are noise, this one is exactly the fields.
+
+### Why it is not wired in
+
+Because the key is COMPLETE, the table already answers correctly for every key it has, so on
+this corpus the rule would change nothing. It would matter on unseen files - the saturation
+test showed 209 `transformation` records in held-out files whose key the table lacks - but that
+is a small gain against the risk of changing how 235,010 records read their parameters.
+
+The residual is 3,140 records and is structured rather than noise, dominated by:
+
+    cls 0x0399  states (baked, program)   table 3   rule 5    2,367 records
+    cls 0x0319  states (baked, program)   table 2   rule 4      479
+
+Both over-count by exactly 2, so a baked field sometimes costs 1 rather than 2. Until that is
+understood the rule should not replace a table that is right for the wrong reason less often
+than the rule is wrong for a known one.
