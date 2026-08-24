@@ -176,11 +176,6 @@ FX_NODES = {
 # `warpangle` is in TURNS, and that is not an inference from the value distribution --
 # the programs that compute it end in `atan2(v) / 6.28319`, dividing by a full turn in
 # 3,336 of 3,336 angle-shaped programs.
-PARAM_BITS = {
-    15: {0: 'levelinlow', 2: 'levelinhigh', 4: 'levelinmid',
-         6: 'leveloutlow', 8: 'levelouthigh'},
-}
-PARAM_BIT_MASK = {15: 0x155}
 
 # The general form of the same field: one parameter per BIT PAIR, where the low bit says
 # the parameter is a baked constant and the high bit says it is a program. A parameter is
@@ -211,10 +206,21 @@ PARAM_BIT_MASK = {15: 0x155}
 # 63.78% to 83.32% for `blend`. It keeps the single-bit model and head placement above,
 # and the front-versus-back question stays open for it.
 #
+# `levels` DOES belong here, contrary to what an earlier measurement concluded. That
+# measurement asked whether the number of set bits equals the number of block slots, which
+# cannot separate the two models: `LAYOUT_MASK[15]` is 0x3fd, so the layout key already
+# folds in the odd bits, and a block holds slots that are not parameters at all. Asking the
+# right question - does the odd bit predict that the slot holds a program? - gives
+# **174,329 of 174,396 (99.96%)**, and finds 2,642 `levels` programs where the single-bit
+# model found 540.
+#
 # filter -> [(name, presence mask, program mask)]
 PARAM_SPEC = {
     1:  [('opacitymult', 0x30, 0x20)],
     12: [('intensity', 0x06, 0x04), ('warpangle', 0x18, 0x10)],
+    15: [('levelinlow',   0x003, 0x002), ('levelinhigh', 0x00c, 0x008),
+         ('levelinmid',   0x030, 0x020), ('leveloutlow', 0x0c0, 0x080),
+         ('levelouthigh', 0x300, 0x200)],
 }
 
 
@@ -532,36 +538,16 @@ class Record:
     def parameters(self):
         """Named parameters this record carries, as [(name, kind, value), ...].
 
-        `kind` is 'baked' for a constant, whose value is a float, or 'program', whose
-        value is the program's offset. Only `directionalwarp` currently yields
-        'program'; the other filters in PARAM_BITS carry constants only.
+        `kind` is 'baked' for a constant, whose value is the float in the slot, or
+        'program', whose value is the program's offset.
 
-        Only for filters in PARAM_BITS; [] otherwise, and [] is not a claim that the
-        record has no parameters. The block starts after the header: slot 3 when the
-        class word's bit 0 is clear, slot 4 when it is set - that bit is what says
-        whether slot 3 holds the parameter program or the first parameter.
+        Only for filters in PARAM_SPEC; [] otherwise, and [] is not a claim that the
+        record has no parameters - only that this filter's bit layout is not derived yet.
         """
         f = self.filter_id
         if f in PARAM_SPEC:
             return self._parameters_paired(PARAM_SPEC[f])
-        bits = PARAM_BITS.get(f)
-        if not bits or len(self.words) < 3:
-            return []
-        # Slot positions come from the layout table, not from a per-filter formula.
-        # The table's first parameter entry is the program slot; the baked constants
-        # follow it, and that is where the block sits. Falling back to a formula would
-        # be a guess exactly where the table already knows the answer.
-        hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
-        if not hit or len(hit[1]) < 2:
-            return []
-        slots = list(hit[1])[1:]
-        w = self.words[1] & PARAM_BIT_MASK[f]
-        out = []
-        for j, b in enumerate(i for i in range(16) if w >> i & 1):
-            if j >= len(slots) or slots[j] >= len(self.words):
-                break                      # more bits than slots: report the readable
-            out.append(self._read_slot(bits[b], slots[j]))
-        return out
+        return []
 
     def _read_slot(self, name, slot):
         """One parameter slot as (name, kind, value)."""

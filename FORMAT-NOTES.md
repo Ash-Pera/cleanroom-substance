@@ -19485,3 +19485,76 @@ The `36,614 of 36,614` second-program result also stands, but it is a claim abou
 **mechanism** - second programs are pointed at, never delimited - and the programs missed here
 are pointed at too. It reads like a coverage figure and is not one; its denominator is the set
 of second programs the table already found.
+
+## `levels` joins after all, and the front/back question closes
+
+The previous section ruled `levels` out of the bit-pair table. That was wrong, and the way
+it was wrong is worth keeping.
+
+### The test that could not decide
+
+The rejection compared **the number of set bits against the number of block slots**, and
+asked whether adding the odd bits improved the match. It moved 81.40% to 82.49%, which
+looked like noise beside `blend`'s 63.78% to 83.32%.
+
+That test cannot work for `levels`. `LAYOUT_MASK[15]` is `0x3fd` - bits 0 and 2 through 9 -
+so the layout key *already* folds the odd bits in, and the block contains slots that are not
+parameters at all. Both sides of the comparison are contaminated. A test that cannot
+distinguish the hypotheses returns a small number either way, and a small number is not
+evidence of absence.
+
+### The test that does decide
+
+Ask instead what the odd bit predicts about the slot's **contents** - the same question that
+settled `blend`:
+
+    levels, pair model, tail placement:   174,329 of 174,396 correct  (99.96%)
+
+    parameter        predicted   observed        n
+      levelinlow       baked       baked     33,652        levelinhigh  program program  617
+                       program     program      581        levelouthigh program program  717
+                       baked       program       22        leveloutlow  program program  589
+      levelinhigh      program     baked         45        levelinmid   program program  138
+
+67 misses in 174,396. It finds **2,642 `levels` programs where the single-bit model found
+540**, and the five parameters keep their names: containment against declared `Float4`
+source values scores 105 of 132 (79.5%), with **zero** values found only under some other
+parameter's name.
+
+The clue was in the layout keys themselves. Of the 1,739 `levels` records where the two
+placements disagree, 1,186 have **no even bit set at all** - the shape `(0 bits, 2 slots)`,
+718 records, and three more like it. Those are not records without parameters. They are
+records whose parameters are all programs, exactly as `blend`'s 76,263 bit-5-only records
+are. The third component of their layout key reads 8, 32, 512, 640, 648: bits 3, 5, 9, 7+9,
+3+7+9 - odd bits, every one.
+
+### Front versus back
+
+With `levels` on the pair model the question is closed for every filter in the table: tail
+placement, at 99.96% for `levels`, 99.92% for `directionalwarp`, and exactly for `blend`.
+The earlier distribution test that split 2-2 was reading a mis-specified model - it aligned
+five parameters using only the even bits, so any record with a program in the block shifted
+everything after it.
+
+### Where it stands now
+
+    blend            opacitymult   140,329 baked   77,386 program
+    directionalwarp  intensity      65,897 baked    4,400 program
+                     warpangle      63,677 baked    3,240 program
+    levels           levelinlow     33,652 baked      603 program
+                     levelinhigh    33,304 baked      617 program
+                     levelinmid      8,933 baked      138 program
+                     leveloutlow    47,854 baked      589 program
+                     levelouthigh   47,989 baked      717 program
+
+**529,325 named parameter readings, 87,690 of them programs.** `PARAM_BITS` and
+`PARAM_BIT_MASK` are gone; `PARAM_SPEC` is the whole mechanism.
+
+Audit unchanged: 641 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+0 unexplained value-table entries.
+
+### The residual
+
+22,912 `levels` slot reads ask for a slot the block does not have - the bits imply more
+parameters than there is room for. `directionalwarp` has 744 of the same, and `blend` 487
+records with a parameter slot but no bits set. None of the three is explained.
