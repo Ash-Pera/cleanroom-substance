@@ -45,7 +45,7 @@ TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
 # 'all' = every token is part of one immediate; otherwise a tuple of token positions.
 #   0x10 swizzle    position 1 = packed 2-bit component mask (position 0 is the source)
 #   0x07 set        position 1 = variable slot (position 0 is the value)
-#   0x0B while      position 0 = iteration cap
+#   0x0B while      no immediate: every operand is a value reference (see below)
 #   0x33 samplelum  position 1 = sampler index (which input image to read)
 #   0x34 samplecol  position 1 = sampler index
 #   0x03            reads something by index; its single operand is the index
@@ -75,11 +75,27 @@ TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
 # are NOT controls and measure 84.2% and 66.9%: they carry immediates too, which is why
 # they are in this table.
 #
+# 0x0B carries no immediate. It was annotated "position 0 = iteration cap", which the
+# operands do not support: over 616 instances in 641 specimens every position is a valid
+# backward reference (0.0% impossible), and what produces each one is consistent enough
+# to read the shape off directly:
+#
+#     pos  n     producing type      producing operation
+#      0   616   float 551, bool 65  seq 361, set 255      -- the initialiser
+#      1   616   bool 616            get, or, gteq, eq     -- the condition
+#      2   616   float 551, bool 65  set 616               -- the body
+#     3-5  616   float               const, sysvar, set    -- trailing
+#
+# Position 1 is bool in 616 of 616 and no other position ever is; a condition must be.
+# Position 0 is produced by `seq` or `set` in 616 of 616, which is an initialiser chain,
+# not an integer cap -- rendering it as `#16` when it is `%16` hid the loop's structure.
+# So the shape is (init, condition, body, ...). 616 of 616 are in `pixelprocessor`.
+#
 # Measured on programs a record's slots name, never on the permissive whole-file scan:
 # on that scan even `add` reads 38.5% impossible and `lteq` 86.5%, because the scan
 # accepts positions that are not programs at all.
 IMM = {0x00:'all', 0x02:'all', 0x01:'all', 0x04:'all', 0x03:'all',
-       0x10:(1,), 0x07:(1,), 0x0B:(0,), 0x33:(1,), 0x34:(1,), 0x06:(1,)}
+       0x10:(1,), 0x07:(1,), 0x0B:(),   0x33:(1,), 0x34:(1,), 0x06:(1,)}
 
 def fields(op):
     return dict(ntok=(op >> 10) + 1, ty=(op >> 8) & 3, comps=((op >> 6) & 3) + 1, id=op & 0x3F)

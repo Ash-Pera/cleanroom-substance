@@ -32,7 +32,10 @@ Three-address code: an opcode, then that many operand tokens, each a value numbe
 an earlier result. Numbering is contiguous, one result per instruction.
 
 Some operands are **immediates**, not value numbers: the swizzle mask (`0x10`), the
-variable slot (`0x07`, `0x04`, `0x01`), and the `while` iteration cap (`0x0B`).
+variable slot (`0x07`, `0x04`, `0x01`), the index read by `0x03` and by `0x06`'s second
+operand, and the whole immediate of a constant or input reference (`0x00`, `0x02`).
+`0x0B` was listed here as carrying an iteration cap; it does not — see "`0x0B` is a
+loop, and carries no immediate".
 
 **Padding.** Opcodes carrying a 4-byte immediate — constants and references — come in two
 forms differing by `0x0400`, one extra token, a 2-byte pad emitted when the instruction
@@ -132,6 +135,66 @@ These are established structurally, not by frequency:
 | `085E` | bool | 1 | `1E` | 2,927 | 21 | **`neq`** — deepest-embedded opcode tested (median containing run 21,102) |
 | `0525` | float | 1 | `25` | 17,493 | 287 | `ceil` — 17/17 exact in `ie_processing` |
 | `0503` | float | 1 | `03` | 3,603 | 34 | a distinct variable-access kind |
+| `11CF` | float | 4 | `0F` | 28 | 6 | **probably `vec4`** — build a 4-vector from four scalars |
+
+`0x0F` is the only operation that takes four operands and returns four components. It
+appears in one form only, is the **terminal instruction in 28 of 28** instances, and is
+in a `levels` record in 28 of 28. Every instance has exactly two distinct operands among
+its four, the shape `(x, x, x, 1)` — a scalar broadcast to RGB with opaque alpha, which
+is how colour filters store per-channel parameters (see FORMAT-NOTES, "Colour filters
+store per-channel parameters as RGBA quadruples"). The smallest such program entire:
+
+```
+%0  inputref.f1  uid=3445188334
+%2  div.f1       %0, 2
+%4  min.f1       %2, 0.5
+%6  max.f1       %4, 0            -> clamp(input / 2, 0, 0.5)
+%8  op0F.f4      %6, %6, %6, 1
+```
+
+It is not `vec`. **`vec` (`0x0D`) always takes exactly two operands** whatever its width
+— `094D`, `098D` and `09CD` all carry two, over 866,000 instances — so it concatenates,
+and building a 4-vector from four scalars with it needs three nested instructions.
+`0x0F` does it in one. Marked probable rather than confirmed: 28 instances in 6 files is
+enough to fix the shape but not to rule out a `levels`-specific reading of it.
+
+## `0x0B` is a loop, and carries no immediate
+
+`0x0B` was annotated "position 0 = iteration cap". The operands do not support that.
+Over **616 instances in 641 specimens**, every operand position is a valid backward
+reference — 0.0% "operand >= its own value number" at all six positions — and what
+produces each is consistent enough to read the shape off directly:
+
+| pos | n | producing type | producing operation | reading |
+|---|---:|---|---|---|
+| 0 | 616 | float 551, bool 65 | `seq` 361, `set` 255 | the initialiser |
+| 1 | 616 | **bool 616** | `get`, `or`, `gteq`, `eq` | the condition |
+| 2 | 616 | float 551, bool 65 | `set` 616 | the body |
+| 3–5 | 616 | float | `const`, `sysvar`, `set` | trailing |
+
+Position 1 is bool in 616 of 616 and no other position ever is; a condition must be.
+Position 0 is produced by `seq` or `set` in 616 of 616 — an initialiser chain, not an
+integer cap. So the shape is `(init, condition, body, ...)`. All 616 are in
+`pixelprocessor` records, in 24 files, across five opcode forms.
+
+Reading position 0 as an immediate rendered `%16` as `#16` and hid the loop's structure.
+A worked instance, a 16-tap accumulation along a scanline:
+
+```
+%6   i_end = floor($pos.x * slot1) + 1
+%7   slot2 = i_end ; %9 slot3 = 0 ; %12 slot4 = 0 ; %15 slot5 = 0
+%16  seq(...)                                    <- initialiser
+%19  cond = (slot4 == slot2)
+%24  slot3 += samplelum($pos / slot1) / slot0 ; slot4 += 1
+%35  set slot5
+%36  op0B  %16, %19, %35, %0, %0
+%40  seq(slot5, slot3)                           <- returns the accumulator
+```
+
+**A loop's operands name expression trees, not computed values.** Instructions %17-%35
+appear once in the linear stream but must be re-evaluated per iteration, so a decoder
+that emits instructions in order is wrong here — this is the one place in the ISA where
+straight-line translation does not hold.
 
 
 ## Decoding correctly: walk records, do not scan
