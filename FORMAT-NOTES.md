@@ -16735,3 +16735,65 @@ program slots toward the same total merges two different things and destroys the
 
 Both models predict the 236-of-236 containment result equally well, which is why the
 containment test alone could not separate them. The record-level split could.
+
+## The segmenter, brought up to these results
+
+Four changes, each of which fixes something that was silently wrong rather than merely
+absent.
+
+### 1. The output table, in both layouts
+
+The table sits **immediately after the record directory**, and that one rule covers both
+file layouts. Layout A puts the body after the directory, so the table falls between the
+directory and the first record; layout B puts the body first, so the same table falls
+between the directory and the value table. It looked like a layout-A-only region only
+because the two positions were never recognised as the same place.
+
+Layout B, measured independently of layout A:
+
+    layout B files                    50
+    region size == 8 * n_out       50 / 50   (100%)
+    second word a valid record idx 250 / 250 (100%)
+
+`Assembly.outputs()` now reads both. Its format-to-colour agreement is 100% on layout A
+and 94.8% on layout B, the shortfall being entirely `format 0`, which is ambiguous: 13
+grayscale against 87 colour. `format 0` should not be trusted for the channel type.
+
+### 2. The resource segment ends at the directory
+
+`resource_end` was `min(record_offsets)` - the first record - so `coverage()` painted
+everything from 0x38 to the first record as "resource segment", overwriting the directory
+label set two lines earlier and burying the output table with it. For the specimen above
+that was 68 directory bytes plus 24 output-table bytes: **exactly the 92 bytes it
+reported as resources**.
+
+This is the identical defect fixed in `sbsarx` earlier, found there by a segment report
+that did not tile and here by a byte map that did not add up. The same wrong boundary,
+written twice, caught twice by different checks - and in neither case by the coverage
+total, which was zero throughout.
+
+### 3. Layout B's record body ends at the directory
+
+`body_hi` was `table_start` in both layouts. In layout B the body *precedes* the
+directory, so the last record's extent ran straight through the directory and the output
+table behind it, and `coverage()` counted those bytes as "records" - explained, by the
+wrong thing. Layout B now reports a directory of `4 * dir_count` bytes and an output
+table of `8 * n_out`, where it previously reported zero of each.
+
+### 4. `Record.programs` returns every program, not the first
+
+It read only the main parameter slot, so it missed 36,614 second programs. It now reads
+each slot the layout table names:
+
+    programs per record : {0: 42699, 1: 197748, 2: 79679, 3: 29545, 4: 10873, 5: 142}
+
+and the distribution matches what the filters are:
+
+    directionalwarp   mostly 2    intensity and angle
+    warp              1 or 2
+    pixelprocessor    mostly 3    one per channel
+    fxmaps            often 4
+
+Nothing is scanned. Each program is found through a slot, never by decoding the previous
+one to its end and assuming what follows is code - the self-delimiting instruction count
+is how a decoder stops, not how a reader finds the next program.

@@ -322,14 +322,35 @@ class Record:
 
     @property
     def programs(self):
-        """Offsets of parameter programs, located strictly via the known slot."""
+        """Offsets of every parameter program this record names, in slot order.
+
+        A record can carry more than one. The two-scalar filters put a second program in
+        the record's tail - `directionalwarp` has an intensity and an angle, and `warp`,
+        `blur`, `distance`, `sharpen`, `normal` and filter 11 do the same. Returning only
+        the main slot's program missed 36,614 of them.
+
+        They are read from the slots the layout table names, never by scanning past the
+        first program's end: every second program's start appears in a record slot as
+        `offset - 52`, in 36,614 of 36,614, so there is nothing to guess. Each program is
+        independently self-delimiting through its instruction count, but that is a
+        decoder's business, not a way to find the next one.
+        """
+        asm = self.asm
+        hit = LAYOUTS.get((self.filter_id, self.cls,
+                           self.words[1] & LAYOUT_MASK.get(self.filter_id, 0))
+                          if len(self.words) > 1 else None)
+        slots = list(hit[1]) if hit else []
         sl = self.layout[1]
-        if sl is None or sl >= len(self.words):
-            return []
-        p = self.words[sl] + 52
-        if not (self.asm.body_lo <= p < self.asm.body_hi):
-            return []
-        return [p] if self.asm.valid_program(p) else []
+        if sl is not None and sl not in slots:
+            slots.insert(0, sl)
+        out = []
+        for s in slots:
+            if s is None or s >= len(self.words):
+                continue
+            p = self.words[s] + 52
+            if asm.body_lo <= p < asm.body_hi and p not in out and asm.valid_program(p):
+                out.append(p)
+        return out
 
     def fx_tree(self):
         """For filter 4: yield (offset, header, program offset or None) per tree node.
@@ -476,7 +497,11 @@ class Assembly:
         # Layout B (version 2): body precedes the directory.
         self.layout = 'B' if sum(1 for e in ents if e + 52 < dir_at) > len(ents) // 2 else 'A'
         self.body_lo = 0x38 if self.layout == 'B' else dir_at + 4 * c
-        self.body_hi = self.header['table_start']
+        # In layout B the body PRECEDES the directory, so the record body ends where the
+        # directory begins. Ending it at table_start instead let the last record's extent
+        # swallow the directory and the output table behind it -- which coverage() then
+        # reported as 'records', i.e. explained.
+        self.body_hi = dir_at if self.layout == 'B' else self.header['table_start']
         offs = sorted(e + 52 for e in ents)
         self.records = []
         for i, o in enumerate(offs):
@@ -484,7 +509,19 @@ class Assembly:
             if o + 4 > len(d):
                 continue
             self.records.append(Record(self, i, o, min(nxt, len(d))))
-        self.resource_end = min(offs) if self.layout == 'A' and offs else None
+        # The resource segment ends where the record DIRECTORY begins, not where the
+        # first record does. Taking the first record swallows the directory and the
+        # output table between them - which is precisely how the output table stayed
+        # unread: coverage() relabelled it 'resource segment' and never contradicted
+        # itself, because a file with no resources still had bytes there to claim.
+        self.resource_end = dir_at if self.layout == 'A' else None
+        # The output table: one 8-byte entry per graph output, immediately after the
+        # directory in BOTH layouts. Layout A puts the body after the directory so it
+        # lands before the first record; layout B puts the body first so it lands before
+        # the value table. One rule, two apparent positions.
+        self.output_table = (dir_at + 4 * c,
+                             min(offs) if self.layout == 'A' and offs
+                             else self.header['table_start'])
 
     # ---- outputs
     def outputs(self):
@@ -507,10 +544,11 @@ class Assembly:
         Entries whose high half is 2 (48 of 3,249) are a different kind and are returned
         with format None rather than guessed at.
         """
-        if self.layout != 'A' or not self.records:
+        if not self.records:
             return []
-        lo = self.header['dir_at'] + 4 * self.header['dir_count']
-        hi = min(r.offset for r in self.records)
+        lo, hi = self.output_table
+        if hi <= lo:
+            return []
         uids = self.header.get('output_uids') or []
         out = []
         for j, off in enumerate(range(lo, hi, 8)):
@@ -642,6 +680,7 @@ class Assembly:
         mark(self.header['table_start'], n, 3)             # value table + footer
         if self.resource_end:
             mark(0x38, self.resource_end, 4)               # resource segment
+        mark(self.output_table[0], self.output_table[1], 8)   # output table
         nprog = 0
         for r in self.records:
             mark(r.offset, r.end, 5)                       # record
@@ -666,12 +705,13 @@ class Assembly:
                     seen[i] = 7
         # bytearray.count is C-speed; counting byte-by-byte in Python made this
         # function 97% of the corpus audit's runtime.
-        counts = {v: seen.count(v) for v in range(8)}
+        counts = {v: seen.count(v) for v in range(9)}
         return {'total': n, 'unexplained': counts.get(0, 0),
                 'header': counts.get(1, 0), 'directory': counts.get(2, 0),
                 'value_table': counts.get(3, 0), 'resources': counts.get(4, 0),
                 'records': counts.get(5, 0) + counts.get(6, 0),
                 'layout_b_prologue': counts.get(7, 0),
+                'output_table': counts.get(8, 0),
                 'programs_found': nprog}
 
     def summary(self):
