@@ -20524,3 +20524,67 @@ graphs and its records expose 6 root entries, `Clouds_3` sets 13 and exposes 9, 
 or three. `fx_table` stops early here for the same reason `fx_tree` did, and until it walks
 the table completely the parameter-level correspondence cannot be tested. That is the next
 measurement, and unlike the last one it is not blocked on the corpus.
+
+## `gradient` and `fxmaps`: the kind bits are in the CLASS word, and they count
+
+The hole recorded two sections ago - "no bit of slot 1 predicts them, the best correlation
+across all sixteen being 0.225" - was true and was the wrong place to stop. Slot 1 is where
+the other five filters keep their kind bits. It is not where these two keep theirs.
+
+Searching every bit of every early word instead of only slot 1:
+
+    gradient  slot 2   cls.bit0    MCC +0.946    fxmaps  slot 4  cls.bit11  MCC +0.925
+    gradient  slot 3   cls.bit11   MCC +0.945
+
+### Not just layout selection
+
+`cls` is part of the layout key, so a bit of `cls` predicting a slot could mean nothing more
+than "different layouts hold different things". Testing purity per class value settles it -
+and settles it differently for the two filters:
+
+    gradient   37 of 37 class values pure, 100.00% at every slot   (15,094 records)
+    fxmaps     46/49 pure at slot 2, 37/49 at slot 3, 46/48 at slot 4
+
+For `gradient` the class word determines the kind completely.
+
+### It is a population count, not one bit per parameter
+
+Reducing the 37-value table to a minimal bit function gives the same four bits for every
+slot - 0, 7, 11 and 13 - with a threshold that climbs:
+
+    slot 2   program iff >= 1 of those bits is set
+    slot 3   program iff >= 2
+    slot 4   program iff >= 3
+
+Which is one rule, not three: **`popcount(cls & 0x2881)` is the NUMBER of leading block
+slots that hold programs**, filled from the front. Measured directly:
+
+    slot 2   15,316 / 15,316   100.00%
+    slot 3   15,094 / 15,094   100.00%
+    slot 4   15,093 / 15,093   100.00%
+    slots 5-7                   99.8%     (past the parameter block; not parameters)
+
+This is a different mechanism from the bit pairs. The pair filters spend two bits per
+parameter to say *which* parameter and *how* it is stored. `gradient` spends four bits to
+say *how many* are programs, and the order is positional.
+
+### `fxmaps` is the same shape, not yet exact
+
+Its block starts at slot 3, not 2 - slot 2 is baked in every record, and anchoring there
+inverts the prediction to 0.01%. Anchored correctly, the best mask is bits 0, 7, 11 and 14:
+
+    slot 3   93.49%      slot 4   99.15%      slot 5   94.43%      overall 95.69%
+
+Note the masks: `gradient` uses {0, 7, 11, 13} and `fxmaps` {0, 7, 11, 14}, sharing three of
+four bits. That is either a shared encoding with one filter-specific bit, or a coincidence
+between two searches over the same sixteen bits, and 95.69% is not good enough to say which.
+
+### Where the mechanism stands now
+
+    blend, levels, directionalwarp, fid11, pixelprocessor   bit pairs in slot 1    99.74%
+    gradient                        popcount in the class word              100.00%
+    fxmaps                          same shape, best mask                    95.69%
+    transformation                  needs no kind bits; baked 98.8-99.8%
+
+Every filter that was listed as unexplained now has an account. `fxmaps` is the only one
+still approximate, and `transformation` is the only one where the question does not arise.
