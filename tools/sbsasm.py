@@ -79,10 +79,16 @@ CHANNELS = {1: 1, 2: 3, 3: 4}          # bitmap class -> channel count
 # program. 0x18B is `addnode` (exact count against source over 110 records) and its
 # program returns i1 in 12,023 of 12,023; 0x89 is a conditional and its program returns
 # b2 in 10,048 of 10,048. 0x1AB carries two programs. Others exist and are unidentified.
+# Shapes were probed by reaching a node only as a known node's chain successor, so the
+# position is validated before the shape is read. Return type is the last instruction's
+# type, and it separates the roles: 0x89 alone yields a boolean, in 11,197 of 11,197
+# programs; the other three yield i1, each at 100%. Physical shape does not determine
+# role - 0x1CB has 0x89's layout and 0x18B's return type.
 FX_NODES = {
-    0x18B: (8,  (4,)),        # [header][program][next]            addnode
-    0x89:  (12, (4,)),        # [header][program][0][next]         conditional
-    0x1AB: (12, (4, 8)),      # [header][program][program][next]
+    0x18B: (8,  (4,)),        # [header][program][next]          addnode,     -> i1
+    0x89:  (12, (4,)),        # [header][program][0][next]       conditional, -> b2
+    0x1AB: (12, (4, 8)),      # [header][program][program][next]              -> i1
+    0x1CB: (12, (4,)),        # [header][program][0][next]                    -> i1
 }
 
 

@@ -15992,3 +15992,46 @@ offsets there is no version of the test that discriminates.
 **Recorded as: 0.22% of the resource segment is undescribed, in two specimens, one of which
 begins with an unreferenced JPEG. Whether anything names them is not determinable from this
 corpus by pointer analysis.**
+
+## Two more FX-Map node types, and the limit of chain walking
+
+Probing a node's shape only where the position is already validated - reaching it as a known
+node's chain successor - gives the layout without guessing:
+
+    header   shape at +4 +8 +12 +16      reading
+    0x18B    P N . 0    83%              [header][program][next]
+    0x89     P 0 N .   100%              [header][program][0][next]
+    0x1CB    P 0 N .    98%              [header][program][0][next]
+
+    (P = a decodable program, N = a plausible node header, 0 = null)
+
+`0x1CB` has exactly `0x89`'s physical layout. The return-type test separates them anyway:
+
+    0x18B   13,384 programs   end i1   100.0%
+    0x89    11,197            end b2   100.0%
+    0x1AB       20            end i1   100.0%
+    0x1CB      614            end i1   100.0%
+
+**Physical shape does not determine role.** `0x89` is alone in yielding a boolean and is
+therefore the conditional; `0x1CB` shares its layout and `0x18B`'s return type. Had the shape
+probe been trusted on its own, `0x1CB` would have been recorded as a second conditional.
+
+Four node types are now in the walker with measured shapes. But extending it does not extend
+the walk much:
+
+    fxmaps records walked       17,189
+    nodes reached               25,215      1.5 per record
+    chains ending cleanly          252      1.5%
+    chains stopping at an unrecognised header   ~98%, nearly all at a value above 0xFFFF
+
+Ninety-eight percent of chains stop at a word too large to be a header. Two readings fit: the
+chain genuinely ends and the word is not a next pointer, or the next-pointer offset is not
+constant per header. Nothing in the corpus separates them, because the only material whose
+FX-Map composition is known from source is `ie_pcloud`, and its records have four-node chains
+that the walker already traverses end to end.
+
+**This is where FX-Map structure stops.** The execution model is understood - a straight-line
+program over a shared variable frame, `$number` in, instance position and colour out. Four node
+types are identified by shape and return type, one of them by name. The chain topology beyond a
+few nodes is not, and it is blocked on the same thing everything else about FX-Maps is blocked
+on: a second material whose source composition can be read before the binary.
