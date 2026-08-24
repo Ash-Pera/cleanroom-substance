@@ -17283,3 +17283,69 @@ by splicing operand tokens without removing the alignment pad.
 an immediate. Every instance of this class of bug - `program_span` versus `valid_program`,
 `fxdisasm`'s private validator, `attribute_outputs`' hand-built uid - came from a second
 copy of logic that was correct when written and silently stopped being correct.
+
+## What `0x03` reads, and the limits of the impossible-operand test
+
+### It is a load by index, and the index is not the variable frame
+
+`set` writes a variable slot by index and `get` reads one. The clean control: **`get`'s
+operand names a slot the record actually writes in 4,300 of 4,300 cases - 100%**. For
+`0x03` it is 7.1%, and for `0x06` 5.4%. They index a different space, and a larger one:
+220 distinct indices corpus-wide against the variable frame's 23.
+
+### Reading real code says what it is for
+
+With the disassembler fixed, short programs using it are legible:
+
+    %0    0543  op03.f2        8
+    %1    0651  cvt.i2         %0
+    %2    1240  const.i2       -2, -2
+    %3    0A52  add.i2         %2, %1
+
+Read a value, convert to int2, subtract two - output-size arithmetic. Another:
+
+    %0    0503  op03.f1        6
+    %1    0528  sqrt.f1        %0
+    %2    0535  op35.f1        %1
+    %3    0525  ceil.f1        %2
+    %5    0931  max.f1         %3, 0
+
+Its consumers corpus-wide are `add` (1,393), `swizzle` (1,083), `cvt` (693), `min`,
+`sqrt` - arithmetic, not sampling.
+
+### What it is not
+
+**Not a fixed table of typed engine variables.** The same index returns different types:
+index 9 yields `f2` 98 times, `f1` 80 times, `i1` twice. A slot holding `$outputsize` would
+be `i2` every time.
+
+**One index per record.** Of 4,358 records using `0x03`, **4,222 use exactly one distinct
+index**, and which index varies from record to record across 0..219. So each record reads
+one thing, and the index identifies it relative to something the record supplies.
+
+4,289 of those 4,358 also use `inputref`, so it is not a substitute for the graph-input
+mechanism; it co-exists with it.
+
+The role is settled - a load by index whose result feeds size and coordinate arithmetic -
+and the space it indexes is not. It stays unnamed.
+
+### The impossible-operand test has a blind spot
+
+`0x03`'s operand is at or beyond its own value number in 90.3% of instances, which is what
+established it as an immediate. Applying the same test to `0x06` gives 51.2% at token 0 and
+78.8% at token 1, and reading real code shows `op06.f2 7 8` as a program's last
+instruction, where `%7` is the instruction immediately before it - the `set(value, slot)`
+shape rather than two immediates.
+
+But the test cannot settle it, because of this control: **`set`'s own slot immediate reads
+0.0% impossible**. Slot numbers are small and programs are long, so a genuine immediate
+sits below its instruction's value number essentially always and looks exactly like a
+reference.
+
+So the test only has power when the immediate is *large*. It proves `0x03` is an immediate;
+it cannot prove `0x06` is not. `0x06` has 979 instances across 21 files in two different
+token-count forms, which is too little to split on, and it is left as it is.
+
+This is worth recording because the test was persuasive twice today and has a stated
+domain: it detects immediates that exceed their instruction's value number, and is silent
+about every immediate that does not.
