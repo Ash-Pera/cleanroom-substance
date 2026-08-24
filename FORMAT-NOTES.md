@@ -28105,3 +28105,51 @@ Filter 5 is still not named. It is not SVG, XML, PNG, JPEG, BMP, TIFF, DDS, gzip
 zlib — every one of those magics was checked against the blob start and none matched.
 What it now has is a record layout, a confirmed sub-structure with a tag of its own, and
 a control strong enough that the next person does not have to re-establish any of it.
+
+## Related work: three existing `.sbsar` tools, and what they do instead
+
+Checked because "are we reimplementing these?" is the right question to ask of any
+reverse-engineering project, and the answer decides whether it is worth continuing.
+
+    project                 reads                     evaluates by            needs Adobe's
+    sublender               XML manifest              shelling out to         yes
+      Blender addon, Py     `parser/sbsarlite.py`     `sbsrender`
+    UnitySubstanceViewer    -                         bundling Adobe's        yes, shipped
+      Unity, C#                                       engine plugin           in the repo
+    SBSARManager            XML manifest              shelling out to         yes
+      Qt/C++                `QT += xml xmlpatterns`   `sbsrender`
+
+**None of the three decodes the compiled assembly.** `sublender`'s parser is 312 lines and
+contains no occurrence of `sbsasm`, `bytecode`, `opcode` or `record`; it reads the
+manifest's input and output declarations to build a Blender UI, then assembles a command
+line - `render --input ... --input-graph ... --set-value ...` - for Adobe's renderer.
+`SBSARManager` returns zero code-search hits for `sbsasm` and seven for `sbsrender`, and
+asks the user to locate the executable, then runs it with `-h` and checks the output to
+confirm "the real sbsrender". `UnitySubstanceViewer` ships
+`Assets/Allegorithmic/Plugins/Substance.Engine.bundle` with an EULA beside it.
+
+So all three operate on the manifest and delegate every evaluation to Adobe's engine. That
+is exactly the layer this document already characterised - *"this is the layer every
+existing tool reads; it carries no graph topology"* - which was an assertion when written
+and is now checked against the three obvious candidates.
+
+**The overlap is one file.** `standalone_parse.py` reads the manifest, the interface block
+and the value table, which is roughly what `sbsarlite.py` does. Everything else here -
+the record model, the edge map, the 41-operation instruction set, the FX-Map trees, the
+embedded bitmap formats, the transpiler - has no counterpart in any of them, because none
+of them needs one.
+
+The inverse is the more useful reading. **If reading a `.sbsar` without the proprietary
+engine were a solved problem, at least one of these would do it.** Instead the one that
+renders in-process ships the engine binary, and the two that do not shell out to it. That
+is the gap this project is in, and it is why the stated goal - enough of the format
+documented that free tools could read Substance materials without the engine - is not
+already met by something on a shelf.
+
+### Provenance, since this involved looking at other people's repositories
+
+Only third-party source and repository metadata were read. `UnitySubstanceViewer` contains
+Adobe's engine binary; **it was not opened, downloaded or inspected**, and the rule that
+covers it is the first line of the Provenance statement. No format knowledge was taken from
+any of the three - there was none to take, which is the finding - and nothing in this
+document derives from them.
