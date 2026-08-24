@@ -25477,3 +25477,50 @@ to be answered.
 Fifteen more records now have a size expression that can be evaluated and checked against the
 manifest, and all fifteen agree. That is the part worth having: not the slots, but that an
 independent check got more to check and still did not fail.
+
+## Refining the rule: what it provably cannot see
+
+The union left 167 real edges that the rule does not produce on its own. They are worth
+pinning down, because they mark the exact boundary of what a rule reading word1 can decide.
+
+All 167 are **slot 1**, in `levels` and `dirmotionblur` only:
+
+    dirmotionblur slot 1   cls 0x719, 0xb18, 0xb09, 0x19    116 records
+    levels        slot 1   cls 0x99, 0x9                     52 records
+
+They are not state-11 image inputs - **0 of 168 have any field in state 11**. They are the
+`shuffle` situation: slot 1 holds an input, so the record has no parameter word at all, and
+reading it as a bitfield decodes an edge value as field states. `dirmotionblur cls 0xb09` with
+`w1 = 0x1` has edges `[1, 2]`: word1 IS record index 1.
+
+### Three discriminators, all useless
+
+    1. "w1 is a valid backward record index"
+           agrees with the table  6.26% (blend), 5.83% (levels), 0.98% (dirmotionblur)
+           291,188 false positives on blend alone
+       A word1 bitfield is a small number and record indices are large, so nearly every
+       record passes a test meant to catch a hundred.
+
+    2. "w1 and slot 2 are both valid backward indices"
+           identical to (1) - the same records pass both.
+
+    3. "the record w1 points at has this record's output size"
+           table says EDGE      73 of 167    43.71%
+           table says bitfield  50,375 of 94,938  53.06%
+       The edge cases match LESS often than the controls. Worse than useless.
+
+And the values themselves are no help: `levels` with `w1 = 0x40` is `leveloutlow` in state 01,
+a perfectly ordinary bitfield, and also record index 64.
+
+### So the union is necessary, not lazy
+
+For these 168 records the two readings are indistinguishable from the record's own header. The
+table resolves them because it was derived from evidence the rule does not have - agreement
+across many records sharing a key. Unioning the two is not a failure to choose; it is the
+correct response to a genuine ambiguity, and it costs nothing because the rule's additions are
+valid backward record indices in 307 of 307.
+
+What the refinement bought is the boundary itself: the rule is complete for `blend` and
+`directionalwarp`, whose keys lose no field bits, and incomplete for `levels` and
+`dirmotionblur` in exactly 168 records, for a reason that is now understood rather than
+suspected.
