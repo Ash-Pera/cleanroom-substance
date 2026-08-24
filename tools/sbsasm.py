@@ -1435,7 +1435,10 @@ class Assembly:
 
         The first word carries the manifest's `format` attribute as bits 4 and up:
         format == (w0 & 0xFFFF) >> 4, exact on every distinct value in the corpus. Bit 2
-        of that format is the grayscale flag. It was recorded as matching the colour bit of
+        of that format is the grayscale flag - VERIFIED independently: over outputs whose
+        identifier names them (roughness, height, metallic vs basecolor, diffuse, normal),
+        bit 2 set is 98.5% grayscale against 4.2% when clear. It was recorded as matching
+        the colour bit of
         the record the entry names in 3,249 of 3,249 - but that count comes from the
         withdrawn 641-file corpus (tools/DISTINCT.txt, a third duplicates); the 435-file
         corpus yields 2,442 entries, and no bit of words 0-2 of the named record agrees
@@ -1535,6 +1538,14 @@ class Assembly:
         returning non-None. They used to be two implementations of the same idea and
         drifted apart -- this one checked only instruction lengths, so a tightening
         applied to the other silently did not reach the scan that finds most programs.
+
+        That drift had a second instance this docstring did not yet cover: `valid_program`
+        exempts the 0xFFFF absent-edge sentinel from the backward-reference check (see its
+        own comment -- 10 `pixelprocessor` programs in `US_Flag` point at a slot carrying
+        it, not an impossible forward reference), but this function rejected it like any
+        other out-of-range operand. `valid_program(p)` could return True while
+        `program_span(p)` returned None for the exact same program, which broke the
+        "returning non-None" equivalence the two are supposed to have.
         """
         hi = self.body_hi if hi is None else hi
         d = self.data
@@ -1558,7 +1569,10 @@ class Assembly:
                 if q + 2 * L > hi:
                     return None
                 for i in range(L - 1):
-                    if i not in pos and struct.unpack_from('<H', d, q + 2 + 2 * i)[0] >= k:
+                    if i in pos:
+                        continue
+                    v = struct.unpack_from('<H', d, q + 2 + 2 * i)[0]
+                    if v >= k and v != 0xFFFF:
                         return None
             q += 2 * L
         return q

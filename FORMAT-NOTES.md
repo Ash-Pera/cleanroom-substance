@@ -25770,3 +25770,50 @@ than measurement, and is marked as such.
 The unexplained-field inventory listed seven class-word bits. The one set on 96% of all
 records now has a source, and it is a reminder that not every bit in a record describes the
 record: some describe what it produces.
+
+## Measuring what format bit 4 means - and what cannot be measured here
+
+The previous section inferred that format bit 4 is the 16-bit depth flag, from one recorded
+observation, and flagged it as inference. Measured properly:
+
+### Format bit 2 IS the grayscale flag - now verified independently
+
+The manifest names each output, and the names carry the answer. Labelling identifiers as
+grayscale (`roughness`, `height`, `ao`, `metallic`, `opacity`) or colour (`basecolor`,
+`diffuse`, `normal`, `albedo`, `specular`):
+
+    format bit 2 = 1    gray 1,107    colour    17     98.5% grayscale
+    format bit 2 = 0    gray    35    colour   803      4.2%
+
+A 94-point separation. The identifiers behind each format value agree without exception:
+
+    format 28   height, roughness, ambientocclusion, metallic     bit 2 set
+    format 12   roughness, metallic, opacity                      bit 2 set
+    format 16   normal, basecolor, diffuse, specular              bit 2 clear
+    format  0   basecolor, normal, diffuse                        bit 2 clear
+
+This is the claim that `Assembly.outputs()` carried as unverified after its 3,249-of-3,249
+figure failed to reproduce. The half that says **bit 2 of the format is the grayscale flag**
+is now confirmed by evidence the binary never touched. The half that says it matches a colour
+bit of the RECORD remains unverified - no bit of the record's first three words agrees above
+59.71%.
+
+### Bit 4 is orthogonal to it, and its meaning is not measurable here
+
+    format bit 4 = 1    gray 886   colour 602    59.5% grayscale
+    format bit 4 = 0    gray 256   colour 218    54.0%
+
+No signal - which is correct for a depth flag, and consistent with bit 4 partitioning each
+colour class in two: 28 against 12 for grayscale, 16 against 0 for colour. The identifiers on
+each side of that split are the same words. `roughness` appears under format 28 and under
+format 12; `basecolor` under 16 and under 0.
+
+So bit 4 separates two encodings of the same content, which is what a depth flag does. But
+**nothing in this corpus states an output's depth**: the manifest declares `format`, `width`,
+`height`, `mipmaps`, `dynamicsize` and `type`, and no attribute for bit depth. The resource
+descriptors do encode depth, in a different namespace (`0x01`=L, `0x05`=L16, so bit 2 there is
+the 16-bit flag), and they describe input bitmaps rather than outputs.
+
+The depth reading stays an inference. What is now measured is that bit 4 is not grayscale, not
+semantic, and splits each format class into a matched pair - which is the shape of the claim
+without being the claim.
