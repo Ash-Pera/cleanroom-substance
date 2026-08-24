@@ -23719,3 +23719,60 @@ container, not to the filter.
 What is actually known about the two: id 8 takes 3 inputs, always carries a program, 237
 records; id 19 takes 2, carries one 97% of the time, 959 records. No candidate name in the
 source vocabulary takes 3 image inputs, so id 8 may not be an atomic filter at all.
+
+## id 8, and three claims that died on contact
+
+### What id 8 actually is
+
+Last round closed with "id 8 takes 3 image inputs, and no candidate name takes 3, so it may
+not be atomic". Read properly it behaves like an ordinary interior filter:
+
+    id8 records                       544 in 92 files
+    resolved input arity              2 in 225, 3 in 319
+    records nothing consumes          0 of 544
+    what reads its output             blend 480, another id8 45, levels 12, hsl 8, warp 5
+
+Nothing exotic: it sits mid-graph and feeds `blend`. The arity is fixed by the class word -
+`0xb19` is always 3, `0xb09` always 2, over 12 distinct class words.
+
+An API note that cost three measurements: `Record.edge_slots` returns slot INDICES, not slot
+values. `[1,2,3]` means "slots 1 through 3 carry the edges", not "the inputs are records 1, 2
+and 3". Reading it the second way produced "all 1,415 inputs point at a record below index 5"
+and "nothing consumes id8's output" - both artefacts. `Record.edges` is the accessor that
+resolves values.
+
+### Three results that looked like findings and were not
+
+**The class word determines id8's arity, 544 of 544, 100.00%.** Circular. `edge_slots` is
+looked up by `(filter_id, cls, ...)`, so the slot set follows `cls` by construction. The only
+part not assumed is whether a declared slot is occupied - and it always is, so arity is
+`len(layout slots)` and the 100% restates the lookup.
+
+**id 8 never has an absent input: 0 of 1,415 slots.** True, and worthless. The base rate:
+
+    blend 0.00%   transformation 0.00%   levels 0.00%   warp 0.00%   fxmaps 0.00%
+    pixelprocessor 0.16%   shuffle 0.58%
+
+The absent sentinel is essentially unused in edge slots corpus-wide. Every filter scores 0%.
+
+**id 8 and id 19 output grayscale 100% of the time.** Also the base rate - the bit tested is
+set on every record in the corpus, so it measures nothing.
+
+### An existing claim that does not reproduce
+
+Testing the last one needed the record colour bit, which `Assembly.outputs()` documents:
+
+> bit 2 of that format is the grayscale flag, and it matches the colour bit of the record
+> the entry names in 3,249 of 3,249 - a consequence test the table could have failed and
+> did not.
+
+No bit of the record matches it. Scanning every bit of words 0, 1 and 2 against the output
+table's grayscale flag, the best agreement is 59.71% (word 0 bit 3) - chance, given how
+skewed the flag is.
+
+The count is the clue. This corpus yields **2,442** output entries; the claim says **3,249**,
+which is the count from `tools/DISTINCT.txt` - the 641-file list with a third duplicates, the
+one withdrawn and replaced by the 435-file root list. So the consequence test was measured
+before the corpus correction and has not held since. Two things follow: the grayscale claim
+is unverified, and it is worth sweeping the rest of this file for other numbers in the 3,000s
+that were never re-run.
