@@ -19197,3 +19197,291 @@ from `blend` opacities that the old `0x10` mask could not see at all:
 
 Audit unchanged: 641 files, 0 failures, 0 unexplained bytes, edge slots 100.00%, validator
 437/437 on every array check, 0 unexplained value-table entries.
+
+## The layout table is stale, and the fallback beneath it cannot carry a second program
+
+Found by reading one specimen rather than by any corpus statistic, which is the third time
+in this document that has been the productive move.
+
+`Normalize_RG` is the semantically transparent specimen this project has leaned on since the
+first arithmetic opcodes were named. Its `pixelprocessor` record carries the normalisation
+itself. The strict reader does not return it.
+
+### One record, two program pointers, one of them read
+
+Record 1, `pixelprocessor`, offsets 96-256:
+
+    slot 3 = 0x00C4    196 + 52 = 248     1 instruction    inputref uid=2955463260
+    slot 4 = 0x0040     64 + 52 = 116    19 instructions   sysvar, samplecol, swizzle, mul,
+                                                           sub, dot, sqrt, div, add, vec
+
+Both are ordinary `offset - 52` pointers, both pass `valid_program`, and program 116 sits
+**inline in the record's own body** at word 5. `Record.programs` returns `[248]` - the output
+size expression - and nothing else. The 19-instruction program is reachable only through
+`Assembly.referenced_programs()`, the permissive scan that `tools/README.md` says is for
+coverage accounting and never for reading a record.
+
+So the statement in `tools/README.md` that **"`Record.programs` returns every program the
+record's slots name"** is false. Slot 4 names one and it is not returned.
+
+### The fallback cannot find a second program, by construction
+
+The cause is not the reader's program logic, it is the layout lookup underneath it. The
+record's key is absent from the table:
+
+    key (20, 57, 1)                    not in layouts.json
+    table has (20, 136, 1)             edges (2,)   programs (3, 4)
+              (20, 152, 1)             edges (2,)   programs (3, 4)
+              (20, 137, 1)             edges (2,)   programs (3, 4, 5)
+
+The right layout is in the table three times over, under a different class word. With the key
+missing, `_compute_layout` falls through to the hand-written `pixelprocessor` rule,
+`(range(2, 2 + arity), 2 + arity)`, which returns **a single program slot**. Every fallback in
+that function has the same shape - one `PROG_SLOT` entry, or one slot from `ALT_LAYOUTS`. A
+record on the fallback path cannot report a second program whatever its slots contain.
+
+`derive_layouts.py` says of its threshold: *"Keys seen fewer than `MIN` times are dropped
+rather than guessed at."* They are dropped from the table and then guessed at by the consumer.
+The two halves of that sentence live in different files and disagree.
+
+### How often, with a null
+
+Probing only the **one** slot after the fallback's program slot, over 435 distinct specimens
+and 892,933 records:
+
+    records on the fallback path            41,244   (4.62%)
+      ...next slot holds a valid program     19.54%
+
+    control: key known, layout names exactly
+    one program slot, same probe              0.02%   (53 of 245,450)
+
+A thousandfold separation, so this is not the small-integer artifact that has caught this
+project seven times. Widened to the four slots after the program slot, **9,650 programs** are
+named by a record slot and not returned, against a control rate of 0.0081 programs per record
+which predicts about 334 by chance.
+
+It is concentrated, and not where the fallback was designed for:
+
+    filter            fallback records   next slot is a program
+    warp                     9,504              69.8%
+    fxmaps                     211              66.8%
+    pixelprocessor              99              71.7%
+    directionalwarp            161              56.5%
+    filter 11                  136              47.1%
+    gradient                16,981               0.2%
+    uniform                 10,502               4.9%
+
+`gradient` and `uniform` dominate the fallback path and lose almost nothing, which is why the
+audit never showed a symptom: the two commonest fallback filters genuinely have one program.
+
+### It is not an ISA problem
+
+The obvious worry is that the opcode catalogue was built on a biased sample. Measured, it was
+not:
+
+    strictly-named instructions          30,870,836
+    instructions in the missed programs     103,997   (0.34%)
+    opcodes present ONLY in missed programs        0
+
+The rule that ISA statistics must run over strictly-named programs survives intact. What fails
+is reader completeness, and only that.
+
+### `audit_corpus.py` cannot see this
+
+A record on the fallback path scores as a success on filter, parameter and edges, and the
+audit has no programs column at all. `coverage()` is blind to it for a second, independent
+reason: program 116 lies inside record 1's extent, which is marked explained the moment the
+record is enumerated - the same circularity already recorded for the "0 unexplained bytes"
+figure. A program can be undecoded and inside a record and count as understood twice over.
+
+## The layout table cannot be regenerated from the corpus it documents
+
+Running `derive_layouts.py` over `DISTINCT.txt` - its own default input, and the corpus every
+figure in this document reports:
+
+    shipped layouts.json                    1,031 keys
+    re-derived                                842 keys
+      reproduces shipped exactly                830
+      shipped keys it cannot produce            189
+      keys not in shipped                         0
+
+Zero extra keys in either direction, so the re-derivation is a strict subset. The first
+suspect was the decoder: `disasm.IMM` changed after the table was last written - `0x06` from
+`'all'` to `(1,)`, `0x0B` from `(0,)` to no immediate - and both tighten `valid_program`, which
+is what classifies a slot as a program. Re-deriving with the pre-correction `IMM` restored:
+
+    identical. 842 keys, 830 reproduced, 189 missing.
+
+So the decoder is not the cause. The corpus is:
+
+    sum of `seen` recorded in layouts.json       1,027,670
+    records those same keys cover in DISTINCT      851,549
+    keys counting HIGHER now than when shipped           0
+
+Not one key gained records. The table was derived over a strictly larger file set than the one
+it is shipped with - the corpus as it stood **before** the deduplication recorded under
+*Corpus integrity*, which removed a third of the specimens. `layouts.json` has not been
+regenerated since, and `git log` confirms it: last written at `70d1ac6`, with `sbsasm.py` and
+`disasm.py` both changed four times after.
+
+### The standing rule, applied to the table itself
+
+*Corpus integrity* closes with a standing rule: **count specimens from `DISTINCT.txt`, and for
+any claim resting on a count threshold check that the values vary across those files.**
+`MIN = 20` is exactly such a threshold. Applying the rule to the shipped table:
+
+    keys below MIN=20 records on DISTINCT       189   (18.3%)
+    keys resting on fewer than 3 specimens       49   ( 4.8%)
+    failing either                              222   (21.5%)
+
+    records read through such a key            5,709   (0.64% of all records)
+    records read through a one-specimen key    1,919
+
+**Twenty-one percent of the table is memorised below the project's own evidence bar.** The
+damage is bounded - 0.64% of records - and that bound is the honest form of the result: the
+bulk of the table is well supported, and the tail is not, and until now nothing said which was
+which. The affected records are concentrated in `directionalwarp` (1,647), `warp` (1,612),
+`shuffle` (613) and `gradient` (521).
+
+Regenerating the table is therefore not a clean win. It would restore reproducibility and cost
+189 keys covering 5,709 records, which currently read correctly on evidence that no longer
+exists.
+
+### The derivation is seeded by its own output
+
+A third property, smaller but worth stating because it makes the table irreproducible in
+principle rather than by accident. `header_sizes()` calls `Record.programs`, which reads the
+`layouts.json` being regenerated. Blinding the model to its own table and re-deriving:
+
+    header sizes derived    seeded 666    blind 572
+    keys                    842           842
+    keys whose layout differs                 29
+    program slots the blind run finds and the seeded one does not    33   (reverse: 7)
+
+The direction is the interesting part. A **known** header size restricts the slot scan, so
+seeding the derivation with the previous table's header sizes *suppresses* program slots that
+a cold run finds - slot 9 of `(1,153,0)`, slot 11 of `(11,2969,4)`, slot 10 of `(12,777,20)`.
+Whether those are real slots or bytecode is not settled here; what is settled is that the
+shipped table is a fixed point of its own history and not a function of the corpus.
+
+## Fixing it: one refuted proposal and one that measures well
+
+### A back-off to (filter, layout bits) - refuted
+
+The obvious repair for a missing key is to back off to a coarser one. *How much of the layout
+table is a rule* measured `(filter, layout bits)` at **91.88%**, which looked like licence to
+use it as the fallback key. It is not: that figure predicts **k**, the number of slots, and the
+fallback needs *which* slots. Measured directly, leave-one-out over the 741 keys that have a
+sibling sharing `(filter, bits)`:
+
+    exact (edges and programs)          18.9%
+    program slot set exactly right      20.4%
+    program slots not under-called      60.2%
+    keys with no sibling at all           290
+
+Applied to the fallback records anyway, only **56.9% of 17,913** program-slot claims hold up
+under `valid_program`. That is far worse than the 0.02% control it would have to beat, and the
+hypothesis is dead. Recorded because the 91.88% made it look safe, and reusing a figure
+measured against one target to justify a different one is the same error as `LAYOUT_MASK`
+being minimal-for-discrimination and read as complete-for-decoding.
+
+### Classify the record, do not look up a key
+
+The predicate that works is the one already validated: a slot is a program slot when
+`words[s] + 52` passes `valid_program`, whose operand-possibility check is violated by 0.00%
+of instructions in programs a record's slots name and 65% of scan candidates. The only thing
+missing is a bound, and the record states it - **the header ends where the record's own
+bytecode begins**, directly observable as the smallest inline program start.
+
+Validated against the 851,549 records whose key IS in the table, where the answer is known:
+
+    slot set exactly right      99.02%
+    precision                   98.51%   (17,552 claims the table does not make)
+    recall                     100.00%   (2 misses in 851,549 records)
+
+Two false negatives corpus-wide. The precision figure is a floor, not a ceiling: it counts as
+wrong every slot the classifier claims and the table does not, and some of those are the
+missed programs this section is about.
+
+Applied to the fallback records as a **union** with the existing reading rather than a
+replacement:
+
+    programs today                   35,016
+    union                            45,416      gained 10,400, lost 0
+      recovered inline in the record  9,699      (93.3%)
+      recovered out of line             701
+
+As a straight replacement it is a wash - it gains 10,400 and loses 10,298, because the header
+bound cuts off slots the fallback happens to reach. Additive is the right shape.
+
+The 93.3% is the strongest single number here. A word pointing at a valid program **inside its
+own record** is not a chance decode; there is no version of the small-integer artifact that
+produces it.
+
+### Where the classifier is weak, and it is one filter
+
+Stratifying the validation says where not to trust it. Recall is 100% in both strata; precision
+is not:
+
+    records with an inline program     n=739,668   exact 99.02%   precision 98.61%   fn 2
+    records without one                n=111,881   exact 98.97%   precision 86.08%   fn 0
+
+Without an inline program there is no observable header end, the scan runs to the end of the
+record, and precision falls twelve points. But the loss is not spread across the format - it is
+almost entirely one filter:
+
+    fxmaps            n= 40,717   fp 13,280   precision  90.9%
+    pixelprocessor    n= 57,004   fp  2,591   precision  98.5%
+    blend             n=307,687   fp    694   precision  99.8%
+    transformation    n=232,698   fp    392   precision  99.8%
+    levels            n= 84,737   fp    176   precision  99.8%
+    directionalwarp   n= 61,683   fp    126   precision  99.9%
+
+**`fxmaps` is 76% of every false positive the classifier makes.** Its records run to 331 slots
+and beyond, which is the condition under which any small value is a plausible pointer - the
+same property that defeated four separate analyses of `fxmaps` slot 1. Everything outside
+`fxmaps` and `pixelprocessor` classifies at 99.8% or better.
+
+So the classifier should not be applied to `fxmaps` on the strength of this measurement.
+`fxmaps` already has its own machinery - the bit-12 layout selector, the node chain, the
+21-word header on `(4,920,4)` - and the honest position is that it keeps it.
+
+### Scope
+
+Three defects, and they want fixing in this order:
+
+1. **Make it countable.** `audit_corpus.py` gains a programs column: programs named by a slot
+   the layout does not list, with the matched control rate beside it. Nothing else should be
+   changed until the gap has a number in the audit, because every figure below is a claim
+   about how much that number moved.
+2. **Additive classifier on the fallback path, excluding `fxmaps`.** Records whose key is
+   known keep the table verbatim; records without one get the union above. Recall on known
+   keys is 100.00%, so this cannot regress them, and it is confined to 4.62% of records.
+   `fxmaps` is excluded on the measurement above - it contributes 76% of the classifier's
+   false positives and has its own layout machinery already. That carve-out costs 586 of the
+   10,400 recovered programs, and the right way to get them back is the `fxmaps` header size,
+   not a wider scan.
+3. **Regenerate `layouts.json`, and say what it costs.** Re-derive from `DISTINCT.txt` with
+   the current decoder. That is 189 keys and 5,709 records lost, which step 2 should absorb -
+   the test is whether it does. `derive_layouts.py` also needs the specimen-diversity guard
+   its own `header_sizes()` already has (`len(files[k]) >= 3`) but `derive()` does not, and it
+   needs to stop calling `Record.programs`, which is what seeds it with its own output.
+
+`README.md` still reports **"unexplained bytes 0"** in its headline block, retracted above in
+favour of 92.5% of record bytes, and its "main parameter resolved 94.7%" uses a name the model
+itself has since dropped. Its second stale claim - output-to-record attribution listed under
+*Not decoded*, "because the binary does not store it" - was corrected while this section was
+being measured, so only the byte figure is outstanding.
+
+### What survived
+
+Checked in the same pass and not broken. `Record.programs` really does return up to five
+programs - the maximum over the corpus is exactly 5, at record 331 of
+`stone_stylized_adaptive`, a `levels`:
+
+    programs per record   0: 115,642   1: 488,272   2: 197,131   3: 65,097   4: 29,323   5: 209
+
+The `36,614 of 36,614` second-program result also stands, but it is a claim about
+**mechanism** - second programs are pointed at, never delimited - and the programs missed here
+are pointed at too. It reads like a coverage figure and is not one; its denominator is the set
+of second programs the table already found.
