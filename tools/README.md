@@ -20,6 +20,22 @@ known it reads it, and where it is not it returns `None` and counts it. `coverag
 every byte and reports what it cannot explain, so a wrong assumption surfaces as a number rather
 than as a plausible-looking result.
 
+Two readings sit side by side, deliberately:
+
+* `Record.parameter` is the **strict** one - a record's own parameter program or baked float,
+  found through its layout. This is what a reader should bind to.
+* `Assembly.referenced_programs()` is **permissive** - every program some word in the file points
+  at. It exists because FX-Map records reach programs through their tree and the version-2
+  prologue holds programs no record names, and both looked like undecoded regions until this was
+  measured. It is used for coverage accounting, not for parsing.
+
+`Record.fx_tree()` walks an FX-Map's linked node chain. It stops at an unknown node header rather
+than guessing the node's size, because guessing is how earlier walks wandered into bytecode and
+invented node types.
+
+`Assembly.strings()` reads the `text` filter's embedded strings from the head of the resource
+segment.
+
 ## Extraction
 
     extract_bitmaps.py    embedded images, and graph inputs by manifest uid

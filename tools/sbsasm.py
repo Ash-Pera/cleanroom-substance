@@ -74,6 +74,17 @@ PARAM_WORD = {1, 2, 4, 11, 12, 15, 18, 20, 21, 22}
 
 CHANNELS = {1: 1, 2: 3, 3: 4}          # bitmap class -> channel count
 
+# FX-Map tree node shapes: header -> (offset of the next pointer, program slots).
+# The tree is a singly linked list entered from record slot 2, and each node carries a
+# program. 0x18B is `addnode` (exact count against source over 110 records) and its
+# program returns i1 in 12,023 of 12,023; 0x89 is a conditional and its program returns
+# b2 in 10,048 of 10,048. 0x1AB carries two programs. Others exist and are unidentified.
+FX_NODES = {
+    0x18B: (8,  (4,)),        # [header][program][next]            addnode
+    0x89:  (12, (4,)),        # [header][program][0][next]         conditional
+    0x1AB: (12, (4, 8)),      # [header][program][program][next]
+}
+
 
 class Record:
     __slots__ = ('index', 'offset', 'end', 'tag', 'cls', 'asm', '_words', '_layout')
@@ -235,6 +246,33 @@ class Record:
             return []
         return [p] if self.asm.valid_program(p) else []
 
+    def fx_tree(self):
+        """For filter 4: yield (offset, header, program offset or None) per tree node.
+
+        Nodes whose header is not in FX_NODES stop the walk - the vocabulary is open,
+        and guessing a node's size to continue past one is how earlier walks wandered
+        into bytecode and produced phantom node types.
+        """
+        if self.filter_id != 4 or len(self.words) < 3:
+            return
+        d, o, e = self.asm.data, self.offset, self.end
+        q, seen = self.words[2] + 52, set()
+        while o <= q < e - 7 and q not in seen:
+            seen.add(q)
+            h = struct.unpack_from('<I', d, q)[0]
+            shape = FX_NODES.get(h)
+            if shape is None:
+                return
+            nxt_off, prog_slots = shape
+            for sl in prog_slots:
+                if q + sl + 4 > e:
+                    return
+                p = struct.unpack_from('<I', d, q + sl)[0] + 52
+                yield q - o, h, (p if (o < p < e and self.asm.program_span(p, e)) else None)
+            if q + nxt_off + 4 > e:
+                return
+            q = struct.unpack_from('<I', d, q + nxt_off)[0] + 52
+
     # ---- bitmap specialisation
     @property
     def bitmap(self):
@@ -321,6 +359,71 @@ class Assembly:
             k += 1
         return k == n
 
+    def program_span(self, p, hi=None):
+        """End offset of the program at p, or None. Bounded by `hi` when given."""
+        hi = self.body_hi if hi is None else hi
+        d = self.data
+        if p + 4 > hi:
+            return None
+        n = struct.unpack_from('<H', d, p)[0]
+        if not (1 <= n <= 20000):
+            return None
+        q = p + 2
+        for _ in range(n):
+            if q + 2 > hi:
+                return None
+            L = isa.LEN.get(struct.unpack_from('<H', d, q)[0])
+            if not L:
+                return None
+            q += 2 * L
+        return q
+
+    def referenced_programs(self):
+        """Every program some 4-aligned word in the file points at, as {start: end}.
+
+        The layout-based `Record.parameter` finds a record's *own* parameter program and
+        is the strict reading. It is not the whole story: FX-Map records reach programs
+        through their tree, the version-2 prologue holds programs no record slot names,
+        and both looked like undecoded regions until this was measured.
+
+        Accepting a program on a reference is permissive, so it was checked two ways:
+        recomputing with references from inside program bodies excluded changes the count
+        by 66 in 144,273, and only 40 of 88,671 spans start inside another - a clean
+        tiling, which chance does not produce.
+        """
+        d, out = self.data, {}
+        # Scan the u32 view rather than unpacking per word: this walks the whole file,
+        # and an unpack_from per candidate made the corpus audit four times slower.
+        a = memoryview(d)[: len(d) & ~3].cast('I')
+        lo, hi = self.body_lo - 52, self.body_hi - 52
+        seen = set()
+        for v in a:
+            if not (lo <= v < hi) or v in seen:
+                continue
+            seen.add(v)
+            q = v + 52
+            end = self.program_span(q)
+            if end and end > q:
+                out[q] = end
+        return out
+
+    def strings(self, limit=4096):
+        """Text the package embeds, as [u32 count][u32 per character] at 0x38.
+
+        The `text` filter's strings live at the head of the resource segment, ahead of
+        the images. Nine specimens carry them and all nine contain filter-17 records.
+        """
+        d, q = self.data, 0x38
+        while q + 4 <= len(d):
+            n = struct.unpack_from('<I', d, q)[0]
+            if not (1 <= n <= limit) or q + 4 + 4 * n > len(d):
+                return
+            chars = struct.unpack_from('<%dI' % n, d, q + 4)
+            if not all(9 <= c < 0x110000 for c in chars):
+                return
+            yield ''.join(chr(c) for c in chars)
+            q += 4 + 4 * n
+
     def program_end(self, p):
         d = self.data
         n = struct.unpack_from('<H', d, p)[0]
@@ -333,8 +436,13 @@ class Assembly:
         return disasm.text(self.data, p, self.body_hi)
 
     # ---- accounting
-    def coverage(self):
-        """Classify every byte. Anything unexplained is reported, not hidden."""
+    def coverage(self, unreached=True):
+        """Classify every byte. Anything unexplained is reported, not hidden.
+
+        `unreached` also credits programs that no record slot points at - FX-Map tree
+        programs and the layout-B prologue. It costs a scan of the file; pass False for
+        the strict layout-only accounting.
+        """
         n = len(self.data)
         seen = bytearray(n)
 
@@ -355,14 +463,22 @@ class Assembly:
             for p in r.programs:
                 mark(p, self.program_end(p), 6)
                 nprog += 1
+        # Programs no record slot names: reached through an FX-Map tree, or emitted into
+        # the layout-B prologue. Both looked like undecoded regions until measured.
+        if unreached:
+            for p, end in self.referenced_programs().items():
+                if not seen[p]:
+                    mark(p, end, 6)
         # Layout B emits a prologue before the first record holding programs and
         # FX-Map trees. Only ~21% of it is reachable from a record slot; the rest is
         # a known gap, named here rather than left in 'unexplained'.
-        prologue = 0
         if self.layout == 'B' and self.records:
+            # Claim only what nothing else explained: the prologue is 85% programs, and
+            # painting the whole range would hide them again.
             first = min(r.offset for r in self.records)
-            prologue = max(0, first - self.body_lo)
-            mark(self.body_lo, first, 7)
+            for i in range(max(0, self.body_lo), min(n, first)):
+                if not seen[i]:
+                    seen[i] = 7
         # bytearray.count is C-speed; counting byte-by-byte in Python made this
         # function 97% of the corpus audit's runtime.
         counts = {v: seen.count(v) for v in range(8)}
