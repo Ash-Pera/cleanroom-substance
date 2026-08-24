@@ -26006,3 +26006,43 @@ understand to read the format; it is recorded so that nobody measures it again.
 
 Nothing in the class word is now completely opaque. Two bits - 12 and 14 - have a population
 and no semantics; the rest have both.
+
+## word1 holds flags as well as fields
+
+The unexplained-field inventory listed leftover word1 bits for the catalogued filters -
+`directionalwarp 0xa0`, `levels 0x400`, `blend 0x1d4f` - as gaps. Some of them are not gaps of
+the kind the inventory implied.
+
+The known fields of these filters are consecutive two-bit groups: `directionalwarp` has `0x6`
+and `0x18`, at bits (1,2) and (3,4); `levels` has `0x3, 0xc, 0x30, 0xc0, 0x300`, at (0,1)
+through (8,9). The leftover bits sit exactly where the next group in each series would be -
+`0xa0` covers bits 5 and 7, and `0x400` is bit 10. That is a strong-looking pattern and it is
+wrong.
+
+Extending each series and re-scoring the slot count:
+
+    directionalwarp   fields 0x6, 0x18                    60,365 / 60,365   100.000%
+                      + 0x60                              60,361 / 60,365    99.993%
+                      + 0x60 and 0x180                    60,360 / 60,365    99.992%
+
+    levels            fields 0x3 .. 0x300                 82,384 / 85,213    96.680%
+                      + 0xc00                             81,941 / 85,213    96.160%
+
+Every extension makes the prediction worse. `directionalwarp` is already exact at 100.000% with
+its two known fields, so there is nothing left for a third to explain. **These bits consume no
+slot.**
+
+Nor do they mirror the output format, which is what cls bits 4 and 5 turned out to do. Testing
+every slot-less word1 bit against every format bit by lift, the best is `blend` bit 0 against
+format bit 3 at +0.24 - noise.
+
+### What that changes
+
+word1 is not simply a vector of parameter fields. It holds fields, which consume slots, and it
+holds flags, which do not. The inventory's `0xa0`, `0x400` and much of `blend`'s `0x1d4f` are
+the second kind: bits that vary, describe something, and cost nothing in the layout.
+
+That is worth knowing because it bounds the layout problem. For a reader that only needs to
+find the slots, `directionalwarp` is finished - 100.000% - and the bits still unaccounted for
+are irrelevant to it. The remaining word1 questions are about what a record MEANS, not where
+its parameters are.
