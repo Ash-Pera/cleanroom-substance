@@ -21969,3 +21969,52 @@ picks between them.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## Reading the 123,158: an integer parameter, and two candidate meanings
+
+The one-component parameter programs of `pixelprocessor` and `fxmaps` are simple enough to
+evaluate exactly - `inputref`, `const`, `add`, `sub` and nothing else in 99.5% of them - so
+what they compute can be measured rather than guessed.
+
+    pixelprocessor   56,844 evaluated of 57,026     fxmaps   40,572 of 40,845
+
+### What they compute
+
+    pixelprocessor    0..15  76.4%      large (|v| > 1000)  23.4%
+    fxmaps            0..15  82.5%      large               16.5%
+
+with the small end dominated by 0 (57.6% for `pixelprocessor`, 40.1% for `fxmaps`), then 1,
+2, 3.
+
+The referenced graph input is **type 4 with a declared value of 0-15 in 56,845 of 56,845** -
+so the large results do not come from the input. They come from the constant: programs like
+
+    inputref.i1  uid=...        (declared 0)
+    const.i1     1395946151
+    add.i1
+
+where the same constant repeats across every record of a file, with a median of 4 distinct
+large constants per file and a maximum of 117.
+
+### Two readings, neither settled
+
+**`format`.** The sources declare `format` as `Int32` on both filters, and its declared
+values are exactly `[0, 1, 2, 3]` for `pixelprocessor` and `[0, 1, 3]` for `fxmaps` - which
+is precisely the small cluster, including its 0-dominance. It does not explain the large 20%.
+
+**A per-node random seed.** `input + a large per-node constant` is the shape of a seed
+derived from a graph seed plus a fixed offset, which would explain the large constants being
+few per file and repeated across that file's records, and 0 being the common graph seed. It
+does not explain why 76% of the values are 0-3.
+
+Neither reading covers both halves, and the honest possibility is that both are right - that
+this slot holds different parameters in different records, which is exactly what the bit
+pairs do for every filter whose parameters have been named. `fxmaps` already has four such
+pairs in `PARAM_SPEC`; whether one of them governs this slot has not been tested.
+
+What is established: 123,158 records the audit called output sizes hold a single integer,
+computed from a declared graph input and per-file constants, and its meaning is one of two
+things neither of which accounts for the whole distribution.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
