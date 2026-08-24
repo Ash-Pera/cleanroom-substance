@@ -29190,3 +29190,87 @@ filter, and the sweep reports "edge has no output yet" for every one. The tests 
 input through `render(precomputed=...)` instead. A filter that never runs cannot be
 validated by running the renderer at it, and a coverage number that counts it as
 "implemented" is measuring the wrong thing.
+
+## FX-Map: the open vocabulary is 5.5% of chain ends, not all of them, and two more node types
+
+`fxmaps` gates 76.3% of outputs, so it is where the remaining work is. Looking at it
+properly turned "the node vocabulary is open" into a much smaller and better-shaped
+problem, and added two node types to the four already known.
+
+### The chain does not stop where the walk stops
+
+Every `fxmaps` record's chain walk ends at exactly one header that `FX_NODES` does not
+recognise — **41,210 of 41,212 records stop exactly once**. The first question is whether
+those stops are structure or whether the walk has wandered into bytecode, which is the
+failure mode this document already records for earlier FX walks. They are structure:
+
+    stops examined                                        11,358
+      decode as a program START                                0
+      lie inside the PREVIOUS node's program                   0
+      not 4-aligned                                            0
+      whose low 10 bits are not even a valid opcode       11,168   98.3%
+
+Reached by pointer, 4-aligned, and not bytecode.
+
+### The low nibble splits them, and most were never a gap
+
+    chain stops by low nibble
+      8      38,944   94.5%   the table handoff `fx_walk` already models
+      9 / B   2,261    5.5%   genuine node types
+      other       5    0.0%
+
+`fx_walk`'s own docstring already says a chain "ends by pointing at the first table entry"
+and that 97.2% of chains end on a low-nibble-8 word. That is the same population. So 94.5%
+of what looked like an unknown vocabulary is a handoff that was already understood, and the
+actual open set is **2,261 chain ends, 5.5%**.
+
+### Two families, told apart by how much their headers vary
+
+    low byte   sightings   distinct header words   in FX_NODES
+    0x8B          14,705              1                yes      addnode
+    0x89          12,228              1                yes      conditional
+    0xCB             730              1                yes
+    0x48           6,192             78                 no      table entry
+    0x0B             754             83                 no
+    0x88             656             15                 no      table entry
+    0x1B             156             27                 no
+
+The four known types occur as **exactly one word each**. The rest occur as dozens, so
+their upper bits carry per-node parameters and only the low byte names the type. That is
+why `FX_NODES` keys on whole words and the new table keys on the low byte.
+
+### Two new node types
+
+Shapes were probed the way the original table was — every word offset is a candidate and
+every other offset is its own control. One correction to method mattered: my first probe
+asked whether a candidate `next` lands on one of the four exact words in `FX_NODES`, and
+found nothing. The right target is the FAMILY — a header whose low nibble is 9 or B. With
+the narrow target `0x1B` looked like a dead end; with the right one it is unambiguous.
+
+    0x1B   372 nodes   k=2:  92%   k=5:  97%   every other offset <= 2%
+                       the two targets are DIFFERENT nodes in 343 of 343
+                       program at k=4 (92%, next best 3%)
+    0x99   150 nodes   k=4: 100%   next best 11%
+                       program at k=2 (100%, every other offset 0%)
+
+**`0x1B` branches.** Two successors, both real nodes, never the same node. That makes the
+FX-Map structure a tree rather than the singly linked list `fx_tree`'s docstring describes,
+and `fx_tree` now carries the far child on a pending list rather than stopping.
+
+    distinct nodes reached      60,996  ->  62,233   (+2.03%)
+    distinct programs reached   61,023  ->  61,900   (+1.44%)
+
+Small, because these two types are 522 nodes between them. The point is not the percentage:
+it is that the branch exists, and a walk that models a tree as a list will keep losing
+whatever hangs off the second child.
+
+### Recorded, not claimed
+
+`0x0B` is the largest unhandled type — 1,538 nodes, more than the two added here combined —
+and its best offset is `k=4` at **31%** against a 2% control. That is a real signal and not
+a shape. A rule that works for 31% is guessing about the other 69%, and this document has
+enough of those already. Its 83 distinct header words are also the most of any type, which
+suggests it carries the most parameters and may not have a fixed shape at all.
+
+Node types still unhandled, in size order: `0x0B` (1,538), `0x99` — now handled — `0x9B`
+(90), `0x09` (59), `0xDB` (23), `0x4B` (8). Between them, under 2,000 nodes.

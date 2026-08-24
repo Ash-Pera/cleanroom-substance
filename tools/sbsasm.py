@@ -271,6 +271,41 @@ FX_NODES = {
     0x1CB: (12, (4,)),        # [header][program][0][next]                    -> i1
 }
 
+# A SECOND family, keyed by the header's low BYTE rather than the whole word. The two
+# families are cleanly separated by how much their headers vary: each of the four above
+# occurs as exactly ONE word (0x18B is 14,705 sightings and 1 distinct value), while
+# these occur as many - 0x0B has 83 distinct words, 0x48 has 78 - so their upper bits
+# carry per-node parameters and only the low byte names the type.
+#
+# The low NIBBLE says which family a chain stop belongs to, and this reframes "the
+# vocabulary is open" into something much smaller. Over every chain stop in the corpus:
+#
+#     nibble 8   38,944   94.5%   the table handoff `fx_walk` already models
+#     nibble 9/B  2,261    5.5%   genuine node types, of which these are two
+#     other           5    0.0%
+#
+# So the open part of the FX node vocabulary is 5.5% of chain ends, not all of them.
+#
+# Shapes were probed the way the table above was: every word offset is a candidate, and
+# every OTHER offset is its control. The target test is "does `word + 52` land on a
+# header whose low nibble is 9 or B", which is the family test rather than membership of
+# the four exact words - requiring the latter is what made 0x1B look like a dead end.
+#
+#     0x1B   372 nodes   k=2: 92%   k=5: 97%   every other offset <= 2%
+#            and the two targets are DIFFERENT nodes in 343 of 343, so it BRANCHES
+#            program at k=4 (92%, next best 3%)
+#     0x99   150 nodes   k=4: 100%  next best 11%
+#            program at k=2 (100%, every other offset 0%)
+#
+# NOT added, and recorded so the next attempt starts here rather than at the beginning:
+# 0x0B is the largest unhandled type at 1,538 nodes and its best offset is k=4 at 31%
+# against a 2% control. That is a real signal and not a shape - a 31% rule would be
+# guessing for the other 69%.
+FX_NODES2 = {
+    0x1B: ((8, 20), (16,)),   # two children, at words 2 and 5; program at word 4
+    0x99: ((16,),   (8,)),    # one successor at word 4; program at word 2
+}
+
 
 # Named parameter blocks: slot 1 carries one presence bit per parameter, and the
 # parameters that are present are packed into consecutive slots after the header.
@@ -854,7 +889,17 @@ class Record:
         # key is lossy: it masks w1, so it cannot even represent the arity fields. Where
         # the rule answers it is exact by construction; see tools/derive_costs.py.
         import record_layout
-        n = record_layout.header_words(self.filter_id, self.cls, self.words[1])
+        w1 = self.words[1]
+        # Two-shape filters: the edge run starting at slot 1 is the shape with no w1
+        # word at all, and record_layout must not decode an edge value as field codes.
+        if self.filter_id in (7, 3):
+            try:
+                es = [s for s in self.edge_slots if s < len(self.words)]
+            except Exception:
+                es = []
+            if es and min(es) == 1:
+                w1 = None
+        n = record_layout.header_words(self.filter_id, self.cls, w1)
         if n is not None:
             return n
         return HEADER_WORDS.get((self.filter_id, self.cls,
@@ -1405,12 +1450,32 @@ class Record:
             return
         d, o, e = self.asm.data, self.offset, self.end
         q, seen = self.words[2] + 52, set()
+        pending = []
         while o <= q < e - 7 and q not in seen:
             seen.add(q)
             h = struct.unpack_from('<I', d, q)[0]
             shape = FX_NODES.get(h)
             if shape is None:
-                return
+                # The second family, keyed by low byte. A 0x1B branches, so the walk stops
+                # being a straight line here; `pending` carries the far child and the near
+                # one continues inline. Order is not claimed to be the engine's.
+                shape2 = FX_NODES2.get(h & 0xFF)
+                if shape2 is None:
+                    return
+                nxts, prog_slots = shape2
+                for sl in prog_slots:
+                    if q + sl + 4 > e:
+                        return
+                    p = struct.unpack_from('<I', d, q + sl)[0] + 52
+                    yield q, h, (p if (o < p < e and self.asm.program_span(p, e)) else None)
+                targets = []
+                for n_off in nxts:
+                    if q + n_off + 4 > e:
+                        return
+                    targets.append(struct.unpack_from('<I', d, q + n_off)[0] + 52)
+                pending.extend(targets[1:])
+                q = targets[0]
+                continue
             nxt_off, prog_slots = shape
             for sl in prog_slots:
                 if q + sl + 4 > e:
@@ -1420,6 +1485,9 @@ class Record:
             if q + nxt_off + 4 > e:
                 return
             q = struct.unpack_from('<I', d, q + nxt_off)[0] + 52
+            if not (o <= q < e - 7) or q in seen:
+                while pending and (not (o <= q < e - 7) or q in seen):
+                    q = pending.pop()
 
     @property
     def matrix(self):
