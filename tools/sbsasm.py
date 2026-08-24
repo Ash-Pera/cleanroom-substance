@@ -258,6 +258,25 @@ PARAM_SPEC = {
 PARAM_RAW = frozenset({4})
 
 
+# The OTHER kind mechanism: a population count in the CLASS word.
+#
+# `gradient` and `fxmaps` keep no kind bits in slot 1 - the best correlation any of its
+# sixteen bits reaches is 0.225. They keep them in the class word, and they do not spend one
+# bit per parameter. `popcount(cls & mask)` is the NUMBER of leading block slots that hold
+# programs; the rest hold constants. Order is positional, filled from the front of the block.
+#
+#     gradient  bits 0, 7, 11, 13    100.000%   over 43,883 slot reads, every position exact
+#     fxmaps    bits 0, 7, 11         99.889%   over 42,473
+#
+# The masks are nested, which is worth more than the earlier note allowed: `fxmaps` uses
+# three bits and `gradient` those same three plus one.
+#
+# Both must be read against the LAYOUT TABLE's block, not against fixed slot numbers. An
+# earlier measurement hardcoded `fxmaps` to slots 3-5 and got 95.69%, because its block
+# starts at slot 3 in 13,623 records and slot 4 in 1,561. Using the block gives 99.889%.
+PARAM_POPCOUNT = {10: 0x2881, 7: 0x0881}
+
+
 # FX-Map parameter table: the OTHER thing an fxmaps record's slot 2 can address.
 #
 # 9,111 records (34% of fxmaps) have a slot-2 target that is not a node header. They point
@@ -582,6 +601,24 @@ class Record:
         if f in PARAM_SPEC:
             return self._parameters_paired(PARAM_SPEC[f])
         return []
+
+    @property
+    def program_slots(self):
+        """Which block slots hold programs, for the filters that encode it as a count.
+
+        Returns a list of (slot, is_program) for filters in PARAM_POPCOUNT, or [] otherwise.
+        This is the class-word mechanism, not the slot-1 bit pairs of PARAM_SPEC - a filter
+        uses one or the other, never both.
+        """
+        m = PARAM_POPCOUNT.get(self.filter_id)
+        if m is None or len(self.words) < 2:
+            return []
+        hit = LAYOUTS.get((self.filter_id, self.cls,
+                           self.words[1] & LAYOUT_MASK.get(self.filter_id, 0)))
+        if not hit:
+            return []
+        n = bin(self.cls & m).count('1')
+        return [(s, j < n) for j, s in enumerate(hit[1]) if s < len(self.words)]
 
     def _read_slot(self, name, slot):
         """One parameter slot as (name, kind, value)."""

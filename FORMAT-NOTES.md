@@ -20588,3 +20588,49 @@ between two searches over the same sixteen bits, and 95.69% is not good enough t
 
 Every filter that was listed as unexplained now has an account. `fxmaps` is the only one
 still approximate, and `transformation` is the only one where the question does not arise.
+
+## The popcount rule in code, and the last 47 `fxmaps` records
+
+Reading the count against the **layout table's block** rather than fixed slot numbers is
+what the earlier 95.69% was missing. `fxmaps` starts its block at slot 3 in 13,623 records
+and at slot 4 in 1,561, so hardcoding slots 3-5 mismeasured a tenth of the corpus:
+
+    gradient   bits 0, 7, 11, 13    43,883 / 43,883   100.000%
+    fxmaps     bits 0, 7, 11        42,426 / 42,473    99.889%
+
+`PARAM_POPCOUNT` and `Record.program_slots` now carry this. A filter uses this mechanism or
+the slot-1 bit pairs of `PARAM_SPEC`, never both.
+
+The masks are nested - `fxmaps` uses three bits, `gradient` those same three plus bit 13 -
+which is a stronger statement than the previous note allowed, since both were found by the
+same search over the same sixteen bits and landed on overlapping answers.
+
+### The 47
+
+All 47 sit in three class values - 8985, 11033 and 11161 - and every one predicts a program
+where the slot holds a constant. Two hypotheses died on inspection:
+
+**Bit 13 subtracting from the count.** All three classes have it set, and the counts are
+each exactly one too high, which fits perfectly. It is also wrong: bit 13 is set in **15,113
+of 15,184** `fxmaps` records, so subtracting it takes the rule from 99.889% to 64.53%. Three
+classes sharing a bit that nearly every class has is not evidence of anything.
+
+**A class-level rule error.** Also wrong. The majority behaviour of every class matches the
+prediction, including all three of these - cls 11033 is right in 11,440 of 11,477 records.
+The 47 are a minority *within* their classes, so no function of `cls` can separate them.
+
+What they actually are: the pointer lands **outside the body in all 47**, and the raw word
+reads as a clean constant - 0.02, 0.41, 0.82, 0.25, the last repeated across the
+`BricksSubstance005` records. These are not programs the decoder failed to recognise. They
+are constants sitting where the count says a program should be.
+
+The reading I would put money on, and cannot yet test: the count reflects what the SOURCE
+declared, and a `dynamicValue` whose function is a single `const_float1` gets folded to a
+constant at compile time while the declaration bit stays set. `const_float1` is common in
+these functions - it is the second most frequent operation in `blend`'s dynamic
+`opacitymult`, 85 occurrences against `get_float1`'s 153. Testing it needs a paired source
+with a constant-only function on an `fxmaps` parameter, which the permitted set may not
+contain.
+
+Until then: 0.11% of `fxmaps` parameter slots hold a constant where the class word says
+program, cause unestablished.
