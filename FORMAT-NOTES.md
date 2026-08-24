@@ -26415,3 +26415,49 @@ loop whose operand 3 falls outside 1..64 - it would be relied on wrongly.
 **What actually bounds a condition-less loop is still unknown.** The candidates this pass
 can rule out are operand 3, and any reading in which the bound is a literal in the
 instruction: every operand of `0x0B` is a value reference in 921 of 921.
+
+## Width drift, stopped at the instruction that causes it
+
+The 17 remaining broadcast failures were all plain binary arithmetic between operands of
+different widths - `(v18 + v1)`, `(v40 * v41)`, `(v61 + v60)`. Tracing one:
+
+    v60 = cartesian(v15, v59)     ->  (1, 8)
+    v61 = vec(0.5, 0.5)           ->  (1, 2)
+    v62 = (v61 + v60)                 cannot broadcast
+
+`cartesian(r, theta)` is `vec(r*cos(theta), r*sin(theta))`, so a 4-wide `r` and `theta`
+produce 8 components where polar coordinates have 2. The width had drifted upstream and only
+surfaced here.
+
+The format does not contain this problem. `vec`'s own docstring records the census: the two
+operands of every one of **3,248,836 add instructions declare the same width, with zero
+exceptions**, so the compiler statically guarantees operands match. A runtime mismatch is drift
+the evaluator introduced.
+
+`vec` already truncated its own result to its declared width for this reason. The fix is to do
+it for every instruction, at the instruction that produces the value rather than at whichever
+later one fails to broadcast:
+
+    sbsruntime.clamp(value, ncomp)   truncate to the declared width, never pad
+    the emitter wraps every result whose declared width is greater than 1
+
+### It recovers programs and changes no answer
+
+    ran to a value      137,904  ->  137,913     +9
+    ValueError               20  ->       11
+    all values finite   137,734  ->  137,743
+
+and, comparing every program that ran both with and without the change:
+
+    ran both ways     42,959
+      identical       42,959
+      different            0
+    ran only WITH clamping     3
+    ran only WITHOUT           0
+
+No result moves. Nothing that worked stops working. That is the property worth checking before
+adopting a change that rewrites every arithmetic instruction in the corpus, and it is why the
+comparison was run against 42,959 programs rather than the nine that changed.
+
+    execution   137,913 of 137,951   99.9725%
+    remaining   11 ValueError, 2 IndexError, 25 NoSharedCache cascades

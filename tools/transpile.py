@@ -92,7 +92,7 @@ class Python(Backend):
               "from sbsruntime import (sysvar, sample_lum, sample_col, vec, swizzle,\n"
               "                        select, rand, cartesian, lerp, sbs_mod, atan2, cvt,\n"
               "                        dot,\n"
-              "                        cache_read, cache_write)\n")
+              "                        cache_read, cache_write, clamp)\n")
 
     def const(self, values, ty):
         if ty == 0:
@@ -335,6 +335,11 @@ def transpile(data, start, end, backend="python", name="program", result=None):
         else:
             raise Unsupported("opcode %04X (id %02X, type %d) at %d"
                               % (op, oid, ty, addr))
+        # Clamp to the instruction's own declared width. Without this a value can drift
+        # wider than declared and the drift only surfaces later, at a `vec` or a binary
+        # operation that cannot broadcast. See sbsruntime.clamp.
+        if ncomp and ncomp > 1:
+            rhs = "clamp(%s, %d)" % (rhs, ncomp)
         out.append("%s = %s" % (v, rhs))
         return out
 

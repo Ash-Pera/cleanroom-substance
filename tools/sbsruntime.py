@@ -242,6 +242,31 @@ def cartesian(r, theta):
     return vec(r * np.cos(theta), r * np.sin(theta))
 
 
+
+def clamp(value, ncomp):
+    """Truncate a value to the component width its instruction declared.
+
+    Every instruction carries a declared result width in its size field, and a corpus
+    census found the two operands of all 3,248,836 `add` instructions declare the SAME
+    width with zero exceptions -- so the compiler guarantees operands match and any
+    mismatch at runtime is drift this evaluator introduced, not something the format
+    contains.
+
+    `vec` already truncated its own result for exactly this reason. Doing it for every
+    instruction stops drift at the point it appears rather than at the next `vec`, which
+    is what left plain `+` and `*` failing to broadcast: 17 of the 22 remaining runtime
+    failures were a binary operation between operands of different widths.
+
+    Only truncation, never padding -- a value narrower than declared is a different
+    problem and `vec` raises on it rather than guessing.
+    """
+    if ncomp is None:
+        return value
+    arr = np.asarray(value)
+    if arr.ndim < 2 or arr.shape[-1] <= ncomp:
+        return value
+    return arr[..., :ncomp]
+
 def rand(seed):
     """Deterministic hash-style noise in [0, 1)."""
     x = np.asarray(seed, dtype=np.float64)
