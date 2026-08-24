@@ -3887,11 +3887,33 @@ before.
 **`blendingmode` is not in the code.** The programs hanging off blend records were
 compared directly. Across 31,705 blend records the slot-4 programs reduce to 263 distinct
 opcode signatures, dominated by a lone `0A42` (an `inputref`) at 37%. In
-`serverhouse__BrickWall_02`, which has six distinct blend modes in its source, all 223
-blend records share just **five** signatures with counts 136/25/10/4/1 — against a mode
-distribution of 34/5/4/2/1/1. The programs are `0A42 1640 0A52 1240 0A52 ...`: an input
-reference followed by alternating integer constants and adds, which accumulates an offset,
-not a mode selector.
+`DLG-Tools__Hammered_Copper_01`, whose source declares **six** distinct blend modes, the
+807 blend records carry programs of just **three** distinct opcode signatures, counts
+176/46/1. The dominant shape begins `0541` (`sysvar` — the resolution gate identified much
+later as `opacitymult`), and the next is `0A42 ... 1640 0A4C 0A52`: an input reference with
+alternating integer constants and adds, which accumulates an offset, not a mode selector.
+Three program shapes do not track six modes.
+
+That is suggestive rather than decisive, and the weakness is worth naming: only 223 of the
+807 blend records carry a program at all, and nothing here shows that all six declared modes
+occur among those 223 rather than among the 584 without one. The question is not settled
+here. It is settled below, twice over — first by the finding that a file mixing modes emits
+identical programs (**the mode is not in the parameter program**), and finally by locating
+`blendingmode` in the low four bits of slot 1, a record header word rather than bytecode.
+Both confirm this section's conclusion by a route that does not depend on the specimen.
+
+> **Specimen replaced, and why.** This argument was originally made on
+> `serverhouse__BrickWall_02` — six source modes against five program signatures,
+> 136/25/10/4/1 versus a mode distribution of 34/5/4/2/1/1. One of that file's four graphs
+> carries `<author v="Allegorithmic"/>`, so the provenance rule excludes its **source**, and
+> the mode count is a source-derived fact. The specimen was withdrawn and the same argument
+> re-derived on a permitted paired file. The conclusion is unchanged.
+>
+> `BrickWall_02`'s **compiled** assembly remains in the corpus and its binary-level
+> measurements elsewhere in this document stand unaltered: the rule excludes Adobe's source
+> graph definitions, not the freely distributed `.sbsar`, and those two are independent
+> properties of the same specimen. `tools/provenance.py` is the re-runnable form of that
+> rule, added after this was found.
 
 **And it is not in any slot.** `blendingmode` has an unmistakable signature — 7 distinct
 values, 97% of them 0. Stratified by record size, no slot in any blend layout carries it.
