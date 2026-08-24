@@ -20634,3 +20634,59 @@ contain.
 
 Until then: 0.11% of `fxmaps` parameter slots hold a constant where the class word says
 program, cause unestablished.
+
+## Two holes narrowed, one hypothesis withdrawn
+
+### The constant-folding reading has no supporting instance
+
+Last section proposed that `fxmaps`' 47 exceptions are `dynamicValue` parameters whose
+function is a single `const_float1`, folded at compile time with the declaration bit left
+set. The supporting argument was that `const_float1` is common - 85 occurrences in `blend`'s
+dynamic `opacitymult` against `get_float1`'s 153.
+
+That argument was wrong, and checking it takes one pass. Across every `dynamicValue`
+parameter in the permitted sources, on every filter:
+
+    constant-only functions        0
+    functions with real operations  ~1,900
+
+Not one. `const_float1` is frequent *inside* larger functions and never constitutes one, so
+"constant-only functions are common" does not follow from "`const_float1` is common" - I
+read a term frequency as a whole-function frequency. `blend` is also a clean control: it has
+176 dynamic `opacitymult` declarations and **zero** exceptions in 77,386 program slots, which
+is what a filter with no folding looks like.
+
+The hypothesis is not disproved - the failing `fxmaps` records come from packages whose
+sources are not in the permitted set - but it has no instance behind it, and it should not
+have been offered with one.
+
+### `pixelprocessor`'s 1,432 are two different things
+
+    the bit says baked, the slot holds a decodable program   1,019
+    the bit says program, the value is not a pointer at all     413
+        of which  below body_lo   252      above body_hi   161
+
+The 413 are real bit failures: those words decode to nothing (`count=312` yielding 0
+instructions, or `count=0`), so the parameter is a constant and the bit is simply wrong.
+
+For the 1,019 I tried to establish whether they are genuine programs or the small-integer
+trap - `pixelprocessor`'s parameters are `Int32`, `Bool` and `Int2`, so a small integer
+landing in the body would validate as a program by coincidence. The first test said 1,019 of
+1,019 were known program starts, which was **circular**: the set of known starts is built
+from `Record.programs`, which reads these same slots, so every address was in it by
+construction.
+
+Excluding the record itself:
+
+    named only by this record            1,018
+    also named by another record             1
+    strictly inside another program          0
+
+So they are valid standalone decodes at unique addresses, with no independent corroboration
+in either direction. Nothing here says the content is wrong, and nothing independently
+confirms it either. `_read_slot` reports what is in the slot rather than what the bit says,
+which is the right default when only one of the two can be checked.
+
+What this leaves: `pixelprocessor`'s pairs at bits 0 and 4 are 97.2% and 97.1% predictive
+while its pairs at 6 and 8 are exact. Why two of a filter's four pairs should be reliable
+and two not is unexplained.
