@@ -16207,3 +16207,54 @@ coverage, where a wrong probe is a fact that looks like a finding.
 
 **Recorded as the single largest structural insight to come out of questioning the method rather
 than the data.**
+
+## The layout descriptor, reduced to a mask per filter
+
+Keying layout on the whole of slot 1 gives 26,395 distinct keys, because slot 1 also holds
+parameter *values* - `blendingmode` lives in its low nibble. The layout bits are a subset, and a
+greedy search finds them: start with all 32 bits and drop any whose removal does not cost
+determinism.
+
+    filter            records         mask     keys   purity
+    blend              73,898   0x00000230       24    99.9%
+    transformation     53,004   0x060000C0       60   100.0%
+    directionalwarp    14,215   0x0000001E       43   100.0%
+    pixelprocessor     12,012   0x0000000B       26    99.8%
+    fid 11              4,905   0x00000004       21   100.0%
+    blur                2,797   0x00000000       18   100.0%
+    fid 19                674   0x00000000        5   100.0%
+    distance              533   0x00000001       12   100.0%
+    levels             21,768   0x000003FD      118    98.6%
+
+**`blend`'s mask is `0x230` - bits 4, 5 and 9 - and it excludes bits 0 to 3.** The search was
+given no knowledge of what those bits mean. It independently rejected exactly the nibble holding
+`blendingmode` and kept exactly the bits that this document had already found predict header
+size. Twenty-four keys determine every blend record's layout at 99.9%.
+
+`blur` and `fid 19` need **no** slot-1 bits at all: class alone determines their layout, at 100%.
+
+### Where it does not reduce
+
+    warp        1,405 keys   99.8%
+    gradient    2,567        87.9%
+    uniform     2,258        99.8%
+    shuffle       336        99.8%
+    fxmaps         62        84.2%
+
+High purity but no compression - the search kept many bits because those filters store parameter
+values in slot 1 that happen to correlate with layout, and a greedy per-bit search cannot tell a
+layout bit from a parameter bit that co-varies with one. `gradient` is the clearest case: its
+slot 2 is a stop count, so record shape tracks a value the mask cannot exclude.
+
+Overall: **98.8% determinism over 209,640 records**, with the compression concentrated in the
+filters that matter most by volume.
+
+### What this is worth
+
+For nine of fourteen measured filters the layout is a lookup on two small fields. A segmenter
+built this way would not probe, and would report an unknown `(filter, class, masked slot 1)` as
+a gap rather than guessing a layout - the failure mode that admitted six false edges into these
+tables.
+
+The masks are derived from this corpus and a key not seen here remains unknown. That limit is
+real, and it is the same one that applies to the filter table and the opcode catalogue.
