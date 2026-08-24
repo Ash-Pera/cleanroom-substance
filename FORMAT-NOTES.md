@@ -29878,3 +29878,53 @@ That does not survive contact with the file: `ie_pcloud` has 1 or 2 table entrie
 record and six distinct entry tags, not 62. Whatever the table carries, it is not one entry
 per paramset parameter. Recorded as a lead that was checked and failed rather than left
 hanging.
+
+## The deeper logic: costs are type widths, and the fit is scaffolding for a type table
+
+The cost model should not need fitting, and mostly it does not. The record is a
+serialized parameter list, so every coefficient has to be a TYPE WIDTH:
+
+    baked parameter        its component count: 1, 2, 3 or 4
+    program parameter      1 (a pointer)
+    image parameter        1 (an edge)
+    colour-typed, baked    channels wide -- the colour flag multiplies, as established
+    inherited parameters   the SAME width in every filter
+
+Confronting all ~150 fitted coefficients with that law: all but nine are 0, 1, 2 or 4.
+The inherited widths are identical across every fitted filter --
+
+    word0 bit 16  ($outputsize)        1     word0 bit 26  (the class value)     2
+    word0 bit 23  ($randomseed)        1     word0 bit 27  ($pixelsize)          1
+
+-- and every independently known type is recovered: matrix22 is 4 baked and 1 as a
+program, dirmotionblur's intensity and mblurangle are 1 each, blend's opacitymult is 1,
+uniform's value is 1 or 4 by colour, levels' five levels are 1 or 4 by colour.
+
+**The nine violations are flags, not findings, and each resolved to a mechanism:**
+
+    distance  const=2.5, f1=1.5/1.5    NOT a half-word: read raw, distance is exactly
+                                       lawful -- its field 0 is a Float2 (baked 2,
+                                       program 1; base 4; 1100->7, 2100->6, 1200->7,
+                                       2200->6). The halves are fit DEGENERACY: field 1
+                                       never varies independently of field 0 in the
+                                       corpus, so least squares split the difference.
+                                       The law was right and the fit was the noise.
+
+    fxmaps    f2.prog=10, f7=16/32     not widths at all: these states flag INLINE NODE
+    pixelproc f2.baked=16              REGIONS (the tagged-node structure), whose average
+                                       size the linear model absorbed as a constant
+
+    shuffle   cls0=-2, cls16=-1        negative widths are impossible; the per-record
+                                       w1-presence handling is misattributing, and the
+                                       spec is width-lawless there until that is fixed
+
+    levels    base[0]=5, base[10]=-1   interaction-spec basis freedom: const 5 with a
+                                       -1 on a bit set in every record is const 4 worn
+                                       differently; lawful after normalisation
+
+So the answer to "should we have to fit it?" is no -- and the fit now says so itself:
+`derive_costs` prints every width-law violation as a standing flag. The end state this
+points at is a TYPE TABLE per filter (name, type, width) from which costs.json is
+generated rather than fitted; the fit remains only as the instrument that recovers
+types where no declaration is known, and as the check that a claimed type table
+reproduces every header.

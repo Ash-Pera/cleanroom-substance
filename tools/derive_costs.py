@@ -288,6 +288,38 @@ def main():
     print()
     print('wrote %s: %d filters, covering %d of %d records (%.2f%%) at >= %.1f%% exact'
           % (os.path.basename(OUT), len(out), kept, tot, 100 * kept / tot, 100 * KEEP))
+    # ---- the width law
+    # A cost is not a free parameter. The record is a serialized parameter list, so
+    # every coefficient must be a TYPE WIDTH: baked = the parameter's component count
+    # (1, 2, 3 or 4), program = 1 pointer, image = 1 edge, and the inherited
+    # parameters have the same width in every filter. The fit exists only to RECOVER
+    # that table where the type declarations are unknown -- so any coefficient that is
+    # not a small non-negative integer is not a finding, it is a flag: either two
+    # populations averaged (distance's 1.5s -- really a Float2's 2 and a fit
+    # degeneracy), or an inline node region absorbed as a constant (fxmaps' 10/16/32),
+    # or a mishandled shape (shuffle's negatives).
+    lawless = []
+    for fs, spec in out.items():
+        def each(label, v):
+            if v and (float(v) != int(float(v)) or v < 0 or v > 4):
+                lawless.append((fs, label, float(v)))
+        if 'base' in spec:
+            for i, v in enumerate(spec['base']):
+                each('base[%d]' % i, v)
+            continue
+        each('const', spec['const'])
+        for b, v in spec['cls'].items():
+            each('cls%s' % b, v)
+        if spec.get('arity'):
+            each('arity', spec['arity']['cost'])
+        for j, states in spec['w1'].items():
+            for st, v in states.items():
+                each('f%s.%s' % (j, st), v)
+    if lawless:
+        print()
+        print('coefficients violating the width law (each is a flag, not a finding):')
+        for fs, label, v in lawless:
+            print('   filter %-4s %-12s %g' % (fs, label, v))
     return 0
 
 
