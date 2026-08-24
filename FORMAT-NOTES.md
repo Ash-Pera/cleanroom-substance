@@ -25554,3 +25554,57 @@ would mean rebuilding the table, which is where this started.
 So the union stands, and its cost is now known exactly: 168 records out of 100,050 for the two
 affected filters, 0.17%, where the layout is taken from aggregated evidence rather than
 computed. Everywhere else the rule computes it.
+
+## Would a bigger corpus help? Measured, three different answers
+
+### The instruction set and the filter set are saturated
+
+    files   layout keys   opcodes   filter ids   class words
+       22         1,583        72           22            80
+       88         5,184        85           23           111
+      263        15,383       127           23           148
+      438        24,199       129           23           174
+
+    over the last 88 files - 20% of the corpus:
+        new opcodes       2
+        new filter ids    0     (none since file 44)
+        new class words   9     (5.2% growth)
+        new layout keys   7,032 (29.1% growth)
+
+More bytecode will not reveal new opcodes or new filters. Those questions are closed by
+saturation, not by argument: 394 consecutive files produced no filter id that had not already
+been seen.
+
+### The table never saturates, and that is an argument against tables
+
+Layout keys grow by 29% per 20% of corpus with no sign of flattening, because a key is
+`(filter, cls, word1 & mask)` and word1 is a large space. Building the table from 350 files
+and applying it to the 88 it has never seen:
+
+    records in unseen files       331,682
+    key already in the table      322,228   97.15%
+    key NOT in the table            9,454    2.85%
+
+    the misses, by filter:
+        gradient 3,874    uniform 2,704    warp 1,921    shuffle 453
+        transformation 209    directionalwarp 90
+
+The misses concentrate in exactly the filters whose `LAYOUT_MASK` was shown to be noise.
+`gradient` keys on 0x3fff and `warp` on 0x2ff8, and neither bit pattern means anything - so
+every new file brings word1 values never seen, hence keys never seen, hence misses. The rule
+has no such failure: it ignores word1 for both filters entirely, and gets them right on any
+file.
+
+So a bigger corpus makes the table BIGGER, not better. It would grow the same 2.85% blind spot
+on whatever it had not seen.
+
+### What a bigger corpus would actually buy
+
+Nothing for the 168 undecidable records - it would supply more instances of the same ambiguity,
+which helps aggregation and not the rule.
+
+The three open naming questions - filters 5, 8 and 9, and class-word bits 10 and 13 - are not
+short of bytecode. They need `.sbs` SOURCES that use those filters, and packages that expose
+`$tiling` or `$outputformat` as declared inputs. Zero of the 438 files do either. That is a
+provenance problem, not a volume problem: another thousand compiled assemblies of the same
+kind would answer none of them.
