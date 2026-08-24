@@ -30,12 +30,28 @@ import disasm
 FILTERS = {
     0: 'gradient', 1: 'blend', 2: 'transformation', 3: 'shuffle', 4: 'fxmaps',
     6: 'uniform', 7: 'warp', 10: 'blur', 12: 'directionalwarp', 13: 'sharpen',
+    11: 'dirmotionblur',
     14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
     20: 'pixelprocessor', 21: 'distance',
 }
+# Filter 11 is `dirmotionblur`, named from the permitted sources alone. It declares exactly
+# two Float1 parameters and nothing else, which is filter 11's shape:
+#
+#     mblurangle   -0.25, 0.25, 0.75        an angle in turns, symmetric about zero
+#     intensity    12.0, 13.67, 34.82       one-sided magnitudes
+#
+# and containment settles it: all three declared `intensity` values appear at filter 11's
+# first parameter slot and at NO other filter or slot in the corpus. The three `mblurangle`
+# values appear at its second slot too, alongside a few coincidental hits elsewhere - 0.25
+# and 0.75 are common numbers, which is exactly why the `intensity` column is the one that
+# carries the identification.
+#
+# This also confirms a reading left open earlier. Filter 11's second parameter was recorded
+# as "angle-SHAPED but unconfirmed - none of its 25 programs divides by 2*pi, so nothing
+# confirms it". It is `mblurangle`, and it is an angle.
 # Unnamed ids, with what is known. Never rendered as a name.
 UNNAMED = {5: 'generator, greyscale (svg?)', 8: 'two inputs, greyscale control (emboss?)',
-           9: 'legacy, version 0x20000 only', 11: 'one input, channel-preserving',
+           9: 'legacy, version 0x20000 only',
            19: 'one input from blend + shared pixelprocessor map', 22: 'one input'}
 
 # Data edges: slots whose targets are used once each (refs/target ~= 1).
@@ -228,18 +244,13 @@ PARAM_SPEC = {
     15: [('levelinlow',   0x003, 0x002), ('levelinhigh', 0x00c, 0x008),
          ('levelinmid',   0x030, 0x020), ('leveloutlow', 0x0c0, 0x080),
          ('levelouthigh', 0x300, 0x200)],
-    # Filter 11 is one of the filters this work will not name - doing so needs sources
-    # excluded on provenance - so its two parameters carry positional names. The bit pairs
-    # were derived mechanically, not fitted: 32,204 of 32,204 slot kinds correct.
-    #
-    # Their value distributions are suggestive and are NOT claims:
-    #   param0  one-sided, p50 1.45, p99 36.3, max 500, values in multiples of 0.66
-    #   param1  symmetric, 28.0% negative, p1 -0.125, values in multiples of 1/16
-    # param1 has the signature of an angle in turns, but unlike `directionalwarp` none of
-    # its 25 programs divides by 2*pi, so nothing confirms it. A value distribution alone
-    # already produced one withdrawn reading in this file; it does not get to produce
-    # another.
-    11: [('fid11_param0', 0x003, 0x002), ('fid11_param1', 0x00c, 0x008)],
+    # `dirmotionblur`, named from the permitted sources - see the FILTERS table. Its bit
+    # pairs were derived mechanically before the filter had a name: 32,204 of 32,204 slot
+    # kinds correct. The distributions that were recorded as suggestive and not claimed
+    #   intensity   one-sided, p50 1.45, p99 36.3, max 500
+    #   mblurangle  symmetric, 28.0% negative, p1 -0.125, values in multiples of 1/16
+    # are what the source names say they are.
+    11: [('intensity', 0x003, 0x002), ('mblurangle', 0x00c, 0x008)],
     # `fxmaps` has four, derived the same way. Two of the pairs are exact and two are near
     # it, over 92,815 slot reads:
     #

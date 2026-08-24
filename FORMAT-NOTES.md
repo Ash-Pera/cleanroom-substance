@@ -22120,3 +22120,59 @@ So: an integer parameter computed from a package-level graph input plus a per-no
 whose small values look like `format` and whose large values look like nothing yet
 identified. Calling it a seed was reading four properties as four pieces of evidence when
 one of them was doing all the work and does not, on inspection, do it.
+
+## Filter 11 is `dirmotionblur`, named from the permitted sources alone
+
+Filter 11 was the largest unnamed filter - 14,895 records - and had been recorded as
+unnameable, since naming it looked like it needed the sources this work excludes on
+provenance. It does not.
+
+### The permitted sources name it
+
+Listing every `compFilter` name in the permitted set and subtracting the ones already mapped
+leaves seven names for six unmapped ids: `passthrough`, `grayscaleconversion`,
+`valueprocessor`, `dyngradient`, `curve`, `dirmotionblur`, `emboss`.
+
+Presence correlation across the 140 paired files is too weak to choose - the best Jaccard is
+0.43, because a compiled package contains library nodes the user's `.sbs` never declares. The
+parameter signatures are not weak. `dirmotionblur` declares **exactly two Float1 parameters
+and nothing else**:
+
+    mblurangle   -0.25, 0.25, 0.75      symmetric about zero - an angle in turns
+    intensity    12.0, 13.67, 34.82     one-sided magnitudes
+
+which is filter 11's shape, derived mechanically long before it had a name:
+
+    fid11_param0   one-sided, p50 1.45, p99 36.3, max 500
+    fid11_param1   symmetric, 28.0% negative, values in multiples of 1/16
+
+### Containment settles it
+
+    dirmotionblur intensity    3 of 3 declared values appear at filter 11 param0
+                               and at NO other filter or slot in the corpus
+    dirmotionblur mblurangle   3 of 3 appear at filter 11 param1, plus scattered
+                               coincidental hits at levels, blend and directionalwarp
+
+The `intensity` column carries the identification and the `mblurangle` column does not,
+for the reason this file keeps rediscovering: 0.25 and 0.75 are common numbers and 13.67 and
+34.82 are not. A containment test is only as good as the values are distinctive.
+
+Provenance checked directly: the sources declaring `dirmotionblur` are authored by
+`free-3dtextures.com`, `JohnLogostini`, `ben-wilson-github` and others, and **zero** are
+Allegorithmic-authored.
+
+### What it settles beyond the name
+
+Filter 11's second parameter was recorded as *"angle-SHAPED but unconfirmed - none of its 25
+programs divides by 2*pi, so nothing confirms it. A value distribution alone already produced
+one withdrawn reading in this file; it does not get to produce another."* It is `mblurangle`.
+The caution was right and the reading was right; what was missing was a second kind of
+evidence, and the source name is one.
+
+    filter identified   876,622 (97.9%)  ->  891,517 (99.5%)
+
+Five ids remain unnamed - 5, 8, 9, 19, 22 - against six remaining source names, so the same
+method may reach some of them.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
