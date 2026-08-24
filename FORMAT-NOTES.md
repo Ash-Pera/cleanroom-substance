@@ -30089,3 +30089,41 @@ Sharpen decodes additively by eye — word0 bits 27, 28 and 16 each cost one —
 direction. normal (92.5%) and bitmap (99.3%) are the same at small scale, and small
 filters cannot absorb a few annexed records inside a 0.5% budget. So the boundary of
 what remains unread has one name on it, three times over: the node regions.
+
+## Is the FX-Map program a different ISA? No — a strict subset, and what it lacks is the point
+
+Both are decoded by the same `disasm`, which is an assumption this document had never
+checked. Three checks, corpus-wide:
+
+    FX node programs        2,695,779 instructions   43 distinct opcode names
+    filter record programs 30,101,509 instructions   49 distinct opcode names
+    opcodes used in FX but never in a filter program            NONE
+    (type, id) pairs: FX 65, filter 78, shared                   65
+
+**Zero FX-only opcodes.** The same `(type, id)` decodes to the same operation with the same
+operand count on both sides, with two exceptions that are encoding rather than semantics —
+`const` and `samplelum` differ in modal TOKEN count, which is immediate width, not a
+different instruction.
+
+So it is one instruction set, and the FX side uses 43 of its 49 names. What is missing is
+more interesting than the fact of the subset:
+
+    cache_write     1,205 in filter programs        0 in FX
+    while             933                           0 in FX
+    exp             4,608                           0 in FX
+    log2            3,920                           0 in FX
+    pow                61                           0 in FX
+    op0F               27                           0 in FX
+
+**An FX-Map node program never loops.** Not once in 2.7 million instructions. And it never
+writes the cross-record cache, though it reads it 121 times. That fits what the previous
+sections established about what these programs ARE: a node's program is its parameter's
+value — `numberadded`, `switch` — a pure expression evaluated to produce one number, not a
+per-pixel kernel. The looping and the cache writing live in `pixelprocessor` and the other
+filters that actually walk an image.
+
+The absent transcendentals are the same story but weaker: `ln`, `exp2`, `sqrt`, `sin`,
+`cos` and `atan2` all DO appear in FX programs, so this is not "no transcendentals" — it
+is that `exp`, `log2` and `pow` happen not to be reached by any parameter expression in
+this corpus, on 61 to 4,608 filter-side uses. That is an absence worth recording but not
+one worth explaining.
