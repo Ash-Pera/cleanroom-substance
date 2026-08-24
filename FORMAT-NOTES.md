@@ -19725,3 +19725,258 @@ rather than a per-node baked one.
 on once the compiler folds the parameter away - the next specimen that would help is one where
 the exposed parameter is actually overridden away from its default (by a preset, or a second
 instance with a different value), so the fold-in produces something other than a generic `0.5`.
+
+## FX-Maps are not blocked on the corpus: there are seven ground-truth materials, not one
+
+Every FX-Map section in this document ends the same way. *The corpus limit*: "the only
+material whose FX-Map composition is known from source is `ie_pcloud`". *Two more FX-Map node
+types*: "blocked on the same thing everything else about FX-Maps is blocked on - a second
+material whose FX-Map composition can be read before the binary."
+
+That was never checked against the corpus as it now stands. It is false.
+
+An FX-Map appears in a `.sbs` source as a `<paramsGraph>` holding `<paramsGraphNode>` elements,
+each with a `<type>` and `<connections>` giving the topology. Scanning all 758 `.sbs` files,
+applying the provenance predicate first (165 sources dropped for `<author v="Allegorithmic"`):
+
+    permitted sources containing a paramsGraph      18
+    distinct materials among them                    7
+    all seven paired with an .sbsasm in DISTINCT.txt  yes
+
+    material            source FX-Map nodes                        graphs   records
+    ie_curve            paramset 43, addnode 47                        43        74
+    ie_pcloud           paramset 11, addnode 20, markov2 10            11       110
+    ie_particles        paramset  2, addnode  6                         2         2
+    Clouds_3_Animated   paramset  6                                     1         2
+    Grid                paramset  4                                     3         6
+    triDraw             paramset  2, addnode  2                         2         3
+    Bruno_Caustics      paramset  1, addnode  1                         1         3
+
+**`ie_curve` alone is four times `ie_pcloud`** - 43 FX-Map graphs and 90 nodes against 11 and
+41 - and it was sitting in `pairs/` the whole time. The blocker was a statement about what had
+been looked for, not about the corpus.
+
+### A third source node type, never recorded here
+
+`markov2`, 10 instances in `ie_pcloud`. Every previous comparison in this document has been
+against a two-name vocabulary, `addnode` and `paramset`, which is why *`0x89` is not `paramset`*
+tested one alternative and stopped. The source vocabulary over the seven materials is
+`paramset` 69, `addnode` 76, `markov2` 10.
+
+### `0x89` is not `paramset`, now out of sample
+
+The original rejection rested entirely on `ie_pcloud` - roughly two `0x89` per record against
+one `paramset` per node. `ie_curve` settles it independently and more sharply:
+
+    ie_curve   source paramset   43
+               binary  0x89       0
+
+Forty-three `paramset` nodes and not one `0x89`. A second material, a different author, and the
+same conclusion by a different route.
+
+### And it is not `markov2` either
+
+The co-occurrence looks perfect at first - `ie_pcloud` is the only one of the seven with
+`markov2`, and the only one with `0x89`. Prevalence kills it:
+
+    files with any fxmaps record                359 of 435
+    files containing 0x89                       265        73.8%
+    files containing 0x18B                      297        82.7%
+    files containing 0x1CB                      197        54.9%
+    files containing 0x1AB                        8         2.2%
+
+`0x89` is in three quarters of every file that has an FX-Map at all. If it were `markov2` then
+Markov nodes would be near-universal, and the seven-material sample would show `markov2` in
+about five of seven rather than one. The perfect co-occurrence is a two-cell coincidence in a
+sample of seven, and it is recorded here so it does not get rediscovered as a lead.
+
+### `fx_tree` counts program slots, not nodes
+
+Found while checking the counts above, and it affects any census built on the walker.
+`Record.fx_tree` documents itself as yielding "per tree node" and yields **once per program
+slot**. A `0x1AB` node, whose shape is `[header][program][program][next]`, yields twice at the
+same offset:
+
+    record 21 of ie_particles:  4 yields, 3 distinct offsets
+        +128   0x18B   prog=736
+        +504   0x1AB   prog=1116
+        +504   0x1AB   prog=1148        <- same node
+        +2756  0x18B   prog=3364
+
+So `0x1AB` is double-counted wherever nodes are counted from the walker, and the
+"reaches 95.7% of the node headers present" figure in `tools/README.md` needs re-measuring
+against distinct offsets before it is quoted again.
+
+### A lead on `0x1AB`, with its sample size stated
+
+`ie_particles` is the one material where graphs and records are 1:1 - two source graphs, two
+`fxmaps` records, no instancing to unpick. Counting by distinct offset:
+
+    source per graph    paramset 1,  addnode 3          4 nodes
+    binary per record   0x18B    2,  0x1AB   1          3 nodes
+
+The addnode count works out exactly if **`0x18B` and `0x1AB` are both `addnode`**, differing in
+how many programs the node carries. `Bruno_Caustics` agrees from the other direction: one graph,
+one `addnode`, three records, three `0x18B` and no `0x1AB`. `ie_pcloud` is consistent - its
+`0x18B` total matched `addnode` exactly, and it has no `0x1AB` to confuse the count.
+
+Against it, `ie_curve` reaches 55 addnode-equivalents where instancing predicts about 81, and
+`triDraw` reaches 1 where it predicts 3. Both are walker failures rather than contradictions -
+23 of `ie_curve`'s 74 records yield no node at all - so they do not test the hypothesis either
+way.
+
+**This is two materials, one of them with n=2 records.** It is a lead, not a result, and it is
+worth pursuing precisely because `0x1AB` is in 8 files corpus-wide and two of those eight are
+ground-truth pairs. The rarest node type is the one the sources cover best.
+
+### Refuted: bit 5 as a "second program" flag
+
+`0x1AB - 0x18B = 0x20`, so the tidy reading is that bit 5 means "carries another program", which
+would make the node vocabulary a bitfield rather than a list. It makes a sharp prediction:
+`0x89 | 0x20 = 0xA9` and `0x1CB | 0x20 = 0x1EB` should both exist.
+
+    0x89    7,331 occurrences   85 files
+    0xA9        0                0 files
+    0x1CB     363                51 files
+    0x1EB       0                 0 files
+
+Neither exists, and no other header in the census is a known header with bit 5 set. `0x1AB` is
+its own node type. The bitfield reading is dead.
+
+### Refuted: an input list in the fxmaps record slots
+
+`fxmaps` inputs are the standing `PARTIAL_EDGES` entry, and reading `ie_curve` record 35 by hand
+looked like the answer. Slots 3 to 35 hold 33 distinct backward record indices, every one a
+`bitmap`, terminated by a zero word - and they are exactly the file's bitmap records 2 to 34, in
+a permuted order rather than sorted. An exhaustive, duplicate-free, zero-terminated permutation
+of a contiguous block is not what a run of small integers looks like.
+
+Corpus-wide it does not survive its own null. Scoring each run's dominant target filter against
+a null drawn from **the same index range the run occupies** - which is the correction that
+matters, since ascending small integers land on whatever sits at the start of the file:
+
+    fxmaps records with a run of >=3 backward indices   215
+    observed dominant-filter share                    74.6%
+    matched-range null                                65.5%
+    runs at 100% one filter                           12.6%   (null: 10.2%)
+    zero-terminated                                    0.9%
+    all indices distinct                              54.4%
+
+Nine points over the null is not discrimination; the edge map was built on separations like
+96% against 27%. Scored against the whole-file base rate instead, the same data reads 87.3%
+against 11.2% and looks decisive - which is exactly the flattery the matched null exists to
+remove.
+
+The motivating specimen does not survive either. Records 2 to 34 of `ie_curve` are *all*
+`bitmap`, so its matched-range null is also 100% bitmap and the observation carries no
+information about what the slots mean. **This is the small-integer artifact for the eighth
+time**, and the one property that still looks real - an exhaustive duplicate-free permutation -
+holds in 0.9% of runs and is a single specimen.
+
+### Where this leaves FX-Maps
+
+    settled     0x18B = addnode, now on three materials rather than one
+                0x89 is not paramset, out of sample on ie_curve
+                0x89 is not markov2, killed by prevalence
+    lead        0x18B and 0x1AB are both addnode, differing in program count (n=2 materials)
+    open        0x89 (73.8% of files), 0x1CB (54.9%), and where paramset went
+    tooling     fx_tree double-counts multi-program nodes
+    corpus      NOT the constraint - seven paired materials, 63 distinct FX-Map graphs,
+                290 nodes, of which this session used four
+
+The next measurement is the one this session did not get to: `paramset` is 69 of 155 source
+nodes and no binary header has been matched to it. It is one per graph in six of the seven
+materials, which is the most constrained count in the whole table.
+
+## Does the variable-length relative slot idea explain more? Partly, and mechanically
+
+The mechanism has three separable parts - parameters encoded as BIT PAIRS, presence being
+either bit, and placement anchored at the block's END. Each had only ever been fitted by
+hand to one filter at a time. Deriving all three mechanically answers how far they reach.
+
+### Deriving the pairs instead of guessing them
+
+One pass caches, for every record, whether each block slot holds a program. Then for each
+filter a greedy search adds bit pairs one at a time, keeping whichever most increases the
+number of correctly predicted slot kinds while holding Matthews correlation above 0.90 -
+so that a rare class cannot be gamed by always answering "baked".
+
+Scoring by correlation alone fails, and the failure is instructive: it picks `levels`'
+single pair at bit 6, which is perfect over 50,753 reads, in preference to all five pairs,
+which are 99.96% over 174,396. A perfect small subset beats a near-perfect large one on
+every correlation measure. Coverage has to be in the objective.
+
+With that fixed the search recovers all three known specs exactly - `blend` `[4]` at
+100.00%, `levels` `[0,2,4,6,8]` at 99.96%, `directionalwarp` `[1,3]` at 99.92% - which is
+what makes the rest of its output worth reading:
+
+    filter  pairs (low bits)      MCC     accuracy       reads
+      11     [0, 2]             1.000     100.00%       31,921     NEW
+      20     [2, 4]             1.000     100.00%          552     NEW
+      21     [2]                0.930      98.68%        2,508     NEW
+      18     [0]                0.930      97.29%        1,513     NEW
+       8     [3]                0.939      97.02%          537     NEW
+       2  transformation   no pair model passes
+       4  pixelprocessor   no pair model passes
+       7  fxmaps           no pair model passes
+      10  gradient         no pair model passes
+
+So it reaches one substantial new filter and four small ones, and does **not** reach the
+four largest holdouts. `transformation`, `pixelprocessor`, `fxmaps` and `gradient` encode
+their parameters some other way.
+
+### Filter 11
+
+Both pairs are mutually exclusive and 32,204 of 32,204 slot kinds are correct. Filter 11 is
+one of the filters this work will not name, so its parameters keep positional names. Their
+distributions are suggestive and are recorded as **not** claims:
+
+    param0   one-sided, p50 1.45, p99 36.3, max 500, values in multiples of 0.66
+    param1   symmetric, 28.0% negative, p1 -0.125, values in multiples of 1/16
+
+`param1` has the signature of an angle in turns. Unlike `directionalwarp`, **none of its
+25 programs divides by 2*pi**, so nothing confirms it. A value distribution on its own
+already produced one withdrawn reading in this file and does not get to produce another.
+
+### The block is a window, not a list
+
+The residual - "the bits imply more parameters than the block has slots", 22,912 reads for
+`levels`, 744 records for `directionalwarp`, 283 for filter 11 - is not a broken model. The
+block is simply short, and it can be grown:
+
+    parameters fit in the block    take the LAST `count` entries    99.96%
+    more parameters than slots
+      and the record has room      grow the block FORWARD           99.63%
+      and it does not              grow the block BACKWARD         100.00%   (27,882 slots)
+
+Backward growth is correct in 27,882 of 27,882 slots, with no errors in any filter. Over
+all four filters the combined rule reads **576,776 of 576,973 slot kinds correctly
+(99.966%)** - both more reads and better accuracy than the version that discarded the
+overflow.
+
+Why the table was short is now obvious in hindsight: `derive_layouts` found the block by
+looking for slots holding parameter-shaped CONSTANTS, so a parameter stored as a program
+was invisible to it. The table was never wrong, only incomplete, and the bits say exactly
+how much is missing.
+
+A pure anchor rule - "the last k slots ending at the block's last entry", with no slot list
+at all - reaches 99.347%, and anchoring on the record's own last word reaches only 84.34%.
+The layout table still earns its place; it just needed to stop being treated as a fixed
+list.
+
+### Result
+
+    blend            opacitymult    140,329 baked   77,386 program
+    directionalwarp  intensity       65,897 baked    4,400 program
+                     warpangle       64,421 baked    3,240 program
+    levels           five params    186,401 baked    2,695 program
+    filter 11        two params       31,090 baked    1,114 program
+
+**576,973 named parameter readings**, up from 529,325. Audit unchanged: 641 files, 0
+failures, 0 unexplained bytes, edges 100.00%, validator 437/437.
+
+### What is still not explained
+
+The four large filters above encode parameters some other way. `blend` still has 487
+records with a parameter slot and no bits set. And filters 20, 21, 18 and 8 pass the test
+but on 552 to 2,508 reads each, which is enough to note and not enough to build on.

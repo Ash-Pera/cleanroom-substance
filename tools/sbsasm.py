@@ -221,6 +221,18 @@ PARAM_SPEC = {
     15: [('levelinlow',   0x003, 0x002), ('levelinhigh', 0x00c, 0x008),
          ('levelinmid',   0x030, 0x020), ('leveloutlow', 0x0c0, 0x080),
          ('levelouthigh', 0x300, 0x200)],
+    # Filter 11 is one of the filters this work will not name - doing so needs sources
+    # excluded on provenance - so its two parameters carry positional names. The bit pairs
+    # were derived mechanically, not fitted: 32,204 of 32,204 slot kinds correct.
+    #
+    # Their value distributions are suggestive and are NOT claims:
+    #   param0  one-sided, p50 1.45, p99 36.3, max 500, values in multiples of 0.66
+    #   param1  symmetric, 28.0% negative, p1 -0.125, values in multiples of 1/16
+    # param1 has the signature of an angle in turns, but unlike `directionalwarp` none of
+    # its 25 programs divides by 2*pi, so nothing confirms it. A value distribution alone
+    # already produced one withdrawn reading in this file; it does not get to produce
+    # another.
+    11: [('fid11_param0', 0x003, 0x002), ('fid11_param1', 0x00c, 0x008)],
 }
 
 
@@ -574,18 +586,42 @@ class Record:
         slots = list(hit[1])[1:]
         w = self.words[1]
         present = [nm for nm, pres, _prog in spec if w & pres]
-        base = max(0, len(slots) - len(present))
+        if not present:
+            return []
         out = []
-        for j, nm in enumerate(present):
-            k = base + j
-            if k >= len(slots) or slots[k] >= len(self.words):
-                break
+        for nm, slot in zip(present, self._param_slots(slots, len(present))):
+            if slot < 2 or slot >= len(self.words):
+                continue
             # `kind` comes from the slot itself, not from the bit. The bits predict it in
-            # 99.92% of `directionalwarp` reads and 100% of `blend` reads, so the two
-            # almost always agree - and where they do not, what is actually in the slot is
-            # the honest answer.
-            out.append(self._read_slot(nm, slots[k]))
+            # 99.966% of reads across the four filters in PARAM_SPEC, so the two almost
+            # always agree - and where they do not, what is actually in the slot is the
+            # honest answer.
+            out.append(self._read_slot(nm, slot))
         return out
+
+    def _param_slots(self, slots, count):
+        """Which slots `count` parameters occupy, given the layout table's block.
+
+        The block is a VARIABLE-LENGTH window anchored on the parameters, not a fixed list.
+        Three cases, measured over 576,973 slot reads in the four PARAM_SPEC filters:
+
+            parameters fit in the block   take the LAST `count` entries   99.96%
+            more parameters than slots,
+              and the record has room     grow the block FORWARD          99.63%
+              and it does not             grow the block BACKWARD        100.00%
+
+        The last case is 27,882 slots with no errors at all. Growing the block is what
+        rescues the reads that used to be dropped as "bits imply more parameters than the
+        block has slots" - 22,912 of them for `levels` alone. The layout table's block was
+        never wrong, only short: it was derived from slots holding parameter-shaped
+        CONSTANTS, so a parameter stored as a program was invisible to that derivation.
+        """
+        need = count - len(slots)
+        if need <= 0:
+            return slots[len(slots) - count:]
+        if slots[-1] + need < len(self.words):
+            return slots + [slots[-1] + i + 1 for i in range(need)]
+        return [slots[0] - need + i for i in range(need)] + slots
 
     @property
     def programs(self):
