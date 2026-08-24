@@ -19562,3 +19562,166 @@ Audit unchanged: 641 files, 0 failures, 0 unexplained bytes, edges 100.00%, vali
 22,912 `levels` slot reads ask for a slot the block does not have - the bits imply more
 parameters than there is room for. `directionalwarp` has 744 of the same, and `blend` 487
 records with a parameter slot but no bits set. None of the three is explained.
+
+## `tiling` is real and common, and three ways of finding it in the binary all fail
+
+The "small-vocabulary parameter... remains unlocated" line for `tiling` (alongside `filtering`,
+`mipmapmode`, `input2alpha`, `combinedistance`, `culling`) traces back to "What must be in the
+file and has not been located", a reasoning-from-first-principles section written before
+`blendingmode` was cracked - it gives `matrix22` a use count (1,676) but not `tiling`, because
+none had been measured. A raw shell `grep` for it across the corpus then returned zero hits,
+which looked like confirmation. It was a tooling artifact: this environment's `grep` is aliased
+to `ugrep`, which needs different flags for a recursive glob search and was silently no-oping.
+Parsing the XML directly instead of shelling out to text search:
+
+    tiling                    546 uses, 56 distinct files (of 239 distinct, permitted .sbs)
+    value distribution:         0  465  85.2%
+                                 3   17   3.1%
+                                 1   15   2.7%
+                                 2    5   0.9%
+    carrying filter:      transformation 474 (87%), directionalwarp 13, gradient 5,
+                           fxmaps 3, pixelprocessor 3, blend 2, distance 1, curve 1
+
+A real four-valued enum. Since `.sbs` only serialises non-default values, `0`'s 85% share
+among *explicit* declarations means `0` is not `transformation`'s true default - something
+else is, and it is routinely being overridden back to `0`.
+
+### Three ways tried to find it in the binary, three negatives
+
+**Header bitfield.** Only two paired specimens in the corpus have a non-zero `tiling` value on
+`transformation`: `AB_ScrewGenerator__AB_ScrewGeneratorPlus` (2 nodes at `tiling=3`, 4 at `0`,
+of 12 `transformation` nodes total) and `SubstanceDesignerPractice__pratice_01_12_07` (2 at
+`2`, 3 at `1`, 4 at `0`, of 23 total). Both are heavily inlined - 68 and 106 binary
+`transformation` records against those node counts, a 5.7x and 4.6x expansion - which smears
+any one node's declared value across an unknown-sized clone group. The seven paired files
+where source node count matches binary record count exactly 1:1 (no inlining at all) all have
+zero non-default `tiling` between them - clean sample and positive evidence never overlap in
+this corpus. `directionalwarp`, the second-largest carrier, has zero paired specimens with any
+declared `tiling` value at all.
+
+**Bytecode lowering.** Tested whether tiling compiles into coordinate-wrap instructions (`mod`,
+op id `0x16`) rather than being stored as a field, on the theory that this would mirror how
+`blendingmode`'s formula was never found as data - only its selector was. Across 235,182
+transformation records in 439 distinct `.sbsasm` files, `mod` appears in the record's
+`filter_programs` only 405 times (0.17%), across 34 distinct files - rare enough to be a real
+candidate. It fails both direct tests: neither of the two known-tiling files has a single
+mod-carrying transformation record (0 of 68, 0 of 106), and of the 34 mod-carrying files, the
+12 with a paired `.sbs` source declare zero `tiling` values between them - most are
+Allegorithmic-authored `*_COMPILED.sbsasm` library assets, excluded on provenance regardless.
+`mod`'s actual use in those files is unrelated road/pavement-repeat math, authored directly
+with primitive nodes.
+
+**Forward pairing.** Anchored on `matrix22` - a distinctive 4-float value most `transformation`
+nodes declare alongside `tiling` - round-tripped through float32 and searched byte-for-byte in
+the compiled binary. This sidesteps the inlining problem for *identification* even where it
+can't help *aggregation*: of 15 nodes across the two files with an explicit `tiling` value, 11
+landed at a unique record or a same-value clone group, always at byte offset 16 relative to the
+record start (confirming `matrix22` occupies words 4-7, immediately after a 3-word header). The
+remaining four did not resolve: one used a common, non-distinctive `offset` value as its only
+anchor (87 hits across the file), one had no literal constant to anchor on at all (its
+`matrix22`/`offset` were both function-graph expressions), and two - one `tiling=0`, one
+`tiling=3` - share the same simple `matrix22 = (-1, 0, 0, -1)`, which is common enough to be
+ambiguous between them.
+
+With clean correspondence for the eleven, the record's `cls` field (top 16 bits of word 0)
+appeared to encode tiling directly:
+
+    tiling=0  ->  cls=25   (0x0019)
+    tiling=1  ->  cls=281  (0x0119)
+    tiling=2  ->  cls=537  (0x0219)
+    tiling=3  ->  cls=793  (0x0319, predicted - would have resolved the ambiguous pair above)
+
+Exactly 256 apart at every step. It does not survive corpus-scale validation: across all
+235,182 transformation records, `cls >> 8` is `3` in **97.4%** of them, and `cls=793` alone
+accounts for 101,666 records in `layouts.json` - 43% of every transformation record in the
+corpus, nowhere near rare enough to be the uncommon `tiling=3` case. Four ground-truth points
+happened to land on four `cls` values that increment by 256 for a reason unrelated to tiling;
+there was exactly enough evidence in hand to be fooled by it, and not enough to catch it without
+the corpus-wide check. The disambiguation this pattern was about to resolve is back to
+unresolved.
+
+### Where it stands
+
+No field - header, bytecode, or class - separates cleanly on the only ground truth this corpus
+has. What is reusable: eleven exact node-to-record addresses spanning all four `tiling` values,
+in `AB_ScrewGeneratorPlus` and `pratice_01_12_07`, found without needing instance-free
+specimens - a literal-float anchor locates a node's record regardless of inlining multiplicity.
+It simply hasn't yet found a field that separates by tiling in either of the only two positive
+specimens available. More paired, permitted, non-generator specimens with a non-zero `tiling`
+value are what would move this forward; this corpus has not been asked for that at scale.
+
+## The unnamed filters have far more permitted specimens now, and it changes nothing
+
+"What each open question needs" undercounted `fid8`, `fid11`, `fid19` and `fid22`. A fresh
+census of every permitted, paired specimen for records of each:
+
+    fid5    0 permitted paired files   (unchanged - `svg`'s one specimen is still excluded)
+    fid8   14
+    fid9    0 permitted paired files   (13 records total corpus-wide, version-2 only)
+    fid11  39
+    fid19  18
+    fid22  10
+
+`fid11 = motionblur?` and `fid5 = svg?` are unchanged and re-verified fresh: their only tested
+candidate names still have zero permitted specimens corpus-wide (`motionblur` in 3 files, all
+Allegorithmic-authored; `svg` in 1, also excluded).
+
+The abundance for the other three does not open anything up. Every one of the 60+ newly-counted
+permitted specimens declares only already-identified filter names in its own source - `blend`,
+`transformation`, `hsl`, `passthrough`, `uniform`, `grayscaleconversion`, `directionalwarp`,
+`distance`, `gradient`, `levels`, `normal`, `warp`, `curve`, `pixelprocessor`, `valueprocessor`,
+`sharpen`, `dirmotionblur`, `emboss`, `dyngradient`, `bitmap`, `text`, `fxmaps`, `blur`,
+`shuffle` - zero unmapped names, in any of them. `Stadsspel__Lines` produces 3 `fid11` records
+from a source that declares **only** `transformation` - no blur, warp, distance, or sharpen
+anywhere in the file - which rules out any theory tying `fid11`'s appearance to one specific
+named filter's presence.
+
+This reframes the blocker rather than removing it. It was never really specimen scarcity - there
+is plenty now. `fid8`, `fid11`, `fid19` and `fid22` are not nodes a user places; they are
+compiler- or library-synthesized (consistent with `fid11`'s existing characterisation as "an
+iterated pass in a multi-scale pyramid"), and the graph that would explain them is the
+*internal implementation* of some built-in library filter, inlined at compile time into
+whatever outer graph uses it. That implementation is itself Allegorithmic-authored regardless of
+how permitted the outer file referencing it is - a provenance wall one level below the file,
+invisible to a per-file `<author>` check no matter how many qualifying outer files exist.
+
+## `dyngradient`, and a paraminput that compiles away entirely
+
+`dyngradient` - 13 permitted, non-Allegorithmic files, not previously tested against any
+unnamed filter - declares two parameters: `uvselector`, a plain `Int32` constant, and
+`coordinate`, a function graph whose root node is `get_float1` reading a named, GUI-exposed
+graph parameter (e.g. `"Stone_colour_Gradient_Input_Position"`).
+
+Four approaches, four negatives:
+
+* **Count matching.** The two paired specimens (`Hard-Science-Old__Cobblestone`,
+  `Hard-Science-Old__RMF_Floor`) show no clean correspondence between declared `dyngradient`
+  count and any unnamed filter's binary record count - both graphs are heavily inlined
+  generators (`gradient` alone expands 91/8 and 103/15).
+* **`uvselector` containment.** Degenerate: all 16 corpus-wide instances are `1`. No diversity,
+  no leverage.
+* **Program-rate comparison.** If `dyngradient` folds into `gradient` (filter 0) the way
+  `grayscaleconversion` folds into `shuffle`, files using it should show an elevated
+  program-vs-constant rate in their `gradient` records (a computed `coordinate` against a baked
+  `position`). It runs backwards: 41.2% program rate in the two files with `dyngradient`
+  (194 gradient records), 60.6% in the 31 without (1,081 records). Weak on n=2, but no support.
+* **`inputref`-by-uid.** Resolved the named parameter's actual uid from its own `<paraminput>`
+  declaration - `1217804945` for Cobblestone's `Stone_colour_Gradient_Input_Position`;
+  `1246433154` for RMF_Floor's differently-named, differently-authored
+  `Stone_Colour_Grad` - and searched each compiled binary for that exact 4-byte value, anywhere
+  in the file, not just inside records. **Zero hits, in both.**
+
+The last one is the keeper, independent of `dyngradient`'s own identity: a `paraminput` read
+through a function graph's `get_floatN`/`get_boolN` does not survive compilation as a runtime
+reference at all - it resolves to its default value and is baked in as an ordinary constant,
+indistinguishable from one an artist typed directly. Two files, two authors, two different
+identifiers, zero exceptions. This is the same direction as `blendingmode`'s formula and
+`grayscaleconversion`'s coefficients never being stored as selectors - the compiler evaluates
+what a parameter denotes rather than transcribing how it was expressed - but it is the first
+time this has been shown for a *graph-level exposed* parameter read through a function graph,
+rather than a per-node baked one.
+
+`dyngradient` itself stays unresolved. Unlike `tiling`, there is no baked value left to anchor
+on once the compiler folds the parameter away - the next specimen that would help is one where
+the exposed parameter is actually overridden away from its default (by a preset, or a second
+instance with a different value), so the fold-in produces something other than a generic `0.5`.
