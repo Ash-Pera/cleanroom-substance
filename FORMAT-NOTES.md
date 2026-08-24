@@ -25140,3 +25140,51 @@ are parameters that are nearly always baked rather than driven. But bit 10 does 
 rule cleanly: its records average 3.01 slots when baked and 4.02 when driven, the opposite
 direction to bit 0. The reframing is right about what the class word IS; the exact slot
 accounting for bit 10 is still not derived.
+
+## bit 10 closed: a two-component parameter that is never driven
+
+The previous section left bit 10 as the one class-word bit the reframing did not explain. It
+explains it exactly, and the earlier confusion was a mis-aimed test - it asked whether the
+FIRST class-word slot held a program, but the first slot belongs to bit 0 or bit 7, never to
+bit 10.
+
+Looking at what bit-10 records actually contain settles it on sight:
+
+    blur  cls 0x1719   params [2,3,4,5]  ->  PROG, 8,     8,     1
+                                             PROG, 4,     4,     1
+                                             PROG, 0.125, 0.125, 1
+                                             PROG, 64,    64,    1
+    hsl   cls 0x1419   params [2,3,4]    ->  PROG, 0.42,  0.53
+
+A program for the bit-0 parameter, then a PAIR. Measured over every bit-10 record with at
+least three parameter slots:
+
+    the two slots after the first are both baked   681 of 681   100.00%
+    both are finite floats                         681 of 681   100.00%
+    the pair is equal                              495 of 681    72.69%
+
+    commonest pairs   (2,2) (16,16) (0.4967,0.4967) (8,8) (32,32) (4,4) (64,64) (0.25,0.25)
+
+Never a program, not once. So bit 10 enables a **two-component parameter that is always
+baked**, and a baked parameter costs its width - which is why its fitted weight came out at
+exactly +2.00 across four filters while every other bit came out at +1. The weight was the
+width all along.
+
+Powers of two and fractions near 0.5, equal in three quarters of cases, is what a size-derived
+quantity looks like - `$pixelsize` is a float2 and equals 1/size on a square output.
+
+### The class word, as designed
+
+    each bit enables one inherited base parameter
+    the bits are consulted in a fixed order, bit 7's parameter first
+    a parameter DRIVEN by a program costs 1 slot   - the slot holds the pointer
+    a parameter BAKED to a constant costs its WIDTH
+
+    bit 7    1 component   usually driven      first in order
+    bit 0    2 components  driven 91.8%
+    bit 11   2 components  driven 99.8%
+    bit 13   1 component   driven 99.0%
+    bit 10   2 components  NEVER driven - baked in 681 of 681, hence always 2 slots
+
+Five fitted numbers replaced by one mechanism, and the one bit that looked anomalous is the
+one that shows the mechanism most clearly.
