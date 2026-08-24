@@ -26134,3 +26134,118 @@ reading it as a trip count cannot produce a wrong answer for any program measure
 
 The transpiler reaching 100% is the same number that was refused a section ago. The difference
 is not the number; it is that there is now evidence behind it.
+
+## Fifty copies of one graph, in one file: instancing leaves no trace
+
+`ie_pcloud` is the specimen the previous section identified as the only natural experiment
+this corpus holds - 23 source graphs, 20 cooked into a single package, 102 self-instances.
+It settles the instancing question, in the strongest form available: **50 copies of one
+source graph, inside one binary, with the source for both the host and the instanced graph.**
+
+### The setup
+
+    pcloud_relax_solver     105 compNodes:  50 x instance pcloud_relax_iter
+                                            50 x instance switch (Adobe blend_switch)
+                                             1 x instance pcloud_maxattr
+                                             2 inputBridge, 2 outputBridge
+    pcloud_relax_iter         6 compNodes:   3 inputBridge, 2 outputBridge, 1 fxmaps
+    pcloud_maxattr            5 compNodes:   2 inputBridge, 1 fxmaps, 1 valueprocessor,
+                                             1 outputBridge
+
+The graphs that get instanced - `relax_iter`, `relax_iter_tiled`, `maxattr` - are the three
+of the 23 that are **not** cooked standalone, so the comparison is not
+"standalone versus inlined". It is better: it is copy against copy.
+
+### Inlining is complete, and graphs do not share records
+
+Partitioning the 301 records by backward reachability from each cooked graph's output
+records:
+
+    records reachable from some graph's outputs      286 of 301
+    records in more than one graph's cone              0
+    maximum graphs sharing any one record              1
+
+**Disjoint.** The cooker does not deduplicate across graphs, and it does not reference an
+instanced graph - it copies it. `pcloud_relax_solver`'s cone is 102 records, and the source
+predicts them exactly:
+
+    50 x relax_iter  -> 50 fxmaps        (its 5 bridges emit nothing)
+    50 x switch      -> 50 blend
+     1 x maxattr     ->  1 pixelprocessor + 1 fxmaps
+     2 inputBridge   ->  2 bitmap
+                        104 predicted, 102 observed
+
+The two missing are dead-code elimination, which this document has already characterised.
+A bridge inside an instance contributes no record; only the filter nodes survive.
+
+### The copies are identical except for their wiring
+
+Comparing the 50 `fxmaps` records slot by slot - one per `relax_iter` instance:
+
+    292 words each
+    275 identical across all 50 copies
+     17 vary:  2 are record indices (edges)
+              15 are in-file pointers (each copy's own programs)
+              0 anything else
+
+And the 50 `blend` records, one per `switch` instance:
+
+    19 words each, 14 identical
+     5 vary:  2 edges, 2 program pointers, and slot 9
+
+**Every varying field is either an edge, a pointer into the copy's own bytecode, or an
+authored parameter.** Nothing is left over. There is no field that says which source graph
+a record came from, no instance id, and no group marker.
+
+### Slot 9 looked like a compiler-generated instance index. It is authored.
+
+The one non-structural difference is worth recording because it nearly became a finding.
+Slot 9 of the 50 blends is a consecutive run 0..49, which is exactly what an instance index
+would look like. Disassembling the record's inline program:
+
+    %0  0A02  inputref.i1  uid=3095036617      the graph input `iterations`
+    %1  0E00  const.i1     N                   N = 0..49
+    %2  085F  gt.b2        %0, %1
+    %3  0900  const.f1     1
+    %4  0D00  const.f1     0
+    %5  0D09  select.f1    %2, %3, %4
+
+with the blends chained edge to edge - a 50-deep unrolled loop whose copy N contributes
+only when `iterations > N`. A first pass at the source reported the 50 switch instances as
+declaring **no parameters at all**, which would have made the 0..49 compiler-generated and
+an instance index in all but name.
+
+That was a bad regex, not a finding. The value is authored, and it sits inside a
+`<dynamicValue>` function graph rather than a plain `<constantValue>`:
+
+    <parameter><name v="switch"/><paramValue><dynamicValue>
+        gt( get_integer1("iterations"), const_int1 = 3 )
+    </dynamicValue></paramValue></parameter>
+
+Extracting the nested `const_int1` gives 0, 1, 2, ... 49 across the 50 instances - exactly
+the binary's slot 9, distinct 50, `sorted(vals) == range(50)`. The author placed fifty
+switches and numbered them; the compiler baked each number into its copy's bytecode through
+the parameter-program mechanism already documented.
+
+**The ground truth needs auditing to the same standard as the format** - which this document
+already learned once, when a lenient regex on the source side manufactured 112 false
+attributions for `blend`. Same lesson, opposite direction: this time a too-strict regex
+nearly manufactured a structure in the binary.
+
+### The instancing question, closed
+
+    the compiler fully inlines every instance, one record per surviving filter node
+    copies are byte-identical apart from edges, self-pointers and authored parameters
+    graphs in a multi-graph package have disjoint record sets
+    nothing in a record identifies the source graph it was compiled from
+
+With the shared-reference hierarchy already refuted, there is now no remaining candidate
+mechanism and a direct 50-copy measurement showing there is nothing to find. **Instance
+provenance is not recorded in the format.** An importer can recover it only by reconciling
+against the sources, exactly as the `ie_particles` trace did, and that is a property of the
+toolchain rather than a gap in this analysis.
+
+What that leaves as genuinely open is narrower and worth stating: whether *anything*
+downstream needs instance boundaries. A renderer does not - the flattened graph computes
+the same image. Only a round-trip back to editable `.sbs` does, and that was never
+achievable from the archive alone.
