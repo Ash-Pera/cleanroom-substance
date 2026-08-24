@@ -18036,3 +18036,59 @@ Both failures have one root: **there is no reliable way to find where a record's
 ends.** The slot-11 cap is a stand-in for that, and it is doing real work despite being
 arbitrary - which is why widening it hurts. The genuine open problem is the header
 boundary, not the number 11.
+
+## The header size is stated by the layout descriptor
+
+Both failed attempts at the parameter table had one root: nothing was known about where a
+record's header ends. That was the wrong conclusion. **The boundary is stated, by the same
+descriptor that states everything else about the record's layout.**
+
+### It is directly observable, and directly predicted
+
+For a record carrying an inline program the header end is not a matter of inference: it is
+where that program starts. Over 928,922 such records, asking which field predicts it:
+
+| field | distinct values | purity |
+|---|---|---|
+| class word alone | 126 | 64.01% |
+| filter alone | 22 | 63.49% |
+| tag | 516 | 65.82% |
+| (filter, class) | 318 | 69.94% |
+| (class, layout bits) | 19,692 | 96.51% |
+| **(filter, class, layout bits)** | 20,202 | **98.44%** |
+
+That last is the layout descriptor. And the purity does not come from thin keys - it is
+98.54% among keys with 5+ records, 98.72% at 20+, **98.75% at 100+**.
+
+Confirming it from the other side: the header ends **exactly one word past the last slot
+the table names in 88.6% of records**, which is what a complete slot list should look like.
+
+### What it fixes, in both directions
+
+`derive_layouts.py` now runs two passes - learn the header size, then scan only within it -
+and the result is a small, targeted change rather than the million-reading landslides the
+blind attempts produced:
+
+    parameter readings   +2,820
+    edge readings           -85
+    keys changed             31
+
+and the changes go both ways, which is the point:
+
+    2,792,67108864   [3, 8]  -> [3]           header 4 words   slot 8 was bytecode
+    20,153,1      [3, 4, 5, 8] -> [3, 4, 5]   header 6 words   slot 8 was bytecode
+    4,920,4          [3]     -> [3, 17, 19]   header 21 words  slots the cap hid
+
+`4,920,4` is the `fxmaps` case that motivated widening the cap in the first place. It is
+recovered here without claiming anything, because the header genuinely is 21 words long.
+
+`Record.header_words` exposes it, and it agrees with the observed program start in
+**477,445 of 479,474 records - 99.58%**.
+
+### The lesson, stated plainly
+
+The arbitrary cap was not protecting against a lack of information. It was standing in for
+information that the file had been supplying all along, in a field this project had already
+derived, named, and been using for something else. Two rounds of over-claiming came from
+treating "I do not know where the header ends" as a fact about the format rather than a
+fact about my table.

@@ -84,19 +84,33 @@ LAYOUT_MASK = {0: 0x3FFF, 1: 0x230, 2: 0x060000C0, 3: 0x06001FE0, 4: 0xE55,
 
 
 def _load_layouts():
-    """(filter, class, masked slot 1) -> (edge slots, program slots), or {} if absent."""
+    """(filter, class, masked slot 1) -> (edge slots, program slots), or {} if absent.
+
+    The same key also states the record's HEADER SIZE, in `HEADER_WORDS`. That the header
+    boundary is stated rather than discovered was the missing piece behind two failed
+    attempts at the parameter table: a hard cap of 11 slots hid real ones, and widening it
+    claimed bytecode as parameters. For records carrying an inline program the boundary is
+    directly observable, and over 928,922 of them the descriptor predicts it at 98.44% --
+    98.75% among keys with 100+ records.
+    """
     import json
     import os
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'layouts.json')
     try:
         with open(path) as f:
-            return {tuple(int(x) for x in k.split(',')): (tuple(v[0]), tuple(v[1]))
-                    for k, v in json.load(f).items()}
+            raw = json.load(f)
     except Exception:
-        return {}
+        return {}, {}
+    lay, hdr = {}, {}
+    for k, v in raw.items():
+        key = tuple(int(x) for x in k.split(','))
+        lay[key] = (tuple(v[0]), tuple(v[1]))
+        if len(v) > 3 and v[3]:
+            hdr[key] = v[3]
+    return lay, hdr
 
 
-LAYOUTS = _load_layouts()
+LAYOUTS, HEADER_WORDS = _load_layouts()
 
 # FX-Map tree node shapes: header -> (offset of the next pointer, program slots).
 # The tree is a singly linked list entered from record slot 2, and each node carries a
@@ -267,6 +281,17 @@ class Record:
                         return (edges, prog)
             return alts[0]                       # nothing validated; report the default
         return (EDGES.get(f, []), PROG_SLOT.get(f))
+
+    @property
+    def header_words(self):
+        """Length of this record's header in words, or None if the key is unknown.
+
+        Everything from here to the end of the record is code, not slots.
+        """
+        if len(self.words) < 2:
+            return None
+        return HEADER_WORDS.get((self.filter_id, self.cls,
+                                 self.words[1] & LAYOUT_MASK.get(self.filter_id, 0)))
 
     @property
     def edge_slots(self):

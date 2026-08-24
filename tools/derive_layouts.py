@@ -33,7 +33,47 @@ from sbsasm import Assembly, LAYOUT_MASK
 MIN = 20
 
 
-def derive(paths):
+def header_sizes(paths):
+    """(filter, cls, masked slot 1) -> header length in words.
+
+    The header size is not something a reader has to discover: the layout descriptor
+    states it, the same key that states the slot roles. For any record carrying an inline
+    program the header end is directly observable -- it is where that program starts --
+    and over 928,922 such records the descriptor predicts it at **98.44%**, holding at
+    98.75% among keys with 100+ records, so it is not a small-sample effect.
+
+    That matters because the alternative was a hard cap of 11 slots, which hid real
+    parameter slots (a program at slot 17), while widening it claimed bytecode as
+    parameters (96.5% of what it added). Neither was necessary: the boundary was stated
+    all along.
+    """
+    obs = collections.defaultdict(collections.Counter)
+    files = collections.defaultdict(set)
+    for i, p in enumerate(paths):
+        try:
+            a = Assembly(p)
+        except Exception:
+            continue
+        for r in a.records:
+            if len(r.words) < 2:
+                continue
+            inline = [q for q in r.programs if r.offset <= q < r.end]
+            if not inline:
+                continue
+            k = (r.filter_id, r.cls, r.words[1] & LAYOUT_MASK.get(r.filter_id, 0))
+            obs[k][(min(inline) - r.offset) // 4] += 1
+            files[k].add(i)
+    out = {}
+    for k, c in obs.items():
+        n = sum(c.values())
+        h, m = c.most_common(1)[0]
+        if n >= MIN and len(files[k]) >= 3 and m / n >= 0.95:
+            out[k] = h
+    return out
+
+
+def derive(paths, headers=None):
+    headers = headers or {}
     role = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
     targets = collections.defaultdict(lambda: collections.defaultdict(set))
     seen = collections.Counter()
@@ -48,21 +88,11 @@ def derive(paths):
                 continue
             k = (r.filter_id, r.cls, r.words[1] & LAYOUT_MASK.get(r.filter_id, 0))
             seen[k] += 1
-            # Slots 1..11. The cap is arbitrary and it does hide real parameter slots --
-            # fxmaps key (4,921,2564) holds a program at slot 17 in 100% of its 175
-            # records -- but every attempt to widen it over-claimed badly, because slots
-            # past the header lie inside the record's own bytecode, where any 4-byte
-            # position that happens to decode looks like a parameter slot.
-            #
-            # Widening to 24 gained 1,163,373 parameter readings, of which a control found
-            # 3.5% in the header and 96.5% inside bytecode. Bounding by the record's first
-            # inline program did not help: a record whose program lives elsewhere has no
-            # inline program, so the bound degenerates to the whole record, and the gain
-            # rose to 1,639,145 with slots like blend 12 and levels 21 appearing.
-            #
-            # The cap stays until there is a reliable way to find where a record's header
-            # ends. That is the real missing piece, not the number 11.
-            for sl in range(1, 12):
+            # Bounded by the header, which the descriptor states. Falls back to the
+            # old cap of 11 only for keys with no observable header size -- that cap is
+            # arbitrary and both hides real slots and, if widened blindly, claims bytecode.
+            hi = headers.get(k, 12)
+            for sl in range(1, max(hi, 2)):
                 if sl >= len(r.words):
                     # The slot does not exist in this record. That is evidence about the
                     # layout, not a record to skip: counting only the records long enough
@@ -160,11 +190,11 @@ def derive(paths):
             after = max(edges) + 1
             if after in progs:
                 progs = [after] + [x for x in progs if x != after]
-        out['%d,%d,%d' % k] = [edges, progs, seen[k]]
+        out['%d,%d,%d' % k] = [edges, progs, seen[k], headers.get(k, 0)]
     return out
 
 
 if __name__ == '__main__':
     paths = [l.strip() for l in open(sys.argv[1] if len(sys.argv) > 1 else 'DISTINCT.txt')
              if l.strip()]
-    json.dump(derive(paths), sys.stdout, indent=0, sort_keys=True)
+    json.dump(derive(paths, header_sizes(paths)), sys.stdout, indent=0, sort_keys=True)
