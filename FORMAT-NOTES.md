@@ -27949,3 +27949,48 @@ derive the class word: it needs to emit one whose layout it can honour. Predicti
 shape is right 83.4% of the time, and lifting a `(class word, layout)` pair from an already
 decoded record is right always. What is not available is *understanding*, and four bits of
 it have now defeated two separate attempts.
+
+## Four tools, four corpora, one bug: none of them was about the bytes
+
+Having found the same failure three times in a session, I stopped waiting to trip over
+the fourth and went looking. Every tool here that sweeps the corpus discovers it
+differently, and each way was wrong in its own manner:
+
+    audit_corpus.py     opened the WITHDRAWN 641-path list. ~20% duplicates, so every
+                        headline count it printed was inflated by about that much.
+    reverify.py         resolved the root list's relative paths against the working
+                        directory. From `tools/`, 435 of 438 files failed to open and a
+                        bare `except` swallowed it. Reported on 3 files, and FAILed two
+                        claims whose exception counts are full-corpus numbers.
+    validate_corpus.py  globbed relative directory patterns. From `tools/` it found
+                        nothing and printed "no specimens found".
+    derive_layouts.py   read the withdrawn list too - and this is the one that could have
+                        changed a conclusion rather than a count, because layouts.json is
+                        DERIVED from the list and duplicates reweight which keys clear
+                        its MIN threshold. (Already regenerated from the deduplicated
+                        corpus in an earlier session; checked rather than assumed.)
+
+Not one of these was a wrong answer about the format. All four were wrong answers about
+*which bytes*, and three of the four were silent. The loudest, `validate_corpus.py`,
+announced its own failure clearly — and it is the one I would never have noticed, because
+nothing in this project runs it from `tools/` except me, today, on a hunch.
+
+There is a real asymmetry worth naming. `validate_corpus.py` had ALREADY deduplicated by
+content, with a comment saying exactly why: *"the corpus contains the same material
+extracted more than once under different names, which inflates every count."* So did
+`derive_layouts.py`. So did `reverify.py`'s docstring. **Three tools knew. The one that
+prints the headline figures did not, and that is the one anybody reads.** Knowledge in
+this codebase does not propagate; it accumulates in whichever file happened to learn it.
+
+### The check that replaces noticing
+
+`tools/test_corpus_discovery.py` asserts what all four violated:
+
+    corpus.paths returns identical files from the root, from tools/ and from /
+    corpus.paths yields no two files with the same content hash
+    validate_corpus finds specimens when run from tools/
+    reverify still carries its refuse-to-report guard
+
+The first test is the general one. The question is not "is the corpus correct" — it was
+correct all four times, sitting on disk. The question is whether a tool finds the same
+corpus from anywhere, and that is cheap to assert and was never asserted.

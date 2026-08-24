@@ -46,12 +46,21 @@ def pack(t, dv):
     return None
 
 
+# The corpus directories live at the repository root, and these patterns are relative.
+# Resolved against the working directory they find nothing unless the command happens to
+# be typed from the root - and every other tool here is run from `tools/`, where this one
+# printed "no specimens found" and stopped. That is the same defect that had reverify.py
+# silently checking 3 files of 438; it is louder here, but it is the same defect, so it
+# gets the same fix rather than a note telling the next reader where to stand.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def specimens():
     seen = set()
     for pat in ("x_*", "corpus/x_*", "pairs/x_*", "pairs2/x_*", "pairs3/x_*",
                 "pairs4/x_*", "pairs5/x_*", "pairs6/x_*", "tiny/x_*", "tiny2/x_*",
                 "acg2/x_*"):
-        for xd in sorted(glob.glob(pat)):
+        for xd in sorted(glob.glob(os.path.join(_ROOT, pat))):
             a = glob.glob(os.path.join(xd, "**", "*.sbsasm"), recursive=True)
             x = glob.glob(os.path.join(xd, "**", "*.xml"), recursive=True)
             if not (a and x):
