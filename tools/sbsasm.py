@@ -473,6 +473,25 @@ class Record:
             if _backward(self.words[2]) and _backward(self.words[3]):
                 return ([2, 3], 4)
 
+        # filter 8 always takes THREE image inputs, in slots 1, 2 and 3. The table gives
+        # it three only 60.3% of the time, splitting the rest into a spurious two-input
+        # form - but in the records the table calls two-input, slot 1 holds a valid
+        # backward record index in 217 of 217.
+        #
+        #     slots 1, 2 and 3 all valid backward indices   538 / 546   98.5%
+        #     the table gives three edges                   329 / 546   60.3%
+        #     slots 4, 5 and 6 valid                          0 / 546    0.0%
+        #
+        # The 8 exceptions carry a FORWARD index in slot 1 and are left to the table.
+        if f == 8 and len(self.words) > 4:
+            n = len(self.asm.records)
+
+            def _bw8(v):
+                return v == 0 or (v < self.index and v < n)
+
+            if all(_bw8(self.words[s]) for s in (1, 2, 3)):
+                return ([1, 2, 3], 4)
+
         if LAYOUTS and len(self.words) > 1:
             hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
             if hit:

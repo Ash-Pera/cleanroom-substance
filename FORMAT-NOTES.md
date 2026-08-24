@@ -24899,3 +24899,46 @@ Left unnamed: 8 (546 records), 5 (140) and 9 (5). Filter 8 takes THREE image inp
 remaining candidate name takes three - `valueprocessor` takes none, `emboss` two, the rest one
 - so it is either not an atomic filter or its name is not in the vocabulary these 430 sources
 use.
+
+## filter 8 takes three inputs, always; it still has no name
+
+Filter 8 was the last sizeable unnamed id (546 records). The shape test that named
+`dyngradient` finds nothing here - all three of its inputs are square images, and its output
+size tracks its SECOND input exactly (387 at 256x256, 101 at 128x128, matching that input's
+distribution). No strip, no 1x1, nothing distinctive.
+
+Source pairing produced a tempting answer and it is wrong. `grayscaleconversion` appears in
+71% of paired sources whose compiled file contains filter 8, against 23% of those without - a
+48 point lift. But `grayscaleconversion` takes ONE input, and filter 8's slots say otherwise:
+
+    slot 1   valid backward record index in 538 of 546          98.5%
+    slot 2   valid backward record index in 546 of 546         100.0%
+    slot 3   valid backward record index in 546 of 546         100.0%
+    slots 4, 5, 6                                                0.0%
+
+Three real inputs. The lift was the same confound that has caught this file before - larger
+packages contain more of everything - and arity settles it where correlation could not.
+
+### What that fixed
+
+The table gives filter 8 three edges in only 60.3% of records, splitting the rest into a
+two-input form. In every one of those, slot 1 holds a valid backward index: 217 of 217. So the
+two-input form does not exist, and the rule is simply that slots 1, 2 and 3 are the inputs.
+The 8 records that fail carry a FORWARD index in slot 1 and are left to the table.
+
+    edge slots                1,302,652  ->  1,302,869    +217, exactly as predicted
+    parameters read              865,443  ->    865,477    +34
+    edge resolution                              100.00%
+    validator, tests                             unchanged, 12 pass
+
+### Still unnamed
+
+Filter 8 takes three image inputs and no unassigned name in the source vocabulary takes three
+- `valueprocessor` takes none, `emboss` two, `passthrough` and `grayscaleconversion` one each.
+Its output follows its second input, which is the signature of a background, and it feeds
+`blend` 480 times. Either it is not one of the atomic nodes these 430 sources use, or it is
+something the cooker emits that has no source-level name at all. Naming it needs evidence
+this corpus does not contain.
+
+Filters 5 (140 records) and 9 (5) remain untouched for the same reason - both take no inputs
+at all, which leaves nothing to measure but their programs.
