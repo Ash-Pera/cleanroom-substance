@@ -23984,3 +23984,61 @@ still have an edge block that is not contiguous-from-2. The shape is:
     then      a header whose length grows with certain cls bits
     then      the edge block, contiguous
     then      parameters, anchored at the tail
+
+## The other half: the cls contribution is two bits
+
+With word1 understood as two-bit type codes, the remaining question is what the class word
+adds. The answer is much smaller than the table suggests.
+
+First, what the count should be. `levels` has five two-bit fields at bit-pairs (0,1) through
+(8,9), and its parameter slots track how many are non-zero:
+
+    w1 0x0                          0 active    params [3]
+    w1 0x1, 0x4, 0x40, 0x100        1 active    params [3, 4]
+    w1 0x5, 0x14, 0x44, 0x140       2 active    params [3, 4, 5]
+    w1 0x15, 0x54, 0x145            3 active    params [3, 4, 5, 6]
+
+One slot per active field, appended in field order. The count is not memorised.
+
+That leaves a per-class base. It is **not** a free parameter per class - it is two bits of the
+class word, the same two for every filter:
+
+    blend            cls 0x0018 -> 0    cls 0x0019 -> 1                  bit 0
+    levels           cls 0x0018 -> 0    cls 0x0019 -> 1                  bit 0
+    directionalwarp  cls 0x0319 -> 1    cls 0x0b19 -> 2                  bit 0 + bit 11
+    dirmotionblur    cls 0x0319 -> 1    cls 0x0b19 -> 2                  bit 0 + bit 11
+
+So the model is
+
+    parameter slots = (cls bit 0) + (cls bit 11) + (number of non-zero two-bit fields)
+
+Measured over 471,046 records with a known key:
+
+    exact      458,510   97.34%
+    off by -1    7,657    1.63%
+    off by +1    4,783    1.02%
+    off by +2       96    0.02%
+
+    blend 98.96%    directionalwarp 99.28%    dirmotionblur 94.43%    levels 90.57%
+
+**The benchmark is the point.** Memorising the base per `(filter, cls)` class - 39 separate
+classes, which is what the table does - scores 98.17%. Two bits score 97.34%. The table's
+entire cls dimension is worth 0.83 percentage points over `bit 0 + bit 11`, so it is very
+nearly a two-bit function that had been stored as 39 numbers.
+
+`levels` at 90.57% is the weakest and is where the residual lives; whatever the remaining
+0.83 points are, they are concentrated there rather than spread evenly.
+
+### Where the slot rule now stands
+
+    word 0    filter id and class word
+    word 1    a two-bit type code per parameter, fixed per-filter order:
+                00 absent   01 baked constant   10 program   11 image input (an edge)
+    slots     (cls bit 0) + (cls bit 11) parameter slots from the class word,
+              plus one per non-zero two-bit field,
+              plus one edge per field in state 11 on top of the filter's base arity
+
+Two mechanisms, both small, against an 809-key table. What is left unexplained is a ~1-2%
+residual concentrated in `levels`, the 7.27% of records whose edge block is not
+contiguous-from-2, and the multi-word parameters (`transformation`'s matrix22 and offset)
+which occupy 4 and 2 slots rather than 1 and so break the one-slot-per-field count.
