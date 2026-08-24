@@ -25817,3 +25817,55 @@ the 16-bit flag), and they describe input bitmaps rather than outputs.
 The depth reading stays an inference. What is now measured is that bit 4 is not grayscale, not
 semantic, and splits each format class into a matched pair - which is the shape of the claim
 without being the claim.
+
+## cls bit 5 is the output format's bit 6
+
+Applying bit 4's lesson - that a bit may describe what the record PRODUCES - to every
+remaining unexplained class-word bit.
+
+The naive version of this measurement is a trap. Comparing each class-word bit to each format
+bit by raw agreement returns:
+
+    cls bit 5   format bit 6   99.96%
+    cls bit 6   format bit 7  100.00%
+    cls bit 12  format bit 7   99.88%
+    cls bit 14  format bit 7   97.81%
+
+all of which look conclusive and three of which are meaningless: those class-word bits are set
+on 0.12% to 3.75% of records and format bits 5 to 7 are set on 0% to 3%, so two things that are
+almost always zero agree almost always. Base rates first:
+
+    format bit set   b0 0%   b1 0%   b2 57%   b3 57%   b4 69%   b5 0%   b6 3%   b7 0%
+
+By lift instead:
+
+    cls bit    format bit   P(fmt | cls set)   P(fmt | cls clear)   lift
+      4            4             94.63%              0.59%        +0.94
+      5            6             98.46%              0.00%        +0.98
+      8            3             39.53%             65.76%        -0.26
+      9            3             40.16%             62.90%        -0.23
+     12            3             33.33%             57.25%        -0.24
+     14            4             37.04%             69.59%        -0.33
+      6          (never varies among the records an output names)
+
+**cls bit 5 mirrors format bit 6**, at 98.46% against 0.00% - a cleaner separation than bit 4's.
+Format bit 6 is the one carried by format 64 (`pcloud_data`, `uv_map`, `normal`) and format 76
+(`height`, `roughness`), which look like data outputs rather than ordinary colour maps.
+
+Bits 8, 9, 12 and 14 are not format bits. Their best lifts are negative and around a quarter,
+which is what two weakly anticorrelated common bits produce.
+
+### Where the class word stands
+
+    bit  0   $outputsize                     bit  8   UNEXPLAINED (46.20% of records)
+    bit  3   set iff cls != 0x80             bit  9   UNEXPLAINED (42.68%)
+    bit  4   output format bit 4             bit 12   UNEXPLAINED (1.82%)
+    bit  5   output format bit 6             bit 14   UNEXPLAINED (0.12%)
+    bit  7   $randomseed                     bit  6   UNEXPLAINED (3 records)
+    bit 10   a baked 2-component value
+    bit 11   $pixelsize
+    bit 13   a computed 1-component value
+
+Nine of fourteen accounted for. The two large unknowns are bits 8 and 9, which are equal in
+97.2% of records, do not propagate, and are not output format bits - four hypotheses tested and
+rejected, now five.
