@@ -5,7 +5,7 @@ The point is the failure columns. A segmenter that silently guesses looks perfec
 this one is meant to make its own gaps countable.
 """
 import collections, sys
-from sbsasm import Assembly, FILTERS, UNNAMED
+from sbsasm import Assembly, FILTERS, UNNAMED, LAYOUTS, LAYOUT_MASK
 
 def main(paths):
     tot = collections.Counter()
@@ -34,6 +34,21 @@ def main(paths):
             if par is None:
                 byfilter[f][1] += 1
                 tot['no_param'] += 1
+                # Distinguish a record that HAS no parameter slot from one whose
+                # parameter this model failed to read. A four-word blend is
+                # [tag][flags][edge][edge] and ends before a parameter slot could exist,
+                # so "no parameter" is the correct answer there. Counting those as
+                # failures put the gap at 4.55% when the genuine miss is 0.55%.
+                hit = LAYOUTS.get((r.filter_id, r.cls,
+                                   r.words[1] & LAYOUT_MASK.get(r.filter_id, 0))
+                                  if len(r.words) > 1 else None)
+                sl = r.layout[1]
+                if hit and not hit[1] and len(r.words) <= max(list(hit[0]) + [1]) + 1:
+                    tot['param_absent'] += 1
+                elif sl is not None and sl >= len(r.words):
+                    tot['param_absent'] += 1
+                else:
+                    tot['param_unread'] += 1
             elif par[0] == 'program':
                 tot['param_program'] += 1
             elif par[0] == 'float':
@@ -53,6 +68,10 @@ def main(paths):
     r_ = tot['records']
     print('  main parameter resolved: %d  (%.1f%%)' % (r_ - tot['no_param'],
           100 * (r_ - tot['no_param']) / max(1, r_)))
+    print('    record has no parameter slot: %d  (%.2f%%)  -- correct, not a miss'
+          % (tot['param_absent'], 100 * tot['param_absent'] / max(1, r_)))
+    print('    genuinely unread     : %d  (%.2f%%)'
+          % (tot['param_unread'], 100 * tot['param_unread'] / max(1, r_)))
     print('    as a program        : %d  (%.1f%%)' % (tot['param_program'],
           100 * tot['param_program'] / max(1, r_)))
     print('    as a baked float    : %d  (%.1f%%)' % (tot['param_float'],

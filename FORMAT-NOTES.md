@@ -17863,3 +17863,47 @@ because a shared input with few targets now qualifies.
 Unresolved edges fall from 36 to **27**, and none of them is a directionalwarp any more.
 The remaining 27 are spread across `fid8` (10), `fid22` (6), `warp` (4) and four other
 filters, at 0.0017% of 1,554,914 edge slots.
+
+## Auditing the edge map, and an honest denominator
+
+### Every claimed edge slot, swept for the same defect
+
+Having found a constant read as an edge in the primary rule, the same question was put to
+every claimed edge slot with 100 or more records: how many distinct targets does it name?
+
+    key                     slot  records  distinct  diversity
+    (12, 2073, 20)             3      378         5      0.013
+    (12, 57, 10)               3      864         6      0.007
+    (7, 10265, 0)              3      109         9      0.083
+    (8, 793, 0)                1      106        11      0.104
+    ...
+
+**No slot fails both guards** - none has under 5 distinct targets *and* diversity at or
+below 0.05. The lowest count is exactly 5. The low-diversity survivors are shared control
+inputs, which is what they should be.
+
+### 4.55% of records have "no parameter" and 0.21% are a failure
+
+The audit reported `main parameter resolved: 95.5%`, implying 4.55% unread. Splitting that
+residue by *why*:
+
+    the record has no parameter slot at all   43,482  (88.0%)
+    parameter slot lies past the record end    3,665  ( 7.4%)
+    slot present, value reads as neither       1,142  ( 2.3%)
+    no parameter slot, but the record has room   973  ( 2.0%)
+    no layout entry for this key                 170  ( 0.3%)
+
+A four-word `blend` is `[tag][flags][edge][edge]`. It ends before a parameter slot could
+exist, so "no parameter" is the **correct** answer, not a miss - and that case is 88% of
+the residue. `uniform` accounts for almost all of the second line, through a fallback that
+names a slot its short records do not have.
+
+The audit now separates them:
+
+    main parameter resolved         1,037,401  (95.5%)
+      record has no parameter slot     47,147  ( 4.34%)   correct, not a miss
+      genuinely unread                  2,285  ( 0.21%)
+
+**The gap is 0.21%, not 4.55%.** The model was substantially better than its own headline
+said, which is its own kind of error: a number that overstates ignorance is as misleading
+as one that overstates knowledge, and it sends work at problems that are already solved.
