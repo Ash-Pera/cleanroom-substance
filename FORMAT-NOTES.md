@@ -19178,6 +19178,10 @@ These parameters sit at the END of the block. Where the two placements disagree 
 fewer than slots - tail puts all 1,035 `blend` slots on floats, 100% of them inside [0,1];
 head puts all 1,035 on programs.
 
+> **Wrong - corrected in "`levels` joins after all, and the front/back question
+> closes" at the end of this file.** The paragraph below rejects `levels` on a test
+> that cannot decide the question. The contents test says 99.96%.
+
 `levels` does **not** join this table. Modelling its unused odd bits as program markers
 moves the fit between bit count and slot count from 81.40% to 82.49%, where the same change
 for `blend` moves it from 63.78% to 83.32%. One is a mechanism and the other is noise. So
