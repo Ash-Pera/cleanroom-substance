@@ -144,12 +144,13 @@ BINOP = {0x12: "+", 0x13: "-", 0x14: "*", 0x15: "/",
 FUNCS = {0x16: "sbs_mod", 0x17: "-", 0x18: "dot", 0x23: "abs", 0x24: "floor",
          0x2A: "exp",
          0x25: "ceil", 0x26: "cos", 0x27: "sin", 0x28: "sqrt", 0x29: "log",
-         0x2B: "exp2", 0x2C: "not", 0x2D: "atan2", 0x2E: "cartesian",
+         0x2B: "exp2", 0x2C: "not", 0x2D: "atan2", 0x2E: "cartesian", 0x36: "pow",
          0x2F: "lerp", 0x30: "minimum", 0x31: "maximum", 0x32: "rand"}
 
 PY_FUNCS = {"abs": "np.abs", "floor": "np.floor", "ceil": "np.ceil", "cos": "np.cos",
             "exp": "np.exp",
             "sin": "np.sin", "sqrt": "np.sqrt", "log": "np.log", "exp2": "np.exp2",
+            "pow": "np.power",
             "atan2": "np.arctan2", "minimum": "np.minimum", "maximum": "np.maximum",
             "dot": "np.dot"}
 
@@ -171,13 +172,16 @@ PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or"}
 #: in OPCODES.md, but "probably" is not the bar every other name in this table clears.
 #: Emitting it as log2 would make the transpiler compute a plausible, silently unverified
 #: number for 3,903 instructions -- exactly the failure mode the cache_read/cache_write
-#: raise exists to avoid, just without the raise.
+#: raise exists to avoid, just without the raise. 0x36 briefly landed in FUNCS the same
+#: unproven way and was pulled back out alongside it.
 #:
-#: 0x36 briefly named "pow" in FUNCS the same way, with no investigation behind it at all
-#: that I've found -- no commit, no test, no corpus measurement, and FUNCS is checked
-#: before UNNAMED in the dispatch below, so the membership here was dead code while it
-#: sat in FUNCS: it would have silently emitted `pow(...)` regardless of this comment.
-UNNAMED = {0x35, 0x36}
+#: 0x36 = pow is not in that category: `LeakingSubstance004` and `RoadSubstance002`
+#: compute ((s+0.055)/1.055) ** 2.4 -- the inverse sRGB transfer function, the same
+#: closed form `Embroidery_Legacy` already proved via ln/exp2 -- using op36(x, 2.4)
+#: directly, and the linear branch's 0.0773994 constant is 1/12.92 to 8 decimal places.
+#: Transpiled and evaluated against the closed form: max deviation 1.19e-07, identical to
+#: the ln/exp2 proof. See test_pow_via_srgb_decode.
+UNNAMED = {0x35}
 
 
 class Unsupported(Exception):

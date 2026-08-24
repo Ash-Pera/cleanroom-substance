@@ -171,6 +171,12 @@ SRGB_ENCODE = ("sRGB_colorchart.sbsar.sbsasm", 0x23AA8, 0.00031308)
 #: instruction table, so it is an out-of-sample check.
 SRGB_DECODE = ("Embroidery_Legacy.sbsar.sbsasm", 0x1AFC, 74, 0.04045)
 
+#: `LeakingSubstance004` implements the same inverse transform as SRGB_DECODE, but via
+#: op36(x, 2.4) directly rather than the ln/exp2 idiom -- the proof that op36 is `pow`.
+#: `RoadSubstance002` and `RoadLinesSubstance002` carry byte-identical copies of this
+#: program; this specimen is arbitrary among the three.
+SRGB_DECODE_VIA_POW = ("LeakingSubstance004_COMPILED.sbsasm", 460092, 0.04045)
+
 TOLERANCE = 1e-6        # float32 rounding is ~1e-7; anything larger is a real error
 
 #: Deviations recorded by the known-algorithm tests, for the standalone report. The
@@ -255,6 +261,23 @@ def test_srgb_decode():
                         ramp / 12.92, np.power((ramp + 0.055) / 1.055, 2.4))
     deviation = float(np.abs(got - want).max())
     DEVIATIONS["test_srgb_decode"] = deviation
+    assert deviation < TOLERANCE, "max deviation %.3g" % deviation
+
+
+def test_pow_via_srgb_decode():
+    """0x36 = pow, proved the same way ln/exp2 was: the same inverse-sRGB closed form,
+    computed here with op36(x, 2.4) instead of ln/div/exp2, on a specimen SRGB_DECODE
+    never touches."""
+    np = numpy_or_skip()
+    name, start, threshold = SRGB_DECODE_VIA_POW
+    threshold = float(np.float32(threshold))
+    asm = load(name)
+    ramp, got = _run(asm, start, boundaries=(threshold,))
+    with np.errstate(all="ignore"):
+        want = np.where(ramp <= threshold,
+                        ramp / 12.92, np.power((ramp + 0.055) / 1.055, 2.4))
+    deviation = float(np.abs(got - want).max())
+    DEVIATIONS["test_pow_via_srgb_decode"] = deviation
     assert deviation < TOLERANCE, "max deviation %.3g" % deviation
 
 

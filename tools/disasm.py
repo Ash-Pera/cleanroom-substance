@@ -30,6 +30,7 @@ NAMES = {
  (1,0x23):'abs',     (1,0x24):'floor',   (1,0x25):'ceil',
  (1,0x26):'cos',     (1,0x27):'sin',     (1,0x28):'sqrt',
  (1,0x29):'ln',      (1,0x2B):'exp2',    (1,0x2D):'atan2',
+ (1,0x36):'pow',
  (1,0x2E):'cartesian',(1,0x2F):'lerp',
  (1,0x30):'min',     (2,0x30):'min',
  (1,0x31):'max',     (2,0x31):'max',
@@ -40,15 +41,21 @@ NAMES = {
  (0,0x1D):'eq',      (0,0x1F):'gt',      (0,0x20):'gteq',
  (0,0x21):'lt',      (0,0x22):'lteq',
 }
-# 0x35 and 0x36 are deliberately absent, not overlooked. 0x35 has real circumstantial
-# support for 'log2' -- unary, 99.5%+ of 3,903 instances feed straight into ceil/floor,
-# 73% fed by an int-to-float cvt -- but every avenue tried for a hard numeric proof
-# (literal constants; the 22 size expressions that use it, all of which trace back to a
-# sampler or cache read with no hand-computable value) came up empty, and OPCODES.md
-# records it as "probably", not confirmed. 0x36 (53 instances, 8 files) has no lead at
-# all behind the name 'pow' beyond having been typed once. Every other entry in this
-# table clears a materially higher bar -- an exact corpus-wide count, a closed-form
-# proof, or a source match. Naming these here would make that bar mean nothing.
+# 0x35 is deliberately absent, not overlooked. Real circumstantial support for 'log2' --
+# unary, 99.5%+ of 3,903 instances feed straight into ceil/floor, 73% fed by an
+# int-to-float cvt -- but every avenue tried for a hard numeric proof (literal constants;
+# the 22 size expressions that use it, all of which trace back to a sampler or cache read
+# with no hand-computable value) came up empty, and OPCODES.md records it as "probably",
+# not confirmed. Every other entry in this table clears a materially higher bar -- an
+# exact corpus-wide count, a closed-form proof, or a source match. Naming it here would
+# make that bar mean nothing.
+#
+# 0x36 = 'pow' DOES clear that bar, the same way ln/exp2 did: `LeakingSubstance004` and
+# `RoadSubstance002` compute ((s+0.055)/1.055) ** 2.4, the inverse sRGB transfer function
+# already proved via ln/exp2 in `Embroidery_Legacy`, using op36(x, 2.4) directly -- and
+# the linear branch's 0.0773994 constant is 1/12.92 to 8 decimal places. Transpiled and
+# evaluated against the closed form: max deviation 1.19e-07, identical to the ln/exp2
+# proof. See tools/test_transpile.py, test_pow_via_srgb_decode.
 TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
 
 # Operations whose operand tokens are immediates rather than value numbers.

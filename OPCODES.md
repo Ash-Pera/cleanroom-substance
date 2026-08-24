@@ -7,9 +7,9 @@ unnamed opcodes are not instructions" below.) (The catalogue table below
 has one row per type-operation pair; its 67 rows have previously been quoted as an operation
 count, which conflates the two. See "The operation-by-type matrix" in FORMAT-NOTES.)
 **This headline is scoped to the ≥50-specimen filter below it, not to every real operation
-in the ISA** - `0x0B` (a loop, see "`0x0B` is a loop" below), `0x35` and `0x36` (real,
-appear in 37 and 8 files, meaning not established) all fall under that threshold and are
-not part of the "41". "Confirmed below the catalogue threshold" lists what else does. Measured over 382 distinct specimens (the corpus holds 579
+in the ISA** - `0x0B` (`while`, a loop), `0x36` (`pow`, proved via the sRGB closed form)
+and `0x35` (real, 37 files, meaning still not established) all fall under that threshold
+and are not part of the "41". "Confirmed below the catalogue threshold" lists what else does. Measured over 382 distinct specimens (the corpus holds 579
 `.sbsasm` files, 34% of them duplicate content) and 11,845,287 instructions decoded by
 `isa_census.py`, which **scans** code regions run-by-run. An earlier version of this line
 claimed the census walked records to their bytecode; it does not, and that mattered - the
@@ -142,7 +142,33 @@ These are established structurally, not by frequency:
 | `150B` | float | 1 | `0B` | 542 | 20 | `while` — a loop, no immediate; see "`0x0B` is a loop" below |
 | `11CF` | float | 4 | `0F` | 28 | 6 | **probably `vec4`** — build a 4-vector from four scalars |
 | `0535` | float | 1 | `35` | 3,903 | 37 | unary, always immediately `ceil`/`floor`'d, fed 73% by `cvt` — **probably `log2`**, not confirmed numerically |
-| `0936` | float | 1 | `36` | 53 | 8 | unnamed |
+| `0936` | float | 1 | `36` | 53 | 8 | **`pow(x, y)`** — proved via the same closed form as `ln`/`exp2`, see below |
+
+### `0x36` = `pow`, proved the same way `ln`/`exp2` was
+
+Two operands, both value references (100.0% possible), one form only. `LeakingSubstance004`
+and `RoadSubstance002` (byte-identical copies of the same 13-instruction program, also in
+`RoadLinesSubstance002`) compute:
+
+```
+%9   = (samplelum($pos) + 0.055) / 1.055
+%10  = const 2.4
+%11  = op36(%9, %10)
+%12  = select(sample <= 0.04045, sample * 0.0773994, %11)
+```
+
+That is the **inverse sRGB transfer function** — `((s+0.055)/1.055)^2.4` on the high branch —
+the identical closed form `Embroidery_Legacy` already proved via the `ln(x)/ln2 → exp2` idiom
+(see "Third known-algorithm specimen: the sRGB transfer function" in FORMAT-NOTES.md). The
+linear-branch constant, `0.0773994`, is `1/12.92` to 8 decimal places. Transpiling this
+program under the hypothesis `op36(x, y) = x ** y` and evaluating against the closed form:
+**max deviation 1.19e-07** — identical to the `ln`/`exp2` proof, which is float32 rounding,
+not an approximation. `tools/test_transpile.py`, `test_pow_via_srgb_decode`.
+
+A 132-instruction specimen (`ChristmasTreeOrnamentSubstance005`) uses it with a non-constant
+exponent — `op36(lerp(...), get slot 15)` — consistent with `pow` being used generically for
+gamma/contrast adjustment beyond the sRGB case, matching program sizes up to 800 instructions
+seen for `pow`-using color-transfer-style programs elsewhere in the corpus.
 
 `0x0F` is the only operation that takes four operands and returns four components. It
 appears in one form only, is the **terminal instruction in 28 of 28** instances, and is
