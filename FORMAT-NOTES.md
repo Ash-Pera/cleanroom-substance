@@ -25258,3 +25258,54 @@ Restricted to records where only bits 0 and 13 are set, the picture is a 7-instr
 computed value, and the "it is just the constant 1" impression came from 3 records out of 133.
 
 Bit 11's position in the order is still unplaced - no record isolates it against bit 13.
+
+## Re-running the two figures flagged as unverified
+
+The status above listed two numbers carried from earlier work and never re-measured. Both
+needed re-running, and one of them does not reproduce.
+
+### Output attribution holds, and improved
+
+    specimens checked        436   (2 manifests unparseable)
+    (input, output) pairs    29,140
+      agree with the table   28,943   99.32%
+      violations                197
+
+Recorded earlier as 28,554 of 28,896, 98.82%. The corpus has since grown by three files and
+the layout rules changed, so the pair count differs - but the agreement rate went UP, from
+98.82% to 99.32%. This one survives.
+
+### "29 inputs read by nothing" does not reproduce
+
+No metric I can construct gives 29. Counting declared graph inputs that no program references
+- using `disasm.uid`, not a naive splice of the operand tokens, which the code already warns
+about and which I got wrong first and measured 100% unreferenced as a result:
+
+    declared graph inputs      8,518
+    referenced by no program   2,306   27.07%   across 338 of 438 files
+
+Checking bitmap records that name an input uid adds nothing, so these are not image
+consumption being missed.
+
+### What the manifest says about them, which is the real result
+
+    inputs the manifest says alter NOTHING    445 declared,  445 unread   100.0%
+    inputs the manifest says ALTER outputs  8,037 declared, 1,857 unread   23.1%
+
+**Not one input that alters nothing is ever read by a program - 445 of 445, no exceptions.**
+That is a sharp consistency check between the binary and the manifest that could have failed
+at any point and does not.
+
+The 1,857 on the other line are the actual hole, and they are not evenly spread:
+
+    type 5 (image)   534    consumed as EDGES, so a program never reads them - expected
+    type 0           728    every one of them in a single file, ie_curve.sbsasm
+    type 4           441    spread across many files
+    type 1, 6, 3, 2   154
+
+So of 1,857, about 534 are expected and 728 are one library file's curve data. The genuinely
+unexplained remainder is roughly 595 inputs across 312 files - real, but an order of magnitude
+smaller than the headline, and nothing like the 29 previously recorded.
+
+The old figure is withdrawn rather than corrected: without the method that produced it there is
+no way to tell whether it measured something narrower or was simply wrong.
