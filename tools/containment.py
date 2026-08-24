@@ -210,6 +210,64 @@ def ramp_report(permitted_only=True):
     return dict(files=files, pos=(hp, tp), vals=(hv, tv), control=(ch, ct))
 
 
+def matched_control(name, fid, permitted_only=True, skip=None):
+    """Does a value declared on `name` land in a record of `fid`, more than chance?
+
+    THE METRIC THE CONFUSION MATRIX GOT WRONG. That table reported diagonal / total-found,
+    which is a PRECISION: it falls when a value also turns up in some other filter's records,
+    even though the value did land where it should. `warp` scored 67.6% there and was written
+    off as unrecovered when its real recall was 25 of 25 -- every declared value found in a
+    filter-7 record, the 67.6% being nothing but collisions elsewhere.
+
+    Recall alone is not evidence either, because a filter with a large value pool would score
+    high on anything. The control is what closes it: run the same test with the values every
+    OTHER source filter declares in the SAME file, against the SAME pool. Matched per
+    specimen, so pool size, file size and author style cancel out.
+
+    Returns (hit, total, ctrl_hit, ctrl_total, per_specimen).
+    """
+    hit = tot = chit = ctot = 0
+    per = []
+    for p in paired_sources():
+        if permitted_only and (matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)):
+            continue
+        if skip and skip in p:
+            continue
+        data = open(p, encoding='utf-8', errors='replace').read()
+        decl = declared(data, DEFAULT_FILTERS)
+        if not decl.get(name):
+            continue
+        asmf = sbsasm_for(p)
+        if not asmf:
+            continue
+        try:
+            asm = Assembly(asmf)
+        except Exception:
+            continue
+        pool, nrec = set(), 0
+        for rec in asm.records:
+            if rec.filter_id == fid:
+                pool |= record_floats(rec)
+                nrec += 1
+        if not nrec:
+            continue            # no records of this filter here: the file cannot test it
+        seen = collections.Counter()
+        for s in decl.values():
+            for v in s:
+                seen[v] += 1
+        own = {v for v in decl[name] if seen[v] == 1}
+        other = set()
+        for f, s in decl.items():
+            if f != name:
+                other |= {v for v in s if seen[v] == 1}
+        if not own:
+            continue
+        hit += len(own & pool); tot += len(own)
+        chit += len(other & pool); ctot += len(other)
+        per.append((os.path.relpath(p, ROOT), len(own & pool), len(own)))
+    return hit, tot, chit, ctot, per
+
+
 def confusion(wanted=None, permitted_only=True):
     """(matrix, totals, n_files): where each source filter's declared values were found."""
     wanted = wanted or DEFAULT_FILTERS
@@ -278,3 +336,16 @@ if __name__ == '__main__':
           "%d/%d (%.1f%%)" % (r['vals'][0], r['vals'][1], pct(*r['vals'])))
     print("  CONTROL, other filters' values against the same pool:          "
           "%d/%d (%.1f%%)" % (r['control'][0], r['control'][1], pct(*r['control'])))
+
+    print()
+    print("matched control -- declared value lands in its own filter's records, against")
+    print("the same test run on every OTHER filter's declared values in the same file")
+    print("  %-16s %-8s %12s %14s %s" % ("filter", "id", "own", "control", "specimens"))
+    for nm, fid in [("warp", 7), ("blur", 10), ("directionalwarp", 12), ("sharpen", 13),
+                    ("levels", 15), ("uniform", 6)]:
+        h, t, ch, ct, per = matched_control(nm, fid)
+        if not t:
+            continue
+        print("  %-16s %-8d %6d/%-5d %5.1f%%  %5d/%-6d %4.1f%%   %d"
+              % (nm, fid, h, t, 100.0 * h / t, ch, ct,
+                 (100.0 * ch / ct) if ct else 0.0, len(per)))

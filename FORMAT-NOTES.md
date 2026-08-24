@@ -5546,8 +5546,8 @@ distinctive count; matching it by chance among four candidate pairs is unlikely.
 | filter | type (gray/colour) | records | evidence |
 |---|---|---:|---|
 | **gradient** | `0x00` / `0x01` | 9,367 | 3/3 exact (1, 1, 6) — **withdrawn, the distinctive 6 is `Electric_Liquid`**; re-established on permitted sources by quantised ramp-position containment, 15,293/15,369 against a 7.7% control |
-| **warp** | `0x0E` / `0x0F` | 15,182 | 3/3 exact — `Crystal_Animated` and `Crystal_2_Animated` each 1=1, plus `Electric_Liquid` |
-| **blur** | `0x14` / `0x15` | 8,313 | 11 = 11 in a file with four unnamed candidates |
+| **warp** | `0x0E` / `0x0F` | 15,182 | 3/3 exact — **withdrawn, all three specimens source-excluded**; re-established on permitted sources, 25/25 against a 0.5% matched control |
+| **blur** | `0x14` / `0x15` | 8,313 | "11 = 11" in `Electric_Liquid` — **withdrawn, source-excluded**; re-established on permitted sources, 10/11 against a 0.0% matched control |
 | **normal** | `0x24` / `0x25` | — | 2/2 exact |
 | **distance** | `0x2A` / `0x2B` | 1,185 | 2 = 2 in `SDF` |
 
@@ -28981,7 +28981,7 @@ Each of these is a *known* reason, and four of them are the same reason: w1 is n
 a code vector. The scaffolding that remains is protecting exactly the cases where the
 second presence mask means something other than what the rule assumes.
 
-## Five filter identifications rested on excluded specimens; three are recovered
+## Five filter identifications rested on excluded specimens; all five are recovered
 
 The identifications of `levels`, `fxmaps`, `warp`, `blur` and `gradient` all rested on
 exact-count matching over instance-free specimens, and **every specimen those sections name
@@ -29112,9 +29112,8 @@ declared colours having no matching slot to land in is expected rather than surp
     levels    filter 15   RECOVERED   containment, 347/355 over 66 permitted specimens
     fxmaps    filter  4   RECOVERED   ie_pcloud tree-shape distribution, 110 records
     gradient  filter  0   RECOVERED   ramp positions, 15,293/15,369 against a 7.7% control
-    warp      filter  7   OPEN        containment 25/37 (67.6%); was 3/3 exact, all excluded
-    blur      filter 10   OPEN        containment 10/21 (47.6%); rested on one "11 = 11"
-                                      in Electric_Liquid alone
+    warp      filter  7   RECOVERED   25/25 against a 0.5% matched control, 7 specimens
+    blur      filter 10   RECOVERED   10/11 against a 0.0% matched control, 5 specimens
 
 ## Three more filters: gradient, curve, dirmotionblur — and a powerless predicate in my own test
 
@@ -29547,3 +29546,60 @@ Three things it did **not** cost, each checked rather than assumed:
 Measurements recorded earlier in this notebook as "438 files, 904,131 records" were taken on
 438 files and stay as written. Rewriting them would falsify the record of what was actually
 run; the withdrawal is dated here instead, and figures computed after this point use 437.
+
+## `warp` and `blur` recovered — the metric was wrong, not the evidence
+
+Both were left OPEN on containment scores of 67.6% and 47.6%. Those numbers were **precision**
+— diagonal divided by total-found — and precision is the wrong question here. It falls when a
+declared value ALSO turns up in some other filter's records, even though the value did land
+where it should. `warp` scored 67.6% while its actual recall was **25 of 25**: every value a
+permitted source declared on a `warp` node was found in a filter-7 record of that same file's
+binary. The 67.6% was nothing but collisions elsewhere, and reading it as failure cost two
+identifications for a day.
+
+Recall alone proves nothing either — a filter with a large value pool would score high on
+anything. What closes it is a **matched control**: run the identical test with the values every
+*other* source filter declares in the *same* file, against the *same* pool. Pool size, file
+size and author style cancel, because both arms see them equally.
+
+    filter            declared -> its own records     control: other filters -> same pool
+    warp              25 / 25    100.0%                    7 / 1,276     0.5%
+    blur              10 / 11     90.9%                    0 / 3,507     0.0%
+    directionalwarp   35 / 35    100.0%                    8 / 11,603    0.1%
+    sharpen            6 / 6     100.0%                    0 / 250       0.0%
+    levels           347 / 371    93.5%                   77 / 12,486    0.6%
+    uniform          260 / 262    99.2%                   15 / 4,468     0.3%
+
+`directionalwarp`, `sharpen`, `levels` and `uniform` are calibration: identifications already
+settled by other means, scoring the same way under this test. The method reproduces the known
+answers before being trusted on the unknown ones.
+
+### Not a clustered sample
+
+This document has already been burned once by treating files from a handful of repositories as
+independent draws. `warp`'s 25 values come from **seven specimens across four unrelated
+sources**, and every specimen is individually unanimous:
+
+    DLG-Tools__Damaged_Iron_01           5/5      Hard-Science-Old__CrustyLava      7/7
+    DLG-Tools__Mineral_Ore_01            1/1      Hard-Science-Old__Lava            2/2
+    SubstanceDesignerPractice__pratice   2/2      Hard-Science-Old__flowingLava     6/6
+    Wood_Planks                          2/2
+
+`blur`'s 10 come from five specimens across four sources, its single miss being one of two
+values in `LGMLtools__fz_explosion`.
+
+Both survive dropping `DLG-Tools` entirely, which matters because that repository's licence is
+an open question recorded elsewhere in this document:
+
+    warp   excluding DLG-Tools   19/19   100.0%   control  3/886    0.3%   3 sources
+    blur   excluding DLG-Tools    9/10    90.0%   control  0/3,429  0.0%   3 sources
+
+### All five are now recovered
+
+The five identifications that rested entirely on Allegorithmic-authored specimens —
+`levels`, `fxmaps`, `gradient`, `warp`, `blur`, together **95,710 records** — now stand on
+permitted evidence, by four different routes: containment for `levels`, tree-shape
+distribution for `fxmaps`, quantised ramp positions for `gradient`, and matched-control
+recall for `warp` and `blur`. The withdrawn count-exact figures are marked as withdrawn in
+the identification table rather than deleted, since what they measured was real; it was their
+specimens that were not usable.
