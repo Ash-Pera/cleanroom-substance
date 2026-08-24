@@ -48,7 +48,20 @@ TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
 #   0x0B while      position 0 = iteration cap
 #   0x33 samplelum  position 1 = sampler index (which input image to read)
 #   0x34 samplecol  position 1 = sampler index
-IMM = {0x00:'all', 0x02:'all', 0x01:'all', 0x04:'all',
+#   0x03, 0x06      read something by index; the operand is the index, not a value
+#
+# 0x03 and 0x06 were rendering as value references and are not. Over strictly-named
+# programs, 0x03's operand is >= its own value number in 75.7% of 6,177 instances and
+# 0x06's in 69.3% of 762 -- impossible for a reference, since three-address code numbers
+# results contiguously and an operand must name an earlier value. 0x03 is also the
+# program's FIRST instruction 59.0% of the time, where there is nothing to refer to.
+# By comparison sysvar, get, add and eq measure 0.0% impossible on the same set.
+# What they index is not established, so they stay unnamed.
+#
+# Measured on programs a record's slots name, never on the permissive whole-file scan:
+# on that scan even `add` reads 38.5% impossible and `lteq` 86.5%, because the scan
+# accepts positions that are not programs at all.
+IMM = {0x00:'all', 0x02:'all', 0x01:'all', 0x04:'all', 0x03:'all', 0x06:'all',
        0x10:(1,), 0x07:(1,), 0x0B:(0,), 0x33:(1,), 0x34:(1,)}
 
 def fields(op):

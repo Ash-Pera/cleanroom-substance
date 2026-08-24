@@ -17091,3 +17091,71 @@ layouts, but 16,404 bit-12-clear records do carry known nodes against 9,422 that
 Node headers are also not laid out contiguously: consecutive ones sit 172, 384, 236 or 404
 bytes apart, because each node is followed by its own program. So the vocabulary cannot be
 recovered by scanning for a stride either.
+
+## The permissive program scan contaminates the ISA
+
+Chasing the FX residue found that 97.7% of the positions where a tree walk stops fail
+`valid_program` on an **uncatalogued opcode**. That suggested the ISA was incomplete. The
+opposite is true: the ISA was being measured on programs that are not programs.
+
+### The measurement that exposed it
+
+Under three-address code an operand must name an earlier value, so an operand greater than
+or equal to its own value number is impossible. Measured over `referenced_programs()` --
+the permissive scan that accepts a program at any 4-aligned word pointing to one:
+
+    add    38.5% impossible        lteq   86.5% impossible
+    set    52.4%                   dot    74.6%
+
+No encoding makes addition's operands impossible 38% of the time. Measured over
+`r.programs` -- only the programs a record's slots name - the same figure is **0.1%**.
+
+The permissive set contains positions that are not programs, and decoding them produces
+instructions that are not instructions. This is the same failure that produced the phantom
+opcodes, resurfacing in a tool that was built after them.
+
+### Sixteen op ids exist only in the scan
+
+    0x05 0x08 0x0A 0x0E 0x0F 0x19 0x2C 0x37 0x38 0x39 0x3A 0x3B 0x3C 0x3D 0x3E 0x3F
+
+None appears in any strictly-named program. `0x35` and `0x36` are the same: **absent from
+strictly-named programs entirely**, so any reading of them is a reading of noise.
+
+`0x1E` is a case where the multi-program fix changed the answer. It was recorded here as a
+phantom - 4,374 occurrences in a permissive walk, 0 in strict. Now that `Record.programs`
+returns every program a record names rather than only the first, it has **216 strictly-named
+occurrences across 5 files**. Five files is weak, and it is still emitted opaquely, but it
+is no longer nothing.
+
+### `0x03` and `0x06` carry immediates
+
+Two operations were rendering their operand as a value reference and should not.
+
+| op | instances | operand >= own value number | is the program's first instruction |
+|---|---|---|---|
+| `0x03` | 6,177 | **75.7%** | **59.0%** |
+| `0x06` | 762 | **69.3%** | 0.0% |
+| `sysvar` | 120,336 | 0.0% | 80.5% |
+| `get` | 51,544 | 0.0% | 41.7% |
+| `add` | 1,118,531 | 0.0% | 0.0% |
+| `eq` | 11,225 | 0.0% | 0.0% |
+
+An operand that exceeds its own value number three times in four cannot be a reference,
+and `0x03` is the program's first instruction 59% of the time, where there is nothing to
+refer to. Both read something by index, in the manner of `sysvar` and `get`. **What they
+index is not established**, so they stay unnamed and are emitted opaquely.
+
+`0x06` is a correction to a report that had it as an ordinary operation with 0% impossible
+operands - that figure comes from the contaminated set.
+
+With both marked as immediates, impossible operands across the corpus fall to **0.0% of
+3,434,611 instructions**. Every value reference points backward, which is what
+three-address code requires and what a correct decode should show.
+
+### The rule this establishes
+
+`referenced_programs()` remains useful for the coverage question it was built for - finding
+bytecode that no record slot names, which is real and which the FX trees rely on. It is
+**not** a source for ISA statistics. Any opcode census, operand analysis, or immediate
+inference must run over strictly-named programs, and any past figure that did not is
+suspect.
