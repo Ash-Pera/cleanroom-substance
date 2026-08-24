@@ -42,22 +42,17 @@ def immediate(op, addr, toks):
       component field describes the value read, not the immediate.
     """
     f = disasm.fields(op)
-    raw = b"".join(struct.pack("<H", t) for t in toks)
     if f["id"] not in WIDE_IMM:
         return list(toks)
     if f["id"] == 0x00 and f["ty"] == 0:
         return [bool(toks[0])] if toks else [False]
+    # One pad rule, shared with the disassembler.
+    raw = disasm.immediate(addr, toks)
     want = 4 if f["id"] == 0x02 else 4 * f["comps"]
-    pad = len(raw) - want
-    if pad not in (0, 2):
-        raise ValueError("opcode %04X at %d: %d immediate bytes, wanted %d or %d"
-                         % (op, addr, len(raw), want, want + 2))
-    # The pad is predicted by alignment alone; check the two agree rather than
-    # trusting either on its own.
-    if pad != (2 if addr % 4 == 0 else 0):
-        raise ValueError("opcode %04X at %d: pad %d contradicts alignment"
-                         % (op, addr, pad))
-    body = raw[pad:pad + want]
+    if len(raw) < want:
+        raise Unsupported("opcode %04X at %d: %d immediate bytes, wanted %d"
+                          % (op, addr, len(raw), want))
+    body = raw[:want]
     # A uid is an integer however the instruction types its result.
     kind = "i" if f["id"] == 0x02 else ("f" if f["ty"] == 1 else "i")
     code = "<%d%s" % (want // 4, kind)
@@ -158,11 +153,12 @@ PY_FUNCS = {"abs": "np.abs", "floor": "np.floor", "ceil": "np.ceil", "cos": "np.
 PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or"}
 
 
-#: Operations whose operands are ordinary value numbers -- verified at 0% "operand >=
-#: own index" over the corpus -- but whose meaning is not established. 0x1E is bool with
-#: two operands and sits in the comparison block (1D eq, __, 1F gt, 20 gteq, 21 lt,
-#: 22 lteq), where `neq` is the only missing member; that is structural inference, not
-#: proof, so it is emitted opaquely like the rest.
+#: Operations whose meaning is not established. Their operand shape is known and comes
+#: from the disassembler's IMM table -- 0x06 takes a value in position 0 and an index in
+#: position 1; the rest take ordinary value numbers throughout, verified at 0% "operand
+#: >= own index" over the corpus. 0x1E is bool with two operands and sits in the
+#: comparison block (1D eq, __, 1F gt, 20 gteq, 21 lt, 22 lteq), where `neq` is the only
+#: missing member; that is structural inference, not proof, so it stays opaque too.
 UNNAMED = {0x06, 0x1E, 0x2A, 0x35, 0x36}
 
 
@@ -238,10 +234,15 @@ def transpile(data, start, end, backend="python", name="program", result=None):
                     fn = PY_FUNCS.get(fn, fn)
                 rhs = be.call(fn, [arg(i) for i in range(len(toks))])
         elif oid in UNNAMED:
-            # Operand structure is ordinary -- every operand is a value number -- but the
-            # operation is not identified. Emitted as an opaque call so the program still
-            # transpiles and the gap is visible in the output rather than silent.
-            rhs = be.call("op%02X" % oid, [arg(i) for i in range(len(toks))])
+            # The operation is not identified, but its operand *shape* is: positions the
+            # disassembler's IMM table names are immediates, the rest are value numbers.
+            # Emitted as an opaque call so the program still transpiles and the gap is
+            # visible in the output rather than silent.
+            imm_pos = disasm.IMM.get(oid, ())
+            imm_pos = range(len(toks)) if imm_pos == "all" else imm_pos
+            rhs = be.call("op%02X" % oid,
+                          [str(toks[i]) if i in imm_pos else arg(i)
+                           for i in range(len(toks))])
         else:
             raise Unsupported("opcode %04X (id %02X, type %d) at %d"
                               % (op, oid, ty, addr))
