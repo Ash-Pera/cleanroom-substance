@@ -23182,3 +23182,54 @@ skipped files. The change justified itself on its first execution, against its o
 
 Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437, tag vs
 manifest 2,467/2,468, size expression vs manifest 1,564/1,564, transpiler 12 tests passed.
+
+## The output-attribution violations: two hypotheses, both tested, both wrong
+
+`attribute_outputs` checks the output table against the manifest's `alteroutputs` relation
+and reports **28,470 of 28,896 (98.53%)**. The 426 violations split sharply:
+
+    alters but unreachable        142      the graph is missing a path
+    reachable but does not alter    6      the graph has one it should not
+
+The docstring calls the second the sharp one - *"it can fail, and a wrong table would fail it
+often"* - and it fails 6 times in 28,896. So the output table is right, and the residual is
+about the reachability walk being too sparse.
+
+### Not the partially-resolved filters
+
+`PARTIAL_EDGES` names four filters whose input lists do not fully resolve - `shuffle`,
+`fxmaps`, `distance`, `bitmap` - which is the obvious source of missing paths. Comparing the
+54 files that have violations against the 379 that do not:
+
+    share of records in PARTIAL_EDGES filters, files WITH violations    5.86%
+    share of records in PARTIAL_EDGES filters, files WITHOUT            5.82%
+
+No difference. Violations do not concentrate where the unresolved inputs are.
+
+### Not the FX programs either
+
+`readers()` walks only `r.programs`, and an fxmaps record's node chain and parameter table
+carry programs of their own - established earlier, and 4,646 more programs than
+`Record.programs` reaches. If those read graph inputs, their records are readers and the walk
+does not know it.
+
+Including them:
+
+    r.programs only                  28,470 / 28,896   98.53%   alters-but-unreachable 142
+    + fx node and table programs     29,875 / 30,387   98.32%   alters-but-unreachable 131
+
+It fixes 11 of the 142 and finds 1,491 more testable pairs - and makes the **sharp** test
+worse, taking total violations from 426 to 512. Records become reachable from inputs the
+manifest says do not affect them.
+
+That is a real trade and not an improvement, so it is not adopted. Something reads those
+inputs in a way that does not propagate to the output - an unused branch, or an fx program
+that is walked but never evaluated - and until that is understood, adding the edges buys 11
+and costs 86.
+
+### What is left
+
+142 outputs the manifest says an input alters and this graph cannot reach from it, with
+neither of the two obvious causes accounting for them. The one remaining candidate not yet
+tested is the shared cache: a record reading a value another record computed from the input,
+where the dependency runs through `0x03`/`0x06` and not through any edge.
