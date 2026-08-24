@@ -27267,3 +27267,79 @@ replacement reason was wrong in a more interesting way: **I applied a discrimina
 assumes what it is testing.** Refs-per-target only means anything once the values are known
 to be references. Distinctness comes first - 22 values across 93 specimens is not a
 reference, and no amount of downstream statistics on those 22 values can make it one.
+
+## Do we understand lowering and instancing? The mechanism yes, the scale no
+
+Asked directly, and worth answering with a measurement rather than a summary. The
+operational form of the question is: **given a source graph, can we predict the records it
+compiles to?**
+
+### Where it can be tested, it is exact
+
+The rule this document has accumulated is that a graph lowers to
+
+    records = image input bridges + surviving filter nodes
+
+with output bridges emitting nothing, non-image inputs emitting nothing, `passthrough`
+culled, and each source filter mapping to one binary filter - `grayscaleconversion` to
+`shuffle`, `valueprocessor` to `pixelprocessor`, and as of this session `emboss` to
+filter 8. Applied to every permitted single-graph pair that instances nothing:
+
+    instance-free graphs        19       (7 distinct shapes)
+    predicted exactly           19       50 records, 50 predicted
+
+Nineteen of nineteen, no fitted parameters. That is a real result and it is the whole of
+the verified ground.
+
+### The verified ground is 50 records
+
+Those nineteen graphs run from 1 to 15 records. Every other permitted pair instances
+something, and the instanced packages are not in the corpus:
+
+    single-graph permitted pairs, deduplicated        65
+      instance-free                                    7      50 records
+      containing instances                            58  64,645 records
+
+    of those 64,645 records, the source accounts for  2,322     3.6%
+    per-graph share the source accounts for, median             7.0%
+
+**On a real material the source explains about one record in fourteen.** The rest arrives
+from packages this corpus does not hold, and no amount of care with the ones it does hold
+changes that. The largest graph the prediction has ever been checked against has 15
+records; the largest instanced graph has 7,557.
+
+An attempt to extend the prediction through instances that resolve *inside the same file*
+found **no cases at all**: every graph in this corpus with a self-instance also instances
+something external, so the expansion never completes.
+
+### What is nevertheless established about instancing
+
+Not prediction, but mechanism, and this part is solid because it was measured inside single
+binaries where nothing is missing:
+
+* instances are **fully inlined**, one record per surviving filter node, and bridges inside
+  an instance emit nothing
+* fifty copies of one source graph are **identical in 275 of 292 slots**, differing only in
+  edges, pointers into their own bytecode, and authored parameters
+* graphs in a multi-graph package have **disjoint record sets** - 0 of 301 records shared,
+  so the cooker copies rather than referencing
+* **no instance provenance is recorded** anywhere in a record
+
+So the shape of the transformation is understood. What is not is any instance whose
+contents we cannot see, which in this corpus is almost all of them.
+
+### The honest answer
+
+    the lowering rule           understood, and exact on 19 of 19 graphs that test it
+    instancing mechanics        understood, measured within single binaries
+    instance CONTENT            not available for 96.4% of the records in paired material
+    record ORDER in the file    not predicted at all - counts are, layout is not
+    the `passthrough` cull      still an undetermined rule
+    dead-code elimination       observed, not predictable: one graph declares 5.5x the
+                                nodes that survive, and nothing here says which go
+
+"Do we completely understand the pipeline" is therefore no, and the gap is not conceptual.
+Every piece of the mechanism that could be checked against material we hold checks out
+exactly. The missing part is **corpus**: to predict a real material end to end we would
+need the packages it instances, and the one measurement that matters is that those account
+for 96.4% of what gets compiled.
