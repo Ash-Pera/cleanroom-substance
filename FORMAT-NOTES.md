@@ -23511,3 +23511,50 @@ seen from the reading end.
 Filter 19 remains unnamed. What is now known about it: two input edges, a parameter, no slot
 reads, and programs that initialise a block of slots with ranges like `(-2.5, 3.5, -2.5,
 3.5)`, a count, and a step - scatter or tile setup, handed to something else to execute.
+
+## Slots are intra-record, and slot flow is not a dataflow edge
+
+The one-way-channel finding suggested slot state might be a dependency the graph is missing,
+exactly as the shared cache was. It is not, and testing it corrected an earlier claim.
+
+### Slot edges destroy the graph
+
+Adding, for each slot read, an edge from the nearest preceding record that writes it - 36,004
+edges:
+
+    edges + cache          28,554 / 28,896   98.82%   unreachable 131   spurious   6
+    + slot write -> read   27,065 / 28,896   93.66%   unreachable 122   spurious 432
+
+Spurious violations go up seventy-fold to buy 9. Whatever slot state is, it is not a value
+pipeline between records.
+
+### Because slot reads are almost always intra-record
+
+Counting whether a read's slot was already written by another program *of the same record*,
+with the fx node and table programs counted as part of the record:
+
+    slot reads                        99,456
+    satisfied inside the same record  99,249    99.79%
+    needing an earlier record            207     0.21%
+
+So the earlier framing - "slot state is shared across records within a file" - was too strong.
+The sharing is real in the sense that one dict per file makes everything run, but 99.79% of
+reads never leave their own record, and the 0.21% that do carry no dependency the output
+graph is missing.
+
+### An ordering caveat found on the way
+
+These counts are **order-sensitive**, which is easy to miss. Running each record's programs
+with a fresh dict:
+
+    r.programs only                52,308 / 52,335    99.948%
+    + fx programs, fx first        54,030 / 56,981    94.821%
+    + fx programs, one dict/file   56,963 / 56,981    99.968%
+
+Putting the fx programs first drops 2,951 programs, because a writer in `r.programs` then runs
+after its reader. The static 99.79% above is measured in the other order. Neither number is
+wrong; both describe a set of programs whose correct execution order is not yet established,
+and "which slot reads are satisfied" cannot be answered independently of it.
+
+What is settled: slot reads are overwhelmingly intra-record, and slot writes do not imply a
+graph edge.
