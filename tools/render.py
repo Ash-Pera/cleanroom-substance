@@ -242,6 +242,67 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 if tainted:
                     synthetic.add(i)   # downstream of a synthetic placeholder somewhere
 
+            elif rec.filter_name == "blend":
+                # Only mode 0 (blendingmode's low nibble of slot 1 -- FORMAT-NOTES.md,
+                # "blendingmode is the low four bits of blend slot 1", corpus-wide
+                # falsified range test) is implemented, and even that rests on one
+                # UNVERIFIED assumption: which edge is laid UNDER the other. The paired
+                # source names the two connections "destination" and "source" (a real
+                # specimen's compFilter, LGMLtools__multi_blender) -- Substance's own
+                # terms for a standard alpha-over compositing pair -- but nothing here
+                # confirms which of edges[0]/edges[1] is which at the bytecode level, so
+                # this takes the conventional order (destination = edges[0], source =
+                # edges[1], source laid over destination) without independent proof.
+                # Wrong here means a plausible-looking but swapped image, not a crash.
+                mode = rec.params.get("blendingmode") if rec.params else None
+                if mode != 0:
+                    raise Unsupported("blend mode %r not implemented (only mode 0)" % mode)
+                if len(rec.edges) < 2:
+                    raise Unsupported("blend has fewer than 2 edges")
+                for edge_rec in rec.edges:
+                    if edge_rec not in outputs:
+                        raise Unsupported("edge -> record %s has no output yet" % edge_rec)
+                tainted = any(e in synthetic for e in rec.edges)
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+
+                dst = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos)
+                src = sbsruntime.image_sampler(outputs[rec.edges[1]])(pos)
+                c = max(dst.shape[-1], src.shape[-1])
+                if dst.shape[-1] != c or src.shape[-1] != c:
+                    raise Unsupported("blend inputs disagree on channel count (%d vs %d)"
+                                      % (dst.shape[-1], src.shape[-1]))
+
+                par = rec.parameter
+                if par and par[0] == "float":
+                    opacity = np.full((N, 1), par[1], dtype=np.float32)
+                elif par and par[0] == "program":
+                    for slot_i, edge_rec in enumerate(rec.edges):
+                        sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(outputs[edge_rec])
+                    opacity = to_image(
+                        eval_program(asm, par[1], default_inputs(asm, N), {}, N,
+                                    pos=pos, W=W, H=H),
+                        N, H, W).reshape(N, -1)[:, :1]
+                else:
+                    raise Unsupported("blend parameter kind %r" % (par,))
+
+                if len(rec.edges) > 2:
+                    if rec.edges[2] not in outputs:
+                        raise Unsupported("mask edge -> record %s has no output yet"
+                                          % rec.edges[2])
+                    tainted = tainted or rec.edges[2] in synthetic
+                    mask = sbsruntime.image_sampler(outputs[rec.edges[2]])(pos)
+                    opacity = opacity * mask[:, :1]
+
+                result = dst * (1 - opacity) + src * opacity
+                outputs[i] = to_image(result, N, H, W)
+                if tainted:
+                    synthetic.add(i)
+
             elif rec.filter_name == "uniform":
                 # Not implemented: `.programs` for a `uniform` record can be JUST its
                 # size expression (Record.parameter == ('program', p)), with no separate
