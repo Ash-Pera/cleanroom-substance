@@ -17564,6 +17564,55 @@ paired with the wrong float" correction warned about. Read correctly, the file's
 0.28, 0.13, 0.47, ...), so the cached `0.5` is not a shared default landing widely - it
 is something else, still unidentified, and left that way rather than guessed twice.
 
+### A second role: hoisting inside a record that unrolled instead of looping
+
+Every reader-count figure so far (`ChewingGumSubstance001` at 255, `hblend`'s 1:1 pairs) was
+one `cache_read` instruction per consuming record - counting instructions and counting
+records gave the same number, so the distinction never had to be made. `SBRustyTreadPlate`
+breaks that: a single `pixelprocessor` record, 11,478 instructions, reads cache index 9
+eighty times and index 10 eighty times **within itself**. Checked against every other large
+`(file, index)` entry surveyed - `RoofingTilesSubstance003`, `WoodSidingSubstance002`,
+`NetSubstance001`, `AB_ScrewGeneratorPlus`, `sRGB_colorchart`'s own cache use - all of them
+are exactly 1:1, instructions to distinct records. Corpus-wide, at a threshold of 5+ reads of
+one index inside one program: **this record is the only one**, at two indices.
+
+What it is doing explains why. The record's instruction mix is 1,368 `select`, 801 `gt`, 162
+`lteq` against 161 `cache_read` and 161 `samplelum` - the signature of a loop **fully
+unrolled** into straight-line code rather than expressed with `while` (`0x0B`, which this
+record does not use - no cache writer anywhere in the corpus does). Eighty repetitions of
+whatever per-tread-element logic this is, each needing the same two setup values, so each
+unrolled copy re-issues the same `cache_read` rather than the compiler hoisting the read out
+of the textual repetition - the *computation* is still shared (via the cache), only the
+one-line fetch of it is not.
+
+The three cache entries this record depends on, read start to finish:
+
+```
+#9   pixelprocessor record 3235   samplecol((0,0)) -> max(R,G)              -> cache #9
+#10  pixelprocessor record 3236   samplecol((0,0)) -> 1 - max(B,A)          -> cache #10
+#11  pixelprocessor record 3237   normalize(vec3(centred_xy, height))       -> cache #11
+```
+
+`#9` and `#10` are `hblend`'s exact idiom - `max(R,G)` and `1 - max(B,A)` of a fixed
+control pixel at (0,0) - confirming that technique is not specific to one tutorial file.
+`#11` is new: a **normalized shading normal**, not a scalar. It floors a fixed fractional
+position `(0.551, 0.41)` against `$size` to a texel-centre, builds `(dx, dy, height)` where
+`height = max(1 - 2·|offset|, 0.01)` - a cone/pyramid profile peaking at the centre - and
+normalizes the whole vector. Read once at the top of the unrolled record (`%4`), not per
+repetition: whatever normal-perturbation this rust/tread-wear pattern applies is the same
+shape at every instance, only its position on the canvas varies, so this is the one thing
+in the three that is a genuine loop-invariant hoist rather than a repeated fetch.
+
+The record's last instruction is `dot(result, (1/3, 1/3, 1/3, 0))` - a plain RGB average,
+turning whatever the eighty unrolled elements composited into a single greyscale channel.
+
+So the cache mechanism has two roles, not one: the dominant one, cross-record common-
+subexpression elimination (every case surveyed before this one), and this rarer second
+one, sharing setup work across repetitions of a loop the compiler chose to unroll instead
+of expressing with `while`. Both spend the same primitive - compute once in a
+`pixelprocessor`, fetch by index - on the same underlying problem: something is needed in
+more than one place, so it is computed in exactly one.
+
 ### What is still open
 
 12.6% of writes (134 of 1,063) are never read in the same file; in the one instance checked
