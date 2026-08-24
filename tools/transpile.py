@@ -332,6 +332,25 @@ def transpile(data, start, end, backend="python", name="program", result=None):
         if (op & 0x3F) == 0x0B:
             if len(toks) < 3:
                 raise Unsupported("opcode %04X at %d: while wants 3 operands" % (op, addr))
+            # Opcode 0x0B has two encodings: a 6-operand form (406 in the corpus, all
+            # well-ordered) and a 5-operand form (515). In the 5-operand form operand 2 is
+            # k-1 and operand 4 is 0, in 515 of 515.
+            #
+            # 164 of those carry 0xFFFF in operand 1 -- the absent-operand sentinel this
+            # format uses everywhere else -- so their CONDITION is absent, and operands 0
+            # and 2 are ordered normally around it. They were reported as "out of order",
+            # which named the symptom and hid the cause.
+            #
+            # What bounds a condition-less loop is not established: operand 0 points at a
+            # sequence node (0x0C) in 164 of 164, operand 3 is 3 in 158 of 164 but also
+            # appears with the condition present so it is not cleanly a trip count, and
+            # the body carries a cross-iteration dependency in 100% of loops either way,
+            # which is the base rate and so discriminates nothing. Emitting a loop with no
+            # break would be an unbounded loop, and emitting a single pass would assume the
+            # answer, so these stay unsupported until the bound is found.
+            if len(toks) >= 2 and toks[1] == 0xFFFF:
+                raise Unsupported("opcode %04X at %d: while condition absent (0xFFFF); "
+                                  "what bounds the loop is not known" % (op, addr))
             if not (toks[0] < toks[1] < toks[2] < k):
                 raise Unsupported("opcode %04X at %d: while operands out of order" % (op, addr))
             loops[toks[0] + 1] = (k, toks[0], toks[1], toks[2])

@@ -23776,3 +23776,45 @@ one withdrawn and replaced by the 435-file root list. So the consequence test wa
 before the corpus correction and has not held since. Two things follow: the grayscale claim
 is unverified, and it is worth sweeping the rest of this file for other numbers in the 3,000s
 that were never re-run.
+
+## The transpiler is not at 100%, and opcode 0x0B has a second encoding
+
+Re-running the transpiler sweep on the 435-file corpus:
+
+    programs    1,294,752
+    transpiled  1,294,642    99.9915%
+    failures          110    all of them opcode 0x0B
+
+The number recorded here was `1,206,800 / 1,206,800`, 100%. That denominator is 654 short of
+the current program count and the claim does not hold. Like the grayscale one above, it dates
+from before the corpus was corrected, and 100% is exactly the kind of figure that stops being
+re-run.
+
+### Two encodings
+
+    operand count 6    406 instructions    all well-ordered, all transpiled
+    operand count 5    515 instructions    351 transpiled, 164 rejected
+
+The 5-operand form is regular: operand 2 == k-1 and operand 4 == 0, in 515 of 515.
+
+The 164 rejects are exactly the instructions carrying **0xFFFF in operand 1** - the
+absent-operand sentinel documented elsewhere in this file. Their condition is absent;
+operands 0 and 2 are ordered normally around it. The guard reported them as "operands out of
+order", which named the symptom and hid the cause, and 110 programs were being written off on
+a misdiagnosis.
+
+### What bounds a condition-less loop is still unknown
+
+Three things measured, none sufficient:
+
+    operand 0 points at a sequence node (0x0C)     164 of 164
+    operand 3 == 3                                 158 of 164   but also 60 of the 351
+                                                                condition-present loops, so
+                                                                not cleanly a trip count
+    body carries a cross-iteration dependency      100% absent, 100% present -- the base
+                                                                rate, so it discriminates
+                                                                nothing
+
+Emitting a loop with no break makes an unbounded loop; emitting a single pass assumes the
+answer. Both are guesses, so the diagnostic now says what is actually wrong and these 110
+stay unsupported. The honest count is 99.9915%.
