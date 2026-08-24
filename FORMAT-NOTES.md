@@ -24653,3 +24653,47 @@ are noise, memorising 13 and 281 meaningless keys. `warp` alone is
 Field catalogues exist for only six filters. For the rest the base arity is measured rather
 than derived, and their word1 fields are still unnamed - `shuffle`'s 38 values and
 `transformation`'s bits beyond 6 and 25 are the largest unread areas remaining.
+
+## shuffle: slot 1 is sometimes an edge, and the table keyed on it
+
+`shuffle` had the weakest base arity of any filter - a per-filter constant held for only 77% -
+and 38 uncatalogued word1 values. Reading its keys, the shape is unmistakable:
+
+    w1 0x4000000, 0x6000100, 0x2000100 ...   edges [2, 3]   params [4]
+    w1 0x20, 0x40, 0x60, 0x180, 0x3e0 ...    edges [1]      params [2]
+    w1 0x0                                   edges []       params [2]
+
+The second group puts an edge in **slot 1** - which is where word1 lives. Those "word1 values"
+are not bitfields at all. `0x20`, `0x40`, `0x180` are record indices, and the table memorised
+38 of them as if they were distinct configurations.
+
+Slot 1 is self-discriminating, exactly as `bitmap`'s is (where what decides it is whether the
+slot can be a file offset):
+
+    the table calls slot 1 an edge, and it IS a backward record index   883 of 883
+    the table calls slot 1 an edge, and it is not                         0
+
+### 175 shuffles with no input, and shuffles need an input
+
+The table gives 175 `shuffle` records zero image inputs, which cannot be right for a channel
+shuffle. They resolve in two groups:
+
+    143   slot 1 holds a valid backward record index - the one-input form the table missed
+     32   backward indices at slots 2 AND 3 - the two-input form, also missed
+
+The control makes the first group safe: slots the table calls PARAMETERS pass the same
+backward-index test only 1.46% of the time, so 81.7% is fifty-six times the false-positive
+rate, not coincidence.
+
+### The rule
+
+    shuffle inputs = slot 1, when slot 1 holds a valid backward record index
+                     otherwise slots 2 and 3
+
+    finds an input for   4,605 of 4,605 records   100.00%
+    the table does for   4,430 of 4,605            96.20%
+    shuffle records left with no input                 0
+
+This is the fourth structural defect in `layouts.json`, and a new kind: `gradient` and `warp`
+key on word1 bits that mean nothing, `fxmaps` keys on a field cut in half, `levels` has 2,843
+wrong entries - and `shuffle` keys on a slot that is not a bitfield at all, but an edge.
