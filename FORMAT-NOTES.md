@@ -16868,3 +16868,90 @@ So the backward-reference rule - which 921,654 corpus edges established and whic
 overturned a 12-of-13 paired-file result - holds at 99.9988% and has a real, reproducible
 exception. The audit now prints `resolved 100.00%`, and that is a rounded figure, not a
 zero.
+
+## Resolution agreement was rejecting every resizing filter's input edge
+
+Chasing the next residue - "main parameter resolved 95.5%" - led somewhere else entirely,
+and to the largest single correction in this notebook.
+
+### The clue was a key with an empty layout
+
+The unresolved parameters clustered on a few keys whose layout table entry was empty. Two
+of them turned out to be correct: `blend (1,24,0)` is 24,143 records of exactly four
+words - `[tag][flags][edge][edge]` - a blend with two inputs and no parameters, so "no
+parameter" is the right answer rather than a failure.
+
+But `transformation (2,792,0)` is 16,484 three-word records with **no edges and no
+parameters**, which cannot be right: a transformation with no input computes nothing.
+
+Its slot 2 is a valid backward record index in **16,471 of 16,484 - 99.92%**. It is
+plainly the input edge. The role census had scored it 17%.
+
+### Why the test was blind to it
+
+The edge test requires the target to share the record's resolution. That rule is the
+discriminator this notebook adopted after the shared-reference error, and it was right to
+adopt - it is what separates real edges from small integers. But it assumes an edge
+**preserves** resolution, and that is false for exactly the filters that resize.
+
+Of all backward references, the share agreeing on resolution:
+
+    warp             99.1%        transformation   39.5%
+    shuffle          95.5%        pixelprocessor   54.5%
+    blur             87.3%        fxmaps           52.7%
+    directionalwarp  86.0%        fid19            52.6%
+
+The filters at the bottom are the resizing ones. The test was strongest precisely where
+it was wrong.
+
+### Reachability from the output table settles it
+
+"Is a backward index" is the too-permissive predicate that has caught this project seven
+times, so a distributional argument is not enough. The output table now makes an
+independent test possible for the first time: **every record should be reachable by
+walking inputs backward from an output**, since a record nothing reaches computes an image
+nothing uses, and the cooker eliminates dead code. Reachability does not depend on how the
+edges were found.
+
+    edge map                          records reachable from outputs
+    before                                 34.03%   (per-file median 50.0%)
+    crediting transformation slot 2        78.15%   (median 88.9%)
+    after the full rule below              94.12%   (median 97.6%)
+
+Files below 50% reachable fell from 125 to 5. A spurious edge does not do this; it adds
+links that connect nothing in particular.
+
+### The rule, with a calibrated guard
+
+A slot is an edge if it is almost always a backward reference **and** its targets are
+diverse - a packed field or a count repeats a handful of values, while an edge names a
+different record nearly every time.
+
+The threshold is measured, not guessed. Over slots that are almost always backward
+references:
+
+    slot-1 packed parameter words   max diversity 0.025
+    slots already known to be edges 5th percentile 0.109
+
+There is a clean gap. **0.05 sits in it, keeping 96.1% of known edges and admitting 0% of
+packed parameter words.** The first attempt used 0.25, which admitted no packed words
+either but discarded 12.7% of real edges, and left 73,670 transformation records still
+edgeless.
+
+    edge readings   1,235,193 -> 1,557,521   (+322,328, +26%)
+    unresolved              15 -> 36         (0.0023%)
+    86 layout keys gained an edge
+
+Unresolved rose from 15 to 36 because the new edges bring their own small residue; that is
+the honest cost and it is still under three thousandths of one percent.
+
+### What this says about the discriminator
+
+Resolution agreement is not wrong - it remains the reason the shared-reference error was
+caught, and the reason 87.17% beat 79.97% when the backward-index convention was settled.
+It is **conditionally** valid: sound for the filters that preserve resolution, and
+systematically blind for the ones that do not.
+
+The notes already contained the list of which filters resize, in a table about output size
+inheritance, and the same fact was sitting in a different section being used for a
+different purpose. Nothing new had to be discovered to see this - only connected.

@@ -35,6 +35,7 @@ MIN = 20
 
 def derive(paths):
     role = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
+    targets = collections.defaultdict(lambda: collections.defaultdict(set))
     seen = collections.Counter()
     for p in paths:
         try:
@@ -61,6 +62,16 @@ def derive(paths):
                     role[k][sl]['P'] += 1
                 elif 0 < v < r.index and v in tags and (r.tag >> 8) == (tags[v] >> 8):
                     role[k][sl]['E'] += 1
+                    targets[k][sl].add(v)
+                elif 0 < v < r.index and v in tags:
+                    # A backward reference whose target has a DIFFERENT resolution.
+                    # Resolution agreement is what separates real edges from small
+                    # integers, and it was right to adopt -- but it assumes an edge
+                    # preserves resolution, which is false for the filters that resize.
+                    # transformation agrees on resolution in only 39.5% of its backward
+                    # references, so this test rejected its input edge in 16,484 records.
+                    role[k][sl]['B'] += 1
+                    targets[k][sl].add(v)
                 elif v == 0:
                     role[k][sl]['Z'] += 1
                 else:
@@ -80,6 +91,25 @@ def derive(paths):
                 continue                  # not present often enough to be part of the layout
             if c['E'] / t > 0.9:
                 edges.append(sl)
+            elif (c['E'] + c['B']) / t > 0.9 and len(targets[k][sl]) > 0.05 * t:
+                # A resizing filter's edge: almost always a backward reference, but not
+                # to a same-resolution record. Value diversity is what keeps this from
+                # being the small-integer trap that has caught this project seven times --
+                # a packed field or a count repeats a handful of values, an edge names a
+                # different record nearly every time. The 0.05 threshold is calibrated,
+                # not guessed: over slots that are almost always backward references, the
+                # slot-1 packed parameter words reach at most 0.025 diversity while slots
+                # the table already calls edges have a 5th percentile of 0.109. 0.05 sits
+                # in that gap, keeping 96.1% of known edges and admitting 0% of packed
+                # words. Confirmed independently by reachability from the output table.
+                edges.append(sl)
+            elif c['P'] / t > 0.5:
+                # A slot that is a program in the majority of a key's records is a
+                # program slot even when the rest of them hold an edge instead. Requiring
+                # one bucket to reach 90% classified such a slot as neither and emitted an
+                # empty layout: pixelprocessor (20,137,0) is 87% program and 13% edge
+                # across slots 2, 3 and 4, and lost all three.
+                progs.append(sl)
             elif (c['P'] + c['F'] + c['Z']) / t > 0.9 and (c['P'] + c['F']) / t > 0.5:
                 # The parameter union: a program, a float, or zero. Zero is a real
                 # parameter value - it is the default of `levelinlow`, of every offset
