@@ -30127,3 +30127,55 @@ The absent transcendentals are the same story but weaker: `ln`, `exp2`, `sqrt`, 
 is that `exp`, `log2` and `pow` happen not to be reached by any parameter expression in
 this corpus, on 61 to 4,608 filter-side uses. That is an absence worth recording but not
 one worth explaining.
+
+## Attacking the node schema: the tag is a presence mask, and the width law reaches its third scale
+
+The plan was hypothesis-first: if this format has one habit, it is presence masks, so
+before reverse-engineering nodes one by one, test whether a node TAG is itself a mask
+whose bits are field widths. It is.
+
+**Harvest.** A node cell is what fills the gaps between an fxmaps record's header and
+its inline programs (cells 4-aligned; programs are u16 streams, so up to two padding
+bytes follow each — the first walk read tags two bytes out of phase and harvested 640
+phantom tags before that was caught). 201,747 cells, 383 distinct tags, and a cell's
+size takes its tag's modal value in 92.0% — the residue being multi-node gaps, not
+counter-evidence.
+
+**The tag's low byte is a KIND, and within a kind, size is additive over tag bits with
+every cost a field width:**
+
+    kind 0x48   102 tags   60,652 cells   exact 100.00%   const 8
+                bit 16 = +16   bits 17, 19, 20, 22, 24 = +4   bit 23 = +8
+    kind 0x58    29 tags    9,367 cells   exact 100.00%   const 12
+                bits 17, 20, 22, 26 = +4   bits 21, 25 = +8
+
+One hundred point zero zero, both kinds with enough tag variety to test, and every
+coefficient is 4, 8 or 16 bytes — one, two or four words. A +16 bit is a Float4-sized
+field. The flat 32-bit fit and a position-nibble fit both failed first (68-71%); the
+failure was pooling KINDS, and the kind byte is what separates them. Single-tag kinds
+(0x89, 0x8b, 0x18, 0xcb...) have nothing to fit and nothing ambiguous: one tag, one
+size, tens of thousands of cells.
+
+**Pointer layout comes free.** Probing each 4-byte offset of a cell for `value + 52 is
+a valid program` gives per-tag maps whose rates are 100% or ~0%, nothing between:
+
+    0x00000089    size 16   pointer  +4
+    0x0000018b    size 12   pointer  +4
+    0x00420008    size 16   pointer  +12
+    0x14520248    size 28   pointers +12 +16 +20 +24
+    0x13520248    size 36   pointers +12 +16 +20 +32
+    0x15400348    size 24   pointers +8 +12 +16 +20
+
+So a node is [tag][fields by mask], some fields being program pointers at the +52 skew,
+and FX_TABLE — hand-collected tag-to-offset pairs — is a memo of this rule, exactly as
+layouts.json was a memo of the record walk. **The width law now holds at three scales:
+record headers (cls + w1), baked value widths (the colour multiplier), and tree nodes.**
+One design, recursively applied, which is what a single serializer would produce.
+
+Open, stated: the chain tag 0x20008 has genuinely variable payload; 207 unclean tags
+are multi-node gaps the walk cannot yet split (splitting them needs exactly the size
+rule just derived, so the next pass can); kinds 0x0b/0x1b appear at low counts in
+gap positions and may be misparses; and no field has a NAME yet — the paired .sbs
+sources are the instrument for that, as they were for emboss.
+
+`tools/node_census.py` reproduces all of it.
