@@ -303,6 +303,78 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 if tainted:
                     synthetic.add(i)
 
+            elif rec.filter_name == "transformation":
+                # Record.matrix is baked in only 644 of 2,635 transformation records in
+                # a real specimen (24%); the rest compute it from a program. Reading the
+                # largest of those programs (record 3182, 97 instructions) showed it is
+                # not a 6-float matrix+offset computation at all -- it initializes dozens
+                # of slots with rand() calls and values like scale ranges and iteration
+                # counts, the shape of a randomized tile/scatter generator's parameter
+                # block, not a plain 2D transform. That is out of scope here: this
+                # implements only the baked-matrix case.
+                #
+                # Also tried and reverted: trusting a `translation`-adjacent program for
+                # the offset whenever its result happened to come out as two components.
+                # On a real specimen (record 167, matrix (1,0,0,-1), a pure Y-flip) that
+                # produced a visible, wrong X-shift -- the program it picked turned out to
+                # compute (0.2199, min(0.3905, 0.3905 * $size.x/$size.y)), a function of
+                # the record's own aspect ratio, not a translation at all. "Has two
+                # components" is not evidence of being an offset; Record.translation's own
+                # docstring gives the real discriminator (bit 26 of slot 1 means the offset
+                # is a program) but not which program computes it when several are present,
+                # which is not solved here. So: baked translation, or none at all.
+                #
+                # Which direction the matrix applies: the conventional raster
+                # backward-mapping convention -- for each OUTPUT position, transform it
+                # INTO an input sampling position, pivoted at the texture center (0.5,
+                # 0.5) so a pure scale or flip does not shift the image off-canvas --
+                # matching how virtually every UV-space 2D transform (CSS, SVG, shader
+                # texture transforms) is conventionally applied. matrix (m0, m1, m2, m3)
+                # is read as row-major [[m0, m1], [m2, m3]].
+                #
+                # Not verified against a ground-truth reference render -- none is
+                # correlated to a specific record here -- but checked for INTERNAL
+                # consistency on real, clean (no offset, no program) specimens with a
+                # controlled, asymmetric test pattern: record 5115's matrix (0,-1,1,0),
+                # a pure 90-degree rotation, turns a top stripe into a left stripe and a
+                # left stripe into a bottom stripe with no drift or artifact. Record
+                # 956's matrix (0.125,...) against a pattern whose CENTER is plain
+                # background gives solid black -- a tight zoom on that center, as scale
+                # less than 1 should be. Record 950's matrix (8,...), the reciprocal
+                # scale, gives multiple distinct values instead of one solid color --
+                # consistent with the pattern tiling/repeating, as scale greater than 1
+                # should. Both directions behave as the convention predicts; neither
+                # proves the format's own engine does not do the opposite.
+                m = rec.matrix
+                if m is None:
+                    raise Unsupported("matrix is not baked (computed by a program of "
+                                      "unidentified shape)")
+                if len(rec.edges) < 1 or rec.edges[0] not in outputs:
+                    raise Unsupported("edge has no output yet")
+                tainted = rec.edges[0] in synthetic
+
+                offset = rec.translation
+                if offset is None:
+                    if rec.programs:
+                        raise Unsupported("translation is a program, and which of "
+                                          "%d programs computes it is not identified"
+                                          % len(rec.programs))
+                    offset = (0.0, 0.0)
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                pos = pos_grid(W, H)
+                c = pos - 0.5
+                in_x = m[0] * c[:, 0] + m[1] * c[:, 1] + 0.5 + offset[0]
+                in_y = m[2] * c[:, 0] + m[3] * c[:, 1] + 0.5 + offset[1]
+                in_pos = np.stack([in_x, in_y], axis=-1)
+
+                result = sbsruntime.image_sampler(outputs[rec.edges[0]])(in_pos)
+                outputs[i] = to_image(result, W * H, H, W)
+                if tainted:
+                    synthetic.add(i)
+
             elif rec.filter_name == "uniform":
                 # Not implemented: `.programs` for a `uniform` record can be JUST its
                 # size expression (Record.parameter == ('program', p)), with no separate
