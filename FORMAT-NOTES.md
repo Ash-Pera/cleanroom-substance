@@ -27994,3 +27994,54 @@ this codebase does not propagate; it accumulates in whichever file happened to l
 The first test is the general one. The question is not "is the corpus correct" — it was
 correct all four times, sitting on disk. The question is whether a tool finds the same
 corpus from anywhere, and that is cheap to assert and was never asserted.
+
+### `uniform` bits 8-9 are a parameter-kind field, not a channel count
+
+The lead was that they carry the constant's channel count. They do not, and what they carry
+is a shape this document has already met twice.
+
+Reading one record of each class word settles it. `cls 0x108`, a grey uniform, is two words:
+the tag and `3F800000`. `cls 0x109`, a colour uniform, is eight: tag, a pointer, then
+`0.498039, 0.498039, 0.498039, 1.0`, then a program. `cls 0x8` is **one word** - the tag
+alone, nothing else. `cls 0x208` and `0x218` carry bytecode where the floats would be.
+
+So the field is how the constant is *stored*, over 16,771 records:
+
+    (cls>>8)&3   records   named program   baked constant   nothing stored
+        0          7,054         3.5%            0.0%           81.8%
+        1          9,061         1.6%           98.4%            0.0%
+        2            656        67.8%            0.0%           30.6%
+
+    0 = no constant stored, take the default
+    1 = a baked constant follows
+    2 = computed by a program
+
+Bit 8 is the strong one at 98.4% and **0.0% "nothing stored"**. Bit 9 is 67.8%; its residue
+is probably the inline-at-slot form - a program starting AT the slot rather than pointed at
+by it - but that cannot be shown here, because a detector for inline programs fires on 58.2%
+of *field 0* records too. Slots past the header lie inside the record's bytecode, where
+positions that decode are everywhere, so the check has no power and its result is not used.
+
+### The channel count is in the tag, and it is exact
+
+Where the baked constant starts immediately after the header, so no search is needed:
+
+    grey uniforms      exactly 1 float    3,093 of 3,093
+    colour uniforms    exactly 4 floats     532 of 532
+
+No exceptions either way. The width comes from the tag's colour bit, which the reader
+already decodes - so bits 8-9 never needed to carry it, and a forward compiler gets the
+count free.
+
+### What this is an instance of
+
+The three-way *absent / baked / program* distinction is the same tagged union the record's
+parameter slot turned out to be, and the same one `directionalwarp` and `blend` encode as
+bit PAIRS in slot 1. `uniform` puts it in the class word instead. That is three places the
+format expresses one idea, which is worth knowing for the other unexplained bits: **bits 4,
+5, 7 and 9 of other filters are more likely to be parameter-kind flags than semantic ones**,
+and the property to test them against is how each parameter is stored, not what it means.
+
+That reframes the residue. It does not close it - the scan that would settle it needs each
+filter's parameter slots identified first, and for eight of the twelve commonest filters the
+model cannot name them, which is the same gap the forward-compiler audit ranked first.
