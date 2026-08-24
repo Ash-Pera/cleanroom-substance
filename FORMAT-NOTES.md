@@ -15946,3 +15946,49 @@ in materials called `Stop_Sign` and `Yield`.
 
 almost all of it the two unexplained leading regions in `GravelSubstance002` (a JPEG that no
 short-form descriptor names) and `SnowSubstance002`.
+
+## The version-2 prologue is programs too, and the resource residue is characterised
+
+### The prologue
+
+Layout B - version 2 only, 30 files - emits a prologue before the first record. It was measured
+earlier at 20.9% covered, using programs reachable from record slots, and recorded as a known
+gap of 79%.
+
+Measuring it the way the FX-Map records were measured, accepting a program wherever a 4-aligned
+word in the file points at one:
+
+    prologue bytes                    11,440
+    covered by referenced programs     9,749    85.2%
+    unexplained                        1,691    14.8%
+
+**The prologue is bytecode.** It is the same finding as the FX-Map "blob" - not an undecoded
+region, but programs the walker could not reach - and the same correction applies: the earlier
+figure measured the walker, not the format. The residue is 1,691 bytes across 30 files, about
+fifty-six bytes each, which is the size of the node headers and pointers around them.
+
+### The resource residue, and a test that cannot be made to work
+
+Two files hold something before their first described image: `GravelSubstance002` (459,732
+bytes) and `SnowSubstance002` (19,108). Together with slack elsewhere that is the 0.22% the
+resource segment does not account for.
+
+What is there:
+
+    GravelSubstance002   a length-prefixed JPEG of 140,553 bytes at the very start,
+                         then 319,175 bytes that are not a further JPEG
+    SnowSubstance002     19,108 bytes beginning 03 04 04 04, not JPEG
+
+Neither is described by a short-form descriptor, and the obvious candidate mechanism does not
+hold: **no long-form bitmap record in the corpus points into a resource segment ahead of the
+described images** - 0 of 450 graph-input records.
+
+Asking instead whether anything at all references these regions cannot be made to answer. The
+regions sit at low file offsets, so any small u32 anywhere in the file "points" at them; the
+value table alone contributes tens of thousands of apparent references. This is the
+small-integer artifact that has defeated four separate analyses in this document, and at these
+offsets there is no version of the test that discriminates.
+
+**Recorded as: 0.22% of the resource segment is undescribed, in two specimens, one of which
+begins with an unreferenced JPEG. Whether anything names them is not determinable from this
+corpus by pointer analysis.**
