@@ -266,7 +266,7 @@ for _k, _v in LAYOUTS.items():
 # role - 0x1CB has 0x89's layout and 0x18B's return type.
 FX_NODES = {
     0x18B: (8,  (4,)),        # [header][program][next]          addnode,     -> i1
-    0x89:  (12, (4,)),        # [header][program][0][next]       conditional, -> b2
+    0x89:  (12, (4,)),        # [header][program][0][next]       markov2,     -> b2
     0x1AB: (12, (4, 8)),      # [header][program][program][next]              -> i1
     0x1CB: (12, (4,)),        # [header][program][0][next]                    -> i1
 }
@@ -301,9 +301,30 @@ FX_NODES = {
 # 0x0B is the largest unhandled type at 1,538 nodes and its best offset is k=4 at 31%
 # against a 2% control. That is a real signal and not a shape - a 31% rule would be
 # guessing for the other 69%.
+#
+# A CORRECTION to the probe that produced this table, which changed one of its rows.
+# "Is the target a node header" was tested as "low nibble 9 or B", and a PROGRAM's first
+# word has those bits often enough to fire it. Classifying each target as program-only /
+# node-only / both shows where that mattered:
+#
+#     0x1B  k=2   node only 92%   both  0%      unaffected
+#     0x1B  k=5   node only 94%   both  4%      unaffected
+#     0x0B  k=4   program only 53%  both 30%    the whole signal
+#
+# 0x0B's "31% successor at k=4" was 30 points of bytecode. Under the disjoint predicate
+# it has NO successor at any offset 1..8: it is a LEAF, and the walk ending there is
+# correct rather than a gap. What it does carry is programs, and those were being lost.
+#
+# 0x0B's program slots are not fixed and no header field predicts them (best field 68%
+# against a 46.9% control), so they are SCANNED rather than tabulated - `progs=None`
+# below. That is a permissive read, and it is bounded two ways: offsets 1-3 never hold
+# one, and the claimed starts are pairwise DISJOINT program spans in 1,589 of 1,589
+# nodes, so they are distinct programs rather than one program seen from several
+# offsets, which is what a run like (5,6,7,8,9,10) would otherwise be.
 FX_NODES2 = {
     0x1B: ((8, 20), (16,)),   # two children, at words 2 and 5; program at word 4
     0x99: ((16,),   (8,)),    # one successor at word 4; program at word 2
+    0x0B: ((),      None),    # a leaf; programs scanned, see above
 }
 
 
@@ -1463,16 +1484,36 @@ class Record:
                 if shape2 is None:
                     return
                 nxts, prog_slots = shape2
-                for sl in prog_slots:
-                    if q + sl + 4 > e:
-                        return
-                    p = struct.unpack_from('<I', d, q + sl)[0] + 52
-                    yield q, h, (p if (o < p < e and self.asm.program_span(p, e)) else None)
+                if prog_slots is None:
+                    # Scanned, not tabulated. Only for a type whose slots are not fixed
+                    # and whose claimed starts are disjoint spans -- see FX_NODES2.
+                    for k in range(4, 14):
+                        if q + 4 * k + 4 > e:
+                            break
+                        pv = struct.unpack_from('<I', d, q + 4 * k)[0] + 52
+                        if (o < pv < e and self.asm.program_span(pv, e)
+                                and (struct.unpack_from('<I', d, pv)[0] & 0xF) not in (9, 0xB)):
+                            yield q, h, pv
+                    else:
+                        pass
+                    if not nxts:
+                        yield q, h, None
+                else:
+                    for sl in prog_slots:
+                        if q + sl + 4 > e:
+                            return
+                        p = struct.unpack_from('<I', d, q + sl)[0] + 52
+                        yield q, h, (p if (o < p < e and self.asm.program_span(p, e)) else None)
                 targets = []
                 for n_off in nxts:
                     if q + n_off + 4 > e:
                         return
                     targets.append(struct.unpack_from('<I', d, q + n_off)[0] + 52)
+                if not targets:
+                    if not pending:
+                        return
+                    q = pending.pop()
+                    continue
                 pending.extend(targets[1:])
                 q = targets[0]
                 continue

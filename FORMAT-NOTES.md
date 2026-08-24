@@ -29394,3 +29394,80 @@ is the author's own — but it is a permissive-licence assumption that does not 
 recorded here rather than quietly acted on. It is load-bearing in one place: the blendingmode
 argument earlier in this document was re-derived on `DLG-Tools__Hammered_Copper_01` after its
 original specimen was withdrawn.
+
+## FX-Map, deeper: 0x0B is a leaf, my successor test was contaminated, and 0x89 is `markov2`
+
+Three results, one of which retracts a number from the section above.
+
+### The successor test was firing on bytecode
+
+`0x1B` and `0x99` were probed with "does `word + 52` land on a header whose low nibble is
+9 or B". That predicate has a hole: a PROGRAM's first word has those bits often enough to
+pass. Classifying each target as program-only / node-only / **both** shows exactly where
+it mattered:
+
+    0x1B  k=2    node only 92%    both  0%      unaffected
+    0x1B  k=5    node only 94%    both  4%      unaffected
+    0x0B  k=4    program only 53% both 30%      the whole signal
+
+The two types I implemented are clean — their successors are node headers that are *not*
+decodable programs, so the contaminated half of the predicate never carried them. But
+`0x0B`'s "31% successor at k=4, against a 2% control" was **30 points of bytecode**. Under
+the disjoint predicate `0x0B` has no successor at any offset 1..8.
+
+I recorded that 31% as "a real signal and not a shape". It was not a real signal. The
+right description is the one below.
+
+### 0x0B is a leaf, and it was costing programs
+
+`0x0B` is the largest unhandled type — 1,641 nodes — and it does not continue the chain at
+all. The walk ending there was already correct. What was being lost is its programs, and
+it carries several:
+
+    programs per node        1: 250   2: 677   3: 123   4: 326   5: 111   6: 102
+    claimed starts, spans    all disjoint    1,589 of 1,589
+
+That last row is the check that matters. A run of consecutive offsets that all decode is
+what dense bytecode looks like from outside, and offset sets like `(5,6,7,8,9,10)` are
+exactly the shape that should provoke suspicion. If they were one program seen from six
+positions their spans would overlap. They never do — 1,589 of 1,589 nodes have pairwise
+disjoint spans, so these are distinct programs.
+
+Its slots are not fixed and no header field predicts them (best field 68.0% against a
+46.9% control), so `fx_tree` SCANS for them rather than tabulating, marked `progs=None`
+and bounded by the two facts above: offsets 1-3 never hold one, and the results are
+disjoint.
+
+    distinct nodes reached      60,996  ->  63,840   (+4.7%)
+    distinct programs reached   61,023  ->  66,324   (+8.7%)
+
+### `0x89` is `markov2`
+
+`markov2` was the only FX-Map node name declared in the permitted sources with no header
+mapped to it — `addnode` is `0x18B` and `paramset` compiles to no node at all.
+
+    distinct permitted sources declaring FX-Map nodes        8
+      declaring markov2                                      1    ie_pcloud
+      declaring FX nodes but NOT markov2                      7
+    low byte present in the markov2 source and in none of the 7:   0x89, uniquely
+
+One specimen with seven controls — the same evidential shape as `emboss`, and stated with
+the same caution. Two things corroborate it independently of the containment. `0x89`'s
+program returns a **boolean** in 11,197 of 11,197, alone among the node types, which is
+what a node that picks between branches needs and what none of the others produce. And a
+Markov step is a probabilistic choice, so a boolean-valued program is the shape its
+semantics require rather than a coincidence of typing.
+
+`FX_NODES` called `0x89` "conditional", which was a description of its return type. It now
+carries the name.
+
+### Still open
+
+    0x9B    90 nodes   successors at k=3 (69%) and k=8 (36%) -- partial, not implemented
+    0x09    59 nodes   successors at k=2 (78%), k=4 (93%), k=7 (73%), and NO programs
+    0xDB    23 nodes   nothing resolves
+    0x4B     8 nodes
+
+`0x09` is the interesting one: three successor offsets and no program at all, which is a
+pure branch. 59 nodes is too thin to implement on, and it is the only type so far that
+looks like it has more than two children.
