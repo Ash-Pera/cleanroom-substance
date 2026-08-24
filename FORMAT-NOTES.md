@@ -18789,3 +18789,60 @@ confirmation from a different direction, not a new parameter. Worth stating beca
 Split per filter, the largest baked groups are `directionalwarp` (130,284),
 `transformation` (111,268), `fxmaps` (71,833) and `fid11` (31,080); the largest program
 groups are `fxmaps` (66,177), `pixelprocessor` (57,125) and `blend` (18,905).
+
+## `directionalwarp`'s two baked parameters, named
+
+Scanning the 401,188 baked values with no known meaning, the largest group is
+`directionalwarp` at 130,284. Its block positions separate cleanly.
+
+### Position 2 is the warp angle, in turns
+
+The value distribution names itself:
+
+    -0.25 (18.6%)   0.25 (7.8%)   -0.5 (2.9%)   -0.166667   0.166667
+     0.083333       -0.125        0.033333      0.233333
+
+Those are quarter, half, sixth, twelfth and eighth turns - 90, 180, 60, 30 and 45 degrees.
+Three checks agree:
+
+    clean fraction of a turn      72.7%  (39,247 of 53,993)   other positions: 12%
+    within [-0.5, 0.5]            97.7%
+    negative                      54.5%   p1 -0.5, p99 0.75
+    containment: declared warpangle lands at position 2 in 62% of unambiguous values
+
+A rotation of -x is as meaningful as +x, so an angle is symmetric about zero and bounded by
+a turn. Position 2 is both; no other `directionalwarp` position is either.
+
+### Position 1 is the intensity
+
+One-sided and unbounded, which is what a displacement magnitude looks like:
+
+    within [-0.5, 0.5]            28.6%
+    negative                       8.0%   p1 -0.38, p99 128
+    containment: declared intensity lands at position 1 in 78% of unambiguous values
+
+Together these name about **116,000 readings** of the 401,188.
+
+### A reading I withdrew
+
+The same symmetry test flagged `transformation` positions 1 and 2 - 99.0% and 98.0% inside
+[-0.5, 0.5], 48% negative - which looks like two more angles. It is not.
+
+Those positions are slots 5 and 6, the **`matrix22` off-diagonals**, and they appear as
+"unnamed" only because `Record.matrix` declined to return for those records. An off-diagonal
+is `±sin` of a rotation, so it is symmetric about zero and bounded - the test cannot tell it
+from an angle, because it *is* one, already named.
+
+Checking whether the determinant test hides real matrices: all 120,763 declined records have
+determinant **exactly** zero, and of the 45,282 with no zero component the values are
+near-zero denormals that only print as `0.0`. But 29,883 have `m11` exactly zero and 27,177
+have a zero first row, which are structured degenerate matrices rather than noise. Whether
+those are legal flatten transforms the test should accept is **not settled** - the test was
+validated by keeping all 66 source matches, and adding a family back would need its own
+validation.
+
+### The lesson for the remaining scan
+
+A distribution test needs the near-zero values excluded before it means anything - a
+denormal sits inside any symmetric interval and is negative half the time. Here it happened
+not to change the numbers, because the values were genuine. It will not always.
