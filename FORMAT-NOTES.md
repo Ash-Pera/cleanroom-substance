@@ -17630,3 +17630,58 @@ yet found.
 So the fxmaps table is now: a run of 1 to 9 consecutive 8-byte entries; each entry's tag
 is a type code that reliably predicts whether its forward pointer reaches a float, another
 entry, or a third kind of thing; and that third kind - the majority - is still unidentified.
+
+## The FX-Map parameter table decodes
+
+The tag turned out to be a **shape code**: it fixes where a program sits inside the
+structure the entry's pointer addresses. Derived over the whole corpus, keeping only tags
+with 100+ entries in 10+ specimens and a >=98%-consistent offset - **all fifteen came out
+at 100.0%**:
+
+| program at | tags |
+|---|---|
+| +4 | `0x420008` (4,843 entries, 328 files), `0x100048`, `0x8000848`, `0x8000248`, `0x410008`, `0x4000148` |
+| +8 | `0x2000448`, `0x2000248`, `0x2000048` |
+| +12 | `0x1520248`, `0x22000D48` |
+| +16 | `0x12400448`, `0x14520248`, `0x12440248`, `0x2520448` |
+
+### What the programs are
+
+    const.f1 1     ; rand.f1 %0                                     965 entries
+    const.f1 0.25  ; rand.f1 %0 ; const.f1 6.28                   1,001
+    const.f1 6.28  ; rand.f1 %0 ; cos.f1 %1                         191
+    inputref.i1 uid=716196726                                       191
+
+`const.f1 1 ; rand.f1 %0` is the **same two-instruction program the version-2 prologue
+emits** to bind the random seed - the two structures were the same thing all along.
+
+And 6.28 is 2*pi. A complete entry from `LeakingSubstance004`:
+
+    === table entry 0x420008 at +76  program @+92
+      %0    0900  const.f1       0.25
+      %1    0532  rand.f1        %0
+      %2    0D00  const.f1       6.28
+      %3    0532  rand.f1        %2
+      %4    096E  cartesian.f2   %1, %3
+
+A random radius in [0, 0.25), a random angle in [0, 2*pi), then `cartesian(r, theta)`:
+**a uniformly scattered point in a disc.** That is precisely what an FX-Map computes to
+place its pattern instances, and it is the first FX-Map content in this notebook that
+reads as what it is rather than as a structure.
+
+### Where fxmaps stands now
+
+    node chain        18,526  (66.2%)
+    parameter table    8,027  (28.7%)   <- was "no readable content"
+    neither            1,425  (5.1%)
+
+**33.7% unreadable becomes 5.1%.** `Record.fx_table()` walks the table; `Record.fx_tree()`
+walks the chain; the two are told apart by whether slot 2's first word is a node header.
+
+Of the 26,526 table entries, 6,656 (25.1%) resolve a program. The rest carry tags outside
+the fifteen - a long tail of about 4,700 tags with a handful of entries each - and those
+yield `None` rather than a guessed offset.
+
+The earlier note that FX-Map internals were "blocked on instance-free specimens" was
+wrong about the obstacle. Nothing was needed but reading the structure that was already
+there, in records this project had been treating as empty.

@@ -136,6 +136,27 @@ PARAM_BITS = {
 PARAM_BIT_MASK = {15: 0x155, 1: 0x10}
 
 
+# FX-Map parameter table: the OTHER thing an fxmaps record's slot 2 can address.
+#
+# 9,111 records (34% of fxmaps) have a slot-2 target that is not a node header. They point
+# instead at a run of 1 to 9 consecutive 8-byte entries, each `[tag][pointer + 52]`. The
+# tag is a shape code: it fixes where a program sits inside the structure the pointer
+# addresses. Derived over the whole corpus, keeping only tags with 100+ entries in 10+
+# specimens and a >=98%-consistent offset - all 15 came out at 100.0%.
+#
+# The programs are unmistakably FX-Map content: `const.f1 6.28 ; rand.f1 ; cos.f1` is a
+# random angle, 6.28 being 2*pi, which is what a pattern generator computes per instance.
+# `const.f1 1 ; rand.f1` is the same two-instruction form the version-2 prologue emits.
+#
+# tag -> byte offset of the program within the pointed-at structure
+FX_TABLE = {
+    0x420008: 4, 0x100048: 4, 0x8000848: 4, 0x8000248: 4, 0x410008: 4, 0x4000148: 4,
+    0x2000448: 8, 0x2000248: 8, 0x2000048: 8,
+    0x1520248: 12, 0x22000D48: 12,
+    0x12400448: 16, 0x14520248: 16, 0x12440248: 16, 0x2520448: 16,
+}
+
+
 class Record:
     __slots__ = ('index', 'offset', 'end', 'tag', 'cls', 'asm', '_words', '_layout')
 
@@ -402,6 +423,39 @@ class Record:
             if asm.body_lo <= p < asm.body_hi and p not in out and asm.valid_program(p):
                 out.append(p)
         return out
+
+    def fx_table(self):
+        """For filter 4: yield (entry offset, tag, program offset or None) per entry.
+
+        The counterpart to `fx_tree`. A record's slot 2 addresses either a linked node
+        chain - walk it with `fx_tree` - or this: a run of consecutive 8-byte entries.
+        The two are told apart by whether the first word is a node header.
+
+        Stepping is by eight bytes. Following the entry's own pointer as though it were
+        the next entry walks out of the record 77.4% of the time, because that pointer is
+        the entry's payload, not its successor.
+
+        A tag not in FX_TABLE yields a program offset of None rather than a guess.
+        """
+        if self.filter_id != 4 or len(self.words) < 3:
+            return
+        d, o, e = self.asm.data, self.offset, self.end
+        q = self.words[2] + 52
+        if not (o <= q < e - 7) or struct.unpack_from('<I', d, q)[0] in FX_NODES:
+            return
+        while q + 8 <= e:
+            tag = struct.unpack_from('<I', d, q)[0]
+            if tag in FX_NODES:
+                break
+            t = struct.unpack_from('<I', d, q + 4)[0] + 52
+            if not (o <= t < e - 3):
+                break
+            off = FX_TABLE.get(tag)
+            prog = None
+            if off is not None and t + off + 4 <= e and self.asm.program_span(t + off, e):
+                prog = t + off
+            yield q - o, tag, prog
+            q += 8
 
     def fx_tree(self):
         """For filter 4: yield (offset, header, program offset or None) per tree node.

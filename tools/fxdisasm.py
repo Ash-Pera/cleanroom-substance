@@ -30,6 +30,13 @@ def main(path, idx):
     if r.filter_id != 4:
         print('  not an fxmaps record'); return
     n = 0
+    for off, tag, prog in r.fx_table():
+        n += 1
+        print('\n=== table entry 0x%X at +%d%s' %
+              (tag, off, '  program @+%d' % (prog - r.offset) if prog else
+               '  [tag shape not known]'))
+        if prog:
+            print(disasm.text(a.data, prog, r.end))
     for off, hdr, prog in tree(a, r):
         n += 1
         known = FX_NODES.get(hdr)
@@ -40,8 +47,8 @@ def main(path, idx):
         if prog:
             print(disasm.text(a.data, prog, r.end))
     if not n:
-        print('  no node of a known shape on the chain from slot 2')
-        print('  (34%% of fxmaps records are like this; see FORMAT-NOTES.md)')
+        print('  slot 2 addresses neither a known node chain nor a parameter table')
+        print('  (5.1%% of fxmaps records; see FORMAT-NOTES.md)')
 
 
 if __name__ == '__main__':
