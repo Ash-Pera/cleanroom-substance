@@ -395,7 +395,23 @@ class Record:
             hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
             if hit:
                 edges, progs = hit
-                return (list(edges), progs[0] if progs else None)
+                sl = progs[0] if progs else None
+                # `pixelprocessor` states its INPUT COUNT in the low nibble of slot 1, and
+                # its parameter follows the inputs. The layout key does not encode the
+                # count, so a record with more inputs than the key's edge list covers has
+                # its parameter slot pushed along and the key's index lands on an edge.
+                #
+                #     the nibble IS the edge count      56,934 / 57,118 = 99.68%
+                #     min(edge slots) + nibble is a program  54,180 / 54,180 = 100.00%
+                #     the key's slot is a program            54,001 / 54,180 =  99.67%
+                #
+                # The two agree in 54,001 and differ exactly where the key is wrong. This
+                # is the same field `fxmaps` uses for the same purpose.
+                if f == 20 and edges:
+                    k = min(edges) + (self.words[1] & 0xF)
+                    if k < len(self.words):
+                        sl = k
+                return (list(edges), sl)
         if f == 4:
             # fxmaps has two record layouts, selected by bit 12 of the parameter word.
             # With it set, slots 3-8 are input edges (100% valid or zero, 94-99.8%

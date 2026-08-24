@@ -21757,3 +21757,49 @@ parameter" are different propositions, and only the first was measured.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## `pixelprocessor` states its input count in the low nibble of slot 1
+
+The previous section found that the layout key does not encode how many inputs a record has,
+and worked around it by stepping past the run of edge-shaped words. That worked - 327 of 327 -
+but a walk-past-what-looks-wrong is a heuristic. The count is stated outright.
+
+Searching every field and bit-run of the header for one that predicts a `pixelprocessor`
+record's edge count:
+
+    slot 1, low 4 bits    99.74%
+
+and it is not a lookup, it is the number itself:
+
+    nibble == edge count exactly     56,934 / 57,118 = 99.68%
+
+    nibble  0 -> 0   100.0%      nibble  5 -> 5    77.5%
+    nibble  1 -> 1   100.0%      nibble  6 -> 6   100.0%
+    nibble  2 -> 2    99.2%      nibble  7 -> 7   100.0%
+    nibble  3 -> 3    99.9%      nibble  8 -> 8   100.0%
+    nibble  4 -> 4   100.0%      nibble 13 -> 13  100.0%
+
+The one oddity is nibble 12, which reads as 10 edges in 35 of 36 records.
+
+This is the same field `fxmaps` uses for the same purpose, already recorded in this file -
+so the fact that two filters state their input count in the low nibble of slot 1 was half
+known, and the half that was missing is the half that mattered here.
+
+### Computing the slot instead of walking to it
+
+    parameter slot = min(edge slots) + input count
+
+    the formula's slot holds a valid program   54,180 / 54,180 = 100.00%
+    the key's slot holds a valid program       54,001 / 54,180 =  99.67%
+
+They agree in 54,001 records and differ on exactly the 179 where the key is wrong. `layout`
+now computes it for `pixelprocessor` rather than taking the key's value.
+
+    parameters read      856,979  ->  857,014
+    genuinely unread         547  ->       512
+
+A small gain on top of the previous section's 739, and the point is not the 35 records: it
+replaces "step past whatever looks like an edge" with a field the format actually carries.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
