@@ -30,7 +30,7 @@ NAMES = {
  (1,0x23):'abs',     (1,0x24):'floor',   (1,0x25):'ceil',
  (1,0x26):'cos',     (1,0x27):'sin',     (1,0x28):'sqrt',
  (1,0x29):'ln',      (1,0x2B):'exp2',    (1,0x2D):'atan2',
- (1,0x36):'pow',
+ (1,0x35):'log2',    (1,0x36):'pow',
  (1,0x2E):'cartesian',(1,0x2F):'lerp',
  (1,0x30):'min',     (2,0x30):'min',
  (1,0x31):'max',     (2,0x31):'max',
@@ -39,16 +39,16 @@ NAMES = {
  (1,0x0B):'while',    (0,0x0B):'while',
  (0,0x1A):'and',     (0,0x1B):'or',      (0,0x1C):'not',
  (0,0x1D):'eq',      (0,0x1F):'gt',      (0,0x20):'gteq',
- (0,0x21):'lt',      (0,0x22):'lteq',
+ (0,0x21):'lt',      (0,0x22):'lteq',     (0,0x1E):'neq',
+ (1,0x2A):'exp',
 }
-# 0x35 is deliberately absent, not overlooked. Real circumstantial support for 'log2' --
-# unary, 99.5%+ of 3,903 instances feed straight into ceil/floor, 73% fed by an
-# int-to-float cvt -- but every avenue tried for a hard numeric proof (literal constants;
-# the 22 size expressions that use it, all of which trace back to a sampler or cache read
-# with no hand-computable value) came up empty, and OPCODES.md records it as "probably",
-# not confirmed. Every other entry in this table clears a materially higher bar -- an
-# exact corpus-wide count, a closed-form proof, or a source match. Naming it here would
-# make that bar mean nothing.
+# 0x1E and 0x2A were named in OPCODES.md and wired into transpile.py's OPS and FUNCS, and
+# this table was never updated -- so every listing printed `op1E`/`op2A` for operations the
+# project considers confirmed, and the two tables disagreed about the same opcode. Only the
+# type variants that occur are added: 0x1E is bool in 219 of 219 and 0x2A float in 1,042 of
+# 1,042 over strictly-named programs. 0x0F stays out; OPCODES.md marks it probable.
+# 0x35 = 'log2' is source-confirmed by the `ie_pcloud` graph: its four-node
+# get_float3 -> swizzle2 -> log2 -> toint2 graph maps to 0982 -> 0950 -> 0575 -> 0651.
 #
 # 0x36 = 'pow' DOES clear that bar, the same way ln/exp2 did: `LeakingSubstance004` and
 # `RoadSubstance002` compute ((s+0.055)/1.055) ** 2.4, the inverse sRGB transfer function
