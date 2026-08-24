@@ -17590,3 +17590,43 @@ whole structure a value table would be reading the 7.7% and ignoring the control
 each holding a tag and a forward pointer that lands inside the record. The run is real and
 its boundaries are found reliably. The tags (`0x20008`, `0x420008`, `0x100048`, `0x248`,
 `0x8000848`) and what the pointers reference are not decoded.
+
+### The entry tag is a type code, and it says what the pointer reaches
+
+Grouping entries by their tag and classifying what each pointer targets:
+
+| tag | entries | specimens | target |
+|---|---|---|---|
+| `0x20008` | 12,844 | 148 | another entry 98% |
+| `0x420008` | 2,434 | 127 | other 100% |
+| `0x100048` | 965 | 114 | other 100% |
+| `0x8000848` | 741 | 124 | **float 100%** |
+| `0x1520248` | 378 | 35 | other 100% |
+| `0x22000d48` | 299 | 79 | **float 100%** |
+| `0x2000448` | 289 | 81 | **float 100%** |
+| `0x12440248` | 231 | 42 | other 100% |
+| `0x8000248` | 209 | 84 | **float 100%** |
+| `0x2000248` | 202 | 66 | **float 100%** |
+
+**The tag determines the target kind.** Five tags always reach a float, one always reaches
+another entry, five never reach either.
+
+The small-sample check matters here, because there are 4,744 distinct tags over 26,526
+entries - about 5.6 each - and "100% pure" over five samples is worth nothing. Purity by
+support:
+
+    tags with >=1 entry     4,744 tags   26,526 entries   98.25%
+    tags with >=10            65 tags    21,510 entries   97.85%
+    tags with >=50            29 tags    20,785 entries   97.90%
+    tags with >=200           11 tags    18,802 entries   98.38%
+
+It does not degrade, and the eleven best-supported tags appear in **35 to 148 distinct
+specimens each**. This is not a small-sample artifact.
+
+No single bitfield reproduces it: grouping by bits 16-23 gives 90.75% purity, by the low
+half 84.22%, by bits 24-31 67.02%. The rule is in the whole word, or in a combination not
+yet found.
+
+So the fxmaps table is now: a run of 1 to 9 consecutive 8-byte entries; each entry's tag
+is a type code that reliably predicts whether its forward pointer reaches a float, another
+entry, or a third kind of thing; and that third kind - the majority - is still unidentified.
