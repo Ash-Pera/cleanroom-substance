@@ -23662,3 +23662,60 @@ not image data, so the value flows without the output depending on the writer's 
 That is a distinction the execution model and the dataflow model have to keep separately, and
 every attempt in this file to collapse them into one has produced a number that improved in
 one direction while breaking the other.
+
+## The filter names, checked against an independent source at last
+
+Every filter name in this file was inferred from structure. There are user-authored `.sbs` XML
+sources in the tree that name node types outright, as `<compFilter><filter v="blur"/>`. Under
+the provenance rule:
+
+    XML .sbs found                    758
+      excluded, <author v="Allegorithmic"/>   328
+      allowed                                 430
+
+92 of those pair by name with a compiled assembly. The pairs that can be checked exactly are
+the ones whose source has NO `<compInstance>` - nothing is inlined, so the compiled record set
+should equal the source node set:
+
+    self-contained pairs                                    8
+      compiled histogram EXACTLY equals the source           5
+      differs only by extra bitmap/uniform records           3
+
+The three misses are the compiler's own embedded-resource nodes, which have no `compFilter` in
+the source. So the map - gradient, blend, transformation, shuffle, fxmaps, uniform, warp, blur,
+dirmotionblur, directionalwarp, sharpen, hsl, levels, bitmap, text, normal, pixelprocessor,
+distance, curve - is confirmed against evidence that did not produce it. That is the first
+external check these names have had.
+
+### ids 8 and 19 are still unnamed, and two attractive answers are wrong
+
+Five source names have no id: passthrough, grayscaleconversion, valueprocessor, dyngradient,
+emboss. Two ids have no name: 8 (237 records) and 19 (959). The 8 self-contained pairs contain
+neither id, so they decide nothing - all three hypotheses score 8/8 there, which is a vacuous
+tie, not support.
+
+Count correlation across all 92 pairs looked conclusive:
+
+    passthrough vs id19    +0.819       and id19 is passthrough's argmax over every id
+
+with a control establishing that correct assignments run +0.14 (blur) to +0.83 (hsl), so +0.819
+sits at the top of the range. It is still wrong. The raw counts:
+
+    totals   passthrough 498   id19 266   ratio 0.53
+    files with passthrough but NO id19    13
+    files with id19 but NO passthrough     4
+
+and id19 lands on exactly 16 in files holding 50, 41, 35, 32 and 31 passthroughs. A repeated
+constant against a varying predictor is not a 1:1 correspondence; the correlation was tracking
+file complexity, which both quantities share. Inlining makes every presence- and count-based
+pairing statistic confounded this way, and the control range is wide enough to hide it.
+
+The second lead dissolves the same way. id19 counts cluster hard on multiples of 8 - 99 of 133
+files, with 8 and 16 alone covering 80 - which looks like a per-something structure. It is not:
+consecutive id19 records sit 58 indices apart (212 occurrences, then 57 at 46). They are one
+node inside a 58-record idiom that repeats 8 or 16 times. The periodicity belongs to the
+container, not to the filter.
+
+What is actually known about the two: id 8 takes 3 inputs, always carries a program, 237
+records; id 19 takes 2, carries one 97% of the time, 959 records. No candidate name in the
+source vocabulary takes 3 image inputs, so id 8 may not be an atomic filter at all.
