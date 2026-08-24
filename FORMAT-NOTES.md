@@ -25954,3 +25954,55 @@ The sampling-class reading survives this. It explains 96.82% of records and part
 filters exactly along the pixel-local / samples-elsewhere line, which is a meaningful engine
 distinction. A rule that holds for 96.82% of a field and has a stubborn, well-characterised
 3.18% is in better shape than one that holds everywhere for reasons nobody has checked.
+
+## The last three class-word bits, narrowed
+
+### bit 12 belongs to three filters and nothing else
+
+    filter        records    bit 12 set     share
+    blur           15,383       14,943     97.14%
+    sharpen         1,324        1,149     86.78%
+    hsl               748          297     39.71%
+    shuffle         7,687           30      0.39%
+    every other filter                      0.00%
+
+Sixteen filters never set it, including every other spatial one - `transformation`, `warp`,
+`directionalwarp`, `distance` and `normal` are all flat zero. So it is not a spatial marker;
+it belongs to `blur` and `sharpen`, which are the format's two **convolution** filters, plus a
+minority of `hsl`.
+
+It is strongly tied to bit 10, the class word's baked two-component parameter:
+
+    P(bit 12 set | bit 10 set)   78.63%   against a 1.82% base rate - a 43x enrichment
+    P(bit 10 set | bit 12 set)   32.43%
+    bit 10 implies bit 12                 no: 1,447 exceptions
+
+So the two travel together without either implying the other, which fits bit 10's values -
+`(8,8)`, `(4,4)`, `(0.125,0.125)`, equal pairs at powers of two. A blur or sharpen radius in x
+and y is exactly that shape, and `hsl` is the odd member that needs explaining rather than the
+rule.
+
+### bit 14 is warp's alone
+
+1,109 records, every one a `warp`, which is 4.1% of all warps. Spread over versions 0x50000
+(532), 0x40000 (324), 0x60000 (159) and 0x20000 (73), so not a version artefact.
+
+### bit 6 is three records
+
+All three are `fxmaps` in one file, `Texture_Randomizer`, at format version 0x40000, class word
+`0x359`, records 0, 2 and 5. Three records in 904,131 is not a field anyone needs to
+understand to read the format; it is recorded so that nobody measures it again.
+
+### Where the class word ends
+
+    named                bit 0 $outputsize, bit 7 $randomseed, bit 11 $pixelsize
+    sourced elsewhere    bit 4 = output format bit 4, bit 5 = output format bit 6
+    structural           bit 3 (set iff cls != 0x80), bits 8-9 (sampling class)
+    characterised        bit 10 (a baked 2-component value, never a program)
+                         bit 13 (a computed 1-component value)
+                         bit 12 (blur, sharpen, hsl - tied to bit 10)
+                         bit 14 (warp only, 4.1% of them)
+    three records        bit 6
+
+Nothing in the class word is now completely opaque. Two bits - 12 and 14 - have a population
+and no semantics; the rest have both.

@@ -32,14 +32,20 @@ SYSVARS = {0: "$time", 1: "$size", 3: "$sizelog2", 8: "$pos", 10: "$number"}
 
 #: Evaluation context. `sysvar` needs the node's resolution to answer at all (and $time
 #: its clock), so a caller that has the record/timeline can supply it.
-CONTEXT = {"width": 256, "height": 256, "number": 0.0, "time": 0.0}
+CONTEXT = {"width": 256, "height": 256, "number": 0.0, "time": 0.0, "pos": None}
 _unresolved = set()
 
 
-def set_context(width=None, height=None, number=None, time=None):
-    """Set the resolution, FX-Map pattern index and clock programs evaluate at."""
+def set_context(width=None, height=None, number=None, time=None, pos=None):
+    """Set the resolution, FX-Map pattern index, clock, and per-sample position.
+
+    `pos` is an (N, 2) array, x then y, one row per sample the program will be evaluated
+    at -- pixel centers by Substance's own convention, `(col + 0.5) / width`. Left at its
+    default of None, `$pos` reads back as zeros, exactly as before this existed: nothing
+    that does not pass `pos` explicitly changes behavior.
+    """
     for key, value in (("width", width), ("height", height),
-                       ("number", number), ("time", time)):
+                       ("number", number), ("time", time), ("pos", pos)):
         if value is not None:
             CONTEXT[key] = value
 
@@ -47,6 +53,9 @@ def set_context(width=None, height=None, number=None, time=None):
 def sysvar(vid, ncomp, n=1):
     width, height = CONTEXT["width"], CONTEXT["height"]
     if vid == 8:                                    # $pos
+        pos = CONTEXT["pos"]
+        if pos is not None:
+            return np.asarray(pos)[:, :ncomp] if ncomp > 1 else np.asarray(pos)[:, 0]
         return np.zeros((n, ncomp)) if ncomp > 1 else np.zeros(n)
     if vid == 1:                                    # $size, in pixels
         return np.tile([float(width), float(height)][:ncomp], (n, 1)) if ncomp > 1 \
@@ -249,6 +258,33 @@ def sample_lum(index, pos):
 
 def sample_col(index, pos):
     return SAMPLERS[index](pos)
+
+
+def image_sampler(image):
+    """Wrap an (H, W, C) array as a `pos -> value` function for `SAMPLERS`.
+
+    Bilinear, wrap-tiled -- Substance textures are addressed as tileable by default, and
+    a warp-style filter's computed position can legitimately land outside [0, 1] (see
+    e.g. a log-polar remap's radius term). `pos` is (N, 2), x then y, pixel centers at
+    (col + 0.5) / width, matching `set_context`'s own `pos` convention.
+    """
+    H, W = image.shape[:2]
+
+    def sampler(pos):
+        pos = np.asarray(pos)
+        u = pos[:, 0] * W - 0.5
+        v = pos[:, 1] * H - 0.5
+        u0 = np.floor(u).astype(np.int64)
+        v0 = np.floor(v).astype(np.int64)
+        fu = (u - u0)[:, None]
+        fv = (v - v0)[:, None]
+        u0m, u1m = u0 % W, (u0 + 1) % W
+        v0m, v1m = v0 % H, (v0 + 1) % H
+        top = image[v0m, u0m] * (1 - fu) + image[v0m, u1m] * fu
+        bot = image[v1m, u0m] * (1 - fu) + image[v1m, u1m] * fu
+        return top * (1 - fv) + bot * fv
+
+    return sampler
 
 
 _CACHE = None

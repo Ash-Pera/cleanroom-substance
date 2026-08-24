@@ -219,7 +219,20 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             if i >= len(toks):
                 raise Unsupported("opcode %04X at %d: wanted operand %d of %d"
                                   % (op, addr, i, len(toks)))
-            return be.var(toks[i])
+            t = toks[i]
+            if t == 0xFFFF and backend == "python":
+                # The same absent-value sentinel `while`'s condition operand and
+                # `Assembly.valid_program`/`program_span` already treat specially
+                # (0xFFFF, not a real value number -- see program_span's docstring). Here
+                # it shows up as an ordinary operand, most often one branch of a `select`
+                # whose condition never actually picks it for a valid input (273 corpus
+                # instances, over a third of them `vec`, not just `select`). `be.var`
+                # would emit a reference to a value that was never assigned -- NameError,
+                # not a wrong number -- so this emits NaN instead: inert if the branch is
+                # genuinely unreachable, and loud rather than silently plausible on the
+                # rare input where it is not.
+                return "float('nan')"
+            return be.var(t)
 
         if oid == 0x00:                                    # const
             rhs = be.const(immediate(op, addr, toks), ty)
