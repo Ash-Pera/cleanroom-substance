@@ -17907,3 +17907,43 @@ The audit now separates them:
 **The gap is 0.21%, not 4.55%.** The model was substantially better than its own headline
 said, which is its own kind of error: a number that overstates ignorance is as misleading
 as one that overstates knowledge, and it sends work at problems that are already solved.
+
+## The last output-table entries are numeric value outputs
+
+When the output table was decoded, 48 of 3,249 entries were set aside: their first word's
+high half is 2 and the `format == (w0 & 0xFFFF) >> 4` rule does not apply to them. They
+were returned with format `None` rather than guessed at.
+
+They are all the same thing, and the manifest says what:
+
+    <output uid="863402108" identifier="color" type="3">
+      <outputgui label="Color Value" typegui="float">
+
+No `format`, no `width`, no `height` - because it is not an image. It is a **numeric value
+output**, a graph publishing a number rather than a texture.
+
+    high-half-2 entries                         48
+    declared in the manifest                    48  (100%)
+    typegui="float"                             48  (100%)
+    the record they name is a pixelprocessor    48  (100%)
+    entry low half == the manifest `type`       48  (100%)
+
+Three distinct type codes occur - 2 (44 entries), 0 (3) and 3 (1) - so the low-half match
+is not a single-value coincidence. And `pixelprocessor` is the only filter that computes a
+number rather than an image, which is the consequence test: a value output could not be
+produced by a `blend`.
+
+They concentrate in four specimens - `ie_pcloud` (36), `ie_particles` (5), `triDraw` (4),
+`fake_anim_curve` (3) - all of which are particle or curve utilities, exactly the graphs
+that would publish numbers.
+
+`Assembly.outputs()` now returns `('value', type)` as the format for these, so a reader can
+tell a texture output from a number without consulting the manifest.
+
+    uid=1582761485   28              record 69   blend
+    uid=1582788978   ('value', 2)    record 58   pixelprocessor
+    uid=863402108    ('value', 3)    record 52   pixelprocessor
+    uid=863428367    16              record 53   uniform
+
+With this the output table is fully decoded: every entry's kind, type and record are read,
+in 3,249 of 3,249.

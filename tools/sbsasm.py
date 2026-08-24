@@ -712,8 +712,10 @@ class Assembly:
         This is the output-to-record attribution recorded elsewhere in FORMAT-NOTES.md as
         structurally absent. It is not absent; it was in a region nothing had read.
 
-        Entries whose high half is 2 (48 of 3,249) are a different kind and are returned
-        with format None rather than guessed at.
+        Entries whose high half is 2 - 48 of 3,249 - are numeric VALUE outputs rather
+        than images, and are returned with format `('value', type)`. The manifest declares
+        each with a `type` attribute, `typegui="float"` and no format/width/height; the
+        entry's low half equals that type in 48 of 48. All 48 name a pixelprocessor.
         """
         if not self.records:
             return []
@@ -728,7 +730,12 @@ class Assembly:
             w0, idx = struct.unpack_from('<II', self.data, off)
             uid = uids[j] if j < len(uids) else None
             if (w0 >> 16) == 2:
-                out.append((uid, None, None, idx))
+                # A numeric VALUE output, not an image: the manifest declares it with a
+                # `type` and `typegui="float"` and no format, width or height. The entry's
+                # low half is that type code, in 48 of 48 across the corpus, and all 48
+                # name a pixelprocessor record - the only filter that computes a number
+                # rather than an image.
+                out.append((uid, ('value', w0 & 0xFFFF), None, idx))
             else:
                 fmt = (w0 & 0xFFFF) >> 4
                 out.append((uid, fmt, bool(fmt & 4), idx))
@@ -768,8 +775,10 @@ class Assembly:
         This is the output-to-record attribution recorded elsewhere in FORMAT-NOTES.md as
         structurally absent. It is not absent; it was in a region nothing had read.
 
-        Entries whose high half is 2 (48 of 3,249) are a different kind and are returned
-        with format None rather than guessed at.
+        Entries whose high half is 2 - 48 of 3,249 - are numeric VALUE outputs rather
+        than images, and are returned with format `('value', type)`. The manifest declares
+        each with a `type` attribute, `typegui="float"` and no format/width/height; the
+        entry's low half equals that type in 48 of 48. All 48 name a pixelprocessor.
         """
         if not self.records:
             return []
@@ -784,7 +793,12 @@ class Assembly:
             w0, idx = struct.unpack_from('<II', self.data, off)
             uid = uids[j] if j < len(uids) else None
             if (w0 >> 16) == 2:
-                out.append((uid, None, None, idx))
+                # A numeric VALUE output, not an image: the manifest declares it with a
+                # `type` and `typegui="float"` and no format, width or height. The entry's
+                # low half is that type code, in 48 of 48 across the corpus, and all 48
+                # name a pixelprocessor record - the only filter that computes a number
+                # rather than an image.
+                out.append((uid, ('value', w0 & 0xFFFF), None, idx))
             else:
                 fmt = (w0 & 0xFFFF) >> 4
                 out.append((uid, fmt, bool(fmt & 4), idx))
