@@ -18155,3 +18155,42 @@ Capping the scan at 32 slots regardless of the observed header removes them:
 
 1,231 of the 1,232 removed came from that one key. A header that large is not a layout,
 whatever the program's position says.
+
+## Correction: the pad follows from the token count, not the address
+
+The alignment-pad fix was right about the pad and wrong about how to find it.
+
+`pad = 2 if addr % 4 == 0` is correct for the operations that actually have a padded form -
+`const` of a non-bool type, and `inputref` - because their token counts correlate with
+alignment exactly. It is wrong for every operation whose immediate is a **single u16**,
+because those have no padded form and occur at both alignments:
+
+    sysvar      1 token  @0: 15,422   @2: 87,591
+    get         1 token  @0:  5,693   @2: 22,632
+    op 0x03     1 token  @0:    700   @2:  3,832
+    const bool  1 token  @0: 21,889
+
+For those, the rule stripped the only operand there was - about 43,700 instances. Smaller
+than the bug it replaced, and in the same family: a regularity that holds across most cases
+applied as though it were the rule.
+
+**Read the pad off the data instead.** A 4-byte immediate needs an even number of u16
+tokens, so an odd count above one *is* the pad. Measured over the corpus:
+
+    even token count   at addr%4==2: 3,986,720    at addr%4==0:         0
+    odd token count    at addr%4==2:   244,000    at addr%4==0: 1,958,919
+
+Even counts occur at one alignment only; odd counts occur at both, and the 244,000 odd
+counts at `addr%4==2` are exactly the single-u16 operations.
+
+The two rules agree wherever a padded form exists, so each checks the other.
+
+**And the parity rule needs no operation gate.** The proposal was to pad only when the op
+carries a 4-byte immediate *and* the count is odd. Measured, the only operations that ever
+have an odd token count above one are `const` and `inputref` - the very ones with a padded
+form - so parity alone already implies the gate:
+
+    ops with an odd token count above 1:  const 1,843,363   inputref 6,729
+
+    instructions whose only operand is dropped:  none  (was ~43,700)
+    float constants of plausible magnitude:      99.91%

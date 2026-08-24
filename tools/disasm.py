@@ -48,21 +48,38 @@ TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
 #   0x0B while      position 0 = iteration cap
 #   0x33 samplelum  position 1 = sampler index (which input image to read)
 #   0x34 samplecol  position 1 = sampler index
-#   0x03, 0x06      read something by index; the operand is the index, not a value
+#   0x03            reads something by index; its single operand is the index
+#   0x06            position 1 = an index; position 0 is an ordinary value reference
 #
-# 0x03 and 0x06 were rendering as value references and are not. Over strictly-named
-# programs, 0x03's operand is >= its own value number in 75.7% of 6,177 instances and
-# 0x06's in 69.3% of 762 -- impossible for a reference, since three-address code numbers
-# results contiguously and an operand must name an earlier value. 0x03 is also the
-# program's FIRST instruction 59.0% of the time, where there is nothing to refer to.
-# By comparison sysvar, get, add and eq measure 0.0% impossible on the same set.
-# What they index is not established, so they stay unnamed.
+# 0x03 and 0x06 were rendering as value references and are not -- but they are not the
+# same shape, and treating both as 'all' was wrong about 0x06. Testing each operand
+# position separately for "operand >= its own value number", which no reference can be
+# since three-address code numbers results contiguously:
+#
+#                   position 0            position 1
+#     0x06            0.0% (n=497)          88.1%
+#     0x07 set        0.0% (n=897,276)       0.2%
+#     0x10 swizzle    0.0% (n=659,778)      36.0%
+#
+# So 0x06 has the shape of `set` and `swizzle`: a value in position 0 and an index in
+# position 1. The test only ever undercounts -- `set`'s slot index reads 0.2% because a
+# small index is usually below the instruction's own number anyway -- which makes
+# position 0 at exactly 0.0% strong evidence that it really is a reference.
+#
+# 0x03 carries one token and is the whole immediate: its operand is >= its own value
+# number in 75.7% of instances, and it is the program's FIRST instruction 59.0% of the
+# time, where there is nothing to refer to. What either indexes is not established, so
+# they stay unnamed.
+#
+# The controls are `add` (0.0%, n=976,997) and `eq` (0.0%, n=5,263). `sysvar` and `get`
+# are NOT controls and measure 84.2% and 66.9%: they carry immediates too, which is why
+# they are in this table.
 #
 # Measured on programs a record's slots name, never on the permissive whole-file scan:
 # on that scan even `add` reads 38.5% impossible and `lteq` 86.5%, because the scan
 # accepts positions that are not programs at all.
-IMM = {0x00:'all', 0x02:'all', 0x01:'all', 0x04:'all', 0x03:'all', 0x06:'all',
-       0x10:(1,), 0x07:(1,), 0x0B:(0,), 0x33:(1,), 0x34:(1,)}
+IMM = {0x00:'all', 0x02:'all', 0x01:'all', 0x04:'all', 0x03:'all',
+       0x10:(1,), 0x07:(1,), 0x0B:(0,), 0x33:(1,), 0x34:(1,), 0x06:(1,)}
 
 def fields(op):
     return dict(ntok=(op >> 10) + 1, ty=(op >> 8) & 3, comps=((op >> 6) & 3) + 1, id=op & 0x3F)
@@ -84,19 +101,16 @@ def decode(d, ptr, hi):
         yield k, q, op, toks
         q += 2 * L
 
-def _imm(f, toks, addr=None):
-    """Render the immediate carried by a constant/inputref instruction.
+def pad_bytes(toks):
+    """Bytes of alignment padding ahead of an instruction's immediate.
 
     Immediate-carrying opcodes come in two forms differing by 0x0400 -- one extra token.
     The longer form emits a 2-byte pad when the instruction lands at 0 mod 4, so that the
     immediate itself stays 4-aligned. Reading from the first operand byte regardless
     misreads every constant in the padded form: it takes the low half of one float32 and
-    the high half of the previous word, which destroys the exponent.
-
-    The correlation is exact in the corpus -- odd token counts occur only at addr%4==0 and
-    even counts only at addr%4==2 -- and the readings separate accordingly. For the
-    9-token form, reading from byte 0 yields values like 7.5e-28 and -3.0e-13; skipping
-    the pad yields 1, 0.001 and 0.333333.
+    the high half of the previous word, which destroys the exponent. For the 9-token form,
+    reading from byte 0 yields values like 7.5e-28 and -3.0e-13; skipping the pad yields
+    1, 0.001 and 0.333333.
 
                      plausible magnitude, from byte 0  /  from byte 2
         3 tokens, addr%4=0          90.8%                   99.8%
@@ -104,10 +118,31 @@ def _imm(f, toks, addr=None):
         9 tokens, addr%4=0          92.0%                  100.0%
         4 tokens, addr%4=2         100.0%                   45.6%
 
-    `addr` is the opcode's own offset. It is optional only so old callers keep working;
-    without it the pad cannot be detected and padded constants are misread.
+    **The pad is read from the token count, not from the address.** A 4-byte immediate
+    needs an even number of u16 tokens, so an odd count above one IS the pad. Deriving it
+    from `addr % 4` instead is right for the constants and input references that carry a
+    4-byte immediate -- their token counts correlate with alignment exactly -- but wrong
+    for every operation whose immediate is a single u16, because those have no padded
+    form and land at both alignments:
+
+        sysvar      1 token @0: 15,422    @2: 87,591
+        get         1 token @0:  5,693    @2: 22,632
+        0x03        1 token @0:    700    @2:  3,832
+        const 0440  1 token @0: 21,889             every 1-token constant is bool
+
+    Padding those strips the only operand there is. Token parity cannot misfire that way,
+    and agrees with alignment everywhere a padded form actually exists.
     """
-    pad = 2 if (addr is not None and addr % 4 == 0) else 0
+    return 2 if len(toks) > 1 and len(toks) % 2 else 0
+
+
+def _imm(f, toks, addr=None):
+    """Render the immediate carried by a constant/inputref instruction.
+
+    See `pad_bytes` for the alignment pad. `addr` is accepted for backward compatibility
+    and is no longer needed: the pad follows from the token count alone.
+    """
+    pad = pad_bytes(toks)
     raw = b''.join(struct.pack('<H', t) for t in toks)[pad:]
     if f['id'] == 0x02:
         return 'uid=%d' % struct.unpack_from('<I', raw)[0] if len(raw) >= 4 else '?'
@@ -141,13 +176,11 @@ def text(d, ptr, hi, mark=()):
 def immediate(addr, toks):
     """The immediate bytes an instruction carries, with the alignment pad removed.
 
-    Any tool reading an immediate must go through this. Immediate-carrying opcodes have
-    two forms differing by 0x0400; the longer emits a 2-byte pad when the instruction
-    lands at 0 mod 4 so the immediate stays 4-aligned. Reading from the first operand
-    byte regardless splices two halves of different words together.
+    Any tool reading an immediate must go through this. `addr` is accepted so existing
+    callers keep working and is no longer used -- see `pad_bytes` for why the pad is read
+    from the token count instead.
     """
-    pad = 2 if addr % 4 == 0 else 0
-    return b''.join(struct.pack('<H', t) for t in toks)[pad:]
+    return b''.join(struct.pack('<H', t) for t in toks)[pad_bytes(toks):]
 
 
 def uid(addr, toks):
