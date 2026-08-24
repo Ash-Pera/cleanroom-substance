@@ -922,29 +922,34 @@ class Record:
     def matrix(self):
         """For filter 2: the `matrix22` transform, as four float32, or None.
 
-        Slots 4 to 7 hold the 2x2 matrix when class bit 0 or bit 7 is set, and slots 3 to 6
-        when neither is. Source matrices appear verbatim here in 66 of 72 cases across 23 permitted
+        The matrix occupies four slots starting at `3 + class bit 0 + class bit 7`. Source matrices appear verbatim here in 66 of 72 cases across 23 permitted
         files, the misses being nodes the cooker eliminated.
         The values read as transforms should - `2 0 0 2`, `-1 0 0 -1`, `1.4014 0 0 1.4014`
         - and the off-diagonals are zero in 94% and 76% of records, since most transforms
         scale or flip without shear.
         """
-        if self.filter_id != 2 or len(self.words) < 8:
+        if self.filter_id != 2:
             return None
-        # The block starts one slot earlier when the header is shorter, and TWO class bits
-        # lengthen it - bit 0, the static/dynamic flag, and bit 7. Over the 56,975 records
-        # whose slot-1 bit 6 says the matrix is baked:
+        # The matrix starts after the header, and the header grows one slot for EACH of two
+        # class bits - bit 0, the static/dynamic flag, and bit 7. The rule is additive, not
+        # a choice between two bases. Over the 66,211 records whose slot-1 bit 6 says the
+        # matrix is baked:
         #
-        #     slot 4 always                       59.2%
-        #     slot 4 if class bit 0 else slot 3   83.2%
-        #     slot 4 if bit 0 OR bit 7 else 3     96.8%
+        #     slot 4 always                        59.2%
+        #     slot 4 if class bit 0 else slot 3    83.2%
+        #     slot 4 if bit 0 OR bit 7 else slot 3 97.3%
+        #     slot 3 + bit 0 + bit 7              100.0%   (66,210 of 66,211)
         #
-        # Bit 7 was found by restricting to the bit-0-clear records - where the previous
-        # rule failed - and asking what separates the two bases there: it does, at MCC
-        # +1.000 over 29,191 records. `w1` bit 26 scores 100% on that same subset and only
-        # 53.8% corpus-wide, which is what a coincidence inside a restricted population
-        # looks like; it was tested and dropped.
-        base = 16 if (self.cls & 1 or self.cls >> 7 & 1) else 12
+        # The disjunction and the sum agree except when BOTH bits are set, where the sum
+        # says slot 5 and the disjunction says slot 4. 1,795 records read `[pointer, 2, 0,
+        # 0]` at slot 4 under the disjunction - a program where the matrix should be - and
+        # come out as ordinary transforms at slot 5.
+        #
+        # `w1` bit 26 scores 100% on the bit-0-clear subset where bit 7 was found, and 53.8%
+        # corpus-wide: a coincidence inside a restricted population, tested and dropped.
+        base = 4 * (3 + (self.cls & 1) + (self.cls >> 7 & 1))
+        if base // 4 + 3 >= len(self.words):
+            return None
         m = struct.unpack_from('<4f', self.asm.data, self.offset + base)
         if not all(-1e4 < x < 1e4 and x == x for x in m):
             return None

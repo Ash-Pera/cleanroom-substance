@@ -21238,3 +21238,56 @@ asking a separate question (which bit predicts it) rather than by scoring window
 
 `offset` still has no presence bit - best lift -2.2 points across every bit of both words.
 And 16.7% of bit-6 records yield no valid matrix at the elected base, down from 40.8%.
+
+## The base is additive: `3 + class bit 0 + class bit 7`, and then it is exact
+
+The previous rule chose between two bases with a disjunction and left 16.7% of bit-6 records
+unread. Both remaining groups had a single cause each.
+
+**9,234 records with fewer than 8 words.** `Record.matrix` guarded on `len(words) < 8`, but a
+base-3 matrix needs only 7. Every one of those 9,234 reads as a valid matrix at its elected
+base. The guard was written for the fixed slot-4 reader and never revisited when the base
+became variable.
+
+**1,795 records reading `[pointer, 2, 0, 0]`.** All are class 921, which has bit 0 AND bit 7
+set. The disjunction says base 4 for them; they are ordinary transforms at base **5**. So the
+two bits do not select between two bases - they each add one slot:
+
+    slot 4 always                          59.2%
+    slot 4 if class bit 0 else slot 3      83.2%
+    slot 4 if bit 0 OR bit 7 else slot 3   97.3%
+    slot 3 + bit 0 + bit 7                100.0%    66,210 of 66,211
+
+That is what "the layout descriptor states the header size" looks like from the inside: the
+header is a base of three slots plus one for each flag, and the parameter block starts where
+it ends. The disjunction was a two-value approximation to a sum, and it agreed everywhere
+except where both bits are set.
+
+### The one that is left
+
+    Hex Tiles.sbsasm  record 443   slots 4-7:  [1, 1, 0, 0]   det 0
+
+A genuinely singular matrix - it collapses the plane onto a line - rejected by the
+determinant guard doing exactly what it is for. The base rule has no exceptions; this record
+does.
+
+### Result
+
+    matrices, all transformation records    34,008  ->  66,481
+    restricted to bit 6, the matrix-is-baked bit
+                                            33,709  ->  66,210    (59.2% -> 100.00%)
+
+**+32,473 matrices** over the three fixes. The 120,763 records recorded in an earlier session
+as having "determinant exactly 0.0" and possibly being "structured degenerate matrices" were
+almost entirely a reader at the wrong offset - the zero determinants were windows straddling
+a pointer and two padding zeros, not transforms.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
+
+### Still open
+
+`offset` has no presence bit: every bit of both the class word and slot 1 scores below the
+trivial predictor, best lift -2.2 points. Its POSITION is settled - it packs immediately
+after `matrix22`, four slots along when the matrix is present and at the block base when it
+is not - but nothing says whether it is there.
