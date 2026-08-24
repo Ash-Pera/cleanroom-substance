@@ -23094,3 +23094,47 @@ before either section was written. The argument was not under-reasoned; it was u
       returning 1 component  -- a random seed  : 123,168
 
 Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437.
+
+## The manifest as an independent check on the size work
+
+Having found the manifest names uids, the next question is what else it carries that this
+project derives from the file itself. Its `<output>` elements declare **width and height**.
+
+`Record.width`/`height` come from the tag, and `Record.output_size` from evaluating the
+record's size expression. Neither was derived from the manifest, so agreement is a
+consequence test rather than a restatement:
+
+    record tag vs manifest          2,467 / 2,468    99.96%
+    size expression vs manifest     1,564 / 1,564   100.00%
+
+The size expression, where it evaluates, is **exactly right on every output in the corpus**
+against a source it never saw. It had previously only been checked against the tag - 99.83% -
+which is the same file's own other field.
+
+The single tag mismatch is one output in one file declaring `(32, 1048576)`. The tag encodes
+each dimension as `log2` in four bits, so 2^20 cannot be represented in it at all. That is a
+manifest declaring something the record format has no room for, not a decode error.
+
+`validate_corpus.py` now runs both checks on every specimen.
+
+### A bare `except` hid half of it
+
+The check first reported `record tag vs manifest: 385/385` and `size expression: 0/0`, which
+looked like "the tag check works, the expression check finds nothing to do". Both numbers were
+wrong. `math` was not imported - the file's `import collections, glob, hashlib, os, re,
+struct, sys` did not match the pattern the edit looked for - so `math.log2` raised
+`NameError`, and
+
+    except Exception:
+        r["tag_vs_manifest"] = r["expr_vs_manifest"] = (0, 0)
+
+zeroed **both** counters for every specimen that got far enough to reach a size expression.
+The 385 was what survived from specimens that never got that far. Narrowing the clause to the
+errors a malformed specimen can actually raise turned 385/385 into 2,467/2,468.
+
+A bare `except` around a measurement does not make the measurement robust. It makes a broken
+measurement report a smaller number instead of an error, which is the one failure mode a
+number cannot warn you about.
+
+Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 12 tests passed.

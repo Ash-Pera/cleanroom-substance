@@ -20,7 +20,7 @@ Structure validated, per single-graph package:
   * table_end == u32_at(0x2C) + 52
   * floats may differ from the manifest by %g rounding; compare with epsilon
 """
-import collections, glob, hashlib, os, re, struct, sys
+import collections, glob, hashlib, math, os, re, struct, sys
 import xml.etree.ElementTree as ET
 
 FLOATT = {0: 1, 1: 2, 2: 3, 3: 4}
@@ -75,6 +75,39 @@ def analyse(asm, xml):
          "ok_trailer": struct.unpack_from("<I", d, 0x1C)[0] == n - 28,
          "ngraphs": len(root.findall("graphs/graph"))}
     r["layout"] = "table" if struct.unpack_from("<I", d, 0x38)[0] < n else "alt"
+
+    # The manifest declares each output's width and height. That is an INDEPENDENT source
+    # for two things derived from the file itself: the record tag's dimensions, and the
+    # size expression `Record.output_size` evaluates. Neither was derived from the
+    # manifest, so agreement is a consequence test rather than a restatement.
+    try:
+        import sbsasm as _sa
+        _a = _sa.Assembly(asm)
+        want = {int(e.get("uid")): (int(e.get("width")), int(e.get("height")))
+                for e in root.iter("output")
+                if e.get("uid") and e.get("width") and e.get("height")}
+        tag_ok = tag_n = expr_ok = expr_n = 0
+        for uid, _fmt, _grey, idx in _a.outputs():
+            if uid not in want or not (0 <= idx < len(_a.records)):
+                continue
+            rec = _a.records[idx]
+            tag_n += 1
+            tag_ok += (rec.width, rec.height) == want[uid]
+            try:
+                got = rec.output_size
+            except Exception:
+                got = None
+            if got is not None:
+                expr_n += 1
+                expr_ok += tuple(got) == (int(math.log2(want[uid][0])),
+                                          int(math.log2(want[uid][1])))
+        r["tag_vs_manifest"] = (tag_ok, tag_n)
+        r["expr_vs_manifest"] = (expr_ok, expr_n)
+    except (OSError, ValueError, KeyError, struct.error):
+        # Only the errors a malformed specimen can raise. A bare `except` here hid a
+        # missing `import math` and reported 0/0 for the size check while still printing
+        # a plausible-looking 385/385 for the tag check beside it.
+        r["tag_vs_manifest"] = r["expr_vs_manifest"] = (0, 0)
     graphs = root.findall("graphs/graph")
     r["multigraph"] = len(graphs) > 1
     iw = image_width(r["ver"])
@@ -191,6 +224,11 @@ def main():
     print(f"  unexplained          : {bad}")
     print(f"(n_out, n_in) header   : {sum(1 for _, r in rows if r.get('ok_header'))}/{len(rows)}")
     print(f"output uid array       : {sum(1 for _, r in rows if r.get('ok_outarray'))}/{len(rows)}")
+    tg = sum(r.get("tag_vs_manifest", (0, 0))[0] for _, r in rows)
+    tn = sum(r.get("tag_vs_manifest", (0, 0))[1] for _, r in rows)
+    eg = sum(r.get("expr_vs_manifest", (0, 0))[0] for _, r in rows)
+    en = sum(r.get("expr_vs_manifest", (0, 0))[1] for _, r in rows)
+    print(f"record tag vs manifest : {tg}/{tn}   size expression vs manifest: {eg}/{en}")
     print("  array order          :",
           dict(collections.Counter(r.get("out_order") for _, r in rows if r.get("ok_outarray"))))
     print(f"input descriptor array : {sum(1 for _, r in rows if r.get('ok_desc'))}/{len(rows)}")
