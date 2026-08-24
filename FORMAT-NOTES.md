@@ -24179,3 +24179,50 @@ residual". Note also what the oracle is: `layouts.json` is a DERIVED table, and 
 already showed it can be wrong where the rule is right. Adjudicating these 86 rows needs
 evidence from the records, not from the table - and the sharp test that settled blend does not
 discriminate here, because 87% of arbitrary slots read as a plausible float.
+
+## levels, closed: the rule is right and the derived table is wrong
+
+The previous section ended with the rule at 96.68% against `layouts.json` and the caveat that
+the oracle is itself derived. That caveat was the whole answer.
+
+`levels` parameters are all in [0,1], which gives a predicate sharp enough to adjudicate:
+a word is parameter-like if it is 0 or a float in [1e-6, 1.0]. The lower bound matters - the
+first attempt used plain [0,1] and admitted values like `1.56e-33`, which are small integers
+reinterpreted as floats, not parameters.
+
+    arbitrary slots just past the parameter block     11,164/153,709    7.26%   <- base rate
+    slots the RULE claims and the table does not       2,764/2,800     98.71%
+    slots the TABLE claims and the rule does not           0/28         0.00%
+
+Both disagreements resolve for the rule, and against a 7.26% base rate the test discriminates
+by more than 90 points. So:
+
+    slots = |active| + (cls bit 0) + (cls bit 7)
+            - 1  when outlow and outhigh are BOTH active and cls bit 0 is clear
+
+is correct on all 85,213 `levels` records - 82,384 where the table agreed, 2,800 where the
+table was short a slot, 29 where the table invented one.
+
+### The interaction that "broke" the rule was table error
+
+The row that could not be reconciled was `(1,0,1,1,1)` taking 5 slots where `(0,1,1,1,1)` took
+4, differing only in `inlow` versus `inhigh`. There is no such asymmetry. `(0,1,1,1,1)` is one
+of the 2,800: the table gave it 4 slots, the record has a fifth holding a parameter, and both
+rows take `|active| + 1`. The apparent dependence on WHICH `in` field was active was an
+artefact of a table entry missing a slot.
+
+That is the second time the derived table has been the wrong oracle - the first was blend's 39
+records - and both times the rule inferred from the format beat the table inferred from the
+data. `layouts.json` should be regenerated from the rule rather than the rule fitted to it;
+until then it carries at least 2,829 known-wrong entries in `levels` alone.
+
+### Method note
+
+Three predicates were tried on the same question and only the third could answer it:
+
+    "holds a usable value"        100% vs 87% base rate     could not discriminate
+    "holds a float in [0,1]"      100% vs 68% base rate     admitted denormals, misled on 29
+    "is 0 or a float in [1e-6,1]" 98.7% vs 7.3% base rate   settled it both ways
+
+The first two were not wrong measurements. They were measurements whose base rate left no room
+for a verdict, and the fix each time was a tighter predicate, not more data.
