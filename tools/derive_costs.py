@@ -94,11 +94,16 @@ def observed():
                     es = []
                 if es and min(es) == 1:
                     w1 = None
-            obs[f][(r.cls, w1)][(q - r.offset) // 4] += 1
+            # The whole of word 0, not just cls. The tag's low bits carry layout too:
+            # uniform's colour flag (tag bit 0) is +3 words -- a colour value bakes four
+            # floats where a grayscale bakes one -- and keying on cls alone left 3,209
+            # records as within-key minorities that no fit could reach. Bits that do not
+            # vary within a filter never become features, so widening the mask is free.
+            obs[f][(r.words[0], w1)][(q - r.offset) // 4] += 1
     return obs
 
 
-def fit(f, keys):
+def fit(f, keys, bitrange=range(32), colour=False):
     """Fit costs for one filter. Returns (spec, exact_fraction) or (None, 0.0).
 
     Weighted by record count, and refit once with anomalous keys excluded. The first
@@ -110,8 +115,14 @@ def fit(f, keys):
     """
     arity = W1_ARITY.get(f)
 
-    def bits_of(keys):
-        clsbits = [b for b in range(16) if len({k[0] >> b & 1 for k, _, _ in keys}) > 1]
+    # Which bits of word 0 may become features. 'wide' offers all 32 -- the tag's low
+    # half carries layout (uniform's colour flag is tag bit 0, +3 words) -- but those
+    # bits INTERACT for some filters (the colour cost differs by sampling class), and
+    # an additive model over interacting bits is worse than one that cannot see them.
+    # So both widths are fitted and the caller keeps whichever is exact. Bits that do
+    # not vary never become features, so 'wide' is free where the tag is constant.
+    def bits_of(keys, bitrange):
+        clsbits = [b for b in bitrange if len({k[0] >> b & 1 for k, _, _ in keys}) > 1]
         aw = [k[1] for k, _, _ in keys if k[1] is not None]
         excl = set()
         if arity is not None:
@@ -121,7 +132,7 @@ def fit(f, keys):
                  and len({(w >> (2 * j)) & 3 for w in aw}) > 1] if aw else []
         return clsbits, pairs
 
-    clsbits, pairs = bits_of(keys)
+    clsbits, pairs = bits_of(keys, bitrange)
     has_absent = any(k[1] is None for k, _, _ in keys)
 
     def row(cls, w1):
@@ -134,6 +145,14 @@ def fit(f, keys):
         for j in pairs:
             st = ((w1 >> (2 * j)) & 3) if w1 is not None else 0
             v += [float(st == 1), float(st == 2), float(st == 3)]
+        if colour:
+            # The colour flag is tag bit 0, and its cost is not additive: a colour
+            # value bakes more floats than a grayscale one, so the flag multiplies
+            # WIDTHS rather than adding a constant. Crossing it with every feature
+            # lets the fit discover which slots widen -- uniform's +3 lands on the
+            # value slot only when cls bit 8 is set, which a main effect cannot say.
+            c0 = float(cls & 1)
+            v = v + [c0 * x for x in v]
         return v
 
     def solve(sub):
@@ -173,6 +192,20 @@ def fit(f, keys):
         if c2 is not None:
             c = c2
     ok = np.rint(X @ c) == y
+    if colour:
+        # Interaction spec: store the two half-vectors; predict as base + bit0*cross.
+        half = len(c) // 2
+        base_c, cross_c = c[:half], c[half:]
+        spec = {'interaction': 'colour', 'clsbits': clsbits, 'pairs': pairs,
+                'has_absent': bool(has_absent),
+                'arity_sm': list(arity) if arity is not None else None,
+                'base': [float(x) for x in base_c],
+                'cross': [float(x) for x in cross_c],
+                'mode': ('absent' if f in W1_ABSENT else
+                         'per_record' if f in W1_PER_RECORD else
+                         'arity' if f in W1_ARITY else 'codes')}
+        wt_ = np.array([n for _, _, n in keys], dtype=float)
+        return spec, float(wt_[ok].sum() / wt_.sum())
     names = ['const'] + ['cls%s' % b for b in clsbits]
     mode = ('absent' if f in W1_ABSENT else
             'per_record' if f in W1_PER_RECORD else
@@ -210,13 +243,16 @@ def main():
         if f in SPLIT_SAMPLING:
             best = None
             for sc in (0, 3):
-                sub = [x for x in keys if (x[0][0] >> 8) & 3 == sc]
+                sub = [x for x in keys if (x[0][0] >> 24) & 3 == sc]
                 if len(sub) < 10:
                     continue
-                spec, exact = fit(f, sub)
+                spec, exact = fit(f, sub, range(32))
+                spec2, exact2 = fit(f, sub, range(16, 32))
+                if spec2 is not None and exact2 > exact:
+                    spec, exact = spec2, exact2
                 if spec is None or exact < KEEP:
                     continue
-                spec['guard'] = {'shift': 8, 'mask': 3, 'value': sc}
+                spec['guard'] = {'shift': 24, 'mask': 3, 'value': sc}   # cls bits 8-9, in word0
                 cov = sum(x[2] for x in sub)
                 if best is None or cov > best[2]:
                     best = (spec, exact, cov)
@@ -226,7 +262,13 @@ def main():
             report.append((f, cov, len(keys), exact, 'kept (guarded to its class)'))
             out[str(f)] = spec
             continue
-        spec, exact = fit(f, keys)
+        spec, exact = fit(f, keys, range(32))
+        spec2, exact2 = fit(f, keys, range(16, 32))
+        if exact2 > exact:                        # narrow (cls-only) model wins
+            spec, exact = spec2, exact2
+        spec3, exact3 = fit(f, keys, range(32), colour=True)
+        if spec3 is not None and exact3 > exact:  # colour-interaction model wins
+            spec, exact = spec3, exact3
         if spec is None:
             report.append((f, n, len(keys), None, 'underdetermined')); continue
         report.append((f, n, len(keys), exact, 'kept' if exact >= KEEP else 'rejected'))

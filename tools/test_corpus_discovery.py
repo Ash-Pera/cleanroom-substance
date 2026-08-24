@@ -23,7 +23,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-EXPECTED = 438
+EXPECTED = 437   # 438 until the provenance exclusion of one specimen (2026-08-24)
 
 
 def test_corpus_paths_are_cwd_independent():

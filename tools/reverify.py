@@ -207,7 +207,7 @@ RATES = [
 
 # How many files the corpus list currently offers. A run that loads materially fewer than
 # this has not verified the claims below, whatever it prints next to them.
-EXPECTED_FILES = 438
+EXPECTED_FILES = 437   # 438 until the provenance exclusion of one specimen (2026-08-24)
 
 
 def main():

@@ -29671,3 +29671,49 @@ difference is not in the predicate — it is in whether the position was indepen
 established. Every FX result that has held up in these sections was probed at a position
 reached by following a validated pointer, and every one that has not was probed at a
 guessed offset.
+
+## The residue was something: a third mask region, and the colour flag multiplies widths
+
+The 3,209 records where the rule's answer disagreed with the bytes were exactly the
+within-key minorities — records whose header (cls, w1) does NOT determine. The fit had
+been scoring each key's MODAL header, so it read 99.97% while the per-record truth for
+uniform was 86.9%. The two measurements were both right; their difference was the
+finding.
+
+**The discriminator is the tag's low bits — word 0 participates in the layout beyond
+cls.** Keyed on (word 0, w1), uniform goes from 79.9% additive to 99.990% deterministic,
+and the mechanism is legible in sixteen rows: tag bit 0 is the COLOUR flag, and a colour
+uniform bakes four floats where a grayscale bakes one — +3 words. levels' +3/+6/+9
+quanta are the same thing, per parameter: a colour levels bakes each level per-channel.
+
+**And the colour flag does not ADD — it MULTIPLIES.** Its +3 lands on uniform's value
+slot only when cls bit 8 is set, so a colour main-effect cannot express it; the cost
+model needed interaction terms (every feature crossed with tag bit 0). With those:
+
+    uniform    86.880%  -> 100.000%
+    levels     98.894%  ->  99.970%   kept
+    normal     75.569%  -> 100.000%   (with per-filter mask-width selection)
+
+This is the third appearance of one principle: A BAKED PARAMETER COSTS ITS WIDTH, and
+width follows type — matrix22 is 4, the bit-10 class parameter is 2, and a colour value
+is channels wide where a grayscale is 1. The colour flag is not a cost, it is a width
+multiplier on every baked colour-typed field.
+
+### The honest scoreboard, per-record and no longer key-modal
+
+    kept: 17 filters, 757,555 records offered = 96.51% coverage
+    of what the rule answers: wrong 674 = 0.089%
+
+### What the remaining 674 are
+
+    pixelprocessor >+40    264   the probe: the record's first in-record program is
+                                 not its first program (boundary observable, not model)
+    fxmaps +3              148   the inline sub-table block, now inside class 3 too
+    warp +1                180*  (kept out at 99.39%) the SHAPE DETECTOR: v9 records
+                                 whose edge run reads start-1 but which carry the w1
+                                 word -- the detector, not the format
+    blend/transformation/levels +2..+10   ~120  concentrated in single files
+                                 (concrete_049 recurs across four filters), unexplained
+
+Emboss stays out (75.6%): its w1 is a packed word of another shape, already
+established. Every remaining number is attached to a mechanism or to a named file.

@@ -115,9 +115,26 @@ UNNAMED = {9: 'legacy, version 0x20000 only'}
 # record index - EXCLUDING slot 1 wherever slot 1 is a parameter word, because a small
 # packed integer passes the "valid backward index" test trivially. That conflation is
 # what produced the shared-reference error; see FORMAT-NOTES.md.
-EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 10: [1],
+EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 9: [2, 3], 10: [1],
          11: [2], 12: [2, 3], 13: [1], 14: [1], 15: [2], 18: [2], 19: [1],
          21: [2], 22: [1]}
+# Filter 9 had no entry, so `Record.edges` returned [] for it while slots 2 and 3 plainly
+# held backward record indices -- its inputs were simply unread, not absent. It is the
+# corpus's rarest filter (5 records in 4 files, all version 0x20000) so the n >= 200
+# correlation control cannot be run on it; what CAN be shown at n=5 is reported instead:
+#
+#   slots holding a valid backward index in all 5 records      1, 2, 3
+#   slot 1 refuted as an edge: it holds the constant 1 or 5, and does not track the
+#     record's index -- the exact small-integer artifact the edge control exists to catch
+#   slots 2 and 3 track the record's own index                 corr 0.998 and 1.000
+#   distance from own index                                    1-21 records back, and one
+#                                                              of the two is index-1 or -2
+#                                                              in every record
+#
+# [2, 3] is also the layout blend, shuffle, emboss and directionalwarp already use, so this
+# claims no new shape. The correlations are reported rather than relied on: n=5 against a
+# published threshold of 200. What the entry rests on is 5-of-5 agreement plus slot 1
+# failing the same test in the same records.
 
 # Filters whose input list is still not fully resolved, with the residue measured over the
 # corpus. **Read by no code**: this is a hand-kept register of known gaps, which means it

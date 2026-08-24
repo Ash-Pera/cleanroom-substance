@@ -50,11 +50,15 @@ def costs():
     return _COSTS
 
 
-def header_words(filter_id, cls, w1):
+def header_words(filter_id, word0, w1):
     """Header length in words from the masks alone, or None if not derived.
 
     None means "this filter's costs were not established", never "zero" -- callers must
     fall back rather than treat a missing rule as an answer.
+
+    `word0` is the record's ENTIRE first word, not the cls field alone. The tag's low
+    bits carry layout too -- uniform's colour flag is tag bit 0 and costs +3 words --
+    and the first version of this function took cls and silently could not see them.
 
     `w1` follows the filter's mode, recorded in the spec by derive_costs:
 
@@ -74,14 +78,16 @@ def header_words(filter_id, cls, w1):
     spec = costs().get(str(filter_id))
     if spec is None:
         return None
+    if spec.get('interaction') == 'colour':
+        return _interaction(spec, word0, w1)
     g = spec.get('guard')
-    if g is not None and (cls >> g['shift']) & g['mask'] != g['value']:
+    if g is not None and (word0 >> g['shift']) & g['mask'] != g['value']:
         return None                      # fitted for a different sampling class
     if spec.get('mode') == 'absent':
         w1 = None
     total = spec['const']
     for b, c in spec['cls'].items():
-        if cls >> int(b) & 1:
+        if word0 >> int(b) & 1:
             total += c
     if w1 is not None:
         total += spec.get('w1_present', 0.0)
@@ -92,6 +98,26 @@ def header_words(filter_id, cls, w1):
             st = (w1 >> (2 * int(j))) & 3
             if st:
                 total += states.get(str(st), 0.0)
+    n = int(round(total))
+    return n if n > 0 else None
+
+
+def _interaction(spec, word0, w1):
+    """Colour-interaction spec: header = base(features) + tagbit0 * cross(features)."""
+    if spec.get('mode') == 'absent':
+        w1 = None
+    v = [1.0] + [float(word0 >> b & 1) for b in spec['clsbits']]
+    if spec.get('has_absent'):
+        v.append(float(w1 is not None))
+    ar = spec.get('arity_sm')
+    if ar is not None:
+        v.append(float((w1 >> ar[0]) & ar[1]) if w1 is not None else 0.0)
+    for j in spec['pairs']:
+        st = ((w1 >> (2 * j)) & 3) if w1 is not None else 0
+        v += [float(st == 1), float(st == 2), float(st == 3)]
+    c0 = float(word0 & 1)
+    total = sum(b * x for b, x in zip(spec['base'], v))
+    total += c0 * sum(b * x for b, x in zip(spec['cross'], v))
     n = int(round(total))
     return n if n > 0 else None
 
