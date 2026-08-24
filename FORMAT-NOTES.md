@@ -24330,3 +24330,57 @@ The table is the wrong scoreboard, though. Judging the 2,843 disagreements again
 2,806 of 2,843 go to the rule. **Against the records the rule is right on 471,009 of 471,046 -
 99.992%** - and `layouts.json` carries 2,806 entries that disagree with the bytes they
 describe. 37 records remain genuinely unexplained.
+
+## The 37, chased: the slot rule is exact
+
+All 37 were `levels`, and the disputed words gave them away on sight:
+
+    0x3a09f0   0x10d4e0   0xf0b4   0x5520   0x5918   0x35194   0x8008   0x2fac
+
+Those are not floats. Their float readings are denormals - 5.3e-39, 1.5e-39, 8.6e-41 - which
+is what a medium-sized INTEGER looks like reinterpreted as a float. They are file offsets.
+And the state vectors say so too: every one of the 36 is `(2, 0, 0, 0, 0)` or similar, with
+`levelinlow` in state 2 - a PROGRAM.
+
+The adjudicating predicate only ever accepted baked floats. It never tested whether the word
+was a program pointer, so it scored 36 records as "the rule invented a slot" when the slot
+holds exactly what the state vector predicts:
+
+    slots the rule claims beyond the table, reclassified
+        a baked float             2,764
+        a valid PROGRAM pointer      36
+        neither                       0
+
+The 37th, `BrickWall_02` record 316, is the table claiming slot 5 of a five-word record - an
+index that does not exist.
+
+### Final
+
+    rule agrees with the table        468,203   99.3964%
+    rule right, table short             2,800    0.5944%
+    rule right, table over-claims          43    0.0091%
+    unexplained                             0    0.0000%
+
+    the rule is correct on 471,046 of 471,046 = 100.0000%
+
+With the control this file insists on: the predicate holds for 100% of the slots the rule
+claims against **7.55%** of slots three to five words past the block - a 92 point lift, so it
+discriminates. `layouts.json` has 2,843 entries that disagree with the bytes they describe.
+
+    slots = |fields in state 1 or 2|
+          + (cls bit 0) + (cls bit 7) + (cls bit 11) + 2 * (cls bit 10)
+          + (blend only:  word1 bit 9)
+          - (levels only: 1 when outlow and outhigh are both active and cls bit 0 is clear)
+
+### What went wrong three times, and it was the same thing
+
+Every dead end in this investigation was a predicate too narrow or too loose for the question:
+
+    "holds a usable value"                100% vs 87%    too loose to decide anything
+    "a float in [0,1]"                    100% vs 68%    admitted denormals, misled on 29
+    "0 or a float in [1e-6, 1]"           98.7% vs 7.3%  settled levels, but rejected programs
+    "that, or a valid program pointer"     100% vs 7.6%  settled all of it
+
+Each time the measurement was sound and the category was wrong. The residual that survives
+three good measurements is worth reading one record at a time, because what is left is
+usually not a smaller version of the same thing - it is a different thing.
