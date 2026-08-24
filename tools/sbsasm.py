@@ -612,7 +612,11 @@ class Record:
         not a measurement.
         """
         f = self.filter_id
-        if f in (2, 8, 15, 21):
+        # Filter 8 is NOT here any more: `_compute_layout` states emboss's edges as
+        # (2, 3) directly, so stripping slot 1 here as well would write one rule twice.
+        # Kept for 2, 15 and 21, whose slot 1 arrives from the layout TABLE rather than
+        # from a rule and so cannot be corrected at the source.
+        if f in (2, 15, 21):
             return [s for s in slots if s != 1]
         if f == 7 and len(self.words) > 1 and self.words[1] != 0 and 3 in slots:
             return sorted({1} | {s for s in slots if s != 3})
@@ -687,8 +691,21 @@ class Record:
             def _bw8(v):
                 return v == 0 or (v < self.index and v < n)
 
-            if all(_bw8(self.words[s]) for s in (1, 2, 3)):
-                return ([1, 2, 3], 4)
+            # Emboss takes TWO inputs, at slots 2 and 3. Slot 1 is words[1], the packed
+            # type-code word. It was proposed here as a third edge and `_real_edges` then
+            # removed it again, in all 546 records - the rule stated twice, the two
+            # statements disagreeing. The index-correlation control settles it:
+            #
+            #     corr(slot 1, record index)   +0.109      22 distinct small values
+            #     corr(slot 2, record index)   +0.999
+            #     corr(slot 3, record index)   +0.985
+            #
+            # The guard asked whether slot 1 held a backward index. A small packed word
+            # passes that trivially, and did in all 546, so the guard was vacuous - the
+            # same conflation already recorded against EDGES and the layout table. Slots
+            # 2 and 3 are backward on their own in 546 of 546.
+            if all(_bw8(self.words[s]) for s in (2, 3)):
+                return ([2, 3], 4)
 
         # The parameter slots of the four filters whose two-bit fields are catalogued,
         # computed from the FULL word1 rather than looked up.
@@ -1642,26 +1659,60 @@ class Record:
         renders the road markings, filigree corner ornaments, snowflakes and hand-drawn
         lettering the materials are named for. See `tools/extract_shapes.py`.
 
-        STRIP is the working reading, and it is controlled against the alternatives by
-        coverage rather than by eye: a tessellation covers each interior pixel exactly
-        once, so a wrong convention shows up as pixels covered many times over.
+        STRIP is not a guess and not merely the first convention tried. Two independent
+        signatures confirm it, and an earlier caveat here is withdrawn.
 
-            convention                 covered exactly once   area covered
-            strip                              73.3%             46.4%
-            fan                                17.2%             50.6%
-            list (every third triple)          79.3%             11.4%
+        **Overlap, by area.** A tessellation's faces partition the shape, so the sum of
+        face areas equals the area of their union; overlap makes the sum exceed it.
 
-        `fan` is refuted outright. `list` is not refuted by what it draws - it draws a
-        clean third of the same picture, which is what a list reading of a strip should
-        do - but it leaves two thirds of the vertices unaccounted for, and `strip` does
-        not. This control exists because `strip` was the first convention tried and it
-        worked, which is not the same as it being the one that fits.
+            convention                 sum of face areas / union area
+            strip                          0.983   (range 0.917 - 0.998)
+            list (every third triple)      0.505
+            fan                          138.313   (range 11.6 - 372.7)
 
-        73.3% is not the ~100% a clean tessellation would give, and that residue is the
-        open part: some triples read as faces do overlap, and whether that is the joins,
-        a winding rule this ignores, or a convention close to a strip without being one
-        is not settled. So the vertex ORDER is provisional even though what the vertices
-        DRAW is not.
+        A previous version of this docstring reported 73.3% of pixels "covered exactly
+        once" and called the missing 27% an open residue. That number was measuring the
+        rasteriser, not the geometry: adjacent faces in a strip share an edge, and a
+        polygon fill paints boundary pixels for both, so every shared edge double-counts.
+        Shared edges have zero AREA, which is why this test is the right one. There is no
+        residue - `strip` is a clean tessellation and `fan` is refuted 140-fold.
+
+        **Winding.** In a strip, consecutive faces reuse two vertices in swapped order, so
+        if the faces are consistently wound their RAW signed areas alternate in sign.
+        Nothing else makes that happen.
+
+            consecutive faces with opposite signed area   99.52%  (69,942 pairs)
+            CONTROL: the same vertices, shuffled          31.38%
+
+        **Structure.** The payload is a sequence of triangle SUB-STRIPS - 13,512 of them
+        across the 140 records, a median of 20 per record - separated by joins made of
+        repeated vertices. The join lengths are a parity mechanism, not padding:
+
+            length 2   19,377      preserves the strip's parity
+            length 3    3,240      flips it
+            length 5    2,651      flips it
+            length 4       97      would be redundant with 2, and is duly absent
+            length 6      101      likewise
+
+        Even joins longer than 2 are 0.4% of all joins. That is the signature of an
+        encoder choosing between "carry on" and "flip", with no reason to emit anything
+        else.
+
+        What does NOT hold is parity across the whole payload: correcting each face by
+        (-1)^i over the full vertex list agrees with the payload's majority orientation in
+        only 81.5% of faces (against 53.8% uncorrected), and just 38 of 140 payloads reach
+        100%. So each sub-strip is internally consistent and carries its own winding, and
+        a reader must fill per sub-strip or take the union - it cannot rely on a global
+        winding rule. Whether that is the encoder's intent or an imperfect reconstruction
+        of where its joins actually fall is not settled; it does not affect what renders,
+        because a union is orientation-blind.
+
+        **Word 0 is not a format selector.** All three of its values decode with this same
+        reader and show the same signatures - alternation 99.17%, 97.29% and 99.95%, and
+        the same 2/3/5 join profile. What it does track is the tag's colour bit: the 12
+        `0x04040403` records are greyscale in 12 of 12 and never carry the terminator,
+        against 0-1% greyscale for the other two values. Twelve records from two files is
+        not enough to call that a colour flag, and it is recorded as an observation.
 
         Returns `(word0, [(x, y), ...])` with coordinates in 0..1, or None.
         """
@@ -1679,7 +1730,13 @@ class Record:
         if n < 12 or (n - 8) % 4 or off + n > len(d):
             return None
         v = struct.unpack_from('<%dI' % ((n - 8) // 4), d, off + 8)
-        return kind, [((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0) for x in v if x]
+        # Drop the TERMINATOR only, not every zero. `if x` looks equivalent -- a zero
+        # vertex is the terminator in 105 of 140 payloads and interior zeros are rare --
+        # but two payloads have a vertex at exactly (0, 0), which is a legal corner, and
+        # discarding one shifts the strip's parity for every face after it.
+        if v and v[-1] == 0:
+            v = v[:-1]
+        return kind, [((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0) for x in v]
 
     @property
     def vector_faces(self):

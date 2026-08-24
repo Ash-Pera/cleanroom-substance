@@ -28430,3 +28430,180 @@ that is quietly dropped costs the reader their ability to check anything else.
 
 Filter 9 stays in `UNNAMED`. It is not a gap that further analysis closes - it is a gap that
 the provenance rule creates, and the rule is worth more than the name.
+
+## Filter 5's payload, exactly: sub-strips, a parity mechanism, and a retracted residue
+
+Digging into the node's format settled the vertex order, produced a small correctness fix,
+and retracted a caveat written one commit earlier.
+
+### The 27% "open residue" was the rasteriser, not the geometry
+
+The previous section reported 73.3% of pixels "covered exactly once" under the strip
+reading, called the missing 27% overlap, and concluded that the vertex ORDER was
+provisional. That number measured the wrong thing. Adjacent faces in a strip **share an
+edge**, and a polygon fill paints the boundary for both, so every shared edge is
+double-counted — and the smaller the triangles, the worse it gets. Measuring sub-strips on
+their own made it look worse still (30.9%), which should have been the clue: a cleaner
+object cannot be a messier tessellation.
+
+Shared edges have zero *area*, so area is the test that is immune to it. A tessellation's
+faces partition the shape, so their areas sum to the area of their union:
+
+    convention                 sum of face areas / union area
+    strip                          0.983    (range 0.917 - 0.998)
+    list (every third triple)      0.505
+    fan                          138.313    (range 11.6 - 372.7)
+
+`strip` is a clean tessellation; the shortfall below 1.000 is the union's boundary pixels,
+in the direction that flatters the alternatives rather than this one. `fan` is refuted by
+a factor of 140. **The residue is withdrawn, and with it the "vertex order is provisional"
+caveat.**
+
+The general lesson is one this document keeps relearning from the other direction: a
+measurement that mixes the thing being measured with the instrument reads as a property of
+the thing. Here the instrument was PIL's boundary rule.
+
+### The winding signature
+
+In a triangle strip, consecutive faces reuse two vertices in swapped order, so consistently
+wound faces have RAW signed areas that alternate in sign. Nothing else produces that.
+
+    consecutive faces with opposite signed area    99.52%   over 69,942 pairs
+    CONTROL: the same vertices, shuffled           31.38%
+
+### The joins are a parity mechanism
+
+The payload is a sequence of triangle SUB-STRIPS — 13,512 of them across the 140 records,
+a median of 20 per record, with lengths peaking at 11 to 14 vertices — separated by joins
+made of repeated vertices. The join lengths are not arbitrary padding:
+
+    length 2   19,377      preserves the strip's parity
+    length 3    3,240      flips it
+    length 5    2,651      flips it
+    length 4       97      would be redundant with 2 — and is duly absent
+    length 6      101      likewise
+
+Even joins longer than 2 are **0.4%** of all joins. That is what an encoder choosing
+between "carry on" and "flip" looks like, and it is why the run-length census in the
+previous section had a spike at 5 and a hole at 4 — a shape that was recorded there as
+merely odd.
+
+What does **not** hold is parity across the whole payload. Correcting each face by `(-1)^i`
+over the full vertex list agrees with the payload's majority orientation in only 81.5% of
+faces — against 53.8% uncorrected, so the correction is doing real work — and just 38 of
+140 payloads reach 100%. Each sub-strip is internally consistent and carries its own
+winding. A reader must therefore fill per sub-strip or take the union; it cannot rely on a
+global winding rule. Whether that is the encoder's intent or an imperfect reconstruction of
+where its joins actually fall is open, and it does not affect what renders, because a union
+is orientation-blind.
+
+### Word 0 is not a format selector
+
+The three values are not three vertex encodings. All decode with the same reader and show
+the same signatures:
+
+    word 0        records   alternation   sub-strips/rec   join profile
+    0x07FFFFFB      118        99.17%          68          2:72% 3:13% 5:14%
+    0x04040403       12        97.29%           4          2:69% 3:26% 5:5%
+    0x00000003       10        99.95%         543          2:82% 3:13% 5:5%
+
+What word 0 does track is the tag's colour bit: the 12 `0x04040403` records are greyscale
+in 12 of 12 and never carry the zero terminator, against 0–1% greyscale for the other two
+values. Twelve records from two files is not enough to call it a colour flag, and it is
+left as an observation rather than promoted to a reading.
+
+### A correctness fix, and a non-lead
+
+`vector_shape` filtered vertices with `if x`, dropping every zero. A zero vertex is the
+terminator in 105 of 140 payloads — but **two payloads have a vertex at exactly (0, 0)**,
+which is a legal corner, and dropping one shifts the strip's parity for every face after
+it. It now drops a trailing zero only. The corpus totals move by 2 vertices and 1 face,
+which is the point: the fix is invisible in aggregate and wrong in exactly the two places
+that matter.
+
+The out-of-record filter-5 records carry `0x0A420003` / `0x0A420005` at slot 3, a constant
+`0x7DC25D24` at slot 4, and a count-like word at slot 5, which looked like a resource
+reference worth chasing. It is not this node's: words with high half `0x0A42` occur
+**670,528 times in files that contain no filter 5 at all**, against 64,266 in files that
+do. That is the container's general tagging scheme, and it is recorded here so the next
+person does not spend the same hour on it.
+
+## The slot rules, pinned down: eight rules, 904,131 records, nothing left over
+
+The rules for where a record's inputs and parameters live had accumulated across eight
+code paths — `EDGES`, `LAYOUTS`, `ALT_LAYOUTS`, `_RULED_PARAMS`, two arity fields,
+`_compute_layout`'s special cases, `edge_slots`' override and `_real_edges`' corrections
+— and nothing said what they collectively were. `tools/slot_rules.py` now reports them
+in one place and verifies each one.
+
+### The rules, in the order they are tried
+
+    1  fxmaps (4)          arity k = (w1 >> 10) & 0xF
+                           edges = slots 3 .. 3+k-1, parameter = slot 3+k
+    2  shuffle (3)         if slot 1 holds a backward index: edges (1), parameter 2
+                           else if slots 2,3 do:             edges (2,3), parameter 4
+    3  emboss (8)          edges (2,3), parameter 4
+    4  generative walk     blend, dirmotionblur, directionalwarp, levels
+                           base edges = 2 .. 2+base, base from _RULED_PARAMS
+                           then skip g slots, g = cls bits 0 + 7 + 11 + 13 + 2*bit 10
+                           then one slot per two-bit field of w1, in PARAM_SPEC order;
+                           a field in state 11 is an image input, so it adds an edge
+    5  pixelprocessor (20) arity = w1 & 0xF, edges = 2 .. 2+k-1
+    6  layouts.json        keyed (filter, cls, w1 & LAYOUT_MASK[filter])
+    7  ALT_LAYOUTS         probe each candidate, keep the one whose parameter slot
+                           points at a valid program
+    8  EDGES               the per-filter default
+
+then five corrections applied to whatever the above returned, each from the
+index-correlation control:
+
+    transformation, levels, distance    slot 1 is words[1]; drop it
+    warp                                words[1] != 0 shifts the record one slot
+                                        earlier: edges (1,2), pointer at 3
+    gradient                            slot 2 is the ramp's stop count, not an edge;
+                                        the real edge is slot 1, which the table omits
+    curve                               slot 2 is the control-point count; curve has
+                                        exactly one input, at slot 1
+
+### What each rule decides, and whether it holds
+
+    rule                                   records     edges   unres     corr
+    generative walk over PARAM_SPEC         454522    816781       0   +0.999
+    layouts.json table                      298747    332294       0   +0.998
+    pixelprocessor arity nibble              57965     75174       0   +0.999
+    EDGES fallback                           43452     41254       0   +0.995
+    fxmaps arity field (w1>>10)&0xF          41212     24423       0   +1.000
+    shuffle slot-1 discrimination              7654     11385      0   +0.988
+    emboss fixed (2,3)                         546      1092       0   +0.992
+    ALT_LAYOUTS probe                            33         0      0        -
+    TOTAL                                   904131   1302403       0
+
+Two checks, not one. The unresolved column is the weak test — every named edge slot holds
+a backward record index — and it is weak because a small packed word passes it trivially.
+That single conflation produced the shared-reference error, the layout table's false
+edges, and filter 8's phantom third input, and in each case the weak test read 100%.
+
+The correlation is the test that can fail. Across the 39 slot populations with 200 or
+more observations, **all 39 correlate above 0.9** with the record's own index, the
+weakest being `normal` slot 2 at +0.934. Earlier today three of them were at −0.319,
++0.067 and −0.005.
+
+### One rule was being written twice, and the two disagreed
+
+`_compute_layout` named emboss's edges as (1,2,3) and `_real_edges` removed slot 1 again
+— in all 546 records, so the first statement was simply dead. Both were added the same
+day. The guard on the dead one asked whether slot 1 held a backward index, which a small
+packed word passes by construction and did in 546 of 546, so it never discriminated
+anything. The control settles it:
+
+    corr(slot 1, index)   +0.109      22 distinct small values
+    corr(slot 2, index)   +0.999
+    corr(slot 3, index)   +0.985
+
+Emboss has two inputs. The rule is now stated once, at the source, and filter 8 has been
+removed from the correction list so it cannot drift apart again.
+
+That is the fourth time in this session that one fact had two homes in the code. It is
+worth stating plainly as a property of this codebase rather than as four incidents: rules
+here are added where they are discovered, not where they belong, and nothing compares
+them. `slot_rules.py` exists so that the next contradiction shows up as a row.
