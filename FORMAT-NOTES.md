@@ -20899,3 +20899,57 @@ name a graph input names one the manifest agrees exists. The two rules that got 
 both intrinsic - no manifest needed at read time - and both were found by chasing a
 residue that a coverage figure would have rounded to zero: 170 records out of 1,373, and
 then 7 out of 1,067.
+
+## Testing the popcount mechanism against every filter, and a base rate I nearly shipped
+
+Two questions worth settling: does `pixelprocessor` really use bit pairs, or is it a popcount
+filter whose two weak pairs are an artifact of forcing the wrong model? And does any filter
+still unaccounted for use the class-word count?
+
+### The one I nearly got wrong
+
+Filter 20 came back at **99.30%** under `popcount(cls & bits{0,3,7})` - 56,753 records,
+168,434 reads, better than anything else in the sweep. It is worth nothing at all.
+
+Its popcount is 3 in 55,147 of 56,753 records and its block length is 3 in 54,928, so the
+rule says "every slot is a program" almost everywhere. Filter 20's slots ARE programs 99.3%
+of the time. The rule reproduces the base rate and adds nothing.
+
+This is the exact trap written down two sections earlier - *"a slot that is 99% one kind has
+nothing to predict, and a high accuracy there means nothing"* - and I walked into it anyway,
+because that warning was recorded for a per-slot scan and this was a per-filter one. A rule
+of method only protects the measurement it is attached to.
+
+Redone with lift over the trivial predictor:
+
+    filter            reads   prog base  trivial  popcount    lift    mask
+    fid11            51,512      51.5%    51.5%    98.41%   +46.92    {0,7,11}
+    directionalwarp 228,400      51.2%    51.2%    97.53%   +46.35    {0,7,11}
+    gradient         43,883      42.7%    57.3%    99.90%   +42.62    {0,11,13}
+    fxmaps           42,473      64.1%    64.1%    99.84%   +35.79    {0,11}
+    levels          231,765      32.8%    67.2%    99.17%   +31.93    {0,7}
+    transformation  105,450      56.5%    56.5%    83.82%   +27.34    {0,5,7}
+    blend           116,748      70.5%    70.5%    86.72%   +16.27    {0,7}
+    pixelprocessor  194,225      69.2%    69.2%    69.93%    +0.72    {0,3,5}
+    filter 20       168,434      99.3%    99.3%    99.30%    +0.00    {0,3,7}
+
+### `pixelprocessor` uses bit pairs, confirmed by elimination
+
+Its popcount lift is **+0.72 points**, against +27 to +47 for every filter where the
+mechanism is real. So the two imperfect pairs are not the wrong model being forced; bit
+pairs at 98.46% are the best account this filter has, and its pairs at bits 0 and 4 being
+97% while those at 6 and 8 are exact remains unexplained rather than misattributed.
+
+### The pair filters respond to popcount too, and less well
+
+`levels` 99.17%, `directionalwarp` 97.53%, `fid11` 98.41% - all real lift, all below what
+their bit pairs give (99.98%, 100.00%, 100.00%). The class word and slot 1 both feed the
+layout key, so they carry correlated information; where both fit, the pairs fit better and
+are the right description.
+
+`transformation` is the interesting leftover at 83.82% with lift +27.34. An earlier section
+concluded it "needs no kind bits" because slots 5, 6 and 7 are baked 98.8-99.8% of the time.
+That measurement was over ABSOLUTE slots and this one is over the layout block, which
+includes the size-expression slot at position 0 - so the two are not comparable, and the
+earlier conclusion was narrower than it sounded. `transformation` has real class-word signal.
+83.82% is not a rule, and what the remaining sixth is doing is open.
