@@ -17730,3 +17730,48 @@ program almost always while the other nibbles do not.
 That also explains why the earlier probe of unknown node shapes failed its control: it
 accepted any header whose low nibble was 8, 9 or B, which mixes two different structures
 into one test.
+
+## The node chain and the parameter table are one structure
+
+Two negatives first, both cheap and both worth having.
+
+**`0xB` is not a node header.** It occurs 6,161 times in 127 specimens and its `+4` word
+points at a program, which looked promising. But reached the validated way - only as a
+known node's chain successor, so its position is checked before its contents are read - it
+appears **3 times in 3 files**, and its `+4` is not a program in any of them. Its
+occurrences are the integer 11 in ordinary data.
+
+**Three other candidates were floats.** `0x3F599999`, `0x3E3851EB`, `0x3EB851EB` are
+0.85, 0.18 and 0.36. Their low nibble is 9 or B by coincidence.
+
+That test also caught a broken measurement: an earlier version asked whether a program
+*starts* at node+4 and found **0.1% even for known nodes**, which contradicts `FX_NODES`
+itself. The word at +4 is a *pointer* to a program, not the program. Corrected, known nodes
+read 99.8% and 100.0% - and the correction is what made the negatives trustworthy.
+
+### The chain does not terminate, it hands off
+
+Walking every node chain to its end and asking what it stops on:
+
+    stops on a known table tag              18,628  (59.4%)
+    stops on an unknown tag ending in 8     11,858  (37.8%)
+    stops on something else                    890  (2.8%)
+    clean terminator, next = 0                   2  (0.0%)
+
+**Only 2 chains in 31,378 end with a null pointer.** 97.2% end on a word whose low nibble
+is 8 - which is what a table entry is.
+
+So the chain and the table were never two structures. A record's slot 2 addresses a node
+chain, the chain runs to its last node, and that node's next-pointer addresses the first
+entry of the parameter table. `Record.fx_walk()` follows both, yielding `('node', ...)`
+then `('entry', ...)`.
+
+    fxmaps records                49,241
+       yielding nothing            2,844   (5.8%)
+    nodes walked                  70,606
+    table entries walked         113,984
+    programs resolved            102,492
+
+That "98% of chains stop at an unrecognised header", carried in these notes as the central
+FX-Map obstacle, was never a failure. The walk was arriving at the next structure and
+being told it had crashed.

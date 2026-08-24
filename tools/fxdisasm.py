@@ -30,20 +30,12 @@ def main(path, idx):
     if r.filter_id != 4:
         print('  not an fxmaps record'); return
     n = 0
-    for off, tag, prog in r.fx_table():
+    for kind, off, tag, prog in r.fx_walk():
         n += 1
-        print('\n=== table entry 0x%X at +%d%s' %
-              (tag, off, '  program @+%d' % (prog - r.offset) if prog else
-               '  [tag shape not known]'))
-        if prog:
-            print(disasm.text(a.data, prog, r.end))
-    for off, hdr, prog in tree(a, r):
-        n += 1
-        known = FX_NODES.get(hdr)
-        print('\n=== node 0x%X at +%d%s%s'
-              % (hdr, off,
-                 '  program @+%d' % (prog - r.offset) if prog else '  (no program)',
-                 '' if known else '   [shape not known]'))
+        label = 'node' if kind == 'node' else 'table entry'
+        print('\n=== %s 0x%X at +%d%s' %
+              (label, tag, off,
+               '  program @+%d' % (prog - r.offset) if prog else '  [shape not known]'))
         if prog:
             print(disasm.text(a.data, prog, r.end))
     if not n:

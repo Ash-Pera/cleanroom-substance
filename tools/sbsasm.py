@@ -439,7 +439,35 @@ class Record:
                 out.append(p)
         return out
 
-    def fx_table(self):
+    def fx_walk(self):
+        """The whole FX-Map structure: the node chain, then the table it hands off to.
+
+        Yields ('node', offset, header, program) then ('entry', offset, tag, program).
+
+        These were treated as two unrelated things, and as two failures: the chain
+        "stopped at an unrecognised header" and a third of records "had no readable
+        content". They are one structure. A chain does not end with a null next-pointer -
+        only 2 of 31,378 do - it ends by pointing at the first table entry, and
+        **97.2% of chains end on a word whose low nibble is 8**, which is what a table
+        entry is.
+        """
+        last = None
+        for off, hdr, prog in self.fx_tree():
+            last = off
+            yield ('node', off, hdr, prog)
+        start = None
+        if last is not None:
+            q = self.offset + last
+            h = struct.unpack_from('<I', self.asm.data, q)[0]
+            sh = FX_NODES.get(h)
+            if sh:
+                nxt = struct.unpack_from('<I', self.asm.data, q + sh[0])[0] + 52
+                if self.offset <= nxt < self.end - 7:
+                    start = nxt
+        for off, tag, prog in self.fx_table(start):
+            yield ('entry', off, tag, prog)
+
+    def fx_table(self, start=None):
         """For filter 4: yield (entry offset, tag, program offset or None) per entry.
 
         The counterpart to `fx_tree`. A record's slot 2 addresses either a linked node
@@ -455,8 +483,10 @@ class Record:
         if self.filter_id != 4 or len(self.words) < 3:
             return
         d, o, e = self.asm.data, self.offset, self.end
-        q = self.words[2] + 52
-        if not (o <= q < e - 7) or struct.unpack_from('<I', d, q)[0] in FX_NODES:
+        q = self.words[2] + 52 if start is None else start
+        if not (o <= q < e - 7):
+            return
+        if start is None and struct.unpack_from('<I', d, q)[0] in FX_NODES:
             return
         while q + 8 <= e:
             tag = struct.unpack_from('<I', d, q)[0]
