@@ -27141,3 +27141,52 @@ slots 11, 12 and 13 as edges when they hold the pointer.
     arity  9      3 records    slots 2..10 all backward indices     3   100%
     arity 12     37 records    slots 2..13 all backward indices    37   100%
     arity 13     41 records    slots 2..14 all backward indices    41   100%
+
+## `load_pixels_bitmap`'s channel order: evidenced on one shape, contradicted on another
+
+`render.load_pixels_bitmap` reshapes a `pixels`-kind bitmap's raw bytes straight into
+`(H, W, channels)` and calls that RGB(A) in source order. Nothing had checked this against
+content with a known channel convention — every prior render used single-channel content or
+synthetic placeholders, where a channel-order bug is invisible. Two real, standalone,
+all-baked-bitmap `.sbsar` files (`x_textures__Metal_Vent_006`, `x_textures__celtic_orna_
+mossy_001` — 6 records, every one `bitmap`/`pixels`, no procedural graph at all) expose their
+`normal` output as real photographic/baked content, which has an unambiguous convention to
+check against: a flat tangent-space normal reads near (0.5, 0.5, 1.0).
+
+**Metal_Vent_006** (3 channels, 8-bit): a flat corner patch of the record `Assembly.outputs()`
+names `normal` (record 2, uid 4166492168 — NOT record 1, see below) reads (0.996, 0.501,
+0.497). That is the (0.5, 0.5, 1.0) convention with channels 1 and 3 swapped, almost exactly
+— R and B traded places. Consistent with the source storing BGR and this reader treating it
+as RGB.
+
+**celtic_orna_mossy_001** (4 channels, 16-bit): the same test does not confirm the swap.
+Global per-channel stats on its `normal` record (record 2, uid 570540878):
+
+    channel   mean      std      min      max
+    1 (R)     0.9864    0.0717   0.1064   1.0000
+    2 (G)     1.0000    0.0022   0.1103   1.0000
+    3 (B)     0.5000    0.0639   0.0017   0.9983
+    4 (A)     0.4999    0.0650   0.0017   0.9983
+
+Channels 3 and 4 already look like textbook tangent X/Y as read — centered exactly at 0.5,
+symmetric, spanning nearly the full range — with no correction applied. Channel 2 is
+degenerate (std 0.002, i.e. constant), and channel 1 is skewed toward 1 rather than centered,
+so this record does not read as "channels 1/2 hold X/Y and got displaced" either; it reads as
+(unidentified, constant/unused, X, Y) in its CURRENT position. A blanket channel reversal
+that would fix Metal_Vent_006 does nothing useful here and would not be justified by this
+record's own evidence.
+
+**UNVERIFIED**: whether channel order depends on channel count, bit depth, both, or neither —
+the two specimens checked differ in both (3ch/8-bit vs 4ch/16-bit), so this does not separate
+the hypotheses. Not fixed here. A real answer needs several more real (not synthetic-filled)
+specimens per channel-count/depth combination, each checked against content with a known
+convention the way `normal` was checked above — the same discipline `blend` and
+`transformation` used elsewhere in this file, not a guess applied corpus-wide from two points.
+
+Also corrected in the course of this: which record index a named output actually is. Both
+specimens' record 0 holds the *last*-declared output (`ambientOcclusion`/`ambient_occlusion`),
+and declared outputs 1..6 land at record indices 1..5 then wrap to 0 — i.e. output k (1-
+indexed) is record k for k < 6, and output 6 is record 0. Seen identically in both
+specimens, for whatever that is worth at n=2. Assuming record index tracks manifest
+declaration order directly (record 0 = first output) is wrong on both; use
+`Assembly.outputs()`, which reads the file's own output table, not that assumption.
