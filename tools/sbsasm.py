@@ -637,6 +637,10 @@ class Record:
         `offset - 52`, in 36,614 of 36,614, so there is nothing to guess. Each program is
         independently self-delimiting through its instruction count, but that is a
         decoder's business, not a way to find the next one.
+
+        Where the layout table has no key, `classified_programs` supplies the slots
+        instead. That path used to return whatever the hand-written fallback named, which
+        is one slot by construction - see `classified_programs` for what it cost.
         """
         asm = self.asm
         hit = LAYOUTS.get((self.filter_id, self.cls,
@@ -653,7 +657,60 @@ class Record:
             p = self.words[s] + 52
             if asm.body_lo <= p < asm.body_hi and p not in out and asm.valid_program(p):
                 out.append(p)
+        if hit is None:
+            for p in self.classified_programs():
+                if p not in out:
+                    out.append(p)
         return out
+
+    def classified_programs(self):
+        """Program offsets read from the record itself, for records with no layout key.
+
+        `MIN = 20` in `derive_layouts.py` drops rare keys from the table, and
+        `_compute_layout` then falls through to a hand-written default - one `PROG_SLOT`
+        entry, or one slot from `ALT_LAYOUTS`. Every one of those names a SINGLE program
+        slot, so a record on that path could not report a second program whatever its
+        slots held. `Normalize_RG`'s `pixelprocessor` names its output-size expression at
+        slot 3 and the 19-instruction normalisation at slot 4, and only slot 3 came back.
+
+        41,244 records (4.62%) take that path. Probing just the slot after the fallback's
+        program slot finds a valid program in 19.54% of them, against 0.02% on known-key
+        records with one program slot - so these are real, not the small-integer artifact.
+
+        The predicate is the one already validated: `words[s] + 52` passing
+        `valid_program`, whose operand-possibility check is violated by 0.00% of
+        instructions in programs a record's slots name and 65% of scan candidates. The
+        bound is stated by the record - the header ends where its own bytecode begins,
+        observable as the smallest inline program start.
+
+        Measured against the 851,549 records whose key IS in the table, so the answer is
+        known: slot set exactly right 99.02%, recall 100.00% (two misses corpus-wide),
+        precision 98.51% - and that precision is a floor, since it counts as wrong every
+        slot the table does not name, which is the thing this method exists to find.
+
+        `fxmaps` is excluded. Its records run to 331 slots and beyond, which is the
+        condition under which any small value is a plausible pointer, and it contributes
+        76% of every false positive this predicate makes (13,280 of 17,552) at 90.9%
+        precision. Outside `fxmaps` and `pixelprocessor` the predicate runs at 99.8% or
+        better. That carve-out costs 586 of the 10,400 programs this recovers; the way to
+        get them back is the `fxmaps` header size, not a wider scan.
+
+        Additive only. As a REPLACEMENT for the fallback it is a wash - it gains 10,400
+        and loses 10,298, because the header bound cuts off slots the fallback happens to
+        reach. Used as a union it gains 10,400 and loses none.
+        """
+        if self.filter_id == 4:
+            return []
+        asm, o, e = self.asm, self.offset, self.end
+        cand = []
+        for s in range(2, len(self.words)):
+            p = self.words[s] + 52
+            if asm.body_lo <= p < asm.body_hi and asm.valid_program(p):
+                cand.append((s, p))
+        # The header ends at the first program the record points at INSIDE itself.
+        inline = [(p - o) // 4 for _s, p in cand if o <= p < e]
+        stop = min(inline) if inline else len(self.words)
+        return [p for s, p in cand if s < stop]
 
     @property
     def filter_programs(self):

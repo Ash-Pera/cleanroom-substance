@@ -30,6 +30,26 @@ def main(paths):
             byfilter[f][0] += 1
             if r.known:
                 tot['known_records'] += 1
+            # Programs the layout table does not name. A record whose key was dropped by
+            # derive_layouts' MIN=20 falls through to a fallback that names one slot by
+            # construction, so a second program there was invisible in every figure below.
+            # The control is the same probe on known-key records, which measures what the
+            # small-integer artifact contributes: it ran at 0.02% against 19.54%.
+            key = (f, r.cls, r.words[1] & LAYOUT_MASK.get(f, 0)) if len(r.words) > 1 else None
+            if key is not None and f != 4:
+                # what the layout slots alone name, which is what `programs` used to be
+                slots = list(LAYOUTS[key][1]) if key in LAYOUTS else []
+                sl = r.layout[1]
+                if sl is not None and sl not in slots:
+                    slots.insert(0, sl)
+                named = {r.words[s] + 52 for s in slots
+                         if s is not None and s < len(r.words)}
+                extra = [p for p in r.classified_programs() if p not in named]
+                side = 'fallback' if key not in LAYOUTS else 'keyed'
+                tot[side + '_records'] += 1
+                tot[side + '_recovered'] += len(extra)
+                if extra:
+                    tot[side + '_records_gaining'] += 1
             par = r.parameter
             if par is None:
                 byfilter[f][1] += 1
@@ -80,6 +100,17 @@ def main(paths):
           100 * tot['param_zero'] / max(1, r_)))
     e = tot['resolved_edges'] + tot['unresolved_edges']
     print('edge slots            : %d   resolved %.2f%%' % (e, 100 * tot['resolved_edges'] / max(1, e)))
+    # Programs named by a slot the layout table does not list. The keyed row is the
+    # CONTROL: on records whose key is known the same predicate should find almost
+    # nothing, and what it does find is the small-integer artifact's contribution.
+    fb, kd = tot['fallback_records'], tot['keyed_records']
+    print('programs off the layout table (fxmaps excluded):')
+    print('    dropped-key records : %d  recovered %d  (%.2f%% of records gain one)'
+          % (fb, tot['fallback_recovered'],
+             100 * tot['fallback_records_gaining'] / max(1, fb)))
+    print('    CONTROL keyed records: %d  recovered %d  (%.2f%%)'
+          % (kd, tot['keyed_recovered'],
+             100 * tot['keyed_records_gaining'] / max(1, kd)))
     print('bytes                 : %d   unexplained %d  (%.3f%%)' % (
         tot['bytes'], tot['unexplained'], 100 * tot['unexplained'] / max(1, tot['bytes'])))
     print('files with any unexplained bytes: %d' % len(unexplained))
