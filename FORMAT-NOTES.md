@@ -17025,3 +17025,69 @@ records that are procedural sources, not records with a missing edge.
 
 Against 34.03% before the resizing-filter correction. Edge readings are now 1,559,361 with
 36 unresolved.
+
+## The FX-Map residue: a bad metric, two dead hypotheses, and a real gap
+
+### Correction: the tree walk was never failing
+
+This notebook has recorded that "98% of chains stop at an unrecognised header", and a
+fresh measurement said 1.2% of walks ran to the end. **Both were artifacts of the metric.**
+It used a `while/else`, which fires only when the loop condition fails and never when the
+walk stops on a proper terminator - so a chain that ended correctly was counted as a
+failure.
+
+Measured properly, by scanning each record for the four known node headers and asking how
+many the pointer walk visits:
+
+    known node headers present in fxmaps records   43,456
+    reached by the walk                            41,603   (95.7%)
+
+The chain model works. What the walk stops *on* is simply whatever follows the last node,
+and 100% of those stop positions are not programs - they are the record's other data.
+
+### +52 is confirmed, not the misunderstanding
+
+The obvious unifying explanation for several residuals at once was a wrong pointer base.
+Varying the skew on FX chain steps and counting how often the target is one of the four
+known headers - a strict target, since only four values qualify:
+
+    skew   0    4    8   16   32   48   52   56   64
+    hit  0.0% 0.2% 0.0% 0.1% 0.8% 0.0% 95.5% 0.0% 0.0%
+
++52 it is, with nothing else close.
+
+### Two hypotheses, both killed by their own controls
+
+**The conditional's second branch.** `0x89` is the last good node before a stop in 13,658
+of 18,524 cases - 74% - and its shape is `[header][program][0][next]`, with a word at +8
+assumed to be zero. A conditional has two branches, so +8 looked like the other one. It is
+**zero in 18,331 of 18,358 nodes (99.9%)**. The recorded shape was right.
+
+**Inferring unknown node sizes by probing.** For a node reached legitimately as a known
+node's successor, try each candidate offset for its `next` pointer and see which lands on a
+plausible node. It looked strong - 81.6% of unknown nodes had some offset that worked,
+against a 35.8% null.
+
+But that plausibility test accepted any header whose low nibble was 8, 9 or B: 3 of 16
+values, six times over. Tightening it to the property all four known shapes share - a valid
+program pointer at +4, which a program validator must accept - the result inverts:
+
+    strict probe at a genuine unknown node   27.0%
+    strict probe at an arbitrary word        29.9%
+
+**The control beats the hypothesis.** The unknown headers are not program-carrying nodes
+of the known kind, and their sizes cannot be inferred this way. That is a useful negative:
+it rules out the whole family rather than leaving it open.
+
+### The gap, stated precisely
+
+**9,422 of 27,978 fxmaps records (34%) contain no known node header anywhere.** Their root
+pointers lead to headers like `0x20008`, `0x248`, `0x8000848` that are not nodes of any
+known shape.
+
+Bit 12 of the parameter word does not explain them - it selects between two fxmaps record
+layouts, but 16,404 bit-12-clear records do carry known nodes against 9,422 that do not.
+
+Node headers are also not laid out contiguously: consecutive ones sit 172, 384, 236 or 404
+bytes apart, because each node is followed by its own program. So the vocabulary cannot be
+recovered by scanning for a stride either.
