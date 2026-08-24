@@ -27689,3 +27689,99 @@ the canonical list reports 904,131 records — the figure recorded before this s
 The measured claims in the two commits before this one are unaffected in their ratios and
 wrong in their magnitudes, as already stated. This section corrects only the story about
 how it happened.
+
+## What is missing for a forward compiler
+
+Everything in this document reads the format. Emitting one is a different question, and it
+has a different answer per stage. Measured rather than estimated.
+
+### The container and its scaffolding are done
+
+    7-zip container            decoded; `py7zr` writes the archives `bsdtar` cannot even read
+    manifest XML               decoded, 437/437 structurally validated
+    header, 0x38 bytes         decoded, constants verified
+    value table / interface    decoded, 437/437
+    record directory           sorted absolute offsets with the +52 skew
+    output table               3,249 of 3,249 entries read
+    resource segment           **optional** - 303 of 438 files (69.2%) have none at all
+
+That last line matters more than it looks. A `.sbsar` is 93.6% cached images **by bytes**,
+but the median file's resource share is **0.0%**: most carry no images and the few that do
+are enormous. So a forward compiler does not have to render anything to produce a valid
+file, which removes what would otherwise be the largest dependency of all.
+
+### The record framing is 92.5% emittable
+
+Classifying every record word by whether the model can say what belongs there - tag, a slot
+the layout names, or bytes inside a program the record points at:
+
+    record words                        71,140,204
+    accounted for                       65,791,679    92.48%
+    a compiler would have to guess       5,348,525     7.52%
+
+    pixelprocessor  83.6%      fxmaps  94.1%      gradient  43.5%
+    curve           78.2%      fid 5    0.5%      blend     99.0%
+
+`pixelprocessor` dominates in absolute terms - 2.6M unaccounted words, its data blobs -
+followed by `fxmaps` tree internals, `gradient` ramp tables and filter 5's vector geometry.
+
+### The binding gap is not framing, it is meaning
+
+Knowing a slot is a parameter is not knowing what to put in it, and that is where a forward
+compiler actually stops:
+
+    parameter slots in record headers          2,528,201
+    slots the model can attach a NAME to         215,334      8.5%
+
+    blend 74.0%   levels 58.4%   directionalwarp 49.8%   fxmaps 4.2%
+    gradient, pixelprocessor, warp, transformation, uniform, shuffle, curve, fid 5:  0.0%
+
+(That counts the general `named_parameters` mechanism only; `Record.matrix`, `ramp`,
+`curve_points` and `translation` decode specific structures outside it, so the true figure
+is somewhat higher - but not by a category.)
+
+Reading a material, an unnamed parameter is a cosmetic gap: the record still renders because
+its value is right there. Writing one, it is fatal - a compiler given `blur(intensity=3)`
+has to know **which slot** carries intensity for `blur`, and for eight of the twelve
+commonest filters the model cannot say.
+
+### The class word has to be chosen, and cannot be derived
+
+Every record begins with one, and `layouts.json` is *keyed by* it - an index, not a rule.
+Going forward the map is needed in reverse, and it is not a function:
+
+    distinct class words in the corpus                442
+    (filter, arity, program count, colour, size) keys 2,243
+      mapping to more than one class word               856     38.2%
+
+So a node's observable configuration does not determine its class word in two cases out of
+five. This is the one gap with an easy workaround: a compiler does not have to *derive* a
+class word, only emit a self-consistent one, and it can lift a `(class word, layout)` pair
+from any record already decoded. That turns a knowledge problem into a template library.
+
+### Smaller things, and one that is not
+
+* **No assembler.** The encoding is fully known - 41 operations, the length rule, the
+  `IMM` table, the alignment pad, contiguous value numbering - and the disassembler and
+  transpiler exercise all of it. This is unwritten code, not an unknown.
+* **Record order** is unconstrained beyond what edges require: every edge points backward,
+  so any topological order should serve. Whether the engine demands more is untested.
+* **`passthrough`'s cull rule** is undetermined and does not matter here - emitting the node
+  or not only changes file size.
+* **There is no oracle.** Adobe's engine cannot be run, so nothing can confirm an emitted
+  file loads. The strongest available test is a round trip: emit, read back with
+  `sbsasm.py`, evaluate with `render.py`, and compare against the original's evaluation.
+  That checks self-consistency and says nothing about acceptance.
+
+### Ranked
+
+    1  parameter naming        8.5% of parameter slots      blocking, and the real gap
+    2  no assembler            code, not knowledge          a week's work
+    3  class word              38.2% ambiguous              workaround: templates
+    4  record framing          7.52% of words               pixelprocessor blobs first
+    5  no oracle               structural                   unfixable within the rules
+
+The order is the useful part. The format's *shape* is well enough understood to write; what
+is not understood is what most of its numbers mean, which is the same conclusion the reader
+side reached from the other direction - 39.3% of parameter readings are values whose meaning
+is unknown, and that is what blocks a renderer too.
