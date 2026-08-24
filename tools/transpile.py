@@ -244,11 +244,19 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             rhs = arg(len(toks) - 1)
         elif oid == 0x0D:                                  # construct vector, by
             # concatenation: always exactly two operands whatever the result width.
-            rhs = be.call("vec", [arg(i) for i in range(len(toks))])
+            # The instruction's own declared ncomp is authoritative -- see `vec`'s
+            # docstring for why concatenation alone can overshoot it.
+            args = [arg(i) for i in range(len(toks))]
+            if backend == "python":
+                args.append("ncomp=%d" % ncomp)
+            rhs = be.call("vec", args)
         elif oid == 0x0F:                                  # build a 4-vector from four
             # scalars. Probable rather than confirmed -- 28 instances, all terminal, all
             # in `levels`, all of the shape (x, x, x, 1). See OPCODES.md.
-            rhs = be.call("vec", [arg(i) for i in range(len(toks))])
+            args = [arg(i) for i in range(len(toks))]
+            if backend == "python":
+                args.append("ncomp=%d" % ncomp)
+            rhs = be.call("vec", args)
         elif oid == 0x10:                                  # swizzle
             mask = swizzle_mask(toks[1], ncomp)
             rhs = be.call("swizzle", [arg(0), str(mask)])
@@ -388,6 +396,6 @@ def transpile(data, start, end, backend="python", name="program", result=None):
     last = be.var(k if result is None else result)
     body = "\n".join(lines)
     return ("%s\ndef %s(inputs=None, slots=None):\n"
-            "    inputs = inputs or {}\n"
+            "    inputs = inputs if inputs is not None else {}\n"
             "    slots = slots if slots is not None else {}\n"
             "%s\n    return %s\n" % (be.header, name, body, last))

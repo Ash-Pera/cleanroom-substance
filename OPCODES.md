@@ -197,6 +197,18 @@ and building a 4-vector from four scalars with it needs three nested instruction
 `0x0F` does it in one. Marked probable rather than confirmed: 28 instances in 6 files is
 enough to fix the shape but not to rule out a `levels`-specific reading of it.
 
+Both `0x0D` and `0x0F` carry their own declared `ncomp` like every opcode, and it is
+authoritative over whatever concatenating their operands' *runtime* widths happens to
+produce — proven by a census of 3,248,836 `add` (`0x12`) instructions, zero of which have
+operands with mismatched declared width, meaning the compiler statically guarantees an
+add's inputs agree. A runtime value that drifts from its own declared width (found live in
+`ChewingGumSubstance001`, a scalar accumulator carried through 26 loop iterations that
+should have stayed 1-wide throughout every `get`/`set` site touching it) can otherwise
+concatenate into something wider than `0x0D` declares, and silently break a downstream add
+that assumed the declared width was real. The transpiler now passes `ncomp` through to
+`vec`, which truncates to it. See FORMAT-NOTES.md, "Running a real 7,287-instruction
+program end to end found two more bugs".
+
 ## `0x0B` is a loop, and carries no immediate
 
 `0x0B` was annotated "position 0 = iteration cap". The operands do not support that.

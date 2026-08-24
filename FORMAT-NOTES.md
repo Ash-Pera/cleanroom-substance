@@ -24654,6 +24654,105 @@ Field catalogues exist for only six filters. For the rest the base arity is meas
 than derived, and their word1 fields are still unnamed - `shuffle`'s 38 values and
 `transformation`'s bits beyond 6 and 25 are the largest unread areas remaining.
 
+## Running a real 7,287-instruction program end to end found two more bugs
+
+The `dot`/`cvt` fixes from the execution sweep were checked the way the sweep itself proved
+was necessary: not by re-reading the runtime source, but by transpiling and actually running
+a full, unmodified record program from the corpus and reading what broke.
+`ChewingGumSubstance001`'s program at offset 9354228 was chosen because it calls `dot` on a
+(3, 2)-mismatched pair, the exact case the truncation fix targets. It ran into
+`NoSharedCache` and a missing-slot `KeyError` first - both the already-documented, harness-side
+limitations - and once those were stubbed out, a third failure that was not:
+
+    ValueError: operands could not be broadcast together with shapes (4096,2) (4096,4097)
+
+**`swizzle`'s single-index case collapsed to 1-D.** `return out[:, 0] if len(idx) == 1 else
+out` breaks the invariant `_col`'s own docstring states for every other helper in the module -
+"(N, components), the shape every runtime helper works in." `lerp(a, b, t)` is raw arithmetic
+(`a + (b - a) * t`, no `_col()` normalization of its own), so a 1-D `(N,)` swizzle result
+combined with a proper `(N, 1)` operand hit numpy's ordinary broadcasting rule - a 1-D array is
+right-aligned as `(1, N)` against `(N, 1)` - and silently became an `(N, N)` outer product
+instead of raising. Isolated repro, independent of the corpus:
+
+    swizzle(vec3, [2])            shape (4096,), not (4096, 1)
+    lerp(1.0, that, (4096,1))     shape (4096, 4096) -- the outer product
+    ... four more scalar ops, shape survives unchanged ...
+    vec(that, 1.0)                shape (4096, 4097)
+
+`4097 = N + 1` and rerunning at `N = 1000` gave `(1000, 1001)` - proof the stray width tracks
+the sample count, not a baked file constant, before touching any code. Fix: `a[:, idx]` is
+already the correct `(N, len(idx))` shape for any index list, single component included: the
+`out[:, 0]` special case was not just wrong, it was unneeded. `swizzle` now always returns
+`a[:, idx]`.
+
+**`vec` (0x0D/0x0F) trusted concatenation's width over the instruction's own declared one.**
+With the swizzle fix in, the same program got further and hit a second mismatch, `(4096,4)
+(4096,7)`, that did not move with `N` - a different bug, not the same one recurring. A corpus
+census of every `add` (0x12) instruction with both operands local settled what "declared
+width" is worth here:
+
+    add (0x12) instructions checked         3,248,836
+    with mismatched operand declared width          0
+
+Zero exceptions: the compiler statically guarantees an add's two operands agree in declared
+component count. Reading the raw bytecode around the failure showed why runtime disagreed with
+that guarantee. `v7284 = v7276 + v7283` declares both operands 4-wide, matching the invariant -
+but `v7283`'s own `vec` instruction *also* declares `ncomp=4`, and at runtime it came out to 7.
+Tracing its ingredients back further: `v7283` concatenates a piece that reads `slots[48]`, an
+accumulator carried through 26 manually-unrolled loop iterations. Every one of the 26 `set`
+sites that write it, and the `get` that reads it back, declare `ncomp=1` - scalar, with zero
+exceptions - so the bytecode's own static typing for that accumulator is 1-wide everywhere. At
+runtime, under a harness that stubs missing cross-program slots with a uniform constant, it had
+drifted to 4 components by the last iteration (most likely through `select`'s own documented
+leniency - it repeats a narrower branch to match a wider one rather than raising - entrenching
+an upstream stub artifact instead of catching it). `vec` had nothing that would stop a widened
+operand from being concatenated straight into the result, growing it past what the instruction
+itself declares.
+
+Fix: `transpile.py`'s 0x0D/0x0F emission now passes the instruction's own `ncomp` to `vec`, and
+`sbsruntime.vec` truncates its concatenation to it when the two disagree. Only truncation is
+implemented - there is no observed case of concatenation falling *short* of the declared width
+via a normal, correctly-modeled read, so that direction still raises rather than guess how to
+pad it (see below - it turned out there was a reason not to guess).
+
+**A third, smaller bug turned up verifying the first two: `inputs = inputs or {}`.** The
+wrapper `transpile()` generates defaults `slots` correctly - `slots if slots is not None else
+{}` - but defaulted `inputs` with plain `or`, which discards *any* falsy value, not just
+`None`. A caller supplying its own empty-but-meaningful `inputs` (a `dict` subclass with
+`__missing__`, a `defaultdict`, anything that starts empty) had it silently replaced by a bare
+`{}` on the first call, because an empty dict is falsy in Python regardless of type. Fixed to
+match the `slots` line: `inputs if inputs is not None else {}`.
+
+With all three fixes, the ChewingGum program ran to completion at both `N = 4096` and `N =
+1000`, producing a properly-shaped `(N, 4)` result each time - no longer scaling with `N`, the
+signature of the bug that was fixed.
+
+### A bounded resweep, and what the remaining failures are
+
+60 random files from `DISTINCT.txt`, up to 40 programs each, transpiled and run under the same
+kind of crude single-program stub as the original sweep:
+
+    programs attempted    2,135
+    succeeded             2,118    99.2%
+    NoSharedCache             10    the documented cross-record refusal
+    ValueError                 7    see below
+
+All 7 `ValueError`s are the same shape: a `vec` truncation-doesn't-apply raise, "concatenation
+gave 2 components, declared 3." Tracing the first (`Hammered_Copper_01`, offset 335684, the
+very first instruction of the program) rather than assuming it was the same class of bug as the
+other two: `v7 = vec(v5, v6, ncomp=3)`, where `v5 = slots[0]` is declared 2-wide at its `get`
+and `v6 = 1.0` is a scalar constant. `slots[0]` is never written anywhere earlier in this
+program - it is the harness's own uniform, always-1-wide stub filling in for a genuine
+cross-program slot dependency, the already-documented "9,806 sub-programs whose slots are
+written by another program" category, just now surfacing as a width mismatch instead of a
+`KeyError` because the stub does not know or honor the *declared* width of the site reading it.
+This is the "no observed case to model padding on" raise doing exactly its job: refusing to
+silently hand back 2 components where the bytecode requires 3, rather than guessing which one
+to duplicate.
+
+Tests: 12 passed. Audit unchanged: 437 specimens, 0 unexplained value-table bytes, edges and
+directory both 437/437.
+
 ## shuffle: slot 1 is sometimes an edge, and the table keyed on it
 
 `shuffle` had the weakest base arity of any filter - a per-filter constant held for only 77% -

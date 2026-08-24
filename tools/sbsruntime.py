@@ -83,20 +83,41 @@ def _col(x):
     return a
 
 
-def vec(*parts):
+def vec(*parts, ncomp=None):
     """Concatenate components into one (N, k) array.
 
     Scalars have to be promoted, not just 1-d arrays. The Python backend emits a
     single-valued `const` as a plain float -- `0.5`, not an array -- so `vec(0.5, x)`
     arrives with a 0-dimensional operand, which `np.concatenate` refuses. That accounted
     for 28,136 of the runtime failures in an execution sweep of the corpus.
+
+    `ncomp` is the constructing instruction's own declared result width (0x0D/0x0F carry
+    one, like every opcode). It is authoritative and concatenation alone can overshoot
+    it: a corpus census found the two operands of every one of 3,248,836 `add`
+    instructions declare the SAME width, with zero exceptions, so the compiler statically
+    guarantees an add's inputs match -- but nothing at runtime enforced it, because this
+    function used to trust concatenation's width unconditionally. Traced in
+    ChewingGumSubstance001's program at offset 9354228: a scalar accumulator (slot 48,
+    declared 1-wide at its `get` and at all 26 `set` sites) drifted to 4 components wide,
+    and a downstream vec meant to build a declared-4-wide result concatenated a piece
+    built from it into 7 columns instead, which then failed to broadcast against the
+    other, correctly-4-wide branch of the `select` both were headed for. Truncating to
+    the declared width here fixed it. Only truncation is implemented -- there is no
+    observed case of concatenation falling SHORT of the declared width, so that case
+    raises rather than guess how to pad it.
     """
     cols = []
     for p in parts:
         cols.append(_col(p))
     n = max(c.shape[0] for c in cols)
     cols = [np.repeat(c, n, axis=0) if c.shape[0] == 1 and n > 1 else c for c in cols]
-    return np.concatenate(cols, axis=-1)
+    out = np.concatenate(cols, axis=-1)
+    if ncomp is not None and out.shape[1] != ncomp:
+        if out.shape[1] < ncomp:
+            raise ValueError("vec: concatenation gave %d components, declared %d -- "
+                              "no observed case to model padding on" % (out.shape[1], ncomp))
+        out = out[:, :ncomp]
+    return out
 
 
 def swizzle(value, indices):
@@ -115,8 +136,18 @@ def swizzle(value, indices):
     a = _col(value)
     w = a.shape[1] - 1
     idx = [i if i <= w else w for i in indices]
-    out = a[:, idx]
-    return out[:, 0] if len(idx) == 1 else out
+    # `a[:, idx]` is already (N, len(idx)) for any idx, single component included --
+    # collapsing that to 1-D here (a prior version did `out[:, 0]`) broke the invariant
+    # every other helper in this module relies on. `lerp` does raw `a + (b - a) * t`
+    # arithmetic with no `_col()` normalization of its own, so a 1-D (N,) swizzle result
+    # combined with a proper (N, 1) operand silently broadcast into an (N, N) outer
+    # product instead of raising -- found tracing a `ValueError: operands could not be
+    # broadcast together with shapes (4096,2) (4096,4097)` in ChewingGumSubstance001's
+    # program at offset 9354228 (`v120 = swizzle(v119, [2])` feeding `lerp(1.0, v120,
+    # slots[18])`). Reproduced in isolation with N=4096 and N=1000, both times giving
+    # exactly (N, N+1) via a downstream `vec(v131, 1.0)` concatenating the stray (N, N)
+    # array with a proper (N, 1) column. See FORMAT-NOTES.md.
+    return a[:, idx]
 
 
 def select(cond, a, b):
