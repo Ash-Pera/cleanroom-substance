@@ -25722,3 +25722,51 @@ Three named class-word bits, three characterised, **seven unexplained** - one of
 on 96% of all records. One filter's word1 fully explained out of twenty-three. Everything the
 format uses to lay out a record is understood; a great deal of what it uses to DESCRIBE one is
 not.
+
+## cls bit 4 is the output format's bit 4
+
+Bit 4 was the largest unexplained field in the format - set on 868,734 records, 96.08% of the
+corpus. It is not a property of the record's structure at all.
+
+Nothing about the record explains it. Records with bit 4 clear look like records with it set:
+same filters, same arities, same program rates, same square outputs. The only structural
+difference is that they are seven times more likely to be consumed by nothing (2.81% against
+0.38%), which explains nothing.
+
+The signal is elsewhere. Split by the file's format version:
+
+    version 0x80000    67.81% of records have bit 4 CLEAR
+    version 0x20000    18.48%
+    version 0x40000    11.76%
+    version 0x30000     7.39%
+    version 0x50000     2.46%
+    version 0x60000     2.41%
+    version 0x90000     2.69%
+
+A field that varies by file version is describing the OUTPUT, not the node. Splitting the
+output table's `format` value by the bit:
+
+    bit 4 set     format 28 (55.95%), 16 (38.68%)      both contain 16
+    bit 4 clear   format 12 (54.07%),  0 (45.33%)      neither does
+
+    cls bit 4 == format bit 4      2,364 of 2,464    95.94%
+
+against every other format bit:
+
+    bit 0  27.39%    bit 2  54.75%    bit 4  95.94%    bit 6  29.67%
+    bit 1  27.39%    bit 3  54.75%    bit 5  27.39%    bit 7  27.39%
+
+A 41-point margin over the next best. **The class word carries a copy of the output format's
+bit 4**, and the version correlation follows from it: older packages default to one pixel
+format and newer ones to another.
+
+Since `format` bit 2 is the grayscale flag - established in `Assembly.outputs()` - and this
+file records that "L16 and RGBA16 always 0x18" while 8-bit formats do not, bit 4 is very
+likely the 16-bit depth flag. That last step is inference from one recorded observation rather
+than measurement, and is marked as such.
+
+### What this closes
+
+The unexplained-field inventory listed seven class-word bits. The one set on 96% of all
+records now has a source, and it is a reminder that not every bit in a record describes the
+record: some describe what it produces.
