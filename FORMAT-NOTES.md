@@ -22723,3 +22723,43 @@ run hung. A harness that supplies what a program is missing cannot also tell you
 when it is missing.
 
 Tests: 12 passed.
+
+## The shared cache, implemented and verified
+
+`cache_read` and `cache_write` - the `0x03`/`0x06` pair - had raised rather than guessed
+since their meaning was established. Their docstring named exactly what would answer them:
+*"a caller that transpiles a whole file in record order and threads one cache dict through
+every program's evaluation."* That caller now exists.
+
+`sbsruntime.use_shared_cache(dict)` installs one. With none installed both halves still
+raise, which is the right default for a single-program transpile, and reading an index
+nothing has written raises too - an unwritten index means the evaluation order is wrong or a
+writer was skipped, and both are worth hearing about rather than defaulting to zero.
+
+### It works, and it confirms the ordering claim
+
+Evaluating each file's records in order with one cache threaded through:
+
+    reader programs           110        cache_read calls    120
+    writer programs            29        cache_write calls    29
+    distinct indices written   29        read before written    0
+
+**All 120 reads found their value.** The claim the docstring rested on - that a writer is
+"guaranteed only to appear earlier in record order (verified over 7,074 matched
+writer/reader pairs, zero exceptions)" - was verified statically when it was written. This
+verifies it dynamically: not that the pairs match, but that evaluating in that order actually
+supplies every read.
+
+### Execution, with everything in place
+
+    programs             52,334
+    ran                  52,268    99.874%
+    cache unresolved          0     0.000%
+    failed                   66     0.126%
+
+The 66 are 7 more than before, because programs that used to stop at the cache now proceed
+and fail on something else - a graph input the harness does not supply, or a stub sampler's
+width. Nothing in the remainder is a gap in what the format is understood to do.
+
+Tests: 12 passed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%,
+validator 437/437.

@@ -188,6 +188,20 @@ def sample_col(index, pos):
     return SAMPLERS[index](pos)
 
 
+_CACHE = None
+
+
+def use_shared_cache(cache=None):
+    """Install a dict for `cache_read`/`cache_write`, or `None` to remove it.
+
+    Returns the previous one, so a caller can restore it. With no cache installed both
+    halves raise, which is the default and the safe one for a single-program transpile.
+    """
+    global _CACHE
+    prev, _CACHE = _CACHE, ({} if cache is None else cache)
+    return prev
+
+
 class NoSharedCache(NotImplementedError):
     """cache_read/cache_write need cross-record state this transpiler does not model."""
 
@@ -208,14 +222,25 @@ def cache_read(index):
     cache dict through every program's evaluation. Raising here beats guessing zero: a
     silently wrong cached value is exactly the failure mode this project's own tests
     exist to catch.
+
+    A caller that does thread a cache installs one with `use_shared_cache`. Reading an
+    index nothing has written still raises: an unwritten index means the evaluation order
+    is wrong or the writer was skipped, and both are worth hearing about.
     """
-    raise NoSharedCache(
-        "cache index %r: needs the whole file evaluated in record order with a shared "
-        "cache, not a single program" % index)
+    if _CACHE is None:
+        raise NoSharedCache(
+            "cache index %r: needs the whole file evaluated in record order with a shared "
+            "cache, not a single program" % index)
+    if index not in _CACHE:
+        raise NoSharedCache("cache index %r read before anything wrote it" % index)
+    return _CACHE[index]
 
 
 def cache_write(value, index):
     """The write half of `cache_read`. See there."""
-    raise NoSharedCache(
-        "cache index %r: needs the whole file evaluated in record order with a shared "
-        "cache, not a single program" % index)
+    if _CACHE is None:
+        raise NoSharedCache(
+            "cache index %r: needs the whole file evaluated in record order with a shared "
+            "cache, not a single program" % index)
+    _CACHE[index] = value
+    return value
