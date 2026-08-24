@@ -19980,3 +19980,72 @@ failures, 0 unexplained bytes, edges 100.00%, validator 437/437.
 The four large filters above encode parameters some other way. `blend` still has 487
 records with a parameter slot and no bits set. And filters 20, 21, 18 and 8 pass the test
 but on 552 to 2,508 reads each, which is enough to note and not enough to build on.
+
+## Why the four holdouts hold out - three different reasons, not one
+
+The pair derivation failed on `transformation`, `pixelprocessor`, `fxmaps` and `gradient`.
+Asking what each slot's kind actually depends on separates them into three cases, and only
+one is a real hole in the shape the earlier note implied.
+
+The diagnostic is per slot: the base rate at which that slot holds a program, and the bit
+whose correlation with the slot's kind is strongest. A slot that is 99% one kind has nothing
+to predict, and a high accuracy there means nothing.
+
+### `transformation` - nothing to predict
+
+    slot  program base rate   best bit    MCC     accuracy
+      3          85.6%          6       -0.611     83.5%
+      4          17.0%          7       +0.312     85.0%
+      5           1.2%          5       -0.109     74.2%
+      6           0.5%          6       -0.050     65.0%
+      7           0.2%          6       -0.032     68.4%
+
+Slots 5, 6 and 7 are baked constants 98.8% to 99.8% of the time no matter what any bit says.
+`transformation` has no kind bits because it does not need any: its parameters are baked
+almost always. Only slot 3 genuinely varies, and bit 6 predicts it at MCC -0.611.
+
+Bits 6 and 7 are a real exclusive pair - `(1,1)` never occurs in 127,340 records - but the
+DEFAULT means program:
+
+    bit6=0 bit7=0    3,097 baked   36,166 program    -> program   92.1%
+    bit6=0 bit7=1        0 baked    5,885 program    -> program  100.0%
+    bit6=1 bit7=0   68,122 baked    3,595 program    -> baked     95.0%
+
+That is why the presence rule `low | high` missed it. The rule discards the 39,263 records
+where neither bit is set, and for `transformation` those are the majority case. No second
+bit improves the lookup: the best two-bit combination scores 94.28% against bit 6's 94.27%.
+
+### `pixelprocessor` - real bits, at ABSOLUTE slots
+
+    slot  program base rate   best bit    MCC     accuracy
+      3          87.5%         11       -0.827     96.4%
+      5           4.6%         10       +0.714     97.5%
+      7          46.9%          9       +0.634     79.1%
+      8          44.9%          9       +0.614     77.3%
+      4          77.9%         11       -0.588     86.8%
+
+`pixelprocessor` does mark slot kinds with bits - bit 11 for slot 3 at 96.4%, bit 10 for
+slot 5 at 97.5%. What it does not do is address them the way the four solved filters do. Its
+bits name **absolute** slots, so a tail-anchored window slides straight past them. The
+mechanism is there; the addressing is different.
+
+### `fxmaps` and `gradient` - the actual hole
+
+    fxmaps    slot 3   93.6% program   best bit  1   MCC +0.225
+              slot 4   70.9% program   best bit 12   MCC +0.135
+              slot 5    7.9% program   best bit 10   MCC -0.185
+    gradient  slot 2   65.6% program   best bit 11   MCC +0.106
+              slot 3   51.3% program   best bit 13   MCC +0.121
+
+These slots genuinely vary - `gradient` slot 3 sits at 51.3%, maximally uncertain - and **no
+bit of slot 1 predicts them**, the best correlation across all sixteen being 0.225. Whatever
+decides whether these hold a constant or a program is not in the word the other five filters
+keep it in. That is 34,615 `fxmaps` reads and 18,329 `gradient` reads with no account at all.
+
+### Where the mechanism stands
+
+    blend, levels, directionalwarp, filter 11    bit pairs, tail-anchored window   99.966%
+    filters 20, 21, 18, 8                        same, on 552 to 2,508 reads each
+    transformation                               no kind bits needed; ~99% baked
+    pixelprocessor                               kind bits, but absolute slots
+    fxmaps, gradient                             unexplained
