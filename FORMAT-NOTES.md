@@ -25222,3 +25222,39 @@ What this does not establish is why the designers chose that order rather than t
 establishes that the two bits hold categorically different things, which is enough to explain
 why the sequence is not the bit sequence - the class word is a mask over a list ordered by what
 the parameters ARE, and bit position carries no ordering information at all.
+
+## What each class-word bit carries
+
+Profiling each bit's own program - isolating records where only that bit is set, so the first
+program is unambiguously its - completes the picture.
+
+    bit   width  program                                    mean instr   sample
+     7      1    a direct binding: inputref, sometimes         2.34      19,430
+                 plus a constant. 99.99% use nothing but
+                 constant / inputref / add
+     0      2    a computed size expression: sub, swizzle,    29.09     529,892
+                 ifelse. Only 40% stay within const/ref/add
+    11      2    inputref MULTIPLIED by a constant -           2.83         489
+                 `inputref(uid) * k` in three instructions
+    13      1    a computed value of moderate length,          7.20         133
+                 mixed opcodes, not a bare constant
+    10      2    NEVER a program. Baked in 681 of 681,
+                 as an equal pair 72.7% of the time
+
+So the class word carries five different things, and the differences are categorical rather
+than a matter of degree: a binding, a scaled binding, a computed size, a computed scalar, and
+a value that is never computed at all.
+
+That is also why the emission order is 7, 0, 13 rather than any bit order - the list is
+ordered by what the parameters are.
+
+### Honest limits on the small samples
+
+`bit 11 alone` is 489 records and `bits 0 and 13 alone` is 133. Those are enough to
+characterise a shape but not to claim exact behaviour, and the bit-13 reading in particular
+went wrong once already here: taking "the last program" gave 16.6% single-instruction and four
+constants, because bit 13's parameter is not last once the filter's own parameters follow it.
+Restricted to records where only bits 0 and 13 are set, the picture is a 7-instruction
+computed value, and the "it is just the constant 1" impression came from 3 records out of 133.
+
+Bit 11's position in the order is still unplaced - no record isolates it against bit 13.
