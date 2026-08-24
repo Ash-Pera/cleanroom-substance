@@ -395,29 +395,27 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             # and 2 are ordered normally around it. They were reported as "out of order",
             # which named the symptom and hid the cause.
             #
-            # What bounds a condition-less loop is not established. A later pass read
-            # operand 3 as a literal trip count / scan width (frequently 1, 3 or 5) on the
-            # strength of a counter-start match against -(n-1)/2 for a neighbourhood scan
-            # -- but operand 3 is a VALUE REFERENCE, not an immediate: it names a valid
-            # earlier value in 934 of 934 while instructions sampled, both with a
-            # condition present (770/770) and absent (164/164), and it is reachable from
-            # operand 0 or operand 2 -- already-computed, not new information -- in 164 of
-            # 164 condition-absent instances, the same "trailing operands are redundant"
-            # shape already established for the with-condition form. A literal reading
-            # cannot be right either way: among condition-present loops, which run and are
-            # not in question, operand 3's referenced value is itself value #0 in 630 of
-            # 770 cases -- meaningless as a trip count for a loop that demonstrably
-            # iterates, and not a valid "scan width" (0 is not in {1, 3, 5}) either. The
-            # apparent 1/3/5 pattern for the condition-absent form was almost certainly
-            # the same coincidence in reverse: small SSA indices are common early-program
-            # references regardless of what they denote, not evidence the raw token value
-            # is a meaningful count. So this reverts to raising rather than guessing,
-            # exactly the standard already applied to the with-condition form's own
-            # trailing operands: the body carries a cross-iteration dependency in 100% of
-            # loops either way, which is the base rate and so discriminates nothing.
-            # Emitting a loop with no break would be an unbounded loop, and emitting a
-            # single pass would assume the answer, so these stay unsupported until the
-            # bound is found.
+            # What bounds a condition-less loop is not established, and the evidence has
+            # been over-claimed in both directions on this same instruction. First: that
+            # operand 3 is "just" a value reference, not a count, because it names a valid
+            # earlier value in 934 of 934 while instructions sampled -- a predicate with no
+            # power, since every operand here is a small integer and small integers name
+            # valid earlier values by construction. Second, the reversal: that a
+            # counter-start match against -(n-1)/2 held in "164 of 164" condition-less
+            # loops, established as a literal trip count / scan width. That count was
+            # ALSO inflated, the same way: deduplicated by program shape, the 164 instances
+            # are 6 distinct shapes over 7 specimens, four of which share one (width,
+            # start) pair -- three distinct pairs, not 164 confirmations. What survives is
+            # narrower and genuinely suggestive: one shape (d4303ede) carries operand 3 = 3
+            # with a counter starting at -1 AND operand 3 = 5 with a counter starting at
+            # -2, the same opcode sequence covarying correctly across two different
+            # widths -- not something the "small SSA indices are common" explanation
+            # accounts for. But that is one shape, n = 1, not enough to bound a loop on.
+            # See FORMAT-NOTES.md, "Correction: that '164 of 164' is 6 program shapes, not
+            # 164 observations". A bound that is guessed and wrong produces a plausible
+            # picture indistinguishable from a correct one, so this raises rather than
+            # guess at the current evidence level: emitting a loop with no break would be
+            # unbounded, and emitting a single pass would assume the answer.
             if len(toks) >= 2 and toks[1] == 0xFFFF:
                 raise Unsupported("opcode %04X at %d: while condition absent (0xFFFF); "
                                   "what bounds the loop is not known" % (op, addr))

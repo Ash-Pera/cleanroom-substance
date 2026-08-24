@@ -220,6 +220,48 @@ def test_while_masks_per_lane_when_run_in_batch():
     assert got == [float(l) for l in limits], "batched run: slot0 ended at %r" % got
 
 
+def test_condition_less_while_raises():
+    """A `while` whose condition operand is 0xFFFF must raise, whatever operand 3 is.
+
+    The evidence on operand 3 has been over-claimed in both directions. That it is "just"
+    a value reference, not a count, on a predicate with no power (934 of 934 while
+    instructions have SOME earlier value there, by construction, since every operand is a
+    small integer). And the reversal: that a counter-start match against -(n-1)/2 held in
+    "164 of 164" condition-less loops, taken as an established trip count / scan width.
+    That count was inflated the same way corpus statistics always are here -- deduplicated
+    by program shape, 164 instances are 6 distinct shapes over 7 specimens, three distinct
+    (width, start) pairs, not 164 confirmations. One shape does show real covariation
+    (operand 3 = 3 with start -1, and operand 3 = 5 with start -2, same opcode sequence) --
+    genuinely suggestive, not explained by "small SSA indices are common" -- but that is
+    one shape, n = 1. See FORMAT-NOTES.md, "Correction: that '164 of 164' is 6 program
+    shapes, not 164 observations".
+
+    So this checks the behavior at the current evidence level: every condition-absent form
+    raises Unsupported, including operand-3 values (1, 3, 5) a literal reading would take
+    as valid scan widths.
+    """
+    def loop(operand3):
+        words = [
+            7,
+            0x0900, 0, 0,           # v0 = const 0.0
+            0x0907, 0, 0,           # v1 = set slot0 = v0        <- init
+            0x0504, 0,              # v2 = get slot0
+            0x0900, 0x0000, 0x3F80,  # v3 = const 1.0
+            0x0912, 2, 3,           # v4 = add(v2, v3)
+            0x0907, 4, 0,           # v5 = set slot0 = v4        <- body
+            0x150B, 1, 0xFFFF, 5, operand3, 0,   # v6 = while(init, ABSENT, body, ?, pad)
+        ]
+        return struct.pack("<%dH" % len(words), *words)
+
+    for operand3 in (0, 1, 3, 5, 64):
+        try:
+            transpile.transpile(loop(operand3), 0, 999, "python", "_scan")
+        except transpile.Unsupported:
+            continue
+        raise AssertionError("condition-absent while with operand 3 = %d was accepted"
+                             % operand3)
+
+
 def test_log2_is_named_and_transpiled():
     """The source-matched unary 0x35 operation transpiles as log2."""
     data = struct.pack("<6H", 2, 0x0900, 0, 0, 0x0535, 0)
