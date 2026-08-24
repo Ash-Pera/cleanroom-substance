@@ -589,7 +589,7 @@ class Record:
         if not present:
             return []
         out = []
-        for nm, slot in zip(present, self._param_slots(slots, len(present))):
+        for nm, slot in zip(present, self._param_slots(hit[1], len(present))):
             if slot < 2 or slot >= len(self.words):
                 continue
             # `kind` comes from the slot itself, not from the bit. The bits predict it in
@@ -599,29 +599,48 @@ class Record:
             out.append(self._read_slot(nm, slot))
         return out
 
-    def _param_slots(self, slots, count):
-        """Which slots `count` parameters occupy, given the layout table's block.
+    def _param_slots(self, block, count):
+        """Which slots `count` parameters occupy, given the layout table's whole block.
 
         The block is a VARIABLE-LENGTH window anchored on the parameters, not a fixed list.
-        Three cases, measured over 576,973 slot reads in the four PARAM_SPEC filters:
+        `block` is the layout entry entire - its first element is the size-expression slot,
+        and whether IT is adjacent to the rest is what says which way the window grows.
 
-            parameters fit in the block   take the LAST `count` entries   99.96%
-            more parameters than slots,
-              and the record has room     grow the block FORWARD          99.63%
-              and it does not             grow the block BACKWARD        100.00%
+        Measured over the 13,417 records where the bits need more slots than the block has:
 
-        The last case is 27,882 slots with no errors at all. Growing the block is what
-        rescues the reads that used to be dropped as "bits imply more parameters than the
-        block has slots" - 22,912 of them for `levels` alone. The layout table's block was
-        never wrong, only short: it was derived from slots holding parameter-shaped
-        CONSTANTS, so a parameter stored as a program was invisible to that derivation.
+            block is gapped             grow BACKWARD, into the gap      47 of 50
+            block is contiguous
+              and the record has room   grow FORWARD             12,953 of 12,954
+              and it does not           grow BACKWARD            27,882 of 27,882
+
+        40,882 of 40,886 correct (99.990%), against 40,838 of 40,886 for a rule that asks
+        only whether the record has room.
+
+        Reading contiguity off the STRIPPED block instead of the whole one silently
+        disables the first case: the only gapped layout in the corpus is `(3, 8)`, whose
+        stripped form is the single slot `[8]`, and one slot is contiguous by default. That
+        mistake costs 47 of the 48 errors the rule exists to fix, while still looking like
+        a working rule.
+
+        Growing forward there puts a parameter in slot 9, which holds values like 9.3e-33
+        and 9.2e+12 - not parameters at all. Backward puts it in slot 7, inside the gap the
+        layout left, beside the 0, 0, 0.5, 0 that are plainly levels values.
+
+        The 4 remaining errors are 2 distinct records (the corpus holds one of them twice).
+        Both are 10 words where the conforming records are 11, and their whole block sits
+        two slots earlier - one layout key covering two real layouts, told apart by record
+        length. Two records is not enough to derive a rule from, so none is fitted.
         """
+        slots = list(block)[1:]
         need = count - len(slots)
         if need <= 0:
             return slots[len(slots) - count:]
+        backward = [slots[0] - need + i for i in range(need)] + slots
+        if any(block[i + 1] != block[i] + 1 for i in range(len(block) - 1)):
+            return backward
         if slots[-1] + need < len(self.words):
             return slots + [slots[-1] + i + 1 for i in range(need)]
-        return [slots[0] - need + i for i in range(need)] + slots
+        return backward
 
     @property
     def programs(self):

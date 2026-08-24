@@ -20049,3 +20049,69 @@ keep it in. That is 34,615 `fxmaps` reads and 18,329 `gradient` reads with no ac
     transformation                               no kind bits needed; ~99% baked
     pixelprocessor                               kind bits, but absolute slots
     fxmaps, gradient                             unexplained
+
+## Pinning down the one case that was not exact
+
+Every branch of the parameter window read 100.00% except one: growing the block FORWARD,
+at 99.58%. That was the only inexactness left in the mechanism, and it turned out to be a
+single layout key.
+
+### The 47 failures are one key
+
+All of them are `cls = 25`, slot-1 word `513`, block `(3, 8)`, needing one slot more than
+the block has. `513` is bits 0 and 9 - `levelinlow` baked, `levelouthigh` a program - and
+the two come out exactly swapped:
+
+    slot 8   predicted levelinlow baked      observed a program
+    slot 9   predicted levelouthigh program  observed baked
+
+Reading the record says why:
+
+    slot  3   PROGRAM   1 instruction: inputref          <- the size expression
+    slot  4   0.0
+    slot  5   0.0
+    slot  6   0.5
+    slot  7   0.0
+    slot  8   PROGRAM   9 instructions: inputref, const, gteq, const, const, select
+    slot  9   9.34e-33                                   <- not a parameter
+    slot 10   -5.6e-15 / 9.2e+12 / 288934, per file      <- not a parameter
+
+`0, 0, 0.5, 0` in slots 4 to 7 are levels values on sight, and slots 9 and 10 are garbage.
+The missing parameter is at slot **7**, inside the gap the layout left - not at slot 9.
+
+### The rule is contiguity, not room
+
+Comparing both directions on every record that needs to grow, per layout key: forward is
+right on every key but this one, and backward is wrong on 3,383 reads elsewhere. What
+separates them is that `(3, 8)` is the only **gapped** block in the corpus; every other is
+`(3, 4, 5, ...)`. A gapped block has somewhere to grow into, and that is where the
+parameter is.
+
+    rule                                        ok       bad    accuracy
+    room in the record                      40,838        48     99.883%
+    contiguity of the whole block           40,882         4     99.990%
+    always forward                          31,146        48     99.846%  (9,692 unplaceable)
+    always backward / anchor on last        37,371     3,515     91.403%
+
+**Contiguity has to be read off the whole layout entry, not the stripped block.** The
+stripped form of `(3, 8)` is the single slot `[8]`, and one slot is contiguous by default -
+so the check passes, the rule never fires, and 47 of the 48 errors it exists to fix survive.
+It goes on looking like a working rule while doing nothing. I wrote it that way first.
+
+### What is left
+
+4 errors in 40,886. They are 2 distinct records - the corpus holds `RMF_Floor` twice - both
+**10 words where the conforming records are 11**, with the whole block two slots earlier:
+
+    conforming (11 words)  slots 3..10:  0.0, 0.0, 0.0, 0.5, 0.0, PROG, 0.0, -0.0
+    exception  (10 words)  slots 3..9:   0.0, 0.5, 0.0, 0.0, -0.0, 0.0, garbage
+
+The `0.5` that sits at slot 6 sits at slot 4. So layout key `(15, 25, 513)` covers two real
+layouts and record length tells them apart. Two records is not enough to derive that from,
+and a rule fitted to two records is not a rule, so none is fitted.
+
+Across all four PARAM_SPEC filters the bits now agree with what is in the slot in
+**576,820 of 576,973 readings (99.9735%)**, 153 disagreements, down from 197.
+
+Audit unchanged: 641 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator
+437/437, 0 unexplained value-table entries.
