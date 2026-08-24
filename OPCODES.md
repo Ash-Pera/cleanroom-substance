@@ -184,6 +184,21 @@ Position 0 is produced by `seq` or `set` in 616 of 616 — an initialiser chain,
 integer cap. So the shape is `(init, condition, body, ...)`. All 616 are in
 `pixelprocessor` records, in 24 files, across five opcode forms.
 
+The five, corpus-wide (438 distinct-content specimens):
+
+| encoding | result | operands | instances | files |
+|---|---|---:|---:|---:|
+| `194B` | float2 | 6 | 235 | 13 |
+| `150B` | float1 | 5 | 177 | 20 |
+| `190B` | float1 | 6 | 93 | 15 |
+| `184B` | **bool2** | 6 | 34 | 3 |
+| `15CB` | float4 | 5 | 3 | 1 |
+
+**A `while` loop's own result is not always numeric** — `184B` returns a two-component
+bool 34 times, so whatever consumes a loop's value must handle that, not just floats.
+`15CB` is a genuine fifth form, three instances in one file, easy to miss at that scale
+and absent from an otherwise-exact four-row account of the other four.
+
 Reading position 0 as an immediate rendered `%16` as `#16` and hid the loop's structure.
 A worked instance, a 16-tap accumulation along a scanline:
 
