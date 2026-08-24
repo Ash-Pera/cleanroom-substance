@@ -238,14 +238,40 @@ class Record:
 
     @property
     def edges(self):
-        """Input record indices. 0 means 'no input'. None entries are unresolved."""
+        """Input record indices. 0 means 'no input'. None entries are unresolved.
+
+        A slot beyond the end of this record is not an unresolved edge - it is a slot
+        this record does not have, so no edge is claimed for it at all. Reporting those
+        as unresolved conflated "the value here is not a record index" with "the layout
+        table named a slot that is not present", which are different failures.
+        """
         out = []
         for sl in self.edge_slots:
             if sl >= len(self.words):
-                out.append(None); continue
+                continue
             v = self.words[sl]
-            out.append(v if (v == 0 or (v < self.index and v < len(self.asm.records)))
-                       else None)
+            if v == 0xFFFFFFFF:
+                out.append(0)             # -1 is a 'no input' sentinel, same as 0
+                continue
+            if v == 0 or (v < self.index and v < len(self.asm.records)):
+                out.append(v)
+                continue
+            # The layout descriptor does not fully determine a few keys: a slot that is
+            # an edge in most of a key's records holds a program or a baked float in the
+            # rest. Those readings are disjoint from a backward record index, so this is
+            # a positive identification rather than a fallback - the slot is not an edge
+            # in THIS record, so no edge is claimed.
+            #
+            # Deliberately narrow. A forward index, or one past the end of the record
+            # table, is left as None: those are genuinely unexplained and must stay
+            # visible rather than be absorbed into a catch-all.
+            q = v + 52
+            if self.asm.body_lo <= q < self.asm.body_hi and self.asm.valid_program(q):
+                continue
+            f = struct.unpack('<f', struct.pack('<I', v))[0]
+            if v and math.isfinite(f) and 1e-6 <= abs(f) <= 1e6:
+                continue
+            out.append(None)
         return out
 
     @property

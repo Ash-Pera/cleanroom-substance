@@ -47,7 +47,14 @@ def derive(paths):
                 continue
             k = (r.filter_id, r.cls, r.words[1] & LAYOUT_MASK.get(r.filter_id, 0))
             seen[k] += 1
-            for sl in range(1, min(len(r.words), 12)):
+            for sl in range(1, 12):
+                if sl >= len(r.words):
+                    # The slot does not exist in this record. That is evidence about the
+                    # layout, not a record to skip: counting only the records long enough
+                    # to have a slot let a slot present in 1 of 37 records be claimed as
+                    # an edge for all 37, and every such claim became an unresolved edge.
+                    role[k][sl]['X'] += 1
+                    continue
                 v = r.words[sl]
                 q = v + 52
                 if a.body_lo <= q < a.body_hi and a.program_span(q) is not None:
@@ -69,6 +76,8 @@ def derive(paths):
         edges, progs = [], []
         for sl, c in slots.items():
             t = sum(c.values())
+            if c['X'] / t > 0.05:
+                continue                  # not present often enough to be part of the layout
             if c['E'] / t > 0.9:
                 edges.append(sl)
             elif (c['P'] + c['F'] + c['Z']) / t > 0.9 and (c['P'] + c['F']) / t > 0.5:

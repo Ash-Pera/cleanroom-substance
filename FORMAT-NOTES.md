@@ -16797,3 +16797,74 @@ and the distribution matches what the filters are:
 Nothing is scanned. Each program is found through a slot, never by decoding the previous
 one to its end and assuming what follows is code - the self-delimiting instruction count
 is how a decoder stops, not how a reader finds the next program.
+
+## The 0.04% of unresolved edges was three bugs, not noise
+
+"Edge slots resolved 99.96%" reads like rounding error. It was not: 505 unresolved slots
+that clustered hard enough to name three separate causes. A residue concentrated on one
+filter, one key or one value is a wrong rule; only a residue spread evenly is noise.
+
+The first clue was in the raw values. `1065353216` is `0x3F800000` - **float 1.0** - and
+it appeared 70 times in slots the table called edges. `1048576000` is `0.25`. And 239 of
+the 505 had no value at all, because the named slot lay past the end of the record.
+
+### Cause 1: edge slots claimed from records that do not have them
+
+`derive_layouts.py` computed a slot's edge rate over the records long enough to contain
+it, and ignored the rest. Key `(7, 8985, 768)` has 37 records; **36 are seven words long**,
+so slot 7 exists in exactly one of them, is an edge there, and scored 1/1 = 100%.
+
+Counting absence as evidence - a slot missing from more than 5% of a key's records is not
+part of that key's layout - corrected seven keys, each dropping precisely the phantom
+slot:
+
+    12,25,10      [1, 2, 3, 10, 11] -> [1, 2, 3]
+    7,8985,896    [1, 2, 7]         -> [1, 2]
+    3,281,4960    [1, 9]            -> [1]
+
+That alone took 505 to 258.
+
+### Cause 2: the layout descriptor does not fully determine every key
+
+For key `(7, 11033, 0)`, slot 3 is an edge in 95.7% of records and a **program pointer**
+in 3.3%. For the `shuffle` keys `(3, 280, *)`, slots 2 and 3 hold floats - 1.0, 0.25,
+0.30, 0.59 - in six-word records. These are not unresolved edges; they are correct
+readings of a different kind, in records the key groups together but the format does not.
+
+Because a decodable program, a plausible float and a small backward index are disjoint
+readings - established for the parameter union and unchanged here - a per-record check is
+a positive identification rather than a fallback. `Record.edges` now declines to claim an
+edge in those records instead of reporting `None`.
+
+This is deliberately narrow, and the narrowness is the point: a forward index, or one past
+the end of the record table, is **still** reported as unresolved. Absorbing those into the
+same rule would have taken the number to zero and hidden the one thing left worth looking
+at.
+
+258 to 17.
+
+### Cause 3: -1 is a 'no input' sentinel
+
+Two records carried `0xFFFFFFFF` in an edge slot. That is -1, and it means no input, the
+same as 0 - it is not a record index at all.
+
+### What is left, and it is worth keeping visible
+
+**15 edges in 1,235,193 (0.0012%)**, every one a forward or self reference:
+
+    directionalwarp  slot 1 = 10   at records 2, 4, 6, 8, 10   WoodSubstance011
+    directionalwarp  slot 1 = 10   at records 2, 4, 6, 8, 10   WoodFloorSubstance008
+    gradient         slot 2 = 64   at record 62                Marble_Tiles_01
+    gradient         slot 2 = 64   at record 62                MarbleGenerator01
+    fxmaps           slot 7 = 9    at record 9                 stylized_rocks_magma
+    blend            slot 1 = 275  at record 87                NightSkyHDRI
+
+**These repeat identically across unrelated files**, which rules out corruption: the same
+filter, the same slot, the same value, at the same record indices, in two files that share
+no author. Records 2 through 10 of a `directionalwarp` group all name record 10, including
+record 10 itself.
+
+So the backward-reference rule - which 921,654 corpus edges established and which
+overturned a 12-of-13 paired-file result - holds at 99.9988% and has a real, reproducible
+exception. The audit now prints `resolved 100.00%`, and that is a rounded figure, not a
+zero.
