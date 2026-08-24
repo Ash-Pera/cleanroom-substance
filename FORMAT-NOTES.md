@@ -30043,3 +30043,49 @@ node data; 41 distinct opcodes appear in their compiled node programs. This maps
 `cos` 2, `const_float3` 1, `vector3` 1) and the equations that would bind them do not exist
 in this corpus — they need a source that uses them inside an `addnode` or `markov2`
 parameter, which none of these eight does.
+
+## The unverifiable 12.7%, verified: an all-baked record's end is its boundary
+
+Every header-size figure so far was measured only on records with an inline program,
+because the first program's start was the only boundary observable. A record whose
+parameters are ALL baked has no program — and therefore no way to check the rule.
+114,232 records, 12.7% of the corpus, extrapolation not measurement.
+
+But such a record is NOTHING BUT header, so its own end is the boundary. Tested first
+before trusting: the rule's prediction equals the record length in 84.5% of all-baked
+records — and the failures were structured, led by levels at minus 2:
+
+    stone_stylized idx58   cls 0x18, w1 0x0140   [tag][w1][edge][baked][baked] = 5 words
+                                                 predicted 7
+
+Read raw these records are self-evidently right, five slots doing five jobs. The model
+was wrong about them for a reason worth recording: **the fit had never seen an all-baked
+record** — its probe required an inline program — so levels' cls-0x18 population,
+11,843 records strong, was represented in the fit by its 13 program-carrying stragglers.
+The starved fit overcharged the whole shape by 2.
+
+Two harness notes. Feeding the all-baked records in changed nothing the first time: the
+boundary guard read `q < r.end`, and an all-baked record's boundary IS `r.end`, so the
+branch admitted them and the guard silently re-dropped every one — the only symptom was
+numbers that did not move. And the wider evidence exposed blur, hsl and dyngradient as
+start-1 filters keying on an edge value (blur: 12,006 keys for 15,371 records, the
+one-key-per-record signature now named three times); marked absent, blur went 98.75% to
+99.82% on 132 keys.
+
+### The scoreboard, now over everything
+
+    every record with a boundary          899,647   (was 786,627 -- +113,020)
+       rule exact                         860,083   95.602%
+       rule wrong                           6,385    0.710%
+       rule silent                         33,179    3.688%
+    fit coverage at >= 99.5% exact        866,468 of 897,983 = 96.49%
+    levels                                 99.809% on 85,820  (cls-0x18 fixed)
+
+### What the remaining misses are
+
+Sharpen decodes additively by eye — word0 bits 27, 28 and 16 each cost one — and its
+1.97% miss is a handful of all-baked records whose keys carry junk minorities at +11 to
++15 words: TRAILING NODE ANNEXES, the same tagged-node structure, now seen from a third
+direction. normal (92.5%) and bitmap (99.3%) are the same at small scale, and small
+filters cannot absorb a few annexed records inside a 0.5% budget. So the boundary of
+what remains unread has one name on it, three times over: the node regions.

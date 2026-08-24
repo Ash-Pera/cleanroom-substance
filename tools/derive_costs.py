@@ -51,7 +51,11 @@ PAYLOAD = {0: 3, 22: 3, 5: 1, 4: 2}  # filter -> slot holding its payload pointe
 # (uniform bakes a value there; filter 5 points at its payload), or PER-RECORD (warp
 # and shuffle have two shapes, and the edge run starting at slot 1 is the no-w1 shape).
 W1_ARITY = {20: (0, 0xF), 4: (10, 0xF)}      # filter -> (shift, mask)
-W1_ABSENT = {6, 5, 16, 13}
+W1_ABSENT = {6, 5, 16, 13, 10, 14, 19}
+# blur (10), hsl (14) and dyngradient (19) joined when the all-baked records entered
+# the fit: they are start-1 filters -- words[1] is their first EDGE -- and keying on an
+# edge value gave blur 12,006 keys for 15,371 records, the one-key-per-record signature
+# this file already names twice.
 W1_PER_RECORD = {7, 3}
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'costs.json')
 KEEP = 0.995                     # a filter is kept only at this exactness or better
@@ -76,9 +80,23 @@ def observed():
             else:
                 inline = [x for x in r.programs if r.offset < x < r.end]
                 if not inline:
-                    continue
-                q = min(inline)
-            if not (r.offset < q < r.end):
+                    # An all-baked record is NOTHING BUT header, so its own end is the
+                    # boundary. These are 12.7% of the corpus and the fit never saw
+                    # them: this probe needed an inline program, so every all-baked
+                    # shape was invisible, and levels' cls-0x18 population -- 11,843
+                    # records of [tag][w1][edge][baked][baked] -- was represented by
+                    # the 13 program-carrying stragglers alone, which starved the fit
+                    # into overcharging it by 2. A record with a trailing node region
+                    # violates the assumption and lands as a junk key, which the
+                    # robust trim already handles.
+                    q = r.end
+                else:
+                    q = min(inline)
+            # `<=` and not `<`: an all-baked record's boundary IS its end. The first
+            # version of this check silently re-dropped every record the all-baked
+            # branch had just admitted, and the derivation came back byte-identical --
+            # the only sign was that the numbers did not move.
+            if not (r.offset < q <= r.end):
                 continue
             f = r.filter_id
             w1 = r.words[1]
