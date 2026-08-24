@@ -27617,3 +27617,75 @@ subsets run to three or four files apiece.
 
 **No version trend is established, in either direction.** Whatever governs sharing was the
 same in the version-2 files as in the version-9 ones, or is too rare here to show a change.
+
+## `gradient`'s ramp has a trailing field that is not a colour channel
+
+Attempting to render `gradient` (filter 0) using `Record.ramp` -- already decoded, positions
+plus per-stop values -- surfaced something that property's own docstring does not mention.
+Sampling every stop across 1,266 gradient records (x_DLG-Tools__*, x_serverhouse__*) whose
+ramp has more than one value per stop, the LAST value is **exactly 32768 in 98.5% of
+12,329 stops** (min 0, max 65535 in the residual). For a genuine colour channel varying
+0-65535, landing on one exact value 98.5% of the time is not plausible; a fixed or rarely-
+touched field is.
+
+That breaks the channel-count reading `width = 4 + 2*colour + 2*(class bit 8)` implies for
+rendering: `colour=True` records were expected to carry 3 real values (RGB) at width 8, but
+the two widths actually observed (6 and 8) each seem to carry one PADDING/OTHER value at the
+end regardless of `colour`, leaving only 1 or 2 REAL channels either way -- not 3. Width 6
+is also ambiguous on its own: it arises from `colour=True, bit8=False` (24 records sampled)
+and from `colour=False, bit8=True` (550 records sampled) alike, two different bit
+combinations landing on the same table shape, with no evidence yet on whether they carry the
+same kind of data.
+
+Not resolved here: what the trailing field actually is (a curve/interpolation-type flag? an
+unused alpha, mid-value by convention?), and what `colour` vs class bit 8 each independently
+contribute to real channel count. Only the unambiguous case -- `colour=False`, width 4, one
+value per stop, no trailing field at all (19 of the records sampled) -- is safe to render
+without guessing at the rest; `gradient` is not implemented in render.py yet.
+
+## Correction to the correction: this was not a discovery, it was a correction that did not propagate
+
+The section above says the duplicated corpus survived "precisely because nothing ever
+checked". That is wrong, and wrong in the direction that flatters me.
+
+Something did check. `tools/reverify.py` has carried this in its own docstring since it
+was written, in an earlier session of this same project:
+
+    "Their denominators came from tools/DISTINCT.txt - the withdrawn 641-file list, about
+     a third duplicates - and survived the correction to the 435-file root list because a
+     settled number invites no re-reading."
+
+`Record.outputs` says the same thing in `sbsasm.py`, withdrawing a 3,249-of-3,249 claim
+on exactly these grounds. The list was found duplicate-laden, withdrawn, and replaced
+with a root list, and `reverify.py` was moved onto the root list.
+
+`audit_corpus.py` was not. It went on opening `tools/DISTINCT.txt`, and it is the tool
+that prints the headline figures. So the corpus was corrected in one place, documented in
+two, and left wrong in the third — and the third was the one anyone actually read. I then
+spent a session quoting 641-file numbers out of it, and rediscovered the duplication from
+first principles by noticing repeated records, without once reading the docstring in the
+file I had written to prevent this.
+
+**The failure is not that the corpus was unchecked. It is that a correction recorded in
+prose does not propagate to code.** `reverify.py` exists to stop settled numbers going
+stale, and it could not help here, because the thing that was stale was not a number in
+`FORMAT-NOTES.md` — it was a file path in a different tool.
+
+What is actually fixed now, as opposed to re-described:
+
+    tools/corpus.py         one loader, deduplicating by content hash, defaulting to the
+                            canonical root list
+    audit_corpus.py         reads through it
+    derive_layouts.py       reads through it -- it matters most here, because layouts.json
+                            is DERIVED from the list, so duplicates do not merely inflate
+                            counts, they reweight which keys clear the MIN threshold
+    tools/DISTINCT.txt      deduplicated in place, 641 -> 438, so the withdrawn list is
+                            no longer a trap for anything still pointing at it
+
+Both lists now hold 438 distinct files and agree on 413 of 438 basenames; the remaining
+25 are different representatives chosen from the same duplicate groups. The audit through
+the canonical list reports 904,131 records — the figure recorded before this session.
+
+The measured claims in the two commits before this one are unaffected in their ratios and
+wrong in their magnitudes, as already stated. This section corrects only the story about
+how it happened.

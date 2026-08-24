@@ -216,6 +216,9 @@ def derive(paths, headers=None):
 
 
 if __name__ == '__main__':
-    paths = [l.strip() for l in open(sys.argv[1] if len(sys.argv) > 1 else 'DISTINCT.txt')
-             if l.strip()]
+    # Through `corpus.paths`: layouts.json is DERIVED from this list, so a duplicated
+    # corpus does not just inflate the counts, it reweights which keys clear the MIN
+    # threshold at all. See tools/corpus.py.
+    import corpus
+    paths = corpus.paths(sys.argv[1] if len(sys.argv) > 1 else None, verbose=True)
     json.dump(derive(paths, header_sizes(paths)), sys.stdout, indent=0, sort_keys=True)

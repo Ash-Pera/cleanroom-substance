@@ -194,9 +194,10 @@ def main(paths):
             print('   %-52s %s' % (p.split('/')[-1][:52], e))
 
 if __name__ == '__main__':
-    # Through `corpus.paths`, not by reading DISTINCT.txt directly: that list is distinct
-    # by PATH, and 641 of its paths were 438 distinct files. Every count printed below
-    # was inflated by about 20% until this went through the deduplicating loader.
+    # Through `corpus.paths`. This tool read tools/DISTINCT.txt directly, which had been
+    # WITHDRAWN as duplicate-laden - reverify.py's docstring says so - and moved to the
+    # root list. That correction never reached here, and this is what prints the headline
+    # figures, so every count below was inflated by about 20%. See tools/corpus.py.
     import corpus
     paths = corpus.paths(verbose=True)
     main(paths[:int(sys.argv[1])] if len(sys.argv) > 1 else paths)

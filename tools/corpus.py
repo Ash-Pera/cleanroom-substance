@@ -1,33 +1,52 @@
 #!/usr/bin/env python3
-"""The corpus file list, deduplicated by CONTENT.
+"""The corpus file list: one canonical source, deduplicated by CONTENT.
 
-`DISTINCT.txt` is distinct by path, and for a long time that was quietly not the same
-thing. Extraction wrote the same `.sbsasm` into `tiny/`, `pairs/` and the main corpus
-directory, so 641 paths held 438 distinct files -- 138 hashes appearing between two and
-five times, 120 redundant copies from `tiny/` and 78 from `pairs/` alone.
+There were two lists, and the difference between them was recorded and then not applied.
 
-Nothing failed. Every ratio stayed about right, because a duplicate file is a fair
-sample of itself; what broke was every COUNT, uniformly inflated by about 20%, and the
-weighting, which quietly tripled the influence of whichever files happened to be
-extracted more than once. A corpus figure of "1,086,833 records" was really 904,165.
+`tools/DISTINCT.txt` held 641 paths that were 438 distinct files - extraction had written
+the same `.sbsasm` into `tiny/` (120 redundant copies), `pairs/` (78), the main corpus
+directory (4) and `acg2/` (1), with single files appearing up to five times. That was
+found, and `tools/reverify.py` has said so in its own docstring ever since:
 
-So this is not a convenience wrapper. Reading the list through here is what makes a
-count mean what it says.
+    "Their denominators came from tools/DISTINCT.txt - the withdrawn 641-file list, about
+     a third duplicates - and survived the correction to the 435-file root list because a
+     settled number invites no re-reading."
+
+`reverify.py` moved to the root list. `audit_corpus.py` did not, and audit_corpus.py is
+what prints the headline figures. So the corpus was corrected in one place, documented in
+a second, and left wrong in the third - and the third was the one anybody read. Every
+audit figure was inflated by about 20% for as long as that lasted, and the ratios all
+stayed right, which is why it did.
+
+The lesson is not "check the corpus". It is that a correction recorded in prose does not
+propagate to code, and the fix has to be a single place both tools call.
+
+This module is that place. Both lists are now deduplicated and agree at 438 files; the
+root list is canonical because that is the one the correction moved to.
 """
 import hashlib
 import os
 
-LIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DISTINCT.txt')
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LIST = os.path.join(ROOT, 'DISTINCT.txt')
+LEGACY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DISTINCT.txt')
 
 
 def paths(listing=None, verbose=False):
-    """Corpus paths, at most one per distinct file content, in first-seen order."""
-    src = listing or LIST
-    out, seen, dropped = [], {}, 0
+    """Corpus paths, at most one per distinct file content, in first-seen order.
+
+    Deduplicates even though both lists are currently clean. The duplication took hold
+    silently the first time; a loader that only works on already-correct input would let
+    it happen again.
+    """
+    src = listing or (LIST if os.path.exists(LIST) else LEGACY)
+    out, seen, dropped = [], set(), 0
     for line in open(src):
         p = line.strip()
         if not p:
             continue
+        if not os.path.isabs(p):
+            p = os.path.join(ROOT, p)
         try:
             with open(p, 'rb') as fh:
                 h = hashlib.sha1(fh.read()).hexdigest()
@@ -36,14 +55,14 @@ def paths(listing=None, verbose=False):
         if h in seen:
             dropped += 1
             continue
-        seen[h] = p
+        seen.add(h)
         out.append(p)
-    if verbose and dropped:
-        print('corpus: dropped %d duplicate-content paths, %d files remain'
-              % (dropped, len(out)))
+    if verbose:
+        print('corpus: %d files from %s%s'
+              % (len(out), os.path.relpath(src, ROOT),
+                 (' (%d duplicate-content paths dropped)' % dropped) if dropped else ''))
     return out
 
 
 if __name__ == '__main__':
-    ps = paths(verbose=True)
-    print('%d distinct files' % len(ps))
+    print('%d distinct files' % len(paths(verbose=True)))
