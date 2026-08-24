@@ -22018,3 +22018,53 @@ things neither of which accounts for the whole distribution.
 
 Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 11 passed.
+
+## The 123,158 are a random seed
+
+The previous section left two readings open and suggested the resolution might be that the
+slot holds different parameters in different records. It does not - and the test that would
+have shown it comes back empty:
+
+    does any bit separate the small-value records from the large-value ones?
+    best of 56 candidates:  cls.bit5  MCC +0.181, lift -8.6      pixelprocessor
+                            w1.bit9   MCC +0.162, lift -27.2     fxmaps
+
+Nothing. So it is one parameter whose value is small in ~78% of records and large in ~22%,
+and `format` cannot be 1,395,946,151.
+
+### Four things point at a seed
+
+**The referenced input is a package global.** Across every record of a file, the programs
+reference exactly one graph input in **343 of 357** `fxmaps` files and **283 of 308**
+`pixelprocessor` files - median 1, and where it is more the maximum is 18 against thousands
+of records. A per-node parameter like `format` would vary node to node; one shared input for
+a whole package is what `$randomseed` looks like.
+
+**The shape is a seed derivation.** `global + a per-node constant` is how a per-node seed is
+built from a package seed. The constants are few per file - median 4 distinct - and repeat
+across that file's records.
+
+**The zero dominates.** 57.6% of `pixelprocessor` values and 40.1% of `fxmaps` values are
+exactly 0, which is a package seed left at its default and a node adding nothing.
+
+**It does not track the record's format.** If this were the output `format`, it should relate
+to the record's own channel and depth properties. Split by evaluated value 0, 1, 2, 3:
+`cls` bit 8 is set in **0.0%** of records at every value, and the colour flag sits at 74.6%,
+74.8%, 56.1%, 80.8% - no relationship at any value.
+
+### What is not settled
+
+Containment cannot confirm it. The permitted sources declare `randomseed` as a
+`dynamicValue` four times and never as a constant, so there is no declared value to match
+against - which is itself consistent, since a seed that is a function is exactly what
+compiles to one of these programs.
+
+So this is a reading supported by four independent properties and confirmed by none of them.
+The `format` reading is now positively contradicted rather than merely incomplete: it cannot
+produce the large values, and it does not track the format fields it would have to.
+
+    123,158 records the audit called output sizes hold a per-node random seed,
+    computed as a package-level seed input plus a constant.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
