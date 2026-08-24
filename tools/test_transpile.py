@@ -137,6 +137,48 @@ def test_while_carries_no_immediate():
     assert disasm.IMM.get(0x0B) == ()
 
 
+def test_while_emits_a_loop_that_counts():
+    """A `while` must not merely transpile -- it must run the right number of times.
+
+    Synthetic program, so no corpus is needed. Slot 0 is a counter and slot 1 a limit:
+
+        init       slot0 = 0
+        condition  slot0 >= slot1
+        body       slot0 = slot0 + 1
+
+    which must leave slot 0 equal to the limit, for any limit. That tests the three
+    things the emitter can get wrong independently: the initialiser running once rather
+    than per iteration, the condition being a TERMINATION test rather than a
+    continuation one, and the body being inside the loop rather than before it.
+    """
+    import numpy as np
+    # const 0 ; set slot0 ; get slot0 ; get slot1 ; gteq ; get slot0 ; const 1 ; add ;
+    # set slot0 ; while(init=1, cond=4, body=8)
+    words = [
+        10,
+        0x0900, 0, 0,          # v0 = const 0.0
+        0x0907, 0, 0,          # v1 = set slot0 = v0     <- init
+        0x0504, 0,             # v2 = get slot0
+        0x0504, 1,             # v3 = get slot1
+        0x085D, 2, 3,          # v4 = eq(v2, v3)         <- condition
+        0x0504, 0,             # v5 = get slot0
+        0x0900, 0x0000, 0x3F80,  # v6 = const 1.0
+        0x0912, 5, 6,          # v7 = add(v5, v6)
+        0x0907, 7, 0,          # v8 = set slot0 = v7     <- body
+        0x150B, 1, 4, 8, 0, 0,   # v9 = while(init, cond, body, pad, pad)
+    ]
+    data = struct.pack("<%dH" % len(words), *words)
+    src = transpile.transpile(data, 0, len(data), "python", "_loop")
+    assert "for _it" in src, "no loop emitted"
+    g = {}
+    exec(src, g)
+    for limit in (0, 1, 5, 17):
+        slots = {0: np.array([[0.0]], np.float32), 1: np.array([[float(limit)]], np.float32)}
+        g["_loop"](inputs={}, slots=slots)
+        got = float(np.asarray(slots[0]).ravel()[0])
+        assert got == limit, "limit %d: slot0 ended at %r" % (limit, got)
+
+
 def test_log2_is_named_and_transpiled():
     """The source-matched unary 0x35 operation transpiles as log2."""
     data = struct.pack("<6H", 2, 0x0900, 0, 0, 0x0535, 0)

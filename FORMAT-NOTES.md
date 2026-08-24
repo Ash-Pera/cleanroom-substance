@@ -22467,3 +22467,64 @@ assignments with slots as a dict, so a loop needs the body's instruction range r
 inside a `while`, and the condition re-evaluated per iteration. The instruction ranges are
 derivable from the same dependency walk used above. 518 programs, 0.043% of the corpus, wait
 on that and on nothing else that is unknown.
+
+## `while` implemented: the transpiler reaches 100%
+
+With the trailing operands shown to be redundant, `0x0B` was engineering rather than reading,
+and it is done.
+
+### The emission
+
+A `while` owns the instruction range `(init, body]` - the condition and the body - which the
+old emitter wrote out as straight-line statements before the `while` itself. They are now
+suppressed there and re-emitted inside a loop:
+
+    v_kw = None
+    for _it:
+        <instructions init+1 .. condition>
+        if v_cond: break
+        <instructions condition+1 .. body>
+        v_kw = v_body
+
+Nested loops fall out of the same walk - 14 programs have more than one `while`, and all 14
+are nested rather than overlapping.
+
+### Two bugs the corpus sweep could not have found
+
+**Infinite recursion.** The loop is keyed on `init + 1`, which is also where its own range
+starts, so re-entering the range re-entered the loop. 518 programs turned into
+`RecursionError` - caught because the sweep counted "other errors" separately from
+"unsupported" and that column was never allowed to be non-zero.
+
+**Zero-iteration loops.** The condition is a termination test and can hold on entry, so the
+body may never run and its variable may never be bound. `v_kw = v_body` after the loop then
+raises `UnboundLocalError`. **A sweep that transpiles but never executes cannot see this** -
+all 518 produced valid Python and 1,206,800 of 1,206,800 "succeeded" with the bug present.
+The synthetic test found it on its first case, `limit = 0`.
+
+### Verification
+
+The new test builds a program by hand - counter in slot 0, limit in slot 1, body increments -
+and asserts slot 0 ends at the limit for limits 0, 1, 5 and 17. That separates the three
+things the emitter can independently get wrong: the initialiser running once rather than per
+iteration, the condition's polarity, and the body sitting inside the loop.
+
+A real corpus loop was also run end to end - the `MetalSubstance009` accumulator, whose count
+is `floor(sysvar8.x * slot1) + 1`:
+
+    sysvar8  slot1   count   iterations   accumulator   count * 0.25/4
+      3.0     1.0        4       4          0.25000        0.25000
+      3.0     2.5        8       8          0.50000        0.50000
+      7.0     2.5       18      18          1.12500        1.12500
+     20.0     2.5       51      51          3.18750        3.18750
+
+Iterations equal the computed count exactly, and the accumulator matches the closed form
+exactly, at every count.
+
+    programs      1,206,800
+    transpiled    1,206,800    100.0000%
+    with a loop         518    all valid Python
+    unsupported           0    syntax errors 0    other errors 0
+
+Tests: 12 passed, 0 failed. Audit unchanged: 435 files, 0 failures, 0 unexplained bytes,
+edges 100.00%, validator 437/437.

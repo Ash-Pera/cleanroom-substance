@@ -196,11 +196,18 @@ def transpile(data, start, end, backend="python", name="program", result=None):
     larger program; the default is the program's final value.
     """
     be = BACKENDS[backend]()
-    lines = []
-    for k, addr, op, toks in disasm.decode(data, start, end):
+    ins = list(disasm.decode(data, start, end))
+    if not ins:
+        raise Unsupported("empty program")
+    byk = {i[0]: i for i in ins}
+
+    def emit(k):
+        """The lines one instruction emits, unindented."""
+        _k, addr, op, toks = byk[k]
         f = disasm.fields(op)
         oid, ty, ncomp = f["id"], f["ty"], f["comps"]
         v = be.var(k)
+        out = []
 
         def arg(i):
             if i >= len(toks):
@@ -228,7 +235,7 @@ def transpile(data, start, end, backend="python", name="program", result=None):
         elif oid == 0x04:                                  # get variable slot
             rhs = "slots[%d]" % toks[0]
         elif oid == 0x07:                                  # set variable slot
-            lines.append("    slots[%d] = %s" % (toks[1], arg(0)))
+            out.append("slots[%d] = %s" % (toks[1], arg(0)))
             rhs = arg(0)
         elif oid == 0x0C:                                  # sequence
             rhs = arg(len(toks) - 1)
@@ -284,9 +291,62 @@ def transpile(data, start, end, backend="python", name="program", result=None):
         else:
             raise Unsupported("opcode %04X (id %02X, type %d) at %d"
                               % (op, oid, ty, addr))
+        out.append("%s = %s" % (v, rhs))
+        return out
 
-        lines.append("    %s = %s" % (v, rhs))
+    # A `while` owns the instructions between its initialiser and its body. Operand 0 is
+    # the init, 1 the condition, 2 the body, and `init < cond < body < while` holds in 543
+    # of 543 instances, with the body always the instruction immediately before the `while`
+    # itself. So the range (init, body] is exactly the condition and the body, and it is
+    # emitted INSIDE the loop rather than before it.
+    #
+    # Operands 3 to 5 are ignored, and that is not an assumption: every one of them names a
+    # value already reachable from operands 0-2 - 543/543, 542/543 and 363/363 - so they
+    # can tell the loop nothing it does not already compute. See FORMAT-NOTES.md.
+    #
+    # The condition is a TERMINATION test. Under the other reading the body never runs in
+    # either program read in full: both compare a counter starting at 0 against a positive
+    # limit, so the test is false on entry and the loop would be a no-op whose accumulator
+    # is nevertheless read afterwards.
+    #
+    # The iteration cap is a runtime guard, not a claim about the format.
+    loops = {}
+    for k, addr, op, toks in ins:
+        if (op & 0x3F) == 0x0B:
+            if len(toks) < 3:
+                raise Unsupported("opcode %04X at %d: while wants 3 operands" % (op, addr))
+            if not (toks[0] < toks[1] < toks[2] < k):
+                raise Unsupported("opcode %04X at %d: while operands out of order" % (op, addr))
+            loops[toks[0] + 1] = (k, toks[0], toks[1], toks[2])
 
+    lines = []
+
+    def emit_range(lo, hi, depth):
+        pad = "    " * depth
+        k = lo
+        while k <= hi:
+            if k in loops:
+                # Pop it: the loop's own range starts at this same index, so leaving the
+                # entry in place makes emit_range re-enter it forever.
+                kw, i0, icond, ibody = loops.pop(k)
+                # The loop's own value is the body's, but a loop can run ZERO times -- the
+                # condition is a termination test and may hold on entry -- so the body's
+                # variable need not be bound when the loop ends. Bind it first and assign
+                # inside, rather than after.
+                lines.append(pad + "%s = None" % be.var(kw))
+                lines.append(pad + "for _it%d in range(1 << 24):" % kw)
+                emit_range(i0 + 1, icond, depth + 1)
+                lines.append(pad + "    if %s: break" % be.var(icond))
+                emit_range(icond + 1, ibody, depth + 1)
+                lines.append(pad + "    %s = %s" % (be.var(kw), be.var(ibody)))
+                k = kw + 1
+                continue
+            for ln in emit(k):
+                lines.append(pad + ln)
+            k += 1
+
+    emit_range(ins[0][0], ins[-1][0], 1)
+    k = ins[-1][0]
     if not lines:
         raise Unsupported("empty program")
     last = be.var(k if result is None else result)
