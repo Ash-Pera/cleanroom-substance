@@ -18303,3 +18303,61 @@ adopted; a header size is used only where it was directly observed.
 That also revises the answer to "how much of the table is understanding": the 93.55%
 held-out figure stands, because it measures key coverage, but the 91.88% should not be read
 as evidence of an underlying rule. It is not one.
+
+## Reading filter 11's programs, to see what it is for
+
+Filter 11 has been carried here as "one input, channel-preserving" and unnameable, because
+every corpus specimen that would name it carries an Allegorithmic graph. That blocks the
+*name*. It does not block reading what its records do.
+
+### The program
+
+In `celtic_plate_001` - a permitted paired specimen - record 1157 is filter 11 and its
+whole program is three instructions:
+
+    %0    0A42  inputref.i2    uid=2865493522
+    %1    1640  const.i2       -1, -1
+    %2    0A52  add.i2         %1, %0
+
+A graph input, as an int2, minus one. That is an output size reduced by one in each axis:
+**half resolution**. The neighbouring records at 64x64 carry the same program with
+`-2, -2`, so the constant tracks the pyramid level and the program computes *this level's*
+resolution.
+
+### The structure it sits in
+
+Following the chain by input and consumer:
+
+    transf@128 -> fid11@128 -> fid11@128 -> fid11@128 -> fid11@128
+               -> transf@64 -> fid11@64 -> fid11@64 -> fid11@64 -> fid11@64
+               -> levels@64 -> transf@128 -> blend@128 -> blend@128
+               -> transf@256 -> blend@256 -> ...
+
+**Four filter-11 passes at each resolution, the resolution halving between groups, and then
+the pyramid reconstructed upward through blends.** Down with repeated passes, up with
+blending, is a multi-scale filter.
+
+### It generalises
+
+    filter-11 records                                   18,557
+    same resolution as its input                        18,485   (99.6%)
+    runs of exactly 4 chained records         4,112 of 5,329 runs (77%)
+
+Its own program is one of a few short forms - `inputref` alone (6,147), `inputref ; const ;
+add` (1,760), or a swizzle-and-subtract sequence (5,517) - all reading a graph input and
+doing small arithmetic on it.
+
+### What can be said, and what cannot
+
+Filter 11 is a **resolution- and channel-preserving single-input pass, applied four times in
+succession at each level of a downsample pyramid that is then reconstructed upward through
+blends**, parameterised by a graph input it reduces per level.
+
+Four identical passes is the signature of an iterated fixed kernel - repeated small blurs
+converge on a Gaussian in three or four applications - and a down-then-up pyramid is how a
+wide blur is built cheaply.
+
+That is a description of what it computes, arrived at from a permitted specimen. The Adobe
+name for it stays out of these notes, because naming it would need the bundled library
+sources the provenance rule excludes. The earlier guess in these notes that its profile
+matches `motionblur` is not supported by this reading: motion blur needs no pyramid.
