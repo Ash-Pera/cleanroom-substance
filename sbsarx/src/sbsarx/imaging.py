@@ -19,6 +19,9 @@ _MODES = {
     ("RGBA8"): ("RGBA", "u1"),
     ("RGB16"): ("RGB", "<u2"),
     ("RGBA16"): ("RGBA", "<u2"),
+    ("L32F"): ("F", "<f4"),
+    ("RGB32F"): ("RGB", "<f4"),
+    ("RGBA32F"): ("RGBA", "<f4"),
 }
 
 
@@ -57,6 +60,16 @@ def to_pillow(res: Resource, data: bytes):
     shape = (res.height, res.width) if res.channels == 1 else (res.height, res.width, res.channels)
     array = array.reshape(shape)
 
+    if res.depth == 32:
+        # PNG cannot hold floating point. Values are mostly but not entirely inside
+        # [0, 1] -- displacement and normal data goes outside it -- so the range is
+        # clipped rather than rescaled, which keeps the common case exact.
+        clipped = np.clip(array, 0.0, 1.0)
+        if res.channels == 1:
+            return Image.fromarray((clipped * 65535).astype("<u2"), mode="I;16")
+        return Image.fromarray((clipped * 255).astype("u1"),
+                               mode="RGB" if res.channels == 3 else "RGBA")
+
     if res.depth == 16:
         # Pillow has no 16-bit RGBA mode. Grayscale keeps its full precision as I;16;
         # colour is reduced to 8 bits, which is lossy and is reported by the caller.
@@ -74,4 +87,4 @@ def suggested_name(res: Resource) -> str:
 
 def lossy_on_write(res: Resource) -> bool:
     """True when writing a PNG loses precision the file actually carries."""
-    return res.format in ("RGB16", "RGBA16")
+    return res.format in ("RGB16", "RGBA16", "L32F", "RGB32F", "RGBA32F")
