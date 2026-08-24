@@ -164,6 +164,93 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
     return np.asarray(out)
 
 
+# ---------------------------------------------------------------------------
+# Blend modes.
+#
+# WHAT IS CORPUS-VERIFIED: that `blendingmode` is the low four bits of blend's slot 1,
+# and that it takes values 0-11 -- FORMAT-NOTES.md, "The low four bits of blend slot 1
+# are `blendingmode`", a corpus-wide falsification test over 382 specimens with 0
+# counterexamples outside 0-11. Twelve values, densely used.
+#
+# WHAT IS NOT: which mode each integer NAMES. That mapping is not recoverable from this
+# corpus and the reason is structural, not a coverage gap -- checked directly and
+# recorded in the session that added this:
+#   * a `.sbs` compNode has no name field, only a uid and its filter's fixed connection
+#     pins ("destination"/"source"/"opacity"), never author free text;
+#   * there are ZERO GUIComment/GUIFrame elements in any .sbs anywhere in the tree, so
+#     no artist annotation exists to read;
+#   * `.sbs` serialises the mode as a bare `constantValueInt32`, the label living in the
+#     application UI, not the file;
+#   * and a `.sbsar` stores only a filter's INPUTS as pixels, never its computed output,
+#     so no (src, dst, mode, ground-truth result) tuple exists in any .sbsar to solve
+#     for -- adding more specimens cannot change this.
+#
+# So THE ORDERING BELOW IS EXTERNAL KNOWLEDGE -- Substance Designer's documented blend
+# dropdown order -- held with moderate, not high, confidence, and is the single
+# assumption every mode but 0 rests on. It is deliberately kept as one flat table rather
+# than scattered through the dispatch: if a corpus ever contradicts it, this table is the
+# only thing that has to change.
+#
+# Mode 0 is the exception and is genuinely corroborated: it is the only mode this file
+# implemented before, verified against a controlled red/blue lerp, and "Copy" is exactly
+# what that verified behaviour (a straight opacity lerp of src over dst) means. The
+# externally-sourced table agreeing with an independently verified fact at its one
+# testable point is weak evidence for the rest, not proof.
+#
+# Each function takes (dst, src) already-sampled float arrays and returns the blended
+# colour BEFORE opacity is applied; `apply_blend` does the opacity mix afterward, which
+# is the structure mode 0 was verified under.
+BLEND_MODES = {
+    0:  ('copy',       lambda d, s: s),
+    1:  ('add',        lambda d, s: d + s),                  # a.k.a. linear dodge
+    2:  ('subtract',   lambda d, s: d - s),
+    3:  ('multiply',   lambda d, s: d * s),
+    # `addsub` lightens where the source is above mid-grey and darkens below it. The
+    # exact pivot scaling is the least certain entry in this table -- the behaviour is
+    # described consistently but the formula is not published as an equation, so this
+    # takes the reading that maps src=0 -> dst-1, src=0.5 -> dst, src=1 -> dst+1.
+    4:  ('addsub',     lambda d, s: d + 2.0 * s - 1.0),
+    5:  ('max',        lambda d, s: np.maximum(d, s)),        # a.k.a. lighten
+    6:  ('min',        lambda d, s: np.minimum(d, s)),        # a.k.a. darken
+    # `switch` is handled specially in `apply_blend` -- it is a hard choice between the
+    # two inputs driven by opacity, not a per-channel function that opacity then mixes,
+    # so running it through the normal lerp would silently turn it into `copy`.
+    7:  ('switch',     None),
+    8:  ('divide',     lambda d, s: d / np.where(np.abs(s) < 1e-6, 1e-6, s)),
+    9:  ('overlay',    lambda d, s: np.where(d < 0.5, 2.0 * d * s,
+                                             1.0 - 2.0 * (1.0 - d) * (1.0 - s))),
+    10: ('screen',     lambda d, s: 1.0 - (1.0 - d) * (1.0 - s)),
+    11: ('softlight',  lambda d, s: np.where(s < 0.5,
+                                             2.0 * d * s + d * d * (1.0 - 2.0 * s),
+                                             2.0 * d * (1.0 - s) + np.sqrt(np.clip(d, 0, None)) * (2.0 * s - 1.0))),
+}
+
+
+def apply_blend(mode, dst, src, opacity):
+    """Composite `src` over `dst` under `mode` at `opacity`.
+
+    Opacity mixes the blended result back toward the destination, which is the structure
+    the one verified mode (0) was checked under: at opacity 0 every mode is a no-op and
+    the destination survives untouched. `switch` is the documented exception -- a hard
+    selection rather than a mix -- and takes opacity as its selector instead.
+
+    The result is clamped to [0, 1]. Several of these functions leave that range by
+    construction (`add` above 1, `subtract` below 0, `divide` arbitrarily far), and the
+    format's own images are unsigned-normalised, so an unclamped result would propagate
+    out-of-range values into every downstream record. This mirrors the clamp `levels`
+    already applies for the same reason.
+    """
+    entry = BLEND_MODES.get(mode)
+    if entry is None:
+        raise Unsupported("blend mode %r is outside the verified 0-11 range" % (mode,))
+    name, fn = entry
+    if name == 'switch':
+        return np.where(opacity >= 0.5, src, dst)
+    with np.errstate(all="ignore"):
+        blended = fn(dst, src)
+        return np.clip(dst * (1.0 - opacity) + blended * opacity, 0.0, 1.0)
+
+
 def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitmaps=False):
     """Evaluate every record 0..N-1 that a filter type here can handle.
 
@@ -243,20 +330,28 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                     synthetic.add(i)   # downstream of a synthetic placeholder somewhere
 
             elif rec.filter_name == "blend":
-                # Only mode 0 (blendingmode's low nibble of slot 1 -- FORMAT-NOTES.md,
+                # `blendingmode` is the low nibble of slot 1 -- FORMAT-NOTES.md,
                 # "blendingmode is the low four bits of blend slot 1", corpus-wide
-                # falsified range test) is implemented, and even that rests on one
-                # UNVERIFIED assumption: which edge is laid UNDER the other. The paired
-                # source names the two connections "destination" and "source" (a real
+                # falsified range test. WHICH mode each integer names comes from the
+                # BLEND_MODES table above and is EXTERNAL, not corpus-derived; see that
+                # table's comment for why no .sbsar can settle it. Mode 0 is the one
+                # independently verified case.
+                #
+                # A second UNVERIFIED assumption, independent of the mode question and
+                # unchanged here: which edge is laid UNDER the other. The paired source
+                # names the two connections "destination" and "source" (a real
                 # specimen's compFilter, LGMLtools__multi_blender) -- Substance's own
                 # terms for a standard alpha-over compositing pair -- but nothing here
                 # confirms which of edges[0]/edges[1] is which at the bytecode level, so
                 # this takes the conventional order (destination = edges[0], source =
                 # edges[1], source laid over destination) without independent proof.
-                # Wrong here means a plausible-looking but swapped image, not a crash.
+                # Wrong here means a plausible-looking but swapped image, not a crash --
+                # and now that asymmetric modes (subtract, divide, overlay) are
+                # implemented, a swap is no longer invisible the way it was under mode 0
+                # alone, so this is the assumption a real corpus test should attack first.
                 mode = rec.slot1_flags.get("blendingmode") if rec.slot1_flags else None
-                if mode != 0:
-                    raise Unsupported("blend mode %r not implemented (only mode 0)" % mode)
+                if mode is None:
+                    raise Unsupported("blend record has no readable blendingmode")
                 if len(rec.edges) < 2:
                     raise Unsupported("blend has fewer than 2 edges")
                 for edge_rec in rec.edges:
@@ -324,7 +419,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                     mask = sbsruntime.image_sampler(outputs[rec.edges[2]])(pos)
                     opacity = opacity * mask[:, :1]
 
-                result = dst * (1 - opacity) + src * opacity
+                result = apply_blend(mode, dst, src, opacity)
                 outputs[i] = to_image(result, N, H, W)
                 if tainted:
                     synthetic.add(i)

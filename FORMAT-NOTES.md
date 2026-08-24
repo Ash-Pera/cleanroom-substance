@@ -62,6 +62,25 @@ this document as unresolved - a legacy tag with five records, named on version e
 alone. It is recorded here because a clean-room record that documents only its successes
 is not evidence of anything.
 
+### A second boundary incident, disclosed
+
+While implementing the blend modes in `tools/render.py`, the `blendingmode` values
+declared by `blend_switch.sbs` (bundled as a dependency in several packs under `pairs6/`)
+were read in the same shell command that checked the file's author tag - so the exclusion
+predicate did not gate the read the way it is supposed to. The file is Allegorithmic-
+authored and excluded. The reading was that it declares one blend mode, 40 times.
+
+The observation was **not used**. It would have been corroborating evidence for one entry
+in `render.BLEND_MODES` - a library graph named for a mode, using that mode - and that is
+exactly why it must not count: it is the kind of direct answer the exclusion exists to
+forgo. The mode table's ordering rests on external documentation alone, as its own comment
+says, and this incident changed no entry in it.
+
+The process error is worth naming precisely, because the rule is only as good as the order
+it runs in: checking provenance and reading content in one command means the check cannot
+gate anything. Provenance has to be established in a separate step that can decline before
+the read happens.
+
 ### What a reader can verify independently
 
 The exclusion predicate is one string match and can be re-run on any corpus. The tools in
