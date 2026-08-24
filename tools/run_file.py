@@ -27,6 +27,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import disasm                                                        # noqa: E402
 import sbsasm                                                        # noqa: E402
 import sbsruntime                                                    # noqa: E402
 import transpile                                                     # noqa: E402
@@ -37,6 +38,40 @@ class Permissive(dict):
 
     def __missing__(self, key):
         return 0.5
+
+
+def input_widths(data, start, end):
+    """uid -> component count, read from each input reference's own size field.
+
+    The transpiler emits `v0 = inputs[uid]` with no width: the declared component count
+    lives in the instruction's size field, and supplying a scalar where three components
+    were declared makes the next `vec` short. That is a caller error and it looked like a
+    transpiler bug -- 20 of the 39 root-cause failures were this.
+    """
+    out = {}
+    try:
+        ins = list(disasm.decode(data, start, end))
+    except Exception:
+        return out
+    for _k, addr, op, toks in ins:
+        if (op & 0x3F) == 0x02:
+            try:
+                out[disasm.uid(addr, toks)] = ((op >> 6) & 3) + 1
+            except Exception:
+                pass
+    return out
+
+
+def inputs_for(data, start, end, value=0.5):
+    """A mapping whose every uid answers at the width that program declared."""
+    m = Permissive()
+    for uid, n in input_widths(data, start, end).items():
+        # Shape matters: `_col` reads a 1-D array of length n as n SAMPLES of one
+        # component, not one sample of n. np.full(3, 0.5) therefore arrives as (3, 1) and
+        # the next `vec` sees one component where three were declared. A row, (1, n), is
+        # one sample n components wide, which is what an input reference means.
+        m[uid] = np.full((1, n), value, dtype=float) if n > 1 else value
+    return m
 
 
 def _namespace():
@@ -105,7 +140,9 @@ def run_file(path, stats):
                 ns = _namespace()
                 try:
                     exec(src, ns)
-                    val = ns['program'](inputs=Permissive(), slots=Permissive())
+                    val = ns['program'](
+                        inputs=inputs_for(asm.data, q, asm.body_hi),
+                        slots=Permissive())
                 except Exception as exc:
                     stats['failed: ' + type(exc).__name__] += 1
                     continue

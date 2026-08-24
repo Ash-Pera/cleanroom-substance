@@ -26295,3 +26295,47 @@ arisen, and now has. These are transpiler and runtime questions rather than form
 bytes are decoded, the instruction is known, the width bookkeeping around it is wrong.
 
 39 root-cause failures in 137,951 programs, 0.028%.
+
+## Most of the "runtime failures" were the harness, and the orientation is why
+
+The 39 root-cause failures were read as transpiler and runtime bugs. Most were the harness
+supplying inputs the wrong shape, and tracing one program end to end shows how.
+
+`TravertineSubstance001` record 1104, a `uniform`, transpiles to three lines:
+
+    v0 = inputs[503490942]
+    v1 = 1.0
+    v2 = vec(v0, v1, ncomp=4)
+
+The input reference declares **3 components** in its own size field, and the transpiler emits a
+bare `inputs[uid]` - the width is the caller's job. Supplying `0.5` gives one component, so the
+`vec` sees two where four were declared, and raises.
+
+Supplying `np.full(3, 0.5)` fails identically, which is the interesting part:
+
+    _col(np.full(3, 0.5))     -> (3, 1)     three samples, ONE component
+    _col(np.full((1, 3), 0.5)) -> (1, 3)    one sample, THREE components
+
+A flat array of length three is three samples of a scalar, not one three-wide value. With the
+row shape the program returns `(1, 4) = [0.5, 0.5, 0.5, 1.0]` - a four-component colour, which
+is exactly what a `uniform` should produce.
+
+This is the same numpy orientation trap recorded earlier in this file, when `np.atleast_2d`
+made a 1-D array `(1, N)` and `select` tried to repeat to `(200000, 200000)`. It cost two
+killed processes then and twenty scored failures now.
+
+### Where execution stands
+
+    programs             137,951        (60 files)
+    ran to a value       137,904        99.9659%
+    all values finite    137,734        99.8427%
+
+    remaining   broadcast mismatch   17
+                vec short of declared 3
+                IndexError            2
+                NoSharedCache        25    cascades from the above
+
+`vec`'s guard - "no observed case of concatenation falling short" - now has three observed
+cases rather than twenty, and they are real: three programs where the declared width genuinely
+exceeds what the operands supply. Those and the seventeen broadcast mismatches are the honest
+remainder, 22 root causes in 137,951 programs, **0.016%**.
