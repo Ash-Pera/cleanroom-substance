@@ -40,11 +40,16 @@ from sbsasm import Assembly, FILTERS
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 NODE = re.compile(r'<compNode>((?:(?!</compNode>).)*?)</compNode>', re.S)
-PARAM = re.compile(r'<name v="([^"]+)"/><relativeTo v="\d+"/><paramValue>'
-                   r'<constantValueFloat[1234] v="([^"]+)"/>')
+# `.sbs` serialises a value TWO ways -- as a direct attribute (`<x v="1"/>`) and nested
+# (`<x><value v="1"/></x>`) -- a fact tools/pixelgraph.py's docstring already records. An
+# earlier version of this file matched only the direct form, which made 23 of 92 permitted
+# specimens (25%) contribute nothing and reported `fxmaps` as declaring zero values when
+# every FX-Map parameter it declares uses the nested form. Both are matched here.
+PARAM = re.compile(r'<constantValueFloat[1234](?: v="([^"]+)"/>'
+                   r'|><value v="([^"]+)"/></constantValueFloat[1234]>)')
 FILT = re.compile(r'<filter v="([^"]+)"/>')
 
-DEFAULT_FILTERS = ["levels", "blend", "transformation", "directionalwarp", "warp",
+DEFAULT_FILTERS = ["levels", "fxmaps", "blend", "transformation", "directionalwarp", "warp",
                    "blur", "gradient", "uniform", "curve", "hsl", "sharpen", "normal"]
 
 MIN_DECIMALS = 5
@@ -69,8 +74,8 @@ def declared(sbs_text, wanted):
         m = FILT.search(body)
         if not m or m.group(1) not in wanted:
             continue
-        for _name, raw in PARAM.findall(body):
-            for tok in raw.split():
+        for direct, nested in PARAM.findall(body):
+            for tok in (direct or nested).split():
                 try:
                     v = float(tok)
                 except ValueError:

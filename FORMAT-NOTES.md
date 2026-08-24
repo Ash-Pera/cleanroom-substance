@@ -5506,9 +5506,9 @@ Perlin_Noise_Animated fxmaps 1  ->  08=1
 |---|---|---:|---|
 | `0x02` / `0x03` | **blend** | 154,400 | exact counts + two-input arity, independently derived |
 | `0x04` / `0x05` | **transformation** | 108,959 | exact 5+2 split alongside bitmap |
-| `0x1E` / `0x1F` | **levels** | 42,865 | 9/10 exact (all five named specimens source-excluded); **re-derived from permitted sources by containment, 112/113 — see "`levels`, re-established without the excluded specimens"** |
+| `0x1E` / `0x1F` | **levels** | 42,865 | 9/10 exact — **withdrawn, all named specimens source-excluded**; re-established by containment on permitted sources, 347/355. See "Five filter identifications rested on excluded specimens" |
 | `0x28` / `0x29` | **pixelprocessor** | 24,994 | exact on 2 specimens |
-| `0x08` / `0x09` | **fxmaps** | 19,983 | 8/9 exact |
+| `0x08` / `0x09` | **fxmaps** | 19,983 | 8/9 exact — **withdrawn, all named specimens source-excluded**; re-established structurally on the permitted `ie_pcloud`, 110 records by tree shape. See "Five filter identifications rested on excluded specimens" |
 | `0x0C` / `0x0D` | **uniform** | 12,759 | exact counts + direct byte read of RGBA floats |
 | `0x06` / `0x07` | **shuffle** | 4,533 | exact 5=5 |
 | `0x20` / `0x21` | **bitmap** | 942 | exact on 3 specimens incl. a 3+3 split |
@@ -28978,3 +28978,113 @@ falling through to it is now a measured number rather than an assumption.
 Each of these is a *known* reason, and four of them are the same reason: w1 is not always
 a code vector. The scaffolding that remains is protecting exactly the cases where the
 second presence mask means something other than what the rule assumes.
+
+## Five filter identifications rested on excluded specimens; three are recovered
+
+The identifications of `levels`, `fxmaps`, `warp`, `blur` and `gradient` all rested on
+exact-count matching over instance-free specimens, and **every specimen those sections name
+is Allegorithmic-authored**: `BnW_Spots_Animated`, `Cells_Animated`, `Clouds_Animated`,
+`Crystal_Animated`, `Crystal_2_Animated`, `Perlin_Noise_Animated` and `Electric_Liquid` —
+the last of which this document twice calls "the decisive specimen". All are source-excluded
+by the provenance rule. The rule had been applied once and never saved as code (see
+`tools/provenance.py`), so this went unnoticed for as long as it did.
+
+Exact-count matching cannot simply be re-run: it needs an instance-free specimen, and no
+*permitted* instance-free specimen in the corpus contains a `levels` node at all. That is
+exactly why the excluded `pairs5` animated samples were such a windfall when they were
+extracted. Different routes were needed.
+
+### Route 1: containment, for filters that declare scalar parameters
+
+A permitted source declares a distinctive float on a node; the compiled binary stores that
+value in a record of some filter id. Finding it again in that filter's records is evidence —
+but only if the same procedure does not put every other filter's values there too. So the
+diagonal is reported beside the off-diagonal, over 66 permitted paired specimens
+(`tools/containment.py`), values under five decimal digits dropped as indiscriminate, and
+values a file declares on two different source filters dropped as unable to separate them:
+
+    declared on       targets   found   on-target
+    levels                373     355    347   97.7%    levels=347, fxmaps=5
+    uniform               276     275    260   94.5%
+    curve                 155      66      61  92.4%
+    transformation        236     251    217   86.5%
+    sharpen                 6       7       6  85.7%
+    directionalwarp        35      42      35  83.3%
+    warp                   25      37      25  67.6%    warp=25, blend=4, levels=4
+    hsl                     9      11       7  63.6%
+    fxmaps                 16      27      15  55.6%    fxmaps=15, pixelprocessor=3
+    blend                 150     242     130  53.7%    blend=130, fxmaps=39, levels=32
+    blur                   14      21      10  47.6%
+    gradient           18,299     177       0   0.0%
+
+**`levels` = filter 15 is re-established on permitted evidence alone, at 347 of 355.** The
+published 9/10 count-exact figure should be read as withdrawn — its specimens are excluded —
+and this read in its place.
+
+`blend`'s 53.7% is the reason to trust that number. Its declared opacities are shallow
+decimals that recur corpus-wide and it is the commonest filter, so the method fails on it,
+visibly, in the same table. A test that scored everything at 97% would be measuring its own
+construction rather than the format.
+
+**A serialisation bug, and what it cost.** The first run of this table reported `levels` at
+112/113 (99.1%) over 38 specimens, and `fxmaps` as declaring *no* values at all. `.sbs`
+serialises a value two ways — as a direct attribute (`<x v="1"/>`) and nested
+(`<x><value v="1"/></x>`), a fact `tools/pixelgraph.py`'s docstring already recorded — and
+the extractor matched only the first. **23 of 92 permitted specimens (25%) silently
+contributed nothing**, including every FX-Map parameter, which uses the nested form
+exclusively. The corrected run is the one above: more specimens, a larger sample, and a
+lower `levels` figure. `warp` moved the other way, from an apparent 90.9% to 67.6%, and is
+no longer strong enough to call recovered on containment alone.
+
+`gradient`'s 0.0% is **not** a refutation. Its values live in the ramp table, which
+`Record.ramp` reaches through a slot pointer, not in the record's own slots where this test
+looks; and the table stores u16 quantised values, so a source float cannot round-trip to an
+exact match anyway. The test simply cannot see them. Reading the ramps directly finds 1,987
+of 18,328 declared values, which is what exact comparison against quantised storage should
+be expected to yield. A quantisation-aware test would settle `gradient`; it has not been
+written.
+
+### Route 2: structure, for `fxmaps`, which declares almost no scalars
+
+Containment cannot resolve `fxmaps`: permitted sources declare only 16 distinctive values on
+FX-Map nodes, 7 land in the FX-Map node programs of filter-4 records and 10 land elsewhere.
+Too thin, and not discriminating. But FX-Maps have a property no other filter has — an
+internal node graph — and that forces the correspondence by elimination:
+
+    SOURCE  compFilter nodes carrying an internal <paramsGraphs>
+              fxmaps      64 of 64        every other filter        0
+
+    BINARY  records whose slot 2 addresses a valid FX-Map node header
+              filter 4    1,151 records   every other filter        0
+
+Taken alone the binary half is partly circular, since `FX_NODES` was itself derived by
+reading filter-4 records. The source half is not, and the specimen that settles it is
+**permitted**: `ie_pcloud`, Igor Elovikov's node library, MIT-licensed, the same file that
+gave FX-Maps their first substantial sample. Its 110 filter-4 records carry an `addnode`
+count *per record* that matches the distribution of `addnode` entries across its source
+FX-Map nodes:
+
+    binary, 0x18B per filter-4 record     {1: 4,  2: 105, 3: 1}    110 records, 217 total
+    source, addnode per fxmaps node       {1: 5,  2: 107, 3: 1}    113 nodes,   222 total
+
+The binary column reproduces this document's original figures exactly. The source column is
+within three nodes of them, and the residue is in the expansion, not the correspondence: the
+multiplicity walk used here to inline `ie_pcloud`'s 202 instances is a reconstruction of the
+original procedure rather than the original, and it leaves 100 references unresolved. The
+tail is what carries the argument either way — **exactly one node with three `addnode`
+entries, on both sides**. A walker finding nodes by chance does not reproduce a 4-and-1 tail,
+still less a 1.
+
+**`fxmaps` = filter 4 is identified on permitted evidence**, and on stronger evidence than
+the excluded 8/9 count-exact it replaces: a per-record structural distribution over 110
+records rather than agreement of three totals.
+
+### Where the five stand now
+
+    levels    filter 15   RECOVERED   containment, 347/355 over 66 permitted specimens
+    fxmaps    filter  4   RECOVERED   ie_pcloud tree-shape distribution, 110 records
+    warp      filter  7   OPEN        containment 25/37 (67.6%); was 3/3 exact, all excluded
+    blur      filter 10   OPEN        containment 10/21 (47.6%); rested on one "11 = 11"
+                                      in Electric_Liquid alone
+    gradient  filter  0   OPEN        containment cannot see ramp tables; a quantisation-
+                                      aware test is the obvious next move, not yet written
