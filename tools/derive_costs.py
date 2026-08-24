@@ -37,7 +37,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus                                                        # noqa: E402
 from sbsasm import Assembly, FILTERS                                  # noqa: E402
 
-PAYLOAD = {0: 3, 22: 3, 5: 1}    # filter -> slot holding its payload pointer
+PAYLOAD = {0: 3, 22: 3, 5: 1, 4: 2}  # filter -> slot holding its payload pointer
+# fxmaps (4) belongs here even though its "payload" is the fx TREE: slot 2 is the tree
+# root pointer, and the root sits immediately after the header -- the earliest in-record
+# pointer is slot 2's in 40,802 of 40,802 records. The first-INLINE-PROGRAM probe was
+# measuring into the tree (a position set by node sizes, not the header), which is why
+# fxmaps sat rejected at 49% while every observable that respects its structure is
+# 99.9% deterministic.
 
 # How to read words[1], per filter. The first model treated it as a code vector
 # everywhere, and the four worst rejections were exactly the four filters where it is
@@ -184,6 +190,15 @@ def fit(f, keys):
     return spec, float(wt[ok].sum() / wt.sum())
 
 
+# Filters whose field costs INTERACT with the sampling class (cls bits 8-9): the same
+# w1 field in state 10 costs 1 slot in class 3 and 3 slots in class 0 for fxmaps. An
+# additive model cannot hold both, so these filters are fitted per class, and the spec
+# carries a guard: it answers only for the class it was fitted on and returns None for
+# the rest, which fall through to the memo. Class 0 is 20 keys and 1,418 records and
+# does not clear the bar on its own -- kept out rather than guessed at.
+SPLIT_SAMPLING = {4}
+
+
 def main():
     obs = observed()
     out, report = {}, []
@@ -192,6 +207,25 @@ def main():
         n = sum(x[2] for x in keys)
         if len(keys) < 10:
             report.append((f, n, len(keys), None, 'too few keys')); continue
+        if f in SPLIT_SAMPLING:
+            best = None
+            for sc in (0, 3):
+                sub = [x for x in keys if (x[0][0] >> 8) & 3 == sc]
+                if len(sub) < 10:
+                    continue
+                spec, exact = fit(f, sub)
+                if spec is None or exact < KEEP:
+                    continue
+                spec['guard'] = {'shift': 8, 'mask': 3, 'value': sc}
+                cov = sum(x[2] for x in sub)
+                if best is None or cov > best[2]:
+                    best = (spec, exact, cov)
+            if best is None:
+                report.append((f, n, len(keys), 0.0, 'rejected')); continue
+            spec, exact, cov = best
+            report.append((f, cov, len(keys), exact, 'kept (guarded to its class)'))
+            out[str(f)] = spec
+            continue
         spec, exact = fit(f, keys)
         if spec is None:
             report.append((f, n, len(keys), None, 'underdetermined')); continue
@@ -204,7 +238,7 @@ def main():
     kept = tot = 0
     for f, n, k, e, st in report:
         tot += n
-        if st == 'kept':
+        if st.startswith('kept'):
             kept += n
         print('  %-14s %9d %7d %9s  %s'
               % (FILTERS.get(f) or 'fid %d' % f, n, k,

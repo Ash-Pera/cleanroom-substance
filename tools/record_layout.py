@@ -74,6 +74,9 @@ def header_words(filter_id, cls, w1):
     spec = costs().get(str(filter_id))
     if spec is None:
         return None
+    g = spec.get('guard')
+    if g is not None and (cls >> g['shift']) & g['mask'] != g['value']:
+        return None                      # fitted for a different sampling class
     if spec.get('mode') == 'absent':
         w1 = None
     total = spec['const']

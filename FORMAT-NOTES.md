@@ -14014,12 +14014,16 @@ out, which repository clustering never did.
 
 ### Filter 5 is the long-standing tag `0x0A`, now characterised but not named
 
-`0x0A` has been an open item since early in this document: five specimens, no sources. It is
+`0x0A` has been an open item since early in this document: five specimens (four after the
+withdrawal noted below), no sources. It is
 filter id 5, and it is now profiled rather than merely counted - an input-less generator,
 greyscale, concentrated in road materials:
 
     RoadSubstance002 70,  RoadLinesSubstance002 35,  TilesSubstance013 7,
-    SnowSubstance002 6,   deep-sea-studios__Shield_Front 1
+    SnowSubstance002 6
+
+(A fifth specimen, `deep-sea-studios__Shield_Front`, contributed one record here and was
+withdrawn from the corpus -- see "Shield_Front withdrawn" below.)
 
 Road markings are vector shapes, which points at `svg` - the only generator left once `text` is
 assigned. **It cannot be confirmed.** `svg` appears in exactly one source file in the corpus and
@@ -15228,9 +15232,8 @@ The corpus expansion took it to **nine specimens**, and that was enough.
     SnowSubstance002                6              v5
     FootstepsSubstance001           6              v5    <- new
     ChristmasTreeOrnamentSubstance002/004  3 each   v5    <- new
-    Shield_Front                    1              v2
 
-**Road lines, footsteps, Christmas ornaments, tiles, a shield.** Every one is a material whose
+**Road lines, footsteps, Christmas ornaments, tiles.** Every one is a material whose
 content is a *shape* - a decal, a marking, an outline - rather than a texture. The four new
 specimens all fit the pattern that the five old ones suggested.
 
@@ -28360,8 +28363,7 @@ identification rests only on the second.
 The settling evidence is not statistical. Rasterise consecutive triples as triangles,
 dropping the degenerate ones, and the ambientCG road materials render their road markings -
 pedestrian, bicycle, lorry, straight-and-left turn arrows - `TilesSubstance013` renders
-filigree corner ornaments, `ChristmasTreeOrnament` renders snowflakes and a bow, and
-`deep-sea-studios__Shield_Front` renders the hand-lettered words "Color Test 1". Nine files,
+filigree corner ornaments, `ChristmasTreeOrnament` renders snowflakes and a bow. Eight files,
 several authors, one decoder. `tools/extract_shapes.py` writes them as PNG or as SVG
 polygons.
 
@@ -29471,3 +29473,41 @@ carries the name.
 `0x09` is the interesting one: three successor offsets and no program at all, which is a
 pure branch. 59 nodes is too thin to implement on, and it is the only type so far that
 looks like it has more than two children.
+
+## The last two residuals were something: a boundary, an interaction, and a different word
+
+**fxmaps (49.0% -> 99.58% kept).** Two findings, stacked. First, the boundary: fxmaps'
+slot 2 is its fx-tree root pointer, and the root sits immediately after the header — the
+earliest in-record pointer is slot 2's in **40,802 of 40,802** records. Measured there,
+(cls, w1) is 99.86% deterministic; the old first-inline-program probe was measuring a
+position set by tree node sizes.
+
+Second, with the right boundary, every remaining error was quantised at exactly −3 or
+−10 words — two discrete unmodelled blocks — and both track the SAMPLING CLASS (cls bits
+8-9): the same w1 field in the program state costs 1 slot in class 3 and 3 slots in
+class 0, and one −10 header visibly contains an inline sub-table (entries indexed 00,
+01, 02). Additivity holds within a class and not across them, so the fit is per class
+and the spec carries a guard: it answers only for the class it was fitted on (class 3,
+39,137 records at 99.58%) and returns None for class 0 (20 keys, 1,418 records), which
+falls through to the memo rather than being guessed at.
+
+**emboss (60.5%, stays out — and now for a true reason).** The within-key contradictions
+are version: files at 0x50000+ are 100.0% deterministic, and every contradiction lives
+in 51 records from 0x20000-0x40000 files. But the modern population still refuses an
+additive fit, non-additively — under cls 0x0b09, field 3 costs 1 slot alone (220200 ->
+9) and 4 slots when field 2 is present (222200 -> 16). The resolution is already in
+this document: the emboss naming evidence has slots 5 and 6 carrying baked intensity
+and lightangle in a record whose w1 reads 200000 — parameters present that no 01-pair
+declares. **Emboss's w1 is not the standard code vector.** It is the packed word the
+naming commit called it, its encoding is not yet read, and a 2-bit additive model
+failing on it is the model being right about what it cannot express.
+
+### Where the cost model now stands
+
+    kept: 18 filters, covering 784,445 of 785,452 observable records = 99.87%
+    RULE answers 99.7% of records, correct 99.591% of those
+    (the memo's marginal value is now the guarded-out fxmaps class 0, emboss,
+     and the per-key residue)
+
+Every filter of the format is now either derived, guarded with a stated boundary, or
+excluded for a reason that names the mechanism — none is excluded for "does not fit".
