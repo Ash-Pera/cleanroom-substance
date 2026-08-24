@@ -64,7 +64,7 @@ re-run against any corpus.
 
 ## Where the format stands
 
-Measured over 435 specimens, 895,674 records, 4.09 GB (the corpus has since grown to 438;
+Measured over 435 specimens, 895,674 records, 4.09 GB (the corpus has since grown to 438, then to 437 after one withdrawal;
 the figures below are the last full audit):
 
     filter identified              97.9%   (99.9% with filter 5, now decoded)

@@ -29511,3 +29511,39 @@ failing on it is the model being right about what it cannot express.
 
 Every filter of the format is now either derived, guarded with a stated boundary, or
 excluded for a reason that names the mechanism — none is excluded for "does not fit".
+
+## Shield_Front withdrawn
+
+`tiny/deep-sea-studios__Shield_Front__a0a7` (515 records, version `0x20000`) is removed from
+`DISTINCT.txt`. Its compiled manifest declares `author="Allegorithmic"`, which the source-side
+provenance check could never have seen because the corpus holds no `.sbs` for it — it was one
+of the fourteen specimens the manifest check surfaced.
+
+**The stated rule did not require this.** A freely distributed compiled `.sbsar` is analysable
+whoever wrote it; the rule refuses Adobe's `.sbs` graph definitions, and a compiled archive
+contains none. This is a deliberately more conservative call than the boundary demands,
+recorded as such rather than dressed up as enforcement.
+
+### What it cost, measured rather than asserted
+
+    corpus                438 files, 904,131 records  ->  437 files, 903,616 records
+    filter 5 (tag 0x0A)   5 specimens                 ->  4   (it held 1 such record)
+    shape-payload table   loses its only v2 row       ->  the other 8 rows stand
+    shape decoder         "nine files"                ->  eight
+
+Three things it did **not** cost, each checked rather than assumed:
+
+* **Filter 9 is unaffected.** It carried none — 0 filter-9 records — and the five filter-9
+  records across four specimens are all still present, all still Allegorithmic-authored.
+* **The v2 reading is unaffected.** 89 specimens are version `0x20000`; `Shield_Front` was
+  the only v2 row in the shape-payload table, not the only v2 file in the corpus, and an
+  earlier note in this session that called it the latter was wrong.
+* **The shape decoder still stands on eight files by several authors.** Its example — the
+  hand-lettered words "Color Test 1" — was corroboration of a decoder already demonstrated by
+  road markings, filigree ornaments, snowflakes and a bow, not the evidence for it.
+
+### Historical figures are not retroactively edited
+
+Measurements recorded earlier in this notebook as "438 files, 904,131 records" were taken on
+438 files and stay as written. Rewriting them would falsify the record of what was actually
+run; the withdrawal is dated here instead, and figures computed after this point use 437.
