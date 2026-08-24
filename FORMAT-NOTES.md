@@ -4234,7 +4234,8 @@ would show it.
 variable classes. Note this **retracts a claim**: I earlier recorded `0x03` = "read input
 parameter" from a single `05C3` instruction in `find_alpha0_pixel`. That opcode is not in
 the 125-opcode core catalogue — it fails the ≥50-specimen threshold — so the claim rested
-on one instance. Withdrawn pending real evidence.
+on one instance. Withdrawn pending real evidence. (`0x03`/`0x06` are resolved much later —
+see "`0x03`/`0x06` are cross-record common-subexpression elimination".)
 
 ### 3. Missing type and width variants
 
@@ -17450,6 +17451,89 @@ token-count forms, which is too little to split on, and it is left as it is.
 This is worth recording because the test was persuasive twice today and has a stated
 domain: it detects immediates that exceed their instruction's value number, and is silent
 about every immediate that does not.
+
+## `0x03`/`0x06` are cross-record common-subexpression elimination
+
+"The role is settled - a load by index whose result feeds size and coordinate
+arithmetic - and the space it indexed is not. It stays unnamed" - the previous section's
+conclusion. It is not settled after all: the space the index names is a per-package value
+table, and it is now possible to say exactly how it is populated. Measured over the 438
+distinct-content specimens (deduplicated by hash, per "Corpus integrity" - the raw 641
+double-counts this population like every rare feature).
+
+### The writer is a `pixelprocessor` record that is never sampled
+
+`0x06`'s value operand (position 0) is an ordinary backward reference; its index operand
+(position 1) is confirmed immediate, matching the earlier finding. What is new is what the
+*record* hosting the write looks like:
+
+    op06 writes, corpus-wide                        1,063
+      hosted in a pixelprocessor record              1,063   100.0%
+      that record is an edge target of something         0     0.0%
+
+**Every writer is a `pixelprocessor`, and not one of those records is ever sampled by
+anything else in the graph.** Nothing reads its image; nothing lists it as an input. It
+carries the size expression every `pixelprocessor` record must carry, plus one or two short
+programs whose only visible effect is an `op06` write. Structurally it has every mark of a
+real filter - type tag, size expression, edge slots - and produces nothing anyone uses as
+an image. Its entire job is to compute a value once and publish it.
+
+### The reader always comes later, without exception
+
+    (file, index) pairs with both a write and a same-file read       929 / 1,063  (87.4%)
+    reader's record index vs. its writer's, over 7,074 matched uses
+      reader is a LATER record than the writer                    7,074            100.0%
+      reader is an earlier or the same record                         0              0.0%
+
+Every one of 7,074 reads happens at a record index strictly greater than its writer's. This
+is not a property of the ISA - a reader could name any backward value - it is a property of
+the record *directory*: record order is not arbitrary or purely by authoring position, it
+encodes at least this one real producer-before-consumer dependency. (Worth remembering for
+output attribution, where record order has so far been treated as uninformative.)
+
+### What gets cached is not one kind of thing
+
+Reading writer programs directly, across several files:
+
+    op06.i1  <- const.i1 1                              a plain literal
+    op06.f2  <- sysvar.f2 3                              a raw system variable ($sizelog2)
+    op06.i2  <- ceil(log2(size-adjusted N))               a genuinely computed expression
+    op06.f4  <- select(component-test, sentinel, value)   masking logic
+
+The `ceil(log2(...))` case, from `ChewingGumSubstance001`, is the clearest: a `pixelprocessor`
+record computes an aspect-corrected `ceil(log2(N))` from a graph input and `$size`, caches it
+at index 100, and **126 `shuffle`, 126 `directionalwarp` and 126 `blend` records read it back
+identically** rather than recomputing an 8-instruction expression 378 times. That is the same
+optimisation the instruction-level CSE inside one program already performs (see "The compiler
+performs common-subexpression elimination" in OPCODES.md), operating one level up - across
+records instead of across instructions in one program.
+
+**Entries chain.** 33.9% of writer programs (360 of 1,063) themselves contain an `op03` read,
+feeding a different cached index into the value being written - a real indirection layer, not
+a flat table of leaves. Two worked cases: `sRGB_colorchart` defines index 165 as "whatever
+index 166 holds", and `Embroidery_Legacy` builds index 66 from a component-test on index 70.
+
+### Consumers are not limited to `pixelprocessor`
+
+Readers span `pixelprocessor`, `blend`, `directionalwarp`, `shuffle`, `transformation`,
+`levels`, `gradient` and `uniform` - any record's own program can pull a cached value, which
+is consistent with the index space being per-package rather than per-filter. Index numbering
+itself is **not a fixed vocabulary**: index 100 above means one specific input in
+`ChewingGumSubstance001` and means nothing in any other file - 255 of its 257 corpus-wide
+occurrences are that one specimen. This is compiler bookkeeping, assigned fresh per package,
+not a symbol table with stable meanings across files - which is also why containment against
+declared parameter names never found it.
+
+### What is still open
+
+Why the compiler specifically routes this through a `pixelprocessor` record rather than some
+dedicated non-image record kind is not established from the binary alone - the plausible
+account is that `pixelprocessor` is the only record type whose body is a bare, arbitrary VM
+program, so it is what is available when a value needs computing without needing an image.
+12.6% of writes (134 of 1,063) are never read in the same file; in the one instance checked
+closely the unread indices formed a step-8 arithmetic sequence, consistent with a generically
+inlined template writing a slot that only some instances actually consume - dead code from
+instantiation, not a sign the table crosses file boundaries, but not confirmed as such.
 
 ## Chasing the manifest violations to their source
 
