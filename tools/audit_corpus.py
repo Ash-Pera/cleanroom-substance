@@ -157,7 +157,7 @@ def main(paths):
     print('    the parameter is a program: %d  (%.1f%%)' % (tot['param_program'],
           100 * tot['param_program'] / max(1, r_)))
     print('      returning 2 components -- an output size : %d' % tot['param_size2'])
-    print('      returning 1 component  -- not a size     : %d' % tot['param_size1'])
+    print('      returning 1 component  -- a random seed : %d' % tot['param_size1'])
     print('    a baked filter parameter : %d  (%.1f%%)' % (tot['param_float'],
           100 * tot['param_float'] / max(1, r_)))
     print('    as zero / absent    : %d  (%.1f%%)' % (tot['param_zero'],

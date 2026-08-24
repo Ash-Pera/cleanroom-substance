@@ -23053,3 +23053,44 @@ stops being a pattern and becomes a list.
 
 Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
 transpiler 12 tests passed.
+
+## The 123,168 are `$randomseed`, settled by the manifest
+
+Two sections argued about whether `fxmaps`' and `pixelprocessor`'s one-component parameter is
+`format` or a random seed. The first concluded "a random seed" on four properties; the second
+withdrew that, because the property doing the work - that every record of a file references
+one graph input - distinguishes "a global" from "a per-node parameter" and not one global
+from another. Both sections were reasoning about a uid.
+
+**The `.xml` manifest names uids.** Each `<input>` carries an `identifier`:
+
+    <input uid="2503192623" identifier="$outputsize" type="8" default="8,8" .../>
+
+Resolving the uid these programs read, across 389 paired files:
+
+    $randomseed    95,202
+    samples             2
+
+That is the whole distribution. The parameter is a per-node random seed, computed as
+`$randomseed + a per-node constant` - which is what the shape said, what the large constants
+said, and what the zero-dominance said, and now what the format says outright.
+
+### What the `format` reading was
+
+Not nothing. The permitted sources do contain `pixelprocessor`'s `format` declared as
+`get_integer1("HDR") + ...`, which is genuinely `input + const` producing 0 or 1 - the single
+shape match that made the reading plausible. It is a real instance of that shape; it is not
+these records.
+
+### The lesson is about which sources were in play
+
+Both earlier sections used the compiled file and the `.sbs` sources and reasoned carefully
+about distributions. The manifest was sitting in every extracted directory the whole time,
+naming the exact thing under dispute, and `validate_corpus.py` has parsed it since long
+before either section was written. The argument was not under-reasoned; it was under-sourced.
+
+    the parameter is a program: 779,928
+      returning 2 components -- an output size : 656,760
+      returning 1 component  -- a random seed  : 123,168
+
+Audit: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437.
