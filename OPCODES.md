@@ -275,6 +275,19 @@ appear once in the linear stream but must be re-evaluated per iteration, so a de
 that emits instructions in order is wrong here — this is the one place in the ISA where
 straight-line translation does not hold.
 
+**The Python transpile of `if v_cond: break` only works one sample at a time.** The
+runtime evaluates every sample of a program in one batched call — `v_cond` is a boolean
+*per sample*, not a single condition, so `if v_cond` raises as soon as more than one
+sample is passed in, and a corpus-wide execution sweep found 509 real instances doing
+exactly that. Silencing the exception with `.all()`/`.any()` is not enough — it changes
+what crashes, not what is correct: every sample shares the one loop, so without further
+work a sample whose own condition went true early keeps getting re-run in lockstep with
+the slower samples and ends up wherever that leaves it, not at its own answer. The fix
+gives each loop a per-lane `active` mask and freezes both its slot writes and its own
+carried result (`select(active, new, old)`) once a lane's condition holds, nesting loops
+by ANDing the enclosing loop's mask into the inner one's. See FORMAT-NOTES.md, "`while`
+gave every lane the same answer only by accident, until it was batched".
+
 
 ## Decoding correctly: walk records, do not scan
 

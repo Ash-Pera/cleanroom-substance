@@ -179,6 +179,47 @@ def test_while_emits_a_loop_that_counts():
         assert got == limit, "limit %d: slot0 ended at %r" % (limit, got)
 
 
+def test_while_masks_per_lane_when_run_in_batch():
+    """The single-limit test above calls the loop once per limit -- N=1 every time, so a
+    lane finishing early has no OTHER lane still running in the same Python `for` to
+    contaminate it with. A real image evaluates every pixel in one batched call, and a
+    corpus sweep found that this is not free: running 1.6M transpiled programs against a
+    500-row batch turned up 509 failures, all `ValueError: The truth value of an array
+    with more than one element is ambiguous` from `if v_cond: break` in exactly this
+    loop shape -- the condition is one bool per row, not one bool total.
+
+    Same bytecode as the test above, one call, four limits in one batch. Without
+    per-lane masking, row 0 (limit 0, done on iteration 1) would keep incrementing in
+    lockstep with row 3 (limit 17) until the shared loop exits -- wrong, not a crash, so
+    this checks values rather than trusting a clean run.
+    """
+    import numpy as np
+    words = [
+        10,
+        0x0900, 0, 0,
+        0x0907, 0, 0,
+        0x0504, 0,
+        0x0504, 1,
+        0x085D, 2, 3,
+        0x0504, 0,
+        0x0900, 0x0000, 0x3F80,
+        0x0912, 5, 6,
+        0x0907, 7, 0,
+        0x150B, 1, 4, 8, 0, 0,
+    ]
+    data = struct.pack("<%dH" % len(words), *words)
+    src = transpile.transpile(data, 0, len(data), "python", "_loop")
+    assert "select(" in src, "no per-lane masking emitted"
+    g = {}
+    exec(src, g)
+    limits = [0, 1, 5, 17]
+    slots = {0: np.zeros((4, 1), np.float32),
+             1: np.array([[float(l)] for l in limits], np.float32)}
+    g["_loop"](inputs={}, slots=slots)
+    got = np.asarray(slots[0]).ravel().tolist()
+    assert got == [float(l) for l in limits], "batched run: slot0 ended at %r" % got
+
+
 def test_log2_is_named_and_transpiled():
     """The source-matched unary 0x35 operation transpiles as log2."""
     data = struct.pack("<6H", 2, 0x0900, 0, 0, 0x0535, 0)
@@ -200,7 +241,7 @@ def test_log2_matches_ie_pcloud_source():
     assert [disasm.name(op) for _k, _addr, op, _toks in rows] == [
         "inputref", "swizzle", "log2", "cvt",
     ]
-    assert disasm.fields(rows[2][2])["id"] == 0x35
+    assert disasm.fields(rows[2][2])[3] == 0x35   # (ntok, ty, comps, id) -- id is index 3
 
     refs = asm.referenced_programs()
     matches = 0
@@ -259,8 +300,8 @@ def program_constants(asm, start, end, lo=0.0, hi=1.0):
     """Every float constant in a program that falls inside the sampled range."""
     found = set()
     for _k, addr, op, toks in disasm.decode(asm.data, start, end):
-        fields = disasm.fields(op)
-        if fields["id"] != 0x00 or fields["ty"] != 1:
+        _ntok, ty, _comps, oid = disasm.fields(op)
+        if oid != 0x00 or ty != 1:
             continue
         for value in disasm.floats(addr, toks):
             if lo <= value <= hi:

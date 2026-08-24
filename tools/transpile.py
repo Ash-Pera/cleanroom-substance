@@ -41,20 +41,20 @@ def immediate(op, addr, toks):
     * an input reference carries one u32 uid whatever its result width -- the
       component field describes the value read, not the immediate.
     """
-    f = disasm.fields(op)
-    if f["id"] not in WIDE_IMM:
+    _ntok, ty, comps, oid = disasm.fields(op)
+    if oid not in WIDE_IMM:
         return list(toks)
-    if f["id"] == 0x00 and f["ty"] == 0:
+    if oid == 0x00 and ty == 0:
         return [bool(toks[0])] if toks else [False]
     # One pad rule, shared with the disassembler.
     raw = disasm.immediate(addr, toks)
-    want = 4 if f["id"] == 0x02 else 4 * f["comps"]
+    want = 4 if oid == 0x02 else 4 * comps
     if len(raw) < want:
         raise Unsupported("opcode %04X at %d: %d immediate bytes, wanted %d"
                           % (op, addr, len(raw), want))
     body = raw[:want]
     # A uid is an integer however the instruction types its result.
-    kind = "i" if f["id"] == 0x02 else ("f" if f["ty"] == 1 else "i")
+    kind = "i" if oid == 0x02 else ("f" if ty == 1 else "i")
     code = "<%d%s" % (want // 4, kind)
     return list(struct.unpack(code, body))
 
@@ -204,11 +204,14 @@ def transpile(data, start, end, backend="python", name="program", result=None):
         raise Unsupported("empty program")
     byk = {i[0]: i for i in ins}
 
-    def emit(k):
-        """The lines one instruction emits, unindented."""
+    def emit(k, active=None):
+        """The lines one instruction emits, unindented.
+
+        `active` names a per-lane boolean expression, or None outside a loop. See its use
+        in the 0x07 branch and in `emit_range`'s while handling below.
+        """
         _k, addr, op, toks = byk[k]
-        f = disasm.fields(op)
-        oid, ty, ncomp = f["id"], f["ty"], f["comps"]
+        _ntok, ty, ncomp, oid = disasm.fields(op)
         v = be.var(k)
         out = []
 
@@ -238,7 +241,21 @@ def transpile(data, start, end, backend="python", name="program", result=None):
         elif oid == 0x04:                                  # get variable slot
             rhs = "slots[%d]" % toks[0]
         elif oid == 0x07:                                  # set variable slot
-            out.append("slots[%d] = %s" % (toks[1], arg(0)))
+            # Every sample runs in one shared Python `for` loop (see the while handling
+            # below), so a plain assignment here would keep overwriting a lane's slot
+            # after ITS OWN condition went true, using whatever the other, still-running
+            # lanes' iterations compute. `active` freezes it: keep the new value only
+            # where this lane is still active, otherwise keep what was already there.
+            # `active` is (own, expr): `own` is the innermost loop's own mask variable,
+            # the only one that can still be unset on its first iteration, checked first
+            # so the ternary short-circuits before `expr` (which may combine `own` with
+            # an outer loop's mask, for nested loops) ever has to evaluate `None & array`.
+            if active is not None:
+                own, expr = active
+                out.append("slots[%d] = %s if %s is None else select(%s, %s, slots[%d])"
+                            % (toks[1], arg(0), own, expr, arg(0), toks[1]))
+            else:
+                out.append("slots[%d] = %s" % (toks[1], arg(0)))
             rhs = arg(0)
         elif oid == 0x0C:                                  # sequence
             rhs = arg(len(toks) - 1)
@@ -365,7 +382,7 @@ def transpile(data, start, end, backend="python", name="program", result=None):
 
     lines = []
 
-    def emit_range(lo, hi, depth):
+    def emit_range(lo, hi, depth, active=None):
         pad = "    " * depth
         k = lo
         while k <= hi:
@@ -378,14 +395,35 @@ def transpile(data, start, end, backend="python", name="program", result=None):
                 # variable need not be bound when the loop ends. Bind it first and assign
                 # inside, rather than after.
                 lines.append(pad + "%s = None" % be.var(kw))
+                # `active_N`: this loop's own per-lane "still running" mask. Every sample
+                # shares the one Python `for` below, so a lane whose condition went true
+                # on iteration 3 does not stop -- the loop only exits once EVERY lane's
+                # condition holds. Without a mask, the body and the condition keep
+                # re-running for an already-finished lane, using whatever it computed on
+                # the last shared iteration rather than its own true stopping value: not
+                # a crash, a silently wrong per-lane answer, which is worse. `active_N`
+                # is None on the loop's own first pass (nothing has been checked yet, so
+                # nothing needs freezing); `own` below is always that bare variable, so
+                # its None-check short-circuits before `expr` -- which may AND in an
+                # outer loop's mask for a nested loop -- ever evaluates `None & array`.
+                own = "active_%d" % kw
+                expr = own if active is None else "(%s & %s)" % (active[1], own)
+                lines.append(pad + "%s = None" % own)
                 lines.append(pad + "for _it%d in range(1 << 16):" % kw)
-                emit_range(i0 + 1, icond, depth + 1)
-                lines.append(pad + "    if %s: break" % be.var(icond))
-                emit_range(icond + 1, ibody, depth + 1)
-                lines.append(pad + "    %s = %s" % (be.var(kw), be.var(ibody)))
+                emit_range(i0 + 1, icond, depth + 1, active=(own, expr))
+                lines.append(pad + "    _stop%d = np.asarray(%s).astype(bool)"
+                              % (kw, be.var(icond)))
+                lines.append(pad + "    %s = ~_stop%d if %s is None else (%s & ~_stop%d)"
+                              % (own, kw, own, own, kw))
+                lines.append(pad + "    if not np.any(%s): break" % own)
+                emit_range(icond + 1, ibody, depth + 1, active=(own, expr))
+                # The carry is frozen the same way: past a lane's own stopping point, its
+                # exposed final value must stay put rather than keep tracking the body.
+                lines.append(pad + "    %s = %s if %s is None else select(%s, %s, %s)"
+                              % (be.var(kw), be.var(ibody), own, own, be.var(ibody), be.var(kw)))
                 k = kw + 1
                 continue
-            for ln in emit(k):
+            for ln in emit(k, active=active):
                 lines.append(pad + ln)
             k += 1
 
