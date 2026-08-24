@@ -29799,3 +29799,82 @@ plausibly accounts for most of what remains open in the cost model at once:
 None of that is proven beyond levels yet — the node SCHEMA is still undecoded (what the
 terminal tags mean, where each node's program lives, what selects chain length). But the
 mechanism now has a name, a shape, and a table that already partially reads it.
+
+## Reading an FX-Map program, and what it turns out to be
+
+A node's program is not a mystery once you look at a small one. `ie_pcloud` — a permitted
+source with a verified pair — has 424 node programs, the shortest three instructions long.
+
+    === rec 189  header 0018B (addnode)  4 instructions
+      %0    0444  get.b2         3
+      %1    0A00  const.i1       1
+      %2    0E00  const.i1       2
+      %3    0E09  select.i1      %0, %1, %2
+
+and the commonest shape in the file, at 100 occurrences:
+
+    === rec 1  header 0018B (addnode)  12 instructions
+      %0    0501  sysvar.f1      10
+      %1    0611  cvt.i1         %0
+      %2    0A07  set.i1         %1, #0          ; slot 0 := int(sysvar 10)
+      %3    0D00  const.f1       1
+      %4    0907  set.f1         %3, #1          ; slot 1 := 1.0
+      %5    090C  seq.f1         %2, %4          ; do both
+      %6    0D82  inputref.f3    uid=2610947960
+      %7    0910  swizzle.f1     %6, #0
+      %8    0611  cvt.i1         %7
+      %9    0A00  const.i1       1
+      %10   0A12  add.i1         %8, %9          ; input.x + 1
+      %11   0A0C  seq.i1         %5, %10         ; ...then return it
+
+The manifest names uid 2610947960: `pcloud_meta`, a Float3 defaulting to `(1,1,1)`. So the
+program sets up two shared slots and returns `int(pcloud_meta.x) + 1`.
+
+### What the program IS
+
+The source says. An `addnode` in the `.sbs` carries a data block, and that block declares
+exactly one parameter:
+
+    node type   parameters it declares (ie_pcloud)
+    addnode     numberadded(20)
+    markov2     switch(10)
+    paramset    opacity(11) frameoffset(11) patternsize(11) patterntype(11)
+                blendingmode(11) imagefiltering(4) patternrotation(2) imageindex(1)
+
+**A node's program is its parameter's function graph.** `addnode` has one parameter,
+`numberadded`, and `0x18B` carries one program returning `i1` — an integer count, which is
+what `numberadded` is. The 12-instruction program above is computing how many nodes to add.
+
+### The match is exact, not thematic
+
+The source declares `numberadded` as a graph of named functions. Comparing the multiset of
+function names against the multiset of opcodes in the compiled programs:
+
+    source `numberadded` graph                  compiled addnode program
+    get_float3, swizzle1, toint1          <->   inputref, swizzle, cvt          3 / 3
+    const_int1 x2, get_bool, ifelse       <->   const x2, get, select           4 / 4
+    const_int1 x2, get_bool, ifelse, not  <->   const x2, get, not, select      5 / 5
+
+Three source shapes, three compiled shapes, exact multiset agreement on each. That gives a
+dictionary between the source's function vocabulary and this ISA, verified rather than
+guessed:
+
+    get_float3 -> inputref     swizzle1 -> swizzle    toint1 -> cvt
+    const_int1 -> const        get_bool -> get        ifelse -> select    not -> not
+
+### And it confirms `markov2` a third way
+
+`markov2` declares exactly one parameter, `switch`, and it is a **boolean**. `0x89` carries
+exactly one program, and that program returns `b2` in 10,048 of 10,048. The containment
+argument (0x89 appears in the one source declaring markov2 and in none of the seven that do
+not) and the return-type argument were already two independent lines; this is a third, and
+it explains *why* the return type is what it is rather than just noting that it is.
+
+### Not established
+
+`paramset` declares eight parameter kinds and compiles to no tree node, which suggested its
+parameters become TABLE entries — 11 paramset nodes carrying 62 parameters between them.
+That does not survive contact with the file: `ie_pcloud` has 1 or 2 table entries per
+record and six distinct entry tags, not 62. Whatever the table carries, it is not one entry
+per paramset parameter. Recorded as a lead that was checked and failed rather than left
+hanging.
