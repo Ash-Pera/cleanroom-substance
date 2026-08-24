@@ -24090,3 +24090,56 @@ Lift +61 points, so the test discriminates and the claim stands. But 39% is the 
 zero, and the bare "39 of 39" oversold it. The general lesson is the one this file keeps
 relearning: a 100% result means nothing until the same measurement is run where the rule
 predicts failure. Two of the last three such results survived that check. One did not.
+
+## levels: there IS a rule, and its domain is 86 rows
+
+The previous section left the `levels` residual open. That was premature - it was open because
+the wrong features were being fed to it.
+
+**First, a rule exists.** Taking the full state of all five two-bit fields rather than a count
+of how many are active:
+
+    distinct (cls, five field states) combinations   86
+    combinations mapping to more than one slot count  0
+    records in an ambiguous combination                0 of 85,213
+
+So the slot count is a deterministic function of `(cls, states)`, and the whole domain is 86
+rows. Every apparent contradiction earlier - `cls 0x0018, 3 active` giving both 2 and 3 slots
+- came from collapsing the states into a count. Two records with three active fields are not
+the same input if the three fields differ.
+
+### The rule for the bulk
+
+    slots = |active| + (cls bit 0) + (cls bit 7)
+            - 1  when outlow and outhigh are BOTH active and cls bit 0 is clear
+
+    exact      82,384   96.68%
+    off by -1   2,800    3.29%
+    off by +1      29    0.03%
+
+That is `levels` from 90.57% to 96.68%, and it says the `{outlow, outhigh}` pair shares one
+slot - but only when bit 0 is clear. When bit 0 is set the pair takes its slots separately.
+
+### What the last 3.3% is
+
+The pair interacts with which *other* fields are active, and not in a way any compact form has
+matched. At `cls 0x0019`, writing the state vector as
+(inlow, inhigh, inmid, outlow, outhigh):
+
+    (0,0,0,1,1)  2 active -> 3 slots     the pair alone: acts like |active| + 1
+    (0,1,0,1,1)  3 active -> 3 slots     with one `in` field: the +1 disappears
+    (1,1,0,1,1)  4 active -> 4 slots     same
+    (0,1,1,1,1)  4 active -> 4 slots     same
+    (1,1,1,1,1)  5 active -> 5 slots     same
+    (1,0,1,1,1)  4 active -> 5 slots     but NOT here
+
+The last line is the one that breaks it. `(1,0,1,1,1)` and `(0,1,1,1,1)` have the same number
+of active fields, the same pair, and the same number of `in` fields - they differ only in
+whether the active `in` field is `inlow` or `inhigh`, and they take a different number of
+slots. Either the two are not interchangeable, or `layouts.json` is wrong on one of them.
+
+That is the shape of the remaining question, and it is a much smaller one than "the levels
+residual". Note also what the oracle is: `layouts.json` is a DERIVED table, and the blend case
+already showed it can be wrong where the rule is right. Adjudicating these 86 rows needs
+evidence from the records, not from the table - and the sharp test that settled blend does not
+discriminate here, because 87% of arbitrary slots read as a plausible float.
