@@ -28893,67 +28893,88 @@ end to end: 4.7% of outputs, none deeper than 20 records, against a median requi
 394. The distance is not spread across sixteen filters. It is one filter, and it is the
 one this document knows least about.
 
-## `levels`, re-established without the excluded specimens
+## The rule, written down and put into the code
 
-The identification of `levels` as filter 15 (`0x1E` / `0x1F`, 42,865 records) rested on
-exact-count matching over instance-free specimens, and **every specimen it names is
-Allegorithmic-authored**: `BnW_Spots_Animated`, `Cells_Animated`, `Clouds_Animated`,
-`Crystal_Animated` and `Electric_Liquid` — the last of which this document twice calls "the
-decisive specimen". All five are source-excluded by the provenance rule. The rule was
-applied once and never saved as code (see `tools/provenance.py`), so this went unnoticed:
-the identification stood on evidence the project's own boundary forbids.
+### The rule
 
-Exact-count matching cannot be re-run clean. It needs an instance-free specimen, and **no
-permitted instance-free specimen in the corpus contains a `levels` node at all** — that is
-precisely why the excluded `pairs5` animated samples were such a windfall when they were
-extracted. A different route was needed, not a re-run.
+A record is a struct with two presence masks and no stored offsets.
 
-### Containment, and the control that makes it evidence
+    word 0   tag   filter id, plus `cls` -- a bitmask over the INHERITED parameters
+                   ($outputsize, $randomseed, output format, pixel size, ...)
+    word 1   w1    a vector of two-bit codes over the FILTER's OWN parameters
+                   00 absent   01 baked   10 a program   11 an image input
+                   -- present only for filters that have such parameters
+    then     the image inputs, contiguous
+    then     one slot per set cls bit, in canonical order
+    then     one slot group per nonzero w1 field, in field order
+    tail     payload filters end with a pointer to their table
 
-A permitted source declares a distinctive float on a `levels` node; the compiled binary
-stores that value in a record of some filter id. Finding it again in a filter-15 record is
-evidence — but only if the same procedure does not put every other filter's values there
-too. A large filter would otherwise win by being large. So the diagonal is reported beside
-the off-diagonal, over 38 permitted paired specimens, values with fewer than five decimal
-digits dropped as indiscriminate, and values a file declares on two different source
-filters dropped as unable to separate them:
+Every position is implied by the bits set before it. That is why no bitfield of the tag
+was ever found that computed a slot number: nothing stores one, because a reader walks
+the masks in the same order the writer emitted them.
 
-    declared on       targets   found   on-target
-    levels                124     113    112   99.1%     levels=112, fxmaps=1
-    transformation        163     165    162   98.2%
-    uniform               280     279    263   94.3%
-    directionalwarp        15      16     15   93.8%
-    warp                   10      11     10   90.9%
-    blend                 119     190     99   52.1%     blend=99, fxmaps=30, levels=24
+In arithmetic form the whole rule is one sum:
 
-**`levels` scores 112 of 113, the highest of any filter with a substantial sample.** One
-stray value landed in an `fxmaps` record; eleven of the 124 targets were never found at all,
-which is what a compiler-eliminated node or a program-valued parameter looks like.
+    header = const + SUM over set cls bits of that parameter's cost
+                   + SUM over w1 fields of that field's cost in its state
 
-`blend`'s 52% is the reason to trust the rest. Its declared opacities are shallow decimals
-that recur across the whole corpus, and `blend` is the commonest filter, so the method fails
-on it — visibly, in the same table. A test that scored everything at 99% would be measuring
-its own construction. `tools/containment.py` re-runs the whole matrix.
+### The costs, fitted rather than asserted
 
-### What this settles, and what it does not
+`tools/derive_costs.py` fits those costs from (cls, w1) to the observed header boundary
+and keeps a filter only when the ROUNDED costs reproduce every header exactly. A model
+that must predict an integer slot count across hundreds of distinct mask combinations
+cannot be fitted by accident. Twelve filters qualify:
 
-**`levels` = filter 15 is re-established on permitted evidence alone.** The published
-9/10 count-exact figure should be read as withdrawn — its specimens are excluded — and this
-containment result read in its place.
+    blend           270,212  100.000%      dirmotionblur   14,573  100.000%
+    transformation  187,570   99.971%      blur            10,220   99.980%
+    directionalwarp  60,873  100.000%      distance         2,200  100.000%
+    gradient         17,237  100.000%      dyngradient      2,151  100.000%
+    normal            1,320  100.000%      curve            1,273  100.000%
+    hsl                 657  100.000%      bitmap             457  100.000%
 
-`warp` comes along with it at 10/11, which matters because its published evidence (3/3
-exact) names `Crystal_Animated`, `Crystal_2_Animated` and `Electric_Liquid`, all excluded.
-Ten permitted values is a thinner base than `levels`' 124 and is recorded as suggestive.
+Two of the fitted coefficients are worth reading directly, because both were established
+elsewhere by entirely different means and this recovers them cold:
 
-Three identifications are **not** rescued and stay open, all of them resting on excluded
-specimens with no permitted containment evidence to replace it:
+    cls bit 10 costs +2          recorded independently as "a baked 2-component value,
+                                 never a program"
+    transformation field 3       +4 baked, +1 as a program. matrix22 is a Float4, and
+                                 "baked costs its WIDTH, a program costs one slot" is
+                                 exactly the rule that made the earlier fitted weights
+                                 stop looking arbitrary
 
-    fxmaps    0x08/0x09   19,983 records   3/3 exact, all excluded; no permitted values
-    blur      0x14/0x15    8,313 records   "11 = 11" in Electric_Liquid alone; 3/5 here
-    gradient  0x00/0x01    9,367 records   the distinctive count of 6 is Electric_Liquid;
-                                           one permitted value declared, not found
+The evidence that the header is a function of the masks at all, before any fitting:
+98.871% of records take their (cls, w1) key's modal header size, and for the two payload
+filters -- where the table sits between header and code, so the first-program probe
+overstates the boundary -- measuring at the payload pointer instead gives **17,237 of
+17,237 and 1,273 of 1,273, both exactly 100%**.
 
-`fxmaps` is the awkward one: it is where stray values from every other filter tend to land
-(30 from `blend`, 6 from `uniform`), which is the signature of a parameter-dense record
-rather than of a wrong identification — but it is not evidence *for* the identification
-either, and none of the containment work bears on it.
+### What changed in the code
+
+`Record.header_words` now asks the rule first and the memo second:
+
+    the RULE answers   568,743  (72.2%)   correct 99.966% of those
+    the MEMO answers   724,732  (92.1%)   correct 99.778% of those
+    rule, then memo    745,488 of 787,212 correct = 94.700%,  up from 91.860%
+
+The rule is *more accurate where it answers* and covers less. That is the honest state:
+`layouts.json` is not deleted, it is demoted to a fallback, and the fraction still
+falling through to it is now a measured number rather than an assumption.
+
+### Why the other filters are not yet covered, stated rather than papered over
+
+    pixelprocessor  0.002%   its w1 carries an ARITY INTEGER (low nibble), not two-bit
+    fxmaps         10.394%   codes (bits 10-13). A per-field cost model cannot express
+                             "add k slots", which is why these two fail hardest -- and
+                             the failure is itself confirmation, since they are exactly
+                             the two filters already known to state their arity in w1
+    warp           93.568%   two record shapes: w1 is absent in v5/v6 files and present
+    shuffle        66.530%   in v9. Fitting one cost vector across both cannot work
+    uniform        72.622%   no w1 word at all -- slot 1 is an edge
+    levels         48.106%   five fields whose baked widths are not yet separated
+    emboss          6.393%   41 keys, and its w1 is a packed word of a different shape
+    vectorshape     0.000%   a payload filter whose boundary is its strip pointer, not
+                             measured here
+
+Each of these is a *known* reason, and four of them are the same reason: w1 is not always
+a code vector. The scaffolding that remains is protecting exactly the cases where the
+second presence mask means something other than what the rule assumes.

@@ -847,6 +847,16 @@ class Record:
         """
         if len(self.words) < 2:
             return None
+        # The RULE first, the memo second. `record_layout.header_words` computes this
+        # from the two presence masks -- a constant plus the cost of each set bit -- and
+        # returns None for filters whose costs have not been derived. HEADER_WORDS is a
+        # memo of the same quantity, keyed by (filter, cls, w1 & LAYOUT_MASK), and that
+        # key is lossy: it masks w1, so it cannot even represent the arity fields. Where
+        # the rule answers it is exact by construction; see tools/derive_costs.py.
+        import record_layout
+        n = record_layout.header_words(self.filter_id, self.cls, self.words[1])
+        if n is not None:
+            return n
         return HEADER_WORDS.get((self.filter_id, self.cls,
                                  self.words[1] & LAYOUT_MASK.get(self.filter_id, 0)))
 
