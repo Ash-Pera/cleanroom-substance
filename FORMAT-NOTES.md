@@ -17554,3 +17554,39 @@ so the rule for stepping between entries is incomplete, and the entry tags thems
 So the 34% is no longer "fxmaps records with no readable content". It is **fxmaps records
 whose slot 2 addresses a value table rather than a node chain**, one that also appears in
 the version-2 prologue, partially traversable and not yet decoded.
+
+### The traversal is consecutive, and that is as far as it goes
+
+Following the +4 pointer as though it were the next entry walked out of the record 77.4%
+of the time. It is not the next entry; it is the entry's *value*. Testing each reading of
+the second word against the same records:
+
+    +52 pointer, lands inside the record      88.1%
+    byte offset from the record start          0.0%
+    byte offset from body_lo                   0.1%
+    next 8 bytes carry the identical tag      35.2%
+
+So an entry is `(tag, +52 pointer)` and the table is walked by **stepping eight bytes**,
+the way the prologue's index table is laid out.
+
+Walking it that way, the structure confirms itself against the control:
+
+    run length from the slot-2 target   0: 1,084   1: 2,555   2: 1,025 ... 9: 115
+    run length from an arbitrary word   0: 7,017   1: 1,893   2:   113 ... 4:  28
+
+An arbitrary word does not begin a well-formed run of entries; the slot-2 target does, in
+8,027 of 9,111 records.
+
+**What the entries point at is still not established.** Across all 26,526 entries walked,
+the pointer reaches a plausible float in 7.7% of cases against a 5.9% control - not a
+result. The earlier 22.6%-against-2.4% figure was for the *first* entry only, and it does
+not survive generalisation to the rest of the run.
+
+The values that are reached are unmistakably real - 0.25, 0.75, 2.0, -0.25, 0.5, 1.5, 1.0,
+-1.0 - so some entries do carry parameter constants. But most do not, and calling the
+whole structure a value table would be reading the 7.7% and ignoring the control.
+
+**Stated exactly:** the 9,111 records carry a run of 1 to 9 consecutive 8-byte entries,
+each holding a tag and a forward pointer that lands inside the record. The run is real and
+its boundaries are found reliably. The tags (`0x20008`, `0x420008`, `0x100048`, `0x248`,
+`0x8000848`) and what the pointers reference are not decoded.
