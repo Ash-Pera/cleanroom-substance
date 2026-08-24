@@ -25654,3 +25654,71 @@ The residual is 3,140 records and is structured rather than noise, dominated by:
 Both over-count by exactly 2, so a baked field sometimes costs 1 rather than 2. Until that is
 understood the rule should not replace a table that is right for the wrong reason less often
 than the rule is wrong for a known one.
+
+# WHAT IS STILL UNEXPLAINED, BY FIELD
+
+Every bit that varies was put there for a reason. This is the inventory.
+
+## The class word
+
+    bit   set in            share    status
+      0   742,856          82.16%    $outputsize
+      3   904,123         100.00%    set iff cls != 0x80 - an exact partition
+      4   868,734          96.08%    UNEXPLAINED   (blend, transformation)
+      5    33,883           3.75%    UNEXPLAINED   (pixelprocessor, blend)
+      6         3           0.00%    UNEXPLAINED   (fxmaps, three records)
+      7   121,644          13.45%    $randomseed
+      8   417,672          46.20%    UNEXPLAINED   (transformation, directionalwarp)
+      9   385,867          42.68%    UNEXPLAINED   (transformation, directionalwarp)
+     10     6,772           0.75%    a baked 2-component value, never a program
+     11    95,942          10.61%    $pixelsize
+     12    16,419           1.82%    UNEXPLAINED   (blur, sharpen)
+     13    25,422           2.81%    a computed 1-component value
+     14     1,109           0.12%    UNEXPLAINED   (warp)
+
+**Bit 4 is the striking one**: set in 96.08% of every record in the format and meaning
+nothing we can name.
+
+### What bits 8 and 9 are not
+
+They look like a two-bit enum and are not one - they are EQUAL in 97.2% of records, so the
+values are 0 (55.9%) and 3 (41.3%) with 1 and 2 vestigial. A duplicated flag, like `uniform`'s
+bit 8 and bit 16.
+
+Four hypotheses tested and rejected:
+
+    the output grayscale flag     no bit agrees above 55%; as a 2-bit value the split is
+                                  66.8% / 33.6% / 10.0% / 41.7% - a gradient, not a flag
+    $tiling (a 2-bit enum)        an inherited value should propagate; bits 9:8 match the
+                                  first input 55.28% against controls of 96.72% (bits 5:4)
+                                  and 90.51% (bits 1:0)
+    marks a shared result         consumed by >1 record: 9.60% set vs 19.38% clear - the
+                                  wrong direction
+    marks a multi-parameter node  2+ programs: 44.75% set vs 26.82% clear - a real lift of
+                                  18 points, but nothing like a rule
+
+## word1
+
+    filter            records    bits that vary   explained   unexplained
+    blend             310,837           0x1f7f       0x230        0x1d4f
+    transformation    235,010       0x160000ff   0x60000c0    0x1000003f
+    levels             85,889            0x7ff       0x3ff         0x400
+    directionalwarp    62,173             0xbe        0x1e          0xa0
+    pixelprocessor     57,965          0x7001f         0xf       0x70010
+    fxmaps             41,212        0x400fef7      0x3ff3     0x400c004
+    dirmotionblur      15,109              0xf         0xf           --   complete
+    uniform            14,012       0x3fffffff       0x100    0x3ffffeff
+
+`dirmotionblur` is the only filter whose word1 is fully accounted for.
+
+A caution on the rest: for `gradient`, `warp`, `shuffle`, `bitmap` and the others not listed,
+word1 varies across the full 16 bits because it is **not a bitfield at all** - it holds a
+record index or is unused. Those bits are not unexplained fields; they are not fields. Listing
+them as gaps would overstate the problem by about 60,000 records.
+
+## The honest summary
+
+Three named class-word bits, three characterised, **seven unexplained** - one of which is set
+on 96% of all records. One filter's word1 fully explained out of twenty-three. Everything the
+format uses to lay out a record is understood; a great deal of what it uses to DESCRIBE one is
+not.
