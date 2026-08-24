@@ -20115,3 +20115,91 @@ Across all four PARAM_SPEC filters the bits now agree with what is in the slot i
 
 Audit unchanged: 641 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator
 437/437, 0 unexplained value-table entries.
+
+## The layout scope, carried out — and the irreproducibility named rather than inferred
+
+The three fixes scoped with *The layout table is stale* are in. What follows is what each
+one actually cost, measured, and one correction to how the previous section explained
+itself.
+
+### The cause was a second file list, not an inference
+
+That section deduced from the counts - shipped `seen` totalling 1,027,670 where the same
+keys cover 851,549 records now, and not one key counting higher than when shipped - that
+the table "was derived over a strictly larger file set". True, and it can be named:
+
+    DISTINCT.txt            435 paths, relative        the deduplicated corpus
+    tools/DISTINCT.txt      641 paths, absolute        the raw pre-deduplication one
+
+Both are gitignored local data. `derive_layouts.py` resolves its default input against the
+**working directory**, so running it from inside `tools/` silently picks up the 641-file
+list - the population *Corpus integrity* showed is a third duplicates. That is where the
+1,031 keys came from. Running it from the repository root gives 809.
+
+This cost an hour of this session, because the first regeneration was run from `tools/`
+and produced 1,002 keys, which contradicted the 842 measured earlier and looked like a
+real discrepancy in the finding. It was a wrong working directory. **A script whose
+default input depends on where it is invoked from will eventually be invoked from the
+other place**, and the two answers differ by a third of the corpus.
+
+### The derive no longer seeds itself, and now counts specimens
+
+`header_sizes()` called `Record.programs`, which reads the `layouts.json` the script
+writes. It now finds inline programs table-free: a slot whose `+52` target is a decodable
+program lying inside that same record. And `derive()` gained the specimen-diversity guard
+`header_sizes()` has required all along - three distinct files, not just 20 records - which
+is the standing rule from *Corpus integrity* applied to this table rather than to a claim
+made from it.
+
+Regenerating from the 435-specimen list, with both fixes:
+
+    1,031 keys -> 809      794 identical, 222 dropped, 15 changed, 0 added
+
+222 is exactly the "failing either test" figure the previous section predicted, arrived at
+from the other direction.
+
+### The classifier absorbs the regeneration
+
+The open question was whether `classified_programs` would cover the keys a regeneration
+drops. Full corpus, shipped table against regenerated, both with the classifier in place:
+
+    filter identified        97.9%  ->  97.9%       unchanged
+    parameter read         856,318  -> 856,240      -78 records, 0.009%
+    genuinely unread         1,261  ->   1,319
+    edge slots             100.00%  -> 100.00%      unchanged
+    dropped-key records     41,173  ->  46,736
+    programs recovered       9,825  ->  11,953
+
+**Dropping 222 memorised keys costs 78 parameter readings in 895,674 records.** The
+5,563 records that lost their key mostly did not need it: they land on the fallback path,
+where the classifier reads them directly and recovers 2,128 more programs than before.
+
+The table is now rebuildable from the corpus this project reports, with every key resting
+on at least 20 records across at least 3 distinct specimens, and the figure to quote for
+how much of it is memorised beyond its own threshold is **zero**, where it was 21.5%.
+
+### The audit can now see this class of gap
+
+`audit_corpus.py` reports programs named by slots the layout table does not list, with its
+control beside it:
+
+    dropped-key records   46,736   recovered 11,953   21.71% of records gain a program
+    CONTROL keyed        805,269   recovered  4,284    0.26%
+
+The control probes every header slot rather than only the next one, so it sits above the
+0.02% the narrow probe measured; 0.26% against 21.71% is still 83x. The keyed figure is
+reported and deliberately **not** added to `Record.programs` - on a record whose key the
+table knows, the table is the answer.
+
+### What is still open from the review that prompted this
+
+Two items were fixed elsewhere in the same session - `0x36 = pow` is now proved, and the
+READMEs are back in line with the notes. Two remain:
+
+* **Loops are decoded but not executable.** `0x0B` disassembles as `while` and carries no
+  immediate, both established, but `transpile.py` raises `Unsupported` on a real `0x150B`.
+  The paired sources confirm `function=while` and do not supply the reevaluation semantics.
+* **`0x1E` and `0x2A` still print as `op1E` and `op2A`.** Both are confirmed in
+  OPCODES.md - `neq` on the deepest-embedded-opcode test, `exp` at 578/578 exact in
+  `ie_processing` - and neither is in `disasm.NAMES`, which is keyed `(type, id)` and wants
+  `(0, 0x1E)` and `(1, 0x2A)`. `0x0F` is correctly absent: OPCODES.md marks it *probable*.
