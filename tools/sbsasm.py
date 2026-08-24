@@ -233,47 +233,48 @@ PARAM_SPEC = {
     # already produced one withdrawn reading in this file; it does not get to produce
     # another.
     11: [('fid11_param0', 0x003, 0x002), ('fid11_param1', 0x00c, 0x008)],
-    # `pixelprocessor` has four, derived the same way. Two of the pairs are exact and two
-    # are near it, over 92,815 slot reads:
+    # `fxmaps` has four, derived the same way. Two of the pairs are exact and two are near
+    # it, over 92,815 slot reads:
     #
     #     bit 6 pair   27,984 / 27,984   100.00%      bit 0 pair    9,774 / 10,054  97.22%
     #     bit 8 pair   27,467 / 27,467   100.00%      bit 4 pair   26,507 / 27,310  97.06%
     #
     # The pairs at 6 and 8 are all but always the PROGRAM form - bit 8 alone is never set
-    # in 39,942 records, only bit 9 - and the clean sources agree: `pixelprocessor`'s
-    # `perpixel` parameter is declared as a `dynamicValue` 229 times out of 229, never as a
-    # constant. A filter whose defining parameter is a function is exactly the filter whose
-    # kind bits should be stuck on "program".
+    # in 39,942 records, only bit 9 - and the clean sources agree: `fxmaps`' `opacity` is
+    # declared as a `dynamicValue` 232 times out of 232, never as a constant, and
+    # `numberadded` (296 against 2), `patternsize` (230 against 6) and `frameoffset` (230
+    # against 1) are nearly so. A filter whose parameters are almost all functions is the
+    # filter whose kind bits sit on "program".
     #
-    # The source also declares `format` (Int32), `colorswitch` (Bool) and `outputsize`
-    # (Int2). Those are NOT floats, which is why this filter is in PARAM_RAW below.
-    4:  [('pp_param0', 0x003, 0x002), ('pp_param1', 0x030, 0x020),
-         ('pp_param2', 0x0c0, 0x080), ('pp_param3', 0x300, 0x200)],
+    # The source also declares `patterntype` and `blendingmode` (Int32) and `colorswitch`
+    # (Bool). Those are NOT floats, which is why this filter is in PARAM_RAW below.
+    4:  [('fx_param0', 0x003, 0x002), ('fx_param1', 0x030, 0x020),
+         ('fx_param2', 0x0c0, 0x080), ('fx_param3', 0x300, 0x200)],
 }
 
 # Filters whose baked parameter values are reported as the raw u32 rather than as a float.
-# `pixelprocessor`'s declared parameters include Int32, Bool and Int2 types, so decoding
-# every constant as a float32 would invent numbers like 1.5e-33 out of small integers. Where
-# a filter's parameter types are not established, the raw word is the honest value.
+# `fxmaps`' declared parameters include Int32 and Bool types, so decoding every constant as
+# a float32 would invent numbers like 1.5e-33 out of small integers. Where a filter's
+# parameter types are not established, the raw word is the honest value.
 PARAM_RAW = frozenset({4})
 
 
 # The OTHER kind mechanism: a population count in the CLASS word.
 #
-# `gradient` and `fxmaps` keep no kind bits in slot 1 - the best correlation any of its
+# `blur` (10) and `warp` (7) keep no kind bits in slot 1 - the best correlation any of its
 # sixteen bits reaches is 0.225. They keep them in the class word, and they do not spend one
 # bit per parameter. `popcount(cls & mask)` is the NUMBER of leading block slots that hold
 # programs; the rest hold constants. Order is positional, filled from the front of the block.
 #
-#     gradient  bits 0, 7, 11, 13    100.000%   over 43,883 slot reads, every position exact
-#     fxmaps    bits 0, 7, 11         99.889%   over 42,473
+#     blur      bits 0, 7, 11, 13    100.000%   over 43,883 slot reads, every position exact
+#     warp      bits 0, 7, 11          99.889%   over 42,473
 #
-# The masks are nested, which is worth more than the earlier note allowed: `fxmaps` uses
-# three bits and `gradient` those same three plus one.
+# The masks are nested, which is worth more than the earlier note allowed: `warp` uses three
+# bits and `blur` those same three plus one.
 #
 # Both must be read against the LAYOUT TABLE's block, not against fixed slot numbers. An
-# earlier measurement hardcoded `fxmaps` to slots 3-5 and got 95.69%, because its block
-# starts at slot 3 in 13,623 records and slot 4 in 1,561. Using the block gives 99.889%.
+# earlier measurement hardcoded `warp` to slots 3-5 and got 95.69%, because its block starts
+# at slot 3 in 13,623 records and slot 4 in 1,561. Using the block gives 99.889%.
 PARAM_POPCOUNT = {10: 0x2881, 7: 0x0881}
 
 

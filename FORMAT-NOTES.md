@@ -21406,3 +21406,63 @@ a different parameter, and the way to tell is to test it where it was not found.
 
 The last filter with no named parameter mechanism now has one. Unchanged: 435 files, 0
 failures, 0 unexplained bytes, edges 100.00%, validator 437/437, transpiler 11 passed.
+
+## Correction: four of the last findings name the wrong filter
+
+`sbsasm.FILTERS` is the authoritative id-to-name table and it was in the module the whole
+time. My analysis scripts did not use it. They carried a hand-written fallback map, written
+once when a `getattr` for a differently-named table came back empty, and it was wrong:
+
+    id   what I called it       what it is
+     4   pixelprocessor         fxmaps
+     7   fxmaps                 warp
+    10   gradient               blur
+    20   (unnamed, "?20")       pixelprocessor
+     0   never analysed         gradient
+
+So the last several sections are correct about **filter ids** and wrong about names. The
+measurements are unaffected - every one is keyed by id - and the renaming is mechanical:
+
+- "`gradient` and `fxmaps`: the kind bits are in the class word" is about **`blur` and
+  `warp`**. The popcount rule, `blur` at 100.000% and `warp` at 99.889%, stands as measured.
+- "`pixelprocessor` joins the table" is about **`fxmaps`**, whose four bit pairs it is.
+- "filter 20 has nothing to predict, lift +0.00" is about **`pixelprocessor`**, and remains
+  true of it: its slots are programs 99.3% of the time.
+- `gradient` (id 0) has never been analysed at all.
+
+### One piece of evidence was genuinely misattributed
+
+Not just a name. Filter 4's two always-program pairs were justified like this: *"the clean
+sources agree: `pixelprocessor`'s `perpixel` parameter is declared `dynamicValue` 229 times
+out of 229"*. `perpixel` belongs to `pixelprocessor`, which is filter 20. It says nothing
+about filter 4.
+
+The claim survives on its own filter's evidence, which is if anything stronger:
+
+    fxmaps  opacity        dynamic 232   constant   0     always
+            numberadded    dynamic 296   constant   2
+            frameoffset    dynamic 230   constant   1
+            patternsize    dynamic 230   constant   6
+
+`PARAM_RAW` was justified the same wrong way - "`pixelprocessor`'s `format` (Int32),
+`colorswitch` (Bool), `outputsize` (Int2)". `fxmaps` declares `patterntype` (Int32, 223
+constant), `blendingmode` (Int32, 190) and `colorswitch` (Bool, 228), so the conclusion holds
+and the reason had to be replaced.
+
+Both comments in `sbsasm.py` now cite the filter they are about, and `PARAM_SPEC[4]`'s
+parameters are renamed `fx_param0..3`.
+
+### What this changes about what is left
+
+`gradient`, id 0, is unexamined - 3,923 records in the first 120 specimens. Its declared
+parameters are unusual: `value`, `midpoint` and `position` appear **32,034 times each and
+never once as a dynamicValue**, which is the ramp table this file already documents under
+`Record.ramp` rather than a parameter block.
+
+`warp`, `blur`, `sharpen` and `distance` each declare exactly one Float1 - `intensity`,
+`intensity`, `intensity`, `distance`. Containment puts `warp`'s and `blur`'s at **slot 5**,
+but on 2 distinctive values each, which is not enough to name them and is recorded only so
+the next attempt starts there.
+
+Unchanged: 435 files, 0 failures, 0 unexplained bytes, edges 100.00%, validator 437/437,
+transpiler 11 passed.
