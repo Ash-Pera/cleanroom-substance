@@ -59,22 +59,32 @@ re-run against any corpus.
 Measured over 435 specimens, 895,674 records, 4.09 GB:
 
     filter identified              97.9%
-    main parameter resolved        94.7%
-    edge slots resolved           99.96%
-    unexplained bytes                  0
+    size expression or first
+      parameter read               95.6%
+    edge slots resolved          100.00%
+    record bytes interpreted       92.5%
+
+The last line is the one to read. Earlier versions of this table reported "unexplained
+bytes 0", which was circular: `coverage()` marks a whole record extent as accounted for
+the moment the record is enumerated, and the directory is a sorted partition of the body,
+so every body byte is inside some record by construction. That measured the directory's
+completeness, not the segmenter's. 92.5% counts only bytes the model can put a meaning to.
 
 Decoded: the container, the record directory as a sorted extent map, the tag's filter and
-resolution fields, 17 of 21 filter ids, the edge map, the parameter word for `blend`
+resolution fields, 17 of 23 filter ids, the edge map, the parameter word for `blend`
 (including `blendingmode`), the instruction set at 41 operations, the embedded bitmap format,
 graph inputs by uid, the system variables, and the output-to-record attribution — a table
 between the directory and the first record that five earlier approaches had all missed,
 naming each output's record in 3,249 of 3,249 with a colour-mode check it could have failed
 and did not (`Assembly.outputs()`).
 
-Not decoded: FX-Map tree internals, four filter ids, the version-2 prologue, and what most
-filter parameters mean once their record and program are known — the gap that actually
-blocks a renderer. See FORMAT-NOTES.md's most recent status section for the current ranking;
-this paragraph is a summary and falls behind it.
+Not decoded: six filter ids (2.9% of records), the FX-Map node vocabulary beyond `addnode`,
+and what most filter parameters mean once their record and program are known — the gap that
+actually blocks a renderer. The version-2 prologue is no longer on this list: it is a
+constant 72-byte preamble of programs, one of which binds the graph's random seed. Neither
+are FX-Map records as a whole — they are about 90% located bytecode, and the open part is
+which node type each header names. See FORMAT-NOTES.md's most recent status section for the
+current ranking; this paragraph is a summary and falls behind it.
 
 ## On the notebook style
 

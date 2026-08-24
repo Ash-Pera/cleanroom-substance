@@ -27,9 +27,17 @@ Two readings sit side by side, deliberately:
   found through its layout. It holds the record's **output size expression** in 91.3% of
   records (`Record.output_size` evaluates it, agreeing with the tag in 99.81%) and a baked
   filter parameter in the rest; the layout key states which, at 100.00%. It is not "the
-  main parameter", which is what earlier notes called it. `Record.programs` returns *every* program the record's slots name;
-  a record can carry up to five, and the two-scalar filters routinely carry two. This is what a
-  reader should bind to.
+  main parameter", which is what earlier notes called it. `Record.programs` returns every
+  program the record's slots name; a record can carry up to five, and the two-scalar filters
+  routinely carry two. This is what a reader should bind to.
+
+  That claim used to be false for the 4.6% of records whose layout key `derive_layouts.py`
+  dropped: those fall through to a hand-written default naming a single slot, so a second
+  program could not come back however plainly its slot named one. `Record.classified_programs`
+  now reads those records directly — `words[s] + 52` passing `valid_program`, bounded by the
+  header end the record states — recovering 9,825 programs at 20.77% of dropped-key records
+  against a 0.25% control on records the table does know. `fxmaps` is excluded; see the
+  method's docstring for why.
 * `Assembly.referenced_programs()` is **permissive** - every program some word in the file points
   at. It exists because FX-Map records reach programs through their tree and the version-2
   prologue holds programs no record names, and both looked like undecoded regions until this was
