@@ -18653,3 +18653,44 @@ parameter* count is much smaller than it looked: of 2,272,663 parameter-slot rea
 941,939 are sizes, and what remains genuinely unnamed is 893,752 readings in the slots
 after the size. That number did not change; what changed is that it can no longer hide
 behind the program slot.
+
+## Does the output-size finding change the segmenter or the disassembler?
+
+The disassembler needs nothing: it decodes instructions, and a size expression disassembles
+exactly like any other program. The segmenter needed two changes, both because a tool that
+folded the size expression in with "the record's programs" silently mixed two different
+things.
+
+### `attribute_outputs`'s readers map was dominated by a near-vacuous input
+
+`readers()` maps a graph input's uid to every record whose program references it, and the
+manifest cross-check takes that record set's forward closure as "what this input reaches".
+The output-size input is read by a **median 73% of a file's records** (max 100%), against a
+median **0.1%** for every other input - so its closure is essentially the whole graph.
+
+The manifest side matches that shape: an output-size input is declared to alter **96.1%**
+of a graph's outputs, against **52.9%** for other inputs. Both sides say "everything", so
+those rows agree almost by construction and cannot fail the way a real input's row can -
+folding them into the headline 98.38% overstates how much the check has actually verified.
+
+Splitting them out:
+
+    (input, output) pairs, ordinary inputs           36,472    agree 98.38%
+    (input, output) pairs, the output-size input       3,361    agree 98.39% (near-vacuous)
+
+The rates are nearly identical, so the size-expression rows were not distorting the
+headline number - but they were never a meaningful test, and now they are labelled as such
+rather than counted alongside rows that can actually fail.
+
+### `Record.programs` needed a companion that excludes the size expression
+
+Any analysis of what a filter's own logic does - as opposed to accounting for the record's
+bytes - wants the programs **after** the size expression, not including it. `programs`
+already existed for the second job; `filter_programs` now exists for the first, dropping
+the size expression when it is the first entry:
+
+    programs per record          : {0: 67756, 1: 319358, 2: 131605, 3: 49671, 4: 20409}
+    filter_programs per record   : {0: 386518, 1: 132201, 2: 49671,  3: 20409}
+
+318,762 records whose only program was the size expression now correctly report zero
+filter programs.

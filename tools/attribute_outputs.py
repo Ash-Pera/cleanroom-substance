@@ -72,7 +72,14 @@ def check(asm, xml_path):
     rd, fwd = readers(asm), forward(asm)
     table = {uid: idx for uid, _, _, idx in asm.outputs() if uid is not None}
     ok = bad = skip = 0
+    vac_ok = vac_bad = 0
     detail = []
+    # An input of type 8 is the graph's output size. Its rows are near-vacuous: it is read
+    # by a median 73% of a file's records, so its forward closure is most of the graph, and
+    # the manifest says it alters 96.1% of outputs. Both sides say "everything", so those
+    # rows agree almost by construction and cannot fail the way the others can. Counted
+    # separately rather than folded into the headline.
+    intype = {u: t for t, u, v in (asm.header.get('inputs') or [])}
     for g in root.iter('graph'):
         for inp in g.iter('input'):
             uid = inp.get('uid')
@@ -90,6 +97,10 @@ def check(asm, xml_path):
                     continue
                 rec = table[int(ouid)]
                 reach = rec in cl
+                if intype.get(uid) == 8:
+                    if (ouid in alters) == reach: vac_ok += 1
+                    else: vac_bad += 1
+                    continue
                 if (ouid in alters) == reach:
                     ok += 1
                 else:
@@ -97,7 +108,7 @@ def check(asm, xml_path):
                     if len(detail) < 5:
                         detail.append((uid, ouid, 'alters but unreachable'
                                        if ouid in alters else 'reachable but does not alter'))
-    return ok, bad, skip, detail
+    return ok, bad, skip, detail, vac_ok, vac_bad
 
 
 def main(argv):
@@ -111,20 +122,24 @@ def main(argv):
                 continue
             try:
                 a = Assembly(p)
-                ok, bad, skip, _ = check(a, xs[0])
+                ok, bad, skip, _, v1, v2 = check(a, xs[0])
             except Exception:
                 continue
             files += 1
             tot['ok'] += ok; tot['bad'] += bad; tot['skip'] += skip
+            tot['vac_ok'] += v1; tot['vac_bad'] += v2
         n = tot['ok'] + tot['bad']
         print('specimens checked        : %d' % files)
         print('(input, output) pairs    : %d' % n)
         print('   agree with the table  : %d  (%.2f%%)' % (tot['ok'], 100*tot['ok']/max(n, 1)))
         print('   violations            : %d' % tot['bad'])
         print('   inputs no program reads: %d' % tot['skip'])
+        v = tot['vac_ok'] + tot['vac_bad']
+        print('output-size rows, counted apart : %d  (%d agree) -- near-vacuous, see check()'
+              % (v, tot['vac_ok']))
         return
     a = Assembly(argv[0])
-    ok, bad, skip, detail = check(a, argv[1])
+    ok, bad, skip, detail, v1, v2 = check(a, argv[1])
     print('output table:')
     for uid, fmt, gray, idx in a.outputs():
         r = a.records[idx] if 0 <= idx < len(a.records) else None

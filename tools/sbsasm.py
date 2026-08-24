@@ -532,6 +532,21 @@ class Record:
                 out.append(p)
         return out
 
+    @property
+    def filter_programs(self):
+        """The programs that compute this filter's behaviour, without the size expression.
+
+        `programs` returns every program the record's slots name, and its FIRST entry is
+        usually the record's OUTPUT SIZE expression rather than anything to do with the
+        filter. Any analysis of what a filter computes wants this instead; anything
+        accounting for bytes wants `programs`.
+        """
+        out = list(self.programs)
+        par = self.parameter
+        if out and par and par[0] == 'program' and out[0] == par[1]:
+            out = out[1:]
+        return out
+
     def fx_walk(self):
         """The whole FX-Map structure: the node chain, then the table it hands off to.
 
