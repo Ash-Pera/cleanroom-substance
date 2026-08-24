@@ -30369,3 +30369,55 @@ computes values into a shared slot frame — which is what all those `set` instr
 the node programs are for, including the `set` pair in the very first program read in these
 notes. The `paramset` table then reads that frame and computes the per-pattern parameters:
 size, offset, rotation, and a condition deciding whether the pattern is emitted at all.
+
+## What the rendered outputs actually contain: one picture
+
+The closure metric elsewhere in this document asks which outputs *can* render. This asks a
+different question — of the ones that DO render, what comes out — and the answer is worse
+than any coverage figure suggests.
+
+Over `pairs2`, under 5 MB, with `synth_missing_bitmaps` on:
+
+    declared outputs produced                                    143 of 598   (23.9%)
+      spatially FLAT: every channel constant across the image     114   (80%)
+      with real spatial variation                                  29
+        ...fed by SYNTHETIC placeholder bitmaps this walker
+           fabricated, not by the file's own data                  25
+        ...from the file's own data                                 4
+
+And of those four, three are `ie_pcloud` and `ie_curve` outputs, which are **point-cloud and
+curve data buffers** — a handful of lit pixels in the top row of an otherwise black frame,
+correct for what that library stores but not imagery. Looking at them is the only way to
+tell; "has spatial variation" does not mean "is a picture".
+
+**One declared output in the corpus renders as a real image from real data:**
+`LGMLtools__easy_diz` record 5, a 512x512 dithered photograph, which is exactly what an
+"easy dither" filter should produce from the bitmap embedded beside it. The
+`bitmap -> pixelprocessor` path is correct and this is the proof of it.
+
+### Why 80% is flat
+
+The rendered population is dominated by `uniform` (3,273 records, 100% flat by definition)
+and by `blend`/`transformation`/`levels` chains that consume it — 98%, 99% and 94% flat
+respectively. Those filters are implemented correctly; they are moving constants around
+because the things that MAKE spatial variation are not implemented. `fxmaps` is the noise and
+pattern generator, and without it a chain that does not bottom out at an embedded bitmap
+bottoms out at a flat fill.
+
+So the coverage numbers and this one measure different things and both are honest:
+implementing `shuffle` really did unblock 14 more outputs, and 12 of those 14 are flat
+colours. Filters downstream of the gate can be added indefinitely without the pictures
+arriving.
+
+    per-filter share of rendered outputs that are spatially flat
+        uniform          100%   (correct: it is a constant fill)
+        transformation    99%
+        blend             98%
+        levels            94%
+        shuffle           79%
+        pixelprocessor    74%
+        dirmotionblur     27%
+        bitmap             0%   (correct: real stored data)
+
+`bitmap` at 0% and `uniform` at 100% are the two ends that confirm the measurement is
+reading what it claims to.
