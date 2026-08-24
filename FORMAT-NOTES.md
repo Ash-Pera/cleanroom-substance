@@ -16093,3 +16093,58 @@ vector geometry described earlier, which is located but not decoded.
 `coverage()` keeps its byte classification, which is still useful for locating a resource
 segment or a prologue. But **the number to quote for how much of the format is understood is
 92.5% of record bytes, not 100% of file bytes.**
+
+## The gradient ramp, and one more false edge
+
+The honest coverage measure put `gradient` at 43.3% interpreted, the largest gap outside the
+unnamed filters. Reading three records of different sizes settles it.
+
+    [0] tag / class
+    [1] a value that varies
+    [2] 4          number of stops
+    [3] -> +20     table start
+    [4] -> +44     table end, which is where the record's program begins
+    [5..] the table
+
+    len  40  count  4  slot3 -> +16   table +16..+40  = 24 = 4 x 6
+    len 172  count  4  slot3 -> +20   table +20..+44  = 24 = 4 x 6
+    len 412  count 64  slot3 -> +20   table +20..+404 = 384 = 64 x 6
+
+**A gradient record embeds its colour ramp**, and slot 4 does double duty as both the table end
+and the program pointer, because the program is emitted immediately after the table.
+
+### Entry width follows the channel count
+
+    channel   class    records   stride
+    grey      0x0119     2,856    6   100%
+    grey      0x0118     1,849    6   100%
+    colour    0x0119       632    8   100%
+    grey      0x0019       598    4   100%
+    colour    0x0109       122    8   100%
+    grey      0x0018        92    4   100%
+
+Exceptionless within each class. The rule is
+
+    stride = 4 + 2*colour + 2*(class bit 8)
+
+giving 4, 6 or 8 bytes - a `u16` stop position followed by one, two or three `u16` values. It
+holds for **94.4% of the 17,151 records carrying a ramp pointer**; the residue is almost all
+records where the span is not a whole multiple of the count, meaning slot 4 is not the table end
+there.
+
+`Record.ramp` reads 88.5% of gradient records: 4,841 with three values per stop, 782 with four,
+697 with two.
+
+### Slot 2 was in the edge map and is not an edge
+
+`EDGES[0]` was `[1, 2]`. Slot 2 is the stop count. It passes the "valid backward record index"
+test - the values are 4, 64, 256 - and fails the one that discriminates:
+
+    slot 2 read as an edge, resolution agreement   35.5%   (chance)
+    blend slot 2, a known real edge                100.0%
+
+**The sixth time the small-integer artifact has put something in a table it does not belong in.**
+It was found this time only because the corrected coverage metric made `gradient` look wrong.
+
+    gradient record bytes interpreted   43.3%  ->  91.7%
+    edge slots resolved                99.96%  ->  99.98%

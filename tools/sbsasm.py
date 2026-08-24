@@ -43,7 +43,7 @@ UNNAMED = {5: 'generator, greyscale (svg?)', 8: 'two inputs, greyscale control (
 # record index - EXCLUDING slot 1 wherever slot 1 is a parameter word, because a small
 # packed integer passes the "valid backward index" test trivially. That conflation is
 # what produced the shared-reference error; see FORMAT-NOTES.md.
-EDGES = {0: [1, 2], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 10: [1],
+EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 10: [1],
          11: [2], 12: [2, 3], 13: [1], 14: [1], 15: [2], 18: [2], 19: [1],
          21: [2], 22: [1]}
 
@@ -279,6 +279,40 @@ class Record:
                 return
             q = struct.unpack_from('<I', d, q + nxt_off)[0] + 52
 
+    @property
+    def ramp(self):
+        """For filter 0: the gradient's colour ramp, or None.
+
+        A gradient record embeds its ramp as a table of u16 entries:
+
+            slot 2   number of stops
+            slot 3   table start
+            slot 4   table end, which is also where the record's program begins
+
+        The entry width follows the channel count - `4 + 2*colour + 2*(class bit 8)` -
+        giving 4, 6 or 8 bytes: a stop position followed by one, two or three values.
+        The formula holds for 94.4% of the 17,151 records carrying a ramp pointer.
+
+        Slot 2 is *not* an input edge. It reads as one - a small backward value - but
+        its resolution agreement with the record is 35.5%, which is chance, where a real
+        edge agrees at ~100%.
+        """
+        if self.filter_id != 0 or len(self.words) < 5:
+            return None
+        count = self.words[2]
+        start = self.words[3] + 52
+        end = self.words[4] + 52
+        if not count or not (self.offset < start < self.end):
+            return None
+        if not (self.offset < end <= self.end):
+            end = self.end
+        width = 4 + 2 * (1 if self.colour else 0) + 2 * ((self.cls >> 8) & 1)
+        if (end - start) != count * width:
+            return None                     # the 5.6% the formula does not cover
+        n = width // 2
+        return [struct.unpack_from('<%dH' % n, self.asm.data, start + i * width)
+                for i in range(count)]
+
     # ---- bitmap specialisation
     @property
     def bitmap(self):
@@ -316,6 +350,9 @@ class Record:
         p2 = self.parameter
         if p2 and p2[0] == 'float':
             s += '  param=%g' % p2[1]
+        rp = self.ramp
+        if rp:
+            s += '  ramp=%d stops x%d' % (len(rp), len(rp[0]))
         b = self.bitmap
         if b:
             s += ('  pixels@%d %dB %dch %d-bit' % (b['offset'], b['size'],
