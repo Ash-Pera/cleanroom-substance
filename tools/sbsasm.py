@@ -3150,6 +3150,13 @@ class Assembly:
     def program_span(self, p, hi=None):
         """End offset of the program at p, or None. Bounded by `hi` when given.
 
+        Memoised. The scan underneath is a pure function of (p, hi) over `self.data`,
+        which is the mapped file and never mutated -- so caching is behaviour-identical,
+        not an approximation. It is worth doing because this is not called once per
+        program but once per FX-Map node evaluation: a single 3029-record assembly
+        renders with 118,539 calls to it, re-decoding the same few hundred byte ranges
+        and spending 16.2M `struct.unpack_from` calls to reach answers it already had.
+
         This is the single definition of "is a program"; `valid_program` is this
         returning non-None. They used to be two implementations of the same idea and
         drifted apart -- this one checked only instruction lengths, so a tightening
@@ -3164,6 +3171,18 @@ class Assembly:
         "returning non-None" equivalence the two are supposed to have.
         """
         hi = self.body_hi if hi is None else hi
+        try:
+            cache = self._span_cache
+        except AttributeError:
+            cache = self._span_cache = {}
+        key = (p, hi)
+        if key in cache:
+            return cache[key]
+        cache[key] = v = self._program_span_scan(p, hi)
+        return v
+
+    def _program_span_scan(self, p, hi):
+        """Uncached scan. See `program_span`, which is the entry point."""
         d = self.data
         if p + 4 > hi:
             return None
