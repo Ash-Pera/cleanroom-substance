@@ -32985,3 +32985,41 @@ metallic map is a legitimate output, not a decode failure. `9a4b14d`'s "80% are 
 counted them as part of the problem. They are 38% of the rendered outputs here, and the
 same correction applies to every flatness percentage in this document including the ones
 above: the ceiling is not 100%.
+
+## Withdrawn: the four "filter destroys information" candidates are not that
+
+Recorded above: 95 of 99 flat declared outputs have nothing spatial in their closure, and
+four do — offered as the only candidates for a filter taking spatial input and producing
+flat output, the worst failure available here.
+
+Traced, all four are in one file (`Facade01`, output records 504, 579, 580, 582) and none
+is a filter destroying anything. The shape is the same in each:
+
+```
+rec 484  fxmaps          std 0.1998      <- genuinely spatial
+rec 485  transformation  std 0.1998
+rec 486  transformation  FAILED: no offset bit set but programs remain unread
+rec 487  transformation  FAILED: edge has no output yet         }
+rec 488  transformation  FAILED: edge has no output yet         }  cascade
+rec 494  blend           FAILED: edge -> 492 has no output yet  }
+rec 497  fxmaps          std 0.0000      <- a DIFFERENT, flat branch
+rec 504  blend           std 0.0000      <- the declared output
+```
+
+The spatial branch is **severed** by a failure two records downstream of it, and the output
+renders from the surviving flat branch. Nothing flattened anything; the spatial data never
+arrived. My test asked "is anything in this closure spatial", which is not the same question
+as "does anything spatial reach the output", and the four are entirely an artifact of that.
+
+So the flatness explanation has **no counter-examples in the sample** — 99 of 99, not 95.
+
+### What the trace found instead, which is worth more
+
+`rec 484` and `rec 489` are **`fxmaps` records with std 0.1998**. The FX-Map decode does
+produce spatially varying records; they are orphaned before reaching any declared output.
+And the thing orphaning them is named: `transformation: no offset bit set but programs
+remain unread`, at records 486 and 491, which severs both spatial branches in this file.
+
+That is a better target than the harness this was going to feed. A filter that destroys
+information would have been the worst bug available; a filter that *refuses* and strands a
+working generator behind it is the commonest one, and it is visible.
