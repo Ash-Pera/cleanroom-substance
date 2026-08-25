@@ -33023,3 +33023,43 @@ remain unread`, at records 486 and 491, which severs both spatial branches in th
 That is a better target than the harness this was going to feed. A filter that destroys
 information would have been the worst bug available; a filter that *refuses* and strands a
 working generator behind it is the commonest one, and it is visible.
+
+## `imageindex`: the slice of the pattern problem that does not need the shape
+
+`fxrender.splat` now takes an optional `images` map from edge slot to array. When a pattern
+carries `imageindex`, the pattern **is** that image sampled over its own footprint rather
+than a generated profile — and for those records the shape question does not arise, because
+there is no footprint to guess.
+
+`Facade01` record 497 is the specimen, and it only became reachable once the
+`transformation` refusal above stopped severing its branch:
+
+```
+rec 496  blend    std 0.2738     the facade element -- two panels and a bar
+rec 497  fxmaps   std 0.0000     before: 160 patterns, generated footprint, solid white
+rec 497  fxmaps   std 0.1920     after:  the element tiled in horizontal rows
+```
+
+Not proof, but it is the right *kind* of picture rather than merely a non-flat one: a facade
+generator tiling an element in rows is what the graph is for. Found by a parallel session
+and reproduced here independently, to the same 0.1920.
+
+### The index-to-edge mapping is NOT established, and the numbers say why it matters
+
+Over 80 files, 176 fxmaps records carry `imageindex` on their entries:
+
+```
+every pattern indexes 0     133 records   -- and these have SIX edges
+at least one indexes 1       27 records   -- and these have THREE
+values seen                  0.0 x54,518 and 1.0 x27; no other value exists
+```
+
+If `imageindex` were a direct index into the edge list, six-edge records would be expected
+to use more than index 0. They do not — so it indexes something narrower than the raw edge
+list, a subset of edges that are pattern images, and which subset is unknown.
+
+So `image_for` takes the index **literally** and returns None when the caller did not supply
+that slot, which draws the generated profile instead. Falling back to the first available
+image would sample the wrong input on those 27 records and produce a perfectly plausible
+picture from it — the failure this decode keeps being caught by, and the one place here
+where the convenient default is the dangerous one.

@@ -316,9 +316,42 @@ def profile_value(lx, ly, profile):
     return (np.clip(1.0 - r2, 0.0, 1.0) * inside).astype(np.float32)
 
 
-def splat(rec, patterns, W=None, H=None, profile='rect'):
+def splat(rec, patterns, W=None, H=None, profile='rect', images=None):
+    """Draw the emitted patterns. `images` maps EDGE SLOT -> (H, W, C) array.
+
+    When `images` is supplied and a pattern carries `imageindex`, the pattern IS that image
+    sampled over its own footprint rather than a generated profile. For those records the
+    shape question does not arise -- there is no footprint to guess.
+
+    HOW OFTEN IT APPLIES, and what it must not be over-read as. Over 80 files, 176 fxmaps
+    records carry `imageindex` on their entries:
+
+        every pattern indexes 0     133 records   -- and these have SIX edges
+        at least one indexes 1       27 records   -- and these have THREE
+        values seen                  0.0 x54,518 and 1.0 x27; no other value exists
+
+    If `imageindex` were a direct index into the edge list, six-edge records would be
+    expected to use more than index 0. They do not, so it indexes something narrower -- a
+    subset of edges that are pattern images -- and that mapping is NOT established. So
+    `image_for` takes the index literally and returns None when the caller did not supply
+    it, which draws the generated profile instead. Silently falling back to the first
+    available image would sample the wrong input on the 27 and produce a plausible picture
+    from it, which is the failure mode this decode keeps being caught by.
+    """
     W = W or rec.width
     H = H or rec.height
+
+    def image_for(p):
+        if not images:
+            return None
+        v = p.get('imageindex')
+        if v is None:
+            return None
+        try:
+            idx = int(round(float(np.asarray(v, dtype=float).ravel()[0])))
+        except Exception:
+            return None
+        return images.get(idx)
     nchan = 4 if rec.colour else 1
     canvas = np.zeros((H * W, nchan), dtype=np.float32)
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
@@ -326,6 +359,7 @@ def splat(rec, patterns, W=None, H=None, profile='rect'):
     py = (yy.ravel() + 0.5) / H - 0.5
 
     for p in patterns:
+        src = image_for(p)
         def val(name, default):
             v = p.get(name)
             return np.asarray(default, dtype=np.float32) if v is None \
@@ -362,8 +396,22 @@ def splat(rec, patterns, W=None, H=None, profile='rect'):
                 ly = (-dx * st + dy * ct) / sy
                 cov = profile_value(lx, ly, profile)
                 hit = cov > 0
-                if hit.any():
+                if not hit.any():
+                    continue
+                if src is None:
                     canvas[hit] = np.maximum(canvas[hit], col * cov[hit, None])
+                    continue
+                # The pattern IS the input image: local coordinates, which run
+                # -0.5..0.5 across the footprint, map straight onto its UV.
+                uv = np.stack([lx[hit] + 0.5, ly[hit] + 0.5], axis=-1)
+                sampled = sbsruntime.image_sampler(src)(uv)
+                sampled = np.asarray(sampled, dtype=np.float32)
+                if sampled.ndim == 1:
+                    sampled = sampled[:, None]
+                if sampled.shape[-1] < nchan:
+                    sampled = np.repeat(sampled[:, :1], nchan, axis=-1)
+                canvas[hit] = np.maximum(canvas[hit],
+                                         sampled[:, :nchan] * col * cov[hit, None])
     return np.clip(canvas, 0, 1).reshape(H, W, nchan)
 
 
