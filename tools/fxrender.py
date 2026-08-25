@@ -64,7 +64,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import sbsruntime, transpile                                          # noqa: E402
+import assume, sbsruntime, transpile                                  # noqa: E402
 from sbsasm import Assembly, FX_NODES                                 # noqa: E402
 
 # 0x1CB joins these on the value evidence in sbsasm's FX_NODE_PARAMS: its +4 program is
@@ -319,7 +319,7 @@ def profile_value(lx, ly, profile):
     return (np.clip(1.0 - r2, 0.0, 1.0) * inside).astype(np.float32)
 
 
-def splat(rec, patterns, W=None, H=None, profile='rect', images=None):
+def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     """Draw the emitted patterns. `images` maps EDGE SLOT -> (H, W, C) array.
 
     When `images` is supplied and a pattern carries `imageindex`, the pattern IS that image
@@ -343,6 +343,11 @@ def splat(rec, patterns, W=None, H=None, profile='rect', images=None):
     """
     W = W or rec.width
     H = H or rec.height
+    # The footprint is the largest open question here and the one the reference renders
+    # could settle, so it is arbitrable: `assume.scope(**{'fx.profile': 'bell'})` renders a
+    # candidate. Absent a scope this is 'rect', today's behaviour, unchanged.
+    if profile is None:
+        profile = assume.assumed('fx.profile', 'rect')
 
     def image_for(p):
         if not images:

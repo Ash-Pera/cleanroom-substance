@@ -33344,3 +33344,49 @@ Concretely it would settle, at once and on evidence: `blur`'s slot 3 versus its 
 path, `distance`'s block position, the FX pattern footprint, `distance`'s sign convention
 and which of its edges is the mask. Five of the six items on the blocked list, from one
 harness, with the answer coming from the engine rather than from either of us.
+
+## `assume`: a channel for arbitrating a guess, kept out of the coverage path
+
+`tools/assume.py` resolves the bind above without touching `render()`'s contract. A caller
+who wants to arbitrate opens a scope and gets an image; a caller who wants coverage passes
+nothing and gets today's behaviour exactly.
+
+```python
+with assume.scope(**{'fx.profile': 'bell'}) as used:
+    img, _f, _s = render(asm, max_dim=None)      # native resolution, per the max_dim lesson
+# `used` names every record whose output depended on the assumption
+```
+
+Three rules keep it from becoming a way to improve the numbers:
+
+* **Opt-in and empty by default** — `assumed(key)` returns `None` unless a scope is open, so
+  no sweep can pick one up by accident.
+* **Every record rendered under one is recorded in `USED`.** A coverage count that does not
+  subtract `USED` is wrong, exactly as one that does not subtract `LOW_CONFIDENCE` is.
+* **A key names a QUESTION, not a filter** — `'distance.mask_edge'`, not `'distance'` — so an
+  A/B is a one-key change and what is being arbitrated is legible at the call site.
+
+The questions worth arbitrating, and what each would settle:
+
+```
+blur.intensity      program | slot3      the withdrawn fallback, 70 records in the set
+distance.param      program | block1     the slot the two-path control could not judge
+distance.invert     False | True         the sign convention
+distance.mask_edge  0 | 1                which of its two edges is the mask
+fx.profile          rect | bell | ...    the pattern footprint
+uniform.fill        a value              the engine default, in two blocking sets
+```
+
+Wired into `fxrender.splat` and verified on the rosette — `sci_fi_elements_02` record 86,
+whose six-fold symmetry is knowable from its parameters before any render:
+
+```
+fx.profile=rect   std 0.0000    <- unchanged default
+fx.profile=bell   std 0.1627
+no scope          std 0.0000    <- the contract is untouched
+```
+
+**One limitation to know before scoring:** `profile_value` implements `'rect'` and one
+falloff, so `'cone'` and `'disc'` currently fall through to the same curve and score
+identically. The candidate set is two shapes, not four, until it carries more — and a
+scoring run that reports three candidates tied is measuring that, not the format.
