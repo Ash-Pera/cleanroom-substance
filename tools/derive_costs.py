@@ -37,7 +37,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus                                                        # noqa: E402
 from sbsasm import Assembly, FILTERS                                  # noqa: E402
 
-PAYLOAD = {0: 3, 22: 3, 5: 1, 4: 2}  # filter -> slot holding its payload pointer
+PAYLOAD = {0: 3, 22: 3, 5: 1, 4: 2, 16: 1}  # filter -> slot holding its payload pointer
+# bitmap (16) stores PIXELS: slot 1 is the pixel offset when it is small enough to be a
+# file offset (Record.bitmap's own discrimination). A stored-pixel record's "record end"
+# boundary swallowed the pixel payload -- one Grid.sbsasm record measured a 16,386-word
+# "header" that was 64KB of image. For graph-input records slot 1 is a uid and the +52
+# probe lands outside the record, so those simply contribute no observation.
 # fxmaps (4) belongs here even though its "payload" is the fx TREE: slot 2 is the tree
 # root pointer, and the root sits immediately after the header -- the earliest in-record
 # pointer is slot 2's in 40,802 of 40,802 records. The first-INLINE-PROGRAM probe was
@@ -85,6 +90,13 @@ def observed():
                 if len(r.words) <= sl:
                     continue
                 q = r.words[sl] + 52
+                if not (r.offset < q <= r.end):
+                    # The payload lives OUTSIDE the record (bitmap keeps most pixel
+                    # data in the pre-body region; only oversized images are inline).
+                    # The record is then nothing but header, or header plus inline
+                    # programs -- the ordinary boundary logic applies.
+                    inline = [x for x in r.programs if r.offset < x < r.end]
+                    q = min(inline) if inline else r.end
             else:
                 inline = [x for x in r.programs if r.offset < x < r.end]
                 if not inline:
@@ -348,6 +360,14 @@ def main():
         spec2, exact2 = fit(f, keys, range(16, 32))
         if exact2 > exact:                        # narrow (cls-only) model wins
             spec, exact = spec2, exact2
+        # The FORMAT byte (word0 bits 8-15) carries layout for some filters -- bitmap's
+        # 0xaa/0xbb formats cost one extra word -- but bits 0-7 are junk features that
+        # hurt the integer refinement, so the mask that sees the format byte without
+        # them is its own candidate. bitmap: 99.33% under both other masks, 100.00%
+        # under this one.
+        spec2b, exact2b = fit(f, keys, range(8, 32))
+        if spec2b is not None and exact2b > exact:
+            spec, exact = spec2b, exact2b
         spec3, exact3 = fit(f, keys, range(32), colour='full')
         if spec3 is not None and exact3 > exact:  # colour-interaction model wins
             spec, exact = spec3, exact3

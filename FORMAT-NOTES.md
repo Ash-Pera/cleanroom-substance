@@ -31496,3 +31496,28 @@ recorded programs, edges and parameters, none of which touch `fx_walk`. A knocko
 only as good as what it observes, which is the same lesson as the purity metrics, arriving
 for the third time in two days: **the thing being measured has to be able to move the
 number.** With the FX walk in the snapshot they read 2.6% and 2.9%.
+
+## Bitmap falls to the format byte, and the payload boundary learns to fall back
+
+Two small closes, one near-miss characterized.
+
+**Bitmap (99.33% -> 100.00%, kept).** Its nine missing records had format bytes 0xaa
+and 0xbb costing one extra header word — and no mask in the model race could see it:
+the narrow mask starts at bit 16, and the full 32-bit mask drowns the signal in bit-0-7
+junk features that hurt the integer refinement (99.33% both ways). The mask that sees
+the format byte and nothing below it fits bitmap at exactly 100.00%, and range(8, 32)
+is now a standing candidate in the race.
+
+Getting there took one detour worth recording: making bitmap a payload filter (slot 1
+points at its pixels) silently removed it from the report, because most bitmap pixel
+data lives OUTSIDE the record in the pre-body region, so every +52 probe left the
+record and every observation was dropped. A filter vanishing from a report is not a
+filter fixed. The payload boundary now falls back to ordinary boundary logic when the
+target is not in-record — which is also when the record IS nothing but header.
+
+**Normal (99.202%, stays out).** Its 18 misses are v2 records whose surplus is more
+unnamed bytecode — visible opcodes, a trailing [count=1][ref.i2][uid] size program —
+that valid_program does not accept from the header end, so the header-end walk cannot
+claim it. Eighteen records, one version, mechanism visible in the dump; parked.
+
+    cost model: 19 filters kept, covering 897,422 of 899,004 = 99.82%
