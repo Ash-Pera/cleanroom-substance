@@ -60,9 +60,18 @@ def _bezier_y(knots, x_want):
     return None
 
 
+SEEN = {}
+
+
 def _seeded(name, limit, predicate=None):
-    """Yield (record, row) where `row` is the filter's response to a 0..1 linear ramp."""
+    """Yield (record, row) where `row` is the filter's response to a 0..1 linear ramp.
+
+    Records `SEEN[name]` = how many CANDIDATE records were found, separately from how many
+    produced a row. A caller must distinguish "no corpus" from "the filter is broken and
+    rendered nothing", because the second must fail and not skip.
+    """
     got = 0
+    SEEN[name] = 0
     for path in corpus.paths()[:MAX_FILES]:
         try:
             asm = Assembly(path)
@@ -75,6 +84,7 @@ def _seeded(name, limit, predicate=None):
             w, h = min(rec.width, 64), min(rec.height, 64)
             if w < 16 or h < 8:
                 continue
+            SEEN[name] += 1
             try:
                 out, _f, _s = R.render(asm, precomputed={rec.edges[0]: _ramp(h, w)},
                                        verbose=False, max_dim=64)
@@ -116,6 +126,9 @@ def test_curve_matches_independent_bisection():
             worst = max(worst, abs(float(got) - ref))
         n += 1
     if not n:
+        if SEEN.get('curve'):
+            raise AssertionError('%d curve records found and none rendered'
+                                 % SEEN['curve'])
         print('SKIP test_curve_matches_independent_bisection: no corpus')
         return 0
     assert worst < 1e-3, worst
@@ -172,8 +185,115 @@ def test_gradient_runs_and_stays_bounded():
     return n
 
 
+def test_gradient_matches_an_independent_lookup():
+    """Recompute the ramp lookup here and compare, rather than only bounding it.
+
+    The bound check below passes when the ramp is indexed with `1 - t` instead of `t`,
+    because reversing a lookup keeps every value inside the table. Only recomputing
+    catches that.
+    """
+    n = 0
+    worst = 0.0
+    for rec, row in _seeded('gradient', 20):
+        table = rec.ramp
+        if not table or isinstance(table[0][0], float):
+            continue
+        stops = np.array([e[0] for e in table], dtype=np.float32) / 65535.0
+        vals = np.array([e[1] for e in table], dtype=np.float32) / 65535.0
+        xs = np.linspace(0.0, 1.0, len(row), dtype=np.float32)
+        ref = np.interp(xs, stops, vals)
+        worst = max(worst, float(np.abs(row - ref).max()))
+        n += 1
+    if not n:
+        if SEEN.get('gradient'):
+            raise AssertionError('%d gradient records found and none rendered'
+                                 % SEEN['gradient'])
+        print('SKIP test_gradient_matches_an_independent_lookup: no corpus')
+        return 0
+    assert worst < 1e-3, worst
+    return n
+
+
+def _stripes(h, w, along):
+    """A high-frequency pattern varying along one axis only."""
+    x = (np.arange(w if along == 'x' else h, dtype=np.float32) % 4 < 2).astype(np.float32)
+    if along == 'x':
+        return np.repeat(x[None, :, None], h, axis=0)
+    return np.repeat(x[:, None, None], w, axis=1)
+
+
+def _blur_once(rec, asm, src, max_dim=64):
+    out, _f, _s = R.render(asm, precomputed={rec.edges[0]: src}, verbose=False,
+                           max_dim=max_dim)
+    got = out.get(rec.index)
+    return None if got is None else np.asarray(got, dtype=np.float32)
+
+
+def test_dirmotionblur_actually_smooths_and_only_along_its_angle():
+    """A blur must reduce variance ACROSS its direction and leave the other axis alone.
+
+    The range check elsewhere in this file passes for TAPS=1 -- no blur at all -- and for a
+    kernel ten times too long, because averaging keeps everything inside [0, 1] either way.
+    This is the check that fails for both.
+
+    Specimen selection is forced by the data, not chosen for convenience. Baked `intensity`
+    has a median of 1.45, which in normalised units displaces by well under a pixel and
+    would smooth nothing, so the test needs |intensity| >= 16. Of those, the axis-aligned
+    angles are 139 at +0.25 and 1 at -0.25 -- both of which blur along Y, since
+    `dy = length * sin(2*pi*angle)`. So stripes running across Y must smear and stripes
+    running across X must not.
+    """
+    tested = ok = candidates = 0
+    for path in corpus.paths()[:MAX_FILES]:
+        try:
+            asm = Assembly(path)
+        except Exception:
+            continue
+        for rec in asm.records:
+            if FILTERS.get(rec.filter_id) != 'dirmotionblur':
+                continue
+            if not rec.edges or rec.edges[0] is None:
+                continue
+            baked = {k: float(v) for k, kind, v in (rec.named_parameters or [])
+                     if kind == 'baked'}
+            it, an = baked.get('intensity'), baked.get('mblurangle')
+            if it is None or an is None or abs(it) < 16.0:
+                continue
+            if abs((an * 4) % 1) > 1e-3:
+                continue
+            w, h = min(rec.width, 64), min(rec.height, 64)
+            if w < 32 or h < 32:
+                continue
+            candidates += 1
+            vary_y = _stripes(h, w, 'y')       # varies along Y -- the blur axis
+            vary_x = _stripes(h, w, 'x')       # varies along X -- across it
+            by = _blur_once(rec, asm, vary_y)
+            bx = _blur_once(rec, asm, vary_x)
+            if by is None or bx is None:
+                continue
+            tested += 1
+            if float(by.std()) < 0.7 * float(vary_y.std()) and \
+               float(bx.std()) > 0.7 * float(vary_x.std()):
+                ok += 1
+            if tested >= 12:
+                break
+        if tested >= 12:
+            break
+    if not candidates:
+        print('SKIP test_dirmotionblur_actually_smooths_and_only_along_its_angle: no corpus')
+        return 0
+    # NOT a skip. Specimens exist and none of them rendered, which is what a broken filter
+    # looks like from here -- setting TAPS=1 divides by zero, every render raises, and the
+    # first version of this check reported "no specimen" and passed.
+    assert tested, ('specimens found but none rendered', candidates)
+    assert ok / tested > 0.75, (ok, tested)
+    return tested
+
+
 if __name__ == '__main__':
-    for fn in (test_curve_endpoints, test_curve_matches_independent_bisection,
+    for fn in (test_curve_endpoints,
+               test_gradient_matches_an_independent_lookup,
+               test_dirmotionblur_actually_smooths_and_only_along_its_angle, test_curve_matches_independent_bisection,
                test_curve_identity_is_exact, test_dirmotionblur_is_an_average,
                test_gradient_runs_and_stays_bounded):
         got = fn()
