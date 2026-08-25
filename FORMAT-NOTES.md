@@ -33178,3 +33178,61 @@ Worth noting how this was found: not by looking at the layout, but by a parallel
 asking whether each tag's stated LENGTH could accommodate the bits the layout claimed. Two
 independent descriptions of the same entry disagreeing is a check neither of us had run, and
 it is available wherever a format states a size and a structure separately.
+
+## `0x1CB` resolved by value, and the `FX_ENTRY` clip withdrawn
+
+### The node kind
+
+`0x1CB` is `0x18B | 0x40`, just as `0x1AB` is `0x18B | 0x20`. That symmetry is what made it
+ambiguous rather than obvious: bit 5 **inserts** a `randomseed` before the count, so bit 6
+might do the same — which would put the count in the zero at `+8` and make the node emit
+**nothing**. Opposite conclusions from the same bytes. The values decide:
+
+```
+0x18B  +4   n=4,936   1.0 x3,431 (69.5%), then 25, 9, 49, 81, 169   <- numberadded
+0x1AB  +4   n=6       0.0 x6                                        <- randomseed
+0x1CB  +4   n=183     1.0 x180, 0.0 x3
+```
+
+`0x1CB`'s distribution is `0x18B`'s, not `0x1AB`'s — 1.0 dominant where the seed is uniformly
+0.0. So `+4` is `numberadded`, the node iterates once, and its zero at `+8` is `randomseed`
+present as a **baked** value under the same pair design as everything else here.
+
+A parallel session reached the same answer from return type and pointer layout and flagged
+it as *unfalsifiable*, since a count of 1 makes iterate-once and pass-through identical. The
+value comparison is what makes it falsifiable: had `+4` matched `0x1AB`'s seed distribution
+the reading would have inverted. It does not.
+
+### The clip
+
+`fx_entry_layout` clipped its rows against `FX_ENTRY`'s stated length. That was added to
+suppress `0x00020008`'s bit-17 row landing past the end of an 8-byte entry —
+`FX_STRUCTURAL_BITS` has since removed the cause, and that tag now yields `[]` on its own
+merits. Measured afterwards, the clip's only remaining effect was harm. Over 120 files it
+changed exactly one tag:
+
+```
+clipped     16,353 predicted program slots resolve,  73 do not
+unclipped   16,613 resolve,                         125 do not
+```
+
+It was discarding **260 programs that resolve** to suppress 52 that do not, because
+`FX_ENTRY` states `0x95540288` is **four bytes** — a tag and nothing else — while its observed
+cell is 32 bytes in 36 of 36 sightings and five of its six predicted slots hold real
+programs. A length claim standing alone against a structure claim corroborated 1,715 times
+is the one that is wrong. Withdrawn.
+
+The 52 that still fail are that tag's slot 8 — bit 31, `imageindex`, predicted where the
+entry has none. A real over-prediction, and better visible than clipped away.
+
+### The cross-check's own precondition
+
+The length-versus-structure check worked because the two descriptions were built by
+**different procedures** — `FX_ENTRY` from walking distances, `FX_PARAM_BITS` from bit
+fitting — so they could disagree. Where two descriptions come from the same measurement they
+agree by construction and the check is empty. Same shape as the two-path control's
+precondition: both need genuine independence, and both fail *silently* without it.
+
+Run against the node tables it finds nothing — every declared shape in `FX_NODES` and
+`FX_NODES2` fits its observed cell size with room. The discrepancy was specific to the entry
+tables, not general to the FX model.

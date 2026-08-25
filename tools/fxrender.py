@@ -67,7 +67,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sbsruntime, transpile                                          # noqa: E402
 from sbsasm import Assembly, FX_NODES                                 # noqa: E402
 
-ADDNODE = frozenset({0x18B, 0x1AB, 0x20B})
+# 0x1CB joins these on the value evidence in sbsasm's FX_NODE_PARAMS: its +4 program is
+# 1.0 in 180 of 183, matching 0x18B's `numberadded` (1.0 in 69.5%) and not 0x1AB's
+# `randomseed` (0.0 in 6 of 6). It iterates once and passes through.
+ADDNODE = frozenset({0x18B, 0x1AB, 0x20B, 0x1CB})
 GATE = 0x89
 MAX_PATTERNS = 40000
 

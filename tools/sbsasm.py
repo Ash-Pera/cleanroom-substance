@@ -370,11 +370,30 @@ FX_LOWERING = {
 # the corpus contains either, so nothing here can name them.
 #
 # header -> {byte offset of the program: parameter name or None}
+# `0x1CB` RESOLVED, by comparing its program's VALUES against the two conventions it could
+# be following. It is `0x18B | 0x40` just as `0x1AB` is `0x18B | 0x20`, so the flag could
+# have inserted a `randomseed` before the count the way bit 5 does -- which would put the
+# COUNT in the zero at +8 and make the node emit nothing. Opposite conclusions from the
+# same bytes, so the values decide:
+#
+#     0x18B  +4   n=4,936   1.0 x3,431 (69.5%), then 25, 9, 49, 81, 169   <- numberadded
+#     0x1AB  +4   n=6       0.0 x6                                        <- randomseed
+#     0x1CB  +4   n=183     1.0 x180, 0.0 x3
+#
+# `0x1CB`'s value distribution is `0x18B`'s, not `0x1AB`'s: 1.0 dominant where randomseed is
+# uniformly 0.0. So +4 is `numberadded` and the node iterates once. Its +8 word is zero in
+# 179 of 183, which under the pair design is `randomseed` present as a BAKED value of 0 --
+# bit 5 the seed as a program, bit 6 the seed baked.
+#
+# A parallel session reached the same conclusion from return type and pointer layout and
+# flagged it as unfalsifiable, since a count of 1 makes iterate-once and pass-through
+# identical. The value comparison is what makes it falsifiable: had +4 matched `0x1AB`'s
+# seed distribution the reading would have inverted, and it does not.
 FX_NODE_PARAMS = {
     0x18B: {4: 'numberadded'},
     0x1AB: {4: 'randomseed', 8: 'numberadded'},
     0x89:  {4: 'switch'},
-    0x1CB: {4: None},                    # unidentified -- see above
+    0x1CB: {4: 'numberadded'},           # + a baked randomseed of 0 at +8; see above
 }
 
 
@@ -1092,21 +1111,29 @@ def fx_entry_layout(tag):
     if not any(k == 'program' for _s, _n, k in out) and (
             tag & sum(1 << b for b in FX_INLINE_BITS)):
         out.append((sl + 1, None, 'inline'))
-    # DO NOT READ PAST THE ENTRY. Where `FX_ENTRY` states a length, a row beyond it
-    # belongs to the NEXT entry, not this one. This is not hypothetical and it was wrong
-    # in the first version of this function: `0x00020008` is the corpus's commonest tag
-    # (50,965 entries), it is 8 bytes -- a tag and the +4 self-pointer -- and its only
-    # parameter bit puts a baked row at slot 2, which is one word past its end. Over
-    # 20,381 of them, that word is a tag in the entry vocabulary **96.5%** of the time
-    # (0x00020008 itself 13,010 times, 0x00420008 2,928). The layout was handing callers
-    # the following entry's tag as this entry's baked parameter value.
+    # WITHDRAWN: a clip against `FX_ENTRY`'s stated length used to sit here.
     #
-    # Only where the length is KNOWN and numeric. `FX_ENTRY` carries about twenty of
-    # those; a tag it does not cover, or one marked terminal, is left alone rather than
-    # clipped to a guess.
-    n = FX_ENTRY.get(tag)
-    if isinstance(n, int):
-        out = [(s, nm, k) for s, nm, k in out if s < n // 4]
+    # It was added because `0x00020008` -- the commonest tag, 50,965 entries -- put a baked
+    # row at slot 2 of an entry that is eight bytes long, and that word is the NEXT entry's
+    # tag 96.5% of the time. The clip suppressed it. `FX_STRUCTURAL_BITS` then removed the
+    # cause: bit 17 is a pointer word, not a parameter, so that tag now yields [] on its own
+    # merits and the clip has nothing to do there.
+    #
+    # Measured afterwards, its only remaining effect was harm. Over 120 files it changed
+    # exactly one tag, `0x95540288`, and:
+    #
+    #     clipped     16,353 predicted program slots resolve, 73 do not
+    #     unclipped   16,613 resolve, 125 do not
+    #
+    # It was discarding 260 programs that resolve in order to suppress 52 that do not,
+    # because `FX_ENTRY` states that tag is FOUR bytes -- a tag and nothing else -- while
+    # its observed cell is 32 bytes in 36 of 36 sightings and five of its six predicted
+    # slots hold real programs. A length claim standing alone against a structure claim
+    # corroborated 1,715 times is the one that is wrong.
+    #
+    # The 52 that do not resolve are `0x95540288`'s slot 8, i.e. bit 31 (`imageindex`)
+    # predicted where the entry has none. That is a real over-prediction and it is better
+    # visible than clipped away.
     return out
 
 
