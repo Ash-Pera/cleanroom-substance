@@ -30621,3 +30621,78 @@ mechanism.
 **And two negatives that close doors:** in-degree is 1 everywhere — no chain shares a
 tail with another, so the structure is a list, not a DAG; and no genuine cycle exists —
 what looked like 2-cycles was the reversed orientation read forward.
+
+## Locking down FX: a test suite that could not fail, and what fixed it
+
+The FX-Map decode is now eight sections of findings, so it needs a regression guard.
+`tools/test_fx.py` is that guard, and the first version of it was worthless in a way worth
+recording, because the failure is general.
+
+### Every check measured purity, and purity rewards giving up
+
+The first version asserted: entry tags are in the vocabulary, slot roles are consistent,
+records yield structure, no FX program loops, the ISA is shared, entries read the slots
+nodes write. All passed. Then five mutations were applied to the model:
+
+    mutation                                 caught, first version
+    FX_ENTRY: every stride -> 8              no
+    FX_ENTRY: drop the table entirely        no
+    FX_ENTRY: terminal tags become 24        no
+    FX_ENTRY_PROGS: shift every slot by +1   no
+    FX_NODES2: 0x1B child at word 4 not 5    no
+
+**None of them.** The reason is structural rather than careless: every check measured how
+CLEAN the output was, and cleanliness improves when the walk gives up early. Emptying
+`FX_ENTRY` makes the walk stop after each record's first entry — the one position
+established by pointer-following rather than by the table — so the tag vocabulary goes to
+nearly 100% and every purity number *rises*. The suite could not tell "decoding correctly"
+from "decoding almost nothing".
+
+### Two fixes
+
+**A coverage check.** Entries per record and entry programs per record, asserted against
+thresholds below the measured 2.72 and 2.53. This is what the four `FX_ENTRY` mutations
+move, and it catches all four.
+
+**Read the offsets from the table under test.** The `0x1B` check hardcoded `+8` and `+20`,
+so it validated the constants it had itself been written with and was blind to a change in
+`FX_NODES2`. Reading `FX_NODES2[0x1B][0]` instead makes it catch the fifth. The same check
+also now asserts that both children land on node headers that are *not* decodable programs
+— the disjoint predicate that established the shape in the first place — because "the two
+children differ" is satisfied by a wrong offset too.
+
+    mutation                                 caught, second version
+    FX_ENTRY: every stride -> 8              coverage
+    FX_ENTRY: drop the table entirely        coverage
+    FX_ENTRY: terminal tags become 24        coverage
+    FX_ENTRY_PROGS: shift every slot by +1   coverage, entries_read_the_slots
+    FX_NODES2: 0x1B child at word 4 not 5    0x1B_branches
+
+Five of five.
+
+### The general lesson
+
+This document has a long record of catching predicates that admit everything. This is the
+same failure one level up: a TEST that passes on both the right answer and a much worse
+one. The tell is the same — no control, and no quantity that gets worse when the model does.
+A purity metric always has a degenerate optimum, and for a decoder that optimum is decoding
+nothing at all. Any suite guarding a decoder needs at least one number that falls when
+coverage falls.
+
+### Where the FX-Map decode stands
+
+    fxmaps records                41,164
+      yielding nothing at all         70    0.17%
+      chain nodes                  63,830   their programs   66,314
+      table entries               112,012   their programs  104,345
+      total FX programs reachable                           170,659
+
+    node types known                   7    covering 99.5% of chain positions
+    entry tags with a stated length   32    12 of them terminal
+    entry tags with program slots     66    111,109 of 112,012 entries
+    source functions mapped to the ISA 22   7 of 7 equations exact
+
+Still open, and each recorded where it was measured: the names of the entry slots (value
+containment fails at a 20% control); 216 chain stops in six unhandled node types; 17 of 100
+tags with a middling program slot; and where `paramset`'s dynamic parameters go, which the
+lowering dictionary predicted and missed at 0 of 98.

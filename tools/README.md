@@ -9,6 +9,8 @@ The finished tools. Each runs from the repository root, where the corpus lives:
     python3 tools/audit_corpus.py
     python3 tools/validate_corpus.py
     python3 tools/test_transpile.py
+    python3 tools/test_filters.py
+    python3 tools/test_fx.py
 
 ## The model
 
@@ -89,7 +91,10 @@ no source this project may read names filter 5.
 
 ## Checking
 
-    test_transpile.py     the only outright pass/fail test here -- see below
+    test_transpile.py     the sRGB round-trip -- see below
+    test_filters.py       gradient, curve and dirmotionblur, with an independent check
+    test_fx.py            the FX-Map decode: coverage, tag vocabulary, slot roles,
+                          the 0x1B branch, one-ISA, no loops, and the node/table dataflow
     audit_corpus.py       runs the model over a corpus and reports every gap
     validate_corpus.py    structural checks against the .sbsar manifests
     attribute_outputs.py  cross-checks the output table against the manifest's alteroutputs
@@ -97,6 +102,22 @@ no source this project may read names filter 5.
     standalone_parse_ref.py
                           the pre-optimisation parser, kept so the 59x rewrite can be
                           re-verified as output-identical on demand
+
+## The FX-Map decode
+
+`Record.fx_walk()` returns an FX-Map as two connected halves. The chain of nodes --
+`addnode` (0x18B), `markov2` (0x89) and five more headers -- computes into a shared slot
+frame; the `paramset` table then reads that frame and computes each pattern's size, offset,
+rotation and emit condition. The connection is measured: slots at index 64 and above are
+read-and-written within one file 88.1% of the time against a 0.0% cross-file control.
+
+Entry boundaries come from the tag, which states both the entry's LENGTH (`FX_ENTRY`) and
+which of its words hold programs (`FX_ENTRY_PROGS`). Do not step 8 bytes -- that was the
+old rule and it is wrong; `FX_TABLE` above it is the withdrawn version, kept with its
+retraction attached.
+
+`test_fx.py` is the regression guard, and its docstring records which mutations each check
+catches. The first version of it caught none of them.
 
 ## The one thing that is actually tested
 
