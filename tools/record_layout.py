@@ -112,6 +112,13 @@ def header_words(filter_id, word0, w1, version=None):
     for b, c in spec['cls'].items():
         if word0 >> int(b) & 1:
             total += c
+    # Conjunctions: word 0's high byte is a small field for some filters, not eight
+    # independent flags. bitmap tests bits 24 and 27 TOGETHER -- the pair means the
+    # record carries a second offset word, the one that actually locates its pixels --
+    # and an additive model can only reach that through two halves and a rounding tie.
+    for bx, by, cv in spec.get('conj', ()):
+        if (word0 >> bx & 1) and (word0 >> by & 1):
+            total += cv
     if w1 is not None:
         total += spec.get('w1_present', 0.0)
         ar = spec.get('arity')

@@ -34134,3 +34134,75 @@ without the manifest at all.
 
 The remaining 24 — assembly stores a non-zero value, manifest declares no default — are
 not explained here, and are the one loose end in the type-5 picture.
+
+## bitmap's two halves were a conjunction, and the model was leaning on a rounding tie
+
+The last two unexplained coefficients were `bitmap`'s `cls24 = 0.5` and `cls27 = 0.5`.
+Halves are the shape of an unidentified direction, but the identifiability test said both
+were pinned, so they had to mean something. The truth table says what:
+
+```
+b16  b24  b27   header   records
+ 0    0    0       2        265
+ 0    0    1       2         45
+ 0    1    0       2        568
+ 0    1    1       3          9
+ 1    0    0       3        458
+```
+
+`2 + b16 + (b24 AND b27)` is exact on 1,345 of 1,345. **The rule is a conjunction**, and
+an additive model over bits cannot express one. What it had been doing instead is worth
+stating plainly: with both coefficients at 0.5, a record with one bit set predicts 2.5 and
+`rint` rounds it back to 2, while a record with both predicts 3.0. Every answer was right
+**only because the rounding breaks a tie downward.** The model was resting on a library
+convention, one change away from silently mispredicting, and the exactness score could
+never have shown it.
+
+### What the two cases actually are
+
+Reading records from each cell, they are different things, and neither is a parameter.
+
+**Bits 24 and 27 together — 9 records — mean a second offset word.** The record is three
+words instead of two, and it is `words[2]`, not `words[1]`, that locates the pixels:
+
+```
+0908aa21  00000004  00022514     -> pixels at 0x22518 = words[2] + 4
+0908aa21  00025868  000474cc     -> pixels at 0x474d0 = words[2] + 4
+```
+
+`Record.bitmap` already reads it that way, and the correspondence is exact: of 884
+stored-pixel bitmaps, the 9 with both bits take `words[2] + 4` and the 797 ordinary ones
+take `words[1] + 4`. So the structure was already known to the reader; only the derivation
+had to fake it.
+
+**Bit 16 — 458 records — is not a stored bitmap at all.** Every one of the 458 is a
+`graph_input`: `words[1]` is a uid rather than a file offset, so the payload probe cannot
+resolve and the boundary falls through. Their "header of 3" is the fallback's answer, not a
+measured header end. Worth recording as a caveat on that coefficient: `cls16 = 1` is a
+legal width and it reproduces every one of the 458, but what it reproduces is the fallback,
+and no independent check has confirmed 3 is where those records' headers really stop. (Bit
+16 implies graph input but not the reverse — 78 graph inputs have the bit clear.)
+
+### The fix, and the tie-break that made it stick
+
+The derivation now fits conjunction features: for a pair of `cls` bits, a column for their
+AND, and **only when all four combinations of the pair actually occur**, so a conjunction is
+never fitted on absent evidence.
+
+Adding the feature was not enough. The conjunction model and the additive one are *equally
+exact* — both 100.000% — so the race, which replaced only on strictly greater exactness,
+kept the one with the halves. Exactness cannot separate them; the width law can. Ties now
+go to the model with fewer law violations, which is the point of insisting every
+coefficient be a type width in the first place: it is not decoration on a fit that already
+works, it is the tie-break that picks the true model out of a set of equally accurate ones.
+
+`bitmap`'s spec is now the truth table, in whole slots:
+
+```
+const 2.0      cls {16: 1.0}      conj [[24, 27, 1.0]]
+```
+
+**Every identified law violation left in the corpus is one of the three input-bank widths
+(16, 16, 32), all of which are read.** Nothing in the cost table is unexplained. Corpus
+wide the rule stands at 900,477 of 900,859 exact (99.9576%), 315 silent, 67 wrong --
+unchanged by this work, which changed no answer, only what the model says about why.

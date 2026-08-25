@@ -221,7 +221,7 @@ def observed():
     return obs
 
 
-def fit(f, keys, bitrange=range(32), colour='off'):
+def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     """Fit costs for one filter. Returns (spec, exact_fraction) or (None, 0.0).
 
     Weighted by record count, and refit once with anomalous keys excluded. The first
@@ -253,8 +253,28 @@ def fit(f, keys, bitrange=range(32), colour='off'):
     clsbits, pairs = bits_of(keys, bitrange)
     has_absent = any(k[1] is None for k, _, _ in keys)
 
+    # CONJUNCTIONS. word 0's high byte is not always eight independent flags -- for
+    # bitmap it is a small field, and the value 9 (bits 24 and 27 together) means the
+    # record carries a second offset word, which is the one that locates its pixels.
+    # An additive model over bits cannot say "both", and the fit had been faking it
+    # with two coefficients of 0.5: 2 + 0.5 rounds back to 2 and 2 + 0.5 + 0.5 is 3,
+    # so the answers came out right ONLY because rint breaks a tie to even. That is a
+    # model resting on a rounding convention, and it is one library change away from
+    # silently mispredicting. A pair earns a column only if all four combinations of
+    # its bits actually occur, so a conjunction is never fitted on absent evidence.
+    conj = []
+    if conjunctions and len(clsbits) > 1:
+        for x in range(len(clsbits)):
+            for y in range(x + 1, len(clsbits)):
+                bx, by = clsbits[x], clsbits[y]
+                seen = {((k[0] >> bx) & 1, (k[0] >> by) & 1) for k, _, _ in keys}
+                if len(seen) == 4:
+                    conj.append((bx, by))
+        conj = conj[:48]
+
     def row(cls, w1):
         v = [1.0] + [float(cls >> b & 1) for b in clsbits]
+        v += [float((cls >> bx & 1) & (cls >> by & 1)) for bx, by in conj]
         if has_absent:
             v.append(float(w1 is not None))    # the w1 word itself occupies a slot
         if arity is not None:
@@ -385,6 +405,7 @@ def fit(f, keys, bitrange=range(32), colour='off'):
     # direction is a fact about the observation table; a violation on an identified
     # one is a fact about the model, and only the second is worth chasing.
     labels = ['const'] + ['cls%d' % b for b in clsbits]
+    labels += ['cls%d&cls%d' % (bx, by) for bx, by in conj]
     if has_absent:
         labels.append('w1_present')
     if arity is not None:
@@ -449,8 +470,10 @@ def fit(f, keys, bitrange=range(32), colour='off'):
     spec = {'const': c[0], 'cls': {str(b): c[1 + i] for i, b in enumerate(clsbits)},
             'w1': {}, 'mode': mode, 'nullity': nullity, 'flags': flags,
             'unident': unident,
+            'conj': [[bx, by, float(c[1 + len(clsbits) + n])]
+                     for n, (bx, by) in enumerate(conj) if c[1 + len(clsbits) + n]],
             'identified': [bool(x) for x in identified]}
-    i = 1 + len(clsbits)
+    i = 1 + len(clsbits) + len(conj)
     if has_absent:
         spec['w1_present'] = c[i]; i += 1
     if arity is not None:
@@ -537,6 +560,22 @@ def main():
         spec4, exact4 = fit(f, keys, range(16, 32), colour='states')
         if spec4 is not None and exact4 > exact:  # lean colour-x-baked variant wins
             spec, exact = spec4, exact4
+        # Conjunction candidate, last because it is the most expensive in columns and
+        # should only win where the format really does test two bits together.
+        for _br in (range(8, 32), range(16, 32), range(32)):
+            spec5, exact5 = fit(f, keys, _br, conjunctions=True)
+            if spec5 is None:
+                continue
+            # Ties go to the LAWFUL model. Both forms answer bitmap exactly, but the
+            # additive one does it with two coefficients of 0.5 that are only correct
+            # because rint breaks 2.5 down; the conjunction says what the format does.
+            # Exactness alone cannot separate them, so the width law is the tie-break --
+            # which is the whole point of insisting every coefficient be a type width.
+            better = exact5 > exact or (
+                exact5 == exact and spec is not None
+                and len(spec5.get('flags', ())) < len(spec.get('flags', ())))
+            if better:
+                spec, exact = spec5, exact5
         if spec is None:
             report.append((f, n, len(keys), None, 'underdetermined')); continue
         report.append((f, n, len(keys), exact, 'kept' if exact >= KEEP else 'rejected'))

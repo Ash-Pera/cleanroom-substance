@@ -18,6 +18,7 @@
 "8": 0.0,
 "9": -0.0
 },
+"conj": [],
 "const": 4.0,
 "flags": [],
 "identified": [
@@ -62,6 +63,7 @@ true
 "8": -0.0,
 "9": 0.0
 },
+"conj": [],
 "const": 4.0,
 "flags": [],
 "identified": [
@@ -164,6 +166,7 @@ true
 "8": 0.0,
 "9": 0.0
 },
+"conj": [],
 "const": 2.0,
 "flags": [],
 "identified": [
@@ -215,6 +218,7 @@ true
 "8": 0.0,
 "9": 0.0
 },
+"conj": [],
 "const": 3.0,
 "flags": [],
 "identified": [
@@ -279,6 +283,7 @@ true
 "8": -0.0,
 "9": 0.0
 },
+"conj": [],
 "const": 4.0,
 "flags": [],
 "identified": [
@@ -361,6 +366,7 @@ true
 "8": 0.0,
 "9": -0.0
 },
+"conj": [],
 "const": 2.0,
 "flags": [],
 "identified": [
@@ -413,6 +419,7 @@ true
 "8": 0.0,
 "9": -0.0
 },
+"conj": [],
 "const": 2.0,
 "flags": [],
 "identified": [
@@ -611,56 +618,48 @@ true
 },
 "16": {
 "cls": {
-"10": -0.0,
-"11": -0.0,
-"12": -0.0,
-"13": 0.0,
-"14": 0.0,
-"15": 0.0,
 "16": 1.0,
-"20": -0.0,
-"21": 0.0,
-"24": 0.5,
+"20": 0.0,
+"21": -0.0,
+"24": 0.0,
 "25": 0.0,
-"26": -0.0,
-"27": 0.5,
-"29": -0.0,
-"8": 0.0,
-"9": -0.0
+"26": 0.0,
+"27": 0.0,
+"29": 0.0
 },
-"const": 2.0,
-"flags": [
+"conj": [
 [
-"cls24",
-0.5
-],
-[
-"cls27",
-0.5
+24,
+27,
+1.0
 ]
 ],
+"const": 2.0,
+"flags": [],
 "identified": [
 true,
 true,
+false,
+false,
 true,
 true,
+false,
 true,
+false,
+false,
+false,
+false,
+false,
+false,
 true,
+false,
 true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
+false,
+false,
 true
 ],
 "mode": "absent",
-"nullity": 0,
+"nullity": 5,
 "unident": 0,
 "w1": {},
 "w1_present": 0.0
@@ -672,6 +671,7 @@ true
 "24": -0.0,
 "25": -0.0
 },
+"conj": [],
 "const": 5.0,
 "flags": [],
 "identified": [
@@ -746,6 +746,7 @@ true
 "8": 0.0,
 "9": -0.0
 },
+"conj": [],
 "const": 1.0,
 "flags": [],
 "identified": [
@@ -816,6 +817,7 @@ true
 "8": 0.0,
 "9": 0.0
 },
+"conj": [],
 "const": 1.5,
 "flags": [],
 "identified": [
@@ -1055,6 +1057,7 @@ true
 "8": 0.0,
 "9": -0.0
 },
+"conj": [],
 "const": 3.0,
 "flags": [
 [
@@ -1121,6 +1124,7 @@ true
 "26": 2.0,
 "27": 1.0
 },
+"conj": [],
 "const": 2.5,
 "flags": [],
 "identified": [
@@ -1181,6 +1185,7 @@ true
 "8": -0.0,
 "9": -0.0
 },
+"conj": [],
 "const": 4.0,
 "flags": [],
 "identified": [
@@ -1226,6 +1231,7 @@ true
 "8": -0.0,
 "9": -0.0
 },
+"conj": [],
 "const": 2.0,
 "flags": [],
 "identified": [
@@ -1644,6 +1650,7 @@ true
 "8": 0.0,
 "9": 0.0
 },
+"conj": [],
 "const": 3.0,
 "flags": [],
 "identified": [
