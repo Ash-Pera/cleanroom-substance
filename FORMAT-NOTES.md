@@ -30421,3 +30421,34 @@ arriving.
 
 `bitmap` at 0% and `uniform` at 100% are the two ends that confirm the measurement is
 reading what it claims to.
+
+## The chain tag: a cons cell, and with it the tree region parses end to end
+
+`0x20008` was the one tag with no fixed size — 18,612 gaps at 24 to 52 bytes. It never
+had a variable size. It is an 8-byte CONS CELL, `[tag][next]`, with the next pointer at
+the universal +52 skew, and a "variable-size gap" is k of them laid out contiguously
+followed by one terminal payload node:
+
+    [0x20008][next] [0x20008][next] ... [terminal tag][its fields]
+
+Walked corpus-wide: 50,694 links in 18,612 chains, and the link target is the very next
+cell in **99.891%**. The pointer is real, not decorative: the 55 exceptions all jump by
+exactly the same delta, −196 bytes, into an earlier structure — one mechanism, not
+noise, presumably the serializer reusing a shared target. Chain lengths run 1 to 9;
+terminal nodes are overwhelmingly the paramset kinds (0x48: 9,112; 0x08: 7,558;
+0x58: 1,053).
+
+The cell is width-lawful too, and it settles kind 0x08's constants: 0x20008 is
+const + bit 17 = 4 + 4 = 8, and 0x420008 adds bit 22 (+8) for its observed 16.
+
+**The payoff is that the tree region now parses.** With three coded kind laws, the cons
+rule, and the census's per-tag sizes, plus zero-words as padding:
+
+    fxmaps node gaps fully parsed end to end    197,213 of 201,747 = 97.75%
+    of the region's bytes                                             95.05%
+
+Yesterday this region was "unexplained node regions". Now 95% of its bytes are a typed
+sequence: chains, paramset nodes with known sizes and known program-pointer offsets,
+padding. What the parse still lacks is the 2.25% of gaps holding uncatalogued tags, and
+NAMES — which nibble of a paramset tag is which declared parameter. The paired sources
+remain the instrument for that.
