@@ -1323,6 +1323,43 @@ class Record:
             return [1]
         return slots
 
+    # Filters whose size-expression slot sits two words past the inputs, a colour ramp
+    # (gradient) or stop table (curve) occupying the gap.
+    _RAMP_FILTERS = frozenset({0, 22})
+
+    def _walk_layout(self):
+        """(edges, prog) computed by the mask-walk for the class-word-driven filters, or
+        None to fall through to the table.
+
+        Covers the filters `layouts.json` used to decide by lookup. Edges are the fixed
+        base shape from `walk.TIER_A_EDGES` (a stated bit discriminates warp and distance);
+        the size-expression slot follows the inputs. Returns None -- deferring to the table
+        -- for `text`, whose slot layout is not yet catalogued, and for any record whose
+        edges fail the backward-index invariant, so a wrong shape never displaces the table.
+        """
+        import walk as _walk
+        f = self.filter_id
+        if f == 17 or f not in _walk.TIER_A_EDGES or len(self.words) < 2:
+            return None
+        ver = self.asm.header.get('version') if isinstance(self.asm.header, dict) else 0
+        edges = _walk._tier_a_edges(f, self.words[0], self.words[1], ver)
+        n = len(self.asm.records)
+        for s in edges:
+            if s >= len(self.words):
+                return None
+            v = self.words[s]
+            if not (v == 0xFFFFFFFF or v == 0 or (v < self.index and v < n)):
+                return None
+        if f == 6:                                   # uniform: no input, size expr at slot 1
+            prog = 1
+        else:
+            prog = (max(edges) + 1) if edges else 2
+            if f in self._RAMP_FILTERS:
+                prog += 2
+        if prog >= len(self.words):
+            prog = None
+        return (list(edges), prog)
+
     def _compute_layout(self):
         f = self.filter_id
 
@@ -1458,6 +1495,15 @@ class Record:
                 if hit:
                     edges = sorted(set(edges) | set(hit[0] or []))
                 return (edges, prog)
+
+        # The class-word-driven filters: their edges are a fixed base shape (a stated bit
+        # discriminates the two-shape ones) and their size-expression slot follows the
+        # inputs, so `walk` computes what `layouts.json` used to memorise. Guarded by the
+        # backward-index invariant: where the computed edges do not all hold a valid
+        # backward record index the walk yields, and this falls through to the table.
+        wl = self._walk_layout()
+        if wl is not None:
+            return wl
 
         if LAYOUTS and len(self.words) > 1:
             hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))

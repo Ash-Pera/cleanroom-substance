@@ -34398,6 +34398,204 @@ images. `grayscale_bit` agreed 520 of 521, which is a genuine cross-check -- the
 from the output table and the channel count from the pixels rendered, and `outputs()`'s own
 docstring records that no bit of the named RECORD agrees with that flag.
 
+## Read it as the mask-walk it was serialised as: one `walk()`, no fitted tables
+
+This project has spent most of its effort inferring a record's slot layout with fitted
+tables -- `layouts.json` (809 keys), `costs.json` (per-bit float costs), `LAYOUT_MASK`, the
+withdrawn `FX_TABLE` -- and the notebook has, more than once, caught itself guessing what
+the file already states. The clearest statement of that is above, at "What the file says
+about layout, which this project spent a long time guessing": *the engine that reads these
+files does not probe, so the layout of a record must be stated in the file, and every
+layout heuristic in this document is a substitute for reading something that is already
+there.* The FX-Map node census reached the same conclusion from the other end: *the width
+law now holds at three scales -- record headers, baked value widths, and tree nodes -- one
+design, recursively applied, which is what a single serializer would produce.*
+
+If that is true, the four tables are not four problems. They are one memo of one rule, and
+the rule is a walk over presence masks:
+
+> **A structured object is `[mask][fields...]`. The set bits of a mask, read in canonical
+> order, enumerate which fields are present; each field's width is a constant of its KIND.
+> Nothing stores an offset or a slot number. The reader walks the mask; the writer emits in
+> the same order.**
+
+The kinds and their widths are a LEGEND -- read once -- not a per-instance lookup. And the
+legend is not something to fit: the manifest's parameter type codes state it. `$outputsize`
+is `type="8"` (integer2, two components), which is why the class-word bit that gates it
+costs two words and not one; "4 is the widest scalar the format has" is not a fitted
+ceiling but the manifest's type range, stated by the file (see "preset type codes are the
+width law").
+
+### The prototype
+
+`tools/walk.py` implements the walk ONCE and drives it with a per-filter spec whose only
+numbers are integer field widths from the legend. It has no float, no rounding, and no
+per-record table. It fails loudly -- raises `Overrun` -- when the walk would run past the
+end of the record the directory framed, which a fitted table cannot do.
+
+Three filters are specified -- `blend` (1), `levels` (15) and `transformation` (2) -- and
+validated against the established `Record` model over the 99 corpus specimens that carry a
+sidecar manifest, 251,143 records:
+
+    filter           records    header exact   edge slots exact   overruns
+    blend            125,588        99.58%          100.00%           0
+    transformation    90,411        99.97%          100.00%           0
+    levels            35,144       100.00%          100.00%           0
+
+    loud checks:  overruns past record end 0;  edge slot not a backward index 0
+
+Edge slots match the hand-tuned model exactly, from a walk of the two-bit `word1` codes
+(00 absent / 01 baked / 10 program / 11 image input), read whole rather than through
+`LAYOUT_MASK`. This is the half of `layouts.json` that was pure memorisation, now computed.
+
+### `levels` closed to 100% by reading one width from the file
+
+`levels` first scored 99.04%, and the residual was not noise: the header delta was exactly
+**-3 per active field** -- the walk counted a baked level as one word, the record spent
+three more. The records where this happened are exactly the **colour** `levels` records. A
+baked level is stored inline, one word per component; a grayscale record's level is Float1
+(one word) and a colour record's is Float4 (four), and the tag's colour bit (bit 0) says
+which. Grayscale `levels` matched 34,738 of 34,738 before the fix; feeding the field width
+from the colour bit -- the component count, exactly as the manifest types it -- takes the
+whole filter to 100.00%. The residual was one legend entry, and the file states it.
+
+### `blend`'s 0.42% is a missing field, and the loud check proved the discipline
+
+`blend`'s remaining 522 records are all one shape: `opacitymult` in state 11 (an image
+mask) on a record that also carries `blend`'s bit-8/9 field, which the minimal one-field
+spec does not model. This is a missing FIELD in the spec, not a statistical fog -- the walk
+is one word short because it does not yet know that field is there.
+
+The instructive part is what happened when the field was added with a guessed width. If the
+guess is wrong, a fitted cost model absorbs it silently and reports a slightly lower
+percentage. The walk did the opposite: modelling bit-8/9 as a plain baked scalar produced
+**9,080 overruns and 442 edge slots that were not backward record indices**, immediately,
+because a wrong width pushes every following object off its boundary. The wrong answer was
+un-shippable by construction. That is the whole argument for the method: a table cannot be
+wrong loudly, and a mask-walk cannot be wrong quietly. The field is left unmodelled and the
+0.42% stands, honestly, until its width is read rather than guessed.
+
+### `transformation`: the multi-word parameters that never fitted a one-slot model
+
+`transformation` is the filter the notes singled out as the one a one-slot-per-parameter
+model could never express -- `matrix22` is a Float4 and `offset` a Float2, four and two
+words rather than one. In the walk that is not a special case, it is two field widths. Its
+two parameters are the same two-bit codes at pairs (6,7) and (25,26): baked (01) spends the
+type's component count, a program (10) spends one pointer word. Reading `matrix22` as a
+baked Float4 and `offset` as a baked Float2 -- the widths the manifest types state --
+reproduces the header in **90,383 of 90,411 (99.97%)** and the single image edge in all of
+them, with zero overruns. The 0.03% residue is the both-programs corner the `.matrix`
+derivation already flagged. The filter that broke the additive model is the one the width
+law handles most directly.
+
+### The same primitive one scale down: FX-Map tree nodes
+
+The record walk and the tree-node walk are the same operation. `_walk_mask` is that
+operation in isolation -- walk the set bits of a mask in order, each adding its width -- and
+both callers are compositions of it: `walk()` runs it over the record's two masks, and
+`walk_node()` runs it once over a node's tag. A node is `[tag][fields]`, the tag's low byte
+a KIND fixing a base size and the remaining bits a presence mask, with the same 1/2/4-word
+field widths. The legend for it is what `node_census.py` derives -- the tree analogue of the
+manifest's type table, read once -- and `walk_node` consumes it:
+
+    node kind    cells     size exact (vs the census's per-tag modal size)
+    0x48        27,402        99.97%
+    0x58         4,082       100.00%
+    0x88         2,010       100.00%
+    0x89        13,025       100.00%
+    0x8b        15,524       100.00%
+    0xcb           966       100.00%
+    (single-tag kinds 0x99, 0x9b, 0xab all 100%; 0x18 at 82%, its residue multi-node gaps)
+
+    program pointers landing on a predicted field boundary   407 / 439 = 92.71%
+
+The node size is computed from the tag alone, consulting no per-node table; the withdrawn
+`FX_TABLE` was a memo of exactly this. And the pointer check is a second, independent
+consequence: a program pointer sits at a field boundary the size walk predicts, never in the
+middle of a field. The underdetermined kinds (`0x08`, `0x0b`, `0x1b`, `0x98`) are left out of
+the legend and `walk_node` returns None for them rather than guessing -- the same discipline
+as `header_words` returning None for an uncatalogued filter.
+
+### One principle, more than one encoding: the count-field filters
+
+The two-bit presence codes are not the format's only self-describing encoding, and the
+honest version of the claim is not "one walk" but "one PRINCIPLE -- the tag and masks state
+the record's extent -- realised in a small family of encodings." Three more were specified
+to test whether the principle holds across the format or only for the filters that happen to
+use presence codes. It holds. Each reads the layout from the file; none needs a fitted table
+or a value probe.
+
+**Arity integer** (`pixelprocessor`, `fxmaps`). Here `word1` is not a code vector, it is a
+COUNT: the header names N image inputs and the walk reads N edge slots. `pixelprocessor`
+puts the count in the low nibble of slot 1 (the whole small word when nothing else is set);
+`fxmaps` puts it in bits 10-13, after a one-slot tree-root pointer. The walk reproduces the
+edge run in **29,803 of 29,803** and **18,070 of 18,070** records, zero overruns. This is
+the same width law -- the field's width is stated, only as an integer rather than as set
+bits.
+
+**Conjunction** (`bitmap`). Two tag bits, 24 and 27, that mean one field only when set
+TOGETHER -- the offset word that locates the record's pixels. An additive per-bit cost can
+reach this only through a rounding tie; the walk states the pair directly and reproduces the
+header in **329 of 329**.
+
+**Popcount** (`blur`, `warp`). The one encoding that governs ROLE rather than extent: the
+number of leading block slots that hold programs (the rest baked constants) is
+`popcount(cls & mask)`, a count spelled by set bits in the CLASS word. The slots are all one
+word wide, so this changes no length -- it is the width law applied to which-slots-are-
+programs. `popcount` equals the model's program-slot count in **6,272 of 6,272** `warp` and
+**6,829 of 6,829** `blur` records.
+
+So the format has (at least) four encodings of one idea: two-bit presence codes, an arity
+integer, a paired conjunction, and a class-word popcount. None is an exception to "the file
+states the layout"; each is a different alphabet for saying it. That is the answer to
+whether the mask-walk was a property of the three filters first chosen or of the format --
+it is the format.
+
+### Draining the memo: the rest of `layouts.json`
+
+The bulk of the table -- 298,570 records -- was the filters no spec had catalogued:
+`gradient`, `blur`, `sharpen`, `hsl`, `curve`, `normal`, `distance`, `dyngradient`, `warp`,
+`uniform`, `text`, and the two two-bit filters `dirmotionblur` and `directionalwarp`. None
+needed a table. Their header is purely class-word driven -- their `w1` adds no header word,
+per `costs.json`, which is the derived header legend -- and their edges are a fixed base
+shape. Two filters have a genuinely variable second input, and the file states that too:
+`warp` switches shape by version (the `w1` word appears at `0x90000`) and `distance` by its
+`w1` bit 0. Computing header from the costs legend and edges from the fixed base (or the
+stated discriminator) reproduces the table's edge list in **32,895 of 33,215 (99.04%)**, at
+100% header for every one of these filters:
+
+    blur sharpen curve hsl uniform text     edges 100.00%
+    directionalwarp                          edges 100.00%
+    gradient                                 edges  99.37%  (generators, edge-less, are the residue)
+    warp                                     edges  97.89%  (v9 [2,3] shape, by version)
+    distance                                 edges  97.67%  (second input, by w1 bit 0)
+    dyngradient / normal                     edges ~97.7%   (a minority shape each)
+
+The ~1% residue is per-filter tails -- a handful of generators and minority shapes -- not a
+statistical fog, and each is a single stated bit away from closing.
+
+With these specified, a walk mechanism now covers **367,165 of 370,154 records (99.19%)** of
+the manifest-bearing corpus. What is left is exactly the Tier-C list and nothing else:
+`shuffle` (2,691 -- slot 1 is a selector word or an edge, discriminated by a value probe, no
+bit found), `emboss` (180 -- the same), and `vectorshape` (118 -- filter 5, named only
+descriptively for provenance). The four layout encodings plus a fixed base account for
+everything else.
+
+### What this does and does not claim
+
+It does not decode a new byte. Every object here was already read by `Record` and
+`node_census`; the walk reproduces those readings from one primitive (`_walk_mask`) plus
+small integer specs, replacing the `word1` dimension of `layouts.json`, the additive
+`costs.json` fit, the node-size fit, and the memo's edge lists -- for eighteen filters, ten
+node kinds, and all four of the format's layout encodings, 99.19% of the corpus. What it
+changes is the shape of what remains: the open items are no longer "improve a fitted table"
+but a short, finite list -- `blend`'s bit-8/9 field, the FX inline-program parameter widths,
+the underdetermined `0x08` node kind, and the three Tier-C filters where the file genuinely
+does not state the layout and a value must be probed. Everything else is a legend entry to
+READ, closable the moment the file or the manifest is asked for the width instead of the
+corpus, and each is guarded by a boundary check that a table can never offer. `tools/walk.py`
+runs all of it.
+
 ## Class-word bit 11 says the image is JPEG
 
 The 437-file self-check flagged one thing that looked like a decode bug rather than a
