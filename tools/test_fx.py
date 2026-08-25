@@ -388,7 +388,7 @@ def test_entry_layout_names_the_program_slots():
     if not tot:
         print('SKIP test_entry_layout_names_the_program_slots: no corpus')
         return 0
-    assert hit / tot > 0.85, (hit, tot)
+    assert hit / tot > 0.95, (hit, tot)
     assert ctl / max(ctln, 1) < 0.10, (ctl, ctln)                     # the control
     return tot
 
@@ -454,6 +454,84 @@ def test_node_programs_are_named_and_typed():
     return seen[True]
 
 
+def test_the_layout_rejects_bytecode_read_as_an_entry():
+    """A walked entry never lies inside a program's byte span.
+
+    The stopping rule in `Record.fx_table` exists because `0x09130008` and friends are
+    bytecode: a u32 straddling two instructions whose low 16 bits happen to be in
+    FX_TAG_LOW16, so the vocabulary test passes them. Program spans come from record
+    pointers and know nothing about the entry layout, which is what makes this a check on
+    the rule rather than a restatement of it.
+
+    Fails if the stopping rule is removed: 2,622 entries reappear inside program spans.
+    """
+    import bisect
+    bad = tot = 0
+    for f in corpus.paths():
+        try:
+            a = Assembly(f)
+        except Exception:
+            continue
+        spans = []
+        for r in a.records:
+            for p in r.programs or ():
+                e = a.program_span(p, a.body_hi)
+                if e:
+                    spans.append((p, e))
+        spans.sort()
+        starts = [s for s, _e in spans]
+        for r in a.records:
+            if r.filter_id != 4:
+                continue
+            seen = set()
+            for kind, off, _tag, _p in r.fx_walk():
+                if kind != 'entry' or off in seen:
+                    continue
+                seen.add(off)
+                tot += 1
+                i = bisect.bisect_right(starts, off) - 1
+                if i >= 0 and spans[i][0] < off < spans[i][1]:
+                    bad += 1
+    if not tot:
+        print('SKIP test_the_layout_rejects_bytecode_read_as_an_entry: no corpus')
+        return 0
+    assert bad / tot < 0.02, (bad, tot)
+    return tot
+
+
+def test_inline_programs_are_where_the_layout_says():
+    """The 'inline' rows of `fx_entry_layout` hold a program, against a shifted control."""
+    hit = tot = ctl = ctln = 0
+    for f in corpus.paths():
+        try:
+            a = Assembly(f)
+        except Exception:
+            continue
+        hi = a.body_hi
+        for r in a.records:
+            if r.filter_id != 4:
+                continue
+            seen = set()
+            for kind, off, tag, _p in r.fx_walk():
+                if kind != 'entry' or off in seen:
+                    continue
+                seen.add(off)
+                for sl, _nm, how in fx_entry_layout(tag):
+                    if how != 'inline' or off + 4 * sl + 2 > hi:
+                        continue
+                    tot += 1
+                    hit += bool(a.program_span(off + 4 * sl, hi))
+                    if off + 4 * (sl + 2) + 2 <= hi:
+                        ctln += 1
+                        ctl += bool(a.program_span(off + 4 * (sl + 2), hi))
+    if not tot:
+        print('SKIP test_inline_programs_are_where_the_layout_says: no corpus')
+        return 0
+    assert hit / tot > 0.85, (hit, tot)
+    assert ctl / max(ctln, 1) < 0.15, (ctl, ctln)                     # the control
+    return tot
+
+
 if __name__ == '__main__':
     for fn in (test_coverage_does_not_regress,
                test_records_yield_structure,
@@ -465,6 +543,8 @@ if __name__ == '__main__':
                test_entries_read_the_slots_nodes_write,
                test_entry_layout_names_the_program_slots,
                test_entry_layout_agrees_with_the_census,
-               test_node_programs_are_named_and_typed):
+               test_node_programs_are_named_and_typed,
+               test_the_layout_rejects_bytecode_read_as_an_entry,
+               test_inline_programs_are_where_the_layout_says):
         got = fn()
         print('%-52s %s' % (fn.__name__, ('ok, n=%d' % got) if got else 'skipped'))

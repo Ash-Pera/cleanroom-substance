@@ -857,13 +857,22 @@ FX_PARAM_BITS = (
 FX_PROGRAM_BITS = frozenset({20, 22, 24, 26, 28, 30, 31})
 
 
+# Bits whose presence means an INLINE program sits after the parameter slots -- one the
+# entry stores in its own bytes instead of pointing at. See `fx_entry_layout`.
+FX_INLINE_BITS = frozenset({25, 27, 29})
+
+
 def fx_entry_layout(tag):
-    """[(slot, name or None, 'program'|'baked')] for one FX-Map table entry tag.
+    """[(slot, name or None, 'program'|'baked'|'inline')] for one FX table entry tag.
 
     Slot 0 is the tag and slot 1 is the entry's own word; parameters start at slot 2 and
     are laid out in ascending bit order. Returns [] for a tag with no parameter bits set,
     which is a real answer -- `0x00020008` is an entry whose every parameter is baked
     ahead of the run.
+
+    'program' means the SLOT HOLDS A POINTER to a program. 'inline' means the slot IS the
+    program -- its first word is the instruction count. Callers must not confuse the two:
+    reading an inline slot as a pointer lands 52 bytes past a random instruction.
     """
     out, sl = [], 1
     for bit, name, width in FX_PARAM_BITS:
@@ -875,6 +884,32 @@ def fx_entry_layout(tag):
         else:
             out.append((sl + 1, name, 'baked'))
             sl += width
+    # THE INLINE PROGRAM. `FX_TABLE` above records, for 25 tags, "the byte offset of the
+    # program within the structure the entry's +4 word addresses", and withdrew itself
+    # because the entry population it described could not be enumerated safely. With the
+    # population clean, both halves of that sentence resolve: the "structure" is the ENTRY
+    # -- the +4 word is a self-pointer, landing at off+8 in 2,737 of 2,870 cases -- and
+    # every one of its six commonest offsets equals 4 x (the first slot this layout does
+    # not use). So there is no second structure and no lookup table; the program simply
+    # sits after the parameters.
+    #
+    #     no program bits, and bit 25, 27 or 29 set:
+    #       a program is there              2,796      precision 94.6%
+    #       none is                           161
+    #     rule silent, a program is there     165      (so recall is 94.4%)
+    #     CONTROL, the same test two slots further on             3.9%
+    #
+    # Only when the tag names no program slots. An entry that has them already has a
+    # program at this slot in 99.0% of cases -- it is the first one its own pointers
+    # address, sitting adjacent -- and reporting it again would double-count it.
+    #
+    # NOT NAMED. 98% of these open with `inputref`, so they are image references rather
+    # than numeric parameters, and `inputref const add` / `inputref cvt swizzle` are the
+    # two commonest shapes. No permitted source sets bits 25, 27 or 29 on any entry, so
+    # nothing available can say which parameter this is.
+    if not any(k == 'program' for _s, _n, k in out) and (
+            tag & sum(1 << b for b in FX_INLINE_BITS)):
+        out.append((sl + 1, None, 'inline'))
     return out
 
 
@@ -1932,6 +1967,12 @@ class Record:
                 w = struct.unpack_from('<I', d, off + 4 * sl)[0]
                 if how == 'baked':
                     yield off, tag, sl, name, how, w
+                    continue
+                if how == 'inline':
+                    # The slot IS the program; its address is not read from the word.
+                    at = off + 4 * sl
+                    yield off, tag, sl, name, how, (at if self.asm.program_span(at, hi)
+                                                    else None)
                     continue
                 pv = w + 52
                 # A slot the layout calls a program whose word is not one is reported as
