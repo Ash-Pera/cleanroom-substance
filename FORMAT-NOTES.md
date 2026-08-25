@@ -30976,3 +30976,51 @@ per iteration, and no amount of sharing between records will ever fill them.
 That is a hypothesis, not a result, and it is written down as the next thing to test rather
 than as an answer. The code was reverted: an inert mechanism justified by a hypothesis its
 own measurement contradicts is worse than no mechanism. What survives is the measurement.
+
+## The "0x0a42 pair" dissolves: it was the size program's first instruction all along
+
+Chasing the surplus-region species led through four wrong readings in one sitting, each
+killed by its own measurement, and the survivor is worth the trip.
+
+A two-word unit `[0x0a42xxxx][per-file-constant]` appears 732,464 times — once per
+record in 99.97% of the records that have it, present in 88% of records whose cls bit 0
+($outputsize) is set and 0.3% of the rest. It is not a header trailer (52% at the
+header's end, no better), not attached to program boundaries (72% adjacent to none),
+not gated by the bit-26 class parameter (MCC −0.11). Annotating one blend record
+end-to-end settled it:
+
+    slot  4   0x2520          -> P1
+    slot 18   0x0a420001      P1   <- the "pair"
+    slot 19   0x0bea530f      P1
+
+**The pair IS a program.** Read as u16s it is `[count=1][opcode 0x0a42][uid][uid]` —
+one instruction, `ref.i2`: read a two-component integer graph input. It is the SIZE
+EXPRESSION, seen through its first instruction at u32 phase. Every satellite fact
+snaps into place: the gating bit is $outputsize because the size expression exists iff
+cls bit 0; the "low halfword variants" (0x3, 0x5, 0x44...) are instruction COUNTS of
+longer size programs that still open with ref.i2; and the "per-file constant second
+word" is the graph's $outputsize input UID — with 0x7dc25d24 shared across 65 files
+because they are cooked from one template, the same template-uid effect the corpus
+shows elsewhere.
+
+So the species is not new structure. What remains of it is real, though:
+
+**6,181 records carry a valid size program that NO slot names.** 99.156% of the pairs
+are in `Record.programs` already; the missed 0.84% are unnamed — `valid_program`
+accepts them, nothing points at them, and they sit at the record tail. These are the
+levels/sharpen/normal "+2 trailing annex" residue of the cost model: the trailer IS an
+unnamed, positionally-addressed size program. The engine can find it without a pointer
+because it always abuts the header; the reader here should learn the same trick.
+
+The surplus census, re-labelled accordingly:
+
+    [0x0a42..] pairs            3,435 records   = unnamed 2-word size programs
+    decodes as bytecode            62 records   = unnamed LARGE programs (1,004,170
+                                                  words -- most of the surplus volume)
+    halfword 0x8000/0xffff        649 records   still unexplained -- blend-heavy,
+                                                  fixed-point-looking, 6-word blocks
+    node chains                   159 records   already parse
+    other                       1,926 records   unclassified
+
+The named survivors of this dig: unnamed positional programs (a Record.programs gap
+with a stated fix), and the 0x8000/0xffff block.
