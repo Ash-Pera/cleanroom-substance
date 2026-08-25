@@ -276,7 +276,13 @@ NODE_TAGS = {                       # full tag -> (size in words, [pointer word 
     0x00420008: (4, [3]),
     0x00410008: (7, [6]),
 }
-CHAIN_TAG = 0x00020008              # a chain structure, not a fixed node -- excluded
+# The CHAIN FAMILY: tags whose high 16 bits are 0x0002 are linked lists, not fixed-size
+# nodes, and their gap "sizes" are run lengths. 8,794 of 8,811 such cells are
+# non-deterministic against 0% for any other high-half value -- so the family, not the two
+# tags found one at a time (0x00020008 dragged kind 0x08, 0x00020018 dragged kind 0x18), is
+# the thing to exclude. walk_node returns None for all of them.
+def _is_chain(tag):
+    return (tag >> 16) == 0x0002
 #
 # One apparent gap that is not one: kind 0x48's bit 9 is set in a large fraction of cells and
 # charges no width here, so a cross-check reads it as a field both this table and
@@ -313,7 +319,7 @@ def _walk_mask(mask_word, const_words, bit_widths):
 def walk_node(tag):
     """A tree node's size in words and its field offsets, or None for an uncatalogued
     kind. The tag itself is the mask; no per-node table is consulted."""
-    if tag == CHAIN_TAG:
+    if _is_chain(tag):
         return None                      # a linked-list chain, not a fixed-size node
     ent = NODE_TAGS.get(tag)
     if ent is not None:
