@@ -34206,3 +34206,68 @@ const 2.0      cls {16: 1.0}      conj [[24, 27, 1.0]]
 (16, 16, 32), all of which are read.** Nothing in the cost table is unexplained. Corpus
 wide the rule stands at 900,477 of 900,859 exact (99.9576%), 315 silent, 67 wrong --
 unchanged by this work, which changed no answer, only what the model says about why.
+
+## The input banks: 16 and 32 are allocation classes, not counts
+
+The last three law flags were `fxmaps` `f7.1 = 16`, `f7.2 = 32` and `pixelprocessor`
+`f2.1 = 16`. Recorded earlier as "a fixed bank of image inputs" on the strength of the
+slots holding a contiguous ascending run of record indices. That was right about what the
+slots are and wrong about the number.
+
+**What the slots point at.** Following every edge in the bank to its record and asking what
+kind of record it is:
+
+```
+fxmaps rec 57   20 slots   19 bitmap + 1 uniform    indices 37..56, contiguous, no repeats
+fxmaps rec 79   21 slots   21 bitmap               indices 58..78, contiguous, no repeats
+fxmaps rec 98   18 slots   18 bitmap               indices 80..97, contiguous, no repeats
+pixelproc 233   16 slots   16 bitmap               indices 209..232, no repeats
+```
+
+All distinct, no padding, no unused entries — which already rules out a bank of 16 fixed
+slots partly filled. And the bitmaps they reach are `graph_input` records, so these are the
+graph's image inputs. The manifest confirms it independently: for eight of the nine
+`ie_curve` records, the set of input uids the bank reaches is exactly the set one `<graph>`
+block declares.
+
+**So the count is not 16.** It is 18, 19, 20, 21, 27, 31, 33, 35 in different records. The
+constant survives because `arity` — `w1` bits 10-13 — absorbs the difference:
+
+```
+record            edges   16-or-32 + arity + (f0 is an image)
+fxmaps/35            35   32 + 2 + 1 = 35
+fxmaps/57            20   16 + 3 + 1 = 20
+fxmaps/79            21   16 + 4 + 1 = 21
+fxmaps/98            18   16 + 1 + 1 = 18
+fxmaps/172           33   32 + 0 + 1 = 33
+pixelproc/233        16   16 + 0 + 0 = 16
+ie_particles/21      27   16 + 10 + 1 = 27
+ie_particles/22      31   16 + 12 + 0 = 28   <- the one miss
+```
+
+Ten of eleven exact.
+
+**And the two values are a capacity ladder.** `arity` is four bits, so a 16-slot base can
+express a total of 16 to 31 and no further. Measured:
+
+```
+f7 = 1   totals 16, 18, 19, 19, 19, 20, 21, 27, 31     max 31
+f7 = 2   totals 33, 35                                 min 33
+```
+
+The boundary falls exactly where the arithmetic says it must. Every record needing 31 or
+fewer uses the 16 base; both records needing more than 31 use the 32 base; no record
+crosses in either direction. That is the rule: **`f7` selects a bank size and `arity`
+counts the inputs beyond it, and the format switches to the larger bank precisely when
+16 + 15 will not reach.**
+
+So 16 and 32 are widths after all — the widths of a fixed-size image-input array — and the
+width law's ceiling of 4 remains what the manifest's type codes independently say it is: a
+statement about *scalars*, where a Float4 is the widest thing there is. An array is
+measured by its capacity, and this format offers two.
+
+**With this, no coefficient in the cost table is unexplained.** The three surviving
+"violations" are the two bank capacities and the same 16 seen a second time in a different
+filter, which is corroboration rather than residue. What remains open is narrow and named:
+one `ie_particles` record whose edge count exceeds its own formula by 3, and the 24 type-5
+inputs whose stored value the manifest declares no default for.
