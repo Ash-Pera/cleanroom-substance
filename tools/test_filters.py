@@ -56,6 +56,7 @@ honest place for it.
 import contextlib
 import io
 import os
+import re
 import sys
 
 import numpy as np
@@ -468,6 +469,93 @@ def _edge_closure(asm, i):
             if e is not None:
                 st.append(e)
     return seen
+
+
+BLUR_NODE = re.compile(r'<compFilter>.*?</compFilter>', re.S)
+BLUR_INTENSITY = re.compile(
+    r'<name v="intensity"/>.*?<constantValueFloat1\s*(?:v="([^"]+)"\s*/>|>\s*<value v="([^"]+)")',
+    re.S)
+
+
+def _blur_slot(nprog):
+    """Where `blur` keeps its intensity: after the size block.
+
+    The size is either BAKED as a (w, h) pair in slots 2 and 3, or held by `nprog`
+    POINTER slots starting at 2. Either way the intensity is the slot after it.
+    """
+    return 4 if nprog == 0 else 2 + nprog
+
+
+def test_blur_intensity_slot_recovers_the_declared_values():
+    """The slot rule must find intensities the permitted sources actually declare.
+
+    Reads `.sbs` SOURCES, so the provenance exclusion runs BY CONSTRUCTION: the file list
+    is `provenance.audit()`'s permitted set, and excluded sources never enter.
+
+    The CONTROL is the same slot rule applied to records of every OTHER filter in the same
+    files. Without it this measures how common small floats are, not where blur keeps a
+    parameter -- and blur intensities are values like 1.0, 0.25 and 1.25, which is exactly
+    the population `containment.py` has to discard as indistinctive.
+
+    Measured when written: 39 of 54 declared values recovered (72.2%) against 6 (11.1%).
+    Four of the fifteen misses are files that compile no blur record at all. Several files
+    recover their declared set EXACTLY -- flowingLava 8 of 8, rural_rock_wall 5 of 5 --
+    which is the part that is hard to get by luck.
+    """
+    try:
+        import provenance
+        import containment
+    except Exception:                                       # pragma: no cover
+        print('SKIP test_blur_intensity_slot_recovers_the_declared_values: no tools')
+        return
+    _exc, _flag, permitted = provenance.audit()
+    permitted = sorted({q if os.path.isabs(q) else os.path.join(provenance.ROOT, q)
+                        for q in permitted})
+    declared_n = found_n = control_n = 0
+    for q in permitted:
+        if not os.path.exists(q):
+            continue
+        try:
+            txt = open(q, encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        decl = set()
+        for body in BLUR_NODE.findall(txt):
+            if '<filter v="blur"/>' not in body:
+                continue
+            for a, b in BLUR_INTENSITY.findall(body):
+                decl.add(round(float(a or b), 4))
+        asmf = containment.sbsasm_for(q)
+        if not decl or not asmf:
+            continue
+        try:
+            asm = Assembly(asmf)
+        except Exception:
+            continue
+        pool, ctrl = set(), set()
+        for rec in asm.records:
+            slot = _blur_slot(bin(rec.cls & 0x2881).count('1'))
+            if slot >= len(rec.words):
+                continue
+            v = round(float(np.frombuffer(np.uint32(rec.words[slot]).tobytes(),
+                                          dtype=np.float32)[0]), 4)
+            (pool if rec.filter_name == 'blur' else ctrl).add(v)
+        declared_n += len(decl)
+        found_n += len(decl & pool)
+        control_n += len(decl & ctrl)
+    if not declared_n:
+        print('SKIP test_blur_intensity_slot_recovers_the_declared_values: no sources')
+        return
+    print('blur intensity slot: recovered %d of %d declared (%.1f%%), control %d (%.1f%%)'
+          % (found_n, declared_n, 100 * found_n / declared_n,
+             control_n, 100 * control_n / declared_n))
+    # Both halves. A high recovery rate means nothing if the control matches it, and the
+    # floor catches the parse silently finding no declarations at all.
+    assert declared_n >= 30, 'only %d declared values found; the source parse has moved' % declared_n
+    assert found_n >= 0.55 * declared_n, 'recovery fell to %d of %d' % (found_n, declared_n)
+    assert control_n < 0.5 * found_n, \
+        'control %d is too close to the signal %d -- the slot is not discriminating' % (
+            control_n, found_n)
 
 
 def test_closure_never_claims_a_dependency_the_manifest_denies():

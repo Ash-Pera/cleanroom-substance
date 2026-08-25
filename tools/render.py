@@ -223,6 +223,46 @@ def graph_input_default(asm, rec):
 def load_pixels_bitmap(asm, rec):
     b = rec.bitmap
     off, size, ch, depth = b['offset'], b['size'], b['channels'], b['depth']
+    if b.get('compressed') == 'jpeg':
+        # Class-word bit 11 marks a JPEG payload; see Record.bitmap. Untreated, these read
+        # as raw pixels and produce entropy-7.7 noise -- 8 of the 9 in the corpus do not
+        # even fail, they silently feed that noise downstream.
+        #
+        # The decode is CHECKED against the record rather than trusted: the stream must
+        # decode to exactly the width, height and channel count the record independently
+        # declares, which is how the flag was established (9 of 9) and is equally a
+        # per-file guard against a stream that is not this record's.
+        import io
+        import struct as _struct
+        from PIL import Image
+        p = b['data_offset']
+        if asm.data[p:p + 3] != b'\xff\xd8\xff':
+            raise Unsupported("bitmap is flagged JPEG but has no JPEG stream at +52")
+        # The length is the u32 immediately ahead of the SOI, not a scan for `ff d9`:
+        # that byte pair occurs inside entropy-coded data, so scanning can truncate.
+        n = _struct.unpack_from('<I', asm.data, p - 4)[0]
+        try:
+            im = Image.open(io.BytesIO(asm.data[p:p + n]))
+            im.load()
+        except Exception as e:
+            raise Unsupported("bitmap's JPEG payload will not decode: %s" % e)
+        got = {'L': 1, 'RGB': 3, 'RGBA': 4}.get(im.mode)
+        if got is None:
+            raise Unsupported("bitmap's JPEG has an unhandled mode %r" % im.mode)
+        # Width and height are checked against the record every time -- a stream that is
+        # not this record's image would have to match both by accident. The CHANNEL count
+        # is checked only when the class word states one: 45 of the 54 are cls 0x808, whose
+        # channel code CHANNELS has no entry for, and for those the JPEG is the only thing
+        # that knows. Demanding agreement there would refuse exactly the records this
+        # branch exists to recover.
+        if (im.size[0], im.size[1]) != (rec.width, rec.height):
+            raise Unsupported("bitmap's JPEG is %dx%d, record declares %dx%d"
+                              % (im.size[0], im.size[1], rec.width, rec.height))
+        if ch is not None and got != ch:
+            raise Unsupported("bitmap's JPEG has %d channels, record declares %d"
+                              % (got, ch))
+        a = np.asarray(im, dtype=np.float32) / 255.0
+        return a.reshape(rec.height, rec.width, got)
     if depth is None:
         # Record.bitmap's own documented gap: a channel code CHANNELS does not cover
         # (cls 0x808) reports 'pixels' with channels/depth/size all None rather than
@@ -721,10 +761,34 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # compiles to a baked one (bit 25), so a containment check against declared
                 # constants tests the wrong population -- it scored 6 of 67 and that number
                 # says nothing either way. The evidence here is the width split and the bits.
-                m = rec.matrix
-                matrix_from_program = False
                 fprogs = rec.filter_programs
                 w1 = rec.words[1] if len(rec.words) > 1 else 0
+                # THE HEADER SAYS WHETHER A MATRIX IS BAKED, so ask it. `Record.matrix`
+                # reads four slots by a rule established at 100% over "the 66,211 records
+                # whose slot-1 bit 6 says the matrix is baked" -- its own words -- but it
+                # never checks that bit, so for records where the bit is CLEAR it returns
+                # whatever those slots happen to hold. Over 6,666 baked matrices here:
+                #
+                #     bit 6 set     6,628 records    0 with a denormal component   0.00%
+                #     bit 6 clear      38 records    4 with a denormal component  10.53%
+                #
+                # The four detectable ones all read 0x0A42xxxx in the third slot -- a
+                # constant high half with a varying low half, a packed pair rather than a
+                # float -- and the docstring already notes pointers turning up where a
+                # matrix should be. Rejecting on the FLAG rather than on the values also
+                # covers the other 34, whose slots may read as plausible numbers while
+                # being just as unfounded; a value-plausibility guard catches only the
+                # ones that happen to look wrong.
+                #
+                # It matters out of proportion to 38 records. Such a matrix is
+                # near-singular, so it collapses the input to a point and renders a record
+                # whose input has spread 0.15 exactly flat. In ChesterfieldSofa that flat
+                # zero feeds a pixelprocessor computing v8/v12 with both terms zero -- 0/0
+                # -- and the NaN reaches 659 of the 830 records the file renders, including
+                # its `height` and `normal` outputs. Honouring the bit takes that file to 0
+                # non-finite records and its declared outputs from 1 spatial to 4 of 4.
+                m = rec.matrix if (w1 >> 6 & 1) else None
+                matrix_from_program = False
                 has_matrix_param = bool((w1 >> 6 & 1) or (w1 >> 7 & 1))
                 offset_is_program = bool(w1 >> 26 & 1)
 
@@ -1582,17 +1646,61 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise Unsupported("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
+                # WHERE `intensity` ACTUALLY IS -- source-verified, and it is neither of
+                # the two places this code looked before.
+                #
+                # It is the BAKED FLOAT IMMEDIATELY AFTER THE SIZE BLOCK, and the size
+                # block is one slot or two depending on how the size is stored:
+                #
+                #     nprog == 0   size is BAKED as (w, h) at 2,3  -> intensity at slot 4
+                #     nprog >= 1   nprog POINTER slots from 2       -> intensity at 2+nprog
+                #
+                # Read straight off the slot distributions. For nprog >= 1 the leading
+                # `nprog` slots read as denormals near 1e-39 -- 188 of 188 at slot 2 for
+                # nprog==1, 557 of 557 at slots 2 AND 3 for nprog==2 -- which is what a
+                # 4-byte pointer looks like through float32. The slot straight after them
+                # carries ordinary small values (0.25, 0.5, 2, 0.125), and the ones after
+                # THAT go back to denormals and 3.2e37 junk.
+                #
+                # The pair reading is not assumed: over nprog==0 blur records slots 2 and 3
+                # have near-identical distributions, 99.1% and 100.0% exact powers of two
+                # with the same value histogram (16 x128, 32 x94, 64 x94 ...), and in 102
+                # of them the two slots equal the record's own width and height.
+                #
+                # THE PROGRAM WAS NEVER THE INTENSITY. This code read
+                # `filter_programs[:1]` and called it that. On `flowingLava` that program
+                # evaluates to 1.0 and on `PW_ConcreteWall001` to 2.0 and 0.9428, none of
+                # which either source declares -- because it is the SIZE expression. Every
+                # program-bearing blur record has been rendering with its own output size
+                # as a blur radius.
+                #
+                # The evidence is exact set recovery, not a rate. `flowingLava` declares 8
+                # distinct intensities and slot 3 of its nprog==1 blur records holds
+                # exactly those 8, one each (0.0, 0.06, 0.1, 0.2, 0.23, 0.71, 4.47, 4.5);
+                # its other 13 such records hold library-internal values the source never
+                # mentions. `rural_rock_wall` recovers 5 of 5, `EnvironmentToolkit` 2 of 2,
+                # `stylized_rocks_magma` 2 of 2, `RockyPath` 12 of 18.
+                #
+                # Across every permitted paired source: 39 of 54 declared values recovered
+                # (72.2%) against an 11.1% CONTROL that applies the same slot rule to
+                # records of other filters. 4 of the 15 misses are files with no blur
+                # record at all, so the rate over files that have one is 39 of 50.
+                #
+                # An earlier version of this stopped at nprog <= 1 and refused the rest,
+                # which cost 2,811 records over 8 files -- the rule generalises and there
+                # was no reason to refuse them.
+                #
+                # 0.0 is a legitimate intensity -- `flowingLava` declares it -- and means a
+                # blur that does nothing, so it must pass the guard. What must not pass is
+                # a program POINTER read as float32, which is a denormal near 1e-38.
                 intensity = None
                 nprog = bin(rec.cls & 0x2881).count("1")
-                if nprog:
-                    for prog in rec.filter_programs[:1]:
-                        try:
-                            v = np.asarray(eval_program(asm, prog, default_inputs(asm, 1),
-                                                        {}, 1)).reshape(-1)
-                            if v.size:
-                                intensity = float(v[0])
-                        except Exception:
-                            pass
+                _islot = 4 if nprog == 0 else 2 + nprog
+                if _islot is not None and _islot < len(rec.words):
+                    v = float(np.frombuffer(np.uint32(rec.words[_islot]).tobytes(),
+                                            dtype=np.float32)[0])
+                    if np.isfinite(v) and (v == 0.0 or 1e-6 < abs(v) < 1e4):
+                        intensity = v
                 # THE SLOT-3 FALLBACK IS WITHDRAWN. It rendered 881 records and it was
                 # reading a different field. The instrument that shows this needs no
                 # source declarations and no containment, and it was available the whole
@@ -1631,19 +1739,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # 1.0, which is strong but is still two of us reasoning rather than the
                 # engine answering. Anything rendered this way is marked twice, in
                 # assume.USED and in LOW_CONFIDENCE.
-                if intensity is None and assume.assumed('blur.intensity') == 'slot3' \
-                        and len(rec.words) > 3:
-                    v = float(np.frombuffer(np.uint32(rec.words[3]).tobytes(),
-                                            dtype=np.float32)[0])
-                    if np.isfinite(v) and 1e-3 < abs(v) < 1e4:
-                        intensity = v
-                        LOW_CONFIDENCE.add(i)     # a candidate, never a result
-                        assume.note(i)
+                # The `assume`-gated slot-3 candidate is gone. It was asking whether
+                # slot 3 is the intensity for records where the size is baked; the answer
+                # is no, and the reason the old scan saw a powers-of-two ladder there is
+                # that slot 3 is the HEIGHT half of the baked size pair. The question it
+                # existed to arbitrate has been answered from the sources instead.
                 if intensity is None:
-                    raise Unsupported("blur intensity: no width-1 program supplies it, "
-                                      "and the slot-3 baked value reads as a different "
-                                      "quantity (72.5% exact powers of two to 64 against "
-                                      "a program-path median of 1.0)")
+                    raise Unsupported("blur intensity: slot %d does not read as a "
+                                      "plausible intensity (nprog=%d)" % (_islot, nprog))
 
                 W, H = rec.width, rec.height
                 if max_dim:
