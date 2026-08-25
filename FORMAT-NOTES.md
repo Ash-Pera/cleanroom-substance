@@ -32301,3 +32301,33 @@ parameter: nothing in the graph declares it, so nothing in the masks does either
 
 The family moves from "unexplained" to "read": the last named class in the census over
 ten records now has source-level semantics.
+
+## Correction: there is no implicit position value — sample's flag tokens were the whole story
+
+Digging into the transpiler for soft spots found one, and it was mine. The audit that
+went looking: does every program that "transpiles" emit statically well-formed code —
+no value used before it is defined? Answer: **1,610,944 of 1,610,944 clean**, zero
+use-before-def, including self-references. Which was impossible under my own S=1
+reading: a program whose operands run one ahead should emit broken references.
+
+It emits clean code because the transpiler never reads the tokens my validator was
+choking on. Its `sample` emission is `sample_col(toks[1], arg(0))` — coordinate at
+token 0, sampler index at token 1, **tokens 2 and up ignored** — and it has been that
+way since it was written. The IMM table, though, declared only token 1 immediate, so
+`valid_program` demanded value-ordering from what are actually flag bytes.
+
+Retested with sample tokens 2+ exempt and everything else STRICT: **all 178 "S=1"
+programs validate at S=0.** The implicit-position story is withdrawn:
+
+    - the 0-of-264 control was real, but it licensed the wrong mechanism;
+    - "S is exactly 1 at every arity" was an artifact of flag values being small;
+    - the correct fix is one line in disasm.IMM (0x33/0x34: positions 1+ immediate),
+      and the filter-20 slack in the tiling probe is retired.
+
+Counts after the correction: identical — 1,611,054 programs, 99.9932%, the same 110
+failures — because the slack and the table fix admit exactly the same programs. What
+changed is that the reason is now true. What the sample flag tokens MEAN (mip mode?
+wrap mode?) remains unread, and is the honest residue of this correction.
+
+The while-token exemption (0x0B tokens 3+) survives unchanged: its forcing case is a
+4096 in a library function, not a sample flag, and its control stands.

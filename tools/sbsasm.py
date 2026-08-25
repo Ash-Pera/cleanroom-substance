@@ -1829,8 +1829,11 @@ class Record:
                 if pa in kend:
                     pos = kend[pa]
                     continue
-                sl = 1 if self.filter_id == 20 else 0
-                if asm.valid_program(pa, slack=sl):
+                # The filter-20 slack that used to sit here is retired: the "S = 1
+                # implicit position" reading was a proxy for sample tokens 2+ being
+                # immediates, now stated correctly in disasm.IMM. Strict validation
+                # accepts all 178 affected functions.
+                if asm.valid_program(pa):
                     # A single-instruction candidate must be an input REFERENCE
                     # (oid 0x02) to be claimed. Every real one-instruction tail
                     # program in the corpus is [count=1][ref.*][uid]; the false

@@ -114,7 +114,18 @@ TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
 # on that scan even `add` reads 38.5% impossible and `lteq` 86.5%, because the scan
 # accepts positions that are not programs at all.
 IMM = {0x00:'all', 0x02:'all', 0x01:'all', 0x04:'all', 0x03:'all',
-       0x10:(1,), 0x07:(1,), 0x0B:(),   0x33:(1,), 0x34:(1,), 0x06:(1,)}
+       0x10:(1,), 0x07:(1,), 0x0B:(),
+       # sample (0x33 luminance, 0x34 colour): token 0 is the coordinate OPERAND and
+       # everything after it is immediate. Token 1 is the sampler index; tokens 2+ are
+       # flags whose meaning is unread. The transpiler has treated them that way since
+       # it was written -- its emission reads toks[1] and arg(0) and nothing else --
+       # but this table said only token 1 was immediate, so the validator demanded
+       # value-ordering from flag bytes. That single gap produced the whole "programs
+       # start at S = 1" episode: 178 per-pixel functions failed strict validation on
+       # sample flag tokens alone, an S=1 slack was added on a measured control, and
+       # the correct fix was HERE all along. All 178 validate at strict S=0 with the
+       # positions right.
+       0x33:(1,2,3,4,5,6), 0x34:(1,2,3,4,5,6), 0x06:(1,)}
 
 def fields(op):
     """(ntok, ty, comps, id) -- a bare tuple, not a dict.
