@@ -31250,3 +31250,35 @@ angles are 139 at `+0.25` and 1 at `-0.25`, both of which blur along Y since
 `dy = length * sin(2*pi*angle)`. The test asserts stripes across Y smear and stripes across
 X do not. That the specimen set is small and lopsided is a property of the corpus, and
 saying so is better than quietly widening the criteria until the numbers look comfortable.
+
+## Warp's shape rule is version, and the detector ambiguity its docstring predicted is gone
+
+Warp was the last big filter held out of the cost model (99.31%), and its residual was
+the shape DETECTOR, not the shape. The rule "the edge run starting at slot 1 means no
+w1 word" cannot tell w1 == 0 from "an edge to record 0" — the exact ambiguity
+`_real_edges`' docstring recorded when the two-shape reading was first found ("Zero is
+both 'no type codes' and 'an edge to record 0', and the value cannot distinguish
+them"). 180 v9 records fell into it.
+
+Version distinguishes them, because the w1 word's existence IS a version fact: warp has
+no w1 word before 0x90000 and carries one (so far always zero) from it. With version as
+the rule:
+
+    warp    99.313%  ->  99.993%   kept, 147 keys
+
+Shuffle stays per-record — its two shapes coexist within versions and its slot 1 is
+self-describing. Both consumers (the derivation and Record.header_words) now use the
+same rule, stated once each with the reason.
+
+### The cost model, near closure
+
+    fit coverage at >= 99.5% exact    894,586 of 897,983 records  =  99.62%
+    over every record with a boundary:
+       rule exact     891,656   99.112%
+       rule wrong       2,930    0.326%
+       rule silent      5,061    0.563%   (emboss, text, fid 9, vectorshape,
+                                           fxmaps class 0 -- each with a stated reason)
+
+Every filter large enough to fit is now in the model. What remains silent is small and
+named; what remains wrong is dominated by the unnamed-tail-program records now being
+recovered and the node-annex carriers.

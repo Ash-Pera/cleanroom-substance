@@ -56,7 +56,7 @@ W1_ABSENT = {6, 5, 16, 13, 10, 14, 19}
 # the fit: they are start-1 filters -- words[1] is their first EDGE -- and keying on an
 # edge value gave blur 12,006 keys for 15,371 records, the one-key-per-record signature
 # this file already names twice.
-W1_PER_RECORD = {7, 3}
+W1_PER_RECORD = {3}      # warp (7) moved to the version rule above
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'costs.json')
 KEEP = 0.995                     # a filter is kept only at this exactness or better
 
@@ -102,10 +102,19 @@ def observed():
             w1 = r.words[1]
             if f in W1_ABSENT:
                 w1 = None
+            elif f == 7:
+                # warp's w1 word is a VERSION fact: absent before 0x90000, present (so
+                # far always zero) from it. The edge-start detector used here before
+                # could not tell w1 == 0 from "an edge to record 0" -- the ambiguity
+                # its own docstring predicted -- and misread 180 v9 records, holding
+                # warp at 99.31%. With version as the rule it fits at 99.993%.
+                ver = a.header.get('version') if isinstance(a.header, dict) else 0
+                if ver < 0x90000:
+                    w1 = None
             elif f in W1_PER_RECORD:
-                # Two record shapes. The edge run starting at slot 1 is the shape with
-                # no w1 word at all; treat its "w1" as absent rather than keying on an
-                # edge value, which is what gave warp 12,366 keys for 26,416 records.
+                # shuffle's two shapes coexist WITHIN versions, so its discrimination
+                # stays per-record: slot 1 is self-describing (a backward index or a
+                # big field word), and the edge run starting at slot 1 marks no-w1.
                 try:
                     es = [s for s in r.edge_slots if s < len(r.words)]
                 except Exception:

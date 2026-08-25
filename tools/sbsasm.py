@@ -1080,9 +1080,15 @@ class Record:
         # the rule answers it is exact by construction; see tools/derive_costs.py.
         import record_layout
         w1 = self.words[1]
-        # Two-shape filters: the edge run starting at slot 1 is the shape with no w1
-        # word at all, and record_layout must not decode an edge value as field codes.
-        if self.filter_id in (7, 3):
+        # Two-shape filters. Warp's w1 word is a VERSION fact -- absent before 0x90000,
+        # present from it -- and the old edge-start detector could not tell w1 == 0 from
+        # "an edge to record 0", misreading 180 v9 records. Shuffle's shapes coexist
+        # within versions, so it stays per-record: slot 1 is self-describing.
+        if self.filter_id == 7:
+            ver = self.asm.header.get('version') if isinstance(self.asm.header, dict) else 0
+            if ver < 0x90000:
+                w1 = None
+        elif self.filter_id == 3:
             try:
                 es = [s for s in self.edge_slots if s < len(self.words)]
             except Exception:
