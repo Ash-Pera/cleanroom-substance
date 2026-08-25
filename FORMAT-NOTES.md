@@ -33063,3 +33063,40 @@ that slot, which draws the generated profile instead. Falling back to the first 
 image would sample the wrong input on those 27 records and produce a perfectly plausible
 picture from it — the failure this decode keeps being caught by, and the one place here
 where the convenient default is the dangerous one.
+
+## The program path is the control a baked fallback needs
+
+Both `normal` and `blur` locate their intensity as "a width-1 program result if there is
+exactly one, else a baked float in the block". 539 rendered records rest on the second half.
+Nothing tests it — a wrong slot yields a wrong radius, which is a plausible image.
+
+There is a control available and neither of us used it: **the program path is the trusted
+reading, so its value distribution is what the parameter looks like.** The fallback's should
+match it. Measured over 60 files, restricted to records where each path actually fires:
+
+```
+blur, intensity from a program   n=53    p10 1.00  p50 1.00   p90 2.8    commonest 1.0 (43/53)
+blur, intensity from slot 3      n=881   p10 0.25  p50 5.00   p90 64     commonest 16, 2, 32, 64, 4, 8
+                                                                          72.5% are EXACT powers of two
+
+normal, from a program           n=21    p10 0.085 p50 1.33   p90 11     19% powers of two
+normal, from the block           n=88    p10 1.48  p50 12.0   p90 50     37.5% powers of two
+```
+
+**`blur`'s fallback does not read the same quantity its program path does.** One
+distribution is centred on 1.0; the other is centred on 5 and reaches 64 through 2, 4, 8,
+16, 32. A ladder of exact powers of two up to 64 is a size, a mip level or a tiling count —
+it is not an intensity, and the sources declare `blur` intensity as 1.0, 1.25 and 0.2 with
+no power of two above 1 anywhere.
+
+`normal`'s is weaker but points the same way: p50 12 against the program path's 1.33.
+
+Neither is proof — records whose parameter is baked may genuinely differ from records whose
+parameter is computed, and that confound is real. But a 1.0-versus-5-reaching-64 gap is
+large, and the right response to "we cannot tell" is not to render 539 records on it
+unmarked. `LOW_CONFIDENCE` already marks them, which is exactly why this was checkable at
+all; the marking should now be treated as a warning rather than a formality.
+
+The generalisation worth keeping: **when a parameter has two readings and one is trusted,
+the trusted one is a free control for the other.** No source declarations needed, no
+containment, no ceiling problem — just two distributions that must match.
