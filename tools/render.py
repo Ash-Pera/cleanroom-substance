@@ -190,11 +190,21 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
     with np.errstate(all="ignore"):
         try:
             out = scope["prog"](inputs=inputs, slots=slots)
+        except sbsruntime.MissingSampler as e:
+            # MUST come first: MissingSampler subclasses KeyError, so the handler below
+            # swallows it and reports an unwired image edge as a missing slot. That exact
+            # confusion -- `SAMPLERS` and `slots` are both small-integer-keyed dicts and
+            # raised indistinguishable KeyErrors -- sent two investigations after a
+            # phantom slot frame before `sbsruntime.MissingSampler` was introduced to
+            # separate them. Removing this handler reintroduces the ambiguity silently.
+            raise Unsupported("no sampler for input %s (an unwired edge, NOT a missing "
+                              "slot)" % e) from e
         except KeyError as e:
             # `inputs` is keyed by uid (large, from default_inputs) and always fully
             # populated from the package's own declarations; `slots` is keyed by small
-            # integers and is the only one a bare KeyError here can mean -- a `get` of a
-            # slot this record's own programs never `set`. The already-documented
+            # integers. With MissingSampler split off above, a bare KeyError here means a
+            # `get` of a slot this record's own programs never `set`. It did NOT mean that
+            # before that split, whatever this comment used to claim. The already-documented
             # category from the transpiler's own execution sweep (FORMAT-NOTES.md,
             # "Executing every program, not just transpiling it"): 9,806 sub-programs
             # whose slots are written by ANOTHER of the record's programs sharing slot
