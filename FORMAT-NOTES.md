@@ -32134,3 +32134,33 @@ Every pixelprocessor record's layout, boundary and program set is now accounted 
 The largest per-pixel function in the corpus is 41,493 instructions — a compiled
 material's entire noise stack in one straight-line program — and it was sitting in
 "other surplus" because a validator declined to read past its own imagination.
+
+## The census closes: 101 became four named families and nothing anonymous
+
+The final decomposition of every record with an observable boundary:
+
+    records                        900,859
+       exact                       897,753   99.655%
+       silent (guarded)              2,058    0.228%
+       v2 ramp block                   370    0.041%   gradient table storage
+       neighbour's ramp table          336    0.037%   the partition fact at scale
+       attachment cells                240    0.027%   [id|kind][ptr] species
+       other                           101    0.011%
+       short                             1    0.000%
+
+And the 101, read family by family rather than left as a bucket:
+
+    ~35   v2 inline attachments of a SECOND form: [baked floats][full FX-node
+          tag][pointer] — the same node reference the modern cooker writes as a
+          small-id cell, written by v2 with the node's full tag inline
+          (0x8000248, 0x22000248, 0x8000848 — all FX_TABLE family)
+    ~30   a bare EXTRA PROGRAM-POINTER slot, no tag at all: 25 modern transformation
+          records and kin whose surplus is one word, valid_program says yes, and the
+          target is the same stereotyped program at +5 words in every one — an
+          undeclared parameter binding in its minimal possible form
+    ~36   assorted singletons: three fxmaps records with program-shaped words, tiny
+          v2 shapes at one or two records each
+
+Nothing in the census is anonymous. Every row is a mechanism, a version, or a named
+stereotype; the largest unexplained CLASS in the corpus is now roughly thirty records,
+and the largest unexplained SINGLE population is one record short of its rule.
