@@ -55,49 +55,47 @@ class Unsupported(Exception):
     pass
 
 
-SHARED_SLOT_FLOOR = 64
-
-
-class SplitFrame(dict):
-    """Slot storage that is per-record below `SHARED_SLOT_FLOOR` and graph-wide above it.
-
-    An FX-Map's entry programs are dominated by `get <slot>` while its node programs and
-    the record's own programs do the `set`s, and the two sets coincide within a FILE rather
-    than within a record. The measurement that establishes this also says exactly how far
-    it goes:
-
-        slot range      read AND written in the same file     control: written elsewhere
-        all slots               74.7%                                 52.2%
-        slots < 64              74.1%                                 54.3%
-        slots >= 64             88.1%                                  0.0%
-
-    Only the last row is evidence. Small slot indices collide by chance -- a 52-54% control
-    means the agreement there says nothing -- so sharing them is unsupported, and sharing
-    them is also actively harmful: making the whole frame graph-wide regressed 87 record
-    outputs on `pairs2`, rooted in 9 `dirmotionblur` records that picked up a stale 0 from
-    an earlier record and raised ZeroDivisionError. Low slots are per-record scratch and a
-    record must not inherit them.
-
-    So the floor is where the control goes to zero, not a round number chosen for looking
-    tidy. Above it a slot written by one record is visible to the next; below it every
-    record gets its own.
-    """
-
-    def __init__(self, shared):
-        dict.__init__(self)
-        self._shared = shared
-
-    def __getitem__(self, k):
-        return self._shared[k] if k >= SHARED_SLOT_FLOOR else dict.__getitem__(self, k)
-
-    def __setitem__(self, k, v):
-        if k >= SHARED_SLOT_FLOOR:
-            self._shared[k] = v
-        else:
-            dict.__setitem__(self, k, v)
-
-    def __contains__(self, k):
-        return k in self._shared if k >= SHARED_SLOT_FLOOR else dict.__contains__(self, k)
+# THE SLOT FRAME IS PER-RECORD. Every record evaluates against its own empty dict, and
+# nothing carries across records. There is no `SplitFrame` and no shared floor any more;
+# what follows is why, because the class that used to be here was not obviously wrong.
+#
+# The reading it encoded: an FX-Map's entry programs are dominated by `get <slot>` while
+# its node programs and the record's own programs do the `set`s, and the two sets were
+# measured to coincide within a FILE rather than within a record --
+#
+#     slot range      read AND written in the same file     control: written elsewhere
+#     all slots               74.7%                                 52.2%
+#     slots < 64              74.1%                                 54.3%
+#     slots >= 64             88.1%   (59 of 67)                     0.0%
+#
+# -- so slots >= 64 were shared graph-wide and slots below it kept per-record. The floor
+# was put where the control went to zero, which is the right instinct applied to the wrong
+# measurement: the UNIT was wrong. An FX-Map is a record, not a file. Asked per record,
+# over 61,384 entry-program slot reads in 282 files, counting as writes only the node
+# chain and the record's own programs:
+#
+#     same RECORD                 61,318 / 61,384    99.892%
+#     OTHER record, same file      7,245 / 61,384     11.8%   <- the control that matters
+#     other FILE                  54,930 / 61,384     89.5%   <- what 52-54% above was
+#
+# Cross-FILE collision is 89.5% because small slot indices collide everywhere, which is
+# exactly why the file-level figure stalled at 74% and needed a floor to say anything.
+# Against an 11.8% control the per-record answer is unambiguous, and it holds at EVERY
+# slot range -- ~100% from 0-8 up through 64+. Slots >= 64 are 118 of 61,384 reads; their
+# 0.0% cross-file control measures how rare a high slot index is, not that anything is
+# shared above it. FORMAT-NOTES.md, "The slot frame is per-RECORD".
+#
+# The 0.108% that does not resolve in-record is one construct, not a channel between
+# records: 22 records in 5 files, always a lone `0x18B` node with entry tag `0x15140848`,
+# whose bare `get <slot>` pass-throughs name slots above the highest its one-node chain
+# writes. That 65 of those 66 reads name a slot some OTHER record happens to write is the
+# 11.8% coincidence rate, not evidence.
+#
+# Going the other way is still wrong, and that evidence stands: making the whole frame
+# graph-wide regressed 87 record outputs on `pairs2` and gained none, rooted in 9
+# `dirmotionblur` records that inherited a stale 0 and raised ZeroDivisionError. Per-record
+# is the far end of that same finding rather than a reversal of it -- measured here at
+# 10,625 records rendered against the floor's 10,624, no regressions.
 
 
 def default_inputs(asm, N):
@@ -324,12 +322,6 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
     cache = {}
     sbsruntime.use_shared_cache(cache)
 
-    # Slots at or above SHARED_SLOT_FLOOR persist across records; below it each record
-    # gets its own scratch. Sharing the WHOLE frame was tried first and is wrong -- it
-    # regressed 87 record outputs on `pairs2` and gained none, rooted in 9 `dirmotionblur`
-    # records that inherited a stale 0 and raised ZeroDivisionError. See `SplitFrame`.
-    shared_slots = {}
-
     for i, rec in enumerate(asm.records):
         if i in outputs:
             continue
@@ -370,7 +362,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # earlier program runs once, N=1, not per-pixel, sharing one `slots`
                 # dict whose side effects (the `set`s) carry forward; only the last
                 # program is the real per-pixel body and gets $pos and the full N.
-                slots = SplitFrame(shared_slots)
+                slots = {}          # per-record frame; see the slot-frame note above
                 for p in progs[:-1]:
                     eval_program(asm, p, default_inputs(asm, 1), slots, 1)
                 main = progs[-1]
@@ -459,7 +451,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                         for slot_i, edge_rec in enumerate(rec.edges):
                             sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
                                 outputs[edge_rec])
-                        slots = SplitFrame(shared_slots)
+                        slots = {}          # per-record frame; see the slot-frame note above
                         for p in fprogs[:-1]:
                             eval_program(asm, p, default_inputs(asm, 1), slots, 1)
                         opacity = to_image(
