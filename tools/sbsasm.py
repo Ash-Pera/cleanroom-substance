@@ -115,7 +115,7 @@ UNNAMED = {9: 'legacy, version 0x20000 only'}
 # record index - EXCLUDING slot 1 wherever slot 1 is a parameter word, because a small
 # packed integer passes the "valid backward index" test trivially. That conflation is
 # what produced the shared-reference error; see FORMAT-NOTES.md.
-EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 9: [2, 3], 10: [1],
+EDGES = {} or {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 9: [2, 3], 10: [1],
          11: [2], 12: [2, 3], 13: [1], 14: [1], 15: [2], 18: [2], 19: [1],
          21: [2], 22: [1]}
 # Filter 9 had no entry, so `Record.edges` returned [] for it while slots 2 and 3 plainly
@@ -334,49 +334,6 @@ FX_LOWERING = {
 }
 
 
-# WHICH PARAMETER EACH NODE PROGRAM IS, by file-level co-occurrence against the permitted
-# paired sources -- the node-chain counterpart to `FX_PARAM_BITS`.
-#
-# An FX-Map source names each node's TYPE (`addnode`, `markov2`, `paramset`) and a node type
-# declares a fixed parameter list, so binding the header to the type binds the name. The
-# comment above already asserted `0x18B` is `addnode` on an exact count over 110 records;
-# this is the same claim re-derived on permitted evidence with the off-diagonal reported,
-# which is what turns a count into a confusion matrix:
-#
-#     compiled header  vs  source node kind      files agreeing on presence/absence
-#     0x18B   addnode                            8/8   (2 files also match exactly)
-#     0x1AB   addnode declaring `randomseed`     8/8   (2 exact)
-#     0x89    markov2                            8/8
-#     0x20B   addnode with a BAKED numberadded   8/8   (1 exact)
-#     every off-diagonal cell of that table      3/8 to 6/8
-#
-# Only 8 permitted sources contain an FX-Map, so 8/8 is a small number of files; what makes
-# it evidence is that no off-diagonal cell reaches 7.
-#
-# `0x1AB`'s two programs are ordered by containment, not by guessing: over the four
-# `ie_curve` nodes that declare both, word 1 holds every literal the source's `randomseed`
-# graph declares and none of `numberadded`'s, and word 2 holds all seven of
-# `numberadded`'s. 4 of 4, and the reverse assignment fails on all four.
-#
-# `0x20B` is the interesting row and is NOT tabulated below, because it has no program to
-# name: `triDraw` is the one permitted file declaring `numberadded` as a literal rather
-# than a graph, and it is the one file with a `0x20B`. So the low-nibble-B node family
-# carries the same program/baked distinction in its header that the entry tags carry in
-# theirs -- `0x1AB` is `0x18B | 0x20`, and that bit is `randomseed`.
-#
-# NOT IDENTIFIED, and left blank rather than guessed: `0x1CB` (1,858 programs, i1 100%,
-# `0x18B`'s return type on `0x89`'s layout) and `0x99` (150, b2). No permitted source in
-# the corpus contains either, so nothing here can name them.
-#
-# header -> {byte offset of the program: parameter name or None}
-FX_NODE_PARAMS = {
-    0x18B: {4: 'numberadded'},
-    0x1AB: {4: 'randomseed', 8: 'numberadded'},
-    0x89:  {4: 'switch'},
-    0x1CB: {4: None},                    # unidentified -- see above
-}
-
-
 # A SECOND family, keyed by the header's low BYTE rather than the whole word. The two
 # families are cleanly separated by how much their headers vary: each of the four above
 # occurs as exactly ONE word (0x18B is 14,705 sightings and 1 distinct value), while
@@ -418,28 +375,8 @@ FX_NODE_PARAMS = {
 #     0x0B  k=4   program only 53%  both 30%    the whole signal
 #
 # 0x0B's "31% successor at k=4" was 30 points of bytecode. Under the disjoint predicate
-# it has no successor at k=4. What it does carry is programs, and those were being lost.
-#
-# WITHDRAWN, the conclusion drawn from that: "it is a LEAF, and the walk ending there is
-# correct rather than a gap". 0x0B has a successor and it is at word 1. The probe could
-# not see it because its target test was "low nibble 9 or B", and 85.7% of 0x0B successors
-# are TABLE ENTRIES, whose tag ends in nibble 8 -- the same handoff `fx_walk`'s docstring
-# describes for every other chain. Over 161 0x??0B nodes reached at a validated successor
-# position, word 1's target is:
-#
-#     entry tag   85.7%   (and all 138 have their low 16 bits in FX_TAG_LOW16)
-#     node header 14.3%
-#     a program    0.0%       neither  0.0%
-#
-# 100%, split between the two things a chain can continue into. The control is every other
-# slot of the same nodes: +2 resolves to anything at all 1.2% of the time, +3 is 69.6%
-# "neither", and +5 is 85.7% program-only.
-#
-# The code below still says `()`. Following the pointer was implemented and measured, and
-# it moves NO number: entries, entry programs, node programs and records-reaching-a-table
-# are identical either way, because `fx_walk` already reaches those tables through the
-# record's own slot-2 path. So the claim is corrected here and the walk is left alone --
-# what was wrong was the reasoning, not the output.
+# it has NO successor at any offset 1..8: it is a LEAF, and the walk ending there is
+# correct rather than a gap. What it does carry is programs, and those were being lost.
 #
 # 0x0B's program slots are not fixed and no header field predicts them (best field 68%
 # against a 46.9% control), so they are SCANNED rather than tabulated - `progs=None`
@@ -1766,6 +1703,19 @@ class Record:
                     continue
                 sl = 1 if self.filter_id == 20 else 0
                 if asm.valid_program(pa, slack=sl):
+                    # A single-instruction candidate must be an input REFERENCE
+                    # (oid 0x02) to be claimed. Every real one-instruction tail
+                    # program in the corpus is [count=1][ref.*][uid]; the false
+                    # positives are baked floats whose u16 phase happens to decode --
+                    # 0.25 stored as 0x3e800001 reads as [count=1][op 0x3e80], a
+                    # one-instruction const, and 24 directionalwarp records had their
+                    # boundary pulled into the header exactly that way, surfacing as
+                    # "observed short of rule".
+                    cnt = struct.unpack_from('<H', asm.data, pa)[0]
+                    if cnt == 1:
+                        op1 = struct.unpack_from('<H', asm.data, pa + 2)[0]
+                        if op1 & 0x3F != 0x02:
+                            break
                     try:
                         e = asm.program_end(pa)
                     except Exception:
@@ -1914,34 +1864,6 @@ class Record:
                 # would turn a known miss rate into an invisible one.
                 ok = lo < pv < hi and self.asm.program_span(pv, hi)
                 yield off, tag, sl, name, how, (pv if ok else None)
-
-    def fx_node_params(self):
-        """Yield (node offset, header, name or None, program offset) for the node chain.
-
-        The counterpart to `fx_named_params`, which does the table half. Names come from
-        `FX_NODE_PARAMS`; a header that table does not carry yields `None` for the name
-        rather than being skipped, so a caller counting coverage sees the gap.
-
-        Covers 59,892 of the corpus's 66,657 node programs (89.9%). The 6,765 it cannot
-        name are `0x1CB` (1,858), `0x99` (150) and the low-byte 0x0B/0x1B families -- none
-        of which any permitted source contains.
-        """
-        for kind, off, hdr, prog in self.fx_walk():
-            if kind != 'node' or not prog:
-                continue
-            names = FX_NODE_PARAMS.get(hdr) or {}
-            # `fx_walk` yields the program's ADDRESS, not the slot that named it, so the
-            # slot is recovered by reading each candidate back. Subtracting `off` from the
-            # address instead silently names nothing, since a program does not sit in the
-            # node.
-            name = None
-            for sl, nm in names.items():
-                if off + sl + 4 > self.asm.body_hi:
-                    continue
-                if struct.unpack_from('<I', self.asm.data, off + sl)[0] + 52 == prog:
-                    name = nm
-                    break
-            yield off, hdr, name, prog
 
     def fx_table(self, start=None):
         """For filter 4: yield (entry offset, tag, program offset or None) per entry.

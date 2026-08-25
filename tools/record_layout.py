@@ -78,11 +78,16 @@ def header_words(filter_id, word0, w1, version=None):
     spec = costs().get(str(filter_id))
     if spec is None:
         return None
-    if spec.get('interaction') in ('colour', 'colour_states'):
-        return _interaction(spec, word0, w1)
+    # Guards FIRST, whatever the spec's shape. The interaction dispatch used to sit
+    # above the min_version check, so emboss's colour-states spec answered for the
+    # v2-v4 records its guard exists to refuse -- and 27 of them surfaced as
+    # "observed short of rule", which is what a guess about a population that
+    # contradicts its own keys looks like from the outside.
     mv = spec.get('min_version')
     if mv is not None and (version is None or version < mv):
         return None                      # fitted on modern versions only
+    if spec.get('interaction') in ('colour', 'colour_states'):
+        return _interaction(spec, word0, w1)
     g = spec.get('guard')
     if g is not None and (word0 >> g['shift']) & g['mask'] != g['value']:
         return None                      # fitted for a different sampling class

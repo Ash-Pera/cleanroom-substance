@@ -32034,3 +32034,28 @@ That reframes the ledger: of 900,859 records, the layout is now exactly understo
 records — 0.089% — where something surplus or short remains genuinely unclassified,
 plus the 1,887 deliberately guarded. The unknown has a census, and the census has no
 anonymous rows.
+
+## The observed-short column: two of three families were this project's own probes
+
+The strangest residue — 159 records whose observable boundary comes up SHORT of the
+rule's header — decomposed into three families, and two were self-inflicted:
+
+**27 emboss records, versions 0x20000-0x40000: a guard-order bug.** The colour-states
+interaction dispatch in `record_layout.header_words` sat ABOVE the min_version check,
+so emboss's spec answered for exactly the population its guard exists to refuse. What a
+guess about self-contradicting keys looks like from outside is "observed short". Guards
+now run first, whatever the spec's shape.
+
+**24 directionalwarp records: the tiling probe's false positives.** A baked 0.25 stored
+as 0x3e800001 — low bit set — reads at u16 phase as [count=1][op 0x3e80], a plausible
+one-instruction const "program", and the tiling probe claimed it, pulling the boundary
+into the header. Every REAL one-instruction tail program in the corpus is an input
+reference — [count=1][ref.*][uid] — so single-instruction candidates must now be oid
+0x02 to be claimed. 5,953 records of the same key sit at the correct header 7; the 24
+fakes are gone.
+
+**The 85 fxmaps records, short by exactly 3, remain** — all colour-bit class-3 keys
+(w0 = 0x3998809), the same ±3 quantum that runs through fxmaps' colour story. One
+family, one filter, one constant: named, not yet read.
+
+    observed-short: 159  ->  87, of which 85 are the one fxmaps family
