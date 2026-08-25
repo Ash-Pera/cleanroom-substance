@@ -97,6 +97,22 @@ def observed():
                     # programs -- the ordinary boundary logic applies.
                     inline = [x for x in r.programs if r.offset < x < r.end]
                     q = min(inline) if inline else r.end
+                else:
+                    # THE PAYLOAD POINTER IS AN UPPER BOUND, NOT THE BOUNDARY. A w1
+                    # field in the program state emits its program between the header
+                    # and the payload, so a payload-only probe measures the header
+                    # PLUS that program -- and the fit, having nowhere else to put the
+                    # length, charged it to the field. That is where fxmaps' unlawful
+                    # 10 came from: one pointer plus an 8-word program in one file,
+                    # and 3 (pointer plus a 1-word program) in another. It also gave
+                    # fxmaps its whole sampling-class split, because the two files sat
+                    # in different classes and no single coefficient could hold both.
+                    # With the boundary taken as the EARLIEST in-record target, the
+                    # program costs its lawful 1 pointer, the split is unnecessary,
+                    # and fxmaps goes to 100.000%.
+                    inline = [x for x in r.programs if r.offset < x < q]
+                    if inline:
+                        q = min(inline)
             else:
                 inline = [x for x in r.programs if r.offset < x < r.end]
                 if not inline:
@@ -235,9 +251,9 @@ def fit(f, keys, bitrange=range(32), colour='off'):
     # A null space says the fit is blind in SOME direction; it does not say which
     # coefficients lie along it. Test each one: coefficient i is identified iff the
     # null space has no component on axis i -- iff every solution gives it the same
-    # value. fxmaps class 3 has nullity 6 and its 10/16/32 are identified regardless,
-    # so they stay flags; class 1's three halves are on its one blind direction and
-    # are not.
+    # value. fxmaps' 16 and 32 are identified regardless of its null space, so they
+    # stay flags and were worth chasing; class 1's three halves were on its one blind
+    # direction and were not.
     _L = _Xall[:, live]
     identified = np.ones(_Xall.shape[1], dtype=bool)
     if len(keys):
@@ -392,7 +408,14 @@ def fit(f, keys, bitrange=range(32), colour='off'):
 # carries a guard: it answers only for the class it was fitted on and returns None for
 # the rest, which fall through to the memo. Class 0 is 20 keys and 1,418 records and
 # does not clear the bar on its own -- kept out rather than guessed at.
-SPLIT_SAMPLING = {4}
+# fxmaps LEFT this set once the payload boundary stopped swallowing inline programs.
+# Its split was never a fact about sampling classes: the only coefficient that forced
+# it was field 2 as a program, measured in 86 class-0 records and 44 class-3 records,
+# and the difference between its 3 and its 10 was the length of the program the probe
+# had absorbed. Corrected, one unguarded table answers all four classes at 100.000%.
+# The mechanism stays because the interaction it models is real elsewhere; nothing
+# currently needs it.
+SPLIT_SAMPLING = set()
 
 
 def main():
@@ -484,8 +507,16 @@ def main():
     # that table where the type declarations are unknown -- so any coefficient that is
     # not a small non-negative integer is not a finding, it is a flag: either two
     # populations averaged (distance's 1.5s -- really a Float2's 2 and a fit
-    # degeneracy), or an inline node region absorbed as a constant (fxmaps' 10/16/32),
-    # or a mishandled shape (shuffle's negatives).
+    # degeneracy), or a boundary that swallowed something (fxmaps' 10 was one pointer
+    # plus the inline program the payload probe measured past -- see observed()), or a
+    # mishandled shape (shuffle's negatives).
+    #
+    # The bound is 4 because a SCALAR parameter is at most a Float4. An ARRAY is a
+    # width too, and fxmaps' surviving 16 and 32 are one: field 7 reserves a fixed
+    # bank of image inputs, and the slots hold a contiguous ascending run of record
+    # indices -- 16 of them in state 1, 32 in state 2, measured in 9 of the 10 records
+    # that set the field. Those two are read, not unexplained; they are left in the
+    # report because the check cannot tell an array from an accident on its own.
     lawless, blind = [], 0
     specs = []
     for fs, spec in out.items():

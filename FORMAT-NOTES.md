@@ -33676,3 +33676,115 @@ that used to sit in that list were never evidence of anything.
 records — three records in three distinct keys, too few to fit anything against — and one
 class-3 record. Class 2 is not unexplained; it is unmeasured, and the difference is worth
 keeping straight.
+
+## Class 2 read, and the sampling-class split turns out to be an artifact
+
+Class 2 is three records in three keys, so there is nothing to fit — but there is
+something to read. All three:
+
+```
+US_Flag           v0x80000  w0=0x02380408  w1=0x00404  header  5
+Embroidery_Legacy v0x80000  w0=0x02b80408  w1=0x00404  header  6
+WoodSiding        v0x50000  w0=0x02998808  w1=0x01a80  header 17
+```
+
+The first two differ in exactly one cls bit (bit 7) and exactly one word of header, which
+is the cost that bit already carries elsewhere. And the class-3 cost table — fitted on a
+different population, with no refitting — predicts **all three exactly**. Class 1's table
+gets 2 of 3, class 0's gets 1 of 3.
+
+That prompted the obvious question, which nobody had asked: is the four-way split real?
+
+```
+partition                 answered     exact
+per class {0}{1}{2}{3}       41161   99.998%   [2] silent
+class 0 vs rest              41164   99.998%
+bit 25: {0,1} vs {2,3}       41164   99.998%
+bit 24: {0,2} vs {1,3}       41164   99.998%
+no split                     41164   99.947%
+```
+
+Three *different* two-way partitions score identically. Classes 1 and 2 fit on either side
+once refitted; only class 0 and class 3 are actually distinguishable. So the split was
+never four-way, and the question narrowed to a single number: what does class 0 need that
+class 3 does not?
+
+### It needed one coefficient, and that coefficient was a mismeasurement
+
+Applying the class-3 table to class 0 misses **2 keys, 86 records, delta exactly +7 on
+both**. Every one of them sets `w1` field 2 to state 2 — a program. The whole
+cross-tabulation of field states against class shows how thin that is:
+
+```
+field.state   class 0   class 1   class 2   class 3
+f2.1                0       256         0     27151     <- never baked in class 0
+f2.2               86         0         0        44     <- the entire split rests here
+f3.2              237       101         1     27907
+```
+
+So I read a record from each side. Class 3, header 15 words, `w1 = 0x20` (field 2 the only
+thing set):
+
+```
+[ 0] tag   [ 1] w1   [ 2] tree root
+[ 3] ptr   [ 4] ptr
+[ 5] 00396af4 -> word 6, and valid_program() says yes
+[ 6..14]  the program.  program_end = 0x396b16;  header ends at 0x396b18
+```
+
+Class 0, header 10 words, same field in the same state:
+
+```
+[ 0] tag   [ 1] w1   [ 2] tree root   [ 3] count   [ 4] ptr   [ 5] ptr   [ 6] 0
+[ 7] 011456e4 -> word 8, valid_program() says yes
+[ 8..9]  the program.  program_end = 0x11456ea;  header ends at 0x11456ec
+```
+
+In both cases the last thing inside the measured "header" is the record's **first inline
+program**, and the header boundary is that program's 4-aligned end. `fxmaps` takes its
+boundary from slot 2, the fx-tree root — and **a program emitted by a `w1` field is
+written between the header and the tree**. The probe measured header *plus* program, and
+the fit, with nowhere else to put the length, charged it to the field: 10 in one file (one
+pointer plus an 8-word program), 3 in the other (one pointer plus a 1-word program). Two
+files, two program lengths, two sampling classes — and a split invented to hold both.
+
+The payload pointer is an **upper bound on the header, not the boundary**. Taking the
+earliest in-record target instead:
+
+```
+154 keys move, 28,355 records.   0x03998808/0x00294: 13 -> 9      (two program fields, -2 each)
+                                 0x03998808/0x01a80: 17 -> 13
+no split, one unguarded table:   100.000%
+```
+
+`fxmaps` now stands at **41,163 of 41,164 exact with zero silent**, every class at 100.00%
+including class 2's three records, and no guard at all. The program fields come back at
+their lawful width of **1 pointer**; the 3s were one pointer plus two words of program.
+
+The correction is general, not `fxmaps`-specific: it applies to every payload filter, since
+any of them can emit a program before its payload.
+
+### What is left on fxmaps is an array, and the law's bound did not cover arrays
+
+Two coefficients survive: `f7.1 = 16` and `f7.2 = 32`. Reading the records shows what they
+are — field 7 reserves a **fixed bank of image inputs**, and the slots hold a contiguous
+ascending run of record indices:
+
+```
+ie_curve  f7=1 arity=3   20 edges, records 37..56,  contiguous   bank = 20 - 3 - 1 = 16
+ie_curve  f7=1 arity=4   21 edges, records 58..78,  contiguous   bank = 16
+ie_curve  f7=1 arity=1   18 edges, records 80..97,  contiguous   bank = 16
+ie_curve  f7=2 arity=0   33 edges, records 139..171, contiguous  bank = 32
+ie_curve  f7=2 arity=2   35 edges, records 0..34,   contiguous   bank = 32
+```
+
+Nine of the ten records that set field 7 land exactly on 16 or 32. The width law's ceiling
+of 4 is a statement about *scalar* parameters — a Float4 is the widest one — and an array
+is a width too. These two are read, not unexplained. They stay in the report because the
+check cannot tell an array from an accident on its own.
+
+**The general lesson is worth more than the filter.** Twice now a coefficient that looked
+like a finding was an artifact of what the boundary probe included: once when the
+all-baked records were invisible because the probe needed a program, and now when the
+payload probe measured past one. A cost model whose coefficients must be type widths is
+useful exactly because a wrong measurement cannot hide in it.
