@@ -124,18 +124,47 @@ def check_alpha_last(asm, laws):
         law.see(idx == 3, **{'flattest channel at index %d' % idx: 1})
 
 
+#: The unit-length test is applied ONLY to 16-bit RGBA. See check_normal_rotation.
+ROTATION_LAYOUTS = frozenset({(16, 4)})
+
+
 def check_normal_rotation(asm, laws):
     """Where a channel rotation is DECIDED by the unit-length law, it must be zero.
 
-    The competing rotations are the control: they are scored by the same measurement, so
-    this cannot pass by having nothing to compare against. Bitmaps where no rotation wins
-    decisively are photographs and the like, and are counted apart rather than scored --
-    they have no preferred rotation and would otherwise add noise either way.
+    THE UNIT-LENGTH LAW DOES NOT HOLD ON THIS CORPUS, and saying so is the point of this
+    docstring. A tangent-space normal map should satisfy x^2 + y^2 + z^2 == 1 exactly;
+    here the BEST rotation of a bitmap that is plainly a normal map still sits at a mean
+    |L - 1| of 0.10 to 0.24. So this is not a law the data obeys, it is a RELATIVE
+    discriminator: the right channel order scores better than the wrong ones, by a wide
+    margin, while none of them scores well.
+
+    Run unrestricted it produced a 79% "violation" rate that meant nothing -- 214 of 352
+    bitmaps were undecided, and most of the rest are not normal maps at all but still
+    cleared a purely relative bar. Broken down by layout it is legible, and only one
+    layout is trustworthy:
+
+        layout          uncorrected offset      corrected offset
+        depth 16 ch 4   rotation 2 x13          rotation 0 x13     <- confirms the fix
+        depth  8 ch 3   rotation 2 x7, 1 x4     rotation 1 x7, 0 x5
+        depth  8 ch 4   unchanged               unchanged          <- the null control
+        depth 16 ch 3   rotation 0 x4           rotation 1 x3      <- prefers uncorrected
+
+    16-bit RGBA is the only one with a second, independent instrument agreeing with it:
+    the alpha-index test, which needs no unit-length assumption and moves 13 of 16 from
+    index 1 to index 3. The 3-channel layouts have no alpha to anchor them, n is 3 to 7,
+    and depth-16 ch-3 points the other way. That disagreement is NOT resolved and is not
+    smoothed over by averaging the layouts together, which is what the unrestricted
+    version did.
+
+    None of this is what the offset correction rests on. That rests on the eight-byte
+    header -- 'SBAM' at 0 and a version word at 4, in 40 of 40 files -- which is
+    structural and layout-independent. This check is a weak secondary instrument that
+    corroborates it where it has an anchor.
     """
     law = laws['normal_rotation']
     for rec, bm in _pixel_bitmaps(asm):
-        ch = bm['channels']
-        if not ch or ch < 3:
+        ch, depth = bm['channels'], bm['depth']
+        if not ch or ch < 3 or (depth, ch) not in ROTATION_LAYOUTS:
             continue
         x = _samples(asm, rec, bm)
         if x is None:

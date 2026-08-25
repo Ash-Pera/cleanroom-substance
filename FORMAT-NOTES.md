@@ -34340,3 +34340,60 @@ groups are 16..21 and 33..34, leaving 22 through 32 entirely unobserved. So the 
 *consistent with* 16 + a 4-bit overflow topping out at 31; it is not *demonstrated* at 31,
 because no record in the corpus needs a total between 22 and 32. Eleven records is not
 enough to prove where a threshold sits — only enough to show that no record contradicts it.
+
+## The 437-file self-check, and the law that turned out not to be one
+
+The four-byte offset was found by looking at pictures, so `tools/selfcheck.py` generalises
+that: properties the data must satisfy with no reference render, each with a control, run
+over the whole corpus. First full run, 437 files at 48px:
+
+    law              checked  violations   note
+    alpha_last           165        69     RGBA alpha is the flattest channel, last
+    normal_rotation      138       109     a decided channel rotation must be zero
+    packing              585        21     images pack back to back
+    finite               521         8     no NaN or Inf in a produced output
+    range                521        12     produced values lie in [0, 1]
+    grayscale_bit        521         1     output-table bit matches the channel count
+
+    2,479 declared outputs, 521 produced, 192 spatially varying
+
+**`normal_rotation`'s 79% was a defect in the law, not in the decode.** Broken down by
+layout, and scoring both the corrected and uncorrected offset:
+
+    layout          uncorrected offset     corrected offset
+    depth 16 ch 4   rotation 2 x13         rotation 0 x13      <- confirms the correction
+    depth  8 ch 3   rotation 2 x7, 1 x4    rotation 1 x7, 0 x5
+    depth  8 ch 4   unchanged              unchanged           <- the null control
+    depth 16 ch 3   rotation 0 x4          rotation 1 x3       <- prefers UNCORRECTED
+
+Two things follow. The first is that **the unit-length law does not hold on this corpus**:
+the best rotation of a bitmap that is plainly a normal map still sits at a mean |L - 1| of
+0.10 to 0.24, where a real unit vector would give ~0. It has relative discriminating power
+and no absolute validity, so it is a discriminator and not a law, and it is now restricted
+to 16-bit RGBA -- the one layout where a second, independent instrument (the alpha index,
+which assumes nothing about unit length) agrees with it.
+
+The second is that **depth-16 3-channel disagrees, and that is not resolved**. n is 4 and
+3, there is no alpha to anchor it, and averaging the layouts together is exactly what
+produced the meaningless 79%. It is recorded rather than smoothed away. Note that none of
+this is what the offset correction rests on -- that rests on the eight-byte header, which
+is structural and layout-independent.
+
+**An assertion that passed because the sample could not reach a counterexample.**
+`test_bitmap`'s packing check asserted `packed == pairs` and passed at 120 files. Over 437
+there are 21 non-packing pairs in 7 files, the earliest at corpus index 173. The tight
+assertion was not true, it was untested. Corrected to a rate.
+
+Those 21 are worth separating. Most are gaps, where an image is simply skipped
+(`NightSkyHDRISubstance001`, `pbr_render`, `BricksSubstance004`, `ground_rock_face`). But
+seven of them, all in `GravelSubstance002`, are **overlaps** -- a declared size running
+past the next image's start, by around 900 KB each. A size that large is a channel-count
+or depth misread on those specific records, and it is the one thing in this sweep that
+looks like a decode bug rather than a property of the files.
+
+`finite` and `range` also found real things: 8 non-finite declared outputs across
+`Planks`, `Tape`, `HeringboneWood` and `BricksSubstance003`, and `ie_pcloud` records
+producing values in [16, 256] and [128, 256], which are counts or sizes rather than
+images. `grayscale_bit` agreed 520 of 521, which is a genuine cross-check -- the bit comes
+from the output table and the channel count from the pixels rendered, and `outputs()`'s own
+docstring records that no bit of the named RECORD agrees with that flag.
