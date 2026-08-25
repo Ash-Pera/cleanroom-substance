@@ -34548,9 +34548,10 @@ header in **329 of 329**.
 
 **Popcount** (`blur`, `warp`). The one encoding that governs ROLE rather than extent: the
 number of leading block slots that hold programs (the rest baked constants) is
-`popcount(cls & mask)`, a count spelled by set bits in the CLASS word. The slots are all one
-word wide, so this changes no length -- it is the width law applied to which-slots-are-
-programs. `popcount` equals the model's program-slot count in **6,272 of 6,272** `warp` and
+`popcount(cls & mask)`, a count spelled by set bits in the CLASS word. It decides which
+slots are programs and, through that, extent -- when the count is zero `blur`'s size is two
+baked words rather than one program pointer -- but the count itself is stated, not probed.
+`popcount` equals the model's program-slot count in **6,272 of 6,272** `warp` and
 **6,829 of 6,829** `blur` records.
 
 So the format has (at least) four encodings of one idea: two-bit presence codes, an arity
@@ -34579,8 +34580,16 @@ stated discriminator) reproduces the table's edge list in **32,895 of 33,215 (99
     distance                                 edges  97.67%  (second input, by w1 bit 0)
     dyngradient / normal                     edges ~97.7%   (a minority shape each)
 
-The ~1% residue is per-filter tails -- a handful of generators and minority shapes -- not a
-statistical fog, and each is a single stated bit away from closing.
+Those percentages are agreement with the TABLE, and the ~1% gap is not walk's error -- it is
+the table's. On every record where the two disagree, the correlation control (a real edge's
+value rises with the record's own index; a packed field's does not) says the walk is right
+and the table is wrong. The table named as edges: `gradient` slot 2 (the ramp's stop count,
+corr -0.005), `curve` slots 2 and 4-6 (counts and table pointers, corr <=0.36), `normal`
+slot 1 (the w1 type-code word, corr +0.078), and `warp` slot 3 (corr -0.022) -- every one a
+small integer that passes for a record index, the exact conflation this document has been
+caught by before. The walk names the slots that correlate at +0.966 to +0.999 instead. So
+the wiring did not introduce a 1% residue; it CORRECTED ~190 records the table had wrong, and
+`gradient`'s 44 "edge-less" records get back the slot-1 input the table never named at all.
 
 With these specified, a walk mechanism now covers **367,165 of 370,154 records (99.19%)** of
 the manifest-bearing corpus. What is left is exactly the Tier-C list and nothing else:
