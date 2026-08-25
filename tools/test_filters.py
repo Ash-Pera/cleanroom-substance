@@ -143,6 +143,13 @@ def test_curve_endpoints():
         assert abs(float(row[-1]) - k[-1][1]) < 1e-2, (rec.index, row[-1], k[-1][1])
         n += 1
     if not n:
+        # NOT a bare skip. `_seeded` records SEEN['curve'] = candidates FOUND, separately from
+        # how many rendered, precisely so this case can be told apart: candidates present
+        # and none rendered is what a BROKEN FILTER looks like from here, and it must fail.
+        # Three of the eight checks in this file already did this; five, including this
+        # one, printed SKIP instead and would have reported green through a total breakage.
+        if SEEN.get('curve'):
+            raise AssertionError('%d curve records found and none rendered' % SEEN['curve'])
         print('SKIP test_curve_endpoints: no corpus')
     return
 
@@ -187,7 +194,14 @@ def test_curve_identity_is_exact():
         assert float(np.abs(row - xs).max()) < 1e-3, rec.index
         n += 1
     if not n:
-        print('SKIP test_curve_identity_is_exact: no corpus (or no strict-identity record)')
+        # NOT a bare skip. `_seeded` records SEEN['curve'] = candidates FOUND, separately from
+        # how many rendered, precisely so this case can be told apart: candidates present
+        # and none rendered is what a BROKEN FILTER looks like from here, and it must fail.
+        # Three of the eight checks in this file already did this; five, including this
+        # one, printed SKIP instead and would have reported green through a total breakage.
+        if SEEN.get('curve'):
+            raise AssertionError('%d strict-identity curve records found and none rendered' % SEEN['curve'])
+        print('SKIP test_curve_identity_is_exact: no corpus, or no strict-identity record')
     return
 
 
@@ -199,6 +213,13 @@ def test_dirmotionblur_is_an_average():
         assert float(row.max()) <= 1.0 + 1e-4, row.max()
         n += 1
     if not n:
+        # NOT a bare skip. `_seeded` records SEEN['dirmotionblur'] = candidates FOUND, separately from
+        # how many rendered, precisely so this case can be told apart: candidates present
+        # and none rendered is what a BROKEN FILTER looks like from here, and it must fail.
+        # Three of the eight checks in this file already did this; five, including this
+        # one, printed SKIP instead and would have reported green through a total breakage.
+        if SEEN.get('dirmotionblur'):
+            raise AssertionError('%d dirmotionblur records found and none rendered' % SEEN['dirmotionblur'])
         print('SKIP test_dirmotionblur_is_an_average: no corpus')
     return
 
@@ -220,7 +241,7 @@ def test_dyngradient_is_a_ramp_lookup():
     fail the third. The residual tolerance is quantisation: a 256-wide strip indexed by W
     source samples steps by 1/256, so half a step is the floor.
     """
-    n = 0
+    n = cands = 0
     for path in corpus.paths()[:MAX_FILES]:
         try:
             asm = Assembly(path)
@@ -231,6 +252,7 @@ def test_dyngradient_is_a_ramp_lookup():
                 continue
             if len(rec.edges or ()) < 2 or any(e is None for e in rec.edges[:2]):
                 continue
+            cands += 1
             h = w = 64
             src = np.tile(np.linspace(0.0, 1.0, w, dtype=np.float32),
                           (h, 1)).reshape(h, w, 1)
@@ -268,6 +290,13 @@ def test_dyngradient_is_a_ramp_lookup():
         if n >= 6:
             break
     if not n:
+        # This check builds its own specimens rather than using `_seeded`, so it counts its
+        # own candidates. Without that it had the same hole as four others in this file:
+        # `except Exception: out = {}` followed by `if got is None: continue` means a
+        # render that RAISES skips the assertions silently, and `if not n` then printed
+        # SKIP -- so a totally broken dyngradient reported green rather than failing.
+        if cands:
+            raise AssertionError('%d dyngradient records found and none rendered' % cands)
         print('SKIP test_dyngradient_is_a_ramp_lookup: no corpus')
     return
 
@@ -292,6 +321,13 @@ def test_gradient_runs_and_stays_bounded():
         assert float(row.max()) <= float(vals.max()) + 1e-3, rec.index
         n += 1
     if not n:
+        # NOT a bare skip. `_seeded` records SEEN['gradient'] = candidates FOUND, separately from
+        # how many rendered, precisely so this case can be told apart: candidates present
+        # and none rendered is what a BROKEN FILTER looks like from here, and it must fail.
+        # Three of the eight checks in this file already did this; five, including this
+        # one, printed SKIP instead and would have reported green through a total breakage.
+        if SEEN.get('gradient'):
+            raise AssertionError('%d gradient records found and none rendered' % SEEN['gradient'])
         print('SKIP test_gradient_runs_and_stays_bounded: no corpus')
     return
 
