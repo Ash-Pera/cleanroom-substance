@@ -261,8 +261,22 @@ def validate_cls_driven(files):
 # +1 = Float1, +2 = Float2, +4 = Float4. This IS the legend node_census.py derives -- the
 # tree analogue of the manifest's parameter-type table -- transcribed here as the thing the
 # walk reads. The three multi-tag kinds carry a bit->width map; the single-tag kinds have no
-# variation to walk and are stored as their one size. Underdetermined kinds (0x08, 0x0b,
+# variation to walk and are stored as their one size. Genuinely underdetermined kinds (0x0b,
 # 0x1b, 0x98) are deliberately absent: walk_node returns None for them rather than guessing.
+#
+# Kind 0x08 was on that list and should not have been. It is not underdetermined -- the fit
+# failed because it POOLED three different structures under one kind byte. Separated:
+#   * two deterministic node tags -- 0x00420008 (size 4, pointer +12, 18,152 cells) and
+#     0x00410008 (size 7, pointer +24) -- 100% each, stored explicitly in NODE_TAGS below;
+#   * the CHAIN tag 0x00020008, a linked list rather than a fixed-size node (its "sizes"
+#     6..11 are chain-run lengths, not a cell width), which walk_node returns None for;
+#   * an 8-cell tag the census already dropped as inconsistent.
+# With the chain and the noise pulled out, the two real 0x08 nodes are as determined as any.
+NODE_TAGS = {                       # full tag -> (size in words, [pointer word offsets])
+    0x00420008: (4, [3]),
+    0x00410008: (7, [6]),
+}
+CHAIN_TAG = 0x00020008              # a chain structure, not a fixed node -- excluded
 #
 # One apparent gap that is not one: kind 0x48's bit 9 is set in a large fraction of cells and
 # charges no width here, so a cross-check reads it as a field both this table and
@@ -299,6 +313,12 @@ def _walk_mask(mask_word, const_words, bit_widths):
 def walk_node(tag):
     """A tree node's size in words and its field offsets, or None for an uncatalogued
     kind. The tag itself is the mask; no per-node table is consulted."""
+    if tag == CHAIN_TAG:
+        return None                      # a linked-list chain, not a fixed-size node
+    ent = NODE_TAGS.get(tag)
+    if ent is not None:
+        size, ptrs = ent
+        return (size, {i: off for i, off in enumerate(ptrs)})
     spec = NODE_LEGEND.get(tag & 0xFF)
     if spec is None:
         return None
