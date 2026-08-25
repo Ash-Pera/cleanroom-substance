@@ -36,5 +36,41 @@ isa_census.txt
 structmatch.txt
 DISTINCT.txt
 
+# Specimen directories are named one at a time above, and naming them one at a time is how
+# `new_opengameart/` slipped through: 1,150 files, of which git would have added 252 --
+# reference renders as .jpg and .gif, plus .xml and ReadMe.txt -- while its siblings
+# new_acg/ and new_sbs/ were covered. The extension screen above stops .png, .sbsar, .sbs
+# and .sbsasm; a materials pack ships far more than those.
+#
+# So the rules below are by TYPE, which is what actually distinguishes a specimen from
+# source. Every tracked file in this repository is .py, .md, .json, .toml or a LICENCE, so
+# these cannot hide a new tool, and they do not depend on where extraction put the files.
+new_*/
+
+# Reference renders and texture maps shipped alongside specimens
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.webp
+*.tif
+*.tiff
+*.tga
+*.dds
+*.exr
+*.hdr
+*.psd
+*.svg
+
+# Meshes and presets that materials packs carry
+*.obj
+*.mtl
+*.fbx
+*.sbsprs
+
+# Containers specimens arrive in
+*.7z
+*.zip
+
 # macOS
 .DS_Store
