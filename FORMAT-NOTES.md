@@ -31835,3 +31835,36 @@ signature that produces this tag in `ie_curve` declares **four** dynamic paramet
 this specimen the layout is right and the census row is short by one — which is the opposite
 of how a residue usually resolves, and worth remembering before the residue is written off
 as a decode failure.
+
+## The per-pixel function's implicit value: pixelprocessor programs start at S = 1
+
+The wrong column's largest block — 264 pixelprocessor records with 40-plus-word
+surpluses — is bytecode, and bytecode that the strict validator CORRECTLY rejects:
+instruction 1 references value 1 when only value 0 exists locally. The resolution is
+not a looser check but a fact about the function's calling convention:
+
+**A pixelprocessor per-pixel function has one implicit pre-defined value — the
+POSITION input — so its numbering starts at S = 1.** Validated with the operand
+threshold at k + 1:
+
+    surplus programs valid at S = 0        0 of 264
+    surplus programs valid at S = 1      151 of 264   at S exactly 1, every arity
+    CONTROL: S = 1 at random offsets       0 of 264
+
+The S is 1 regardless of arity — inputs are reached through sampler instructions, not
+pre-defined values — and over a 6,419-instruction function the maximum operand-minus-k
+is exactly 0: one value from outside, used precisely as a position would be.
+
+`valid_program` now takes a `slack` parameter, default 0; only the tiling probe passes
+slack = 1, and only for filter 20. The strict default stands because it is what keeps
+scan-discovered garbage out, and the measured control (0 of 264 random offsets) is
+what licenses the exception.
+
+    pixelprocessor big-surplus records    264  ->  113
+    distinct corpus programs              1,610,984  (+178)
+    transpiled                            99.9932%, failures still exactly the 110
+
+The remaining 113 do not decode at the rule header at all (51 are arity-0 records with
+a different shape) — a named residue, not an ignored one. And the recovered functions
+are the per-pixel bodies themselves, the largest single block of formerly-unclaimed
+bytecode in the corpus.
