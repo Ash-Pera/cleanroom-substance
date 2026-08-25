@@ -33390,3 +33390,45 @@ no scope          std 0.0000    <- the contract is untouched
 falloff, so `'cone'` and `'disc'` currently fall through to the same curve and score
 identically. The candidate set is two shapes, not four, until it carries more — and a
 scoring run that reports three candidates tied is measuring that, not the format.
+
+
+## The candidate set is now four shapes, and an unhonourable value raises
+
+`profile_value` implemented `'rect'` and one falloff and let every other name reach the
+falloff, so `'cone'` and `'disc'` silently aliased. A scoring run would have reported three
+candidates tied and that would have measured the function rather than the format. Now:
+
+```
+rect   solid fill                          disc   hard circle inscribed in the box
+cone   linear radial,   max(0, 1 - r)      bell   quadratic radial, max(0, 1 - r^2)
+```
+
+On the rosette, `sci_fi_elements_02` record 86:
+
+```
+rect  std 0.0000  mean 1.0000        cone  std 0.1818  mean 0.6147
+disc  std 0.0000  mean 1.0000        bell  std 0.1627  mean 0.8185
+```
+
+`rect` and `disc` tie — and that tie is now **informative**: those patterns are large enough
+that a hard circle saturates the canvas exactly as a rectangle does, so the distinction only
+appears where patterns are small. Before, a tie meant nothing because three names reached
+one branch.
+
+`assume.scope` now raises on a value the channel cannot honour, checked against `QUESTIONS`.
+Only enumerated questions are checked; `()` marks one whose values are continuous.
+
+### The instrument can be wrong in ways the measurement cannot show
+
+Three failures this session share a shape, and it is worth stating as one:
+
+| the instrument | how it failed | what it returned |
+|---|---|---|
+| the two-path control | reference too scattered to reject anything | a rejection |
+| the tightness gate | computed on n=1 | "100%, usable" |
+| the flatness guard | 0.02 threshold against 16-bit data running to 221 | "not flat", for everything |
+| an assumption channel | accepting a value it silently aliases | a score for a candidate never rendered |
+
+**None of the four fails loudly. All four return a number.** A measurement's controls get
+scrutiny because they are the point; the instrument's own calibration gets none because it
+is machinery. Every one of these was found by accident or by someone else looking.

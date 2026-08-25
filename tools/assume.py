@@ -67,6 +67,15 @@ def scope(**choices):
             img, _f, _s = render(asm, max_dim=None)
         # assume.USED names every record that depended on it
     """
+    for k, v in choices.items():
+        allowed = QUESTIONS.get(k)
+        # An unhonourable value must fail HERE, loudly, rather than being silently aliased
+        # by a consumer -- a channel that accepts what it cannot deliver produces a score
+        # for a candidate that was never rendered. Only enumerated questions are checked;
+        # `()` marks one whose values are continuous.
+        if allowed and v not in allowed:
+            raise ValueError('assume: %r is not a candidate for %r; try one of %r'
+                             % (v, k, allowed))
     saved = dict(_ACTIVE)
     saved_used = set(USED)
     _ACTIVE.update(choices)

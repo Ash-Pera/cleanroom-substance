@@ -303,7 +303,15 @@ def profile_value(lx, ly, profile):
     are offered so the choice is visible rather than buried:
 
       'rect'  a solid fill -- what the size parameter means before any shape is applied.
-      'bell'  a smooth radial falloff, `max(0, 1 - r^2)`.
+      'disc'  a hard circle inscribed in the box, no falloff.
+      'cone'  a linear radial falloff, `max(0, 1 - r)`.
+      'bell'  a quadratic radial falloff, `max(0, 1 - r^2)`.
+
+    These are four DISTINCT candidates. An earlier version implemented only 'rect' and one
+    falloff and let every other name reach it, so a scoring run would have reported three
+    candidates tied and that would have measured this function rather than the format. An
+    unknown name now raises: a channel that accepts a value it cannot honour is the same
+    failure as a guard calibrated in the wrong units, one layer up.
 
     This is an EXPERIMENT, not a claim. It matters because 2,348 of 2,508 flat renders
     come out solid white under 'rect': a small number of full-cell patterns tiled over
@@ -315,8 +323,14 @@ def profile_value(lx, ly, profile):
     inside = (np.abs(lx) <= 0.5) & (np.abs(ly) <= 0.5)
     if profile == 'rect':
         return inside.astype(np.float32)
-    r2 = (2.0 * lx) ** 2 + (2.0 * ly) ** 2
-    return (np.clip(1.0 - r2, 0.0, 1.0) * inside).astype(np.float32)
+    r = np.sqrt((2.0 * lx) ** 2 + (2.0 * ly) ** 2)      # 0 at centre, 1 at the box edge
+    if profile == 'disc':
+        return ((r <= 1.0) & inside).astype(np.float32)      # hard circle, no falloff
+    if profile == 'cone':
+        return (np.clip(1.0 - r, 0.0, 1.0) * inside).astype(np.float32)        # linear
+    if profile == 'bell':
+        return (np.clip(1.0 - r * r, 0.0, 1.0) * inside).astype(np.float32)    # quadratic
+    raise ValueError('unknown pattern profile %r' % (profile,))
 
 
 def splat(rec, patterns, W=None, H=None, profile=None, images=None):
