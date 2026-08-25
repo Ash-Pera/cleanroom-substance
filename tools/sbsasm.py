@@ -115,7 +115,7 @@ UNNAMED = {9: 'legacy, version 0x20000 only'}
 # record index - EXCLUDING slot 1 wherever slot 1 is a parameter word, because a small
 # packed integer passes the "valid backward index" test trivially. That conflation is
 # what produced the shared-reference error; see FORMAT-NOTES.md.
-EDGES = {} or {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 9: [2, 3], 10: [1],
+EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 9: [2, 3], 10: [1],
          11: [2], 12: [2, 3], 13: [1], 14: [1], 15: [2], 18: [2], 19: [1],
          21: [2], 22: [1]}
 # Filter 9 had no entry, so `Record.edges` returned [] for it while slots 2 and 3 plainly
@@ -334,6 +334,49 @@ FX_LOWERING = {
 }
 
 
+# WHICH PARAMETER EACH NODE PROGRAM IS, by file-level co-occurrence against the permitted
+# paired sources -- the node-chain counterpart to `FX_PARAM_BITS`.
+#
+# An FX-Map source names each node's TYPE (`addnode`, `markov2`, `paramset`) and a node type
+# declares a fixed parameter list, so binding the header to the type binds the name. The
+# comment above already asserted `0x18B` is `addnode` on an exact count over 110 records;
+# this is the same claim re-derived on permitted evidence with the off-diagonal reported,
+# which is what turns a count into a confusion matrix:
+#
+#     compiled header  vs  source node kind      files agreeing on presence/absence
+#     0x18B   addnode                            8/8   (2 files also match exactly)
+#     0x1AB   addnode declaring `randomseed`     8/8   (2 exact)
+#     0x89    markov2                            8/8
+#     0x20B   addnode with a BAKED numberadded   8/8   (1 exact)
+#     every off-diagonal cell of that table      3/8 to 6/8
+#
+# Only 8 permitted sources contain an FX-Map, so 8/8 is a small number of files; what makes
+# it evidence is that no off-diagonal cell reaches 7.
+#
+# `0x1AB`'s two programs are ordered by containment, not by guessing: over the four
+# `ie_curve` nodes that declare both, word 1 holds every literal the source's `randomseed`
+# graph declares and none of `numberadded`'s, and word 2 holds all seven of
+# `numberadded`'s. 4 of 4, and the reverse assignment fails on all four.
+#
+# `0x20B` is the interesting row and is NOT tabulated below, because it has no program to
+# name: `triDraw` is the one permitted file declaring `numberadded` as a literal rather
+# than a graph, and it is the one file with a `0x20B`. So the low-nibble-B node family
+# carries the same program/baked distinction in its header that the entry tags carry in
+# theirs -- `0x1AB` is `0x18B | 0x20`, and that bit is `randomseed`.
+#
+# NOT IDENTIFIED, and left blank rather than guessed: `0x1CB` (1,858 programs, i1 100%,
+# `0x18B`'s return type on `0x89`'s layout) and `0x99` (150, b2). No permitted source in
+# the corpus contains either, so nothing here can name them.
+#
+# header -> {byte offset of the program: parameter name or None}
+FX_NODE_PARAMS = {
+    0x18B: {4: 'numberadded'},
+    0x1AB: {4: 'randomseed', 8: 'numberadded'},
+    0x89:  {4: 'switch'},
+    0x1CB: {4: None},                    # unidentified -- see above
+}
+
+
 # A SECOND family, keyed by the header's low BYTE rather than the whole word. The two
 # families are cleanly separated by how much their headers vary: each of the four above
 # occurs as exactly ONE word (0x18B is 14,705 sightings and 1 distinct value), while
@@ -375,8 +418,28 @@ FX_LOWERING = {
 #     0x0B  k=4   program only 53%  both 30%    the whole signal
 #
 # 0x0B's "31% successor at k=4" was 30 points of bytecode. Under the disjoint predicate
-# it has NO successor at any offset 1..8: it is a LEAF, and the walk ending there is
-# correct rather than a gap. What it does carry is programs, and those were being lost.
+# it has no successor at k=4. What it does carry is programs, and those were being lost.
+#
+# WITHDRAWN, the conclusion drawn from that: "it is a LEAF, and the walk ending there is
+# correct rather than a gap". 0x0B has a successor and it is at word 1. The probe could
+# not see it because its target test was "low nibble 9 or B", and 85.7% of 0x0B successors
+# are TABLE ENTRIES, whose tag ends in nibble 8 -- the same handoff `fx_walk`'s docstring
+# describes for every other chain. Over 161 0x??0B nodes reached at a validated successor
+# position, word 1's target is:
+#
+#     entry tag   85.7%   (and all 138 have their low 16 bits in FX_TAG_LOW16)
+#     node header 14.3%
+#     a program    0.0%       neither  0.0%
+#
+# 100%, split between the two things a chain can continue into. The control is every other
+# slot of the same nodes: +2 resolves to anything at all 1.2% of the time, +3 is 69.6%
+# "neither", and +5 is 85.7% program-only.
+#
+# The code below still says `()`. Following the pointer was implemented and measured, and
+# it moves NO number: entries, entry programs, node programs and records-reaching-a-table
+# are identical either way, because `fx_walk` already reaches those tables through the
+# record's own slot-2 path. So the claim is corrected here and the walk is left alone --
+# what was wrong was the reasoning, not the output.
 #
 # 0x0B's program slots are not fixed and no header field predicts them (best field 68%
 # against a 46.9% control), so they are SCANNED rather than tabulated - `progs=None`
@@ -708,9 +771,20 @@ FX_ENTRY = {
 #
 #     predicted shape == the census's, over the 57 real entry tags     55/57   96.5%
 #     CONTROL, random role per bit                                              8.0%
-#     leading slots  base = 2 + one word per set bit of {4, 7, 17, 19}  54/55   98.2%
+#     leading slots  base = 2 + widths of set bits {4, 7, 16, 17, 19}  55/55  100.0%
 #     CONTROL, random widths                                                    4.7%
-#     the two together: predicted program-slot LIST == the census's    54/57   94.7%
+#     the two together: predicted program-slot LIST == the census's    55/57   96.5%
+#
+# BIT 16 IS FOUR WORDS WIDE, and it is the only leading bit that is not one. Fitting the
+# base with widths capped at 2 leaves exactly one tag unexplained -- `0x00410008`, predicted
+# 2 and observed 6 -- and allowing 4 closes it at 55/55. That is not curve-fitting on one
+# row: bit 16 is set in two residue tags and its width predicts BOTH of their positions
+# directly, `0x00410008`'s program at +6 in 98% of 445 entries and `0x02510448`'s at +6 and
+# +7 in 91% of 44. Corpus-wide it moves the layout from 93.87% to 94.33%.
+#
+# Four words is a baked float4, and the FX-Map quadrant's float4 parameter is its colour --
+# which would sit beside the bit-8 finding below, where a set bit 8 is what makes `opacity`
+# return f4. That reading is NOT claimed here; the width is measured, the name is not.
 #
 # The nine `FX_ENTRY_PROGS` keys whose low nibble is 9 or 0xB are excluded from that count:
 # a nibble of 8 is what makes a word a table entry, and 9/0xB are NODE headers, which is a
@@ -762,6 +836,7 @@ FX_ENTRY = {
 FX_PARAM_BITS = (
     (4,  None,              1),   # leading baked words; which parameters they are is
     (7,  None,              1),   # not established -- only that each takes one slot,
+    (16, None,              4),   # except this one, which takes FOUR: see below
     (17, None,              1),   # which is what fixes where the program run starts
     (19, None,              1),
     (20, 'opacity',         1),
@@ -1865,6 +1940,34 @@ class Record:
                 ok = lo < pv < hi and self.asm.program_span(pv, hi)
                 yield off, tag, sl, name, how, (pv if ok else None)
 
+    def fx_node_params(self):
+        """Yield (node offset, header, name or None, program offset) for the node chain.
+
+        The counterpart to `fx_named_params`, which does the table half. Names come from
+        `FX_NODE_PARAMS`; a header that table does not carry yields `None` for the name
+        rather than being skipped, so a caller counting coverage sees the gap.
+
+        Covers 59,892 of the corpus's 66,657 node programs (89.9%). The 6,765 it cannot
+        name are `0x1CB` (1,858), `0x99` (150) and the low-byte 0x0B/0x1B families -- none
+        of which any permitted source contains.
+        """
+        for kind, off, hdr, prog in self.fx_walk():
+            if kind != 'node' or not prog:
+                continue
+            names = FX_NODE_PARAMS.get(hdr) or {}
+            # `fx_walk` yields the program's ADDRESS, not the slot that named it, so the
+            # slot is recovered by reading each candidate back. Subtracting `off` from the
+            # address instead silently names nothing, since a program does not sit in the
+            # node.
+            name = None
+            for sl, nm in names.items():
+                if off + sl + 4 > self.asm.body_hi:
+                    continue
+                if struct.unpack_from('<I', self.asm.data, off + sl)[0] + 52 == prog:
+                    name = nm
+                    break
+            yield off, hdr, name, prog
+
     def fx_table(self, start=None):
         """For filter 4: yield (entry offset, tag, program offset or None) per entry.
 
@@ -1894,11 +1997,42 @@ class Record:
         if start is None and struct.unpack_from('<I', d, q)[0] in FX_NODES:
             return
         limit = 64                       # runaway guard: the longest real walk is 17
+        nth = 0
         while q + 8 <= e and limit > 0:
             limit -= 1
             tag = struct.unpack_from('<I', d, q)[0]
             if tag in FX_NODES:
                 break
+            # THE LAYOUT IS A STOPPING RULE, and it is the only one that catches this walk
+            # running into bytecode. The vocabulary test cannot: `0x09130008` is 2,322
+            # "entries" whose low 16 bits are in FX_TAG_LOW16 and which are, every one of
+            # them, a u32 straddling two instructions -- word +2 is `const.f1`, word +3 is
+            # its 1.0 immediate. So ask a question bytecode cannot pass: the tag states
+            # where its programs are, so if it names some and NONE of them resolve, the
+            # word is not a tag.
+            #
+            #     layout verdict            entries    lie INSIDE a program's byte span
+            #     all predicted resolve      49,528                              0.0%
+            #     NONE resolve                3,192                             82.1%
+            #     no program predicted       58,848                              0.7%
+            #
+            # Zero of 49,528 against 2,622 of 3,192, and program spans come from record
+            # pointers, so that test knows nothing about the layout. By POSITION the same
+            # split appears: 1.1% of FIRST entries fail it against 11.5% of the ones the
+            # stride guessed.
+            #
+            # Applied from the SECOND entry only. The first is at a position established by
+            # pointer-following, and stopping there too costs 310 records their table
+            # entirely while removing nothing this rule is for.
+            #
+            # It drops 2,882 entries and 258 entry programs. Note what it does NOT do:
+            # vocabulary purity moves 96.64% -> 96.55%, i.e. slightly DOWN, because the
+            # junk it removes has in-vocabulary tags. This is the opposite of the failure
+            # mode tools/test_fx.py documents, where a walk that gives up early scores
+            # better on purity; here the justification is the span test, not a rate.
+            if nth and not self.asm.entry_layout_holds(q, tag):
+                break
+            nth += 1
             # Stop on what is not an entry, not on an entry whose payload is unusable.
             # A table entry's tag ends in nibble 8 -- that is what separates entries from
             # node headers, which end in 9 or 0xB. Stopping when the +4 pointer failed to
@@ -2648,6 +2782,26 @@ class Assembly:
             q += 2 * L
             k += 1
         return k == n
+
+    def entry_layout_holds(self, off, tag):
+        """Does the entry at `off` have a program where its tag says it should?
+
+        True when the tag names no program slots -- the layout has nothing to say about
+        those, and 58,848 real entries are of that kind. False only when it names some and
+        not one of them resolves, which is what bytecode read as a tag looks like. See the
+        stopping rule in `Record.fx_table` for the measurement and its control.
+        """
+        pred = [sl for sl, _n, k in fx_entry_layout(tag) if k == 'program']
+        if not pred:
+            return True
+        lo, hi = self.body_lo, self.body_hi
+        for sl in pred:
+            if off + 4 * sl + 4 > hi:
+                continue
+            pv = struct.unpack_from('<I', self.data, off + 4 * sl)[0] + 52
+            if lo < pv < hi and self.program_span(pv, hi):
+                return True
+        return False
 
     def program_span(self, p, hi=None):
         """End offset of the program at p, or None. Bounded by `hi` when given.
