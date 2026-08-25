@@ -1,0 +1,6 @@
+#!/bin/sh
+# The fast lane: structural tests only, seconds not minutes.
+# The full suite (semantic FX/filter tests sweep and transpile the corpus) stays
+# `python3 -m pytest`; run it before pushing anything that touches sbsasm/transpile.
+cd "$(dirname "$0")"
+exec python3 -m pytest -q test_transpile.py test_standalone_parse.py test_corpus_discovery.py "$@"

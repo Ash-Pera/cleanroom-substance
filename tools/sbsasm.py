@@ -20,6 +20,7 @@ wrong assumption shows up as a number instead of as a plausible-looking result.
             print(a.disassemble(p))
 """
 import math
+import os
 import struct
 import standalone_parse as S
 import isa
@@ -2827,9 +2828,31 @@ class Record:
 
 
 class Assembly:
+    _CACHE = {}
+
+    @classmethod
+    def cached(cls, path):
+        """A shared parsed instance. Safe because readers never mutate an Assembly;
+        the memo tables only grow. The test suite re-parsed the full corpus once per
+        corpus-sweeping test -- a dozen sweeps of 437 files -- and with data mmapped
+        the cache holds records and memos, not file bytes."""
+        key = (path, os.stat(path).st_mtime_ns)
+        hit = cls._CACHE.get(key)
+        if hit is None:
+            hit = cls._CACHE[key] = cls(path)
+        return hit
+
     def __init__(self, path):
         self.path = path
-        self.data = d = open(path, 'rb').read()
+        # mmap, not read(): the bytes stay in the OS page cache and are SHARED between
+        # Assembly instances and processes, so caching parsed Assemblies costs the
+        # records and memo tables, not four gigabytes of file data.
+        import mmap as _mmap
+        fh = open(path, 'rb')
+        try:
+            self.data = d = _mmap.mmap(fh.fileno(), 0, access=_mmap.ACCESS_READ)
+        except (ValueError, OSError):
+            self.data = d = fh.read()
         self._vp_cache = {}
         self._pe_cache = {}
         self.header = S.parse(path)

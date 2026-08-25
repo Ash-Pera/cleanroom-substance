@@ -74,3 +74,4 @@ new_*/
 
 # macOS
 .DS_Store
+.hashcache.json

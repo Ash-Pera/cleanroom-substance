@@ -33,7 +33,16 @@ failure this module was created to fix, one level up: a statement about the data
 once and not re-measured.
 """
 import hashlib
+import json
 import os
+
+# Two caches, because the sha1 of four gigabytes is not free and every tool and test
+# calls paths() at least once (the full test suite called it about thirty times).
+#   _MEMO           per-process: same listing file, same mtime -> same answer
+#   .hashcache.json persistent: (size, mtime) -> sha1 per path, so a cold process
+#                   hashes only files that changed since the last run
+_MEMO = {}
+_HASHCACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.hashcache.json')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIST = os.path.join(ROOT, 'DISTINCT.txt')
@@ -48,6 +57,17 @@ def paths(listing=None, verbose=False):
     it happen again.
     """
     src = listing or (LIST if os.path.exists(LIST) else LEGACY)
+    try:
+        memo_key = (src, os.stat(src).st_mtime_ns)
+    except OSError:
+        memo_key = None
+    if memo_key in _MEMO:
+        return list(_MEMO[memo_key])
+    try:
+        hc = json.load(open(_HASHCACHE))
+    except Exception:
+        hc = {}
+    hc_dirty = False
     out, seen, dropped = [], set(), 0
     for line in open(src):
         p = line.strip()
@@ -56,8 +76,16 @@ def paths(listing=None, verbose=False):
         if not os.path.isabs(p):
             p = os.path.join(ROOT, p)
         try:
-            with open(p, 'rb') as fh:
-                h = hashlib.sha1(fh.read()).hexdigest()
+            st = os.stat(p)
+            sig = '%d:%d' % (st.st_size, st.st_mtime_ns)
+            ent = hc.get(p)
+            if ent and ent[0] == sig:
+                h = ent[1]
+            else:
+                with open(p, 'rb') as fh:
+                    h = hashlib.sha1(fh.read()).hexdigest()
+                hc[p] = [sig, h]
+                hc_dirty = True
         except OSError:
             continue                      # a path that no longer resolves is not a file
         if h in seen:
@@ -65,6 +93,15 @@ def paths(listing=None, verbose=False):
             continue
         seen.add(h)
         out.append(p)
+    if hc_dirty:
+        try:
+            tmp = _HASHCACHE + '.tmp'
+            json.dump(hc, open(tmp, 'w'))
+            os.replace(tmp, _HASHCACHE)
+        except OSError:
+            pass
+    if memo_key is not None:
+        _MEMO[memo_key] = list(out)
     if verbose:
         print('corpus: %d files from %s%s'
               % (len(out), os.path.relpath(src, ROOT),
