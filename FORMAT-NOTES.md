@@ -32080,3 +32080,34 @@ forks, and the comment in `record_layout` records both victims by name.
 The observed-short column corpus-wide is now single digits per filter. What this pair
 of fixes cost to find was one stale claim of my own ("the fit expresses it now")
 surviving exactly one measurement.
+
+## 0x8114 was a ramp stop, and the surplus records were holding their neighbours' tables
+
+The v2 six-word block resisted decoding because every stop grouping was tried at 4
+bytes first. At SIX bytes per entry — position plus two u16 values, one of gradient's
+three documented entry widths — it parses immediately, ascending positions and all:
+
+    (0x0000, 0,0x8000) (0x8000, 0xffff,0x8000) (0x8114, 0,0x8000) (0xffff, 0xffff,0x8000)
+
+A four-stop ramp: black/white alternating values, stops at 0, 0.5, 0.5042, 1.0. The
+unreadable 0x8114 was never a flag or a count — it is the third stop's POSITION, four
+parts per thousand past centre. The 96-word cousins (60 records) are the same table at
+64 entries.
+
+**And the reason these tables sit in blend and levels records is already in this
+document**: the record directory is a sorted PARTITION, not an allocation, and a
+gradient's table "may lie in a NEIGHBOURING record". Tested at scale: of 259
+ramp-textured surpluses in non-gradient records, **252 overlap a span some gradient or
+dyngradient record declares with its own slot-3/slot-4 pointers.** The surplus was
+never these records' content at all — it is their neighbours' ramp storage, landing
+inside their extents because extents partition the file rather than own it.
+
+The 6-word blocks proper: 60 of 368 overlap declared spans; the rest sit mostly in v2
+files where gradient's table declaration has not been read — the natural account, and
+the named remainder.
+
+Also from this pass: attachment parsing extended to mixed cell kinds (0x1b cells are
+three words — [id][uid][ptr] — and odd-length surpluses are exactly these), taking the
+attachment census from 231 to 240 records, and the last big modern species in the
+"other" bucket is the Onyx-type u16-phase program (count word two bytes in), still
+unclaimed and still named.
