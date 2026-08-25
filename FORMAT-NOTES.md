@@ -31521,3 +31521,36 @@ that valid_program does not accept from the header end, so the header-end walk c
 claim it. Eighteen records, one version, mechanism visible in the dump; parked.
 
     cost model: 19 filters kept, covering 897,422 of 899,004 = 99.82%
+
+## Filter 9 and text, read by hand: both are the standard design
+
+The two smallest unknowns fall to direct reading — no fitting, populations of 5 and 59.
+
+**Filter 9 — "legacy, version 0x20000 only" — is the standard layout, exactly.**
+
+    [tag] [w1] [edge] [edge] [size program] [one baked float per 01-pair of w1]
+
+All five records verify mechanically: predicted header equals observed in 5 of 5, both
+edge slots hold backward indices in 5 of 5, and slot 4's pointer is a valid program in
+5 of 5. Its parameters are one or two Float1s (0.85/0.125, 0.075) and its class words
+(0x319, 0x309) sit in emboss's family — a two-input filter with two scalar parameters
+in v2-only files, which is emboss's exact silhouette. "Filter 9 is the v2 predecessor
+of emboss" is the natural reading, recorded as a hypothesis: the evidence is the
+silhouette, not a containment match.
+
+**Text (filter 17) is standard-shaped with three fixed extras:**
+
+    slot 2   always 0x00000000
+    slot 3   a hash-like uid — the string or font reference — or a small default (0x4)
+    slot 4   small flag-like values (0x18, 0x1c, 0x48, 0xf000004)
+    then     the size program pointer, then baked Float1 parameters per w1
+
+w1 bit 12 is set in every record; the remaining bits behave as ordinary pair codes with
+baked parameters following in order (offsets, spacing, size — the float values are
+position-shaped, -0.25 .. 1.0). The fit's "underdetermined" verdict was key poverty at
+14 keys, not structure: the structure is plainly the walk.
+
+Neither filter warrants a hand-written costs.json entry — five and fifty-nine records,
+both readable on sight when needed — but neither is a mystery any more. The unknown
+list is now: normal's 18 v2 records, fxmaps class 0, vectorshape's boundary, and the
+semantic layer.
