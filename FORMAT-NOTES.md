@@ -33530,3 +33530,50 @@ after writing the earlier one up.
 
 The right test costs two renders instead of zero, which is exactly why both of us reached
 for the cheap one twice.
+
+## The arbiter's dead end is an evidence wall for 85%, and NOT for twelve outputs
+
+A parallel session ran the perturbation test across the reference set and found that of the
+seventeen outputs which render under both frontier assumptions, four move — and all four
+move with **delta exactly 1.0000**. The output does not depend on the assumption, it *is*
+the assumption. Both candidates then score 0.000 against a varying reference, which is an
+absence of signal rather than a comparison. Their conclusion was that the arbiter is
+structurally unusable.
+
+That holds for what was tested, and it is too strong as a general claim. The reasoning
+offered — an assumption strong enough to unblock an output whose content comes from
+elsewhere is one that output does not depend on — is not true in general:
+`blend(bitmap_pixels, uniform_fill)` depends on both and would move with a *partial* delta.
+So the question is empirical. Over the 79 content-bearing unproduced reference outputs:
+
+```
+blocked by a filter we cannot enumerate candidates for   67   (85%)
+blocked ONLY by things we can                            12   (15%)
+```
+
+**85% is an evidence wall, not an apparatus one.** Those outputs need `sharpen`,
+`dyngradient`, `emboss` or `hsl`, and the triage says none of those has a candidate set to
+enumerate — `dyngradient` has zero source files and zero width-1 programs. No harness
+reaches them, and the missing thing is specimens.
+
+The other twelve are reachable in principle:
+
+```
+3 x Chesterfield     bitmap + fxmaps + pixelproc   fxmaps-empty + uniform.fill
+1 x Chesterfield     bitmap + fxmaps               fxmaps-empty + uniform.fill
+3 x StylizedCobble   fxmaps + pixelproc            distance + fxmaps-empty + uniform.fill
+2 x Rusty_Metal      fxmaps                        fxmaps-empty + uniform.fill
+3 x Auras_FX         fxmaps (+pixelproc)           fxmaps-empty + fxmaps slot-15
+```
+
+The four Chesterfield ones were in the tested seventeen and came out flat or non-finite, so
+they are already excluded. **The three `StylizedCobblestoneStreet` outputs were not**, and
+could not have been: they additionally need `distance`, which is not wired into `render.py`
+at all, so no assumption scope could have reached them. They carry `fxmaps` *and*
+`pixelprocessor` content — two real generators — which is the profile least likely to come
+out flat.
+
+So the honest state is narrower than a dead end and narrower than a live lead: **three
+untested outputs, needing one filter wired and two assumptions, in a set where every other
+avenue is closed.** If they come out flat too, the arbiter is finished on evidence rather
+than on argument, and that is worth the cost of finding out.
