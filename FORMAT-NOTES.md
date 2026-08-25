@@ -32191,3 +32191,94 @@ miniature, caught in one turn instead of a session.
 The v2 six-word ramp block is therefore CLOSED end to end: declared by slot 3, counted
 by slot 2, six bytes per stop, 0x8114 a stop position, decoded by the reader the
 project already had.
+
+## An FX-Map renders, and what the renderer's failures measure
+
+`tools/fxrender.py` evaluates an `fxmaps` record and splats its patterns. Structure and
+names come from `Record.fx_node_params()` and `Record.fx_named_params()`; what the renderer
+adds is only WHEN each program runs and what to do with the numbers.
+
+    addnode (0x18B/0x1AB/0x20B)   n = numberadded; walk the rest of the chain n times
+                                  with $number = 0..n-1
+    markov2 (0x89)                walk on only if `switch` is true
+    table                         each entry emits one pattern at the current $number
+
+A node's program is evaluated once per **visit**, not once per record — which is what lets
+a slot the table reads carry a per-iteration value. (The evaluation model and the splatter
+are a parallel session's work, arrived at independently; the naming tables underneath are
+this session's.)
+
+### The names hold up when the programs actually run
+
+Evaluating every named program and looking at the values — the first check on the naming
+that involves executing anything:
+
+| specimen | values |
+|---|---|
+| `Bruno_Caustics` | `opacity` 0.673, `patternsize` (0.341, 0.341), `patternrotation` 0.922, `branchoffset` (0.110, 0.066), `patternsuppl` 0.875, `numberadded` 225 |
+| `ie_curve` | `numberadded` 5…6000, `patternsize` (0.01, 0.01), `frameoffset` (0.240, 0.310), `opacity` 0.4, `randomseed` 0, `imageindex` 0 |
+
+Every one lands in the range its name implies: opacity in [0,1], rotation as a fraction of
+a turn, sizes and offsets as small 2-vectors, `numberadded` an integer count. Nothing here
+was used to derive the names.
+
+### One FX-Map renders correctly, end to end
+
+`Stadsspel__Lines` record 0 — one `0x18B` node over one entry, tag `0x15040048`, bits
+24/26/28. The three programs evaluate to a per-iteration y step, a size of (1.414, 0.036)
+— 1.414 being the unit square's **diagonal** — and 0.125 turns. Ten bars, 45 degrees,
+spaced 1/10, and the render is ten diagonal lines, seamless and tileable. The file is named
+`Lines`; nothing in the decode used its name, and all three numbers have to be right
+simultaneously for that picture to appear.
+
+### Corpus-wide it does not, and the cause is measurable
+
+Over 1,521 records that emit patterns at all, **96% render flat**:
+
+```
+patternsize, median   2.82   in records that render flat
+                      0.50   in records that render a picture
+```
+
+A pattern 2.8 unit squares wide paints everything one colour. So the coordinate space
+`patternsize` is expressed in is the open question, and it sits upstream of every other
+assumption in the renderer.
+
+### Two negative results
+
+**It is not the pattern-shape assumption.** The splatter draws filled rectangles because
+`patterntype` is declared and unlocated. Swapping in a falloff profile takes "renders a
+picture" from 4.1% to 97.3% — and means nothing. A profile with falloff **cannot** produce
+a flat image, so the metric is defeated rather than passed; looked at, those renders are
+one soft blob per tile. A better shape does not rescue a size that is too large, it only
+stops the failure showing up in the flatness number. Worth stating because "80% are flat"
+has been this project's coverage metric for a while: it cannot score a shape hypothesis.
+
+**The frame is not 1/√n.** If n patterns tiled a grid, `patternsize / √n` would concentrate
+near 1. It does not — the fraction landing in [0.2, 2] moves 55.0% → 60.4% while the spread
+widens at both ends (p10 0.374 → 0.060). Whatever sets the scale, it is not the count.
+
+The positions say the same from the other side: the x-extent of `branchoffset + frameoffset`
+across one record's patterns has median 0.835 — about a unit square, as expected — but a
+p90 of **7.8**. Some records place patterns far outside the unit square, which a frame
+model would explain and this renderer does not have.
+
+### The baked-parameter question, left open
+
+A parallel session reads bits 21/23/25/27/29 as the **baked** forms of the parameters
+22/24/26/28/30 name, on mutual exclusivity (100.00% for all six odd-even pairs against a
+78–99% control) and value shape. Reading those slots through `fx_entry_layout` reproduces
+their distributions in a differently-built entry population — bit 27 is quarter-turn
+multiples (n=1,812) sitting immediately before `patternrotation`, bit 25 never negative —
+and the widths fitted here before that hypothesis existed (19→1, 25→2, 27→1, 29→1) are
+exactly the declared types of each proposed partner.
+
+It is **not** in conflict with `FX_INLINE_BITS`, which was the worry: that rule appends its
+row after the whole parameter block, never at an odd bit's slot, and over 109,366 entries
+the two never share a slot. Both can hold.
+
+What stops the naming being adopted is containment, the standard the program names met.
+`Simulator__Grid` declares a baked `patternsize` of (0.975, 0.975) and it is found at slot
++2 of tag `0x00020008`, whose only parameter bit is **bit 17** — and bit 17 must be one word
+wide, since width 2 breaks 23 of the 57 census tags outright. Two hits is too thin to name
+anything against that. The bits stay `None`.

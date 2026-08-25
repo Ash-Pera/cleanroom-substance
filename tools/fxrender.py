@@ -1,0 +1,365 @@
+#!/usr/bin/env python3
+"""Render an fxmaps record, built on sbsasm's own FX naming tables.
+
+Structure and NAMES come from the repository: `Record.fx_node_params()` names the chain's
+programs (`numberadded`, `switch`, `randomseed`) and `Record.fx_named_params()` names the
+table's (`opacity`, `branchoffset`, `frameoffset`, `patternsize`, `patternrotation`,
+`patternsuppl`, `imageindex`), both derived by source containment with controls.
+
+What is added here is only what those tables do not cover: WHEN each program runs, and
+what to do with the numbers once you have them.
+
+    addnode   n = numberadded; walk the rest of the chain n times, $number = 0..n-1
+    markov2   walk on only if `switch` is true
+    table     each entry emits one pattern at the current $number
+
+A node's program is evaluated once per VISIT, not once per record -- that is what lets a
+slot the table reads carry a per-iteration value.
+
+Assumptions, none of them from the format: pattern shape is a filled RECTANGLE
+(`patterntype` is declared and unlocated); overlaps combine with `max`; patterns tile into
+neighbouring cells; the gate passes on true.
+
+WHAT THIS PRODUCES, and where it stops. `Stadsspel__Lines` record 0 renders correctly end
+to end: one `0x18B` node over one entry, whose three programs evaluate to a per-iteration
+y step, a size of (1.414, 0.036) -- 1.414 being the unit square's diagonal -- and 0.125
+turns. Ten bars, 45 degrees, spaced 1/10: the file is named `Lines` and nothing in the
+decode used its name. Three numbers that all have to be right at once.
+
+Corpus-wide it does not. Over 1,521 records that emit patterns at all, 96% render FLAT,
+and the cause is measurable rather than mysterious:
+
+    patternsize, median   2.82  in records that render flat
+                          0.50  in records that render a picture
+
+A pattern 2.8 unit squares wide paints everything one colour. So the coordinate space
+`patternsize` is expressed in is the open question, and it is upstream of everything else
+here.
+
+TWO NEGATIVE RESULTS, recorded so they are not re-run.
+
+1. IT IS NOT THE SHAPE ASSUMPTION. Swapping the filled rectangle for a falloff profile
+   takes "renders a picture" from 4.1% to 97.3% -- and means nothing, because a profile
+   with falloff cannot produce a flat image by construction, so the metric is defeated
+   rather than passed. Looked at, those renders are one soft blob per tile. A better
+   shape does not rescue a size that is too large; it only stops the failure from being
+   visible in the flatness number. This is why the flatness metric alone must not be used
+   to score a pattern-shape hypothesis.
+
+2. THE FRAME IS NOT 1/sqrt(n). If n patterns tiled a grid, `patternsize / sqrt(n)` would
+   concentrate near 1. It does not: the fraction landing in [0.2, 2] moves 55.0% -> 60.4%
+   while the spread widens at both ends (p10 0.374 -> 0.060). Whatever sets the scale, it
+   is not the pattern count.
+
+The positions say the same thing from the other side: the x-extent of
+`branchoffset + frameoffset` across one record's patterns has median 0.835 -- about a unit
+square, as expected -- but a p90 of 7.8. Some records place patterns far outside the unit
+square, which a frame model would explain and this renderer does not have.
+"""
+import argparse
+import os
+import struct
+import sys
+
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sbsruntime, transpile                                          # noqa: E402
+from sbsasm import Assembly, FX_NODES                                 # noqa: E402
+
+ADDNODE = frozenset({0x18B, 0x1AB, 0x20B})
+GATE = 0x89
+MAX_PATTERNS = 40000
+
+
+class Unmodelled(Exception):
+    pass
+
+
+class Perm(dict):
+    def __missing__(self, key):
+        return 0.5
+
+
+def make_runner(asm, rec):
+    cache = {}
+
+    def run(ptr, slots, number):
+        end = asm.program_span(ptr, asm.body_hi)
+        if end is None:
+            raise Unmodelled("program at %d has no span" % ptr)
+        key = (ptr, end)
+        if key not in cache:
+            src = transpile.transpile(asm.data, ptr, end, "python", "prog")
+            scope = {}
+            exec(compile(src, "<fx>", "exec"), scope)
+            cache[key] = scope["prog"]
+        sbsruntime.set_context(width=rec.width, height=rec.height, number=float(number))
+        inputs = Perm()
+        for _t, uid, val in asm.header.get('inputs') or []:
+            if val:
+                inputs[uid] = np.array(val, dtype=np.float32).reshape(1, -1)
+        with np.errstate(all="ignore"):
+            try:
+                out = scope_call(cache[key], inputs, slots)
+            except KeyError as e:
+                raise Unmodelled("slot %s read but never set" % e) from e
+        return np.asarray(out).ravel()
+
+    return run
+
+
+def scope_call(fn, inputs, slots):
+    return fn(inputs=inputs, slots=slots)
+
+
+def chain(rec):
+    """[(offset, header, {name: program})] in chain order."""
+    nodes, order = {}, []
+    for off, hdr, name, prog in rec.fx_node_params():
+        if off not in nodes:
+            nodes[off] = (hdr, {})
+            order.append(off)
+        nodes[off][1][name] = prog
+    return [(off, nodes[off][0], nodes[off][1]) for off in order]
+
+
+def entries(rec, baked_pairs=True):
+    """[(offset, tag, {name: (kind, value)})] in table order.
+
+    `baked_pairs` additionally reads each UNNAMED baked (odd) bit as the baked form of
+    the parameter the next even bit names -- the reading argued for in
+    FX-RENDER-HANDOFF.md section 3, and NOT what sbsasm's FX_PARAM_BITS says (it leaves
+    those bits None). It is a flag precisely so the two readings can be compared: with it
+    off, an entry that bakes its patternsize falls back to a full-cell default and paints
+    the whole canvas.
+    """
+    tbl, order = {}, []
+    for off, tag, _sl, name, kind, value in rec.fx_named_params():
+        if off not in tbl:
+            tbl[off] = (tag, {})
+            order.append(off)
+        if name:
+            tbl[off][1][name] = (kind, value)
+    if baked_pairs:
+        for off in order:
+            tag = tbl[off][0]
+            for bit, sl, width in baked_slots(tag):
+                partner = PARTNER.get(bit)
+                if partner is None or partner in tbl[off][1]:
+                    continue
+                raw = rec.asm.data[off + 4 * sl:off + 4 * sl + 4 * width]
+                if len(raw) == 4 * width:
+                    tbl[off][1][partner] = ('baked', np.frombuffer(raw, dtype='<f4'))
+    return [(off, tbl[off][0], tbl[off][1]) for off in order]
+
+
+def baked_slots(tag):
+    """[(bit, slot, width)] for the tag's BAKED parameter bits.
+
+    Mirrors sbsasm.fx_entry_layout's walk exactly -- same table, same order -- but keeps
+    the bit index, which that function does not return.
+    """
+    from sbsasm import FX_PARAM_BITS, FX_PROGRAM_BITS
+    out, sl = [], 1
+    for bit, _name, width in FX_PARAM_BITS:
+        if not (tag >> bit) & 1:
+            continue
+        if bit in FX_PROGRAM_BITS:
+            sl += 1
+        else:
+            out.append((bit, sl + 1, width))
+            sl += width
+    return out
+
+
+def _partners():
+    from sbsasm import FX_PARAM_BITS, FX_PROGRAM_BITS
+    names = {b: n for b, n, _w in FX_PARAM_BITS}
+    return {b: names.get(b + 1) for b, _n, _w in FX_PARAM_BITS
+            if b not in FX_PROGRAM_BITS and (b + 1) in FX_PROGRAM_BITS}
+
+
+PARTNER = _partners()
+
+
+def emissions(rec, run, gate_polarity=True, baked_pairs=True):
+    nodes = chain(rec)
+    table = entries(rec, baked_pairs)
+    if not table:
+        raise Unmodelled("no readable table entries")
+    for _off, hdr, _p in nodes:
+        if hdr not in ADDNODE and hdr != GATE:
+            raise Unmodelled("node header %#x is not modelled" % hdr)
+
+    slots = {}
+    out = []
+
+    # THE RECORD'S OWN PROGRAMS SEED THE FRAME. This session's "slot frame is per-RECORD"
+    # finding counts as writers the node chain AND the record's own programs -- 99.892%
+    # of entry slot reads resolve against an 11.8% control. Running only the chain left
+    # 58.9% of records failing on `slot N read but never set`, because the record's own
+    # programs are where the constants live. Evaluated once, N=1, in address order, into
+    # the same dict -- exactly what render.py already does for a pixelprocessor's
+    # non-final programs.
+    fx_progs = {p for _o, _h, ps in nodes for p in ps.values() if p}
+    for _o, _t, params in table:
+        for _k, (kind, value) in params.items():
+            if kind != 'baked' and value:
+                fx_progs.add(value)
+    for prog in sorted(set(rec.programs) - fx_progs):
+        try:
+            run(prog, slots, 0)
+        except Exception:
+            pass          # a record program that cannot run is not fatal to the walk
+
+    def walk(i, number):
+        if len(out) > MAX_PATTERNS:
+            raise Unmodelled("more than %d patterns" % MAX_PATTERNS)
+        if i == len(nodes):
+            for _o, _t, params in table:
+                got = {}
+                for name, (kind, value) in params.items():
+                    if value is None:
+                        continue
+                    if kind != 'baked':
+                        got[name] = run(value, slots, number)
+                    elif isinstance(value, np.ndarray):
+                        got[name] = value          # already decoded by `baked_slots`
+                    else:
+                        # fx_named_params hands a baked parameter back as its RAW SLOT
+                        # WORD, not as a number -- see its docstring.
+                        got[name] = np.frombuffer(struct.pack('<I', int(value)),
+                                                  dtype='<f4')
+                out.append(got)
+            return
+        _off, hdr, progs = nodes[i]
+        if hdr in ADDNODE:
+            prog = progs.get('numberadded')
+            if prog is None:
+                raise Unmodelled("addnode with no numberadded program")
+            if 'randomseed' in progs and progs['randomseed'] is not None:
+                run(progs['randomseed'], slots, number)
+            n = int(round(float(run(prog, slots, number)[0])))
+            if not 0 <= n <= MAX_PATTERNS:
+                raise Unmodelled("numberadded = %d" % n)
+            for k in range(n):
+                walk(i + 1, k)
+        else:
+            prog = progs.get('switch')
+            if prog is None:
+                raise Unmodelled("markov2 with no switch program")
+            if bool(run(prog, slots, number)[0]) == gate_polarity:
+                walk(i + 1, number)
+
+    walk(0, 0)
+    return out
+
+
+def profile_value(lx, ly, profile):
+    """Pattern coverage at local coordinates, |lx|,|ly| <= 0.5 inside the footprint.
+
+    `patterntype` is a declared `fxmaps` parameter that neither this session nor the
+    naming work has located, so the SHAPE inside the footprint is unknown. Two profiles
+    are offered so the choice is visible rather than buried:
+
+      'rect'  a solid fill -- what the size parameter means before any shape is applied.
+      'bell'  a smooth radial falloff, `max(0, 1 - r^2)`.
+
+    This is an EXPERIMENT, not a claim. It matters because 2,348 of 2,508 flat renders
+    come out solid white under 'rect': a small number of full-cell patterns tiled over
+    the canvas. An FX-Map that outputs solid white is not a pattern generator, and this
+    project's own note (9a4b14d) names fxmaps as *the* thing that makes spatial
+    variation -- so a solid full-cell default is functionally implausible even though
+    nothing in the bytes rules it out yet.
+    """
+    inside = (np.abs(lx) <= 0.5) & (np.abs(ly) <= 0.5)
+    if profile == 'rect':
+        return inside.astype(np.float32)
+    r2 = (2.0 * lx) ** 2 + (2.0 * ly) ** 2
+    return (np.clip(1.0 - r2, 0.0, 1.0) * inside).astype(np.float32)
+
+
+def splat(rec, patterns, W=None, H=None, profile='rect'):
+    W = W or rec.width
+    H = H or rec.height
+    nchan = 4 if rec.colour else 1
+    canvas = np.zeros((H * W, nchan), dtype=np.float32)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    px = (xx.ravel() + 0.5) / W - 0.5
+    py = (yy.ravel() + 0.5) / H - 0.5
+
+    for p in patterns:
+        def val(name, default):
+            v = p.get(name)
+            return np.asarray(default, dtype=np.float32) if v is None \
+                else np.asarray(v, dtype=np.float32).ravel()
+        base = val('branchoffset', [0.0, 0.0])
+        off = val('frameoffset', [0.0, 0.0])
+        size = val('patternsize', [1.0, 1.0])
+        rot = float(val('patternrotation', [0.0])[0])
+        col = val('opacity', [1.0])
+        if size.size < 2:
+            size = np.repeat(size[:1], 2)
+        if base.size < 2:
+            base = np.repeat(base[:1], 2)
+        if off.size < 2:
+            off = np.repeat(off[:1], 2)
+        sx, sy = float(size[0]), float(size[1])
+        cx, cy = float(base[0] + off[0]), float(base[1] + off[1])
+        if not all(np.isfinite([sx, sy, cx, cy])) or sx <= 0 or sy <= 0:
+            continue
+        if max(sx, sy) > 64.0:
+            continue          # a pattern 64 cells across is a misread, not a pattern
+        if col.size < nchan:
+            col = np.repeat(col[:1], nchan)
+        col = np.clip(col[:nchan], 0.0, 1.0)
+
+        th = 2.0 * np.pi * rot
+        ct, st = np.cos(th), np.sin(th)
+        reach = int(min(3, np.ceil(max(sx, sy))))
+        for ty in range(-reach, reach + 1):
+            for tx in range(-reach, reach + 1):
+                dx = px - (cx + tx)
+                dy = py - (cy + ty)
+                lx = (dx * ct + dy * st) / sx
+                ly = (-dx * st + dy * ct) / sy
+                cov = profile_value(lx, ly, profile)
+                hit = cov > 0
+                if hit.any():
+                    canvas[hit] = np.maximum(canvas[hit], col * cov[hit, None])
+    return np.clip(canvas, 0, 1).reshape(H, W, nchan)
+
+
+def render_record(path, idx, size=256):
+    asm = Assembly(path)
+    rec = asm.records[idx]
+    if rec.filter_id != 4:
+        raise Unmodelled("record %d is %s, not fxmaps" % (idx, rec.filter_name))
+    pats = emissions(rec, make_runner(asm, rec))
+    if not pats:
+        raise Unmodelled("emitted no patterns")
+    return splat(rec, pats, size, size), pats
+
+
+def save(img, out):
+    from PIL import Image
+    a = (np.clip(img, 0, 1) * 255).astype(np.uint8)
+    if a.shape[2] == 1:
+        Image.fromarray(a[:, :, 0], 'L').save(out)
+    else:
+        Image.fromarray(a[:, :, :3], 'RGB').save(out)
+
+
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser()
+    ap.add_argument('path')
+    ap.add_argument('record', type=int)
+    ap.add_argument('-o', '--out', default='/tmp/fx.png')
+    ap.add_argument('-s', '--size', type=int, default=256)
+    a = ap.parse_args()
+    img, pats = render_record(a.path, a.record, a.size)
+    print('%d patterns   min %.3f max %.3f mean %.3f'
+          % (len(pats), img.min(), img.max(), img.mean()))
+    save(img, a.out)
+    print('wrote', a.out)
