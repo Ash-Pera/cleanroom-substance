@@ -33145,3 +33145,36 @@ before it can serve as a control.** Where it is scattered, the comparison measur
 it will disagree with any candidate, including a correct one. Check the reference
 distribution's own concentration first; a control that would reject the truth is not a
 control.
+
+## Four of the five "leading baked words" are not parameters at all
+
+`FX_PARAM_BITS` listed bits 4, 7, 16, 17 and 19 together as leading baked words, and
+`fx_entry_layout` emitted a `(slot, None, 'baked')` row for each. Reading what those slots
+actually hold splits them in two, over 120 files:
+
+```
+bit  4     613   denormal (pointer-shaped) 85.6%   a plausible float 12.9%
+bit  7     304   denormal 95.7%                    points at a program 4.3%
+bit 16     170   denormal 85.3%
+bit 17  16,179   denormal 99.5%
+bit 19     477   A PLAUSIBLE FLOAT 53.7%   zero 42.6%   denormal only 3.8%
+```
+
+A denormal is what a **pointer** looks like read as float32 — the trap this document has now
+recorded four times. So bits 4, 7, 16 and 17 are header or pointer words. They occupy space,
+which is why their widths are still needed to place the program slots that follow, but
+calling them baked parameters was wrong. Bit 19 is the exception and stays, which is
+consistent with it being `opacity`'s baked form in the pair table.
+
+**The concrete damage.** `0x00020008` is the corpus's commonest tag, its only parameter bit
+is 17, and the emitted row landed at slot 2 of an entry that is **eight bytes** long —
+`[tag][self-pointer]`, with nowhere to put a parameter. A parallel session counted 3,983
+entries whose stated length is too short for the bits the layout claims and **3,960 of them
+are that one tag**. The `FX_ENTRY` clip added earlier suppressed the symptom; `FX_STRUCTURAL_BITS`
+removes the cause. Program-slot positions are unaffected — they depend only on the widths —
+and census agreement holds at 55/57 with all 15 FX tests green.
+
+Worth noting how this was found: not by looking at the layout, but by a parallel session
+asking whether each tag's stated LENGTH could accommodate the bits the layout claimed. Two
+independent descriptions of the same entry disagreeing is a check neither of us had run, and
+it is available wherever a format states a size and a structure separately.

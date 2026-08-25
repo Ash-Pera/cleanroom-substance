@@ -926,6 +926,32 @@ FX_PARAM_BITS = (
 # The odd bit of each pair carries the same parameter as a value; see FX_PARAM_BITS.
 FX_PROGRAM_BITS = frozenset({20, 22, 24, 26, 28, 30, 31})
 
+# STRUCTURAL bits: they consume a slot but that slot is NOT a parameter.
+#
+# `FX_PARAM_BITS` listed bits 4, 7, 16, 17 and 19 together as "leading baked words", and
+# `fx_entry_layout` emitted a `(slot, None, 'baked')` row for each. Reading what those slots
+# actually hold, over 120 files, splits them cleanly in two:
+#
+#     bit  4     613   denormal (pointer-shaped) 85.6%   a plausible float 12.9%
+#     bit  7     304   denormal 95.7%                    points at a program 4.3%
+#     bit 16     170   denormal 85.3%
+#     bit 17  16,179   denormal 99.5%
+#     bit 19     477   A PLAUSIBLE FLOAT 53.7%   zero 42.6%   denormal only 3.8%
+#
+# A denormal is what a POINTER looks like read as float32 -- the trap this document records
+# three times. So 4, 7, 16 and 17 are header or pointer words: they occupy space, which is
+# why their widths are needed to place the program slots that follow, but calling them
+# baked parameters was wrong. Bit 19 is the exception and stays a parameter, which is
+# consistent with it being `opacity`'s baked form in the pair table above.
+#
+# The concrete damage this did: `0x00020008` is the corpus's commonest tag, its only
+# parameter bit is 17, and the emitted row landed at slot 2 of an entry that is eight bytes
+# long -- `[tag][self-pointer]`, with nowhere to put a parameter. A parallel session counted
+# 3,983 entries whose stated length is too short for the bits the layout claims, and 3,960
+# of them are that tag. The `FX_ENTRY` clip added earlier hid the symptom; this removes the
+# cause. Program-slot positions are unaffected, because those depend only on the widths.
+FX_STRUCTURAL_BITS = frozenset({4, 7, 16, 17})
+
 # PARAMETERS A TABLE ENTRY NEVER STORES, however the source declares them.
 #
 # `patterntype` decides the pattern's SHAPE and `blendingmode` decides how it combines, so
@@ -1035,6 +1061,8 @@ def fx_entry_layout(tag):
         if bit in FX_PROGRAM_BITS:
             sl += 1
             out.append((sl, name, 'program'))
+        elif bit in FX_STRUCTURAL_BITS:
+            sl += width                      # occupies space, is not a parameter
         else:
             out.append((sl + 1, name, 'baked'))
             sl += width
