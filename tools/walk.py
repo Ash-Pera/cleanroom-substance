@@ -135,9 +135,12 @@ _CLS = {0: 1, 7: 1, 10: 2, 11: 1, 13: 1}
 
 SPECS = {
     1:  Spec(base=2, cls_widths=_CLS,          # blend
-             w1_fields=[(0x30, 4, 'scalar')]),  # opacitymult (Float1); blend's bit-8/9
-                                                 # field is not yet modelled -- see the
-                                                 # 0.42% residual, all opacity-state-11
+             w1_fields=[(0x30, 4, 'scalar'),    # opacitymult (Float1)
+                        (0x600, 9, 'scalar')]),  # a second Float1 parameter: a two-bit code
+                                                 # at bits (9,10) -- 01 baked, 10 program --
+                                                 # with bit 8 as its always-on present flag.
+                                                 # NOT a size nibble: the baked slot is a
+                                                 # float in [0,1], not a magnitude count.
     15: Spec(base=1, cls_widths=_CLS,          # levels
              w1_fields=[(0x003, 0, 'channel'), (0x00c, 2, 'channel'),
                         (0x030, 4, 'channel'), (0x0c0, 6, 'channel'),

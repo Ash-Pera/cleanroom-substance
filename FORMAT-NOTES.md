@@ -34459,21 +34459,29 @@ which. Grayscale `levels` matched 34,738 of 34,738 before the fix; feeding the f
 from the colour bit -- the component count, exactly as the manifest types it -- takes the
 whole filter to 100.00%. The residual was one legend entry, and the file states it.
 
-### `blend`'s 0.42% is a missing field, and the loud check proved the discipline
+### `blend`'s 0.42% was a second parameter field, now read -- and the loud check found it
 
-`blend`'s remaining 522 records are all one shape: `opacitymult` in state 11 (an image
-mask) on a record that also carries `blend`'s bit-8/9 field, which the minimal one-field
-spec does not model. This is a missing FIELD in the spec, not a statistical fog -- the walk
-is one word short because it does not yet know that field is there.
+`blend`'s residual 522 records were all one shape: `opacitymult` in state 11 (an image
+mask) on a record carrying a further field the minimal one-field spec did not model. This
+was a missing FIELD, not a statistical fog -- the walk was one word short because it did not
+yet know the field was there.
 
-The instructive part is what happened when the field was added with a guessed width. If the
-guess is wrong, a fitted cost model absorbs it silently and reports a slightly lower
-percentage. The walk did the opposite: modelling bit-8/9 as a plain baked scalar produced
-**9,080 overruns and 442 edge slots that were not backward record indices**, immediately,
-because a wrong width pushes every following object off its boundary. The wrong answer was
-un-shippable by construction. That is the whole argument for the method: a table cannot be
-wrong loudly, and a mask-walk cannot be wrong quietly. The field is left unmodelled and the
-0.42% stands, honestly, until its width is read rather than guessed.
+The instructive part is how the field was found and mis-found. A first guess modelled it as
+the bit-8/9 pair, a plain baked scalar: the walk answered with **9,080 overruns and 442 edge
+slots that were not backward record indices**, immediately, because a wrong width pushes
+every following object off its boundary. A fitted cost model would have absorbed that
+silently and reported a slightly lower percentage; the walk could not, and the loud failure
+said the guess was wrong rather than merely worse.
+
+The right reading followed from measuring the bits directly. Bit 8 is set in 90,581 records
+and charges no slot -- a present-flag, not a parameter. The field is a two-bit code at bits
+(9, 10): state 01 (bit 9, 442 records) is a baked Float1, state 10 (bit 10, 80 records) is a
+program, mutually exclusive, and 442 + 80 = 522 is exactly the bit-8 present count. A
+suspicion that the nibble was a size (like `fxmaps`' `patternsize`) is refuted by the slot
+itself: the baked value is a float in [0, 1] -- 0.5, 0.25, 0.1 -- a blend parameter, not a
+magnitude. Reading it as one more two-bit field, in the same 01-baked/10-program vocabulary
+as every other, takes `blend` to **100.00%** header, zero overruns. The residue was one
+field, and the file states its kind the same way it states all the others.
 
 ### `transformation`: the multi-word parameters that never fitted a one-slot model
 
