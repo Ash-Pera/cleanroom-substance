@@ -34271,3 +34271,72 @@ measured by its capacity, and this format offers two.
 filter, which is corroboration rather than residue. What remains open is narrow and named:
 one `ie_particles` record whose edge count exceeds its own formula by 3, and the 24 type-5
 inputs whose stored value the manifest declares no default for.
+
+## Correcting the bank reading: the slots CAN be empty, and my probe could not read a zero
+
+`ie_particles` record 22 was left above as "one record whose edge count exceeds its own
+formula by 3". Read directly, the record is fine and the probe was not.
+
+```
+record 22   w0=0x03b98809  w1=0x07001   f7=1 arity=12 f0=1
+   header observed 37, rule says 37
+   [ 0..2]  tag, w1, tree root
+   [ 3..28] 26 edges, all to bitmap/graph_input records
+   [29][30] 00000000  00000000
+   [31][32] program pointers
+   [33..35] 00000000  00000000  00000000
+   [36]     3f800000   = 1.0f, the baked f0 scalar
+   [37]     0000018b   <- node tag: the header ends here
+```
+
+3 + 26 + 2 + 2 + 3 + 1 = 37, and the node region starts exactly there. **The rule predicts
+the header of every one of the eleven bank records exactly, 11 of 11.** There was never a
+gap in the format model.
+
+What went wrong was the probe. It counted a slot as an edge when `0 <= value < record
+index`, and five of these slots hold **0** — which is indistinguishable by value from an
+edge to record 0. In `ie_particles`, record 0 genuinely *is* a `bitmap/graph_input`, so
+nothing about the value settles it. This is the same zero-versus-edge ambiguity already
+recorded here for `warp`, where an edge-start detector could not tell `w1 == 0` from an
+edge to record 0 and misread 180 records.
+
+### And it falsifies something I wrote one section earlier
+
+That section said the bank slots are "all distinct, no padding, no unused entries — which
+already rules out a bank of 16 fixed slots partly filled." A census of every bank record
+says otherwise:
+
+```
+file                 rec    f7  arity   hdr  rule  zeros  repeats  distinct
+ie_curve             35      2      2    40    40      1        0        34
+ie_curve             57      1      3    25    25      0        0        20
+ie_curve             79 .. 233                  ...    0        0     16..21
+ie_particles         21      1     10    32    32      0        7        20
+ie_particles         22      1     12    37    37      5        8        18
+```
+
+`ie_curve`'s nine records have no zeros and no repeats; `ie_particles`' two have both — 7
+repeated entries in one, 5 zeros and 8 repeats in the other. **A partly-filled fixed bank
+is exactly what those two are**, and I ruled that out on a sample of four records that all
+came from the same file. The claim was true of `ie_curve` and stated as if it were true of
+the format.
+
+The correction makes the bank reading *stronger*, not weaker: a fixed allocation whose
+entries may be empty or may repeat is what "bank" should have meant all along, and a tight
+contiguous list is the special case where a graph happens to fill it.
+
+### What survives, and at what confidence
+
+The capacity ladder holds on **total slots** — counting zeros and repeats, which is the
+right measure for an allocation:
+
+```
+f7 = 1   16, 18, 19, 19, 19, 20, 21, 27, 31    max 31
+f7 = 2   33, 35                                min 33
+```
+
+But it should be stated more carefully than I stated it. By **distinct** inputs the two
+groups are 16..21 and 33..34, leaving 22 through 32 entirely unobserved. So the boundary is
+*consistent with* 16 + a 4-bit overflow topping out at 31; it is not *demonstrated* at 31,
+because no record in the corpus needs a total between 22 and 32. Eleven records is not
+enough to prove where a threshold sits — only enough to show that no record contradicts it.
