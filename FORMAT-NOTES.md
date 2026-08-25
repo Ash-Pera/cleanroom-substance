@@ -32515,3 +32515,47 @@ that remains is the one the structure cannot supply: **render the graph under ea
 mode and fit against a reference image.** The corpus carries reference PNGs, and a blend mode
 is precisely the kind of parameter that is easier to recognise in an output than in a field.
 That is blocked on the renderer, not on the format.
+
+## The absent `patternsize` is not a default — most of those entries are not draws
+
+A parallel session found that 1,086 records emit patterns while carrying no `patternsize`,
+refuted the `(1,1)` default outright — 1,085 of 1,086 render flat, one distinct image
+between them — and asked whether the source records a default. Two source-side answers, and
+a third number that reframes the question.
+
+**The source records no default.** `<defaultValue>` occurs 1,292 times across the eight
+permitted FX sources and **zero** of them are inside a `paramsGraphData`. An FX-Map
+parameter's default is the engine's and the format does not state it, so the value cannot be
+recovered from a `.sbs` at all.
+
+**A paramset with no parameters at all is a real thing in the source language.**
+`Clouds_3_Animated` has six paramsets and four of them declare nothing whatsoever. That
+answers, from the source side, whether a "pure setter" exists: a paramset that sets nothing
+is something Designer emits.
+
+**But every paramset that sets anything sets `patternsize` — 66 of 66.** Not one
+parameter-carrying paramset in the permitted corpus omits it. So a compiled entry that
+carries parameters *without* `patternsize` does not correspond to a paramset that took a
+default; it is a different construct.
+
+The compiled side agrees, and the shape of the disagreement is the finding. Over 50,175
+entries naming at least one parameter:
+
+```
+carry patternsize                12,596   25.1%
+parameters but NO patternsize    37,579   74.9%
+   of which, naming branchoffset and nothing else   29,399
+   naming opacity and nothing else                   2,281
+   naming frameoffset and nothing else                   1
+```
+
+**An entry naming `branchoffset` alone is the single commonest parameter-carrying entry in
+the corpus** — 58.6% of them. That is exactly the parallel session's "setter": something
+that moves the frame and draws nothing. Choosing a `patternsize` default for those entries
+is answering the wrong question; they should not be drawing at all.
+
+It is also the strongest evidence yet for the weakest name in `FX_PARAM_BITS`. Bit 22 was
+bound by one specimen and flagged as the least-evidenced, most load-bearing name in the
+table. A *branch* offset is precisely the thing that would appear alone on a node that
+repositions a subtree; a *frame* offset is not, and `frameoffset` alone occurs exactly
+once against `branchoffset`'s 29,399. The asymmetry is what the names predict.
