@@ -32005,3 +32005,32 @@ FX programs the walk finds                    171,135
     entry: layout and census disagree           ~6,000
     node: 0x1CB, 0x99, the 0x0B/0x1B families    6,765
 ```
+
+## The wrong column, decomposed to the last record
+
+The header rule's misses, classified one mechanism at a time over every record with an
+observable boundary:
+
+    records with a boundary        900,859
+       exact                       897,573   99.635%
+       silent (guarded/unfitted)     1,887    0.210%   fxmaps class 0, text, fid 9,
+                                                       vectorshape, v2 emboss
+       v2 six-word block               370    0.041%   the 0x8114 structure
+       ATTACHMENT CELLS                231    0.026%   see below
+       observed short of rule          159    0.018%
+       other surplus                   639    0.071%
+
+**The attachment-cell records are not model misses, and never can be.** Their surplus
+parses entirely as embedded [id|kind][pointer] cells — 501 chain cells and 30 node
+wrappers across 231 records, the levels-appendix mechanism now measured across every
+filter. An attachment is a PER-RECORD binding: two records with identical (word0, w1)
+masks differ in whether a parameter is dynamically bound. The masks cannot predict what
+they do not encode, so these records are the rule working correctly on a record that
+carries more than its masks declare. The right long-term treatment is to PARSE the
+attachments (the cells name their kinds), not to predict them.
+
+That reframes the ledger: of 900,859 records, the layout is now exactly understood for
+99.635%, mechanically attributed for another 0.067% (block + attachments), leaving 798
+records — 0.089% — where something surplus or short remains genuinely unclassified,
+plus the 1,887 deliberately guarded. The unknown has a census, and the census has no
+anonymous rows.
