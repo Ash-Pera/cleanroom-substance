@@ -31184,3 +31184,69 @@ One record better, nothing worse. The independent evidence behind `SplitFrame` �
 FULLY graph-wide frame regressed 87 outputs via `dirmotionblur` inheriting a stale 0 — is
 not contradicted by any of this; it points the same way this does, away from sharing. The
 change is left to whoever owns that file rather than made here.
+
+## The same audit, applied to the filter tests: 3 of 7
+
+Having found that `test_fx.py` could not fail, the obvious next question is whether the
+filter tests can. Seven mutations to `render.py`'s arithmetic, run against
+`test_filters.py`:
+
+    mutation                                 first version
+    curve: swap the in/out handles           CAUGHT
+    curve: drop the spline, return input     CAUGHT
+    curve: reverse the knot loop             missed
+    gradient: index the ramp with 1 - t      missed
+    gradient: stop positions used as values  CAUGHT
+    dirmotionblur: TAPS = 1, no blur at all  missed
+    dirmotionblur: kernel 10x too long       missed
+
+Three of seven. `curve` was well covered, because it had an independent evaluation — the
+test solves the Bezier by bisection instead of tabulating it. The other two filters had
+nothing of the kind.
+
+### Two causes, both already on the record here
+
+**Bounds checks are nearly powerless.** `gradient` was guarded by "output lies inside the
+ramp's value range" and `dirmotionblur` by "output lies inside [0, 1]". Indexing the ramp
+with `1 - t` keeps every value inside the table. Lengthening a blur kernel tenfold keeps
+every value inside [0, 1]. Both mutations are invisible to a bound, and a bound is the
+easiest test to write, which is presumably why they were what got written.
+
+**A skip hid a broken decoder.** `TAPS = 1` makes `(k / (TAPS - 1.0))` divide by zero, so
+every render raises, so no specimen produces a row, so the test printed *"no specimen"* and
+returned a pass. That is the identical failure `test_fx.py` had when `FX_ENTRY` was
+emptied, in a different file, found the same day. A skip is a claim that the corpus is
+absent, and it must not be reachable when the corpus is present and the model is broken.
+
+### What replaced them
+
+`gradient` now recomputes the ramp lookup independently and compares — the same shape as
+`curve`'s bisection check. `dirmotionblur` gets a behavioural test: the blur must reduce
+variance ACROSS its direction and leave the other axis alone. And both count CANDIDATE
+records separately from rendered ones, so candidates-with-no-renders is an assertion
+failure.
+
+Five of seven now. The two that remain are not defects:
+
+* **Reversing the knot loop is a genuine no-op.** The sample table is argsorted by x before
+  use, so loop order is unobservable — verified directly, the two outputs differ by exactly
+  0.0. Recording it as a "missed mutation" would have been wrong.
+* **The 10x kernel cannot honestly be caught.** It changes the blur's absolute LENGTH, and
+  the absolute length is the one quantity this implementation does not know: the 256-pixel
+  reference is inherited from `directionalwarp` and `render.py` already records it as
+  possibly wrong by a constant factor. A test asserting the length would assert the
+  unestablished thing.
+
+That last one is the useful outcome of the exercise. **The test suite's blind spot lines up
+exactly with the documented gap** — which is where a blind spot belongs, and is only
+visible because the mutation was tried.
+
+### Specimen selection, forced rather than chosen
+
+The blur test needs `|intensity| >= 16`: the baked median is 1.45, which in normalised
+units displaces by well under a pixel and would smooth nothing, so a test built on typical
+records would have passed for any kernel at all. Of the qualifying records the axis-aligned
+angles are 139 at `+0.25` and 1 at `-0.25`, both of which blur along Y since
+`dy = length * sin(2*pi*angle)`. The test asserts stripes across Y smear and stripes across
+X do not. That the specimen set is small and lopsided is a property of the corpus, and
+saying so is better than quietly widening the criteria until the numbers look comfortable.
