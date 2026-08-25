@@ -33236,3 +33236,30 @@ precondition: both need genuine independence, and both fail *silently* without i
 Run against the node tables it finds nothing — every declared shape in `FX_NODES` and
 `FX_NODES2` fits its observed cell size with room. The discrepancy was specific to the entry
 tables, not general to the FX model.
+
+## Correcting a reading made a blocker count worse, and that was correct
+
+A parallel session observed `fxmaps: no readable table entries` rise from 158 to 174 blocked
+outputs across the two changes above, and asked which caused it. Both are mine, so:
+
+```
+fxmaps records whose whole table yields no named parameter
+  before either change                445
+  FX_STRUCTURAL_BITS only             502     +57
+  and with the FX_ENTRY clip removed  462     -40, net +17
+```
+
+Their observed +16 is this +17. **`FX_STRUCTURAL_BITS` caused it and the clip removal partly
+offset it.** The +57 are tags whose only parameter bits were among 4, 7, 16 and 17 — they
+were emitting baked rows for pointer words, and now correctly emit nothing, because those
+entries genuinely carry no parameter. The −40 are entries the clip had been discarding.
+
+Worth stating in general terms, because anyone reading the blocker table across those two
+commits will see `fxmaps` get *worse*: **a correction can increase a blocker count.** The
+earlier number was lower because the layout was inventing parameters that were not there,
+and an invented parameter counts as progress in any metric that counts parameters. The
+blocker table measures what we cannot yet read; making it more honest can only move it up.
+
+The same caution applies to a withdrawal: the same session's `blur` fallback removal cost
+three produced outputs (44 blocked → 87), which is the correct trade — three outputs
+produced on a radius read from a powers-of-two ladder are three confident wrong images.
