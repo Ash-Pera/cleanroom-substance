@@ -31024,3 +31024,27 @@ The surplus census, re-labelled accordingly:
 
 The named survivors of this dig: unnamed positional programs (a Record.programs gap
 with a stated fix), and the 0x8000/0xffff block.
+
+## The 0x8000/0xffff block: a version-0x20000 structure, characterized but not decoded
+
+The last named surplus species — 649 records whose surplus begins with halfwords 0x8000
+or 0xffff — resolves to a VERSION, not a filter: 647 of 649 live in 0x20000 files, the
+format's oldest cooker, spread over 23 files. The dominant content is one constant
+six-word unit:
+
+    0x00000000 0x80008000 0x8000ffff 0x00008114 0xffff8000 0x8000ffff
+
+with variants appending an unnamed two-word size program (the species dissolved in the
+previous section). Within version 0x20000 it is carried by 9.8% of blend records, 24.9%
+of gradient records, 1.2% of transformation — and no other filter.
+
+What can be said with evidence: its u16 alphabet is {0x0000, 0x8000, 0xffff} — 0, 0.5
+and 1.0 in normalized u16, the exact value encoding of gradient's RAMP tables — plus a
+single odd halfword 0x8114. Gradient being its most enthusiastic carrier makes "a baked
+default three-stop ramp, 0 -> 0.5 -> 1" the natural reading, but no entry grouping tried
+(4-, 6- or 8-byte stops) parses the whole block cleanly past 0x8114, so that reading is
+recorded as a hypothesis, not a finding.
+
+Version 0x20000 is now flagged as the least-read cooker generally: it also owns filter
+9 outright and contributed the emboss within-key contradictions. 88 files of the corpus
+are v2; a v2-focused pass over the cost model residue would likely pay for itself.
