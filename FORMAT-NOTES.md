@@ -32789,3 +32789,45 @@ Two things stop it being usable today, both recorded rather than worked around:
 * **Their two paired `.sbs` sources contain no FX-Map paramsets at all**, so they do not
   supply the `blendingmode` / `imagefiltering` / `randomseed` contrast the paramset section
   closed as unavailable. The reference maps are the contribution; the sources are not.
+
+## A cascade always bottoms out: read the closure's root, not the record's message
+
+`edge -> record N has no output yet` is the commonest failure in any render sweep, and it
+is never a cause. Counting it produces "blocked entirely by cascade, no single named
+filter", which cannot be true — something at the bottom of the chain failed for a reason of
+its own.
+
+The fix is to walk each unproduced output's dependency closure and count only failures
+whose message is NOT a cascade. On `Bricks` (31 declared outputs, 5 produced), whose
+immediate-message tally showed nothing but cascade:
+
+```
+distance:       filter not implemented                    530
+blur:           filter not implemented                    450
+dyngradient:    filter not implemented                    160
+uniform:        no room for a fill colour                 152
+fxmaps:         node header 0x1CB is not modelled         100
+fxmaps:         no readable table entries                  91
+sharpen 25   shuffle 22   transformation 20   0x99 15   emboss 12   hsl 11
+```
+
+Two unimplemented filters account for most of it. The distinction matters because the two
+readings name different next steps: "the cascade" is not actionable and `distance` and
+`blur` are.
+
+### Where FX-Map work actually shows up at the output layer
+
+A parallel session measured, over 60 files, that **no** declared output which renders has
+an fxmaps ancestor while 225 of 263 that do not, do — and concluded the FX thread produces
+nothing visible at the output layer.
+
+Directionally right and not literally true. `Stadsspel__Lines` renders its one declared
+output at per-channel std 0.380, and its closure is `{fxmaps: 1, dirmotionblur: 3, blend: 1,
+transformation: 1}` — an FX-Map ancestor, and the only real picture this project has
+produced from one. Of the 13 graphs whose sole root cause was `fxmaps`, five now produce
+their output and one is spatial.
+
+So the honest figure is one, not zero, and the sample that found zero did not contain it.
+The conclusion survives with its magnitude corrected: FX-Map fidelity is close to invisible
+at the output layer, because the graphs needing it are blocked further along — by
+`distance`, `blur`, and the rest of the root table above.
