@@ -31341,3 +31341,29 @@ and the corpus-wide scoreboard:
 The wrong column has halved and is now dominated by pixelprocessor's 292 node-region
 records, fxmaps' 148 sub-table records, and the v2 block carriers — every one a named
 mechanism.
+
+## Integer refinement: least squares was losing whole keys by one word at the rounding
+
+v2 transformation sat at 69.9% with EVERY miss equal to exactly -1, over keys whose
+truth is plainly additive (0x3f -> 4, 0x9f -> 5, 0x7f -> 8: the modern costs, matrix22
+at +4 baked and +1 as a program, in the format's oldest version). The failure was the
+optimiser, one more time: weighted least squares minimises squared error, and under
+collinearity its minimiser can ROUND to a coefficient vector that loses whole key
+families by one word while a neighbouring integer vector loses none.
+
+The cure is to score what matters. After the least-squares start, coordinate descent
+in half-word steps, maximising weighted exact hits, until a sweep improves nothing.
+Every filter moved toward its truth at once:
+
+    v2 transformation  69.9% -> 99.986% (pooled)     levels    99.809% -> 99.978%
+    dirmotionblur     99.854% -> 99.993%             blur      99.818% -> 99.987%
+    uniform           99.829% -> 99.986%             fxmaps    99.621% -> 99.719%
+    emboss            75.571% -> 86.813% (still out) normal    92.458% -> 99.202%
+
+    corpus-wide: exact 99.288%, wrong 1,343 (0.149%), silent 0.563%
+
+normal (99.20%) and bitmap (99.33%) now sit just under the 99.5% bar, held there by
+their node-annex carriers — small filters cannot absorb a few annexed records. The
+distance degeneracy from the width-law audit is also retested by this: its spec still
+carries halves, but they are now halves that LOSE nothing, and the width law's verdict
+on them (fit freedom, truth integral) stands.

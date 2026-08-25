@@ -218,6 +218,28 @@ def fit(f, keys, bitrange=range(32), colour=False):
         c2 = solve(keep)
         if c2 is not None:
             c = c2
+    # Integer refinement. Weighted least squares minimises squared error, and under
+    # collinearity the minimiser can round to a vector that loses whole keys by exactly
+    # one word while a neighbouring integer vector loses none -- v2 transformation sat
+    # at 69.9% with every miss equal to -1 for exactly this reason. So: coordinate
+    # descent from the rounded solution, scoring by the thing that matters (weighted
+    # exact hits), in half-word steps, until a sweep improves nothing.
+    def _score(cv):
+        return float(wt[np.rint(X @ cv) == y].sum())
+    wt = np.array([n for _, _, n in keys], dtype=float)
+    X = np.array([row(k[0], k[1]) for k, _, _ in keys])
+    y = np.array([h for _, h, _ in keys], dtype=float)
+    best = _score(c)
+    for _sweep in range(6):
+        moved = False
+        for i in range(len(c)):
+            for d in (-1.0, -0.5, 0.5, 1.0):
+                c2 = c.copy(); c2[i] += d
+                s2 = _score(c2)
+                if s2 > best:
+                    c, best, moved = c2, s2, True
+        if not moved:
+            break
     ok = np.rint(X @ c) == y
     if colour:
         # Interaction spec: store the two half-vectors; predict as base + bit0*cross.
