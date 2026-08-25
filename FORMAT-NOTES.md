@@ -32474,3 +32474,44 @@ is `0x9` in 97.8% of fxmaps records, which cannot carry a twelve-value enum. An 
 positional scan is also useless here and the control says why — searching every word, byte
 and nibble of a record for a small integer finds the declared value about as often as it
 finds one the file never declares.
+
+### `blendingmode`: the paired comparison, and why it is still not found
+
+Comparing entries in isolation only rules out the entry. Pairing each source paramset to its
+compiled entry by containment first — so the whole record becomes comparable — is a much
+stronger test, and `ie_pcloud` is the one permitted file with a clean within-file contrast:
+six paramsets declare `blendingmode=1`, three declare `=2`, and the containment binding
+resolves them uniquely.
+
+The result is a sharper negative than before:
+
+```
+blendingmode=1   ->  entry tag 0x05140048   record cls 0x3B9
+blendingmode=2   ->  entry tag 0x05140048   record cls 0x3B9
+```
+
+**Same tag, same class word.** Whatever carries `blendingmode`, it is not in either — which
+also means it is not a sibling of `patterntype`, since that lives in the tag's nibble 2.
+
+What did differ in that file, and why none of it is the answer:
+
+| difference | bm=1 | bm=2 | why it is not it |
+|---|---|---|---|
+| record slot 1 | `0x800` | `0x400` | tracks the edge count, not the mode |
+| edges | 2 | 1 | `bm=1` also occurs at 0 edges (`Bruno`) and 3 (`ie_curve`) |
+| programs | 8–9 | 7 | the extra one is the second edge's size expression |
+| consumers | `pixelprocessor` cls `0xB9` | identical | — |
+| non-FX programs | `inputref swizzle log2 cvt` | `inputref` ×2 | both are size expressions |
+
+`ie_curve` offers a better-looking contrast — 31 paramsets at `blendingmode=1` against 4 at
+`=2` — and it is **confounded**: its four `bm=2` paramsets are 16×16 grayscale records with
+zero edges under tag `0x15140848`, i.e. a different subgraph entirely, so the contrast is
+graph identity rather than blend mode. Recorded because the 31/4 split looks compelling
+until the records are examined.
+
+So `blendingmode` is in the file — it has to be — and the permitted corpus supplies exactly
+one clean contrast, which excludes the two places it would most naturally live. The route
+that remains is the one the structure cannot supply: **render the graph under each candidate
+mode and fit against a reference image.** The corpus carries reference PNGs, and a blend mode
+is precisely the kind of parameter that is easier to recognise in an output than in a field.
+That is blocked on the renderer, not on the format.
