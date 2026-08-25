@@ -1467,6 +1467,37 @@ class Record:
             if asm.body_lo <= p < asm.body_hi and asm.valid_program(p):
                 out.append(p)
                 seen.add(p)
+        # Finally, the record's TAIL. 6,181 records carry a valid size program that NO
+        # slot names - most are two words, [count=1][ref.i2][uid], the expression that
+        # reads $outputsize - and 93% end flush with the record (0-2 pad bytes). They
+        # were found by their first instruction showing up as a u32 "species" in a
+        # surplus census, then dissolving under a full-record read. The engine needs no
+        # pointer for a program that always abuts the record end; neither does this.
+        #
+        # The probe is deliberately narrow: only the region AFTER everything already
+        # claimed, 4-aligned starts, and only a program whose own length lands within
+        # 4 bytes of the record end. Corpus-wide it fires on 6,981 records (0.78%),
+        # 95% of them records that had no program at all - the scale the unnamed-pair
+        # census predicted, not an explosion.
+        hi = self.end
+        lo = self.offset + 8
+        for q in out:
+            if self.offset < q < hi:
+                try:
+                    lo = max(lo, asm.program_end(q))
+                except Exception:
+                    pass
+        q = (lo + 3) & ~3
+        while q + 4 <= hi:
+            if q not in seen and asm.valid_program(q):
+                try:
+                    e = asm.program_end(q)
+                except Exception:
+                    e = None
+                if e is not None and 0 <= hi - e < 4:
+                    out.append(q)
+                    break
+            q += 4
         return out
 
     def classified_programs(self):

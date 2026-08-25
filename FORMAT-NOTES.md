@@ -31099,3 +31099,21 @@ The programs evaluate. What is still missing is what they MEAN: which named para
 `(tag, slot)` carries. That was step 2 all along, and it is now actually reachable, with 62
 distinct evaluated values on `ie_curve` to match against its 90 declared FX constants
 instead of the 11 the broken diagnostic allowed.
+
+## Record.programs learns the record tail
+
+The 6,181 unnamed size programs are no longer invisible. `Record.programs` now probes
+the record's TAIL after everything slot-named is claimed: 4-aligned starts only, and
+only a program whose own length lands within 4 bytes of the record end — the shape 93%
+of the unnamed programs were measured to have. It fires on 6,981 records corpus-wide
+(0.78%), 95% of them records that previously reported no program at all; exactly the
+scale the census predicted.
+
+    size-expression programs found     99.156%  ->  99.940%
+    distinct corpus programs           1,610,763
+    transpiled                         99.9932%, failures still the 110
+                                       condition-less loops and nothing else
+
+The 443 pairs still unfound are records whose tail program does not end flush — the
+7% with trailing content after it — left for a reader that parses the tail region
+properly rather than a looser probe that would admit suffixes.
