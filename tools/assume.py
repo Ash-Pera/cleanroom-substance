@@ -38,7 +38,14 @@ QUESTIONS = {
     'distance.param':     ('program', 'block1', 'slot5'),
     'distance.invert':    (False, True),
     'distance.mask_edge': (0, 1),
-    'fx.profile':         ('rect', 'bell', 'cone', 'disc'),
+    # The footprint is no longer a four-way guess: `patterntype` is declared in the entry
+    # tag and the manifest NAMES its values, so `fxrender.PATTERN_SHAPES` selects the shape
+    # from shipped data and this question only exists to FORCE one for an experiment.
+    # Every honourable name must be listed -- an omitted one is rejected here, which is the
+    # same failure as accepting a value that cannot be delivered, in the other direction.
+    'fx.profile':         ('rect', 'square', 'disc', 'paraboloid', 'bell', 'gaussian',
+                           'thorn', 'pyramid', 'brick', 'gradation', 'waves', 'halfbell',
+                           'ridgedbell', 'crescent', 'capsule', 'cone'),
     'uniform.fill':       (),      # a value, not an enumeration
 }
 

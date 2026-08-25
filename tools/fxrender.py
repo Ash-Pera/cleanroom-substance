@@ -88,7 +88,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assume, sbsruntime, transpile                                  # noqa: E402
-from sbsasm import Assembly, FX_NODES                                 # noqa: E402
+from sbsasm import Assembly, FX_NODES, fx_patterntype                                 # noqa: E402
 
 # 0x1CB joins these on the value evidence in sbsasm's FX_NODE_PARAMS: its +4 program is
 # 1.0 in 180 of 183, matching 0x18B's `numberadded` (1.0 in 69.5%) and not 0x1AB's
@@ -280,7 +280,11 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             raise Unmodelled("more than %d patterns" % MAX_PATTERNS)
         if i == len(nodes):
             for _o, _t, params in table:
-                got = {}
+                # THE TAG TRAVELS WITH THE PATTERN. The shape is selected per entry from
+                # `patterntype`, and by the time `splat` runs the tag is gone -- so it is
+                # attached here rather than re-derived, which would mean re-walking the
+                # table and guessing which entry produced which emission.
+                got = {'patterntype': fx_patterntype(_t)}
                 for name, (kind, value) in params.items():
                     if value is None:
                         continue
@@ -318,41 +322,104 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     return out
 
 
+# patterntype -> shape name, READ OFF THE MANIFEST rather than guessed. Every .xml in the
+# corpus is scanned for <guicomboboxitem value= text=>, and the shape-named items form one
+# contiguous, self-consistent sequence: 2 Square, 3 Disc, 4 Paraboloid, 5 Bell, 6 Gaussian,
+# 7 Thorn, 8 Pyramid, 9 Brick, 10 Gradation, 11 Waves, 12 Half bell, 13 Ridged Bell,
+# 14 Crescent, 15 Capsule, 16 Cone. `fx_patterntype` already supplies the value from the
+# tag nibble plus FX_PATTERNTYPE_BIAS, so the selector and the enumeration meet.
+#
+# IT PREDICTS THE TWO RECORDS WE HAVE GROUND TRUTH FOR, which is what makes it more than a
+# plausible table. Stadsspel__Lines record 0 is nibble 0 -- the documented catch-all, i.e.
+# Square -- and renders correctly as a hard bar today. sci_fi_elements_02 record 86 is
+# nibble 8 -> 10 -> Gradation, and its six patterns at radius 0.433 with size 0.866 are
+# geometrically FORCED to cover the canvas under any hard footprint (diameter = 2 x radius,
+# so each passes through the centre); only a falloff resolves it, which is what a gradation
+# is. Both were established before this table existed.
+#
+# Most value->name pairs appear in only two files. The evidence is not their count -- it is
+# that 5..16 are contiguous and consistent, and that the table independently gets both
+# ground-truth records right, a test it could have failed.
+PATTERN_SHAPES = {
+    2: 'square', 3: 'disc', 4: 'paraboloid', 5: 'bell', 6: 'gaussian', 7: 'thorn',
+    8: 'pyramid', 9: 'brick', 10: 'gradation', 11: 'waves', 12: 'halfbell',
+    13: 'ridgedbell', 14: 'crescent', 15: 'capsule', 16: 'cone',
+}
+
+# Which shapes are DETERMINED by their name and which are MODELLED. A name fixes the
+# family -- gaussian is radial and falls off, square does not -- but not always the exact
+# analytic form, and pretending otherwise would repeat the mistake this file already
+# records: a shape that cannot be flat by construction passes a flatness check without
+# being right. Callers can subtract the modelled ones from a coverage figure.
+SHAPE_MODELLED = frozenset({'bell', 'thorn', 'brick', 'waves', 'halfbell',
+                            'ridgedbell', 'crescent', 'capsule'})
+
+
 def profile_value(lx, ly, profile):
     """Pattern coverage at local coordinates, |lx|,|ly| <= 0.5 inside the footprint.
 
-    `patterntype` is a declared `fxmaps` parameter that neither this session nor the
-    naming work has located, so the SHAPE inside the footprint is unknown. Two profiles
-    are offered so the choice is visible rather than buried:
+    The shape is no longer unknown. `patterntype` is declared in the entry tag and the
+    manifest names its values (see PATTERN_SHAPES), so the footprint is selected from
+    shipped data instead of assumed. What remains a modelling choice is the exact profile
+    for the eight names in SHAPE_MODELLED, whose family is fixed by the name but whose
+    curve is not.
 
-      'rect'  a solid fill -- what the size parameter means before any shape is applied.
-      'disc'  a hard circle inscribed in the box, no falloff.
-      'cone'  a linear radial falloff, `max(0, 1 - r)`.
-      'bell'  a quadratic radial falloff, `max(0, 1 - r^2)`.
+    WHY A GLOBAL PROFILE COULD NEVER HAVE WORKED, and why the earlier attempt to score one
+    was uninformative: 1,218 records are the Square catch-all and need a hard fill, while
+    roughly 670 are Paraboloid, Gradation, Gaussian or Bell and need falloff. Any single
+    answer breaks one group or the other, so a corpus-wide flatness score was measuring
+    the metric rather than the format.
 
-    These are four DISTINCT candidates. An earlier version implemented only 'rect' and one
-    falloff and let every other name reach it, so a scoring run would have reported three
-    candidates tied and that would have measured this function rather than the format. An
-    unknown name now raises: a channel that accepts a value it cannot honour is the same
-    failure as a guard calibrated in the wrong units, one layer up.
-
-    This is an EXPERIMENT, not a claim. It matters because 2,348 of 2,508 flat renders
-    come out solid white under 'rect': a small number of full-cell patterns tiled over
-    the canvas. An FX-Map that outputs solid white is not a pattern generator, and this
-    project's own note (9a4b14d) names fxmaps as *the* thing that makes spatial
-    variation -- so a solid full-cell default is functionally implausible even though
-    nothing in the bytes rules it out yet.
+    The two legacy names stay: 'rect' is an alias for square, and 'cone' was already here.
+    An unknown name still raises rather than silently reaching a default -- a channel that
+    accepts a value it cannot honour is the failure this project keeps being caught by.
     """
     inside = (np.abs(lx) <= 0.5) & (np.abs(ly) <= 0.5)
-    if profile == 'rect':
+    if profile in ('rect', 'square'):
         return inside.astype(np.float32)
     r = np.sqrt((2.0 * lx) ** 2 + (2.0 * ly) ** 2)      # 0 at centre, 1 at the box edge
+    ins = inside.astype(np.float32)
     if profile == 'disc':
         return ((r <= 1.0) & inside).astype(np.float32)      # hard circle, no falloff
     if profile == 'cone':
-        return (np.clip(1.0 - r, 0.0, 1.0) * inside).astype(np.float32)        # linear
+        return (np.clip(1.0 - r, 0.0, 1.0) * ins).astype(np.float32)           # linear
+    if profile == 'paraboloid':
+        return (np.clip(1.0 - r * r, 0.0, 1.0) * ins).astype(np.float32)       # quadratic
+    if profile == 'gaussian':
+        return (np.exp(-4.0 * r * r) * ins).astype(np.float32)
+    if profile == 'pyramid':
+        c = np.maximum(np.abs(2.0 * lx), np.abs(2.0 * ly))   # Chebyshev, not Euclidean
+        return (np.clip(1.0 - c, 0.0, 1.0) * ins).astype(np.float32)
+    if profile == 'gradation':
+        return (np.clip(0.5 + lx, 0.0, 1.0) * ins).astype(np.float32)   # ramp along x
+    # --- SHAPE_MODELLED below: the family is named, the curve is chosen. ---
     if profile == 'bell':
-        return (np.clip(1.0 - r * r, 0.0, 1.0) * inside).astype(np.float32)    # quadratic
+        t = np.clip(1.0 - r * r, 0.0, 1.0)
+        return (t * t * ins).astype(np.float32)              # smoother than paraboloid
+    if profile == 'halfbell':
+        t = np.clip(1.0 - r * r, 0.0, 1.0)
+        return (t * (ly >= 0.0) * ins).astype(np.float32)
+    if profile == 'ridgedbell':
+        t = np.clip(1.0 - r, 0.0, 1.0)
+        return (t * np.abs(np.cos(3.0 * np.pi * r)) * ins).astype(np.float32)
+    if profile == 'thorn':
+        t = np.clip(1.0 - r, 0.0, 1.0)
+        return (t ** 3 * ins).astype(np.float32)             # sharper than cone
+    if profile == 'brick':
+        c = np.maximum(np.abs(2.0 * lx), np.abs(2.0 * ly))
+        return ((c <= 0.85).astype(np.float32) * ins).astype(np.float32)
+    if profile == 'waves':
+        return (np.clip(0.5 + 0.5 * np.cos(2.0 * np.pi * lx * 2.0), 0.0, 1.0)
+                * ins).astype(np.float32)
+    if profile == 'crescent':
+        outer = np.clip(1.0 - r, 0.0, 1.0)
+        inner = np.sqrt((2.0 * (lx - 0.15)) ** 2 + (2.0 * ly) ** 2)
+        return (outer * (inner > 0.75) * ins).astype(np.float32)
+    if profile == 'capsule':
+        d = np.abs(2.0 * ly) / np.maximum(1e-6, 1.0)         # a bar with rounded ends
+        cap = np.clip(1.0 - np.maximum(d, np.clip(np.abs(2.0 * lx) - 0.5, 0.0, None)),
+                      0.0, 1.0)
+        return (cap * ins).astype(np.float32)
     raise ValueError('unknown pattern profile %r' % (profile,))
 
 
@@ -383,8 +450,18 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # The footprint is the largest open question here and the one the reference renders
     # could settle, so it is arbitrable: `assume.scope(**{'fx.profile': 'bell'})` renders a
     # candidate. Absent a scope this is 'rect', today's behaviour, unchanged.
-    if profile is None:
-        profile = assume.assumed('fx.profile', 'rect')
+    # An explicit scope still wins, so a candidate can be forced for an experiment. With
+    # none, the shape comes from the entry's own patterntype -- data, not an assumption.
+    forced = profile if profile is not None else assume.assumed('fx.profile', None)
+
+    def profile_for(p):
+        if forced is not None:
+            return forced
+        t = p.get('patterntype')
+        # nibble 0 is the documented catch-all -- patterntype 1, 2 and a source-declared
+        # function graph all land there -- and Square is the member of it that Lines
+        # record 0 confirms, so an unresolved type keeps today's hard fill.
+        return PATTERN_SHAPES.get(t, 'rect') if t is not None else 'rect'
 
     def image_for(p):
         if not images:
@@ -439,7 +516,7 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
                 dy = py - (cy + ty)
                 lx = (dx * ct + dy * st) / sx
                 ly = (-dx * st + dy * ct) / sy
-                cov = profile_value(lx, ly, profile)
+                cov = profile_value(lx, ly, profile_for(p))
                 hit = cov > 0
                 if not hit.any():
                     continue
