@@ -30921,3 +30921,58 @@ randomised per pattern is the artist's choice, compiled per instance. That is a 
 explanation for the earlier failure to name slots by containment against declared source
 values: for the 37% the value is not a declared constant anywhere, it is generated at
 render time, and no containment test can find a number that the file never stores.
+
+## The graph-wide slot frame: implemented, measured, and wrong
+
+The previous section named a graph-wide slot frame as step 1 toward rendering an FX-Map,
+on the strength of the read/write agreement measured for slots >= 64 (88.1% within a file
+against a 0.0% control). It was built and measured. **It is not the fix**, in both of the
+forms it can take, and the corpus says so in two independent ways.
+
+### Sharing the whole frame breaks the renderer
+
+One dict for the entire walk, the way `cache` already works:
+
+    record outputs on pairs2      10,624 -> 10,537     87 lost, 0 gained
+
+Traced to the root rather than counted: **9 `dirmotionblur` records** raised
+`ZeroDivisionError` after inheriting a stale `0` from an earlier record's scratch slot, and
+those 9 cascaded to the other 78. Low slot indices are per-record scratch; a record that
+inherits them computes with another record's leftovers.
+
+### Sharing only the evidenced range does nothing
+
+Restricting sharing to slots >= 64 — the only range where the control goes to zero — is
+exactly neutral:
+
+    record outputs   10,624 -> 10,624      0 lost, 0 gained, 0 values changed
+    ie_curve FX      nodes 13/59, entries 45/235, 11 distinct results -- IDENTICAL
+
+Safe, and inert. Nothing this walker currently renders reads a shared high slot at all.
+
+### Why neither works, which is the actual finding
+
+Counting the slot indices the FX programs fail on:
+
+    ie_curve FX programs failing on "slot N read but never set"
+        slot index <  64   (per-record scratch, not shared)      208
+        slot index >= 64   (the shared region)                    28
+        distinct failing slots: 0, 1, 2, 10, 11, 14, 34, 36, 37, 39, 43, 47, 54, 55
+
+**208 of 236 are below the floor.** The failures live precisely where sharing is
+unsupported by the measurement AND destroys 87 outputs, and barely at all where sharing is
+justified. No setting of the floor satisfies both halves, so the frame model is not what is
+missing.
+
+### What the low slots probably are
+
+The node programs fail the same way — reading slots 0, 1 and 2 that nothing in their record
+ever sets — and that is the shape of an **engine-supplied iteration variable**, not of a
+value some other record left behind. A `pixelprocessor` gets `$pos` from the walker rather
+than from a `set`; an FX-Map node evaluated once per stamp would need its iteration index,
+its current frame and its depth the same way. If so these slots are inputs to be *provided*
+per iteration, and no amount of sharing between records will ever fill them.
+
+That is a hypothesis, not a result, and it is written down as the next thing to test rather
+than as an answer. The code was reverted: an inert mechanism justified by a hypothesis its
+own measurement contradicts is worse than no mechanism. What survives is the measurement.
