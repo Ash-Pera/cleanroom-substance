@@ -625,20 +625,37 @@ PARAM_POPCOUNT = {10: 0x2881, 7: 0x0881}
 # 86.4% do not resolve as pointer values, so they are packed tag words rather than
 # pointers that happen to end in 8. The chain ending in a table is not in doubt; where one
 # entry stops and the next begins is.
-FX_TABLE = {
-    # program at +4
-    0x100048: 4, 0x410008: 4, 0x420008: 4, 0x4000148: 4, 0x8000248: 4, 0x8000848: 4,
-    # +8
-    0x2000048: 8, 0x2000248: 8, 0x2000448: 8,
-    # +12
-    0x1520248: 12, 0x22000D48: 12,
-    # +16
-    0x2520448: 16, 0x12400448: 16, 0x12440248: 16, 0x14520248: 16,
-    # +20
-    0x20018: 20, 0xA800048: 20, 0x124A0648: 20, 0x12540A48: 20, 0x34520A48: 20,
-    0x54540088: 20,
-    # +24
-    0x13120658: 24,
+
+
+# The two FX-Map entry tags whose inline program is NOT where the entry layout says.
+#
+# `fx_entry_layout` states where an inline program sits -- it follows the parameters, at
+# `4 x (the first slot the layout does not use)`, measured from the ENTRY. Over the whole
+# corpus that rule and the withdrawn `FX_TABLE` never once disagree (2,620 agreements, 0
+# disagreements), so for twenty of that table's twenty-two tags the lookup was restating
+# what the layout already said. Those are gone. These two are what is left:
+#
+#     tag           entries  files   program at   why the layout rule misses it
+#     0x00020018        136     37   entry +32    its +4 word points to entry+12, not
+#                                                 entry+8, in 98% of entries -- the base
+#                                                 the rule assumes is wrong here
+#     0x0A800048        123     45   entry +28    base is entry+8 as usual, but the
+#                                                 program sits one slot PAST the inline
+#                                                 slot the rule predicts (7, not 6)
+#
+# Both were re-derived over all 437 corpus files by sweeping word offsets 0..15, not
+# inherited: 97.8% and 94.3% of their entries put the program at that one offset, against
+# runners-up of 2.2% and 11.4%, and neither lands inside another program's byte span in
+# any entry. 44.5% of entries decode at two or more swept offsets, so "a position that
+# decodes" is worth nothing on its own -- what carries these is that the winner is the
+# same position for every entry of a tag, and that the containment control is 0 of 2,900
+# where the walk's own stopping rule measures 82.1% for the population it rejects.
+#
+# `0x0A800048` is a live discrepancy, not a special case: the layout rule is off by one
+# slot for it and the reason is not known. It is tabled here so the walk stays right while
+# that stands.
+FX_PAYLOAD_PROG = {
+    0x00020018: 20, 0x0A800048: 20,       # BYTE offsets from the entry's +4 pointer
 }
 
 
@@ -673,11 +690,12 @@ FX_TABLE = {
 #        CONTROL: a stride the table did not state             24.6%
 # Where a table entry keeps its programs, by tag, as WORD offsets from the entry start.
 #
-# `FX_TABLE` above is the earlier attempt at this: 25 tags, one offset each, derived when
+# `FX_TABLE` was the earlier attempt at this: 22 tags, one offset each, derived when
 # entries were enumerated by stepping 8 bytes. That population was unsafe and the result
-# was withdrawn. With entries walked by the tag-stated length instead, the same question
-# has a much sharper answer -- the tag does not merely suggest an offset, it DETERMINES
-# the set:
+# was withdrawn; re-derived on a clean population, all but two of its tags turned out to
+# restate the entry layout, and those two are now `FX_PAYLOAD_PROG` above. With entries
+# walked by the tag-stated length instead, the same question has a much sharper answer --
+# the tag does not merely suggest an offset, it DETERMINES the set:
 #
 #     tags with 20+ entries                                            100
 #     ...whose every offset is either 95+ percent or under 5 -- no
@@ -884,7 +902,7 @@ def fx_entry_layout(tag):
         else:
             out.append((sl + 1, name, 'baked'))
             sl += width
-    # THE INLINE PROGRAM. `FX_TABLE` above records, for 25 tags, "the byte offset of the
+    # THE INLINE PROGRAM. `FX_TABLE` recorded, for 22 tags, "the byte offset of the
     # program within the structure the entry's +4 word addresses", and withdrew itself
     # because the entry population it described could not be enumerated safely. With the
     # population clean, both halves of that sentence resolve: the "structure" is the ENTRY
@@ -2020,7 +2038,8 @@ class Record:
         the next entry walks out of the record 77.4% of the time, because that pointer is
         the entry's payload, not its successor.
 
-        A tag not in FX_TABLE yields a program offset of None rather than a guess.
+        The entry layout says where an inline program sits; `FX_PAYLOAD_PROG` covers
+        the two tags it gets wrong. A tag neither names yields None, not a guess.
         """
         if self.filter_id != 4 or len(self.words) < 3:
             return
@@ -2103,11 +2122,23 @@ class Record:
                 if not any_:
                     yield q, tag, None
             else:
-                off = FX_TABLE.get(tag)
+                # No slot names a program, so the tag's own layout has to. Asking the
+                # layout rather than a lookup table gains 176 programs on tags no table
+                # covered, and 0.0% of them lie inside another program's byte span --
+                # the control that separates a program start from bytecode.
                 prog = None
-                if off is not None and o <= t < e - 3 and t + off + 4 <= e \
-                        and self.asm.program_span(t + off, e):
-                    prog = t + off
+                off = FX_PAYLOAD_PROG.get(tag)
+                if off is not None:
+                    if o <= t < e - 3 and t + off + 4 <= e \
+                            and self.asm.program_span(t + off, e):
+                        prog = t + off
+                else:
+                    inline = [sl for sl, _nm, kind in fx_entry_layout(tag)
+                              if kind == 'inline']
+                    if inline:
+                        cand = q + 4 * inline[0]
+                        if cand + 4 <= e and self.asm.program_span(cand, e):
+                            prog = cand
                 yield q, tag, prog
             # The tag states the entry's length; 8 was a guess that happened to be the
             # second commonest. Falls back to 8 for a tag the table does not carry, so a
@@ -2782,7 +2813,13 @@ class Assembly:
         # tiling probe leave slack at 0; loosening the default would re-admit exactly
         # the garbage the strict check exists to reject.
         n = struct.unpack_from('<H', d, p)[0]
-        if not (1 <= n <= 20000):
+        # The bound is the FIELD's range, not a guess about programs. The cap sat at
+        # 20,000 as an anti-garbage margin and silently rejected the corpus's largest
+        # per-pixel functions -- 45 records whose functions run 21,102 to 41,493
+        # instructions, every one decoding cleanly and operand-exact once the cap
+        # lifts. Garbage does not survive 20,000 consecutive opcode-and-operand
+        # checks; the checks are the filter, the cap never was.
+        if not (1 <= n <= 0xFFFF):
             return False
         q, k = p + 2, 0
         while k < n and q + 2 <= hi:
