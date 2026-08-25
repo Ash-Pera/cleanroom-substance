@@ -34397,3 +34397,76 @@ producing values in [16, 256] and [128, 256], which are counts or sizes rather t
 images. `grayscale_bit` agreed 520 of 521, which is a genuine cross-check -- the bit comes
 from the output table and the channel count from the pixels rendered, and `outputs()`'s own
 docstring records that no bit of the named RECORD agrees with that flag.
+
+## Class-word bit 11 says the image is JPEG
+
+The 437-file self-check flagged one thing that looked like a decode bug rather than a
+property of the files: `GravelSubstance002`'s declared image sizes running about 900 KB
+past the next image's start, seven times over, with the last one overrunning the end of
+the file by 602,384 bytes. A declared size that does not fit is not a gap, it is a wrong
+size.
+
+The bytes said what the sizes could not. Splitting that file's bitmaps by whether their
+declared size fits the space available:
+
+    does not fit   entropy 7.66 - 7.79 bits/byte     compressed
+    fits           entropy 1.98 - 2.15               raw pixels
+
+and 7.7 bits/byte at a 6.9x size ratio is a compressed stream. The identification is
+exact rather than statistical: at offset + 52 every one of them begins `ff d8 ff e0`,
+a **JPEG SOI followed by a JFIF APP0 marker**, with the `ff d9` of a previous stream just
+before it. 52 is the same bias this format uses for record pointers everywhere else.
+
+**The flag is bit 3 of `(cls >> 8)`, i.e. bit 11 of the class word** -- the byte
+`Record.bitmap` already reads channels and depth out of, using only bits 0 to 2. Over 706
+consecutive image pairs corpus-wide:
+
+                        declared size fits   does not fit
+        bit 3 clear            697                0
+        bit 3 set                0                9
+
+Both off-diagonal cells empty. And the payload corroborates it through a channel that
+knows nothing about the class word: all 9 decode, and all 9 decode to **exactly** the
+width, height and channel count the RECORD declares -- 1024x1024x1 and 2048x2048x1.
+Nothing in a JPEG stream could know what the record says.
+
+**There are 54, not 9, and the first count asked the wrong question.** Nine is how many
+bitmaps have a declared size that overruns the NEXT image -- which is only visible when a
+neighbour happens to sit close enough to expose it. The population is "bit 3 is set", and
+that is 54 of 806 pixel bitmaps across 10 files, with streams from 13 KB up to 3.7 MB.
+Only the 9 found first are blank; **45 carry real content**.
+
+**The compressed length is at byte 48**, a u32 immediately ahead of the SOI, equal to the
+stream's actual SOI..EOI extent in 54 of 54. So the extent does not have to be found by
+scanning for an EOI -- which matters, since `ff d9` occurs inside entropy-coded data and a
+scan can truncate. An earlier version of this note said the extent was "not recoverable
+from the record"; that was written before the field was found and is wrong. The other 48
+bytes are still unidentified.
+
+**Only two class words carry the flag, and the second closes an old gap:**
+
+    cls 0x0908   hi & 3 == 1  ->  1 channel                      9 records
+    cls 0x0808   hi & 3 == 0  ->  CHANNELS has no entry         45 records
+
+`0x808` is the "channel code `CHANNELS` does not cover" that `Record.bitmap`'s docstring
+has long reported with channels, depth and size all None. It is a JPEG with no channel
+bits set, and **the channel count is in the JPEG** -- mode L is 1, RGB is 3. So `channels`
+stays None in the record, honestly, and the decoder takes it from the stream. The old note
+described these as "all 2048x2048"; they are not, 1024x512 occurs too, which came from a
+smaller sample.
+
+**Both halves of the population were failing, in opposite directions.** The 45 refused
+outright on the undecodable channel code. The 9 did not refuse at all -- only one had a
+size large enough to trip the end-of-file check, and the other eight read their compressed
+bytes as raw pixels and fed entropy-7.7 noise downstream while counting as successfully
+rendered in every coverage number. So this is a correctness fix and 45 recovered images at
+the same time, and 44 of the 54 now decode to real photographic source textures.
+
+This does NOT restore packing: the space between these images is far larger than the JPEG,
+and GravelSubstance002 holds 17 SOI markers against 7 flagged records, so other images live
+in the gaps. `size` is left as the uncompressed size, because that is what it is.
+
+**A test that reported "9 of 9" while examining a sixth of its population.** The JPEG
+regression test reused `_pixel_bitmaps`, which requires `size` to be truthy -- and size is
+None for exactly the 45 cls-0x808 records. It passed confidently on the 9 it could see.
+The two iterators are now separate, and the count it prints is 54.

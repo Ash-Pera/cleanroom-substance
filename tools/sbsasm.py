@@ -2883,6 +2883,57 @@ class Record:
             hi = (self.cls >> 8) & 0xFF
             ch = CHANNELS.get(hi & 3)
             bpc = 2 if hi & 4 else 1
+            # BIT 3 SAYS THE IMAGE IS JPEG, and this decoder used to read the compressed
+            # bytes as raw pixels. Only bits 0-2 of this byte were read; bit 3 was found
+            # by chasing the one thing in a 437-file self-check that looked like a decode
+            # bug rather than a property of the files -- GravelSubstance002's declared
+            # image sizes running ~900 KB past the next image's start.
+            #
+            # It predicts perfectly. Over 706 consecutive image pairs corpus-wide:
+            #
+            #                     declared size fits   does not fit
+            #     bit 3 clear            697                0
+            #     bit 3 set                0                9
+            #
+            # Both off-diagonal cells empty. The payload confirms it independently: all 9
+            # have a JPEG SOI at exactly offset + 52 -- the same +52 bias this format uses
+            # for record pointers -- and all 9 decode to precisely the width, height and
+            # channel count the RECORD declares (1024x1024x1 and 2048x2048x1), which
+            # nothing in a JPEG stream could know.
+            #
+            # THE COMPRESSED LENGTH IS AT BYTE 48, a u32 immediately ahead of the SOI. It
+            # equals the stream's actual SOI..EOI extent in 54 of 54, so the payload does
+            # not have to be found by scanning for an EOI -- which matters, because
+            # `ff d9` can occur inside entropy-coded data. `size` stays the UNCOMPRESSED
+            # size, because that is what it is. The other 48 bytes are not identified.
+            #
+            # This does NOT restore packing: the space between these images is far larger
+            # than the JPEG, and GravelSubstance002 holds 17 SOI markers against 7 flagged
+            # records, so other images live in the gaps.
+            #
+            # ONLY TWO CLASS WORDS CARRY THE FLAG, and the second resolves a gap this file
+            # has documented for a long time:
+            #
+            #     cls 0x0908   hi & 3 == 1  ->  1 channel      9 records
+            #     cls 0x0808   hi & 3 == 0  ->  CHANNELS has no entry     45 records
+            #
+            # 0x808 is the "channel code CHANNELS does not cover" that `Record.bitmap`'s
+            # docstring reports with channels, depth and size all None. It is a JPEG with
+            # no channel bits set, and the channel count is in the JPEG itself -- mode L is
+            # 1, RGB is 3. So `channels` stays None here, honestly, and the decoder takes
+            # it from the stream. (The old note called these "all 2048x2048"; they are not,
+            # 1024x512 occurs too. That came from a smaller sample.)
+            #
+            # 45 of the 54 carry real content, up to a 3.7 MB stream; only 9 are the blank
+            # white "no mask" defaults found first. Untreated, the 9 read entropy-7.7 JPEG
+            # bytes as pixels and feed that noise downstream without refusing, and the 45
+            # refuse on the undecodable channel code -- so this is both a correctness fix
+            # and 45 images the renderer could not previously produce at all.
+            if hi & 8:
+                return {'kind': 'pixels', 'offset': off + 4, 'compressed': 'jpeg',
+                        'data_offset': off + 4 + 52,
+                        'size': self.width * self.height * ch * bpc if ch else None,
+                        'channels': ch, 'depth': bpc * 8 if ch else None}
             # THE STORED OFFSET IS 4 LOW. The pixel region is at the FRONT of the file,
             # ahead of the assembly body, and the header in front of it is eight bytes,
             # not four:

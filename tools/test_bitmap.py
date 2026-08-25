@@ -43,11 +43,32 @@ def _paths():
 
 
 def _pixel_bitmaps(asm):
+    """Bitmaps with a raw pixel payload -- size and depth known.
+
+    Deliberately EXCLUDES the JPEG-flagged ones, which have their own iterator. The two
+    were conflated at first and the `size`/`depth` requirement here silently dropped 45
+    of the 54 JPEG bitmaps, because cls 0x808's channel code has no CHANNELS entry so
+    size is None. The JPEG test then reported a confident "9 of 9" while examining a
+    sixth of its population -- the same failure this file's docstring warns about, one
+    level down.
+    """
     for rec in asm.records:
         if rec.filter_name != 'bitmap':
             continue
         bm = getattr(rec, 'bitmap', None) or {}
+        if bm.get('compressed'):
+            continue
         if bm.get('kind') == 'pixels' and bm.get('size') and bm.get('depth'):
+            yield rec, bm
+
+
+def _jpeg_bitmaps(asm):
+    """Bitmaps whose class word flags a JPEG payload. No size/depth requirement."""
+    for rec in asm.records:
+        if rec.filter_name != 'bitmap':
+            continue
+        bm = getattr(rec, 'bitmap', None) or {}
+        if bm.get('compressed') == 'jpeg':
             yield rec, bm
 
 
@@ -175,10 +196,79 @@ def test_the_images_still_pack_back_to_back():
         'so the offsets are no longer a uniform shift' % (packed, pairs))
 
 
+def test_jpeg_bitmaps_decode_to_what_the_record_declares():
+    """Class-word bit 11 marks a JPEG payload, and it must decode to the declared shape.
+
+    This is the strongest check in this file, because the two sides know nothing about
+    each other: the width, height and channel count come from the RECORD, and the actual
+    dimensions come from decoding a JPEG stream found 52 bytes past the offset. A stream
+    that is not this record's image would have to match all three by accident.
+
+    It is also the check that matters most to get wrong quietly. Untreated, these bitmaps
+    do not raise -- 8 of the 9 in the corpus read their compressed bytes as raw pixels and
+    feed entropy-7.7 noise downstream without complaint.
+
+    SKIPS when the corpus is absent.
+    """
+    import io
+    paths = _paths()
+    if not paths:
+        print('SKIP: no corpus')
+        return
+    try:
+        from PIL import Image
+    except ImportError:
+        print('SKIP: PIL not available')
+        return
+    flagged = matched = lengths = 0
+    bad = []
+    for f in paths:
+        try:
+            asm = Assembly(f)
+        except Exception:
+            continue
+        for rec, bm in _jpeg_bitmaps(asm):
+            flagged += 1
+            p = bm['data_offset']
+            if asm.data[p:p + 3] != b'\xff\xd8\xff':
+                bad.append('%s: no JPEG stream at +52' % os.path.basename(f))
+                continue
+            # The u32 ahead of the SOI is the stream length; check it against the actual
+            # SOI..EOI extent, which is the independent half of this.
+            n = struct.unpack_from('<I', asm.data, p - 4)[0]
+            end = asm.data.find(b'\xff\xd9', p)
+            if end > 0 and end + 2 - p == n:
+                lengths += 1
+            try:
+                im = Image.open(io.BytesIO(asm.data[p:p + n]))
+                im.load()
+            except Exception as e:
+                bad.append('%s: will not decode (%s)' % (os.path.basename(f), e))
+                continue
+            got = {'L': 1, 'RGB': 3, 'RGBA': 4}.get(im.mode)
+            # Channels are checked only when the class word states them: cls 0x808 has no
+            # CHANNELS entry and the JPEG is the only thing that knows.
+            ok = (im.size[0], im.size[1]) == (rec.width, rec.height) \
+                and (bm['channels'] is None or got == bm['channels'])
+            if ok:
+                matched += 1
+            else:
+                bad.append('%s: decodes %r/%s, record declares %r'
+                           % (os.path.basename(f), im.size, im.mode, 
+                              (rec.width, rec.height, bm['channels'])))
+    if not flagged:
+        print('SKIP: no JPEG-flagged bitmaps in this slice of the corpus')
+        return
+    print('    %d of %d JPEG-flagged bitmaps decode to the declared shape, '
+          '%d have the length at +48' % (matched, flagged, lengths))
+    assert matched == flagged, 'JPEG bitmaps that do not match their record: %r' % (bad,)
+
+
 if __name__ == '__main__':
     for fn in (test_the_pixel_header_is_eight_bytes,
                test_rgba_alpha_lands_in_the_last_channel,
-               test_the_images_still_pack_back_to_back):
+               test_the_images_still_pack_back_to_back,
+               test_jpeg_bitmaps_decode_to_what_the_record_declares):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()
