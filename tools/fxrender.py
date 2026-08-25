@@ -51,6 +51,29 @@ TWO NEGATIVE RESULTS, recorded so they are not re-run.
    while the spread widens at both ends (p10 0.374 -> 0.060). Whatever sets the scale, it
    is not the pattern count.
 
+3. THE FRAME IS NOT A PER-LEVEL POWER OF TWO ON NODE DEPTH. `walk` treats the node graph
+   as a linear chain, so an obvious candidate was a missing per-level halving. Evaluating
+   `patternsize` for real over 1,034 pattern-emitting records (it is a PROGRAM in most
+   entries and invisible to a static read), the best-scoring divisor is `2^chain length`:
+   median 0.480 against the 0.50 that characterises records rendering a picture, and
+   79.6% landing in [0.2, 2] against 51.2% raw. It is also WRONG. `Stadsspel__Lines`
+   record 0 has chain length 1 and a patternsize of 1.414 -- the unit square's diagonal,
+   verified end to end -- so any divisor above 1 destroys the one record known to be
+   correct. The variants that preserve it, `2^(chain-1)` and the numerically identical
+   `2^(addnode levels)`, reach only median 0.961 at 63.8%: better than raw, nowhere near
+   0.50. Note the shape of that failure -- it is negative result 1 again from a different
+   direction, a metric improving while the model gets worse, and only the known-good
+   record caught it.
+
+WHY THIS MATTERS MORE THAN THE FILTER WORK. Perturbation over 140 files: of 112 declared
+outputs that render flat, the flat SOURCE records in their closure were replaced with
+varying patterns and the output re-rendered. 89 then varied, 4 stayed flat, and 19 had no
+flat source to perturb. So 89 of the 93 testable -- 95.7% -- are flat because their
+sources are constant, NOT because the filter chain destroys variation; it transmits fine.
+The constant sources are `fxmaps` (367) and `uniform` (300), and nothing else. This is why
+three filters landing in one session moved `produced` and left the picture count alone:
+they were never the constraint. `patternsize` is.
+
 The positions say the same thing from the other side: the x-extent of
 `branchoffset + frameoffset` across one record's patterns has median 0.835 -- about a unit
 square, as expected -- but a p90 of 7.8. Some records place patterns far outside the unit
