@@ -31887,3 +31887,34 @@ exemption and nothing more — `valid_program` skips the ordering check on 0x0B 
 
 What token 4 MEANS stays open, as it has been since the trip-count retractions. What
 is no longer open is whether these 68 programs are programs.
+
+## The two original mystery slots close: records embed typed reference cells
+
+Two slots have been carried as "genuinely unread" since the first full-corpus audit —
+`roofing_007` shuffle idx325 slot 4 (0x60b) and `Texture_Randomizer` fxmaps idx0
+slot 3 (0x203). Both are the same structure, read end to end today:
+
+**A record can embed a typed reference cell — [id << 8 | kind][pointer] — directly in
+its header,** the same 8-byte cell species the node region uses:
+
+    shuffle idx325   slots 4-5   [0x60b][ptr]  kind 0x0b -> a kind-0x88 NODE in the
+                                 record's own tail, which itself carries an embedded
+                                 one-instruction program: [count=1][ref.i1][uid]
+    fxmaps idx0      slots 3-4   [0x203][ptr]  kind 0x03 -> directly a PROGRAM:
+                                 [count=3][ref.i2][uid ...]
+
+The control that sharpened it: 0x0000060b occurs at exactly ONE 4-aligned position in
+all of roofing_007 — the record slot itself — so the cell does not reference a node
+elsewhere by id; the id is local and the POINTER is the reference. Kind 0x0b wraps a
+node; kind 0x03 points straight at a program. Both targets sit inside the record's own
+tail, which is also where the unnamed-program work has been finding its bytecode — the
+record tail is the record's private allocation area, reached by embedded cells rather
+than by the slot-order walk.
+
+This is the record-to-node linkage the node-schema work lacked: dynamic parameters are
+attached to records as embedded cells, in header positions the mask walk does not
+cover, pointing into the record's own tail. Both cells sit exactly where the walk's
+layout ends, which is why they surfaced as "unread parameter slots" — they are not
+parameters, they are attachments.
+
+Nothing in the original audit's "genuinely unread" column remains unread.
