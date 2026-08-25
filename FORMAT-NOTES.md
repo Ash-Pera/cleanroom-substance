@@ -30740,3 +30740,56 @@ bits (0x190b is 8 but 0x4000b inferred 28 and 0x310b 32), so that kind's law is 
 with the RECORD tags of levels (0x...881e), which raises the question of whether large
 payload nodes embed record-shaped structures. Both are conjectures at the strength of
 "the low byte matches", and are recorded as exactly that.
+
+## Why the FX-Map still will not render: the slot frame is graph-wide, not per-record
+
+The FX-Map structure is decoded — chain nodes, table entries, and 170,659 programs across
+both halves. Rendering needs one more thing the structure does not give: **which named
+parameter each slot carries**. Naming them by byte containment was tried and failed (12/58
+`frameoffset`, 1/34 `patternsize`, against a 20% control).
+
+That test asked the wrong question, and the entry programs say so themselves. They do not
+embed their values; they **read them from slots** — `get.f1 3; vec.f2` is a size,
+`get.f2 633; const 0.5,0.5; sub` an offset. So the way to name a slot is to EVALUATE the
+program and match the result against a declared value, not to look for the bytes.
+
+Running that on `ie_curve`, which declares 90 FX constants and carries 235 entry programs —
+the only permitted specimen with enough of both to test:
+
+    entry programs evaluated       13 of 235
+    node programs evaluated         5 of  59
+    failures, dominated by         "slot N read but never set"
+
+The notes elsewhere establish the execution order — a record's own programs run before its
+FX programs — and applying it helps measurably:
+
+    seeding the frame with the record's own programs first
+      node programs      5 -> 13 of 59
+      entry programs    13 -> 45 of 235
+      distinct results   8 -> 11
+
+It does not close it. The remaining 190 failures read slots 36, 37, 39 and upward that no
+program in that record ever writes. `render.py`'s own docstring already names this category:
+slots written by ANOTHER record's programs, with slot state shared across records, which the
+walker deliberately does not model — it keeps one `slots` dict per record.
+
+**So the FX-Map's frame is graph-wide, not per-record**, and that is consistent with the
+88.1%-vs-0% read/write agreement measured earlier for slots >= 64: a slot index above the
+collision floor is written in one place and read in another *within the same file*.
+
+### What this means for the order of work
+
+Rendering an FX-Map needs, in order:
+
+1. a graph-wide slot frame, shared across records rather than reset per record — a change
+   to the walker's model, not to any decode;
+2. the slot -> parameter-name mapping, which becomes measurable once (1) lets entry programs
+   evaluate;
+3. the `patterntype` enum, which is external and unverifiable from this corpus the same way
+   the blend-mode enum was — 43 of 60 declared values are type 1, so one value covers most
+   of it.
+
+Only (2) is blocked on evidence. (1) is engineering and (3) is a documented external
+dependency. The structural work is genuinely finished; what remains is a frame model and a
+naming pass, and this section exists so the next attempt starts at step 1 rather than
+re-running the containment test.
