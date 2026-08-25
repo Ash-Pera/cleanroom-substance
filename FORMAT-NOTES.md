@@ -30520,3 +30520,64 @@ Records rendered, declared outputs and fully-rendering files are all unchanged a
 isolation while producing no new pixels — `directionalwarp` was the first. **99% of warp
 records sit downstream of `fxmaps`**, so the gate measured two ways elsewhere in this
 document is confirmed a third time from inside a filter that depends on it.
+
+## Blend's edge order, settled by asymmetric input types
+
+`blend`'s two image inputs were wired on convention, not evidence: `edges[0]` taken as the
+destination and `edges[1]` as the source, because a paired `.sbs` names the two connections
+`destination` and `source` and that is the conventional compositing order. Nothing
+confirmed which compiled slot each became. The note in `render.py` said so for as long as
+the assumption stood.
+
+It stopped being harmless when the non-`copy` blend modes landed. Under mode 0 the
+composite is `dst*(1-o) + src*o`, which is symmetric under swapping the two inputs and
+relabelling the opacity — a reversed reading produced the same picture, so the assumption
+was untestable *and* unfalsifiable at the same time. `subtract`, `divide` and `overlay` are
+not symmetric. The moment they were implemented the assumption became load-bearing and
+checkable in the same stroke.
+
+### The test
+
+The `.sbs` already answers the semantic half outright: each blend node's connections are
+labelled `destination` and `source`, with a `connRef` naming the node on the other end. The
+only missing link is node-to-record correspondence, which inlining destroys in general.
+
+The way around it is to not need the correspondence. Where a blend's two inputs are fed by
+**different filter types**, the ordered type pair identifies the orientation by itself. So:
+read `(type of destination's feeder, type of source's feeder)` from the source, read
+`(type of edges[0]'s record, type of edges[1]'s record)` from the binary, and ask whether
+they agree in order or in reverse.
+
+Restricted to unordered type pairs occurring **exactly once on each side** — the
+count-exact discipline used throughout this document, and what makes a match unambiguous
+rather than one of several possible pairings:
+
+    edges[0] == destination      14 of 14
+    edges[0] == source            0 of 14
+
+across **11 distinct file contents and 11 distinct type pairs** — `levels`/`uniform`,
+`distance`/`pixelprocessor`, `pixelprocessor`/`fxmaps`, `gradient`/`hsl`, `blend`/
+`transformation`, `levels`/`sharpen`, `gradient`/`blend`, `blend`/`fxmaps` and others. Two
+further observations were dropped as content-duplicates of files appearing in more than one
+paired directory; the raw count before deduplication was 16.
+
+### The control, which is the part that matters
+
+A test that only ever returns "agrees" is not evidence. Re-running the identical procedure
+with the compiled edge pair deliberately swapped:
+
+    swapped: edges[0] == destination      0 of 14
+    swapped: edges[0] == source          14 of 14
+
+The test discriminates fully. It could have found a reversal and did not.
+
+### Scope
+
+This settles which SLOT is which. It does not settle what the engine then does with them,
+which is the blend-mode table's problem and rests on external documentation
+(`render.BLEND_MODES`). The two questions are independent: a correct slot order feeding a
+mis-named mode still renders the wrong picture, just not a mirrored one.
+
+Provenance: the permitted-file gate ran as its own step before any content was read, and
+excluded 52 of 200 paired sources (`Allegorithmic`, and `GameTextures.com` — a
+non-permissive commercial author found in the corpus and excluded separately).

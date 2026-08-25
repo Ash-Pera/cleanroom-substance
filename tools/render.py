@@ -337,18 +337,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # table's comment for why no .sbsar can settle it. Mode 0 is the one
                 # independently verified case.
                 #
-                # A second UNVERIFIED assumption, independent of the mode question and
-                # unchanged here: which edge is laid UNDER the other. The paired source
-                # names the two connections "destination" and "source" (a real
-                # specimen's compFilter, LGMLtools__multi_blender) -- Substance's own
-                # terms for a standard alpha-over compositing pair -- but nothing here
-                # confirms which of edges[0]/edges[1] is which at the bytecode level, so
-                # this takes the conventional order (destination = edges[0], source =
-                # edges[1], source laid over destination) without independent proof.
-                # Wrong here means a plausible-looking but swapped image, not a crash --
-                # and now that asymmetric modes (subtract, divide, overlay) are
-                # implemented, a swap is no longer invisible the way it was under mode 0
-                # alone, so this is the assumption a real corpus test should attack first.
+                # Edge order -- which input is laid UNDER the other -- was carried here as
+                # an unverified convention for a long time. It is now CORPUS-VERIFIED:
+                # edges[0] is the destination, edges[1] the source.
+                #
+                # The test (FORMAT-NOTES.md, "Blend's edge order, settled by asymmetric
+                # input types"): a paired `.sbs` names each blend's two connections
+                # `destination` and `source` outright, so the only missing link is which
+                # compiled edge slot each became. Where a blend's two inputs are fed by
+                # DIFFERENT filter types, that type pair identifies the orientation without
+                # needing any node-to-record mapping. Restricted to unordered type pairs
+                # occurring exactly ONCE on each side -- the count-exact discipline used
+                # elsewhere in this document, which is what makes the correspondence
+                # unambiguous rather than coincidental:
+                #
+                #     edges[0] == destination     14 of 14
+                #     edges[0] == source           0 of 14
+                #
+                # over 11 distinct file contents and 11 distinct type pairs (levels/uniform,
+                # distance/pixelprocessor, pixelprocessor/fxmaps, gradient/hsl, blend/
+                # transformation, levels/sharpen and others), with the provenance gate
+                # applied as its own step first. The control matters as much as the result:
+                # re-running the identical test with the compiled edges deliberately swapped
+                # flips it to 0 of 14 forward, so the test could have detected a reversal
+                # and did not -- it is not vacuously agreeing.
+                #
+                # This mattered more once the asymmetric modes (subtract, divide, overlay)
+                # landed: under mode 0 alone a swap was mathematically invisible, so the
+                # assumption was both load-bearing and newly falsifiable.
+                mode = rec.slot1_flags.get("blendingmode") if rec.slot1_flags else None
                 mode = rec.slot1_flags.get("blendingmode") if rec.slot1_flags else None
                 if mode is None:
                     raise Unsupported("blend record has no readable blendingmode")
