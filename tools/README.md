@@ -140,6 +140,8 @@ parameter bits the slot rule needs, so no rewriting of entries can express the r
     validate_corpus.py    structural checks against the .sbsar manifests
     attribute_outputs.py  cross-checks the output table against the manifest's alteroutputs
                           relation: 98.20% agreement over 39,855 (input, output) pairs
+    refcompare.py         rendered outputs against the engine's OWN exported maps --
+                          the only ground-truth check in the repository
     test_tables.py        knocks out each table in turn -- a table that changes no
                           reading when emptied is not carrying the decode it documents
     test_corpus_discovery.py
@@ -160,6 +162,21 @@ repeated it -- the reference sat here for the length of that claim with no code 
 the two, so the sentence described an intention rather than a check. `test_standalone_parse.py`
 is the check. It compares the exception as well as the result, since a fast path that
 starts raising on a file the reference reads would otherwise pass unnoticed.
+
+`refcompare.py` is the only check here that scores a render against ground truth rather
+than against a distribution. Several corpus packages ship the texture maps the engine
+exported beside the `.sbsar` that produces them, and `manifest.output_names` pairs each
+declared output to its map by USAGE (basecolor, normal, roughness ...), which is an exact
+lookup rather than a filename guess. `assume.py` records why this was unusable for so
+long: our refusals to guess were what blocked the reference renders, with `blur`'s
+withdrawn intensity fallback the top blocker at 70 records.
+
+Read its docstring before using it. Two traps in there produced confident wrong readings:
+the AO/height/metallic/roughness maps are 16-bit, so `convert('L')` saturates them and
+makes the engine's own exports look like blank white placeholders; and averaging a normal
+map's channels flattens it by construction, since (0.5, 0.5, 1.0) is nearly constant under
+a channel mean. Today it reports a baseline, not a validation -- means agreeing to four
+decimals with spatial variation 5.4x too small.
 
 `provenance.py` is the one to run against a new corpus before measuring anything with it.
 The exclusion rule in README.md is a single string match, and this applies it and reports
