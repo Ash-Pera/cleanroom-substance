@@ -20,6 +20,38 @@ HANDLES, and a knot-on-diagonal spline with curved handles is not the identity a
 Only 1 record in the corpus has knots and handles both on the diagonal -- the other 214
 are genuinely curved and were right to disagree. That is this project's signature failure
 mode, found in its own test rather than in the format.
+
+WHAT THESE CATCH, by mutating render.py one edit at a time:
+
+    mutation                                 caught by
+    curve: swap the in/out handles           bisection cross-check
+    curve: drop the spline, return input     bisection, endpoints
+    curve: reverse the knot loop             NOTHING -- and it is a no-op, not a defect:
+                                             the sample table is argsorted by x before use,
+                                             so loop order is unobservable (verified: the
+                                             two outputs differ by exactly 0.0)
+    gradient: index the ramp with 1 - t      independent lookup
+    gradient: stop positions used as values  bounds, independent lookup
+    dirmotionblur: TAPS = 1, no blur at all  smooths-along-its-angle
+    dirmotionblur: kernel 10x too long       NOTHING -- see below
+
+The first version of this file caught three of seven, for two reasons that are both
+mistakes this project has made before:
+
+  * `gradient` and `dirmotionblur` had only BOUNDS checks -- output inside the ramp's
+    range, output inside [0, 1]. Reversing a lookup and lengthening a kernel both keep
+    those bounds. Bounds are cheap and nearly powerless.
+  * A broken filter renders NOTHING, and the tests reported "no specimen" and SKIPPED.
+    `TAPS = 1` divides by zero, every render raises, and the suite passed. Candidate
+    records are now counted separately from successful ones, and finding candidates while
+    rendering none is an assertion failure rather than a skip.
+
+The 10x-kernel mutation is not caught and cannot honestly be caught here. It changes the
+blur's absolute LENGTH, which is precisely what this implementation does not know: the
+256-pixel reference is inherited from `directionalwarp` and is recorded in `render.py` as
+possibly wrong by a constant factor. A test asserting the length would be asserting the
+unestablished thing. The blind spot lines up exactly with the documented gap, which is the
+honest place for it.
 """
 import os
 import sys
