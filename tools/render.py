@@ -461,7 +461,8 @@ def apply_blend(mode, dst, src, opacity):
         return np.clip(dst * (1.0 - opacity) + blended * opacity, 0.0, 1.0)
 
 
-def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitmaps=False):
+def render(asm, precomputed=None, verbose=True, max_dim=None,
+           synth_missing_bitmaps=False, stop_after=None):
     """Evaluate every record 0..N-1 that a filter type here can handle.
 
     `precomputed` pre-seeds outputs for records the walker cannot compute itself (e.g. a
@@ -1693,10 +1694,22 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # 0.0 is a legitimate intensity -- `flowingLava` declares it -- and means a
                 # blur that does nothing, so it must pass the guard. What must not pass is
                 # a program POINTER read as float32, which is a denormal near 1e-38.
+                # WHETHER a baked intensity is present at all is stated by CLASS-WORD
+                # BIT 12, not inferred from whether the word looks plausible. Found by
+                # walk.py's author (a49d08a): over 6,855 blur records, bit 12 is set iff
+                # the last header slot is a baked value, 6,855/6,855.
+                #
+                # It changes no behaviour today and is still worth stating: over 40 files
+                # every one of the 34 bit-12-clear records already fails the plausibility
+                # guard below, so the guard was reaching the right answer by luck. A word
+                # that happened to read as a small float would have been taken as an
+                # intensity; with the gate it cannot be, because the record says there
+                # isn't one.
                 intensity = None
                 nprog = bin(rec.cls & 0x2881).count("1")
                 _islot = 4 if nprog == 0 else 2 + nprog
-                if _islot is not None and _islot < len(rec.words):
+                _baked = bool(rec.cls >> 12 & 1)
+                if _baked and _islot < len(rec.words):
                     v = float(np.frombuffer(np.uint32(rec.words[_islot]).tobytes(),
                                             dtype=np.float32)[0])
                     if np.isfinite(v) and (v == 0.0 or 1e-6 < abs(v) < 1e4):
@@ -1745,8 +1758,12 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # that slot 3 is the HEIGHT half of the baked size pair. The question it
                 # existed to arbitrate has been answered from the sources instead.
                 if intensity is None:
-                    raise Unsupported("blur intensity: slot %d does not read as a "
-                                      "plausible intensity (nprog=%d)" % (_islot, nprog))
+                    raise Unsupported(
+                        "blur intensity: %s (nprog=%d, slot %d)"
+                        % ("class bit 12 clear, so the record states there is no baked "
+                           "intensity" if not _baked else
+                           "slot does not read as a plausible intensity",
+                           nprog, _islot))
 
                 W, H = rec.width, rec.height
                 if max_dim:
@@ -2002,5 +2019,18 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
             failures[i] = "%s: %s" % (type(e).__name__, e)
             if verbose:
                 print("rec%d (%s): ERROR - %s: %s" % (i, rec.filter_name, type(e).__name__, e))
+
+        if stop_after is not None and i >= stop_after:
+            # A caller that wants ONE record's output does not need the rest of the
+            # file. Edges point backward -- a record's inputs are always at lower
+            # indices -- and evaluation is a single forward pass with no state that a
+            # later record could feed back, so stopping here returns exactly what a
+            # full render would have put in outputs[stop_after]. This is an early
+            # stop, NOT a dependency-cone prune: pruning by Record.edges would be
+            # unsafe, because the manifest oracle measured that closure as a strict
+            # SUBSET of the real dependencies (513 paths missed, 0 over-claimed) --
+            # samplers reach images without an edge, and a cone walk would silently
+            # drop them.
+            break
 
     return outputs, failures, synthetic
