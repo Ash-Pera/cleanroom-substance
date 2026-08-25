@@ -86,6 +86,27 @@ def distance_param(rec, eval_program, inputs):
         # refuses in exactly this case rather than taking the first.
         raise Unlocated('%d width-1 program results; cannot single out `distance`'
                         % len(widths))
+    # THE FALLBACK, and the reason its hit rate cannot be read as an accuracy.
+    #
+    # Containment over the block looks poor -- in the population where this fallback
+    # actually fires (no width-1 program), the file's declared value is found somewhere in
+    # the block in 19 of 88 records, 21.6%, against a 0.0% control. It is tempting to read
+    # that as "wrong four times in five". It is not: the rate is CEILINGED by
+    # (distinctive values the source declares) / (records the file compiles to), and
+    # instancing makes a source with three `distance` nodes compile to thirty records. Most
+    # records cannot match any declared value because no declaration corresponds to them.
+    #
+    # So the 0.0% control is the load-bearing number here and the 21.6% is close to
+    # meaningless. Neither this nor a parallel session's 14.6%-vs-2.9% on `blur` means what
+    # its denominator suggests.
+    #
+    # What the fallback returns is therefore marked LOW CONFIDENCE rather than trusted or
+    # refused. render.py already has this pattern: `synth_missing_bitmaps` tags outputs
+    # built on invented data into a `synthetic` set so a sweep can count them separately
+    # instead of reporting them as ordinary successes. A parameter taken from a slot rather
+    # than a program is the same kind of claim and deserves the same treatment -- it turns a
+    # plausible-wrong into a visible-uncertain, which is the one lesson this decode keeps
+    # relearning.
     edges = set(rec.layout[0] or ())
     for si in range(2, min(len(rec.words), 9)):
         if si in edges:
@@ -94,8 +115,17 @@ def distance_param(rec, eval_program, inputs):
         # Denormals are program pointers read as float32. Accepting them is what put a
         # parallel session's `normal` intensity in the wrong slot.
         if 1e-3 < abs(f) <= REFERENCE_PX:
-            return float(f), 'baked slot %d' % si
+            return float(f), 'baked slot %d (LOW CONFIDENCE)' % si
     raise Unlocated('no program and no plausible baked float in the block')
+
+
+def is_low_confidence(how):
+    """Did `distance_param` fall back to a slot rather than read a program?
+
+    A caller that renders on a low-confidence parameter should record the output the way
+    render.py records a synthesised bitmap -- produced, but not on the file's own evidence.
+    """
+    return 'LOW CONFIDENCE' in how
 
 
 def distance_field(mask, radius_px):

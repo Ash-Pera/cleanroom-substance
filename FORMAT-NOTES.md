@@ -32887,3 +32887,57 @@ the sign convention or which input is the mask — both need an output to compar
 
 `combinedistance` is declared 0 in all 19 sightings, so it has no contrast at all and is
 unlocatable from this corpus, the same wall `imagefiltering` and `imagepremul` hit.
+
+
+## A baked-slot hit rate has a ceiling, and neither of us accounted for it
+
+Two independent slot scans this session produced a low own-file containment rate with a
+near-zero control — `distance` at 21.6% against 0.0% in the population where its fallback
+actually fires, `blur` at 14.6% against 2.9% after the shared-value artifact was removed.
+Both look like "wrong four times in five".
+
+They are not. **The rate is ceilinged by (distinctive values the source declares) /
+(records the file compiles to)**, and instancing makes a source with three `distance` nodes
+compile to thirty records. Most records cannot match any declared value because no
+declaration corresponds to them. The denominator counts records; the numerator can only ever
+count declarations.
+
+So in both scans the **0.0% control is the load-bearing number** and the headline rate is
+close to meaningless. This is the mirror of the shared-value artifact: there, a value every
+file declared inflated a rate to 72%; here, a denominator no numerator can reach deflates
+one to 21.6%. Both are the denominator lying, in opposite directions, and neither is visible
+without asking what the number could be if everything were right.
+
+### What to do with a parameter read from a slot
+
+Not trust it, and not refuse it. Mark it. `render.py` already has the pattern:
+`synth_missing_bitmaps` tags outputs built on invented data into a `synthetic` set so a
+sweep counts them separately instead of reporting them as ordinary successes. A parameter
+taken from a slot rather than a program is the same kind of claim.
+`tools/distance.py` returns `'baked slot N (LOW CONFIDENCE)'` and exposes
+`is_low_confidence()` for exactly that.
+
+It converts a plausible-wrong into a visible-uncertain, which is the one lesson this decode
+keeps relearning.
+
+## One dependency, not several open items
+
+Four questions are now blocked on the same thing, and it is worth stating once rather than
+four times:
+
+| question | why it is blocked |
+|---|---|
+| which pattern shape `patterntype` selects | need an output to compare against |
+| `distance`'s sign convention | need an output to compare against |
+| which of `distance`'s two edges is the mask | need an output to compare against |
+| whether `blur`/`distance`'s baked-slot fallbacks are right | need an output to compare against |
+
+None is short of *evidence in the file*; all four are short of a **rendered image that can be
+scored**. That is the reference-render validation set — `new_opengameart/*/reference_renders/`,
+engine-exported per-output maps whose channel names match the manifests' own output
+identifiers — and it is currently unusable only because no declared output in those eight
+specimens renders with spatial variation.
+
+So the validation set is not a nice-to-have parked behind other work. It is the single
+dependency four separate decode questions are waiting on, and the work that unblocks it is
+the cascade roots — `distance` and `blur` — not more analysis of any of the four.
