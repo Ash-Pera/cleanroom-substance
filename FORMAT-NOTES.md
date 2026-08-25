@@ -32831,3 +32831,59 @@ So the honest figure is one, not zero, and the sample that found zero did not co
 The conclusion survives with its magnitude corrected: FX-Map fidelity is close to invisible
 at the output layer, because the graphs needing it are blocked further along — by
 `distance`, `blur`, and the rest of the root table above.
+
+## `distance` (filter 21): units settled, kernel verified, slot deliberately not guessed
+
+`distance` is the largest named root cause in `Bricks` (530) and one of the two the cascade
+bottoms out in. `tools/distance.py` carries the decode; it is kept out of render.py so the
+branch there is a call rather than a block.
+
+**The units are pixels at a 256 reference, and the declarations say so unaided.** Every
+constant 17 permitted sources declare lies in [0, 256]; 11 of 19 are exactly 256, which is
+propagate-across-the-whole-image and the natural default; and corpus-wide the slot carrying
+256 most often has a median of exactly 256 over 913 float-valued reads. A normalised [0, 1]
+parameter cannot be 256.
+
+**The slot moves, and finding that out took two passes.** The first scan looked decisive:
+
+```
+slot 5   72.0% own-file containment   CONTROL 0.0%   (n=25)
+slot 6   14.3%                        CONTROL 15.9%  -- noise
+```
+
+That was an artifact. `distance` = 256 in more than half the declarations, and a value every
+file shares discriminates nothing — which is exactly why `containment.py` requires ≥5
+decimals. Redone on values only one file declares:
+
+```
+slot 4   44.4% own   CONTROL 0.0%   (n=9)
+slot 5   52.9%       CONTROL 0.0%   (n=17)
+slot 6   13.3%       CONTROL 0.0%   (n=45)
+```
+
+Three slots, every control zero. That is not three candidates, it is one parameter whose
+position moves — the same thing `warp` has, where fixed slots gave 95.69% and the layout
+block gave 99.889%. Against the record's own block the best position is index 1 at 60.0%
+against 0.0%, n=15.
+
+**No slot is hardcoded, on purpose.** 60% on fifteen records is *weaker* than the
+33.7%-against-6.5% a parallel session used to place `normal`'s intensity — and that
+placement was wrong, because the population was mixed and program pointers read as float32
+are denormals that pass a plausibility test. So the parameter is located the way
+`transformation` does it: one width-1 program result if there is exactly one, else a baked
+non-denormal float in the block, else refuse. A refusal is a correct answer; a guessed slot
+is not.
+
+**The kernel is verified by controlled input, not by a distribution.** One lit pixel at the
+centre of a 256×256 field:
+
+```
+R = 16    zero at radius 15.81    value at R/2 = 0.500    radial spread 0.0155
+R = 40    zero at radius 39.96    value at R/2 = 0.500    radial spread 0.0056
+```
+
+Linear, radially symmetric, reaching zero at exactly R. What that does **not** establish is
+the sign convention or which input is the mask — both need an output to compare against.
+
+`combinedistance` is declared 0 in all 19 sightings, so it has no contrast at all and is
+unlocatable from this corpus, the same wall `imagefiltering` and `imagepremul` hit.
