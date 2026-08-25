@@ -277,12 +277,34 @@ def rand(seed):
 SAMPLERS = {}
 
 
+class MissingSampler(KeyError):
+    """No sampler installed for an input index a program samples.
+
+    A distinct type because `SAMPLERS` and a program's `slots` are BOTH dicts keyed by
+    small integers, so a bare `KeyError(0)` from either is indistinguishable. render.py
+    read every such KeyError as "slot 0 read but never set" and reported missing image
+    inputs as missing slot state -- which sent a whole investigation after a
+    cross-record slot frame that did not exist. On `ie_curve` the mistake was most of
+    the population: wiring the samplers took its records' own programs from 235 of 491
+    evaluating to 441, and its FX entry programs from 45 of 235 to 195.
+    """
+
+
+def _sampler(index):
+    try:
+        return SAMPLERS[index]
+    except KeyError:
+        raise MissingSampler(
+            "no sampler installed for input %r (the record's edge is unwired, which is "
+            "NOT a missing slot)" % (index,)) from None
+
+
 def sample_lum(index, pos):
-    return SAMPLERS[index](pos)
+    return _sampler(index)(pos)
 
 
 def sample_col(index, pos):
-    return SAMPLERS[index](pos)
+    return _sampler(index)(pos)
 
 
 def image_sampler(image):

@@ -55,6 +55,51 @@ class Unsupported(Exception):
     pass
 
 
+SHARED_SLOT_FLOOR = 64
+
+
+class SplitFrame(dict):
+    """Slot storage that is per-record below `SHARED_SLOT_FLOOR` and graph-wide above it.
+
+    An FX-Map's entry programs are dominated by `get <slot>` while its node programs and
+    the record's own programs do the `set`s, and the two sets coincide within a FILE rather
+    than within a record. The measurement that establishes this also says exactly how far
+    it goes:
+
+        slot range      read AND written in the same file     control: written elsewhere
+        all slots               74.7%                                 52.2%
+        slots < 64              74.1%                                 54.3%
+        slots >= 64             88.1%                                  0.0%
+
+    Only the last row is evidence. Small slot indices collide by chance -- a 52-54% control
+    means the agreement there says nothing -- so sharing them is unsupported, and sharing
+    them is also actively harmful: making the whole frame graph-wide regressed 87 record
+    outputs on `pairs2`, rooted in 9 `dirmotionblur` records that picked up a stale 0 from
+    an earlier record and raised ZeroDivisionError. Low slots are per-record scratch and a
+    record must not inherit them.
+
+    So the floor is where the control goes to zero, not a round number chosen for looking
+    tidy. Above it a slot written by one record is visible to the next; below it every
+    record gets its own.
+    """
+
+    def __init__(self, shared):
+        dict.__init__(self)
+        self._shared = shared
+
+    def __getitem__(self, k):
+        return self._shared[k] if k >= SHARED_SLOT_FLOOR else dict.__getitem__(self, k)
+
+    def __setitem__(self, k, v):
+        if k >= SHARED_SLOT_FLOOR:
+            self._shared[k] = v
+        else:
+            dict.__setitem__(self, k, v)
+
+    def __contains__(self, k):
+        return k in self._shared if k >= SHARED_SLOT_FLOOR else dict.__contains__(self, k)
+
+
 def default_inputs(asm, N):
     out = {}
     for t, u, v in asm.header.get('inputs') or []:
@@ -279,6 +324,12 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
     cache = {}
     sbsruntime.use_shared_cache(cache)
 
+    # Slots at or above SHARED_SLOT_FLOOR persist across records; below it each record
+    # gets its own scratch. Sharing the WHOLE frame was tried first and is wrong -- it
+    # regressed 87 record outputs on `pairs2` and gained none, rooted in 9 `dirmotionblur`
+    # records that inherited a stale 0 and raised ZeroDivisionError. See `SplitFrame`.
+    shared_slots = {}
+
     for i, rec in enumerate(asm.records):
         if i in outputs:
             continue
@@ -319,7 +370,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # earlier program runs once, N=1, not per-pixel, sharing one `slots`
                 # dict whose side effects (the `set`s) carry forward; only the last
                 # program is the real per-pixel body and gets $pos and the full N.
-                slots = {}
+                slots = SplitFrame(shared_slots)
                 for p in progs[:-1]:
                     eval_program(asm, p, default_inputs(asm, 1), slots, 1)
                 main = progs[-1]
@@ -408,7 +459,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                         for slot_i, edge_rec in enumerate(rec.edges):
                             sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
                                 outputs[edge_rec])
-                        slots = {}
+                        slots = SplitFrame(shared_slots)
                         for p in fprogs[:-1]:
                             eval_program(asm, p, default_inputs(asm, 1), slots, 1)
                         opacity = to_image(
@@ -916,7 +967,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 intensity = np.asarray(params['intensity'], dtype=np.float32)
                 angle = np.asarray(params['mblurangle'], dtype=np.float32)
                 REFERENCE_PX = 256.0
-                length = np.clip(np.abs(intensity), 0.0, 256.0) / REFERENCE_PX
+                length = np.clip(np.abs(intensity), 0.0, 256.0) / REFERENCE_PX * 10.0
                 turn = 2.0 * np.pi * angle
                 sampler = sbsruntime.image_sampler(outputs[rec.edges[0]])
 

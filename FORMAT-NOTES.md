@@ -31048,3 +31048,54 @@ recorded as a hypothesis, not a finding.
 Version 0x20000 is now flagged as the least-read cooker generally: it also owns filter
 9 outright and contributed the emboss within-key contradictions. 88 files of the corpus
 are v2; a v2-focused pass over the cost model residue would likely pay for itself.
+
+## The FX-Map blocker was never the slot frame: it was an ambiguous KeyError
+
+Two sections above chased a cross-record slot frame, built it twice, measured it, and
+recorded it as wrong. The reason it was chased at all is a bug in the diagnostic, not in
+the format, and finding it retracts the premise of both.
+
+`sbsruntime.SAMPLERS` maps an input index to a sampler. A program's `slots` maps a slot
+index to a value. **Both are dicts keyed by small integers**, so `SAMPLERS[0]` and
+`slots[0]` raise the identical `KeyError(0)`. `render.py`'s handler caught every one and
+reported it as a slot miss, with a comment asserting that `slots` "is the only one a bare
+KeyError here can mean". That was false, and the FX experiments never wired any samplers,
+so almost every failure was an unwired image input wearing a slot's error message.
+
+Wiring the samplers, on `ie_curve`:
+
+    the fxmaps records' own programs     235 of 491  ->  441 of 491
+    FX chain-node programs                13 of  59  ->   53 of  59
+    FX table-entry programs               45 of 235  ->  195 of 235
+    distinct evaluated result values              11 ->   62
+
+### What this retracts
+
+* "208 of 236 failures sit below the floor" — those were not slot failures at all.
+* The conclusion that low slots are **engine-supplied iteration variables** is withdrawn.
+  It was already contradicted by a static scan run afterwards: every slot an FX program
+  reads is written somewhere in its own file, **412 of 412**, and 1,656 of 1,659 reads are
+  written by the reading record's OWN programs. Nothing is engine-supplied; the setters
+  were simply failing first, for want of a sampler.
+* The graph-wide frame results stand as measured — sharing everything still loses 87
+  outputs, sharing only slots >= 64 still changes nothing — but they answered a question
+  that should never have been asked.
+
+### The fix
+
+`sbsruntime.MissingSampler`, a `KeyError` subclass raised by the sampler lookup, and a
+handler in `render.py` that catches it before the slot case. The two failures now have
+different names, which is the whole point: a diagnostic that cannot tell two causes apart
+sends the investigation to the wrong one, and this one did for two sections.
+
+Regression-checked against a per-output snapshot of every rendered record: **0 lost, 0
+gained, 0 values changed.** Two outputs differed on the first comparison and matched on a
+re-run — `rand()`-seeded programs, not this change, which is itself worth knowing about the
+snapshot method.
+
+### Where FX rendering now stands
+
+The programs evaluate. What is still missing is what they MEAN: which named parameter each
+`(tag, slot)` carries. That was step 2 all along, and it is now actually reachable, with 62
+distinct evaluated values on `ie_curve` to match against its 90 declared FX constants
+instead of the 11 the broken diagnostic allowed.
