@@ -42,7 +42,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import disasm                                                        # noqa: E402
 import provenance                                                    # noqa: E402
 from containment import sbsasm_for                                   # noqa: E402
-from sbsasm import Assembly, FX_PARAM_BITS, fx_entry_layout          # noqa: E402
+from sbsasm import (Assembly, FX_PARAM_BITS, FX_NODE_PARAMS,          # noqa: E402
+                    fx_entry_layout)
 
 # `.sbs` serialises every value two ways -- `<x v="1"/>` and `<x><value v="1"/></x>` --
 # and 3 of the 8 permitted FX sources use the nested form for ALL of theirs. Reading only
@@ -186,6 +187,64 @@ def predict_tags(bitmap):
     return hit, tot
 
 
+def node_kind(body):
+    """The source's name for one non-paramset node, split by how it stores its parameters.
+
+    `addnode` with a `randomseed` and `addnode` with a baked `numberadded` compile to
+    different headers, so they are different kinds for this purpose -- which is the whole
+    finding: the node header carries the same program/baked distinction the entry tag does.
+    """
+    m = TY.search(body)
+    ty = (m.group(1) or m.group(2)) if m else '?'
+    if ty != 'addnode':
+        return ty
+    how = {(n1 or n2): ('d' if '<dynamicValue>' in pv else 'c')
+           for n1, n2, pv in PA.findall(body)}
+    if 'randomseed' in how:
+        return 'addnode+randomseed'
+    return 'addnode(baked)' if how.get('numberadded') == 'c' else 'addnode'
+
+
+def node_cooccurrence():
+    """[(filename, {source kind: n}, {compiled header: n})] over the permitted FX sources."""
+    out = []
+    for rel, text, asmf in fx_sources():
+        src = collections.Counter(node_kind(b) for b in GD.findall(text))
+        src.pop('paramset', None)
+        a = Assembly(asmf)
+        comp = collections.Counter()
+        for r in a.records:
+            if r.filter_id != 4:
+                continue
+            done = set()
+            for kind, off, hdr, _p in r.fx_walk():
+                if kind == 'node' and off not in done:
+                    done.add(off)
+                    comp[hdr] += 1
+        out.append((os.path.basename(rel), src, comp))
+    return out
+
+
+def report_nodes():
+    files = node_cooccurrence()
+    kinds = sorted({k for _f, s, _c in files for k in s})
+    hdrs = sorted({h for _f, _s, c in files for h in c})
+    print('NODE HEADERS -- files agreeing on presence/absence, out of %d' % len(files))
+    print('   %-10s %s' % ('header', '  '.join('%-20s' % k for k in kinds)))
+    for h in hdrs:
+        row = []
+        for k in kinds:
+            agree = sum(1 for _f, s, c in files if (s[k] > 0) == (c[h] > 0))
+            exact = sum(1 for _f, s, c in files if s[k] == c[h] and s[k] > 0)
+            row.append('%d/%d%s' % (agree, len(files), '  (%d exact)' % exact if exact else ''))
+        known = FX_NODE_PARAMS.get(h)
+        mark = '' if known is None else '   <- ' + ', '.join(
+            str(v) for v in known.values())
+        print('   0x%-8X %s%s' % (h, '  '.join('%-20s' % r for r in row), mark))
+    print()
+    print('   The diagonal is what FX_NODE_PARAMS states; the off-diagonal is the control.')
+
+
 def main():
     names = {n: b for b, n, _w in FX_PARAM_BITS if n}
     votes, stats = bind()
@@ -223,6 +282,8 @@ def main():
         acc += predict_tags(dict(zip(ns, bs)))[0]
     print('   CONTROL, shuffled name->bit map        %.1f%%'
           % (100.0 * acc / max(trials * tot, 1)))
+    print()
+    report_nodes()
 
 
 if __name__ == '__main__':

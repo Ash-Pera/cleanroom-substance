@@ -40,7 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus                                                        # noqa: E402
 import disasm                                                        # noqa: E402
 from sbsasm import (Assembly, FX_NODES, FX_NODES2, FX_TAG_LOW16,     # noqa: E402
-                    FX_ENTRY, FX_ENTRY_PROGS, fx_entry_layout)
+                    FX_ENTRY, FX_ENTRY_PROGS, FX_NODE_PARAMS, fx_entry_layout)
 
 LIMIT = int(os.environ.get('SBS_FX_FILES', '250'))
 
@@ -410,6 +410,50 @@ def test_entry_layout_agrees_with_the_census():
     return len(rows)
 
 
+def test_node_programs_are_named_and_typed():
+    """Every named node program returns the type its parameter's declared type implies.
+
+    `numberadded` is an Integer1 and `switch` a Bool in the source, and the ISA states a
+    program's type in its last instruction. This is a check on the NAMES, not on the walk:
+    if `FX_NODE_PARAMS` had `0x18B` and `0x89` the wrong way round, the two columns would
+    swap and both assertions below would fail.
+
+    Measured: numberadded i1 100.0%, switch b2 100.0%, coverage 89.9% of node programs.
+    """
+    seen = collections.Counter()
+    types = collections.defaultdict(collections.Counter)
+    for f in corpus.paths():
+        try:
+            a = Assembly(f)
+        except Exception:
+            continue
+        for r in a.records:
+            if r.filter_id != 4:
+                continue
+            for _off, _hdr, name, prog in r.fx_node_params():
+                seen[name is not None] += 1
+                if name is None:
+                    continue
+                last = None
+                for _k, _ad, op, _t in disasm.decode(a.data, prog, a.body_hi):
+                    last = op
+                if last is None:
+                    continue
+                _n, ty, comps, _o = disasm.fields(last)
+                types[name]['%s%d' % (disasm.TYPE[ty], comps)] += 1
+    if not seen:
+        print('SKIP test_node_programs_are_named_and_typed: no corpus')
+        return 0
+    total = seen[True] + seen[False]
+    assert seen[True] / total > 0.80, (seen[True], total)
+    for name, want in (('numberadded', 'i1'), ('switch', 'b2')):
+        c = types[name]
+        n = sum(c.values())
+        assert n > 100, (name, n)
+        assert c[want] / n > 0.95, (name, c.most_common(3))
+    return seen[True]
+
+
 if __name__ == '__main__':
     for fn in (test_coverage_does_not_regress,
                test_records_yield_structure,
@@ -420,6 +464,7 @@ if __name__ == '__main__':
                test_fx_node_programs_never_loop,
                test_entries_read_the_slots_nodes_write,
                test_entry_layout_names_the_program_slots,
-               test_entry_layout_agrees_with_the_census):
+               test_entry_layout_agrees_with_the_census,
+               test_node_programs_are_named_and_typed):
         got = fn()
         print('%-52s %s' % (fn.__name__, ('ok, n=%d' % got) if got else 'skipped'))

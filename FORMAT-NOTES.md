@@ -31918,3 +31918,90 @@ layout ends, which is why they surfaced as "unread parameter slots" — they are
 parameters, they are attachments.
 
 Nothing in the original audit's "genuinely unread" column remains unread.
+
+## The rest of the FX programs: the node chain, and a leaf that isn't one
+
+With the table half named, the FX program population partitions cleanly. Corpus-wide:
+
+```
+entry programs named by the tag layout             101,617
+node programs                                       66,657
+entry: layout says program, the word is not one      6,640
+entry: the census found one, the layout did not      5,997
+node: program slot present but empty                 1,614
+```
+
+The node chain was the largest unnamed block. It is now 89.9% named.
+
+### Node headers carry the same program/baked distinction the entry tags do
+
+An FX-Map source names each node's **type**, and a node type declares a fixed parameter
+list, so binding the header to the type binds the name. Over the 8 permitted FX sources,
+by file-level presence/absence:
+
+| compiled header | source node kind | files agreeing |
+|---|---|---|
+| `0x18B` | `addnode` | **8/8** (2 also exact) |
+| `0x1AB` | `addnode` declaring `randomseed` | **8/8** (2 exact) |
+| `0x89` | `markov2` | **8/8** |
+| `0x20B` | `addnode` with a **baked** `numberadded` | **8/8** (1 exact) |
+| — | every off-diagonal cell | 3/8 to 6/8 |
+
+Eight files is a small number, and 8/8 alone would not be much; what makes it evidence is
+that no off-diagonal cell reaches 7. `tools/fxparams.py` prints the whole matrix.
+
+`0x1AB`'s two programs are ordered by containment, not assumed: over the four `ie_curve`
+nodes declaring both, word 1 holds every literal `randomseed`'s graph declares and none of
+`numberadded`'s, word 2 holds all seven of `numberadded`'s, and the reverse assignment fails
+on all four.
+
+**The structural point is `0x20B`.** `0x1AB` is `0x18B | 0x20`, and that bit is
+`randomseed`; `triDraw` is the one permitted file declaring `numberadded` as a literal
+rather than a graph and it is the one file with a `0x20B`. So node headers are bitfields
+with a program-or-baked distinction, exactly like the entry tags — the same grammar in both
+halves of the structure.
+
+Independent check, on evidence that fed none of the above: `numberadded` returns **i1 in
+100.0%** of 33,006 programs and `switch` **b2 in 100.0%** of 26,859, matching the Integer1
+and Bool the source declares. Swapping the two names in the table would swap both columns.
+
+Not identified, and blank rather than guessed: `0x1CB` (1,858 programs, i1 100% — `0x18B`'s
+return type on `0x89`'s layout) and `0x99` (150, b2). No permitted source contains either.
+
+### Withdrawn: "0x0B is a LEAF"
+
+The `FX_NODES2` note recorded that `0x0B` "has NO successor at any offset 1..8: it is a
+LEAF, and the walk ending there is correct rather than a gap". It has a successor, at word 1.
+
+The probe could not see it because its target test was "low nibble 9 or B", and a table
+entry's tag ends in nibble **8** — the handoff `fx_walk`'s own docstring describes for every
+other chain. Over 161 `0x??0B` nodes reached at a validated successor position, word 1's
+target is:
+
+```
+entry tag    85.7%    (and all 138 have their low 16 bits in FX_TAG_LOW16)
+node header  14.3%
+a program     0.0%        neither  0.0%
+```
+
+100%, split between the only two things a chain can continue into. The control is every
+other slot of the same nodes: `+2` resolves to anything at all 1.2% of the time, `+3` is
+69.6% "neither", `+5` is 85.7% program-only.
+
+**Following it changes no number.** Implemented and measured: entries, entry programs, node
+programs and records-reaching-a-table are identical either way, because `fx_walk` already
+reaches those tables through the record's own slot-2 path. So the claim is corrected and the
+walk is left alone. What was wrong was the reasoning, not the output — which is the useful
+half to record, because the reasoning is what the next probe will reuse.
+
+### Where FX program naming now stands
+
+```
+FX programs the walk finds                    171,135
+  named                                       161,509    94.4%
+    entry parameters, from the tag layout     101,617
+    node parameters, from the header           59,892
+  unnamed                                       9,626
+    entry: layout and census disagree           ~6,000
+    node: 0x1CB, 0x99, the 0x0B/0x1B families    6,765
+```
