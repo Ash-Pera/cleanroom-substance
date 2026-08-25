@@ -33100,3 +33100,48 @@ all; the marking should now be treated as a warning rather than a formality.
 The generalisation worth keeping: **when a parameter has two readings and one is trusted,
 the trusted one is a free control for the other.** No source declarations needed, no
 containment, no ceiling problem — just two distributions that must match.
+
+## `distance`'s fallback: not disqualified, but its control is not trustworthy either
+
+Applying both instruments to `tools/distance.py`'s baked fallback, as a parallel session did
+for `blur` and `normal`:
+
+```
+declared (all)         n=30   p50 76.2   max 256   commonest 256 x11, 56.12 x2, 64.22, 105.53
+declared (256 removed) n=19   p50 56.1   max 130   only 5.3% powers of two
+from a PROGRAM         n=25   p50 1.00   max 362   commonest 1.0 x6, 0.0 x4, 24.31, 362.04
+FALLBACK (baked slot)  n=184  p50 4.56   max 256   commonest 256 x51, 1.28 x24, 12.8, 4.0, 51.2
+```
+
+**Not disqualified the way `blur`'s was, and for a specific reason:** the fallback's single
+commonest value is 256, which is also the declarations' single commonest value, 51 of 184
+against 11 of 30. `blur`'s fallback shared *no* value with its declarations and was a pure
+power-of-two ladder. Shared modes are weak evidence, but shared modes on a value as specific
+as "the full reference resolution" is not nothing, and the fallback's other frequent values —
+1.28, 12.8, 51.2 — are 1/200, 1/20 and 1/5 of 256, which is what a percentage-of-image
+parameter looks like when stored in pixels.
+
+**But the two-path control does not work here, and the reason is worth more than the
+result.** The instrument assumes the program path is *trusted*. For `blur` it visibly is —
+43 of 53 values are exactly 1.0, a tight distribution is what a correctly identified
+parameter produces. For `distance` it is not: 1.0, 0.0 ×4, 24.31, 362.04, 2.0, 4.378, p50
+1.0 against declarations at p50 56. A `distance` of 0.0 is degenerate, and a scattered
+program distribution means the width-1 discriminator is picking up programs that are not
+`distance` at all.
+
+So the honest state is that **neither reading is established for this filter and the control
+is unavailable**, rather than that the fallback passed. `LOW CONFIDENCE` stays on the
+fallback, and the program path should not be treated as ground truth for it either.
+
+One genuine signal inside the noise: `362.039` appears twice, and 256 × √2 = 362.04 — the
+diagonal of a 256-pixel square, which is exactly the distance that reaches every pixel from
+any starting point. A program computing "propagate everywhere" would compute that number.
+That is the only value in the program distribution that is self-evidently a distance.
+
+### The precondition the two-readings control needs
+
+Stated because it nearly went unstated: **the trusted reading has to be demonstrably tight
+before it can serve as a control.** Where it is scattered, the comparison measures nothing —
+it will disagree with any candidate, including a correct one. Check the reference
+distribution's own concentration first; a control that would reject the truth is not a
+control.
