@@ -41,6 +41,8 @@ _OUTPUT = re.compile(r'<output\s+uid="(\d+)"\s+identifier="([^"]+)"', re.S)
 _INPUT5 = re.compile(r'<input uid="(\d+)"\s+identifier="([^"]+)"\s+type="5"([^>]*)')
 _DEFAULT = re.compile(r'default="([^"]*)"')
 _CHANNEL = re.compile(r'<channel names="([^"]+)"')
+_INPUT_ANY = re.compile(r'<input uid="(\d+)"\s+identifier="([^"]+)"\s+type="(\d+)"([^>]*)')
+_ALTER = re.compile(r'alteroutputs="([^"]*)"')
 
 _CACHE = {}
 
@@ -58,7 +60,7 @@ def _parsed(asm):
     key = getattr(asm, 'path', None)
     if key in _CACHE:
         return _CACHE[key]
-    names, defaults, channels = {}, {}, []
+    names, defaults, channels, alter = {}, {}, [], {}
     xml = path_for(asm)
     if xml:
         try:
@@ -69,9 +71,14 @@ def _parsed(asm):
                 if m:
                     defaults[int(uid)] = (m.group(1), ident)
             channels = _CHANNEL.findall(text)
+            for uid, ident, typ, rest in _INPUT_ANY.findall(text):
+                m = _ALTER.search(rest)
+                if m is not None:
+                    alter[int(uid)] = (int(typ), ident,
+                                       {int(z) for z in m.group(1).split(',') if z})
         except Exception:
-            names, defaults, channels = {}, {}, []
-    _CACHE[key] = (names, defaults, channels)
+            names, defaults, channels, alter = {}, {}, [], {}
+    _CACHE[key] = (names, defaults, channels, alter)
     return _CACHE[key]
 
 
@@ -107,3 +114,34 @@ def image_input_defaults(asm):
     absent from this mapping rather than present with a zero, which is the whole point.
     """
     return _parsed(asm)[1]
+
+
+def alter_outputs(asm):
+    """{input uid: (type code, identifier, {output uids it feeds})}.
+
+    The manifest's own dependency claim, and the only independent statement of graph
+    structure available -- everything else here is derived from the same edge walk it is
+    used to check. Wired in as a CHECK rather than as data: see
+    `test_closure_never_claims_a_dependency_the_manifest_denies`.
+
+    Measured over the whole corpus, restricted to type-5 image inputs (10,837 pairs):
+
+        both agree: reaches                        622   5.74%
+        manifest YES, our closure NO               513   4.73%
+        manifest NO,  our closure YES                0   0.00%
+        both agree: does not reach                9702  89.53%
+
+    The one-sidedness is the finding. If our walk were merely DIFFERENT from the
+    manifest's we would miss in both directions; missing 513 while over-claiming 0 says
+    our closure is a strict SUBSET, i.e. it does not see some paths. The likely mechanism
+    is that FX-Map and pixelprocessor programs reach images through SAMPLER INDICES rather
+    than through `Record.edges`, and an edge walk cannot follow those.
+
+    Consequence worth stating plainly: closure-derived counts UNDERSTATE how many root
+    causes block an output, so "one fix away" rankings are optimistic, not merely rough.
+
+    ONLY type-5 IS CHECKED. A numeric input reaches an output through `inputref` inside a
+    program, which the edge graph does not model at all, so the same comparison on type 0
+    or 4 would report enormous disagreement and measure nothing but that absence.
+    """
+    return _parsed(asm)[3]

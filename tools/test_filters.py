@@ -62,6 +62,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus                                                        # noqa: E402
+import manifest                                                      # noqa: E402
 import render as R                                                   # noqa: E402
 from sbsasm import Assembly, FILTERS                                  # noqa: E402
 
@@ -453,6 +454,101 @@ def test_dirmotionblur_actually_smooths_and_only_along_its_angle():
     return
 
 
+MANIFEST_MISSING_PATHS = 513          # ratchet; see the test below
+
+
+def _edge_closure(asm, i):
+    seen, st = set(), [i]
+    while st:
+        j = st.pop()
+        if j in seen or j >= len(asm.records):
+            continue
+        seen.add(j)
+        for e in (asm.records[j].edges or ()):
+            if e is not None:
+                st.append(e)
+    return seen
+
+
+def test_closure_never_claims_a_dependency_the_manifest_denies():
+    """The manifest's `alteroutputs` as an independent check on the edge walk.
+
+    Everything else in this project that reasons about which records feed an output is
+    derived from `Record.edges`, so nothing derived from edges can check it. The manifest
+    states the dependency separately, which makes it the only oracle available.
+
+    TWO DIFFERENT ASSERTIONS, because the two directions are not equally established:
+
+      * HARD INVARIANT -- our closure must never claim a dependency the manifest denies.
+        Measured over the full corpus, type-5 image inputs, 10,837 (output, input) pairs:
+        ZERO violations. Over-claiming would mean the edge walk invents reachability, and
+        every closure-derived figure would be inflated.
+
+      * RATCHET -- the manifest claims 513 dependencies our closure does NOT find, and
+        that is a real gap, not noise: 622 agree, 513 are missed, and 0 go the other way.
+        Perfect one-sidedness says our walk is a strict SUBSET rather than merely
+        different. Asserting 0 here would fail today, so this asserts the count cannot get
+        WORSE -- an improvement to the walk lowers the number and should lower the
+        constant with it.
+
+    The likely missing mechanism: FX-Map and pixelprocessor programs reach images through
+    sampler indices, not through edges, and an edge walk cannot follow those.
+
+    Restricted to type-5 image inputs ON PURPOSE. A numeric input reaches an output via
+    `inputref` inside a program, which the edge graph does not model, so running this on
+    type 0 or 4 would report huge disagreement that measures only that absence.
+
+    Costs no rendering -- edges, bitmap kinds and the .xml are all static -- so unlike the
+    filter checks this one can afford the whole corpus.
+    """
+    agree = missed = over = 0
+    checked = files = 0
+    offenders = []
+    for path in corpus.paths():
+        try:
+            asm = Assembly(path)
+            table = asm.outputs()
+        except Exception:
+            continue
+        if not table or not manifest.path_for(asm):
+            continue
+        files += 1
+        uid2idx = {u: i for u, _f, _c, i in table}
+        gi = {}
+        for r in asm.records:
+            if r.filter_name == 'bitmap' and (r.bitmap or {}).get('kind') == 'graph_input':
+                gi.setdefault(r.bitmap['uid'], []).append(r.index)
+        if not gi:
+            continue
+        cl = {u: _edge_closure(asm, i) for u, i in uid2idx.items()}
+        for uid, (typ, ident, claimed) in manifest.alter_outputs(asm).items():
+            if typ != 5 or uid not in gi:
+                continue
+            recs = set(gi[uid])
+            for ouid in uid2idx:
+                ours = bool(cl[ouid] & recs)
+                man = ouid in claimed
+                checked += 1
+                if ours and man:
+                    agree += 1
+                elif man:
+                    missed += 1
+                elif ours:
+                    over += 1
+                    if len(offenders) < 5:
+                        offenders.append((os.path.basename(path), ident, ouid))
+    if not files:
+        print('SKIP test_closure_never_claims_a_dependency_the_manifest_denies: no corpus')
+        return
+    assert checked, ('manifests and outputs present but no type-5 pair was compared', files)
+    assert not over, ('edge closure claims %d dependencies the manifest denies; '
+                      'the walk invents reachability. first: %s' % (over, offenders))
+    assert missed <= MANIFEST_MISSING_PATHS, (
+        'closure now misses %d manifest dependencies, worse than the recorded %d'
+        % (missed, MANIFEST_MISSING_PATHS))
+    return
+
+
 # The standalone runner reads SKIP from what a check PRINTS, not from what it returns.
 # These functions used to return a count and the runner reported "skipped" when it was
 # falsy -- but a pytest test function that returns non-None is a warning today and an
@@ -465,7 +561,8 @@ if __name__ == '__main__':
                test_dirmotionblur_actually_smooths_and_only_along_its_angle, test_curve_matches_independent_bisection,
                test_curve_identity_is_exact, test_dirmotionblur_is_an_average,
                test_gradient_runs_and_stays_bounded,
-               test_dyngradient_is_a_ramp_lookup):
+               test_dyngradient_is_a_ramp_lookup,
+               test_closure_never_claims_a_dependency_the_manifest_denies):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()
