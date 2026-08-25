@@ -33296,3 +33296,51 @@ structure the codebase already decodes is a self-inflicted wound.
 
 The instrument was right both times — the ramp exposed the transfer function completely,
 and the answer it gave was "legitimate".
+
+## The validation set is blocked by the guesses it exists to arbitrate
+
+Re-measured after `blur`, the `transformation` unsevering, shuffle weights, colour ramps and
+`imageindex` all landed — nobody had re-run it since:
+
+```
+                              declared  produced  SPATIAL
+Auras_FX                          4        0        0     fxmaps 16, distance 2
+Bricks (x2)                      31        5        0
+RoofTiles (x2)                    6        0        0     blur 35, fxmaps 21, transformation 12
+Rusty_Metal                       6        0        0     dyngradient 8, fxmaps 5, uniform 1
+ChesterfieldSofa                  6        0        0     dyngradient 8, fxmaps 6, uniform 5
+StylizedCobblestoneStreet         6        0        0     distance 9, dyngradient 8, fxmaps 7
+                                 96       10        0
+```
+
+Still zero spatial outputs, so it cannot score anything. What blocks it is the finding:
+
+| blocker | records in the set | why it is blocked |
+|---|---|---|
+| `blur`: no width-1 program | 70 | the fallback we **withdrew** as unsafe |
+| `dyngradient` | 24 | zero source files, zero width-1 programs — no evidence at all |
+| `distance` | 11 | parameter deliberately **not guessed** |
+| `fxmaps`: no readable table | 55+ | mostly genuinely empty tables, a defaults question |
+
+**The reference renders cannot arbitrate our guesses, because our refusals to guess are what
+block the reference renders.** Every entry in that table is something one of us declined to
+assume — correctly, by the standard that a renderer must not emit a plausible wrong image.
+
+### The way out is that scoring does not need a correct render
+
+The bind dissolves once the two purposes are separated. `render()`'s contract is *never emit
+an image you cannot defend* — that is why `blur`'s fallback came out and `distance`'s
+parameter stays unlocated. But **scoring against a reference does not need a correct render,
+it needs a comparable one.** Rendering candidate A and candidate B and asking which matches
+the engine's own exported map is exactly how a guess gets arbitrated, and refusing to render
+either one is what makes it unarbitratable.
+
+So the missing piece is not another filter. It is a **candidate mode**: render with an
+explicitly chosen assumption, score against `reference_renders/`, report which assumption
+wins, and never let those images into a coverage count. `LOW_CONFIDENCE` already draws that
+line for parameters; this extends it to whole renders.
+
+Concretely it would settle, at once and on evidence: `blur`'s slot 3 versus its program
+path, `distance`'s block position, the FX pattern footprint, `distance`'s sign convention
+and which of its edges is the mask. Five of the six items on the blocked list, from one
+harness, with the answer coming from the engine rather than from either of us.
