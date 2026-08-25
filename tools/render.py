@@ -918,6 +918,73 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 if tainted:
                     synthetic.add(i)
 
+            elif rec.filter_name == "warp":
+                # WHERE the intensity is, derived here and corpus-checked: slot
+                # 4 + class bit 11. The bit shifts the parameter block by one slot, the
+                # same one-slot-per-class-bit growth Record.matrix documents for
+                # `transformation`. Grouping warp records by class word, in files whose
+                # source declares a distinctive `intensity`:
+                #
+                #   cls 0x02319 (bit 11 clear) -> slot 4    19 hits, 1 elsewhere
+                #   cls 0x02b19 (bit 11 set)   -> slot 5    11 hits, 1 elsewhere
+                #   cls 0x02309 (bit 11 clear) -> slot 4     1 hit
+                #
+                # Applying `4 + bit11`: 31 records hold a value the source declares, 746
+                # hold a plausible undeclared one (inlined library warps, whose intensities
+                # are not in the paired source at all), 6 are implausible and 0 records are
+                # too short. Corpus-wide the slot decodes to a plausible intensity in
+                # 2,909 of 2,936 records (99.1%).
+                #
+                # WHICH edge is which is structural rather than assumed: `EDGES[7]` is
+                # [1, 2] and a real specimen (Hard-Science-Old__CrustyLava records
+                # 125/128/129/130) has edges[1] = record 123 in every one while edges[0]
+                # varies -- one map warping many inputs, which is what a shared gradient
+                # input looks like and not what a per-record image input looks like. The
+                # paired source names the two connections `input1` and `inputgradient`.
+                #
+                # NOT corpus-verified, and stated as such the same way `directionalwarp`'s
+                # is: the displacement FORMULA and the absolute scale. This takes the
+                # standard shape -- displace along the LOCAL GRADIENT of the gradient
+                # input, which is what distinguishes `warp` from `directionalwarp`'s fixed
+                # angle -- against the same fixed 256-pixel reference. The gradient is a
+                # central difference in pixel space, converted to UV by the record's own
+                # width and height so a warp does not change strength with resolution.
+                if len(rec.edges) < 2:
+                    raise Unsupported("warp has fewer than 2 edges")
+                for e in rec.edges[:2]:
+                    if e not in outputs:
+                        raise Unsupported("edge -> record %s has no output yet" % e)
+                sl = 4 + ((rec.cls >> 11) & 1)
+                if sl >= len(rec.words):
+                    raise Unsupported("warp record too short for an intensity slot")
+                intensity = float(np.frombuffer(
+                    np.uint32(rec.words[sl]).tobytes(), dtype=np.float32)[0])
+                if not (intensity == intensity and -1e3 < intensity < 1e3):
+                    raise Unsupported("warp intensity slot %d is not a plausible float"
+                                      % sl)
+                tainted = any(e in synthetic for e in rec.edges[:2])
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+
+                gmap = to_image(sbsruntime.image_sampler(outputs[rec.edges[1]])(pos),
+                                N, H, W)[:, :, 0]
+                # np.gradient returns d/drow, d/dcol; scale each to UV by its own axis
+                # length so the displacement is resolution-independent.
+                gy, gx = np.gradient(gmap.astype(np.float32))
+                REFERENCE_PX = 256.0
+                dx = (gx * W / REFERENCE_PX * intensity).reshape(N, 1)
+                dy = (gy * H / REFERENCE_PX * intensity).reshape(N, 1)
+                in_pos = pos + np.concatenate([dx, dy], axis=-1)
+
+                result = sbsruntime.image_sampler(outputs[rec.edges[0]])(in_pos)
+                outputs[i] = to_image(result, N, H, W)
+                if tainted:
+                    synthetic.add(i)
+
             elif rec.filter_name == "shuffle":
                 # Slot 1 is four selector BYTES, one per output channel, in the order
                 # red, green, blue, alpha. A selector 0-3 takes that channel from the

@@ -30452,3 +30452,71 @@ sequence: chains, paramset nodes with known sizes and known program-pointer offs
 padding. What the parse still lacks is the 2.25% of gaps holding uncatalogued tags, and
 NAMES — which nibble of a paramset tag is which declared parameter. The paired sources
 remain the instrument for that.
+
+## `warp`: where its intensity lives, and why implementing it changed nothing yet
+
+### The parameter slot, derived and checked
+
+`warp` is not in `PARAM_SPEC` and `Record.size_or_baked` returns its size expression, not
+its intensity — in 778 of 783 records in files that declare one. The intensity sits at
+**slot `4 + class bit 11`**: the bit shifts the parameter block by one slot, the same
+one-slot-per-class-bit growth `Record.matrix` documents for `transformation`.
+
+Grouping warp records by class word, in permitted files whose source declares a distinctive
+`intensity`:
+
+    cls 0x02319   bit 11 clear   -> slot 4     19 hits, 1 elsewhere
+    cls 0x02b19   bit 11 set     -> slot 5     11 hits, 1 elsewhere
+    cls 0x02309   bit 11 clear   -> slot 4      1 hit
+
+Applying the rule:
+
+    holds a value the source declares                31
+    holds a plausible undeclared float              746   (inlined library warps, whose
+                                                           intensities are not in the
+                                                           paired source at all)
+    implausible                                       6
+    record too short                                  0
+
+    corpus-wide, the slot decodes to a plausible intensity   2,909 of 2,936   (99.1%)
+
+### Which edge is the gradient input, structurally
+
+`EDGES[7]` is `[1, 2]`, and the paired source names the two connections `input1` and
+`inputgradient`. Which is which is not assumed: in `Hard-Science-Old__CrustyLava` records
+125, 128, 129 and 130, `edges[1]` is record 123 in **every one** while `edges[0]` varies.
+One map warping many inputs is what a shared gradient input looks like; a per-record image
+input does not behave that way.
+
+### The formula, and what was actually testable
+
+**Not corpus-verified**, and labelled the same way `directionalwarp`'s is: the displacement
+formula and the absolute scale. This takes the standard shape — displace along the LOCAL
+GRADIENT of the gradient input, which is exactly what distinguishes `warp` from
+`directionalwarp`'s fixed angle — against the same fixed 256-pixel reference, with the
+gradient taken as a central difference in pixel space and converted to UV by the record's
+own width and height so strength does not drift with resolution.
+
+What *is* testable was tested, on a real record (125, 128x128, intensity 3.7111) with
+supplied inputs:
+
+    constant gradient map   ->  zero displacement, exact passthrough
+    x-ramp gradient map     ->  uniform -2 px shift in x, residual 0.018
+
+A flat map producing an exact passthrough and a constant-gradient map producing a *uniform*
+shift are the two properties the formula's shape predicts, and both hold.
+
+### It unblocked nothing, and that is the point
+
+    warp records: rendered 0, failed 2,940 -- every one on "edge has no output yet"
+
+    unimplemented filters in those records' closures
+        fxmaps        2,908 of 2,940   (99%)
+        blur          1,632            (56%)
+        distance        749            (25%)
+
+Records rendered, declared outputs and fully-rendering files are all unchanged at 10,624,
+143 and 12. This is the second filter in a row implemented correctly and verified in
+isolation while producing no new pixels — `directionalwarp` was the first. **99% of warp
+records sit downstream of `fxmaps`**, so the gate measured two ways elsewhere in this
+document is confirmed a third time from inside a filter that depends on it.
