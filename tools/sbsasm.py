@@ -2138,7 +2138,33 @@ class Record:
         out = list(self.programs)
         par = self.size_or_baked
         if out and par and par[0] == 'program' and out[0] == par[1]:
-            out = out[1:]
+            # ONLY when that program could actually BE a size expression. A size is an
+            # INTEGER -- (log2 width, log2 height) -- so a FLOAT-valued program in this
+            # slot is not the record's size under any reading, and stripping it deletes
+            # the very parameter a caller asked for.
+            #
+            # Over 60 corpus files, 84,052 records have a program here and 13,921 of them
+            # are not size-shaped. The float ones are the point:
+            #
+            #     transformation   1,488 return f2   -- the translation OFFSET
+            #     transformation      32 return f4   -- the 2x2 MATRIX
+            #     uniform             19 f4, 20 f1     warp 7 f2     blend 30 f1
+            #
+            # `render.py` reads `filter_programs` to find exactly those, so every one of
+            # those records refused to render with "offset is a program this cannot single
+            # out (0 programs)" -- a message that is self-contradictory, and was true only
+            # because this property had removed the program before the caller looked. The
+            # first one read, `stone_stylized_adaptive` record 153, computes
+            # `vec(-1.0 / $size.x, 0.0)`: a one-pixel horizontal shift.
+            #
+            # The INTEGER non-size cases are left stripped. `pixelprocessor` and `fxmaps`
+            # return a 1-component integer here in 99.7% and 99.3% of records, and
+            # `audit_corpus.py` already records that calling that a size is "a label this
+            # audit applied, not a fact it measured" -- whatever it is, it is not a filter
+            # parameter this changes the reading of, so it stays out of scope.
+            if self.asm.program_result(par[1]) is None or \
+                    self.asm.program_result(par[1])[0] != 1:
+                out = out[1:]
         return out
 
     def fx_walk(self):
@@ -3227,6 +3253,30 @@ class Assembly:
         if key in cache:
             return cache[key]
         cache[key] = v = self._program_span_scan(p, hi)
+        return v
+
+    def program_result(self, p):
+        """(type, components) of the program at `p`, from its LAST instruction, or None.
+
+        Memoised the same way and for the same reason as `program_span`. This is what
+        separates an output-size expression from a filter parameter that happens to sit in
+        the same slot: a size is a two-component INTEGER, and `audit_corpus.py` has
+        measured that at 90-99.5% for every filter but `pixelprocessor` and `fxmaps`.
+        """
+        try:
+            cache = self._result_cache
+        except AttributeError:
+            cache = self._result_cache = {}
+        if p in cache:
+            return cache[p]
+        last = None
+        for _k, _q, op, _t in disasm.decode(self.data, p, self.body_hi):
+            last = op
+        if last is None:
+            cache[p] = None
+            return None
+        _ntok, ty, ncomp, _oid = disasm.fields(last)
+        cache[p] = v = (ty, ncomp)
         return v
 
     def _program_span_scan(self, p, hi):
