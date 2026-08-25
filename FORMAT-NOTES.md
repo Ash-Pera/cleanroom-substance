@@ -32282,3 +32282,22 @@ What stops the naming being adopted is containment, the standard the program nam
 +2 of tag `0x00020008`, whose only parameter bit is **bit 17** — and bit 17 must be one word
 wide, since width 2 breaks 23 of the 57 census tags outright. Two hits is too thin to name
 anything against that. The bits stay `None`.
+
+## The bare-pointer family, read: a compiler-emitted aspect helper
+
+The ~30 records whose surplus is a single tagless pointer resolve to one thing.
+Transpiled, the pointed-at program is:
+
+    (w, h) = $size            # log2 dimensions, sysvar 3
+    d = |w - h|
+    return d >= 2 ? d - 1 : 0
+
+— an ASPECT-RATIO COMPENSATION helper: the number of extra anisotropic steps a
+non-square texture needs, zero for square and near-square. Across all 27 carriers the
+program body has exactly two shapes (25 + 2), byte-stereotyped the way the compiler's
+other helpers are. The attachment is the minimal possible form — one pointer, no tag,
+no mask bit — presumably because the helper is engine-internal rather than a user
+parameter: nothing in the graph declares it, so nothing in the masks does either.
+
+The family moves from "unexplained" to "read": the last named class in the census over
+ten records now has source-level semantics.
