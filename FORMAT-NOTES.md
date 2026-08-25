@@ -30581,3 +30581,43 @@ mis-named mode still renders the wrong picture, just not a mirrored one.
 Provenance: the permitted-file gate ran as its own step before any content was read, and
 excluded 52 of 200 paired sources (`Allegorithmic`, and `GameTextures.com` — a
 non-permissive commercial author found in the corpus and excluded separately).
+
+## The backward links: not one mechanism at -196, but a version that writes its lists in reverse
+
+First, a correction. The previous section said the 55 non-adjacent links "all jump by
+exactly the same delta, −196 bytes". That was generalised from the first four examples
+— the same base-rate sin this document warns about twice. The true split, measured
+parse-based rather than walk-based (the walker's fallback state was contaminating the
+classification):
+
+    next = the following cell                36,845
+    next = the PREVIOUS cell in the gap          32
+    next = a node in an unparsed gap             23   (19 at -188, 4 at -308)
+
+**The 32 are reversed lists, and version explains them.** In those gaps every link
+points to the cell before it — cell1 -> cell0, cell2 -> cell1 — and cell 0's next exits
+the gap backward to earlier-emitted material. That is the same cons list written in the
+opposite order: head last, the emission order of prepend construction. It is not legacy
+drift but a specific cooker: version 0x80000 writes chains BACKWARD as its normal form —
+36 of its 50 links, the only version where backward dominates — with single-digit
+traces in 0x50000-0x90000:
+
+    version    forward   backward
+    0x20000        578          0
+    0x50000     27,906          7
+    0x80000         14         36    <-
+    0x90000      6,536          8
+
+Consequence worth stating: the next pointer is load-bearing. A reader that assumed
+adjacency — which 99.89% of links would excuse — would misparse every v8 chain.
+
+**The 23 are census coverage, not structure.** Their targets are nodes with tags the
+size census never catalogued: 0x35000448 (x19) and 0x3100048 (x4), kind-0x48 tags using
+bits 26, 28 and 29 — outside the domain the size law was fitted on, because no
+catalogued tag varied those bits. The gaps holding them fail the full parse for exactly
+that reason. The -188 constancy is those files stereotyping one subtree, not a
+mechanism.
+
+**And two negatives that close doors:** in-degree is 1 everywhere — no chain shares a
+tail with another, so the structure is a list, not a DAG; and no genuine cycle exists —
+what looked like 2-cycles was the reversed orientation read forward.
