@@ -138,6 +138,54 @@ def default_inputs(asm, N):
     return out
 
 
+def sampler_bindings(asm, rec, outputs):
+    """{sampler index: source record} for a record whose images arrive by SAMPLER.
+
+    render.py installs FX-Map samplers from `rec.edges`, keyed by edge slot, which is
+    right for the ordinary case and supplies nothing at all for a record that has no
+    edges. Those exist and are not marginal: ie_curve record 172 is an `fxmaps` with
+    edges=[], 13 programs, and is itself a declared output -- it asks for sampler 0 and
+    there is no edge to answer with.
+
+    The binding is the graph's image inputs in MANIFEST DECLARATION ORDER, which is the
+    one thing the assembly cannot supply (`manifest.image_inputs_for_output` records why
+    record order will not substitute). Only records that are themselves declared outputs
+    can be bound, because that is the only case where graph membership is known -- a
+    graph's records cannot be recovered by closure, since the whole problem is that these
+    inputs are not reachable through edges.
+
+    Returns {} when nothing can be bound, so the caller falls back to edge slots and a
+    record that genuinely cannot be resolved still fails rather than sampling whatever
+    happens to be nearby.
+
+    EXPECT THIS TO RESOLVE FEW IMAGES, and not because the mapping is wrong: of 120
+    graphs with image inputs, 107 have NO manifest default on ANY of them and ship no
+    image either, so the record a sampler correctly binds to has nothing to render. What
+    this buys is a correct binding where data exists, and an honest failure where it does
+    not -- previously indistinguishable from a missing slot.
+    """
+    try:
+        table = asm.outputs()
+    except Exception:
+        return {}
+    uid = next((u for u, _f, _c, i in table if i == rec.index), None)
+    if uid is None:
+        return {}
+    order = manifest.image_inputs_for_output(asm, uid)
+    if not order:
+        return {}
+    by_uid = {}
+    for r in asm.records:
+        if r.filter_name == 'bitmap' and (r.bitmap or {}).get('kind') == 'graph_input':
+            by_uid.setdefault(r.bitmap['uid'], r.index)
+    out = {}
+    for k, input_uid in enumerate(order):
+        src = by_uid.get(input_uid)
+        if src is not None and src in outputs:
+            out[k] = src
+    return out
+
+
 def graph_input_default(asm, rec):
     """A uniform image from the manifest default for rec's image input, or None.
 
@@ -431,12 +479,28 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 N = W * H
                 pos = pos_grid(W, H)
                 tainted = False
+                own_slots = set()
                 for slot_i, edge_rec in enumerate(rec.edges):
                     if edge_rec not in outputs:
                         raise Unsupported("edge -> record %s has no output yet" % edge_rec)
                     src_img = outputs[edge_rec]
                     sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(src_img)
+                    own_slots.add(slot_i)
                     tainted = tainted or edge_rec in synthetic
+                # A pixelprocessor can also reach images by sampler index with no edge at
+                # all: ie_curve record 233 has edges=[], asks for sampler 8, and is itself
+                # a declared output. Same binding as the fxmaps branch -- see
+                # `sampler_bindings`. This branch was nearly missed by scoping the fix to
+                # fxmaps; of the four genuine decode-gap records, one is each.
+                #
+                # TESTED AGAINST `own_slots`, NOT against SAMPLERS membership: unlike the
+                # fxmaps branch this one does not clear the global, so a stale entry left
+                # by an earlier record would otherwise beat a correct binding here and be
+                # invisible -- which is the exact hazard documented in the fxmaps branch.
+                for slot_i, src in sampler_bindings(asm, rec, outputs).items():
+                    if slot_i not in own_slots:
+                        sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(outputs[src])
+                        LOW_CONFIDENCE.add(i)
                 progs = rec.filter_programs
                 if not progs:
                     raise Unsupported("no filter_programs")
@@ -1639,10 +1703,23 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 saved_samplers = dict(sbsruntime.SAMPLERS)
                 sbsruntime.SAMPLERS.clear()
                 try:
+                    own_slots = set()
                     for slot_i, edge_rec in enumerate(rec.edges or ()):
                         if edge_rec in outputs:
                             sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
                                 outputs[edge_rec])
+                            own_slots.add(slot_i)
+                    # A record with no edge in a slot may still reach an image through the
+                    # graph's declared image inputs -- see `sampler_bindings`. Edge slots
+                    # WIN where both exist: an edge is this record's own wiring, while the
+                    # graph-input order is a fallback for slots the wiring does not cover,
+                    # and letting the fallback overwrite real wiring would substitute a
+                    # guess for a fact.
+                    for slot_i, src in sampler_bindings(asm, rec, outputs).items():
+                        if slot_i not in own_slots:
+                            sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
+                                outputs[src])
+                            LOW_CONFIDENCE.add(i)
                     try:
                         runner = fxrender.make_runner(asm, rec)
                         pats = fxrender.emissions(rec, runner,

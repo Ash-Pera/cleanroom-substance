@@ -43,6 +43,7 @@ _DEFAULT = re.compile(r'default="([^"]*)"')
 _CHANNEL = re.compile(r'<channel names="([^"]+)"')
 _INPUT_ANY = re.compile(r'<input uid="(\d+)"\s+identifier="([^"]+)"\s+type="(\d+)"([^>]*)')
 _ALTER = re.compile(r'alteroutputs="([^"]*)"')
+_GRAPH_SPLIT = re.compile(r'(?=<graph )')
 
 _CACHE = {}
 
@@ -60,7 +61,7 @@ def _parsed(asm):
     key = getattr(asm, 'path', None)
     if key in _CACHE:
         return _CACHE[key]
-    names, defaults, channels, alter = {}, {}, [], {}
+    names, defaults, channels, alter, graphs = {}, {}, [], {}, []
     xml = path_for(asm)
     if xml:
         try:
@@ -76,9 +77,18 @@ def _parsed(asm):
                 if m is not None:
                     alter[int(uid)] = (int(typ), ident,
                                        {int(z) for z in m.group(1).split(',') if z})
+            for block in _GRAPH_SPLIT.split(text)[1:]:
+                url = re.search(r'pkgurl="([^"]*)"', block)
+                graphs.append({
+                    'pkgurl': url.group(1) if url else None,
+                    'outputs': [int(u) for u, _i in _OUTPUT.findall(block)],
+                    # DECLARATION ORDER IS LOAD-BEARING -- see image_inputs_for_output.
+                    'image_inputs': [int(u) for u, _i, ty, _r in _INPUT_ANY.findall(block)
+                                     if ty == '5'],
+                })
         except Exception:
-            names, defaults, channels, alter = {}, {}, [], {}
-    _CACHE[key] = (names, defaults, channels, alter)
+            names, defaults, channels, alter, graphs = {}, {}, [], {}, []
+    _CACHE[key] = (names, defaults, channels, alter, graphs)
     return _CACHE[key]
 
 
@@ -145,3 +155,36 @@ def alter_outputs(asm):
     or 4 would report enormous disagreement and measure nothing but that absence.
     """
     return _parsed(asm)[3]
+
+
+def graphs(asm):
+    """One entry per <graph> block: pkgurl, its output uids, its image-input uids.
+
+    A single .sbsasm commonly holds many graphs -- ie_curve holds 20 -- and the assembly
+    itself does not say which records belong to which. Only the manifest does.
+    """
+    return _parsed(asm)[4]
+
+
+def image_inputs_for_output(asm, output_uid):
+    """Image-input uids of the graph declaring `output_uid`, IN DECLARATION ORDER.
+
+    This is the map a sampler index needs. An FX-Map that reaches its images through
+    sampler indices carries no edge to follow -- ie_curve record 172 is an `fxmaps` with
+    edges=[] that is itself a declared output, and it asks for sampler 0 -- so the only
+    way to bind index k to a record is the k-th image input of the graph that owns it.
+
+    ORDER COMES FROM THE MANIFEST AND CANNOT BE RECOVERED FROM THE ASSEMBLY. Measured
+    over ie_curve's 20 graphs: only 7 have contiguous graph_input record blocks, and only
+    1 has declaration order matching record order -- and that one declares a single input,
+    so it satisfies both trivially. In curve_area_splatter, `curve_2` is declaration index
+    2 but record 139, sitting BEFORE `back` at index 0 / record 140. Binding by record
+    order would attach the wrong image and return a plausible picture from the wrong
+    source, which is the failure this project treats as worse than a crash.
+
+    Returns [] when the output is not declared by any graph block.
+    """
+    for g in graphs(asm):
+        if output_uid in g['outputs']:
+            return list(g['image_inputs'])
+    return []
