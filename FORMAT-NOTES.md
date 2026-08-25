@@ -31868,3 +31868,22 @@ The remaining 113 do not decode at the rule header at all (51 are arity-0 record
 a different shape) — a named residue, not an ignored one. And the recovered functions
 are the per-pixel bodies themselves, the largest single block of formerly-unclaimed
 bytecode in the corpus.
+
+## The last S-big programs: one while token, exempted from validation without a semantic claim
+
+The 66 "S big" pixelprocessor programs reduce to ONE instruction each: the while opcode
+(0x0B) carrying a large value in token 4 — a 185-instruction library function,
+byte-identical across five files, holds token 4 = 4096 at instruction 180, which no
+ordering check can accept and no honest reading calls a value reference.
+
+This is the twice-burned ground: readings of the while opcode's trailing tokens have
+been adopted and withdrawn twice in this document. So the change is a VALIDATION
+exemption and nothing more — `valid_program` skips the ordering check on 0x0B tokens
+3 and up, with the control measured before wiring: the exemption newly admits 0 of
+2,622 random body offsets, and recovers 68 real per-pixel functions.
+
+    distinct corpus programs    1,611,052
+    transpiled                  99.9932%, failures still exactly the 110
+
+What token 4 MEANS stays open, as it has been since the trip-count retractions. What
+is no longer open is whether these 68 programs are programs.

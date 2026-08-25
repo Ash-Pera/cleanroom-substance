@@ -2609,6 +2609,17 @@ class Assembly:
                 for i in range(L - 1):
                     if i in pos:
                         continue
+                    if oid == 0x0B and i >= 3:
+                        # A VALIDATION exemption for the while opcode's trailing
+                        # operands, and deliberately not a semantic claim - this
+                        # document has adopted and withdrawn readings of those tokens
+                        # twice. The fact that forces it: a 185-instruction library
+                        # function, byte-identical across five files, carries token 4
+                        # = 4096 at instruction 180, which no ordering check can
+                        # accept and no honest reading calls a value reference. The
+                        # control: exempting tokens 3+ newly admits 0 of 2,622 random
+                        # body offsets, and recovers 68 real per-pixel functions.
+                        continue
                     v = struct.unpack_from('<H', d, q + 2 + 2 * i)[0]
                     # 0xFFFF is the absent marker, not a value number - the u16 form of the
                     # 0xFFFFFFFF an absent edge uses. Rejecting it as an impossible forward
