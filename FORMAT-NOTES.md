@@ -30696,3 +30696,47 @@ Still open, and each recorded where it was measured: the names of the entry slot
 containment fails at a 20% control); 216 chain stops in six unhandled node types; 17 of 100
 tags with a middling program slot; and where `paramset`'s dynamic parameters go, which the
 lowering dictionary predicted and missed at 0 of 98.
+
+## Sizes for the uncatalogued tags, inferred rather than guessed - and two new cell species
+
+The 2.25% of node gaps that would not parse were blocked by tags the size census never
+saw enough of. A blocked gap itself measures the missing size: try every candidate size
+for the unknown leading tag and keep the one that lets the REST of the gap parse. If
+exactly one size works, that is a measurement with a built-in control — 3,461 gaps gave
+a unique answer, 911 were ambiguous and were not used.
+
+**The inferred sizes independently confirm the size law.** Every kind-0x48 tag inside
+the law's bit domain matches the law's prediction, sight unseen:
+
+    0x100048   inferred 12 x2,258    law: 8 + bit20 = 12
+    0x500248   inferred 16 x240      law: 8 + bit20 + bit22 = 16
+    0x500e48   inferred 16 x240      law: same bits, different low byte — 16
+
+That last pair is its own experiment: two tags differing only in the low byte get the
+same size, which is what a law keyed on bits 16-24 requires.
+
+**Two blockers refused any fixed size, and each is a new cell species, read raw:**
+
+    0x190b     an 8-byte link cell, [tag][next], kind 0x0b — a second cons variety.
+               Its "variable" votes (32/36/44) were cell-plus-successor, measured
+               whenever the successor's tag was itself uncatalogued.
+
+    0x20018    a 16-byte cell, [tag][ptrA][ptrB][value]: ptrB + 52 is the next cell,
+               and ptrA + 52 points at ITS OWN LAST WORD — an inline value (0xb in
+               every instance dumped) that something else references by address.
+               A key-value list cell. Width-lawful: kind 0x18 const 12 + bit 17 = 16,
+               and 0x420018's known 20 is 12 + 4 + 4.
+
+With the two cells fixed and one more inference round (+16 tags total, all with 5+
+unanimous-or-better votes):
+
+    node gaps parsed end to end     97.75%  ->  99.676%
+    of the region's bytes           95.05%  ->  99.398%
+    node_sizes.json                 246 tags
+
+The residue is 653 gaps. Open threads with names on them: kind 0x0b sizes vary with LOW
+bits (0x190b is 8 but 0x4000b inferred 28 and 0x310b 32), so that kind's law is not a
+16-31-bit affair; and kind 0x1e — 0x604001e, inferred 172 bytes — shares its low byte
+with the RECORD tags of levels (0x...881e), which raises the question of whether large
+payload nodes embed record-shaped structures. Both are conjectures at the strength of
+"the low byte matches", and are recorded as exactly that.
