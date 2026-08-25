@@ -34056,3 +34056,81 @@ reading a fault in the probe rather than a fact about the format. A boundary tha
 an inline program, a key that included an edge, and a boundary that included a neighbour's
 table. None of them showed up in the exactness score. They showed up as an unlawful
 coefficient, an absurd key count, and a mode that was hiding its own minority.
+
+## The manifest's type codes are the width law, written down
+
+`tools/manifest.py` reads the `.xml` that ships beside every `.sbsasm` for what the
+assembly lacks — output names, type-5 defaults, graph membership, declaration order. Its
+docstring lists `<sbspreset>` as unread. Those blocks turn out to carry the one thing this
+project has spent the most effort inferring: **the format's parameter type vocabulary.**
+
+633 presets across 72 files hold 18,524 `<presetinput>` values, each with a `type` code and
+a `value` string. Counting the comma-separated components of the value gives the width of
+the type directly, with no interpretation:
+
+```
+type    values   components          value kind
+   0    10885    {1: 10885}          float
+   1      909    {2: 909}            float
+   2      422    {3: 422}            float
+   3     2001    {4: 2001}           float
+   4     4000    {1: 4000}           int
+   6      300    {1: 300}            (string)
+   8        7    {2: 7}              int
+```
+
+Every type maps to exactly one component count. Not one exception in 18,524 values.
+
+The assembly says the same thing independently. `header['inputs']` stores `(type, uid,
+values)`, and the tuple length is the component count:
+
+```
+type   assembly header tuple      xml preset value
+   0   {1: 3978}                  {1: 10885}
+   1   {2: 306}                   {2: 909}
+   2   {3: 164}                   {3: 422}
+   3   {4: 409}                   {4: 2001}
+   4   {1: 2560}                  {1: 4000}
+   5   {0: 425, 4: 111}           -            (image)
+   8   {2: 528}                   {2: 7}
+   9   {3: 1}                     -            (assembly only)
+  10   {4: 1}                     -            (assembly only)
+```
+
+and where the same uid appears in both, the type codes agree **8,421 times and disagree
+zero times**.
+
+So the parameter vocabulary is Float1/2/3/4 and Int1/2/3/4 — widths **1, 2, 3 and 4** —
+established from the container's other half, by a route that never touches a header size.
+The width law was fitted from record layouts on the assumption that every coefficient must
+be a type width in that range. Here is the type table it was assuming, stated by the file
+itself. That is corroboration from an independent encoding, which is the strongest kind
+available without the engine.
+
+It also explains the ceiling exactly. The law's `<= 4` is not a rule of thumb: **4 is the
+widest scalar the format has.** Types 9 and 10 (Int3, Int4) appear once each in the whole
+corpus and go no higher.
+
+### The type-5 default question, resolved into four cells
+
+`manifest.py` justifies reading the `.xml` for image-input defaults by noting that a
+type-5 input with no default "arrives in `header['inputs']` as (0,0,0,0), identical to one
+that genuinely defaults to zero". Measured, the population splits four ways:
+
+```
+assembly tuple    manifest says          count
+empty             no default               425     unambiguous from the assembly alone
+non-zero          declares a default        50     assembly value matches: default="1" -> (1,0,0,0)
+all zero          no default                37     <- the (0,0,0,0) case
+non-zero          no default                24
+```
+
+The reasoning holds. The 37 all-zero tuples are exactly the ambiguity named, and the
+manifest resolves them — as *no default*, not as a zero default. Worth adding is that no
+declared default in this corpus is itself zero (the "all zero + declares a default" cell is
+empty), so the collision is a real hazard that this corpus happens not to realise; the
+guard is right to be there anyway. And the empty-tuple case, 425 of 425, is separable
+without the manifest at all.
+
+The remaining 24 — assembly stores a non-zero value, manifest declares no default — are
+not explained here, and are the one loose end in the type-5 picture.
