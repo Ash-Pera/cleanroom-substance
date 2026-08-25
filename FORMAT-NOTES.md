@@ -32164,3 +32164,30 @@ And the 101, read family by family rather than left as a bucket:
 Nothing in the census is anonymous. Every row is a mechanism, a version, or a named
 stereotype; the largest unexplained CLASS in the corpus is now roughly thirty records,
 and the largest unexplained SINGLE population is one record short of its rule.
+
+## The v2 gradient "declaration gap" was never in the reader — it was in the census
+
+Two sections back, the v2 ramp blocks not overlapping a declared span were attributed
+to "v2 files where gradient's table declaration has not been read". Wrong attribution,
+corrected by looking:
+
+**v2 gradient records declare their tables plainly, and Record.ramp has been reading
+them all along.** The v2 layout is
+
+    [tag] [edge] [stop count] [table start]        (no end slot; the table follows)
+
+with slot 3 + 52 naming the block in 246 of 248 carriers, and slot 2 = 4 matching the
+block's four 6-byte stops exactly. Ramp decode over the corpus: modern 16,781 of
+16,781, v2 1,086 of 1,086 — one hundred percent in both eras, today, with the shipped
+reader.
+
+What failed was the census script, which reconstructed table spans from slots 3 and 4
+as [start][end] — the MODERN shape — instead of asking `Record.ramp`, which has
+handled the upper-bound-not-exact-end variation since it was written. A measurement
+tool re-implementing a shipped reader more crudely than the reader, then reporting the
+reader's subject as unread: the same failure as the "3 files" reverify incident, in
+miniature, caught in one turn instead of a session.
+
+The v2 six-word ramp block is therefore CLOSED end to end: declared by slot 3, counted
+by slot 2, six bytes per stop, 0x8114 a stop position, decoded by the reader the
+project already had.
