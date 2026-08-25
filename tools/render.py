@@ -48,7 +48,7 @@ for what the real engine does at that same input (clamps to 0? saturates earlier
 step this reading is missing?), so it is surfaced rather than guessed at.
 """
 import numpy as np
-import transpile, sbsruntime
+import transpile, sbsruntime, fxrender
 
 
 class Unsupported(Exception):
@@ -1119,6 +1119,29 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 outputs[i] = to_image(np.concatenate(cols, axis=-1), N, H, W)
                 if tainted:
                     synthetic.add(i)
+
+            elif rec.filter_name == "fxmaps":
+                # `fxmaps` is a pattern GENERATOR, not a filter over an input, so it is
+                # the one unimplemented branch that unblocks graphs on its own: 13 of the
+                # corpus's 34 one-root-cause-away graphs need only this. What it produces
+                # is honest but incomplete -- see tools/fxrender.py, which records that
+                # 96% of records render flat because `patternsize`'s coordinate space is
+                # not established, and that a nicer pattern shape does NOT fix that.
+                #
+                # Kept behind the same `Unsupported` contract as everything else: a record
+                # the FX model does not cover raises rather than returning a wrong image.
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                try:
+                    runner = fxrender.make_runner(asm, rec)
+                    pats = fxrender.emissions(rec, runner,
+                                              slots=fxrender.seed_slots(rec, runner))
+                except fxrender.Unmodelled as e:
+                    raise Unsupported("fxmaps: %s" % e) from e
+                if not pats:
+                    raise Unsupported("fxmaps: emitted no patterns")
+                outputs[i] = fxrender.splat(rec, pats, W, H)
 
             else:
                 raise Unsupported("filter %r not implemented" % rec.filter_name)

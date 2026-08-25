@@ -183,7 +183,35 @@ def _partners():
 PARTNER = _partners()
 
 
-def emissions(rec, run, gate_polarity=True, baked_pairs=True):
+def seed_slots(rec, run):
+    """Run the record's OWN non-FX programs once, so the table can read what they set.
+
+    The FX table reads slots the chain never writes -- 58.9% of fxmaps records died on
+    `slot N read but never set` when only the chain was run. The writers are the record's
+    other programs, which is what FORMAT-NOTES' "the slot frame is per-RECORD" (99.892%
+    against an 11.8% control) says: the frame's unit is the record, so every program the
+    record names shares it, not just the chain's.
+
+    Evaluated once at N=1 into the dict the walk then uses. Takes rendering from 27.9% to
+    85.2% of fxmaps records -- the single largest lever in this file.
+    """
+    slots = {}
+    fx = {p for _o, _h, _n, p in rec.fx_node_params()}
+    fx |= {v for _o, _t, _s, _n, k, v in rec.fx_named_params() if k != 'baked' and v}
+    for p in (rec.programs or ()):
+        if p in fx:
+            continue
+        try:
+            run(p, slots, 0)
+        except Exception:
+            # A record's own program may itself read a slot nothing writes. Seeding is
+            # best-effort by design: what it fails to set, the walk reports as missing.
+            pass
+    return slots
+
+
+def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
+    slots = {} if slots is None else slots
     nodes = chain(rec)
     table = entries(rec, baked_pairs)
     if not table:
@@ -192,7 +220,6 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True):
         if hdr not in ADDNODE and hdr != GATE:
             raise Unmodelled("node header %#x is not modelled" % hdr)
 
-    slots = {}
     out = []
 
     # THE RECORD'S OWN PROGRAMS SEED THE FRAME. This session's "slot frame is per-RECORD"

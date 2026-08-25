@@ -928,6 +928,21 @@ def fx_entry_layout(tag):
     if not any(k == 'program' for _s, _n, k in out) and (
             tag & sum(1 << b for b in FX_INLINE_BITS)):
         out.append((sl + 1, None, 'inline'))
+    # DO NOT READ PAST THE ENTRY. Where `FX_ENTRY` states a length, a row beyond it
+    # belongs to the NEXT entry, not this one. This is not hypothetical and it was wrong
+    # in the first version of this function: `0x00020008` is the corpus's commonest tag
+    # (50,965 entries), it is 8 bytes -- a tag and the +4 self-pointer -- and its only
+    # parameter bit puts a baked row at slot 2, which is one word past its end. Over
+    # 20,381 of them, that word is a tag in the entry vocabulary **96.5%** of the time
+    # (0x00020008 itself 13,010 times, 0x00420008 2,928). The layout was handing callers
+    # the following entry's tag as this entry's baked parameter value.
+    #
+    # Only where the length is KNOWN and numeric. `FX_ENTRY` carries about twenty of
+    # those; a tag it does not cover, or one marked terminal, is left alone rather than
+    # clipped to a guess.
+    n = FX_ENTRY.get(tag)
+    if isinstance(n, int):
+        out = [(s, nm, k) for s, nm, k in out if s < n // 4]
     return out
 
 
@@ -968,7 +983,7 @@ class Record:
     value is computed by a program rather than baked -- which their own
     docstrings cover but a caller cannot recover from the None alone.
     """
-    __slots__ = ('index', 'offset', 'end', 'tag', 'cls', 'asm', '_words', '_layout')
+    __slots__ = ('index', 'offset', 'end', 'tag', 'cls', 'asm', '_words', '_layout', '_programs')
 
     def __init__(self, asm, index, offset, end):
         self.asm, self.index, self.offset, self.end = asm, index, offset, end
@@ -976,6 +991,7 @@ class Record:
         self.tag, self.cls = w0 & 0xFFFF, w0 >> 16
         self._words = None
         self._layout = None
+        self._programs = None
 
     @property
     def words(self):
@@ -1672,6 +1688,11 @@ class Record:
     def programs(self):
         """Offsets of every parameter program this record names, in slot order.
 
+        CACHED on first access. The tiling probe walks up to 512 candidate offsets
+        through valid_program, and every tool and test that touches a record reads
+        .programs at least once -- the full test suite went from seventeen seconds to
+        ten minutes on recomputation alone.
+
         A record can carry more than one. The two-scalar filters put a second program in
         the record's tail - `directionalwarp` has an intensity and an angle, and `warp`,
         `blur`, `distance`, `sharpen`, `normal` and filter 11 do the same. Returning only
@@ -1687,6 +1708,8 @@ class Record:
         instead. That path used to return whatever the hand-written fallback named, which
         is one slot by construction - see `classified_programs` for what it cost.
         """
+        if self._programs is not None:
+            return self._programs
         asm = self.asm
         hit = LAYOUTS.get((self.filter_id, self.cls,
                            self.words[1] & LAYOUT_MASK.get(self.filter_id, 0))
@@ -1862,6 +1885,7 @@ class Record:
                         seen.add(x)
                 break
             q0 += 4
+        self._programs = out
         return out
 
     def classified_programs(self):
@@ -2671,6 +2695,8 @@ class Assembly:
     def __init__(self, path):
         self.path = path
         self.data = d = open(path, 'rb').read()
+        self._vp_cache = {}
+        self._pe_cache = {}
         self.header = S.parse(path)
         c, dir_at = self.header['dir_count'], self.header['dir_at']
         if c < 1 or dir_at + 4 * c > len(d):
@@ -2763,6 +2789,15 @@ class Assembly:
 
     # ---- programs
     def valid_program(self, p, slack=0):
+        k = (p, slack)
+        hit = self._vp_cache.get(k)
+        if hit is not None:
+            return hit
+        r = self._valid_program(p, slack)
+        self._vp_cache[k] = r
+        return r
+
+    def _valid_program(self, p, slack=0):
         """A program is valid only if it decodes exactly AND its operands are possible.
 
         Three checks, each of which a run of arbitrary bytes fails:
@@ -2977,6 +3012,14 @@ class Assembly:
             q += 4 + 4 * n
 
     def program_end(self, p):
+        hit = self._pe_cache.get(p)
+        if hit is not None:
+            return hit
+        r = self._program_end(p)
+        self._pe_cache[p] = r
+        return r
+
+    def _program_end(self, p):
         d = self.data
         n = struct.unpack_from('<H', d, p)[0]
         q = p + 2
