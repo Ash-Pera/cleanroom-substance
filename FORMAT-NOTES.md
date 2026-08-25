@@ -31554,3 +31554,37 @@ Neither filter warrants a hand-written costs.json entry — five and fifty-nine 
 both readable on sight when needed — but neither is a mystery any more. The unknown
 list is now: normal's 18 v2 records, fxmaps class 0, vectorshape's boundary, and the
 semantic layer.
+
+## The iteration-variable hypothesis, tested directly and refuted
+
+I proposed that the low slots FX programs read without any visible `set` were
+**engine-supplied per-iteration variables** — an iteration index or current frame handed in
+the way a `pixelprocessor` is handed `$pos`. It was withdrawn once already on a static scan,
+but that scan predated the `MissingSampler` fix, so most of the failures it looked at were
+unwired image inputs rather than slot misses. The hypothesis deserved a test with the
+confound removed.
+
+With samplers wired, on `ie_curve`:
+
+    residual FX program failures        slot miss        38
+                                        missing sampler   8
+
+    distinct slots still missed                          25
+      written somewhere in the file                      25
+      NEVER written anywhere  (the hypothesis)            0
+
+**Zero.** Every slot still failing is one some program in the file does write. An
+engine-supplied variable would appear as a slot that is read and never written by anything,
+and there is not one of those in the specimen. The hypothesis is refuted rather than merely
+unsupported, and the earlier withdrawal was right for a reason weaker than this one.
+
+What the residue actually is, the section above settles independently and better: the frame
+is per-RECORD at 99.892% against an 11.8% control, and the 0.108% that does not resolve
+in-record is one construct — 22 records in 5 files, a lone `0x18B` node under entry tag
+`0x15140848` whose bare `get` pass-throughs name slots above what its one-node chain writes.
+That is a shape to decode, not a channel between records and not an engine input.
+
+Three readings of this question have now been recorded and two of them were mine and wrong:
+graph-wide (regresses 87 outputs), split at slot 64 (inert), engine-supplied (refuted here).
+The unit was the error in all three — the frame is neither file-wide nor globally shared but
+scoped to the record, and the measurement that says so had to be taken per record to see it.
