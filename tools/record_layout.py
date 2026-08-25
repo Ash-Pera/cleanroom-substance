@@ -86,11 +86,15 @@ def header_words(filter_id, word0, w1, version=None):
     mv = spec.get('min_version')
     if mv is not None and (version is None or version < mv):
         return None                      # fitted on modern versions only
-    if spec.get('interaction') in ('colour', 'colour_states'):
-        return _interaction(spec, word0, w1)
     g = spec.get('guard')
     if g is not None and (word0 >> g['shift']) & g['mask'] != g['value']:
         return None                      # fitted for a different sampling class
+    # The interaction dispatch comes LAST. It sat above the min_version check once and
+    # above the guard check twice, and each time the spec answered for a population it
+    # was fitted to refuse -- 27 old emboss records the first time, 86 class-0 fxmaps
+    # records the second. Every gate runs before any evaluation path forks.
+    if spec.get('interaction') in ('colour', 'colour_states'):
+        return _interaction(spec, word0, w1)
     if spec.get('mode') == 'absent':
         w1 = None
     total = spec['const']

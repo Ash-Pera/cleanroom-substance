@@ -340,10 +340,18 @@ def main():
                 sub = [x for x in keys if (x[0][0] >> 24) & 3 == sc]
                 if len(sub) < 10:
                     continue
-                spec, exact = fit(f, sub, range(32))
-                spec2, exact2 = fit(f, sub, range(16, 32))
-                if spec2 is not None and exact2 > exact:
-                    spec, exact = spec2, exact2
+                # The same candidate race as the unguarded path. This branch used to
+                # try only the two plain masks, so the guarded class could never pick
+                # a colour-interaction model -- and fxmaps class 3's spec mischarged
+                # its colour-edge keys by exactly 3 words, 85 records surfacing as
+                # "observed short of rule" while every one of their keys is internally
+                # deterministic.
+                spec, exact = None, 0.0
+                for br in (range(32), range(16, 32), range(8, 32)):
+                    for cm in ('off', 'full', 'states'):
+                        s2, e2 = fit(f, sub, br, colour=cm)
+                        if s2 is not None and e2 > exact:
+                            spec, exact = s2, e2
                 if spec is None or exact < KEEP:
                     continue
                 spec['guard'] = {'shift': 24, 'mask': 3, 'value': sc}   # cls bits 8-9, in word0

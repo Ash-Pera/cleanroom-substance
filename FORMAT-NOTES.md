@@ -32059,3 +32059,24 @@ fakes are gone.
 family, one filter, one constant: named, not yet read.
 
     observed-short: 159  ->  87, of which 85 are the one fxmaps family
+
+## The fxmaps shorts fall, and the dispatch-order bug claims a second victim
+
+The 85-record fxmaps family — short by exactly 3, every key internally deterministic —
+was the guarded fit's expressiveness: the SPLIT branch raced only the two plain masks,
+so the class-3 spec could never pick a colour-interaction model and mischarged its
+colour-edge keys by one 3-wide field. Racing the guarded classes through the same nine
+candidates as the unguarded path takes fxmaps' class-3 fit from 99.716% to 99.997%,
+and the short family to zero.
+
+Fixing it exposed the guard-order bug's second victim: hoisting min_version above the
+interaction dispatch last session left the CLASS guard below it, so the repaired
+class-3 spec began answering for 86 class-0 records — visible as a fresh short-by-7
+family the moment the old one died. Every gate now runs before any evaluation path
+forks, and the comment in `record_layout` records both victims by name.
+
+    fxmaps, root-pointer boundary:  answered 39,090   exact 39,087   short 0   long 3
+
+The observed-short column corpus-wide is now single digits per filter. What this pair
+of fixes cost to find was one stale claim of my own ("the fit expresses it now")
+surviving exactly one measurement.
