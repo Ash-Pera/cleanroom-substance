@@ -666,6 +666,143 @@ FX_ENTRY = {
 }
 
 
+# THE TAG IS A PARAMETER LAYOUT, and every table entry decodes without a lookup table.
+#
+# `FX_ENTRY_PROGS` above is a census: 100 tags observed often enough to state where their
+# programs sit. It covers 45.2% of the corpus's 112,012 entries and says nothing about the
+# other 55%, nothing about which slot means what, and nothing about a tag it has not seen.
+# The tag does not merely CORRELATE with the program offsets - it spells the entry out.
+#
+# Bits 20..31, read in ASCENDING order, are the entry's parameter sequence: a set bit means
+# that parameter is present and takes the next slot(s), a clear bit means it is absent and
+# takes none. Seven of them hold a program pointer; the rest hold a value baked in place,
+# and bit 25's baked value is TWO words wide because the parameter is a float2.
+#
+# NAMES, by containment against the permitted paired sources (tools/provenance.py).
+# An FX-Map's source declares each `paramset` node's parameters, each either a literal or a
+# `<dynamicValue>` function graph, and a graph's `const_*` nodes carry literals that survive
+# into the compiled program as immediates. So for a source node and a compiled entry with
+# the same number of programs, ask which BIJECTIONS of names onto program slots put every
+# declared literal inside the program that slot names. Where exactly one bijection survives,
+# it is the binding - no name similarity, no ordering assumption, no guess.
+#
+#     source paramset nodes x candidate entries          2,203
+#       exactly one valid bijection                        943   <- the evidence
+#       several                                            543   (reported, not used)
+#       none                                               697
+#     (tag, slot) pairs bound                               13
+#     pairs where two nodes disagreed about the name         0
+#
+# Zero disagreements across 943 independent bijections over three tags, and the three tags
+# agree with each other on every bit they share.
+#
+# WHY THIS IS THE NESTED-SERIALISATION TRAP AGAIN: 3 of the 8 permitted FX sources write
+# every literal as `<constantValueFloat1><value v="0.75"/></constantValueFloat1>` and the
+# other 5 as `<constantValueFloat1 v="0.75"/>`. Matching one form reports the other three
+# files as declaring no constants at all, which is how this looked unbindable at first. It
+# is the third time that fact has cost this project a measurement.
+#
+# THE LAYOUT, fitted with the names held out. Roles were fitted to the base-free SHAPE of
+# each tag's program-slot list (the gaps, not the positions), so the fit cannot absorb an
+# error in where the entry's header ends:
+#
+#     predicted shape == the census's, over the 57 real entry tags     55/57   96.5%
+#     CONTROL, random role per bit                                              8.0%
+#     leading slots  base = 2 + one word per set bit of {4, 7, 17, 19}  54/55   98.2%
+#     CONTROL, random widths                                                    4.7%
+#     the two together: predicted program-slot LIST == the census's    54/57   94.7%
+#
+# The nine `FX_ENTRY_PROGS` keys whose low nibble is 9 or 0xB are excluded from that count:
+# a nibble of 8 is what makes a word a table entry, and 9/0xB are NODE headers, which is a
+# different structure with a different shape. They were never entries.
+#
+# GAPS ARE ALWAYS TWO WORDS, which is what says bit 25 is a float2 baked in place rather
+# than one word plus an unknown. Over the ten census tags whose program slots are not
+# consecutive, every gap is exactly 2 - against a control that draws the same number of
+# slots at random from the same span and produces a 1-wide gap 76.3% of the time.
+#
+# APPLIED TO THE WHOLE CORPUS, not just to the tags it was fitted on:
+#
+#     slots this layout calls a program                    108,257
+#       hold a program `program_span` accepts              101,617   93.9%
+#     CONTROL, the same test at an out-of-layout slot                  0.7%
+#
+# 101,617 named programs, against 934 the direct source binding reaches on its own.
+#
+# THE INDEPENDENT CHECK, which is the one that matters. None of the above looks at what a
+# program COMPUTES. A source declares each parameter's result type, and the ISA's last
+# instruction states the program's. They agree, corpus-wide, on evidence that fed nothing
+# above:
+#
+#     opacity          f1 97.9%   (f4 1.9%: colour opacity, and those entries set bit 8)
+#     branchoffset     f2 100.0%  over 45,504
+#     frameoffset      f2 99.8%
+#     patternsize      f2 99.8%
+#     patternrotation  f1 99.9%
+#     patternsuppl     f1 100.0%
+#     imageindex       i1 98.5%
+#
+# WHAT IS AND IS NOT SETTLED. `opacity`, `patternsize` and `patternrotation` are bound by
+# all three tags independently and confirmed by type. `branchoffset` (bit 22) is bound by
+# ONE specimen -- and it is the commonest bit in the corpus, 45,504 programs, so it is
+# simultaneously the least-evidenced name and the most load-bearing one. Type agreement
+# confirms it carries a two-component parameter but cannot separate it from `frameoffset`,
+# which is also f2. Treat the pair as "one of the two offsets, probably this one".
+# Bits 21 and 23 are set in NO observed tag, so their roles are unfitted and their names
+# unknown; bits 27 and 29 are set in 2 and 3 tags, enough to say "baked" and not enough to
+# say how wide. They are `None` below rather than guesses.
+#
+# A SEPARATE TEST of the same map, from the other direction: take a source node's declared
+# parameter set, predict the tag's high twelve bits from the names alone, and ask whether
+# that value occurs among the file's compiled entry tags. 60 of 62 nodes, against 4.2% for
+# a shuffled name-to-bit map. The two misses are one file whose entries the walk does not
+# reach at all.
+#
+# bit -> (parameter name or None, slots the baked form occupies)
+FX_PARAM_BITS = (
+    (4,  None,              1),   # leading baked words; which parameters they are is
+    (7,  None,              1),   # not established -- only that each takes one slot,
+    (17, None,              1),   # which is what fixes where the program run starts
+    (19, None,              1),
+    (20, 'opacity',         1),
+    (21, None,              1),   # never set in any observed tag
+    (22, 'branchoffset',    1),
+    (23, None,              1),   # never set in any observed tag
+    (24, 'frameoffset',     1),
+    (25, None,              2),   # baked float2; the only two-word gap the census shows
+    (26, 'patternsize',     1),
+    (27, None,              1),   # baked, width not established (2 tags)
+    (28, 'patternrotation', 1),
+    (29, None,              1),   # baked, width not established (3 tags)
+    (30, 'patternsuppl',    1),
+    (31, 'imageindex',      1),
+)
+
+# The bits whose parameter is stored as a POINTER to a program rather than baked in place.
+FX_PROGRAM_BITS = frozenset({20, 22, 24, 26, 28, 30, 31})
+
+
+def fx_entry_layout(tag):
+    """[(slot, name or None, 'program'|'baked')] for one FX-Map table entry tag.
+
+    Slot 0 is the tag and slot 1 is the entry's own word; parameters start at slot 2 and
+    are laid out in ascending bit order. Returns [] for a tag with no parameter bits set,
+    which is a real answer -- `0x00020008` is an entry whose every parameter is baked
+    ahead of the run.
+    """
+    out, sl = [], 1
+    for bit, name, width in FX_PARAM_BITS:
+        if not (tag >> bit) & 1:
+            continue
+        if bit in FX_PROGRAM_BITS:
+            sl += 1
+            out.append((sl, name, 'program'))
+        else:
+            out.append((sl + 1, name, 'baked'))
+            sl += width
+    return out
+
+
 # Base image inputs for the filters whose parameter fields are catalogued.
 _RULED_PARAMS = {1: 2, 12: 2, 15: 1, 11: 1}
 
@@ -1564,7 +1701,8 @@ class Record:
                 if pa in kend:
                     pos = kend[pa]
                     continue
-                if asm.valid_program(pa):
+                sl = 1 if self.filter_id == 20 else 0
+                if asm.valid_program(pa, slack=sl):
                     try:
                         e = asm.program_end(pa)
                     except Exception:
@@ -1681,6 +1819,38 @@ class Record:
                     start = nxt
         for off, tag, prog in self.fx_table(start):
             yield ('entry', off, tag, prog)
+
+    def fx_named_params(self):
+        """Yield (entry offset, tag, slot, name, kind, value) for every table parameter.
+
+        `kind` is 'program' or 'baked'; `value` is the program's absolute offset for the
+        former and the raw slot word for the latter. `name` is None where the bit's
+        parameter is not established -- see FX_PARAM_BITS, which says which those are and
+        why they are left blank rather than guessed.
+
+        This is `fx_walk`'s entry half read through the layout instead of through the
+        `FX_ENTRY_PROGS` census: the census knows 100 tags and this decodes any tag, which
+        is the difference between naming 934 of the corpus's entry programs and 101,617.
+        """
+        d, lo, hi = self.asm.data, self.asm.body_lo, self.asm.body_hi
+        seen = set()
+        for kind, off, tag, _prog in self.fx_walk():
+            if kind != 'entry' or off in seen:
+                continue
+            seen.add(off)
+            for sl, name, how in fx_entry_layout(tag):
+                if off + 4 * sl + 4 > hi:
+                    break
+                w = struct.unpack_from('<I', d, off + 4 * sl)[0]
+                if how == 'baked':
+                    yield off, tag, sl, name, how, w
+                    continue
+                pv = w + 52
+                # A slot the layout calls a program whose word is not one is reported as
+                # such rather than skipped: 6.1% of them corpus-wide, and hiding them
+                # would turn a known miss rate into an invisible one.
+                ok = lo < pv < hi and self.asm.program_span(pv, hi)
+                yield off, tag, sl, name, how, (pv if ok else None)
 
     def fx_table(self, start=None):
         """For filter 4: yield (entry offset, tag, program offset or None) per entry.
@@ -2370,7 +2540,7 @@ class Assembly:
         return out
 
     # ---- programs
-    def valid_program(self, p):
+    def valid_program(self, p, slack=0):
         """A program is valid only if it decodes exactly AND its operands are possible.
 
         Three checks, each of which a run of arbitrary bytes fails:
@@ -2414,6 +2584,15 @@ class Assembly:
         # which was inflating the transpiler's failure list. See FORMAT-NOTES.md.
         if p & 3:
             return False
+        # `slack` admits operands up to k + slack - 1: a program whose numbering starts
+        # at S = slack, referencing that many values defined BEFORE it. Pixelprocessor's
+        # per-pixel function is the case that needs it: value 0 is the implicit POSITION
+        # input, so its operands run one ahead of the local count. Measured over the 264
+        # big-surplus pixelprocessor records: 0 validate at S=0, 151 at exactly S=1
+        # regardless of arity, and the control -- the same S=1 probe at a random aligned
+        # offset inside the same regions -- passes 0 of 264. Callers other than the
+        # tiling probe leave slack at 0; loosening the default would re-admit exactly
+        # the garbage the strict check exists to reject.
         n = struct.unpack_from('<H', d, p)[0]
         if not (1 <= n <= 20000):
             return False
@@ -2440,7 +2619,7 @@ class Assembly:
                     # This does not weaken check 3. Over 622,587 slot targets that land in
                     # the body, 126,700 are valid strictly and allowing 0xFFFF admits
                     # exactly ONE more - the exemption reaches the sentinel and nothing else.
-                    if v >= k and v != 0xFFFF:
+                    if v >= k + slack and v != 0xFFFF:
                         return False
             q += 2 * L
             k += 1

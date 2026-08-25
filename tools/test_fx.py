@@ -40,7 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus                                                        # noqa: E402
 import disasm                                                        # noqa: E402
 from sbsasm import (Assembly, FX_NODES, FX_NODES2, FX_TAG_LOW16,     # noqa: E402
-                    FX_ENTRY, FX_ENTRY_PROGS)
+                    FX_ENTRY, FX_ENTRY_PROGS, fx_entry_layout)
 
 LIMIT = int(os.environ.get('SBS_FX_FILES', '250'))
 
@@ -346,6 +346,70 @@ def test_entries_read_the_slots_nodes_write():
     return ownd
 
 
+def test_entry_layout_names_the_program_slots():
+    """`fx_entry_layout` predicts where an entry's programs are, against a real control.
+
+    The control is what makes this a test rather than a tautology: the same
+    "does this word address a program" question, asked at a slot the layout does NOT
+    call a program. If the layout were merely finding pointer-shaped words -- which is
+    the failure mode that made `(tag & 0xF) == 8` weak -- the control would score too.
+
+    Measured: 93.9% against 0.7%. Thresholds sit well clear of both.
+    """
+    hit = tot = ctl = ctln = 0
+    for f in corpus.paths():
+        try:
+            a = Assembly(f)
+        except Exception:
+            continue
+        d, lo, hi = a.data, a.body_lo, a.body_hi
+        for r in a.records:
+            if r.filter_id != 4:
+                continue
+            seen = set()
+            for kind, off, tag, _p in r.fx_walk():
+                if kind != 'entry' or off in seen:
+                    continue
+                seen.add(off)
+                lay = fx_entry_layout(tag)
+                for sl, _nm, how in lay:
+                    if how != 'program' or off + 4 * sl + 4 > hi:
+                        continue
+                    tot += 1
+                    pv = struct.unpack_from('<I', d, off + 4 * sl)[0] + 52
+                    if lo < pv < hi and a.program_span(pv, hi):
+                        hit += 1
+                    s2 = sl + len(lay) + 3                 # off the end of the layout
+                    if off + 4 * s2 + 4 <= hi:
+                        ctln += 1
+                        qv = struct.unpack_from('<I', d, off + 4 * s2)[0] + 52
+                        if lo < qv < hi and a.program_span(qv, hi):
+                            ctl += 1
+    if not tot:
+        print('SKIP test_entry_layout_names_the_program_slots: no corpus')
+        return 0
+    assert hit / tot > 0.85, (hit, tot)
+    assert ctl / max(ctln, 1) < 0.10, (ctl, ctln)                     # the control
+    return tot
+
+
+def test_entry_layout_agrees_with_the_census():
+    """The layout reproduces `FX_ENTRY_PROGS`, which was derived a different way.
+
+    `FX_ENTRY_PROGS` counted where programs were seen, tag by tag; the layout computes it
+    from the tag's bits. They are independent derivations of the same fact, so agreement
+    is worth asserting and disagreement is a regression in one of them.
+
+    Node-header keys (low nibble 9 or 0xB) are excluded: those are not table entries and
+    the layout does not claim to describe them.
+    """
+    rows = [(t, sorted(s)) for t, s in FX_ENTRY_PROGS.items() if (t & 0xF) == 8 and t]
+    ok = sum(1 for t, s in rows
+             if [x for x, _n, k in fx_entry_layout(t) if k == 'program'] == s)
+    assert ok / len(rows) > 0.90, (ok, len(rows))
+    return len(rows)
+
+
 if __name__ == '__main__':
     for fn in (test_coverage_does_not_regress,
                test_records_yield_structure,
@@ -354,6 +418,8 @@ if __name__ == '__main__':
                test_entry_slot_roles_are_fixed,
                test_fx_programs_use_no_opcode_a_filter_does_not,
                test_fx_node_programs_never_loop,
-               test_entries_read_the_slots_nodes_write):
+               test_entries_read_the_slots_nodes_write,
+               test_entry_layout_names_the_program_slots,
+               test_entry_layout_agrees_with_the_census):
         got = fn()
         print('%-52s %s' % (fn.__name__, ('ok, n=%d' % got) if got else 'skipped'))

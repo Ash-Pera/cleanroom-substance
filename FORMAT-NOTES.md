@@ -31712,3 +31712,126 @@ loop. The matrix itself is unfinished, and what it would have shown is recorded 
 question rather than an answer: which checker notices a broken ISA, and which notice
 nothing? `test_transpile.py` catches `sub -> add` and five other operation-table mutations,
 per its own record. Whether anything else does is not yet measured.
+
+## The FX table tag is a parameter layout: 101,617 programs get a name
+
+The FX-Map blocker, restated at the end of the `MissingSampler` work, was "which named
+parameter each `(tag, slot)` carries". It is answered, and the answer is better than a
+lookup table: the tag does not merely correlate with where an entry's programs sit, it
+spells the entry out. Bits 20..31 read in **ascending** order are the entry's parameter
+sequence — a set bit means present and takes the next slot(s), a clear bit means absent
+and takes none.
+
+### The names, by containment with a forced bijection
+
+A `.sbs` FX-Map declares each `paramset` node's parameters by name, each holding either a
+literal or a `<dynamicValue>` function graph whose `const_*` nodes carry literals that
+survive compilation as program immediates. So for a source node with k dynamic parameters
+and a compiled entry with k program slots, ask which **bijections** of names onto slots put
+every declared literal inside the program that slot addresses:
+
+```
+source paramset nodes x candidate entries          2,234
+  exactly one valid bijection                        943   <- the evidence
+  several                                            555   (counted, discarded)
+  none                                               736
+(tag, slot) pairs bound                               13
+pairs two source nodes disagreed about                 0
+```
+
+Zero disagreements over 943 independent bijections, and the three tags agree with each
+other on every bit they share. No name similarity is used anywhere: `Bruno_Caustics`
+declares `patternsize` before `opacity` and compiles `opacity` first, so declaration order
+is not the rule either. `tools/fxparams.py` re-runs the whole procedure.
+
+**The nested-serialisation trap, for the third time.** 3 of the 8 permitted FX sources
+write every literal as `<constantValueFloat1><value v="0.75"/></constantValueFloat1>` and
+the other 5 as `<constantValueFloat1 v="0.75"/>`. Matching one form reports the other three
+files as declaring nothing, and this looked underdetermined until that was fixed. The fact
+has been in `tools/pixelgraph.py`'s docstring the whole time; it has now cost a measurement
+in `containment.py`, in this work, and once before that.
+
+### The layout, fitted with the names held out
+
+Roles were fitted to the base-free **shape** of each tag's program-slot list — the gaps,
+not the positions — so the fit cannot absorb an error in where the entry header ends.
+
+```
+predicted shape == the FX_ENTRY_PROGS census, over 57 real entry tags   55/57   96.5%
+CONTROL, random role per bit                                                     8.0%
+leading slots: base = 2 + one word per set bit of {4, 7, 17, 19}        54/55   98.2%
+CONTROL, random widths                                                           4.7%
+both together: predicted program-slot LIST == the census                54/57   94.7%
+```
+
+Nine `FX_ENTRY_PROGS` keys were excluded from that denominator and should never have been
+in it: their low nibble is 9 or 0xB, which is what makes a word a **node header** rather
+than a table entry. They are a different structure with a different shape.
+
+**Gaps are always two words.** Over the ten census tags whose program slots are not
+consecutive, every gap is exactly 2 — against a control that draws the same number of slots
+at random from the same span and produces a 1-wide gap 76.3% of the time. That is what says
+bit 25 is a baked `float2` rather than one word plus an unknown.
+
+### Applied to the corpus, not only to what it was fitted on
+
+```
+slots this layout calls a program                    108,257
+  hold a program `program_span` accepts              101,617   93.9%
+CONTROL, the same test at an out-of-layout slot                  0.7%
+```
+
+101,617 named entry programs, against the 934 the direct source binding reaches on its own,
+and 97.3% of the 104,478 entry programs the walk finds at all. The previous state of this
+question was a 100-tag census covering 45.2% of entries and naming none of their slots.
+
+### The independent check
+
+Nothing above looks at what a program **computes**. The source declares each parameter's
+result type and the ISA's last instruction states the program's, and they agree corpus-wide
+on evidence that fed nothing in the derivation:
+
+| parameter | source type | ISA return type, corpus-wide |
+|---|---|---|
+| `opacity` | Float1 | f1 97.9% (f4 1.9%) |
+| `branchoffset` | Float2 | **f2 100.0%** over 45,504 |
+| `frameoffset` | Float2 | f2 99.8% |
+| `patternsize` | Float2 | f2 99.8% |
+| `patternrotation` | Float1 | f1 99.9% |
+| `patternsuppl` | Float1 | f1 100.0% |
+| `imageindex` | Integer1 | i1 98.5% |
+
+The `opacity` f4 minority is not noise: every one of those entries sets tag bit 8, which is
+where `colorswitch` turns a scalar opacity into a colour.
+
+A second independent check runs the map **backwards** — take a source node's declared
+parameter set, predict the tag's high twelve bits from the names alone, and ask whether that
+value occurs among the file's compiled entry tags. 60 of 62 nodes, against 3.1% for a
+shuffled name-to-bit map. The two misses are one file whose entries the walk never reaches.
+
+### What is not settled, stated because the numbers look better than the evidence
+
+`opacity`, `patternsize` and `patternrotation` are bound independently by all three tags and
+confirmed by type. **`branchoffset` (bit 22) rests on one specimen** — and it is the
+commonest bit in the corpus at 45,504 programs, so it is simultaneously the least-evidenced
+name and the most load-bearing one. Type agreement confirms bit 22 carries a two-component
+parameter but cannot separate it from `frameoffset`, which is also f2.
+
+Bits 21 and 23 are set in **no** observed tag, so their roles are unfitted and their names
+unknown. Bits 27 and 29 are set in 2 and 3 tags: enough to say "baked", not enough to say
+how wide. All four are `None` in `FX_PARAM_BITS` rather than guesses.
+
+Only 8 permitted sources in the whole corpus contain an FX-Map, and between them they
+exercise three tags. Everything above generalises from that.
+
+### Two tags the layout gets wrong, and one of them is interesting
+
+`0x00000008` has no parameter bits set at all, so the layout predicts no programs where the
+census saw five. `0x00410008` predicts slot 2 where the census says 6.
+
+`0x15140848` is the third, and it is the [0.108% FX residue](#the-fx-residue-is-one-construct)
+by another route: the layout predicts four programs and the census counts three. The source
+signature that produces this tag in `ie_curve` declares **four** dynamic parameters. So on
+this specimen the layout is right and the census row is short by one — which is the opposite
+of how a residue usually resolves, and worth remembering before the residue is written off
+as a decode failure.

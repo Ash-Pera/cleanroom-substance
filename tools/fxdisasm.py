@@ -10,7 +10,7 @@ and `valid_program` disagree. There is now one implementation of each.
 import sys
 
 import disasm
-from sbsasm import Assembly, FX_NODES
+from sbsasm import Assembly, FX_NODES, fx_entry_layout
 
 
 def tree(asm, r):
@@ -34,6 +34,14 @@ def main(path, idx):
     for kind, off, tag, prog in r.fx_walk():
         n += 1
         label = 'node' if kind == 'node' else 'table entry'
+        if kind == 'entry':
+            # Which parameter each slot carries, from the tag alone -- see FX_PARAM_BITS.
+            # A slot whose bit has no established name prints as `?`, not as a guess.
+            lay = fx_entry_layout(tag)
+            if lay:
+                print('\n--- 0x%X: %s' % (tag, '  '.join(
+                    '+%d %s%s' % (s, nm or '?', '' if k == 'program' else '=baked')
+                    for s, nm, k in lay)))
         where = ('+%d' % (off - r.offset) if r.offset <= off < r.end
                  else '0x%X (outside this record)' % off)
         print('\n=== %s 0x%X at %s%s' %
