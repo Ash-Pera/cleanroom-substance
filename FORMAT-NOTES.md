@@ -31588,3 +31588,28 @@ Three readings of this question have now been recorded and two of them were mine
 graph-wide (regresses 87 outputs), split at slot 64 (inert), engine-supplied (refuted here).
 The unit was the error in all three — the frame is neither file-wide nor globally shared but
 scoped to the record, and the measurement that says so had to be taken per record to see it.
+
+## Vectorshape's boundary, read: three words, and the first sighting of sampling class 2
+
+Vectorshape (filter 5) was the last filter with no header account — "too few keys" at
+five. Five keys is a population for reading, not fitting:
+
+    [tag] [strip start] [strip end]                       header 3    56 of 56 records
+    [tag] [strip start] [strip end] [baked Float1 = 1.0]  header 4     7 of  7 records
+
+The discriminator for the fourth word is exact: **sampling class 2 (word0 bits 24-25)
+together with bit 16**, and nothing else — 7 of 7 with the word, value 1.0 in every
+one; 56 of 56 without. This is the first concrete appearance of sampling class 2, one
+of the two class values (1 and 2) that have had populations but no observed meaning
+since the class-word survey: in vectorshape it declares one extra baked scalar.
+
+No costs.json entry is forced — five keys cannot outnumber the mask features, and a
+hand-written spec would break "generated, not fitted". The layout is recorded here and
+verifiable in one query.
+
+Also logged from the same sitting: normal's 18 v2 "invalid" tail programs decode
+CLEANLY — nine instructions, every opcode plausible, ending exactly 8 bytes before the
+record end where the ref.i2 size program sits. `valid_program` rejects them on the
+operand-ordering check, not the decode. Either v2 numbers operands differently in some
+programs, or the check has an off-by-something for this shape — a named lead, not yet
+chased.
