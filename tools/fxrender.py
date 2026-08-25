@@ -65,6 +65,40 @@ TWO NEGATIVE RESULTS, recorded so they are not re-run.
    direction, a metric improving while the model gets worse, and only the known-good
    record caught it.
 
+4. THE RECIPROCAL READING OF A BAKED patternsize IS UNDECIDABLE ON THIS CORPUS -- which is
+   a stronger statement than "unproven", and is recorded so nobody re-derives it.
+
+   The reading: a BAKED patternsize is stored as 1/size. It is not idle. The words decode
+   as clean float32 clustering on 5.0, 3.0, 1.5, 8.0, 2.0, 1.0 and 4.0; read as canvas
+   fractions they paint everything, read as reciprocals they are 1/5, 1/3, 2/3, 1/8, 1/2,
+   1 and 1/4. Per record it lands median exactly 0.500 -- the value that characterises a
+   record which renders a picture -- with 88.7% in [0.02, 1.5] against 41.8% as-is. It
+   also explains the asymmetry no frame model did: 62% of oversized records have a baked
+   patternsize against 27% of correctly-sized ones.
+
+   WHY IT IS NOT IMPLEMENTED. Both records with independent ground truth -- Stadsspel__Lines
+   record 0 and sci_fi_elements_02 record 86 -- take patternsize from a PROGRAM, so a rule
+   touching only baked values cannot break either. The property that makes it safe is the
+   property that makes it unfalsifiable, and two hypotheses died here today on exactly that
+   ground: a plausibility gain that no available record could contradict.
+
+   WHAT WOULD DECIDE IT, stated as a search rather than left open. A record whose geometry
+   is OVERDETERMINED -- more constraints than degrees of freedom -- so the footprint is
+   forced rather than chosen, AND whose patternsize is baked. Record 86 is the precedent
+   in the other currency: six patterns at radius 0.433, rotations stepping exactly 1/6
+   turn, size 0.866 = 2 x radius, so every hard footprint passes through the centre and
+   coverage is forced. An evenly-stepped ring is NOT sufficient on its own; a ring whose
+   size is unrelated to its radius is still free and decides nothing. Two shapes qualify:
+
+       a ring where size and radius stand in a forced ratio, baked size
+       a 0x99 lattice chain with a baked size -- the lattice already forces coverage
+       (a parallel session's nine specimens run 2304 = 48 x 48, 450 = 9 x 50, 256 = 16 x 16,
+       overdetermined in exactly this sense, but their sizes come from programs)
+
+   Searched: 0 candidates over 60 files, baked patternsize with 3-24 patterns and either
+   evenly-stepped rotations or a constant-radius ring. One such record decides the question
+   in a single render; nothing else in this corpus will.
+
 WHY THIS MATTERS MORE THAN THE FILTER WORK. Perturbation over 140 files: of 112 declared
 outputs that render flat, the flat SOURCE records in their closure were replaced with
 varying patterns and the output re-rendered. 89 then varied, 4 stayed flat, and 19 had no
