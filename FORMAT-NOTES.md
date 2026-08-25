@@ -31399,3 +31399,42 @@ The older 51 records keep their within-key contradictions, so the spec carries
 `min_version: 0x50000` and answers None below it — a guard, not a guess. Cost-model
 coverage stands at 99.68%, eighteen filters kept, and the excluded list no longer
 contains a single filter whose exclusion reason is unknown.
+
+### The 0.108% residue, run down: one construct, and no cross-record sharing at all
+
+The 66 reads that did not resolve in-record looked like evidence for some cross-record
+channel — 65 of them name a slot that another record in the same file does write. They are
+not. Three hypotheses, checked in order:
+
+**Partition attribution — refuted.** `fx_table`'s own docstring records that 805 `fxmaps`
+records address a table lying outside them, inside an earlier record, so an entry could be
+attributed to the wrong owner. Not here: all 66 entry offsets AND all 66 program offsets
+lie inside the reading record's own extent, 66 of 66.
+
+**A truncated chain walk — refuted.** The unresolved records have exactly 1 chain node
+where the records around them have 3, which looks like the walk dying on one of the 216
+unhandled node headers. It does not. `RoofingTiles` record 0 holds a single `0x0000018B`
+whose next-pointer lands on `0x15140848` — low nibble 8, a table entry. The chain is
+genuinely one node long and hands off correctly. For contrast record 39 walks
+`0x18B -> 0x89 -> 0x1CB` and then hands off the same way.
+
+**One construct — confirmed.** Every instance in the corpus is the same shape:
+
+    x19   node 0x18B (alone)   entry tag 0x15140848   writes 0,1,2,3,7,11,12,13   unresolved 15,17,18
+    x3    node 0x18B (alone)   entry tag 0x15140848   writes 0,1,5,9,10,11,13     unresolved 14,16,17
+
+    22 records, 5 files, one node header, one entry tag, and in both variants the
+    highest slot the chain writes is 13 and every unresolved read is above it.
+
+Entries under tag `0x15140848` are bare `get <slot>` programs — pure frame pass-throughs
+with no computation of their own. Paired with a one-node chain they name slots that a
+longer chain would have filled and this one never does.
+
+**So cross-record sharing has no support.** That 65 of 66 name a slot some other record
+writes is coincidence: slots 14-18 are heavily used file-wide, and the 11.8% control already
+measured how often an arbitrary slot collides that way. Once this single construct is set
+aside, every remaining entry-program read in the corpus resolves inside its own record.
+
+What the engine does at those reads — seeds a default, or never executes the entry because
+its condition is false — is not decidable from the file and is left open. Either way it is
+22 records, 0.036% of the `fxmaps` population, and not a channel between records.
