@@ -30793,3 +30793,46 @@ Only (2) is blocked on evidence. (1) is engineering and (3) is a documented exte
 dependency. The structural work is genuinely finished; what remains is a frame model and a
 naming pass, and this section exists so the next attempt starts at step 1 rather than
 re-running the containment test.
+
+## Kind 0x0b is a wrapper, kind 0x1b carries a uid, and two laws replace sixty entries
+
+The size table held ~60 memorised entries for kinds 0x0b and 0x1b, with sizes scattered
+from 8 to 44 and — for 0x0b — the SAME low bits taking different sizes, which no mask
+law could produce. Read raw, neither kind is a mask node at all:
+
+**Kind 0x0b: an 8-byte wrapper around a nested node.**
+
+    [id << 8 | 0x0b] [link]  ->  then an ordinary node of the usual kinds
+
+    0x100b: [0x100b][ptr] [0x83000088][8][p][p][1.0f][16.0f]     inner kind 0x88
+    0x060b: [0x060b][ptr] [0x0d040048][p][p][p][0.125f]          inner kind 0x48
+
+The "variable sizes" were wrapper-plus-payload lumps, memorised whenever the inner tag
+happened to be uncatalogued. The upper bits are an ID, not a mask — they take values
+like 0x6, 0x10, 0x19, 0x40 ... 0x400, 0x4000, a counter-like distribution. **And this
+family reaches back into an old mystery**: `roofing_007`'s unaccounted shuffle slot
+holds 0x60b, and `Texture_Randomizer`'s fxmaps slot holds 0x203 — record slots carrying
+values from this same typed-id space. Two of this session's oldest unexplained slots
+are, at minimum, members of a now-named family.
+
+**Kind 0x1b: a 12-byte cell whose second word is a uid.**
+
+    [id << 8 | 0x1b] [uid] [ptr]   ->   then an 0x18b cell (12 bytes: [0x18b][p][p])
+
+Every instance dumped carries uid 0x3039 — decimal 12345 — and the constant 24-byte
+"size" of every 0x1b tag was really 12 + 12: the cell plus the 0x18b that always
+follows it. The upper tag bits vary (0x10, 0xc2, 0x40, 0x80...) with no effect on
+shape, which is what finally exposed them as data rather than mask.
+
+Replacing the sixty memorised entries with the two structural laws costs 0.13% (inner
+tags previously hidden inside lumps), and one inference round over the newly exposed
+inner tags wins it back and more:
+
+    node gaps parsed     99.676%  ->  99.879%
+    of the bytes         99.398%  ->  99.702%
+    the table            246 memorised tags  ->  209 tags + 2 kind laws
+
+The table got SMALLER while the parse got better, which is the direction a real schema
+moves. Residue: 244 gaps, kind 0x98's mask-like family (three tags, upper-bit
+structure, unfitted), and the meaning of the wrapper ids and the 12345 uid — the paired
+sources being the obvious instrument for the latter.
