@@ -32414,3 +32414,63 @@ tag's nibbles, not in a program slot — and a parallel session's five independe
 
 The practical consequence: the renderer's pattern-shape assumption cannot be settled from
 the table, which is where everyone has been looking.
+
+## Correction: `patterntype` IS in the file — it is the tag's nibble 2, offset by two
+
+The previous section concluded `patterntype` is "not in the FX table in any form". That was
+right about the parameter block and wrong as stated: not in the parameter block is not not
+in the file, and the engine has to know which shape to draw. It is in the **tag**, at bits
+11:8, as `patterntype - 2`.
+
+| file | declared | tag nibble 2 | `pt - 2` |
+|---|---|---|---|
+| `Bruno_Caustics` | **9** | **7** | 7 |
+| `triDraw` | **3** | **1** | 1 |
+| `ie_curve` | 1 | 0 | (0) |
+| `ie_particles` | 2 | 0 | 0 |
+| `ie_pcloud` | 2 | 0 | 0 |
+| `Simulator__Grid` | 2 | 0 | 0 |
+
+Seven of seven usable files, and the weight is entirely on the first two rows, because
+nibble 2 is far from uniform. Over 20,929 parameter-carrying entries corpus-wide:
+
+```
+nibble 0   62.4%      nibble 1   1.0%      nibble 7   0.4%
+```
+
+So `triDraw` landing on a 1.0% value and `Bruno_Caustics` on a 0.4% value, both exactly at
+`pt - 2`, is the evidence — about 4e-5 for the pair by chance. The four files sitting at
+nibble 0 are consistent and prove little on their own.
+
+**Why this was missed twice.** A parallel session tested `nibble 2 == patterntype` and
+falsified it correctly — `ie_particles` declares 2 and its nibble is 0 — and I recorded that
+falsification as closing the question and wrote it into `FX_UNSTORED_PARAMS`' comment. Both
+of us tested the un-offset form, and `pt - 2` is 0 for that specimen, so the counter-example
+was never one. A falsification is only as good as the form of the hypothesis it tested, and
+neither of us varied the form.
+
+**The soft spot**, stated because nibble 0 is a catch-all: `patterntype` 1 and 2 both map to
+0, and so does a `patterntype` the source declares as a function graph — `ie_particles` has
+one of each and both entries read 0. So the offset is not established below 3, and nibble 0
+cannot be read back as a specific pattern. What is established is that the field is here and
+that it separates 3 and 9 from the default.
+
+The vocabulary agrees with an enum this size: `FX_TAG_LOW16`'s nibble 2 takes 0–8 and B–E,
+thirteen values, which is what a pattern-shape enum looks like from outside.
+
+### What still stands from the previous section
+
+`blendingmode` really does appear to be absent. The tightest control available says so: in
+`ie_pcloud`, six paramsets declare `blendingmode=1` and three declare `=2`, all nine have
+identical stored-parameter sets, and all 108 of their compiled entries are the same five
+words — `[tag][self-pointer][three program pointers]` — with the same tag. A within-file
+contrast that produces byte-identical entry structure cannot be carrying the difference.
+
+Two near misses worth recording so they are not re-run. `ie_curve` has 31 paramsets with
+`blendingmode=1` and 4 with `=2`, and its fxmaps records are `cls 0x389` ×31 and `0x3B9` ×4
+— an exact match, and `ie_particles` reproduces it 1:1. It is a coincidence: `Bruno` declares
+1 and `triDraw` declares 2 and both sit at the same cls nibble, and corpus-wide that nibble
+is `0x9` in 97.8% of fxmaps records, which cannot carry a twelve-value enum. An exhaustive
+positional scan is also useless here and the control says why — searching every word, byte
+and nibble of a record for a small integer finds the declared value about as often as it
+finds one the file never declares.

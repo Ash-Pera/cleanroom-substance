@@ -910,6 +910,54 @@ FX_UNSTORED_PARAMS = frozenset({
     'colorswitch',
 })
 
+# ...BUT `patterntype` IS IN THE FILE. It is nibble 2 of the tag, offset by two.
+#
+# "Not in the parameter block" is not "not in the file" -- the engine has to know which
+# shape to draw. It is in the tag itself, at bits 11:8, as `patterntype - 2`.
+#
+#     file                    declared    nibble 2    pt - 2
+#     Bruno_Caustics             9            7          7     <-- the one that carries it
+#     triDraw                    3            1          1     <--
+#     ie_curve                   1            0         (0)
+#     ie_particles               2            0          0
+#     ie_pcloud                  2            0          0
+#     Simulator__Grid            2            0          0
+#
+# Seven of seven usable files, and the weight is entirely on the first two rows, because
+# nibble 2 is not uniformly distributed. Over 20,929 parameter-carrying entries:
+#
+#     nibble 0   62.4%      nibble 1    1.0%      nibble 7    0.4%
+#
+# So `triDraw` landing on a 1.0% value and `Bruno_Caustics` on a 0.4% value, both exactly
+# at `pt - 2`, is the evidence; the four files at nibble 0 are consistent but prove little
+# on their own. Chance for those two together is about 4e-5.
+#
+# WHY THIS WAS MISSED TWICE. A parallel session tested `nibble 2 == patterntype` and
+# falsified it correctly -- `ie_particles` declares 2 and its nibble is 0 -- and I recorded
+# that falsification as closing the question. Both of us tested the un-offset form. `pt - 2`
+# is 0 for that specimen, so the counter-example was never one.
+#
+# THE SOFT SPOT, stated because nibble 0 is the catch-all: `patterntype` 1 and 2 BOTH map
+# to 0, and so does a `patterntype` the source declares as a function graph (`ie_particles`
+# has one of each and both entries read 0). So the offset is not established below 3, and
+# nibble 0 cannot be read back as a specific pattern. What is established is that the field
+# is here, and that it separates 3 and 9 from the default.
+#
+# The vocabulary agrees with an enum of this size: FX_TAG_LOW16's nibble 2 takes 0-8 and
+# B-E, thirteen values, which is what a pattern-shape enum looks like from outside.
+FX_PATTERNTYPE_SHIFT = 8
+FX_PATTERNTYPE_BIAS = 2
+
+
+def fx_patterntype(tag):
+    """The entry's `patterntype`, or None where the encoding does not determine it.
+
+    Returns None for nibble 0, which is the catch-all: `patterntype` 1, `patterntype` 2 and
+    a source-declared function graph all land there. See FX_PATTERNTYPE_BIAS.
+    """
+    n = (tag >> FX_PATTERNTYPE_SHIFT) & 0xF
+    return None if n == 0 else n + FX_PATTERNTYPE_BIAS
+
 
 # Bits whose presence means an INLINE program sits after the parameter slots -- one the
 # entry stores in its own bytes instead of pointing at. See `fx_entry_layout`.
