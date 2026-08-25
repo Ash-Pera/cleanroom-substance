@@ -95,6 +95,47 @@ from sbsasm import Assembly, FX_NODES, fx_patterntype                           
 # `randomseed` (0.0 in 6 of 6). It iterates once and passes through.
 ADDNODE = frozenset({0x18B, 0x1AB, 0x20B, 0x1CB})
 GATE = 0x89
+
+#: One successor, one unnamed program, and the program is a per-iteration STATE UPDATE
+#: rather than a count or a predicate. In StylizedCobblestoneStreet record 27 it reads
+#: slots 14/16/17/18 and writes 12/14/16/17/18: a counter in 17 wrapping against 16, a
+#: direction vector in 18 rotated a quarter turn (`mul.f2` by (-1, 1) on a swizzle) when
+#: it wraps, and a position in 14 advanced by that direction. The 0x18B node above it
+#: initialises those same five slots.
+#:
+#: IT IS A RASTER SCAN, not the serpentine this comment first called it. Plotting the
+#: emitted offsets in emission order shows each row laid left to right and then a jump
+#: back to begin the row above -- a serpentine would reverse along alternate rows and
+#: need no return. Over the nine records in 260 files that exercise it with more than one
+#: pattern, EVERY emission lands at a distinct offset (2304 of 2304, 450 of 450, 256 of
+#: 256) against 15% of records without a 0x99, and in all nine the count divides exactly
+#: by the number of distinct rows:
+#:
+#:     Brick02  r12   81 = 9 x 9      Brick03  r12  108 = 9 x 12
+#:     Brick02  r17  315 = 9 x 35     Brick03  r17  225 = 9 x 25
+#:     Brick02  r23  432 = 9 x 48     Brick03  r23  450 = 9 x 50
+#:     Chipboard r1633  256 = 16 x 16     Flagstone r219  256 = 16 x 16
+#:     PavingStones r44   2304 = 48 x 48
+#:
+#: Nine courses in every brick record. Where the distinct x count EXCEEDS the row length
+#: (Brick02 r12 has 10 for 9, r23 has 64 for 48) the extra x values are the running-bond
+#: offset -- always more than the row length, never fewer, which is what an alternating
+#: course offset does and what a broken stepper could not do.
+#:
+#: It is the pattern's position, not incidental state: the table entry's `frameoffset`
+#: and `opacity` programs both read slot 12, which the stepper writes as *this*
+#: iteration's position (`slot 12 = slot 14` before slot 14 advances). So the node runs
+#: its program and continues to its single successor -- run first, then emit, which is
+#: the order slot 12 is written in.
+STEPPER = 0x99
+
+#: The 0x??0B family is where a chain ENDS. Its "programs" are not its own: in record 27
+#: the leaf's five programs are byte-identical to the five parameter programs of the
+#: table entry it hands off to (opacity, frameoffset, patternsize, patternrotation,
+#: patternsuppl at the same five addresses). The leaf IS the entry seen from the node
+#: side, so the walk passes straight through it and the table does the emitting.
+def _is_leaf(hdr):
+    return (hdr & 0xFF) == 0x0B
 MAX_PATTERNS = 40000
 
 
@@ -169,7 +210,32 @@ def entries(rec, baked_pairs=True):
     off, an entry that bakes its patternsize falls back to a full-cell default and paints
     the whole canvas.
     """
+    # THE TABLE IS THE ENTRY LIST, NOT THE PARAMETER LIST. This used to derive `order`
+    # from fx_named_params(), so an entry whose tag sets no parameter bits was invisible
+    # and the record reported "no readable table entries" -- 9,385 entries across 220
+    # files, and 950 records that thereby had no table at all. They are not nothing: the
+    # patterntype still rides in the tag's nibble 2, so a paramless entry is a pattern of
+    # a stated shape at default transform, which is the full-cell fallback below.
+    #
+    # That they are real entries and not a walk running into bytecode is the program-span
+    # containment control, with both of its controls present in the same measurement:
+    #
+    #     group           entries   inside a program span
+    #     parameterised      5621        1        0.0%     (known good)
+    #     paramless8         9385        0        0.0%
+    #     other-nibble        808      112       13.9%     (known bad: node headers)
+    #
+    # Restricted to nibble 8 for exactly that reason -- the nibble-b words in the same
+    # walk ARE node headers and score 13.9%, so they stay out. Note the payload-pointer
+    # test cannot be used here: a paramless entry has no program, so its +4 word points
+    # nowhere by construction (0.3% against 97.9%), which measures the absence of
+    # parameters rather than the absence of an entry.
     tbl, order = {}, []
+    for off, tag, _p in rec.fx_table():
+        if off in tbl or (tag & 0xF) != 8:
+            continue
+        tbl[off] = (tag, {})
+        order.append(off)
     for off, tag, _sl, name, kind, value in rec.fx_named_params():
         if off not in tbl:
             tbl[off] = (tag, {})
@@ -252,7 +318,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     if not table:
         raise Unmodelled("no readable table entries")
     for _off, hdr, _p in nodes:
-        if hdr not in ADDNODE and hdr != GATE:
+        if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER and not _is_leaf(hdr):
             raise Unmodelled("node header %#x is not modelled" % hdr)
 
     out = []
@@ -311,6 +377,16 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 raise Unmodelled("numberadded = %d" % n)
             for k in range(n):
                 walk(i + 1, k)
+        elif hdr == STEPPER:
+            # Run the state update, then continue to the single successor. The return
+            # value is discarded: this program is a chain of `seq`-joined `set`s, and
+            # what it produces is the slot frame the entry then reads, not a number.
+            prog = progs.get(None)
+            if prog is not None:
+                run(prog, slots, number)
+            walk(i + 1, number)
+        elif _is_leaf(hdr):
+            walk(i + 1, number)             # the leaf is the entry; the table emits
         else:
             prog = progs.get('switch')
             if prog is None:
