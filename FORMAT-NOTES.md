@@ -33788,3 +33788,175 @@ like a finding was an artifact of what the boundary probe included: once when th
 all-baked records were invisible because the probe needed a program, and now when the
 payload probe measured past one. A cost model whose coefficients must be type widths is
 useful exactly because a wrong measurement cannot hide in it.
+
+## The bitmap pixel offset is four bytes low, and it only shows in some layouts
+
+Four of the twenty-four tiles in a rendered contact sheet came out an identical acid
+green. They were not a colour bug. Each was a `transformation` over a `bitmap`, and the
+statistics named the problem immediately: the constant-1.0 channel — an RGBA image's
+alpha, which belongs at index 3 — was sitting at index **1**.
+
+**The pixel region is at the FRONT of the file**, ahead of the assembly body, and the
+header in front of it is eight bytes rather than four:
+
+    word@0   0x4d414253 = 'SBAM', the file magic          40 of 40 files
+    word@4   low 16 bits zero, a version field            40 of 40 files
+             (observed 0x20000, 0x50000, 0x60000, 0x90000)
+
+and yet the first bitmap in every one of those files declares its offset as **4** — the
+version word. Pixels begin at 8. Every declared offset is four bytes short of its data.
+
+**Why it survived this long: it is invisible in the commonest layout.** Four bytes is a
+whole pixel at depth 8 with 4 channels, so that decode is correct either way and merely
+starts one pixel late. Everywhere else it rotates the channels by `4/(depth/8) mod ch`.
+That rotation is predicted by the layout alone, before looking at any image, and it is
+the one measured:
+
+    layout          predicted shift   measured   specimen
+    depth  8 ch 4         0              0       pix_alley_oil     (already correct)
+    depth  8 ch 3         1              1       brown_mud_leaves_01
+    depth 16 ch 4         2              2       hiero_03, pix_concrete_02
+
+Corpus-wide the RGBA case is self-controlling, because an RGBA image's flattest channel
+is its alpha and its index is a fact about the file rather than a guess:
+
+    depth 16 ch 4    flattest channel at index 1    13 of 16   (declared offset)
+    depth 16 ch 4    flattest channel at index 3    13 of 16   (offset + 4)
+    depth  8 ch 4    same answer both ways                     (the null control)
+
+After the fix `hiero_03` record 5 reads (0.4966, 0.5127, 0.8401, 1.0000) with alpha
+exactly constant — x and y centred on a half and z high, which is what a tangent-space
+normal map looks like.
+
+**Two measurements along the way said nothing, and one of them was briefly believed.**
+
+The images pack back-to-back exactly — `offset[k+1] - offset[k] == size[k]` in 174 of 174
+consecutive pairs, which corroborates every declared size, depth and channel count. It
+was taken as a refutation of the four-byte shift. It is not: packing is **invariant to a
+uniform shift**, so it cannot see this defect at all.
+
+Earlier, the raw bytes of `hiero_03` opened `cd 9b 4b ff | c4 95 4a ff | dc af 6a ff` — a
+4-byte period with 0xff in the fourth, which reads as unmistakable RGBA8 and would have
+meant the declared depth of 16 was wrong. The control killed it: the fourth byte of each
+group is 0xff in 50.00% of the buffer and **the third byte is 0xff in 50.45%**. The
+pattern was the first thirty-two bytes being unrepresentative, and without the control it
+would have sent the whole investigation at the depth field instead of the offset.
+
+## An FX table entry that names no parameters is still an entry
+
+`fxrender.entries()` built its list *from* `fx_named_params()`, so an entry whose tag sets
+no parameter bits produced no rows and vanished — and a record whose whole table was such
+entries reported "no readable table entries". Over 220 files that is **9,385 entries and
+950 records** with no table at all. They are not nothing: `patterntype` rides in the tag's
+nibble 2, so a paramless entry is a pattern of a stated shape at default transform, which
+is the full-cell fallback the renderer already has.
+
+The control is program-span **containment** — a walk that has run into bytecode lands
+inside a program, a real entry does not — with both a known-good and a known-bad group in
+the same measurement:
+
+    group           entries   inside a program span
+    parameterised      5621        1        0.0%     (known good)
+    paramless8         9385        0        0.0%
+    other-nibble        808      112       13.9%     (known bad: node headers)
+
+Restricted to nibble 8 for exactly that reason: the nibble-b words in the same walk *are*
+node headers and score 13.9%, so they stay out.
+
+**A confounded control, recorded because it looked decisive.** The first attempt used the
+payload-pointer test — does the entry's +4 word land in the record — and got 0.3% for
+paramless entries against 97.9% for parameterised ones, which reads as an emphatic
+refutation. It is worthless: a paramless entry has no program, so its payload word points
+nowhere *by construction*. The test measured the absence of parameters, not the absence of
+an entry. A second attempt asked `program_span(off)` — "does a program begin here" — and
+returned 0.0% for every group including the known-bad one, i.e. it had no discriminating
+power and said nothing at all. Only the third framing had a control that moved.
+
+## The 0x??0B leaf hands off to a table, and where the earlier claim was true
+
+`fx_walk` continues from the chain's last node into the table it points at, but consulted
+only `FX_NODES` for the next-pointer offset. Chains ending on an `0x??0B` leaf — 643 of
+them — therefore reached no table. Word 1 is where that family's successor lives, and over
+those 643:
+
+    entry tag   591      node header   1      neither   51
+
+91.9% a table entry, matching the 85.7% the earlier leaf probe recorded, and **62 records
+gain a table they otherwise have none of**.
+
+This corrects, rather than contradicts, the note already here that following 0x0B's word 1
+"moves NO number, because `fx_walk` already reaches those tables through the record's own
+slot-2 path". That is true measured over all records. It cannot be true for a record whose
+slot 2 addresses a **chain**, because `fx_table` returns immediately when the first word is
+a node header — so slot 2 reaches nothing and the chain is the only path there is. The
+all-records measurement averaged the subset away.
+
+Those 62 are not marginal. They are the tree-only FX-Maps, and a cascade attribution over
+`StylizedCobblestoneStreet` — walking each blocked record's input edges back to a record
+that failed for its *own* reason — shows why that matters: **1,418 of its 1,432 blocked
+records are inherited from just 14 original causes**, and four `fxmaps` records gate 1,158,
+1,127, 914 and 912 of the file's 1,778 records apiece.
+
+## The other payload filters: not that artifact, but a worse one
+
+The `fxmaps` fault was a boundary that swallowed an inline program. Checking whether the
+other payload filters do the same — for every record whose payload pointer lands inside
+the record, is there an inline program before it?
+
+```
+filter        in-record   keys   keys moved   records moved
+fxmaps            40754    391          154           28355
+gradient          17213  12752            0               0
+curve              1273    913            0               0
+vectorshape          63     63            0               0
+bitmap                0      0            0               0
+```
+
+None. The correction is real but `fxmaps` is the only filter that exercises it.
+
+The key counts in that table are the actual problem. `gradient` has 12,752 keys for
+17,213 records and `curve` has 913 for 1,273 — close to one key per record, which is the
+signature this repo has now named three times: **the fit is keying on a value that is not
+a mask.**
+
+### The control, applied to every filter at once
+
+Each filter declares how `words[1]` is to be read, and getting that wrong is the most
+expensive mistake available here — because a table with one key per record *cannot be
+wrong*, which is worse than being wrong. The control is the one that settles edge slots
+elsewhere: an edge's value tracks the record's own index, a packed mask does not.
+
+```
+corr(record index, words[1])
+  gradient  0.998      blur    0.996      dyngradient 1.000      sharpen 1.000
+  curve     0.995      hsl     0.999      vectorshape 0.966
+  warp      0.668  (absent before v0x90000, present and zero after -- the version rule)
+  blend -0.056   transformation -0.036   levels -0.003   fxmaps -0.015   normal 0.150
+```
+
+The separation is total: edges sit at 0.97-1.00, codes at -0.06 to 0.15, and nothing lands
+in between. Five of the seven high readings were already declared. **`gradient` and
+`curve` were not, and both are payload filters.** Declaring them:
+
+```
+gradient   13,185 keys -> 127    99.677% -> 99.983%
+curve         913 keys ->  23   100.000% -> 100.000%
+```
+
+Curve's exactness not moving is the interesting half. It was already "100%", and that
+number claimed almost nothing: 913 keys for 1,273 records is a model with a free parameter
+per observation. The same 100% over 23 keys is a real claim about a real struct.
+
+### The audit is no longer something to remember
+
+`observed()` now accumulates the correlation for every filter as it walks the corpus — five
+running sums per filter, no memory cost — and the derivation reports any filter read as
+`codes` whose `words[1]` tracks the index. It is verified to fire rather than merely being
+silent: putting `gradient` and `curve` back as codes flags exactly those two and nothing
+else.
+
+Both of this session's findings are the same shape. A cost model whose coefficients must be
+type widths is a measuring instrument, and twice now the instrument was reading a fault in
+the probe rather than a fact about the format — once a boundary that included a program,
+once a key that included an edge. Neither was visible in the exactness score. One showed up
+as an unlawful coefficient, the other as a key count.
