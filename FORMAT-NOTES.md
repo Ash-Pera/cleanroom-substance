@@ -33432,3 +33432,54 @@ Three failures this session share a shape, and it is worth stating as one:
 **None of the four fails loudly. All four return a number.** A measurement's controls get
 scrutiny because they are the point; the instrument's own calibration gets none because it
 is machinery. Every one of these was found by accident or by someone else looking.
+
+## Single-candidate arbitration cannot reach most reference outputs — but two defaults can
+
+The first real use of `assume` was to render `RoofTiles` with `blur.intensity='slot3'`, the
+candidate the renderer refuses by default. The channel fired on 30 records and `produced`
+stayed at **0 of 6** — because the other blockers on those closures are still there. So the
+question is how many distinct root causes each unproduced reference output is behind:
+
+```
+1 root cause     8   ( 9%)
+2                8   ( 9%)
+3                5   ( 6%)
+4               18   (21%)
+5               25   (29%)
+6-10            22   (26%)
+```
+
+**Only 9% have a single blocker.** The commonest combination, 16 outputs, needs `distance`,
+`sharpen`, `fxmaps` and `uniform` all assumed at once. So A-versus-B on one question cannot
+reach them, and a harness built around one candidate at a time would have produced nothing —
+which is what the RoofTiles run showed before any scoring code ran.
+
+### The reachable frontier is two defaults, not six parameters
+
+The 1- and 2-cause outputs are not scattered across the six blocked items. They are almost
+entirely the same two:
+
+```
+fxmaps alone                5 outputs
+uniform alone               3 outputs
+fxmaps + uniform            6 outputs
+                           14 outputs reachable
+```
+
+Fourteen of the nineteen usable reference maps become scoreable by assuming **two things**,
+and neither is `distance`, `sharpen`, `dyngradient`, `emboss` or `hsl`. Both are *defaults*
+questions rather than parameter-location questions:
+
+* what an FX-Map with a genuinely empty table emits — the engine's background;
+* what `uniform` fills with when the fill colour is not in the file.
+
+That is a much better target than the six-candidate cross-product, and it is the cheapest
+pair on the blocked list rather than the most expensive. It also means the first thing the
+arbiter can settle is not a parameter slot at all, but two engine defaults — which is
+appropriate, since a default is exactly the kind of thing that is *not* in the file and can
+only be recovered from an output.
+
+**And it retires the per-output optimisation as premature.** A parallel session measured the
+closure cost carefully — Bricks at a 17× reduction, median closure 6% of the file — and the
+numbers are right, but nothing is scoreable yet, so there is no run to make cheaper. Worth
+keeping for when there is.
