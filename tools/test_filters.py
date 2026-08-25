@@ -203,6 +203,75 @@ def test_dirmotionblur_is_an_average():
     return
 
 
+def test_dyngradient_is_a_ramp_lookup():
+    """The source's value must INDEX the ramp, not merely pass through it.
+
+    `dyngradient` has no numeric parameters -- which is why containment found zero
+    declaring sources and the two-path control found zero programs -- so the only thing to
+    verify is the semantics, and it is verifiable exactly because both inputs can be
+    driven. Three checks, of which the second is the one with teeth:
+
+        identity ramp, x-ramp source  ->  output reproduces the source
+        REVERSED ramp                 ->  output = 1 - source
+        step ramp                     ->  exactly two distinct values
+
+    A renderer that ignored the ramp and returned its first input would pass the first
+    check and FAIL the second. One that blended rather than looked up would pass both and
+    fail the third. The residual tolerance is quantisation: a 256-wide strip indexed by W
+    source samples steps by 1/256, so half a step is the floor.
+    """
+    n = 0
+    for path in corpus.paths()[:MAX_FILES]:
+        try:
+            asm = Assembly(path)
+        except Exception:
+            continue
+        for rec in asm.records:
+            if FILTERS.get(rec.filter_id) != 'dyngradient':
+                continue
+            if len(rec.edges or ()) < 2 or any(e is None for e in rec.edges[:2]):
+                continue
+            h = w = 64
+            src = np.tile(np.linspace(0.0, 1.0, w, dtype=np.float32),
+                          (h, 1)).reshape(h, w, 1)
+            ramp = np.zeros((16, 256, 1), dtype=np.float32)
+            ramp[:, :, 0] = np.linspace(0.0, 1.0, 256, dtype=np.float32)[None, :]
+            for strip, want, label in (
+                    (ramp, src[:, :, 0], 'identity'),
+                    (ramp[:, ::-1, :].copy(), 1.0 - src[:, :, 0], 'reversed')):
+                try:
+                    out, _f, _s = R.render(asm, precomputed={rec.edges[0]: src,
+                                                             rec.edges[1]: strip},
+                                           verbose=False, max_dim=64)
+                except Exception:
+                    out = {}
+                got = out.get(rec.index)
+                if got is None:
+                    continue
+                a = np.asarray(got, dtype=np.float32).reshape(h, w, -1)[:, :, 0]
+                assert float(np.abs(a - want).max()) < 0.01, (label, rec.index)
+                n += 1
+            step = np.zeros((16, 256, 1), dtype=np.float32)
+            step[:, 128:, 0] = 1.0
+            try:
+                out, _f, _s = R.render(asm, precomputed={rec.edges[0]: src,
+                                                         rec.edges[1]: step},
+                                       verbose=False, max_dim=64)
+            except Exception:
+                out = {}
+            got = out.get(rec.index)
+            if got is not None:
+                a = np.asarray(got, dtype=np.float32).reshape(-1)
+                assert len(np.unique(np.round(a, 4))) <= 2, ('step', rec.index)
+            if n >= 6:
+                break
+        if n >= 6:
+            break
+    if not n:
+        print('SKIP test_dyngradient_is_a_ramp_lookup: no corpus')
+    return
+
+
 def test_gradient_runs_and_stays_bounded():
     """A ramp lookup returns values from the ramp, so it is bounded by the table."""
     n = 0
@@ -359,7 +428,8 @@ if __name__ == '__main__':
                test_gradient_matches_an_independent_lookup,
                test_dirmotionblur_actually_smooths_and_only_along_its_angle, test_curve_matches_independent_bisection,
                test_curve_identity_is_exact, test_dirmotionblur_is_an_average,
-               test_gradient_runs_and_stays_bounded):
+               test_gradient_runs_and_stays_bounded,
+               test_dyngradient_is_a_ramp_lookup):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()

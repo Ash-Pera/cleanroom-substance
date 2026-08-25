@@ -57,8 +57,7 @@ for what the real engine does at that same input (clamps to 0? saturates earlier
 step this reading is missing?), so it is surfaced rather than guessed at.
 """
 import numpy as np
-import transpile, sbsruntime
-import assume, fxrender
+import transpile, sbsruntime, fxrender, distance, assume
 
 
 class Unsupported(Exception):
@@ -1628,6 +1627,110 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 finally:
                     sbsruntime.SAMPLERS.clear()
                     sbsruntime.SAMPLERS.update(saved_samplers)
+
+            elif rec.filter_name == "distance":
+                # A distance transform. `tools/distance.py` carries the decode: units are
+                # pixels at a 256 reference (every declared constant lies in [0, 256] and
+                # 11 of 19 are exactly 256), and the kernel is verified by controlled input
+                # -- a single lit pixel gives zero at radius 15.81 and 39.96 for R = 16 and
+                # 40, exactly 0.500 at R/2, radial spread under 0.016.
+                #
+                # The PARAMETER is not established and is not guessed: `distance_param`
+                # takes a width-1 program result if there is exactly one, else a
+                # non-denormal baked float in the block which it marks LOW CONFIDENCE,
+                # else raises. See FORMAT-NOTES on why its containment ratio cannot be read
+                # as an accuracy and why the two-path control is unavailable here.
+                if len(rec.edges) < 1 or rec.edges[0] not in outputs:
+                    raise Unsupported("edge has no output yet")
+                try:
+                    val, how = distance.distance_param(
+                        rec, lambda p: eval_program(asm, p, default_inputs(asm, 1), {}, 1),
+                        {})
+                except distance.Unlocated as e:
+                    raise Unsupported("distance: %s" % e) from e
+                if distance.is_low_confidence(how):
+                    LOW_CONFIDENCE.add(i)
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                # Which edge is the mask is NOT established -- both questions are on the
+                # blocked list. Default 0, arbitrable through the assume channel.
+                mask_edge = assume.assumed('distance.mask_edge', 0)
+                if mask_edge >= len(rec.edges) or rec.edges[mask_edge] not in outputs:
+                    mask_edge = 0
+                if assume.assumed('distance.mask_edge') is not None:
+                    assume.note(i)
+                src = outputs[rec.edges[mask_edge]]
+                mask = sbsruntime.image_sampler(src)(pos_grid(W, H)).reshape(H, W, -1)[:, :, 0]
+                # Radius scales with resolution: 0.14 px at 256 is 0.035 at 64 and the
+                # filter becomes a no-op that reads as a dead parameter. See the module
+                # docstring's max_dim warning.
+                field = distance.distance_field(mask, distance.scale_radius(val, W))
+                if assume.assumed('distance.invert', False):
+                    field = 1.0 - field
+                    assume.note(i)
+                outputs[i] = to_image(field.reshape(-1, 1), W * H, H, W)
+                if rec.edges[mask_edge] in synthetic:
+                    synthetic.add(i)
+
+            elif rec.filter_name == "dyngradient":
+                # `gradient` with the ramp supplied as an IMAGE rather than an embedded
+                # table. Handed over by a parallel session with the edge roles established
+                # and the sampling formula explicitly not:
+                #
+                #   edge 0   size EQUALS the record's own size in 373 of 373 (100.0%)
+                #   edge 1   aspect ratio 128:1 at p10, p50 and p90; 97.9% at least 8x
+                #            wider than tall; SHARED, one strip feeding 4, 8 and 16
+                #            records in a file -- a palette, not a per-record input
+                #
+                # It needs no parameter located, which is why containment found zero
+                # declaring files and the two-path control found zero programs: the filter
+                # has no numerics to declare. 288 of 294 records carry no filter program
+                # at all.
+                #
+                # THE ROW CAVEAT IS CLOSED. This branch was written when "a strip that is
+                # a multi-row palette could take the wrong row" was an open risk. Measured
+                # since: the strips' ROW-TO-ROW difference is exactly 0.000000 -- all 16
+                # rows identical, varying only along x (max step 0.2516) -- so there is no
+                # multi-row palette and any row is the same row. `Rock 3` records 220, 277,
+                # 335 and 393 all share ramp record 219 at 2048x16, whole file rendering
+                # 628 of 628.
+                #
+                # ESTABLISHED: the edge roles, and that the source's value indexes the
+                # ramp. Driving both edges through `precomputed` -- see
+                # test_dyngradient_is_a_ramp_lookup:
+                #
+                #     identity ramp, x-ramp source  ->  output reproduces the source
+                #     REVERSED ramp                 ->  output = 1 - source
+                #     step ramp                     ->  exactly two distinct values
+                #
+                # The reversed case is the one that carries it: a renderer ignoring the
+                # ramp and passing the input through passes the first test and fails that
+                # one. The step case rules out blending -- a lookup gives two levels.
+                #
+                # STILL A CHOICE: indexing by channel 0 rather than a luminance mix. 292 of
+                # 294 of these records are greyscale so the two coincide almost everywhere,
+                # and channel 0 is what the format stores rather than a mix this would be
+                # inventing. The two colour records are where it could matter, untested.
+                if len(rec.edges) < 2 or any(e not in outputs for e in rec.edges[:2]):
+                    raise Unsupported("edge has no output yet")
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                idx = sbsruntime.image_sampler(outputs[rec.edges[0]])(
+                    pos_grid(W, H)).reshape(H, W, -1)[:, :, 0]
+                strip = np.asarray(outputs[rec.edges[1]], dtype=np.float32)
+                if strip.ndim == 2:
+                    strip = strip[:, :, None]
+                sh, sw = strip.shape[0], strip.shape[1]
+                along_x = sw >= sh              # the long axis is the ramp
+                n = sw if along_x else sh
+                k = np.clip((np.clip(idx, 0.0, 1.0) * (n - 1)).round().astype(int), 0, n - 1)
+                mid = (sh // 2) if along_x else (sw // 2)
+                ramp = strip[mid, :, :] if along_x else strip[:, mid, :]
+                outputs[i] = to_image(ramp[k.ravel()], W * H, H, W)
+                if any(rec.edges[j] in synthetic for j in (0, 1)):
+                    synthetic.add(i)
 
             else:
                 raise Unsupported("filter %r not implemented" % rec.filter_name)
