@@ -31282,3 +31282,36 @@ same rule, stated once each with the reason.
 Every filter large enough to fit is now in the model. What remains silent is small and
 named; what remains wrong is dominated by the unnamed-tail-program records now being
 recovered and the node-annex carriers.
+
+## Version 0x20000 dissolves too: same header rule, different program placement
+
+The 2,461 v2 records in the rule-wrong column suggested the oldest cooker used a
+different record layout. Fitting v2 alone said so too — blend 41%, warp 16% — and both
+were misdirection. The split that exposed it: v2 ALL-BAKED records fit at 95-100%,
+while program-carrying ones fail, meaning the LAYOUT is fine and the BOUNDARY is not.
+
+Reading the failing keys showed multi-modal headers — modal 6 with tails at 20, 46, 86
+— and at slot 6 of the minority records sits `0x0902001c`: u16s [count=28][ref.f1].
+**Another unnamed program**, this time immediately after the header. The v2 cooker
+emits some programs positionally at the header end, unnamed by any slot, exactly as the
+modern cooker emits unnamed size programs at the record TAIL. `min(known programs)`
+overshot past them, and every overshoot became a phantom "wrong header".
+
+The direct verification, no boundary needed — the rule's predicted header must land on
+a program start or the record end:
+
+    transformation   96.2%      blur             98.2%
+    levels           94.8%      directionalwarp  98.9%
+    blend            88.2%      shuffle          97.3%
+    warp             92.4%      dirmotionblur    97.7%
+    OVERALL          12,926 of 13,826 = 93.5%
+
+So the presence-mask rule holds in the format's oldest version at ~93.5% verified, and
+the true v2 residue is the ~900 records carrying the 6-word block and its relatives —
+the only structure that still separates v2 from the rest.
+
+Three positional-program conventions are now known: modern tail programs, v2
+header-end programs, and v8's backward chain emission. All three are EMISSION facts,
+not layout facts; the layout has been one rule throughout the format's life, and every
+version difference found so far lives in where the serializer put things, not in what
+they mean.
