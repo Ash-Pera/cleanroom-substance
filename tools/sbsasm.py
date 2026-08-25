@@ -1537,6 +1537,49 @@ class Record:
                     q = (asm.program_end(q) + 3) & ~3
                 except Exception:
                     break
+        # Third and most general: TILING. Unnamed programs are the earliest 4-aligned
+        # run of valid programs that tiles - through any slot-named spans - to the
+        # record end. This needs no cost spec, which matters because the two probes
+        # above fed a circle: normal's spec was REJECTED because 18 records carried
+        # unnamed v2 programs, and those records could not be fixed because the
+        # header-end probe needs the spec. (The notes' claim that valid_program
+        # rejected those programs was wrong - they validate cleanly; the walk simply
+        # never started.) The scan is bounded to the first 512 words so a stored-pixel
+        # record does not turn this into a quadratic sweep.
+        known = sorted(x for x in seen if self.offset < x < hi)
+        kend = {}
+        for x in known:
+            try:
+                kend[x] = asm.program_end(x)
+            except Exception:
+                pass
+        first_known = known[0] if known else hi
+        q0 = self.offset + 8
+        limit = min(first_known, self.offset + 2048)
+        while q0 < limit:
+            pos = q0
+            found = []
+            while pos < hi - 3:
+                pa = (pos + 3) & ~3
+                if pa in kend:
+                    pos = kend[pa]
+                    continue
+                if asm.valid_program(pa):
+                    try:
+                        e = asm.program_end(pa)
+                    except Exception:
+                        break
+                    found.append(pa)
+                    pos = e
+                    continue
+                break
+            if pos >= hi - 3 and found:
+                for x in found:
+                    if x not in seen:
+                        out.append(x)
+                        seen.add(x)
+                break
+            q0 += 4
         return out
 
     def classified_programs(self):

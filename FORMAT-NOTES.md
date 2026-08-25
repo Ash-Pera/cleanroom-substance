@@ -31613,3 +31613,33 @@ record end where the ref.i2 size program sits. `valid_program` rejects them on t
 operand-ordering check, not the decode. Either v2 numbers operands differently in some
 programs, or the check has an off-by-something for this shape — a named lead, not yet
 chased.
+
+## The segmenter improved: one tiling rule replaces two conventions, and normal is kept
+
+`Record.programs` gains a third, most general probe: unnamed programs are the earliest
+4-aligned run of valid programs that TILES — through any slot-named spans — to the
+record end. It needs no cost spec, which is the point: the two positional probes fed a
+circle. Normal's spec was REJECTED because 18 records carried unnamed v2 programs, and
+those records could not be fixed because the header-end probe needs the spec to know
+where the header ends. The tiling rule breaks the circle from outside it.
+
+A correction inside that sentence: the previous section claimed `valid_program`
+rejected those 18 programs on the operand check. It does not — they validate cleanly,
+end to end. The walk simply never started, because record_layout returned None for a
+rejected filter. The wrong claim lasted one turn and is withdrawn.
+
+Yield, measured before wiring in: 153 programs over 139 records, six of them records
+that had no program at all — small numbers, but the right ones:
+
+    normal                 99.202%  ->  100.000%   KEPT
+    cost model             20 filters, 898,801 of 899,004 records = 99.98%
+    distinct programs      1,610,806
+    transpiled             99.9932%, failures still exactly the 110 condition-less loops
+
+The scan is bounded to the record's first 512 words so a stored-pixel record cannot
+turn it quadratic, and the probe unions with the earlier two rather than replacing
+them, so nothing previously found can be lost.
+
+Uncovered records now number 203 in the whole corpus: text (59), vectorshape (63,
+layout read by hand), fid 9 (5, layout read by hand), and 76 assorted below-threshold
+keys. The cost model has no rejected filter left.
