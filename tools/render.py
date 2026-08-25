@@ -575,12 +575,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 # constants tests the wrong population -- it scored 6 of 67 and that number
                 # says nothing either way. The evidence here is the width split and the bits.
                 m = rec.matrix
+                matrix_from_program = False
                 fprogs = rec.filter_programs
                 w1 = rec.words[1] if len(rec.words) > 1 else 0
                 has_matrix_param = bool((w1 >> 6 & 1) or (w1 >> 7 & 1))
                 offset_is_program = bool(w1 >> 26 & 1)
 
                 by_width = {}
+                n_evaluated = 0
                 if (m is None and has_matrix_param) or offset_is_program:
                     for p in fprogs:
                         try:
@@ -588,6 +590,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                                                         {}, 1)).reshape(-1)
                         except Exception:
                             continue
+                        n_evaluated += 1
                         # a width seen twice cannot be assigned to one parameter
                         by_width[a.size] = None if a.size in by_width else tuple(
                             float(x) for x in a)
@@ -597,6 +600,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                         m = (1.0, 0.0, 0.0, 1.0)      # no matrix parameter: identity
                     elif by_width.get(4):
                         m = by_width[4]
+                        matrix_from_program = True
                     else:
                         raise Unsupported("matrix is a program this cannot single out "
                                           "(%d programs, widths %s)"
@@ -614,8 +618,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                             raise Unsupported("offset is a program this cannot single out "
                                               "(%d programs, widths %s)"
                                               % (len(fprogs), sorted(k for k in by_width)))
-                    elif fprogs and has_matrix_param:
-                        raise Unsupported("no offset bit set but programs remain unread")
+                    elif fprogs and has_matrix_param and (
+                            n_evaluated == 0 or
+                            n_evaluated - (1 if matrix_from_program else 0) > 0):
+                        # WHICH programs remain unread -- the earlier form did not ask.
+                        #
+                        # It refused whenever the record had any filter program and a matrix
+                        # parameter, including when the ONE program present had just been
+                        # consumed two branches up as the matrix. Over 1,726 records that
+                        # reach here, 1,140 (66.0%) have nothing left unread by then: no
+                        # baked matrix, a single 4-wide program, and that program is the
+                        # matrix. For those the message was literally false and the offset
+                        # is (0, 0) by exactly the path taken when a record has no programs
+                        # at all -- the format says there is no baked offset and bit 26 says
+                        # it is not a program, so (0, 0) is its answer, not a guess.
+                        #
+                        # The remaining 34% still refuse and should: 366 have a BAKED matrix
+                        # with a program nobody has accounted for, 166 have a
+                        # matrix-from-program plus one to four extra, and 54 have a program
+                        # that will not evaluate. Their unread programs are 2-wide values
+                        # like (8.0, 8.0) and (0.918, 0.918), which are tiling or scale
+                        # shaped rather than translation shaped, so assuming (0, 0) there
+                        # would be a guess.
+                        #
+                        # This matters beyond the count: the refusal severs branches. Both
+                        # spatially-varying fxmaps chains in `Facade01` (records 484 and 489
+                        # at std 0.1998) are stranded behind it, which is how it was found.
+                        raise Unsupported("no offset bit set and %d program(s) remain unread"
+                                          % (len(fprogs) if n_evaluated == 0 else
+                                             n_evaluated - (1 if matrix_from_program else 0)))
                     else:
                         offset = (0.0, 0.0)
 
