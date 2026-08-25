@@ -33483,3 +33483,50 @@ only be recovered from an output.
 closure cost carefully — Bricks at a 17× reduction, median closure 6% of the file — and the
 numbers are right, but nothing is scoreable yet, so there is no run to make cheaper. Worth
 keeping for when there is.
+
+## NaN is silently classified FLAT, and my frontier count had a truncation bug
+
+Two measurement defects, both found by a parallel session printing a diff and getting `nan`
+back, and both in helpers we had each copied rather than in any decode.
+
+### NaN reads as flat
+
+`max(x) - min(x) > eps` and `std(x) > eps` are both **False** on an all-NaN image, because
+every comparison with NaN is False. So a NaN output lands in the flat column silently — no
+raise, no warning. Measured over 120 files:
+
+```
+declared outputs rendered     186    flat 105, spatial 81, NON-FINITE 0
+all records rendered       54,623    flat 50,102, spatial 4,208,
+                                     NON-FINITE 298 all + 15 partial   (0.6%)
+```
+
+**The declared-output figures in this document are unaffected** — there is no NaN among them,
+so "73 of 178 spatial", "71 carried, 2 generated" and the picture-ceiling counts stand.
+Record-level flat counts overstate by about 0.5%.
+
+`tools/imgstat.py` now holds the one implementation, returning four states rather than a
+boolean: non-finite is *not* a kind of flat. A record producing NaN is a defect to
+investigate; a record producing a constant is usually correct behaviour. It also does the
+per-channel spread, the error that inflated one published figure from 8 to 13.
+
+### My frontier count was 5, and should have been 14
+
+The filter matched root-cause labels against a set, using `label.strip()[:26]`. For
+`uniform has no room for a fill color at the expected slot` that truncates to
+`'uniform has no room for a '` — with a **trailing space** — which never equals the
+`'uniform has no room for a'` in the set. Every uniform-blocked output silently dropped out.
+
+It produced 5 reachable / 3 varying, which is a plausible-looking pair of numbers, and I was
+about to report them. Corrected: **14 reachable, 9 with a generator in the closure.**
+
+And the 9 is still an upper bound, for a reason the same session established and I should
+have applied: **"a generator is in the closure" is membership, not reachability.** Their
+perturbation test on Chesterfield — feed the one `bitmap:pixels` record a constant, then a
+checkerboard, and see whether the output moves — showed three outputs that do **not** depend
+on it at all. Membership passed them; dependency does not. That is the third appearance of
+membership-versus-reachability in this session, and I made the same error one iteration
+after writing the earlier one up.
+
+The right test costs two renders instead of zero, which is exactly why both of us reached
+for the cheap one twice.
