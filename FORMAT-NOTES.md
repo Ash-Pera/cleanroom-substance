@@ -33577,3 +33577,102 @@ So the honest state is narrower than a dead end and narrower than a live lead: *
 untested outputs, needing one filter wired and two assumptions, in a set where every other
 avenue is closed.** If they come out flat too, the arbiter is finished on evidence rather
 than on argument, and that is worth the cost of finding out.
+
+## `fxmaps` class 1 read by hand: the last guarded population was never hard
+
+The cost derivation guards `fxmaps` per sampling class (word 0 bits 24-25), because the
+same `w1` field costs a different number of slots in different classes. Until now the
+guard kept **one** class — the best-fitting one — and answered `None` for the rest. That
+turned "class 0 does not fit yet" into "class 0 is guarded out", and it stayed that way
+long after the integer refinement had in fact made class 0 fit. **A guard should encode a
+measurement, not a storage limit.** Every class that clears the bar is now kept, each
+behind its own guard, and the leftovers are named rather than silently absorbed.
+
+That left one population genuinely unanswered: **class 1, 258 records in 15 keys**, which
+every candidate model rejected as underdetermined. So I read the 15 keys directly instead
+of fitting them.
+
+```
+word0        w1        hdr    n     word0        w1        hdr    n
+0x01985508   0x00014     6   44     0x01996608   0x00014     7    4
+0x01987708   0x00014     6   44     0x01989908   0x00010     5    4
+0x01995508   0x00294    13   33     0x01998808   0x00014     7    3
+0x01996608   0x00294    13   33     0x0199bb08   0x01a83    18    2
+0x01998808   0x00294    13   33     0x01995508   0x00010     6    1
+0x01997708   0x00014     7   30     0x01998808   0x00411     8    1
+0x01998808   0x00010     6   18     0x01998808   0x00011     7    1
+0x01995508   0x00014     7    7
+```
+
+Every key is deterministic — one header size each, no contradictions. Three facts fall out
+by inspection, before any arithmetic:
+
+**The format byte is inert.** Word 0 bits 8-15 take six values here (`0x55 0x66 0x77 0x88
+0x99 0xbb`) and *never* change the header. `cls16=1, w1=0x014` is 7 words under `0x55`,
+`0x66`, `0x77` and `0x88` alike. For `bitmap` that byte is layout (`0xaa`/`0xbb` cost a
+word); for `fxmaps` it is not, and the wide bit masks the fitter races were only ever
+fitting noise there.
+
+**Word 0 bit 16 costs exactly one word.** `0x0198…` versus `0x0199…` is +1 at fixed `w1`,
+twice over (`w1=0x014`: 6→7; `w1=0x010`: 5→6).
+
+**The arity nibble costs one word per unit.** `w1=0x011` (arity 0) is 7 and `w1=0x411`
+(arity 1) is 8; `w1=0x1a83` carries arity 6 and pays 6.
+
+The rest is four equations. Writing `K` for the constant, `a` for bit 16, and `c(j,s)` for
+field *j* in state *s*:
+
+```
+K + c(2,1)                       = 5      (0x01989908 / 0x010)
+K + a + c(2,1)                   = 6      ->  a = 1
+K + a + c(1,1) + c(2,1)          = 7      ->  c(1,1) = 1
+K + a + c(0,1) + c(2,1)          = 7      ->  c(0,1) = 1
+K + a + c(1,1)+c(2,1)+c(3,2)+c(4,2) = 13  ->  c(3,2) + c(4,2) = 6
+K + a + c(0,1) + c(2,1) + arity  = 8      ->  arity = 1
+K + a + c(0,3) + c(3,2)+c(4,2) + 6*arity = 18  ->  K + c(0,3) = 5
+```
+
+Those costs reproduce **258 of 258 records**, and `record_layout` now answers class 1
+exactly. Class 1 is not a special case at all: it is the ordinary struct rule with a
+class-dependent program width (`state 2` costs 3 slots here, as it does in class 0, and
+not the 1 slot a pointer costs elsewhere).
+
+### The halves were the fit's blind spot, not a half-word
+
+The fitted spec comes back with `const 3.5`, `f2.1 1.5`, `f0.3 1.5`. Those are not
+measurements. Field 2 is baked in 14 of the 15 keys and field 0 is an image in the
+fifteenth, so *only the sums* `K + c(2,1)` and `K + c(0,3)` are pinned — every point on
+the line `(K+t, c(2,1)-t, c(0,3)-t)` predicts all 258 records identically, and least
+squares returns the min-norm point of that line, which lands on halves.
+
+This matters beyond `fxmaps`, because the width law ("every coefficient is a type width:
+1, 2, 3 or 4") was reporting all such halves as violations. It was reporting the wrong
+thing. A coefficient is only a flag if the data actually pins it. The derivation now tests
+each coefficient against the null space of its own design matrix — coefficient *i* is
+identified iff no null direction has a component on axis *i* — and splits the report:
+
+```
+coefficients violating the width law: 12 identified, 16 on a direction the data cannot see
+   filter 20       f2.1           16
+   filter 4/c3     f2.2           10
+   filter 4/c3     f7.1           16
+   filter 4/c3     f7.2           32
+   filter 3        cls0           -2
+   filter 16       cls24          0.5
+   filter 16       cls27          0.5
+   filter 13       cls8           1.5
+   filter 13       cls9          -1.5
+   filter 13       cls12         -1.5
+   filter 13       cls13          1.5
+   filter 17       const          5
+```
+
+Note that `fxmaps` class 3's `10/16/32` survive the test: that fit has nullity 6, but
+those three coefficients are pinned regardless, so they remain the genuine flag they were
+always claimed to be (an inline node region absorbed into a slot cost). Sixteen entries
+that used to sit in that list were never evidence of anything.
+
+**`fxmaps` now stands at 41,160 of 41,164 records exact.** What is left is three class-2
+records — three records in three distinct keys, too few to fit anything against — and one
+class-3 record. Class 2 is not unexplained; it is unmeasured, and the difference is worth
+keeping straight.

@@ -214,15 +214,54 @@ def fit(f, keys, bitrange=range(32), colour='off'):
             v = v + [c0 * x for x in v[len(v) - nstate:]]
         return v
 
+    # Columns for (pair, state) combinations no key exhibits are phantoms: they carry
+    # no information, but they counted against the rows-vs-columns underdetermination
+    # test -- fxmaps class 1, 15 keys, every one deterministic and hand-solvable, sat
+    # "underdetermined" behind columns for states no record uses. Solve in the live
+    # column space and give the phantoms coefficient 0, the only honest value for a
+    # state never observed.
+    _Xall = np.array([row(k[0], k[1]) for k, _, _ in keys])
+    live = np.any(_Xall != 0, axis=0)
+    live[0] = True                            # the constant stays
+
+    # How many directions the data cannot see. A field that is present in every key
+    # is indistinguishable from the constant, so only their SUM is identified: fxmaps
+    # class 1 has field 2 baked in 14 of its 15 keys and field 0 as an image in the
+    # fifteenth, and every solution on the line (const +t, f2.1 -t, f0.3 -t) predicts
+    # all 258 records exactly. Least squares returns the min-norm point of that line,
+    # which is why three of its coefficients come back as halves. That is a property
+    # of the observation table, not a flaw in the model, and the law report needs to
+    # tell the two apart -- a half in a full-rank fit is a real flag.
+    # A null space says the fit is blind in SOME direction; it does not say which
+    # coefficients lie along it. Test each one: coefficient i is identified iff the
+    # null space has no component on axis i -- iff every solution gives it the same
+    # value. fxmaps class 3 has nullity 6 and its 10/16/32 are identified regardless,
+    # so they stay flags; class 1's three halves are on its one blind direction and
+    # are not.
+    _L = _Xall[:, live]
+    identified = np.ones(_Xall.shape[1], dtype=bool)
+    if len(keys):
+        _s = np.linalg.svd(_L, compute_uv=True)
+        u, sv, vt = _s
+        tol = max(_L.shape) * (sv[0] if len(sv) else 0.0) * np.finfo(float).eps
+        nullbasis = vt[(np.concatenate([sv, np.zeros(vt.shape[0] - len(sv))]) <= tol)]
+        if nullbasis.size:
+            blind = np.linalg.norm(nullbasis, axis=0) > 1e-9
+            identified[np.flatnonzero(live)] = ~blind
+    nullity = int(live.sum()) - int((np.linalg.matrix_rank(_L) if len(keys) else 0))
+
     def solve(sub):
-        X = np.array([row(k[0], k[1]) for k, _, _ in sub])
+        X = np.array([row(k[0], k[1]) for k, _, _ in sub])[:, live]
         y = np.array([h for _, h, _ in sub], dtype=float)
         wt = np.array([n for _, _, n in sub], dtype=float)
         if X.shape[0] <= X.shape[1]:
             return None
         sw = np.sqrt(wt)
         c = np.linalg.lstsq(X * sw[:, None], y * sw, rcond=None)[0]
-        return np.rint(c * 2) / 2
+        c = np.rint(c * 2) / 2
+        full = np.zeros(_Xall.shape[1])
+        full[live] = c
+        return full
 
     # Fit on plausible headers only; SCORE on everything. A header is a struct's slot
     # count, a handful of words -- pixelprocessor's real headers are 5 + arity. But its
@@ -273,10 +312,36 @@ def fit(f, keys, bitrange=range(32), colour='off'):
         if not moved:
             break
     ok = np.rint(X @ c) == y
+
+    # Label every column in the order row() builds them, so the width-law report can
+    # name a coefficient AND say whether the data pins it. A violation on a blind
+    # direction is a fact about the observation table; a violation on an identified
+    # one is a fact about the model, and only the second is worth chasing.
+    labels = ['const'] + ['cls%d' % b for b in clsbits]
+    if has_absent:
+        labels.append('w1_present')
+    if arity is not None:
+        labels.append('arity')
+    for j in pairs:
+        labels += ['f%d.1' % j, 'f%d.2' % j, 'f%d.3' % j]
+    if colour == 'full':
+        labels = labels + ['colour*' + n for n in labels]
+    elif colour == 'states':
+        labels = labels + ['colour*' + n for n in labels[len(labels) - 3 * len(pairs):]]
+    flags, unident = [], 0
+    for i, v in enumerate(c[:len(labels)]):
+        if v and (float(v) != int(float(v)) or v < 0 or v > 4):
+            if identified[i]:
+                flags.append([labels[i], float(v)])
+            else:
+                unident += 1
+
     if colour == 'states':
         nstate = 3 * len(pairs)
         base_c, cross_c = c[:len(c) - nstate], c[len(c) - nstate:]
-        spec = {'interaction': 'colour_states', 'clsbits': clsbits, 'pairs': pairs,
+        spec = {'interaction': 'colour_states', 'nullity': nullity, 'flags': flags, 'unident': unident,
+                'identified': [bool(x) for x in identified],
+                'clsbits': clsbits, 'pairs': pairs,
                 'has_absent': bool(has_absent),
                 'arity_sm': list(arity) if arity is not None else None,
                 'base': [float(x) for x in base_c],
@@ -290,7 +355,9 @@ def fit(f, keys, bitrange=range(32), colour='off'):
         # Interaction spec: store the two half-vectors; predict as base + bit0*cross.
         half = len(c) // 2
         base_c, cross_c = c[:half], c[half:]
-        spec = {'interaction': 'colour', 'clsbits': clsbits, 'pairs': pairs,
+        spec = {'interaction': 'colour', 'nullity': nullity, 'flags': flags, 'unident': unident,
+                'identified': [bool(x) for x in identified],
+                'clsbits': clsbits, 'pairs': pairs,
                 'has_absent': bool(has_absent),
                 'arity_sm': list(arity) if arity is not None else None,
                 'base': [float(x) for x in base_c],
@@ -305,7 +372,9 @@ def fit(f, keys, bitrange=range(32), colour='off'):
             'per_record' if f in W1_PER_RECORD else
             'arity' if f in W1_ARITY else 'codes')
     spec = {'const': c[0], 'cls': {str(b): c[1 + i] for i, b in enumerate(clsbits)},
-            'w1': {}, 'mode': mode}
+            'w1': {}, 'mode': mode, 'nullity': nullity, 'flags': flags,
+            'unident': unident,
+            'identified': [bool(x) for x in identified]}
     i = 1 + len(clsbits)
     if has_absent:
         spec['w1_present'] = c[i]; i += 1
@@ -335,34 +404,38 @@ def main():
         if len(keys) < 10:
             report.append((f, n, len(keys), None, 'too few keys')); continue
         if f in SPLIT_SAMPLING:
-            best = None
-            for sc in (0, 3):
+            # EVERY class that fits is kept, each behind its own guard. The old form
+            # kept only the best single class, which turned "class 0 does not fit yet"
+            # into "class 0 is guarded out" and left 1,423 records silent for days
+            # after the integer refinement had, in fact, made their fit clear the bar
+            # at 99.789%. Guards should encode measurements, not storage limits.
+            variants, cov, wex = [], 0, 0.0
+            for sc in (0, 1, 2, 3):
                 sub = [x for x in keys if (x[0][0] >> 24) & 3 == sc]
                 if len(sub) < 10:
                     continue
-                # The same candidate race as the unguarded path. This branch used to
-                # try only the two plain masks, so the guarded class could never pick
-                # a colour-interaction model -- and fxmaps class 3's spec mischarged
-                # its colour-edge keys by exactly 3 words, 85 records surfacing as
-                # "observed short of rule" while every one of their keys is internally
-                # deterministic.
                 spec, exact = None, 0.0
                 for br in (range(32), range(16, 32), range(8, 32)):
                     for cm in ('off', 'full', 'states'):
-                        s2, e2 = fit(f, sub, br, colour=cm)
+                        try:
+                            s2, e2 = fit(f, sub, br, colour=cm)
+                        except Exception:
+                            continue
                         if s2 is not None and e2 > exact:
                             spec, exact = s2, e2
                 if spec is None or exact < KEEP:
                     continue
-                spec['guard'] = {'shift': 24, 'mask': 3, 'value': sc}   # cls bits 8-9, in word0
-                cov = sum(x[2] for x in sub)
-                if best is None or cov > best[2]:
-                    best = (spec, exact, cov)
-            if best is None:
+                spec['guard'] = {'shift': 24, 'mask': 3, 'value': sc}
+                variants.append(spec)
+                cn = sum(x[2] for x in sub)
+                cov += cn
+                wex += exact * cn
+            if not variants:
                 report.append((f, n, len(keys), 0.0, 'rejected')); continue
-            spec, exact, cov = best
-            report.append((f, cov, len(keys), exact, 'kept (guarded to its class)'))
-            out[str(f)] = spec
+            report.append((f, cov, len(keys), wex / max(1, cov),
+                           'kept (%d class variant%s)' % (len(variants),
+                                                          's' if len(variants) > 1 else '')))
+            out[str(f)] = {'variants': variants} if len(variants) > 1 else variants[0]
             continue
         spec, exact = fit(f, keys, range(32))
         spec2, exact2 = fit(f, keys, range(16, 32))
@@ -413,28 +486,29 @@ def main():
     # populations averaged (distance's 1.5s -- really a Float2's 2 and a fit
     # degeneracy), or an inline node region absorbed as a constant (fxmaps' 10/16/32),
     # or a mishandled shape (shuffle's negatives).
-    lawless = []
+    lawless, blind = [], 0
+    specs = []
     for fs, spec in out.items():
-        def each(label, v):
-            if v and (float(v) != int(float(v)) or v < 0 or v > 4):
-                lawless.append((fs, label, float(v)))
-        if 'base' in spec:
-            for i, v in enumerate(spec['base']):
-                each('base[%d]' % i, v)
-            continue
-        each('const', spec['const'])
-        for b, v in spec['cls'].items():
-            each('cls%s' % b, v)
-        if spec.get('arity'):
-            each('arity', spec['arity']['cost'])
-        for j, states in spec['w1'].items():
-            for st, v in states.items():
-                each('f%s.%s' % (j, st), v)
-    if lawless:
+        # A guarded filter carries one spec per variant, and the law applies to each
+        # of them: a class that fits with a fractional or negative coefficient is
+        # exactly as much of a flag as an unguarded filter that does.
+        for v in spec.get('variants', [spec]):
+            specs.append(('%s/c%d' % (fs, v['guard']['value'])
+                          if 'variants' in spec else fs, v))
+    for fs, spec in specs:
+        for label, v in spec.get('flags', ()):
+            lawless.append((fs, label, v))
+        blind += spec.get('unident', 0)
+    if lawless or blind:
         print()
-        print('coefficients violating the width law (each is a flag, not a finding):')
+        print('coefficients violating the width law: %d identified, %d on a direction '
+              'the data cannot see' % (len(lawless), blind))
         for fs, label, v in lawless:
-            print('   filter %-4s %-12s %g' % (fs, label, v))
+            print('   filter %-8s %-14s %g' % (fs, label, v))
+        if blind:
+            print('   (%d suppressed: their value changes with which solution the fit'
+                  ' returns, so the number is not a measurement -- only its SUM with'
+                  ' another coefficient is.)' % blind)
     return 0
 
 

@@ -78,6 +78,17 @@ def header_words(filter_id, word0, w1, version=None):
     spec = costs().get(str(filter_id))
     if spec is None:
         return None
+    # Variant selection before anything else: a split filter stores one spec per
+    # sampling class, each behind its own guard. Pick the matching one; a record
+    # whose class no variant covers gets None, not a guess.
+    for v in spec.get('variants', ()):
+        g = v.get('guard')
+        if g is None or (word0 >> g['shift']) & g['mask'] == g['value']:
+            spec = v
+            break
+    else:
+        if 'variants' in spec:
+            return None
     # Guards FIRST, whatever the spec's shape. The interaction dispatch used to sit
     # above the min_version check, so emboss's colour-states spec answered for the
     # v2-v4 records its guard exists to refuse -- and 27 of them surfaced as
