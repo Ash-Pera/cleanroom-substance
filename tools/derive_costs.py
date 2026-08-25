@@ -192,14 +192,16 @@ def observed():
                 if ver < 0x90000:
                     w1 = None
             elif f in W1_PER_RECORD:
-                # shuffle's two shapes coexist WITHIN versions, so its discrimination
-                # stays per-record: slot 1 is self-describing (a backward index or a
-                # big field word), and the edge run starting at slot 1 marks no-w1.
-                try:
-                    es = [s for s in r.edge_slots if s < len(r.words)]
-                except Exception:
-                    es = []
-                if es and min(es) == 1:
+                # shuffle's two shapes coexist WITHIN versions, and the discriminator is
+                # WORD 0 BIT 0 -- the low tag byte reads 0x07 for the shape that carries
+                # a w1 word and 0x06 for the shape that does not. This replaces an
+                # edge-run heuristic that agreed with the bit on 7,631 of 7,682 records
+                # and was wrong on all 51 of the rest, by the index-correlation control:
+                #   heuristic present, bit absent   33 records  corr 0.993  -> an EDGE
+                #   heuristic absent,  bit present  18 records  1 distinct  -> a MASK
+                # The heuristic also made cls0 and w1_present near-duplicate columns,
+                # which is where the unlawful cls0 = -2 came from.
+                if not (r.words[0] & 1):
                     w1 = None
             # The whole of word 0, not just cls. The tag's low bits carry layout too:
             # uniform's colour flag (tag bit 0) is +3 words -- a colour value bakes four
@@ -395,7 +397,15 @@ def fit(f, keys, bitrange=range(32), colour='off'):
         labels = labels + ['colour*' + n for n in labels[len(labels) - 3 * len(pairs):]]
     flags, unident = [], 0
     for i, v in enumerate(c[:len(labels)]):
-        if v and (float(v) != int(float(v)) or v < 0 or v > 4):
+        # The <= 4 ceiling is a claim about a PARAMETER: the widest scalar is a Float4.
+        # The constant is not a parameter -- it is the count of slots every record of
+        # the filter carries, and it legitimately runs 1 to 5 across the corpus
+        # (uniform 1, blur 2, levels 3, gradient 4, text 5). Applying a parameter
+        # bound to it was a category error, and text's const = 5 was the whole of what
+        # it caught. Integrality and non-negativity still apply: a constant that is not
+        # a whole non-negative number of slots is as wrong as ever.
+        cap = float('inf') if labels[i] == 'const' else 4
+        if v and (float(v) != int(float(v)) or v < 0 or v > cap):
             if identified[i]:
                 flags.append([labels[i], float(v)])
             else:

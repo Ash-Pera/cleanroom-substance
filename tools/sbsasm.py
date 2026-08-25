@@ -1561,11 +1561,10 @@ class Record:
             if ver < 0x90000:
                 w1 = None
         elif self.filter_id == 3:
-            try:
-                es = [s for s in self.edge_slots if s < len(self.words)]
-            except Exception:
-                es = []
-            if es and min(es) == 1:
+            # word 0 bit 0: the low tag byte is 0x07 for the shape carrying a w1 word
+            # and 0x06 for the shape without one. The edge-run detector this replaces
+            # was wrong on 51 of 7,682 records.
+            if not (self.words[0] & 1):
                 w1 = None
         ver = self.asm.header.get('version') if isinstance(self.asm.header, dict) else 0
         n = record_layout.header_words(self.filter_id, self.words[0], w1, version=ver)
@@ -1999,8 +1998,7 @@ class Record:
                 if ver < 0x90000:
                     w1 = None
             elif self.filter_id == 3:
-                es = [s for s in self.edge_slots if s < len(self.words)]
-                if es and min(es) == 1:
+                if not (self.words[0] & 1):     # see Record.header_words
                     w1 = None
             rl = (record_layout.header_words(self.filter_id, self.words[0], w1)
                   if w1 is not None or self.filter_id in (7, 3) else
@@ -2172,8 +2170,26 @@ class Record:
             q = last                      # fx_tree yields absolute offsets
             h = struct.unpack_from('<I', self.asm.data, q)[0]
             sh = FX_NODES.get(h)
-            if sh:
-                nxt = struct.unpack_from('<I', self.asm.data, q + sh[0])[0] + 52
+            # THE 0x??0B FAMILY HANDS OFF TOO, and its next-pointer is at word 1. Only
+            # FX_NODES was consulted here, so 643 chains ending on one of those leaves
+            # reached no table at all -- and for a record whose slot 2 addresses a CHAIN
+            # the chain is the only path there is, because fx_table returns immediately
+            # when the first word is a node header.
+            #
+            # That is why FORMAT-NOTES' earlier "following 0x0B's word 1 moves NO number"
+            # held: measured over all records it is true, since every record it looked at
+            # already reached its table through slot 2. Restricted to the chains that end
+            # on one of these leaves, word 1's target is
+            #
+            #     entry tag   591     node header  1     neither  51     (of 643)
+            #
+            # -- 91.9% a table entry, matching the 85.7% the leaf probe already recorded --
+            # and 62 records gain a table they otherwise have none of. Those 62 are not
+            # marginal: they are the tree-only FX-Maps, and in StylizedCobblestoneStreet
+            # two of them gate 1,158 and 1,127 of the file's 1,778 records.
+            off1 = sh[0] if sh else (4 if (h & 0xFF) == 0x0B else None)
+            if off1 is not None and q + off1 + 4 <= self.asm.body_hi:
+                nxt = struct.unpack_from('<I', self.asm.data, q + off1)[0] + 52
                 if self.offset <= nxt < self.end - 7:
                     start = nxt
         for off, tag, prog in self.fx_table(start):
@@ -2841,7 +2857,39 @@ class Record:
             hi = (self.cls >> 8) & 0xFF
             ch = CHANNELS.get(hi & 3)
             bpc = 2 if hi & 4 else 1
-            return {'kind': 'pixels', 'offset': off,
+            # THE STORED OFFSET IS 4 LOW. The pixel region is at the FRONT of the file,
+            # ahead of the assembly body, and the header in front of it is eight bytes,
+            # not four:
+            #
+            #     word@0  0x4d414253 = 'SBAM', the file magic       40 of 40 files
+            #     word@4  low 16 bits zero -- a version field       40 of 40 files
+            #             (0x20000, 0x50000, 0x60000, 0x90000)
+            #
+            # yet the first bitmap in every one of those files declares offset 4, which
+            # is the version word. So pixels begin at 8 and every declared offset is four
+            # bytes short of its data.
+            #
+            # It went unnoticed because it is INVISIBLE in the commonest layout: four
+            # bytes is a whole pixel at depth 8 with 4 channels, so that decode is right
+            # either way (it merely starts one pixel late). Everywhere else it rotates
+            # the channels by 4/(depth/8) mod ch, and the rotation it predicts -- from
+            # the layout alone, before looking at any image -- is the one measured:
+            #
+            #     depth  8 ch 4   shift 0   measured 0   (pix_alley_oil, already correct)
+            #     depth  8 ch 3   shift 1   measured 1   (brown_mud_leaves_01)
+            #     depth 16 ch 4   shift 2   measured 2   (hiero_03, pix_concrete_02)
+            #
+            # Corpus-wide the RGBA case is self-controlling, since an RGBA image's
+            # flattest channel is its alpha and belongs at index 3: at the declared
+            # offset it lands at index 1 in 13 of 16 depth-16 4-channel bitmaps, and at
+            # +4 it lands at index 3 in 13 of 16. The depth-8 4-channel bitmaps are the
+            # null control and give the same answer both ways.
+            #
+            # Note what does NOT show this: the images pack back-to-back exactly (174 of
+            # 174 consecutive pairs, offset[k+1] - offset[k] == size[k]), which reads as
+            # a corroboration of the offsets but is invariant to a UNIFORM shift and so
+            # says nothing either way. It was briefly taken as a refutation.
+            return {'kind': 'pixels', 'offset': off + 4,
                     'size': self.width * self.height * ch * bpc if ch else None,
                     'channels': ch, 'depth': bpc * 8 if ch else None}
 
