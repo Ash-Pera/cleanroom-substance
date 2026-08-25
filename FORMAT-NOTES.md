@@ -31315,3 +31315,29 @@ header-end programs, and v8's backward chain emission. All three are EMISSION fa
 not layout facts; the layout has been one rule throughout the format's life, and every
 version difference found so far lives in where the serializer put things, not in what
 they mean.
+
+## Record.programs learns the header end, and the wrong column halves
+
+The v2 header-end convention is now in `Record.programs`: after the slot scan and the
+tail probe, walk valid programs forward from the rule's predicted header end. The probe
+is version-selective by construction — all 1,928 programs it reaches live in 0x20000
+files, because in later versions the header end already coincides with a slot-named
+program — and it turned out to be an ATTRIBUTION fix, not a discovery: per-file
+distinct program counts did not move, because every one of those programs was already
+being found through some other record. What changed is that each v2 record now owns its
+own programs, so its boundary observable is right.
+
+The fits that the phantom boundaries had been holding down:
+
+    v2 blend    61.8%  ->  96.8%        v2 warp   77.9%  ->  100.0%
+    (transformation and dirmotionblur stay ~70% — a further v2 mechanism, unfound)
+
+and the corpus-wide scoreboard:
+
+    rule exact     99.284%
+    rule wrong     1,381 records = 0.154%     (was 2,930 this morning)
+    rule silent    0.563%
+
+The wrong column has halved and is now dominated by pixelprocessor's 292 node-region
+records, fxmaps' 148 sub-table records, and the v2 block carriers — every one a named
+mechanism.

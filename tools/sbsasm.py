@@ -1502,8 +1502,40 @@ class Record:
                     e = None
                 if e is not None and 0 <= hi - e < 4:
                     out.append(q)
+                    seen.add(q)
                     break
             q += 4
+        # And the HEADER END, the other positional convention. The v2 cooker emits some
+        # programs immediately after the header, unnamed by any slot - the mirror of the
+        # modern tail placement. Walking valid programs from the rule's header end gains
+        # 1,928 programs over 1,549 records, and every one is in a version-0x20000 file:
+        # the probe is version-selective by construction, because in later versions the
+        # header end already coincides with a slot-named program.
+        try:
+            import record_layout
+            w1 = self.words[1] if len(self.words) > 1 else None
+            if self.filter_id == 7:
+                ver = asm.header.get('version') if isinstance(asm.header, dict) else 0
+                if ver < 0x90000:
+                    w1 = None
+            elif self.filter_id == 3:
+                es = [s for s in self.edge_slots if s < len(self.words)]
+                if es and min(es) == 1:
+                    w1 = None
+            rl = (record_layout.header_words(self.filter_id, self.words[0], w1)
+                  if w1 is not None or self.filter_id in (7, 3) else
+                  record_layout.header_words(self.filter_id, self.words[0], self.words[1]))
+        except Exception:
+            rl = None
+        if rl is not None:
+            q = self.offset + 4 * rl
+            while q + 4 <= hi and q not in seen and asm.valid_program(q):
+                out.append(q)
+                seen.add(q)
+                try:
+                    q = (asm.program_end(q) + 3) & ~3
+                except Exception:
+                    break
         return out
 
     def classified_programs(self):
