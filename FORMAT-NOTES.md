@@ -32111,3 +32111,26 @@ three words — [id][uid][ptr] — and odd-length surpluses are exactly these), 
 attachment census from 231 to 240 records, and the last big modern species in the
 "other" bucket is the Onyx-type u16-phase program (count word two bytes in), still
 unclaimed and still named.
+
+## The last pixelprocessor surpluses: a cap this project set, not a bound the format has
+
+The 45 remaining big-surplus pixelprocessor records — the "Onyx type", suspected of a
+two-byte phase, then of a different header shape — were neither. Traced instruction by
+instruction, the program at the rule header decodes perfectly: opcode plausible, length
+known, operands exact under S=1, for twenty thousand instructions... at which point
+`valid_program`'s count bound `1 <= n <= 20000` rejected the whole thing.
+
+The bound was an anti-garbage margin from the era when a plausible count was weak
+evidence. These functions carry 21,102 to 41,493 instructions, and with the cap lifted
+to the count FIELD's own range (u16, 65535), all 45 validate end to end. Garbage does
+not survive twenty thousand consecutive opcode-and-operand checks — the checks were
+always the filter; the cap never was.
+
+    pixelprocessor big-surplus records    45  ->  0
+    distinct corpus programs              1,611,054
+    transpiled                            99.9932%, failures still exactly the 110
+
+Every pixelprocessor record's layout, boundary and program set is now accounted for.
+The largest per-pixel function in the corpus is 41,493 instructions — a compiled
+material's entire noise stack in one straight-line program — and it was sitting in
+"other surplus" because a validator declined to read past its own imagination.
