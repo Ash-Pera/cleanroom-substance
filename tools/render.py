@@ -1974,6 +1974,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
             else:
                 raise Unsupported("filter %r not implemented" % rec.filter_name)
 
+            # NON-FINITE IS NOT A RENDER. An output map is 8- or 16-bit integer and has
+            # no NaN, so whatever the engine does with a zero divisor it does not emit
+            # one; an array carrying NaN or inf is silent garbage, not a picture. Emitting
+            # it is worse than refusing, because every consumer inherits it and still
+            # counts as rendered: ChesterfieldSofa record 119 computes v8/v12 with both
+            # terms zero and its NaN reached 659 of the 830 records that file rendered,
+            # including two declared outputs, none of which reported a failure.
+            #
+            # Refusing here costs coverage and makes what remains honest -- the same
+            # trade as `blur`'s withdrawn fallback. The failure names this record, so a
+            # blocker census points at the cause rather than at the 659 records
+            # downstream of it, which is the difference between a root and a cascade.
+            if i in outputs:
+                arr = np.asarray(outputs[i])
+                if arr.size and not np.all(np.isfinite(arr)):
+                    del outputs[i]
+                    synthetic.discard(i)
+                    LOW_CONFIDENCE.discard(i)
+                    raise Unsupported("produced non-finite values (%.1f%% of samples)"
+                                      % (100.0 * float(np.mean(~np.isfinite(arr)))))
         except Unsupported as e:
             failures[i] = str(e)
             if verbose:
