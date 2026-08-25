@@ -32743,3 +32743,49 @@ None of the three is visible to a coverage count or a flatness rate. All three w
 by asking what the number would look like if the pipeline were wrong — which is the same
 move as the rosette: find something whose correct value is knowable independently, and
 check it.
+
+## Ground truth: two decoys in the corpus, and the real one
+
+The largest remaining plausible-wrong is the pattern footprint: every FX-Map render uses a
+shape nobody has evidence for, it produces confident-looking images, and no metric here can
+tell a right shape from a wrong one. That needs an external check — an image the ENGINE
+produced. The corpus ships three candidates and two of them are traps.
+
+**Decoy 1: `icon<uid>.png`.** Every manifest names one per graph — `<graph ...
+icon="icon1382358968.png">` — and 213 of 542 graphs have the file present. It looks exactly
+like per-graph ground truth. Opened, `ie_curve`'s are hand-drawn diagrams: dashed curves
+with arrowheads, a circled dot, a pair of grey triangles. They are the author's illustration
+of what the node *does*, not a render of what it outputs. Some in other packages do look
+like real output, so the family is mixed and there is no reliable way to tell which is
+which — building a classifier to decide would be plausible-wrong about plausible-wrong.
+
+**Decoy 2: `thumbnail.png`.** 156 of them, 512×512, and they are lit 3D beauty renders of a
+sphere with the material applied, carrying a Substance watermark. Genuine engine output, of
+the wrong thing.
+
+**The real one: `new_opengameart/*/reference_renders/*.png`.** Engine-exported per-output
+maps, named by channel, for the six CC0 items pulled earlier in this session:
+
+```
+SandyStoneRoad01_Height.png   _Normal.png   _BaseColor.png   _Roughness.png   _AO.png
+Bricks ..._basecolor.png  _normal.png  _roughness.png  _metallic.png  _height.png
+                          _ambientocclusion.png
+```
+
+And the names line up with the format's own: those packages' manifests declare output
+identifiers `basecolor`, `normal`, `roughness`, `metallic`, `height`, `ambientocclusion` —
+**the same strings the PNG suffixes use**, so a declared output can be matched to its
+reference image without guessing. Eight extracted `.sbsasm` are available this way,
+carrying 4 to 31 declared outputs each and 16 to 191 fxmaps records.
+
+That is the instrument the shape question needs: render one graph under each candidate
+footprint and score against the reference. It ranks hypotheses instead of asserting one,
+which is what nothing else here can do.
+
+Two things stop it being usable today, both recorded rather than worked around:
+
+* **These eight are not in `DISTINCT.txt`**, so no corpus-wide figure in this document
+  includes them and no sweep has ever touched them.
+* **Their two paired `.sbs` sources contain no FX-Map paramsets at all**, so they do not
+  supply the `blendingmode` / `imagefiltering` / `randomseed` contrast the paramset section
+  closed as unavailable. The reference maps are the contribution; the sources are not.
