@@ -102,6 +102,15 @@ def make_runner(asm, rec):
         with np.errstate(all="ignore"):
             try:
                 out = scope_call(cache[key], inputs, slots)
+            except sbsruntime.MissingSampler as e:
+                # MUST precede the bare KeyError: MissingSampler subclasses it, so without
+                # this an unwired image input is reported as a missing SLOT. render.py had
+                # exactly this bug, it was fixed there, and this file -- committed one turn
+                # later -- reintroduced it. It is why an A/B over the sampling records
+                # showed "no sampler 0" in every arm while 18 records failed with a message
+                # about slots: the category was real and the label was wrong.
+                raise Unmodelled("no sampler for input %s (an unwired edge, NOT a "
+                                 "missing slot)" % e) from e
             except KeyError as e:
                 raise Unmodelled("slot %s read but never set" % e) from e
         return np.asarray(out).ravel()
