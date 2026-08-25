@@ -42,7 +42,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus                                                        # noqa: E402
 from sbsasm import Assembly                                           # noqa: E402
 
-CHAIN = 0x20008          # the levels-appendix chain tag; variable payload, not a cell
+# The CHAIN family: tags whose high 16 bits are 0x0002 are linked lists, not fixed-size
+# nodes, so their harvested gap "sizes" are run lengths and must be kept out of the size-law
+# fit. 0x00020008 (the levels appendix) was the first found; 0x00020018 is another, and
+# measured as a family the split is clean -- 8,794 of 8,811 cells with hi16==0x0002 are
+# non-deterministic against 0% for any other high-half value.
+#
+# The SAME tag word is not a chain everywhere: reached as a paramset TABLE entry (via
+# FX_ENTRY) 0x00020018 is a deterministic stride-16 entry in 72 of 72. The role is the
+# context -- harvested here by inter-program gaps it is a chain cell; addressed as a table
+# entry it is a fixed entry. This exclusion is for the NODE harvest only and must not be
+# carried into the entry tables, where it would discard a 72/72 reading.
+def is_chain(tag):
+    return (tag >> 16) == 0x0002
 
 
 def harvest():
@@ -92,7 +104,7 @@ def main():
     print('node cells %d   tags %d   size deterministic %.3f%%'
           % (tot, len(sizes), 100 * det / tot))
     keys = [(t, c.most_common(1)[0][0], sum(c.values())) for t, c in sizes.items()
-            if t != CHAIN and sum(c.values()) >= 10
+            if not is_chain(t) and sum(c.values()) >= 10
             and c.most_common(1)[0][1] / sum(c.values()) >= 0.9]
     byk = collections.defaultdict(list)
     for k in keys:
@@ -118,7 +130,7 @@ def main():
     print()
     print('pointer maps, top tags:')
     for t, c in sorted(sizes.items(), key=lambda kv: -sum(kv[1].values()))[:10]:
-        if t == CHAIN or not seen[t]:
+        if is_chain(t) or not seen[t]:
             continue
         m = ['+%d' % o for o, h in sorted(ptr[t].items()) if h / seen[t] > 0.9]
         print('   %#012x size %-4d pointers %s' % (t, c.most_common(1)[0][0],
