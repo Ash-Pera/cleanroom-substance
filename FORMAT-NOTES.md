@@ -32340,11 +32340,23 @@ A graph is "rendered" when every output its manifest declares has an image. Over
 corpus files with declared outputs, before `fxmaps` was wired in:
 
 ```
-every declared output rendered      34 files   (13 with no flat output among them)
+every declared output rendered      34 files   (8 with no flat output among them)
 some outputs rendered               92
 none                               311
 declared outputs                   381 of 2,479   15.4%
 ```
+
+**CORRECTED from 13 to 8.** That count used `std()` over the whole `(H, W, C)` array, which
+a constant-but-coloured output passes: a flat normal map is `(0.5, 0.5, 1.0)` at every
+pixel, spatially dead, but its channels differ so a whole-array statistic sees spread.
+`9a4b14d`'s wording is the correct test -- "spatially FLAT, every channel constant" -- and
+per channel the figure is 8. Five of the thirteen had at least one output that is a uniform
+colour.
+
+The fxmaps figures elsewhere in this document are NOT affected, and the reason is worth
+recording rather than assumed: all 1,521 of those renders are single-channel, so the two
+metrics are identical on that population and both give 1,457 flat (95.8%). The bug only
+ever reaches the RGB and RGBA filters, which is why it survived three sweeps.
 
 Ranking the incomplete ones by how many **root causes** block them — "edge has no output
 yet" is a cascade and is excluded — **34 graphs are one root cause away**:
