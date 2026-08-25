@@ -32,6 +32,8 @@ Two fixes made it real: a coverage check (entries and entry programs per record)
 reading the offsets under test FROM the table rather than restating them, since the
 hardcoded version validated the constants it had been written with.
 """
+import contextlib
+import io
 import collections
 import os
 import struct
@@ -90,10 +92,10 @@ def test_coverage_does_not_regress():
             progs += len({pv for _o, _t, pv in ents if pv is not None})
     if not recs:
         print('SKIP test_coverage_does_not_regress: no corpus')
-        return 0
+        return
     assert entries / recs > 1.8, (entries, recs)      # measured 2.72
     assert progs / recs > 1.6, (progs, recs)          # measured 2.53
-    return entries
+    return
 
 
 def test_records_yield_structure():
@@ -113,9 +115,9 @@ def test_records_yield_structure():
                 empty += 1
     if not n:
         print('SKIP test_records_yield_structure: no corpus')
-        return 0
+        return
     assert empty / n < 0.02, (empty, n)
-    return n
+    return
 
 
 def test_entry_tags_are_in_the_vocabulary():
@@ -143,11 +145,11 @@ def test_entry_tags_are_in_the_vocabulary():
                     bad += 1
     if not (good + bad):
         print('SKIP test_entry_tags_are_in_the_vocabulary: no corpus')
-        return 0
+        return
     rate = good / (good + bad)
     assert rate > 0.90, rate
     assert len(tags) < 2000, len(tags)
-    return good + bad
+    return
 
 
 def test_0x1B_branches_to_two_distinct_children():
@@ -195,10 +197,10 @@ def test_0x1B_branches_to_two_distinct_children():
                         landed += 1
     if not (same + diff):
         print('SKIP test_0x1B_branches_to_two_distinct_children: none in this corpus')
-        return 0
+        return
     assert same == 0, (same, diff)
     assert probed and landed / probed > 0.80, (landed, probed)
-    return diff
+    return
 
 
 def test_entry_slot_roles_are_fixed():
@@ -238,10 +240,10 @@ def test_entry_slot_roles_are_fixed():
     big = [(k, c) for k, c in seen.items() if sum(c.values()) >= 100]
     if not big:
         print('SKIP test_entry_slot_roles_are_fixed: no corpus')
-        return 0
+        return
     pure = sum(1 for _k, c in big if c.most_common(1)[0][1] / sum(c.values()) > 0.95)
     assert pure / len(big) > 0.90, (pure, len(big))
-    return len(big)
+    return
 
 
 def test_fx_programs_use_no_opcode_a_filter_does_not():
@@ -267,9 +269,9 @@ def test_fx_programs_use_no_opcode_a_filter_does_not():
                         filt |= {disasm.name(i[2]) for i in disasm.decode(a.data, prog, e)}
     if not fx:
         print('SKIP test_fx_programs_use_no_opcode_a_filter_does_not: no corpus')
-        return 0
+        return
     assert not (fx - filt), sorted(fx - filt)
-    return len(fx)
+    return
 
 
 def test_fx_node_programs_never_loop():
@@ -295,9 +297,9 @@ def test_fx_node_programs_never_loop():
                         loops += 1
     if not n:
         print('SKIP test_fx_node_programs_never_loop: no corpus')
-        return 0
+        return
     assert loops == 0, loops
-    return n
+    return
 
 
 def test_entries_read_the_slots_nodes_write():
@@ -349,7 +351,7 @@ def test_entries_read_the_slots_nodes_write():
                         ownd)
     assert own / ownd > 0.70, (own, ownd)
     assert ctl / ownd < 0.20, (ctl, ownd)                             # the control
-    return ownd
+    return
 
 
 def test_entry_layout_names_the_program_slots():
@@ -393,10 +395,10 @@ def test_entry_layout_names_the_program_slots():
                             ctl += 1
     if not tot:
         print('SKIP test_entry_layout_names_the_program_slots: no corpus')
-        return 0
+        return
     assert hit / tot > 0.95, (hit, tot)
     assert ctl / max(ctln, 1) < 0.10, (ctl, ctln)                     # the control
-    return tot
+    return
 
 
 def test_entry_layout_agrees_with_the_census():
@@ -413,7 +415,7 @@ def test_entry_layout_agrees_with_the_census():
     ok = sum(1 for t, s in rows
              if [x for x, _n, k in fx_entry_layout(t) if k == 'program'] == s)
     assert ok / len(rows) > 0.90, (ok, len(rows))
-    return len(rows)
+    return
 
 
 def test_node_programs_are_named_and_typed():
@@ -449,7 +451,7 @@ def test_node_programs_are_named_and_typed():
                 types[name]['%s%d' % (disasm.TYPE[ty], comps)] += 1
     if not seen:
         print('SKIP test_node_programs_are_named_and_typed: no corpus')
-        return 0
+        return
     total = seen[True] + seen[False]
     assert seen[True] / total > 0.80, (seen[True], total)
     for name, want in (('numberadded', 'i1'), ('switch', 'b2')):
@@ -457,7 +459,7 @@ def test_node_programs_are_named_and_typed():
         n = sum(c.values())
         assert n > 100, (name, n)
         assert c[want] / n > 0.95, (name, c.most_common(3))
-    return seen[True]
+    return
 
 
 def test_the_layout_rejects_bytecode_read_as_an_entry():
@@ -500,9 +502,9 @@ def test_the_layout_rejects_bytecode_read_as_an_entry():
                     bad += 1
     if not tot:
         print('SKIP test_the_layout_rejects_bytecode_read_as_an_entry: no corpus')
-        return 0
+        return
     assert bad / tot < 0.02, (bad, tot)
-    return tot
+    return
 
 
 def test_inline_programs_are_where_the_layout_says():
@@ -532,28 +534,11 @@ def test_inline_programs_are_where_the_layout_says():
                         ctl += bool(a.program_span(off + 4 * (sl + 2), hi))
     if not tot:
         print('SKIP test_inline_programs_are_where_the_layout_says: no corpus')
-        return 0
+        return
     assert hit / tot > 0.85, (hit, tot)
     assert ctl / max(ctln, 1) < 0.15, (ctl, ctln)                     # the control
-    return tot
+    return
 
-
-if __name__ == '__main__':
-    for fn in (test_coverage_does_not_regress,
-               test_records_yield_structure,
-               test_entry_tags_are_in_the_vocabulary,
-               test_0x1B_branches_to_two_distinct_children,
-               test_entry_slot_roles_are_fixed,
-               test_fx_programs_use_no_opcode_a_filter_does_not,
-               test_fx_node_programs_never_loop,
-               test_entries_read_the_slots_nodes_write,
-               test_entry_layout_names_the_program_slots,
-               test_entry_layout_agrees_with_the_census,
-               test_node_programs_are_named_and_typed,
-               test_the_layout_rejects_bytecode_read_as_an_entry,
-               test_inline_programs_are_where_the_layout_says):
-        got = fn()
-        print('%-52s %s' % (fn.__name__, ('ok, n=%d' % got) if got else 'skipped'))
 
 
 # --- the source-side check ------------------------------------------------------------
@@ -698,3 +683,31 @@ def test_fx_lowering_reproduces_the_compiled_multisets():
     assert matched >= 12, 'only %d equations found; the source parse has regressed' % matched
     assert unmatched == 0, '%d source graphs do not reproduce their compiled program' % unmatched
 
+
+# The standalone runner reads SKIP from what a check PRINTS, not from what it returns.
+# These functions used to return a count and the runner reported "skipped" when it was
+# falsy -- but a pytest test function that returns non-None is a warning today and an
+# error in a future pytest, so the returns are gone. Reading the printed SKIP keeps the
+# distinction that matters: a suite that silently skips everything looks identical to a
+# passing one, which is the failure this directory has already recorded once.
+if __name__ == '__main__':
+    for fn in (test_coverage_does_not_regress,
+               test_records_yield_structure,
+               test_entry_tags_are_in_the_vocabulary,
+               test_0x1B_branches_to_two_distinct_children,
+               test_entry_slot_roles_are_fixed,
+               test_fx_programs_use_no_opcode_a_filter_does_not,
+               test_fx_node_programs_never_loop,
+               test_entries_read_the_slots_nodes_write,
+               test_entry_layout_names_the_program_slots,
+               test_entry_layout_agrees_with_the_census,
+               test_node_programs_are_named_and_typed,
+               test_the_layout_rejects_bytecode_read_as_an_entry,
+               test_inline_programs_are_where_the_layout_says,
+               test_fx_lowering_reproduces_the_compiled_multisets):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            fn()
+        out = buf.getvalue()
+        sys.stdout.write(out)
+        print('%-52s %s' % (fn.__name__, 'skipped' if 'SKIP' in out else 'ok'))

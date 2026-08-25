@@ -67,11 +67,19 @@ def sysvar(vid, ncomp, n=1):
         return np.full(n, float(CONTEXT["number"]))
     if vid == 0:                                    # $time
         return np.full(n, float(CONTEXT["time"]))
-    _unresolved.add(("sysvar", vid))
+    # Named from SYSVARS, which is the catalogue this function's numeric branches are
+    # written against. It had no reader at all, so the names above and the ids below
+    # could drift apart with nothing to notice.
+    _unresolved.add(("sysvar", vid, SYSVARS.get(vid, "unknown")))
     return np.zeros((n, ncomp)) if ncomp > 1 else np.zeros(n)
 
 
 def unresolved():
+    """Every system variable a program asked for that this runtime cannot answer.
+
+    `(kind, id, name)` per entry, the name from `SYSVARS`. Worth calling after a sweep:
+    a zero here and a wrong image both look like "it ran".
+    """
     return sorted(_unresolved)
 
 

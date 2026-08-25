@@ -7,7 +7,8 @@ this one is meant to make its own gaps countable.
 import collections, sys
 
 import disasm
-from sbsasm import Assembly, FILTERS, UNNAMED, LAYOUTS, LAYOUT_MASK
+from sbsasm import (Assembly, FILTERS, UNNAMED, LAYOUTS, LAYOUT_MASK,
+                    PARTIAL_EDGES)
 
 # Which slots the layout table registers as EDGE slots, per filter, across all its keys.
 # Used to recognise a layout entry that names an edge slot as its parameter slot.
@@ -183,7 +184,12 @@ def main(paths):
     print('  %-28s %10s %10s %12s' % ('filter', 'records', 'unread', 'unres edges'))
     for f, (n, np_, ue) in sorted(byfilter.items(), key=lambda kv: -kv[1][0])[:22]:
         name = FILTERS.get(f) or 'fid %d *' % f
-        print('  %-28s %10d %9.0f%% %11.1f%%' % (name, n, 100 * np_ / n, 100 * ue / n))
+        # An unresolved-edge percentage with no explanation reads as a defect. Where the
+        # model knows why a filter's slots do not all resolve, say so on the same line --
+        # `PARTIAL_EDGES` held that knowledge and nothing consulted it, so the column
+        # invited the reading its own note already answered.
+        print('  %-28s %10d %9.0f%% %11.1f%%   %s'
+              % (name, n, 100 * np_ / n, 100 * ue / n, PARTIAL_EDGES.get(f, '')))
     if unexplained:
         print('\nworst unexplained-byte files:')
         for frac, p in sorted(unexplained, reverse=True)[:6]:

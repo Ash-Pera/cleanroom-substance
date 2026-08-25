@@ -13,6 +13,8 @@ than it should, this catches a table that is not doing the job its derivation cl
 
 SKIPS when the corpus is absent.
 """
+import contextlib
+import io
 import collections
 import os
 import sys
@@ -84,15 +86,15 @@ def test_layouts_is_load_bearing_but_barely():
     paths = corpus.paths()[:FILES]
     if not paths:
         print('SKIP test_layouts_is_load_bearing_but_barely: no corpus')
-        return 0
+        return
     n, changed = _knockout(sbsasm.LAYOUTS, paths)
     if not n:
         print('SKIP test_layouts_is_load_bearing_but_barely: no records')
-        return 0
+        return
     frac = changed / n
     assert changed > 0, 'layouts.json changes NOTHING: it is dead and should be removed'
     assert frac < 0.05, ('layouts.json now changes %.2f%% of records, not ~0.87%%' % (100 * frac))
-    return n
+    return
 
 
 def test_layouts_changes_no_program_discovery():
@@ -105,7 +107,7 @@ def test_layouts_changes_no_program_discovery():
     paths = corpus.paths()[:FILES]
     if not paths:
         print('SKIP test_layouts_changes_no_program_discovery: no corpus')
-        return 0
+        return
     base = _snapshot(paths)
     saved = dict(sbsasm.LAYOUTS)
     sbsasm.LAYOUTS.clear()
@@ -116,10 +118,10 @@ def test_layouts_changes_no_program_discovery():
         sbsasm.LAYOUTS.update(saved)
     if not base:
         print('SKIP test_layouts_changes_no_program_discovery: no records')
-        return 0
+        return
     bad = sum(1 for k, v in base.items() if mut.get(k, (None,))[0] != v[0])
     assert bad == 0, ('%d records find different programs without layouts.json' % bad)
-    return len(base)
+    return
 
 
 def test_every_table_is_load_bearing():
@@ -131,7 +133,7 @@ def test_every_table_is_load_bearing():
     paths = corpus.paths()[:FILES]
     if not paths:
         print('SKIP test_every_table_is_load_bearing: no corpus')
-        return 0
+        return
     dead = []
     for name in ('LAYOUTS', 'EDGES', 'LAYOUT_MASK', 'FX_NODES', 'FX_ENTRY'):
         tab = getattr(sbsasm, name, None)
@@ -143,12 +145,22 @@ def test_every_table_is_load_bearing():
         if changed == 0:
             dead.append(name)
     assert not dead, ('these tables change no reading at all: %s' % dead)
-    return 1
+    return
 
 
+# The standalone runner reads SKIP from what a check PRINTS, not from what it returns.
+# These functions used to return a count and the runner reported "skipped" when it was
+# falsy -- but a pytest test function that returns non-None is a warning today and an
+# error in a future pytest, so the returns are gone. Reading the printed SKIP keeps the
+# distinction that matters: a suite that silently skips everything looks identical to a
+# passing one, which is the failure this directory has already recorded once.
 if __name__ == '__main__':
     for fn in (test_layouts_is_load_bearing_but_barely,
                test_layouts_changes_no_program_discovery,
                test_every_table_is_load_bearing):
-        got = fn()
-        print('%-52s %s' % (fn.__name__, 'ok' if got else 'skipped'))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            fn()
+        out = buf.getvalue()
+        sys.stdout.write(out)
+        print('%-52s %s' % (fn.__name__, 'skipped' if 'SKIP' in out else 'ok'))

@@ -53,6 +53,8 @@ possibly wrong by a constant factor. A test asserting the length would be assert
 unestablished thing. The blind spot lines up exactly with the documented gap, which is the
 honest place for it.
 """
+import contextlib
+import io
 import os
 import sys
 
@@ -142,7 +144,7 @@ def test_curve_endpoints():
         n += 1
     if not n:
         print('SKIP test_curve_endpoints: no corpus')
-    return n
+    return
 
 
 def test_curve_matches_independent_bisection():
@@ -162,9 +164,9 @@ def test_curve_matches_independent_bisection():
             raise AssertionError('%d curve records found and none rendered'
                                  % SEEN['curve'])
         print('SKIP test_curve_matches_independent_bisection: no corpus')
-        return 0
+        return
     assert worst < 1e-3, worst
-    return n
+    return
 
 
 def test_curve_identity_is_exact():
@@ -186,7 +188,7 @@ def test_curve_identity_is_exact():
         n += 1
     if not n:
         print('SKIP test_curve_identity_is_exact: no corpus (or no strict-identity record)')
-    return n
+    return
 
 
 def test_dirmotionblur_is_an_average():
@@ -198,7 +200,7 @@ def test_dirmotionblur_is_an_average():
         n += 1
     if not n:
         print('SKIP test_dirmotionblur_is_an_average: no corpus')
-    return n
+    return
 
 
 def test_gradient_runs_and_stays_bounded():
@@ -214,7 +216,7 @@ def test_gradient_runs_and_stays_bounded():
         n += 1
     if not n:
         print('SKIP test_gradient_runs_and_stays_bounded: no corpus')
-    return n
+    return
 
 
 def test_gradient_matches_an_independent_lookup():
@@ -241,9 +243,9 @@ def test_gradient_matches_an_independent_lookup():
             raise AssertionError('%d gradient records found and none rendered'
                                  % SEEN['gradient'])
         print('SKIP test_gradient_matches_an_independent_lookup: no corpus')
-        return 0
+        return
     assert worst < 1e-3, worst
-    return n
+    return
 
 
 def _stripes(h, w, along):
@@ -313,20 +315,30 @@ def test_dirmotionblur_actually_smooths_and_only_along_its_angle():
             break
     if not candidates:
         print('SKIP test_dirmotionblur_actually_smooths_and_only_along_its_angle: no corpus')
-        return 0
+        return
     # NOT a skip. Specimens exist and none of them rendered, which is what a broken filter
     # looks like from here -- setting TAPS=1 divides by zero, every render raises, and the
     # first version of this check reported "no specimen" and passed.
     assert tested, ('specimens found but none rendered', candidates)
     assert ok / tested > 0.75, (ok, tested)
-    return tested
+    return
 
 
+# The standalone runner reads SKIP from what a check PRINTS, not from what it returns.
+# These functions used to return a count and the runner reported "skipped" when it was
+# falsy -- but a pytest test function that returns non-None is a warning today and an
+# error in a future pytest, so the returns are gone. Reading the printed SKIP keeps the
+# distinction that matters: a suite that silently skips everything looks identical to a
+# passing one, which is the failure this directory has already recorded once.
 if __name__ == '__main__':
     for fn in (test_curve_endpoints,
                test_gradient_matches_an_independent_lookup,
                test_dirmotionblur_actually_smooths_and_only_along_its_angle, test_curve_matches_independent_bisection,
                test_curve_identity_is_exact, test_dirmotionblur_is_an_average,
                test_gradient_runs_and_stays_bounded):
-        got = fn()
-        print('%-46s %s' % (fn.__name__, ('ok, %d records' % got) if got else 'skipped'))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            fn()
+        out = buf.getvalue()
+        sys.stdout.write(out)
+        print('%-46s %s' % (fn.__name__, 'skipped' if 'SKIP' in out else 'ok'))

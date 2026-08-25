@@ -13,7 +13,6 @@ nothing unexpanded contributed that filter.
 import collections
 import re
 
-RE_GRAPH = re.compile(r'<graph>')
 RE_IDENT = re.compile(r'<identifier v="([^"]+)"/>')
 RE_FILTER = re.compile(r'<filter v="([a-z0-9_]+)"')
 RE_PATH = re.compile(r'<path v="([^"]+)"')

@@ -148,9 +148,18 @@ parameter bits the slot rule needs, so no rewriting of entries can express the r
                           corpus, so a settled figure cannot quietly go stale
     provenance.py         the provenance exclusion predicate, as a re-runnable check
                           rather than a description of one
+    test_standalone_parse.py
+                          the 59x parser rewrite against the reference it replaced, full
+                          result dict AND exception compared, over the whole corpus
     standalone_parse_ref.py
-                          the pre-optimisation parser, kept so the 59x rewrite can be
-                          re-verified as output-identical on demand
+                          the pre-optimisation parser, kept so that check has something
+                          to compare against
+
+`standalone_parse_ref.py` used to be kept "so the check can be repeated", and nothing
+repeated it -- the reference sat here for the length of that claim with no code comparing
+the two, so the sentence described an intention rather than a check. `test_standalone_parse.py`
+is the check. It compares the exception as well as the result, since a fast path that
+starts raising on a file the reference reads would otherwise pass unnoticed.
 
 `provenance.py` is the one to run against a new corpus before measuring anything with it.
 The exclusion rule in README.md is a single string match, and this applies it and reports
