@@ -32712,3 +32712,34 @@ end evidence rather than an artifact of the metric.
 What remains unknown is which profile — `patterntype` 10 is located but not interpreted.
 What is now settled is that a solid rectangle is the wrong default, and that entries with a
 nonzero `patterntype` nibble are demonstrably not solid rectangles rather than arguably so.
+
+## Entry programs must be run in the order they are yielded
+
+`sci_fi_elements_02` record 86's `opacity` program sets slots 15, 17 and 18 as a side
+effect of computing an angle, and its `frameoffset`, `patternsize` and `patternrotation`
+programs are bare `get`s of exactly those. That is not a curiosity of one record:
+
+```
+records with 2+ entry programs                              9,736
+  an entry program reads a slot an EARLIER one wrote        1,335   13.7%
+  reads a slot only a LATER one writes                          0    0.0%
+```
+
+So the order `fx_named_params` yields — table order, then ascending slot — is a runnable
+one, and the zero is what says so: no forward references anywhere in the corpus. Reversing
+the order produces them, which is the control the test uses.
+
+A reordering would not crash. It would produce a plausible wrong picture, in one record in
+seven, and no metric this project runs could see it. That is the **third** instance of the
+same failure class in this decode:
+
+| what | what it produced | what caught it |
+|---|---|---|
+| samplers left installed by a previous record | a wrong image, silently | asking which indices a record wires vs reads |
+| spread measured across channels, not per channel | flat scored as varying | opening the PNG |
+| entry programs run out of order | a plausible wrong picture | this test |
+
+None of the three is visible to a coverage count or a flatness rate. All three were caught
+by asking what the number would look like if the pipeline were wrong — which is the same
+move as the rosette: find something whose correct value is knowable independently, and
+check it.

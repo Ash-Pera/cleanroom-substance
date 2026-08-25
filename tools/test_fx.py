@@ -690,6 +690,74 @@ def test_fx_lowering_reproduces_the_compiled_multisets():
 # error in a future pytest, so the returns are gone. Reading the printed SKIP keeps the
 # distinction that matters: a suite that silently skips everything looks identical to a
 # passing one, which is the failure this directory has already recorded once.
+def test_entry_programs_are_yielded_in_a_runnable_order():
+    """`fx_named_params` must yield entry programs in an order that can be RUN.
+
+    An entry program can write slots as a side effect and a later one read them: on
+    `sci_fi_elements_02` record 86 the `opacity` program sets slots 15, 17 and 18 while
+    computing an angle, and the `frameoffset`, `patternsize` and `patternrotation`
+    programs are bare `get`s of exactly those. 13.7% of records with two or more entry
+    programs have at least one such dependency.
+
+    So the yield order is load-bearing, and it is load-bearing in the worst way: a
+    reordering does not crash, it produces a plausible wrong picture. Neither coverage nor
+    flatness can see that -- the third instance this session of the same failure class,
+    after stale samplers and a whole-array spread metric.
+
+    The check is that no program reads a slot only a LATER program writes, i.e. the order
+    contains no forward reference. Measured at 0 of 9,736 records, and a reversed order is
+    the control: it must fail.
+    """
+    def setget(d, p, hi):
+        sets, gets = set(), set()
+        for _k, _a, op, toks in disasm.decode(d, p, hi):
+            _n, _ty, _c, oid = disasm.fields(op)
+            if oid == 0x04 and toks:
+                gets.add(toks[0])
+            elif oid == 0x07 and len(toks) > 1:
+                sets.add(toks[1])
+        return sets, gets
+
+    def forward_refs(d, hi, seq):
+        """How many programs read a slot only something after them writes."""
+        bad = 0
+        for i, p in enumerate(seq):
+            _s, g = setget(d, p, hi)
+            before = set()
+            for q in seq[:i]:
+                before |= setget(d, q, hi)[0]
+            later = set()
+            for q in seq[i + 1:]:
+                later |= setget(d, q, hi)[0]
+            if (g - before) & later:
+                bad += 1
+        return bad
+
+    fwd = rev = n = 0
+    for f in corpus.paths():
+        try:
+            a = Assembly(f)
+        except Exception:
+            continue
+        d, hi = a.data, a.body_hi
+        for r in a.records:
+            if r.filter_id != 4:
+                continue
+            seq = [v for _o, _t, _s, _n, k, v in r.fx_named_params() if k != 'baked' and v]
+            if len(seq) < 2:
+                continue
+            n += 1
+            fwd += bool(forward_refs(d, hi, seq))
+            rev += bool(forward_refs(d, hi, list(reversed(seq))))   # the control
+    if not n:
+        print('SKIP test_entry_programs_are_yielded_in_a_runnable_order: no corpus')
+        return 0
+    assert fwd == 0, ('a yielded entry program reads a slot only a later one writes', fwd, n)
+    assert rev > 0, ('the control did not fail: reversing the order broke nothing, so this '
+                     'test proves nothing about the order', rev, n)
+    return n
+
+
 if __name__ == '__main__':
     for fn in (test_coverage_does_not_regress,
                test_records_yield_structure,
@@ -704,7 +772,8 @@ if __name__ == '__main__':
                test_node_programs_are_named_and_typed,
                test_the_layout_rejects_bytecode_read_as_an_entry,
                test_inline_programs_are_where_the_layout_says,
-               test_fx_lowering_reproduces_the_compiled_multisets):
+               test_fx_lowering_reproduces_the_compiled_multisets,
+               test_entry_programs_are_yielded_in_a_runnable_order):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()

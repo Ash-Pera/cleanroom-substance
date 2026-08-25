@@ -2135,6 +2135,21 @@ class Record:
         This is `fx_walk`'s entry half read through the layout instead of through the
         `FX_ENTRY_PROGS` census: the census knows 100 tags and this decodes any tag, which
         is the difference between naming 934 of the corpus's entry programs and 101,617.
+
+        THE YIELD ORDER IS LOAD-BEARING and a caller must not reorder it. An entry program
+        can write slots as a side effect that a later one reads: on `sci_fi_elements_02`
+        record 86 the `opacity` program sets slots 15, 17 and 18 while computing an angle,
+        and the `frameoffset`, `patternsize` and `patternrotation` programs are bare `get`s
+        of exactly those. 1,335 of 9,736 records with two or more entry programs (13.7%)
+        have at least one such dependency.
+
+        Table order then ascending slot -- what this yields -- is a runnable order:
+        forward references occur in 0 of those 9,736 records, and reversing the order
+        produces them, which is the control. `test_fx.py` asserts both.
+
+        A reordering would not crash; it would produce a plausible wrong picture. That is
+        the third instance in this decode of the same failure class, after samplers left
+        installed from a previous record and a spread metric measured across channels.
         """
         d, lo, hi = self.asm.data, self.asm.body_lo, self.asm.body_hi
         seen = set()
