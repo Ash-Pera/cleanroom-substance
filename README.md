@@ -19,8 +19,12 @@ tools could read Substance materials without the proprietary engine.
       extract_bitmaps.py   embedded images, and graph inputs by manifest uid
       extract_shapes.py    filter 5's embedded vector artwork, as PNG or SVG
       expand_instances.py  expands sub-graph instances using only in-file graphs
+      transpile.py         compiles a program's bytecode to Python source
+      render.py            walks a record graph and evaluates the filters it implements
       audit_corpus.py      runs the model over a corpus and reports every gap
       validate_corpus.py   structural checks against the .sbsar manifests
+      reverify.py          re-runs the notes' headline claims against the CURRENT corpus
+      provenance.py        the provenance exclusion predicate, as a re-runnable check
 
 Exploratory scripts that produced individual findings are left in the root. They are one-off
 analyses rather than maintained interfaces, and several encode assumptions the notes later
@@ -60,7 +64,8 @@ used, and all are recorded in FORMAT-NOTES.md.
 
 The **Provenance statement** at the top of `FORMAT-NOTES.md` is the auditable version of
 all of this in one place. The exclusion predicate is a single string match and can be
-re-run against any corpus.
+re-run against any corpus: `tools/provenance.py` is that check as code rather than a
+description of one, and it is meant to run before a new corpus is measured, not after.
 
 ## Where the format stands
 
@@ -91,12 +96,19 @@ naming each output's record in 3,249 of 3,249 with a colour-mode check it could 
 and did not (`Assembly.outputs()`).
 
 Not decoded: one filter id — filter 9, 5 records, where it is the provenance rule and not
-the analysis that blocks the name — the FX-Map node vocabulary beyond `addnode`,
-and what most filter parameters mean once their record and program are known — the gap that
-actually blocks a renderer. The version-2 prologue is no longer on this list: it is a
-constant 72-byte preamble of programs, one of which binds the graph's random seed. Neither
-are FX-Map records as a whole — they are about 90% located bytecode, and the open part is
-which node type each header names. See FORMAT-NOTES.md's most recent status section for the
+the analysis that blocks the name — and what most filter parameters mean once their
+record and program are known, which is the gap that actually blocks a renderer. The
+version-2 prologue is no longer on this list: it is a constant 72-byte preamble of
+programs, one of which binds the graph's random seed. Neither
+are FX-Map records as a whole. Entry boundaries, entry lengths and program positions are
+all stated by the tag; four node headers are bound to source node kinds on 8 of the 8
+permitted files containing an FX-Map, with no off-diagonal cell of that confusion matrix
+reaching 7; and FX programs run the same instruction set as the rest of the format, minus
+loops and cache writes. What stays open is naming the inline programs' parameters — 98% of
+them open with `inputref`, and no permitted source sets the tag bits that would say which
+parameter each one is. That is the provenance rule again rather than the analysis.
+
+See FORMAT-NOTES.md's most recent status section for the
 current ranking; this paragraph is a summary and falls behind it.
 
 ## On the notebook style

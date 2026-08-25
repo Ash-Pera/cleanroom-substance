@@ -11,6 +11,9 @@ The finished tools. Each runs from the repository root, where the corpus lives:
     python3 tools/test_transpile.py
     python3 tools/test_filters.py
     python3 tools/test_fx.py
+    python3 tools/test_tables.py
+    python3 tools/reverify.py
+    python3 tools/provenance.py
 
 ## The model
 
@@ -18,6 +21,14 @@ The finished tools. Each runs from the repository root, where the corpus lives:
     standalone_parse.py   header, footer, interface block and value table
     disasm.py             bytecode disassembler
     sbsasm.py             the file model: records, layouts, edges, parameters, programs
+    record_layout.py      the record layout rule, as one function
+    slot_rules.py         every rule that decides a record's slot layout, each verified
+    corpus.py             the canonical corpus list, deduplicated by CONTENT
+
+`corpus.py` is the only place a corpus list is read. That is not tidiness: the list was
+once corrected in one tool, documented in a second and left wrong in a third, and the
+third was the one printing the headline figures. A correction written in prose does not
+propagate to code, so both tools now call the same loader.
 
 `sbsasm.py` is the one to read first. It is strict by default: where a record's layout is
 known it reads it, and where it is not it returns `None` and counts it. `coverage()` classifies
@@ -89,6 +100,35 @@ no source this project may read names filter 5.
     fxdisasm.py           walks an FX-Map tree and disassembles each node's program
     expand_instances.py   expands sub-graph instances using only in-file graphs
 
+## Rendering
+
+    transpile.py          compiles a program's bytecode to Python source
+    sbsruntime.py         runtime for transpiled programs, vectorised over numpy
+    run_file.py           evaluates every program in a file through one shared cache
+    render.py             walks a record graph in index order and evaluates what it can
+
+`render.py` implements ten filters: `bitmap`, `pixelprocessor`, `blend`, `transformation`,
+`levels`, `uniform`, `directionalwarp`, `gradient`, `curve` and `dirmotionblur`. That is
+not enough to render a real material, and FORMAT-NOTES.md measures how far short it falls
+and which filter gates the rest.
+
+`run_file.py` exists because `cache_read` raises unless a caller threads one cache through
+a whole file. Programs are not independent: a record's program can read what an earlier
+record's program wrote.
+
+## Deriving the tables
+
+    derive_layouts.py     derives layouts.json: (filter, class, layout bits) -> slot roles
+    derive_costs.py       derives costs.json: each filter's slot costs from the corpus
+    gen_layouts.py        why layouts.json CANNOT be regenerated from the slot rule
+    node_census.py        harvests fx-tree node cells and derives the node size law
+    fxparams.py           re-derives the FX-Map entry parameter names from sources
+    containment.py        identifies a filter id by containment, with its control
+
+Each of these writes or justifies a table the model reads. `gen_layouts.py` is the odd one:
+it exists to record a negative result, that the mask in `layouts.json`'s key drops the
+parameter bits the slot rule needs, so no rewriting of entries can express the rule.
+
 ## Checking
 
     test_transpile.py     the sRGB round-trip -- see below
@@ -99,9 +139,21 @@ no source this project may read names filter 5.
     validate_corpus.py    structural checks against the .sbsar manifests
     attribute_outputs.py  cross-checks the output table against the manifest's alteroutputs
                           relation: 98.20% agreement over 39,855 (input, output) pairs
+    test_tables.py        knocks out each table in turn -- a table that changes no
+                          reading when emptied is not carrying the decode it documents
+    test_corpus_discovery.py
+                          corpus discovery must not depend on where the command was typed
+    reverify.py           re-runs FORMAT-NOTES.md's headline claims against the CURRENT
+                          corpus, so a settled figure cannot quietly go stale
+    provenance.py         the provenance exclusion predicate, as a re-runnable check
+                          rather than a description of one
     standalone_parse_ref.py
                           the pre-optimisation parser, kept so the 59x rewrite can be
                           re-verified as output-identical on demand
+
+`provenance.py` is the one to run against a new corpus before measuring anything with it.
+The exclusion rule in README.md is a single string match, and this applies it and reports
+what it drops; the discipline is that it runs BEFORE any measurement, not after.
 
 ## The FX-Map decode
 
@@ -113,8 +165,17 @@ read-and-written within one file 88.1% of the time against a 0.0% cross-file con
 
 Entry boundaries come from the tag, which states both the entry's LENGTH (`FX_ENTRY`) and
 which of its words hold programs (`FX_ENTRY_PROGS`). Do not step 8 bytes -- that was the
-old rule and it is wrong; `FX_TABLE` above it is the withdrawn version, kept with its
-retraction attached.
+old rule and it is wrong.
+
+Where a tag names no program slots the program is stored INLINE, and its position is a
+layout fact rather than a table lookup: `fx_entry_layout` puts it after the parameters, at
+`4 x (the first slot the layout does not use)`. That rule replaced `FX_TABLE`, a 22-entry
+lookup recording the same offsets. Over the whole corpus the two never once name a
+different address -- 2,620 agreements, 0 disagreements -- and asking the layout instead
+finds 176 programs on tags no table covered, none of which lies inside another program's
+byte span. `FX_PAYLOAD_PROG` is what remains of the table: the two tags the rule gets
+wrong, one because its payload word points at entry+12 rather than entry+8, one because
+its program sits a slot past the predicted position for a reason not yet known.
 
 `test_fx.py` is the regression guard, and its docstring records which mutations each check
 catches. The first version of it caught none of them.

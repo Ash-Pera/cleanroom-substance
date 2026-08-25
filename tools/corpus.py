@@ -21,8 +21,16 @@ stayed right, which is why it did.
 The lesson is not "check the corpus". It is that a correction recorded in prose does not
 propagate to code, and the fix has to be a single place both tools call.
 
-This module is that place. Both lists are now deduplicated and agree at 438 files; the
-root list is canonical because that is the one the correction moved to.
+This module is that place, and the root list is canonical because that is the one the
+correction moved to.
+
+The two lists do NOT quite agree, and the earlier version of this docstring claimed they
+did. By content: the root list holds 437 distinct files, `tools/DISTINCT.txt` holds 438,
+and they share 436 -- two files are in the legacy list only, one in the root list only.
+Nothing reads the legacy list while the root list exists, so no figure is affected; the
+claim of agreement was simply never checked after it was written. Which is the same
+failure this module was created to fix, one level up: a statement about the data, made
+once and not re-measured.
 """
 import hashlib
 import os
