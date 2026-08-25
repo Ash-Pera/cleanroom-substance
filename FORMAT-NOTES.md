@@ -31117,3 +31117,70 @@ scale the census predicted.
 The 443 pairs still unfound are records whose tail program does not end flush — the
 7% with trailing content after it — left for a reader that parses the tail region
 properly rather than a looser probe that would admit suffixes.
+
+## The slot frame is per-RECORD, at 99.892% against an 11.8% control
+
+The two-halves result — the node chain `set`s a shared frame, the `paramset` table `get`s
+it — was measured at FILE level and came out inconclusive: 74.7% agreement against a 52.2%
+control over all slots, rescued only by restricting to slots >= 64, where 59 of 67
+observations agreed against a 0.0% control. Sixty-seven observations, and a floor chosen
+because that is where the control vanished.
+
+The unit was wrong. An FX-Map is a RECORD, not a file, and asking the question per record
+answers it outright. Over **61,384 entry-program slot reads in 282 files**, counting as
+writes only the node chain and the record's own programs (entry-program `set`s excluded, so
+this is strictly a chain-to-table handoff):
+
+    slot range     reads    same RECORD    OTHER record, same file    other FILE
+    0-8              343    100.0%              59.2%                   58.6%
+    8-16          33,991     99.9%              14.7%                   91.2%
+    16-32         25,299     99.8%               7.7%                   90.1%
+    32-48            571    100.0%              16.1%                   72.7%
+    48-64          1,062    100.0%               0.6%                   49.6%
+    64+              118    100.0%               1.7%                    0.0%
+
+    TOTAL         61,384    99.892%             11.8%                   89.5%
+
+**The middle column is the control that matters.** "Written in another FILE" is 89.5% and
+says nothing — small slot indices collide by chance, which is exactly why the file-level
+measurement stalled at 74% and needed a slot floor to say anything. "Written by another
+RECORD in the same file" is 11.8%, and against that the per-record agreement is 99.892%.
+
+The old reading and this one are not in conflict about the DATA; they disagree about the
+unit. Slots do coincide within a file — trivially, because they coincide within each record
+and a file is made of records. Nothing was measured wrong; the question was asked at the
+wrong scale, and at that scale the answer was a coin flip dressed as 74%.
+
+### There is no shared range
+
+The floor does not survive. Agreement is ~100% at EVERY slot range, including 0-8 and 8-32
+where the file-level control was 90%+. Slots >= 64 are not special: they are 118 of 61,384
+reads, and their 0.0% cross-file control reflects how rare and file-specific a high slot
+index is, not that anything is shared above it.
+
+### The 66 misses, and they point the other way
+
+    written by ANOTHER record in the file    65    genuine cross-record reads
+    written NOWHERE in the file               1    unresolvable
+
+So cross-record reading is real, at 0.106%. Every instance is at a LOW slot — 14, 16 and 17
+in `RoofingTiles` and `Carpet` — which is the exact opposite of a model where high slots are
+the shared ones. Whatever the 65 are, they are not evidence for a floor at 64.
+
+### Consequence for `render.SplitFrame`, not acted on
+
+`SplitFrame` cites the 74.7/74.1/88.1 figures to justify `SHARED_SLOT_FLOOR = 64`. That
+justification is superseded by the measurement above: the population it rests on reads
+per-record at 99.892%, and the 0.108% that does not is at low slots, not high ones.
+
+Measured directly, the floor barely matters yet — with `fxmaps` still unimplemented, FX
+entry programs never execute, so the frame only affects other filters. Sweeping `pairs2`
+under 5 MB:
+
+    SHARED_SLOT_FLOOR = 64      10,624 records rendered
+    fully per-record            10,625 records rendered, no regressions
+
+One record better, nothing worse. The independent evidence behind `SplitFrame` — that a
+FULLY graph-wide frame regressed 87 outputs via `dirmotionblur` inheriting a stale 0 — is
+not contradicted by any of this; it points the same way this does, away from sharing. The
+change is left to whoever owns that file rather than made here.
