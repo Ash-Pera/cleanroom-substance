@@ -31438,3 +31438,61 @@ aside, every remaining entry-program read in the corpus resolves inside its own 
 What the engine does at those reads — seeds a default, or never executes the entry because
 its condition is false — is not decidable from the file and is left open. Either way it is
 22 records, 0.036% of the `fxmaps` population, and not a channel between records.
+
+## Which tables are actually carrying the decode
+
+The audit is the scoreboard, so it gets the same question the test suites got: does its
+headline move when the model is made worse? Emptying `layouts.json` **entirely** — 809
+keys, its own derivation script, its own corpus-integrity guard, several sections of this
+document — moves `audit_corpus.py`'s parameter figure from 97.10% to 96.80%.
+
+A number that barely moves when you delete the thing it is supposed to measure is not
+measuring it. So each table was knocked out in turn and the READINGS compared, rather than
+the summary percentages.
+
+    knocked out     records reading differently   (of 160,672)
+    LAYOUT_MASK           10,939      6.808%
+    EDGES                  5,634      3.507%
+    FX_ENTRY               4,698      2.924%
+    FX_NODES               4,256      2.649%
+    LAYOUTS                1,590      0.990%
+
+### layouts.json changes under 1%, and no program discovery at all
+
+Over 346,530 records, removing the layout table changes **0.872%** of readings — 2,180 edge
+readings and 897 parameter readings. And the set of programs found is **identical for every
+single record**, 92,626 of 92,626 on the first sample and confirmed at scale.
+
+`Record.programs` does look the key up. Everything it names is also named by
+`self.layout[1]` and `classified_programs`, so the lookup contributes nothing. The
+hand-written rules in `_compute_layout` plus the `EDGES` table have grown, one correction
+at a time, to cover nearly everything the derived table covers.
+
+That is not "layouts.json is wrong" — 2,180 edges are 2,180 edges, and the filters it moves
+are specific ones (`bitmap` 168, `distance` 67, `dyngradient` 67, `warp` 52). It is that the
+project's largest derived artifact is doing about a hundredth of the work its documentation
+implies, nobody had measured that, and the audit could not have told anyone.
+
+### A retraction from earlier in this same investigation
+
+Along the way I claimed `edge slots resolved 100.00%` is vacuous, on the grounds that
+`Record.edges` never returns None — 0 of 229,144 — so the ratio is 100% by construction.
+
+The first half is right and the conclusion is wrong. The escape hatches were already
+measured, in "The escape hatch in `edges`, measured": the program branch absorbed 0.005% and
+the float branch never fired. The metric is tautological in FORM and, because the hatches
+are that small, is not hiding anything. I had the answer in the document and asserted past
+it. Recorded because "I re-derived a worse version of a finding already here" is a failure
+mode this project should count.
+
+### `tools/test_tables.py`
+
+The knockout is now a test, and it asserts in both directions: a table that changes nothing
+is dead and should be deleted rather than maintained; a table that suddenly changes much
+more means the figures above are stale.
+
+Its first version reported `FX_NODES` and `FX_ENTRY` as changing **0%** — because the probe
+recorded programs, edges and parameters, none of which touch `fx_walk`. A knockout test is
+only as good as what it observes, which is the same lesson as the purity metrics, arriving
+for the third time in two days: **the thing being measured has to be able to move the
+number.** With the FX walk in the snapshot they read 2.6% and 2.9%.
