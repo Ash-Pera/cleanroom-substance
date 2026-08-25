@@ -146,7 +146,6 @@ These are established structurally, not by frequency:
 | `0503` | float | 1 | `03` | 3,603 | 34 | reads the cross-record cache `0x06` writes — see FORMAT-NOTES.md, "`0x03`/`0x06` are cross-record common-subexpression elimination" |
 | `150B` | float | 1 | `0B` | 542 | 20 | `while` — a loop, no immediate; see "`0x0B` is a loop" below |
 | `11CF` | float | 4 | `0F` | 28 | 6 | **probably `vec4`** — build a 4-vector from four scalars |
-| `0535` | float | 1 | `35` | 3,903 | 37 | unary, always immediately `ceil`/`floor`'d, fed 73% by `cvt` — **probably `log2`**, not confirmed numerically |
 | `0535` | float | 1 | `35` | 3,903 | 37 | unary `log2` — source-confirmed by the `ie_pcloud` `get_float3 -> swizzle2 -> log2 -> toint2` graph |
 | `0936` | float | 1 | `36` | 53 | 8 | **`pow(x, y)`** — proved via the same closed form as `ln`/`exp2`, see below |
 

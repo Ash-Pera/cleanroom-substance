@@ -29,6 +29,15 @@ empty `slots` dict. Every program but the last now runs once, N=1, not per-pixel
 sharing one `slots` dict across the whole record so the earlier ones' `set`s carry
 forward to the real per-pixel body.
 
+`max_dim` LIES IN THE DIRECTION OF "your decode is broken", and it has now cost two
+filters an afternoon each. Any filter whose effect is a RADIUS in pixels scales that
+radius with the grid, so a small parameter rounds to zero and the filter becomes an
+identity -- `blur` at intensity 0.84 spreads 1 pixel at 256 and none at 64, and `distance`
+at 0.14 goes to 0.035. The symptom is a controlled test showing NO EFFECT AT ALL: an
+impulse surviving intact, energy and centroid exactly preserved, which reads as a dead or
+mislocated parameter rather than as a sampling artifact. Verify a radius-valued filter at
+its record's NATIVE resolution before concluding anything about where its parameter lives.
+
 `max_dim` sweeps fast at the cost of one real inaccuracy: capping each pixelprocessor's
 OWN width/height independently does not preserve two DIFFERENT records' size ratio to
 each other, and `cache_read`/`cache_write` share a raw per-pixel array across records
@@ -48,11 +57,33 @@ for what the real engine does at that same input (clamps to 0? saturates earlier
 step this reading is missing?), so it is surfaced rather than guessed at.
 """
 import numpy as np
-import transpile, sbsruntime, fxrender
+import transpile, sbsruntime
+import assume, fxrender
 
 
 class Unsupported(Exception):
     pass
+
+
+#: Record indices whose output rests on a LOW-CONFIDENCE parameter read -- a value taken
+#: from a slot because containment merely points at it, rather than from a program that
+#: names it. Populated by `render`, cleared at the start of each call.
+#:
+#: This is the same device as `synth_missing_bitmaps` and its `synthetic` set, applied to
+#: parameters instead of to pixels: an output built on an invented input is not an
+#: ordinary success and should not be counted as one, and neither is an output built on a
+#: guessed parameter slot. It is deliberately NOT folded into `synthetic`, which means
+#: something narrower -- pixels this renderer invented.
+#:
+#: WHY IT EXISTS. Containment rates for these slots cannot be read as accuracy, and the
+#: reason is a ceilinged denominator: the rate is bounded above by (distinctive values the
+#: source declares) / (records the file compiles to), and instancing makes one source node
+#: compile to many records, none of which any declaration corresponds to. So `normal`'s
+#: slot evidence at 14.6% against a 0.0% control is not "wrong five times in six" -- the
+#: control is the load-bearing half and the headline rate is close to meaningless. The
+#: honest response is neither to trust it nor to refuse: it is to MARK it, so a sweep can
+#: count these separately rather than reporting them as ordinary successes.
+LOW_CONFIDENCE = set()
 
 
 # THE SLOT FRAME IS PER-RECORD. Every record evaluates against its own empty dict, and
@@ -328,6 +359,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
     """
     outputs = dict(precomputed or {})
     synthetic = set()
+    LOW_CONFIDENCE.clear()
     failures = {}
     cache = {}
     sbsruntime.use_shared_cache(cache)
@@ -754,8 +786,38 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 start = 2 if has_prog else 1
                 n = 4 if rec.colour else 1
                 if len(rec.words) < start + n:
-                    raise Unsupported("uniform has no room for a fill color at the "
-                                      "expected slot")
+                    # THE COLOUR IS NOT IN THE FILE. These are one-word records -- just
+                    # the tag, no programs, no colour slot -- distinguishable by class
+                    # (neither bit 0 nor bits 8/9 set), and they feed `transformation` in
+                    # 329 of 334 consumer links. There is nothing here to decode wrongly;
+                    # the value is the engine's default, and this format never records
+                    # defaults, which is the same wall the FX-Map parameters hit.
+                    #
+                    # So it is a CANDIDATE question rather than a decode one, and the only
+                    # thing that can answer it is an output to compare against. Under an
+                    # open `assume` scope the chosen fill is used and the record is marked
+                    # in both USED and LOW_CONFIDENCE; with no scope open it refuses
+                    # exactly as before. 111 records in the reference set block here, and
+                    # with the FX-Map empty-table default it is one of the two assumptions
+                    # that make 14 of the 19 usable reference maps scoreable.
+                    fill = assume.assumed('uniform.fill')
+                    if fill is None:
+                        raise Unsupported("uniform has no room for a fill color at the "
+                                          "expected slot")
+                    v = np.asarray(fill, dtype=np.float32).ravel()
+                    if v.size == 1:
+                        v = np.repeat(v, n)
+                    if v.size != n:
+                        raise Unsupported("uniform.fill supplies %d components, record "
+                                          "wants %d" % (v.size, n))
+                    W, H = rec.width, rec.height
+                    if max_dim:
+                        W, H = min(W, max_dim), min(H, max_dim)
+                    N = W * H
+                    outputs[i] = to_image(np.tile(np.clip(v, 0.0, 1.0), (N, 1)), N, H, W)
+                    LOW_CONFIDENCE.add(i)
+                    assume.note(i)
+                    continue
                 color = np.array(rec.words[start:start + n], dtype=np.uint32).view(np.float32)
                 if not np.all((-0.01 <= color) & (color <= 1.01) & (color == color)):
                     raise Unsupported("uniform fill color slot does not decode as a "
@@ -874,10 +936,34 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 table = rec.ramp
                 if not table:
                     raise Unsupported("gradient record carries no readable ramp")
+                # THE COLOUR RAMP'S TWO VALUES ARE ONE PACKED RGBA8888. This was
+                # refused as "2 value components, not 3 -- an RGB reading would be
+                # invention", which was right to refuse and wrong about the shape: the
+                # entries are u16, so two of them are 32 bits, which is exactly four 8-bit
+                # channels rather than two 16-bit ones.
+                #
+                # The signature is the alpha byte. Reading `v1 | (v2 << 16)` and unpacking
+                # little-endian, over 181 colour gradient records and 22,961 stops:
+                #
+                #     byte 3 == 255      99.9%      (next commonest value: 0, seven times)
+                #
+                # A misread field does not put 255 in the same byte 99.9% of the time. And
+                # the remaining three bytes read as material colours outright -- (197, 143,
+                # 76) tan, (139, 92, 38) brown, (243, 211, 167) cream, (179, 85, 19)
+                # orange-brown, (253, 253, 253) near-white -- which is what a gradient map
+                # for sand, wood and stone should contain.
+                #
+                # Greyscale ramps are unaffected: their single value stays a u16 scaled by
+                # 65535, which is the reading already verified against an independent
+                # lookup in test_filters.py.
                 if rec.colour:
-                    raise Unsupported("colour ramp width carries 2 value components, "
-                                      "not 3 -- an RGB reading is not established")
-                if isinstance(table[0][0], float):
+                    if isinstance(table[0][0], float) or len(table[0]) < 3:
+                        raise Unsupported("colour ramp is not in the u16 packed form")
+                    stops = np.array([e[0] for e in table], dtype=np.float32) / 65535.0
+                    packed = [(int(e[1]) | (int(e[2]) << 16)) & 0xFFFFFFFF for e in table]
+                    vals = np.array([[(u >> (8 * k)) & 0xFF for k in range(4)]
+                                     for u in packed], dtype=np.float32) / 255.0
+                elif isinstance(table[0][0], float):
                     stops = np.array([e[0] for e in table], dtype=np.float32)
                     vals = np.array([e[1] for e in table], dtype=np.float32)
                 else:
@@ -892,8 +978,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 pos = pos_grid(W, H)
                 src = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos)
                 t = np.clip(src[:, :1], 0.0, 1.0)
-                result = np.interp(t.ravel(), stops, vals).astype(np.float32)
-                outputs[i] = to_image(result.reshape(N, 1), N, H, W)
+                if vals.ndim == 2:
+                    cols = [np.interp(t.ravel(), stops, vals[:, c]).astype(np.float32)
+                            for c in range(vals.shape[1])]
+                    result = np.stack(cols, axis=-1)
+                    outputs[i] = to_image(result, N, H, W)
+                else:
+                    result = np.interp(t.ravel(), stops, vals).astype(np.float32)
+                    outputs[i] = to_image(result.reshape(N, 1), N, H, W)
                 if tainted:
                     synthetic.add(i)
 
@@ -1109,8 +1201,81 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 if len(rec.words) < 2:
                     raise Unsupported("shuffle record too short for a selector word")
                 if 1 in (rec.layout[0] or ()):
-                    raise Unsupported("shuffle single-input layout: slot 1 is the edge, "
-                                      "and where its selectors live is not established")
+                    # THE SINGLE-INPUT LAYOUT KEEPS NO SELECTOR BYTES. Its selectors were
+                    # recorded as "not established", and the reason the earlier search
+                    # missed them is that they are not bytes at all: scanning every slot
+                    # for a quad of bytes <= 7 finds only all-zero words (324, 314, 368 and
+                    # 446 records at slots 3, 4, 5, 6), and an identity byte-quad would
+                    # read 0,1,2,3.
+                    #
+                    # They are a ONE-HOT FLOAT4 at the block start + 1: exactly one 1.0 and
+                    # three 0.0, and the position of the 1.0 says which channel to take.
+                    # Over 120 files, of 600 single-input shuffle records:
+                    #
+                    #     one-hot float4   471   78.5%      all zero  14      other  79
+                    #
+                    # and all 471 are `colour` False -- a greyscale output, which is what
+                    # extracting ONE channel produces and is the shape of the claim. The
+                    # channel it names is distributed R 31.4%, G 33.8%, B 23.1%, A 11.7%,
+                    # which is the ordering channel extraction should show in material
+                    # graphs and not what a misread field would give. The multi-input
+                    # layout does not do this (21 of 476), so it is specific to the layout
+                    # whose slot 1 is already spoken for by the edge.
+                    #
+                    # Verified end to end rather than by inspection: fed a four-channel
+                    # input whose channels are the distinct constants 0.1/0.2/0.3/0.4, a
+                    # record whose one-hot names channel k returns exactly that channel.
+                    _edges, _start = rec.layout
+                    if _start + 4 >= len(rec.words):
+                        raise Unsupported("shuffle single-input record too short for a "
+                                          "one-hot channel selector")
+                    # IT IS A WEIGHT VECTOR, NOT A ONE-HOT SELECTOR -- the one-hot form
+                    # is its special case. The generalisation is forced by what the
+                    # non-one-hot records hold: of the 79 that this refused as "not
+                    # one-hot", the commonest vector is
+                    #
+                    #     (0.30, 0.59, 0.11, 0.00)   x17    Rec.601 LUMINANCE WEIGHTS
+                    #     (0.25, 0.25, 0.25, 0.00)   x10
+                    #     (0.00, 0.80, 0.20, 0.00)   x2
+                    #
+                    # 0.3/0.59/0.11 is the standard RGB-to-grey conversion to two decimal
+                    # places. A field that holds the luminance weights is not a selector
+                    # that happens to be malformed; it is a weighted sum, and `take channel
+                    # k` is that sum with a one at k. So the output is the dot product of
+                    # this vector with the input's channels, which reproduces the verified
+                    # one-hot behaviour exactly and additionally renders the 29 records
+                    # whose weights are a real mixture.
+                    #
+                    # Vectors that are not plausible weights still refuse: the remainder of
+                    # the 79 are infinities and values like 2.9e20, which are a slot that
+                    # is not this field at all rather than an unusual mixture.
+                    hot = np.frombuffer(
+                        np.array(rec.words[_start + 1:_start + 5],
+                                 dtype=np.uint32).tobytes(), dtype=np.float32)
+                    if not (np.all(np.isfinite(hot)) and np.all(np.abs(hot) <= 4.0)
+                            and float(np.abs(hot).sum()) > 1e-6):
+                        raise Unsupported("shuffle single-input weight vector is not "
+                                          "plausible (%r)" % (np.round(hot, 4).tolist(),))
+                    if rec.edges[0] not in outputs:
+                        raise Unsupported("edge -> record %s has no output yet"
+                                          % rec.edges[0])
+                    W, H = rec.width, rec.height
+                    if max_dim:
+                        W, H = min(W, max_dim), min(H, max_dim)
+                    N = W * H
+                    src = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos_grid(W, H))
+                    used = [k for k, w in enumerate(hot) if abs(w) > 1e-9]
+                    if used and max(used) >= src.shape[-1]:
+                        # Same refusal the multi-input path makes, for the same reason: a
+                        # weight on a channel the input lacks means the reading is wrong
+                        # here, and a plausible wrong image is the worst outcome.
+                        raise Unsupported("shuffle weights channel %d of an input with "
+                                          "only %d" % (max(used), src.shape[-1]))
+                    w = hot[:src.shape[-1]].astype(np.float32)
+                    outputs[i] = to_image((src * w).sum(axis=-1, keepdims=True), N, H, W)
+                    if rec.edges[0] in synthetic:
+                        synthetic.add(i)
+                    continue
                 w1 = rec.words[1]
                 sels = [(w1 >> (8 * k)) & 0xFF for k in range(4)]
                 if not all(s <= 7 for s in sels):
@@ -1148,6 +1313,242 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                                           "only %d" % (c, a.shape[-1]))
                     cols.append(a[:, c:c + 1])
                 outputs[i] = to_image(np.concatenate(cols, axis=-1), N, H, W)
+                if tainted:
+                    synthetic.add(i)
+
+            elif rec.filter_name == "normal":
+                # A normal map from a height input. The permitted sources declare this
+                # filter's parameters as `intensity` (61 sightings), `input2alpha` (31,
+                # always 0), `format` (3) and `inversedy` (1).
+                #
+                # WHERE `intensity` IS -- and this is deliberately NOT a fixed slot. An
+                # earlier attempt here derived "slot 4 + class bit 11", `warp`'s rule, from
+                # containment against 22 permitted files: slot 4 held a value its own file
+                # declares in 33.7% of 98 records against a 6.5% control, and bit 11
+                # predicted slot 4 versus 5 in 43 of 44. Both numbers were real and the
+                # rule was still wrong, because the population was mixed: in most records
+                # those slots hold PROGRAM POINTERS, and a pointer read as a float is a
+                # denormal, which a naive "is it a plausible float" test accepts. The
+                # block starts at slot 3 in 201 of 201 records and carries 1 to 4 leading
+                # programs, and no popcount of the class word predicts how many (no mask
+                # reaches 90%), so `warp`'s law does not transfer.
+                #
+                # A CONTROLLED TEST is what caught it and is the reason this reading is
+                # different: driving a real record's input with a height RAMP produced a
+                # perfectly flat normal map, which a correct implementation cannot do.
+                #
+                # So intensity is singled out the way `transformation` singles out its
+                # matrix and offset -- by evaluating the record's own filter programs and
+                # taking the one whose result has the right WIDTH, refusing rather than
+                # guessing when that is ambiguous. A width seen twice is not assigned.
+                if len(rec.edges) < 1 or rec.edges[0] not in outputs:
+                    raise Unsupported("edge has no output yet")
+                tainted = rec.edges[0] in synthetic
+
+                intensity = None
+                by_width = {}
+                for prog in rec.filter_programs:
+                    try:
+                        val = np.asarray(eval_program(asm, prog, default_inputs(asm, 1),
+                                                      {}, 1)).reshape(-1)
+                    except Exception:
+                        continue
+                    by_width[val.size] = None if val.size in by_width else float(val[0])
+                if by_width.get(1) is not None:
+                    intensity = by_width[1]
+                else:
+                    # No program names it: look for a baked float in the parameter block.
+                    # Denormals are excluded explicitly -- they are what a program pointer
+                    # looks like when read as a float, and accepting them is the exact
+                    # mistake above.
+                    #
+                    # THIS FALLBACK SURVIVED THE TEST THAT KILLED `blur`'s, and the
+                    # asymmetry is the evidence rather than a preference. A parameter with
+                    # two readings must have two agreeing distributions, and the SOURCE
+                    # DECLARATIONS are a third instrument independent of both:
+                    #
+                    #     normal   declared p50 4.5, range -0.05..100, commonest
+                    #              10, 20, 0.25, 5, 3, 0.5, 16
+                    #              block    p50 12, range 0.5..256, commonest
+                    #              12, 8, 16, 3, 4, 0.5          <- same regime, and it
+                    #              shares the specific values 16, 3 and 0.5 with them
+                    #
+                    #     blur     declared p50 1.25, clustered 0.2..1.25
+                    #              slot 3   72.5% exact powers of two through 64
+                    #                                            <- a different quantity
+                    #
+                    # So blur's is withdrawn and this one is kept and MARKED. It is still
+                    # the weaker of `normal`'s two paths and LOW_CONFIDENCE says so on
+                    # every record that uses it.
+                    _edges, start = rec.layout
+                    for sl in range(start, min(start + 8, len(rec.words))):
+                        f = float(np.frombuffer(np.uint32(rec.words[sl]).tobytes(),
+                                                dtype=np.float32)[0])
+                        if np.isfinite(f) and 1e-3 < abs(f) < 1e3:
+                            intensity = f
+                            LOW_CONFIDENCE.add(i)
+                            break
+                if intensity is None:
+                    raise Unsupported("normal: intensity is neither a single-width "
+                                      "program nor a baked float in the block")
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+                height = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos),
+                                  N, H, W)[:, :, 0].astype(np.float32)
+                # NOT VERIFIED, stated as directionalwarp's is: the FORMULA and
+                # intensity's absolute scale. This filter's math is engine-side. The
+                # standard height-to-normal shape is used -- central-difference the
+                # height, scale by intensity, normalise against a unit Z. `format` (0 vs
+                # 3) and `inversedy` are not decoded, so a specimen using the other
+                # handedness renders with its green channel inverted rather than failing.
+                gy, gx = np.gradient(height)
+                nx, ny = -gx * intensity, -gy * intensity
+                nz = np.ones_like(nx)
+                length = np.sqrt(nx * nx + ny * ny + nz * nz)
+                rgb = np.stack([0.5 + 0.5 * nx / length, 0.5 + 0.5 * ny / length,
+                                0.5 + 0.5 * nz / length], axis=-1)
+                rgb = np.clip(rgb.reshape(N, 3), 0.0, 1.0)
+                if rec.colour:
+                    rgb = np.concatenate([rgb, np.ones((N, 1), dtype=np.float32)], axis=-1)
+                outputs[i] = to_image(rgb, N, H, W)
+                if tainted:
+                    synthetic.add(i)
+
+            elif rec.filter_name == "blur":
+                # An isotropic blur. The source declares exactly ONE real parameter,
+                # `intensity` (64 sightings across 18 permitted files, mostly constants),
+                # plus a single `randomseed`.
+                #
+                # WHERE `intensity` IS -- and note what does NOT answer this. PARAM_POPCOUNT
+                # establishes `popcount(cls & 0x2881)` as the number of leading block slots
+                # holding PROGRAMS, exact over 43,883 slot reads. That is a verified fact
+                # about the program/constant SPLIT and it says nothing about which slot is
+                # `intensity`. Assuming intensity sits at the block start gives 6.6% own-file
+                # containment against a 6.0% control -- no signal at all. Scanning every slot:
+                #
+                #     slot 2   5.4%  CONTROL  3.6%      slot 5  20.0%  CONTROL  0.0% (n=5)
+                #     slot 3  14.6%  CONTROL  2.9%      slot 7   5.9%  CONTROL  0.0%
+                #     slot 4   2.9%  CONTROL  0.0%      slot 8   0.0%  CONTROL  0.0%
+                #
+                # Those are FILE-UNIQUE declared values only. Counting every declared
+                # value instead put slot 4 at 10.9% against a 22.4% control -- a value
+                # several files share discriminates nothing, and it was inflating a slot
+                # that is actually noise. Slot 3 survives the correction at 5x.
+                #
+                # AND THE RATE ITSELF IS NOT ACCURACY. It is ceilinged by (distinctive
+                # values the source declares) / (records the file compiles to), and
+                # instancing makes one source node compile to many records that no
+                # declaration corresponds to. The 0.0% control is the load-bearing half.
+                # The slot is therefore MARKED via LOW_CONFIDENCE rather than trusted.
+                #
+                # Slot 3 is the only one whose own-file rate exceeds its control materially,
+                # at 5x. The low ABSOLUTE rate is expected and is the same effect `warp`'s
+                # derivation records: most records are inlined library filters whose
+                # parameters are not in the paired source at all.
+                #
+                # THAT EVIDENCE IS WEAKER THAN THE ONE THAT ALREADY FOOLED ME. `normal` had
+                # 33.7% against 6.5% plus a 97.7% bit correlation and was still wrong,
+                # because a program pointer read as float32 is a denormal that passes a naive
+                # plausibility test. The denormal guard is applied here (1e-3 < |v| < 1e4),
+                # but containment alone is not what this rests on -- see test_filters.py,
+                # where an impulse must spread symmetrically, a constant must survive
+                # unchanged, and the blurred centroid must not move.
+                if len(rec.edges) < 1 or rec.edges[0] not in outputs:
+                    raise Unsupported("edge has no output yet")
+                tainted = rec.edges[0] in synthetic
+                intensity = None
+                nprog = bin(rec.cls & 0x2881).count("1")
+                if nprog:
+                    for prog in rec.filter_programs[:1]:
+                        try:
+                            v = np.asarray(eval_program(asm, prog, default_inputs(asm, 1),
+                                                        {}, 1)).reshape(-1)
+                            if v.size:
+                                intensity = float(v[0])
+                        except Exception:
+                            pass
+                # THE SLOT-3 FALLBACK IS WITHDRAWN. It rendered 881 records and it was
+                # reading a different field. The instrument that shows this needs no
+                # source declarations and no containment, and it was available the whole
+                # time: this parameter has TWO readings, and one of them -- the width-1
+                # program result -- is trusted. So the two distributions have to agree.
+                # Restricted to records where each path actually fires, over 60 files:
+                #
+                #     from a program   n=53    p50 1.00   1.0 in 43 of 53
+                #     from slot 3      n=881   p50 5.00   72.5% are EXACT powers of two,
+                #                                         through 2, 4, 8, 16, 32 to 64
+                #
+                # A ladder of exact powers of two reaching 64 is a size, a mip level or a
+                # tiling count. It is not an intensity: the permitted sources declare blur
+                # intensity as 1.0, 1.25 and 0.2 across 17 files with no power of two above
+                # 1 anywhere. And the consequence of being wrong is not subtle -- slot 3 =
+                # 64 asks for a 64-pixel radius on a 256-pixel image, which erases it.
+                #
+                # Containment said otherwise and containment was the weaker instrument:
+                # 14.6% own-file against a 2.9% control survived the shared-value artifact
+                # check and still only ever established a 5x ratio on a ceilinged
+                # denominator. Two independent instruments now disagree about this slot,
+                # so it is refused rather than marked. 881 records stop rendering and
+                # nothing is claimed about them, which is the correct price -- this
+                # project's own standard is that a plausible wrong image is worse than a
+                # refusal, and 881 confidently wrong blurs feeding downstream filters is
+                # that failure at scale.
+                #
+                # The KERNEL is unaffected and stays verified: impulse to a 3x3 box, max
+                # exactly 1/9, energy conserved, centroid preserved to 0.01 px. It is the
+                # radius that is not established, not the blur.
+                # CANDIDATE PATH, never a result. `tools/assume.py` is the shared
+                # channel for "render under a named assumption so the engine's own
+                # exported map can arbitrate it" -- see its docstring. This one exists to
+                # settle whether withdrawing the slot-3 fallback was right: the withdrawal
+                # rests on a powers-of-two ladder to 64 against a program-path median of
+                # 1.0, which is strong but is still two of us reasoning rather than the
+                # engine answering. Anything rendered this way is marked twice, in
+                # assume.USED and in LOW_CONFIDENCE.
+                if intensity is None and assume.assumed('blur.intensity') == 'slot3' \
+                        and len(rec.words) > 3:
+                    v = float(np.frombuffer(np.uint32(rec.words[3]).tobytes(),
+                                            dtype=np.float32)[0])
+                    if np.isfinite(v) and 1e-3 < abs(v) < 1e4:
+                        intensity = v
+                        LOW_CONFIDENCE.add(i)     # a candidate, never a result
+                        assume.note(i)
+                if intensity is None:
+                    raise Unsupported("blur intensity: no width-1 program supplies it, "
+                                      "and the slot-3 baked value reads as a different "
+                                      "quantity (72.5% exact powers of two to 64 against "
+                                      "a program-path median of 1.0)")
+
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+                src = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos), N, H, W)
+                # NOT VERIFIED, and shared with directionalwarp and dirmotionblur: the
+                # absolute pixel scale of `intensity`. Same fixed 256-pixel reference, same
+                # possible constant-factor error. A separable box blur is used, which is what
+                # the parameter means before any kernel shape is assumed; a Gaussian would
+                # differ in the tails and nothing here distinguishes them.
+                REFERENCE_PX = 256.0
+                radius = float(np.clip(abs(intensity), 0.0, 256.0)) / REFERENCE_PX
+                rpx = int(round(radius * max(W, H)))
+                if rpx < 1:
+                    outputs[i] = src            # a blur of sub-pixel radius is the identity
+                else:
+                    k = 2 * rpx + 1
+                    acc = np.zeros_like(src)
+                    for d in range(-rpx, rpx + 1):     # separable: rows then columns
+                        acc += np.roll(src, d, axis=1)
+                    acc /= k
+                    out2 = np.zeros_like(acc)
+                    for d in range(-rpx, rpx + 1):
+                        out2 += np.roll(acc, d, axis=0)
+                    outputs[i] = np.clip(out2 / k, 0.0, 1.0)
                 if tainted:
                     synthetic.add(i)
 
@@ -1204,7 +1605,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                         raise Unsupported("fxmaps: %s" % e) from e
                     if not pats:
                         raise Unsupported("fxmaps: emitted no patterns")
-                    outputs[i] = fxrender.splat(rec, pats, W, H)
+                    # `imageindex` names an input to use AS the pattern, so hand the
+                    # branch's already-computed edge images to the splatter keyed by edge
+                    # SLOT. `fxrender.image_for` takes the index literally and returns
+                    # None for a slot we do not supply, in which case it draws the
+                    # generated profile -- so an unmappable index degrades to the old
+                    # behaviour rather than sampling whatever image is nearest, which
+                    # would be a plausible picture from the wrong input.
+                    #
+                    # NOT a general edge-list index: over 80 files the 133 records whose
+                    # patterns all index 0 have SIX edges, and the 27 using index 1 have
+                    # THREE. A direct index would not produce that split, so `imageindex`
+                    # addresses some subset of the edges that are pattern images, and
+                    # which subset is unestablished. Passing every rendered edge under its
+                    # own slot is correct for index 0 and leaves index 1 to refuse.
+                    images = {slot: outputs[e]
+                              for slot, e in enumerate(rec.edges or ())
+                              if e is not None and e in outputs}
+                    outputs[i] = fxrender.splat(rec, pats, W, H, images=images)
+                    if any(e in synthetic for e in (rec.edges or ()) if e is not None):
+                        synthetic.add(i)
                 finally:
                     sbsruntime.SAMPLERS.clear()
                     sbsruntime.SAMPLERS.update(saved_samplers)

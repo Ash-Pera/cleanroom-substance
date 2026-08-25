@@ -210,7 +210,15 @@ def test_gradient_runs_and_stays_bounded():
         table = rec.ramp
         if not table or isinstance(table[0][0], float):
             continue
-        vals = np.array([e[1] for e in table], dtype=np.float32) / 65535.0
+        if rec.colour:
+            # See the packed-RGBA note in the lookup test below: channel 0 of a colour
+            # ramp is the low byte of `v1 | (v2 << 16)`, so the bound is over those bytes.
+            if len(table[0]) < 3:
+                continue
+            packed = [(int(e[1]) | (int(e[2]) << 16)) & 0xFFFFFFFF for e in table]
+            vals = np.array([u & 0xFF for u in packed], dtype=np.float32) / 255.0
+        else:
+            vals = np.array([e[1] for e in table], dtype=np.float32) / 65535.0
         assert float(row.min()) >= float(vals.min()) - 1e-3, rec.index
         assert float(row.max()) <= float(vals.max()) + 1e-3, rec.index
         n += 1
@@ -233,7 +241,23 @@ def test_gradient_matches_an_independent_lookup():
         if not table or isinstance(table[0][0], float):
             continue
         stops = np.array([e[0] for e in table], dtype=np.float32) / 65535.0
-        vals = np.array([e[1] for e in table], dtype=np.float32) / 65535.0
+        if rec.colour:
+            # A COLOUR ramp's two value words are one packed RGBA8888, so the reference
+            # for channel 0 is the low byte of `v1 | (v2 << 16)` over 255 -- not the
+            # greyscale reading, which would be v1 over 65535.
+            #
+            # These records reached this test for the first time when render.py stopped
+            # refusing them: previously they raised, `out.get` returned None and _seeded
+            # skipped them, so the greyscale reference was never applied to a colour
+            # table. It is applied here deliberately rather than skipped, because
+            # recomputing the packed reading independently is what makes this test cover
+            # the new decode instead of merely tolerating it.
+            if len(table[0]) < 3:
+                continue
+            packed = [(int(e[1]) | (int(e[2]) << 16)) & 0xFFFFFFFF for e in table]
+            vals = np.array([u & 0xFF for u in packed], dtype=np.float32) / 255.0
+        else:
+            vals = np.array([e[1] for e in table], dtype=np.float32) / 65535.0
         xs = np.linspace(0.0, 1.0, len(row), dtype=np.float32)
         ref = np.interp(xs, stops, vals)
         worst = max(worst, float(np.abs(row - ref).max()))
