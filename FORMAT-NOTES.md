@@ -32559,3 +32559,89 @@ bound by one specimen and flagged as the least-evidenced, most load-bearing name
 table. A *branch* offset is precisely the thing that would appear alone on a node that
 repositions a subtree; a *frame* offset is not, and `frameoffset` alone occurs exactly
 once against `branchoffset`'s 29,399. The asymmetry is what the names predict.
+
+## The paramset vocabulary, finished
+
+Twelve parameters an FX-Map `paramset` can declare. Where each one lives, and for the four
+that are not located, exactly what stops it.
+
+| parameter | where | evidence |
+|---|---|---|
+| `opacity` | tag bit 20 program / **19 baked** | containment, 943 forced bijections; f1 97.9% |
+| `branchoffset` | bit 22 / **21 baked** | one specimen + alone-frequency 29,399 vs 1; f2 100.0% |
+| `frameoffset` | bit 24 / **23 baked** | containment; f2 99.8% |
+| `patternsize` | bit 26 / **25 baked** | containment; f2 99.8% |
+| `patternrotation` | bit 28 / **27 baked** | containment; f1 99.9% |
+| `patternsuppl` | bit 30 / **29 baked** | containment; f1 100.0% |
+| `imageindex` | bit 31 program | containment; i1 98.5% |
+| `patterntype` | **tag nibble 2, minus 2** | two files on 0.4% and 1.0% values |
+| `blendingmode` | **not found** | contrast exists; excluded from tag and cls |
+| `imagefiltering` | **not findable here** | 3 files declare it, all the same value |
+| `imagepremul` | **not findable here** | 1 file, 1 value |
+| `randomseed` | **not findable here** | contrast exists in one file the layout cannot read |
+
+### Bits 19–30 are six (baked, program) pairs
+
+The even bit of a pair says the parameter is a pointer to a program; the odd bit below says
+it is a value baked in place. Reading each bit's own slot and asking which it holds:
+
+```
+bit 19   2,633    0.5% program      bit 20   13,746   99.6% program
+bit 21       8   12.5%              bit 22   46,050   99.9%
+bit 23     153    0.0%              bit 24    9,200   99.9%
+bit 25   8,694    0.0%              bit 26   12,939   99.8%
+bit 27   1,814    0.0%              bit 28   15,834   99.9%
+bit 29   1,240    0.2%
+```
+
+Perfect alternation across eleven bits. **Correction:** bits 21 and 23 were published here
+as programs because they were "never set in any observed tag" — they are set, in 8 and 153
+entries, just never in the 57 census tags the layout was fitted on, so the fit was silent
+and the default stood. At their own slots they hold values: 0.0% program at bit 23 against
+99.9% at both its neighbours.
+
+**The widths are the parameters' own types**, which is what identifies the pairing rather
+than merely permitting it. Every width was fitted from slot positions alone, before any of
+this was hypothesised, and each matches the declared type of the parameter its partner
+names: 19→1 (`opacity` Float1), 21→2 (`branchoffset` Float2), 23→2 (`frameoffset` Float2),
+25→2 (`patternsize` Float2), 27→1 (`patternrotation` Float1), 29→1 (`patternsuppl` Float1).
+
+Bit 23's width is pinned directly: over entries that set it and carry a program bit above,
+width 2 puts every one of those programs where a program is in **23 of 26**, and width 1 in
+**0 of 26**. Bit 21 is set in 8 entries, never with a program above it, so its width is
+inferred from its partner's type — the one row here that is a guess, flagged as such.
+
+Value distributions agree independently: bit 27 is quarter-turn multiples beside
+`patternrotation`, bit 25 never negative with p50 3.0 beside `patternsize`, bit 23 at 0.5
+beside `frameoffset`, bit 29 in [0,1] beside `patternsuppl`. A parallel session reached the
+same pairing from mutual exclusivity — 100.00% for all six pairs against a 78–99% control —
+with no names and no source containment.
+
+**Bit 19 is the weak row.** Its values run to ±1e13 with a median of −1, which is not what
+an `opacity` looks like, so either its slot is misassigned for some tags or the pairing does
+not extend to it. Named with that stated rather than left blank.
+
+### Why the last four cannot be finished from this corpus
+
+Not "hard" — impossible, and the census says which is which:
+
+```
+parameter        files declaring it constant   distinct values   within-file contrast
+blendingmode              5                          2 (1, 2)         YES, 3 files
+imagefiltering            3                          1 (2)            no
+imagepremul               1                          1 (1)            no
+randomseed                1                          2 (16, 42)       YES, 1 file
+```
+
+`imagefiltering` and `imagepremul` have **no contrast at all** — every file that declares
+them declares the same value, so no field can be told from any other. No amount of work on
+the present corpus moves them; they need a specimen that varies.
+
+`randomseed` has the best kind of contrast — two values in one file, one of them the
+distinctive 42 — and that file is `Clouds_3_Animated`, the single specimen whose paramset
+entries this layout does not locate at all. Searching its body for a tag with the high bits
+its paramsets predict returns nothing, which is the same fact as its being the sole miss in
+the backwards source→tag test. Fix that file's decode and `randomseed` falls out.
+
+`blendingmode` is the one with real contrast and no answer, and the paired comparison has
+already excluded the two places it would naturally live.

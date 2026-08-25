@@ -851,27 +851,78 @@ FX_ENTRY = {
 # reach at all.
 #
 # bit -> (parameter name or None, slots the baked form occupies)
+# BITS 19..30 ARE SIX (baked, program) PAIRS, one per parameter -- the same design
+# `PARAM_SPEC` documents for filter records and `directionalwarp`'s slot-1 field, at a third
+# scale. The even bit of a pair means "this parameter is a pointer to a program"; the odd
+# bit below it means "this parameter is a value baked in place", and its width is the
+# parameter's own type.
+#
+# The roles alternate perfectly. Reading each bit's assigned slot and asking whether it
+# holds a program pointer or a plain value, over every entry in the corpus:
+#
+#     bit 19    2,633    0.5% program        bit 20   13,746   99.6% program
+#     bit 21        8   12.5%                bit 22   46,050   99.9%
+#     bit 23      153    0.0%                bit 24    9,200   99.9%
+#     bit 25    8,694    0.0%                bit 26   12,939   99.8%
+#     bit 27    1,814    0.0%                bit 28   15,834   99.9%
+#     bit 29    1,240    0.2%                bit 30      -     (program, see above)
+#
+# CORRECTED: bits 21 and 23 were published here as programs, on the grounds that they were
+# "never set in any observed tag". They are set -- 8 and 153 entries -- just never in the 57
+# census tags the layout was fitted on, so the fit had nothing to say and the default stood.
+# Measured at their own slots they hold values, not pointers, 0.0% of the time for bit 23
+# against 99.9% at both its neighbours.
+#
+# THE WIDTHS ARE THE PARAMETERS' OWN TYPES, which is what identifies the pairing rather
+# than merely permitting it. Each width below was fitted from slot positions alone, before
+# any of this was hypothesised, and each matches the declared type of the parameter the
+# even bit names:
+#
+#     bit 19 -> 1 word    opacity          Float1
+#     bit 21 -> 2         branchoffset     Float2     (width not pinned; see below)
+#     bit 23 -> 2         frameoffset      Float2
+#     bit 25 -> 2         patternsize      Float2
+#     bit 27 -> 1         patternrotation  Float1
+#     bit 29 -> 1         patternsuppl     Float1
+#
+# Bit 23's width is pinned directly: over the entries that set it and carry a program bit
+# above it, width 2 puts every one of those programs where a program is, in 23 of 26 -- and
+# width 1 in 0 of 26. Bit 21 is set in 8 entries and never with a program above it, so its
+# width is inferred from its partner's type and not measured; it is the one row here that
+# is a guess, and it is flagged as such.
+#
+# The value distributions agree independently: bit 27 is quarter-turn multiples beside
+# `patternrotation`, bit 25 is never negative with p50 3.0 beside `patternsize`, bit 23 sits
+# at 0.5 beside `frameoffset`, bit 29 lies in [0, 1] beside `patternsuppl`. A parallel
+# session reached the same pairing from mutual exclusivity -- 100.00% for all six pairs
+# against a 78-99% control on the other phase -- with no names and no source containment.
+#
+# BIT 19 IS THE WEAK ROW. Its values run to +-1e13 with a median of -1, which is not what an
+# `opacity` looks like, so either its slot is misassigned for some tags or the pairing does
+# not extend to it. Named with that stated rather than left blank, because the width, the
+# alternation and the exclusivity all point the same way.
 FX_PARAM_BITS = (
     (4,  None,              1),   # leading baked words; which parameters they are is
     (7,  None,              1),   # not established -- only that each takes one slot,
     (16, None,              4),   # except this one, which takes FOUR: see below
     (17, None,              1),   # which is what fixes where the program run starts
-    (19, None,              1),
-    (20, 'opacity',         1),
-    (21, None,              1),   # never set in any observed tag
+    (19, 'opacity',         1),   # baked forms. See the pairing note above; bit 19 is the
+    (20, 'opacity',         1),   # weakest row and bit 21's width is inferred, not measured
+    (21, 'branchoffset',    2),
     (22, 'branchoffset',    1),
-    (23, None,              1),   # never set in any observed tag
+    (23, 'frameoffset',     2),
     (24, 'frameoffset',     1),
-    (25, None,              2),   # baked float2; the only two-word gap the census shows
+    (25, 'patternsize',     2),
     (26, 'patternsize',     1),
-    (27, None,              1),   # baked, width not established (2 tags)
+    (27, 'patternrotation', 1),
     (28, 'patternrotation', 1),
-    (29, None,              1),   # baked, width not established (3 tags)
+    (29, 'patternsuppl',    1),
     (30, 'patternsuppl',    1),
     (31, 'imageindex',      1),
 )
 
 # The bits whose parameter is stored as a POINTER to a program rather than baked in place.
+# The odd bit of each pair carries the same parameter as a value; see FX_PARAM_BITS.
 FX_PROGRAM_BITS = frozenset({20, 22, 24, 26, 28, 30, 31})
 
 # PARAMETERS A TABLE ENTRY NEVER STORES, however the source declares them.
