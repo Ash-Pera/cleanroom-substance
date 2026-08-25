@@ -57,7 +57,7 @@ for what the real engine does at that same input (clamps to 0? saturates earlier
 step this reading is missing?), so it is surfaced rather than guessed at.
 """
 import numpy as np
-import transpile, sbsruntime, fxrender, distance, assume
+import transpile, sbsruntime, fxrender, distance, assume, manifest
 
 
 class Unsupported(Exception):
@@ -136,6 +136,40 @@ def default_inputs(asm, N):
         arr = np.array(v, dtype=np.float32).reshape(1, -1)
         out[u] = np.repeat(arr, N, axis=0)
     return out
+
+
+def graph_input_default(asm, rec):
+    """A uniform image from the manifest default for rec's image input, or None.
+
+    A `graph_input` bitmap names an image the USER supplies, and the package ships none:
+    of 45 graph-input packages whose original .sbsar is in the tree, zero ship any image
+    that is not an `icon*` or `thumbnail`, and both of those are referenced by an `icon=`
+    attribute in the manifest -- GUI decoration. So no decode recovers these; corpus-wide
+    215 of the 255 affected outputs have no value declared anywhere.
+
+    What IS recoverable is the manifest's `default`, the constant the engine substitutes
+    when the input is left unconnected -- the file's own declaration rather than an
+    invention. `tools/manifest.py` carries why the assembly header cannot supply it.
+
+    Returns None rather than guessing when no default is declared, which is why this
+    fills 50 of 536 graph_input records and refuses the other 486.
+    """
+    uid = (rec.bitmap or {}).get('uid')
+    got = manifest.image_input_defaults(asm).get(uid)
+    if got is None:
+        return None
+    try:
+        parts = [float(x) for x in got[0].replace(';', ',').split(',') if x.strip() != '']
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    ch = 4 if rec.colour else 1
+    # A scalar default fills every channel; a vector is taken component-wise and padded
+    # with its last value rather than with zero, so `1` and `1,1,1` mean the same thing.
+    vals = ([parts[0]] * ch) if len(parts) == 1 else (parts + [parts[-1]] * ch)[:ch]
+    return np.full((rec.height, rec.width, ch), 0.0, dtype=np.float32) + np.asarray(
+        vals, dtype=np.float32)
 
 
 def load_pixels_bitmap(asm, rec):
@@ -371,6 +405,19 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 b = rec.bitmap
                 if b['kind'] == 'pixels':
                     outputs[i] = load_pixels_bitmap(asm, rec)
+                elif b['kind'] == 'graph_input' and \
+                        assume.assumed('graph_input.manifest_default', True) and \
+                        graph_input_default(asm, rec) is not None:
+                    # The manifest declares what the engine substitutes when this image
+                    # input is left unconnected, so this is the file's own value, not an
+                    # invention. Still LOW_CONFIDENCE: that the substitution is a UNIFORM
+                    # of that value is the reading, and it is not verified against an
+                    # engine render -- the reference-render arbiter is unusable here.
+                    outputs[i] = graph_input_default(asm, rec)
+                    LOW_CONFIDENCE.add(i)
+                    # (the manifest parse behind this is cached per assembly path; only
+                    # the small uniform array is rebuilt, and only for records that have
+                    # a default at all -- 50 of 536 corpus-wide)
                 elif synth_missing_bitmaps:
                     outputs[i] = synthetic_bitmap(rec, i)
                     synthetic.add(i)
