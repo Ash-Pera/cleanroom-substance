@@ -32246,13 +32246,14 @@ assumption in the renderer.
 
 ### Two negative results
 
-**It is not the pattern-shape assumption.** The splatter draws filled rectangles because
-`patterntype` is declared and unlocated. Swapping in a falloff profile takes "renders a
-picture" from 4.1% to 97.3% — and means nothing. A profile with falloff **cannot** produce
-a flat image, so the metric is defeated rather than passed; looked at, those renders are
-one soft blob per tile. A better shape does not rescue a size that is too large, it only
-stops the failure showing up in the flatness number. Worth stating because "80% are flat"
-has been this project's coverage metric for a while: it cannot score a shape hypothesis.
+**WITHDRAWN — it IS the pattern-shape assumption.** What this section originally said:
+"a better shape does not rescue a size that is too large, it only stops the failure showing
+up in the flatness number." That is wrong, and backwards. See the section below.
+
+The half that survives: a flatness count alone cannot score a shape hypothesis, because a
+profile with falloff scores better almost by construction. That caution was right and the
+conclusion drawn from it was not — the answer was to find a record whose correct output is
+independently knowable, not to distrust every shaped profile.
 
 **The frame is not 1/√n.** If n patterns tiled a grid, `patternsize / √n` would concentrate
 near 1. It does not — the fraction landing in [0.2, 2] moves 55.0% → 60.4% while the spread
@@ -32657,3 +32658,57 @@ the backwards source→tag test. Fix that file's decode and `randomseed` falls o
 
 `blendingmode` is the one with real contrast and no answer, and the paired comparison has
 already excluded the two places it would naturally live.
+
+
+## The flatness IS the footprint: a hexagonal rosette settles it
+
+The section above concluded that the pattern-shape assumption was not the cause of the flat
+renders. That was wrong, and a parallel session found the record that shows it.
+
+`sci_fi_elements_02` record 86: one `0x18B` node with `numberadded` = 6, three entries, all
+tag `0x15140848` — and `fx_patterntype` reads **10** on all three, so this is a known,
+definitively non-default shape. Evaluated, its six patterns are:
+
+```
+frameoffset  (-0.000, 0.433) (-0.375, 0.217) (-0.375, -0.217)
+             ( 0.000,-0.433) ( 0.375,-0.217) ( 0.375,  0.217)
+rotation      0.250  0.417  0.583  0.750  0.917  1.083
+patternsize  (0.866, 1.0) throughout
+```
+
+Six points on a circle of radius 0.433, rotations stepping exactly 1/6 of a turn, and
+0.866 = √3/2. **The six-fold symmetry is an independent check on the whole evaluation
+chain** — nothing about it was fitted, and a wrong reading of the parameters does not
+produce clean 60° steps.
+
+Rendered with a solid rectangle it is mean 1.000, per-channel std 0.0000: **perfectly
+flat**. Rendered with a falloff profile it is a six-fold rosette with a dark centre. Same
+parameters, same evaluation, only the footprint differs. Six overlapping near-full-canvas
+rectangles under `max` are white by construction, whatever the parameters say.
+
+### Which also reframes this document's own `patternsize` finding
+
+Recorded earlier: flat records have `patternsize` median 2.82 against 0.50 for records that
+produce a picture, read as "the sizes are several times too large". The split is real; that
+reading of it was not. Over 723 records carrying a `patternsize`:
+
+| median size | records | median patterns | varies, solid | varies, falloff |
+|---|---|---|---|---|
+| < 0.5 | 88 | **110** | 34% | 59% |
+| 0.5 – 1 | 50 | 25 | 50% | 94% |
+| 1 – 3 | 371 | **2** | 2% | **98%** |
+| ≥ 3 | 214 | **2** | 1% | **99%** |
+
+The bimodality is **few-large versus many-small** — median 110 patterns at the small end
+against 2 at the large end — and under a shaped footprint the large-size records go from
+1–2% varying to 98–99%. A large pattern is not a wrong pattern; it is one that needs a
+profile to show anything. Size was never the blocker.
+
+**And the blanket caution above was also too strong.** "A profile with falloff cannot
+produce a flat image" is false: 41% of the small-many records stay flat under one. So the
+falloff does not trivially rescue everything, which is what makes the 98–99% at the large
+end evidence rather than an artifact of the metric.
+
+What remains unknown is which profile — `patterntype` 10 is located but not interpreted.
+What is now settled is that a solid rectangle is the wrong default, and that entries with a
+nonzero `patterntype` nibble are demonstrably not solid rectangles rather than arguably so.
