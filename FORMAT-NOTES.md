@@ -33263,3 +33263,36 @@ blocker table measures what we cannot yet read; making it more honest can only m
 The same caution applies to a withdrawal: the same session's `blur` fallback removal cost
 three produced outputs (44 blocked → 87), which is the correct trade — three outputs
 produced on a radius read from a powers-of-two ladder are three confident wrong images.
+
+## The `curve` leak closed: an authored zero curve, and a sample that could not contain it
+
+`Facade01` record 493 takes a spatial input and outputs flat, and driven with a 0..1 ramp
+**every input value maps to 0.0000** — not an inversion, not a clamp, the whole domain
+collapsed. That looked like a decode fault, and I said so.
+
+It is not. Its knots are:
+
+```
+rec 493   (0, 0) -> (1, 0.000)      both endpoints at y = 0
+rec 505   (0, 0) -> (1, 0.627)      same file, same input record, same cls, same layout
+```
+
+Record 505's output range is exactly [0, 0.627], so the decode is confirmed by the record
+next to it. Record 493's author wrote a curve that returns zero, and the flattening is
+legitimate — one branch of the graph masked off, which is an ordinary thing for a graph to
+do. My original reading ("a flat transfer function is plausible-correct") was right and my
+doubt was wrong.
+
+**Two sampling errors are worth recording alongside it.** First, I ramp-tested 112 curve
+records looking for the same collapse and found **zero** — and `Facade01` is at corpus index
+112, outside the 80-file sample. A search that cannot contain its target returning nothing
+is not evidence, and I was one step from concluding "rare" from it.
+
+Second, I dumped what I assumed were the curve's control words (record slots 3 and 4) and
+found the two records **byte-identical**, which briefly looked like proof the difference lay
+elsewhere. They are identical because those slots are not the curve data; `Record.curve_points`
+decodes it, and reading it directly showed the difference immediately. Guessing at a
+structure the codebase already decodes is a self-inflicted wound.
+
+The instrument was right both times — the ramp exposed the transfer function completely,
+and the answer it gave was "legitimate".
