@@ -295,6 +295,13 @@ NODE_LEGEND = {
                26: 1, 27: 1, 28: 1, 29: 1, 30: 1}),
     0x58: (3, {17: 1, 20: 1, 21: 2, 22: 1, 24: 1, 25: 2, 26: 1, 27: 1,
                28: 1, 29: 1, 30: 1}),
+    # kind 0x88's TOTAL size is exact (100% over 2,010 cells) but its internal field ORDER
+    # is not fully pinned: the fit carries a negative-width term (bit 9 = -1), the tell that
+    # an additive law reproduces the length while mis-placing a boundary inside it. This is
+    # where the node pointer-boundary check spends most of its ~7% miss -- program pointers
+    # land at offsets the walk does not predict as field starts, e.g. +28 on 0x85520088
+    # (size 8) where the walk predicts +12/+16/+20/+24. Not a size gap; an ordering one, and
+    # closing it needs node_census re-run with the pointer offsets folded into the fit.
     0x88: (3, {9: -1, 17: 1, 22: 1, 23: 2, 24: 1, 28: 2, 30: 1, 31: 2}),
     0x8b: (3, {}), 0x89: (4, {}), 0x18: (5, {}), 0xcb: (4, {}), 0x99: (5, {}),
     0x9b: (4, {}), 0xab: (4, {}), 0xa3: (4, {}), 0xdb: (5, {}),
