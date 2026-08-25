@@ -31367,3 +31367,35 @@ their node-annex carriers — small filters cannot absorb a few annexed records.
 distance degeneracy from the width-law audit is also retested by this: its spec still
 carries halves, but they are now halves that LOSE nothing, and the width law's verdict
 on them (fit freedom, truth integral) stands.
+
+## Emboss falls: it obeyed the colour law all along, and its w1 states are inverted
+
+Emboss was the last filter excluded for "a packed word of another shape". Read raw, one
+record per key, the shape is neither packed nor foreign — it is the standard design with
+two twists that hid it:
+
+**Its baked values obey the colour multiplier.** The `...8810` records (colour bit
+clear) bake Float1 values; the `...8811` records bake FOUR-wide values — emboss's
+parameters include colours (a highlight and a shadow colour, in source terms), and its
+field widths read (F1, colour, F1, colour) straight off the dumps:
+
+    w1=0x00aa  (four fields, state 2)   0.21 | 0.047 x4 | 1.0 | an RGBA quad   header 16
+    w1=0x002a  (three fields)           0.02 | 0.125, 0.4039 x3 | 1.0          header 12
+    w1=0x000a  greyscale record         1.0  | 0.25                            header 8
+
+**And its state meanings are shifted: state 2 is BAKED, state 3 is a program.** Every
+emboss record carries two fixed program pointers at slots 4-5; a field in state 3 adds a
+third. That is why the standard reading (01 baked, 10 program) produced "non-additive"
+costs — the fit was told programs were baked and baked were programs.
+
+The model that expresses this is the width law's own shape: colour multiplies BAKED
+widths and nothing else, so the colour flag is crossed with the state features alone —
+half the columns of the full interaction, which is what lets a 30-key filter fit at all
+(the full variant was underdetermined; this one is EXACT):
+
+    emboss, versions >= 0x50000    375 of 375    100.000%    kept
+
+The older 51 records keep their within-key contradictions, so the spec carries
+`min_version: 0x50000` and answers None below it — a guard, not a guess. Cost-model
+coverage stands at 99.68%, eighteen filters kept, and the excluded list no longer
+contains a single filter whose exclusion reason is unknown.

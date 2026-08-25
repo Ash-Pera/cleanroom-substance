@@ -50,7 +50,7 @@ def costs():
     return _COSTS
 
 
-def header_words(filter_id, word0, w1):
+def header_words(filter_id, word0, w1, version=None):
     """Header length in words from the masks alone, or None if not derived.
 
     None means "this filter's costs were not established", never "zero" -- callers must
@@ -78,8 +78,11 @@ def header_words(filter_id, word0, w1):
     spec = costs().get(str(filter_id))
     if spec is None:
         return None
-    if spec.get('interaction') == 'colour':
+    if spec.get('interaction') in ('colour', 'colour_states'):
         return _interaction(spec, word0, w1)
+    mv = spec.get('min_version')
+    if mv is not None and (version is None or version < mv):
+        return None                      # fitted on modern versions only
     g = spec.get('guard')
     if g is not None and (word0 >> g['shift']) & g['mask'] != g['value']:
         return None                      # fitted for a different sampling class
@@ -117,7 +120,11 @@ def _interaction(spec, word0, w1):
         v += [float(st == 1), float(st == 2), float(st == 3)]
     c0 = float(word0 & 1)
     total = sum(b * x for b, x in zip(spec['base'], v))
-    total += c0 * sum(b * x for b, x in zip(spec['cross'], v))
+    if spec['interaction'] == 'colour_states':
+        vs = v[len(v) - len(spec['cross']):]      # the state features alone
+        total += c0 * sum(b * x for b, x in zip(spec['cross'], vs))
+    else:
+        total += c0 * sum(b * x for b, x in zip(spec['cross'], v))
     n = int(round(total))
     return n if n > 0 else None
 

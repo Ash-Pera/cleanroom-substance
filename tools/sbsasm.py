@@ -1095,7 +1095,8 @@ class Record:
                 es = []
             if es and min(es) == 1:
                 w1 = None
-        n = record_layout.header_words(self.filter_id, self.words[0], w1)
+        ver = self.asm.header.get('version') if isinstance(self.asm.header, dict) else 0
+        n = record_layout.header_words(self.filter_id, self.words[0], w1, version=ver)
         if n is not None:
             return n
         return HEADER_WORDS.get((self.filter_id, self.cls,

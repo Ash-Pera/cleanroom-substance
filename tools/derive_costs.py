@@ -57,6 +57,14 @@ W1_ABSENT = {6, 5, 16, 13, 10, 14, 19}
 # edge value gave blur 12,006 keys for 15,371 records, the one-key-per-record signature
 # this file already names twice.
 W1_PER_RECORD = {3}      # warp (7) moved to the version rule above
+
+# Filters whose costs are fitted on modern versions only. Emboss is EXACT (375 of 375)
+# from 0x50000 up under the colour-x-baked-states law, and its 51 older records sit in
+# keys that contradict themselves -- the same within-key contradictions that first put
+# it beyond any function of (word0, w1). The spec carries min_version and answers None
+# below it, falling to the memo rather than guessing at a population that has already
+# demonstrated it is not a function of these masks.
+MIN_VERSION = {8: 0x50000}
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'costs.json')
 KEEP = 0.995                     # a filter is kept only at this exactness or better
 
@@ -99,6 +107,10 @@ def observed():
             if not (r.offset < q <= r.end):
                 continue
             f = r.filter_id
+            if f in MIN_VERSION:
+                ver = a.header.get('version') if isinstance(a.header, dict) else 0
+                if ver < MIN_VERSION[f]:
+                    continue
             w1 = r.words[1]
             if f in W1_ABSENT:
                 w1 = None
@@ -130,7 +142,7 @@ def observed():
     return obs
 
 
-def fit(f, keys, bitrange=range(32), colour=False):
+def fit(f, keys, bitrange=range(32), colour='off'):
     """Fit costs for one filter. Returns (spec, exact_fraction) or (None, 0.0).
 
     Weighted by record count, and refit once with anomalous keys excluded. The first
@@ -172,7 +184,7 @@ def fit(f, keys, bitrange=range(32), colour=False):
         for j in pairs:
             st = ((w1 >> (2 * j)) & 3) if w1 is not None else 0
             v += [float(st == 1), float(st == 2), float(st == 3)]
-        if colour:
+        if colour == 'full':
             # The colour flag is tag bit 0, and its cost is not additive: a colour
             # value bakes more floats than a grayscale one, so the flag multiplies
             # WIDTHS rather than adding a constant. Crossing it with every feature
@@ -180,6 +192,14 @@ def fit(f, keys, bitrange=range(32), colour=False):
             # value slot only when cls bit 8 is set, which a main effect cannot say.
             c0 = float(cls & 1)
             v = v + [c0 * x for x in v]
+        elif colour == 'states':
+            # The lean variant, and the width law's own shape: colour multiplies BAKED
+            # widths and nothing else, so cross the flag with the state features alone.
+            # Half the columns of 'full', which is what lets a 30-key filter fit at
+            # all -- emboss was underdetermined under 'full' and is EXACT under this.
+            c0 = float(cls & 1)
+            nstate = 3 * len(pairs)
+            v = v + [c0 * x for x in v[len(v) - nstate:]]
         return v
 
     def solve(sub):
@@ -241,7 +261,20 @@ def fit(f, keys, bitrange=range(32), colour=False):
         if not moved:
             break
     ok = np.rint(X @ c) == y
-    if colour:
+    if colour == 'states':
+        nstate = 3 * len(pairs)
+        base_c, cross_c = c[:len(c) - nstate], c[len(c) - nstate:]
+        spec = {'interaction': 'colour_states', 'clsbits': clsbits, 'pairs': pairs,
+                'has_absent': bool(has_absent),
+                'arity_sm': list(arity) if arity is not None else None,
+                'base': [float(x) for x in base_c],
+                'cross': [float(x) for x in cross_c],
+                'mode': ('absent' if f in W1_ABSENT else
+                         'per_record' if f in W1_PER_RECORD else
+                         'arity' if f in W1_ARITY else 'codes')}
+        wt_ = np.array([n for _, _, n in keys], dtype=float)
+        return spec, float(wt_[ok].sum() / wt_.sum())
+    if colour == 'full':
         # Interaction spec: store the two half-vectors; predict as base + bit0*cross.
         half = len(c) // 2
         base_c, cross_c = c[:half], c[half:]
@@ -315,13 +348,18 @@ def main():
         spec2, exact2 = fit(f, keys, range(16, 32))
         if exact2 > exact:                        # narrow (cls-only) model wins
             spec, exact = spec2, exact2
-        spec3, exact3 = fit(f, keys, range(32), colour=True)
+        spec3, exact3 = fit(f, keys, range(32), colour='full')
         if spec3 is not None and exact3 > exact:  # colour-interaction model wins
             spec, exact = spec3, exact3
+        spec4, exact4 = fit(f, keys, range(16, 32), colour='states')
+        if spec4 is not None and exact4 > exact:  # lean colour-x-baked variant wins
+            spec, exact = spec4, exact4
         if spec is None:
             report.append((f, n, len(keys), None, 'underdetermined')); continue
         report.append((f, n, len(keys), exact, 'kept' if exact >= KEEP else 'rejected'))
         if exact >= KEEP:
+            if f in MIN_VERSION:
+                spec['min_version'] = MIN_VERSION[f]
             out[str(f)] = spec
     with open(OUT, 'w') as fh:
         json.dump(out, fh, indent=0, sort_keys=True)
