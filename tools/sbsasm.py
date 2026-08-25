@@ -874,6 +874,42 @@ FX_PARAM_BITS = (
 # The bits whose parameter is stored as a POINTER to a program rather than baked in place.
 FX_PROGRAM_BITS = frozenset({20, 22, 24, 26, 28, 30, 31})
 
+# PARAMETERS A TABLE ENTRY NEVER STORES, however the source declares them.
+#
+# `patterntype` decides the pattern's SHAPE and `blendingmode` decides how it combines, so
+# a renderer needs both, and the natural assumption is that an entry carries them. It does
+# not -- not as a baked field, and not as a program even when the source declares one.
+#
+# The test is set subtraction with the counts as its own check. Predict an entry's stored
+# parameter set as "the source paramset's declared DYNAMICS minus this set", and compare
+# against the name-sets `fx_entry_layout` reads out of the compiled entries:
+#
+#     ie_pcloud   3 dyn -> 3 stored   {frameoffset, opacity, patternsize}          108 entries
+#                 6 dyn -> 4 stored   + patternrotation                              1
+#                 7 dyn -> 5 stored   + imageindex                                   1
+#     ie_curve    5 dyn -> 5,  7 dyn -> 5,  4 dyn -> 4        all present, exact
+#     ie_particles 5 dyn -> 4,  4 dyn -> 4                    all present, exact
+#
+# Every row lands on a name-set the compiled file actually has, and the two six- and
+# seven-dynamic paramsets are short by exactly two -- `blendingmode` and `patterntype`,
+# both declared as function graphs and neither given a slot.
+#
+#     dropping this set                              11 of 13 source signatures reproduced
+#     dropping {blendingmode, patterntype} alone     10
+#     CONTROL: the best of the other 44 name pairs    8
+#     CONTROL: median over all 45 pairs               2
+#     dropping nothing -- the naive reading           7
+#
+# This closes a route that looked live: `ie_pcloud` declares `patterntype` as a PROGRAM in
+# two paramsets, which would have named it by elimination if the compiled entry had a sixth
+# slot to put it in. It has four and five. So `patterntype` and `blendingmode` are not in
+# the FX table at all, and looking for them there -- in a baked field, in the tag's nibbles,
+# in a program slot -- is looking in the wrong structure.
+FX_UNSTORED_PARAMS = frozenset({
+    'patterntype', 'blendingmode', 'imagefiltering', 'imagepremul', 'randomseed',
+    'colorswitch',
+})
+
 
 # Bits whose presence means an INLINE program sits after the parameter slots -- one the
 # entry stores in its own bytes instead of pointing at. See `fx_entry_layout`.

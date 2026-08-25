@@ -32331,3 +32331,86 @@ wrap mode?) remains unread, and is the honest residue of this correction.
 
 The while-token exemption (0x0B tokens 3+) survives unchanged: its forcing case is a
 4096 in a library function, not a sample flag, and its control stands.
+
+## Which graphs are closest to rendering, and `patterntype` is not in the FX table
+
+### The ranking
+
+A graph is "rendered" when every output its manifest declares has an image. Over the 437
+corpus files with declared outputs, before `fxmaps` was wired in:
+
+```
+every declared output rendered      34 files   (13 with no flat output among them)
+some outputs rendered               92
+none                               311
+declared outputs                   381 of 2,479   15.4%
+```
+
+Ranking the incomplete ones by how many **root causes** block them — "edge has no output
+yet" is a cascade and is excluded — **34 graphs are one root cause away**:
+
+| what they need | graphs | outputs |
+|---|---|---|
+| `bitmap` (kind `graph_input`) | 17 | 22 |
+| `fxmaps` | 13 | 13 |
+| `uniform` (fill-colour slot) | 4 | 5 |
+
+The `bitmap` seventeen are not really close: their input is an external image, so they are
+filters, not generators, and nothing in the file can supply it. The `fxmaps` thirteen were
+the real target, and are now wired.
+
+Root causes across all incomplete graphs, by files affected — the list worth working down:
+
+```
+fxmaps 361   normal 336   blur 314   uniform 312   shuffle 294   distance 221
+sharpen 216   hsl 192   dyngradient 135   emboss 93   bitmap 66
+transformation: matrix is a program this cannot single out  53
+gradient: colour ramp width carries 2 value components      46
+```
+
+### Wiring `fxmaps` in: five of thirteen, and one picture
+
+Of the 13 graphs blocked only by `fxmaps`, five now complete — and **four of those five
+render flat**. Only `Lines.sbsasm` produces an image. The rest fail on `no readable table
+entries` (6) and one node kind (`0x1CB`), and one turned out to have a second root cause
+hiding behind the first. This is the `patternsize` scale problem sitting upstream of
+everything, not a new blocker.
+
+### `patterntype` and `blendingmode` are not in the table entry
+
+The pattern's SHAPE and how it COMBINES are the two things a renderer most needs and the
+two the entry does not carry — not baked, and not as a program even when the source
+declares one.
+
+Predict an entry's stored parameters as "the source paramset's declared dynamics minus
+`FX_UNSTORED_PARAMS`", and compare with the name-sets `fx_entry_layout` reads out:
+
+```
+ie_pcloud    3 dyn -> 3 stored   {frameoffset, opacity, patternsize}      108 entries
+             6 dyn -> 4 stored   + patternrotation                          1
+             7 dyn -> 5 stored   + imageindex                               1
+ie_curve     5 -> 5,  7 -> 5,  4 -> 4          exact
+ie_particles 5 -> 4,  4 -> 4                   exact
+```
+
+Every row lands on a name-set the compiled file actually has, and the six- and
+seven-dynamic paramsets are short by exactly two: `blendingmode` and `patterntype`, both
+declared as function graphs, neither given a slot.
+
+```
+dropping FX_UNSTORED_PARAMS                   11 of 13 source signatures reproduced
+dropping {blendingmode, patterntype} alone    10
+CONTROL: best of the other 44 name pairs       8
+CONTROL: median over all 45 pairs              2
+dropping nothing -- the naive reading          7
+```
+
+This closes what looked like the last live route to naming `patterntype` from permitted
+evidence. `ie_pcloud` declares it as a **program** in two paramsets, which would have named
+it by elimination had the compiled entry carried a sixth slot; it carries four and five.
+So `patterntype` is not in the FX table in any form — not in a baked field, not in the
+tag's nibbles, not in a program slot — and a parallel session's five independent dead ends
+(record-level fields, tag bits 8–11, default-omission) point the same way.
+
+The practical consequence: the renderer's pattern-shape assumption cannot be settled from
+the table, which is where everyone has been looking.
