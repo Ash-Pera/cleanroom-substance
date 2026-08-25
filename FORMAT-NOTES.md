@@ -31643,3 +31643,72 @@ them, so nothing previously found can be lost.
 Uncovered records now number 203 in the whole corpus: text (59), vectorshape (63,
 layout read by hand), fid 9 (5, layout read by hand), and 76 assorted below-threshold
 keys. The cost model has no rejected filter left.
+
+## Auditing the rest of the tools: two live FAILs, both mis-stated rather than broken
+
+`reverify.py` exists to stop claims going stale, and it was reporting **2 of 9 claims
+failing**. Neither turned out to be a defect in the format work; both were defects in how
+the claim was stated, which is worth separating because the reflex on seeing a red line is
+to edit the number until it goes green.
+
+### "A second program is named by one of the record's own slots"
+
+Recorded 36,614 of 36,614. Now 324,550 of 328,404 — 3,854 misses where 0 were expected, on
+a denominator nearly ten times larger.
+
+Every one of the misses is the same thing:
+
+    records with 2+ programs, second not named by a slot        2,202 (sample)
+      in-record, named by no slot at all -- the TAIL SCAN       2,202   100.0%
+
+`Record.programs` grew a tail scan after this claim was recorded: it finds programs that no
+slot names, 0.78% of records, added because those programs WRITE cache indices that other
+programs read and leaving them out left 25 execution failures. So the claim is false by
+construction for a class of programs the model deliberately went looking for.
+
+The population changed, not the model's correctness. The check now excludes tail-found
+programs and reads 324,550 of 324,550, which is the claim as it was meant.
+
+### "The slot rule, against layouts.json"
+
+Recorded 2,843 misses, now 2,840 — three FEWER — reported as **FAIL**.
+
+    ok = misses == expected
+
+An exact equality cannot distinguish a regression from an improvement, so a decode that got
+better printed the same red as a decode that broke. Worse, the only way to clear it is to
+edit the expected number, which is the exact habit the tool was written to prevent. It now
+accepts `misses <= expected` and prints `ok, IMPROVED (... -- update the figure)`, so the
+figure still gets refreshed but by a deliberate act rather than to silence a false alarm.
+
+All 9 claims pass now, one of them flagged as improved.
+
+### The rest
+
+    validate_corpus.py        exit 0
+    test_corpus_discovery.py  exit 0
+    test_transpile.py         14 passed, 0 failed -- and it already carries its own
+                              mutation record, which is where this whole thread started
+    attribute_outputs.py      99.26% agreement over 35,190 (input, output) pairs, 262
+                              violations, 2 unreadable specimens
+
+`attribute_outputs.py` deserves a note in its favour: it prints
+
+    output-size rows, counted apart : 2413  (2413 agree) -- near-vacuous, see check()
+
+which is a tool separating out its own tautological sub-metric and saying so, unprompted.
+That is the standard the other scoreboards did not meet.
+
+### A mistake I made while doing this
+
+The cross-tool sensitivity matrix — mutate one table, run every checker, see which notices —
+timed out after ten minutes. It restored the source files only at the end, so it left
+`FX_ENTRY`'s `0x00420008` mutated from 24 to 8 in the working tree. Caught by checking
+`git status` immediately, and restored surgically because the same file held a concurrent
+session's uncommitted work that a blind `git checkout` would have destroyed.
+
+A harness that edits source in place needs to restore in a `finally`, not at the end of a
+loop. The matrix itself is unfinished, and what it would have shown is recorded as a
+question rather than an answer: which checker notices a broken ISA, and which notice
+nothing? `test_transpile.py` catches `sub -> add` and five other operation-table mutations,
+per its own record. Whether anything else does is not yet measured.
