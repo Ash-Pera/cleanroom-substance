@@ -172,6 +172,14 @@ SPECS = {
 # baked size and four with a computed one. (An earlier comment here claimed popcount moved
 # no header word; blur's own headers, grouped by popcount, disprove it -- the baked size
 # pair is the extra word.) `check_popcount` validates the count against the model.
+#
+# blur's trailing intensity word is a separate class-word bit again, and fully stated: cls
+# bit 12 is set iff the last header slot is a baked value, 6,855 of 6,855. So the header is
+# (masks + edge) + nprog program slots + the bit-10 size pair + the bit-12 intensity, every
+# term a class-word bit -- which is why costs.json reproduces it and record_layout matches
+# the model in every blur record. The apparent nprog==3 anomaly (a 5-word header where a
+# "size then intensity" model predicts 6) is just bit 12 clear: no baked intensity, and
+# independent of nprog. Not a residue.
 POPCOUNT_MASK = {10: 0x2881, 7: 0x0881}
 
 
