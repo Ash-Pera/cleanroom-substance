@@ -297,7 +297,12 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
     src = transpile.transpile(asm.data, start, end, "python", "prog")
     scope = {}
     exec(compile(src, "<prog>", "exec"), scope)
-    if pos is not None:
+    if pos is not None or W is not None or H is not None:
+        # W/H WITHOUT pos is the case that was missing, and it is not cosmetic. A
+        # parameter program can read `$size` -- `transformation`'s offset routinely does,
+        # to express a shift in PIXELS -- and the context is global and sticky, so a
+        # caller that passed neither got whatever record happened to be evaluated last.
+        # `set_context` ignores None, so the pos-less form sets only the resolution.
         sbsruntime.set_context(width=W, height=H, pos=pos)
     with np.errstate(all="ignore"):
         try:
@@ -728,8 +733,15 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 if (m is None and has_matrix_param) or offset_is_program:
                     for p in fprogs:
                         try:
+                            # At the record's DECLARED size, not the (possibly max_dim
+                            # capped) grid: `$size` is what the engine would report, and
+                            # an offset of `-1.0 / $size.x` means one pixel of the real
+                            # output. Evaluating it at a stale 256 while the record is 16
+                            # wide gets the shift wrong by 16x, in normalized units that
+                            # look perfectly plausible either way.
                             a = np.asarray(eval_program(asm, p, default_inputs(asm, 1),
-                                                        {}, 1)).reshape(-1)
+                                                        {}, 1, W=rec.width,
+                                                        H=rec.height)).reshape(-1)
                         except Exception:
                             continue
                         n_evaluated += 1
