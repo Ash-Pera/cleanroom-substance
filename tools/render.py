@@ -1133,15 +1133,50 @@ def render(asm, precomputed=None, verbose=True, max_dim=None, synth_missing_bitm
                 W, H = rec.width, rec.height
                 if max_dim:
                     W, H = min(W, max_dim), min(H, max_dim)
+                # SAMPLERS IS GLOBAL AND NOTHING CLEARS IT, so an FX program that
+                # samples index 2 does not necessarily fail -- it may silently read
+                # whatever image the LAST record to touch index 2 left behind. A wrong
+                # image rather than a refusal, and invisible to every coverage metric,
+                # which is the failure this project treats as worse than a crash.
+                #
+                # 343 records' FX programs carry a samplelum/samplecol, so this is a real
+                # population, not a hypothetical. The indices they name are small and
+                # edge-slot-shaped: 34 distinct values corpus-wide, 0/1/2 accounting for
+                # most, one or two per record. (Read token 1 of the instruction, not token
+                # 0 -- token 0 is the coordinate OPERAND, a value reference, and reading it
+                # instead produces hundreds of distinct "indices" reaching 2009. See
+                # disasm.IMM, which states the order.)
+                #
+                # So: empty SAMPLERS for the duration, install this record's own edges
+                # best-effort, and restore afterwards. Best-effort rather than the
+                # pixelprocessor branch's "raise if an edge has no output" -- that guard is
+                # right for a FILTER, whose inputs are what it operates on, and wrong for a
+                # GENERATOR: most FX-Maps never sample their edges, and demanding the edges
+                # first turns records that render today into cascade failures. A program
+                # that genuinely needs a missing input still fails, and MissingSampler
+                # names the index it wanted.
+                #
+                # The save/restore is what makes this safe to add: no other branch's
+                # sampler state is disturbed, so nothing outside fxmaps can regress.
+                saved_samplers = dict(sbsruntime.SAMPLERS)
+                sbsruntime.SAMPLERS.clear()
                 try:
-                    runner = fxrender.make_runner(asm, rec)
-                    pats = fxrender.emissions(rec, runner,
-                                              slots=fxrender.seed_slots(rec, runner))
-                except fxrender.Unmodelled as e:
-                    raise Unsupported("fxmaps: %s" % e) from e
-                if not pats:
-                    raise Unsupported("fxmaps: emitted no patterns")
-                outputs[i] = fxrender.splat(rec, pats, W, H)
+                    for slot_i, edge_rec in enumerate(rec.edges or ()):
+                        if edge_rec in outputs:
+                            sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
+                                outputs[edge_rec])
+                    try:
+                        runner = fxrender.make_runner(asm, rec)
+                        pats = fxrender.emissions(rec, runner,
+                                                  slots=fxrender.seed_slots(rec, runner))
+                    except fxrender.Unmodelled as e:
+                        raise Unsupported("fxmaps: %s" % e) from e
+                    if not pats:
+                        raise Unsupported("fxmaps: emitted no patterns")
+                    outputs[i] = fxrender.splat(rec, pats, W, H)
+                finally:
+                    sbsruntime.SAMPLERS.clear()
+                    sbsruntime.SAMPLERS.update(saved_samplers)
 
             else:
                 raise Unsupported("filter %r not implemented" % rec.filter_name)
