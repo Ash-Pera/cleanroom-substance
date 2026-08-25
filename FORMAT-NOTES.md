@@ -30836,3 +30836,88 @@ The table got SMALLER while the parse got better, which is the direction a real 
 moves. Residue: 244 gaps, kind 0x98's mask-like family (three tags, upper-bit
 structure, unfitted), and the meaning of the wrapper ids and the 12345 uid — the paired
 sources being the obvious instrument for the latter.
+
+## FX table entries: the slot's width is exact once the colour flag is in the key
+
+An earlier section established that per `(tag, slot)` an entry program's result type is
+consistent, from five hand-counted rows. Run over the whole corpus the figure is 99.87%,
+not 100%, and the 0.13% is the interesting part.
+
+    (tag, slot, colour) -> result width     100,627 of 100,627    100.0000%
+    (tag, slot)                             100,505 of 100,633     99.8728%
+    (slot, colour)                           79,248 of 100,633     78.7495%
+    colour alone                             67,339 of 100,633     66.9154%
+    CONTROL: colour labels shuffled         100,469 of 100,597     99.8728%
+
+over **319 files, 33,859 `fxmaps` records, 57 tags, 227 `(tag, slot, colour)` groups, and
+not one group with two widths in it.** Restricted to tags whose low nibble is 8; see the
+boundary below.
+
+The control is what makes the colour term a finding rather than a free parameter. Adding a
+column to a key can only ever raise purity, so the question is whether it is the REAL
+column. A shuffled colour flag returns exactly the `(tag, slot)` figure to four decimal
+places — it repairs none of the six impure groups. The true flag repairs all six.
+
+### The six groups, and what they are
+
+Every group that `(tag, slot)` alone fails to determine splits cleanly on colour, in one
+direction, with no exceptions:
+
+    tag 0x54500048 slot 2    grey 1: 175    colour 4: 15
+    tag 0xD4500088 slot 3    grey 1: 309    colour 4: 54
+    tag 0x54500848 slot 2    grey 1: 513    colour 4:  6
+    tag 0xD4540088 slot 3    grey 1: 759    colour 4: 48
+    tag 0x95140088 slot 3    grey 1:  36    colour 4:  4
+    tag 0xD5140088 slot 3    grey 1:  21    colour 4:  1
+
+    colour flag predicts which width    1,941 of 1,941    100.0%
+
+This is the **fourth** independent appearance of the principle already recorded for
+`uniform`, `levels` and `normal`: the colour flag is not a cost, it is a WIDTH MULTIPLIER
+on a colour-typed field — 1 for grayscale, channels-wide for colour. Those three were baked
+record slots. This one is the width of a computed program's RESULT, in a different
+structure, reached by a different route. The principle is not a property of record layout;
+it is a property of the type system underneath both.
+
+### The boundary: nibble-8 tags obey it, nibble-B tags do not
+
+`FX_ENTRY_PROGS` carries 57 tags whose low nibble is 8 and 9 whose low nibble is B. Under
+the identical test:
+
+    nibble-8 tags   100,627 of 100,627   100.0000%   impure groups: 0
+    nibble-B tags       811 of     975    83.1795%   impure groups: 7
+
+and colour does not rescue the second — all seven surviving groups are grayscale records
+splitting 1 against 2, which is not the colour pattern at all.
+
+This is behavioural evidence, not a naming argument: 100,627 observations obey a law
+without a single exception and 975 do not, under the same key, the same walk and the same
+validator. This document's own rule elsewhere is that an entry ends in nibble 8 while a
+node header ends in 9 or B. The nibble-B members of `FX_ENTRY_PROGS` are the population
+that rule would exclude, and they behave like a different kind of object. What they
+actually are is NOT settled here — they are not in `FX_NODES` either, so "they are nodes"
+would be an assumption, and the check that would settle it is theirs to make. Recorded as a
+signal for that table rather than acted on.
+
+### What is NOT fixed by the slot, and why the naming attempt failed
+
+The same key does not determine what the program COMPUTES. Classifying each program by a
+semantic signature — result width plus whether it uses `rand`, `get`, `inputref`, `sysvar`,
+trigonometry, or a comparison:
+
+    (tag, slot) -> semantic signature      90,820 of 101,608    89.38%
+    CONTROL: labels shuffled               28,538 of 101,608    28.09%
+    base rate, commonest signature                              27.96%
+
+Far above chance, and nowhere near determined. The variation is not noise, it is authoring.
+In the largest group — tag `0x00420008` slot 3, n=25,423 — the program is one of exactly
+two things, and they are mutually exclusive:
+
+    get, no rand    16,142  (63%)     reads the shared slot frame the node chain wrote
+    rand, no get     9,281  (37%)     randomises the value locally
+
+So the slot fixes the ROLE and its TYPE; whether that role is driven by the chain or
+randomised per pattern is the artist's choice, compiled per instance. That is a direct
+explanation for the earlier failure to name slots by containment against declared source
+values: for the 37% the value is not a declared constant anywhere, it is generated at
+render time, and no containment test can find a number that the file never stores.
