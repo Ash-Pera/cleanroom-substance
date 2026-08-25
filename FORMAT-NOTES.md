@@ -33960,3 +33960,99 @@ type widths is a measuring instrument, and twice now the instrument was reading 
 the probe rather than a fact about the format — once a boundary that included a program,
 once a key that included an edge. Neither was visible in the exactness score. One showed up
 as an unlawful coefficient, the other as a key count.
+
+## The gradient residue: a ramp written before the record that owns it
+
+`gradient` sat at 99.983% after the `w1` correction, and the three keys the rule missed
+were one record each. That number was measured against each key's *modal* header, though,
+and the modes were hiding the real thing: **14 keys contradicted themselves across 10,003
+records**, the mode being 5 and a minority measuring 7, 8, 9, 10, 11, 13, 14, 15, 17, 19,
+57 and 101. Seventy-two records in total.
+
+Every one of the 72 is **version 0x20000**, and every one takes the fallback branch: its
+ramp pointer does not land inside its own record. Splitting the population by version
+shows how sharp that is:
+
+```
+version    route                     records   header sizes
+0x20000    ramp ptr BEFORE record        726   {5:334, 4:317, 101:36, 8:8, 11:7}
+0x20000    ramp ptr in record            432   {5:224, 4:208}
+0x30000..0x90000  ramp ptr in record  16,781   4, 5, 6 only
+```
+
+"Ramp pointer before the record" happens in v2 and nowhere else.
+
+Reading one: `concrete_049` record 149 spans `0x4918..0x4ac8`, its ramp pointer resolves to
+`0x48e4` — *below* its own start — and its span holds a table of 6-byte entries beginning
+at word 6. That is a v2 ramp, at the six-bytes-per-entry width already recorded here. So
+whose is it?
+
+```
+file                    rec  measured  ramp at word  owner
+concrete_049.sbsasm      94        11             5   [95]
+concrete_049.sbsasm     271       101             5   [272]
+concrete_049.sbsasm     689        13             5   [690]
+roofing_007.sbsasm      141       101             5   [142]
+metal_plate_008.sbsasm   53       101             5   [54]
+Road_01.sbsasm           87         8             5   [88]
+```
+
+**The ramp of record N+1 begins at word 5 of record N** — exactly where record N's header
+should end. In v2 a gradient's ramp table is written immediately *before* the record that
+points at it, which puts it inside the preceding record's declared span. This is the
+partition-not-an-allocation fact already recorded here, seen from the other side: 58 of the
+68 mismeasured records have a neighbour's ramp starting inside them.
+
+### The general rule, and what it fixes
+
+The `fxmaps` correction said the payload pointer is an upper bound on the header rather
+than the boundary. This says the same thing once more, and more generally: **the header
+ends at the earliest in-record target of ANY record's payload pointer, not just its own.**
+
+Applied to every filter:
+
+```
+                    own payload only              earliest payload of any record
+fxmaps      10 contradicting keys,  29 records     0 keys,  0 records
+gradient    14 contradicting keys,  72 records     1 key,   1 record
+bitmap       1 contradicting key,    1 record      0 keys,  0 records
+```
+
+and then across the whole derivation:
+
+```
+blend           99.997% -> 100.000%      sharpen   99.698% -> 100.000%
+levels          99.978% -> 100.000%      hsl       99.866% -> 100.000%
+warp            99.996% -> 100.000%      gradient  99.983% -> 100.000%
+fxmaps          99.998% -> 100.000%      ... every kept filter except transformation
+```
+
+**Twenty of the twenty-one kept filters are now exact at 100.000%**, and `transformation`
+is at 99.989%.
+
+The correction is not a collapse — worth checking, since a boundary that clamps everything
+to a constant would also "fit". It fires on 0.01% to 0.42% of records per filter (at most
+518 in a 310,697-record filter), key counts are unchanged, and the header ranges are what
+they were: `pixelprocessor` still spans 3 to 35 words, `fxmaps` 4 to 40.
+
+### Where the rule now stands
+
+Over 900,859 records, asked with the file version so the version-guarded specs answer the
+question they were fitted to:
+
+```
+exact   900,477   99.9576%
+silent      315    0.0350%     emboss's 171 pre-v5 records (deliberately guarded out),
+                               vectorshape 139, fid 9's 5 -- unmeasured, not unexplained
+wrong        67    0.0074%     transformation 37, blend 9, dirmotionblur 6, levels 5,
+                               shuffle 3, warp 2, and one each in six more
+```
+
+The observation tables themselves are now self-consistent to within **41 records in
+900,859** — 34 keys that contradict themselves, nearly all by a single record.
+
+Three findings this session, and all three were the same mistake: the instrument was
+reading a fault in the probe rather than a fact about the format. A boundary that included
+an inline program, a key that included an edge, and a boundary that included a neighbour's
+table. None of them showed up in the exactness score. They showed up as an unlawful
+coefficient, an absurd key count, and a mode that was hiding its own minority.

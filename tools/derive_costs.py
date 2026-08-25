@@ -26,6 +26,7 @@ The header boundary is observed as the start of the record's first inline progra
 the two payload filters (gradient's ramp, curve's control points) the payload sits
 between header and code, so their boundary is the payload pointer instead.
 """
+import bisect
 import collections
 import json
 import os
@@ -105,6 +106,17 @@ def observed():
             a = Assembly(p)
         except Exception:
             continue
+        # Every payload table in this file, wherever it lives. The record directory
+        # is a sorted PARTITION of the file, not an allocation, so a record's declared
+        # span can contain a table that belongs to some OTHER record -- and in v2 a
+        # gradient's ramp is written immediately BEFORE the record that points at it,
+        # which puts it inside the preceding record's span. Measured: for 58 of the 68
+        # mismeasured v2 gradients, the ramp of record N+1 begins at word 5 of record
+        # N, exactly where record N's header should end. So the header boundary is the
+        # earliest in-record target of ANY record's payload pointer, not just its own.
+        foreign = sorted(r.words[PAYLOAD[r.filter_id]] + 52 for r in a.records
+                         if r.filter_id in PAYLOAD
+                         and len(r.words) > PAYLOAD[r.filter_id])
         for i, r in enumerate(a.records):
             if len(r.words) < 2:
                 continue
@@ -194,6 +206,11 @@ def observed():
             # floats where a grayscale bakes one -- and keying on cls alone left 3,209
             # records as within-key minorities that no fit could reach. Bits that do not
             # vary within a filter never become features, so widening the mask is free.
+            j = bisect.bisect_right(foreign, r.offset)
+            if j < len(foreign) and foreign[j] < q:
+                q = foreign[j]
+            if not (r.offset < q <= r.end):
+                continue
             obs[f][(r.words[0], w1)][(q - r.offset) // 4] += 1
     W1_CORR.clear()
     for f, (n, sx, sy, sxx, syy, sxy) in acc.items():
