@@ -32941,3 +32941,47 @@ specimens renders with spatial variation.
 So the validation set is not a nice-to-have parked behind other work. It is the single
 dependency four separate decode questions are waiting on, and the work that unblocks it is
 the cascade roots — `distance` and `blur` — not more analysis of any of the four.
+
+## Carried versus generated: what the 73 spatial outputs actually are
+
+A parallel session reports 1 spatially-varying declared output; measuring here gives 73 of
+178. Both are right, about different things, and the difference is the most useful
+distinction available for reading every other figure in this document.
+
+Classifying each rendered declared output by what in its closure can CREATE information —
+only an embedded `bitmap`, a `pixelprocessor` and `fxmaps` can; `blend`, `levels`, `warp`,
+`blur`, `normal`, `transformation` can only move what already exists:
+
+```
+declared outputs rendered                    178
+  spatially varying                           73
+      from embedded bitmap pixels             71   <- CARRIED
+      from pixelprocessor                      2   <- generated
+      from fxmaps                              0
+  flat                                       105
+      no information source at all            67   <- correct to be flat
+      bitmap:pixels in closure                20
+      fxmaps only                             18   <- gated by the shape question
+```
+
+**71 of the 73 are carried, not generated.** The graph transported pixels the file already
+shipped, through blends and levels and transformations, and they arrived intact. That is a
+real result — it says the transport filters are right — and it is not evidence that any
+generator decode works. Exactly two outputs in 178 were computed rather than carried, both
+by `pixelprocessor`, and **none by an FX-Map**.
+
+So "1 picture" and "73 pictures" are both defensible headlines and neither should be quoted
+alone. The one worth quoting is: **the renderer carries image data correctly and generates
+almost nothing.**
+
+The threshold is not doing the work here — the distribution is bimodal, with p50 exactly
+0.00000, 75 outputs above zero at all and 47 above std 0.1. Moving the cutoff anywhere
+between 1e-6 and 0.01 changes the count by two.
+
+### And 67 flat outputs are correct to be flat
+
+They have no information source in their closure whatsoever — a constant roughness or
+metallic map is a legitimate output, not a decode failure. `9a4b14d`'s "80% are flat"
+counted them as part of the problem. They are 38% of the rendered outputs here, and the
+same correction applies to every flatness percentage in this document including the ones
+above: the ceiling is not 100%.
