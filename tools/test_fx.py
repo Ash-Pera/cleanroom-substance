@@ -19,6 +19,7 @@ WHAT THESE CATCH, measured by mutating the model one table at a time:
     FX_ENTRY: terminal tags become 24       coverage
     FX_ENTRY_PROGS: shift every slot by +1  coverage, entries_read_the_slots
     FX_NODES2: 0x1B child at word 4 not 5   0x1B_branches
+    FX_LOWERING: any one binding re-pointed  fx_lowering (10 of 10 probed, see there)
 
 The first version of this file caught NONE of them, and the reason is worth keeping. Every
 check it had measured purity -- what fraction of yielded tags are in the vocabulary, whether
@@ -37,10 +38,15 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import xml.etree.ElementTree as ET                                   # noqa: E402
+
+import containment                                                   # noqa: E402
 import corpus                                                        # noqa: E402
 import disasm                                                        # noqa: E402
+import provenance                                                    # noqa: E402
 from sbsasm import (Assembly, FX_NODES, FX_NODES2, FX_TAG_LOW16,     # noqa: E402
-                    FX_ENTRY, FX_ENTRY_PROGS, FX_NODE_PARAMS, fx_entry_layout)
+                    FX_ENTRY, FX_ENTRY_PROGS, FX_NODE_PARAMS, FX_LOWERING,
+                    fx_entry_layout)
 
 LIMIT = int(os.environ.get('SBS_FX_FILES', '250'))
 
@@ -548,3 +554,147 @@ if __name__ == '__main__':
                test_inline_programs_are_where_the_layout_says):
         got = fn()
         print('%-52s %s' % (fn.__name__, ('ok, n=%d' % got) if got else 'skipped'))
+
+
+# --- the source-side check ------------------------------------------------------------
+#
+# `addnode` declares `numberadded`; `markov2` declares `switch`. A node's compiled program
+# IS that parameter's function graph, so the pair is IDENTIFIED and the multisets can be
+# compared without guessing an alignment.
+_NODE_HDR = {'addnode': {0x18B, 0x1AB, 0x20B}, 'markov2': {0x89}}
+
+
+def _v(el, tag):
+    """A .sbs field, in either serialisation -- `<tag v="x"/>` or `<tag><value v="x"/>`."""
+    c = el.find(tag)
+    if c is None:
+        return None
+    if c.get('v') is not None:
+        return c.get('v')
+    return c.find('value').get('v') if c.find('value') is not None else None
+
+
+def _source_graphs(path):
+    """(node type, parameter name, multiset of source function names) per declared graph."""
+    out = []
+    for g in ET.parse(path).getroot().iter('paramsGraphData'):
+        ntype = _v(g, 'type')
+        for par in g.iter('parameter'):
+            fns = [n.get('v') for n in par.iter('function') if n.get('v')]
+            if fns:
+                out.append((ntype, _v(par, 'name'), collections.Counter(fns)))
+    return out
+
+
+def _compiled_multisets(path):
+    """header -> list of opcode-name multisets, one per FX node program in the file."""
+    a = Assembly(path)
+    out = collections.defaultdict(list)
+    for r in a.records:
+        if r.filter_id != 4:
+            continue
+        for _off, hdr, prog in r.fx_tree():
+            if prog is None:
+                continue
+            out[hdr].append(collections.Counter(
+                disasm.name(op) for _k, _q, op, _t in disasm.decode(a.data, prog, a.body_hi)))
+    return out
+
+
+def _lower(counter, table):
+    """The source multiset under `table`, or None if any function is unbound."""
+    m = collections.Counter()
+    for k, v in counter.items():
+        if k not in table:
+            return None
+        m[table[k]] += v
+    return m
+
+
+def _fx_sources():
+    """Permitted paired sources that declare an FX-Map and have a compiled sibling."""
+    _excluded, _flagged, permitted = provenance.audit()
+    out, seen = [], set()
+    for q in permitted:
+        q = q if os.path.isabs(q) else os.path.join(provenance.ROOT, q)
+        if q in seen or not os.path.exists(q):
+            continue
+        seen.add(q)
+        try:
+            if 'paramsGraphData' not in open(q, encoding='utf-8', errors='replace').read():
+                continue
+        except OSError:
+            continue
+        if containment.sbsasm_for(q):
+            out.append(q)
+    return out
+
+
+def _equations(table):
+    """(matched, unmatched) over every fully-bound source graph of a bound node type."""
+    matched = unmatched = 0
+    for q in _fx_sources():
+        comp = _compiled_multisets(containment.sbsasm_for(q))
+        for ntype in _NODE_HDR:
+            have = collections.Counter()
+            for h in _NODE_HDR[ntype]:
+                for m in comp.get(h, ()):
+                    have[tuple(sorted(m.items()))] += 1
+            want = collections.Counter()
+            for nt, _pname, c in _source_graphs(q):
+                if nt != ntype:
+                    continue
+                low = _lower(c, table)
+                if low is not None:
+                    want[tuple(sorted(low.items()))] += 1
+            short = sum(max(0, v - have[k]) for k, v in want.items())
+            matched += sum(want.values()) - short
+            unmatched += short
+    return matched, unmatched
+
+
+def test_fx_lowering_reproduces_the_compiled_multisets():
+    """Mapping a source graph through `FX_LOWERING` must reproduce the compiled multiset.
+
+    This is the only check in this file that reads `.sbs` SOURCES, so the provenance
+    exclusion runs first and BY CONSTRUCTION: the file list comes from `provenance.audit()`,
+    which drops every source carrying an excluded author tag before anything is measured.
+    The rule is not applied to the results afterwards; the excluded files never enter.
+
+    Matched by ONE-TO-ONE CONSUMPTION, not membership. A file's fully-bound source graphs
+    must be a sub-multiset of its compiled programs, each consuming a distinct one.
+
+    Membership alone is far too weak, and that is measured rather than assumed: `ie_pcloud`
+    offers 217 `addnode` programs, and against a pool that size re-pointing `lr` at `and`
+    still leaves 18 of 19 equations "reproducing". Under consumption the same mutation is
+    caught. Every binding probed is caught this way:
+
+        binding re-pointed        matched  unmatched        binding      matched  unmatched
+        mul -> add                   15         4           ifelse->vec     15        4
+        add -> mul                    8        11           get_integer1     16       3
+        const_float1 -> get          12         7           vector2->set     16       3
+        toint1 -> const               4        15           swizzle1->cvt     6      13
+        lr -> and                    18         1           get_bool->const  16       3
+
+    `lr` is the thin one at a single unmatched equation, and it has independent support:
+    composing this table with `transpile.py`'s -- derived from the sRGB round-trip, not
+    from these graphs -- gives `lr -> lt -> 0x21 -> "<"`, and all five bindings the two
+    tables share agree.
+
+    CONTROL: the same equations matched against a DIFFERENT file's pool succeed 2 of 133
+    (1.5%), so a match is a fact about the pairing rather than about FX programs looking
+    alike.
+    """
+    files = _fx_sources()
+    if not files:
+        print('SKIP test_fx_lowering_reproduces_the_compiled_multisets: no permitted sources')
+        return
+    matched, unmatched = _equations(FX_LOWERING)
+    print('FX_LOWERING: %d equations matched, %d unmatched, over %d permitted sources'
+          % (matched, unmatched, len(files)))
+    # NOT just `unmatched == 0`. Nothing found is also zero unmatched, and a test that
+    # passes when the parser silently returns no graphs is the failure this file's
+    # docstring already records once.
+    assert matched >= 12, 'only %d equations found; the source parse has regressed' % matched
+    assert unmatched == 0, '%d source graphs do not reproduce their compiled program' % unmatched
+

@@ -134,7 +134,8 @@ parameter bits the slot rule needs, so no rewriting of entries can express the r
     test_transpile.py     the sRGB round-trip -- see below
     test_filters.py       gradient, curve and dirmotionblur, with an independent check
     test_fx.py            the FX-Map decode: coverage, tag vocabulary, slot roles,
-                          the 0x1B branch, one-ISA, no loops, and the node/table dataflow
+                          the 0x1B branch, one-ISA, no loops, the node/table dataflow,
+                          and the source-side check on `FX_LOWERING` -- see below
     audit_corpus.py       runs the model over a corpus and reports every gap
     validate_corpus.py    structural checks against the .sbsar manifests
     attribute_outputs.py  cross-checks the output table against the manifest's alteroutputs
@@ -180,6 +181,18 @@ its program sits a slot past the predicted position for a reason not yet known.
 `test_fx.py` is the regression guard, and its docstring records which mutations each check
 catches. The first version of it caught none of them.
 
+`FX_LOWERING` maps the FX-Map source language onto this ISA, and it is the one table
+checked against `.sbs` SOURCES rather than against compiled files alone. A node's program
+is its parameter's function graph -- `addnode` declares `numberadded` -- so the pair is
+identified and the multisets compare directly: 19 equations over the 8 permitted sources
+that contain an FX-Map, all 19 reproducing. The provenance exclusion runs by construction
+there, the file list coming from `provenance.audit()` before anything is measured.
+
+The matching rule is one-to-one consumption, not membership, and that distinction is the
+whole test. `ie_pcloud` alone offers 217 `addnode` programs; against a pool that size,
+re-pointing `lr` at `and` still leaves 18 of 19 equations "reproducing". Under consumption
+all ten bindings probed are caught.
+
 ## The one thing that is actually tested
 
 Nearly every claim in this project is a distribution match: a decode is believed because the
@@ -198,7 +211,11 @@ since the corpus is not in this repository. Point `SBS_CORPUS` at an unpacked co
 The file records what the tests catch and what they cannot, measured by mutating the operation
 table one entry at a time. `lteq -> lt`, `sub -> add`, `div -> mul`, `ln -> exp` and `exp2 -> exp`
 are all caught; `gt -> gteq` is not, because sRGB is continuous at its threshold and both branches
-meet there. Two specimens is thin evidence for a 41-operation ISA, and the coverage figure --
+meet there. Every entry in that table can now be mutated meaningfully: `0x2C: "not"` named
+an opcode that does not exist -- zero occurrences in 30,932,107 instructions, no row in
+OPCODES.md -- and has been removed. The real `not` is `0x1C`, which has its own branch.
+
+Two specimens is thin evidence for a 41-operation ISA, and the coverage figure --
 99.958% of 644,282 programs -- measures the table's completeness, not whether the output computes
 the right thing.
 

@@ -145,7 +145,14 @@ BINOP = {0x12: "+", 0x13: "-", 0x14: "*", 0x15: "/",
 FUNCS = {0x16: "sbs_mod", 0x17: "-", 0x18: "dot", 0x23: "abs", 0x24: "floor",
          0x2A: "exp",
          0x25: "ceil", 0x26: "cos", 0x27: "sin", 0x28: "sqrt", 0x29: "log",
-         0x2B: "exp2", 0x2C: "not", 0x2D: "atan2", 0x2E: "cartesian",
+         # NOT 0x2C: "not". That opcode does not exist -- zero occurrences in 30,932,107
+         # instructions corpus-wide, no row in OPCODES.md, no name in disasm.NAMES. It was
+         # the only entry in this table that never fires. The real `not` is 0x1C, which has
+         # its own branch below (0x1C is in neither table, so nothing shadows it), and the
+         # dead entry looks like an off-by-0x10 transcription of it. Removing it changes no
+         # output: the README's "mutate the operation table one entry at a time" had one
+         # entry here that could not be meaningfully mutated.
+         0x2B: "exp2", 0x2D: "atan2", 0x2E: "cartesian",
          0x35: "log2", 0x36: "pow",
          0x2F: "lerp", 0x30: "minimum", 0x31: "maximum", 0x32: "rand"}
 
