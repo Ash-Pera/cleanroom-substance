@@ -56,7 +56,6 @@ IMMEDIATE = {
     0x10: {1},          # swizzle: packed 2-bit component mask
     0x07: {1},          # set: variable slot index
     0x01: {0}, 0x03: {0}, 0x04: {0},   # get: variable slot index
-    0x0B: {3},          # while: iteration cap
 }
 
 def is_imm(op, k):
