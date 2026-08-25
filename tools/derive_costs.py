@@ -56,11 +56,21 @@ PAYLOAD = {0: 3, 22: 3, 5: 1, 4: 2, 16: 1}  # filter -> slot holding its payload
 # (uniform bakes a value there; filter 5 points at its payload), or PER-RECORD (warp
 # and shuffle have two shapes, and the edge run starting at slot 1 is the no-w1 shape).
 W1_ARITY = {20: (0, 0xF), 4: (10, 0xF)}      # filter -> (shift, mask)
-W1_ABSENT = {6, 5, 16, 13, 10, 14, 19}
+W1_ABSENT = {6, 5, 16, 13, 10, 14, 19, 0, 22}
 # blur (10), hsl (14) and dyngradient (19) joined when the all-baked records entered
 # the fit: they are start-1 filters -- words[1] is their first EDGE -- and keying on an
 # edge value gave blur 12,006 keys for 15,371 records, the one-key-per-record signature
 # this file already names twice.
+#
+# gradient (0) and curve (22) joined by MEASUREMENT rather than by noticing the key
+# count. The index-correlation control that settles edge slots elsewhere -- an edge's
+# value tracks the record's own index, a packed mask does not -- applied to words[1]
+# across every filter reads 0.998 for gradient and 0.995 for curve, alongside the
+# 0.996-1.000 of the three already listed here and the -0.05..0.15 of everything that
+# genuinely holds codes. Declaring them: gradient 13,185 keys -> 127 and 99.677% ->
+# 99.983%; curve 913 keys -> 23, still 100.000%. Curve's exactness did not move, and
+# that is the point -- 100% over 913 keys for 1,273 records was nearly one key per
+# record and claimed almost nothing. The same 100% over 23 keys is a real claim.
 W1_PER_RECORD = {3}      # warp (7) moved to the version rule above
 
 # Filters whose costs are fitted on modern versions only. Emboss is EXACT (375 of 375)
@@ -74,17 +84,35 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'costs.json')
 KEEP = 0.995                     # a filter is kept only at this exactness or better
 
 
+W1_CORR = {}       # filter -> (n, corr(record index, words[1])), filled by observed()
+
+
 def observed():
-    """(filter, cls, w1) -> Counter of header sizes in words."""
+    """(filter, cls, w1) -> Counter of header sizes in words.
+
+    Also runs the W1 AUDIT into W1_CORR. Every filter above declares how to read
+    words[1], and getting that wrong is the single most expensive mistake available
+    here: keying on a value that is really an EDGE gives one key per record, and a
+    table with one key per record cannot be wrong, which is worse than being wrong.
+    The control is the one that settles edge slots elsewhere -- an edge's value tracks
+    the record's own index, a packed mask does not -- and it is cheap enough to run on
+    every filter every time rather than waiting to notice a key count.
+    """
     obs = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
+    acc = collections.defaultdict(lambda: [0, 0.0, 0.0, 0.0, 0.0, 0.0])
     for p in corpus.paths():
         try:
             a = Assembly(p)
         except Exception:
             continue
-        for r in a.records:
+        for i, r in enumerate(a.records):
             if len(r.words) < 2:
                 continue
+            # audit first: it wants every record of the filter, not just the ones
+            # whose header boundary happens to be measurable.
+            v = acc[r.filter_id]
+            x, y = float(i), float(r.words[1])
+            v[0] += 1; v[1] += x; v[2] += y; v[3] += x * x; v[4] += y * y; v[5] += x * y
             sl = PAYLOAD.get(r.filter_id)
             if sl is not None:
                 if len(r.words) <= sl:
@@ -167,6 +195,10 @@ def observed():
             # records as within-key minorities that no fit could reach. Bits that do not
             # vary within a filter never become features, so widening the mask is free.
             obs[f][(r.words[0], w1)][(q - r.offset) // 4] += 1
+    W1_CORR.clear()
+    for f, (n, sx, sy, sxx, syy, sxy) in acc.items():
+        den = ((n * sxx - sx * sx) * (n * syy - sy * sy)) ** 0.5
+        W1_CORR[f] = (n, (n * sxy - sx * sy) / den if den > 0 else float('nan'))
     return obs
 
 
@@ -530,6 +562,24 @@ def main():
         for label, v in spec.get('flags', ()):
             lawless.append((fs, label, v))
         blind += spec.get('unident', 0)
+    # ---- the w1 audit
+    # A filter declared 'codes' whose words[1] tracks the record index is not holding
+    # codes; it is holding an edge, and the fit is keying on a per-record value. This
+    # is how gradient (0.998) and curve (0.995) were caught -- gradient went 13,185
+    # keys -> 127 and 99.677% -> 99.983%, curve 913 keys -> 23 at an unchanged 100%.
+    suspect = []
+    for f, (n, c) in sorted(W1_CORR.items(), key=lambda kv: -kv[1][0]):
+        if f in W1_ABSENT or f in W1_PER_RECORD or f in W1_ARITY or f == 7:
+            continue
+        if n >= 200 and c == c and abs(c) > 0.5:
+            suspect.append((f, n, c))
+    if suspect:
+        print()
+        print('w1 audit -- filters read as CODES whose words[1] tracks the record index:')
+        for f, n, c in suspect:
+            print('   %-16s %7d records  corr %.3f  <- declare it in W1_ABSENT'
+                  % (FILTERS.get(f) or 'fid %d' % f, n, c))
+
     if lawless or blind:
         print()
         print('coefficients violating the width law: %d identified, %d on a direction '
