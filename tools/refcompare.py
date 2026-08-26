@@ -254,6 +254,26 @@ def _compare_one(asm_path, refs, max_dim):
         # 001 at +0.115 over its own at -0.049. Where our render carries real signal the
         # numbering agrees; where it does not, the test returns noise, which is the expected
         # shape of a passing test on a partly-broken renderer rather than a failing one.
+        #
+        # GRAPH 003 IS A LOCATED FAULT AND GRAPH 002 IS ITS CONTROL. The test found it by
+        # accident and no MAE would have: a wrong-but-plausible picture scores as mediocre,
+        # not as broken. Rendered under identical scopes, in one pass, from one file:
+        #
+        #     002   normal +0.571  roughness +0.891  height +0.587  AO +0.895
+        #     003   normal -0.019  roughness +0.016  height -0.101  AO -0.004
+        #
+        # 003 is not randomly wrong, it is FLAT -- height std 0.0037 at mean 0.875, and
+        # normal at mean exactly 0.7500 / std 0.2500, a perfectly flat tangent normal with
+        # an opaque alpha. Its height cone is 67% constant records against 002's 51%, with
+        # the same root census in both (flat fxmaps leaves, blends flattening a live input).
+        # Same failure family as the missing-lattice chain in render.py's warp note.
+        #
+        # THE SCOPES ARE NOT THE CAUSE, which had to be checked because these outputs are
+        # only reachable with blur.intensity='program' AND distance.param='wide' both open:
+        # with neither, or either alone, nothing here renders but a flat metallic, so there
+        # is no unscoped baseline to compare against. The control is internal instead -- 002
+        # and 003 render in ONE pass under ONE scope, and a scope held constant across both
+        # cannot explain a difference between them.
         if gdir:
             _pre = [r for r in refs if os.path.basename(r).startswith(gdir + '_')]
             if _pre and any(os.path.basename(r).startswith((graph_dir(asm, u) or '\0') + '_')
