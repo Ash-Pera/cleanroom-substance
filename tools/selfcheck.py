@@ -215,15 +215,19 @@ def check_packing(asm, laws):
     images, size 1048576 (1024x1024x1) stored in ~151K, "overlapping" the next offset --
     the known bit-3 case (see Record.bitmap). Excluding compressed images removes them.
 
-    THE REMAINING MISMATCHES ARE GAPS AND AT LEAST ONE IS UNEXPLAINED -- do not read them
-    as benign. PlanksSubstance003 rec50 declares 2048x128x4 = 1 MB (tag 0x7b21, height
-    nibble = 7) but the 4 MB before the next bitmap is CONTIGUOUS, non-repeating RGBA with
-    a constant alpha 191, and no other record declares that region (records 51-70 are
-    filters, not stored pixels). So the slot holds a 2048x512 image (height nibble 9) while
-    the tag says 128 -- either the height field is under-read by two in log2 for this class,
-    or the image is stacked in a way the size field does not cover. UNCONFIRMED as a decode
-    bug; flagged for investigation. The point of leaving this in the docstring is that the
-    packing gap is a real anchor to it, not filler to wave past.
+    THE REMAINING MISMATCHES INCLUDE A CONFIRMED DECODE BUG -- do not read gaps as benign.
+    PlanksSubstance003 rec50 declares 2048x128x4 = 1 MB (tag 0x7b21, `height` = 1<<((tag>>12)
+    &0xF) = 1<<7 = 128) but the 4 MB before the next bitmap is one CONTIGUOUS 2048x512 image:
+    reshaped 512x2048x4, the row-to-row difference across the declared 128-row boundary
+    (45.9) is indistinguishable from its neighbours (44, 42), i.e. NO stacking discontinuity,
+    so it is a single image whose true height is 512 (nibble should be 9, tag says 7). The
+    decode reads only the top quarter. Corpus-wide this "stride = 4x declared size" pattern
+    is 11 raw bitmaps across 4 files (PlanksSubstance003 x7, BricksSubstance004 x2,
+    NightSkyHDRI, pbr_render) -- always ratio 4, i.e. the height nibble under by 2 in log2.
+    None is in the five scored reference packs, so it does not move any current score, but it
+    is a real correctness bug for those inputs (read at 1/4 height). Root not yet pinned: the
+    tag nibble genuinely reads 7, so either the true height lives in a field this property
+    does not consult, or the width/height-from-tag reading is wrong for non-square images.
     """
     law = laws['packing']
     spans = sorted({(bm['offset'], bm['size']) for _r, bm in _pixel_bitmaps(asm)
