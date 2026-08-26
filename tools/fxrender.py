@@ -1339,6 +1339,49 @@ def profile_value(lx, ly, profile):
 MIN_PATTERN_SIZE = 1e-6
 
 
+_RAND_CALL = re.compile(r'\brand\(')
+
+
+def branchoffset_is_rand(rec):
+    """Does this record's branchoffset program call `rand`?
+
+    A STATIC EXCLUSION FOR THE CELL-SCALE GUARD, and it settles by decode what the span
+    test could only guess at. Cross-classifying every fxmaps record's branchoffset program
+    against `grid_width` over the distinct-file corpus, the structural side finds every
+    rand-scatter branchoffset is NON-grid -- 5,218 of them, and zero grids -- so a scatter
+    can be recognised before any span is computed. It matters because the span test
+    misfires on exactly these -- or so an earlier census here reported, finding 63
+    rand-scatters inside "the integer-span group". That census used a hand-written span
+    classifier rather than `_cell_divisor` itself, and the two do not select the same set:
+    `_cell_divisor` additionally requires every pattern to carry a branchoffset and the span
+    to be an exact integer at least 1 on some axis. Measured against the SHIPPED guard, the
+    misfire does not exist -- over 50 files it fires on 219 records, of which none calls
+    rand and none is a grid.
+
+    So this function is a census instrument, not a filter. It is kept because the result it
+    produced is worth being able to reproduce: the exclusions it would apply are already
+    implied by the span test, and a proxy for a guard is not the guard.
+    """
+    asm = rec.asm
+    try:
+        params = list(rec.fx_named_params())
+    except Exception:
+        return False
+    for _off, _tag, _slot, name, kind, val in params:
+        if name != 'branchoffset' or kind != 'program' or not val:
+            continue
+        end = asm.program_span(val)
+        if not end:
+            continue
+        try:
+            src = transpile.transpile(asm.data, val, end, "python", "p")
+        except Exception:
+            continue
+        if _RAND_CALL.search(src):
+            return True
+    return False
+
+
 def _cell_divisor(patterns):
     """Per-axis 1 / (number of cells), read from the branchoffset span, or None.
 
@@ -1601,6 +1644,12 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # condition never fires: 'cell' and 'oversize' render byte-identically on all 175 Bricks
     # fxmaps records, 0 differing. A candidate that cannot differ from another is not an
     # arbitration option, so it is gone rather than left to look like one.
+    # THE STATIC EXCLUSIONS WERE TRIED HERE AND ARE NOT NEEDED -- see `branchoffset_is_rand`,
+    # which is kept for the census that showed it. Excluding rand-scatters and $number-grids
+    # before measuring the span removes ZERO records from what `_cell_divisor` actually
+    # fires on: over 50 files it scales 219 records, of which none calls rand and none is a
+    # grid. The guard is already clean, and adding a transpile per record to exclude nothing
+    # is cost without effect.
     size_scale = None
     if assume.assumed('fx.patternsize') == 'cell' and patterns:
         size_scale = _cell_divisor(patterns)

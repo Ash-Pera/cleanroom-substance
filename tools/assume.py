@@ -101,6 +101,13 @@ QUESTIONS = {
     # unblocking a record is not evidence about the record. `fill` stays, and the white
     # records stay white, because the thing that makes them white has not been found yet
     # and painting them a different wrong colour would only hide it.
+    #
+    # AND THIS IS THE SECOND QUESTION TO FAIL ON THE SAME CHANNEL. `nonfinite.fill`'s note
+    # below reports Chesterfield `basecolor` unblocking under every one of ITS candidates
+    # and correlating at 0.04-0.10 regardless -- a different question, the same three
+    # channels, the same verdict. Two independent arms now say those channels come back
+    # carrying no structure, so "Chesterfield basecolor renders" should be treated as a
+    # property of that output rather than as evidence for whatever produced it.
     # PUT TO THE REFERENCE MAPS AND NOT SETTLED, which is worth recording so it is not
     # tried a third time. Under any scope Chesterfield's `basecolor` renders and the
     # scoreable table goes 14 channels -> 17. But of those 17 only 3 move between
@@ -621,6 +628,20 @@ QUESTIONS = {
     # So the guard is a large improvement and still not established on the population it
     # acts on. It has been shown to DECLINE the right records; it has not been shown to
     # SCALE the right ones.
+    #
+    # THOUGH THE 63 MISFIRES ARE NOT THE SHIPPED GUARD'S. That table was built with a
+    # hand-written span classifier, and `_cell_divisor` does not select the same set -- it
+    # additionally requires every pattern to carry a branchoffset and the span to be an
+    # exact integer of at least 1. Measured against the guard itself over 50 files: it
+    # scales 219 records, and NONE of them calls rand, NONE is a $number-grid. The static
+    # exclusions the structural side proposed -- never scale a rand-scatter, never scale a
+    # grid -- were implemented and removed zero records, so they are redundant against the
+    # shipped code and were reverted rather than kept as cost without effect.
+    #
+    # The lesson is narrower than the numbers: a proxy for a guard is not the guard, and a
+    # misfire rate measured on the proxy says nothing about the code. The unresolved half
+    # stands -- scaling is still unvalidated on the residual population -- but the specific
+    # 63-scatter defect recorded above never existed in what actually runs.
     'fx.branchoffset':    ('canvas', 'cell'),
     # WHAT UNIT A patternsize IS IN, the other half of the same question. Canvas is refused
     # two independent ways: the 83 distinct baked values all sit in roughly [0.67, 8] --
