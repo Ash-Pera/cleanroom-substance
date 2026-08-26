@@ -34767,3 +34767,31 @@ the point is to see the 43 results that a serial run hides behind the 4.
 ```
 
 The lane now reports. It does not yet finish, and the reason it does not is one function.
+
+## The uninterpreted bytes are payload-reader bookkeeping, not mystery
+
+The headline "92.5% of record bytes interpreted" reads as though 7.5% of the format is
+undecoded. A within-record accounting -- mark each record's header slots (now computed by
+the mask-walk) and its program bodies, and count what is left -- puts the uninterpreted
+share at 4.1% over 150 files, and shows immediately that it is not mystery. It is
+concentrated in exactly the filters whose payloads a header-plus-programs pass does not
+credit, because a SEPARATE reader decodes them:
+
+    fxmaps         9.0%   the FX tree -- node cells and paramset table entries
+    gradient      55.5%   the colour ramp table (`Record.ramp`)
+    vectorshape  100.0%   the embedded triangle strip (`Record.vector_shape`)
+    curve         20.6%   the spline stop table
+
+Every payload-free filter sits under 1% -- `transformation` 0.7%, `blend` 0.5%,
+`directionalwarp` 0.9% -- which is padding between programs, not undecoded structure.
+
+Crediting one of those readers proves the point. Marking `fxmaps` node cells by their
+`walk_node` size and their table entries drops the filter's uninterpreted share from 9.0%
+to **2.6%**, and the 2.6% that remains is the chain runs (decoded by `fx_walk`, not
+`walk_node`), the table entries past their first eight bytes, and the inline FX programs
+that `referenced_programs` reaches but no record slot names -- all of which existing readers
+already decode and this naive pass simply did not sum. So the true interpreted fraction, once
+every payload reader is credited into one accounting, is well above 92.5%; the gap is a
+bookkeeping seam between the layout model and the payload decoders, not a pile of bytes no
+one understands. What genuinely remains uninterpreted at the byte level is small and known:
+alignment padding, and the inline FX parameter values whose NAMES the provenance rule blocks.
