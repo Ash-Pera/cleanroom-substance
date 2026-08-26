@@ -97,7 +97,7 @@ compute the same mathematics; which one a given call compiles to is not establis
 | float | `24` | `0524` | `0564` | · | · | 88,333 | 0.36 | 356 | floor |
 | float | `33` | `0D33` | · | · | · | 87,974 | 0.36 | 177 | samplelum |
 | bool | `21` | · | `0861` | · | · | 79,974 | 0.33 | 327 | lr (less than) |
-| bool | `22` | · | `0862` | · | · | 79,546 | 0.33 | 316 | lreq |
+| bool | `22` | · | `0862` | · | · | 79,546 | 0.33 | 316 | lteq |
 | bool | `20` | · | `0860` | · | · | 74,169 | 0.31 | 349 | gteq |
 | float | `01` | `0501` | `0541` | · | · | 63,685 | 0.26 | 402 | read system variable -- five named, by immediate: 0 `$time`, 1 `$size`, 3 `$sizelog2`, 8 `$pos`, 10 `$number` (FX-Map only). See FORMAT-NOTES.md, "The five system variables". |
 | float | `2E` | · | `096E` | · | · | 58,351 | 0.24 | 281 | cartesian (polar to xy) |
