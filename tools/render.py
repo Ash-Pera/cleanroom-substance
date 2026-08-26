@@ -2127,26 +2127,52 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # is no, and the reason the old scan saw a powers-of-two ladder there is
                 # that slot 3 is the HEIGHT half of the baked size pair. The question it
                 # existed to arbitrate has been answered from the sources instead.
-                # AND WHEN BIT 12 IS CLEAR THE PROGRAMS DO NOT SUPPLY IT EITHER, which is
-                # the obvious next hypothesis and is refuted. Bit 12 clear means no baked
-                # value, so a program is where an intensity would have to live; over 34
-                # such records in 40 files the LAST filter program returns:
+                # WHEN BIT 12 IS CLEAR, filter_programs[1] IS THE CANDIDATE -- a candidate,
+                # under `assume`, not a decode.
                 #
-                #     1 component, 1.0    17      2 components, 1.0     8
-                #     1 component, 3.0     2      2 components, 1.922   5
-                #     1 component, 2.0     1
+                # A PREVIOUS VERSION OF THIS COMMENT SAID THE PROGRAMS SUPPLY NOTHING, on a
+                # measurement that read `filter_programs[-1]`. That is index 0 for a
+                # one-program record, 1 for two and 2 for three, so it mixed three
+                # populations and reported the mixture. Per index, over 40 files:
                 #
-                # 13 of 33 return TWO components, which a scalar intensity cannot be, and
-                # 78.8% are exact powers of two -- the same signature that withdrew the
-                # slot-3 fallback above, arrived at independently. Source containment agrees
-                # it is nothing: across the permitted paired sources the last program
-                # recovers 3 of 42 declared intensities against a 2-of-42 control from the
-                # first program.
+                #     index   n    values              components
+                #       0    33    1.0 x32, 2.0 x1     2-comp in 28, 1-comp in 5
+                #       1    20    1.0 x18, 3.0 x2     1-comp in 20 of 20
+                #       2     5    1.922 x5            2-comp in 5
                 #
-                # So these records refuse. The cost is real and is stated rather than
-                # hidden: `Kutejnikov__Bricks_and_tiles` has four declared outputs waiting
-                # on three of them, and it is the specimen with 71 of 191 fxmaps records
-                # affected by the branchoffset question -- the one that would arbitrate it.
+                # Index 1 is a SCALAR in every one of its 20 records, which is what an
+                # intensity must be and what index 0 (a size pair) mostly is not. Its values
+                # match the trusted intensity distribution -- 1.0 dominant, as on the
+                # baked path and in the sources. And the session that censused this found
+                # index 1 reads `$outputsize` in 0 of 57 records against index 0's 8 of 93,
+                # which is what separates a parameter from a size expression.
+                #
+                # WHAT IT IS NOT: source-confirmed. Containment recovers 1 of 42 declared
+                # intensities from index 1 against a 2-of-42 control from index 0 -- nothing,
+                # in both directions, because these records are library-internal and no
+                # declaration corresponds to them. So the evidence is structural (always
+                # scalar, never reads the output size) and distributional, not a match.
+                #
+                # Hence the gate. `assume.QUESTIONS['blur.intensity']` already lists
+                # 'program' as a candidate; under that scope these records render from index
+                # 1 and are marked in USED and LOW_CONFIDENCE. With no scope open they
+                # refuse exactly as before, and the cost of refusing is stated:
+                # `Kutejnikov__Bricks_and_tiles` has four declared outputs waiting on three
+                # of them, and it is the specimen with 71 of 191 fxmaps records affected by
+                # the branchoffset question -- the one that would arbitrate it.
+                if intensity is None and assume.assumed('blur.intensity') == 'program':
+                    _fp = rec.filter_programs
+                    if len(_fp) > 1:
+                        try:
+                            _v = np.asarray(eval_program(asm, _fp[1], default_inputs(asm, 1),
+                                                         {}, 1, W=rec.width,
+                                                         H=rec.height)).reshape(-1)
+                            if _v.size == 1 and np.isfinite(_v[0]):
+                                intensity = float(_v[0])
+                                LOW_CONFIDENCE.add(i)
+                                assume.note(i)
+                        except Exception:
+                            pass
                 if intensity is None:
                     raise Unsupported(
                         "blur intensity: %s (nprog=%d, slot %d)"
