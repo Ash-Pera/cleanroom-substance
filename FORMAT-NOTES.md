@@ -36423,6 +36423,16 @@ Found by chasing the selfcheck `packing` law's overlaps/gaps. Two classes:
 Scope and root: the tag-nibble w/h decode is fine for the 260 other non-square bitmaps
 (1024×512, 512×1024, …), so this is specific to these 11, not a general non-square failure.
 None is in the five scored reference packs, so no current score moves — but it is a real
-correctness bug for those inputs. Root unresolved: the tag nibble genuinely reads 7, so
-either the true height lives in a field the width/height property does not consult, or these
-11 encode the dimension somewhere other than tag bits 12-15. Open.
+correctness bug for those inputs.
+
+ROOT PINNED — it is `cls & 0x2000`. That bit is set in exactly 11 bitmap pairs corpus-wide
+and ALL 11 are the 4×-area under-declarations: zero false positives, zero false negatives
+(the under-declared have cls 0x2338/0x2138, the ~570 normal bitmaps 0x108–0x718, none with
+0x2000). So the true dimension IS encoded — in the cls bit the `width`/`height` property does
+not consult — resolving the "missing term vs unconsulted field" question in favour of a
+missing term. The extra factor is 4× area; the distribution is height×4 (tag height nibble
++2): confirmed for all 7 PlanksSubstance003 bitmaps (shared tag 0x7b21/cls 0x2338, rec50's
+row-continuity), and weakly favoured over width×4 for the grayscale Bricks case. FIX: the
+bitmap dimension decode should raise the height nibble by 2 (or the area by 4) when
+`cls & 0x2000`. Confirmed root; exact per-axis rule for the non-Planks cases could use one
+more RGBA specimen.
