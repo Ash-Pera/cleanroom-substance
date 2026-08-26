@@ -57,6 +57,7 @@ for what the real engine does at that same input (clamps to 0? saturates earlier
 step this reading is missing?), so it is surfaced rather than guessed at.
 """
 import math
+import os
 import re
 
 import numpy as np
@@ -2874,6 +2875,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     if not np.isfinite(f) or abs(f) > 1e3:
                         raise Unsupported("hsl %s slot is not a plausible float" % name)
                     vals[name] = float(f)
+                # A PARAMETER CARRIED AS A PROGRAM IS INVISIBLE HERE, and that is a real
+                # gap rather than an absence. The loop above reads baked slots named by the
+                # class bits; 14 of the 41 hsl records in 30 files have NO baked bit and one
+                # or more filter programs, so they render as the identity -- an hsl node
+                # that does nothing, which is not what an author puts in a graph.
+                #
+                # Auras 443 and 425 are the specimens, sitting between the gradient that
+                # makes the aura and the blend that outputs it, each with a single 1-wide
+                # program returning 0.0 and 0.01. Under the neutral-at-0.5 reading either is
+                # a half-unit shift, which is large, and the output's error is a per-channel
+                # gain (slope 0.536 / 0.321 / 0.802 against the engine's export) -- exactly
+                # the shape a missed colour adjustment would leave.
+                #
+                # SO IT WAS TRIED, ALL THREE WAYS, AND THE ARBITER DECLINED ALL THREE:
+                #
+                #     assignment    ch0 MAE/corr    ch1 MAE/corr    ch2 MAE/corr
+                #     none (now)    0.088 / 0.937   0.101 / 0.865   0.066 / 0.945
+                #     hue           0.139 / 0.929   0.223 / 0.740   0.069 / 0.930
+                #     saturation    0.120 / 0.939   0.179 / 0.791   0.040 / 0.968
+                #     luminosity    0.070 / 0.725   0.041 / 0.296   0.086 / 0.873
+                #
+                # `saturation` buys ch2 (correlation 0.945 -> 0.968, residual 0.060 -> 0.040)
+                # and loses ch1; `luminosity` buys brightness and destroys structure,
+                # correlation 0.865 -> 0.296. Nothing is uniformly better, so nothing is
+                # adopted -- taking `saturation` for one channel's gain would be choosing on
+                # the metric that happened to move.
+                #
+                # What is missing is WHICH parameter the program feeds, and the class bits do
+                # not say: these records set none of 8, 10 or 12.
                 h_sh = vals.get('hue', 0.5) - 0.5
                 s_sh = vals.get('saturation', 0.5) - 0.5
                 l_sh = vals.get('luminosity', 0.5) - 0.5
