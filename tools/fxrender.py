@@ -293,6 +293,25 @@ PASSTHROUGH = 0x1B
 #: side, so the walk passes straight through it and the table does the emitting.
 def _is_leaf(hdr):
     return (hdr & 0xFF) == 0x0B
+#: The per-record emission budget. A runtime bound, not a format fact -- a record asking for
+#: more is refused rather than rendered slowly.
+#:
+#: RAISING IT IS NOT THE LEVER IT LOOKS LIKE, measured after batched emission made a
+#: million patterns arithmetically cheap. Over the same 30 corpus files, at max_dim 64:
+#:
+#:     cap     40,000     42 of 127 declared outputs rendered      72 s
+#:     cap  3,000,000     44 of 127                               878 s
+#:
+#: Two more outputs for twelve times the wall clock, and the cost is concentrated: three
+#: files take 114 s, 353 s and 364 s on their own. The counts that appear in the blocker
+#: table -- 1,050,625 (1025^2), 2,253,001, 921,600, 102,400 (320^2), 66,049 (257^2) -- are
+#: legitimate values, squares of a grid dimension, so this budget is refusing correct work.
+#: But the records behind them mostly hit another root as soon as they emit, which is why
+#: lifting the budget moves the output count by two.
+#:
+#: Splat is what costs now, not emission: emission runs at about 3 us per pattern batched,
+#: and drawing one is 50-80 us. Making a million-pattern record affordable is a splat
+#: problem, and until it is solved raising this number buys almost nothing.
 MAX_PATTERNS = 40000
 
 _SLOT_WRITE = re.compile(r'slots\[(\d+)\]\s*=')

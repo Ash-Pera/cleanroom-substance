@@ -2816,6 +2816,24 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
             # in that selection, and until someone makes it, refusing names the record it
             # happens on.
             #
+            # THE OBVIOUS SELECTOR DOES NOT WORK, so that gap is real rather than lazy.
+            # "Take the program whose declared result width matches the record's own
+            # channel count" is checkable without running anything -- the transpiler emits
+            # each instruction's width as `clamp(v, n)` or `ncomp=n`, so the returned
+            # value's line states it. Over 3,021 pixelprocessor records in 22 files:
+            #
+            #     last program already states the header width       1,401
+            #     its width is unstated by this reading              1,295
+            #     states 2 where the header wants 4                    296  -- and 288 of
+            #                                                                 those have TWO
+            #                                                                 other programs
+            #                                                                 stating 4
+            #     states 2 where the header wants 1                     29  -- 21 have
+            #                                                                 exactly one
+            #
+            # Unique in 21 of 325. A selector that is ambiguous nine times in ten is not a
+            # selector, so the record stays refused rather than resolved by coin toss.
+            #
             # So: conform where there is nothing to choose, refuse where there is. An
             # identical pair loses no information by collapsing to one channel. A differing
             # pair means the program's result is not this record's output, and building a
