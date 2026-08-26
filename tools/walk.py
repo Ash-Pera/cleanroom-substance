@@ -295,7 +295,13 @@ def _is_chain(tag):
 # differ from patterntype's own nibble bit in 0 of 3,781 cells. It belongs to a different
 # field, not to no field, so leaving it out of the width mask is correct.
 NODE_LEGEND = {
-    0x48: (2, {16: 4, 17: 1, 19: 1, 20: 1, 22: 1, 23: 2, 24: 1, 25: 2,
+    # bit 21 (=2) is added by HAND, beyond node_census's automated fit: only two 0x48 tags
+    # exercise it (8 cells, below the census's n>=10 threshold), so the lstsq cannot derive
+    # it -- but both are off by exactly +2 without it and bit 21 is +2 in the sibling kind
+    # 0x58, so the width is not in doubt. A legend regenerated from node_census will drop it;
+    # keep this line. (See the "derived constant with two readers" note: the fit is the
+    # DEFAULT source, not the only one, where the corpus is too thin for it to converge.)
+    0x48: (2, {16: 4, 17: 1, 19: 1, 20: 1, 21: 2, 22: 1, 23: 2, 24: 1, 25: 2,
                26: 1, 27: 1, 28: 1, 29: 1, 30: 1}),
     0x58: (3, {17: 1, 20: 1, 21: 2, 22: 1, 24: 1, 25: 2, 26: 1, 27: 1,
                28: 1, 29: 1, 30: 1}),
