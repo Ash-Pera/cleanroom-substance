@@ -1748,7 +1748,14 @@ class Record:
             return list(range(2, 2 + n))
         if n == 0:
             return []                      # a generator: no image input at all
-        k = n & 0xF
+        # The count field is FIVE bits (0..16), not the low nibble: 16 needs bit 4, and a
+        # nibble reads 16 (0x10) as 0. ie_curve record 233 is the one record where this
+        # bites -- w1 = 0x10, and its bytecode references 21 input uids over slots 2..17,
+        # a clean block of backward record indices, so its true arity is 16, which the
+        # memo had recorded as a generator's empty edge list. Reading five bits fixes it
+        # and touches no other record (0x1F == 0xF for every count below 16), while the
+        # bit-16+ flag words (0x10000, ...) still take & 0x1F == 0 and fall through here.
+        k = n & 0x1F
         if 1 <= k <= 16 and len(self.words) >= 2 + k \
                 and all(0 <= self.words[2 + j] < self.index for j in range(k)):
             return list(range(2, 2 + k))
