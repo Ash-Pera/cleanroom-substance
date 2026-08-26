@@ -36023,3 +36023,31 @@ so the count that should fill a $number-grid is not simply "numberadded should b
 count path for a $number-grid record is not yet pinned. What IS solid: the layout is
 unambiguously 4×4 wanting 16 emissions, and the emission count delivers 1. This is where the
 footprint gap actually lives.
+
+### Chesterfield footprint: root-caused to emission count + two-position sum (CONFIRMED)
+
+Peer 0b's render measurement closed the mechanism. Forcing rec34's emission count to 16 and
+running the 0x99 scanner ONCE (not per emission):
+
+    baseline (n=1)                    rec34 lit 0.0254   metallic 0.0039
+    n=16                              rec34 lit 0.2285   metallic 0.0288
+    n=16, scanner held once           rec34 lit 0.4062   metallic 0.0469
+
+against rec34's own input lit 0.403 and the engine's exported metallic 0.0483 — two
+independent targets to three decimals, neither fitted. So the footprint gap was entirely:
+(a) the emission count — the $number-grid in 530756 needs 16 emissions, and (b) frameoffset =
+slots[26] + slots[12] sums the $number-grid position (slot 26) with the SCANNER position
+(slot 12); a $number-grid record must run its scanner once for slot init, not re-enter it per
+emission, or slot 12 accumulates and carries the grid off-canvas.
+
+THE ONE NAMED GAP: what supplies the count of 16 is NOT recoverable from the decoded
+structure. The 0x18B addnode is minimal (node_shape (8,(4,)): one program + successor, no
+count value field). Its only program, `numberadded`, is identical across all four Chesterfield
+$number-grid records (34/53/65/86), reads slot 8 (gridsize = aspect = 1 for a square canvas),
+and computes (mod(g−1,2)+g)² — which yields only ODD squares {1,9,25}, so it can never be 16
+nor any multiple of 4 the /4 grid needs. Record-level params (fx_param2/3) are just the
+geometry boxes. So `numberadded` is a per-pattern AMOUNT (1.0 in 69.5% of 0x18B nodes), not
+the iteration count. The real FX-map iterate count appears implicit in iterate/quadrant node
+semantics not yet reverse-engineered — a distinct RE target, anchored by the measurement
+above (the answer must produce 16 for rec34, scanner-held). Do NOT hard-code 16; that fits a
+known-wanted number without a decoded source.
