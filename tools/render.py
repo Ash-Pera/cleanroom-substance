@@ -2105,7 +2105,12 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     except fxrender.Unmodelled as e:
                         raise Unsupported("fxmaps: %s" % e) from e
                     if not pats:
-                        raise Unsupported("fxmaps: emitted no patterns")
+                        # The walk completed and a gate closed the branch -- see
+                        # fxrender.emissions. The map's output is its background, which is
+                        # what splat produces from an empty pattern list, so fall through
+                        # rather than refuse. An empty walk that no gate explains still
+                        # raises out of emissions() and never reaches here.
+                        pass
                     # `imageindex` names an input to use AS the pattern, so hand the
                     # branch's already-computed edge images to the splatter keyed by edge
                     # SLOT. `fxrender.image_for` takes the index literally and returns
