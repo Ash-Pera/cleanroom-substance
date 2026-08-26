@@ -727,8 +727,17 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # texture transforms) is conventionally applied. matrix (m0, m1, m2, m3)
                 # is read as row-major [[m0, m1], [m2, m3]].
                 #
-                # Not verified against a ground-truth reference render -- none is
-                # correlated to a specific record here -- but checked for INTERNAL
+                # NOW VERIFIED AGAINST A REFERENCE RENDER. This said "not verified
+                # against a ground-truth reference render -- none is correlated to a
+                # specific record here", which was true until ChesterfieldSofa became
+                # scoreable: the matrix header-bit fix took it from 659 non-finite records
+                # to 0 and from 1 spatially-varying declared output to 4 (5 with the
+                # uniform fill). Treating the stored matrix as the FORWARD transform and
+                # sampling with its inverse costs four of the five declared outputs and
+                # collapses metallic against the engine's own map from +0.2294 to +0.0250,
+                # its lattice going from 10 elements to 1. Backward mapping is right, and
+                # what says so is now a correlation rather than an argument from
+                # convention. Also checked for INTERNAL
                 # consistency on real, clean (no offset, no program) specimens with a
                 # controlled, asymmetric test pattern: record 5115's matrix (0,-1,1,0),
                 # a pure 90-degree rotation, turns a top stripe into a left stripe and a
