@@ -1736,6 +1736,13 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     #
     # 407 of 407 self-consistent, against a guard right about 27% of what it touched. The
     # divisor is per axis: a span of k cells means k + 1 of them.
+    # See assume.QUESTIONS['fx.frameoffset'] -- the third coordinate, which nothing scaled.
+    frame_scale = None
+    if assume.assumed('fx.frameoffset') == 'cell' and patterns:
+        frame_scale = _cell_divisor(patterns)
+        if frame_scale is not None:
+            assume.note(getattr(rec, 'index', -1))
+
     cell_scale = None
     if assume.assumed('fx.branchoffset') == 'cell' and patterns:
         cell_scale = _cell_divisor(patterns)
@@ -1773,6 +1780,8 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
         if cell_scale is not None:
             base = base * cell_scale[:base.size]
         off = val(p, 'frameoffset', _ZERO2)
+        if frame_scale is not None:
+            off = off * frame_scale[:off.size]
         size = val(p, 'patternsize', _ONE2)
         if size_scale is not None:
             size = size * size_scale[:size.size]

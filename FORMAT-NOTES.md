@@ -37046,3 +37046,50 @@ So the emission count is not one open question among several -- for this package
 one that matters, and the fx questions arbitrated this session (`sizeless`, `rootentry`,
 `patternsize`, `branchoffset`) were all being scored on channels that this defect had already
 flattened to noise. That is why they came back undecidable.
+
+### The third coordinate: nothing was scaling `frameoffset`, and that is why the cell reading looked wrong
+
+`splat` scales `branchoffset` under `fx.branchoffset` and `patternsize` under `fx.patternsize`.
+It has never scaled `frameoffset` under anything. So "the FX-Map works in cell units" was never
+actually testable -- only two thirds of it was, and the two-thirds version is what this session
+refuted.
+
+**What frameoffset carries is a displaced pair.** ChesterfieldSofa records 92 and 93 are the same
+25-pattern 5x5 lattice, same branchoffsets, same patternsize, same rotations, with frameoffset
+EXACTLY NEGATED -- [0.1102, -0.0591] against [-0.1102, 0.0591], and so for all 25. Record 94 is
+`levels(92)` with `leveloutlow` 0.5, giving `0.5 + A/2`; record 95 subtracts 93 at opacity 0.5,
+giving `0.5 + A/2 - B/2`. That is a relief filter -- the sofa's tufting comes out of the
+difference between two displaced copies -- and it produces nothing at all if the copies are the
+same.
+
+Ours were nearly the same, because `patternsize` is 2.82, almost three canvases, and displacing a
+blob that large by 0.11 barely changes it:
+
+                              |A - B| max    rec 95 std    rec 96 std
+    baseline                     0.0066       0.000572      0.001143
+    all three in cell units      0.2518       0.055014      0.110029
+
+A 38x stronger difference and a 96x stronger relief signal, in the real render and not a
+hand-computation. `_cell_divisor` returns exactly [0.2, 0.2] here -- the branchoffset span is
+-2..+2, five cells per axis -- so the divisor was never in doubt, only what it applied to.
+
+**And it changes the verdict on the cell reading.** Scoring the combinations separately:
+
+    candidate        Auras ch0   ch1      ch2      mean signed corr   mean MAE
+    baseline           +0.937   +0.865   +0.945       +0.0550          0.1885
+    branch+size        +0.886   +0.513   +0.869       +0.0461          0.1871
+    branch+frame       +0.937   +0.865   +0.945       +0.0552          0.1885
+    size+frame         +0.936   +0.862   +0.945       +0.0543          0.1885
+    ALL THREE          +0.935   +0.860   +0.968       +0.0545          0.1856
+
+`branch+size` -- the combination refuted earlier in this session -- costs Auras basecolor ch1
+0.865 -> 0.513. Adding the third coordinate gives almost all of it back (0.860) and lifts ch2 to
+its best value anywhere, 0.968 at MAE 0.0403 against 0.0656. The mean is a wash either way, so
+this is NOT a confirmation; what it is, is a demonstration that the earlier refutation was
+measuring an incoherent half-transform and should not be read as "cell units are wrong".
+
+WHAT IT DOES NOT FIX. The Chesterfield picture is essentially unchanged: height goes from 3
+connected components to 6, against the reference's 45. The relief branch now carries signal but
+the output is dominated by a different branch -- records 67/68/98/99, three large blobs at std
+0.21 -- which the cell reading does not touch. So the tufting lattice remains missing, and its
+source is that branch rather than the one repaired here.

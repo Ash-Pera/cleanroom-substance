@@ -511,6 +511,36 @@ QUESTIONS = {
     # needs a record that is both in the fired set and feeds a reference with identifiable
     # dots, and Chesterfield has none.
     #
+    # BRICKS HAS ONE, AND IT REFUTES CANVAS ON THE FIRED SET. Bricks' normal references ARE
+    # lattices -- 111 blobs at 0.0120 of the width with a size cv of 0.281, and 72 at
+    # 0.0167 -- and its fired records are in normal's cone. Verified here: all 38 fired
+    # records carry patternsize 2.82, and `_cell_divisor` returns exactly sqrt(N) on every
+    # one of them (0 of 38 differ), so a per-axis cell count is well defined.
+    #
+    #     rec     N      psize   divisor   canvas dot   cell dot
+    #     619     16     2.82        4       2.82        0.705
+    #     328     64     2.82        8       2.82        0.353
+    #     612    841     2.82       29       2.82        0.097
+    #     334   1024     2.82       32       2.82        0.088
+    #     reference normal dots: 0.0120 .. 0.0200 of the width
+    #
+    # CANVAS IS REFUTED BY THE VALUE, not by a margin: 2.82 as a canvas fraction is a stamp
+    # nearly three times the canvas, 141x to 235x the reference dot, and no falloff recovers
+    # two orders of magnitude. The cell reading reaches 0.088 on the dense grids -- still 5
+    # to 7x large, which is within reach of a profile's lit core being a fraction of its
+    # footprint, and that is not modelled by treating the footprint as the dot.
+    #
+    # THIS DOES NOT CONTRADICT THE rec34 RESULT. rec34's patternsize is 0.25 and these are
+    # 2.82: opposite sides of 1.0, where a value below 1 is consistent with a canvas
+    # fraction and a value above it cannot be one at all. The fired set is entirely on the
+    # impossible-as-canvas side, which is the only way the two measurements could agree.
+    #
+    # AND IT EXPLAINS WHY 'oversize' COULD NOT DIFFER FROM 'cell'. That candidate scaled
+    # records whose median patternsize exceeds 1.0, and it was retired as byte-identical.
+    # The identity is not luck: the fired set IS the oversize set, because an oversized
+    # nominal patternsize is what a record with a full integer lattice has. The symptom
+    # threshold was selecting the right population by another route.
+    #
     # It stops short of the predicted ~0.40, and the residue is specific: the emitted
     # frameoffsets run -0.375, -0.125, -0.875, -0.625, -1.375, -1.125. They sit on the
     # correct 0.25 lattice, so the pitch is confirmed, but they range outside the unit
