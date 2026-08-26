@@ -577,9 +577,22 @@ FX_NODE_PARAMS = {
 # they have no base program+successor structure (low-byte bit 7 clear). Everything else is a
 # mask-walk; see `node_shape`. 0x99 and 0x9B were here too and are gone -- they are linear
 # nodes the walk now computes.
+# 0x0B is gone too: the LEAF's successor is the mask rule's own answer and `leaf_successor`
+# computes it, 73 of 73 leaf nodes over 20 files. What is left here is the BRANCH alone --
+# two children and a program that no bit of the mask expresses, on two headers, which is not
+# a population to derive a rule from.
+#
+# THE LEAF'S PROGRAMS ARE STILL SCANNED (`prog_slots` None, in `fx_tree`), and that scan is
+# a probe of the kind this project otherwise removes: words 4..13, anything whose `+ 52`
+# passes `program_span`. Measured over 20 files it yields 266 candidates across those 73
+# leaves, 2 to 5 each -- and ALL 266 are named by another node or entry of the same record,
+# so it contributes no program the walk does not already reach. Checked non-circularly, by
+# excluding the leaf's own yields from the comparison set (including them makes every
+# candidate "confirmed" by construction, which is how this first read as 266/266 for the
+# wrong reason). Removing it is therefore safe for program COVERAGE but changes which
+# programs the leaf EVALUATES as its own, which is a render question and not settled here.
 FX_NODES2 = {
     0x1B: ((8, 20), (16,)),   # two children, at words 2 and 5; program at word 4
-    0x0B: ((4,),    None),    # a leaf; its SECOND WORD is the successor, see below
 }
 
 
@@ -609,11 +622,41 @@ def node_shape(header):
         return None
     base = 1 if nib == 0xB else 2
     succ = 4 * (base + bin(header & 0xF0).count('1'))
+    # (the bit-7-clear arm of this same rule is `leaf_successor` below)
     pbase = 1 + (1 if header & 0x10 else 0)          # bit 4 shifts the program one word on
     progs = [4 * pbase]
     if header & 0x20:                                # bit 5: randomseed program follows
         progs.append(4 * (pbase + 1))
     return (succ, tuple(progs))
+
+
+def leaf_successor(header):
+    """The bit-7-clear LEAF's successor byte offset, or None -- `node_shape`'s other arm.
+
+    `node_shape` declines when bit 7 is clear, because bit 7 is what declares the base
+    program+successor structure it walks. For the LEAF (nibble B, bits 4-7 all clear) the
+    successor is still exactly what the mask says it is:
+
+        4 * (base + popcount(header & 0xF0))   with base = 1 for nibble B
+
+    which is 4 -- word 1 -- because the mask bits are clear by the guard. That is the same
+    number `FX_NODES2[0x0B]` stated by hand, now arrived at by the rule rather than
+    written down, and it holds on all 73 leaf nodes over 20 files.
+
+    THE HIGH BITS ARE NOT PART OF THIS. Corpus leaves carry wildly different upper words --
+    0xC0B, 0x510B, 0x1B90B, 0x3C10B, 0xE100B and eleven more, 18 distinct headers over 77
+    nodes -- and every one has bits 4-7 clear, so the rule reads the same shape from all of
+    them. What those upper bits mean is not decided here; this claims only the successor.
+
+    The BRANCH (0x1B, bit 4 set) is deliberately NOT derived. Its shape is two children and
+    a program -- `FX_NODES2` states (8, 20) and (16,) -- and while the mask rule does give
+    its FIRST child correctly (popcount 1 -> 8), nothing in the mask expresses the second
+    child at word 5 or the program at word 4. Two headers is not a population to fit a rule
+    to, so it stays hand-stated and visible rather than derived from two points.
+    """
+    if (header & 0xF) != 0xB or (header & 0xF0):
+        return None
+    return 4 * (1 + bin(header & 0xF0).count('1'))
 
 
 # Named parameter blocks: slot 1 carries one presence bit per parameter, and the
@@ -2658,6 +2701,11 @@ class Record:
             # word 3, and the hardcoded 4 could never find it.
             off1 = sh[0] if sh else None
             if off1 is None:
+                # The LEAF's successor is derived (`leaf_successor`), not looked up; only
+                # the BRANCH still comes from the hand-stated table, and for it the handoff
+                # is the LAST child.
+                off1 = leaf_successor(h)
+            if off1 is None:
                 _s2 = FX_NODES2.get(h & 0xFF)
                 if _s2 and _s2[0]:
                     off1 = _s2[0][-1]
@@ -2963,7 +3011,16 @@ class Record:
                 # A 0x1B branches, so the walk stops being a straight line here; `pending`
                 # carries the far child and the near one continues inline. Order is not
                 # claimed to be the engine's.
-                shape2 = FX_NODES2.get(h & 0xFF)
+                _lf = leaf_successor(h)
+                if _lf is not None:
+                    # DERIVED, not tabulated: the mask gives the leaf's successor, so
+                    # `FX_NODES2` no longer states it. `prog_slots` stays None because the
+                    # leaf's programs are still scanned below -- that scan is a separate
+                    # question from where the successor is, and it is measured in
+                    # FX_NODES2's comment.
+                    shape2 = ((_lf,), None)
+                else:
+                    shape2 = FX_NODES2.get(h & 0xFF)
                 if shape2 is None:
                     return
                 nxts, prog_slots = shape2
