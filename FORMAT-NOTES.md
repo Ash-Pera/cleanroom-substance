@@ -2939,6 +2939,42 @@ has the ordinary `[2,3]` layout and its w1 just happens to be nonzero; the shift
 shifted records and leaves rec955 as `[2,3]`. warp then agrees with the walk 100%, and the
 whole memo-drain reproduces edges 36,086 / 36,086.
 
+### The inherited-block mask-walk is universal, and two renderers had frozen it
+
+`hsl` was found reading its parameters at a fixed word 3, when they actually follow the
+INHERITED block — the class bits below the parameter each contribute their own slots first,
+exactly what `walk.py`'s `_CLS` describes, so the start is `2 + popcount(inherited bits set
+below the parameter)`. That is not an hsl fact; it is the one mask-walk the whole format is
+built on, and a renderer that freezes any term of it is wrong on every record whose class
+word differs from the specimen the constant was read off.
+
+Auditing `render.py` for the same shape — a parameter read at a literal or partial-popcount
+slot — found `warp` doing it too: intensity at `4 + bit11`, one frozen term of the walk.
+Searching every subset of the inherited bits `{0,7,10,11,13}` for the offset that best lands
+a plausible intensity picks `{7,10,11}` — bits 7 and 10 shift it as well as 11. The 592
+records that set bit 10 are the proof: a plausible value sits at `4 + bit11` 88.2% of the
+time and at one slot later 100.0%, while for bit-10-clear records that later slot is
+plausible only 5.8%, so bit 10 genuinely carries the intensity one slot on. Corpus good-rate
+84.6% → 85.2% (the ceiling is program intensities, which have no baked value), and a peer
+render-checked it: 5,909 → 5,909 records, 0 regressed, because the bit-7/10-clear majority
+leaves the popcount at just bit 11 — the old rule.
+
+The rest of the audit came back clean, and the pattern is worth stating: the safe branches
+read parameters through `rec.named_parameters` / `rec.layout` (levels, directionalwarp,
+dirmotionblur, blend, normal's fallback), which delegate to the model's mask-walk, or verify
+against a varying class word (`blur`'s intensity at `2 + nprog`, `uniform`'s colour at slot 1
+— both confirmed against bit-10 and bit-7 populations). Only the two hand-written constants,
+hsl's `3` and warp's `4 + bit11`, had frozen the walk.
+
+**The boundary, because it is a real one.** The mask-walk governs parameters *baked in mask
+order*. It does NOT reach a filter whose leading slots are a VARIABLE number of programs: a
+popcount over a presence mask cannot predict a program count. `normal` is the counterexample
+— its block carries 1 to 4 leading programs and no mask reaches 90% at predicting how many,
+so `warp`'s law does not transfer and its intensity is singled out by program width instead.
+This is the same reason `blur`'s size block needed `nprog` (a program count from the Tier-B
+popcount encoding) rather than a bit test. Mechanism universal; the leading-program count is
+a different encoding, and the two must not be conflated.
+
 ### The shuffle header reads 100%: two authoring nodes, split by the colour bit
 
 `shuffle` (filter 3) sat at 47.6% header agreement in `walk.py`'s cls-driven drain and was
