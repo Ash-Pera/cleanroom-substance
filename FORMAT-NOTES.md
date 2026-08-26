@@ -38480,3 +38480,26 @@ blend/dirwarp/dirmotion, all render-neutral. Wiring named_parameters through it 
 memo would need the thorough per-record render-seal 0b did for the layout routing (reference packs are 0
 worse, but the full corpus has records no reference pack renders). Until that seal, named_parameters
 stays on the memo -- but "levels is unstructured" was wrong, and the render agrees the forward rule is right.
+
+### The `numberadded` refusals are not hiding renderable outputs
+
+Nine records over 30 files refuse with `fxmaps: numberadded = N`, N being 1050625, 2253001,
+921600, 263169, 102400 and 66049 -- every one a perfect square (1025, 1501, 960, 513, 320, 257).
+They cost about 23 declared outputs between them, and they are all the same shape: chain
+`0x18B/0x89`, `grid_width` None, so the `fx.gridcount` divisor has nothing to read and the count
+falls back to `numberadded`.
+
+A tempting reading is that these are per-pixel fencepost lattices -- 257 = 256 + 1, 513 = 512 + 1,
+1025 = 1024 + 1 against a declared record size of 256. It does not hold: only 1 of the 9 has
+`sqrt(N) == max(w, h) + 1`, and 320, 960 and 1501 are not of that form at all. So the counts are
+not a resolution artifact and rescaling them with `max_dim` is not the fix.
+
+**Lifting the cap was tried on the smallest of them and buys nothing.** `AsphaltSubstance002`
+record 465 at N = 66049 emits 65,536 patterns in 3.3s and splats in 0.4s -- entirely feasible --
+and renders at min 0.9748, max 1.0000, std 0.0039. White. Its patterns carry `patternsize` 5.0,
+which is the same oversized-size wall that makes 1,369 other FX-Map records white; the count was
+never what stopped this one being a picture.
+
+So `MAX_PATTERNS` is not concealing 23 renderable outputs, and raising it would trade a refusal
+for 23 white images -- the trade this renderer is not allowed to make. Recorded because the
+heading looks like a cheap 23 and is not.
