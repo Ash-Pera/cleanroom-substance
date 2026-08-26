@@ -67,33 +67,37 @@ def _knockout(table, paths):
     return len(base), changed
 
 
-def test_layouts_is_load_bearing_but_barely():
-    """`layouts.json` changes under 1% of readings and NO program discovery.
+def test_layouts_is_fully_drained():
+    """`layouts.json` changes NOTHING a record reads -- the memo is drained.
 
-    Measured over 346,530 records: 0.872% of records read differently without it -- 2,180
-    edge readings and 897 parameter readings -- and the set of programs found is byte-for-
-    byte identical for every single record. The hand-written rules in `_compute_layout`
-    plus the `EDGES` table have grown to cover nearly everything the derived table covers.
+    This used to assert the table was still marginally load-bearing (~0.87% of records).
+    That is no longer true, and by design: `_compute_layout` no longer consults LAYOUTS at
+    all -- pixelprocessor reads its arity from `_pp_edges`, transformation and bitmap from
+    walk(SPECS[.]), blend/levels/dirmotionblur/directionalwarp from `_ruled`, and the rest
+    from the fixed-shape EDGES/PROG_SLOT/ALT_LAYOUTS fallbacks; and `programs()` finds every
+    program from the universal slot scan plus `classified_programs` rather than the memo's
+    hint. The one record that still needed the table (ie_curve rec233, a 5-bit arity the low
+    nibble misread as a generator) was fixed at the rule instead.
 
-    This asserts both directions, because both are informative:
+    So emptying LAYOUTS now changes 0 of the snapshotted readings -- programs, edges, edge
+    resolution, size_or_baked and the whole FX walk. The assertion is inverted from its old
+    `changed > 0`: the table IS dead for these readings, which is the drain succeeding.
 
-      * changed > 0     the table is not dead. If this fails, layouts.json can be deleted,
-                        and leaving a dead 809-key artifact in place is worse than removing
-                        it -- someone will maintain it.
-      * changed < 5%    the table is not suddenly load-bearing. If this fails, something
-                        moved and the 0.872% figure in FORMAT-NOTES.md is stale.
+    Not yet asserted, and the reason the loading is not simply deleted: `program_slots`
+    (the blur/warp popcount block) and `named_parameters` still read LAYOUTS-derived data,
+    and this snapshot does not observe them. Draining those is the remaining step before
+    `layouts.json` can be removed outright.
     """
     paths = corpus.paths()[:FILES]
     if not paths:
-        print('SKIP test_layouts_is_load_bearing_but_barely: no corpus')
+        print('SKIP test_layouts_is_fully_drained: no corpus')
         return
     n, changed = _knockout(sbsasm.LAYOUTS, paths)
     if not n:
-        print('SKIP test_layouts_is_load_bearing_but_barely: no records')
+        print('SKIP test_layouts_is_fully_drained: no records')
         return
-    frac = changed / n
-    assert changed > 0, 'layouts.json changes NOTHING: it is dead and should be removed'
-    assert frac < 0.05, ('layouts.json now changes %.2f%% of records, not ~0.87%%' % (100 * frac))
+    assert changed == 0, ('layouts.json still changes %d of %d readings; the drain is '
+                          'incomplete or a rule regressed' % (changed, n))
     return
 
 
