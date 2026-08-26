@@ -234,6 +234,34 @@ QUESTIONS = {
     # That is sound as far as it goes, but slot 10 IS 1.0 in every record observable here,
     # so the multiplication is the identity and cannot move any picture until the program
     # that computes it produces something other than one.
+    #
+    # AND (1.0, 1.0) IS CORRECT -- the census was the renderer being right. Program 532980
+    # is ASPECT COMPENSATION, not subdivision: exp2(log2 W - log2 H), which is W/H, and 1
+    # for any square canvas. There is no grid there to get wrong, so "why does it yield one
+    # cell" was a malformed question. rec34's 4x4 lives in program 530756, keyed on $number,
+    # placing at (0.125 + 0.25*($number mod 4), 0.125 + 0.25*floor($number/4)) -- which also
+    # makes the scanner loop irrelevant to THIS record, whose scanner geometry is a
+    # legitimate 1x1 and whose tiling is $number-keyed.
+    #
+    # THE DEFICIT IS THE EMISSION COUNT, shown by experiment. Forcing numberadded to 16 so
+    # $number runs 0..15 and letting 530756 place them:
+    #
+    #                      emissions   rec34 lit   metallic lit
+    #     baseline                 1      0.0254         0.0039
+    #     forced n = 16           16      0.2285         0.0288
+    #
+    # A 9x rise in coverage from the count alone, pattern size untouched at 0.25.
+    #
+    # It stops short of the predicted ~0.40, and the residue is specific: the emitted
+    # frameoffsets run -0.375, -0.125, -0.875, -0.625, -1.375, -1.125. They sit on the
+    # correct 0.25 lattice, so the pitch is confirmed, but they range outside the unit
+    # square, so several stamps land off-canvas -- the `mod 1` the decoded formula specifies
+    # is not taking effect here.
+    #
+    # NOTHING IS WIRED FROM THIS. numberadded genuinely evaluates to 1, and the decoded
+    # formula ((g-1 mod 2) + g)^2 yields only odd squares, so 16 is unreachable through it
+    # and the correct count must arrive by a path neither side has pinned. Forcing it was a
+    # measurement, not a fix.
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
