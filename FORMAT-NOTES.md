@@ -38175,3 +38175,63 @@ differ, max pixel diff 0). Remaining before layout can route through decompose a
 special cases come out: close the pixelproc multi-input prog, settle fxmaps prog with its owner, and
 fix the known param_slots gap (a state-3 field that is neither image-input nor state-01/10 is recorded
 nowhere -- peer measured 30,015 records / 6.3% for the param stage).
+
+## pixelprocessor multi-input prog: 100.00% clean
+
+The size slot for pixelprocessor is NOT the positional size_pos (max of inputs-end and const): it is
+the slot RIGHT AFTER the inputs, `2 + edge_count`, which is layout's own `2 + len(edges)` for this
+filter. The const push skipped past it. Two arity-validity rules, both mirroring `_pp_edges`, close
+the last cases:
+  * a nonzero 5-bit arity field is valid even with stray high bits (0x10001 -> arity 1, prog=3);
+  * a zero field whose whole w1 word is nonzero is NOT a valid count (0x10000 -> _pp_edges declines,
+    prog stays None) -- only a whole-word-zero w1 is a clean arity-0 (prog=2).
+
+Result: size_or_baked functional equivalence on pixelprocessor is 58,665 / 58,665, zero disagreements.
+Measured as functional equivalence of size_or_baked (the consumer), not raw prog, because that is what
+routing layout through decompose must preserve.
+
+Remaining prog residuals are all OUTSIDE pixelprocessor and small: fxmaps (its prog lives in
+cleanroom-substance-00's `_fxmaps_walk` table path, left None for its owner), text (59, a source filter
+whose size is baked -- layout None, still to set), bitmap (2 edge cases). Everything else -- blend,
+levels, directionalwarp, dirmotionblur, warp, gradient, curve, the interaction filters -- reproduces
+size_or_baked functionally.
+
+### Re-validating this session's arbitrations at the corrected render resolution
+
+Peer 0b's `RENDER_DIM` separation showed every score in this repository had been measured with
+the pixel-scale filters largely inert, and that a 64px harness "systematically understates any
+candidate that moves a pixel-scale parameter". Every arbitration this session made was at 64.
+Re-run at 128:
+
+    candidate                     mean corr   verdict
+    (baseline)                     +0.8577
+    fx.sizeless = skip             +0.8506    worse   -- refusal HOLDS
+    fx.rootentry = skip            +0.8491    worse   -- refusal HOLDS
+    fx.markers = skip              +0.8491    worse   -- refusal HOLDS
+    fx.patternsize = cell          +0.8158    worse   -- refusal HOLDS
+    normal.inversedy = word1bit2   +0.8577    same
+
+And the one adoption STRENGTHENS. `fx.gridcount`, scored against its alternative:
+
+    max_dim  64    numberadded +0.4113 / MAE 0.1090     divisor +0.8533 / MAE 0.1175
+    max_dim 128    numberadded +0.3746 / MAE 0.0984     divisor +0.8964 / MAE 0.0758
+
+At 64 the divisor won on correlation while LOSING on MAE; at 128 it wins on both, and its
+correlation advantage grows. So the tufting-lattice adoption is not a 64px artifact.
+
+**BUT ONE OF MY CONCLUSIONS WAS.** I swept `warp.reference_px` at 64, found it plateaued from
+384 to 2048 rather than peaking, and read that as "less warp is better asymptotically, so this
+is not a constant". At 128 the same sweep has a shape:
+
+    ref_px    256      320      384      512      768     1024
+    corr    +0.8577  +0.8595  +0.8586  +0.8543  +0.8522  +0.8513
+
+A peak at 320 with the incumbent 256 essentially on it, and a monotone decline above. The
+plateau was the artifact -- with blur and warp inert at 64, shrinking their radii further could
+only ever look neutral-to-good. So the hardcoded 256 is now POSITIVELY supported rather than
+merely unrefuted, across a fourfold range that separates by 0.008.
+
+The general lesson is the peer's, and it applies to arbitration rather than to any one number:
+a harness that renders below the resolution a filter needs does not add noise, it silently
+switches the filter off, and every candidate that touches that filter is then measured against
+a renderer where it cannot act.
