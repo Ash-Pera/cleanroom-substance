@@ -35888,3 +35888,32 @@ r1633 and Flagstone r219 have moved from 16 x 16 to 256 distinct x and 256 disti
 one pattern per row -- so those two are withdrawn as lattices as well. What survives is the
 Brick family: nine distinct y in every one, and 315 = 9 x 35, 225 = 9 x 25, 450 = 9 x 50
 exactly.
+
+## The branchoffset span separates three populations, not two
+
+The span guard (ccc896a) fires on an integer span and declines everything else. Measuring
+what it declines shows the decline is right for two different reasons, which is worth
+keeping apart:
+
+    integer span -- raw cell indices, divisor needed          349
+    declined, span = k/d with d dividing the count            113   (109 of 113 have d | N)
+    declined, no d <= 256 makes span*d an integer           1,113
+
+The middle group is what cleanroom-substance-0b identified in Bricks: records that ARE
+grids but store their offsets already normalised, so no divisor applies. Their arithmetic
+reproduces exactly -- PavingStonesSubstance003 record 38 has N=16 and span 0.75 = 3/4 on a
+4-cell axis, record 13 has N=32 and span 1.625 = 13/8 on an 8-cell axis, and 4 and 8 divide
+16 and 32.
+
+So "the guard fires on none of this file's grids" is not the old failure inverted. Bricks'
+five grids are in the middle group: already normalised, correct today, and damaged by any
+divisor. The rule gets them right by declining, and it gets the 349 right by firing.
+
+The third group -- 1,113 records with no rational span at all -- are the rand scatters. A
+scatter has no cell size, so no d exists, which is why the arithmetic separates them from
+normalised grids without needing to read the program.
+
+**What this does not establish.** That the 349 are correct to scale is still unscored; the
+population is merely the right one to ask about. And the middle group is identified by its
+span alone -- I have not checked against the programs that those 113 really are grids, only
+that their spans are rational with a divisor consistent with the count.
