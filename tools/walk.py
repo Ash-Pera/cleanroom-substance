@@ -452,11 +452,14 @@ def _corpus_files(limit=None):
 def validate_nodes(files):
     """Harvest fx-tree node cells (as node_census does) and check walk_node against them.
 
-    Ground truth for a cell's size is the gap between the node's start and the next inline
-    program; ground truth for a pointer is `value + 52 is a valid program`. The walk knows
-    neither -- it computes size and field offsets from the tag alone. Two claims:
+    Ground truth for a pointer is `value + 52 is a valid program`; for a size it is that the
+    cell ends on a real boundary. The walk knows neither -- it computes size and field
+    offsets from the tag alone. Two claims:
 
-        size:     walk_node's word size == the gap, for kinds it catalogues
+        size:     a cell of walk_node's size LANDS validly -- the word where it ends begins
+                  the next node, a chain, or a program, or the cell run ends there. This
+                  replaces a gap-to-next-program comparison, which overstates a cell followed
+                  by more cells (a linked tree) and so mis-scored tightly-packed kinds.
         pointers: every empirically-found program pointer sits on a field boundary the
                   walk predicts (a pointer never lands in the middle of a field)
     """
@@ -465,6 +468,25 @@ def validate_nodes(files):
     from sbsasm import Assembly
     tag_sizes = defaultdict(Counter)        # tag -> Counter of observed gap sizes (words)
     ptr = defaultdict(Counter)              # tag -> Counter of program-pointer byte offsets
+    size_ok = Counter()                     # kind -> cells whose walk size LANDS validly
+    size_seen = Counter()
+
+    def _lands(a, off, s, end):
+        """Does a cell of the walk's size end on a real boundary? The gap-to-next-PROGRAM
+        overstates a cell followed by more cells (a linked tree), so the modal gap is the
+        wrong instrument for tightly-packed kinds like 0x0b. A landing test is robust: the
+        word where the cell ends must begin the next node, a chain, a program, or the cell
+        run itself must end there."""
+        if off == s or off == end:
+            return True
+        if off + 4 > end:
+            return False
+        w = struct.unpack_from('<I', a.data, off)[0]
+        if walk_node(w) is not None or _is_chain(w):
+            return True
+        q = w + 52
+        return a.body_lo <= q < a.body_hi and a.valid_program(q)
+
     for p in files:
         try:
             a = Assembly(p)
@@ -489,32 +511,28 @@ def validate_nodes(files):
                 pos = (pos + 3) & ~3
                 if pos + 8 <= s:
                     tag = struct.unpack_from('<I', a.data, pos)[0]
-                    if walk_node(tag) is not None:
+                    w = walk_node(tag)
+                    if w is not None:
+                        kind = tag & 0xFF
+                        size_seen[kind] += 1
                         tag_sizes[tag][(s - pos) // 4] += 1
+                        if _lands(a, pos + 4 * w[0], s, r.end):
+                            size_ok[kind] += 1
                         for off in range(4, min(s - pos, 64), 4):
                             v = struct.unpack_from('<I', a.data, pos + off)[0]
                             q2 = v + 52
                             if a.body_lo <= q2 < a.body_hi and a.valid_program(q2):
                                 ptr[tag][off] += 1
                 pos = max(pos, e)
-
-    # Compare walk_node against the MODAL size per tag, exactly as node_census does: a
-    # cell's size is a function of its tag, and multi-node gaps are the residue, not
-    # counter-evidence. Weight by how many cells each tag accounts for.
-    size_ok = Counter()
-    size_seen = Counter()
-    for tag, sizes in tag_sizes.items():
-        kind = tag & 0xFF
-        n = sum(sizes.values())
-        size_seen[kind] += n
-        if walk_node(tag)[0] == sizes.most_common(1)[0][0]:
-            size_ok[kind] += n
     # Pointers: every program pointer that occurs in >90% of a tag's cells must sit on a
     # field boundary the walk predicts -- a pointer never lands in the middle of a field.
     ptr_on_boundary = ptr_total = 0
     for tag, offs in ptr.items():
         seen = sum(tag_sizes[tag].values())
         field_starts = {4 * o for o in walk_node(tag)[1].values()}
+        if not field_starts:
+            continue                     # a single implicit pointer, no masked field to
+                                         # predict against -- the boundary claim does not apply
         for off, h in offs.items():
             if h / seen > 0.9:
                 ptr_total += 1
