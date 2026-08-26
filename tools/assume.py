@@ -56,6 +56,18 @@ QUESTIONS = {
     # emitted nothing and the engine uses the node's own default, which is not in the
     # file. A 4-tuple, so continuous rather than enumerated.
     'grayscale.weights':  (),
+    # WHAT UNIT A branchoffset IS IN. splat adds branchoffset to frameoffset and treats the
+    # sum as canvas coordinates, but the two are not in the same unit: over 966 square-grid
+    # fxmaps records the median of branchoffset's span / (G - 1) is exactly 1.0000, i.e. it
+    # spans G-1 CELLS, while frameoffset points at canvas in both records that can answer.
+    # Rendering agrees independently -- Chainmail record 0 puts one cell on screen read as
+    # canvas, and a full 257 x 257 lattice read as cells.
+    #
+    # It is a QUESTION rather than a fix because the tail is uncharacterised: G is only
+    # defined for a square emission count, and 30% of those 966 fall outside 10% of the
+    # cell ratio. A reference render can settle what a span statistic cannot, which is
+    # exactly what this channel is for.
+    'fx.branchoffset':    ('canvas', 'cell'),
 }
 
 _ACTIVE = {}
