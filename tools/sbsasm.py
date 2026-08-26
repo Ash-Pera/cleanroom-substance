@@ -49,8 +49,17 @@ FILTERS = {
     # nothing. What is still missing is the PARAMETERS: CrustyLava's emboss node declares
     # none -- every value left at its default -- so there is no declared number to locate in
     # the record, and its two floats (1.92 and 0.56 at words 5 and 6) have nothing to be
-    # matched against. Implementing emboss would need a permitted source that both pairs and
-    # states a value.
+    # matched against.
+    #
+    # THE SLOT IS PREDICTED EVEN SO, and it holds an intensity-shaped number.
+    # `param_slots.predicted_slot` -- layout start + 1 + bit 7 + bit 11, verified 38 of
+    # 38 on six OTHER filters -- puts emboss's float at slot 6 in
+    # stone_stylized_adaptive records 6 and 10, and both hold 10.0. That is where an
+    # intensity would be and what one would look like. It is a PREDICTION, not a
+    # pairing: no permitted source declares an emboss value, so nothing confirms the
+    # number is `intensity` rather than `lightangle`, and the FORMULA is not
+    # established at all. Implementing emboss still needs a permitted source that both
+    # pairs and states a value.
         8: 'emboss',
     14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
     20: 'pixelprocessor', 21: 'distance',
