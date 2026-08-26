@@ -854,6 +854,29 @@ QUESTIONS = {
     # fxmaps records, 0 differing. A candidate that cannot differ from another is not an
     # option.
     'fx.patternsize':     ('canvas', 'cell'),
+    # ARBITRATED ON THE REFERENCE PACKAGES, AND REFUTED ON STRUCTURE. `fxrender`'s note says
+    # this arm left two specimen records byte-identical because `_cell_divisor` declined
+    # them; over the reference packages as a whole it is NOT vacuous -- 97 of 694 rendered
+    # fxmaps records change -- so it can be scored, and it was:
+    #
+    #     candidate   mean MAE   mean |corr|
+    #     canvas       0.0613      0.3827
+    #     cell         0.0595      0.3533
+    #
+    # MAE PREFERS `cell` AND CORRELATION REFUSES IT, which is the exact split refcompare's
+    # affine column was added to make visible. The MAE gain is almost entirely Auras
+    # basecolor ch0 (-0.0120) and ch1 (-0.0231), and those same two channels lose structure:
+    # correlation 0.937 -> 0.820 and 0.865 -> 0.635. Correlation is scale-invariant, so a
+    # fall in it is structural damage, while MAE is not -- and Auras basecolor is the known
+    # gain case (fit y = 0.536x). Shrinking every pattern dims the render, which flatters a
+    # too-bright image on MAE while making the picture itself worse.
+    #
+    # Adopting on MAE alone would have taken it. It stays `canvas`.
+    #
+    # AND IT IS NOT THE WHITE RECORDS' CAUSE: 271 fxmaps records render at exactly 1.0 in
+    # these packages under BOTH candidates. Whatever the 97 records it moves are, the white
+    # population is not among them, so this question and the white one are separate.
+
     # WHAT AN ENTRY WITH NO patterntype DRAWS. `profile_for` falls back to 'rect', a hard
     # fill of the whole cell, and its own docstring says that is "what the code has always
     # done, not because it is established". It is a DIFFERENT knob from 'fx.profile', which

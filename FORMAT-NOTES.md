@@ -36348,3 +36348,60 @@ FX-Maps that render at exactly 1.0.** Rendered, low-variance, near-zero-correlat
 what a washed-out generator produces regardless of whether the filter downstream of it read its
 intensity correctly. The white FX-Maps are upstream of the arbiter itself, so fixing them is a
 precondition for arbitrating blur intensity, not an alternative to it.
+
+### What the white FX-Maps are NOT: four candidates killed by measurement
+
+1,369 of 2,510 rendered `fxmaps` records come out at exactly 1.0. Four explanations were
+tested this session and all four are refuted, which is worth recording so the next attempt
+starts past them:
+
+  * **Zero opacity.** The first specimen examined emitted every pattern at opacity 0.0.
+    Corpus-wide only 20 of 1,513 flat records do that; 1,336 have opacity nonzero throughout.
+
+  * **All patterns stacked at one position.** 1,151 of the 1,369 white records have
+    branchoffsets that DO vary across their patterns. They scatter; each stamp simply covers
+    the canvas.
+
+  * **`fx.sizeless` — the typeless entries should not be filled.** Arbitrated against the
+    reference maps: `fill` wins on the 15 channels all four candidates produce. The arm is not
+    vacuous either, which was checked separately -- 304 of 694 fxmaps records in those packages
+    render differently under `fill` and `skip`, and 271 are white under `fill`. So the
+    parameter propagates and the references still prefer the fill.
+
+  * **`fx.patternsize` — the size is in cell units, not canvas units.** Also not vacuous (97
+    of 694 records move) and refuted on structure: mean MAE improves 0.0613 -> 0.0595 while
+    mean |correlation| falls 0.3827 -> 0.3533. The MAE gain is Auras basecolor ch0/ch1, whose
+    correlations drop 0.937 -> 0.820 and 0.865 -> 0.635. Shrinking every pattern dims a render
+    that is already too bright, which flatters MAE without improving the picture. Under both
+    candidates 271 records stay white, so this is not their cause either.
+
+**What the white records DO have, and it is the sharpest signal found so far:** they carry a
+`patternsize` on SOME of their patterns and not others.
+
+    patternsize present on...      WHITE          varied
+      some patterns, not all       1,206 (88%)      34 (3.4%)
+      all patterns                    10           684
+      none                           153           279
+
+and where a size is present its median is >= 1.0 on 1,117 of them. So a white record is
+typically a MIXED table -- typed, sized draws alongside typeless ones that fall back to a full
+cell -- rather than a record that states nothing. That mixture is what `fx.sizeless` governs and
+what the references decline to change, which is the tension the next attempt has to resolve.
+
+### Tag 0x00420008 is a real draw, now by a positive test
+
+`entries()` keeps this tag on the grounds that `FX_ENTRY_PROGS` gives it a program slot, and
+excludes the chain-family 0x00020008 as structural. Carrying a program is weak evidence -- a
+structural node could carry one too. The chaining discriminator the same docstring uses settles
+it directly:
+
+    tag           entries   word[1]+52 == next entry
+    0x00020008      1,141            97.5%      structural, a linked list
+    0x00420008        749             0.0%      never chains
+    0x01520248        360             0.0%
+    0x14520248        272             0.0%
+    0x12400648        212             0.0%
+
+0 of 749 against 1,113 of 1,141. 0x00420008 behaves exactly like the typed draw entries and
+nothing like the structural family, so keeping it was right and the reason is now positive
+rather than circumstantial.
