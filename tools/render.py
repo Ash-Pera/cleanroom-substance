@@ -2875,35 +2875,40 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     if not np.isfinite(f) or abs(f) > 1e3:
                         raise Unsupported("hsl %s slot is not a plausible float" % name)
                     vals[name] = float(f)
-                # A PARAMETER CARRIED AS A PROGRAM IS INVISIBLE HERE, and that is a real
-                # gap rather than an absence. The loop above reads baked slots named by the
-                # class bits; 14 of the 41 hsl records in 30 files have NO baked bit and one
-                # or more filter programs, so they render as the identity -- an hsl node
-                # that does nothing, which is not what an author puts in a graph.
+                # A PARAMETER CARRIED AS A PROGRAM IS INVISIBLE HERE -- the loop above
+                # reads only baked slots named by class bits 8, 10 and 12 -- and 14 of the
+                # 41 hsl records in 30 files have no baked bit and one or more filter
+                # programs. They render as the identity.
                 #
-                # Auras 443 and 425 are the specimens, sitting between the gradient that
-                # makes the aura and the blend that outputs it, each with a single 1-wide
-                # program returning 0.0 and 0.01. Under the neutral-at-0.5 reading either is
-                # a half-unit shift, which is large, and the output's error is a per-channel
-                # gain (slope 0.536 / 0.321 / 0.802 against the engine's export) -- exactly
-                # the shape a missed colour adjustment would leave.
+                # THAT IS MOSTLY CORRECT, WHICH IS NOT WHAT IT LOOKED LIKE. Evaluating those
+                # programs over 30 files gives 43 single-component results, and 39 of them
+                # are EXACTLY 0.5 -- the neutral value under this branch's own
+                # reading, `shift = value - 0.5`. The records carrying them are class 0x2A19,
+                # 0x2A09, 0x2A99 and 0x2A18, with three, five or eight programs apiece, and
+                # every one is a node left at its defaults. An identity render is the right
+                # answer for them, so wiring the programs in would change nothing.
                 #
-                # SO IT WAS TRIED, ALL THREE WAYS, AND THE ARBITER DECLINED ALL THREE:
+                # The remaining 4 return 0.0. Auras 443 and 425 are two of them, sitting
+                # between the gradient that makes the aura and the blend that outputs it,
+                # with a single program each returning 0.0 and 0.01. Their output's error is
+                # a per-channel gain -- slope 0.536 / 0.321 / 0.802 against the engine's
+                # export at correlation 0.94 -- which is the shape a missed colour adjustment
+                # leaves, so all three assignments were tried:
                 #
                 #     assignment    ch0 MAE/corr    ch1 MAE/corr    ch2 MAE/corr
-                #     none (now)    0.088 / 0.937   0.101 / 0.865   0.066 / 0.945
+                #     identity      0.088 / 0.937   0.101 / 0.865   0.066 / 0.945
                 #     hue           0.139 / 0.929   0.223 / 0.740   0.069 / 0.930
                 #     saturation    0.120 / 0.939   0.179 / 0.791   0.040 / 0.968
                 #     luminosity    0.070 / 0.725   0.041 / 0.296   0.086 / 0.873
                 #
-                # `saturation` buys ch2 (correlation 0.945 -> 0.968, residual 0.060 -> 0.040)
-                # and loses ch1; `luminosity` buys brightness and destroys structure,
-                # correlation 0.865 -> 0.296. Nothing is uniformly better, so nothing is
-                # adopted -- taking `saturation` for one channel's gain would be choosing on
-                # the metric that happened to move.
+                # None is uniformly better. `saturation` buys ch2 and loses ch1;
+                # `luminosity` buys brightness and takes correlation from 0.865 to 0.296.
                 #
-                # What is missing is WHICH parameter the program feeds, and the class bits do
-                # not say: these records set none of 8, 10 or 12.
+                # And the structure says these two records have no parameter at all: their
+                # class is 0x0219, which sets NONE of the parameter bits -- not 8, 10 or 12,
+                # and not the 11-and-13 pair the 0.5-returning records all carry. Their one
+                # program is probably not an hsl parameter, which is consistent with every
+                # assignment of it making the picture worse.
                 h_sh = vals.get('hue', 0.5) - 0.5
                 s_sh = vals.get('saturation', 0.5) - 0.5
                 l_sh = vals.get('luminosity', 0.5) - 0.5
