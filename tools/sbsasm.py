@@ -1571,6 +1571,20 @@ class Record:
             if e is not None:
                 return (e, 2 + len(e))
 
+        # transformation: the mask-walk states its edges (walk.SPECS[2] reproduces the
+        # model's edge_slots on every record), and its one program sits at slot 3 -- the
+        # matrix expression, a program iff that slot resolves as one. Memo redundant here.
+        if f == 2 and len(self.words) > 1:
+            import walk as _walk
+            try:
+                w = _walk.walk(_walk.SPECS[2], self.words[0], self.words[1],
+                               len(self.words))
+            except _walk.Overrun:
+                w = None
+            if w is not None:
+                sl = 3 if len(self.words) > 3 else None
+                return (list(w.edge_slots), sl)
+
         if LAYOUTS and len(self.words) > 1:
             hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
             if hit:
