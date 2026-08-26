@@ -36773,3 +36773,58 @@ are now resolved:
   pos+offset; the difference is the relief, applied to the base edge.
 Down to one arithmetic knob (how intensity enters the relief) for the render side to sweep
 against the reference. Highest-leverage unblock for Wooden_Roof_Tiles (5 roots + 619 cascades).
+
+### The reference set has 55 scored channels, not 15 — a harness bug, and what it hid
+
+Every arbitration this session was scored through a harness that keyed results on
+`(package, output name, channel)`. A package can hold SEVERAL assemblies -- `refcompare`'s own
+`_package_refs` docstring says so in as many words, and `Kutejnikov__Bricks_and_tiles` ships
+several -- so later assemblies silently overwrote earlier ones in that dict. Keyed by ASSEMBLY
+the same sweep yields **55 channels where the harness reported 15**, and 42 usable where it
+reported 7.
+
+The verdicts are not invalidated: both sides of every A/B went through the same collapse, so the
+comparisons stayed apples-to-apples. They were simply decided on 30% of the available evidence.
+Re-run on the full basis, with signed correlation:
+
+    candidate            mean MAE   mean SIGNED corr
+    baseline              0.1388        +0.1102
+    fx.sizeless=skip      0.1388        +0.1093
+    fx.rootentry=skip     0.1388        +0.1099
+    fx.patternsize=cell   0.1380        +0.1003
+    BOTH cell             0.1367        +0.0976
+    normal.inversedy      0.1378        +0.1628
+
+Every fx verdict survives -- the two skip arms move by less than 0.001 and stay undecidable, the
+two cell arms lose correlation and stay refuted. What changes is `normal.inversedy`, which the
+narrow basis showed as a single channel and the full one shows as the largest effect available.
+
+It also hid real successes. Reported per assembly, our best renders are better than anything this
+session has claimed:
+
+    Auras_FX      basecolor ch2   +0.945      Bricks   height ch0   +0.625   (768 distinct)
+    Auras_FX      basecolor ch0   +0.937      Bricks   normal ch0   +0.588   (799 distinct)
+    Auras_FX      basecolor ch1   +0.865
+
+Bricks height at +0.625 and normal at +0.588 were being reported as +0.031 and +0.159, which are
+a different assembly's numbers.
+
+**The lesson is narrower than "check your harness".** `refcompare.main` iterates assemblies and
+prints them separately, so the tool was right; the scratch harness written on top of it invented
+a key the tool does not use. Any future sweep must key on the assembly path, because one package
+is not one material.
+
+### `inversedy` on six specimens, and a clean confusion matrix
+
+With the harness fixed, the green-channel flag has six positives rather than one:
+
+    bit set, green anti-correlated    6     -0.585 -0.158 -0.126 -0.119 -0.093 -0.024
+    bit clear, green correlated       1     +0.002
+    bit set, green correlated         0
+    bit clear, green anti-correlated  0
+
+Zero misclassifications, and the strongest channel it corrects goes -0.585 -> +0.585. The six are
+three distinct Bricks assemblies each scored against two reference directories, so the positive
+side is still ONE package and one author's convention -- which is why this stays opt-in. A second
+package setting the bit would settle it; nothing else in this corpus can, since the test needs
+exported height AND normal maps from the same material.

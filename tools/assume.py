@@ -72,8 +72,28 @@ QUESTIONS = {
     # cannot see a sign error, which is exactly what this question is about; the signed
     # value is what has to be read here.
     #
-    # THE WEAKNESS, stated because it is the whole of it: there is exactly ONE positive
-    # specimen. Any field set in Bricks and clear in the other three would fit this
+    # THE EVIDENCE IS NOW SIX SPECIMENS, NOT ONE, and the earlier "one positive specimen"
+    # was an artifact of a broken harness -- see FORMAT-NOTES on the collapsed scoring key.
+    # Scored per ASSEMBLY rather than per package, the reference set has 55 channels, not
+    # 15, and SIX of them are `normal` ch1 with the bit set. Every one is anti-correlated
+    # and every one is corrected:
+    #
+    #     bit set, green anti-correlated   6      -0.585 -0.158 -0.126 -0.119 -0.093 -0.024
+    #     bit clear, green correlated      1      +0.002
+    #     bit set, green correlated        0
+    #     bit clear, green anti-correlated 0
+    #
+    # On the full 42-channel usable basis it lifts mean SIGNED correlation from +0.1102 to
+    # +0.1628, the largest move any candidate in this file produces, and the strongest
+    # single channel it fixes reads -0.585 -> +0.585.
+    #
+    # THE WEAKNESS THAT REMAINS: the six positives are three assemblies of ONE package,
+    # Kutejnikov__Bricks_and_tiles, each scored against two reference directories. So the
+    # confusion matrix is clean but the positive side is one author's convention, and a
+    # second package that sets the bit is what would settle it.
+    #
+    # SUPERSEDED, kept because the reasoning was right on what it saw: there is exactly ONE
+    # positive specimen. Any field set in Bricks and clear in the other three would fit this
     # evidence, and rarity plus boolean shape is what distinguishes this one from the five
     # other differing words -- not a second package that sets it. Kept OPT-IN for that
     # reason; a second package that sets the bit and needs the flip would settle it.
