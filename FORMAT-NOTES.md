@@ -32437,10 +32437,32 @@ This resolves several earlier threads at once:
 What this does **not** do is fix the renderer, and it cannot be tested here (numpy is broken in
 this environment). The concrete next step, stated for whoever can render: for a cloud record,
 assert `slots` holds `size_out ≈ 1 / 2^cloud_size` (~0.008 at default) at the instant a
-paramset reads it. If it does not, the `set` computing it is run too late or writes a different
-slot than the `get` reads — a `seed_slots`/ordering defect — and that, not a frame scale, is
-what paints the corpus flat. Score any change against the negative-result-4 pair: `Lines`
-record 0 must stay a picture, `ChesterfieldSofa`'s reference correlation must not fall.
+paramset reads it.
+
+**RESOLVED — the frame IS connected, and the size is not unset.** A peer ran exactly that
+assertion through the full `emissions()` walk, and it settles two things the paragraphs above
+got wrong. The setter is not a "setup paramset" earlier in table order; it is a **chain NODE**
+program — on `ie_pcloud` rec1 the `0x89` markov2/GATE node at off 1728 (prog 1744) writes the
+size slot along with slots 1, 2 and 6, and the entry programs only read. fxrender's walk runs
+that GATE program (as its switch evaluation) and its `set`s land in the shared `slots` frame as
+a side effect, before the entries emit — so the frame flows chain → entries, and node writes
+DO reach the entry frame (slots 13/15/17/18 are absent from the pre-pass and present after the
+walk on `PavingStonesSubstance003` rec2809/2811). So a bare `get` in an entry is not evidence
+of an unset variable, and `seed_slots` missing a slot is not evidence of anything — the write
+happens later, in the walk. Both my "reads unset" inference and the earlier "`seed_slots`
+ordering defect" guess are withdrawn.
+
+And the value itself is **not** obviously wrong: through the connected walk, `PavingStones`
+patternsize comes out `2.82 = 2 × 1.414`, twice the unit-square diagonal that `Stadsspel__Lines`
+already established as a legitimate size. A pattern that overlaps its cell is what paving stones
+over their cells look like — deliberate, not a default. So the open question is no longer "does
+the size resolve" (yes) or "is it unset" (no); it is **"is 2.82 the number the engine drew,"**
+and that needs the reference arbiter, not a slot trace. The arbiter-testable records exist:
+`ChesterfieldSofa` ships exported maps and has eight fxmaps records with a chain plus a
+patternsize program (rec 34, 53, 65, 79, 86, 92, 93, 321) — run the walk, emit, and score the
+map against the reference. Until that runs, treat the "flat because the size is too large"
+reading as unproven: the size resolves, and whether the flatness is a size error or a
+pattern-shape/coverage error (negative result 1) is undecided on this evidence.
 
 ### Two negative results
 
