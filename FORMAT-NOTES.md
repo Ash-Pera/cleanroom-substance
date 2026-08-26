@@ -36040,22 +36040,33 @@ slots[26] + slots[12] sums the $number-grid position (slot 26) with the SCANNER 
 (slot 12); a $number-grid record must run its scanner once for slot init, not re-enter it per
 emission, or slot 12 accumulates and carries the grid off-canvas.
 
-THE ONE NAMED GAP (corrected): the count IS in the format — it is **(1/patternsize)²**.
-rec34 patternsize 0.25 → dim 4 → 16; rec65 0.4146 → dim 2.41 → 5.8 — both measured deficits
-to three digits, unfitted (patternsize is what 530756 computes). So the deficit was exactly
-1/size² because the count IS the tile count implied by the size: an FX-map emits enough
-size-s patterns to tile the canvas, (1/s)² of them. `numberadded` is NOT this count — it is
-a per-pattern AMOUNT (1.0 in 69.5% of 0x18B nodes); rec34's reads only slot 8 (aspect
-gridsize = 1 on a square canvas), computes (mod(g−1,2)+g)² = odd squares, and so degenerates
-to 1. Peer 0b's insight: the per-record grid dimension lives in the placement program
-530756's constants, and it tracks the deficit (rec34/53/86 carry a 4; rec65 does not).
+THE ONE NAMED GAP (corrected twice — final): the count is 16 for BOTH rec34 and rec65,
+hardwired and SIZE-INDEPENDENT. Two failed rules preceded this, both worth recording:
+(1) the 1/size² "agreement" (step constant, coverage deficit, dot pitch) was NEVER
+independent evidence — one stamp covers size²·(input lit), so a full tiling gives a 1/size²
+deficit for ANY mechanism; it was one measurement restated three times. (2) A rule
+count=(1/patternsize)² derived from that identity just returns the assumption; peer 0b
+refuted it by rendering rec65, which lays a 4×4 on the SAME 0.25 pitch as rec34 despite
+size 0.4146.
 
-`numberadded` DOES carry a real count for other record classes: FabricSubstance009,
+The decisive evidence is a byte-diff, independent of the identity: placement programs
+530756 (rec34) and 542248 (rec65) are 347 lines each and differ in exactly FOUR constants —
+lines 12/15 (a 0.0025 jitter) and lines 181/184 (0.09/1.67 vs 0.0/1.0), which feed
+v190 = slots[29] = patternSIZE. The GRID computation (lines 18–42) is BYTE-IDENTICAL: both
+carry `v10 = 4.0` (floor($number/4) → 4 rows) and 0.25 pitch (0.25·$number mod 1 → 4
+columns). So count = 4×4 = 16 for both; only patternsize differs. rec65 saturates to 1.0 at
+n=16 because its 0.4146 stamps overlap on the shared 0.25 grid — its target was never its
+input's 0.787. (An earlier note that "rec65 lacks the 4.0" was a misread: the 4.0 is at
+line 19; the 1.67 is a size multiplier at line 184.)
+
+`numberadded` is NOT this count — it is a per-pattern AMOUNT (1.0 in 69.5% of 0x18B nodes);
+rec34's reads slot 8 (aspect gridsize = 1 on a square canvas), computes (mod(g−1,2)+g)² =
+odd squares, degenerating to 1. It DOES carry a real count for OTHER classes: FabricSubstance009,
 ie_particles, PW_ConcreteWall read graph INPUTREFS in numberadded (count from a tiles/amount
-parameter). So there are ≥2 count sources — a parameter through numberadded, and the
-size-implied tile count (1/patternsize)². rec34 uses the second.
+parameter). rec34/65 are the placement-grid class instead.
 
-Remaining unread piece (narrowed, with an equation-falsifier): by what path the engine turns
-patternsize into the emission loop bound for a size-tiled record, given our walk uses
-numberadded and rec34's numberadded reads aspect, not size. The rule any candidate must
-satisfy: count = (1/patternsize)² = 16 (rec34/53/86), 5.8 (rec65). Do NOT hard-code 16.
+Remaining unread piece: the count VALUE (16) and SOURCE (placement floor-divisor v10=4.0,
+equivalently 1/pitch; hardwired, identical across rec34/53/65/86) are pinned. What is unread
+is the PATH by which the engine reads that divisor/pitch out of the placement program and
+makes it the emission loop bound, given our walk uses numberadded (the aspect-amount here).
+Do NOT hard-code 16.
