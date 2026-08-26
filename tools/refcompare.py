@@ -24,6 +24,28 @@ a package names its outputs generically (`output`, `output_1`, ... -- see
 `minime453__Stylized_Sandy_Stone_Path`) nothing pairs and this reports so rather than
 matching by position, which would be a guess dressed as a measurement.
 
+NOT A FRAME MISMATCH EITHER, and for `Kutejnikov__Auras` that is the obvious first guess:
+it ships 120 base-colour exports, 60 frames of an animation in two encodings, and this
+compares against whichever the glob returns first. If our render corresponded to a different
+frame, the shape would match and the colours would not -- which is exactly the symptom its
+`basecolor` shows, correlation 0.94 with a per-channel gain of 0.536 / 0.321 / 0.802.
+
+Scoring our render against all 120:
+
+    best MAE     0.0802 at frame 0034, mean correlation +0.9008
+    worst MAE    0.0921 at frame 0008, mean correlation +0.9257
+    frame 0000, the one used   0.0879, +0.9366
+
+The whole range is 0.080 to 0.092 and every frame correlates between 0.90 and 0.93, so the
+frames barely differ and the choice does not matter. The gain error is a property of our
+render, not of which export it is held against. (Note the best MAE and the best correlation
+are at different frames, which is the same structure-versus-gain split the fit column
+reports.)
+
+Also checked and rejected: it is not a transfer function. The best pure gamma fits at
+residual 0.031 against the linear fit's 0.032, treating our output as sRGB makes it worse
+(0.145), and linearising it improves the raw number but not past the linear fit.
+
 NOT AN ORIENTATION PROBLEM, checked rather than assumed. A systematic flip or transpose
 would depress every correlation in this table while the decode underneath was correct, so
 it is cheap to ask and expensive to miss. Scoring all 14 channels under identity, flip-x,
