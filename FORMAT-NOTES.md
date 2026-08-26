@@ -36889,3 +36889,48 @@ A NOTE ON A TEMPTING FIT. `(A+B)/2` scores much better than `A+B` -- same correl
 would be curve-fitting: halving compensates for the upstream brightness rather than correcting
 it, and it would leave the same error hidden in every branch that does not happen to be summed
 in pairs.
+
+### Auras basecolor: the closed list
+
+Continuing from the localisation above -- background right, lit pixels about twice too bright in
+each branch before the blend -- these are now tested and closed. Each was cheap and each is
+recorded so the next attempt does not repeat it:
+
+  * **Blend opacity.** Mode 1 is `add`, so the result is `dst + src * opacity`. No opacity
+    reproduces the reference: even at opacity 0 the destination alone (record 443, mean
+    [0.111, 0.088, 0.174]) is already brighter than the reference ([0.104, 0.045, 0.205]) --
+    twice over in green. The gain is not a mis-read opacity.
+
+  * **Alpha premultiplication.** Plausible for an aura effect, and dead on inspection: record
+    444's alpha channel is uniformly 1.0000 -- min, median and max -- so `rgb * alpha` and
+    `rgb / alpha` are byte-identical to `rgb`.
+
+  * **Transfer function**, retested here on the output rather than the filter:
+
+        candidate           mean                    corr / slope r,g,b            MAE
+        ours (linear)       [0.191 0.145 0.268]     0.94/0.54  0.86/0.32  0.95/0.80   0.0847
+        sRGB decode         [0.136 0.093 0.241]     0.88/0.59  0.83/0.39  0.96/0.85   0.0532
+        sRGB encode         [0.248 0.198 0.296]     0.92/0.46  0.83/0.26  0.91/0.75   0.1299
+        ours ^ 2.2          [0.136 0.094 0.242]     0.88/0.59  0.83/0.39  0.96/0.85   0.0538
+
+    sRGB decode nearly halves MAE and LOSES correlation on two channels of three, and its
+    slopes are still 0.59 / 0.39 / 0.85. Same shape as the `(A+B)/2` fit: the error metric
+    improves because the image gets darker, not because it gets righter.
+
+  * **The driving mask being too bright.** Inverting the reference through record 424's ramp --
+    for each reference pixel, the ramp position whose colour is nearest -- gives an implied
+    mask with mean 0.332 against our record 423's 0.270, so ours is LOWER, not higher. The test
+    is confounded (the reference is a sum of two branches, so no single ramp inverts it cleanly;
+    residual 0.069) and it is reported for the direction it rules out rather than as a
+    measurement of the mask.
+
+WHAT IS LEFT, and it is narrower than when this started: the excess is inside a single branch,
+after the mask and after the ramp, and it is worst in green -- our g reaches 0.708 where the
+reference reaches 0.589, while r and b agree to three decimals. `hsl` is not it either: records
+425 and 443 reproduce their gradient inputs 424 and 442 exactly, which is the identity this
+project already established for hsl records whose parameters are all at the 0.5 default.
+
+ONE LOOSE THREAD worth someone's attention: this output declares `format=16, colour=False` --
+a GREYSCALE output -- yet its exported reference is RGB and our render of it is 4-channel. The
+0.94 correlation says the pairing is right, so `colour` is either mis-decoded for this record or
+means something other than "the output has one channel".
