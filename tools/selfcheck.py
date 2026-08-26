@@ -217,6 +217,14 @@ def check_outputs(asm, outs, laws):
         # Two independent declarations, which is what makes this a law rather than a
         # restatement: the bit comes from the output table, the channel count from the
         # pixels the renderer produced.
+        #
+        # A VALUE output has no grayscale flag -- `outputs()` returns `is_gray=None` for the
+        # `w0 >> 16 == 2` entries, which are pixelprocessor scalars, not images. Comparing
+        # `None` against a channel count is meaningless (it read as False and failed on every
+        # one), so the law does not examine them. Finiteness and range still apply: a value is
+        # still a number that must be finite and in range.
+        if is_gray is None:
+            continue
         nch = 1 if x.ndim == 2 else x.shape[-1]
         gray.see(bool(is_gray) == (nch == 1),
                  witness='%s rec %d grayscale=%s but %d channels' % (name, ri, is_gray, nch),
