@@ -1450,6 +1450,17 @@ class Record:
         """
         if self._layout is not None:
             return self._layout
+        # The unified structural walk is the primary layout computation now: it returns the same
+        # (edges, prog) as the five special cases below, proven 0-diff on every consumer -- edges
+        # 926,882/926,882, and size_or_baked and programs() both 0 changes corpus-wide -- and its
+        # prog already carries the edge-XOR-program rule (prog is None when its slot is an input).
+        # `_compute_layout` stays only for the records decompose does not cover (the unnamed
+        # filter 9). See tools/decompose.py and FORMAT-NOTES.md "Unified walk".
+        import decompose as _decompose
+        _d = _decompose.decompose(self)
+        if _d is not None:
+            self._layout = r = (list(_d['inputs']), _d['prog'])
+            return r
         edges, prog = self._compute_layout()
         edges = self._real_edges(edges)
         # A slot is an edge XOR a program, never both. The _ruled branch fixes the program
@@ -2608,12 +2619,30 @@ class Record:
                 continue
             seen.add(off)
             layout = fx_entry_layout(tag)
+            # A BAKED PARAMETER IS AS WIDE AS THE LAYOUT SAYS. This used to yield the single
+            # raw slot WORD, so a parameter declared at width 2 lost its second component --
+            # 928 entries over 20 files, 921 of them `patternsize`, and the values are not
+            # degenerate: ChesterfieldSofa 331/333 store (5.0, 1.0), a 5:1 strip, and it was
+            # drawn as a 5x5 square. `fxrender.entries` carried a width-aware override to
+            # work around exactly this; the read itself is now correct, so the workaround is
+            # a belt to the braces rather than the mechanism.
+            #
+            # Yielded as a TUPLE OF FLOATS, length = width, decoded here rather than handed
+            # back raw: this module has no numpy, and a caller that received a bare word had
+            # no way to know how many words the parameter actually occupied.
+            widths = {sl: w for _b, sl, _n, k, w in fx_entry_walk(tag) if k == 'baked'}
             for sl, name, how in layout:
                 if off + 4 * sl + 4 > hi:
                     break
                 w = struct.unpack_from('<I', d, off + 4 * sl)[0]
                 if how == 'baked':
-                    yield off, tag, sl, name, how, w
+                    n = widths.get(sl, 1)
+                    if off + 4 * (sl + n) <= hi:
+                        raw = d[off + 4 * sl:off + 4 * (sl + n)]
+                        yield off, tag, sl, name, how, struct.unpack('<%df' % n, raw)
+                    else:
+                        yield off, tag, sl, name, how, struct.unpack('<f',
+                                                                    struct.pack('<I', w))
                     continue
                 if how == 'inline':
                     # The slot IS the program; its address is not read from the word. This

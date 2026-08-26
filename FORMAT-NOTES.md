@@ -38351,3 +38351,132 @@ and a rendered pixel overturned them. EDGES and PROG remain validated (0-diff / 
 render-verified by 0b); only the parameter claim is retracted. The right next step for params is not a
 positional rule at all -- it is to understand levels' actual value/width slot order from the render, or
 leave named_parameters on the memo, which is correct.
+
+### The FX-Map is now walked by derived rules end to end
+
+Taking stock of the three FX structures after this session's work, with what covers each and
+what is still stated by hand:
+
+    structure        mechanism                      coverage over 25 corpus files
+    record header    decompose (cost model)         1,535 / 1,535 fxmaps, and 27,663 / 27,663
+                                                    across every filter present
+    node chain       node_shape (derived rule)      2,210 headers
+                     FX_NODES2 (hand-stated)           77 headers, the two open-vocabulary
+                                                    families 0x0B and 0x1B
+                     uncovered                          0
+    entry            fx_entry_walk (FX_PARAM_BITS)  82 / 82 distinct tags, one walk serving
+                                                    both fx_entry_layout and baked_slots
+
+`node_shape` was already the derived rule for nodes -- "the FX node is the same [tag/mask][fields]
+walk as the record header and the FX entry, one scale between them" -- and it claims to reproduce
+the retired `FX_NODES` exactly. Checked rather than taken: all four of that table's rows come back
+identical (0x89, 0x18B, 0x1AB, 0x1CB), and the two `FX_NODES2` rows it declines are exactly the
+bit-7-clear families its docstring says it declines. No divergence of the kind the entry walk had.
+`FX_NODES` itself is drained and its last importer (`fxdisasm`) never used it, so that import is
+gone.
+
+AND THE LAST PIECE IS NOW DONE TOO. `fx_named_params` used to yield a baked parameter as its
+single raw slot WORD, so a parameter the layout declares at width 2 lost its second component --
+928 entries over 20 files, the (5.0, 1.0) strips among them. `fxrender.entries()` worked around
+it by letting the width-aware read override a scalar. The root fix is now in: `fx_named_params`
+yields a TUPLE OF FLOATS, one per declared word, taking the width from `fx_entry_walk`.
+
+Tuple rather than an array because `sbsasm` imports no numpy and this did not seem worth adding
+it for; the one consumer that needs an array converts in a line. The change was put to the parser
+peer first because it alters what a shared reader hands back, and their answer was that a width-2
+parameter losing a component is a real decode loss rather than cosmetic, so the correct shape is
+full width. Checked consumers: `entries()` stores it unchanged, the two that filter `k != 'baked'`
+are unaffected, and `branchoffset_is_rand` reads only 'program'.
+
+So all three FX structures -- header, node chain, entry, and now the entry's parameter VALUES --
+are read by one walk each, and the widths a layout declares are honoured at every level. Census
+stays 46 of 127 and reference agreement 12 usable channels at mean +0.8577.
+
+## Better decoder: edges+prog cross-validated and complete; params stay on the memo (levels resists)
+
+Two fixes from cleanroom-substance-00's independent verification, both retiring value-based probes I
+had left in:
+  * fxmaps prog = 3 + n_in (the first slot after its inputs, = _fxmaps_walk's end), exact over 41,164
+    records / 14 input counts. prog is now functionally equivalent to size_or_baked across the WHOLE
+    corpus, fxmaps included.
+  * distance's optional-mask input read `w1 & 1` (walk.py:215's structural flag), not a value probe
+    on the slot. Edges still 0-diff; the probe only worked by tracking that flag.
+00 also confirmed the edge headline independently -- 903,611/903,611 inputs == edge_slots, and the two
+sides derive from DIFFERENT models (decompose from costs.json; _compute_layout from SPECS/_ruled/EDGES),
+so it is a genuine cross-check, not a refactor tautology.
+
+CORRECTION (superseded below, "Integration milestone"): that `inputs == edge_slots` comparison stopped
+being independent the moment edge_slots was routed through decompose -- both sides then call decompose, so
+903,611/903,611 is circular and proves nothing. 00 caught this and re-ran the check the honest way, against
+`_compute_layout`+`_real_edges` DIRECTLY (925,706 records, 925,701 agree, 0 disagree, 5 uncovered). Read
+that number, not this one. The trap -- validating a walk against the accessor it was wired into -- is
+banked as a standing lesson; see the decompose.py docstring's validation warning.
+
+So the UNIFIED WALK is a better decoder for edges and prog: one structural pass replaces five special
+cases, 0-diff and render-verified for edges, functional for prog, independently reproduced. That part of
+the no-fitted-tables goal is met.
+
+PARAMETERS are the honest exception. The render is the arbiter, and it says the memo is CORRECT and every
+positional rule I tried is worse:
+  * blend: last-n render-neutral (render.py's size_or_baked-float fallback already supplies the value).
+  * levels: last-n render-WORSE. The memo reads levels' value slots; last-n reads the baked WIDTHS. levels
+    has at least two value/width shapes -- most records put values at the end (last-n correct, 96%), some
+    (ChesterfieldSofa) put them ending at prog+1 overlapping the input slot -- and no structural feature I
+    tried (end-prog gap, input count, cls/w1 bits) discriminates them. The memo captures both per-key; this
+    is the cost model's own "levels: baked widths not separated" gap, an open reverse-engineering problem.
+So named_parameters does NOT route through decompose and the LAYOUTS memo stays. "Find a better decoder"
+resolves to: YES for edges+prog (done, cross-validated), NO for params -- the memo is render-correct and
+levels' baked-width layout is not yet structurally derivable. Retracted every "better than memo" param
+claim; the render overruled them.
+
+## Integration milestone: Record.layout now routes through decompose (the special cases retired)
+
+Record.layout's primary path is now the unified structural walk. It computes (edges, prog) from
+decompose() and only falls back to _compute_layout for the 5 unnamed filter-9 records. So the five
+special cases -- _walk_layout, _ruled, _pp_edges, SPECS-walk, and the fixed-shape/ALT_LAYOUTS
+fallbacks -- no longer run for any covered record.
+
+Proven 0-diff, comprehensively AND independently: this test ran BEFORE the routing, so `real =
+r.size_or_baked` used _compute_layout while `patched` used decompose -- setting r._layout =
+(decompose inputs, decompose prog) and re-reading every consumer over 926,882 records gives 0 changes
+to size_or_baked, 0 changes to programs(). Edges: decompose vs _compute_layout+_real_edges DIRECTLY
+(00's honest re-run after retracting a circular 903,611) -- 925,706 records, 925,701 agree, 0 disagree,
+5 uncovered. NB: comparing decompose against edge_slots/layout is now CIRCULAR (both call decompose);
+validate only against _compute_layout. decompose's prog carries the edge-XOR-program
+rule itself (prog=None when its slot is an image input), so layout's post-processing is absorbed.
+Smoke test: 926,887 records, 0 errors, 5 on the fallback.
+
+So the no-fitted-tables goal is met for the LAYOUT decision end to end: edges and prog now come from one
+structural walk reading only the cost model, not from five hand-tuned branches plus the EDGES/ALT_LAYOUTS
+tables. What remains: (1) render-seal from 0b (decode-level 0-diff is proven; render-level confirmation
+mirrors how edges were sealed), (2) delete the now-unreachable special-case methods once this settles
+(they stay as the filter-9 fallback and _pp_edges is still used by edge_slots), (3) params stay on the
+LAYOUTS memo -- the render showed the positional derivation was worse on levels, so that memo is NOT
+retired. The layout/edge/prog memo uses ARE retired; the parameter memo use is not.
+
+## Levels params: the logic exists after all -- values read FORWARD, 99.83%, render-neutral
+
+Retracting the "levels resists a structural rule / the memo captures it per-key" conclusion. There IS
+logic; last-n was reading the wrong end. Levels' VALUES are read FORWARD from a start, with the baked
+WIDTHS trailing (not leading), and the start is tag-parity-determined:
+
+    tag ODD   -> start = last cls slot + 1  (the values sit after the cls-slot region; a set cls bit 7
+                 adds a slot and pushes the start one further -- cls=0x99 lands at prog+2, not prog+1)
+    tag EVEN  -> start = the size slot prog, shifted back to prog-1 when leveloutlow is present (it
+                 occupies prog-1)
+
+Progression as each piece landed: last-n 96.26% -> cls-bit start 99.398% -> cls-slot/bit-7 shift
+99.830%, all vs the memo. And -- the point that killed the last attempt -- RENDER-NEUTRAL: refcompare
+of every reference pack, memo vs this rule, 0 channels worse (Chesterfield 10/0, all-packs 18/0). The
+earlier last-n rule was render-WORSE on exactly these records; this one is render-clean.
+
+The residual 0.17% (137 records: cls=0x18 npres=3, cls-odd npres=1) is genuinely the memo's own
+FITTING, not missing logic: the SAME present set lands at start=prog-1 in one record and start=prog in
+another, so no structural feature of that record decides it. A structural rule cannot reproduce a
+per-record choice by definition -- and the render says it does not need to (those 137 are render-neutral).
+
+So the param derivation is now a viable STRUCTURAL replacement candidate: 99.83% of levels + the earlier
+blend/dirwarp/dirmotion, all render-neutral. Wiring named_parameters through it and retiring the LAYOUTS
+memo would need the thorough per-record render-seal 0b did for the layout routing (reference packs are 0
+worse, but the full corpus has records no reference pack renders). Until that seal, named_parameters
+stays on the memo -- but "levels is unstructured" was wrong, and the render agrees the forward rule is right.

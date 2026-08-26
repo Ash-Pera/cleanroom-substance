@@ -10,7 +10,7 @@ and `valid_program` disagree. There is now one implementation of each.
 import sys
 
 import disasm
-from sbsasm import Assembly, FX_NODES, fx_entry_layout
+from sbsasm import Assembly, fx_entry_layout
 
 
 def tree(asm, r):

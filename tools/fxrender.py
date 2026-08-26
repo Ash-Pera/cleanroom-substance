@@ -872,12 +872,13 @@ def entries(rec, baked_pairs=True):
                 # strip, and we drew a 5x5 square; stone_stylized_adaptive record 284
                 # stores (1.25, 8.0) and we drew 1.25 x 1.25.
                 #
-                # So this read now OVERRIDES a scalar when the declared width is more than
-                # one. It still declines where the named-params path already produced an
-                # array, and still declines entirely for entries whose parameters are not
-                # inline (below).
-                _cur = tbl[off][1].get(partner)
-                if _cur is not None and (width <= 1 or isinstance(_cur[1], np.ndarray)):
+                # THE WIDTH OVERRIDE IS GONE, because the read it compensated for is fixed
+                # at the root: `fx_named_params` now yields a baked parameter at its declared
+                # WIDTH (a tuple of floats), so a width-2 parameter no longer arrives here as
+                # a single number. This loop is back to what it is for -- pairing an UNNAMED
+                # baked bit with the parameter the next bit names -- and defers to anything
+                # the named path already produced.
+                if partner in tbl[off][1]:
                     continue
                 # THE SLOT IS INLINE ONLY WHEN THE ENTRY SAYS SO. An entry's +4 word
                 # addresses its parameters; usually that is off+8 and the slots follow the
