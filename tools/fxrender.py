@@ -173,6 +173,8 @@ record 0 (baked-free, must stay a picture) and ChesterfieldSofa's reference corr
 """
 import argparse
 import os
+import math
+import re
 import struct
 import sys
 
@@ -292,6 +294,21 @@ def _is_leaf(hdr):
     return (hdr & 0xFF) == 0x0B
 MAX_PATTERNS = 40000
 
+_SLOT_WRITE = re.compile(r'slots\[(\d+)\]\s*=')
+_SLOT_ANY = re.compile(r'slots\[(\d+)\]')
+
+#: Below this many patterns the scalar path is used unchanged. Batching costs a snapshot
+#: of the slot frame and an extra dict per pattern, which is not worth it for a handful,
+#: and it keeps the common small record on exactly the code path it has always taken.
+BATCH_MIN = 32
+
+# Defaults for the emitted pattern parameters, as arrays built once. `val` used to take
+# Python lists and convert them per pattern.
+_ZERO1 = np.zeros(1, dtype=np.float32)
+_ZERO2 = np.zeros(2, dtype=np.float32)
+_ONE1 = np.ones(1, dtype=np.float32)
+_ONE2 = np.ones(2, dtype=np.float32)
+
 
 class Unmodelled(Exception):
     pass
@@ -325,7 +342,46 @@ def make_runner(asm, rec):
     # `asm.body_hi` is fixed for the life of the assembly.
     spans = {}
 
-    def run(ptr, slots, number):
+    flows = {}
+
+    def flow(ptr):
+        """(slots read before this program writes them, slots it writes).
+
+        The batched emission below needs to know whether a slot a program writes is
+        SCRATCH -- written before it is ever read, so the value it arrived with cannot
+        matter -- or STATE carried from the previous pattern. The distinction is visible
+        in the transpiled source, which assigns and reads slots by literal index, so it is
+        read off there rather than guessed from the values.
+
+        Reported for the program alone. A slot that is scratch here can still be state for
+        the record if ANOTHER program reads it without writing it first, which is why the
+        caller unions `read_first` across every program that can run.
+        """
+        got = flows.get(ptr)
+        if got is not None:
+            return got
+        end = spans.get(ptr, 0) or asm.program_span(ptr, asm.body_hi)
+        reads, writes = set(), set()
+        if end is not None:
+            try:
+                src = transpile.transpile(asm.data, ptr, end, "python", "prog")
+            except Exception:
+                src = ''
+            for line in src.splitlines():
+                line = line.strip()
+                lhs = _SLOT_WRITE.match(line)
+                for m in _SLOT_ANY.finditer(line if lhs is None else line[lhs.end():]):
+                    k = int(m.group(1))
+                    if k not in writes:
+                        reads.add(k)
+                if lhs is not None:
+                    writes.add(int(lhs.group(1)))
+        got = flows[ptr] = (reads, writes)
+        return got
+
+    run_flow = flow
+
+    def run(ptr, slots, number, flatten=True):
         end = spans.get(ptr, 0)
         if end == 0:
             end = spans[ptr] = asm.program_span(ptr, asm.body_hi)
@@ -337,7 +393,9 @@ def make_runner(asm, rec):
             scope = {}
             exec(compile(src, "<fx>", "exec"), scope)
             fn = cache[ptr] = scope["prog"]
-        sbsruntime.set_context(width=rec.width, height=rec.height, number=float(number))
+        sbsruntime.set_context(width=rec.width, height=rec.height,
+                               number=number if isinstance(number, np.ndarray)
+                               else float(number))
         inputs = shared_inputs
         with np.errstate(all="ignore"):
             try:
@@ -353,8 +411,13 @@ def make_runner(asm, rec):
                                  "missing slot)" % e) from e
             except KeyError as e:
                 raise Unmodelled("slot %s read but never set" % e) from e
-        return np.asarray(out).ravel()
+        out = np.asarray(out)
+        # `flatten` is off for a BATCHED evaluation, where the rows are patterns and
+        # flattening them together would interleave every pattern's components into one
+        # unusable strip. Every other caller wants the old 1-D value.
+        return out.ravel() if flatten else out
 
+    run.flow = run_flow
     return run
 
 
@@ -564,31 +627,136 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         except Exception:
             pass          # a record program that cannot run is not fatal to the walk
 
+    # IS THE SLOT FRAME SCRATCH OR STATE, for the programs an emission runs? A parameter
+    # program that writes a slot is not by itself a reason to refuse batching: the
+    # commonest case is a per-pattern random seed, written at the top of the program and
+    # read back two lines later, whose incoming value cannot affect anything. What would
+    # break batching is a slot carried BETWEEN patterns -- written by one emission and
+    # read by the next before it writes it.
+    #
+    # AND THE ORDER MATTERS, which the first version of this check missed. On
+    # CarpetSubstance001 record 365 the parameters talk to each other through the frame
+    # WITHIN one emission: `opacity` writes slots 26, 28, 29 and 31, and `frameoffset`,
+    # `patternsize`, `patternrotation` and `imageindex` each read one of them. Comparing
+    # bare unions calls that carried state and refuses to batch -- but the write happens
+    # first, in the same emission, so the value never crosses a pattern boundary. Batching
+    # preserves it exactly: slot 26 holds an (m, k) array whose row j is what pattern j
+    # would have seen, and the reader is row-aligned with it.
+    #
+    # So the walk is simulated instead: parameters in evaluation order, accumulating what
+    # has been written, and a read counts as CARRIED only if the slot is one a parameter
+    # writes and nothing has written it yet this emission. Chain node programs are added
+    # too, since those do run between patterns when the chain is not all leaves.
+    flow = getattr(run, 'flow', None)
+    batchable = False
+    if flow is not None:
+        try:
+            param_writes = set()
+            for _o, _t, params in table:
+                for _n, (kind, value) in params.items():
+                    if kind != 'baked' and value:
+                        param_writes |= flow(value)[1]
+            carried, written = set(), set()
+            for _o, _t, params in table:
+                for _n, (kind, value) in params.items():
+                    if kind == 'baked' or not value:
+                        continue
+                    r, w = flow(value)
+                    carried |= (r & param_writes) - written
+                    written |= w
+            for _o, _h, ps in nodes:
+                for value in ps.values():
+                    if value:
+                        carried |= flow(value)[0] & param_writes
+            batchable = not carried
+        except Exception:
+            batchable = False
+
     closed = [False]          # did a gate evaluate against its polarity and stop a branch?
+
+    def emit(number):
+        for _o, _t, params in table:
+            # THE TAG TRAVELS WITH THE PATTERN. The shape is selected per entry from
+            # `patterntype`, and by the time `splat` runs the tag is gone -- so it is
+            # attached here rather than re-derived, which would mean re-walking the
+            # table and guessing which entry produced which emission.
+            got = {'patterntype': fx_patterntype(_t)}
+            for name, (kind, value) in params.items():
+                if value is None:
+                    continue
+                if kind != 'baked':
+                    got[name] = run(value, slots, number)
+                elif isinstance(value, np.ndarray):
+                    got[name] = value          # already decoded by `baked_slots`
+                else:
+                    # fx_named_params hands a baked parameter back as its RAW SLOT
+                    # WORD, not as a number -- see its docstring.
+                    got[name] = np.frombuffer(struct.pack('<I', int(value)),
+                                              dtype='<f4')
+            out.append(got)
+
+    def emit_batch(numbers):
+        """`emit` for a whole range of pattern indices, in one evaluation per parameter.
+
+        WHY THIS IS THE WHOLE COST. An FX-Map parameter program is a few dozen numpy
+        operations on ONE row, and numpy charges per call, not per element: profiling
+        CarpetSubstance001 record 365 counted 1,341 Python calls per emitted pattern, and
+        that record emits 262,144 of them. The work is negligible and the per-call
+        overhead is everything, which is exactly the case batching fixes -- the same
+        program over m rows costs almost what it costs over one.
+
+        WHEN IT IS ALLOWED, and the two guards that decide. Batching evaluates every
+        pattern against ONE slot frame, so it is only equivalent where the frame does not
+        move between patterns:
+
+          * every node below the addnode must be a leaf -- a 0x99 raster scan or a 0x89
+            gate would advance or branch per pattern, and the caller checks this before
+            calling;
+          * no parameter program may WRITE a slot. That is not statically known here, so
+            pattern 0 is emitted scalar first and the frame is compared by identity; if
+            anything moved, the caller falls back and nothing has been batched yet.
+
+        A program that ignores $number returns a single row, which is broadcast rather
+        than indexed -- the same value the scalar path would have produced m times.
+        """
+        m = len(numbers)
+        cols = []
+        for _o, _t, params in table:
+            per = {'patterntype': fx_patterntype(_t)}
+            wide = {}
+            for name, (kind, value) in params.items():
+                if value is None:
+                    continue
+                if kind != 'baked':
+                    a = np.asarray(run(value, slots, numbers, flatten=False))
+                    # NORMALISE TO (rows, components) AND SAY WHETHER THE ROWS ARE
+                    # PATTERNS. A program that ignores $number returns one row however
+                    # wide it is, and the module's 1-D convention (see `_col`: a 1-D array
+                    # is N samples of one component) only holds when the length IS the
+                    # batch -- a 1-D result of any other length is one value's components,
+                    # which is what the scalar path's `.ravel()` hands back.
+                    if a.ndim == 0:
+                        a = a.reshape(1, 1)
+                    elif a.ndim == 1:
+                        a = a[:, None] if a.shape[0] == m else a[None, :]
+                    wide[name] = a
+                elif isinstance(value, np.ndarray):
+                    per[name] = value
+                else:
+                    per[name] = np.frombuffer(struct.pack('<I', int(value)), dtype='<f4')
+            cols.append((per, wide))
+        for j in range(m):
+            for per, wide in cols:
+                got = dict(per)
+                for name, a in wide.items():
+                    got[name] = a[j] if a.shape[0] == m else a[0]
+                out.append(got)
 
     def walk(i, number):
         if len(out) > MAX_PATTERNS:
             raise Unmodelled("more than %d patterns" % MAX_PATTERNS)
         if i == len(nodes):
-            for _o, _t, params in table:
-                # THE TAG TRAVELS WITH THE PATTERN. The shape is selected per entry from
-                # `patterntype`, and by the time `splat` runs the tag is gone -- so it is
-                # attached here rather than re-derived, which would mean re-walking the
-                # table and guessing which entry produced which emission.
-                got = {'patterntype': fx_patterntype(_t)}
-                for name, (kind, value) in params.items():
-                    if value is None:
-                        continue
-                    if kind != 'baked':
-                        got[name] = run(value, slots, number)
-                    elif isinstance(value, np.ndarray):
-                        got[name] = value          # already decoded by `baked_slots`
-                    else:
-                        # fx_named_params hands a baked parameter back as its RAW SLOT
-                        # WORD, not as a number -- see its docstring.
-                        got[name] = np.frombuffer(struct.pack('<I', int(value)),
-                                                  dtype='<f4')
-                out.append(got)
+            emit(number)
             return
         _off, hdr, progs = nodes[i]
         if hdr in ADDNODE:
@@ -600,6 +768,14 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             n = int(round(float(run(prog, slots, number)[0])))
             if not 0 <= n <= MAX_PATTERNS:
                 raise Unmodelled("numberadded = %d" % n)
+            # Everything below is a leaf, so no node between here and the table can move
+            # the slot frame, and the patterns differ only in $number -- which is what
+            # makes one evaluation over every index equivalent to n evaluations. See
+            # `emit_batch` for the second condition and how it is decided.
+            if n > BATCH_MIN and batchable and all(_is_leaf(nodes[j][1])
+                                                   for j in range(i + 1, len(nodes))):
+                emit_batch(np.arange(n, dtype=np.float64))
+                return
             for k in range(n):
                 walk(i + 1, k)
         elif hdr == STEPPER or (hdr & 0xFF) in (STEPPER2, BRANCH):
@@ -820,17 +996,22 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     pyg = (yy + 0.5) / H - 0.5
     cview = canvas.reshape(H, W, nchan)
 
+    # `val` reads one emitted parameter as a flat float32 array. Defined once, outside
+    # the loop, and taking the pattern as an argument: a closure over `p` was being
+    # rebuilt for every pattern, which is a code object and a cell per emission for no
+    # gain.
+    def val(pat, name, default):
+        v = pat.get(name)
+        return np.asarray(default, dtype=np.float32) if v is None \
+            else np.asarray(v, dtype=np.float32).ravel()
+
     for p in patterns:
         src = image_for(p)
-        def val(name, default):
-            v = p.get(name)
-            return np.asarray(default, dtype=np.float32) if v is None \
-                else np.asarray(v, dtype=np.float32).ravel()
-        base = val('branchoffset', [0.0, 0.0])
-        off = val('frameoffset', [0.0, 0.0])
-        size = val('patternsize', [1.0, 1.0])
-        rot = float(val('patternrotation', [0.0])[0])
-        col = val('opacity', [1.0])
+        base = val(p, 'branchoffset', _ZERO2)
+        off = val(p, 'frameoffset', _ZERO2)
+        size = val(p, 'patternsize', _ONE2)
+        rot = float(val(p, 'patternrotation', _ZERO1)[0])
+        col = val(p, 'opacity', _ONE1)
         if size.size < 2:
             size = np.repeat(size[:1], 2)
         if base.size < 2:
@@ -839,7 +1020,10 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
             off = np.repeat(off[:1], 2)
         sx, sy = float(size[0]), float(size[1])
         cx, cy = float(base[0] + off[0]), float(base[1] + off[1])
-        if not all(np.isfinite([sx, sy, cx, cy])) or sx <= 0 or sy <= 0:
+        # `math.isfinite` on four scalars, not `np.isfinite` on a freshly built list:
+        # the numpy form allocated an array per pattern to test four numbers.
+        if not (math.isfinite(sx) and math.isfinite(sy)
+                and math.isfinite(cx) and math.isfinite(cy)) or sx <= 0 or sy <= 0:
             continue
         if max(sx, sy) > 64.0:
             continue          # a pattern 64 cells across is a misread, not a pattern
@@ -870,9 +1054,9 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
             col = np.repeat(col[:1], nchan)
         col = np.clip(col[:nchan], 0.0, 1.0)
 
-        th = 2.0 * np.pi * rot
-        ct, st = np.cos(th), np.sin(th)
-        reach = int(min(3, np.ceil(max(sx, sy))))
+        th = 2.0 * math.pi * rot
+        ct, st = math.cos(th), math.sin(th)
+        reach = int(min(3, math.ceil(max(sx, sy))))
         prof = profile_for(p)          # depends only on `p`; was recomputed 49 times
         # THE FOOTPRINT, NOT THE CANVAS. profile_value multiplies every profile by
         # `inside = (|lx| <= 0.5) & (|ly| <= 0.5)`, so coverage is exactly zero outside
@@ -887,16 +1071,33 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
         # axis-aligned bounding box has half-extents:
         hx = 0.5 * (sx * abs(ct) + sy * abs(st))
         hy = 0.5 * (sx * abs(st) + sy * abs(ct))
-        for ty in range(-reach, reach + 1):
-            for tx in range(-reach, reach + 1):
+        # ONLY THE TILES THAT CAN REACH THE CANVAS. The canvas spans -0.5..0.5, so a copy
+        # at offset t contributes only while `cx + t` is within `hx` of that span; every
+        # other t produced an empty bounding box and was thrown away one line later. For a
+        # pattern a single pixel across -- a carpet tuft at 1/512 -- that was eight of
+        # every nine tiles, each costing four scalar floor/ceils to reject.
+        #
+        # The bounds are the same inequality the box test applies, solved for t, so no
+        # tile that used to draw anything is skipped: it narrows the loop, it does not
+        # change what any surviving tile does.
+        txlo = max(-reach, math.ceil(-0.5 - cx - hx))
+        txhi = min(reach, math.floor(0.5 - cx + hx))
+        tylo = max(-reach, math.ceil(-0.5 - cy - hy))
+        tyhi = min(reach, math.floor(0.5 - cy + hy))
+        for ty in range(tylo, tyhi + 1):
+            for tx in range(txlo, txhi + 1):
                 ux, uy = cx + tx, cy + ty
                 # px = (col + 0.5)/W - 0.5, so col = (px + 0.5)*W - 0.5. Floor/ceil the
                 # ends rather than round them: a box that clips a pixel must still
                 # include it, or the slice would drop coverage the full grid had.
-                c0 = max(int(np.floor((ux - hx + 0.5) * W - 0.5)), 0)
-                c1 = min(int(np.ceil((ux + hx + 0.5) * W - 0.5)), W - 1)
-                r0 = max(int(np.floor((uy - hy + 0.5) * H - 0.5)), 0)
-                r1 = min(int(np.ceil((uy + hy + 0.5) * H - 0.5)), H - 1)
+                #
+                # `math`, not `numpy`: these are four scalars per tile, and a numpy call
+                # on a Python float costs about half a microsecond of dispatch to do one
+                # flop. At 262,144 patterns that was most of the splat.
+                c0 = max(math.floor((ux - hx + 0.5) * W - 0.5), 0)
+                c1 = min(math.ceil((ux + hx + 0.5) * W - 0.5), W - 1)
+                r0 = max(math.floor((uy - hy + 0.5) * H - 0.5), 0)
+                r1 = min(math.ceil((uy + hy + 0.5) * H - 0.5), H - 1)
                 if c0 > c1 or r0 > r1:
                     continue                 # the footprint misses the canvas entirely
                 dx = pxg[r0:r1 + 1, c0:c1 + 1] - ux

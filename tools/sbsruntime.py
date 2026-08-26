@@ -64,7 +64,26 @@ def sysvar(vid, ncomp, n=1):
         logs = [np.log2(width), np.log2(height)][:ncomp]
         return np.tile(logs, (n, 1)) if ncomp > 1 else np.full(n, logs[0])
     if vid == 10:                                   # $number
-        return np.full(n, float(CONTEXT["number"]))
+        # $number MAY BE A VECTOR. An FX-Map's emission loop can evaluate one parameter
+        # program for every pattern at once when nothing in the chain below it mutates the
+        # slot frame -- see fxrender's batched emission -- and then the pattern index is
+        # one value per row rather than one value. Everything downstream is already
+        # row-wise, so an (m,) here broadcasts through the whole program unchanged.
+        num = CONTEXT["number"]
+        if isinstance(num, np.ndarray) and num.ndim:
+            # ONE COMPONENT, WHATEVER `ncomp` SAYS -- the scalar branch below ignores
+            # ncomp too, so `$number` has always been a single component. Returning
+            # (m, ncomp) instead silently gave a two-component $number and moved every
+            # frameoffset this batching was meant to leave untouched.
+            #
+            # AND AS A COLUMN, not the 1-D the scalar branch returns. A program mixes
+            # $number with values built from graph inputs, which are (1, k) 2-D, and
+            # numpy broadcasts (1, 1) against a 1-D (m,) into (1, m) -- the batch laid out
+            # along the COMPONENT axis, which then reads back as pattern 0 for every
+            # pattern. (m, 1) broadcasts to (m, 1), which is the row-per-pattern shape the
+            # rest of this module is written in.
+            return num.astype(np.float64, copy=False).reshape(-1, 1)
+        return np.full(n, float(num))
     if vid == 0:                                    # $time
         return np.full(n, float(CONTEXT["time"]))
     # Named from SYSVARS, which is the catalogue this function's numeric branches are
