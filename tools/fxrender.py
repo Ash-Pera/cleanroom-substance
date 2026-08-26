@@ -753,6 +753,43 @@ def entries(rec, baked_pairs=True):
     # 5,439 entries that are not chain-family and mostly do not chain, among them 3,332 of
     # tag 0x00420008, which `FX_ENTRY_PROGS` gives a program slot. Those are real draws
     # and dropping them would trade a white record for a missing one.
+    #
+    # WITHDRAWN, A THIRD DISCRIMINATOR: "bit 6 of the tag's low byte". It looked stronger
+    # than either of the two above and it is not equivalent to them, so it is recorded here
+    # rather than left to be re-derived.
+    #
+    # What made it look strong. The low byte of a tag takes 0x48 on essentially every entry
+    # whose patterntype nibble is NAMED -- nibbles 1 through 14, 0x48 or 0x58 throughout --
+    # and 0x08 on the bulk of nibble 0, a value that occurs nowhere else. `fx_entry_layout`
+    # never reads bit 6 (FX_PARAM_BITS begins at bit 4; bits 3, 5 and 6 are absent from it),
+    # so the parameter names come from bits 19-31 alone and the agreement between the two
+    # halves of the word is two independent declarations, not one wearing two hats. And the
+    # chain family falls out of it almost exactly: of 4,456 chain entries, 4,455 are
+    # bit-6-clear and one is not (0x00024868). A rule established by the next-pointer test
+    # on the HIGH half, reproduced by a single bit in the LOW half.
+    #
+    # Why it is still wrong. It is strictly broader than the chain family, and the 2,899
+    # entries it would newly exclude fail the very test that established the family. Whole
+    # corpus, exact criterion, restricted as the rows above are to entries with no
+    # patterntype:
+    #
+    #     chain-family, no patterntype        19861   word[1]+52 == next entry   100.0%
+    #     other, no patterntype               15616                                3.9%
+    #       ..of which bit 6 clear, not chain 14958                                3.5%
+    #       ..of which bit 6 SET                658                               13.8%
+    #
+    # The newly-excluded group does not chain -- it scores BELOW the bit-6-set entries it
+    # would be separated from, and level with the "other" group this code already treats as
+    # draws. 2,708 of the 2,899 are tag 0x00420008, which the paragraph above defends by
+    # name, and this is the instrument that vindicates it. (Counts here are corpus-wide; the
+    # two rows in the paragraph above are over 120 files. Same direction, different
+    # population -- these corroborate those, they do not reproduce them.)
+    #
+    # So bit 6 marks something nearer "the patterntype nibble is meaningful" than "this
+    # entry is structural", and the white-generator family is NOT explained by it. That
+    # question stays open: 97 of 97 solid-white fxmaps records in Kutejnikov__Bricks_and_tiles
+    # have at least one typeless entry and 0 have none -- but so do 17 of the 94 that are
+    # not white, and nothing yet separates those two populations.
     tbl, order, chain_family = {}, [], []
     for off, tag, _p in rec.fx_table():
         if (tag >> 16) == 0x0002:
