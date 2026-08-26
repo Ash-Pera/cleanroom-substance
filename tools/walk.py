@@ -195,6 +195,7 @@ POPCOUNT_MASK = {10: 0x2881, 7: 0x0881}
 #     filter          edges                                          note
 TIER_A_EDGES = {
     0:  [1],                                                        # gradient (residue: [])
+    3:  lambda w0, w1, v: [1] if not (w0 & 1) else [2, 3],          # shuffle (tag bit 0)
     6:  [],                                                         # uniform (generator)
     7:  lambda w0, w1, v: [2, 3] if v >= 0x90000 else [1, 2],       # warp
     10: [1],                                                        # blur

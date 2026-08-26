@@ -1398,16 +1398,19 @@ class Record:
         #       time, so this is 56x the false-positive rate
         #
         #     finds an input for 4,605 / 4,605 records, against the table's 4,430
+        #
+        # The shape is STATED by the tag, not probed: tag bit 0 is clear for the single-input
+        # shape (slot 1 is that input) and set for the shape whose slot 1 is the four-byte
+        # channel-selector word, with the two inputs at slots 2 and 3. This is the same bit
+        # `header_words` reads for shuffle's w1 presence, so the two paths now agree. Over 437
+        # files it matches the old value probe on 7,631 records and CORRECTS 18: `Cliff` and
+        # `Bitmap2Material_3` records whose selector word is 0x400 (a `channelgreen: 4`
+        # selector), a small integer the probe misread as a slot-1 edge -- in all 18 the
+        # tag-stated slots 2 and 3 hold valid backward record indices.
         if f == 3 and len(self.words) > 3:
-            n = len(self.asm.records)
-
-            def _backward(v):
-                return v == 0 or (v < self.index and v < n)
-
-            if _backward(self.words[1]):
+            if not (self.words[0] & 1):
                 return ([1], 2)
-            if _backward(self.words[2]) and _backward(self.words[3]):
-                return ([2, 3], 4)
+            return ([2, 3], 4)
 
         # filter 8 always takes THREE image inputs, in slots 1, 2 and 3. The table gives
         # it three only 60.3% of the time, splitting the rest into a spurious two-input
