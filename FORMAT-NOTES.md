@@ -37354,3 +37354,120 @@ So the scan is real, the loop arm is correct in shape, and what stops it is the 
 the step's SIGN: a scan that begins on the boundary and steps away from the region covers one
 cell whatever the loop does. That is a much narrower question than "why is this record white",
 and it is where the next attempt should start.
+
+## Parameter derivation, continued: the cost model nearly does it
+
+Last note said block length "resists a rule." That was because I was deriving from scratch and
+had not found the existing infrastructure: `record_layout.header_words` + `costs.json` (fitted by
+`derive_costs.py`) already computes each record's header length from the presence masks — a
+constant plus a cost per set bit — for 21 filters. The recurring `0xa4200XX` word I flagged as a
+"post-param marker" is simply the START OF CODE: everything at/after `header_words` is bytecode.
+
+That reframes the parameters cleanly: **the named parameters are the last `present` slots of the
+header**, where `present` = the filter's PARAM_SPEC fields set in the full w1 (EXCLUDING state-11
+fields, which are image inputs, not baked params). Tested against the memo, WHERE THE MEMO HAS A
+KEY:
+
+    directionalwarp   60,920 / 60,921   (100.00%)   + recovers params on 1,775 records the memo has NO key for
+    dirmotionblur     15,291 / 15,366   ( 99.51%)   + 276 recoveries
+    fxmaps            38,553 / 41,387   ( 93.15%)   + 311 recoveries
+    blend            297,436 /319,758   ( 93.02%)   + 198 recoveries
+    levels            81,747 / 88,557   ( 92.31%)   + 636 recoveries
+
+directionalwarp is a clean structural replacement — it reproduces every memo answer AND fills the
+memo's own gaps (the memo's 809 keys do not cover every (cls, w1&mask); where it lacks a key it
+silently returns [], and the rule reads the real parameter). So the memo was never complete; the
+cost model is closer to ground truth than the table it would replace.
+
+The residual (blend/levels/fxmaps ~7%) is characterized, and it is NOT one simple thing:
+1. grow-backward placement: where `present` exceeds the header's trailing param slots, the memo
+   grows the window backward (the `_param_slots` logic); "last present slots" does not.
+2. blend's opacitymult (the filter's ONLY PARAM_SPEC field) does not map cleanly from its w1
+   two-bit field to presence. Tabulated over the field=0b11 records (spec says 0b11 = image
+   input, so exclude), the memo reads opacitymult as a `program` on ~1,041 of them and as absent
+   on ~7,300; and separately, field=01/10 records (spec says present) appear with a memo block of
+   length 1 (no param slot = absent). So the field-code and the memo DISAGREE IN BOTH DIRECTIONS,
+   and the outcome correlates only with the memo's own block length, not with any (cls, w1) bit I
+   could find. That is either memo error, an approximate PARAM_SPEC mask, or real cross-field
+   context — resolvable only with the cost-model/source semantics, not by fitting another rule to
+   sbsasm's masks. Stopped here rather than fit noise.
+
+The state-11 exclusion is per-param, not global: a param that can be an image input (blend's fg/bg
+edges) reads 0b11 as an input; opacitymult cannot be an image input, so its 0b11 is not cleanly an
+input either — which is exactly the ambiguity above. Applying the exclusion blindly moved blend
+90.6% -> 93.0% (net positive, because true image-input params outnumber the opacitymult 0b11 cases)
+but is not correct in the opacitymult cases.
+
+BOTTOM LINE for this thread: directionalwarp (100%) and dirmotionblur (99.5%) are cleanly
+derivable from the cost model and ready to wire when the whole switch is done; blend/levels/fxmaps
+carry genuine per-field complexity that belongs with `derive_costs.py`/PARAM_SPEC, not with more
+rule-fitting in sbsasm. The memo stays until those close.
+
+NOT wired in yet: switching sbsasm's `named_parameters`/`program_slots` to the rule would retire
+the memo for directionalwarp/dirmotionblur safely but regress blend/levels/fxmaps ~7%, so a
+piecemeal switch is worse than none. The path to a wholesale switch (and deleting layouts.json)
+is: reconcile the +N boundary cases and add the grow-backward placement, then prove 0 diffs
+corpus-wide against the memo — full-corpus, correct-accessor, as before.
+
+## Reading the bytecode for the param residuals: the MEMO is the buggy one
+
+Directed to read the actual bytecode for the ~7% residual instead of assuming the rule was wrong.
+It flips the framing: the disagreements are largely MEMO errors, not rule errors, so "0 diffs vs
+the memo" was the wrong validation target — it would mean reproducing the table's bugs.
+
+Two error modes, found by disassembling:
+
+1. **The memo attributes the size-expression program to a parameter.** On a blend residual
+   (Stylized_Sand rec, cls 0x19, block [6,4]) the memo returns opacitymult = program @264212.
+   Disassembling @264212 shows the record's own size expression — inputref/swizzle/sub/exp2
+   computing dimensions — not an opacity. Proven structurally, not by eye: the memo's parameter
+   program offset is byte-identical to `size_or_baked`'s offset on 1,004 blend records. A
+   parameter cannot be the record's own dimension code; the memo mislabeled the size slot.
+   The cost-model rule reads opacitymult from its real slot (the baked 0.26 later in the header).
+
+2. **The memo's short block drops a real baked parameter.** cls 0x18, block [4] (length 1, so the
+   memo reports opacitymult absent); `header_words` puts slot 4 inside the header as the trailing
+   param slot, holding 0x3f000000 = exactly 0.5 — a real opacity the memo misses. ~21k blend and
+   ~6.8k levels residuals are this shape. (Structurally the cost-model boundary is validated;
+   the specific values are plausible but not render-confirmed, so I hold these as "likely memo
+   miss," distinct from the 1,004 that are proven.)
+
+The state-11 exclusion is now correct AND grounded: field 0b11 reads as an image input, and the
+slot at that position holds a small integer that is a record index (an edge), e.g. 0x1a = 26 —
+disassembly/inspection confirms it is not a value or a program. So exclude it; the memo agrees.
+
+CONSEQUENCE for retiring the memo: the target is no longer "reproduce the memo." It is "read the
+parameter the bytecode implies." The cost-model rule (header_words + last-present-header-slots +
+per-param state-11 exclusion) already does this and is MORE correct than layouts.json on at least
+1,004 records provably and ~28k more likely. Deleting the memo is now gated on validating the
+rule against the bytecode/render as ground truth — NOT on matching the table, which is wrong on
+these records. That is a materially different (and better) end state than the earlier note framed.
+
+### basecolor is not systematically 2x — Chesterfield's gain fixed itself with the lattice
+
+Peer 0b's note records Bricks' basecolor as "2x too warm on every one" of its five graphs, and
+this session measured Auras basecolor at fit slope 0.536 -- also about half, i.e. about twice too
+bright. Two packages, two sessions, the same-looking number, which reads like one systematic
+cause. Measured across all three packs at once it is not:
+
+    assembly / channel        corr     slope    ours mean / ref mean
+    ChesterfieldSofa ch0     +0.668    1.243     0.598 / 0.604
+    ChesterfieldSofa ch1     +0.780    1.037     0.246 / 0.179
+    ChesterfieldSofa ch2     +0.444    0.513     0.218 / 0.185
+    Auras_FX ch1             +0.865    0.321     0.145 / 0.045
+    Auras_FX ch2             +0.945    0.802     0.268 / 0.204
+    Bricks (18 channels)     -0.68..+0.01   -0.51..0.00    0.755 / 0.330 and similar
+
+**Chesterfield's basecolor gain is now essentially correct** -- slopes 1.24 and 1.04 on two of
+three channels, and its means agree to 0.006 on ch0. That was not fixed by anything aimed at
+colour; it fell out of `fx.gridcount`, because a render drawing three tufts instead of forty-five
+had most of its canvas at the background value and its mean was wrong for that reason.
+
+**Bricks' basecolor is a different defect entirely.** Its slopes are NEGATIVE across 18 channels
+and its correlations run to -0.68: that is not a gain error, it is an inverted or unrelated
+picture with a brightness offset on top. Calling both of them "2x too warm" merges a solved
+problem with an unsolved one.
+
+What remains genuinely gain-shaped is Auras basecolor ch1, slope 0.321 against ch2's 0.802 -- a
+per-channel excess concentrated in green, which the earlier note on that record already narrowed
+to a single branch after the mask and after the ramp.
