@@ -1271,6 +1271,31 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     available image would sample the wrong input on the 27 and produce a plausible picture
     from it, which is the failure mode this decode keeps being caught by.
     """
+    # WHAT IS WRONG WITH THIS FUNCTION IS COVERAGE, NOT VALUE, and that is measured rather
+    # than inferred. Chesterfield's metallic and height cones each bottom out at an fxmaps
+    # sampling an image input, and comparing each one's output against its own input:
+    #
+    #     record   input lit / mean-where-lit     output lit / mean-where-lit
+    #     rec34         0.403 / 0.1438                 0.025 / 0.1427
+    #     rec65         0.787 / 0.4991                 0.138 / 0.4901
+    #
+    # The mean WHERE LIT survives to three decimals. Every pixel a pattern writes gets very
+    # nearly the right value, so the sampling, the opacity and the profile amplitude are all
+    # doing their job. What collapses is how many pixels get written at all -- 16x on rec34,
+    # 5.7x on rec65 -- and the whole-image attenuation is exactly that coverage ratio
+    # (0.0036/0.0580 = 0.062 against 0.025/0.403 = 0.062). The stamps do not tile.
+    #
+    # That is the same defect as the missing lattice documented at render.py's `warp` note,
+    # now quantified against a reference rather than against a picture, and it is the
+    # measured form of the footprint question this file's docstring calls its largest open
+    # one.
+    #
+    # NO CURRENT ARBITRATION ARM REACHES IT. fx.patternsize and fx.branchoffset leave both
+    # records BYTE-IDENTICAL under 'cell' and 'canvas' -- `_cell_divisor` declines them --
+    # which is why Chesterfield's metallic MAE is 0.0465 to four decimals under all four
+    # combinations. The insensitivity is the guard declining, not the divisor being
+    # irrelevant, and any future candidate for this gap has to reach a population these do
+    # not.
     W = W or rec.width
     H = H or rec.height
     # The footprint is the largest open question here and the one the reference renders
