@@ -1014,6 +1014,21 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # then only when the emission count is a perfect square, because G is undefined
     # otherwise -- 30% of those 966 fall outside 10% of the cell ratio and that tail is not
     # characterised. A span statistic cannot settle it; a scored render can.
+    #
+    # REPRODUCED INDEPENDENTLY before adoption: 224 square-grid records from a separate
+    # walk give span/(G-1) median 1.0000 with p25 AND p75 both 1.0000, 76.8% within 10%.
+    # The law is not one session's artifact.
+    #
+    # OPT-IN FOR A MEASURED REASON, not merely from caution. An earlier version applied
+    # this scaling unconditionally to every square-count record, and that is wrong:
+    # `PavingStonesSubstance003` records 38/40/42/45 have G=4 and span 0.750, so
+    # span/(G-1) = 0.250 -- CANVAS is right for them and 'cell' makes them worse. The
+    # unconditional form also scored worse on the only ground truth available, Chesterfield
+    # `normal` MAE 0.1039 -> 0.1055 and height 0.2461 -> 0.2480, on a specimen where only
+    # 2 of 16 rendering fxmaps records are even affected.
+    #
+    # Those two scalings briefly coexisted and MULTIPLIED, dividing a square-grid record by
+    # G twice. Only this one remains.
     cell_scale = 1.0
     if assume.assumed('fx.branchoffset') == 'cell' and patterns:
         _g = int(round(len(patterns) ** 0.5))
@@ -1021,41 +1036,9 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
             cell_scale = 1.0 / _g
             assume.note(getattr(rec, 'index', -1))
 
-    # BRANCHOFFSET IS IN CELL UNITS, FRAMEOFFSET IN CANVAS UNITS, and this used to add
-    # them as though both were canvas. Over 224 square-grid records measured here, the
-    # x-span of branchoffset divided by (G-1) has median 1.0000 with p25 and p75 both
-    # 1.0000 -- it steps one per cell, not one per canvas -- so in canvas terms it is G
-    # times too large and the lattice collapses toward a single cell.
-    #
-    # Guarded to square pattern counts because G is only defined there; 76.8% of those
-    # records sit within 10% of the cell ratio and the remaining tail is uncharacterised,
-    # so a non-square count is left exactly as it was.
-    #
-    # THE ARBITER MILDLY DISAGREES, AND CANNOT SETTLE IT. `refcompare` scores only
-    # Chesterfield, where this touches 2 of 16 rendering fxmaps records, and there
-    # `normal`'s MAE goes 0.1039 -> 0.1055 and height's 0.2461 -> 0.2480. Slightly worse,
-    # on a specimen almost insensitive to the change -- which is weak evidence in either
-    # direction, not a refutation and certainly not a confirmation.
-    #
-    # It is kept because the unit mismatch is measured and the old behaviour is wrong
-    # whatever replaces it: branchoffset steps one per CELL and `splat` was adding it to a
-    # canvas-unit frameoffset. What is NOT established is that dividing by G is the whole
-    # correction -- MAE is a poor judge here anyway, since right-sized patterns in wrong
-    # places score worse than no patterns at all.
-    #
-    # THE TEST THAT WOULD SETTLE IT: `Kutejnikov__Bricks_and_tiles` has 71 of 191 rendering
-    # fxmaps records affected, and ships 52 exported maps -- but none of its outputs render
-    # yet, so it scores nothing. Getting Bricks to produce an output is worth more to this
-    # question than any further reasoning about it.
-    _n = len(patterns)
-    _g = int(round(math.sqrt(_n))) if _n else 0
-    _cell = (1.0 / _g) if (_g >= 2 and _g * _g == _n) else 1.0
-
     for p in patterns:
         src = image_for(p)
-        base = val(p, 'branchoffset', _ZERO2) * _cell
-        if cell_scale != 1.0:
-            base = base * cell_scale
+        base = val(p, 'branchoffset', _ZERO2) * cell_scale
         off = val(p, 'frameoffset', _ZERO2)
         size = val(p, 'patternsize', _ONE2)
         rot = float(val(p, 'patternrotation', _ZERO1)[0])
