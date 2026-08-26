@@ -67,6 +67,26 @@ class Unlocated(Exception):
     """The record's `distance` parameter could not be identified without guessing."""
 
 
+def _locate_slot(rec):
+    """The layout rule's float, or None -- factored out so precedence can be varied.
+
+    Was inline in `distance_param`'s fallback. `distance.param` = 'layout' calls it BEFORE
+    the 2-component reading and the fallback still calls it after the programs, so both
+    orders run the identical code and the only thing that differs is when.
+    """
+    try:
+        _e, _start = rec.layout
+        _at = _start + 1 + ((rec.cls >> 7) & 1) + ((rec.cls >> 11) & 1)
+    except Exception:
+        return None
+    if _at is None or _at >= len(rec.words):
+        return None
+    f = struct.unpack('<f', struct.pack('<I', rec.words[_at]))[0]
+    if np.isfinite(f) and 1e-3 < abs(f) <= 4.0 * REFERENCE_PX:
+        return float(f), 'slot %d by the layout rule (LOW CONFIDENCE)' % _at
+    return None
+
+
 def distance_param(rec, eval_program, inputs):
     """(value, how) for a record's `distance`, or raise `Unlocated`.
 
@@ -83,7 +103,25 @@ def distance_param(rec, eval_program, inputs):
             widths.append(float(v[0]))
     if len(widths) == 1:
         return widths[0], 'program'
-    if not widths and assume.assumed('distance.param') == 'wide':
+    if not widths and assume.assumed('distance.param') == 'layout':
+        # 'layout' IS 'wide' WITH THE PRECEDENCE FIXED. See
+        # assume.QUESTIONS['distance.param']: under 'wide' the 2-component reading is tried
+        # FIRST and returns before the structural slot rule below is ever consulted -- an
+        # ASSUMED reading pre-empting a DERIVED one. On Bricks that costs every distance
+        # record its radius, because the component it reads is the aspect term
+        # `exp2(min(sizelog2.x - sizelog2.y, 0))`, which is exactly 1.0 on a square image:
+        # the file's 126 distance records resolve to just TWO values under 'wide', 1.0 on
+        # 121 and 2.0 on 5, and at a 256 reference both are sub-pixel on a 64 grid, so the
+        # filter is a no-op either way. Under this arm the same 126 resolve to 22 distinct
+        # values.
+        #
+        # This arm defers to the slot rule and keeps the 2-component reading only for
+        # records the rule cannot serve. `_locate_slot` is the same code path the fallback
+        # uses; calling it here changes the ORDER and nothing else.
+        _slot = _locate_slot(rec)
+        if _slot is not None:
+            return _slot
+    if not widths and assume.assumed('distance.param') in ('wide', 'layout'):
         # See assume.QUESTIONS['distance.param']. Component 0 of a 2-component program,
         # for the records whose only programs are 2-component. A candidate under an open
         # scope, never a default.
@@ -134,15 +172,9 @@ def distance_param(rec, eval_program, inputs):
     # Still LOW CONFIDENCE. The rule is verified on records that DECLARE a value in a
     # paired source; these records are not among them, so the slot is derived and the value
     # in it is read, not confirmed.
-    try:
-        _e, _start = rec.layout
-        _at = _start + 1 + ((rec.cls >> 7) & 1) + ((rec.cls >> 11) & 1)
-    except Exception:
-        _at = None
-    if _at is not None and _at < len(rec.words):
-        f = struct.unpack('<f', struct.pack('<I', rec.words[_at]))[0]
-        if np.isfinite(f) and 1e-3 < abs(f) <= 4.0 * REFERENCE_PX:
-            return float(f), 'slot %d by the layout rule (LOW CONFIDENCE)' % _at
+    _got = _locate_slot(rec)
+    if _got is not None:
+        return _got
     edges = set(rec.layout[0] or ())
     for si in range(2, min(len(rec.words), 9)):
         if si in edges:

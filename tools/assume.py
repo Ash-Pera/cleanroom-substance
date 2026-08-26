@@ -196,12 +196,21 @@ QUESTIONS = {
     # filters in tools/param_slots.py -- and returns, so the derived rule is never
     # consulted. An ASSUMED reading pre-empting a DERIVED one.
     #
-    # WHAT IT COSTS, on Bricks Textures_1's 126 distance records: 'wide' returns 1.0000 for
-    # EVERY ONE OF THEM. The component it reads is the aspect term
-    # `exp2(min(sizelog2.x - sizelog2.y, 0))`, which is exactly 1.0 on a square image, and
-    # every image here is square. A radius of 1.0 at a 256 reference is 0.25px on a 64 grid,
-    # so the distance transform is a no-op and its output is just the thresholded mask. Six
-    # records that mask six different colour layers came out BYTE-IDENTICAL.
+    # WHAT IT COSTS, on Bricks Textures_1's 126 distance records: 'wide' resolves all 126 to
+    # just TWO distinct values, 1.0 on 121 of them and 2.0 on the other 5. The component it
+    # reads is the aspect term `exp2(min(sizelog2.x - sizelog2.y, 0))`, which is exactly 1.0
+    # on a square image, and every image here is square.
+    #
+    # (An earlier version of this note said 1.0 for EVERY one. That is wrong and it was
+    # caught by a parallel session instrumenting the same call. The corrected claim is the
+    # stronger one to carry: "all 126" is refutable by a single record, "two values across
+    # 126" is not, and 2.0 changes nothing anyway -- at a 256 reference it is 0.5px on a 64
+    # grid, still sub-pixel, so the transform is inert either way and its output is just the
+    # thresholded mask. Six records masking six different colour layers came out
+    # byte-identical.)
+    #
+    # Against 'layout', which resolves the same 126 to 22 distinct values -- 84 via slot 6,
+    # 40 via slot 5, and exactly 2 falling through to the 2-component reading.
     #
     # The slot rule gives them author-shaped numbers instead, and distinct ones:
     #
