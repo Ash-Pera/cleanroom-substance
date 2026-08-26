@@ -433,6 +433,32 @@ QUESTIONS = {
     # wrong, and answerable once it is fixed -- which is an argument for re-running old
     # inconclusive sweeps after any correction of this size, not only the ones it obviously
     # touches.
+    # A SECOND PACK CONFIRMS IT, AND IT IS NOT THE ONE THAT WAS EXPECTED. The structural
+    # side offered Sandy Stone rec27 (N = 5) as the discriminating specimen and named
+    # Bricks, RoofTiles and Auras as negative controls with no scanner fxmaps at all. The
+    # controls are half right and Bricks is not one of them:
+    #
+    #     Bricks         18 records with a readable grid, widths {2: 11, 4: 2, 25: 5}
+    #     Chesterfield    4 records, all width 4
+    #     Sandy Stone     1 record,  width 5
+    #     RoofTiles       none        Auras  none
+    #
+    # So Bricks scores it, at three different N and eighteen records:
+    #
+    #     arm            overall      AO   height   normal  roughness  emission
+    #     numberadded     0.1239  0.1190   0.3503   0.0344     0.2370    0.0140
+    #     divisor         0.1065  0.1040   0.2154   0.0502     0.2152    0.0292
+    #
+    # Overall improves, height improves by a third, AO and roughness improve, and `normal`
+    # regresses -- the same signature as Chesterfield, at different grid widths, in a
+    # different package by a different author. That the regression REPRODUCES is what makes
+    # the derivative-amplification account credible rather than a Chesterfield story.
+    #
+    # Sandy Stone turns out not to score it: rec27 feeds five outputs and none of them
+    # renders yet, so its only scored channel is a metallic the record does not touch. It
+    # remains a valid extraction check -- grid_width returns 5 there, a third distinct value
+    # -- and not a scoring one. RoofTiles and Auras are byte-identical under both arms,
+    # which is the control working.
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
