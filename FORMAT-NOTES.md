@@ -38533,3 +38533,134 @@ records with NO grid, carrying sizes at a median of 1.9 that something must be d
 the one mechanism in the format that could supply a divisor is, by definition, absent from them.
 Whatever scales those patterns is not the grid count, and the next candidate has to come from
 somewhere the grid records do not need.
+
+## UHL3D-Stylized_Sand: 5 of 6 outputs blank, and a phantom program is why
+
+Taking the sand file seriously rather than as a row in the parameter-seal table. Its declared
+outputs are the six maps the author's own preview sheet shows (basecolor with rocks, a normal,
+height, roughness, AO). What we render: **one output, and it is solid black; the other five do not
+render at all.** 2,229 of 3,317 records produce an output; the outputs all sit at indices 2487-3316,
+downstream of where the walk stops.
+
+The first two graphs I built to explain that were both WRONG, and in the same way -- I inferred the
+dependency structure instead of asking the renderer:
+
+  * "1,088 root failures" from `edge_slots` ancestry. 1,088 was also the TOTAL un-rendered count,
+    which is impossible for a cascade; `edge_slots` is not the renderer's dependency relation.
+  * "the outputs depend on none of the roots", again by `edge_slots` ancestry -- while the outputs
+    demonstrably fail. Records reach each other through the SHARED CACHE and SAMPLER BINDINGS too
+    (rec 2263 has edges=[] and still reads cache index 4), so edge ancestry under-reports the graph.
+
+`render()` already returns a per-record reason dict as its second value, which I had been discarding.
+Asking it instead: of 1,088 failures, **1,069 are cascades** ("edge -> record N has no output yet")
+and only ~11-14 are genuine. Seeding the genuine roots with a neutral image and re-rendering to
+closure reaches **6/6 outputs in 3 layers**, and names the layers:
+
+    88  transformation  offset is a program this cannot single out (2 programs, widths [2])
+     6  shuffle         stores no weight vector (class bit 8 clear), default not in the file
+     3  pixelprocessor  produced non-finite values (100% of samples)
+     2  pixelprocessor  NoSharedCache: cache index read before anything wrote it
+     1  distance        colour record produced 1 channels, not 4
+     1  blur            intensity: class bit clear, so no baked intensity
+
+The 88 are the layer that gates the outputs (they jump 1/6 -> 5/6 exactly when it clears), and they
+have ONE signature: two 2-wide programs, `w1 = 0x0400003F` (bit 26 set = offset is program-computed,
+bits 6 and 7 CLEAR = no matrix parameter at all). render.py separates transformation's programs by
+component width; two 2-wide candidates that disagree set `by_width[2] = None`, and it refuses.
+
+**The second candidate is not a parameter. It is a phantom manufactured by `programs()`.** Slot 0 of
+each record varies per record (88 distinct addresses, 88 distinct values, a clean x2 ladder
+0.0055, 0.011, 0.022 ... 5.657 -- an octave cascade, which is what a dune noise stack looks like);
+the second is **one shared address, 65596, identical (0.0101, 0.0088) in all 88**. Where does it come
+from? `decompose` says the record's header ends at slot 5. The word yielding 65596 is at **slot 19 --
+inline BYTECODE**, the instruction `0x10008` (operand pair 1, 8), whose `+52` happens to pass
+`valid_program`. `programs()` scans EVERY word of the record for `word + 52` validating, so past the
+header it reads instructions as pointers. Same bytecode in 88 records, same phantom 88 times.
+
+This is [[no-value-based-decoding]] again, one level down: not a value read as a parameter, but a
+value read as a POINTER because the bytes it addresses happen to decode.
+
+The blanket fix is wrong and the corpus says so loudly. Bounding the whole `programs()` word-scan at
+the header end takes the sand file from 2,229 records to **172** -- those past-header programs are
+load-bearing CACHE WRITERS (the property's own docstring says enumerating them took execution
+failures to zero), and cutting them strands 82 fxmaps records on "slot read but never set". 14.15% of
+records corpus-wide have a program sourced only from a past-header word; 91% of those targets lie
+inside the record's own extent, but the sand's phantom does NOT -- it points into the shared pool, so
+location cannot discriminate it either.
+
+What does discriminate, structurally: **is this pointer named by a HEADER SLOT?** On the 88, exactly
+one of the two programs is header-slot-named and one is not -- **88 of 88**. Applying that as a
+preference for transformation's offset only, and only where it uniquely resolves, removes all 88
+refusals with the sand file's rendered count UNCHANGED at 2,229, and closure to 6/6 outputs drops
+from 3 layers/99 roots to 2 layers/14 roots.
+
+Scope, measured rather than assumed: over 60 files, 1,191 filter-2 records carry >=2 filter programs,
+and the header-slot test uniquely resolves **447 (37.5%)**; 685 still have two or more header-named
+programs (genuinely ambiguous, still refuse) and 59 have none (fall back). So this is a real
+reduction, not a universal law, and it is applied as a PREFERENCE that never discards a program --
+`kept if len(kept) == 1 else out`. A corpus-wide A/B (records rendered, outputs rendered, and max
+pixel difference on every record that renders BOTH ways) is what decides whether it lands.
+
+## The walk names the offset slot; `programs` was reading bytecode as slots
+
+`render.py`'s `transformation` branch picked the offset program by COMPONENT WIDTH -- evaluate every
+program the record names, take the one returning 2 components. That is a question about values, and a
+phantom program can answer it.
+
+`Record.programs` scans EVERY WORD of a record, not its slots:
+
+    for word in self.words:
+        p = word + 52
+        if asm.body_lo <= p < asm.body_hi and asm.valid_program(p):
+            out.append(p)
+
+Past the walk's `end` a record is BYTECODE, so an instruction operand that survives `valid_program`
+comes back as a program. `UHL3D-Stylized_Sand_with_Rocks_01` record 2618 is 142 words long and its
+structure ends at word 5; word 19 is `0x10008`, mid-bytecode, and yields "program" 65596. It is
+byte-identical in 177 records of that file because they share an instruction sequence. It evaluates
+2-wide, collides with the real offset, and leaves `by_width[2]` ambiguous on 88 records -- a refusal
+built on something that is not a program at all. This is the `no-value-based-decoding` anti-pattern
+that manufactured 2,717 phantom FX programs, in a second place.
+
+THE WALK ALREADY NAMES THE SLOT. `decompose(r)['param_slots']` gives `[(13, 1, 4)]` -- field 13 at
+slot 4 -- and slot 4 holds `program - 52`. Nothing needs singling out. Cross-checked against the
+width rule, which is INDEPENDENT evidence (this reads costs.json, that evaluates bytecode): over 14
+files, 1,204 bit-26 `transformation` records, **1,203 agree, 0 disagree**, 1 where the walk names no
+program. Sand file: 149 agree, and the walk answers all 88 the width rule cannot.
+
+Scope, stated honestly: bounding the word-scan for ALL filters is WRONG -- it takes the sand file from
+2,229 records to 172. `fxmaps` and `pixelprocessor` genuinely reach programs past the header (through
+the tree and the param table), and those are the cache-writers the scan was added to recover. The fix
+is "ask the walk", not "delete the scan".
+
+Not settled by this: WHICH parameter field 13 is. `Record.translation` reads bits 25/26 as two
+booleans (25 baked, 26 program) while the two-bit grid makes 26/27 ONE field, where bit 26 alone is
+code 01 = baked. Those cannot both be right and the tension is open. What is settled is which program
+the record's own slot names.
+
+## `render()` is not deterministic across calls: SAMPLERS leaks between renders
+
+Found while trying to measure the above, and it invalidates a measurement I had already reported.
+The same file rendered twice in one process gives DIFFERENT results:
+
+    no precomputed         rendered=2229
+    precomputed={}         rendered=2288
+    no precomputed again   rendered=2288
+
+`SAMPLERS` is module-level in `sbsruntime.py:348`, and `render()` never clears it at entry -- only the
+`fxmaps` branch does, mid-pass. render.py's own comment at line 3019 already says "SAMPLERS IS GLOBAL
+AND NOTHING CLEARS IT". So samplers installed by an EARLIER render satisfy records that should fail
+with "no sampler installed", and a record's fate depends on what rendered before it in the process.
+
+Two consequences, both retractions:
+
+  * "The transformation bound gains 59 records" was an ARTIFACT of call ordering -- baseline ran cold
+    (2,229) and the patched run ran warm (2,288). With `SAMPLERS.clear()` before each render the two
+    are identical, and the 88 offset refusals do not surface in this file's closure at all. The decode
+    fact (88 ambiguous records) is real and measured per-record with SAMPLERS cleared; the RENDER gain
+    was not. No render-level gain is claimed for the offset fix.
+  * The parameter memo render-seal harness renders memo first and derivation second IN ONE PROCESS,
+    so every derivation run was warm. Its "732 differing records, max diff 178.9" is confounded by
+    this and must be re-run with SAMPLERS cleared between the two renders before it means anything.
+
+Any A/B that renders twice in one process is suspect until it clears SAMPLERS.

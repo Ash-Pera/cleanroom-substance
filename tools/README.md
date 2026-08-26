@@ -21,7 +21,9 @@ The finished tools. Each runs from the repository root, where the corpus lives:
     standalone_parse.py   header, footer, interface block and value table
     disasm.py             bytecode disassembler
     sbsasm.py             the file model: records, layouts, edges, parameters, programs
-    record_layout.py      the record layout rule, as one function
+    decompose.py          the one structural walk of a record header — edges, size slot,
+                          program slots — that replaced the five layout special cases
+    record_layout.py      the record layout rule, as one function; decompose reads its cost model
     slot_rules.py         every rule that decides a record's slot layout, each verified
     corpus.py             the canonical corpus list, deduplicated by CONTENT
 
@@ -34,6 +36,22 @@ propagate to code, so both tools now call the same loader.
 known it reads it, and where it is not it returns `None` and counts it. `coverage()` classifies
 every byte and reports what it cannot explain, so a wrong assumption surfaces as a number rather
 than as a plausible-looking result.
+
+**`Record.layout` and `edge_slots` now route through `decompose.py`, not a table.** One
+structural pass — `[tag][w1?][image inputs][one slot per set class bit][one slot-group per w1
+field][tail]`, reading only `record_layout`'s cost model — returns `(edges, size-or-program
+slot)` for every record, and `_compute_layout` runs only as the fallback for the 5 unnamed
+filter-9 records. This retired the five hand-tuned branches that used to decide layout
+(`_walk_layout`, `_ruled`, `_pp_edges`, the SPECS-walk, and the fixed-shape/`ALT_LAYOUTS`
+fallbacks). It is proven 0-diff against the independent `_compute_layout`+`_real_edges` model —
+925,706 records, 925,701 agree, 0 disagree, 5 uncovered — and every consumer (`size_or_baked`,
+`programs()`) is unchanged corpus-wide; 0b render-verified it at 0 pixel difference across all
+affected filters. One caveat, stated in `decompose.py`'s docstring: because `edge_slots` and
+`Record.layout` now *call* decompose, validating decompose against them is circular — check it
+against `_compute_layout`/`_real_edges`, the raw words, or the render. **Parameters are the one
+decision still on the fitted `LAYOUTS` memo**, not decompose: the render showed every positional
+parameter rule tried was worse than the memo on `levels`, so `Record.named_parameters` stays on
+the table pending a full render-seal. See FORMAT-NOTES.md "Unified walk" / "Better decoder".
 
 Two readings sit side by side, deliberately:
 

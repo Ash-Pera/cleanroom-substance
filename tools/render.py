@@ -2022,6 +2022,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # ceiling is program intensities, which have no baked value to read), and
                 # the bit-7/10-clear majority is untouched because the popcount is then just
                 # bit 11 -- the old rule, so nothing that decoded before regresses.
+                #
+                # WHY THE WALK DOES NOT REPLACE THIS, THOUGH IT REPLACED blur's AND
+                # sharpen's. Those were retired in favour of `decompose(rec)['end'] - 1` on
+                # two pieces of evidence: the cost model reproduces their header exactly,
+                # and class bit 12 gives an independent yes/no for whether a baked value is
+                # there, which the walk's slot satisfies on both arms. NEITHER HOLDS FOR
+                # warp. Its cost model is the gap `record_layout` declares -- two record
+                # shapes, w1 present in only one -- and `header_words` disagrees with the
+                # walk's end in 25,085 of 26,795 records. And bit 12 is set in ZERO of
+                # those 26,795, so warp does not use that gate at all and there is nothing
+                # here to check a candidate slot against. Read blind, the walk's last
+                # header slot holds a plausible float in 24,816 of them, which is not
+                # evidence: so does almost any slot, and that is exactly why the subset
+                # search below is weak.
+                #
+                # So this formula stays, and it stays FLAGGED. It was fitted by searching
+                # subsets of the inherited bits for whichever best lands a plausible value
+                # -- deciding structure by whether a value looks right, the method this
+                # project rejects everywhere else. It is retained because nothing better is
+                # established for this filter, not because it is trusted.
                 sl = 4 + bin(rec.cls & ((1 << 7) | (1 << 10) | (1 << 11))).count('1')
                 if sl >= len(rec.words):
                     raise Unsupported("warp record too short for an intensity slot")
@@ -2559,10 +2579,48 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # intensity; with the gate it cannot be, because the record says there
                 # isn't one.
                 intensity = None
-                nprog = bin(rec.cls & 0x2881).count("1")
-                _islot = 4 if nprog == 0 else 2 + nprog
+                # THE SLOT COMES FROM THE WALK. NOTHING IN THE FORMAT STORES A SLOT NUMBER
+                # (record_layout: "every position is implied by the bits set before it"),
+                # so a rule of the shape `base + some class bits` is a fitted patch, not a
+                # read. Two such patches disagreed about this very slot -- this file's
+                # `2 + nprog` and `param_slots.predicted_slot`'s `start + 1 + bit7 + bit11`,
+                # the latter verified by containment on 38 of 38 located pairings. They
+                # differed on a third of blur records and no reference could separate them.
+                #
+                # THE REASON THEY COULD NOT BE SEPARATED IS THAT NEITHER IS A READ. Both
+                # shift the read position by class bits that the fitted cost model charges
+                # NOTHING for: bit 7 is not in blur's cls table at all, and bits 0, 11 and
+                # 13 (this rule's 0x2881 mask) all cost 0.0 words. Two wrong formulas can
+                # disagree forever, and a reference score cannot referee between them.
+                #
+                # The walk needs no patch. `decompose(rec)['end']` is the header boundary
+                # -- and it equals `record_layout.header_words` in 15,371 of 15,371 blur
+                # records -- so the intensity is simply the LAST HEADER SLOT, end - 1.
+                # That is what class bit 12 has been saying all along: walk.py's author
+                # measured "bit 12 is set iff the last header slot is a baked value" at
+                # 6,855/6,855, and the claim sat in this comment unwired while the two
+                # formulas argued underneath it. Over the full corpus:
+                #
+                #   filter    records   bit-12 set, plausible at end-1   bit-12 clear, not a value
+                #   blur       15,371        14,931 / 14,931                  440 / 440
+                #   sharpen     1,323         1,148 /  1,148                  175 / 175
+                #
+                # 15,371 of 15,371 and 1,323 of 1,323, on both arms, with none unresolved
+                # and none past the record end. The formulas reach 14,692 and 1,120, and
+                # they land on a DIFFERENT plausible float in 820 blur records -- a blur
+                # rendered at the wrong radius rather than one refused, which is the
+                # failure this project ranks worst.
+                #
+                # A THIRD INSTRUMENT AGREES, and it is one this file already trusts. The
+                # width-1 program path gives blur intensities with p50 1.00; the withdrawn
+                # slot-3 reading gave a power-of-two ladder with p50 5.00. The walk's slot
+                # gives p50 1.00 over 14,931 records (192 distinct values from 0.0125 up).
+                # It matches the trusted path and not the refuted one, and that agreement
+                # was never fitted for.
+                _d = decompose.decompose(rec)
+                _islot = (_d['end'] - 1) if (_d and _d.get('end')) else None
                 _baked = bool(rec.cls >> 12 & 1)
-                if _baked and _islot < len(rec.words):
+                if _baked and _islot is not None and _islot < len(rec.words):
                     v = float(np.frombuffer(np.uint32(rec.words[_islot]).tobytes(),
                                             dtype=np.float32)[0])
                     if np.isfinite(v) and (v == 0.0 or 1e-6 < abs(v) < 1e4):
@@ -2682,11 +2740,12 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             break
                 if intensity is None:
                     raise Unsupported(
-                        "blur intensity: %s (nprog=%d, slot %d)"
+                        "blur intensity: %s (walk slot %s)"
                         % ("class bit 12 clear, so the record states there is no baked "
                            "intensity" if not _baked else
-                           "slot does not read as a plausible intensity",
-                           nprog, _islot))
+                           "the walk does not resolve this record's header" if _islot is None
+                           else "slot does not read as a plausible intensity",
+                           _islot))
 
                 W, H = rec.width, rec.height
                 if max_dim:
@@ -2790,21 +2849,16 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # the same two-part law. `sharpen` is not in PARAM_SPEC, so there is no
                 # named parameter to consult; it takes one image edge and one scalar.
                 #
-                # The slot is the one after the size block -- 2 + nprog, or 4 when nprog is
-                # 0 and the size occupies two baked words -- and class bit 12 says whether
-                # a baked value is there at all. Over 175 records in 60 files:
-                #
-                #     rule                             plausible value at that slot
-                #     2 + nprog (4 if 0)                   138 of 175   79%
-                #     4 + popcount(cls & {7,10,11})          0            0%   (warp's rule)
-                #     2 + popcount(cls & {0,7})             54           31%   (hsl's rule)
-                #     fixed 4                               90           51%
-                #     fixed 3                               48           27%
-                #
-                # and the values it lands on are 0.25, 0.125, 0.5, 1.2, 0.8 -- a sharpen
-                # intensity distribution, not a size ladder. Bit 12 gates it exactly as it
-                # does for blur: set and plausible 138, clear and implausible 31, set with
-                # the slot past the record end 6 -- 169 of 175 = 96.6%.
+                # The slot is the LAST HEADER SLOT, from the walk -- see the long note on
+                # `blur` above, which this filter shares. The table that used to sit here
+                # compared five hand-fitted formulas against each other and crowned the
+                # best of them at 79% (169 of 175 = 96.6% once bit 12 gated it). That was
+                # the wrong contest: none of the five is a read, because nothing in this
+                # format stores a slot number. `decompose(rec)['end'] - 1` scores 1,148 of
+                # 1,148 where bit 12 is set and 175 of 175 where it is clear -- 1,323 of
+                # 1,323 sharpen records against the old rule's 1,120 -- and the values it
+                # lands on (p50 0.25, running 0.0 to 1.2) are the sharpen distribution the
+                # old note described.
                 #
                 # THE KERNEL IS A READING, and the same one `blur` documents: an unsharp
                 # mask over a 3x3 box, out = src + intensity * (src - blur(src)). What is
@@ -2816,11 +2870,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if not rec.edges or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
-                nprog = bin(rec.cls & 0x2881).count("1")
-                islot = 4 if nprog == 0 else 2 + nprog
+                _d = decompose.decompose(rec)
+                islot = (_d['end'] - 1) if (_d and _d.get('end')) else None
                 if not (rec.cls >> 12) & 1:
                     raise Unsupported("sharpen intensity: class bit 12 clear, so the record "
-                                      "states there is no baked intensity (nprog=%d)" % nprog)
+                                      "states there is no baked intensity")
+                if islot is None:
+                    raise Unsupported("sharpen intensity: the walk does not resolve this "
+                                      "record's header")
                 if islot >= len(rec.words):
                     raise Unsupported("sharpen intensity: slot %d past the record end"
                                       % islot)

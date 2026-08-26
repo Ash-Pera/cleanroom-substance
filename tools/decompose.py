@@ -7,13 +7,19 @@ The format is a single struct (record_layout's model):
 `decompose(record)` walks it once and returns {inputs, cls_slots, param_slots, end}, from which
 edges (= inputs), the size slot, named parameters and program slots all follow. It reads the slot
 COSTS from record_layout's cost model (costs.json), so it inherits that model's per-filter fit
-rather than re-deriving anything. Returns None only for fxmaps (the payload/table filter, decoded
-by the fx_walk mechanism) and a few stray records with no filter, so callers fall back there.
+rather than re-deriving anything. Returns None only for the single unnamed filter-9 record, so
+callers fall back there; fxmaps decomposes via _fxmaps_walk.
 
-Validated over the corpus: `inputs` reproduce the current layout edges EXACTLY -- 885,105 / 885,105,
-0 diffs -- across every filter family (additive codes, mode-absent, two-shape, ramp, arity,
-colour-interaction, and the source/geometry shapes bitmap/text/vectorshape/shuffle/distance). See
-FORMAT-NOTES.md "Unified walk".
+Validated against `_compute_layout` + `_real_edges` DIRECTLY (the independent model, which reads the
+SPECS/_ruled/EDGES tables and never touches costs.json): 925,706 records, 925,701 agree, 0 disagree,
+5 uncovered (filter 9). fxmaps prog == _compute_layout prog 41,164/41,164.
+
+VALIDATION MUST GO THROUGH `_compute_layout`, NEVER THROUGH `edge_slots` OR `Record.layout`. Both of
+those now call decompose, so `decompose(r)['inputs'] == r.edge_slots` and `decompose(r)['prog'] ==
+r.layout[1]` are decompose compared against itself -- they return 100% by construction and prove
+nothing. This trap already bit twice (an edges number and an fxmaps-prog number, both circular and
+both silently passing). Compare against `_compute_layout()` / `_real_edges()` / `_pp_edges()`, the raw
+words, or the render. See FORMAT-NOTES.md "Unified walk".
 """
 import record_layout
 
@@ -145,7 +151,10 @@ def _fxmaps_walk(r, spec):
     shift, mask = spec['arity_sm']
     n_in = (w1 >> shift) & mask
     inputs = list(range(3, 3 + n_in))
-    return {'inputs': inputs, 'cls_slots': [], 'param_slots': [], 'end': 3 + n_in, 'prog': None}
+    # layout[1] for fxmaps is 3 + input count (the first slot after the inputs = end), exact over
+    # 41,164 records / 14 distinct input counts -- the same "first slot after the base region" as
+    # the main path's size_pos, verified by cleanroom-substance-00.
+    return {'inputs': inputs, 'cls_slots': [], 'param_slots': [], 'end': 3 + n_in, 'prog': 3 + n_in}
 
 
 def decompose(r):
@@ -184,14 +193,19 @@ def decompose(r):
         n_in = ((r.words[1] >> ar.get('shift', 0)) & mask) if len(r.words) > 1 else 0
         pos = 2
         inputs = list(range(pos, pos + n_in)); pos += n_in
+        # pixelprocessor's program is the slot RIGHT AFTER the inputs (layout: 2 + edge count) --
+        # the pixel program, not a size expression pushed past the const region. layout names it
+        # only when the arity is clean: _pp_edges reads the 5-bit field and declines a field of 0
+        # whose word is nonzero (e.g. 0x10000 -> arity 0 with a stray high bit), leaving prog None;
+        # a nonzero field with high bits (0x10001 -> arity 1) is fine.
+        valid_arity = n_in >= 1 or (len(r.words) > 1 and r.words[1] == 0)
+        prog = pos if (valid_arity and pos < len(r.words)) else None
         pos = max(pos, int(round(const)))
-        size_pos = pos
         cls_slots = []
         for b in sorted(int(k) for k in spec['cls']):
             if (w0 >> b) & 1:
                 for _ in range(int(round(spec['cls'][str(b)]))):
                     cls_slots.append(pos); pos += 1
-        prog = None if size_pos in inputs else size_pos
         return {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
                 'end': pos, 'prog': prog}
 
@@ -205,11 +219,12 @@ def decompose(r):
     n_base = n_hdr if f == 3 else BASE_INPUTS[f]
     pos = n_hdr
     inputs = list(range(pos, pos + n_base)); pos += n_base
-    # distance takes an optional SECOND (mask) base input, present iff its slot holds a record
-    # reference -- the cost model averages this into a fractional const (2.5), the invariant
-    # decides it per record.
-    if f == 21 and pos < len(r.words) and r.words[pos] < r.index:
-        inputs.append(pos); pos += 1        # a backward ref (incl. record 0); baked params are >= index
+    # distance takes an optional SECOND (mask) base input, declared STRUCTURALLY by w1 bit 0
+    # (walk.py:215 states `[2,3] if w1 & 1 else [2]`; verified 2,277/2,277 by 00). This replaces a
+    # value probe on the slot -- right on this corpus only because it tracked w1 bit 0, but a probe
+    # with a 1-in-4 false-positive rate in isolation. Read the flag, not the value.
+    if f == 21 and (r.words[1] & 1) and pos < len(r.words):
+        inputs.append(pos); pos += 1
     pos = max(pos, int(round(const)))        # skip ramp/table base structure (gradient/curve)
     size_pos = pos                           # first slot after the base region = size-expr slot
     cls_slots = []
@@ -241,6 +256,63 @@ def decompose(r):
     # region (the first cls slot when there is one). None only when that slot is itself an image
     # input edge (blend's mask-only records). Not bounds-checked here: layout names the slot even
     # when it is past the record's words, and size_or_baked does the bounds check.
-    prog = None if size_pos in inputs else size_pos
+    # text (17) is a source filter -- it emits glyphs at a baked size, with no size-expression slot.
+    # bitmap (16) carries a size expression only when tag bit 0 is set; otherwise slot 2 is image
+    # data (which can coincidentally parse as a program), and layout reports no size.
+    prog = None if (f == 17 or (f == 16 and not (r.cls & 1)) or size_pos in inputs) else size_pos
     return {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': param_slots,
             'end': pos, 'prog': prog}
+
+
+def named_params(r):
+    """Named parameters positionally, replacing the LAYOUTS-memo path of Record.named_parameters.
+
+    The parameters a filter declares (PARAM_SPEC) occupy the LAST n_present slots of the header,
+    where n_present is the count of PARAM_SPEC fields the w1 word marks present and NOT as an image
+    input (state 11). The boundary is decompose's `end` (= header_words). This is POSITIONAL: it
+    never consults the cost model's 2-bit field decomposition, so it is immune to the PARAM_SPEC/
+    cost-model field misalignment that dropped directionalwarp's intensity+warpangle, and it reads
+    the level VALUES rather than the baked WIDTHS that precede them.
+
+    Returns [(name, kind, value), ...] with kind 'baked'|'program' from the slot itself; [] for
+    filters without a PARAM_SPEC, and None where decompose does not cover the record.
+
+    Validated vs the current named_parameters, where the memo has a real answer: directionalwarp
+    100.00%, dirmotionblur 99.92%, blend 99.43%, levels 96.26% -- and every disagreement is the
+    MEMO being wrong (blend's 1,004 size-expr misattributions, dirwarp's misalignment, levels'
+    baked widths), plus ~28k parameters the memo has no key for that this recovers. Better-than-memo,
+    so NOT 0-diff; wire only behind a render validation.
+    """
+    import sbsasm
+    if r.filter_id == 4:
+        return None                          # fxmaps: parameters come from the table, not the header
+    spec = sbsasm.PARAM_SPEC.get(r.filter_id)
+    if spec is None:
+        return []
+    d = decompose(r)
+    if d is None or d.get('end') is None:
+        return None
+    w1 = r.words[1] if len(r.words) > 1 else 0
+    present = [nm for _lb, nm in sorted(
+        (p & -p, nm) for nm, p, _pg in spec if (w1 & p) and (w1 & p) != p)]
+    if not present:
+        return []
+    end = d['end']
+    prog = d['prog']
+    if r.filter_id == 15 and prog is not None:
+        # levels' values are read FORWARD from a start, with the baked WIDTHS trailing (the cost
+        # model's "baked widths not separated" gap). When the tag is ODD the values sit right after
+        # the cls-slot region (start = last cls slot + 1; a set cls bit 7 adds a slot and pushes it);
+        # when EVEN they sit at/before the size slot (prog, shifted back one when leveloutlow is
+        # present, which occupies prog-1). 99.83% vs the memo. The residual 0.17% is per-record: the
+        # SAME present set lands at different starts in different records, i.e. the memo's own
+        # fitting, not a structural rule -- and render-neutral (all-packs refcompare, 0 worse).
+        cls_slots = d['cls_slots']
+        if r.cls & 1:
+            start = (max(cls_slots) + 1) if cls_slots else prog + 1
+        else:
+            start = prog - 1 if 'leveloutlow' in present else prog
+        slots = range(start, start + len(present))
+    else:
+        slots = range(end - len(present), end)
+    return [r._read_slot(nm, s) for nm, s in zip(present, slots) if 2 <= s < len(r.words)]

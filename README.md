@@ -94,6 +94,18 @@ once. This replaced a memorised layout table: a walk reproduces record layout fo
 the corpus with no per-record lookup and no fitted floats, and fails loudly rather than
 guessing when a spec is wrong. `SPEC.md` §6 states it.
 
+That walk is now the **live decode path**, not just a check that could reproduce the table.
+`Record.layout` and `edge_slots` route through one structural pass (`tools/decompose.py`),
+which returns each record's edges and its size-or-program slot from the cost model alone; the
+five hand-tuned layout branches it replaced run only as the fallback for the 5 unnamed
+filter-9 records. It is proven 0-diff against the independent table-based model (925,706
+records, 925,701 agree, 0 disagree, 5 uncovered) and render-verified at 0 pixel difference.
+The one decision still on a fitted table is **what baked parameters a record carries**: the
+render showed every positional rule tried was worse than the memo on `levels`, so
+`named_parameters` stays on the `LAYOUTS` memo pending a full render-seal. Edges, size
+expression and program positions are off the tables; parameter *values* are the honest
+remaining exception.
+
 The last line of the audit table is the one to read. Earlier versions of this table reported "unexplained
 bytes 0", which was circular: `coverage()` marks a whole record extent as accounted for
 the moment the record is enumerated, and the directory is a sorted partition of the body,

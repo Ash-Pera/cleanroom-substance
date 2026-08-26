@@ -35,6 +35,28 @@ import contextlib
 # a caller may pass anything, and an unknown key is that caller's business.
 QUESTIONS = {
     'blur.intensity':     ('program', 'slot3'),
+    # 'blur.slot' WAS HERE AND IS WITHDRAWN AS MALFORMED -- BOTH ARMS ARE WRONG. It asked
+    # which of two rules locates the baked intensity: render.py's `4 if nprog == 0 else
+    # 2 + nprog` (nprog = popcount(cls & 0x2881)) or `param_slots.predicted_slot`'s
+    # `layout start + 1 + bit 7 + bit 11`, the latter verified by containment on 38 of 38
+    # located pairings. They disagreed on a third of blur records, and the arbitration was
+    # unresolvable because the references scored +0.2951 either way.
+    #
+    # The reason it could not resolve is that neither arm is a read. NOTHING IN THIS FORMAT
+    # STORES A SLOT NUMBER -- record_layout states it outright: "every position is implied
+    # by the bits set before it". So `base + some class bits` is a patch fitted to a
+    # sample, and both patches shift by bits the fitted cost model charges nothing for:
+    # bit 7 is absent from blur's cls table entirely, and bits 0, 11 and 13 all cost 0.0.
+    # Two wrong formulas can disagree forever and no reference will separate them.
+    #
+    # The walk answers it with no free parameters: the intensity is the LAST HEADER SLOT,
+    # `decompose(rec)['end'] - 1`. 15,371 of 15,371 blur records and 1,323 of 1,323
+    # sharpen, on both arms of the bit-12 test. See the note in render.py's blur branch.
+    #
+    # THE CONTAINMENT RESULT IS NOT OVERTURNED, IT IS SUBSUMED. Those 38 pairings are real
+    # located values; `start + 1 + bit7 + bit11` simply happened to equal the last header
+    # slot in the records that paired, and stops doing so elsewhere. A rule fitted on six
+    # filters pooled cannot be right about a layout the cost model fits per filter.
     # THE ABSOLUTE PIXEL SCALE, which render.py flags as unverified in four places -- blur,
     # sharpen, directionalwarp and dirmotionblur all divide `intensity` by a hardcoded 256
     # and none of them has evidence for that number. A constant-factor error here makes
