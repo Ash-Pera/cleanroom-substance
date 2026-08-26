@@ -58,6 +58,12 @@ QUESTIONS = {
     # three specimens now block on it -- Chesterfield rec330, WoodSubstance005 rec139/245,
     # Bricks_and_tiles rec10330, the last of which gates four channels of the only
     # reference-scored package that has them.
+    # What an entry that states NEITHER a patterntype NOR a patternsize should draw.
+    # Today it is a full-cell rect, which paints the whole canvas white, and three
+    # specimens turn white for exactly that reason -- Chesterfield rec43, WoodSubstance005
+    # rec85, Bricks rec5228. The entry is read correctly; what is unknown is what the
+    # engine draws when the file states no extent.
+    'fx.sizeless':        ('fill', 'skip', 'half', 'quarter'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
     'uniform.fill':       (),      # a value, not an enumeration
     # The channel weights a single-input `shuffle` record applies. TWO SOURCE NODE TYPES

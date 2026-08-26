@@ -1046,7 +1046,19 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
             cell_scale = 1.0 / _g
             assume.note(getattr(rec, 'index', -1))
 
+    # AN ENTRY THAT STATES NEITHER SHAPE NOR EXTENT: see assume.QUESTIONS['fx.sizeless'].
+    # The default stays 'fill' -- a full-cell rect, today's behaviour -- because that is
+    # what the code has always done, not because it is established.
+    _sizeless = assume.assumed('fx.sizeless', 'fill')
+
     for p in patterns:
+        if p.get('patternsize') is None and p.get('patterntype') is None:
+            if _sizeless == 'skip':
+                continue
+            if _sizeless in ('half', 'quarter'):
+                p = dict(p)
+                p['patternsize'] = np.full(2, 0.5 if _sizeless == 'half' else 0.25,
+                                           dtype=np.float32)
         src = image_for(p)
         base = val(p, 'branchoffset', _ZERO2) * cell_scale
         off = val(p, 'frameoffset', _ZERO2)
