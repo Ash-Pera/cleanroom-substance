@@ -57,6 +57,7 @@ for what the real engine does at that same input (clamps to 0? saturates earlier
 step this reading is missing?), so it is surfaced rather than guessed at.
 """
 import math
+import re
 
 import numpy as np
 import transpile, sbsruntime, fxrender, distance, assume, manifest
@@ -422,6 +423,28 @@ def prefilter(src, scale):
     return img
 
 
+_POS_SYSVAR = re.compile(r'sysvar\(8,')
+_READS_POS = {}
+
+
+def _reads_pos(asm, ptr):
+    """Does the program at `ptr` read `$pos`?
+
+    Answered from the transpiled source, which states each system variable it reads, and
+    memoized because a pixelprocessor asks it once per program per render.
+    """
+    key = (id(asm), ptr)
+    got = _READS_POS.get(key)
+    if got is None:
+        end = asm.program_span(ptr)
+        try:
+            src = transpile.transpile(asm.data, ptr, end, "python", "prog") if end else ''
+        except Exception:
+            src = ''
+        got = _READS_POS[key] = bool(_POS_SYSVAR.search(src))
+    return got
+
+
 def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
     end = asm.program_span(start)
     if end is None:
@@ -706,10 +729,41 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # earlier program runs once, N=1, not per-pixel, sharing one `slots`
                 # dict whose side effects (the `set`s) carry forward; only the last
                 # program is the real per-pixel body and gets $pos and the full N.
-                slots = {}          # per-record frame; see the slot-frame note above
-                for p in progs[:-1]:
-                    eval_program(asm, p, default_inputs(asm, 1), slots, 1)
+                #
+                # WHICH ONE IS THE BODY IS DECIDED BY `$pos`, NOT BY POSITION. A per-pixel
+                # body has to know where it is; a scale, an offset or a seed does not, and
+                # `sysvar(8, ...)` is `$pos` in the transpiled source. Over 3,021
+                # pixelprocessor records in 22 files:
+                #
+                #     exactly one program uses $pos     2,561
+                #       and it IS the last              2,411   -- taking the last was right
+                #       and it is NOT the last            150   -- taking the last was wrong
+                #     two of four use it                  288   -- ambiguous, left alone
+                #     none uses it                        172   -- ambiguous, left alone
+                #
+                # The 150 are the records whose output this renderer had no business
+                # producing. Travertine 301's three programs are a 2-wide (7.0, 7.0) --
+                # log2 of its own 128-wide size -- a 15-instruction $pos body, and a 7-op
+                # `vec(1 + rand(1.0), 1.0)`; the last of those was being drawn as the
+                # picture, which is where the out-of-range 1.9217 in this branch's channel
+                # guard comes from. fur_var_001 record 17, whose four declared outputs
+                # render FLAT, has (8.0, 8.0) last and an 83-instruction $pos body in the
+                # middle.
+                #
+                # An earlier attempt used the DECLARED RESULT WIDTH instead -- pick the
+                # program whose width matches the record's own channel count -- and it was
+                # unique in 21 of 325 cases (29f32b4). $pos is unique in 2,561 of 3,021,
+                # and where it is not unique this falls back to the last program, so no
+                # record that renders today can change unless $pos says it was wrong.
                 main = progs[-1]
+                if len(progs) > 1:
+                    lit = [p for p in progs if _reads_pos(asm, p)]
+                    if len(lit) == 1:
+                        main = lit[0]
+                slots = {}          # per-record frame; see the slot-frame note above
+                for p in progs:
+                    if p is not main:
+                        eval_program(asm, p, default_inputs(asm, 1), slots, 1)
                 inputs = default_inputs(asm, N)
                 out = eval_program(asm, main, inputs, slots, N, pos=pos, W=W, H=H)
                 outputs[i] = to_image(out, N, H, W)
