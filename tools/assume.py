@@ -491,6 +491,26 @@ QUESTIONS = {
     # And the two counts reconcile rather than compete: 16 stamps each carrying rec29's 2x2
     # blob positions is 64 dots, which is the 8x8 the spacing shows. The account closes.
     #
+    # A PICTURE TEST FOR THE patternsize ARMS CANNOT REACH THEM ON THIS PACK, and the reason
+    # is structural rather than a coverage gap. Measuring the drawn dot -- the blob's size
+    # WITHIN rec29 times the stamp's footprint, against the reference dot -- gives on rec34:
+    #
+    #     reading              s      predicted dot   vs reference (0.0468)
+    #     canvas (stored)   0.2500    0.0537..0.0287    1.15x .. 0.61x
+    #     cell, 8 axis      0.0312    0.0067..0.0036    0.14x .. 0.08x
+    #
+    # which reads as decisive for canvas. It is not, because rec34 is not a record the arms
+    # touch. `_cell_divisor` fires on Chesterfield recs 92 and 93 ONLY, and those two are in
+    # the cones of basecolor, normal, roughness, height and AO -- but NOT metallic. rec34 is
+    # in metallic's cone alone.
+    #
+    # So the dot lattice the picture test can read belongs to the one channel the arms never
+    # touch, and the five channels the arms move carry no dot lattice to measure. The two
+    # instruments address DISJOINT record sets by construction. They cannot be in conflict
+    # here, and neither can corroborate the other: a picture test that arbitrates these arms
+    # needs a record that is both in the fired set and feeds a reference with identifiable
+    # dots, and Chesterfield has none.
+    #
     # It stops short of the predicted ~0.40, and the residue is specific: the emitted
     # frameoffsets run -0.375, -0.125, -0.875, -0.625, -1.375, -1.125. They sit on the
     # correct 0.25 lattice, so the pitch is confirmed, but they range outside the unit
@@ -1127,6 +1147,30 @@ QUESTIONS = {
     # fxmaps records, 0 differing. A candidate that cannot differ from another is not an
     # option.
     'fx.patternsize':     ('canvas', 'cell'),
+    # THE THIRD COORDINATE, and the one the other two arms leave behind. `splat` scales
+    # branchoffset under `fx.branchoffset` and patternsize under `fx.patternsize`, and
+    # NOTHING scales frameoffset -- so "everything is in cell units" has never actually been
+    # testable, only two thirds of it.
+    #
+    # It matters because frameoffset is what carries a DISPLACED PAIR. ChesterfieldSofa
+    # records 92 and 93 are the same 25-pattern 5x5 lattice with frameoffset exactly negated
+    # ([0.1102, -0.0591] against [-0.1102, 0.0591], and so on for all 25); record 94 is
+    # `levels(92)` with leveloutlow 0.5, giving 0.5 + A/2, and record 95 subtracts 93 at
+    # opacity 0.5, giving 0.5 + A/2 - B/2. That is a relief filter: it produces the sofa's
+    # tufting from the difference between two displaced copies, and it produces NOTHING if
+    # the two copies are the same.
+    #
+    # Ours are nearly the same, because patternsize is 2.82 -- almost three canvases -- and
+    # displacing a blob that large by 0.11 changes it hardly at all:
+    #
+    #     scaling                     |A - B| max    record 95 std
+    #     as-is                          0.0066         0.000572
+    #     all three by 1/5               0.2518         0.055014
+    #
+    # `_cell_divisor` already returns exactly [0.2, 0.2] here -- the branchoffset span is
+    # -2..+2, five cells per axis -- so the divisor is not in doubt, only which quantities
+    # it applies to.
+    'fx.frameoffset':     ('canvas', 'cell'),
     # ARBITRATED ON THE REFERENCE PACKAGES, AND REFUTED ON STRUCTURE. `fxrender`'s note says
     # this arm left two specimen records byte-identical because `_cell_divisor` declined
     # them; over the reference packages as a whole it is NOT vacuous -- 97 of 694 rendered
