@@ -35722,3 +35722,30 @@ width fixed per kind -- now confirmed at all three scales. Draining the node wal
 an unlisted header is walked structurally rather than stopping the chain, the way the entry
 stride drain reached 78k more entries) is the open follow-on; the successor half is settled,
 the branch and scanned-leaf cases in `FX_NODES2` are what remain to fold in.
+
+## The 0x0B leaf wraps an entry, so its scanned "programs" are that entry's, double-counted
+
+`node_shape` drained the linear FX node families onto the mask-walk, leaving `FX_NODES2` with
+two: the `0x1B` branch and the `0x0B` leaf. The leaf is the last value-based decode in the
+node walk -- its program slots are not tabled but SCANNED (`fx_tree` reads slots 2..13 for
+disjoint program spans), the exact "decide the structure by whether the bytes decode" smell
+the entry-side inline recovery had.
+
+Read structurally, it is not a program container at all. A `0x0B` node's word 1 points at word
+2, and **word 2 is an ENTRY tag** (low nibble 8) in 1,578 of 1,602 leaves. So the leaf is a
+one-word header in front of a paramset entry -- `[0x??0B][ptr->entry][entry...]` -- and the
+disjoint-span scan is brute-forcing the wrapped ENTRY's program pointers out of the node's
+slots. Those same programs are already read by the entry machinery: of the 4,414 programs the
+`0x0B` scan yields, 4,348 (98.5%) are also yielded as an entry program of the same record.
+The scan double-counts them, and mislabels a paramset entry's programs -- which READ the node
+frame -- as node programs, which WRITE it.
+
+The right reading is a HANDOFF, the same one `fx_walk` already performs for a chain that ENDS
+on a `0x0B` leaf: follow word 1 into the entry list and let `fx_table` walk it. What blocks a
+clean deletion of the scan is the tail: 66 distinct programs across 56 records are found ONLY
+by the scan, never as entries, because those leaves' wrapped entry lists are not fully reached
+by the current handoff (it fires once, at the chain end, not at every leaf). So the fix is not
+"stop scanning" but "hand every `0x0B` leaf off to its entry list and read it as entries" --
+an `fx_walk` change, not a one-liner, and one that moves the render path, so it waits on a
+session that can render-verify. Recorded here with the measurement so the next attempt starts
+from "the leaf is an entry wrapper" rather than rediscovering it.
