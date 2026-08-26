@@ -2111,15 +2111,18 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # plausible intensity", which decides structure by whether the answer looks
                 # right. The walk has no free parameter to fit.
                 #
-                # AN EARLIER NOTE HERE ARGUED THE OPPOSITE AND HAD THE EVIDENCE BACKWARDS.
-                # It rejected the walk because `record_layout.header_words` disagrees with
-                # the walk's end in 25,085 of 26,795 warp records. That gap is real, and it
-                # is exactly +1 in every one of those records -- warp's fitted `w1_present`
-                # is 1.0, charging a w1 word unconditionally, while the walk charges it only
-                # for the record shape that carries one. Ground truth says the WALK is
-                # right and the cost model's averaged w1_present is wrong for warp, which is
-                # `record_layout`'s own declared gap ("two record shapes, and w1 exists in
-                # only one of them") showing up as a number rather than as a caveat.
+                # AN EARLIER NOTE HERE REJECTED THE WALK, AND THEN A CORRECTION TO IT
+                # BLAMED THE COST MODEL. Both were wrong, in the same way. The note refused
+                # the walk because `record_layout.header_words` appeared to disagree with
+                # the walk's end in 25,085 of 26,795 warp records; the correction concluded
+                # that warp's fitted `w1_present` was therefore wrong. Neither is true.
+                # `header_words` charges w1_present whenever its `w1` argument is not None,
+                # and warp has two record shapes with only one carrying a w1 word, so the
+                # measurement -- which passed `words[1]` unconditionally and version None --
+                # was asking for the wrong shape's header. Gated as its docstring requires,
+                # header_words and the walk agree in 26,795 of 26,795, exactly. The cost
+                # model was right about warp the whole time; the caller was wrong, and that
+                # gate now lives inside header_words so it cannot be omitted again.
                 #
                 # The other half of that note is still true and is why this needed
                 # containment: class bit 12 is set in ZERO of the 26,795 warp records, so
@@ -3246,30 +3249,31 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # 0x0608 -- bits 3, 9 and 10 -- so saturation sits one past where a
                 # sequential walk puts it, and 1.00 is a legitimate extreme where 0.0
                 # is the padding behind it.
-                # DO NOT REPLACE THIS WITH `decompose`. This branch walks the class bits
-                # sequentially at one word each, and that is a hand-rolled walk rather than
-                # the shared one -- which looks like exactly the kind of duplication the
-                # unification is retiring elsewhere in this file (blur, sharpen, warp all
-                # moved to `decompose(rec)['end']`). It must not move, because for THIS
-                # filter the shared walk is the one that is wrong.
+                # THIS DUPLICATES `decompose` AND THE TWO AGREE. Kept as its own walk only
+                # because it must name WHICH parameter each slot holds, which `decompose`
+                # does not report for a filter with no PARAM_SPEC entry; the extents are the
+                # same walk. Containment confirms both, pairing the permitted sources that
+                # declare a distinctive hsl value against their OWN binaries:
                 #
-                # `costs.json` gives filter 14 a cost of 0.0 for every one of bits 8 to 13,
-                # so `decompose` charges no word for hue, saturation or luminosity and names
-                # no slot for any of them. Containment says otherwise. Pairing the permitted
-                # sources that declare a distinctive hsl value against their OWN binaries:
+                #     param        source              record   declared   true slot
+                #     saturation   ChesterfieldSofa       866     0.6500        3
+                #     saturation   ChesterfieldSofa       351     0.5800        3
+                #     saturation   SandyStonePath        1451     0.5250        3
+                #     luminosity   ChesterfieldSofa       866     0.6000        4
                 #
-                #     param        source              record   declared   true slot  seq  decompose
-                #     saturation   ChesterfieldSofa       866     0.6500        3        3     none
-                #     saturation   ChesterfieldSofa       351     0.5800        3        3     none
-                #     saturation   SandyStonePath        1451     0.5250        3        3     none
-                #     luminosity   ChesterfieldSofa       866     0.6000        4        4     none
+                # 4 of 4 for this walk, and `decompose` independently allocates cls_slots
+                # [2, 3, 4] with end 5 on record 866 -- w0 bit 26 (= cls bit 10, saturation)
+                # to slot 3 and w0 bit 28 (= cls bit 12, luminosity) to slot 4. The same
+                # answer by the same mechanism.
                 #
-                # 4 of 4 for the sequential walk, 0 of 4 for the cost model. Those bits cost
-                # one word each and the fit says zero, which is the same class of defect as
-                # warp's `w1_present` of 1.0 (see the warp branch): costs.json is fitted from
-                # observable header boundaries and is not per-filter trustworthy just because
-                # `decompose` reads it. Where the two disagree, containment decides, and here
-                # it decides against the shared walk.
+                # I PUBLISHED THE OPPOSITE HERE IN f55ddc8 AND IT WAS AN ATTRIBUTION ERROR.
+                # That note claimed costs.json charges 0.0 for bits 8-13 and so names no
+                # slot for these parameters. The cls table is keyed by WORD-0 bit index and
+                # `cls` is `w0 >> 16`, so its keys 8-13 are low-half bits with nothing to do
+                # with hue/saturation/luminosity -- those are w0 bits 24, 26 and 28, which
+                # the table charges 1.0 word each, exactly as this loop does. Reading a
+                # table in the wrong bit frame produced a clean-looking 0-of-4 against
+                # ground truth, which is what a frame error looks like from the inside.
                 COST_BITS = (0, 7, 8, 9, 10, 11, 12, 13)
                 vals = {}
                 for bit, name in ((8, 'hue'), (10, 'saturation'), (12, 'luminosity')):

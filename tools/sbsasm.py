@@ -2391,9 +2391,16 @@ class Record:
             elif self.filter_id == 3:
                 if not (self.words[0] & 1):     # see Record.header_words
                     w1 = None
-            rl = (record_layout.header_words(self.filter_id, self.words[0], w1)
+            # `version` is REQUIRED now: header_words owns the warp/shuffle two-shape
+            # gate, and refuses rather than guessing when it cannot see the version. This
+            # call omitted it, which made every filter-7 answer here depend on the local
+            # gating above rather than on the rule.
+            _ver = asm.header.get('version') if isinstance(asm.header, dict) else 0
+            rl = (record_layout.header_words(self.filter_id, self.words[0], w1,
+                                             version=_ver)
                   if w1 is not None or self.filter_id in (7, 3) else
-                  record_layout.header_words(self.filter_id, self.words[0], self.words[1]))
+                  record_layout.header_words(self.filter_id, self.words[0],
+                                             self.words[1], version=_ver))
         except Exception:
             rl = None
         if rl is not None:

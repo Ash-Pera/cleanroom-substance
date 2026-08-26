@@ -78,6 +78,22 @@ def header_words(filter_id, word0, w1, version=None):
     spec = costs().get(str(filter_id))
     if spec is None:
         return None
+    # THE TWO-SHAPE GATE LIVES HERE, not in the callers. `warp` and `shuffle` each have a
+    # record shape that carries a w1 word and one that does not, and `w1_present` is charged
+    # whenever the `w1` argument is not None -- so a caller that passes `words[1]`
+    # unconditionally gets a header one word too long, silently, for every no-w1 record.
+    # Both call sites in sbsasm.py implemented this gate themselves, one of them without a
+    # version; a session probe that did not implement it measured warp's model as wrong in
+    # 25,085 of 26,795 records and published the conclusion. Gated here, the same comparison
+    # is 26,795 of 26,795 exact. A rule the caller can forget is a rule in the wrong place.
+    if filter_id == 7:                       # warp: w1 only from version 0x90000
+        if version is None:
+            return None                      # the shape is undecidable without it: refuse
+        if version < 0x90000:
+            w1 = None
+    elif filter_id == 3:                     # shuffle: tag bit 0 selects the shape
+        if not (word0 & 1):
+            w1 = None
     # Variant selection before anything else: a split filter stores one spec per
     # sampling class, each behind its own guard. Pick the matching one; a record
     # whose class no variant covers gets None, not a guess.
