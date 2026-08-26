@@ -236,6 +236,30 @@ STEPPER = 0x99
 #: would go, and the records above are the specimens.
 STEPPER2 = 0x9B
 
+#: The 0x??1B family: ONE child at word 2, a program at word 4, and a CONTINUATION at
+#: word 5 -- not two children, which is what test_fx's name for it still says.
+#:
+#: Both readings satisfy that test (the two words differ and both land on node headers),
+#: and the file separates them. If word 5 is the continuation, following word 2's subtree
+#: along its own next-pointers must ARRIVE at word 5's target; if it is an independent
+#: second branch, it must not. Over every 0x??1B node in 150 files:
+#:
+#:     word 5 target reachable from word 2's subtree     81 of 81
+#:     control -- another node in the same record         0 of 81
+#:
+#: So the subtree already flows into the continuation and a linear walk visits everything
+#: a tree walk would. That is why this needs no tree machinery, only a run-and-continue,
+#: and it is why the estimate that it required a tree walk was wrong.
+#:
+#: Two further facts make the flat index walk exactly right, both 81 of 81: the child at
+#: word 2 is always the NEXT node in the address-ordered chain, and `progs[None]` -- the
+#: only name chain() gives these nodes -- is always word 4's program.
+#:
+#: The program is not a selector. It is around 104 instructions of `rand` and `cartesian`
+#: writing slots 25/27/29/30: a state initialiser, the role STEPPER's program also plays,
+#: which is why it shares STEPPER's handling rather than getting its own.
+BRANCH = 0x1B
+
 #: A THREE-WORD CELL THE CHAIN SIMPLY CONTINUES PAST. Measured over 34 `0x1B` nodes in 40
 #: files, with no counter-example in any of the three:
 #:
@@ -281,24 +305,43 @@ class Perm(dict):
 def make_runner(asm, rec):
     cache = {}
 
+    # BUILT ONCE PER RECORD, NOT ONCE PER EMISSION. The graph's declared input values do
+    # not change while a record renders -- they are read straight off `asm.header` -- but
+    # this dict used to be rebuilt inside `run`, which an FX-Map calls several times for
+    # every pattern it emits. CarpetSubstance001 record 365 emits 262,144 patterns, so
+    # the 22 `np.array(...).reshape(1, -1)` calls below were being made about six million
+    # times to produce six million copies of the same 22 numbers.
+    #
+    # Safe to share: `Perm` is only ever READ by transpiled code (`inputs[uid]`), and its
+    # `__missing__` returns a default without storing it, so no program can mutate what
+    # the next one sees.
+    shared_inputs = Perm()
+    for _t, uid, val in asm.header.get('inputs') or []:
+        if val:
+            shared_inputs[uid] = np.array(val, dtype=np.float32).reshape(1, -1)
+
+    # `program_span` is memoized inside the assembly, but reaching that memo is still a
+    # method call and a tuple hash per emission. Keyed by ptr alone here because
+    # `asm.body_hi` is fixed for the life of the assembly.
+    spans = {}
+
     def run(ptr, slots, number):
-        end = asm.program_span(ptr, asm.body_hi)
+        end = spans.get(ptr, 0)
+        if end == 0:
+            end = spans[ptr] = asm.program_span(ptr, asm.body_hi)
         if end is None:
             raise Unmodelled("program at %d has no span" % ptr)
-        key = (ptr, end)
-        if key not in cache:
+        fn = cache.get(ptr)
+        if fn is None:
             src = transpile.transpile(asm.data, ptr, end, "python", "prog")
             scope = {}
             exec(compile(src, "<fx>", "exec"), scope)
-            cache[key] = scope["prog"]
+            fn = cache[ptr] = scope["prog"]
         sbsruntime.set_context(width=rec.width, height=rec.height, number=float(number))
-        inputs = Perm()
-        for _t, uid, val in asm.header.get('inputs') or []:
-            if val:
-                inputs[uid] = np.array(val, dtype=np.float32).reshape(1, -1)
+        inputs = shared_inputs
         with np.errstate(all="ignore"):
             try:
-                out = scope_call(cache[key], inputs, slots)
+                out = scope_call(fn, inputs, slots)
             except sbsruntime.MissingSampler as e:
                 # MUST precede the bare KeyError: MissingSampler subclasses it, so without
                 # this an unwired image input is reported as a missing SLOT. render.py had
@@ -360,9 +403,28 @@ def entries(rec, baked_pairs=True):
     # test cannot be used here: a paramless entry has no program, so its +4 word points
     # nowhere by construction (0.3% against 97.9%), which measures the absence of
     # parameters rather than the absence of an entry.
+    # ...WITH ONE EXCEPTION, AND THE JUSTIFICATION ABOVE IS WHAT EXCLUDES IT. A paramless
+    # nibble-8 entry is kept because "the patterntype still rides in the tag's nibble 2".
+    # For the CHAIN FAMILY -- high 16 bits 0x0002 -- that sentence is empty: nibble 2 is
+    # zero and `fx_patterntype` returns None for every one of them, so there is no stated
+    # shape to fall back to. They are structural, not draws:
+    #
+    #     group                          entries   word[1]+52 == next entry
+    #     chain-family, no patterntype      6918          98.5%
+    #     other, no patterntype             5439          15.9%
+    #
+    # 98.5% of them point at the entry that follows, which is a linked list and not a
+    # table of independent patterns. Emitting one full-cell fill each is what paints a
+    # record white: `WoodSubstance005` record 85 has six entries, five of them this tag.
+    #
+    # THE OTHER DISCRIMINATOR OFFERED FOR THIS WAS "skip entries whose patterntype is
+    # None", and it is NOT equivalent -- the second row above is why. It would also drop
+    # 5,439 entries that are not chain-family and mostly do not chain, among them 3,332 of
+    # tag 0x00420008, which `FX_ENTRY_PROGS` gives a program slot. Those are real draws
+    # and dropping them would trade a white record for a missing one.
     tbl, order = {}, []
     for off, tag, _p in rec.fx_table():
-        if off in tbl or (tag & 0xF) != 8:
+        if off in tbl or (tag & 0xF) != 8 or (tag >> 16) == 0x0002:
             continue
         tbl[off] = (tag, {})
         order.append(off)
@@ -479,7 +541,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     for _off, hdr, _p in nodes:
         if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
                 and (hdr & 0xFF) != STEPPER2 and (hdr & 0xFF) != PASSTHROUGH \
-                and not _is_leaf(hdr):
+                and (hdr & 0xFF) != BRANCH and not _is_leaf(hdr):
             raise Unmodelled("node header %#x is not modelled" % hdr)
 
     out = []
@@ -540,7 +602,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 raise Unmodelled("numberadded = %d" % n)
             for k in range(n):
                 walk(i + 1, k)
-        elif hdr == STEPPER or (hdr & 0xFF) == STEPPER2:
+        elif hdr == STEPPER or (hdr & 0xFF) in (STEPPER2, BRANCH):
             # Run the state update, then continue to the single successor. The return
             # value is discarded: this program is a chain of `seq`-joined `set`s, and
             # what it produces is the slot frame the entry then reads, not a number.
