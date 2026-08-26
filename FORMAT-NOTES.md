@@ -2923,6 +2923,22 @@ records. That is consistent with what it is: its parameter is the per-pixel func
 held as bytecode, so there is nothing to store in the record. A filter with no float
 parameters at any size is evidence about the filter, not a gap in the sweep.
 
+### The warp w1≠0 shift fired one record too eagerly
+
+`_real_edges` shifts a v9 `warp` record's edges from `[2,3]` to `[1,2]` when `words[1] != 0`,
+on the reading that a nonzero w1 means slot 3 stops being an input and becomes the program
+pointer. The mask-walk (which does not apply the shift) disagreed with the model on 1 of
+10,454 warp records — `OnyxSubstance001` rec955, a v9 warp with `w1 == 1`. Reading the slots
+settles it against the model: slots 4 and 5 both resolve as programs (0x5a234, 0x5a23c),
+exactly where a normal v9 warp keeps them, slots 2 and 3 hold backward record indices (949,
+954), and slot 1 holds the value 1 — a genuine nonzero parameter, not an edge. So the record
+has the ordinary `[2,3]` layout and its w1 just happens to be nonzero; the shift dropped slot
+3 (a real input) and promoted slot 1 (a parameter that passes the backward-index test because
+1 < 955). The shift was guarded on `w1 != 0` when its actual premise is "slot 3 is a program"
+— gated on that instead (slot 3 resolves as a program pointer), it fires only for genuinely
+shifted records and leaves rec955 as `[2,3]`. warp then agrees with the walk 100%, and the
+whole memo-drain reproduces edges 36,086 / 36,086.
+
 ### The shuffle header reads 100%: two authoring nodes, split by the colour bit
 
 `shuffle` (filter 3) sat at 47.6% header agreement in `walk.py`'s cls-driven drain and was

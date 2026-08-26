@@ -1338,8 +1338,18 @@ class Record:
         # from a rule and so cannot be corrected at the source.
         if f in (2, 15, 21):
             return [s for s in slots if s != 1]
-        if f == 7 and len(self.words) > 1 and self.words[1] != 0 and 3 in slots:
-            return sorted({1} | {s for s in slots if s != 3})
+        if f == 7 and len(self.words) > 3 and self.words[1] != 0 and 3 in slots:
+            # The shift's premise is that slot 3 stops being an edge and becomes the
+            # PROGRAM pointer (with slot 1 the real edge). Gate it on that premise rather
+            # than on w1 != 0 alone: a v9 warp can carry a genuine nonzero w1 parameter and
+            # still have the ordinary [2,3] layout with its programs at slots 4-5 -- there
+            # slot 3 is a backward input index, not a program, and shifting drops a real
+            # edge (OnyxSubstance001 rec955: slot 3 = record 954, slots 4-5 the programs;
+            # the walk read [2,3] and this shift wrongly made it [1,2]). Fire only when slot
+            # 3 actually resolves as a program.
+            q3 = self.words[3] + 52
+            if self.asm.body_lo <= q3 < self.asm.body_hi and self.asm.valid_program(q3):
+                return sorted({1} | {s for s in slots if s != 3})
         if f == 0 and 2 in slots:
             return sorted({1} | {s for s in slots if s != 2})
         if f == 22 and 2 in slots:
