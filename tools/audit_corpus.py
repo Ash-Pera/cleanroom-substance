@@ -8,14 +8,8 @@ import collections, sys
 
 import disasm
 import decompose
-from sbsasm import (Assembly, FILTERS, UNNAMED, LAYOUTS, LAYOUT_MASK,
-                    PARTIAL_EDGES)
-
-# Which slots the layout table registers as EDGE slots, per filter, across all its keys.
-# Used to recognise a layout entry that names an edge slot as its parameter slot.
-EDGE_SLOTS = {}
-for _k, _v in LAYOUTS.items():
-    EDGE_SLOTS.setdefault(_k[0], set()).update(_v[0])
+from sbsasm import _PAYLOAD_PROGRAM_FILTERS as PAYLOAD_PROGRAM_FILTERS
+from sbsasm import Assembly, FILTERS, UNNAMED, PARTIAL_EDGES
 
 def main(paths):
     tot = collections.Counter()
@@ -40,22 +34,47 @@ def main(paths):
             byfilter[f][0] += 1
             if r.known:
                 tot['known_records'] += 1
-            # Programs the layout table does not name. A record whose key was dropped by
-            # derive_layouts' MIN=20 falls through to a fallback that names one slot by
-            # construction, so a second program there was invisible in every figure below.
-            # The control is the same probe on known-key records, which measures what the
-            # small-integer artifact contributes: it ran at 0.02% against 19.54%.
-            key = (f, r.cls, r.words[1] & LAYOUT_MASK.get(f, 0)) if len(r.words) > 1 else None
-            if key is not None and f != 4:
-                # what the layout slots alone name, which is what `programs` used to be
-                slots = list(LAYOUTS[key][1]) if key in LAYOUTS else []
-                sl = r.layout[1]
-                if sl is not None and sl not in slots:
-                    slots.insert(0, sl)
-                named = {r.words[s] + 52 for s in slots
-                         if s is not None and s < len(r.words)}
+            # Programs the WALK's own slots do not name.
+            #
+            # This was "programs off the layout table", splitting records by whether
+            # layouts.json held a key for them: 23.40% of dropped-key records gained a
+            # program against a 2.61% keyed control. THAT PARTITION IS DEAD. `programs()`
+            # walks slots and no longer consults LAYOUTS at all -- test_tables.py records
+            # the lookup as contributing nothing -- so both sides of the split now run the
+            # same code, and the contrast described a mechanism that no longer exists.
+            # The figure stayed in this report because a settled number invites no
+            # re-reading, which is the failure `reverify.py` exists to prevent.
+            #
+            # The live question is whether the non-slot probes -- `classified_programs`,
+            # and the tail and header-end scans inside `programs()` -- still recover
+            # anything the walk misses. Corpus-wide they do: 58,237 programs over 58,084
+            # records, so they are load-bearing and not a removal candidate.
+            #
+            # SPLIT BY WHETHER A PAYLOAD PROGRAM IS EXPECTED, because otherwise this
+            # number is one filter's ordinary structure. `pixelprocessor` accounts for
+            # 56,081 of those 58,237 -- exactly one per record, its pixel program, which
+            # lives past the header by construction and is why sbsasm exempts it from the
+            # slot bound. Reporting that as recovery states 96% of the total as though it
+            # were a gap. The residual over every other filter is 2,156.
+            _d = decompose.decompose(r)
+            if f != 4:
+                slots = set()
+                if _d is not None and _d.get('end') is not None:
+                    if _d.get('prog') is not None:
+                        slots.add(_d['prog'])
+                    for t in _d.get('param_slots', ()):
+                        pos, wd = (t[2], t[3]) if len(t) >= 4 else (t[2], 1)
+                        slots.update(range(pos, pos + int(wd)))
+                    slots.update(_d.get('cls_slots', ()))
+                named = set()
+                for sx in slots:
+                    if sx is None or sx >= len(r.words):
+                        continue
+                    q = r.words[sx] + 52
+                    if a.body_lo <= q < a.body_hi and a.valid_program(q):
+                        named.add(q)
                 extra = [p for p in r.classified_programs() if p not in named]
-                side = 'fallback' if key not in LAYOUTS else 'keyed'
+                side = 'payload' if f in PAYLOAD_PROGRAM_FILTERS else 'other'
                 tot[side + '_records'] += 1
                 tot[side + '_recovered'] += len(extra)
                 if extra:
@@ -77,7 +96,6 @@ def main(paths):
                 # `_d['inputs']` is the memo's edge-slot list and `_d['param_slots']` its
                 # parameter list, so this is the same test on the same two facts, taken
                 # from the mechanism that actually decodes the record.
-                _d = decompose.decompose(r)
                 sl = r.layout[1]
                 if (_d is not None and _d.get('end') is not None
                         and not _d['param_slots']
@@ -98,10 +116,17 @@ def main(paths):
                     # miss: 117 of `gradient`'s 155 supposed misses, whose payload is the
                     # ramp and is read - 150 of the 155 return one.
                     tot['param_absent'] += 1
+                # THE RECORD'S OWN EDGE SLOTS, from the walk. This asked EDGE_SLOTS,
+                # a per-FILTER union of every edge slot any layouts.json key registered
+                # for that filter -- so "some record of this filter has an edge here"
+                # was accepted as "this record has an edge here". The walk answers it
+                # per record. Over 60 specimens only 5 records reach this test at all,
+                # and the union claimed 2 of them as edges that their own walk does not:
+                # those are now reported unread, which is a slightly worse number and
+                # the correct one.
                 elif (sl is not None and sl < len(r.words)
                       and (r.words[sl] in [e for e in r.edges if e is not None]
-                           or (0 <= r.words[sl] < r.index
-                               and sl in EDGE_SLOTS.get(r.filter_id, ())))):
+                           or (_d is not None and sl in _d.get('inputs', ())))):
                     # The slot the layout calls the parameter is already claimed as an
                     # EDGE by this same record - it holds a backward record index that
                     # `Record.edges` resolved. That is a record with no parameter, not one
@@ -175,17 +200,19 @@ def main(paths):
           100 * tot['param_zero'] / max(1, r_)))
     e = tot['resolved_edges'] + tot['unresolved_edges']
     print('edge slots            : %d   resolved %.2f%%' % (e, 100 * tot['resolved_edges'] / max(1, e)))
-    # Programs named by a slot the layout table does not list. The keyed row is the
-    # CONTROL: on records whose key is known the same predicate should find almost
-    # nothing, and what it does find is the small-integer artifact's contribution.
-    fb, kd = tot['fallback_records'], tot['keyed_records']
-    print('programs off the layout table (fxmaps excluded):')
-    print('    dropped-key records : %d  recovered %d  (%.2f%% of records gain one)'
-          % (fb, tot['fallback_recovered'],
-             100 * tot['fallback_records_gaining'] / max(1, fb)))
-    print('    CONTROL keyed records: %d  recovered %d  (%.2f%%)'
-          % (kd, tot['keyed_recovered'],
-             100 * tot['keyed_records_gaining'] / max(1, kd)))
+    # Programs the non-slot probes find beyond what the WALK's slots name. The
+    # payload row is EXPECTED, not a gap: pixelprocessor carries its pixel program past
+    # the header by construction. The `other` row is the one to read -- it is what the
+    # walk does not reach on filters that have no reason to hide a program.
+    pr, ot = tot['payload_records'], tot['other_records']
+    print('programs beyond the walk\'s slots (fxmaps excluded):')
+    print('    payload-program filters: %d records  recovered %d  (%.2f%% gain one)'
+          '   -- expected, one per record'
+          % (pr, tot['payload_recovered'],
+             100 * tot['payload_records_gaining'] / max(1, pr)))
+    print('    all other filters      : %d records  recovered %d  (%.2f%% gain one)'
+          % (ot, tot['other_recovered'],
+             100 * tot['other_records_gaining'] / max(1, ot)))
     print('bytes                 : %d   unexplained %d  (%.3f%%)' % (
         tot['bytes'], tot['unexplained'], 100 * tot['unexplained'] / max(1, tot['bytes'])))
     print('files with any unexplained bytes: %d' % len(unexplained))
