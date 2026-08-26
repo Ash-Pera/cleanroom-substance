@@ -170,9 +170,12 @@ handles all four with the one primitive and needs no fitted table:
    instead of one program pointer).
 
 A walk mechanism reproduces record layout for **99.97%** of the manifest-bearing corpus.
-The only filters where the file genuinely does not state the layout (shuffle, emboss,
-vectorshape) are the residue; `vectorshape` is additionally behind the provenance wall
-(§11).
+Two-shape filters state which shape a record takes with a single stated term — e.g.
+`shuffle` uses tag bit 0 (the colour flag) to split its two authoring nodes,
+`grayscaleconversion` (one input + a `channelsweights` vector, no w1 word) and Channel
+Shuffle (two inputs + a packed channel selector in w1). The only residue is `vectorshape`,
+whose layout the file does not state in any readable term and which is additionally behind
+the provenance wall (§12).
 
 ---
 
