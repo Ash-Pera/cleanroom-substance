@@ -630,8 +630,12 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     nchan = 4 if rec.colour else 1
     canvas = np.zeros((H * W, nchan), dtype=np.float32)
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
-    px = (xx.ravel() + 0.5) / W - 0.5
-    py = (yy.ravel() + 0.5) / H - 0.5
+    # Kept as 2-D grids so an emission can be evaluated over its FOOTPRINT instead of
+    # over the whole canvas -- see the bounding box below. `cview` is a view, so writes
+    # through a slice of it land in `canvas`.
+    pxg = (xx + 0.5) / W - 0.5
+    pyg = (yy + 0.5) / H - 0.5
+    cview = canvas.reshape(H, W, nchan)
 
     for p in patterns:
         src = image_for(p)
@@ -663,18 +667,43 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
         th = 2.0 * np.pi * rot
         ct, st = np.cos(th), np.sin(th)
         reach = int(min(3, np.ceil(max(sx, sy))))
+        prof = profile_for(p)          # depends only on `p`; was recomputed 49 times
+        # THE FOOTPRINT, NOT THE CANVAS. profile_value multiplies every profile by
+        # `inside = (|lx| <= 0.5) & (|ly| <= 0.5)`, so coverage is exactly zero outside
+        # the pattern's own box and a point outside it can never write to the canvas.
+        # Evaluating all H*W points per emission was therefore pure waste, and at scale
+        # it was the whole cost of the slow test lane: Marble.sbsasm record 450 at 64x64
+        # ran 1,930,794 profile_value calls over 7,908,463,104 points -- about 39,400
+        # emissions x 49 tile offsets x every one of 4,096 pixels -- and had not
+        # finished after 100 seconds.
+        #
+        # The footprint is a rectangle of half-extents sx/2, sy/2 rotated by th, so its
+        # axis-aligned bounding box has half-extents:
+        hx = 0.5 * (sx * abs(ct) + sy * abs(st))
+        hy = 0.5 * (sx * abs(st) + sy * abs(ct))
         for ty in range(-reach, reach + 1):
             for tx in range(-reach, reach + 1):
-                dx = px - (cx + tx)
-                dy = py - (cy + ty)
+                ux, uy = cx + tx, cy + ty
+                # px = (col + 0.5)/W - 0.5, so col = (px + 0.5)*W - 0.5. Floor/ceil the
+                # ends rather than round them: a box that clips a pixel must still
+                # include it, or the slice would drop coverage the full grid had.
+                c0 = max(int(np.floor((ux - hx + 0.5) * W - 0.5)), 0)
+                c1 = min(int(np.ceil((ux + hx + 0.5) * W - 0.5)), W - 1)
+                r0 = max(int(np.floor((uy - hy + 0.5) * H - 0.5)), 0)
+                r1 = min(int(np.ceil((uy + hy + 0.5) * H - 0.5)), H - 1)
+                if c0 > c1 or r0 > r1:
+                    continue                 # the footprint misses the canvas entirely
+                dx = pxg[r0:r1 + 1, c0:c1 + 1] - ux
+                dy = pyg[r0:r1 + 1, c0:c1 + 1] - uy
                 lx = (dx * ct + dy * st) / sx
                 ly = (-dx * st + dy * ct) / sy
-                cov = profile_value(lx, ly, profile_for(p))
+                cov = profile_value(lx, ly, prof)
                 hit = cov > 0
                 if not hit.any():
                     continue
+                tile = cview[r0:r1 + 1, c0:c1 + 1]
                 if src is None:
-                    canvas[hit] = np.maximum(canvas[hit], col * cov[hit, None])
+                    tile[hit] = np.maximum(tile[hit], col * cov[hit, None])
                     continue
                 # The pattern IS the input image: local coordinates, which run
                 # -0.5..0.5 across the footprint, map straight onto its UV.
@@ -685,8 +714,8 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
                     sampled = sampled[:, None]
                 if sampled.shape[-1] < nchan:
                     sampled = np.repeat(sampled[:, :1], nchan, axis=-1)
-                canvas[hit] = np.maximum(canvas[hit],
-                                         sampled[:, :nchan] * col * cov[hit, None])
+                tile[hit] = np.maximum(tile[hit],
+                                       sampled[:, :nchan] * col * cov[hit, None])
     return np.clip(canvas, 0, 1).reshape(H, W, nchan)
 
 

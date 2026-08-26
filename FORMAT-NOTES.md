@@ -34921,3 +34921,71 @@ value alters an output is a question about the program's arithmetic, which a str
 over reads and edges cannot answer. So the numeric mismatch is not a decode gap to close; it
 is the expected slack between a structural approximation and a semantic data-flow relation,
 and `alteroutputs` is the ground truth the approximation is measured against, not a bug in it.
+
+## `splat` drew every emission over the whole canvas; now it draws it over its footprint
+
+The four tests that never finished were all one function. `fxrender.splat` evaluated
+each emitted pattern at every pixel of the canvas:
+
+```
+for ty in range(-reach, reach + 1):
+    for tx in range(-reach, reach + 1):
+        dx = px - (cx + tx)          # px is the WHOLE grid, H*W points
+        ...
+        cov = profile_value(lx, ly, profile_for(p))
+```
+
+`profile_value` begins with `inside = (|lx| <= 0.5) & (|ly| <= 0.5)` and every profile it
+can return is multiplied by that, so **coverage is exactly zero outside the pattern's own
+box** and a point outside it can never write to the canvas. Every one of those evaluations
+outside the footprint was arithmetic whose result was known in advance.
+
+At scale that was the entire cost of the slow lane. Instrumented on one specimen —
+`Marble.sbsasm` record 450, rendered at 64x64:
+
+```
+1,930,794 profile_value calls over 7,908,463,104 point evaluations,
+in 100 seconds, and not finished
+```
+
+About 39,400 emissions x 49 tile offsets x all 4,096 pixels.
+
+### The bound
+
+The footprint is a rectangle of half-extents `sx/2, sy/2` rotated by `th`, so its
+axis-aligned bounding box has half-extents `hx = (sx|cos| + sy|sin|)/2` and
+`hy = (sx|sin| + sy|cos|)/2`. Inverting `px = (col + 0.5)/W - 0.5` gives the column and row
+range, floored and ceiled outward — a box that clips a pixel must still include it — and
+clipped to the canvas. The coordinate grids are kept 2-D and the canvas is sliced through
+a reshaped view, so the work per emission is the footprint's area rather than `H*W`.
+`profile_for(p)` moved out of the tile loop as well; it depends only on `p` and was being
+recomputed 49 times.
+
+### Verified equivalent, then verified useful
+
+The argument above says the output cannot change. That was checked rather than trusted:
+every rendered output of 14 fxmaps-bearing files (2 to 12 fxmaps records each), hashed
+before and after — **identical for 14 of 14**.
+
+And the tests that exist to catch a wrong render now run to completion and pass:
+
+```
+                                            before          after
+test_curve_endpoints                        > 900s          366s
+test_curve_matches_independent_bisection    > 900s          366s
+test_dirmotionblur_is_an_average            > 900s          564s
+test_dirmotionblur_actually_smooths...      > 900s          607s
+
+whole lane, 9 workers:   43 passed / 4 timed out   ->   47 passed, 0 failed, 0 timed out
+                         wall 900s (capped)             wall 607s
+```
+
+The lane had never once completed in this session. It now finishes in ten minutes, and
+every check in it is green.
+
+Still open in the same function, and not fixed here: `sx` can pass the `sx > 0` and
+`max(sx, sy) <= 64` guards while remaining small enough that `dx / sx` overflows to
+infinity — the corpus raises `RuntimeWarning: overflow encountered in divide` at
+`fxrender.py:627-628` and `in square` at line 533 on real records. The infinities land
+outside `inside` and contribute nothing, so the picture is unaffected, but a guard that
+lets a value through and then relies on a later test to neutralise it is not a guard.
