@@ -129,6 +129,61 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKS = os.path.join(ROOT, 'new_opengameart')
 SIZE = 64
 
+# THE GRID WE RENDER ON IS NOT THE GRID WE COMPARE ON, and conflating them was costing more
+# than any decode question settled this week. `SIZE` is the resolution both arrays are
+# resampled to before scoring; `RENDER_DIM` is the `max_dim` the renderer actually evaluates
+# at. They were one constant, so every score this project has reported was measured on a
+# 64x64 render.
+#
+# WHY THAT IS NOT NEUTRAL. `distance.scale_radius`'s own docstring warns about it for `blur`:
+# a parameter in PIXELS at a 256 reference shrinks with the grid, and below a pixel the
+# filter is a no-op that reads as a dead parameter. On Bricks Textures_1's 126 `distance`
+# records the radii run 0.69 to 256 px with a median of 3.25, and the fraction that survive:
+#
+#     max_dim  64    median scaled radius 0.81 px    >=1px on  43/126    >=2px on  16/126
+#     max_dim 128    median               1.63 px    >=1px on 108/126    >=2px on  43/126
+#     max_dim 256    median               3.25 px    >=1px on 121/126    >=2px on 108/126
+#
+# So at 64 the filter is off on most records, and every arbitration that touches it has been
+# decided with it off.
+#
+# MEASURED, AND THE TWO EFFECTS SEPARATE CLEANLY. Bricks, `distance.param` crossed with the
+# render grid -- 'wide' resolves 126 records to 2 distinct radii, 'layout' to 22, so the
+# 'wide' row is the control in which the filter stays inert:
+#
+#                 max_dim 64     max_dim 128     resolution gain
+#     wide          0.1385         0.1275           -0.0110
+#     layout        0.1370         0.1223           -0.0147
+#     layout's edge  0.0015         0.0052
+#
+# Both effects are real and they are different sizes. There is a general gain of about 0.011
+# present even with the filter inert -- a finer render antialiases better under the common
+# downsample -- and on top of it the candidate's own advantage more than TRIPLES once its
+# radii are resolvable. A 64px harness does not merely add noise: it systematically
+# understates any candidate that moves a pixel-scale parameter.
+#
+# IT SATURATES AT 128, which is what says this is resolution and not a coincidence: Bricks
+# scores 0.1223 at 128 and 0.1226 at 256. Once the render is finer than the 64px comparison
+# grid by a factor of two there is nothing further to resolve, so 128 is the whole gain at a
+# quarter of 256's cost.
+#
+# ACROSS EVERY REFERENCE PACKAGE, same scope, same 112 channels, same 16 unrendered:
+#
+#     max_dim  64    0.1270          71 channels better at 128
+#     max_dim 128    0.1121          21 worse, 20 unchanged
+#
+# The gains concentrate where a mechanism predicts them. `normal` is a height GRADIENT, and
+# a gradient sampled at 64 on a map authored for 1024 is badly undersampled -- its channels
+# move -0.05 each, and `basecolor` ch2 by up to -0.10. The 21 regressions are mostly small;
+# the real ones are four `roughness` channels at +0.068, +0.067, +0.020, +0.020, and they are
+# recorded here rather than averaged away.
+#
+# THE COST IS WHY THIS IS A CONSTANT AND NOT A FIXED CHOICE. This module's docstring calls
+# max_dim "the difference between minutes and seconds per file", and that is still true --
+# 128 is roughly four times 64's work. A caller sweeping many candidates can pass a smaller
+# `max_dim` to `compare_pack`; it should then not read small margins as arbitrations.
+RENDER_DIM = 128
+
 
 def load_reference(path):
     """A reference map as float in [0, 1], (H, W, C) -- by IMAGE MODE, not by guess."""
@@ -193,7 +248,7 @@ def graph_dir(asm, uid):
     return None
 
 
-def compare_pack(pack, refs, max_dim=SIZE):
+def compare_pack(pack, refs, max_dim=RENDER_DIM):
     """Yield (output name, channel, ours, reference) arrays for every paired output."""
     asms = glob.glob(os.path.join(PACKS, pack, '**', '*.sbsasm'), recursive=True)
     if not asms:
