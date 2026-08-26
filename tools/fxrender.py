@@ -188,6 +188,9 @@ from sbsasm import (Assembly, FX_NODES, fx_patterntype,                         
 # 0x1CB joins these on the value evidence in sbsasm's FX_NODE_PARAMS: its +4 program is
 # 1.0 in 180 of 183, matching 0x18B's `numberadded` (1.0 in 69.5%) and not 0x1AB's
 # `randomseed` (0.0 in 6 of 6). It iterates once and passes through.
+#: Upper bound on scanner iterations -- a runaway predicate must not hang a render.
+SCAN_LIMIT = 4096
+
 ADDNODE = frozenset({0x18B, 0x1AB, 0x20B, 0x1CB})
 GATE = 0x89
 
@@ -1039,6 +1042,26 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 return
             for k in range(n):
                 walk(i + 1, k)
+        elif hdr == STEPPER and assume.assumed('fx.scanner') == 'loop':
+            # See assume.QUESTIONS['fx.scanner']. The body advances a position and returns
+            # its own in-bounds predicate, so it is run, then the subtree emits, then the
+            # predicate decides whether to go round again -- run-then-emit, matching the
+            # single-shot order exactly so the first stamp is unchanged and the loop only
+            # adds the ones that were missing.
+            prog = progs.get(None)
+            if prog is None:
+                walk(i + 1, number)
+                return
+            for _ in range(SCAN_LIMIT):
+                v = run(prog, slots, number)
+                walk(i + 1, number)
+                try:
+                    ok = bool(np.asarray(v, dtype=np.float64).ravel()[-1])
+                except Exception:
+                    break
+                if not ok:
+                    break
+            return
         elif hdr == STEPPER or (hdr & 0xFF) in (STEPPER2, BRANCH):
             # Run the state update, then continue to the single successor. The return
             # value is discarded: this program is a chain of `seq`-joined `set`s, and

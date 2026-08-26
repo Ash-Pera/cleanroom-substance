@@ -149,6 +149,46 @@ QUESTIONS = {
     # neither side has reached. No second scoreable specimen exists to separate those: the
     # corpus has exactly one flat-at-r~0 output, and the packages carrying comparable
     # one-sided levels ship no reference renders.
+    # WHETHER A 0x99 SCANNER NODE RUNS ONCE OR SCANS. The walk runs this node's program a
+    # single time and then emits one pattern. The structural side reads the program as a
+    # SERPENTINE RASTER SCANNER: nested row/column counters in slots 16/17, a step-direction
+    # accumulator in slot 18 flipped at row ends, a position in slot 14 advanced by that
+    # step and copied to slot 12 -- which is what frameoffset reads -- and a tail that
+    # compares the position against slot 0 with +-0.5 offsets, i.e. an in-bounds predicate
+    # shaped like a while-body continue test.
+    #
+    # If that reading is right the node is a loop body and running it once lays a single
+    # stamp of the (1/step)^2 it would tile. Three unfitted measurements agree that this is
+    # what happens: the step constant equals the pattern size (0.25 on Chesterfield rec34),
+    # the coverage deficit is exactly 1/size^2 on both content-bearing records (16.0 and
+    # 5.8), and the engine's exported metallic is a dot grid at 1/8 pitch, which is a 4x4
+    # tiling of a cell carrying 2x2 blobs.
+    #
+    # SCOPE, censused by the structural side over 130 packages: 36 of 11,940 fxmaps records
+    # carry a 0x99 at all -- 0.3%, extrapolating to roughly 180 corpus-wide. Within that
+    # population it is uniform: 31 of 36 have the exact ADDNODE -> 0x99 -> LEAF chain and 34
+    # of 36 end their program in comparison or boolean ops. So this is a narrow population
+    # with a consistent shape, not a per-record special case -- which is the argument for it
+    # eventually being node semantics rather than a candidate.
+    # RUN, AND THE LOOP ALONE CHANGES NOTHING -- reported here because it was promised
+    # either way. Under 'loop', Chesterfield rec34 and rec65 still emit exactly ONE pattern
+    # each, coverage still 0.0254 and 0.1377, every output byte-identical to 'once'.
+    #
+    # The reason is a second gap, and it is not a guess: evaluating the scanner's program
+    # against a plain slot dict raises `slot 18 read but never set`. In the render path the
+    # frame is a Perm, which fills a missing slot rather than refusing, so the read succeeds
+    # with a default and the step comes out ZERO. `seed_slots` seeds this scanner's state
+    # deliberately and its own docstring lists what -- "position in 14, counters in 16 and
+    # 17" -- with no 18. Slot 18 is the step-DIRECTION the position is advanced by, so with
+    # it defaulted the scan cannot move whether or not the body repeats.
+    #
+    # So the loop is not refuted, it is untestable until the step exists: a scan that
+    # advances by zero lays every stamp on top of the first one, which is indistinguishable
+    # from not looping. The structural side decodes the initial direction as the constant
+    # [-1.0, +1.0]. Seeding it is the next step and it is a decoded value rather than a
+    # fitted one -- but it is a second change, and stacking two unverified changes and
+    # scoring the pair would not say which one did anything.
+    'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
     'uniform.fill':       (),      # a value, not an enumeration
