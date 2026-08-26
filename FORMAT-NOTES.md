@@ -35299,3 +35299,55 @@ recorded elsewhere in these notes (1/5 = 0.2) is one candidate and is not decide
 splat time, G is only defined for square-count records, and 30% of the 966 are not within
 10% of the cell-unit ratio -- so a blanket division would be right in the median and wrong
 in a tail I have not characterised. Recorded as a measurement, not wired in.
+
+## A baked patternsize is in CELL units, and it is not a canvas fraction
+
+`splat` treats `patternsize` as a canvas fraction, so a stored 5.0 is five times the canvas
+and Chainmail record 0 renders as a white wash. Three readings were open: canvas, cell
+(size / G), and the reciprocal recorded elsewhere in these notes (1 / size).
+
+**Canvas is refused by the values themselves.** Every distinct baked value over 120 files,
+decoded, is a small number:
+
+    5.0 (433)   1.5 (266)   3.0 (261)   1.0 (89)   8.0 (74)   2.0 (71)
+    1.2 (36)    1.935 (34)  1.59 (26)   4.0 (23)   0.667 (18)      ... 83 distinct
+
+They occupy roughly [0.67, 8]. As canvas fractions those are patterns from two-thirds of
+the image to eight times it, which is not a pattern.
+
+**Canvas is refused a second way, independently: the values do not depend on G.** Over 299
+baked square-grid records with G from 2 to 128:
+
+    correlation(size, 1/G)   -0.074
+    correlation(size, G)     -0.082
+
+If size were a canvas fraction, tiling a G-grid would force the stored value to scale as
+1/G and the first correlation would be near 1. It is zero. The stored size is the same
+whether the grid is 2 across or 128 across, which is what a CELL measure looks like and
+what a canvas measure cannot be.
+
+**That also separates cell from the reciprocal.** Both put the rendered footprint in a
+plausible range, so magnitude alone cannot choose. What distinguishes them is how coverage
+responds to grid density: under cell units the canvas footprint is `size / G`, so a denser
+grid paints finer features; under the reciprocal it is `1 / size`, so a 2-cell grid and a
+128-cell grid paint the same absolute size. For a generator whose whole purpose is to vary
+feature density with G, only the first is coherent. Cell units also explain the values'
+SHAPE -- 5.0, 3.0, 1.5, 1.0, 8.0, 2.0 are small multiples of a cell, and 5 and 3 alone
+account for 231 of the 299 records, which is what a kernel extent looks like and not what a
+continuous canvas fraction looks like.
+
+**So both offsets and sizes are in cells**, which is the coherent reading: `branchoffset`
+spans G-1 cells (median exactly 1.0000 over 966 records) and `patternsize` is a few cells
+across. `frameoffset` remains the odd one out, in canvas units.
+
+**Not wired in, and the reason is now specific rather than cautious.** A scored arbitration
+on Chesterfield went AGAINST the cell reading for branchoffset -- normal 0.0854 -> 0.0869,
+height 0.2461 -> 0.2480, AO 0.6844 -> 0.6856, every moving channel worse -- but only two of
+its sixteen fxmaps records are square-count, so that is a two-record result, and both look
+like the 30% tail rather than the median. Until a specimen with more qualifying records can
+be scored, this stays a measurement.
+
+**A decode note for anyone reading these fields directly.** `entries()` hands a baked
+patternsize back as its RAW SLOT WORD, not as a number -- the values above read as
+1084227584 and 1077936128 until viewed as float32. The emission walk converts them; a
+consumer that does not will see integers in the billions and may take them for pointers.
