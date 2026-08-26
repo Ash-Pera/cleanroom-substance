@@ -1204,6 +1204,54 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # below are in -- the fill is the engine's default, not something in the
                 # file -- so it takes the same arbitrated answer and the same
                 # LOW_CONFIDENCE mark.
+                # BIT 8 CLEAR DOES NOT MEAN "NO FILL" -- IT CAN MEAN "THE FILL IS A
+                # PROGRAM". The bit-8 law above is right that the SLOT does not hold a
+                # colour when the bit is clear; it does not follow that the file is silent.
+                # ColorTest record 1 is the specimen: bit 8 clear, renders black, and its
+                # colour is sitting in the record as a second program -- `inputref.f4
+                # uid=3867945481`, which the header declares as (0.5, 0.5, 0.5, 1.0), a mid
+                # grey. It was rendering as (0, 0, 0, 0).
+                #
+                # A uniform's size expression is one program; a SECOND one is the colour.
+                # Over 150 files, with the bit-8-set records as the control:
+                #
+                #                     records   have a colour program   of those, plausible
+                #     bit 8 clear       2,113            259                184  (71.0%)
+                #     bit 8 set         1,940             78                  2   (2.6%)
+                #
+                # 71% against 2.6% is a 27x enrichment in the direction the reading
+                # predicts: where the slot does not carry the fill, the program does. The
+                # recovered values are material colours rather than noise -- (0.694, 0.604,
+                # 0.490, 1.0) a tan, (0.912, 0.931, 0.950, 1.0) an off-white, 0.3218 a grey.
+                #
+                # Narrow: only when the bit is clear, only when a non-size program exists,
+                # only when it runs and yields the right component count inside [0, 1].
+                # Everything else falls through to the arbitrated default below, which is
+                # still the answer for the 1,854 bit-8-clear records that have no colour
+                # program at all -- for those the fill really is not in the file.
+                if not (rec.cls >> 8) & 1:
+                    _sb = rec.size_or_baked
+                    _others = [q for q in (rec.programs or ())
+                               if not (_sb is not None and _sb[0] == 'program' and _sb[1] == q)]
+                    if _others:
+                        try:
+                            _v = np.asarray(eval_program(asm, _others[0],
+                                                         default_inputs(asm, 1), {}, 1)).ravel()
+                        except Exception:
+                            _v = np.zeros(0, dtype=np.float32)
+                        if _v.size == 1 and n > 1:
+                            _v = np.repeat(_v, n)
+                        if (_v.size >= n and np.all(np.isfinite(_v[:n]))
+                                and np.all((_v[:n] >= -0.01) & (_v[:n] <= 1.01))):
+                            W, H = rec.width, rec.height
+                            if max_dim:
+                                W, H = min(W, max_dim), min(H, max_dim)
+                            N = W * H
+                            outputs[i] = to_image(
+                                np.tile(np.clip(_v[:n], 0.0, 1.0).astype(np.float32), (N, 1)),
+                                N, H, W)
+                            continue
+
                 if not (rec.cls >> 8) & 1 or len(rec.words) < start + n:
                     # THE COLOUR IS NOT IN THE FILE. These are one-word records -- just
                     # the tag, no programs, no colour slot -- distinguishable by class
