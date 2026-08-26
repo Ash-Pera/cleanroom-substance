@@ -1536,7 +1536,21 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 for e in rec.edges[:2]:
                     if e not in outputs:
                         raise Unsupported("edge -> record %s has no output yet" % e)
-                sl = 4 + ((rec.cls >> 11) & 1)
+                # ...AND IT IS THE SAME INHERITED-BLOCK WALK hsl needed, not bit 11 alone.
+                # `4 + bit11` froze one term of the mask-walk: the intensity follows the
+                # inherited block `walk.py`'s `_CLS` describes, and bits 7 and 10 shift it
+                # too. Over the corpus the shift mask is {7, 10, 11} -- searching every
+                # subset of the inherited bits {0,7,10,11,13} for the one that best lands a
+                # plausible intensity picks exactly these three, and bit 0/13 gate params
+                # that sit after the intensity so they never move it. The 592 records that
+                # set bit 10 are the proof: at `4 + bit11` a plausible value appears 88.2%
+                # of the time, at one slot later 100.0% -- while for bit-10-clear records
+                # that later slot is plausible only 5.8%, so bit 10 really does carry the
+                # intensity one slot on. Corpus-wide good-value rate 84.6% -> 85.2% (the
+                # ceiling is program intensities, which have no baked value to read), and
+                # the bit-7/10-clear majority is untouched because the popcount is then just
+                # bit 11 -- the old rule, so nothing that decoded before regresses.
+                sl = 4 + bin(rec.cls & ((1 << 7) | (1 << 10) | (1 << 11))).count('1')
                 if sl >= len(rec.words):
                     raise Unsupported("warp record too short for an intensity slot")
                 intensity = float(np.frombuffer(
