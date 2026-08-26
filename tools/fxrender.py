@@ -1032,7 +1032,31 @@ def grid_width(rec):
     records that share a program almost byte-for-byte and could shift elsewhere.
     """
     asm = rec.asm
-    for ptr in sorted(set(rec.programs or ())):
+    # THE FX WALK NAMES THE CANDIDATES, not `Record.programs`. `programs` reaches an
+    # fxmaps record's payload through a scan over the record's words, which for this filter
+    # is deliberately unbounded -- the payload holds program pointers by design, so the
+    # bound that `Record.programs` applies to every other filter is lifted here (see
+    # `_PAYLOAD_PROGRAM_FILTERS`). That makes the candidate list a superset of the
+    # structure: an instruction operand inside an FX program's bytecode can enter it, and
+    # this function would then transpile bytecode and read a divisor out of it.
+    #
+    # It does not today, and that was checked rather than assumed: over 10 files every one
+    # of the 22 records that yields a grid width yields it from a program `fx_walk` names,
+    # 22 of 22. So this is the same answer arrived at structurally instead of by luck --
+    # `fx_walk` follows the node chain or the parameter table, whichever the root addresses,
+    # so it enumerates the record's real programs rather than every word that survives
+    # `valid_program`. It also stops this from transpiling candidates that are not programs.
+    cands = set()
+    try:
+        for _item in rec.fx_walk():
+            _p = _item[3] if len(_item) > 3 else None
+            if _p:
+                cands.add(_p)
+    except Exception:
+        cands = set()
+    if not cands:
+        cands = set(rec.programs or ())
+    for ptr in sorted(cands):
         end = asm.program_span(ptr)
         if not end:
             continue
