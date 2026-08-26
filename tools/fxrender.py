@@ -582,6 +582,23 @@ def _chain_embedded_entries(rec):
 
     Read from the words directly, because `fx_named_params` is driven by the walk and the
     walk is exactly what does not reach here.
+
+    THE OTHER SHAPE UNDER THIS HEADING DOES NOT YIELD, and the obvious move on it has been
+    tried. Most records still reporting `no readable table entries` have a table that is
+    ENTIRELY `0x00020008` cells with no `0x09` among them -- concrete_049 records 2, 57 and
+    58, Desert_Sand_01, MossSubstance001. Those cells chain by word 1 at the +52 skew, each
+    landing on the next 8 bytes on, and the LAST one points somewhere else: concrete_049
+    record 2's final cell reaches 0x25C holding `0x00100048`, records 57 and 58 reach
+    `0x03520248`. Both end in nibble 8 and neither is chain-family, so they look exactly
+    like the real entry the chain was leading to.
+
+    They are not. `entry_layout_holds` rejects all three, and it is right to: `0x00100048`
+    names a program at slot 2 and that word is `0x0A020001`, which resolves to no program;
+    `0x03520248` names three and they are `0x09000007`, `0x40000000`, `0x00000532` --
+    bytecode and a float 2.0. A tag whose every predicted program is bytecode is not a tag.
+
+    So the walk stops correctly and this route is closed: whatever those records draw is not
+    reached by following their chain to its end.
     """
     data, lo, hi = rec.asm.data, rec.asm.body_lo, rec.asm.body_hi
     out = []
