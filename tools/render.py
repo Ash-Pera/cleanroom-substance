@@ -1242,6 +1242,20 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
                 in_low, in_mid, in_high = (params['levelinlow'], params['levelinmid'],
                                            params['levelinhigh'])
+                # See assume.QUESTIONS['levels.inversion']. Only fires where exactly ONE of
+                # the pair is stated AND it sits at an inversion extreme, which is the
+                # population the structural side isolated; a record stating both, or stating
+                # one at an ordinary value, is untouched.
+                if assume.assumed('levels.inversion') == 'complete':
+                    _named = {n for n, _k, _v in (rec.named_parameters or ())}
+                    _lo_set = 'levelinlow' in _named
+                    _hi_set = 'levelinhigh' in _named
+                    if _lo_set and not _hi_set and abs(float(in_low) - 1.0) < 1e-6:
+                        in_high = np.float32(0.0)
+                        assume.note(i)
+                    elif _hi_set and not _lo_set and abs(float(in_high)) < 1e-6:
+                        in_low = np.float32(1.0)
+                        assume.note(i)
                 out_low, out_high = params['leveloutlow'], params['levelouthigh']
 
                 span = in_high - in_low

@@ -92,6 +92,40 @@ QUESTIONS = {
     # something downstream saturates it -- so this is not an arbiter narrowly missing, it
     # is an arbiter that cannot see the parameter. And the unblocked output correlates at
     # 0.04-0.10 whichever value is chosen: rendering `basecolor` does not make it right.
+    # WHAT THE ABSENT SIDE OF AN INVERSION PAIR DEFAULTS TO. Substance inverts a levels by
+    # setting in_low ABOVE in_high -- 1.0 and 0.0. 185 records corpus-wide state exactly one
+    # of that pair and nothing else: 176 state levelinhigh = 0.0, 9 state levelinlow = 1.0.
+    # The structural side verified there is no second value to find -- the parameter block
+    # is one header slot plus one parameter slot, the other side's presence bits are clear,
+    # so the file really does state one end only.
+    #
+    # Under the standard defaults (absent high -> 1.0, absent low -> 0.0) those become
+    # [1.0, 1.0] and [0.0, 0.0], both zero-width, and the record renders a constant. The
+    # candidate is that an author setting one end of an inversion expects the other to be
+    # its opposite extreme, giving [1.0, 0.0] -- an inversion rather than a flat.
+    #
+    # IT IS A QUESTION AND NOT A FIX because the two readings are not separable structurally
+    # -- both are consistent with the bytes -- and because being wrong here manufactures 185
+    # plausible pictures. Only a reference render decides it, and Bricks graph 003 is the
+    # specimen: it currently correlates r ~ 0 against its own graph's exports, so a real
+    # correction has to move that and a merely-plausible one cannot.
+    #
+    # SCORED, AND 'complete' IS REFUTED. Against graph 003's own exports, and graph 002 in
+    # the same pass as the control:
+    #
+    #     candidate    003 normal  roughness   height    AO  |  002 normal  roughness
+    #     flat            -0.019     +0.016    -0.101  -0.004 |    +0.571     +0.891
+    #     complete        -0.122     +0.029    -0.031  +0.032 |    +0.571     +0.891
+    #
+    # 003 stays inside the noise band on every channel; normal moves the wrong way. The
+    # candidate DOES change the picture -- the numbers all move -- it simply does not make
+    # it agree with the engine, which is precisely the "renders is not right" outcome this
+    # question was built to detect. 002 is byte-identical under both, confirming the arm
+    # never fires there, so 003 was the only test available and it says no.
+    #
+    # Kept as a scored negative rather than deleted: the inversion reading is a reasonable
+    # thing for the next reader to think of, and this is the evidence that it was tried.
+    'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
     'uniform.fill':       (),      # a value, not an enumeration
     # The channel weights a single-input `shuffle` record applies. TWO SOURCE NODE TYPES
