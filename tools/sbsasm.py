@@ -2419,8 +2419,18 @@ class Record:
                 # A slot the layout calls a program whose word is not one is reported as
                 # such rather than skipped: 6.1% of them corpus-wide, and hiding them
                 # would turn a known miss rate into an invisible one.
-                ok = lo < pv < hi and self.asm.program_span(pv, hi)
-                yield off, tag, sl, name, how, (pv if ok else None)
+                if lo < pv < hi and self.asm.program_span(pv, hi):
+                    yield off, tag, sl, name, how, pv
+                    continue
+                # ...but a 'program' bit whose pointer does not resolve may be an INLINE
+                # program: the last program of an entry abuts the entry end and is stored in
+                # place, its first word the instruction count, not pointed at. `fx_entry_layout`
+                # classifies it as a pointer because the tag alone cannot see where the entry
+                # ends. 0x95540288's `imageindex` is inline in 382 of 382 entries, and reading
+                # its pointer lost every one; try the slot itself before reporting None.
+                at = off + 4 * sl
+                inline = at + 4 <= hi and self.asm.program_span(at, hi)
+                yield off, tag, sl, name, how, (at if inline else None)
 
     def fx_node_params(self):
         """Yield (node offset, header, name or None, program offset) for the node chain.
