@@ -301,10 +301,33 @@ QUESTIONS = {
     # count varies per record in the way its coverage does, and it is present as a decoded
     # constant rather than absent from the format.
     #
-    # That is a direction, not a rule: which constant is the modulus and how it becomes an
-    # iteration count is unread, and reading 4.0 out of a list that also holds 2.0, 3.0 and
-    # 5.0 by choosing the one that gives the answer would be fitting. But "the 16 is not in
-    # the bytes" is too strong, and the next pass should start at the placement program.
+    # THAT INFERENCE IS WRONG, AND SO IS THE RULE BUILT ON IT. Sweeping rec65's count with
+    # its scanner held shows the layout it actually produces:
+    #
+    #     n     rec65 lit    first offsets
+    #     1        0.1377    (-0.377, -0.376)
+    #     4        0.3764    -0.377, -0.127, 0.123, 0.373  on x
+    #     9        0.7231
+    #    16        1.0000
+    #
+    # Those x offsets are spaced 0.25 -- rec65 lays a 4x4 grid on the SAME pitch as rec34,
+    # despite its patternsize being 0.4146 rather than 0.25 and despite its placement
+    # program carrying no 4.0 among its constants. So the grid dimension does NOT track the
+    # constant list, which kills the per-record reading above, and it does not equal
+    # 1/patternsize either, which kills the proposed rule count = (1/patternsize)^2: that
+    # would want 2.41 cells for rec65 and the file lays 4.
+    #
+    # AND THE 1/size^2 AGREEMENT WAS NEVER INDEPENDENT EVIDENCE. Coverage of one stamp is
+    # size^2 times the input's own lit fraction, so IF the engine tiles fully then the
+    # deficit is 1/size^2 identically, for any mechanism whatever. The number appearing
+    # three times was one measurement restated, not three confirmations -- and building a
+    # count rule on it reproduces the assumption it came from. rec34 matching its input's
+    # lit fraction at n=16 is real, but it works because size 0.25 tiles a 4-grid exactly;
+    # rec65 at n=16 saturates to 1.0000 because 0.4146 stamps on a 0.25 pitch overlap.
+    #
+    # So the count is plausibly 16 for both and the sizes differ, which is the opposite of
+    # the rule. What sets the dimension is still unread, and it is not in the constant list
+    # by inspection.
     #
     # Both arms above remain measurements, not fixes -- they say what the answer looks like,
     # not what produces it.
