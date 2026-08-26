@@ -687,6 +687,44 @@ QUESTIONS = {
     # picking the wrong specimen, which is the same hazard that cost this project a day on
     # graph 003's authorship. Worth keeping the record of it: a count that cannot be
     # reconciled by any reading of the same file usually means it is not the same file.
+    # HOW emboss's INTENSITY ENTERS. The filter is a directional relief: sample the gradient
+    # input at `pos` and at `pos + offset`, and add the difference to the base image. Two of
+    # its three terms are decoded and fixed. The OFFSET is resolution-independent -- the
+    # record's first program writes a texel COUNT into slot 2, 0.005859375 * (W, H) * (1,-1),
+    # and the texel SIZE (1/W, 1/H) into slot 0 which nothing else reads, so their product is
+    # a constant 0.005859375 in UV at a 45-degree (+x, -y) light. The EDGES are [base,
+    # gradient]: the second is a shuffle or a blur, a single-channel relief source, the first
+    # is the image the relief lands on.
+    #
+    # What is not decoded is the third term. The second program returns 0.1 * 2048 / size --
+    # 0.1 calibrated to a 2048 reference and then scaled by resolution -- and the scaling
+    # lives in the built-in rather than in any program, so nothing in the bytes says whether
+    # it multiplies the relief or compensates the sampling. Those differ by 8x at the
+    # resolutions this renderer scores at, which is large enough to make a wrong choice look
+    # like a mediocre channel rather than a broken one.
+    #
+    #   'program'   use the program's own value, 0.1 * 2048 / size
+    #   'reference' use the 2048-calibrated 0.1 unscaled, i.e. treat the scaling as
+    #               compensating the sampling rather than amplifying the relief
+    # AND NOTHING SCORES IT YET, which is why both arms are still here. Implementing emboss
+    # removes it from RoofTiles' root list -- 5 emboss roots gone, one record now rendering
+    # and the other four cascade-blocked from above -- but the pack still scores ONE output,
+    # because the roots that actually gate it are elsewhere:
+    #
+    #     shuffle stores no weight vector      15
+    #     blur intensity: slot not plausible    8
+    #     fxmaps: no readable table entries     5
+    #
+    # So emboss was 5 roots and 0 leverage: removing it unblocks no output because the
+    # shuffle roots sit in the same cones. The arms are indistinguishable at present and
+    # both are recorded rather than one being picked -- the 8x between them is exactly the
+    # kind of thing that would score as a mediocre channel rather than a wrong one, and
+    # there is no channel to score it on.
+    #
+    # The one record that does render comes out at mean 0.9998, std 0.0011 -- nearly flat --
+    # which is not evidence the implementation is right or wrong, only that its inputs are
+    # degenerate too.
+    'emboss.intensity':   ('program', 'reference'),
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),

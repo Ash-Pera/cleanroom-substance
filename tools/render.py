@@ -2582,6 +2582,60 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if tainted:
                     synthetic.add(i)
 
+            elif rec.filter_name == "emboss":
+                # A DIRECTIONAL RELIEF, not a runnable program: the record's programs never
+                # sample an input, they only compute the built-in's scalars. Decoded by the
+                # structural side and re-derived here on RoofTiles rec1997/2001/2221, which
+                # are identical:
+                #
+                #   prog A writes slot 0 = (1/W, 1/H), the texel size, and slot 2 =
+                #     0.005859375 * (W, H) * (1, -1), a texel COUNT -- 12 texels at 2048.
+                #     Slot 0 is written and never read again, so it exists for the built-in
+                #     to multiply in, and the product is a CONSTANT 0.005859375 in UV at
+                #     every resolution, in a 45-degree (+x, -y) direction. Slot 2 cannot be
+                #     UV on its own: 12 in UV is twelve image-widths off-screen.
+                #   prog B returns 0.1 * 2048 / size, an intensity calibrated to a 2048
+                #     reference.
+                #
+                # EDGES ARE [base, gradient], which is Substance's Input + Input Gradient.
+                # Across these records the second is a shuffle or a blur -- a single-channel
+                # relief source -- and the first is the image the relief is applied to.
+                #
+                # HOW THE INTENSITY ENTERS IS ARBITRATED, not chosen: see
+                # assume.QUESTIONS['emboss.intensity']. The resolution scaling lives in the
+                # built-in rather than in a program, so the bytes do not say whether it
+                # amplifies the relief or compensates the sampling, and the two differ by 8x
+                # at the sizes this renders at.
+                if len(rec.edges) < 2 or any(e not in outputs for e in rec.edges[:2]):
+                    raise cascade("emboss edge -> record has no output yet")
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                pos = pos_grid(W, H)
+                _base = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos), N, H, W)
+                _gsrc = sbsruntime.image_sampler(outputs[rec.edges[1]])
+                _OFF = 0.005859375
+                _shift = pos + np.array([_OFF, -_OFF], dtype=np.float32)
+                _g0 = to_image(_gsrc(pos), N, H, W)[:, :, :1]
+                _g1 = to_image(_gsrc(_shift), N, H, W)[:, :, :1]
+                _k = 0.1
+                if assume.assumed('emboss.intensity') == 'program':
+                    _fp = rec.filter_programs or ()
+                    if _fp:
+                        try:
+                            _v = np.asarray(eval_program(asm, _fp[0],
+                                                         default_inputs(asm, 1), {}, 1,
+                                                         W=rec.width, H=rec.height)).reshape(-1)
+                            if _v.size and np.isfinite(_v[0]):
+                                _k = float(_v[0])
+                        except Exception:
+                            pass
+                    assume.note(i)
+                outputs[i] = np.clip(_base + _k * (_g0 - _g1), 0.0, 1.0)
+                if any(e in synthetic for e in rec.edges[:2]):
+                    synthetic.add(i)
+
             elif rec.filter_name == "sharpen":
                 # WHERE ITS INTENSITY IS, read the same way `blur`'s was and confirmed by
                 # the same two-part law. `sharpen` is not in PARAM_SPEC, so there is no
