@@ -1058,11 +1058,9 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             for _it in range(SCAN_LIMIT):
                 v = run(prog, slots, number)
                 if _SCAN_TRACE is not None and len(_SCAN_TRACE) < 8:
-                    _SCAN_TRACE.append((_it,
-                                        np.round(np.asarray(slots.get(18, [np.nan]),
-                                                            dtype=float).ravel(), 4).tolist(),
-                                        np.round(np.asarray(slots.get(14, [np.nan]),
-                                                            dtype=float).ravel(), 4).tolist(),
+                    _g = lambda k: np.round(np.asarray(slots.get(k, [np.nan]),
+                                                       dtype=float).ravel(), 4).tolist()
+                    _SCAN_TRACE.append((_it, _g(18), _g(14), _g(0), _g(10), _g(16), _g(17),
                                         float(np.asarray(v, dtype=np.float64).ravel()[-1])))
                 walk(i + 1, number)
                 try:

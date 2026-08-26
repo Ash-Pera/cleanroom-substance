@@ -200,9 +200,26 @@ QUESTIONS = {
     # immediately. With the cell size 0.25 between them, steps land at 0, 0.25, 0.5 -- four
     # per axis, sixteen cells, which is the deficit exactly.
     #
-    # Where that scale belongs is not settled: the step could be in canvas units to begin
-    # with, or the bound could be meant in cell units, and those are different edits to
-    # different halves of the same expression. Not guessed here.
+    # AND IT IS NOT A UNITS EDIT EITHER -- reading the frame settles it. The bound and the
+    # cell size are both IN the slot frame and can simply be looked at:
+    #
+    #     slot 0  (bound)      [0.0, 1.0, 0.0, 1.0]      a one-cell box
+    #     slot 10 (cell size)  [1.0, 1.0]                one cell spans the whole canvas
+    #     slot 14 (position)   [0.0, 1.0]   after one step -- at the box edge
+    #
+    # The structural side predicted slot 10 = vec(1.0, 1/gridsize), so [1.0, 1.0] means
+    # gridsize = 1. The scanner is laying exactly one stamp because the geometry it was
+    # handed describes a 1x1 grid, and its predicate is correctly telling it that one step
+    # leaves the box. Nothing about the loop, the step, the units or the predicate is wrong:
+    # every one of them is behaving correctly for a grid of one cell.
+    #
+    # SO THE FAULT MOVES UPSTREAM AGAIN, to whatever computes the grid. Program 532980 is a
+    # record program (so seed_slots does run it), it writes slots 0 and 10, and the only
+    # graph input it reads is uid 3139271155 -- type 8, value (8, 8) -- which it passes
+    # through exp2. That is the $outputsize convention, log2 of 256. Why a 256-pixel canvas
+    # yields a one-cell grid where the reference shows four cells per axis is the open
+    # question, and it is a question about that program's arithmetic rather than about the
+    # scanner that consumes its result.
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
