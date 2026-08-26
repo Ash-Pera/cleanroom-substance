@@ -36405,3 +36405,24 @@ it directly:
 0 of 749 against 1,113 of 1,141. 0x00420008 behaves exactly like the typed draw entries and
 nothing like the structural family, so keeping it was right and the reason is now positive
 rather than circumstantial.
+
+## A confirmed bitmap under-declaration: 11 images decoded at 1/4 height (root open)
+
+Found by chasing the selfcheck `packing` law's overlaps/gaps. Two classes:
+- OVERLAPS (6): all GravelSubstance002 JPEG bitmaps — the known bit-3 case, `size` is the
+  DECOMPRESSED size while the stored JPEG is smaller, so they pack tighter. Not a bug;
+  selfcheck now excludes compressed bitmaps from the packing check.
+- UNDER-DECLARATION (11 raw bitmaps, 4 files): PlanksSubstance003 ×7, BricksSubstance004 ×2,
+  NightSkyHDRI, pbr_render — stride to the next bitmap is exactly 4× the declared size.
+  CONFIRMED for PlanksSubstance003 rec50: tag 0x7b21 decodes height = 1<<((tag>>12)&0xF) =
+  1<<7 = 128, size 2048×128×4 = 1MB, but the 4MB slot holds one contiguous 2048×512 image —
+  reshaped 512×2048×4, the row diff across the declared 128-row boundary (45.9) matches its
+  neighbours (44/42), so NO stacking discontinuity: a single 512-tall image whose tag height
+  nibble should be 9, reads 7. The decode reads only the top quarter.
+
+Scope and root: the tag-nibble w/h decode is fine for the 260 other non-square bitmaps
+(1024×512, 512×1024, …), so this is specific to these 11, not a general non-square failure.
+None is in the five scored reference packs, so no current score moves — but it is a real
+correctness bug for those inputs. Root unresolved: the tag nibble genuinely reads 7, so
+either the true height lives in a field the width/height property does not consult, or these
+11 encode the dimension somewhere other than tag bits 12-15. Open.
