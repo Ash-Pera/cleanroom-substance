@@ -97,6 +97,21 @@ QUESTIONS = {
     # one defect where the earlier reading had two. The oversized-patternsize question
     # below now explains the whole cone on its own.
     'fx.sizeless':        ('fill', 'skip', 'half', 'quarter'),
+    # AN 'inherit' CANDIDATE WAS ADDED HERE AND REMOVED, for the reason the retired
+    # 'oversize' arm in fxrender gives: a candidate that cannot differ from another is not
+    # an arbitration option. The idea was that a pattern stating no size inherits the last
+    # one stated in the same table, motivated by the white population's shape -- 1,206 of
+    # the 1,369 records that render at exactly 1.0 carry a patternsize on SOME patterns and
+    # not others, against 34 of 997 varied records.
+    #
+    # It renders BYTE-IDENTICALLY: 0 of 694 fxmaps records in the reference packages change,
+    # and 0 of 793 over twelve corpus files, despite 2,330 places where a sizeless pattern
+    # follows a sized one. The reason is visible in any specimen -- PavingStones rec 161
+    # alternates typeless patterns with typed ones whose patternsize is 5.0. Inheriting 5.0
+    # instead of defaulting to 1.0 changes nothing, because both already cover the canvas.
+    #
+    # So the mixed-table signal is real but it is NOT the mechanism: those records are white
+    # because the sizes they DO state are oversized, not because of the ones they omit.
     # ARBITRATED AGAINST THE REFERENCE MAPS, AND `fill` HOLDS. This question now looks
     # obviously wrong from the census side -- 1,369 fxmaps records render at exactly 1.0,
     # and a full-cell fill on a typeless entry is what paints them -- so the temptation is

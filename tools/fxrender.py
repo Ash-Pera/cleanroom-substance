@@ -753,9 +753,14 @@ def entries(rec, baked_pairs=True):
     # 5,439 entries that are not chain-family and mostly do not chain, among them 3,332 of
     # tag 0x00420008, which `FX_ENTRY_PROGS` gives a program slot. Those are real draws
     # and dropping them would trade a white record for a missing one.
-    tbl, order = {}, []
+    tbl, order, chain_family = {}, [], []
     for off, tag, _p in rec.fx_table():
-        if off in tbl or (tag & 0xF) != 8 or (tag >> 16) == 0x0002:
+        if (tag >> 16) == 0x0002:
+            # Structural, not a draw -- but its next-pointer is followed below, because the
+            # last link of the run leaves it for a real entry.
+            chain_family.append(off)
+            continue
+        if off in tbl or (tag & 0xF) != 8:
             continue
         tbl[off] = (tag, {})
         order.append(off)
@@ -765,6 +770,35 @@ def entries(rec, baked_pairs=True):
             order.append(off)
         if name:
             tbl[off][1][name] = (kind, value)
+    # THE CHAIN-FAMILY RUN ENDS BY POINTING AT A DRAW ENTRY, and the linear walk does not
+    # follow it. `fx_table` steps eight bytes at a time; the chain family is a linked list
+    # (97.5% of its entries point at the one that follows) and its LAST link leaves the run
+    # entirely. Where it lands is a real draw the table otherwise never reaches.
+    #
+    # Containment says so rather than plausibility. `SubstanceDesigner__Clouds_3_Animated`
+    # is permitted, declares exactly two `paramset` nodes carrying patterntype 8,
+    # patternsize "3 2" and randomseeds 42 and 16, and its own binary's record 50 walks four
+    # chain-family entries and stops. The fourth one's next-pointer lands on tag
+    # 0x13520658 -- patterntype nibble 6, so type 8 -- whose parameter block holds 42 and
+    # (3.0, 2.0); the second entry, tag 0x13100658, holds 16 and (3.0, 2.0). Two of two, on
+    # three declared values each, and the randomseeds tell the two apart.
+    #
+    # 20 records across 30 corpus files reach a draw entry this way that the walk misses.
+    for _o in chain_family:
+        if _o + 8 > len(rec.asm.data):
+            continue
+        _nxt = struct.unpack_from('<I', rec.asm.data, _o + 4)[0] + 52
+        if not (rec.asm.body_lo <= _nxt < rec.asm.body_hi - 7) or _nxt in tbl:
+            continue
+        _t2 = struct.unpack_from('<I', rec.asm.data, _nxt)[0]
+        if (_t2 & 0xF) != 8 or (_t2 >> 16) == 0x0002:
+            continue
+        for _at, _tag, _p in rec.fx_table(_nxt):
+            if _at in tbl or (_tag & 0xF) != 8 or (_tag >> 16) == 0x0002:
+                continue
+            tbl[_at] = (_tag, {})
+            order.append(_at)
+
     if not order:
         for at, tag, params in _chain_embedded_entries(rec):
             tbl[at] = (tag, params)
@@ -776,6 +810,31 @@ def entries(rec, baked_pairs=True):
             for bit, sl, width in baked_slots(tag):
                 partner = PARTNER.get(bit)
                 if partner is None or partner in tbl[off][1]:
+                    continue
+                # THE SLOT IS INLINE ONLY WHEN THE ENTRY SAYS SO. An entry's +4 word
+                # addresses its parameters; usually that is off+8 and the slots follow the
+                # tag, which is what this read assumes. Where it points somewhere else the
+                # parameters are in a separate block and reading inline returns whatever
+                # happens to sit there -- for Clouds_3_Animated record 50 that is (0.0, 0.0)
+                # against a source-declared patternsize of (3, 2).
+                #
+                # The block IS locatable -- both of that file's entries hold their declared
+                # randomseed and patternsize at word1+52 -- but two specimens do not
+                # establish the slot arithmetic inside it: patternsize lands at block+4
+                # slots for one entry and block+3 for the other, and no single base explains
+                # both. So this DECLINES rather than guessing, and the parameter reads as
+                # absent instead of as zero. See FORMAT-NOTES on the parameter block.
+                if not (off + 4 <= len(rec.asm.data) - 4):
+                    continue
+                _w1 = struct.unpack_from('<I', rec.asm.data, off + 4)[0] + 52
+                # NARROWED TO THE CONFIGURATION THE SPECIMEN SHOWS. `fx_table` calls this
+                # word the entry's PAYLOAD, and for most entries it plausibly addresses a
+                # program while the baked slots stay inline -- declining all 399 non-inline
+                # reads over 12 files on the strength of two entries would be over-broad,
+                # and it changed no measured output either way. What both Clouds entries
+                # have is a word1 pointing BACKWARD, before the tag, where an inline slot
+                # cannot be. 15 entries in 30 files are in that configuration.
+                if _w1 < off + 8:
                     continue
                 raw = rec.asm.data[off + 4 * sl:off + 4 * sl + 4 * width]
                 if len(raw) == 4 * width:

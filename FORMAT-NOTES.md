@@ -36454,3 +36454,52 @@ check for other ignored flags of the same kind:
 So bit 13 was the only undecoded bit that carried decode-affecting information; bits 3/4/5 are
 constant or redundant with already-decoded fields. The bitmap cls decode is complete: no other
 hidden flag changes a layout, which is why the packing law is clean after the height fix.
+
+### FX-Map entry parameters, verified against a source for the first time
+
+Every reading of the FX table so far -- the patterntype nibble, the entry layout, the baked
+slots -- has been argued from the binary and from distributional tests. `SubstanceDesigner__
+Clouds_3_Animated` is a PERMITTED source with an FX-Map graph, and it pairs, which makes it the
+first specimen that can check any of it against a declaration.
+
+It declares two `paramset` nodes, both carrying
+
+    patterntype   8
+    patternsize   "3 2"        (constantValueFloat2)
+    randomseed    42  and  16
+
+and its own binary contains `(3.0, 2.0)` as adjacent float32 exactly twice. Both occurrences sit
+in a block addressed by an entry's +4 word:
+
+    entry 0x01FCC  tag 0x13520658   patterntype nibble 6 -> type 8    block 0x01FB0: 42, (3.0, 2.0)
+    entry 0x02158  tag 0x13100658   patterntype nibble 6 -> type 8    block 0x02140: 16, (3.0, 2.0)
+
+Two of two, three declared values each, and the randomseeds tell the two entries apart. This is
+independent corroboration of `FX_PATTERNTYPE_BIAS` on a THIRD file and at a non-zero nibble --
+the existing evidence rested on triDraw (nibble 1) and Bruno_Caustics (nibble 7), both of which
+are one file each.
+
+**The table walk was not reaching either entry.** `fx_table` steps eight bytes at a time; the
+chain family (0x0002xxxx) is a linked list, 97.5% of whose entries point at the one that follows,
+and the LAST link of the run leaves the run entirely and lands on a real draw. Record 50 walks
+four chain-family entries and stops; the fourth one's next-pointer is what reaches 0x01FCC.
+`entries()` now follows it. Across 30 corpus files this reaches 20 draw entries the walk missed.
+
+**And the baked slots are not always inline.** `fx_entry_layout` reads a baked parameter at
+`off + 4*slot`, which assumes the parameters follow the tag -- true when the +4 word points at
+`off + 8`. For these two entries it points BACKWARD, and reading inline returns (0.0, 0.0)
+against the declared (3, 2). The block is locatable, but the slot arithmetic inside it is NOT
+established: patternsize lands at block+4 slots for the first entry and block+3 for the second,
+and no single base explains both without contradicting where the randomseed sits. Two specimens
+cannot settle it, so the read DECLINES for entries whose +4 word points before the tag -- 15
+entries in 30 files -- and the parameter reads as absent rather than as zero.
+
+An intermediate version declined every non-inline read, 399 of 805 over twelve files. That is
+over-broad on this evidence: `fx_table`'s own docstring calls the +4 word the entry's PAYLOAD,
+so for entries where it points AHEAD it may well address a program while the baked slots stay
+inline. Both versions changed no measured output at all, so there is nothing to choose between
+them empirically and the narrow one is the one the specimen supports.
+
+**None of this moves a count**, and that is worth stating plainly: 44 of 127 corpus outputs
+before and after, the same root-cause table, and all 15 reference channels identical to four
+decimals. It is a correctness fix on a verified specimen, not coverage.
