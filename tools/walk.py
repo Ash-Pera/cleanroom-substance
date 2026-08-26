@@ -197,6 +197,7 @@ TIER_A_EDGES = {
     0:  [1],                                                        # gradient (residue: [])
     3:  lambda w0, w1, v: [1] if not (w0 & 1) else [2, 3],          # shuffle (tag bit 0)
     6:  [],                                                         # uniform (generator)
+    8:  [2, 3],                                                     # emboss (fixed, no variation)
     7:  lambda w0, w1, v: [2, 3] if v >= 0x90000 else [1, 2],       # warp
     10: [1],                                                        # blur
     13: [1],                                                        # sharpen
