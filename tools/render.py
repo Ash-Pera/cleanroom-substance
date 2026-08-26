@@ -2786,8 +2786,69 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
             # trade as `blur`'s withdrawn fallback. The failure names this record, so a
             # blocker census points at the cause rather than at the 659 records
             # downstream of it, which is the difference between a root and a cascade.
+            # A RECORD'S CHANNEL COUNT IS IN ITS HEADER, AND THIS RENDERER WAS NOT
+            # HONOURING IT. `Record.colour` says greyscale or RGBA; 74 of 16,652 rendered
+            # records in 20 files come out some other width, and every one is this
+            # renderer's shape rather than the file's:
+            #
+            #     colour False, 2 channels   64    origin: pixelprocessor (25), inherited
+            #                                      by dirmotionblur, levels, warp, blur
+            #     colour True,  3 channels   10    origin: bitmap (4), a 3-channel PNG
+            #
+            # The 2-wide ones are why `blend inputs disagree on channel count` blocks 16
+            # declared outputs: a 2-channel image meets a 1-channel one and the blend
+            # cannot pair them. Fixing it at the blend would be fixing the symptom -- the
+            # producer already disagreed with its own header.
+            #
+            # WHAT THE TWO COMPONENTS HOLD DECIDES WHAT TO DO, and they do not all hold the
+            # same thing. Of the 64: 20 have both components IDENTICAL, and 44 do not --
+            # and the 44 are not two candidate greys, they are out of range. Travertine
+            # records 2792, 2806, 2913 and 3090 all mean 1.9217 in component 0 against
+            # 1.0000 in component 1, and 0.9217 is `rand(1.0)`.
+            #
+            # THE PROGRAM ITSELF SAYS SO. Travertine record 301's evaluated body is four
+            # instructions -- `rand(1.0)`, `+ 1.0`, `vec(that, 1.0, ncomp=2)`, return -- and
+            # `ncomp=2` is the INSTRUCTION'S OWN declared width. The program is doing
+            # exactly what it says; it is a 2-vector by construction, on a record whose
+            # header says greyscale. So this is not a shape this renderer mangled, it is
+            # `filter_programs[-1]` selecting a program that is not the record's image
+            # body -- a scale or offset pair, judging by (1 + random, 1). The right fix is
+            # in that selection, and until someone makes it, refusing names the record it
+            # happens on.
+            #
+            # So: conform where there is nothing to choose, refuse where there is. An
+            # identical pair loses no information by collapsing to one channel. A differing
+            # pair means the program's result is not this record's output, and building a
+            # plausible greyscale out of half of it is the failure this renderer refuses
+            # everywhere else.
+            #
+            # 3 channels for a colour record is the unambiguous case -- RGB with no alpha,
+            # from a PNG that has none -- and opaque is what an absent alpha means.
             if i in outputs:
                 arr = np.asarray(outputs[i])
+                want = 4 if rec.colour else 1
+                if arr.ndim == 3 and arr.shape[-1] != want:
+                    if not rec.colour:
+                        spread = float(np.max(np.abs(arr - arr[..., :1]))) if arr.size else 0.0
+                        if spread > 1e-9:
+                            del outputs[i]
+                            synthetic.discard(i)
+                            LOW_CONFIDENCE.discard(i)
+                            raise Unsupported(
+                                "greyscale record produced %d channels that disagree by "
+                                "%.4g -- the program evaluated is not this record's image "
+                                "program" % (arr.shape[-1], spread))
+                        outputs[i] = arr[..., :1]
+                    elif arr.shape[-1] == 3:
+                        outputs[i] = np.concatenate(
+                            [arr, np.ones(arr.shape[:2] + (1,), dtype=arr.dtype)], axis=-1)
+                    else:
+                        del outputs[i]
+                        synthetic.discard(i)
+                        LOW_CONFIDENCE.discard(i)
+                        raise Unsupported("colour record produced %d channels, not 4"
+                                          % arr.shape[-1])
+                    arr = np.asarray(outputs[i])
                 if arr.size and not np.all(np.isfinite(arr)):
                     # UNDER AN OPEN SCOPE, write a chosen value instead of refusing. The
                     # recurring producer is an auto-levels remap over a constant source --
