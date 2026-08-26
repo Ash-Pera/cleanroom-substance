@@ -1938,6 +1938,96 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if rec.edges[mask_edge] in synthetic:
                     synthetic.add(i)
 
+            elif rec.filter_name == "hsl":
+                # THE PARAMETERS ARE STATED, and which bit names which is settled by
+                # containment against a paired source rather than by guessing. The class
+                # word is a presence mask exactly as walk.py describes: one float32 field
+                # per set bit, at words[3..] in ASCENDING BIT ORDER.
+                #
+                #     cls bit  8  hue          0x1019 -> 1 param
+                #     cls bit 10  saturation   0x1419 -> 2 params
+                #     cls bit 12  luminosity   0x1519 -> 3 params
+                #
+                # SBRustyTreadPlate declares six hsl nodes and all six match a record
+                # exactly, 6 of 6, across the one-, two- and three-parameter shapes. The
+                # ordering is the part that could only come from containment: the source
+                # lists `luminosity` before `saturation` on several nodes, and the record
+                # always stores saturation first -- so the layout follows the bit order,
+                # not the order the author wrote.
+                #
+                # WHAT IS DECODED AND WHAT IS MODELLED, kept apart. The parameters and
+                # their positions are read from the file. The transform applied with them
+                # is a reading: hue as a shift in turns, saturation and luminosity as
+                # offsets, each neutral at 0.5. Neutrality is checkable and is the reason
+                # to prefer it -- a record with every parameter at 0.5 must be the
+                # identity, and the corpus's values cluster tightly around 0.5.
+                if not rec.edges or rec.edges[0] not in outputs:
+                    raise Unsupported("edge has no output yet")
+                src = np.asarray(outputs[rec.edges[0]], dtype=np.float32)
+                vals, sl = {}, 3
+                for bit, name in ((8, 'hue'), (10, 'saturation'), (12, 'luminosity')):
+                    if (rec.cls >> bit) & 1:
+                        if sl >= len(rec.words):
+                            raise Unsupported("hsl mask names slot %d, record has %d"
+                                              % (sl, len(rec.words)))
+                        f = np.frombuffer(np.array([int(rec.words[sl])],
+                                                   dtype=np.uint32).tobytes(),
+                                          dtype='<f4')[0]
+                        if not np.isfinite(f) or abs(f) > 1e3:
+                            raise Unsupported("hsl %s slot is not a plausible float" % name)
+                        vals[name] = float(f)
+                        sl += 1
+                h_sh = vals.get('hue', 0.5) - 0.5
+                s_sh = vals.get('saturation', 0.5) - 0.5
+                l_sh = vals.get('luminosity', 0.5) - 0.5
+                a = src.reshape(src.shape[0], src.shape[1], -1).astype(np.float32)
+                if a.shape[2] >= 3:
+                    r0, g0, b0 = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+                    mx = np.maximum(np.maximum(r0, g0), b0)
+                    mn = np.minimum(np.minimum(r0, g0), b0)
+                    L = (mx + mn) / 2.0
+                    d = mx - mn
+                    S = np.where(d < 1e-9, 0.0,
+                                 d / np.maximum(1e-9, 1.0 - np.abs(2.0 * L - 1.0)))
+                    H = np.zeros_like(L)
+                    m = d > 1e-9
+                    with np.errstate(all='ignore'):
+                        Hr = ((g0 - b0) / np.maximum(1e-9, d)) % 6.0
+                        Hg = ((b0 - r0) / np.maximum(1e-9, d)) + 2.0
+                        Hb = ((r0 - g0) / np.maximum(1e-9, d)) + 4.0
+                    H = np.where(m & (mx == r0), Hr, np.where(m & (mx == g0), Hg,
+                                 np.where(m, Hb, 0.0))) / 6.0
+                    H = (H + h_sh) % 1.0
+                    S = np.clip(S + 2.0 * s_sh, 0.0, 1.0)
+                    L = np.clip(L + l_sh, 0.0, 1.0)
+                    C = (1.0 - np.abs(2.0 * L - 1.0)) * S
+                    Hp = H * 6.0
+                    X = C * (1.0 - np.abs((Hp % 2.0) - 1.0))
+                    z = np.zeros_like(C)
+                    # NOT `i` -- that is the record index this branch writes its output
+                    # under, and shadowing it made `outputs[i] = ...` key the dict by an
+                    # array. The failure was loud, but only because the key was unhashable;
+                    # a scalar sector index would have silently written the wrong record.
+                    sec = np.floor(Hp).astype(np.int32) % 6
+                    pick = [sec == k for k in range(6)]
+                    rr = np.select(pick, [C, X, z, z, X, C])
+                    gg = np.select(pick, [X, C, C, X, z, z])
+                    bb = np.select(pick, [z, z, X, C, C, X])
+                    mfix = L - C / 2.0
+                    out = a.copy()
+                    out[:, :, 0] = np.clip(rr + mfix, 0.0, 1.0)
+                    out[:, :, 1] = np.clip(gg + mfix, 0.0, 1.0)
+                    out[:, :, 2] = np.clip(bb + mfix, 0.0, 1.0)
+                else:
+                    # A GREYSCALE record has no hue or saturation to move; only the
+                    # luminosity term can act, and applying the others would be inventing
+                    # a colour the input does not carry.
+                    out = np.clip(a + l_sh, 0.0, 1.0)
+                outputs[i] = out.reshape(src.shape)
+                LOW_CONFIDENCE.add(i)
+                if rec.edges[0] in synthetic:
+                    synthetic.add(i)
+
             elif rec.filter_name == "dyngradient":
                 # `gradient` with the ramp supplied as an IMAGE rather than an embedded
                 # table. Handed over by a parallel session with the edge roles established
