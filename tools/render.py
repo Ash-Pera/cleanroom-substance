@@ -974,6 +974,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
                 by_width = {}
                 n_evaluated = 0
+                n_size = 0          # identified as this record's OWN size expression
+                n_failed = 0        # would not evaluate, so its width is unknown
+                n_two = 0           # 2-wide, the only width an OFFSET can have
                 if (m is None and has_matrix_param) or offset_is_program:
                     for p in fprogs:
                         try:
@@ -987,6 +990,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                                         {}, 1, W=rec.width,
                                                         H=rec.height)).reshape(-1)
                         except Exception:
+                            n_failed += 1
                             continue
                         # A 2-wide program returning (log2 W, log2 H) of THIS RECORD'S
                         # OWN declared size is the output-size expression, not a
@@ -1008,6 +1012,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         if (a.size == 2 and rec.width and rec.height
                                 and abs(float(a[0]) - math.log2(rec.width)) < 1e-6
                                 and abs(float(a[1]) - math.log2(rec.height)) < 1e-6):
+                            n_size += 1
                             continue
                         # COUNTED AFTER THE SIZE EXPRESSION IS SET ASIDE, and that placement
                         # is the whole of the second fix. `n_evaluated` is what the refusal
@@ -1019,6 +1024,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # 2**8 == 256, this record's own edge, and the same identity two
                         # branches up already recognises.
                         n_evaluated += 1
+                        if a.size == 2:
+                            n_two += 1
                         # A WIDTH SEEN TWICE IS ONLY AMBIGUOUS IF THE TWO DISAGREE. The
                         # test was "seen twice -> refuse", which throws away the case where
                         # there is nothing to choose between: concrete_049 records 36, 37,
@@ -1060,9 +1067,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             raise Unsupported("offset is a program this cannot single out "
                                               "(%d programs, widths %s)"
                                               % (len(fprogs), sorted(k for k in by_width)))
-                    elif fprogs and has_matrix_param and (
-                            n_evaluated == 0 or
-                            n_evaluated - (1 if matrix_from_program else 0) > 0):
+                    elif fprogs and has_matrix_param and (n_failed > 0 or n_two > 0):
                         # WHICH programs remain unread -- the earlier form did not ask.
                         #
                         # It refused whenever the record had any filter program and a matrix
@@ -1086,9 +1091,31 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # This matters beyond the count: the refusal severs branches. Both
                         # spatially-varying fxmaps chains in `Facade01` (records 484 and 489
                         # at std 0.1998) are stranded behind it, which is how it was found.
-                        raise Unsupported("no offset bit set and %d program(s) remain unread"
-                                          % (len(fprogs) if n_evaluated == 0 else
-                                             n_evaluated - (1 if matrix_from_program else 0)))
+                        # AND ONLY AN OFFSET-SHAPED PROGRAM COUNTS AS UNREAD. The test
+                        # was "any program left over", which refuses on programs that could
+                        # not be the offset whatever they are. An offset is a translation:
+                        # it is 2-wide, everywhere this file reads one. Over 12 files, the
+                        # records refusing here carry:
+                        #
+                        #     a 4-wide matrix + a 1-WIDE program   20
+                        #     a baked matrix  + a 1-wide program    9
+                        #     a baked matrix  + a 2-wide program    4
+                        #
+                        # The 29 with a 1-wide leftover are the same program in every case
+                        # -- wood_cedar_white's records 9, 10, 11, 18, 24 and 30 all name
+                        # address 5748, which returns 1.0 -- so it is one shared constant
+                        # parameter emitted once, and a scalar is not a translation in any
+                        # reading. Bit 26 already says the offset is not a program; a
+                        # 1-wide program is not evidence against that, and refusing on it
+                        # withheld the (0, 0) the format states.
+                        #
+                        # A 2-wide leftover still refuses, and should: that IS offset-shaped
+                        # while bit 26 says there is no offset program, and the two cannot
+                        # both be right. So does a program that would not evaluate, whose
+                        # width nobody knows.
+                        raise Unsupported("no offset bit set and %d offset-shaped program(s) "
+                                          "remain unread (%d would not evaluate)"
+                                          % (n_two, n_failed))
                     else:
                         offset = (0.0, 0.0)
 
