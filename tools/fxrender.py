@@ -1292,12 +1292,44 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
                 size_scale = 1.0 / _gs
                 assume.note(getattr(rec, 'index', -1))
 
-    cell_scale = 1.0
+    # THE GUARD IS THE SPAN, NOT THE COUNT. This used to divide by round(sqrt(N)) when the
+    # emission count was a perfect square, which is not merely over-broad -- it selects
+    # AGAINST its own target. cleanroom-substance-0b classified every Bricks fxmaps record
+    # by what its branchoffset program consumes and crossed that with what the arm touched:
+    # 88 of 88 records it scaled were rand scatters or had no $number decomposition at all,
+    # and NOT ONE was a grid. That file's five real grids read an integer2 input (4, 8) and
+    # emit 32 and 8 patterns -- neither a perfect square -- so the sqrt test excluded
+    # exactly the population a cell divisor exists for.
+    #
+    # A cell-unit offset walks WHOLE CELLS, so its span is an integer number of them. That
+    # is a property of the emissions alone: no G, no square test, no assumption that the
+    # count factors. Over 110 files:
+    #
+    #     records with a branchoffset span            3,390
+    #       span is an exact integer                    407
+    #         and (span + 1) divides the count          407   <- 407 of 407
+    #         sqrt(N) would have MISSED it               41
+    #       span is fractional (canvas-like)          2,983   <- the old guard scaled these
+    #
+    # 407 of 407 self-consistent, against a guard right about 27% of what it touched. The
+    # divisor is per axis: a span of k cells means k + 1 of them.
+    cell_scale = None
     if assume.assumed('fx.branchoffset') == 'cell' and patterns:
-        _g = int(round(len(patterns) ** 0.5))
-        if _g > 1 and _g * _g == len(patterns):
-            cell_scale = 1.0 / _g
-            assume.note(getattr(rec, 'index', -1))
+        _b = [np.asarray(q.get('branchoffset'), dtype=np.float64).ravel()
+              for q in patterns if q.get('branchoffset') is not None]
+        if len(_b) == len(patterns) and _b:
+            _w = max(x.size for x in _b)
+            _a = np.array([np.pad(x, (0, _w - x.size)) for x in _b])
+            _d = []
+            for _k in range(min(2, _a.shape[1])):
+                _sp = float(_a[:, _k].max() - _a[:, _k].min())
+                _d.append(1.0 / (round(_sp) + 1.0)
+                          if _sp >= 1 and abs(_sp - round(_sp)) < 1e-4 else 1.0)
+            if any(x != 1.0 for x in _d):
+                while len(_d) < 2:
+                    _d.append(1.0)
+                cell_scale = np.asarray(_d, dtype=np.float32)
+                assume.note(getattr(rec, 'index', -1))
 
     # AN ENTRY THAT STATES NEITHER SHAPE NOR EXTENT: see assume.QUESTIONS['fx.sizeless'].
     # The default stays 'fill' -- a full-cell rect, today's behaviour -- because that is
@@ -1313,7 +1345,9 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
                 p['patternsize'] = np.full(2, 0.5 if _sizeless == 'half' else 0.25,
                                            dtype=np.float32)
         src = image_for(p)
-        base = val(p, 'branchoffset', _ZERO2) * cell_scale
+        base = val(p, 'branchoffset', _ZERO2)
+        if cell_scale is not None:
+            base = base * cell_scale[:base.size]
         off = val(p, 'frameoffset', _ZERO2)
         size = val(p, 'patternsize', _ONE2)
         if size_scale != 1.0:
