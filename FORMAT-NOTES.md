@@ -36082,3 +36082,26 @@ vs engine 0.0483), so wiring count = N² reproduces it and the acceptance test a
 Caveats to settle by score: N² assumes a square grid (rows=cols=N — true for both measured
 records); and the extraction is verified on four near-identical Chesterfield placement
 programs, so generalising to other packages is a separate check.
+
+### Count = N² wired and scored (CLOSED, with guards); N² square validated corpus-wide
+
+Peer 0b wired the semantic extraction (grid width N = the constant $number is divided by in
+floor($number/N); emission count = N², scanner held once) behind the 'divisor' arbitration
+key and scored it on Chesterfield: overall MAE 0.0856 → 0.0557, five of six channels improve,
+height 4× (worst channel → among the best), basecolor goes from unrendered to scored,
+metallic 0.0199→0.1181 std against reference 0.1733. The largest correction to this pack
+since the levels gamma fix. `normal` REGRESSES (0.0742→0.0881, std overshoots to 0.1512 vs
+0.0722) — a genuine residual (16 stamps where one was, some channels overshoot), left as a
+candidate not a default.
+
+Generalization census (scanner+grid fxmaps records, every 4th package, n=72):
+- divisor extraction resolves cleanly on 49/72 (68%); 23 use an unparsed placement structure.
+- **N² SQUARE assumption validated 49/49**: every record with both row-divisor N and column
+  pitch (1/pitch) has rows == cols EXACTLY, across N = 1,2,3,5,6,8,10,11,12,16,18,32 and up.
+  No non-square specimen. So grid_width is genuine per-record node semantics, not the constant
+  4 Chesterfield carried.
+- GUARD: 6 records have N>32 (RoadLines 768, GAR 128/200, terracotta 130) — square but N²
+  is an implausible emission count (768²≈590k), so those use $number at pixel granularity
+  (coordinate normalized by canvas size), and the `$number/N` extraction over-triggers. The
+  emit-N² rule needs a plausibility guard: only N≤~32 stamp-scale grids, or a structural check
+  that the divisor feeds the emission position and not a sampler coordinate.
