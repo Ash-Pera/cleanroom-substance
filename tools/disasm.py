@@ -36,7 +36,7 @@ NAMES = {
  (1,0x31):'max',     (2,0x31):'max',
  (1,0x32):'rand',
  (1,0x33):'samplelum',(1,0x34):'samplecol',
- (1,0x0B):'while',    (0,0x0B):'while',
+ (1,0x0B):'while',    (0,0x0B):'while',    (2,0x0B):'while',
  (0,0x03):'cache_read', (1,0x03):'cache_read', (2,0x03):'cache_read',
  (0,0x06):'cache_write',(1,0x06):'cache_write',(2,0x06):'cache_write',
  (0,0x1A):'and',     (0,0x1B):'or',      (0,0x1C):'not',

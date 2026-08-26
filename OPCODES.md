@@ -163,7 +163,10 @@ operands name *expression trees* re-evaluated per iteration, so a decoder emitti
 instructions in linear order is wrong here — the one place straight-line translation fails.
 The runtime batches all samples, so a correct implementation carries a per-lane `active`
 mask and freezes a lane's writes and result (`select(active, new, old)`) once its condition
-holds. Five forms: `194B`, `150B`, `190B`, `184B` (returns bool2), `15CB`.
+holds. Six forms: `194B`, `150B`, `190B`, `184B` (returns bool2), `15CB`, and `1A0B`
+(returns int1 — one instance, in `TatamiSubstance001`, identified structurally rather than
+by frequency: its operands are `seq` init, a **bool** `lt` condition, and a `set` body, the
+exact signature the five commoner forms share).
 
 **`0x36` = `pow` and `0x35` = `log2`.** Both proved against the inverse sRGB transfer
 function `((s+0.055)/1.055)^2.4`, the same closed form used to confirm the `ln`/`exp2`
