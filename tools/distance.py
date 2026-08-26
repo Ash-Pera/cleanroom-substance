@@ -120,6 +120,29 @@ def distance_param(rec, eval_program, inputs):
     # than a program is the same kind of claim and deserves the same treatment -- it turns a
     # plausible-wrong into a visible-uncertain, which is the one lesson this decode keeps
     # relearning.
+    # THE SLOT IS DERIVABLE, so try the rule before scanning for a plausible-looking
+    # number. Containment against permitted sources puts a filter's float parameter at
+    # `layout start + 1 + class bit 7 + class bit 11` in 38 of 38 located pairings across
+    # six filters, `distance` among them with 9 -- see tools/param_slots.py.
+    #
+    # It matters here because the scan below bounds the value at REFERENCE_PX, and
+    # sci_fi_elements_02 records 3733 and 3734 hold 512.0 at the derived slot: a full-width
+    # distance on a 512-wide map, refused as implausible only because the bound is a fixed
+    # 256. A structural rule does not have to guess what a plausible number looks like,
+    # which is the failure mode the comment above is about.
+    #
+    # Still LOW CONFIDENCE. The rule is verified on records that DECLARE a value in a
+    # paired source; these records are not among them, so the slot is derived and the value
+    # in it is read, not confirmed.
+    try:
+        _e, _start = rec.layout
+        _at = _start + 1 + ((rec.cls >> 7) & 1) + ((rec.cls >> 11) & 1)
+    except Exception:
+        _at = None
+    if _at is not None and _at < len(rec.words):
+        f = struct.unpack('<f', struct.pack('<I', rec.words[_at]))[0]
+        if np.isfinite(f) and 1e-3 < abs(f) <= 4.0 * REFERENCE_PX:
+            return float(f), 'slot %d by the layout rule (LOW CONFIDENCE)' % _at
     edges = set(rec.layout[0] or ())
     for si in range(2, min(len(rec.words), 9)):
         if si in edges:
