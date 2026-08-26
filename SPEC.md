@@ -1,0 +1,331 @@
+# The `.sbsar` / `.sbsasm` format — specification
+
+A concise, self-contained description of Adobe Substance's compiled material format, as
+reconstructed by clean-room analysis. It is written to be *sufficient to build a reader*:
+every structure below can be located by pointer arithmetic from the file itself, with no
+fitted tables and no per-file heuristics. Numbers quoted as agreement rates are corpus
+measurements over 383 distinct specimens.
+
+Conventions: little-endian throughout; all sizes in bytes unless stated in *words*
+(1 word = 4 bytes); a **pointer** in this format is stored as `target − 52` (the "+52
+skew"), so every pointer is dereferenced as `stored_value + 52`.
+
+---
+
+## 1. Layers
+
+A `.sbsar` is a 7-zip archive. The material lives in two parallel files per graph:
+
+```
+assemblies/content/0000/<name>.xml       manifest — inputs, outputs, GUI, presets (has a DTD)
+assemblies/content/0000/<name>.sbsasm    compiled graph — the binary this spec describes
+assemblies/content/0000/thumbnail.png    icon
+```
+
+The **manifest** is plain XML (`formatversion="2.1"`) and is the layer existing tools read;
+it carries parameter declarations but *no graph topology*. The **`.sbsasm`** carries the
+compiled graph: a directory of records (filter nodes), a stream of bytecode programs
+(computed parameters), a value table (baked parameters), and an interface block (the
+package's inputs and outputs). This spec is about the `.sbsasm`.
+
+---
+
+## 2. `.sbsasm` header (0x00–0x38)
+
+Fixed 0x38-byte header, identical field layout in every specimen.
+
+| offset | size | field |
+|---|---|---|
+| 0x00 | 4 | magic `"SBAM"` |
+| 0x04 | 4 | **assembly (cooker) version** — see note |
+| 0x08 | 8 | per-file uid |
+| 0x10 | 4 | total file size (exact) |
+| 0x14 | 4 | `0x1C` (const) |
+| 0x18 | 4 | `0` (const) |
+| 0x1C | 4 | pointer to trailer = `filesize − 28` |
+| 0x20 | 4 | `0x00010002` (const) |
+| 0x24 | 4 | `0` (const) |
+| 0x28 | 4 | `1` (const) |
+| 0x2C | 4 | value-table end, as a pointer (`table_end − 52`) |
+| 0x30 | 4 | `2` (const) |
+| 0x34 | 4 | `0` (const) |
+| 0x38 | — | body begins |
+
+**Version (0x04)** takes the values `0x0002_0000 … 0x0009_0000` and identifies *which
+cooker published the file*, not a release date. It matters because it changes one encoding
+rule (image-input slot width, §7.2). It is independent of the manifest's `formatversion`.
+
+---
+
+## 3. Overall body layout
+
+```
+0x00            file header (0x38)
+0x38            embedded resource segment   ]  length == base   (image payloads; §9)
+base + 0x38     record directory            ]
+                records (code region)       ]
+                value table                 ]
+                interface block             ]
+filesize − 28   trailer (root pointers)
+```
+
+`base` is the size of the resource segment. **`base == 0`** for packages that embed no
+images (the directory then starts at 0x38); otherwise the segment displaces the directory.
+A reader must not assume the directory is at 0x38 — it is located from the trailer.
+
+---
+
+## 4. Trailer — the root pointer block (last 28 bytes)
+
+Seven words at `filesize − 28`. A reader needs only the magic from the header; everything
+else is reachable from here.
+
+| word | meaning | agreement |
+|---|---|---|
+| 0 | per-file identifier | — |
+| 1 | small enum (0–5, 8) | unexplained |
+| 2 | per-file identifier | — |
+| 3 | pointer (into directory or body) | 99% valid `+52` |
+| 4 | **record-directory start**, as pointer | 100% |
+| 5 | **record-directory end**, as pointer | 100% |
+| 6 | **value-table start**, as pointer | 100% |
+
+So `dir_at = word4 + 52`, `count = (word5 − word4) / 4`, `table_start = word6 + 52`, and
+`base = word4 + 52 − 0x38`.
+
+---
+
+## 5. Record directory
+
+A contiguous array of `count` u32 **absolute file offsets**, strictly increasing, each
+pointing at one record. Validated over the full length in every specimen. Sizes range
+2 – 39,627 entries (median 1225). A record's extent is `[offset[i], offset[i+1])`; the
+last runs to the value table. **Record length is not stored** — it is framed only by the
+directory, which is why a correct reader must always walk records from the directory and
+never scan the body linearly.
+
+---
+
+## 6. Records — the mask-walk
+
+A record is one filter node. Its layout is not tabulated anywhere; it is **walked** from
+two bitmask words at its head. This is the single structural primitive of the format, and
+it recurs at three scales (record header, FX-Map node §8, baked value width).
+
+### 6.1 The primitive
+
+A structured object is `[mask][fields…]`. The set bits of the mask, read in ascending
+order, enumerate which fields are present; **each field's width is a constant of its
+kind**. Nothing stores an offset — a reader advances position by the width of each present
+field; a writer emits in the same order.
+
+### 6.2 The two header words
+
+```
+word0:  low16  = flags (bit 0 = colour: 0 grayscale, 1 colour)  +  filter id
+        high16 = CLASS WORD — presence mask over INHERITED parameters
+word1:          two-bit code per field — the filter's OWN parameters
+```
+
+- **Class word (word0 high half):** each set bit adds one inherited-parameter field, in
+  ascending bit order. Widths come from the manifest type of the parameter that bit gates
+  (§7.2): bit 10 is `$outputsize` (integer2 → 2 words); the other common inherited
+  parameters are 1 word each.
+- **Word1 two-bit codes:** each of the filter's own parameters is a 2-bit field:
+
+  | code | meaning | cost |
+  |---|---|---|
+  | `00` | absent | 0 words |
+  | `01` | baked (value stored inline / in the value table) | width of the field's kind |
+  | `10` | program (a bytecode pointer) | 1 word |
+  | `11` | image input (an **edge**) | 1 slot |
+
+**Field kinds and widths** (words): scalar `Float1` = 1; `Float2` = 2; `Float4` = 4;
+*per-channel* fields are `Float1` when grayscale and `Float4` when colour, selected by
+word0 bit 0. These are the only widths in use — "4 is the widest scalar the format has".
+
+### 6.3 Edges (graph connectivity)
+
+An **edge slot** holds a **backward record index** (the index of the record that feeds
+this input), or the sentinel `0xFFFFFFFF` / `0` for absent. Edges come from three places,
+in this order: a filter's fixed *base* image inputs (contiguous from slot 2), any word1
+field with code `11`, and — for a few filters — an *arity integer* (§6.4). Because edges
+are backward indices, a walk can be checked loudly: any slot the walk calls an edge must
+hold a value `< own index`, or the walk is wrong.
+
+### 6.4 The four layout alphabets
+
+The file states each filter's layout in one of four self-describing ways; a reader
+handles all four with the one primitive and needs no fitted table:
+
+1. **Two-bit presence codes** — word1 as above (blend, levels, transformation, warps).
+2. **Arity integer** — the header states an input *count* as a small integer in word1 and
+   the walk reads that many edge slots (pixelprocessor; fxmaps, after its tree-root
+   pointer).
+3. **Paired conjunction** — two class-word bits that, set *together*, name one field
+   (bitmap's bits 24+27 = the pixel-offset word).
+4. **Class-word popcount** — the number of leading block slots that are *programs* is
+   `popcount(class_word & mask)`; the rest are baked (blur, warp). This decides slot
+   *role*, and through role, extent (e.g. `nprog == 0` ⇒ a baked `(w,h)` size pair
+   instead of one program pointer).
+
+A walk mechanism reproduces record layout for **99.97%** of the manifest-bearing corpus.
+The only filters where the file genuinely does not state the layout (shuffle, emboss,
+vectorshape) are the residue; `vectorshape` is additionally behind the provenance wall
+(§11).
+
+---
+
+## 7. Parameters
+
+A filter's parameters are either **computed** (a bytecode program) or **baked** (a
+constant). Computed parameters are pointers into the instruction stream (§10). Baked
+parameters live in the value table.
+
+### 7.1 Value table
+
+A single array named by trailer word 6 and bracketed by header 0x2C. It holds every baked
+scalar/vector value; 98% of its entries are byte-exact against manifest defaults, the rest
+within float-rounding, none unexplained. Values are addressed positionally by the walk.
+
+### 7.2 Graph-input default table
+
+The pointer at 0x2C also frames a table of **graph input defaults** — the graph's
+`<inputs>` plus the package `<global><inputs>`, **sorted by manifest `uid` ascending**.
+Element width follows the manifest `type` code — this is the *width legend* the whole
+mask-walk reads rather than fits:
+
+| type | meaning | width |
+|---|---|---|
+| 0–3 | float1..float4 | 4N |
+| 4, 8, 9, 10 | int1, int2..int4 | 4N |
+| 5 | image input | **16 bytes from v8 on, 0 before** |
+| 6, 7 | string, font | 0 (stored elsewhere) |
+
+The image-input width is the one version-dependent rule in the format: from assembly
+version v8 (`0x0008_0000`) an image input occupies a 16-byte `f32×4` slot at its uid
+position; in v2–v6 it occupies none. Getting it wrong shifts the whole table by
+`16 × (image count)`.
+
+---
+
+## 8. FX-Map trees
+
+`fxmaps` records (filter id 4) contain a tree of pattern-generator nodes, reached from a
+forward pointer at slot 2 (`node_ptr + 52`). A tree holds two distinct structures,
+discriminated by the tag word's **low nibble**:
+
+- **nibble 9 or 0xB → a node header.** A node is the mask-walk one scale down:
+  `[tag][fields]`, where the tag's low byte is a *kind* fixing a constant base size and the
+  remaining tag bits are a presence mask over the same 1/2/4-word widths. Known node kinds
+  and sizes (words, including the tag): `0x8b`=3, `0x89`=4, `0xcb`=4, `0x99`=5, `0x9b`=4,
+  `0xab`=4, `0xa3`=4, `0xdb`=5, `0x0b`=2 (a leaf: tag + one pointer).
+- **nibble 8 → a paramset table entry**, *not* a node. Entry lengths are given by the
+  entry's own tag (the same "the tag spells it out" method), not by the node sizer.
+- **high half `0x0002` → a chain** (a linked list); its cells are run-length, not
+  fixed-size, and are excluded from node sizing.
+
+Nodes carry the FX-Map parameters (pattern type, size, colour, etc.). The pattern
+*footprint* (`patternsize`) — how large each emitted pattern is on the canvas — is the one
+FX-Map field not yet decoded, and is the principal blocker to correct rendering.
+
+---
+
+## 9. Embedded images (resource table)
+
+When `base != 0`, the resource segment `[0x38, base+0x38)` holds raw image payloads, and a
+**resource table** sits immediately before the interface block: one 8-byte record per
+image.
+
+```
+u32 format_tag
+u32 offset            byte offset of the image within the segment (+4)
+```
+
+`format_tag` decodes as four bytes: `[3]` format (`01`=L, `02`=RGB, `03`=RGBA, `05`=L16,
+`07`=RGBA16), `[2]` depth (`08`=8-bit, `18`=16-bit), `[1]` = `log2(h)<<4 | log2(w)`
+(`0xAA` = 1024×1024), `[0]` colour flag (`20`=grayscale, `21`=colour). The three fields are
+mutually consistent (bytes-per-pixel = channels × depth). Records sit 8 or 32 bytes apart
+depending on the file, so the table is found by *scanning for valid tags*, not walked at a
+fixed stride. Consecutive offsets give each image's size; the sizes sum to the segment
+length exactly (a strong integrity check). Dimensions resolve for 190/200 images, almost
+all 1024×1024.
+
+---
+
+## 10. Instruction stream (the ISA)
+
+Computed parameters are **bytecode programs** reached from record slots. A program is a
+sequence of instructions in a `u16` token stream (little-endian **`(u16 arg, u16 opcode)`**
+words, opcode in the high half).
+
+### 10.1 Encoding
+
+Each instruction is one opcode token followed by its operand tokens (three-address code,
+one result per instruction, contiguous SSA value numbering).
+
+| bits | field |
+|---|---|
+| 15–10 | operand-token count — **instruction length = this + 1 tokens** |
+| 9–8 | type: 0 bool, 1 float, 2 int (3 unused) |
+| 7–6 | component count − 1 |
+| 5–0 | operation id |
+
+The length rule `length = (opcode >> 10) + 1` holds for **every** opcode in
+`0x0400–0x7FFF`, so any program can be fully tokenised with no semantic table — unknown
+operations are skipped exactly, not guessed past. (Records, `0x8000`+, are exempt: they
+are 4-aligned and separately framed by the directory.)
+
+### 10.2 Operands and immediates
+
+Most operands are value numbers naming an earlier result in the same program. Some are
+immediates: the swizzle mask, variable-slot indices, and the 4-byte immediate of a
+constant (`0x00`) or an **input reference** (`0x02`). Constants with a 4-byte immediate
+come in two forms differing by `0x0400` (a 2-byte alignment pad).
+
+**Inputs are referenced by uid**: a reference opcode is followed by a `u32` input uid, and
+bits 6–7 of the opcode encode component count − 1 (`0x0902/0x0942/0x0982/0x09C2` =
+float1..4; `0x0A02/0x0A42` = int1..2) — a clean 100% mapping over 326,768 references.
+**Outputs are positional**, identified only by index in the interface block's output array;
+they never appear in code.
+
+### 10.3 Operation set
+
+**41 operations in 63 type-specific forms, all named** (see `OPCODES.md` for the full
+table), covering 96.5% of decoded instructions by operation-id on distinct specimens; the
+residue is component/length variants plus decode noise. Notable semantics: `0x0D` construct
+vector (always 2 operands, concatenates), `0x10` swizzle, `0x09` select/ifelse, `0x32`
+seeded rand, `0x33/0x34` sample luminance/colour, `0x0B` **`while`** (a loop:
+`(init, cond, body, …)`, carries no immediate). The compiler performs common-subexpression
+elimination and inlines sub-graph instances, so instruction counts can be far below
+authored node counts.
+
+### 10.4 System variables
+
+`0x01` reads a system variable by immediate: 0 `$time`, 1 `$size`, 3 `$sizelog2`,
+8 `$pos`, 10 `$number` (FX-Map only).
+
+---
+
+## 11. Interface block
+
+One per package, a footer immediately after the value table:
+
+```
+[value table][u16 n_out][u16 n_in][output uid array][input descriptor array][16-byte footer]
+```
+
+It aggregates every graph in a multi-graph package. `validate_corpus.py` confirms
+`(n_out, n_in)`, both uid arrays, the footer, and the record directory on 383/383 specimens.
+
+---
+
+## 12. Provenance and scope
+
+This specification was produced clean-room: no Adobe Substance engine binary was run,
+disassembled, or inspected, and any source file bearing `<author v="Allegorithmic">` was
+excluded from analysis. The format's *structure* is fully recovered — a reader can locate
+and walk every region above from the file alone. What remains open is *semantics*: the
+meaning of some filter parameters, the FX-Map pattern footprint (§8), and a handful of
+provenance-walled specifics (e.g. `vectorshape` layout, inline FX parameter names). Reading
+the file and reconstructing its graph is solved; rendering it pixel-for-pixel is not.

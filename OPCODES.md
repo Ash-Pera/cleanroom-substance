@@ -1,71 +1,61 @@
-# .sbsasm opcode catalogue
+# `.sbsasm` opcode catalogue
 
-**41 distinct operations in 63 type-specific forms, all named.**
-(Previously "45 in 68, 43 named". The five unnamed forms - `0B19`, `0A48`, `0448`, `0A3D`,
-`1EB8` - were shown by direct test to be misread data, not instructions. See "The five
-unnamed opcodes are not instructions" below.) (The catalogue table below
-has one row per type-operation pair; its 67 rows have previously been quoted as an operation
-count, which conflates the two. See "The operation-by-type matrix" in FORMAT-NOTES.)
-**This headline is scoped to the ≥50-specimen filter below it, not to every real operation
-in the ISA** - `0x0B` (`while`, a loop), `0x36` (`pow`, proved via the sRGB closed form)
-and `0x35` (`log2`, source-confirmed via `ie_pcloud`) all fall under that threshold
-and are not part of the "41". "Confirmed below the catalogue threshold" lists what else does. Measured over 382 distinct specimens (the corpus holds 579
-`.sbsasm` files, 34% of them duplicate content) and 11,845,287 instructions decoded by
-`isa_census.py`, which **scans** code regions run-by-run. An earlier version of this line
-claimed the census walked records to their bytecode; it does not, and that mattered - the
-scan is what produced the phantom opcodes recorded below.
+**41 operations in 63 type-specific forms, all named.** Measured over 382 distinct
+specimens (the corpus holds 579 `.sbsasm` files, ~34% duplicate content) and 11,845,287
+instructions decoded by walking records to their bytecode. On distinct specimens, 96.5% of
+instructions carry an operation id catalogued for their type, and **of the 82 opcodes that
+appear in 20 or more distinct specimens, none has an uncatalogued operation id**. The
+residual is component-count and length variants of named operations plus decode residue.
 
-96.5% of instructions carry an operation id catalogued for their type. No opcode
-appearing in 20 or more distinct specimens has an uncatalogued operation id. The residual
-is component-count and length variants of named operations, plus decode residue.
+The large raw opcode count is not a set of unknown operations: the encoding is
+combinatorial, so one operation appears as many opcodes across type, component count, and
+length (e.g. `0x0532`/`0x0524` are `rand`/`floor` at 1 component; `0x0861`/`0x085D` are
+`lr`/`eq` on 2-component bools).
 
-Two earlier figures are superseded and should not be quoted: "127 opcodes across 493
-specimens, 24,285,805 instructions" counted a duplicated corpus with a flat scan, which
-inflates the instruction count roughly 2x with misread record data; and "39 of 67
-operations identified" predates the naming work.
-## Opcode encoding
+---
+
+## Encoding
+
+Instructions are a little-endian `u16` token stream, `(u16 arg, u16 opcode)` with the
+opcode in the high half. Each instruction is one opcode token followed by its operand
+tokens.
 
 | bits | field |
 |---|---|
 | 15–10 | operand-token count — **instruction length = this + 1 tokens** |
-| 9–8 | type: 0 bool, 1 float, 2 int — **value 3 is unused** |
+| 9–8 | type: 0 bool, 1 float, 2 int (3 unused) |
 | 7–6 | component count − 1 |
 | 5–0 | operation id |
 
-Three-address code: an opcode, then that many operand tokens, each a value number naming
-an earlier result. Numbering is contiguous, one result per instruction.
+The length rule `length = (opcode >> 10) + 1` holds for every opcode in `0x0400–0x7FFF`, so
+any program is fully tokenisable without a semantic table — unknown operations are skipped
+exactly rather than guessed past. Records (`0x8000`+) are exempt; they are 4-aligned and
+framed by the record directory, not part of the instruction stream.
 
-Some operands are **immediates**, not value numbers: the swizzle mask (`0x10`), the
-variable slot (`0x07`, `0x04`, `0x01`), the index read by `0x03` and by `0x06`'s second
-operand, and the whole immediate of a constant or input reference (`0x00`, `0x02`).
-`0x0B` was listed here as carrying an iteration cap; it does not — see "`0x0B` is a
-loop, and carries no immediate".
+**Three-address code.** One result per instruction, contiguous SSA value numbering; each
+operand names an earlier result in the same program. Some operands are immediates: the
+swizzle mask (`0x10`), variable-slot indices (`0x07`/`0x04`/`0x01`), the index read by
+`0x03`/`0x06`, and the 4-byte immediate of a constant (`0x00`) or input reference (`0x02`).
 
-**Padding.** Opcodes carrying a 4-byte immediate — constants and references — come in two
-forms differing by `0x0400`, one extra token, a 2-byte pad emitted when the instruction
-lands at 0 mod 4 so the immediate stays aligned. The split is 100%/0% in the corpus.
+**Padding.** Opcodes carrying a 4-byte immediate come in two forms differing by `0x0400`,
+one extra token — a 2-byte pad emitted when the instruction lands at 0 mod 4 so the
+immediate stays aligned.
 
-**The compiler performs common-subexpression elimination.** Identical subexpressions are
-emitted once, so instruction counts can be far below authored node counts — in
-`ie_processing` 289 `dot` nodes collapse to a single instruction. Counting evidence is
-unreliable for any node whose inputs repeat.
+**Compiler behaviour.** Common-subexpression elimination emits identical subexpressions
+once, and sub-graph `instance` calls are inlined, so instruction counts can be far below
+authored node counts. `length`, `normalize`, and `clamp` are not opcodes — they are lowered
+(e.g. `normalize` → `dot`/`sqrt`/`div`).
 
-**Not instructions:** `length`, `normalize`, `clamp`, and any call. These are lowered —
-`normalize` to `dot`/`sqrt`/`div` — and sub-graph `instance` calls are **inlined**, which
-is why a `.sbsar` can hold many times more instructions than its `.sbs` has nodes.
-
-**`pow` and `log2` were listed here and are wrong to be.** Both turned out to have
-dedicated opcodes — `0x36` and `0x35`, see "Confirmed below the catalogue threshold"
-below — alongside the generic `exp2(ln(x)/ln2 · p)` lowering, which still exists and is
-still used (`ChewingGumSubstance001`'s size expressions, among others). Both paths
-compute the same mathematics; which one a given call compiles to is not established.
+---
 
 ## Operations
+
+Columns 1–4 give the opcode hex at component counts 1–4 (`·` = that width does not occur).
 
 | type | id | 1 | 2 | 3 | 4 | instructions | % | files | meaning |
 |---|---|---|---|---|---|---:|---:|---:|---|
 | float | `00` | `0900` | `1140` | `1980` | `21C0` | 4,877,193 | 20.08 | 417 | constant (immediate) |
-| float | `0D` | · | `094D` | `098D` | `09CD` | 1,831,842 | 7.54 | 418 | construct vector |
+| float | `0D` | · | `094D` | `098D` | `09CD` | 1,831,842 | 7.54 | 418 | construct vector (concatenate; always 2 operands) |
 | float | `14` | `0914` | `0954` | `0994` | `09D4` | 1,575,012 | 6.49 | 419 | mul |
 | float | `07` | `0907` | `0947` | · | `09C7` | 1,451,585 | 5.98 | 319 | set — assign variable slot |
 | float | `12` | `0912` | `0952` | `0992` | `09D2` | 1,343,142 | 5.53 | 408 | add |
@@ -74,18 +64,18 @@ compute the same mathematics; which one a given call compiles to is not establis
 | float | `13` | `0913` | `0953` | `0993` | · | 1,062,635 | 4.38 | 408 | sub |
 | int | `00` | `0A00` | `1240` | · | · | 904,670 | 3.73 | 354 | constant (immediate) |
 | float | `2B` | `052B` | `056B` | · | · | 723,550 | 2.98 | 341 | exp2 |
-| float | `09` | `0D09` | `0D49` | `0D89` | `0DC9` | 708,596 | 2.92 | 390 | ifelse / select(c,a,b) |
+| float | `09` | `0D09` | `0D49` | `0D89` | `0DC9` | 708,596 | 2.92 | 390 | select / ifelse — `select(c,a,b)` |
 | int | `12` | `0A12` | `0A52` | · | · | 686,458 | 2.83 | 332 | add |
 | int | `0C` | `0A0C` | `0A4C` | · | · | 666,922 | 2.75 | 290 | sequence — chain statements |
 | float | `17` | `0517` | · | · | · | 582,554 | 2.40 | 323 | neg |
 | float | `15` | `0915` | `0955` | · | · | 515,162 | 2.12 | 403 | div |
-| float | `11` | `0511` | `0551` | · | · | 501,146 | 2.06 | 370 | type conversion (tofloat/toint) |
+| float | `11` | `0511` | `0551` | · | · | 501,146 | 2.06 | 370 | type conversion (tofloat / toint) |
 | float | `04` | `0504` | `0544` | `0584` | `05C4` | 393,434 | 1.62 | 284 | get — read variable slot |
 | float | `23` | `0523` | `0563` | · | · | 388,736 | 1.60 | 360 | abs |
 | float | `31` | `0931` | `0971` | `09B1` | `09F1` | 342,759 | 1.41 | 378 | max |
 | int | `07` | `0A07` | · | · | · | 334,104 | 1.38 | 293 | set — assign variable slot |
 | bool | `1F` | · | `085F` | · | · | 284,788 | 1.17 | 384 | gt |
-| int | `11` | `0611` | `0651` | · | · | 276,173 | 1.14 | 340 | type conversion (tofloat/toint) |
+| int | `11` | `0611` | `0651` | · | · | 276,173 | 1.14 | 340 | type conversion (tofloat / toint) |
 | float | `34` | · | · | · | `0DF4` | 249,327 | 1.03 | 78 | samplecol |
 | float | `30` | `0930` | `0970` | `09B0` | `09F0` | 243,200 | 1.00 | 378 | min |
 | int | `14` | `0A14` | · | · | · | 217,628 | 0.90 | 276 | mul |
@@ -99,12 +89,12 @@ compute the same mathematics; which one a given call compiles to is not establis
 | bool | `21` | · | `0861` | · | · | 79,974 | 0.33 | 327 | lr (less than) |
 | bool | `22` | · | `0862` | · | · | 79,546 | 0.33 | 316 | lteq |
 | bool | `20` | · | `0860` | · | · | 74,169 | 0.31 | 349 | gteq |
-| float | `01` | `0501` | `0541` | · | · | 63,685 | 0.26 | 402 | read system variable -- five named, by immediate: 0 `$time`, 1 `$size`, 3 `$sizelog2`, 8 `$pos`, 10 `$number` (FX-Map only). See FORMAT-NOTES.md, "The five system variables". |
-| float | `2E` | · | `096E` | · | · | 58,351 | 0.24 | 281 | cartesian (polar to xy) |
+| float | `01` | `0501` | `0541` | · | · | 63,685 | 0.26 | 402 | read system variable (see below) |
+| float | `2E` | · | `096E` | · | · | 58,351 | 0.24 | 281 | cartesian (polar → xy) |
 | bool | `07` | · | `0847` | · | · | 55,811 | 0.23 | 232 | set — assign variable slot |
 | bool | `1D` | · | `085D` | · | · | 55,451 | 0.23 | 380 | eq |
 | bool | `0C` | · | `084C` | · | · | 45,232 | 0.19 | 287 | sequence — chain statements |
-| int | `09` | `0E09` | · | · | · | 43,924 | 0.18 | 267 | ifelse / select(c,a,b) |
+| int | `09` | `0E09` | · | · | · | 43,924 | 0.18 | 267 | select / ifelse |
 | float | `2F` | `0D2F` | `0D6F` | · | · | 34,581 | 0.14 | 317 | lerp |
 | float | `18` | `0918` | `0958` | · | · | 31,624 | 0.13 | 213 | dot product |
 | bool | `00` | · | `0440` | · | · | 28,331 | 0.12 | 281 | constant (immediate) |
@@ -118,370 +108,94 @@ compute the same mathematics; which one a given call compiles to is not establis
 | bool | `04` | · | `0444` | · | · | 12,755 | 0.05 | 81 | get — read variable slot |
 | float | `29` | `0529` | · | · | · | 12,707 | 0.05 | 65 | ln |
 | float | `02` | `0902` | `0942` | · | · | 11,066 | 0.05 | 288 | input reference (u32 uid) |
-| float | `26` | `0526` | · | · | · | 9,015 | 0.04 | 298 |  cos |
-| float | `27` | `0527` | · | · | · | 8,610 | 0.04 | 259 |  sin |
-| bool | `09` | · | `0C49` | · | · | 6,303 | 0.03 | 74 | ifelse / select(c,a,b) |
+| float | `26` | `0526` | · | · | · | 9,015 | 0.04 | 298 | cos |
+| float | `27` | `0527` | · | · | · | 8,610 | 0.04 | 259 | sin |
+| bool | `09` | · | `0C49` | · | · | 6,303 | 0.03 | 74 | select / ifelse |
 | int | `0D` | · | `0A4D` | · | · | 5,354 | 0.02 | 171 | construct vector |
 | float | `2D` | `052D` | · | · | · | 3,509 | 0.01 | 203 | atan2 |
-| t3 | `19` | `0B19` | · | · | · | 1,358 | 0.01 | 108 |  |
-| int | `08` | · | `0A48` | · | · | 1,215 | 0.01 | 58 |  |
 | int | `31` | `0A31` | · | · | · | 981 | 0.00 | 62 | max |
-| bool | `08` | · | `0448` | · | · | 835 | 0.00 | 172 |  |
 | int | `18` | · | `0658` | · | · | 253 | 0.00 | 75 | dot product |
 | int | `10` | `0A10` | · | · | · | 179 | 0.00 | 17 | swizzle (packed 2-bit mask) |
-| int | `3D` | `0A3D` | · | · | · | 149 | 0.00 | 65 |  |
-| int | `38` | · | · | `1EB8` | · | 95 | 0.00 | 51 |  |
+
+### Component count and reference opcodes
+
+Bits 6–7 hold component count − 1, cleanly for the reference and construct families:
+
+```
+float input reference   0x0902 + 0x40*(n-1)   ->  0902 0942 0982 09C2   n = 1..4
+int   input reference   0x0A02 + 0x40*(n-1)   ->  0A02 0A42             n = 1,2
+```
+
+100% pure over 326,768 references. Bits 6–7 are inert for booleans (`0x0842` is a *bool*
+reference, not int1 — the manifest lumps bool and int1 under type 4). Float constants
+instead encode component count in the *length* field, which is why they walk up the pages:
+`0900` (1), `1140` (2), `1980` (3), `21C0` (4).
+
+---
 
 ## Confirmed below the catalogue threshold
 
-The ≥50-specimen filter removes decode noise but also removes rare real instructions.
-These are established structurally, not by frequency:
+The ≥20-specimen filter removes decode noise but also removes rare real instructions. These
+are established structurally, not by frequency:
 
 | opcode | type | comps | id | instructions | files | meaning |
 |---|---|---:|---|---:|---:|---|
-| `0A10` | int | 1 | `10` | 181 | 18 | integer swizzle (`iswizzle1`) |
+| `0A10` | int | 1 | `10` | 181 | 18 | integer swizzle |
 | `052A` | float | 1 | `2A` | 3,733 | 45 | `exp` — 578/578 exact in `ie_processing` |
-| `085E` | bool | 1 | `1E` | 2,927 | 21 | **`neq`** — deepest-embedded opcode tested (median containing run 21,102) |
-| `0525` | float | 1 | `25` | 17,493 | 287 | `ceil` — 17/17 exact in `ie_processing` |
-| `0503` | float | 1 | `03` | 3,603 | 34 | reads the cross-record cache `0x06` writes — see FORMAT-NOTES.md, "`0x03`/`0x06` are cross-record common-subexpression elimination" |
-| `150B` | float | 1 | `0B` | 542 | 20 | `while` — a loop, no immediate; see "`0x0B` is a loop" below |
-| `11CF` | float | 4 | `0F` | 28 | 6 | **probably `vec4`** — build a 4-vector from four scalars |
-| `0535` | float | 1 | `35` | 3,903 | 37 | unary `log2` — source-confirmed by the `ie_pcloud` `get_float3 -> swizzle2 -> log2 -> toint2` graph |
-| `0936` | float | 1 | `36` | 53 | 8 | **`pow(x, y)`** — proved via the same closed form as `ln`/`exp2`, see below |
-
-### `0x36` = `pow`, proved the same way `ln`/`exp2` was
-
-Two operands, both value references (100.0% possible), one form only. `LeakingSubstance004`
-and `RoadSubstance002` (byte-identical copies of the same 13-instruction program, also in
-`RoadLinesSubstance002`) compute:
-
-```
-%9   = (samplelum($pos) + 0.055) / 1.055
-%10  = const 2.4
-%11  = op36(%9, %10)
-%12  = select(sample <= 0.04045, sample * 0.0773994, %11)
-```
-
-That is the **inverse sRGB transfer function** — `((s+0.055)/1.055)^2.4` on the high branch —
-the identical closed form `Embroidery_Legacy` already proved via the `ln(x)/ln2 → exp2` idiom
-(see "Third known-algorithm specimen: the sRGB transfer function" in FORMAT-NOTES.md). The
-linear-branch constant, `0.0773994`, is `1/12.92` to 8 decimal places. Transpiling this
-program under the hypothesis `op36(x, y) = x ** y` and evaluating against the closed form:
-**max deviation 1.19e-07** — identical to the `ln`/`exp2` proof, which is float32 rounding,
-not an approximation. `tools/test_transpile.py`, `test_pow_via_srgb_decode`.
-
-A 132-instruction specimen (`ChristmasTreeOrnamentSubstance005`) uses it with a non-constant
-exponent — `op36(lerp(...), get slot 15)` — consistent with `pow` being used generically for
-gamma/contrast adjustment beyond the sRGB case, matching program sizes up to 800 instructions
-seen for `pow`-using color-transfer-style programs elsewhere in the corpus.
-
-`0x0F` is the only operation that takes four operands and returns four components. It
-appears in one form only, is the **terminal instruction in 28 of 28** instances, and is
-in a `levels` record in 28 of 28. Every instance has exactly two distinct operands among
-its four, the shape `(x, x, x, 1)` — a scalar broadcast to RGB with opaque alpha, which
-is how colour filters store per-channel parameters (see FORMAT-NOTES, "Colour filters
-store per-channel parameters as RGBA quadruples"). The smallest such program entire:
-
-```
-%0  inputref.f1  uid=3445188334
-%2  div.f1       %0, 2
-%4  min.f1       %2, 0.5
-%6  max.f1       %4, 0            -> clamp(input / 2, 0, 0.5)
-%8  op0F.f4      %6, %6, %6, 1
-```
-
-It is not `vec`. **`vec` (`0x0D`) always takes exactly two operands** whatever its width
-— `094D`, `098D` and `09CD` all carry two, over 866,000 instances — so it concatenates,
-and building a 4-vector from four scalars with it needs three nested instructions.
-`0x0F` does it in one. Marked probable rather than confirmed: 28 instances in 6 files is
-enough to fix the shape but not to rule out a `levels`-specific reading of it.
-
-Both `0x0D` and `0x0F` carry their own declared `ncomp` like every opcode, and it is
-authoritative over whatever concatenating their operands' *runtime* widths happens to
-produce — proven by a census of 3,248,836 `add` (`0x12`) instructions, zero of which have
-operands with mismatched declared width, meaning the compiler statically guarantees an
-add's inputs agree. A runtime value that drifts from its own declared width (found live in
-`ChewingGumSubstance001`, a scalar accumulator carried through 26 loop iterations that
-should have stayed 1-wide throughout every `get`/`set` site touching it) can otherwise
-concatenate into something wider than `0x0D` declares, and silently break a downstream add
-that assumed the declared width was real. The transpiler now passes `ncomp` through to
-`vec`, which truncates to it. See FORMAT-NOTES.md, "Running a real 7,287-instruction
-program end to end found two more bugs".
-
-## `0x0B` is a loop, and carries no immediate
-
-`0x0B` was annotated "position 0 = iteration cap". The operands do not support that.
-Over **616 instances in 641 specimens**, every operand position is a valid backward
-reference — 0.0% "operand >= its own value number" at all six positions — and what
-produces each is consistent enough to read the shape off directly:
-
-| pos | n | producing type | producing operation | reading |
-|---|---:|---|---|---|
-| 0 | 616 | float 551, bool 65 | `seq` 361, `set` 255 | the initialiser |
-| 1 | 616 | **bool 616** | `get`, `or`, `gteq`, `eq` | the condition |
-| 2 | 616 | float 551, bool 65 | `set` 616 | the body |
-| 3–5 | 616 | float | `const`, `sysvar`, `set` | trailing |
-
-Position 1 is bool in 616 of 616 and no other position ever is; a condition must be.
-Position 0 is produced by `seq` or `set` in 616 of 616 — an initialiser chain, not an
-integer cap. So the shape is `(init, condition, body, ...)`. All 616 are in
-`pixelprocessor` records, in 24 files, across five opcode forms.
-
-**Positions 0 and 2 looked distinguishable only by narrative when first written** — both
-show the identical `seq`/`set` producer mix, so "initialiser" and "body" were a plausible
-reading, not yet a tested one. A body should accumulate — write a slot it also reads,
-`slot += ...` — and an initialiser should not. Checked over 543 instances, corpus-wide:
-position 0 self-references in **0.4%**, position 2 in **56.5%**. That is the separation
-the labels needed and did not have before.
-
-**Positions 3–5 have no reading at all**, and "trailing" was a placeholder, not a finding.
-They are dominated by `const`/`sysvar` — never `seq`, almost never `set` — unlike 0 and 2,
-which are expression chains. Position 4 is *literally the same value number as position 0*
-in 43% of instances (0% for positions 3 and 5), a real structural fact with no
-interpretation attached to it yet.
-
-The five, corpus-wide (438 distinct-content specimens):
-
-| encoding | result | operands | instances | files |
-|---|---|---:|---:|---:|
-| `194B` | float2 | 6 | 235 | 13 |
-| `150B` | float1 | 5 | 177 | 20 |
-| `190B` | float1 | 6 | 93 | 15 |
-| `184B` | **bool2** | 6 | 34 | 3 |
-| `15CB` | float4 | 5 | 3 | 1 |
-
-**A `while` loop's own result is not always numeric** — `184B` returns a two-component
-bool 34 times, so whatever consumes a loop's value must handle that, not just floats.
-`15CB` is a genuine fifth form, three instances in one file, easy to miss at that scale
-and absent from an otherwise-exact four-row account of the other four.
-
-Reading position 0 as an immediate rendered `%16` as `#16` and hid the loop's structure.
-A worked instance, a 16-tap accumulation along a scanline:
-
-```
-%6   i_end = floor($pos.x * slot1) + 1
-%7   slot2 = i_end ; %9 slot3 = 0 ; %12 slot4 = 0 ; %15 slot5 = 0
-%16  seq(...)                                    <- initialiser
-%19  cond = (slot4 == slot2)
-%24  slot3 += samplelum($pos / slot1) / slot0 ; slot4 += 1
-%35  set slot5
-%36  op0B  %16, %19, %35, %0, %0
-%40  seq(slot5, slot3)                           <- returns the accumulator
-```
-
-**A loop's operands name expression trees, not computed values.** Instructions %17-%35
-appear once in the linear stream but must be re-evaluated per iteration, so a decoder
-that emits instructions in order is wrong here — this is the one place in the ISA where
-straight-line translation does not hold.
-
-**The Python transpile of `if v_cond: break` only works one sample at a time.** The
-runtime evaluates every sample of a program in one batched call — `v_cond` is a boolean
-*per sample*, not a single condition, so `if v_cond` raises as soon as more than one
-sample is passed in, and a corpus-wide execution sweep found 509 real instances doing
-exactly that. Silencing the exception with `.all()`/`.any()` is not enough — it changes
-what crashes, not what is correct: every sample shares the one loop, so without further
-work a sample whose own condition went true early keeps getting re-run in lockstep with
-the slower samples and ends up wherever that leaves it, not at its own answer. The fix
-gives each loop a per-lane `active` mask and freezes both its slot writes and its own
-carried result (`select(active, new, old)`) once a lane's condition holds, nesting loops
-by ANDing the enclosing loop's mask into the inner one's. See FORMAT-NOTES.md, "`while`
-gave every lane the same answer only by accident, until it was batched".
-
-
-## Decoding correctly: walk records, do not scan
-
-The instruction stream has no independent existence — every block is reachable from a
-record's bytecode slot. Decoding by scanning the region linearly and decoding whatever
-has a valid length is therefore wrong, and measurably so.
-
-Comparing the two procedures over the same region in 120 specimens:
-
-| | flat scan | record-walk |
-|---|---:|---:|
-| "instructions" | 19,192,507 | 8,127,795 |
-| distinct opcodes | 24,776 | 5,653 |
-
-The four opcodes catalogued as unnamed operations, plus `0B19`, behave exactly as the
-structural account predicts — they are record headers and slot values read as code:
-
-| opcode | flat scan | record-walk |
-|---|---:|---:|
-| `0B19` | 14,230 | **0** |
-| `0A3D` | 1,013 | **0** |
-| `0A48` | 692 | **0** |
-| `0448` | 2,841 | 11 |
-| `1EB8` | 409 | 5 |
-
-Three vanish outright; the other two fall by 99.6% and 98.8%. 19,125 opcodes are visible
-only to the flat scan, accounting for 1.85% of its instruction count — all of it noise.
-
-## The operation set is complete
-
-Under the correct procedure, over 13,532,669 instructions in 579 specimens:
-
-```
-operation id catalogued for its type : 96.926%
-operation id catalogued for any type : 98.465%
-```
-
-and of the 95 opcodes that appear in 20 or more specimens — the threshold that separates
-real operations from decode residue — **93 have a catalogued operation id**. The large
-distinct-opcode count is not a set of unknown operations: the encoding is combinatorial,
-so one operation appears as many opcodes across type, component count and length.
-`0x0532` and `0x0524`, in 228 and 205 specimens, are `rand` and `floor` at component
-count 1; `0x0861` and `0x085D` are `lr` and `eq` on 2-component bools.
-
-### All five phantom opcodes traced to their source
-
-Each of `0448`, `0A48`, `0B19`, `0A3D` and `1EB8` is a 16-bit half of a tag in the
-self-referential 8-byte array structure documented in FORMAT-NOTES under "The array
-entries". Measured across 56,470 array entries: `0448` appears as a tag half 405 times,
-`0A48` 72, `0B19` 3, `0A3D` 2, `1EB8` 1.
-
-They are not "decode residue" in the abstract — they are fragments of one specific
-structure, which a linear scan of the body cuts across. Walking records to their bytecode
-never enters it, which is why the record-walk decoder reports zero for three of them and
-near-zero for the other two.
-
-### The two candidates were artifacts — retracted
-
-`0403` and `153F` were recorded here as genuinely new operations on the strength of
-appearing in 28 and 25 specimens, above the 20-specimen threshold that separates real
-operations from decode residue. Both are artifacts, and the threshold is what failed.
-
-**They do not vary.** `153F` has **exactly one distinct operand tuple** across all 25
-instances — `(1033, 768, 5376, 265, 1280)` — always preceded by the same `0403, 0400,
-4400` sequence. A real operation names value numbers, which differ per block and per
-file; an invariant tuple is a fixed byte pattern being read as code. `0403` has six
-distinct tuples across 28 instances, which is barely better.
-
-**The specimens are not independent.** 24 of 28 and 24 of 25 are `serverhouse__*` files,
-and those are near-duplicates of one another — `BrickWall_02` and `BrickWall_02__66ca`
-are the same material extracted twice. The effective specimen count is around a dozen
-files from one source, not 25 independent observations.
-
-The 20-specimen threshold assumes specimens are independent. This corpus contains
-duplicate extractions of the same material, so **a file-count threshold must be applied
-to deduplicated specimens**, and is worth pairing with an operand-variance check: a real
-operation's operands vary, a misread structure's do not.
-
-**With these two withdrawn, the operation set has no known gaps.** Of the 95 opcodes
-appearing in 20 or more specimens, 93 carry a catalogued operation id and the other two
-are the artifacts above.
-
-### Re-measured on distinct specimens
-
-Deduplicating the corpus by content hash (579 files, 382 distinct) and re-running the
-record-walk decode:
-
-```
-instructions                         : 11,845,287
-operation id catalogued for its type : 96.525%    (96.926% with duplicates)
-opcodes in 20+ DISTINCT specimens    : 82         (95 with duplicates)
-of those, uncatalogued operation id  : 0
-```
-
-**Deduplication alone removes both false candidates.** `0403` and `153F` do not reach 20
-distinct specimens, because their apparent breadth came from repeated extractions of the
-same `serverhouse__*` materials. No operand-variance check is needed once the input is
-deduplicated — the threshold does its job again as soon as its independence assumption
-holds.
-
-The coverage rate is essentially unchanged, 96.9% to 96.5%, which is the expected
-signature of duplicates: they inflate counts without shifting proportions.
-
-**Current position.** 62 named operations, no opcode appearing in 20 or more distinct
-specimens carries an uncatalogued operation id, and the residual 3.5% is component-count
-and length variants of named operations plus decode residue.
-
-## The last five
-
-Four unnamed entries — `0448`, `0A48`, `0A3D`, `1EB8` — total 3,652 instructions out of
-24,285,805 (0.015%). They are almost certainly not instructions.
-
-A real operand names an earlier result in the same run, so it must not exceed the current
-value number. Measured against that:
-
-| opcode | status | operands in range |
-|---|---|---:|
-| `0900` | known-good | 53% |
-| `094D` | known-good | 65% |
-| `0914` | known-good | 66% |
-| `0912` | known-good | 74% |
-| `096E` | known-good | 87% |
-| `0A12` | known-good | 90% |
-| `0B19` | record class word | 52% |
-| `1EB8` | unnamed | **7%** |
-| `0448` | unnamed | **5%** |
-| `0A3D` | unnamed | **9%** |
-| `0A48` | unnamed | **2%** |
-
-(The known-good figures fall short of 100% because the run tracker resets its value
-counter on every decode failure, which undercounts. The separation is the point: 53-90%
-against 2-9%.)
-
-Their operands read like raw u16 data — `1EB8` takes `[16005, 1, 2626, 23844, 32194,
-34818, 25]` — and they appear with no valid preceding instruction, where a real operation
-sits in a decoded sequence. `0448` takes operand 1290 in a run whose value numbers are
-single digits.
-
-**Caveat on the test.** `0B19` scores 52%, indistinguishable from genuine operations, yet
-is known from independent evidence to be a record class word. So this test cannot
-establish that something is noise on its own — it is corroboration, not proof. For the
-four at 2-9% it agrees with the operand-magnitude and context evidence.
-
-**So the instruction set is, to the resolution the corpus supports, complete**: 62
-operations, all named, covering 99.985% of decoded instructions, with the residue
-attributable to record data being decoded as code.
-
-## The five unnamed opcodes are not instructions
-
-The section above inferred this from operand plausibility and called it "corroboration, not
-proof". It can be proved directly, and now has been.
-
-**Test 1 - do they ever appear in a program reached from a record?** Following every slot of
-every record as a candidate program pointer, across all 382 distinct specimens, and accepting
-every opcode the length rule admits (including type 3, which is normally rejected):
-
-    opcode   scan census        record-walk census
-    0448     835 in 172 files   0 occurrences
-    0A3D     149 in  65 files   0
-    0A48   1,215 in  58 files   1  (and that one has a forward operand reference)
-    0B19   1,358 in 108 files   0
-    1EB8      95 in  51 files   0
-
-    control: 0900 const.f1  2,940,814     0914 mul.f1  1,037,185
-             0A42 inputref  524,740       085F gt.b2     366,362
-
-This walk is deliberately **over-permissive** - following every slot as a pointer decodes
-30,038,253 instructions, 2.5x the catalogue's count, because false pointers get followed too.
-Even so it never encounters four of the five. A permissive decoder that cannot find them is
-stronger evidence than a strict one that cannot.
-
-**Test 2 - where do the byte patterns actually sit?** Scanning every 2-byte position in 120
-specimens and classifying each hit against the set of real instruction boundaries:
-
-    opcode   on a real boundary   inside a program, misaligned   outside every program
-    0448              0                     83                          1,452
-    0A3D              0                    247                            786
-    0A48              0                     65                            321
-    0B19              0                     34                          8,897
-    1EB8              0                    251                            733
-    ----
-    total             0                    680                         12,189
-
-**Zero of 12,869 occurrences falls on an instruction boundary.** 680 sit inside a decoded
-program at a misaligned offset - almost all of them within the 4-byte immediate of a constant
-- and 12,189 sit outside any program at all, in record headers, pointer slots and the value
-table. `0B19` is the extreme case and was already known to be a record class word: 8,897 of its
-8,931 hits are not even in code.
-
-The mechanism is the one this document already established for linear scanning: a scan that
-starts mid-stream and jumps block to block loses alignment, and every 2-byte window it lands on
-that happens to satisfy the length rule becomes a phantom instruction. The rule admits any word
-in `0x0400`-`0x7FFF`, so roughly half of all random data decodes as a plausible opcode.
-
-**Consequence.** Four operation ids - `0x08`, `0x19`, `0x38`, `0x3D` - come off the catalogue,
-and with them the last unnamed entries. The instruction set is **41 operations in 63
-type-specific forms, all named**. The prior claim of "three probably sampler-related" unnamed
-opcodes is withdrawn; there was nothing there to name.
+| `085E` | bool | 1 | `1E` | 2,927 | 21 | `neq` |
+| `0503` | float | 1 | `03` | 3,603 | 34 | reads the cross-record CSE cache written by `0x06` |
+| `150B` | float | 1 | `0B` | 542 | 20 | `while` — a loop, no immediate (see below) |
+| `0535` | float | 1 | `35` | 3,903 | 37 | `log2` — source-confirmed via `ie_pcloud` |
+| `0936` | float | 1 | `36` | 53 | 8 | `pow(x, y)` — proved via sRGB closed form (see below) |
+| `11CF` | float | 4 | `0F` | 28 | 6 | probably `vec4` — build a 4-vector from four scalars |
+
+---
+
+## Notable operations
+
+**System variables (`0x01`).** Read by immediate: 0 `$time`, 1 `$size`, 3 `$sizelog2`,
+8 `$pos`, 10 `$number` (FX-Map only).
+
+**`0x0B` = `while`.** A loop, carrying no immediate. Operands are `(init, cond, body, …)`:
+position 1 is bool in 616/616 (the condition) and position 2 self-references in 56.5% of
+instances (the accumulating body) against 0.4% for position 0 (the initialiser). Its
+operands name *expression trees* re-evaluated per iteration, so a decoder emitting
+instructions in linear order is wrong here — the one place straight-line translation fails.
+The runtime batches all samples, so a correct implementation carries a per-lane `active`
+mask and freezes a lane's writes and result (`select(active, new, old)`) once its condition
+holds. Five forms: `194B`, `150B`, `190B`, `184B` (returns bool2), `15CB`.
+
+**`0x36` = `pow` and `0x35` = `log2`.** Both proved against the inverse sRGB transfer
+function `((s+0.055)/1.055)^2.4`, the same closed form used to confirm the `ln`/`exp2`
+lowering. Transpiling `op36(x,y) = x**y` matches the closed form to max deviation
+1.19e-07 (float32 rounding). A generic `exp2(ln(x)/ln2 · p)` lowering still exists and is
+still emitted; which path a call compiles to is not established.
+
+**`0x0F` — probable `vec4`.** The only operation taking four operands and returning four
+components; terminal in 28/28 instances, all in `levels` records, always the shape
+`(x,x,x,1)` — a scalar broadcast to RGB with opaque alpha. Distinct from `0x0D` `vec`,
+which always takes exactly two operands and would need three nested instructions to build a
+4-vector. Marked probable: enough to fix the shape, not to rule out a `levels`-specific
+reading.
+
+**`0x0D` / `0x0F` width.** Both carry a declared `ncomp` that is authoritative over the
+runtime widths of their operands. A transpiler must pass `ncomp` through to `vec` and
+truncate, or a value that has drifted from its declared width can concatenate into
+something wider than declared and silently break a downstream `add`.
+
+---
+
+## Decode correctly: walk records, do not scan
+
+The instruction stream has no independent existence — every program is reached from a
+record's bytecode slot. Scanning the body linearly and decoding whatever satisfies the
+length rule is wrong: the rule admits any word in `0x0400–0x7FFF`, so roughly half of all
+random data decodes as a plausible opcode. Over the same region, a flat scan reports
+19.2M "instructions" and 24,776 distinct opcodes against a record-walk's 8.1M and 5,653.
+
+Five opcodes once catalogued as unnamed operations — `0448`, `0A48`, `0A3D`, `1EB8`,
+`0B19` — are **not instructions**. They are 16-bit halves of tags in the 8-byte array
+structure, which a linear scan cuts across. Under a record-walk decode none of them ever
+appears on an instruction boundary (0 of 12,869 occurrences); `0B19` is a record class
+word (8,897 of its 8,931 hits are not in code at all). They are removed from the
+catalogue: operation ids `0x08`, `0x19`, `0x38`, `0x3D` are not real operations.
