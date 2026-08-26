@@ -35971,3 +35971,25 @@ metallic/height/AO footprint gap (and the STEPPER-driven fxmaps class generally)
 missing decode field, not a global size factor, but the 0x99 loop being run once instead
 of iterated. Fix is render-side (loop while the tail predicate holds, emit per step; seed
 slot 18 with the initial step direction); the semantics are the decode finding here.
+
+### The addnode (0x18B) numberadded program IS the scan initializer
+
+Follow-up to the 0x99 scanner above: the count and the scan-state initialization are the
+SAME program. ChesterfieldSofa rec34/rec65's `numberadded` (identical in both), transpiled
+and run against slots={8:0.0}, returns 1.0 (the count) AND sets the full scan state as `set`
+side effects: slot 12=[0,0], 14=[0,0] (position start), 16=0, 17=0 (counters),
+**slot 18 = vec(1.0, 0.0)** (the direction vector — a one-CELL step; const 16256<<16 = 1.0),
+slot 20=1.0. So slot 18's seed is decoded from the file, not fitted.
+
+The value reconciles the two magnitudes: the step is [1,0] in CELL units while the pattern
+size 0.25 is the cell's canvas scale (0.25 -> 4 cells/axis -> 16 -> 1/size^2 deficit). Cell
+step 1.0 and canvas size 0.25 are distinct decoded numbers, not a contradiction.
+
+Render hazard this exposed: `seed_slots` skips every fx node program (so it never runs
+numberadded), and `SCAN_STATE_DEFAULTS` covers slots 12/14/16/17 but NOT 18/20. So the only
+place slot 18 receives its value is the walk's addnode handler running numberadded and
+PERSISTING its slot writes into the frame the 0x99 STEPPER then reads. If a defaulting
+container (Perm) fills a missing slot 18 with 0, the scan steps by zero and lays every stamp
+on the first — indistinguishable from not looping. The fix is to run the file's own
+initializer into the shared frame, NOT to hardcode slot 18 (which would fit a value the
+compiled program already carries).
