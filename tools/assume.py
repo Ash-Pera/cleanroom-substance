@@ -470,9 +470,16 @@ QUESTIONS = {
     # appears, and no width 5 exists anywhere in this pack.
     #
     # The two readings do not overlap at all, which means they are not the same file rather
-    # than the same file counted differently. The score above was produced by the committed
-    # function through refcompare, so it is the 18 that the number rests on; the disagreement
-    # is recorded rather than averaged.
+    # than the same file counted differently.
+    #
+    # RESOLVED, AND IT WAS THE FILE: there are THREE Bricks.sbsasm in the tree. The disputed
+    # reading came from `tiny/x_textures__BricksSubstance/.../Bricks.sbsasm` -- 75 fxmaps,
+    # 2 grids at widths 2 and 5 -- which is a different author's brick material entirely.
+    # Running the committed `grid_width` on the reference pack's path reproduces 18 on both
+    # of its assemblies. So the detector agrees with itself and the disagreement was a glob
+    # picking the wrong specimen, which is the same hazard that cost this project a day on
+    # graph 003's authorship. Worth keeping the record of it: a count that cannot be
+    # reconciled by any reading of the same file usually means it is not the same file.
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
