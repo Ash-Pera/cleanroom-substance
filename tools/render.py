@@ -2089,26 +2089,54 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # the bit-7/10-clear majority is untouched because the popcount is then just
                 # bit 11 -- the old rule, so nothing that decoded before regresses.
                 #
-                # WHY THE WALK DOES NOT REPLACE THIS, THOUGH IT REPLACED blur's AND
-                # sharpen's. Those were retired in favour of `decompose(rec)['end'] - 1` on
-                # two pieces of evidence: the cost model reproduces their header exactly,
-                # and class bit 12 gives an independent yes/no for whether a baked value is
-                # there, which the walk's slot satisfies on both arms. NEITHER HOLDS FOR
-                # warp. Its cost model is the gap `record_layout` declares -- two record
-                # shapes, w1 present in only one -- and `header_words` disagrees with the
-                # walk's end in 25,085 of 26,795 records. And bit 12 is set in ZERO of
-                # those 26,795, so warp does not use that gate at all and there is nothing
-                # here to check a candidate slot against. Read blind, the walk's last
-                # header slot holds a plausible float in 24,816 of them, which is not
-                # evidence: so does almost any slot, and that is exactly why the subset
-                # search below is weak.
+                # THE INTENSITY IS THE LAST HEADER SLOT, from the walk -- the same read
+                # `blur` and `sharpen` use, and CONTAINMENT SETTLES IT for this filter
+                # rather than a distribution. `param_slots.locate` pairs a source that
+                # declares a distinctive intensity with that package's OWN binary and finds
+                # the one record holding it; the located slot is ground truth, independent
+                # of every rule here. Over the permitted paired sources:
                 #
-                # So this formula stays, and it stays FLAGGED. It was fitted by searching
-                # subsets of the inherited bits for whichever best lands a plausible value
-                # -- deciding structure by whether a value looks right, the method this
-                # project rejects everywhere else. It is retained because nothing better is
-                # established for this filter, not because it is trusted.
-                sl = 4 + bin(rec.cls & ((1 << 7) | (1 << 10) | (1 << 11))).count('1')
+                #     filter            pairings   walk (end-1)   the old subset formula
+                #     warp                 13          13                 11
+                #     blur                  2           2                  2
+                #     sharpen               2           2                  2
+                #
+                # 17 of 17 for the walk. The formula this replaces missed two warp records
+                # outright, and it was FITTED BY VALUE PROBING -- its own note recorded
+                # searching every subset of the inherited bits for whichever "best lands a
+                # plausible intensity", which decides structure by whether the answer looks
+                # right. The walk has no free parameter to fit.
+                #
+                # AN EARLIER NOTE HERE ARGUED THE OPPOSITE AND HAD THE EVIDENCE BACKWARDS.
+                # It rejected the walk because `record_layout.header_words` disagrees with
+                # the walk's end in 25,085 of 26,795 warp records. That gap is real, and it
+                # is exactly +1 in every one of those records -- warp's fitted `w1_present`
+                # is 1.0, charging a w1 word unconditionally, while the walk charges it only
+                # for the record shape that carries one. Ground truth says the WALK is
+                # right and the cost model's averaged w1_present is wrong for warp, which is
+                # `record_layout`'s own declared gap ("two record shapes, and w1 exists in
+                # only one of them") showing up as a number rather than as a caveat.
+                #
+                # The other half of that note is still true and is why this needed
+                # containment: class bit 12 is set in ZERO of the 26,795 warp records, so
+                # the gate that corroborates blur and sharpen does not exist here and
+                # plausibility alone could not have decided it. Corpus-wide the walk lands
+                # on a plausible float in 24,816 of 26,795 (92.6%) and never past the record
+                # end, against the formula's 23,024 (85.9%) with 176 past the end -- better,
+                # but that is corroboration, not the reason.
+                #
+                # WHERE end-1 STOPS BEING THE RIGHT QUESTION. It holds for the filters with
+                # no `PARAM_SPEC` entry, which carry one trailing scalar. For the filters
+                # that name several, another parameter FOLLOWS the intensity and the last
+                # slot is that one instead: against the same ground truth `end-1` scores
+                # 7/10 on directionalwarp and 0/2 on dirmotionblur, missing precisely the
+                # records where `warpangle`/`mblurangle` is also present, while
+                # `decompose.named_params` scores 10/10 and 2/2. Same walk, asked for the
+                # named parameter rather than the last one -- 27 of 27 across all five.
+                _d = decompose.decompose(rec)
+                sl = (_d['end'] - 1) if (_d and _d.get('end')) else None
+                if sl is None:
+                    raise Unsupported("warp: the walk does not resolve this record's header")
                 if sl >= len(rec.words):
                     raise Unsupported("warp record too short for an intensity slot")
                 intensity = float(np.frombuffer(
