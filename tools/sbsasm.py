@@ -32,20 +32,26 @@ FILTERS = {
     0: 'gradient', 1: 'blend', 2: 'transformation', 3: 'shuffle', 4: 'fxmaps',
     6: 'uniform', 7: 'warp', 10: 'blur', 12: 'directionalwarp', 13: 'sharpen',
     11: 'dirmotionblur', 22: 'curve',
-    # NOT CONTAINMENT-VERIFIED, AND IT CANNOT BE FROM THIS CORPUS. Every other name here
-    # is one a permitted `.sbs` uses AND that a paired binary confirms. Filter 8 has the
-    # first half and not the second: 26 permitted sources declare an `emboss` node, and all
-    # 26 compile to a binary containing ZERO filter-8 records -- while 44 filter-8 records
-    # exist across 40 corpus files. The two populations do not overlap, so nothing here
-    # pairs a declared emboss to a filter-8 record, and the earlier attempt to locate its
-    # parameters by containment failed for that reason rather than because the values were
-    # missing. Searching the same words under unit conversions -- degrees, radians, x100,
-    # x255, negated -- adds nothing, because there is no record to search.
+    # COUNT-EXACT ON ONE PERMITTED SPECIMEN, and the earlier note here was wrong. It said
+    # filter 8 "cannot be" verified from this corpus, on a measurement that paired every
+    # source with an unrelated package's binary -- see `provenance.own_assembly` for how
+    # that happened. Paired correctly, 24 of the 26 sources declaring an `emboss` node have
+    # filter-8 records in THEIR OWN binary.
     #
-    # It matters beyond the label: `filter 'emboss' not implemented` blocks 19 declared
-    # outputs, and implementing it means implementing a filter whose identity rests on an
-    # external list, with no specimen in reach to check the reading against.
-    8: 'emboss',
+    # 23 of those 24 are Allegorithmic-authored and therefore source-excluded, which is the
+    # same wall FORMAT-NOTES already records for blur, warp, gradient and fxmaps. The one
+    # that is permitted is `Hard-Science-Old__CrustyLava.sbs`, and it is count-exact:
+    #
+    #     emboss nodes in the source        1
+    #     filter-8 records in its binary    1
+    #
+    # One specimen at 1:1 is thinner than the containment `dirmotionblur` has, and it is not
+    # nothing. What is still missing is the PARAMETERS: CrustyLava's emboss node declares
+    # none -- every value left at its default -- so there is no declared number to locate in
+    # the record, and its two floats (1.92 and 0.56 at words 5 and 6) have nothing to be
+    # matched against. Implementing emboss would need a permitted source that both pairs and
+    # states a value.
+        8: 'emboss',
     14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
     20: 'pixelprocessor', 21: 'distance',
     19: 'dyngradient',

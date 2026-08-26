@@ -107,6 +107,24 @@ def matches(sbs_path, names):
     return None
 
 
+def own_assembly(sbs_path):
+    """The compiled assembly belonging to `sbs_path`, or None.
+
+    THE SOURCES SIT FLAT AND THE BINARIES SIT IN SIBLING DIRECTORIES, so
+    `glob(dirname(sbs)/**/*.sbsasm)` returns EVERY assembly in the collection -- 95 of them
+    for `pairs2/` -- and taking `[0]` pairs a source with whichever package sorts first.
+    Every containment measurement that did so was comparing a source against an unrelated
+    binary, and the matches it reported were coincidences between packages.
+
+    The convention is `dir/NAME.sbs` alongside `dir/x_NAME/.../NAME.sbsar.sbsasm`. Over the
+    142 paired sources, 136 have their own binary under that rule and 6 do not.
+    """
+    d, base = os.path.split(sbs_path)
+    stem = base[:-4] if base.lower().endswith('.sbs') else base
+    hits = sorted(glob.glob(os.path.join(d, 'x_' + stem, '**', '*.sbsasm'), recursive=True))
+    return hits[0] if hits else None
+
+
 def paired_sources():
     """Distinct-by-content .sbs files that have a sibling .sbsar -- the rule's population."""
     found, seen, out = [], set(), []

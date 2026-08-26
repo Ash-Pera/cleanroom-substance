@@ -671,7 +671,11 @@ def test_closure_never_claims_a_dependency_the_manifest_denies():
 # Pairings this test found when it was written. A floor, not a target: the check is
 # worthless if the pairing procedure quietly stops matching anything, and a suite that
 # silently measures nothing looks exactly like a passing one.
-BLENDMODE_PAIRINGS = 12
+#
+# It was 12 while the test paired each source against whatever `.sbsasm` a recursive glob
+# returned first -- an unrelated package's binary, so those 12 were coincidental float
+# matches ACROSS packages. Pairing each source with its own binary takes it to 61.
+BLENDMODE_PAIRINGS = 55
 
 _SBS_NODE = re.compile(r'<compNode>((?:(?!</compNode>).)*?)</compNode>', re.S)
 
@@ -728,11 +732,18 @@ def test_blendingmode_matches_the_source_that_declares_it():
     graph against itself plus every subgraph it instantiates. The per-node pairing is
     what survives instancing.
 
-    WHAT IT FOUND, at the time of writing: 12 unambiguous pairings, 10 where the source
-    declares a mode and the decode agrees with it (modes 2, 3 and 9), 0 disagreements, and
-    2 where the source declares NO blendingmode at all and the decode reads 0 -- which is
-    independent evidence that `copy` is the parameter's default, a fact the renderer
-    relies on and had no direct support for.
+    WHAT IT FOUND, over 13 sources paired with their own binaries: 61 unambiguous
+    pairings, 55 where the source declares a mode and the decode agrees with it, 0
+    disagreements, and 6 where the source declares NO blendingmode at all and the decode
+    reads 0 -- independent evidence that `copy` is the parameter's default, a fact the
+    renderer relies on and had no direct support for.
+
+    THOSE NUMBERS WERE 10 / 0 / 2 UNTIL THE PAIRING WAS FIXED, and the old ones were not
+    just fewer, they were meaningless: the sources sit flat in `pairs2/` while the binaries
+    sit in sibling `x_NAME/` directories, so a recursive glob from the source's directory
+    returned all 95 assemblies in the collection and `[0]` took whichever sorted first.
+    Every match was a coincidence between two unrelated packages. The conclusion survived
+    the correction, which is luck rather than method -- see `provenance.own_assembly`.
 
     IT DOES NOT COVER EVERY MODE. Modes 0, 2, 3 and 9 are pinned here; 1, 4, 5, 6, 7, 8,
     10 and 11 are not, because no source in this corpus declares them on a node with a
@@ -752,12 +763,16 @@ def test_blendingmode_matches_the_source_that_declares_it():
         declared = [(v, m) for v, m in declared if seen[v] == 1]
         if not declared:
             continue
-        asms = glob.glob(os.path.join(os.path.dirname(path), '**', '*.sbsasm'),
-                         recursive=True)
-        if not asms:
+        # ITS OWN BINARY, not whatever the glob returned first. The sources sit flat and
+        # the binaries sit in sibling `x_NAME/` directories, so a recursive glob from the
+        # source's directory returns EVERY assembly in the collection -- 95 of them for
+        # `pairs2/` -- and `[0]` is whichever package sorts first. This test used to do
+        # that, so its pairings were coincidental float matches ACROSS packages.
+        own = provenance.own_assembly(path)
+        if not own:
             continue
         try:
-            asm = Assembly(asms[0])
+            asm = Assembly(own)
         except Exception:
             continue
         sources += 1
