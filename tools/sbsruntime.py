@@ -316,12 +316,31 @@ def rand(limit):
     `int(rand(6.0)) + 8` to choose one of six images and `rand(6.0)` was 0.626 -- so the
     choice was never made, 262,144 times.
 
-    STILL DETERMINISTIC, AND STILL CONSTANT PER ARGUMENT. Scaling is the half of this the
-    corpus settles. What actually makes a draw differ between two evaluations is not
-    decided here.
+    AND IT VARIES WITH `$number`, which is what makes an FX-Map a scatter rather than one
+    stamp repeated. A pure function of the argument gives every emitted pattern the same
+    draw: the same angle out of `rand(6.28)`, the same jitter, the same image index. In
+    CarpetSubstance001 that is 262,144 tufts at one position with one rotation, and the
+    file renders flat -- record 0 comes out a uniform 0.9217, which is exactly the old
+    `rand(1.0)`. 30 of the 84 records that introduce flatness there are FX-Maps.
+
+    `$number` is the pattern index, already set per emission (and a whole column of them
+    under batched emission, which this follows: the hash is elementwise, so m patterns get
+    m draws in one evaluation). Where nothing sets it -- a `pixelprocessor`, a filter
+    parameter program -- it is 0 and the result is what it always was, so this reaches the
+    FX-Map case and leaves the rest alone.
+
+    WHAT IS MODELLED AND WHAT IS READ, kept apart. That the argument is a range is read off
+    the corpus. That the draw varies per pattern is a reading of what an FX-Map is for; the
+    hash itself is arbitrary and nothing in the file constrains it. Two calls with the same
+    argument in the same emission still collide, which the engine would not do.
     """
     x = np.asarray(limit, dtype=np.float64)
-    h = np.modf(np.sin(x * 12.9898) * 43758.5453)[0] % 1.0
+    num = CONTEXT["number"]
+    if isinstance(num, np.ndarray) and num.ndim:
+        n = num.astype(np.float64, copy=False).reshape(-1, 1)
+    else:
+        n = float(num)
+    h = np.modf(np.sin(x * 12.9898 + n * 78.233) * 43758.5453)[0] % 1.0
     return x * h
 
 

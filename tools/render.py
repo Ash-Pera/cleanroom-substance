@@ -429,6 +429,14 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
     src = transpile.transpile(asm.data, start, end, "python", "prog")
     scope = {}
     exec(compile(src, "<prog>", "exec"), scope)
+    # `$number` BELONGS TO FX-MAP EMISSION, AND THE CONTEXT IS STICKY. Nothing here reads
+    # it, but `rand` does, and an FX-Map's batched emission leaves a whole COLUMN of
+    # pattern indices behind it. A pixelprocessor evaluated next then draws its randomness
+    # against however many patterns the last FX-Map happened to emit -- which is not a
+    # wrong picture but a broadcast error, `shapes (49,2) (4096,2)`, and it cost 41 records
+    # across two files before the reset was added. The same hazard the `pos` note below
+    # describes, one variable over.
+    sbsruntime.set_context(number=0.0)
     if pos is not None or W is not None or H is not None:
         # W/H WITHOUT pos is the case that was missing, and it is not cosmetic. A
         # parameter program can read `$size` -- `transformation`'s offset routinely does,
