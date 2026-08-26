@@ -182,12 +182,27 @@ QUESTIONS = {
     # 17" -- with no 18. Slot 18 is the step-DIRECTION the position is advanced by, so with
     # it defaulted the scan cannot move whether or not the body repeats.
     #
-    # So the loop is not refuted, it is untestable until the step exists: a scan that
-    # advances by zero lays every stamp on top of the first one, which is indistinguishable
-    # from not looping. The structural side decodes the initial direction as the constant
-    # [-1.0, +1.0]. Seeding it is the next step and it is a decoded value rather than a
-    # fitted one -- but it is a second change, and stacking two unverified changes and
-    # scoring the pair would not say which one did anything.
+    # THAT WAS WRONG, AND TRACING THE REAL LOOP CORRECTS IT. The `slot 18 read but never
+    # set` came from a probe that ran the scanner program directly, without the addnode
+    # above it; in the walk the addnode's `numberadded` runs FIRST into the same frame, and
+    # it is also the scan's initializer -- it writes slots 12, 14, 16, 17, 18 and 20. So
+    # slot 18 is seeded from the file, and the step is not zero. Instrumenting the loop:
+    #
+    #     iter 0   slot18 (step) = [-0.0, 1.0]   slot14 (pos) = [0.0, 1.0]   predicate = 0.0
+    #
+    # The step is a unit vector, the position advances by it, and the loop stops after one
+    # iteration because THE PREDICATE IS FALSE, not because nothing moved.
+    #
+    # AND THAT IS A UNITS MISMATCH, which the structural side predicted as the next thing to
+    # check before the trace existed. The step is one CELL; the predicate bounds the
+    # position against +-0.5, which is the CANVAS half-extent. A cell step of 1.0 leaves a
+    # +-0.5 canvas bound on the very first move, so the scan reports itself out of bounds
+    # immediately. With the cell size 0.25 between them, steps land at 0, 0.25, 0.5 -- four
+    # per axis, sixteen cells, which is the deficit exactly.
+    #
+    # Where that scale belongs is not settled: the step could be in canvas units to begin
+    # with, or the bound could be meant in cell units, and those are different edits to
+    # different halves of the same expression. Not guessed here.
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),

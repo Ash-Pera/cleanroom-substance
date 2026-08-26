@@ -191,6 +191,9 @@ from sbsasm import (Assembly, FX_NODES, fx_patterntype,                         
 #: Upper bound on scanner iterations -- a runaway predicate must not hang a render.
 SCAN_LIMIT = 4096
 
+#: Debug hook: set to a list to capture the first scanner iterations.
+_SCAN_TRACE = None
+
 ADDNODE = frozenset({0x18B, 0x1AB, 0x20B, 0x1CB})
 GATE = 0x89
 
@@ -1052,8 +1055,15 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             if prog is None:
                 walk(i + 1, number)
                 return
-            for _ in range(SCAN_LIMIT):
+            for _it in range(SCAN_LIMIT):
                 v = run(prog, slots, number)
+                if _SCAN_TRACE is not None and len(_SCAN_TRACE) < 8:
+                    _SCAN_TRACE.append((_it,
+                                        np.round(np.asarray(slots.get(18, [np.nan]),
+                                                            dtype=float).ravel(), 4).tolist(),
+                                        np.round(np.asarray(slots.get(14, [np.nan]),
+                                                            dtype=float).ravel(), 4).tolist(),
+                                        float(np.asarray(v, dtype=np.float64).ravel()[-1])))
                 walk(i + 1, number)
                 try:
                     ok = bool(np.asarray(v, dtype=np.float64).ravel()[-1])
