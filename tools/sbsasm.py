@@ -287,6 +287,11 @@ for _k, _v in LAYOUTS.items():
 # type, and it separates the roles: 0x89 alone yields a boolean, in 11,197 of 11,197
 # programs; the other three yield i1, each at 100%. Physical shape does not determine
 # role - 0x1CB has 0x89's layout and 0x18B's return type.
+# DRAINED, kept as a census. `node_shape` computes every one of these from the header's
+# mask -- successor at base + popcount(header & 0xF0) words, programs at word 1 (+word 2 for
+# bit 5) -- and the walk now calls it instead of looking here. See `node_shape`. The rows
+# stay because their comments record which source node each header is (addnode, markov2) and
+# the return type, evidence `node_shape` does not carry.
 FX_NODES = {
     0x18B: (8,  (4,)),        # [header][program][next]          addnode,     -> i1
     0x89:  (12, (4,)),        # [header][program][0][next]       markov2,     -> b2
@@ -489,12 +494,47 @@ FX_NODE_PARAMS = {
 # that matters here, and fx_tree already uses it. walk.py's
 # NODE_LEGEND sizes 0x9B at 4 words from an independent measurement, which is a tag plus
 # exactly these three slots.
+# The LEAF and BRANCH families, keyed by low byte, that `node_shape` does not derive because
+# they have no base program+successor structure (low-byte bit 7 clear). Everything else is a
+# mask-walk; see `node_shape`. 0x99 and 0x9B were here too and are gone -- they are linear
+# nodes the walk now computes.
 FX_NODES2 = {
     0x1B: ((8, 20), (16,)),   # two children, at words 2 and 5; program at word 4
-    0x99: ((16,),   (8,)),    # one successor at word 4; program at word 2
     0x0B: ((4,),    None),    # a leaf; its SECOND WORD is the successor, see below
-    0x9B: ((12,),   (8,)),    # successor at word 3; program at word 2 -- as 0x99
 }
+
+
+def node_shape(header):
+    """(successor byte offset, (program byte offsets,)) for one FX-Map node header, or None.
+
+    The FX node is the same `[tag/mask][fields]` walk as the record header and the FX entry,
+    one scale between them. The low byte's HIGH nibble (bits 4-7) is a presence mask; each set
+    bit inserts one field ahead of the successor, so the successor sits at
+
+        base + popcount(header & 0xF0)   words,  base = 1 (low nibble B) or 2 (nibble 9)
+
+    verified 30/30 over every node header seen 10+ times. The bits' fields:
+
+        bit 4  a word ahead of the program (for nibble 9/linear B); on a LEAF it makes a branch
+        bit 5  `randomseed` as a program, one word after the base program
+        bit 6  `randomseed` baked -- a value word, not a program
+        bit 7  the base program+successor structure itself
+
+    Returns None when bit 7 is clear: those are the open-vocabulary LEAF (0x0B) and BRANCH
+    (0x1B) families, whose two-child / scanned-program shapes `FX_NODES2` still states by hand.
+    Reproduces the retired `FX_NODES` (four whole-word headers) and the linear `FX_NODES2` rows
+    (0x99, 0x9B) exactly, and extends to headers neither table listed.
+    """
+    nib = header & 0xF
+    if nib not in (9, 0xB) or not (header & 0x80):
+        return None
+    base = 1 if nib == 0xB else 2
+    succ = 4 * (base + bin(header & 0xF0).count('1'))
+    pbase = 1 + (1 if header & 0x10 else 0)          # bit 4 shifts the program one word on
+    progs = [4 * pbase]
+    if header & 0x20:                                # bit 5: randomseed program follows
+        progs.append(4 * (pbase + 1))
+    return (succ, tuple(progs))
 
 
 # Named parameter blocks: slot 1 carries one presence bit per parameter, and the
@@ -2358,7 +2398,7 @@ class Record:
         if last is not None:
             q = last                      # fx_tree yields absolute offsets
             h = struct.unpack_from('<I', self.asm.data, q)[0]
-            sh = FX_NODES.get(h)
+            sh = node_shape(h)
             # THE 0x??0B FAMILY HANDS OFF TOO, and its next-pointer is at word 1. Only
             # FX_NODES was consulted here, so 643 chains ending on one of those leaves
             # reached no table at all -- and for a record whose slot 2 addresses a CHAIN
@@ -2514,14 +2554,14 @@ class Record:
         o, e = self.asm.body_lo, self.asm.body_hi
         if not (o <= q < e - 7):
             return
-        if start is None and struct.unpack_from('<I', d, q)[0] in FX_NODES:
+        if start is None and node_shape(struct.unpack_from('<I', d, q)[0]) is not None:
             return
         limit = 64                       # runaway guard: the longest real walk is 17
         nth = 0
         while q + 8 <= e and limit > 0:
             limit -= 1
             tag = struct.unpack_from('<I', d, q)[0]
-            if tag in FX_NODES:
+            if node_shape(tag) is not None:
                 break
             # THE LAYOUT IS A STOPPING RULE, and it is the only one that catches this walk
             # running into bytecode. The vocabulary test cannot: `0x09130008` is 2,322
@@ -2667,11 +2707,12 @@ class Record:
         while o <= q < e - 7 and q not in seen:
             seen.add(q)
             h = struct.unpack_from('<I', d, q)[0]
-            shape = FX_NODES.get(h)
+            shape = node_shape(h)
             if shape is None:
-                # The second family, keyed by low byte. A 0x1B branches, so the walk stops
-                # being a straight line here; `pending` carries the far child and the near
-                # one continues inline. Order is not claimed to be the engine's.
+                # The leaf/branch families node_shape does not derive (low-byte bit 7 clear).
+                # A 0x1B branches, so the walk stops being a straight line here; `pending`
+                # carries the far child and the near one continues inline. Order is not
+                # claimed to be the engine's.
                 shape2 = FX_NODES2.get(h & 0xFF)
                 if shape2 is None:
                     return

@@ -166,17 +166,18 @@ def test_every_table_is_load_bearing():
     A table that changes no reading is either dead or shadowed by another, and either way
     the next person should not have to find that out by experiment.
 
-    FX_ENTRY is deliberately NOT in the list: it was the FX entry-walk stride and is now
-    drained -- `fx_table` follows the linked-list next-pointer each entry stores instead, so
-    emptying FX_ENTRY changes no reading BY DESIGN. It is kept only as a census. Asserting it
-    load-bearing would fail the drain the way it would have failed LAYOUTS's.
+    FX_ENTRY and FX_NODES are deliberately NOT in the list: both are drained. FX_ENTRY was the
+    entry-walk stride, now replaced by the linked-list next-pointer each entry stores; FX_NODES
+    was the node sizer, now computed by `node_shape` from the header's mask. Emptying either
+    changes no reading BY DESIGN, and both are kept as a census. FX_NODES2 IS here -- it holds
+    the leaf/branch families `node_shape` does not derive and stays load-bearing.
     """
     paths = corpus.paths()[:FILES]
     if not paths:
         print('SKIP test_every_table_is_load_bearing: no corpus')
         return
     dead = []
-    for name in ('LAYOUTS', 'EDGES', 'LAYOUT_MASK', 'FX_NODES'):
+    for name in ('LAYOUTS', 'EDGES', 'LAYOUT_MASK', 'FX_NODES2'):
         tab = getattr(sbsasm, name, None)
         if not isinstance(tab, dict) or not tab:
             continue
