@@ -2402,7 +2402,16 @@ class Record:
             if kind != 'entry' or off in seen:
                 continue
             seen.add(off)
-            for sl, name, how in fx_entry_layout(tag):
+            layout = fx_entry_layout(tag)
+            # The one field a mask-walk cannot fix from the tag alone: a program may be
+            # POINTED at (its word is offset - 52) or written INLINE (its word IS the
+            # program, first word the instruction count). Only the LAST program can be
+            # inline -- a variable-length field can only sit at the entry's tail, so the
+            # highest program bit is the sole candidate; every lower program is a pointer.
+            # `fx_entry_layout` walks the bits in ascending order, so the last 'program'
+            # row it yields is that highest bit.
+            last_prog = max((sl for sl, _n, how in layout if how == 'program'), default=None)
+            for sl, name, how in layout:
                 if off + 4 * sl + 4 > hi:
                     break
                 w = struct.unpack_from('<I', d, off + 4 * sl)[0]
@@ -2422,15 +2431,18 @@ class Record:
                 if lo < pv < hi and self.asm.program_span(pv, hi):
                     yield off, tag, sl, name, how, pv
                     continue
-                # ...but a 'program' bit whose pointer does not resolve may be an INLINE
-                # program: the last program of an entry abuts the entry end and is stored in
-                # place, its first word the instruction count, not pointed at. `fx_entry_layout`
-                # classifies it as a pointer because the tag alone cannot see where the entry
-                # ends. 0x95540288's `imageindex` is inline in 382 of 382 entries, and reading
-                # its pointer lost every one; try the slot itself before reporting None.
-                at = off + 4 * sl
-                inline = at + 4 <= hi and self.asm.program_span(at, hi)
-                yield off, tag, sl, name, how, (at if inline else None)
+                # A failed pointer at the LAST program slot is the trailing inline program:
+                # 0x95540288's `imageindex` is inline in 382 of 382 entries. Restricted to
+                # the last slot by the rule above -- reading inline at any lower slot
+                # recovered 14 spurious `opacity` programs (bit 20) in entries whose real
+                # trailing program was `branchoffset` (bit 22), a coincidental decode of a
+                # genuinely-missing pointer rather than a real inline program.
+                if sl == last_prog:
+                    at = off + 4 * sl
+                    if at + 4 <= hi and self.asm.program_span(at, hi):
+                        yield off, tag, sl, name, how, at
+                        continue
+                yield off, tag, sl, name, how, None
 
     def fx_node_params(self):
         """Yield (node offset, header, name or None, program offset) for the node chain.
