@@ -2127,6 +2127,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # is no, and the reason the old scan saw a powers-of-two ladder there is
                 # that slot 3 is the HEIGHT half of the baked size pair. The question it
                 # existed to arbitrate has been answered from the sources instead.
+                # AND WHEN BIT 12 IS CLEAR THE PROGRAMS DO NOT SUPPLY IT EITHER, which is
+                # the obvious next hypothesis and is refuted. Bit 12 clear means no baked
+                # value, so a program is where an intensity would have to live; over 34
+                # such records in 40 files the LAST filter program returns:
+                #
+                #     1 component, 1.0    17      2 components, 1.0     8
+                #     1 component, 3.0     2      2 components, 1.922   5
+                #     1 component, 2.0     1
+                #
+                # 13 of 33 return TWO components, which a scalar intensity cannot be, and
+                # 78.8% are exact powers of two -- the same signature that withdrew the
+                # slot-3 fallback above, arrived at independently. Source containment agrees
+                # it is nothing: across the permitted paired sources the last program
+                # recovers 3 of 42 declared intensities against a 2-of-42 control from the
+                # first program.
+                #
+                # So these records refuse. The cost is real and is stated rather than
+                # hidden: `Kutejnikov__Bricks_and_tiles` has four declared outputs waiting
+                # on three of them, and it is the specimen with 71 of 191 fxmaps records
+                # affected by the branchoffset question -- the one that would arbitrate it.
                 if intensity is None:
                     raise Unsupported(
                         "blur intensity: %s (nprog=%d, slot %d)"
