@@ -34824,3 +34824,34 @@ it is mostly elsewhere -- sub-graph instances expanded at cook time from package
 does not contain is the leading candidate, since those add reaches no in-file edge or sampler
 can express. The "one fix away" rankings are still optimistic, but not for the reason the
 note gave.
+
+## The two alteroutputs discrepancies are different populations: image is structural, numeric is semantic
+
+Two checks compare our dependency closure against the manifest's `alteroutputs`, and they
+disagree in a way that looked like one contradiction and is two separate facts. Pinned by
+splitting every mismatch by the input's type code:
+
+    manifest.py, type-5 IMAGE inputs      513 misses, 0 over-claims
+    attribute_outputs, NUMERIC inputs      43 misses + 148 over-claims (type 0 float, 4 int)
+
+They never overlap: the image check's misses are all type 5, and every one of
+attribute_outputs' 191 mismatches is a numeric input (0 or 4), none type 5. So there is no
+single "513" or "191" gap; there are two.
+
+**Image inputs are a STRUCTURAL relation** and the earlier section settles most of it: a
+type-5 input reaches an output by being sampled, and the sampler index is the record's k-th
+edge in 99.62%, which the edge walk follows. What remains is the 0.37% that bind to a graph
+input past their edges, plus whatever sub-graph instances add.
+
+**Numeric inputs are a SEMANTIC relation and the closure cannot be exact by construction.** A
+float or int parameter reaches an output by being READ in a program (`inputref`, opcode
+0x02), and `readers` connects the reader to the input. But being read is not the same as
+altering the output: a value read inside a branch that is not taken, or folded into a term
+that cancels, reaches structurally and alters nothing -- that is the 148 over-claims,
+133 of them type-0 floats. And a value that does alter an output through a path `readers`
+does not model is a miss -- the 43, all type 0 and 4, concentrated in `blend` outputs
+(30 of 43), none orphaned (each output is reached from some OTHER input). Whether a read
+value alters an output is a question about the program's arithmetic, which a structural walk
+over reads and edges cannot answer. So the numeric mismatch is not a decode gap to close; it
+is the expected slack between a structural approximation and a semantic data-flow relation,
+and `alteroutputs` is the ground truth the approximation is measured against, not a bug in it.
