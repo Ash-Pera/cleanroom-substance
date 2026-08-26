@@ -236,6 +236,29 @@ STEPPER = 0x99
 #: would go, and the records above are the specimens.
 STEPPER2 = 0x9B
 
+#: A THREE-WORD CELL THE CHAIN SIMPLY CONTINUES PAST. Measured over 34 `0x1B` nodes in 40
+#: files, with no counter-example in any of the three:
+#:
+#:     word 1 is the constant 12345 (0x3039)          34 of 34
+#:     word 2 is a pointer BACKWARDS into the body    34 of 34
+#:     word 3 is a `0x18B` node header                34 of 34
+#:
+#: Word 3 being a header in every case is what fixes the width at three, independently of
+#: how the walk arrived: the next node is contiguous, not addressed by a pointer.
+#:
+#: THIS CONTRADICTS `sbsasm.FX_NODES2['0x1b'] = ((8, 20), (16,))`, which places successors
+#: at bytes 8 and 20 and a program at byte 16 -- words 2, 5 and 4 of a cell that is only
+#: three words long. Words 4 and 5 are the FOLLOWING `0x18B` node's own program and
+#: successor (`FX_NODES['0x18b'] = (8, (4,))` reads exactly those two), so that entry was
+#: derived by reading the next node's fields as this one's. Not corrected there from here:
+#: the table drives the walk for every record, and this is the shape of one node kind
+#: measured in one place.
+#:
+#: 0x3039 is the same sentinel that withdrew an earlier `0x9B` derivation in this file --
+#: a constant, present in both files examined, that looked like an entry pointer under a
+#: body-wide search.
+PASSTHROUGH = 0x1B
+
 #: The 0x??0B family is where a chain ENDS. Its "programs" are not its own: in record 27
 #: the leaf's five programs are byte-identical to the five parameter programs of the
 #: table entry it hands off to (opacity, frameoffset, patternsize, patternrotation,
@@ -455,7 +478,8 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         raise Unmodelled("no readable table entries")
     for _off, hdr, _p in nodes:
         if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
-                and (hdr & 0xFF) != STEPPER2 and not _is_leaf(hdr):
+                and (hdr & 0xFF) != STEPPER2 and (hdr & 0xFF) != PASSTHROUGH \
+                and not _is_leaf(hdr):
             raise Unmodelled("node header %#x is not modelled" % hdr)
 
     out = []
@@ -523,6 +547,13 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             prog = progs.get(None)
             if prog is not None:
                 run(prog, slots, number)
+            walk(i + 1, number)
+        elif (hdr & 0xFF) == PASSTHROUGH:
+            # Continue to the successor and run NOTHING. The cell is three words -- see
+            # PASSTHROUGH -- and the pointer it holds is real but its role is not
+            # established, so evaluating it would be writing this record's slot frame from
+            # a word whose meaning is a guess. Walking past it is the conservative half of
+            # the reading: the chain's shape is measured, the pointer's use is not.
             walk(i + 1, number)
         elif _is_leaf(hdr):
             walk(i + 1, number)             # the leaf is the entry; the table emits
