@@ -661,6 +661,65 @@ class _SwappedEdges(object):
         return getattr(self._rec, name)
 
 
+def walk_named_offset(asm, rec):
+    """`transformation`'s offset program, taken from the slot the WALK names, or None.
+
+    The width heuristic in the transformation branch asks "which of this record's programs
+    returns 2 components", which is a question about VALUES. `decompose` already answers it
+    structurally: the record's own parameter slots are enumerated by the walk, and a slot
+    holding `program - 52` names that program with nothing to choose between.
+
+    Consulting the walk matters because `Record.programs` scans EVERY word of the record,
+    not just its slots, and calls anything passing `valid_program` a program. Past the
+    walk's `end` a record is bytecode, so an instruction OPERAND that happens to survive
+    that test is returned as a program. On `UHL3D-Stylized_Sand_with_Rocks_01` word 19 of
+    a 142-word record whose structure ends at word 5 -- `0x10008`, mid-bytecode -- yields
+    "program" 65596 in 177 records, byte-identical in every one because they share an
+    instruction sequence. It evaluates 2-wide and collides with the real offset, leaving
+    `by_width[2]` ambiguous on 88 of that file's records: a refusal built on a phantom.
+
+    Cross-checked against the width rule rather than assumed, and the two are independent
+    (this reads costs.json; the width rule evaluates bytecode): over 14 corpus files,
+    1,204 bit-26 `transformation` records -- 1,203 agree, 0 disagree, 1 where the walk
+    names no program. On the sand file, 149 agree and the walk answers all 88 the width
+    rule cannot. So this does not change an answer that already resolves.
+
+    That 88 is a DECODE measurement, taken with `sbsruntime.SAMPLERS` cleared per record.
+    It is NOT a count of renders repaired -- whether a pass reaches this branch depends on
+    the graph, and on this file's own closure it does not. No render-level gain is claimed;
+    what changes is that the answer no longer rests on a value probe a phantom can deceive.
+
+    Returns None whenever the walk is not decisive (no single program-valued parameter
+    slot, or it does not evaluate 2-wide), leaving the width rule exactly as it was. This
+    does NOT settle which parameter field 13 IS -- `Record.translation` reads bits 25/26 as
+    two booleans while the two-bit grid makes 26/27 one field, and that tension is open.
+    It settles only WHICH PROGRAM the record's own slot names.
+    """
+    try:
+        import decompose
+        d = decompose.decompose(rec)
+    except Exception:
+        return None
+    if not d:
+        return None
+    named = []
+    for _j, _st, pos in d.get('param_slots', ()):
+        if 0 <= pos < len(rec.words):
+            p = rec.words[pos] + 52
+            if asm.body_lo <= p < asm.body_hi and asm.valid_program(p) and p not in named:
+                named.append(p)
+    if len(named) != 1:
+        return None
+    try:
+        v = np.asarray(eval_program(asm, named[0], default_inputs(asm, 1), {}, 1,
+                                    W=rec.width, H=rec.height)).reshape(-1)
+    except Exception:
+        return None
+    if v.size != 2:
+        return None
+    return tuple(float(x) for x in v)
+
+
 def render(asm, precomputed=None, verbose=True, max_dim=None,
            synth_missing_bitmaps=False, stop_after=None):
     """Evaluate every record 0..N-1 that a filter type here can handle.
@@ -1195,12 +1254,19 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 offset = rec.translation
                 if offset is None:
                     if offset_is_program:
-                        if by_width.get(2):
-                            offset = by_width[2]
-                        else:
-                            raise Unsupported("offset is a program this cannot single out "
-                                              "(%d programs, widths %s)"
-                                              % (len(fprogs), sorted(k for k in by_width)))
+                        # THE WALK IS ASKED FIRST -- it names the slot, so there is nothing
+                        # to single out. See `walk_named_offset`: the width rule is a
+                        # question about values, and it is the one a phantom program can
+                        # deceive. Agreement is 1,203/1,203 where the width rule resolves,
+                        # so this only turns refusals into answers.
+                        offset = walk_named_offset(asm, rec)
+                        if offset is None:
+                            if by_width.get(2):
+                                offset = by_width[2]
+                            else:
+                                raise Unsupported("offset is a program this cannot single out "
+                                                  "(%d programs, widths %s)"
+                                                  % (len(fprogs), sorted(k for k in by_width)))
                     elif fprogs and has_matrix_param and (n_failed > 0 or n_two > 0):
                         # WHICH programs remain unread -- the earlier form did not ask.
                         #
@@ -2591,7 +2657,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # shift the read position by class bits that the fitted cost model charges
                 # NOTHING for: bit 7 is not in blur's cls table at all, and bits 0, 11 and
                 # 13 (this rule's 0x2881 mask) all cost 0.0 words. Two wrong formulas can
-                # disagree forever, and a reference score cannot referee between them.
+                # disagree forever.
                 #
                 # The walk needs no patch. `decompose(rec)['end']` is the header boundary
                 # -- and it equals `record_layout.header_words` in 15,371 of 15,371 blur
