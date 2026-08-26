@@ -87,6 +87,11 @@ class Unsupported(Exception):
 LOW_CONFIDENCE = set()
 
 
+
+#: Records that failed ONLY because an input of theirs failed. `failures` still holds a
+#: message for each; this says which of those messages are consequences. A root-cause
+#: analysis wants `set(failures) - CASCADED`.
+CASCADED = set()
 # THE SLOT FRAME IS PER-RECORD. Every record evaluates against its own empty dict, and
 # nothing carries across records. There is no `SplitFrame` and no shared floor any more;
 # what follows is why, because the class that used to be here was not obviously wrong.
@@ -186,6 +191,31 @@ def sampler_bindings(asm, rec, outputs):
         if src is not None and src in outputs:
             out[k] = src
     return out
+
+    #: True when this failure is only the shadow of an upstream one -- a record whose
+    #: input has not been produced. See `CASCADED` and `cascade()`.
+    cascade = False
+
+
+def cascade(message):
+    """An `Unsupported` that means "an input of mine has no output", not "I am wrong".
+
+    THIS DISTINCTION WAS A STRING MATCH AND IT WAS WRONG. Callers separating causes from
+    consequences looked for the substring "has no output yet", which fourteen raise sites
+    use -- and missed the fifteenth, which says "no sampler for input 0" and means exactly
+    the same thing. The cost was not theoretical: an `fxmaps` record in
+    `WoodSubstance005` was reported as a root cause and named to another session as the
+    blocker for that specimen, when it was three levels downstream of the real one.
+
+    So the classification is carried on the exception rather than in its prose, and
+    `render()` collects it in `CASCADED`. The message still says "has no output yet"
+    everywhere, because prose that agrees with the flag is worth more than prose that
+    merely does not contradict it.
+    """
+    exc = Unsupported(message)
+    exc.cascade = True
+    return exc
+
 
 
 def graph_input_default(asm, rec):
@@ -418,8 +448,8 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
             # raised indistinguishable KeyErrors -- sent two investigations after a
             # phantom slot frame before `sbsruntime.MissingSampler` was introduced to
             # separate them. Removing this handler reintroduces the ambiguity silently.
-            raise Unsupported("no sampler for input %s (an unwired edge, NOT a missing "
-                              "slot)" % e) from e
+            raise cascade("input %s has no output yet -- no sampler was installed for "
+                          "it, which is an unwired edge and NOT a missing slot" % e) from e
         except KeyError as e:
             # `inputs` is keyed by uid (large, from default_inputs) and always fully
             # populated from the package's own declarations; `slots` is keyed by small
@@ -596,6 +626,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
     outputs = dict(precomputed or {})
     synthetic = set()
     LOW_CONFIDENCE.clear()
+    CASCADED.clear()
     failures = {}
     cache = {}
     sbsruntime.use_shared_cache(cache)
@@ -637,7 +668,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 own_slots = set()
                 for slot_i, edge_rec in enumerate(rec.edges):
                     if edge_rec not in outputs:
-                        raise Unsupported("edge -> record %s has no output yet" % edge_rec)
+                        raise cascade("edge -> record %s has no output yet" % edge_rec)
                     src_img = outputs[edge_rec]
                     sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(src_img)
                     own_slots.add(slot_i)
@@ -722,7 +753,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     raise Unsupported("blend has fewer than 2 edges")
                 for edge_rec in rec.edges:
                     if edge_rec not in outputs:
-                        raise Unsupported("edge -> record %s has no output yet" % edge_rec)
+                        raise cascade("edge -> record %s has no output yet" % edge_rec)
                 tainted = any(e in synthetic for e in rec.edges)
 
                 W, H = rec.width, rec.height
@@ -804,7 +835,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
                 if len(rec.edges) > 2:
                     if rec.edges[2] not in outputs:
-                        raise Unsupported("mask edge -> record %s has no output yet"
+                        raise cascade("mask edge -> record %s has no output yet"
                                           % rec.edges[2])
                     tainted = tainted or rec.edges[2] in synthetic
                     mask = sbsruntime.image_sampler(outputs[rec.edges[2]])(pos)
@@ -988,7 +1019,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                           "(%d programs, widths %s)"
                                           % (len(fprogs), sorted(k for k in by_width)))
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
 
                 offset = rec.translation
@@ -1069,7 +1100,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # LOCATIONS did. Checked only for internal self-consistency (a controlled
                 # ramp input, below), not against a ground-truth reference renderer.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
 
                 W, H = rec.width, rec.height
@@ -1258,7 +1289,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     raise Unsupported("directionalwarp has fewer than 2 edges")
                 for edge_rec in rec.edges[:2]:
                     if edge_rec not in outputs:
-                        raise Unsupported("edge -> record %s has no output yet" % edge_rec)
+                        raise cascade("edge -> record %s has no output yet" % edge_rec)
                 tainted = any(e in synthetic for e in rec.edges[:2])
 
                 W, H = rec.width, rec.height
@@ -1321,7 +1352,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # The trailing 32768 is constant in 3,175 of 3,175 reads, so the bit-8
                 # width adds a field this does not need rather than a channel.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 table = rec.ramp
                 if not table:
                     raise Unsupported("gradient record carries no readable ramp")
@@ -1396,7 +1427,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # read here has ascending x (`curve_points` checks it), where the two
                 # agree.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 knots = rec.curve_points
                 if not knots or len(knots) < 2:
                     raise Unsupported("curve record carries no readable spline")
@@ -1454,7 +1485,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # point, symmetric about it -- that is what a directional motion blur is,
                 # and it is engine math rather than anything carried in this file.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
 
                 W, H = rec.width, rec.height
@@ -1535,7 +1566,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     raise Unsupported("warp has fewer than 2 edges")
                 for e in rec.edges[:2]:
                     if e not in outputs:
-                        raise Unsupported("edge -> record %s has no output yet" % e)
+                        raise cascade("edge -> record %s has no output yet" % e)
                 # ...AND IT IS THE SAME INHERITED-BLOCK WALK hsl needed, not bit 11 alone.
                 # `4 + bit11` froze one term of the mask-walk: the intensity follows the
                 # inherited block `walk.py`'s `_CLS` describes, and bits 7 and 10 shift it
@@ -1754,7 +1785,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         raise Unsupported("shuffle single-input weight vector is not "
                                           "plausible (%r)" % (np.round(hot, 4).tolist(),))
                     if rec.edges[0] not in outputs:
-                        raise Unsupported("edge -> record %s has no output yet"
+                        raise cascade("edge -> record %s has no output yet"
                                           % rec.edges[0])
                     W, H = rec.width, rec.height
                     if max_dim:
@@ -1786,7 +1817,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         raise Unsupported("shuffle wants input %d, which this record "
                                           "does not have" % (k + 1))
                     if rec.edges[k] not in outputs:
-                        raise Unsupported("edge -> record %s has no output yet"
+                        raise cascade("edge -> record %s has no output yet"
                                           % rec.edges[k])
                 tainted = any(rec.edges[k] in synthetic for k in need)
 
@@ -1839,7 +1870,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # taking the one whose result has the right WIDTH, refusing rather than
                 # guessing when that is ambiguous. A width seen twice is not assigned.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
 
                 intensity = None
@@ -1955,7 +1986,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # where an impulse must spread symmetrically, a constant must survive
                 # unchanged, and the blurred centroid must not move.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
                 # WHERE `intensity` ACTUALLY IS -- source-verified, and it is neither of
                 # the two places this code looked before.
@@ -2212,7 +2243,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # else raises. See FORMAT-NOTES on why its containment ratio cannot be read
                 # as an accuracy and why the two-path control is unavailable here.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 try:
                     val, how = distance.distance_param(
                         rec, lambda p: eval_program(asm, p, default_inputs(asm, 1), {}, 1),
@@ -2268,7 +2299,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # to prefer it -- a record with every parameter at 0.5 must be the
                 # identity, and the corpus's values cluster tightly around 0.5.
                 if not rec.edges or rec.edges[0] not in outputs:
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 # WHERE THE BLOCK STARTS is not a constant, and reading it as one cost
                 # every hsl record whose class word omits the inherited parameter. The
                 # fields follow the INHERITED block that `walk.py`'s `_CLS` describes:
@@ -2420,7 +2451,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # and channel 0 is what the format stores rather than a mix this would be
                 # inventing. The two colour records are where it could matter, untested.
                 if len(rec.edges) < 2 or any(e not in outputs for e in rec.edges[:2]):
-                    raise Unsupported("edge has no output yet")
+                    raise cascade("edge has no output yet")
                 W, H = rec.width, rec.height
                 if max_dim:
                     W, H = min(W, max_dim), min(H, max_dim)
@@ -2464,6 +2495,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                       % (100.0 * float(np.mean(~np.isfinite(arr)))))
         except Unsupported as e:
             failures[i] = str(e)
+            if getattr(e, 'cascade', False):
+                CASCADED.add(i)
             if verbose:
                 print("rec%d (%s): SKIP - %s" % (i, rec.filter_name, e))
         except Exception as e:
