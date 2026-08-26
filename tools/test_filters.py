@@ -53,10 +53,13 @@ possibly wrong by a constant factor. A test asserting the length would be assert
 unestablished thing. The blind spot lines up exactly with the documented gap, which is the
 honest place for it.
 """
+import collections
 import contextlib
+import glob
 import io
 import os
 import re
+import struct
 import sys
 
 import numpy as np
@@ -64,6 +67,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus                                                        # noqa: E402
 import manifest                                                      # noqa: E402
+import provenance                                                    # noqa: E402
 import render as R                                                   # noqa: E402
 from sbsasm import Assembly, FILTERS                                  # noqa: E402
 
@@ -664,6 +668,134 @@ def test_closure_never_claims_a_dependency_the_manifest_denies():
     return
 
 
+# Pairings this test found when it was written. A floor, not a target: the check is
+# worthless if the pairing procedure quietly stops matching anything, and a suite that
+# silently measures nothing looks exactly like a passing one.
+BLENDMODE_PAIRINGS = 12
+
+_SBS_NODE = re.compile(r'<compNode>((?:(?!</compNode>).)*?)</compNode>', re.S)
+
+
+def _distinctive(text):
+    """A float literal specific enough to identify one node. containment.py's rule.
+
+    Round numbers -- 0, 0.5, 0.25, 1.0 -- occur in every filter of every file and pair
+    nothing with anything; five significant decimals do.
+    """
+    m = re.match(r'^-?\d+\.(\d+)$', text)
+    return bool(m) and len(m.group(1).rstrip('0')) >= 5
+
+
+def _source_blends(path):
+    """[(opacitymult, blendingmode or None)] for every blend node the .sbs declares."""
+    try:
+        text = open(path, encoding='utf-8', errors='replace').read()
+    except OSError:
+        return []
+    out = []
+    for body in _SBS_NODE.findall(text):
+        if '<filter v="blend"/>' not in body:
+            continue
+        mode = re.search(r'<name v="blendingmode"/>.*?<constantValueInt32 v="(-?\d+)"/>',
+                         body, re.S)
+        opac = re.search(r'<name v="opacitymult"/>.*?<constantValueFloat1 v="([-\d.e]+)"/>',
+                         body, re.S)
+        if not opac or not _distinctive(opac.group(1)):
+            continue
+        out.append((float(opac.group(1)), int(mode.group(1)) if mode else None))
+    return out
+
+
+def test_blendingmode_matches_the_source_that_declares_it():
+    """The low nibble of blend slot 1 IS `blendingmode`, node by node.
+
+    What was already established is a POSITIONAL claim: FORMAT-NOTES.md's corpus-wide
+    falsification test says no other bit field of slot 1 can be the mode, over 382
+    specimens. That rules out the alternatives; it does not check a single record against
+    a source that names the answer. This does, and it is the same containment argument
+    `containment.py` makes for filter identity, applied to a parameter.
+
+    THE PAIRING IS THE WHOLE TEST. A blend node in the `.sbs` carries an `opacitymult`
+    float; the compiled record carries the same float in one of its words. Where that
+    float has five significant decimals, occurs ONCE in the source, and lands in compiled
+    blend records that all agree on their mode, the two are the same node and the modes
+    must match. Everything ambiguous is dropped rather than guessed -- an ambiguous
+    pairing is not weak evidence, it is none.
+
+    WHY NOT COUNT-MATCHING, which would be simpler: every paired source in the corpus is
+    instanced -- 0 of 71 have zero `compInstance`, and 0 of 71 have as many blend nodes as
+    their binary has blend records -- so a multiset comparison is comparing a top-level
+    graph against itself plus every subgraph it instantiates. The per-node pairing is
+    what survives instancing.
+
+    WHAT IT FOUND, at the time of writing: 12 unambiguous pairings, 10 where the source
+    declares a mode and the decode agrees with it (modes 2, 3 and 9), 0 disagreements, and
+    2 where the source declares NO blendingmode at all and the decode reads 0 -- which is
+    independent evidence that `copy` is the parameter's default, a fact the renderer
+    relies on and had no direct support for.
+
+    IT DOES NOT COVER EVERY MODE. Modes 0, 2, 3 and 9 are pinned here; 1, 4, 5, 6, 7, 8,
+    10 and 11 are not, because no source in this corpus declares them on a node with a
+    distinctive opacity. That gap is the point of reporting the modes covered rather than
+    a bare pass.
+    """
+    agree = differ = default_zero = 0
+    offenders = []
+    sources = 0
+    for path in provenance.paired_sources():
+        if provenance.matches(path, provenance.EXCLUDED_AUTHORS):
+            continue
+        declared = _source_blends(path)
+        if not declared:
+            continue
+        seen = collections.Counter(v for v, _m in declared)
+        declared = [(v, m) for v, m in declared if seen[v] == 1]
+        if not declared:
+            continue
+        asms = glob.glob(os.path.join(os.path.dirname(path), '**', '*.sbsasm'),
+                         recursive=True)
+        if not asms:
+            continue
+        try:
+            asm = Assembly(asms[0])
+        except Exception:
+            continue
+        sources += 1
+        by_value = collections.defaultdict(list)
+        for rec in asm.records:
+            if rec.filter_name != 'blend' or not rec.slot1_flags:
+                continue
+            mode = rec.slot1_flags.get('blendingmode')
+            for word in rec.words:
+                f = struct.unpack('<f', struct.pack('<I', int(word) & 0xFFFFFFFF))[0]
+                if np.isfinite(f) and 0.0 < f < 1.0:
+                    by_value[round(f, 6)].append(mode)
+        for value, mode in declared:
+            hits = by_value.get(round(value, 6))
+            if not hits or len(set(hits)) != 1:
+                continue
+            if mode is None:
+                default_zero += 1 if hits[0] == 0 else 0
+                if hits[0] != 0:
+                    offenders.append((os.path.basename(path), value, 'default', hits[0]))
+                    differ += 1
+            elif mode == hits[0]:
+                agree += 1
+            else:
+                differ += 1
+                offenders.append((os.path.basename(path), value, mode, hits[0]))
+    if not sources:
+        print('SKIP test_blendingmode_matches_the_source_that_declares_it: no paired sources')
+        return
+    assert not differ, ('blend slot 1 decodes a mode the source contradicts, %d times; '
+                        'first: %s' % (differ, offenders[:5]))
+    assert agree + default_zero >= BLENDMODE_PAIRINGS, (
+        'only %d pairings (%d declared, %d default) -- fewer than the recorded %d, so the '
+        'pairing procedure has stopped finding evidence rather than passing'
+        % (agree + default_zero, agree, default_zero, BLENDMODE_PAIRINGS))
+    return
+
+
 # The standalone runner reads SKIP from what a check PRINTS, not from what it returns.
 # These functions used to return a count and the runner reported "skipped" when it was
 # falsy -- but a pytest test function that returns non-None is a warning today and an
@@ -677,7 +809,8 @@ if __name__ == '__main__':
                test_curve_identity_is_exact, test_dirmotionblur_is_an_average,
                test_gradient_runs_and_stays_bounded,
                test_dyngradient_is_a_ramp_lookup,
-               test_closure_never_claims_a_dependency_the_manifest_denies):
+               test_closure_never_claims_a_dependency_the_manifest_denies,
+               test_blendingmode_matches_the_source_that_declares_it):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()

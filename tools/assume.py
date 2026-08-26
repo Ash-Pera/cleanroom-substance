@@ -47,6 +47,15 @@ QUESTIONS = {
                            'thorn', 'pyramid', 'brick', 'gradation', 'waves', 'halfbell',
                            'ridgedbell', 'crescent', 'capsule', 'cone'),
     'uniform.fill':       (),      # a value, not an enumeration
+    # The channel weights a single-input `shuffle` record applies. TWO SOURCE NODE TYPES
+    # COMPILE TO THE SAME FILTER ID -- the paired sources declare `grayscaleconversion`
+    # (100 nodes, parameter `channelsweights`, a float4) and `shuffle` (43 nodes,
+    # parameters `channelalpha`/`channelgreen`/`channelblue`, integer selectors) -- which
+    # is why one filter has two layouts, a weight vector and a selector word. Class-word
+    # bit 8 says whether the weights are stored at all; where it is clear the compiler
+    # emitted nothing and the engine uses the node's own default, which is not in the
+    # file. A 4-tuple, so continuous rather than enumerated.
+    'grayscale.weights':  (),
 }
 
 _ACTIVE = {}
