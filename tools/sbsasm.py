@@ -2158,6 +2158,45 @@ class Record:
         The present parameters occupy the LAST k slots of the block, in spec order. A
         record whose bits imply more parameters than the block has slots is not readable
         either way, so it reports what fits instead of guessing an alignment.
+
+        HOW OFTEN "MORE THAN THE BLOCK HAS" HAPPENS, corpus-wide rather than over the file
+        subset `_param_slots` quotes 13,417 from:
+
+            filter   records   block < bits   block sizes seen        MAX
+            1        310,491        47,705    [-1, 0, 1, 2]             2
+            4         40,789           304    [-1, 0 .. 6]              6
+            11        14,825           286    [0 .. 4]                  4
+            12        60,339           579    [1 .. 4]                  4
+            15        85,149        13,686    [-1, 0 .. 4]              4   <- declares 5
+
+        62,560 records in total, and `levels` declares FIVE parameters against a block that
+        never exceeds four slots. `_param_slots`' grow rule reaches outside the block and
+        places nearly all of them, which is what it is for.
+
+        WHERE IT DOES NOT, THE LOSS IS SILENT, and that is worth naming because nothing
+        reports it. The `continue` below drops a parameter whose computed slot falls
+        outside the record, so `named_parameters` returns FEWER parameters than the
+        record's own presence bits declare -- no exception, no LOW_CONFIDENCE, no marker:
+
+            filter 4    36 records    (23 lose 1 of 2, 13 lose 1 of 1)
+            filter 15    1 record
+            37 records corpus-wide
+
+        The cause is the lossy memo key. `concrete_049` record 396 is SIX words long and
+        the block its key selects names slot 11; record 78 is eight words and gets slot 11
+        too. That is the "one layout key covering two real layouts, told apart by record
+        length" that `_param_slots` records below -- but these are a different population
+        from the 4 errors it counts there, and they fail by disappearing rather than by
+        landing wrong.
+
+        A CURSOR CANNOT MAKE THIS MISTAKE. `decompose` advances `pos` through the record
+        itself, so it cannot propose slot 11 of a six-word record; only a memo consulted by
+        key can. This is the parameter path's version of what `param_slots` found for
+        `intensity` -- a slot index is a position in a walk, and reading it in any other
+        frame is what makes it look unstable. Retiring this is blocked on the parameter
+        WIDTHS, and the obvious structural candidate for those is refuted: baked levels are
+        one word whether the record is colour or greyscale (colour records with 2 baked
+        parameters have a 2-slot block, 550 of 550 -- not the 8 a float4 would need).
         """
         if len(self.words) < 3:
             return []
