@@ -2911,6 +2911,27 @@ class Record:
         Slot 2 is *not* an input edge. It reads as one - a small backward value - but
         its resolution agreement with the record is 35.5%, which is chance, where a real
         edge agrees at ~100%.
+
+        VERIFIED AGAINST THE SOURCES THAT DECLARE IT, which had never been done -- every
+        justification above is internal to the binary. A `.sbs` gradient node carries
+        `gradientrgba` as an array of cells, each with a `position` and a `value`, so a
+        stop with enough decimals to be distinctive locates the record by containment and
+        its colour can then be read back. Over the permitted paired sources:
+
+            distinctive stops sought              34
+              located in exactly one record       25
+                and its COLOUR matches            24        to within 0.02 per channel
+                but its colour differs             1
+              ambiguous (2 or 3 records)           7
+              not found                            2
+
+        24 of 25 covers both storage forms -- the packed-u16 entries and the 5-float
+        (20-byte) exact-span form -- and it is what licenses the ramp for colour work
+        rather than only for structure. The one disagreement is `Wood_Planks` record 68,
+        where the position matches to 2e-4 but the source's grey (0.0217 x3) reads back as
+        (0.569, 0.020, 0.000): either a form this decode picks wrongly or a coincidental
+        position collision with an unrelated record, and one specimen does not separate
+        those.
         """
         if self.filter_id != 0 or len(self.words) < 5:
             return None
