@@ -37757,3 +37757,40 @@ param residual (params sit after the same slots).
 Remaining to a full replacement: fold in the g-interleaving; extend to the arity filters (pixelproc,
 fxmaps, distance, shuffle) via the cost model's arity term; complete PARAM_SPEC field naming; handle
 interaction specs (emboss). Then extend record_layout to return the decomposition and rewire sbsasm.
+
+### Skipping the typeless fills wakes the seam chain and still draws no seams
+
+With the width-2 fix in place, records 331 and 333 carry a 5:1 strip rather than a square, so the
+`fx.sizeless = 'skip'` experiment was worth re-running -- the earlier one was done while both were
+squares. It behaves differently now, and it is still refused.
+
+    scope                       rec331 std   rec333 std   rec334 std
+    baseline                      0.00000      0.00000      0.00000
+    fx.sizeless=skip              0.00000      0.10679      0.00000
+    skip + fx.negopacity=abs      0.10679      0.10679      0.05054
+
+The dead chain wakes up: record 334 -- `subtract(332, 333)`, the black input all eight
+directionalwarps take -- carries signal for the first time. Scored, it is genuinely mixed:
+
+    channel          baseline    skip      skip+abs
+    height ch0        +0.950     +0.958     +0.958
+    normal ch0/ch1    +0.917     +0.929     +0.929
+    basecolor ch0     +0.667     +0.695     +0.683
+    basecolor ch2     +0.446     +0.483     +0.492
+    normal ch2        +0.443     +0.289     +0.289
+    roughness ch0     +0.854     +0.740     +0.651
+    MEAN              +0.7467    +0.7239    +0.7133
+
+**And the pictures settle it.** No seams appear in basecolor under either candidate -- it looks
+essentially identical to the baseline, and nothing like the reference's crisp dark lattice. What
+DOES appear is a broad soft diagonal smear across `roughness` that is not in the baseline and not
+in the reference, which is the 0.854 -> 0.651 and is visible at a glance.
+
+The smear is the strip drawn at the wrong scale. `patternsize` (5.0, 1.0) is five cells by one,
+and these records have a single cell, so the strip spans five canvases by one -- a band across
+the whole image rather than a seam between tufts. Getting the shape right did not get the SCALE
+right, and the scale has no divisor available here for exactly the reason the previous note
+records: span 1, `numberadded` 1, `grid_width` None.
+
+So: refused, on the picture rather than the mean. The seam chain is now demonstrably reachable --
+that is new -- and what it draws is still the wrong size.
