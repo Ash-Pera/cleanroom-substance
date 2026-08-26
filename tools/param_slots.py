@@ -20,23 +20,31 @@ WHAT IT FINDS TODAY, over the permitted paired sources, for `intensity`:
     dirmotionblur          2     5 (0x0B09, 0x0B19)
     distance, emboss       0
 
-THE SLOT IS NOT FIXED, AND THE CLASS WORD MOVES IT. `directionalwarp` is the clean case:
-0x0319 puts intensity at slot 5 and 0x0B19 puts it at slot 6, and 0x0B19 is 0x0319 with
-BIT 11 set. Ten of ten. `sharpen` says the same thing with the same bit -- 0x1319 at slot 3,
-0x1B19 at slot 4. So bit 11 charges a word ahead of intensity in those two, which is the
-cost model this format uses elsewhere: `hsl` walks its class bits for exactly this reason,
-and `uniform`'s fill moves by one when bit 7 is set.
+THE SLOT IS NOT FIXED, AND THE RULE IS `start + 1 + bit7 + bit11`. Reported as a raw word
+index the slot looks unstable -- `warp` puts intensity at 4, 5 and 6 -- because the index
+counts from the record header and the header is not a fixed size: `Record.layout` already
+says where a record's PARAMETERS begin, after its edge references. Measured from there, the
+parameter sits at
 
-AND ONE FILTER SAYS THE CLASS WORD IS NOT ENOUGH. `warp` has class 0x2B19 at slot 5 eleven
-times and at slot 6 once, so two records with the SAME class word put the parameter in
-different places. Whatever moves it there is not in that word. (Its 0x2309 -> 0x2319 pair
-does behave, moving one slot when bit 4 appears.)
+    layout start + 1 + (class bit 7) + (class bit 11)
 
-WHAT IT DOES NOT DO. It does not derive the cost mask. Twenty-nine located slots across five
-filters, with one filter already contradicting the class word, is not enough to pin which
-bits charge -- and guessing a mask is how a plausible wrong reading gets into a renderer.
-This reports the located slots with the class word beside each, which is the evidence a mask
-would have to explain.
+in 38 of 38 located pairings, across warp, directionalwarp, distance, blur, sharpen and
+dirmotionblur. Both bits are ones this format already charges a word for elsewhere: bit 7
+moves `uniform`'s fill by one, and `hsl` walks its class bits for the same reason.
+
+AND IT CORROBORATES THE BIT-12 READING RATHER THAN UPSETTING IT. `blur intensity: class bit
+12 clear` is the largest heading in the blocker census, 49 declared outputs, and the natural
+suspicion is that the intensity is simply somewhere else. It is not. Applying the rule above
+to the records that refuse, over 20 files:
+
+    bit 12 CLEAR   17 records   the derived slot holds a value that is not an intensity
+                                (denormals -- the record's own bytecode read as a float)
+    bit 12 SET      8 records   the derived slot is PAST the end of the record
+
+So where bit 12 says a baked intensity is stored the rule finds it, and where bit 12 says
+none is stored the same rule lands on something that is not one. That is what an absent
+value looks like, and it is independent of the distributional argument the blur branch
+makes -- this comes from sources that declare a number and binaries that contain it.
 
 WHERE IT IS BLOCKED. `distance` and `emboss` pair zero: their permitted sources declare no
 intensity with enough decimals to be distinctive, and for emboss there is exactly one
@@ -123,6 +131,21 @@ def locate(node, fid, param='intensity'):
                 i, k, r = hits[0]
                 found.append((os.path.basename(path), i, v, k, r.cls))
     return found
+
+
+def predicted_slot(rec):
+    """Where a filter's float parameter sits, by the rule the pairings establish.
+
+    `layout start + 1 + bit 7 + bit 11` -- 38 of 38 located pairings across six filters.
+    Returns None when the record has no readable layout or the slot falls past its end, so
+    a caller gets an absence rather than a word from the next record.
+    """
+    try:
+        _edges, start = rec.layout
+    except Exception:
+        return None
+    at = start + 1 + ((rec.cls >> 7) & 1) + ((rec.cls >> 11) & 1)
+    return at if at < len(rec.words) else None
 
 
 def main(argv):
