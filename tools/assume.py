@@ -325,9 +325,25 @@ QUESTIONS = {
     # lit fraction at n=16 is real, but it works because size 0.25 tiles a 4-grid exactly;
     # rec65 at n=16 saturates to 1.0000 because 0.4146 stamps on a 0.25 pitch overlap.
     #
-    # So the count is plausibly 16 for both and the sizes differ, which is the opposite of
-    # the rule. What sets the dimension is still unread, and it is not in the constant list
-    # by inspection.
+    # AND THE "rec65 LACKS THE 4.0" WAS A DISPLAY BUG IN MY OWN PROBE. It does not lack it.
+    # Both placement programs are 347 lines and both contain `v10 = 4.0` at line 19, with a
+    # 0.25 pitch at lines 24/30/36. The constant scan that reported otherwise truncated its
+    # output to twelve values, and rec65 has twelve constants below 4.0 where rec34 has ten,
+    # so the 4.0 fell off the end of a list, not out of the file. A slice in a debug print
+    # became a finding, and it was handed onward as one.
+    #
+    # SO THE COUNT IS LOCATED, by two methods that are genuinely independent of each other
+    # and of the 1/size^2 identity. The structural side diffed the two programs: the grid
+    # computation is byte-identical, `floor($number / 4)` for the rows and a 0.25-step
+    # column wrapping at 1.0, and the ONLY differences between the records are three
+    # constants feeding patternsize. Separately, sweeping rec65's count here put its stamps
+    # on a measured 0.25 pitch. A read of the bytes and a render measurement agree that the
+    # grid is 4x4 = 16 in both records and that it is size-independent.
+    #
+    # What remains is only the path: by which route the engine turns that hardwired divisor
+    # into the emission loop bound, given this walk uses numberadded and numberadded is the
+    # aspect-amount for these records. The VALUE and its SOURCE are pinned; the derivation
+    # is not.
     #
     # Both arms above remain measurements, not fixes -- they say what the answer looks like,
     # not what produces it.
