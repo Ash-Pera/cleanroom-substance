@@ -36097,10 +36097,13 @@ candidate not a default.
 Generalization census — CORRECTED. My first census GATED on a 0x99 scanner in the chain,
 which was a ~15× undercount: most grid records have NO scanner (they are ADD→GATE(0x89)),
 so the gate excluded the majority. The gated numbers below (n=72, "49/49 square") describe
-only the scanner-bearing SUBSET; the real detector is fxrender.grid_width (no scanner gate),
-and over a 1/4 corpus sample it finds 662 grid records → **~2648 corpus-wide**, widths dense
-2..64 — consistent with peer 0b's own "355 records dense to 64 over 80 files" scan. My earlier
-"~180" estimate rested entirely on the scanner gate and is discarded.
+only the scanner-bearing SUBSET; the real detector is fxrender.grid_width (no scanner gate).
+Over the whole corpus DEDUPED by content (446 distinct files of 650; 204 were byte-identical
+duplicates): **2598 grid records across 198 files**, widths dense 2..64 (5 and 7 dominate).
+My earlier "~180" rested entirely on the scanner gate and is discarded — a ~14× undercount.
+(My per-file rate ~13 differs from peer 0b's "355 in 80 files" ≈ 4.4/file, likely different
+file populations — I count every .sbsasm, their 80 may be the permitted-source subset; the
+order of magnitude holds either way.)
 - (gated subset, still true of it) divisor extraction resolved on 49/72; every one with both
   row-divisor N and column pitch had rows == cols exactly — a square-grid indication, but on
   the scanner subset only. The square property should be re-verified on the grid_width
@@ -36137,23 +36140,22 @@ the five mean-dominated channels are clear to default.
 ### Scoreable multi-pack basis for count=N² (a second N, plus negative controls)
 
 Ran fxrender.grid_width (the score-driving detector, no scanner gate) across all five
-scoreable reference packs:
-- Chesterfield (ChesterfieldSofa): 4 grid records, N=4 (count 16) — scored, +improvement.
-- Bricks: 2 grid records — rec84 (N=5), rec263 (N=2), both chained ADD→GATE→ADD, no scanner.
-  Scored under the 'divisor' arm, +improvement (overall 0.1239→0.1065, same signature as
-  Chesterfield: scalars up, normal down at a third grid width). A real second scoring pack.
-- Sandy Stone (StylizedCobblestoneStreet): 1 grid record, rec27, N=5 — extraction confirmed
-  but the outputs it feeds do not render, so it is an extraction check, not a scoring one.
-- RoofTiles (0), Auras (0): genuine negative controls by grid_width — byte-identical under
-  both arms.
+scoreable reference packs (using the CORRECT Kutejnikov__/minime453__ paths — there are
+duplicate/other-author Bricks.sbsasm in the tree; census the reference-pack path, not a glob):
+- Chesterfield (ChesterfieldSofa): 4 grid records, N=4 — scored, +improvement.
+- Bricks (Kutejnikov__Bricks_and_tiles/x_Bricks_Textures_1&2): 18 grid records, widths
+  {2:11, 4:2, 25:5}, all chained ADD→GATE→ADD (no scanner). Scored under 'divisor',
+  +improvement (0.1239→0.1065, same signature: scalars up, normal down). Second scoring pack.
+- Sandy Stone (StylizedCobblestoneStreet): 1 grid record, N=5 — extraction confirmed but its
+  outputs do not render, so extraction-only, not scoring.
+- RoofTiles (0), Auras (0): genuine 0 controls.
 
-(An earlier version of this note claimed Bricks was a zero-grid control with "no 0x99-scanner
-fxmaps." That was the scanner-gate error: Bricks' grids are gate-based, not scanner-based, and
-grid_width finds them. Bricks is a scoring pack, not a control.) NB peer 0b's message reported
-18 Bricks grids at widths {2,4,25}, which the committed grid_width does not reproduce (it
-returns 2); the discrepancy is unresolved and the score is driven by the committed grid_width.
-
-So the default can rest on Chesterfield (N=4) + Bricks (N=2,5) with RoofTiles/Auras as controls. Also,
+So the scoreable basis is 23 records across two scoring packs (Chesterfield 4 + Bricks 18),
+four distinct widths {2,4,5,25} counting Sandy Stone's extraction. (An earlier version of this
+note first called Bricks a zero-grid control — the scanner-gate error — then "Bricks=2 width 5",
+which was a DIFFERENT wrong: a glob picked tiny/x_textures__BricksSubstance.sbsasm (a different
+author's 75-fxmaps Bricks) instead of the Kutejnikov reference pack. Lesson: census reference
+packs by their full new_opengameart path, never by a bare `**/Bricks.sbsasm` glob.) Also,
 peer 0b found the count fix makes previously-UNDECIDABLE downstream arbitrations decidable:
 fx.typeless_profile had no winner scored at n=1; at n=16 paraboloid wins and takes height
 0.0623→0.0316. Lesson: re-run sweeps recorded inconclusive upstream of an fxmaps count after
