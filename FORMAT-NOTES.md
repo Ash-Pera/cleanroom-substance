@@ -37282,3 +37282,75 @@ Three questions this session had left UNDECIDABLE (`fx.sizeless`, `fx.rootentry`
 typeless profile) are decided here, all three in favour of the existing default. They were
 undecidable before because the channels they were scored on had been flattened to noise by the
 missing lattice -- which is exactly what the note on those verdicts predicted.
+
+## Deriving parameter layouts to retire the memo: mapped, not yet solved
+
+Goal: replace the last load-bearing use of the layouts.json memo — parameter naming
+(`named_parameters`, 376k records) and `program_slots` (31k) — with a rule, so the fitted table
+can be deleted. Status after a full investigation: the dependency is reduced to ONE quantity and
+its structural root is found, but no validated closed-form rule yet. Not shipped.
+
+**The dependency reduces to the block length.** `_parameters_paired` and `program_slots` read only
+`hit[1]` from the memo — the layout's slot block. For the five relevant filters
+(blend/levels/directionalwarp/dirmotionblur, plus warp/blur for program_slots) the block is
+almost always a CONTIGUOUS run `[prog, prog+1, ...]` starting at the rule-computed program slot
+(dirwarp/dirmotion 100%, levels 99.9%, blend 93.5%). `prog` is already rule-derived (memo-free).
+So the only thing the memo still supplies is the run's LENGTH, and the present parameters occupy
+the LAST k slots of it (k = count of PARAM_SPEC bits set in the full w1).
+
+**The block length does NOT reduce to a simple rule over (cls, w1&mask).** Tested and rejected:
+popcount of cls or w1 under any 14-bit mask (none exact); the present-param SET (AMBIGUOUS — the
+same set maps to different lengths, e.g. dirwarp {intensity,warpangle} -> {1,2,3,4} param slots);
+a constant (block-slots − present) per filter (varies); popcount+const (none). A 41-coefficient
+linear model over the bits fits warp (396 keys, 100%) but that is the only well-determined case —
+dirwarp (28 keys) and blur (14 keys) have fewer keys than coefficients, so their "100%" is
+underdetermined overfitting, and replacing a lookup table with an overfit linear model is not a
+structural rule anyway.
+
+**The structural root: the extra slots are the size-expression's PROGRAM slots.** Inspecting the
+records, the slots between `prog` and the parameters are additional program-pointer slots — a
+directionalwarp size expression occupies slots 4 AND 5 (both resolve as programs), with the
+parameters at 6,7; dirmotionblur uses 3,4 then param at 5. A recurring `0xa4200XX` word follows
+the parameters in every case. So the parameters are STRUCTURALLY located — after the leading
+program region, before that marker — which turns "opaque per-key length" into "read the record's
+program region." What is NOT yet nailed: the leading-program count varies, and a parameter can
+itself be a program (so "skip consecutive program pointers" over- or under-counts), and the marker
+word's identity/reliability is unverified. Those edge cases are why no rule is shipped: an
+unvalidated one would regress the 376k records the memo currently serves correctly.
+
+So the memo stays for now. The remaining work is specifically: verify the `0xa4200XX` post-param
+marker across the corpus, or derive the leading-program count, then validate a param-locating rule
+gives 0 diffs against the memo before deleting it — held to the same full-corpus + correct-accessor
+standard that caught the two false "deletable" readings earlier.
+
+### The 0x89 gate is a serpentine raster scanner, not a one-shot predicate
+
+`fxrender`'s walk treats the gate as `markov2`: run its `switch` program once, walk on if true.
+For ChesterfieldSofa records 331 and 333 that reading is wrong, and reading their gate program
+says so outright. Its instructions do three things a predicate does not:
+
+    slot 17   incremented by 1, reset to 0 when a condition holds     -- a COLUMN counter
+    slot 16   incremented by 1 when the column counter wrapped        -- a ROW counter
+    slot 18   multiplied by the constant (-1.0, 1.0) on the same wrap -- a DIRECTION FLIP
+    slot 14   advanced by the step, then tested against a rectangle   -- the POSITION
+
+A column index, a row index, and a direction that reverses at the end of each row is a
+BOUSTROPHEDON raster scan. Run once it lays a single stamp; run to exhaustion it lays a field.
+That matters here because both records render flat white, their difference (record 334,
+`subtract(332, 333)`) is therefore flat black, and that black is the input all eight of this
+file's directionalwarps take -- the chain that draws the basecolor's diamond seams.
+
+Their `numberadded` is the same degenerate aspect term that record 65 carries -- 1 on a square
+image -- and `grid_width` declines for them, so the `fx.gridcount` divisor that fixed the
+tufting lattice does not reach these two.
+
+**THE LOOP IS NOT THE FIX, AND THAT IS THE USEFUL PART.** `fx.gatescan = 'loop'` is added, and
+it changes nothing: the predicate goes FALSE on its second call. Slot 14 starts at (0, 1) and
+the first step takes it to (-1, 1), outside the rectangle in slot 0. Seeding
+`SCAN_STATE_DEFAULTS` (which today is applied only to chains containing a 0x99 STEPPER, and
+these have a GATE instead) does not change it either -- still one call.
+
+So the scan is real, the loop arm is correct in shape, and what stops it is the INITIAL STATE or
+the step's SIGN: a scan that begins on the boundary and steps away from the region covers one
+cell whatever the loop does. That is a much narrower question than "why is this record white",
+and it is where the next attempt should start.
