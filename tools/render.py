@@ -1245,8 +1245,31 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 out_low, out_high = params['leveloutlow'], params['levelouthigh']
 
                 span = in_high - in_low
-                span = np.where(np.abs(span) < 1e-6, 1.0, span)
-                t = np.clip((src - in_low) / span, 0.0, 1.0)
+                # A ZERO-WIDTH INPUT RANGE IS A STEP, NOT A RAMP. Where in_low equals
+                # in_high the transfer has no width to interpolate across: everything below
+                # the point maps to out_low and everything at or above it to out_high.
+                # Substituting a span of 1.0 to dodge the division turns that step into a
+                # gentle ramp over the whole range, which is a different picture.
+                #
+                # Auras record 400 is the specimen: it stores levelinlow AND levelinhigh
+                # both at 0.5900000333786011 and nothing else. Under the ramp its contrast
+                # is std 0.1262, the `distance` at record 402 below it collapses to exactly
+                # 0.0, and record 444 -- the graph-004 basecolor -- comes out a constant.
+                # Under the step it keeps its structure and that output scores
+                # r = 0.92 / 0.85 / 0.94 against the engine's own export.
+                #
+                # THIS IS WHAT THE OLD GAMMA READING WAS DOING BY ACCIDENT. Before b2f1d97
+                # the mid point was renormalised, and for this record that gave
+                # (0.5 - 0.59) / 1.0 = -0.09, clipped to 1e-4, an exponent of 0.0753 -- a
+                # near-vertical curve that approximated the step. b2f1d97 is right that a
+                # defaulted mid cannot mean a near-vertical curve, and removing that
+                # accident is what exposed this: the step belongs in the span, not in the
+                # gamma.
+                degenerate = np.abs(span) < 1e-6
+                span = np.where(degenerate, 1.0, span)
+                t = np.where(degenerate,
+                             (src >= in_low).astype(np.float32),
+                             np.clip((src - in_low) / span, 0.0, 1.0))
 
                 # `levelinmid` IS THE GAMMA ITSELF, NOT A POSITION INSIDE THE INPUT RANGE.
                 # This used to renormalise it, `(in_mid - in_low) / span`, and that is
