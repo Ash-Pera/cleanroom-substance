@@ -2394,9 +2394,45 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # 3) and `inversedy` are not decoded, so a specimen using the other
                 # handedness renders with its green channel inverted rather than failing.
                 gy, gx = np.gradient(height)
-                # `inversedy` -- see assume.QUESTIONS['normal.inversedy']. Off by default,
-                # so this changes nothing unless a caller opens the scope.
-                if (assume.assumed('normal.inversedy') == 'word1bit2'
+                # `inversedy` -- see assume.QUESTIONS['normal.inversedy'].
+                #
+                # ADOPTED AS THE DEFAULT. It was opt-in because it moved exactly ONE channel
+                # -- Bricks `normal` ch1, r -0.158 to +0.158 -- and one channel is not a
+                # population. That measurement predates the reference-pairing fixes and the
+                # patterning work: Bricks now renders 12,585 of 12,585 records and FIVE of
+                # its graphs produce a normal map with real signal.
+                #
+                # On all five the correlation FLIPS SIGN WITH ITS MAGNITUDE INTACT to three
+                # decimals, which is what a handedness error looks like and what a gain or
+                # geometry error cannot look like:
+                #
+                #     -0.585 -> +0.585    -0.475 -> +0.475    -0.594 -> +0.594
+                #     -0.504 -> +0.504    -0.683 -> +0.683
+                #
+                # SURGICAL ACROSS EVERY REFERENCE PACKAGE: of 112 scored channels exactly 7
+                # move, all of them `normal` ch1, all of them improve, and the other 105 are
+                # byte-identical. Overall MAE 0.1332 -> 0.1318; Bricks 0.1401 -> 0.1385;
+                # Chesterfield unchanged, because its bit is clear.
+                #
+                # TEN RECORDS, NOT ONE. Each of the five graphs in each of the two Bricks
+                # assemblies feeds its normal output from a DIFFERENT `normal` record, and
+                # all ten carry word1 = 5. The earlier "one positive specimen" was rec 12180
+                # alone because only one graph's normal rendered at the time.
+                #
+                # THE BIT IS NOT A BRICKS QUIRK: 118 of 1,447 normal records set it, across
+                # 40 of 444 files. The note's "2 of 53" was a much smaller population.
+                #
+                # WHAT WOULD STILL REFUTE IT, unchanged and worth keeping in view: only one
+                # PACKAGE with an exported normal map sets the bit on the record that feeds
+                # it, so any field that happens to be set in Bricks and clear elsewhere fits
+                # this evidence equally. The one other reference package that sets the bit
+                # anywhere -- minime453__Stylized_Sandy_Stone_Path -- sets it on rec 175,
+                # which feeds basecolor, AO and height; its exported normal comes from rec
+                # 1452 with the bit CLEAR, and the renderer-free height-to-normal arbiter
+                # says that package needs no flip. Consistent, so nothing is refuted, but it
+                # is not a second confirmation either. A package that sets the bit ON its
+                # normal output and does NOT need the flip would settle this the other way.
+                if (assume.assumed('normal.inversedy', 'word1bit2') == 'word1bit2'
                         and len(rec.words) > 1 and (rec.words[1] >> 2) & 1):
                     gy = -gy
                     LOW_CONFIDENCE.add(i)
