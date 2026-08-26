@@ -36130,3 +36130,21 @@ give the engine's softer slopes). Render-side, in splat, orthogonal to the count
 invisible at n=1 (one stamp ≈ no high-frequency, so normal's std undershot and looked near-ref
 by coincidence) and surfaces only now the count is right. The count fix is decode-complete;
 the five mean-dominated channels are clear to default.
+
+### Scoreable multi-pack basis for count=N² (a second N, plus negative controls)
+
+Ran the grid_width extraction across all five scoreable reference packs:
+- Chesterfield (ChesterfieldSofa): 4 grid-fix records, N=4 (count 16) — scored, +improvement.
+- Sandy Stone (StylizedCobblestoneStreet): 1 grid-fix record, rec27, N=5 (count 25) — a
+  DIFFERENT dimension, same class (fxmaps, ADD→0x99→leaf, numberadded degenerate reads slot 8
+  =1, placement square N=5/pitch 0.2). Feeds baseColor/normal/roughness/AO/height. Unscored —
+  the discriminating second specimen.
+- Bricks (75 fxmaps), RoofTiles (113), Auras (48): ZERO 0x99-scanner fxmaps — no grids at all,
+  so the fix leaves them byte-identical. Clean negative control that the extraction/guard do
+  not fire where there is no grid.
+
+So the default can rest on two packs at two Ns plus three no-ops, not a single graph. Also,
+peer 0b found the count fix makes previously-UNDECIDABLE downstream arbitrations decidable:
+fx.typeless_profile had no winner scored at n=1; at n=16 paraboloid wins and takes height
+0.0623→0.0316. Lesson: re-run sweeps recorded inconclusive upstream of an fxmaps count after
+a correction of this size.
