@@ -32302,6 +32302,59 @@ A pattern 2.8 unit squares wide paints everything one colour. So the coordinate 
 `patternsize` is expressed in is the open question, and it sits upstream of every other
 assumption in the renderer.
 
+### patternsize is a canvas fraction read from a cross-node variable — the source says so
+
+The "coordinate space `patternsize` is expressed in" is not a mystery scale. Reading the
+permitted FX-Map sources answers it, and the answer moves the open problem from *geometry* to
+*variable resolution*.
+
+First, these FX-Maps have **no Quadrant node**. Their entire node vocabulary across permitted
+sources is `addnode` (596), `paramset` (480), `markov2` (80) — an iterate, a pattern-emitting
+table entry, and a gate. There is no spatial subdivision, so there is nothing for a size to be
+"relative to" other than the whole `[0,1]` canvas, and the renderer's linear-chain model is
+topologically correct. (This kills the tempting `patternsize / 2^quadrant-depth` reading before
+it is coded — there are no quadrants.)
+
+Second, `patternsize` is almost never computed at the draw site. In **220 of 230** permitted
+patternsize programs the value is simply read from a variable — `get_float2("size_out")` in 96,
+a gated `get_float1` in 124 — set in a *different* FX node. `ie_pcloud` carries the chain in an
+author comment in its own source:
+
+```
+cloud_img_size = pow2(tofloat2(cloud_size))     # 2 ** cloud_size, from an integer2 input
+size_out       = (1, 1) / cloud_img_size        # a reciprocal
+paramset:  patternsize = get_float2("size_out")
+```
+
+The graph input is `cloud_size`, default `(7, 7)` (type 8, integer2); `cloud_img_size` and
+`size_out` are **internal variables**, not inputs. So the drawn size is `1 / 2^7 = 0.0078` — a
+point in a point cloud. `ie_curve` reaches its small size the other way, reading a `p_size`
+input whose default is `0.01` directly. Either way the size is small and lives behind a
+variable set upstream of the draw.
+
+This resolves several earlier threads at once:
+
+* The **median 2.82** in flat records is not a size in an unknown space. It is what
+  `get("size_out")` returns when the setup chain (`input → pow2 → reciprocal → slot`) has not
+  been resolved into the variable slot by the time a paramset reads it — a default, or an
+  unrun `set`.
+* It confirms the **reciprocal reading** (negative result 5) as the format's *actual* size
+  convention: size is written as `1 / pow2(N)` in the source, for the PROGRAM sizes that are
+  the majority — not merely as an undecidable baked-byte trick. And it explains the asymmetry
+  that reading noticed (oversized records are the ones whose size variable defaulted).
+* `Stadsspel__Lines` (baked-free, `patternsize` a genuine `1.414`) is not a counterexample —
+  it computes its size at the draw site rather than reading `size_out`, so no variable
+  resolution is in its path, which is exactly why it renders correctly while the variable-fed
+  records go flat.
+
+What this does **not** do is fix the renderer, and it cannot be tested here (numpy is broken in
+this environment). The concrete next step, stated for whoever can render: for a cloud record,
+assert `slots` holds `size_out ≈ 1 / 2^cloud_size` (~0.008 at default) at the instant a
+paramset reads it. If it does not, the `set` computing it is run too late or writes a different
+slot than the `get` reads — a `seed_slots`/ordering defect — and that, not a frame scale, is
+what paints the corpus flat. Score any change against the negative-result-4 pair: `Lines`
+record 0 must stay a picture, `ChesterfieldSofa`'s reference correlation must not fall.
+
 ### Two negative results
 
 **WITHDRAWN — it IS the pattern-shape assumption.** What this section originally said:

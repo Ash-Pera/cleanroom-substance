@@ -139,6 +139,37 @@ The positions say the same thing from the other side: the x-extent of
 `branchoffset + frameoffset` across one record's patterns has median 0.835 -- about a unit
 square, as expected -- but a p90 of 7.8. Some records place patterns far outside the unit
 square, which a frame model would explain and this renderer does not have.
+
+A POSITIVE RESULT, source-confirmed: patternsize is a plain [0,1] canvas fraction, and the
+open question is a VARIABLE-RESOLUTION problem, not a coordinate-space scale. Reading the
+permitted FX-Map sources settles what `patternsize` is expressed in. These graphs have no
+Quadrant node -- their whole node vocabulary is addnode (596), paramset (480), markov2 (80),
+so there is no spatial subdivision to scale a size against, and the linear-chain model is
+topologically right. And in 220 of 230 patternsize programs the value is simply READ from a
+cross-node variable (`get_float2("size_out")`, 96; a gated `get_float1`, 124), set in a setup
+node, not computed at the draw site. `ie_pcloud`'s own author comment states the chain:
+
+    cloud_img_size = pow2(tofloat2(cloud_size))     # 2 ** cloud_size, an integer2 input
+    size_out       = (1, 1) / cloud_img_size        # the reciprocal
+    ... paramset patternsize = get_float2("size_out")
+
+With the default `cloud_size = (7, 7)`, `size_out = 1/128 = 0.0078` -- a point in a point
+cloud, correct. `ie_curve` reaches a small size the other way (`p_size` input default 0.01,
+read directly). Either way the drawn size is SMALL and lives behind a variable. So the median
+2.82 is not a size in a mysterious space; it is what `size_out` reads when its setup chain
+(input -> `pow2` -> reciprocal -> the variable slot) has not been resolved to its small value
+by the time the paramset reads it. This confirms negative-result 5's reciprocal reading as the
+format's real convention -- size is written as `1/pow2(N)` in the source, for PROGRAM sizes
+which are the majority, not just as a baked-byte trick -- and it explains the asymmetry (the
+oversized records are the ones whose size variable defaulted).
+
+WHAT TO CHECK NEXT (needs a working render, which this author's env cannot run -- numpy is
+broken here). For a cloud record, assert the walk holds `size_out ~= 1 / 2**cloud_size`
+(~0.008 at the default) in `slots` at the moment a paramset reads it. If it does not, the
+setup `set` program that computes it is either not run before the read or writes a different
+slot number than the read -- a `seed_slots`/ordering bug -- and that, not a frame scale, is
+what paints the corpus flat. The two-sided test from negative-result 4 still applies: Lines
+record 0 (baked-free, must stay a picture) and ChesterfieldSofa's reference correlation.
 """
 import argparse
 import os
@@ -576,6 +607,12 @@ def profile_value(lx, ly, profile):
     raise ValueError('unknown pattern profile %r' % (profile,))
 
 
+# Smallest patternsize component that is a size rather than a misread. Named so the
+# equivalence can be A/B tested in one process -- setting it to 0 restores the old
+# behaviour exactly. See the guard in `splat` for the measurement behind the value.
+MIN_PATTERN_SIZE = 1e-6
+
+
 def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     """Draw the emitted patterns. `images` maps EDGE SLOT -> (H, W, C) array.
 
@@ -660,6 +697,29 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
             continue
         if max(sx, sy) > 64.0:
             continue          # a pattern 64 cells across is a misread, not a pattern
+        if min(sx, sy) < MIN_PATTERN_SIZE:
+            # ...and neither is a pattern 1e-33 cells across. The upper bound above had
+            # no lower twin, so a size small enough to make dx / sx overflow float32 was
+            # admitted and then neutralised downstream: the ratio came out inf, inf
+            # failed the |lx| <= 0.5 test inside profile_value, and the emission drew
+            # nothing. Correct output by accident, announced as RuntimeWarning: overflow
+            # encountered in divide. A guard that admits a value and leaves a later test
+            # to cancel it is not a guard.
+            #
+            # The threshold is not a round number picked to be safe -- it sits in a gap
+            # the corpus itself leaves. Over 40 fxmaps-bearing files, 75,136 finite
+            # patternsize components:
+            #
+            #     <= 1e-30            6   two distinct values, 6.259e-33 and 9.341e-33
+            #     next smallest    4.07e-04, then 5.23e-03, ...
+            #     max              18.6
+            #
+            # Twenty-nine decades of empty space between the six and everything else.
+            # Anything in that gap separates the two populations; 1e-6 leaves better
+            # than two decades of margin below the smallest real size, and a pattern
+            # that small spans 0.004 of a pixel on a 4096-wide canvas, so nothing
+            # renderable is being refused.
+            continue
         if col.size < nchan:
             col = np.repeat(col[:1], nchan)
         col = np.clip(col[:nchan], 0.0, 1.0)
