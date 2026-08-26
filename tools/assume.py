@@ -68,6 +68,20 @@ QUESTIONS = {
     # cell ratio. A reference render can settle what a span statistic cannot, which is
     # exactly what this channel is for.
     'fx.branchoffset':    ('canvas', 'cell'),
+    # WHAT UNIT A patternsize IS IN, the other half of the same question. Canvas is refused
+    # two independent ways: the 83 distinct baked values all sit in roughly [0.67, 8] --
+    # 5.0, 1.5, 3.0, 1.0, 8.0, 2.0 -- which as canvas fractions are patterns from
+    # two-thirds of the image to eight times it; and over 299 baked square-grid records
+    # with G from 2 to 128 the correlation of size with 1/G is -0.074, where a canvas
+    # fraction tiling a G-grid would have to correlate near 1.
+    #
+    # It is a separate key from fx.branchoffset because the two are COUPLED and scoring
+    # them apart is what shows it. Correcting offsets alone puts the lattice in the right
+    # place while each cell is still painted G times too large, so a half correction can
+    # score worse than none -- which is what cleanroom-substance-0b measured on
+    # Chesterfield (normal 0.0854 -> 0.0869) for two records whose span/(G-1) is exactly
+    # 1.0000 on both axes, i.e. squarely on the law rather than in its tail.
+    'fx.patternsize':     ('canvas', 'cell'),
 }
 
 _ACTIVE = {}

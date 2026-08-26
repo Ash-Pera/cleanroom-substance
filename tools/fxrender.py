@@ -1029,6 +1029,16 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     #
     # Those two scalings briefly coexisted and MULTIPLIED, dividing a square-grid record by
     # G twice. Only this one remains.
+    # PATTERNSIZE MAY BE IN CELLS TOO -- see assume.QUESTIONS['fx.patternsize']. Same guard
+    # and same reason as the offsets below; kept a separate key because the two are coupled
+    # and scoring them apart is what demonstrates it.
+    size_scale = 1.0
+    if assume.assumed('fx.patternsize') == 'cell' and patterns:
+        _gs = int(round(len(patterns) ** 0.5))
+        if _gs > 1 and _gs * _gs == len(patterns):
+            size_scale = 1.0 / _gs
+            assume.note(getattr(rec, 'index', -1))
+
     cell_scale = 1.0
     if assume.assumed('fx.branchoffset') == 'cell' and patterns:
         _g = int(round(len(patterns) ** 0.5))
@@ -1041,6 +1051,8 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
         base = val(p, 'branchoffset', _ZERO2) * cell_scale
         off = val(p, 'frameoffset', _ZERO2)
         size = val(p, 'patternsize', _ONE2)
+        if size_scale != 1.0:
+            size = size * size_scale
         rot = float(val(p, 'patternrotation', _ZERO1)[0])
         col = val(p, 'opacity', _ONE1)
         if size.size < 2:
