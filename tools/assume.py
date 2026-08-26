@@ -122,6 +122,37 @@ QUESTIONS = {
     # defined for a square emission count, and 30% of those 966 fall outside 10% of the
     # cell ratio. A reference render can settle what a span statistic cannot, which is
     # exactly what this channel is for.
+    # THE THREE-WAY SPAN SPLIT, CHECKED AGAINST THE PROGRAMS. cleanroom-substance-00 reads
+    # the span alone and sorts records into integer-span (scale these), rational span k/d
+    # with d dividing the count (real grids, stored already normalised, correct today), and
+    # no rational d (a rand scatter has no cell size, so no d exists). The span cannot see
+    # what a record's position program actually does, so the two readings were crossed --
+    # 60 files, classifying each record's branchoffset program as reading an integer2 input
+    # (a grid), using the rand opcode (a scatter), or neither:
+    #
+    #     span group                       n      grid   scatter   neither
+    #     integer span (SCALED)          326         0        63       263
+    #     rational k/d, d | N            108        20         0        88
+    #     no rational d <= 256         2,113         6     1,881       226
+    #
+    # TWO OF THE THREE HOLD, and hold well. Every one of the 20 program-identifiable grids
+    # lands in the rational-span group, with zero scatters there -- so "these are grids
+    # stored normalised" is confirmed from a direction the span statistic cannot reach. And
+    # the no-rational-d group is 89% rand, confirming that a scatter leaves no cell size
+    # behind.
+    #
+    # THE GROUP THE GUARD ACTUALLY SCALES IS THE ONE THAT IS NOT CONFIRMED. The integer-span
+    # group contains NO record whose program reads a grid input, and 63 whose program calls
+    # rand. Those 63 are a positive misfire: by the rule's own reasoning a scatter has no
+    # cells, so dividing it by a cell count is the same category of error the sqrt(N) guard
+    # made, at a fifth the rate. The remaining 263 are unclassifiable from the entry alone
+    # and may well be grids -- a record whose $number decomposition happens one node up
+    # reads as "neither" to a per-entry transpile -- but "may well be" is not the evidence
+    # the other two groups have.
+    #
+    # So the guard is a large improvement and still not established on the population it
+    # acts on. It has been shown to DECLINE the right records; it has not been shown to
+    # SCALE the right ones.
     'fx.branchoffset':    ('canvas', 'cell'),
     # WHAT UNIT A patternsize IS IN, the other half of the same question. Canvas is refused
     # two independent ways: the 83 distinct baked values all sit in roughly [0.67, 8] --
