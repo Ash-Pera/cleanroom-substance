@@ -220,6 +220,20 @@ QUESTIONS = {
     # yields a one-cell grid where the reference shows four cells per axis is the open
     # question, and it is a question about that program's arithmetic rather than about the
     # scanner that consumes its result.
+    #
+    # AND IT IS SYSTEMATIC, not one record's data. Seeding every scanner-bearing fxmaps
+    # record in a 40-file sample and reading slot 10 straight out of the frame:
+    #
+    #     slot 10 = (1.0, 1.0)     4 of 4 records, 3 files
+    #
+    # Every scanner this renderer evaluates is handed a 1x1 grid. So the geometry programs
+    # are collapsing to one cell everywhere they are run, which makes this an evaluation
+    # fault with a single cause rather than a per-record decode question -- and it also
+    # disposes of the obvious repair. The structural side proposes multiplying the step by
+    # slot 10, on the reasoning that slot 10 is a computed cell size that nothing reads.
+    # That is sound as far as it goes, but slot 10 IS 1.0 in every record observable here,
+    # so the multiplication is the identity and cannot move any picture until the program
+    # that computes it produces something other than one.
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
