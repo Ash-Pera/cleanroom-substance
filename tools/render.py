@@ -359,6 +359,29 @@ def prefilter(src, scale):
     no resampling: each level is the mean of a 2x2 block. It stops on an odd dimension
     rather than padding, which would invent edge texels -- so a 3-wide image simply does
     not reduce, and the caller gets the point sample it would have had anyway.
+
+    NOT ARBITRATED, AND THE ARBITER CANNOT SEE IT. `tools/refcompare.py` scores renders
+    against the engine's own exported maps, and every one of its numbers is IDENTICAL with
+    and without this function: the change touches 427 records in `Chesterfield` and 30 in
+    `RoofTiles` and ZERO declared outputs in either, because the records it affects sit in
+    chains that do not reach a scored output. Coverage is unchanged too. The prediction
+    made when it was written -- that `normal`'s std would move off 0.0179 toward the
+    reference's 0.0968 -- FAILED; the std did not move at all.
+
+    So what is defended here is the PRESENCE of filtering, not this kernel. The old
+    behaviour returned an exactly constant image from a varying source, which is wrong
+    whatever replaces it, and that part is measured rather than argued. Power-of-two box
+    against trilinear against a proper elliptical filter is an open question, and no
+    evidence in this repository currently distinguishes them -- so a later reader should
+    treat the choice as provisional and should not cite agreement with the engine as
+    support for it, because there is none either way.
+
+    DELIBERATELY NOT MARKED in LOW_CONFIDENCE, unlike `uniform.fill` or the FX-Map
+    profile. Those name a value the FORMAT does not record and a render depends on
+    guessing; this is a resampling decision that applies to every minifying transform
+    equally, and the records it touches are no more and no less trustworthy than they were
+    when they were being point-sampled. Marking 427 records per file would say something
+    false about which readings are in doubt.
     """
     img = src
     while scale >= 2.0 and img.shape[0] >= 2 and img.shape[1] >= 2 \
@@ -458,12 +481,57 @@ BLEND_MODES = {
     # exact pivot scaling is the least certain entry in this table -- the behaviour is
     # described consistently but the formula is not published as an equation, so this
     # takes the reading that maps src=0 -> dst-1, src=0.5 -> dst, src=1 -> dst+1.
+    #
+    # IT IS ALSO THE ONLY MODE THAT SATURATES, and that is measured, not suspected. Over
+    # Chesterfield's 356 blend records, the fraction of output pixels clipped to 1.0,
+    # by mode:
+    #
+    #     copy 0.03   multiply 0.18   switch 0.10   overlay 0.25   screen 0.00
+    #     subtract 0.00   max 0.00   add 0.00      ADDSUB 0.60, and 18 of its 56
+    #                                              records come out uniformly white
+    #
+    # Per-record on its own inputs it clips 26.8% of pixels high; `d + s - 0.5` clips
+    # 19.7% high and `d + s - 1` clips 37.5% LOW instead. None of the three is clean.
+    #
+    # TWO ATTEMPTS TO ARBITRATE IT, BOTH REPORTED AS FAILURES rather than resolved:
+    #
+    #   The exported reference maps CANNOT decide this. Rendering every reference package
+    #   under each candidate moves 3 of 11 scoreable channels, and all three are
+    #   Chesterfield's `basecolor`, which moves only between rendering and NOT rendering
+    #   -- no channel has a comparable MAE under two candidates that both produce it. So
+    #   there is no candidate the references prefer; `d + s - 0.5` merely happens to keep
+    #   an unrelated auto-levels reduction non-degenerate (see the pixelprocessor note on
+    #   0/0). Adopting a formula because it unblocks a record is selecting on a side
+    #   effect, and it is not done here.
+    #
+    #   "Authors feed a mode's NEUTRAL value to switch an input off" -- REFUTED BY ITS OWN
+    #   CONTROL. Over 6,564 blend operands in the reference packages, mode 4's flat inputs
+    #   are 146 at 0.5 and 160 at 1.0, which looks like it favours a 0.5-neutral reading.
+    #   But `max`, whose neutral is unambiguously 0.0, shows 160 flat operands at 0.5 and
+    #   13 at 0.0. Authors feed 0.5 as a generic constant regardless of mode, so the
+    #   statistic does not measure neutrality and cannot be cited for mode 4 either.
+    #
+    # The mode NUMBER is not in doubt -- see
+    # test_filters.test_blendingmode_matches_the_source_that_declares_it, which pairs
+    # source nodes to compiled records by a distinctive opacity: 10 declared modes agree,
+    # 0 disagree, and 2 nodes that declare no mode decode as 0, pinning `copy` as the
+    # default. Only this FORMULA is open.
     4:  ('addsub',     lambda d, s: d + 2.0 * s - 1.0),
     5:  ('max',        lambda d, s: np.maximum(d, s)),        # a.k.a. lighten
     6:  ('min',        lambda d, s: np.minimum(d, s)),        # a.k.a. darken
     # `switch` is handled specially in `apply_blend` -- it is a hard choice between the
     # two inputs driven by opacity, not a per-channel function that opacity then mixes,
     # so running it through the normal lerp would silently turn it into `copy`.
+    #
+    # A CONSISTENCY CHECK THIS IDENTIFICATION PASSES, and one it could easily have
+    # failed: a switch is a branch selector, so its selector should be a graph-level
+    # constant rather than a picture. Evaluating the opacity of all 102 mode-7 records in
+    # Chesterfield gives a spatially constant value in 102 of 102, and every one is
+    # exactly 0.0 or 1.0. A mode misidentified as `switch` would be reading some other
+    # filter's per-pixel parameter, and 102 of 102 constants is not what that looks like.
+    # Not proof of the number -- the containment test cited under mode 4 does that for
+    # the modes it covers, and 7 is not among them -- but it is the reading a wrong
+    # identification would have had to survive.
     7:  ('switch',     None),
     8:  ('divide',     lambda d, s: d / np.where(np.abs(s) < 1e-6, 1e-6, s)),
     9:  ('overlay',    lambda d, s: np.where(d < 0.5, 2.0 * d * s,
@@ -645,7 +713,6 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # This mattered more once the asymmetric modes (subtract, divide, overlay)
                 # landed: under mode 0 alone a swap was mathematically invisible, so the
                 # assumption was both load-bearing and newly falsifiable.
-                mode = rec.slot1_flags.get("blendingmode") if rec.slot1_flags else None
                 mode = rec.slot1_flags.get("blendingmode") if rec.slot1_flags else None
                 if mode is None:
                     raise Unsupported("blend record has no readable blendingmode")
