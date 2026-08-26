@@ -85,8 +85,22 @@ def flat_origin(asm, rec, produced, flat):
     return asm.records[cur].filter_name
 
 
-def roots_blocking(asm, rec, failures):
-    """The failures in `rec`'s cone that are not caused by another failure."""
+def roots_blocking(asm, rec, failures, cascaded=()):
+    """The failures in `rec`'s cone that are not caused by another failure.
+
+    CASCADE IS A FLAG, NOT A PREFIX, and reading it off the prose is the mistake
+    `render.cascade` was written to stop. Its docstring says so outright: fourteen raise
+    sites say "has no output yet" and a fifteenth says "no sampler for input 0", meaning
+    exactly the same thing, and matching on the string missed it -- which named an fxmaps
+    record as a specimen's blocker when it sat three levels downstream of the real one.
+
+    This function was making that same mistake with `msg.startswith('edge')`. Over 30 files
+    it reported 5 declared outputs under `fxmaps: no sampler installed for input 0`; every
+    one is an FX-Map whose first edge failed with `produced non-finite values`, and
+    render.py already raises those through `cascade()` and collects them in `CASCADED`.
+    The table was crediting a consequence as a cause, in the exact way the helper exists to
+    prevent -- and this table is what the work gets chosen from.
+    """
     seen, stack, found = set(), [rec], []
     while stack:
         n = stack.pop()
@@ -94,8 +108,7 @@ def roots_blocking(asm, rec, failures):
             continue
         seen.add(n)
         msg = failures.get(n)
-        # A cascade names the edge it is waiting on; a root says what it could not do.
-        if msg and not msg.startswith('edge'):
+        if msg and n not in cascaded:
             found.append(msg)
         for e in asm.records[n].edges:
             if e in failures:
@@ -110,6 +123,8 @@ def census(paths, max_dim=64):
         try:
             asm = Assembly(path)
             produced, failures, _synth = render.render(asm, verbose=False, max_dim=max_dim)
+            # Snapshot immediately: `CASCADED` is module state that the next render clears.
+            cascaded = set(render.CASCADED)
         except Exception:
             continue
         tally['files'] += 1
@@ -134,7 +149,7 @@ def census(paths, max_dim=64):
                         flat[j] = bool(v.min() == v.max())
                     tally['flat from ' + flat_origin(asm, rec, produced, flat)] += 1
                 continue
-            for msg in roots_blocking(asm, rec, failures):
+            for msg in roots_blocking(asm, rec, failures, cascaded):
                 roots[msg.split('(')[0].strip()[:64]] += 1
     return tally, roots
 
