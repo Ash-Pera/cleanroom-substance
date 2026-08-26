@@ -35504,3 +35504,95 @@ is the half-correction this repository has already been caught by twice. What la
 arbitrable the next time a reference render can settle it -- and verified to fire:
 `fx.typeless_profile='disc'` takes Fabric04's normal coverage from 0.77 to 1.00 while the
 default reproduces the `rect` baseline exactly.
+
+## Walking `plaster.sbsasm` end to end, and what the walk found
+
+64 records, 11,380 bytes, v0x50000. Taken layer by layer:
+
+```
+container   dir_at 0x38, dir_count 64, table_ok, manifest plaster.xml, 1 graph
+inputs      9 declared, all numeric, 0 image
+outputs     ambientocclusion, basecolor, height, normal, roughness
+header rule agrees 64 / silent 0 / disagrees 0        <- every record
+programs    167 distinct inline, 167 transpile (100%), 2,973 lines, 56 opcodes
+render      64 of 64 records, 0 failures, 0 root causes, 0 synthetic bitmaps
+outputs     5 of 5 produced
+```
+
+Everything this project measures says the file is fully understood. **Three of the five
+outputs are literally constant and the other two are flat.** That is the whole point of
+the walk: `0 failures` and `100% transpiled` are not `correct`, and only the last layer
+says so.
+
+### Where the detail dies
+
+Tracing the range of every record's output down the DAG, the collapse is at the source:
+
+```
+rec  1  fxmaps  cls 0x0398   range 0.873  coverage 1.00    <- the only generator that works
+rec  3  fxmaps  cls 0x0399   constant 1.0
+rec  6  fxmaps  cls 0x0399   constant 1.0
+rec 13  fxmaps  cls 0x0399   constant 1.0
+rec 14  fxmaps  cls 0x0399   constant 1.0
+rec 18  fxmaps  cls 0x0399   constant 1.0
+rec  4  blend [3, 2]         constant 1.0    <- rec 2 carried 0.873 and the white took it
+```
+
+Five of six FX-Map generators paint the canvas solid white, and the first blend downstream
+takes the white. Everything after is arithmetically correct and empty.
+
+They are not failing to draw; they are drawing the wrong thing. Instrumenting the tree:
+
+```
+rec  1   fx_walk 4   fx_table 4   fx_tree 0    emits 1 pattern, patternsize (1.92, 1.0)
+rec  3   fx_walk 2   fx_table 2   fx_tree 0    emits 1 pattern, patternsize None
+rec  6   fx_walk 2   fx_table 2   fx_tree 0    emits 1, None
+rec 13   fx_walk 4   fx_table 0   fx_tree 2    emits 2, None
+rec 14   fx_walk 7   fx_table 0   fx_tree 2    emits 2, None
+rec 18   fx_walk 4   fx_table 0   fx_tree 2    emits 2, None
+```
+
+Two faults, and they are already-named populations. Records 13, 14 and 18 have **no
+readable table** and a tree instead -- the tree-only FX-Maps. And every failing emission
+has `patternsize None` **and** `patterntype None`, which `splat` answers with
+`fx.sizeless = 'fill'`: a full-cell rect, i.e. solid white.
+
+### The sizeless default is worth more than it looks
+
+`fx.sizeless` already exists as a question, with 'fill' the default "because that is what
+the code has always done, not because it is established". It had never been scored. Over
+45 fxmaps-bearing files, by coverage:
+
+```
+sizeless = skip      UP  91 records / 11 files    DOWN 1 / 1    live outputs 29 -> 30
+sizeless = half      UP 252 records / 19 files    DOWN 0 / 0    live outputs 29 -> 33
+sizeless = quarter   UP 252 records / 19 files    DOWN 1 / 1    live outputs 29 -> 33
+```
+
+**'half' is the first candidate measured in this file that regresses nothing at all**, and
+on Chesterfield it is a better trade than any profile variant:
+
+```
+             basecolor      normal   roughness(std)   metallic(std)   height     AO
+fill         not rendered   0.1056   0.0718 (0.0036)  0.0454 (0.0322) 0.2480   0.6832
+half         0.1256         0.1050   0.0721 (0.0304)  0.0454 (0.0322) 0.2485   0.6907
+                                       reference std 0.0262
+```
+
+basecolor renders where 'fill' produces nothing, and at 0.1256 it is the best basecolor MAE
+of any candidate tried. normal improves. roughness's spatial variation goes from 0.0036 --
+an order of magnitude too flat -- to 0.0304 against the reference's 0.0262. **metallic is
+preserved exactly**, which every `fx.typeless_profile` candidate destroyed. Only height
+(-0.0005) and AO (-0.0075) move against, and AO is barely modelled at all.
+
+On `plaster` it takes 2 live outputs to 4 and turns three constants into surfaces.
+
+**The default is still not moved here.** 'half' is a guess about an extent the format does
+not state, and scoring better on a coverage proxy is consistent with "drawing less white is
+usually better" rather than with being right. But it is the strongest evidence assembled
+for any of these options, it is strictly non-negative on the corpus, and it is the one to
+try first when a reference render can settle it.
+
+And it does not make `plaster` plaster. The generators still emit one or two patterns where
+a noise field needs hundreds, which is the tree-only FX-Map fault above -- a separate and
+larger question.
