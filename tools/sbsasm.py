@@ -1571,18 +1571,29 @@ class Record:
             if e is not None:
                 return (e, 2 + len(e))
 
-        # transformation: the mask-walk states its edges (walk.SPECS[2] reproduces the
-        # model's edge_slots on every record), and its one program sits at slot 3 -- the
-        # matrix expression, a program iff that slot resolves as one. Memo redundant here.
-        if f == 2 and len(self.words) > 1:
+        # transformation (2) and bitmap (16): both are in walk.SPECS but were never wired
+        # into _compute_layout, so they fell straight to the memo. The walk reproduces the
+        # model's edge_slots on every record (0 disagreements over 240k transformation and
+        # 1,346 bitmap), and each has one program slot right after its inputs -- slot 3 for
+        # transformation (the matrix), slot 2 for bitmap -- present as a program iff that
+        # slot resolves as one. So the memo is redundant for both.
+        _spec_prog = {2: 3, 16: 2}.get(f)
+        if _spec_prog is not None and len(self.words) > 1:
             import walk as _walk
             try:
-                w = _walk.walk(_walk.SPECS[2], self.words[0], self.words[1],
+                w = _walk.walk(_walk.SPECS[f], self.words[0], self.words[1],
                                len(self.words))
             except _walk.Overrun:
                 w = None
             if w is not None:
-                sl = 3 if len(self.words) > 3 else None
+                sl = _spec_prog
+                if sl >= len(self.words):
+                    sl = None
+                elif f == 16:
+                    q = self.words[sl] + 52
+                    if not (self.asm.body_lo <= q < self.asm.body_hi
+                            and self.asm.valid_program(q)):
+                        sl = None
                 return (list(w.edge_slots), sl)
 
         if LAYOUTS and len(self.words) > 1:
