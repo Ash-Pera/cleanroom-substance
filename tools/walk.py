@@ -255,19 +255,20 @@ def validate_cls_driven(files):
 
 
 # ---------------------------------------------------------------------------
-# WARNING -- CATEGORY ERROR IN THIS LEGEND, DO NOT TRUST THE NIBBLE-8 KINDS AS SIZES.
-# An FX-Map has two distinct structures: NODES, whose tag ends in nibble 9 or 0xB
-# (0x89 markov2, 0x8b, 0x18b addnode, 0x0b, ...), and paramset TABLE ENTRIES, whose tag
-# ends in nibble 8 (0x48, 0x58, 0x88, 0x08, 0x18, ...). The nibble is the discriminator
-# fx_table uses. node_census harvests cells by inter-program gaps from the tree root, and
-# a table-rooted record's "cells" are ENTRIES, not nodes -- so the legend below mixes the
-# two and its nibble-8 rows are entries mislabelled as node kinds. Their WIDTHS are wrong
-# as entry lengths: walk_node disagrees with FX_ENTRY (the authoritative tag-stated entry
-# length) on 18 of 18 shared tags, e.g. 0x00420008 walk=16 bytes vs FX_ENTRY=24 -- the walk
-# was measuring the offset to an entry's first inline program, not the entry's length.
-# Trust FX_ENTRY / fx_entry_layout for nibble-8 entry lengths. The nibble-9/0xB rows are
-# real nodes and stand. A proper fix removes the nibble-8 kinds from here and defers entry
-# sizing to FX_ENTRY; it is deferred as a deliberate change, not an automated one.
+# walk_node is NODES only, and a category error was corrected here. An FX-Map has two
+# distinct structures: NODES, whose tag ends in nibble 9 or 0xB (0x89 markov2, 0x8b, 0x18b
+# addnode, 0x0b, ...), and paramset TABLE ENTRIES, whose tag ends in nibble 8 (0x48, 0x58,
+# 0x88, 0x08, 0x18, ...). The nibble is the discriminator fx_table uses. node_census harvests
+# cells by inter-program gaps from the tree root, and a table-rooted record's "cells" are
+# ENTRIES, not nodes -- so the legend used to mix the two, its nibble-8 rows being entries
+# mislabelled as node kinds whose "width" was really the offset to an entry's first inline
+# program. Those rows have been REMOVED; walk_node returns None for every nibble-8 tag.
+# Entry sizing belongs to fx_entry_layout, the general "the tag spells the entry out" method
+# -- NOT to walk_node, and NOT to FX_ENTRY, whose hand-listed lengths were deliberately
+# withdrawn as an authority in sbsasm.py (a length clip against it discarded 260 resolving
+# programs to suppress 52, and calls 0x95540288 four bytes against a 32-byte observed cell).
+# The 18-of-18 walk_node-vs-FX_ENTRY disagreement confirmed the miscategorisation but does
+# not make FX_ENTRY the correct sizer. The nibble-9/0xB rows below are real nodes and stand.
 #
 # The FX-Map tree node: the SAME primitive at the third scale. A node is
 # `[tag][fields by mask]`: the tag's low byte is a KIND fixing a constant base
@@ -290,23 +291,16 @@ def validate_cls_driven(files):
 # A peer confirmed it independently at the record level: ChesterfieldSofa record 34's 0x100b
 # leaf has its paramset entry at leaf+8, i.e. immediately past a two-word cell.
 #
-# Kind 0x08 was on that list and should not have been. It is not underdetermined -- the fit
-# failed because it POOLED three different structures under one kind byte. Separated:
-#   * two deterministic node tags -- 0x00420008 (size 4, pointer +12, 18,152 cells) and
-#     0x00410008 (size 7, pointer +24) -- 100% each, stored explicitly in NODE_TAGS below;
-#   * the CHAIN tag 0x00020008, a linked list rather than a fixed-size node (its "sizes"
-#     6..11 are chain-run lengths, not a cell width), which walk_node returns None for;
-#   * an 8-cell tag the census already dropped as inconsistent.
-# With the chain and the noise pulled out, the two real 0x08 nodes are as determined as any.
-NODE_TAGS = {                       # full tag -> (size in words, [pointer word offsets])
-    0x00420008: (4, [3]),
-    0x00410008: (7, [6]),
-    # kind 0x88's additive law over-counts this tag by one word -- it computes 6 words but
-    # the corpus size is 5 (20 bytes) in 3 of 3 cells, and the dead node_sizes.json table
-    # agreed at 20. bit 26 is set and the 0x88 law does not charge it; from one tag its
-    # width cannot be fit, so the tag is pinned explicitly rather than guessed into the law.
-    0x14400088: (5, []),
-}
+# Kind 0x08 (nibble 8) is a paramset TABLE ENTRY marker, not a node kind. The earlier
+# "two deterministic 0x08 node tags" reading was the same category error: harvesting cells
+# by inter-program gaps from a table-rooted record's root walks ENTRIES, and 0x00420008 etc.
+# are entries. Their lengths belong to fx_entry_layout (the general "the tag spells the entry
+# out" method), NOT to walk_node, and NOT to FX_ENTRY -- a length clip against FX_ENTRY was
+# withdrawn in sbsasm.py because its stated lengths lose to the structure the entries
+# actually show (it calls 0x95540288 four bytes against a 32-byte cell seen 36 of 36 times).
+# So NODE_TAGS is gone; walk_node returns None for every nibble-8 tag and entry sizing is
+# fx_entry_layout's job.
+NODE_TAGS = {}                      # nibble-8 entries are not nodes; see above
 # The CHAIN FAMILY: tags whose high 16 bits are 0x0002 are linked lists, not fixed-size
 # nodes, and their gap "sizes" are run lengths. 8,794 of 8,811 such cells are
 # non-deterministic against 0% for any other high-half value -- so the family, not the two
@@ -321,26 +315,13 @@ def _is_chain(tag):
 # 8-11), measured to cost +0 words in 100% of both the set and clear populations and to
 # differ from patterntype's own nibble bit in 0 of 3,781 cells. It belongs to a different
 # field, not to no field, so leaving it out of the width mask is correct.
+# NODES only -- tag nibble 9 or 0xB. The nibble-8 kinds (0x48, 0x58, 0x88, 0x18) were
+# removed: they are paramset TABLE ENTRIES, not nodes, and FX_ENTRY sizes them (walk_node
+# disagreed with it on 18 of 18 shared tags). A node has no bit-mask field vocabulary of its
+# own that this project has established, so every kept kind is a single fixed size; 0x0b is
+# the leaf a peer pinned at two words (tag + one pointer, 327/327 by the landing test).
 NODE_LEGEND = {
-    # bit 21 (=2) is added by HAND, beyond node_census's automated fit: only two 0x48 tags
-    # exercise it (8 cells, below the census's n>=10 threshold), so the lstsq cannot derive
-    # it -- but both are off by exactly +2 without it and bit 21 is +2 in the sibling kind
-    # 0x58, so the width is not in doubt. A legend regenerated from node_census will drop it;
-    # keep this line. (See the "derived constant with two readers" note: the fit is the
-    # DEFAULT source, not the only one, where the corpus is too thin for it to converge.)
-    0x48: (2, {16: 4, 17: 1, 19: 1, 20: 1, 21: 2, 22: 1, 23: 2, 24: 1, 25: 2,
-               26: 1, 27: 1, 28: 1, 29: 1, 30: 1}),
-    0x58: (3, {17: 1, 20: 1, 21: 2, 22: 1, 24: 1, 25: 2, 26: 1, 27: 1,
-               28: 1, 29: 1, 30: 1}),
-    # kind 0x88's TOTAL size is exact (100% over 2,010 cells) but its internal field ORDER
-    # is not fully pinned: the fit carries a negative-width term (bit 9 = -1), the tell that
-    # an additive law reproduces the length while mis-placing a boundary inside it. This is
-    # where the node pointer-boundary check spends most of its ~7% miss -- program pointers
-    # land at offsets the walk does not predict as field starts, e.g. +28 on 0x85520088
-    # (size 8) where the walk predicts +12/+16/+20/+24. Not a size gap; an ordering one, and
-    # closing it needs node_census re-run with the pointer offsets folded into the fit.
-    0x88: (3, {9: -1, 17: 1, 22: 1, 23: 2, 24: 1, 28: 2, 30: 1, 31: 2}),
-    0x8b: (3, {}), 0x89: (4, {}), 0x18: (5, {}), 0xcb: (4, {}), 0x99: (5, {}),
+    0x8b: (3, {}), 0x89: (4, {}), 0xcb: (4, {}), 0x99: (5, {}),
     0x9b: (4, {}), 0xab: (4, {}), 0xa3: (4, {}), 0xdb: (5, {}), 0x0b: (2, {}),
 }
 
@@ -496,7 +477,13 @@ def validate_nodes(files):
         if off + 4 > end:
             return False
         w = struct.unpack_from('<I', a.data, off)[0]
-        if walk_node(w) is not None or _is_chain(w):
+        # A valid next structure is a node header (tag nibble 9 or 0xB), a paramset table
+        # ENTRY (nibble 8), a chain, or a program. walk_node no longer recognises entries,
+        # so test the nibble directly rather than through it -- else a leaf followed by an
+        # entry, which is the common paramset case, reads as a bad landing.
+        if w > 0xFF and (w & 0xF) in (8, 9, 0xB):
+            return True
+        if _is_chain(w):
             return True
         q = w + 52
         return a.body_lo <= q < a.body_hi and a.valid_program(q)
