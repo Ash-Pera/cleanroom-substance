@@ -2639,6 +2639,19 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
             if i in outputs:
                 arr = np.asarray(outputs[i])
                 if arr.size and not np.all(np.isfinite(arr)):
+                    # UNDER AN OPEN SCOPE, write a chosen value instead of refusing. The
+                    # recurring producer is an auto-levels remap over a constant source --
+                    # max == min, so the range is zero-wide and 0/0 is degenerate for any
+                    # renderer, the engine included. Nothing here is wrong arithmetic to
+                    # repair; the only question is what the engine emits, and that is a
+                    # choice with an arbiter available rather than a decode.
+                    _fill = assume.assumed('nonfinite.fill')
+                    if _fill is not None:
+                        outputs[i] = np.where(np.isfinite(arr), arr,
+                                              np.float32(_fill)).astype(arr.dtype)
+                        LOW_CONFIDENCE.add(i)
+                        assume.note(i)
+                        continue
                     del outputs[i]
                     synthetic.discard(i)
                     LOW_CONFIDENCE.discard(i)

@@ -53,6 +53,8 @@ import struct
 
 import numpy as np
 
+import assume
+
 try:
     from scipy import ndimage
 except ImportError:                                    # pragma: no cover
@@ -81,6 +83,17 @@ def distance_param(rec, eval_program, inputs):
             widths.append(float(v[0]))
     if len(widths) == 1:
         return widths[0], 'program'
+    if not widths and assume.assumed('distance.param') == 'wide':
+        # See assume.QUESTIONS['distance.param']. Component 0 of a 2-component program,
+        # for the records whose only programs are 2-component. A candidate under an open
+        # scope, never a default.
+        for p in (rec.filter_programs or ()):
+            try:
+                v = np.asarray(eval_program(p)).ravel()
+            except Exception:
+                continue
+            if v.size == 2 and np.isfinite(v[0]) and 1e-3 < abs(float(v[0])) <= REFERENCE_PX:
+                return float(v[0]), 'program component 0 (ASSUMED)'
     if len(widths) > 1:
         # Two width-1 results and no way to say which is `distance`. `transformation`
         # refuses in exactly this case rather than taking the first.

@@ -35,7 +35,12 @@ import contextlib
 # a caller may pass anything, and an unknown key is that caller's business.
 QUESTIONS = {
     'blur.intensity':     ('program', 'slot3'),
-    'distance.param':     ('program', 'block1', 'slot5'),
+    # 'wide' names a reading rather than a location: take component 0 of a 2-COMPONENT
+    # program result. The 31 `distance` records that locate nothing have only 2-component
+    # programs -- 24 of them a single `exp2(min(swizzle($sizelog2) - $sizelog2, 0))`, an
+    # aspect term that is 1.0 on a square image. Whether its first component IS the
+    # distance is a guess with an arbiter available, which is what this channel is for.
+    'distance.param':     ('program', 'block1', 'slot5', 'wide'),
     'distance.invert':    (False, True),
     'distance.mask_edge': (0, 1),
     # The footprint is no longer a four-way guess: `patterntype` is declared in the entry
@@ -46,6 +51,14 @@ QUESTIONS = {
     'fx.profile':         ('rect', 'square', 'disc', 'paraboloid', 'bell', 'gaussian',
                            'thorn', 'pyramid', 'brick', 'gradation', 'waves', 'halfbell',
                            'ridgedbell', 'crescent', 'capsule', 'cone'),
+    # What a record whose arithmetic went non-finite should emit. The recurring case is
+    # an AUTO-LEVELS remap, (L - min) / (max - min), over a source that is constant: max
+    # equals min, the range is zero-wide, and 0/0 is degenerate for any renderer including
+    # the engine. There is no arithmetic to fix, only a decision about what to write, and
+    # three specimens now block on it -- Chesterfield rec330, WoodSubstance005 rec139/245,
+    # Bricks_and_tiles rec10330, the last of which gates four channels of the only
+    # reference-scored package that has them.
+    'nonfinite.fill':     (0.0, 0.5, 1.0),
     'uniform.fill':       (),      # a value, not an enumeration
     # The channel weights a single-input `shuffle` record applies. TWO SOURCE NODE TYPES
     # COMPILE TO THE SAME FILTER ID -- the paired sources declare `grayscaleconversion`
