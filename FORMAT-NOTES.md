@@ -15906,6 +15906,32 @@ Settling it needs the shape-per-header rule, and the three known shapes differ:
 the vocabulary is open, and the figure to quote for undecoded FX-Map content is **10.6%**, not
 45%.
 
+### FX node-kind coverage census: four live node kinds `fx_tree` still stops on
+
+Harvesting every node-header cell (nibble 9 or 0xB, non-chain) from the tree root across the
+full 650-file corpus gives the complete node vocabulary and which kinds `FX_NODES` /
+`FX_NODES2` decode. Covered, by frequency: `0x8b` (39,047), `0x89` (32,603), `0xcb` (2,232),
+`0x0b` (2,178), `0x1b` (385), `0x99` (369), `0x9b` (333), `0xab` (74). **Uncovered — `fx_tree`
+returns on them, truncating the walk if a chain reaches one:**
+
+| kind | cells | gap (words) | shape read from the bytes |
+|---|---|---|---|
+| `0x09` | 84 | 14–52 (variable) | complex; some cells embed a `0x00020008` chain tag and a `0x49` — not a fixed node |
+| `0xdb` (`0x1db`) | 38 | **5, uniform** | `[tag][0x2][program@w2 100%][w3][w4]` — a clean 5-word node |
+| `0x4b` (`0x14b`) | 29 | 6–18 | `[tag][ptr][ptr][entry-tag 0x…88][ptr…]` — carries an embedded table-entry tag |
+| `0x49` | 11 | 7–14 | `[0x49][0][ptr][small][ptr]…` — small, irregular |
+
+`0xdb` is the clean case and the obvious next `FX_NODES2` entry: its gap is 5 in 38 of 38 and
+its word-2 pointer resolves as a program in 100%, matching walk.py's prototype legend (which
+sizes it 5) against a model table that omits it. It is NOT added here, deliberately: the walk's
+own comment warns that continuing past a node on an unverified successor offset is how earlier
+walks wandered into bytecode, and the child/successor offset of a 5-word `0xdb` (word 3 vs word
+4) cannot be settled without running the real `fx_walk` — which this environment cannot (numpy
+is broken here). So this is a lead for whoever can render: add `0xdb` to `FX_NODES2` with its
+successor offset pinned by the two-sided reference test, and measure how many entries the four
+uncovered kinds cost `fx_walk` when a chain terminates on one. `0x09`/`0x4b`/`0x49` are
+variable-shape and need more than a size before they can be walked at all.
+
 ## Verifying the 90% figure, and where FX-Map structure stops yielding
 
 The claim that `fxmaps` records are ~90% bytecode rests on accepting a program whenever some
