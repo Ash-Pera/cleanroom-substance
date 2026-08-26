@@ -35187,3 +35187,53 @@ read it off a dependency walk whose depth limit was 4, which cut the tree exactl
 and printed no children -- an artifact of my own printer that I reported as a fact about
 the file. The rest of that commit stands; the accumulator is at its identity because its
 SOURCE is constant, not because it never accumulates.
+
+## 0x??1B has one child and a continuation, not two children
+
+`FabricSubstance005` blocks all four of its main outputs behind `fxmaps` record 467, whose
+chain contains a `0x40001b` node that `fxrender` refused. The estimate for modelling it was
+"a day's work, because it BRANCHES and `emissions()` walks a flat chain, so it needs tree
+machinery". That estimate was wrong, and the reason it was wrong is the finding.
+
+`FX_NODES2` records the shape as `0x1B: ((8, 20), (16,))` -- successors at words 2 and 5, a
+program at word 4 -- and `test_fx.test_0x1B_branches_to_two_distinct_children` checks that
+the two successors differ and both land on node headers. All of that holds, and none of it
+distinguishes the two readings available:
+
+    word 5 is a SECOND CHILD      the node branches, and a linear walk misses a subtree
+    word 5 is the CONTINUATION    the node has one child, and word 5 is where it rejoins
+
+The file settles it. If word 5 is the continuation, then following word 2's subtree along
+its OWN next-pointers must arrive at word 5's target; if it is an independent branch, it
+must not. Over every `0x??1B` node in 150 files:
+
+    word 5's target reachable from word 2's subtree       81 of 81
+    control -- another node in the same record             0 of 81
+
+81 of 81 against 0 of 81. Word 5 is the continuation, the subtree already flows into it,
+and **a linear walk visits everything a tree walk would**. Two further facts, both also
+81 of 81, make the existing index-based walk exactly right: the child at word 2 is always
+the NEXT node in the address-ordered chain, and `progs[None]` -- the only name `chain()`
+gives these nodes -- is always word 4's program.
+
+So the node needed no new machinery at all. It joins `STEPPER`'s branch: run the program,
+continue. The program is not a selector, which is the other thing that had to be checked
+before choosing that handling -- it is around 104 instructions of `rand` and `cartesian`
+writing slots 25/27/29/30, a state initialiser, exactly the role `STEPPER`'s program plays.
+
+**The test's NAME still encodes the wrong reading.** Its assertions are all true and worth
+keeping; "branches to two distinct children" is not.
+
+**What it bought, and did not.** All 81 records now walk past the node, `test_fx` stays at
+15 green, and records without a `0x1B` are unchanged. None of the 81 emits a pattern yet:
+every one now fails on `no sampler for input`, which also blocks 198 records that have no
+`0x1B` at all. The node was a real wall and it is gone; the wall behind it is sampler
+binding and is not specific to this node kind.
+
+**A pattern visible in the same measurement.** The `numberadded` refusals across those 150
+files are dominated by exact squares of odd numbers -- 66,049 = 257^2 (35 records),
+263,169 = 513^2 (17), 2,253,001 = 1501^2 (14), 147,456 = 384^2 (12), 1,050,625 = 1025^2 (6)
+-- and 257, 513 and 1025 are 2^k + 1. These are grid dimensions, not misreads, and they are
+refused only because they exceed `MAX_PATTERNS`. Chainmail record 0 corroborates it from
+the other end: its offsets span -127.382 .. 128.618, a range of 256.000 for a grid of 257.
+That is a much larger question than this node and is recorded here rather than acted on.
