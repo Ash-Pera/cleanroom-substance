@@ -144,6 +144,10 @@ def predicted_slot(rec):
         _edges, start = rec.layout
     except Exception:
         return None
+    # `layout` reports a start of None for records it cannot resolve; that is an absence,
+    # not a zero, and treating it as one would point every such record at word 1.
+    if start is None:
+        return None
     at = start + 1 + ((rec.cls >> 7) & 1) + ((rec.cls >> 11) & 1)
     return at if at < len(rec.words) else None
 
