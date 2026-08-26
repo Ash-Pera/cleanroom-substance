@@ -38503,3 +38503,33 @@ never what stopped this one being a picture.
 So `MAX_PATTERNS` is not concealing 23 renderable outputs, and raising it would trade a refusal
 for 23 white images -- the trade this renderer is not allowed to make. Recorded because the
 heading looks like a cheap 23 and is not.
+
+### patternsize is NOT in cell units, and the records that could prove it are the ones that work
+
+Six separate attempts this session ended at the same wall: FX-Map patterns whose `patternsize` is
+1.0 or more cover the canvas and render the record white. Every candidate for a divisor --
+`fx.patternsize = cell`, `fx.branchoffset = cell`, `fx.frameoffset = cell`, all three together,
+a global shrink -- was refused. This is why, and it is structural rather than a score.
+
+Split every FX-Map record that emits a sized pattern by whether `grid_width` finds an N for it,
+over 20 files:
+
+                      records   renders varied   median patternsize   frac size >= 1.0
+    grid detected        73        71  (97%)          0.220                 6.8%
+    no grid             937       355  (38%)          1.922                79.2%
+
+**The records that have an N already have sensible sizes.** Their median pattern is 0.22 of the
+canvas and only 7% reach 1.0, and 97% of them render with structure. Dividing those by their own
+N -- 5, 8, 10, 11, 13, 25 in the observed cases -- would shrink them five to twenty-five fold and
+destroy the only FX-Map population that currently works. That is exactly what the global-shrink
+experiment measured: Chesterfield's height fell 0.950 -> 0.863 -> 0.517 as the divisor rose.
+
+So `patternsize` is in CANVAS units, and the cell reading is wrong in principle and not merely
+unsupported. The evidence is not that the cell arms scored badly; it is that the only records
+carrying a usable cell count are the records whose sizes are already canvas-scale.
+
+**And that sharpens what is left rather than closing it.** The white population is precisely the
+records with NO grid, carrying sizes at a median of 1.9 that something must be dividing -- and
+the one mechanism in the format that could supply a divisor is, by definition, absent from them.
+Whatever scales those patterns is not the grid count, and the next candidate has to come from
+somewhere the grid records do not need.
