@@ -78,6 +78,29 @@ QUESTIONS = {
     # one defect where the earlier reading had two. The oversized-patternsize question
     # below now explains the whole cone on its own.
     'fx.sizeless':        ('fill', 'skip', 'half', 'quarter'),
+    # ARBITRATED AGAINST THE REFERENCE MAPS, AND `fill` HOLDS. This question now looks
+    # obviously wrong from the census side -- 1,369 fxmaps records render at exactly 1.0,
+    # and a full-cell fill on a typeless entry is what paints them -- so the temptation is
+    # to take any of the other three. The references say do not. Scored on the 15 channels
+    # ALL FOUR candidates produce (not on each candidate's own denominator, which is the
+    # error this file exists to avoid):
+    #
+    #     candidate   mean MAE   mean |corr|
+    #     fill          0.0613      0.3827
+    #     skip          0.0617      0.3635
+    #     half          0.0617      0.3635
+    #     quarter       0.0617      0.3636
+    #
+    # What the alternatives buy is Chesterfield `basecolor`, 3 channels that render only
+    # without `fill` -- and they correlate at 0.103, 0.156 and 0.151, which is a picture
+    # carrying almost no structure. What they cost is `roughness`, the one channel in the
+    # set with real signal, whose correlation falls from 0.295 to 0.066 while its MAE rises
+    # from 0.0193 to 0.0279. Every other channel moves by ~0.001, at noise level.
+    #
+    # So the +3 is exactly the side effect the blend-mode note refuses to select on:
+    # unblocking a record is not evidence about the record. `fill` stays, and the white
+    # records stay white, because the thing that makes them white has not been found yet
+    # and painting them a different wrong colour would only hide it.
     # PUT TO THE REFERENCE MAPS AND NOT SETTLED, which is worth recording so it is not
     # tried a third time. Under any scope Chesterfield's `basecolor` renders and the
     # scoreable table goes 14 channels -> 17. But of those 17 only 3 move between
@@ -457,6 +480,25 @@ QUESTIONS = {
     # only at some resolutions, which has the shape of a divide by a coverage that has
     # reached zero. Same 0/0 family as QUESTIONS['nonfinite.fill'], reached from the profile
     # side rather than from an empty upstream.
+    #
+    # CONFIRMED BY EXPERIMENT, and it makes the soft arms comparable for the first time.
+    # The structural side reads those five as a per-pixel AUTO-LEVELS -- (L - lo)/(hi - lo)
+    # with lo and hi taken from an input's own channel bounds -- so a flattened field gives
+    # hi == lo, the range is zero, and every sample is 0/0. That predicts nonfinite.fill
+    # should resolve them independently of the profile, and it does:
+    #
+    #     profile   nonfinite.fill    scored outputs   overall
+    #     rect      (none)                         5    0.1065
+    #     rect      0.5                            5    0.1065
+    #     cone      (none)                         1    0.0292
+    #     cone      0.5                            5    0.1213
+    #
+    # `rect` is untouched by the fill, `cone` goes from one output to five, and the fill is
+    # doing exactly what the mechanism says. So softness is NOT blocked by these records --
+    # their 0/0 is a pre-existing degeneracy the profile merely reaches.
+    #
+    # And compared fairly, cone still LOSES: 0.1213 against rect's 0.1065. Its 0.0292 was
+    # entirely the four missing outputs, which is now demonstrated rather than inferred.
     #
     # scored-output COUNT beside the mean, or a profile that destroys the render reads as a
     # profile that fixes it.
