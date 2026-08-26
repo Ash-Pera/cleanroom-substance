@@ -123,8 +123,32 @@ QUESTIONS = {
     # question was built to detect. 002 is byte-identical under both, confirming the arm
     # never fires there, so 003 was the only test available and it says no.
     #
-    # Kept as a scored negative rather than deleted: the inversion reading is a reasonable
-    # thing for the next reader to think of, and this is the evidence that it was tried.
+    # AND THE SOURCES AGREE, from a direction the render cannot reach. Scanning the levels
+    # nodes of the permitted paired .sbs sources -- 389 nodes across 96 packages -- for how
+    # an inversion is actually written:
+    #
+    #     inversions with BOTH endpoints named    21   (leveloutlow > levelouthigh)
+    #     one-sided at an inversion extreme        1   (levelinlow 1.0, high absent)
+    #
+    # Every inversion in the permitted sources names both ends. So the format has no
+    # implicit inversion: an author who wanted one wrote both numbers, and a compiled record
+    # stating one side is not a dropped pair -- the absent side is a genuine default. The
+    # structural session reports the same law over a wider source set (66 inversions, all
+    # two-sided), and the one-sided cases it found it characterises as authored intent
+    # rather than as inversions.
+    #
+    # That is the second independent refutation of 'complete', reached from the sources
+    # rather than from a score, and the two agree. Kept as a scored negative rather than
+    # deleted: the inversion reading is a reasonable thing for the next reader to arrive at,
+    # and this is the evidence that it was tried twice, two ways, and failed both.
+    #
+    # WHAT REMAINS GENUINELY OPEN is narrower than it was: rec9 and rec39 are a faithful
+    # decode of an authored [1.0, default] range, so the flat is what the file asks for --
+    # and graph 003 still disagrees with the engine's export. Either the engine treats a
+    # zero-width range differently from this step reading, or the flatness enters somewhere
+    # neither side has reached. No second scoreable specimen exists to separate those: the
+    # corpus has exactly one flat-at-r~0 output, and the packages carrying comparable
+    # one-sided levels ship no reference renders.
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
     'uniform.fill':       (),      # a value, not an enumeration
