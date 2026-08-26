@@ -1345,7 +1345,18 @@ class Record:
 
     @property
     def height(self):
-        return 1 << ((self.tag >> 12) & 0xF)
+        n = (self.tag >> 12) & 0xF
+        # `cls & 0x2000` is a 4x-AREA flag the tag height nibble omits: 11 bitmaps across the
+        # corpus (PlanksSubstance003, BricksSubstance004, NightSkyHDRI, pbr_render) set it and
+        # ALL 11 store an image exactly 4x their tag-declared area -- 0 false positives against
+        # ~570 normal bitmaps (cls 0x108-0x718, bit clear). The extra factor is height x4: for
+        # PlanksSubstance003 rec50 the 4 MB slot is one contiguous 2048x512 image (no stacking
+        # discontinuity at the declared 128-row boundary), and the row-continuity test favours
+        # height x4 across all measured specimens. Without this the decoder reads the top
+        # quarter of each. Gated on filter 16 so only bitmaps are touched.
+        if self.filter_id == 16 and (self.cls & 0x2000):
+            n += 2
+        return 1 << n
 
     @property
     def filter_name(self):
