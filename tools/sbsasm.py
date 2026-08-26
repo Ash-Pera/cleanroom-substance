@@ -3045,17 +3045,50 @@ class Record:
         values in the permitted sources, **54 appear in bit-25 records and 0 in bit-25-clear
         ones**.
 
-        Returns None when the matrix is absent: those records have no parameter block to pack
-        against, and the slot lands in bytecode 97.4% of the time.
+        The slot now comes from the WALK rather than from a formula stepping over an assumed
+        matrix, so a matrix-less record is read rather than refused: see the comment below.
+        Superseded: "Returns None when the matrix is absent -- those records have no parameter
+        block to pack against, and the slot lands in bytecode 97.4% of the time." That was true
+        of the formula, and it is the formula that has been replaced.
         """
         if self.filter_id != 2 or len(self.words) < 2:
             return None
         w = self.words[1]
-        if not (w >> 6 & 1 or w >> 7 & 1):      # no matrix: nothing to pack after
-            return None
         if not (w >> 25 & 1):                   # not baked (bit 26 means it is a program)
             return None
-        s = 3 + (self.cls & 1) + (self.cls >> 7 & 1) + 4
+        # THE WALK NAMES THE SLOT; the formula below only ever guessed at it. `decompose`
+        # enumerates a record's parameter slots as (field, state, position, WIDTH), and
+        # `transformation` has exactly two parameters -- a Float4 `matrix22` and a Float2
+        # `offset` -- so the width-2 entry IS the offset, with nothing to choose between.
+        #
+        # `3 + colour + bit7 + 4` steps over a matrix it ASSUMES is present. Over 14 corpus
+        # files 659 records set bit 25 and 621 carry a matrix: walk and formula name the
+        # same slot in all 621, and differ in exactly the 38 with NO matrix, where the
+        # `+ 4` overshoots -- 26 past the walk's header end into bytecode, 12 past the
+        # record entirely. Those 38 are NOT misread today; the matrix guard declines them,
+        # which is what this docstring's "lands in bytecode 97.4% of the time" is about.
+        # So this RECOVERS 38 offsets that had to be refused -- the walk knows the matrix
+        # is absent and the formula cannot -- rather than correcting a wrong value.
+        #
+        # The widths also settle what the two bits mean, which this docstring left open.
+        # Field 12 (bits 24/25) costs 2 words in all 659 -- a Float2 pair, not a pointer --
+        # so bit 25 is a BAKED offset; field 13 (bits 26/27) costs 1, a program pointer.
+        # The generic `01 = baked, 10 = program` table does not decide these fields; the
+        # cost model's WIDTH does, and it agrees with the bits as read here.
+        s = None
+        try:
+            import decompose
+            _d = decompose.decompose(self)
+        except Exception:
+            _d = None
+        if _d:
+            _two = [t for t in _d.get('param_slots', ()) if len(t) >= 4 and t[3] == 2]
+            if len(_two) == 1:
+                s = _two[0][2]
+        if s is None:                           # walk undecided: the old path, guard and all
+            if not (w >> 6 & 1 or w >> 7 & 1):  # no matrix: nothing to pack after
+                return None
+            s = 3 + (self.cls & 1) + (self.cls >> 7 & 1) + 4
         if s + 1 >= len(self.words):
             return None
         o = struct.unpack_from('<2f', self.asm.data, self.offset + 4 * s)
