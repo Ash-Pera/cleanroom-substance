@@ -1717,8 +1717,24 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # declared outputs move between (1,0,0,0) and (0,0,1,0) in any
                         # reference package.
                         #
+                        # AND THE MANIFEST DOES NOT CARRY IT EITHER, checked over all 437
+                        # rather than assumed from one. The .xml vocabulary is entirely
+                        # interface -- graphs, inputs, outputs, channels, GUI widgets,
+                        # presets -- and no element describes an internal node at all.
+                        # `channelsweights` appears in none of them; `shuffle` in none.
+                        #
+                        # One manifest mentions `grayscaleconversion`, and it is a trap
+                        # worth naming: `GrayscaleConvert.sbsar`, a third-party filter graph
+                        # ("Gs Conversion (3 Types)") exposing a `method` combobox that
+                        # defaults to 2 = YPrPb (.29, .58, .11). That corroborates the
+                        # luminance reading noted above, and it is NOT this node's default:
+                        # it is one author's exposed choice in their own graph, which
+                        # compiles to a bitmap and a pixelprocessor and does not use the
+                        # built-in node at all. Taking .29/.58/.11 from it would be
+                        # inferring the engine's default from a third party's imitation.
+                        #
                         # So it is asked rather than guessed, and this comment records that
-                        # the asking has been tried twice from two directions.
+                        # the asking has been tried three times from three directions.
                         w = assume.assumed('grayscale.weights')
                         if w is None:
                             raise Unsupported("shuffle stores no weight vector (class bit "
