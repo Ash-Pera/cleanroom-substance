@@ -255,6 +255,20 @@ def validate_cls_driven(files):
 
 
 # ---------------------------------------------------------------------------
+# WARNING -- CATEGORY ERROR IN THIS LEGEND, DO NOT TRUST THE NIBBLE-8 KINDS AS SIZES.
+# An FX-Map has two distinct structures: NODES, whose tag ends in nibble 9 or 0xB
+# (0x89 markov2, 0x8b, 0x18b addnode, 0x0b, ...), and paramset TABLE ENTRIES, whose tag
+# ends in nibble 8 (0x48, 0x58, 0x88, 0x08, 0x18, ...). The nibble is the discriminator
+# fx_table uses. node_census harvests cells by inter-program gaps from the tree root, and
+# a table-rooted record's "cells" are ENTRIES, not nodes -- so the legend below mixes the
+# two and its nibble-8 rows are entries mislabelled as node kinds. Their WIDTHS are wrong
+# as entry lengths: walk_node disagrees with FX_ENTRY (the authoritative tag-stated entry
+# length) on 18 of 18 shared tags, e.g. 0x00420008 walk=16 bytes vs FX_ENTRY=24 -- the walk
+# was measuring the offset to an entry's first inline program, not the entry's length.
+# Trust FX_ENTRY / fx_entry_layout for nibble-8 entry lengths. The nibble-9/0xB rows are
+# real nodes and stand. A proper fix removes the nibble-8 kinds from here and defers entry
+# sizing to FX_ENTRY; it is deferred as a deliberate change, not an automated one.
+#
 # The FX-Map tree node: the SAME primitive at the third scale. A node is
 # `[tag][fields by mask]`: the tag's low byte is a KIND fixing a constant base
 # size, and the remaining tag bits are a presence mask whose set bits each add a
