@@ -36105,3 +36105,28 @@ Generalization census (scanner+grid fxmaps records, every 4th package, n=72):
   (coordinate normalized by canvas size), and the `$number/N` extraction over-triggers. The
   emit-N² rule needs a plausibility guard: only N≤~32 stamp-scale grids, or a structural check
   that the divisor feeds the emission position and not a sampler coordinate.
+
+### The normal-channel regression from count=N² is render-side, not decode
+
+After count=N² landed, `normal` regressed (0.0742→0.0881, std 0.0613→0.1512 vs ref 0.0722)
+while the five scalar channels improved. Decode-side accounting, all three of peer 0b's
+candidate causes ruled out:
+- NOT a double-count / downstream single-stamp assumption. rec120 (height) = levels(rec119)
+  and rec121 (normal) = normal-filter(rec119) share the SAME source rec119 (a pixelprocessor
+  fed by the four grid fxmaps). Height IMPROVED 4×, so rec119's level/coverage is correct with
+  16 stamps — if any path assumed one stamp, height would overshoot too. Height is the control
+  and it passed.
+- NOT a wrong count. Height and metallic both improved at 16.
+- NOT a missing softness field. rec34's stamps are IMAGE patterns (imageindex = slots[31],
+  indexing one of the 14 input-image edges, drawn over each cell); patternsuppl is a jitter
+  (~0), not a falloff. There is no generated-profile softness to recover.
+
+What normal is: the SLOPE (derivative) of rec119, amplifying high frequency. Height std
+overshoots 1.36×, normal 2.09× — normal faithfully amplifies a field that carries ~1/3 too
+much high-frequency. Its intensity (const 10.0 in rec121) is unchanged by the fix. So the
+residual is splat resampling each image stamp into a quarter-cell with harder edges than the
+engine (a hard/nearest downsample aliases at the cell boundary; a filtered downsample would
+give the engine's softer slopes). Render-side, in splat, orthogonal to the count. It was
+invisible at n=1 (one stamp ≈ no high-frequency, so normal's std undershot and looked near-ref
+by coincidence) and surfaces only now the count is right. The count fix is decode-complete;
+the five mean-dominated channels are clear to default.
