@@ -194,6 +194,31 @@ SCAN_LIMIT = 4096
 #: Debug hook: set to a list to capture the first scanner iterations.
 _SCAN_TRACE = None
 
+# COLLAPSING THESE FOUR COSTS CHESTERFIELD'S HEIGHT AND NORMAL. All four are walked
+# identically -- take `numberadded`, iterate the rest of the chain that many times -- and at
+# least one of them must do something else.
+#
+# The specimen: records 92 and 93 are both `fxmaps` with no edges, and record 95 SUBTRACTS
+# them (blend mode 2, via a levels that maps 93 into [0.5, 1]). Our renders of the two agree
+# to within 0.0063, so the subtract cancels almost exactly: record 95 comes out
+# 0.4968..0.5032 at std 0.0006, and the `height` and `normal` outputs downstream score
+# -0.0015 and -0.0069 against the engine's own maps. A high-pass whose two arms are the same
+# image is a constant.
+#
+# They are NOT the same in the file. Record 92's third chain node is `0x1CB` and record 93's
+# is `0x18B`, and their word counts differ (324 against 326). The graph is built to
+# difference two FX-Maps that the format distinguishes and this walker does not.
+#
+# A PER-RECORD RANDOM SEED IS NOT THE ANSWER, tried and measured. Salting `rand` with the
+# record index makes the two differ and moves every near-zero Chesterfield channel the right
+# way -- normal ch0 -0.0069 -> +0.0297, ch1 +0.0022 -> +0.0377, height -0.0015 -> +0.0207,
+# AO -0.0382 -> -0.0105, with Auras' 0.9366 untouched -- but +0.03 is still noise. It
+# confirms the mechanism and does not recover the picture, which is what you would expect if
+# the two maps differ STRUCTURALLY rather than only in their seed. So the salt is not
+# adopted: an arbitrary hash change for a marginal score is the kind of thing that looks
+# like progress and pins nothing.
+#
+# What is needed is what `0x1CB` does differently, and that is open.
 ADDNODE = frozenset({0x18B, 0x1AB, 0x20B, 0x1CB})
 GATE = 0x89
 
