@@ -534,6 +534,83 @@ def _recover_last_inline(rec, tbl, order):
                 tbl[off][1][name] = ('program', at)
 
 
+def _chain_embedded_entries(rec):
+    """Entries reached through the chain-family cells, for records whose table is empty.
+
+    A `0x09` (or `0x49`) cell is five words -- `[kind][ptr][ptr][0x00020008][ptr]` -- and
+    the run of them is a linked list, which 1498ae6 established and rightly stopped drawing:
+    over 80 files, 6,846 `0x00020008` entries, the second word pointing at the next entry in
+    99.5% and no patterntype in 100%. A list node is structure, not a draw.
+
+    WHAT THE LIST POINTS AT WAS LEFT OPEN, and it is the record's actual entry. The cell's
+    THIRD word is a shared pointer -- constant across all cells of a record in 7 of 9 --
+    and following it at the format's +52 skew lands on a `0x4B` cell, whose own word 3 is a
+    table-entry tag. That is the shape the node census predicted for `0x4b` from the bytes
+    ("carries an embedded table-entry tag") and listed as uncovered.
+
+    Measured over 25 corpus files plus every reference package:
+
+        chain cells whose B + 52 is a 0x4B cell        42 of 64
+          and whose word 3 is an entry tag             36 of 42, all `0x15140088`
+        records where the follow finds an entry         6
+          and whose entries() is currently EMPTY        6 of 6
+
+    Every record the follow helps is one that had nothing, which is what makes this safe to
+    add rather than a competing reading: it cannot displace an entry that already exists.
+    `0x15140088` gives opacity, frameoffset, patternsize and patternrotation at slots 3-6,
+    the same four `0x15140848` gives at 2-5, and in flowingLava record 911 three of the four
+    resolve to programs inside the record.
+
+    Read from the words directly, because `fx_named_params` is driven by the walk and the
+    walk is exactly what does not reach here.
+    """
+    data, lo, hi = rec.asm.data, rec.asm.body_lo, rec.asm.body_hi
+    out = []
+    seen = set()
+    try:
+        cells = [off for kind, off, hdr, _p in rec.fx_walk()
+                 if hdr is not None and (hdr & 0xFF) in (0x09, 0x49)]
+    except Exception:
+        return out
+    for off in cells:
+        try:
+            shared = struct.unpack_from('<I', data, off + 8)[0] + 52
+        except Exception:
+            continue
+        if not (lo <= shared < hi - 16):
+            continue
+        try:
+            hdr2 = struct.unpack_from('<I', data, shared)[0]
+        except Exception:
+            continue
+        at = shared + 12 if (hdr2 & 0xFFF) in (0x04B, 0x14B) else shared
+        if at in seen or not (lo <= at < hi - 4):
+            continue
+        try:
+            tag = struct.unpack_from('<I', data, at)[0]
+        except Exception:
+            continue
+        if (tag & 0xF) != 8 or (tag >> 16) == 0x0002 or not tag:
+            continue
+        seen.add(at)
+        params = {}
+        for sl, name, how in fx_entry_layout(tag):
+            if not name or at + 4 * sl + 4 > hi:
+                continue
+            w = struct.unpack_from('<I', data, at + 4 * sl)[0]
+            if how == 'baked':
+                params[name] = ('baked', w)
+            elif how == 'inline':
+                a = at + 4 * sl
+                params[name] = ('program', a if rec.asm.program_span(a, hi) else None)
+            else:
+                pv = w + 52
+                params[name] = ('program',
+                                pv if lo < pv < hi and rec.asm.program_span(pv, hi) else None)
+        out.append((at, tag, params))
+    return out
+
+
 def in_eval_order(params):
     """An entry's parameters, in the order the engine evaluates them.
 
@@ -620,6 +697,10 @@ def entries(rec, baked_pairs=True):
             order.append(off)
         if name:
             tbl[off][1][name] = (kind, value)
+    if not order:
+        for at, tag, params in _chain_embedded_entries(rec):
+            tbl[at] = (tag, params)
+            order.append(at)
     _recover_last_inline(rec, tbl, order)
     if baked_pairs:
         for off in order:
