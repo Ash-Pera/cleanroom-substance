@@ -190,7 +190,33 @@ QUESTIONS = {
     # programs -- 24 of them a single `exp2(min(swizzle($sizelog2) - $sizelog2, 0))`, an
     # aspect term that is 1.0 on a square image. Whether its first component IS the
     # distance is a guess with an arbiter available, which is what this channel is for.
-    'distance.param':     ('program', 'block1', 'slot5', 'wide'),
+    # 'layout' IS 'wide' WITH ITS PRECEDENCE FIXED, and the fix is worth more than the
+    # candidate. Under 'wide' the 2-component reading is tried BEFORE the structural slot
+    # rule -- `layout start + 1 + cls bit 7 + cls bit 11`, verified 38 of 38 across six
+    # filters in tools/param_slots.py -- and returns, so the derived rule is never
+    # consulted. An ASSUMED reading pre-empting a DERIVED one.
+    #
+    # WHAT IT COSTS, on Bricks Textures_1's 126 distance records: 'wide' returns 1.0000 for
+    # EVERY ONE OF THEM. The component it reads is the aspect term
+    # `exp2(min(sizelog2.x - sizelog2.y, 0))`, which is exactly 1.0 on a square image, and
+    # every image here is square. A radius of 1.0 at a 256 reference is 0.25px on a 64 grid,
+    # so the distance transform is a no-op and its output is just the thresholded mask. Six
+    # records that mask six different colour layers came out BYTE-IDENTICAL.
+    #
+    # The slot rule gives them author-shaped numbers instead, and distinct ones:
+    #
+    #     rec 62 1.50   rec 143 1.28   rec 145 7.68   rec 159 3.00   rec 5043 3.84
+    #     rec 5048 1.28   rec 7327 2.44   rec 7332 3.25   rec 7338 3.25   rec 7340 2.44
+    #
+    # 7327/7340 at 2.44 and 7332/7338 at 3.25 is TWO distinct fields where 'wide' produced
+    # one, which is the difference between four colour layers stacking in the same place and
+    # two of them landing somewhere else.
+    #
+    # AND 'wide' IS BARELY NEEDED. With it closed entirely, only TWO of the 126 fail to
+    # locate anything (recs 158 and 10170, whose slot holds 0.0 and fails the 1e-3 floor).
+    # So it was pre-empting the good rule on 124 records to rescue 2. 'layout' defers to the
+    # rule and keeps the 2-component reading for exactly those.
+    'distance.param':     ('program', 'block1', 'slot5', 'wide', 'layout'),
     # ARBITRATED, AND 'wide' IS REFUTED -- by the widest margin of anything in this file, and
     # it is the candidate that looks best on a coverage count. `distance` heads the reference
     # packages' blocker table once blur.intensity and nonfinite.fill are open, and 'wide'
@@ -243,6 +269,27 @@ QUESTIONS = {
     # the width right can still be the wrong arithmetic, and 'nearest' is one reading of a
     # propagation rather than the only one.
     'distance.propagate': ('field', 'nearest'),
+    # RE-ARBITRATED AND THE ORIGINAL REFUSAL STANDS -- but my instrument said the opposite
+    # first, and how it was fooled is the part worth keeping. Scored on the wide basis with
+    # the degeneracy filter and SIGNED correlation over usable channels only:
+    #
+    #     field     mean corr +0.2951   MAE 0.1575
+    #     nearest   mean corr +0.3089   MAE 0.1570
+    #
+    # Better on both, driven by Bricks basecolor channels moving -0.237 -> +0.090,
+    # -0.347 -> +0.051, -0.199 -> +0.094. On that table 'nearest' wins.
+    #
+    # THE PICTURES SAY NO, UNAMBIGUOUSLY. Under 'field' Bricks renders crisp geometry --
+    # circles, grid lines, embossed rings in basecolor, AO and normal. Under 'nearest' all
+    # three are a smeared grey mush with the structure gone. The correlation gain is
+    # strongly ANTI-correlated channels drifting toward zero, and a channel at -0.35 going
+    # to +0.05 has not become right, it has become featureless.
+    #
+    # SO THE METRIC HAS A HOLE: mean signed correlation treats |negative| -> 0 as an
+    # improvement. The degeneracy filter does not catch it either, because a smeared image
+    # keeps enough std and enough distinct values to pass. An anti-correlated channel is
+    # evidence of a WRONG picture, not of a missing one, and the way to fix it is to make
+    # it correlate positively, not to flatten it.
     # The footprint is no longer a four-way guess: `patterntype` is declared in the entry
     # tag and the manifest NAMES its values, so `fxrender.PATTERN_SHAPES` selects the shape
     # from shipped data and this question only exists to FORCE one for an experiment.

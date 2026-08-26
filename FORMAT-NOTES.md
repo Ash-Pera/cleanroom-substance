@@ -37965,3 +37965,63 @@ So the decoder unification now stands validated end to end on the core filters: 
 structural walk (~100%), and parameters via last-n-present (99-100% + gap recovery). Remaining to ship:
 extend to the arity filters (pixelproc/fxmaps), settle levels' widths, then have record_layout return the
 decomposition and rewire sbsasm's four methods through it, retiring the five special cases and the memo.
+
+## Unified walk, iteration 5: 12 filters at 100% inputs; arity added; interaction filters are next
+
+Added mode=arity (pixelprocessor): its w1 is an input-count integer (low nibble), so inputs = that count
+and there are no named w1 params. Validated: pixelproc inputs == edges on 58,664 / 58,665 (one arity-0
+overflow record). The walk now reproduces input edges at 100% across TWELVE filters:
+
+    blend, blur, curve, directionalwarp, dirmotionblur, dyngradient, gradient, hsl, normal,
+    pixelprocessor, sharpen, warp   -- inputs == edges: 100% (blend 99.998%)
+
+Header-length (end == header_words) is 100% on 9 of them; pixelproc/dyngradient/normal are off by a small
+constant in the cls-slot count (inputs still exact, and pixelproc/dyngradient carry no params, so the
+decode is unaffected -- a sanity-check detail to reconcile, not a decode error).
+
+WHAT REMAINS FOR COVERAGE, now enumerated:
+- INTERACTION filters -- transformation (240k records), levels (89k, has params), emboss. Their cost
+  spec is `interaction: colour`, i.e. header = base(features) + tagbit0 * cross(features), NOT the
+  additive codes model. record_layout._interaction already computes their header_words; the walk needs
+  the same feature->slot structure (clsbits, w1 `pairs` each contributing state==1/2/3 features, the
+  arity_sm term, and the tag-bit0 cross doubling). This is the big remaining piece -- transformation
+  alone is a quarter of the corpus.
+- distance, shuffle (per_record), bitmap, uniform -- need a base-arity entry or the per-record w1 shape.
+- fxmaps -- the payload/table filter (const=None); genuinely outside the header cost model, handled by
+  the fx_walk/entries table mechanism, not this walk.
+
+So the structural walk now covers the additive-codes and arity filters (edges exact, params 99-100%
+where PARAM_SPEC is complete), and the remaining work is the interaction model (transf/levels/emboss)
+plus a handful of small per-filter shapes. The architecture holds across every filter family tried.
+
+### Re-arbitrating `distance.propagate`: my metric said adopt, the pictures said no
+
+Peer 0b registered `distance.propagate` -- `distance` reads edge 0 and throws edge 1 away, and
+three header bits say the output's width follows edge 1 -- and refused 'nearest' on Bricks:
+overall MAE 0.1401 -> 0.1490, mean correlation +0.1274 -> +0.1268.
+
+Re-scored with this session's instrument (full reference set, keyed per assembly and per
+reference, degenerate channels excluded, SIGNED correlation, wide basis):
+
+    field     mean corr +0.2951   MAE 0.1575
+    nearest   mean corr +0.3089   MAE 0.1570
+
+Better on both. The movement is Bricks basecolor: -0.237 -> +0.090, -0.347 -> +0.051,
+-0.199 -> +0.094, -0.657 -> -0.576. On that table 'nearest' should be adopted.
+
+**Rendered, it is obviously worse.** Under 'field' Bricks draws crisp geometry -- circles, grid
+lines, embossed rings across basecolor, ambientOcclusion and normal. Under 'nearest' all three
+become a smeared grey mush with the structure gone.
+
+**THE METRIC HAS A HOLE.** Mean signed correlation treats a strongly ANTI-correlated channel
+moving toward zero as an improvement. It is not: -0.35 -> +0.05 is a picture that had structure
+in the wrong place losing the structure altogether. The degeneracy filter does not catch it,
+because a smeared render keeps enough std and enough distinct values to pass both thresholds.
+
+That is the third instrument fault this session, after mean |corr| hiding sign errors and the
+package-keyed harness collapsing assemblies. The rule that follows: **an anti-correlated channel
+is evidence of a wrong picture, not a missing one**, and a candidate that improves it by
+flattening it has not improved anything. Where correlations are negative, the metric cannot be
+read without the image.
+
+The peer's refusal stands, on better grounds than either measurement gave it.
