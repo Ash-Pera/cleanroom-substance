@@ -445,6 +445,19 @@ QUESTIONS = {
     # `cone`, `bell` and `gaussian` each score 0.0292 -- apparently far the best -- while
     # scoring ONE output instead of five, with 50 records failing to render outright. The
     # number improves because four outputs vanish. Any sweep over this key has to report the
+    # AND THE FAILURE IS FIVE RECORDS, NOT FIFTY -- fifty is the OUTPUT-level cascade count,
+    # which is not the same thing and was first reported as though it were. The root
+    # failures under `cone` at max_dim 96 are five records: 326, 2744, 5211, 7643 and 10330,
+    # all `pixelprocessor`, all class 0x0099, all producing non-finite values on 100% of
+    # samples. They cascade into 8,518 lost records and the 50 lost outputs.
+    #
+    # It is resolution-dependent, which is how a first check missed it: at max_dim 64
+    # nothing fails and both profiles render an identical record set. So softening does not
+    # break a structural class -- it pushes five pixelprocessors over an edge that exists
+    # only at some resolutions, which has the shape of a divide by a coverage that has
+    # reached zero. Same 0/0 family as QUESTIONS['nonfinite.fill'], reached from the profile
+    # side rather than from an empty upstream.
+    #
     # scored-output COUNT beside the mean, or a profile that destroys the render reads as a
     # profile that fixes it.
     #
