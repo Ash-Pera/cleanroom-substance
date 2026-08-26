@@ -2419,14 +2419,6 @@ class Record:
                 continue
             seen.add(off)
             layout = fx_entry_layout(tag)
-            # The one field a mask-walk cannot fix from the tag alone: a program may be
-            # POINTED at (its word is offset - 52) or written INLINE (its word IS the
-            # program, first word the instruction count). Only the LAST program can be
-            # inline -- a variable-length field can only sit at the entry's tail, so the
-            # highest program bit is the sole candidate; every lower program is a pointer.
-            # `fx_entry_layout` walks the bits in ascending order, so the last 'program'
-            # row it yields is that highest bit.
-            last_prog = max((sl for sl, _n, how in layout if how == 'program'), default=None)
             for sl, name, how in layout:
                 if off + 4 * sl + 4 > hi:
                     break
@@ -2435,30 +2427,26 @@ class Record:
                     yield off, tag, sl, name, how, w
                     continue
                 if how == 'inline':
-                    # The slot IS the program; its address is not read from the word.
+                    # The slot IS the program; its address is not read from the word. This
+                    # kind is set STRUCTURALLY by `fx_entry_layout` (bits 25/27/29 with no
+                    # program bit), not by probing whether the word decodes.
                     at = off + 4 * sl
                     yield off, tag, sl, name, how, (at if self.asm.program_span(at, hi)
                                                     else None)
                     continue
+                # A program parameter is a POINTER. Follow it; report a miss as None. The
+                # slot's word is NOT inspected to re-decide the structure the tag stated --
+                # a previous version, when the last program's pointer failed, read that slot
+                # as an inline program instead. Every one of those 2,717 recovered programs
+                # lies BEYOND the entry: over the 1,910 with a following entry the recovered
+                # start sits past the next entry's tag in 1,910 of 1,910, so it is bytecode
+                # from a later structure, not this entry's field. Deciding pointer-vs-inline
+                # from whether `word - 52` happens to land on decodable bytes is exactly the
+                # value-driven read the format does not require, and it invented a phantom
+                # `imageindex` that duplicated an earlier program pointer 2,056 times.
                 pv = w + 52
-                # A slot the layout calls a program whose word is not one is reported as
-                # such rather than skipped: 6.1% of them corpus-wide, and hiding them
-                # would turn a known miss rate into an invisible one.
-                if lo < pv < hi and self.asm.program_span(pv, hi):
-                    yield off, tag, sl, name, how, pv
-                    continue
-                # A failed pointer at the LAST program slot is the trailing inline program:
-                # 0x95540288's `imageindex` is inline in 382 of 382 entries. Restricted to
-                # the last slot by the rule above -- reading inline at any lower slot
-                # recovered 14 spurious `opacity` programs (bit 20) in entries whose real
-                # trailing program was `branchoffset` (bit 22), a coincidental decode of a
-                # genuinely-missing pointer rather than a real inline program.
-                if sl == last_prog:
-                    at = off + 4 * sl
-                    if at + 4 <= hi and self.asm.program_span(at, hi):
-                        yield off, tag, sl, name, how, at
-                        continue
-                yield off, tag, sl, name, how, None
+                yield off, tag, sl, name, how, (
+                    pv if lo < pv < hi and self.asm.program_span(pv, hi) else None)
 
     def fx_node_params(self):
         """Yield (node offset, header, name or None, program offset) for the node chain.
