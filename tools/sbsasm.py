@@ -1543,19 +1543,13 @@ class Record:
                 s += 1
             prog = 2 + base
             if prog < len(self.words):
-                hit = (LAYOUTS or {}).get(
-                    (f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
-                if hit:
-                    # Slots 0 and 1 are the two mask words -- word0 (tag+cls) and word1,
-                    # which for every _RULED filter IS the two-bit-code parameter word.
-                    # They are never edges. The table memorised slot 1 as an edge for 10
-                    # dirmotionblur records whose word1 is 1 or 5 (one or two baked scalars)
-                    # -- values small enough to pass the backward-index invariant, the exact
-                    # small-integer conflation recorded against EDGES. Union only real edge
-                    # slots (>= 2); the walk's single structure fits all 5,009 headers, and
-                    # a phantom slot-1 input would have to displace that parameter word.
-                    edges = sorted(set(edges) | {s for s in (hit[0] or []) if s >= 2})
-                return (edges, prog)
+                # No LAYOUTS union here any more: measured over every _RULED record, the
+                # memo's edge list adds exactly ZERO real slots beyond what the w1-field
+                # walk above already found (the union's only past contribution was the 10
+                # spurious dirmotionblur slot-1 edges, since removed). The walk states the
+                # edges in full, so the table is redundant for these four filters and is
+                # dropped -- one of the LAYOUTS memo's uses drained.
+                return (list(edges), prog)
 
         # The class-word-driven filters: their edges are a fixed base shape (a stated bit
         # discriminates the two-shape ones) and their size-expression slot follows the
