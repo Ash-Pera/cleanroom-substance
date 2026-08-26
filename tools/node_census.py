@@ -103,8 +103,16 @@ def main():
     det = sum(c.most_common(1)[0][1] for c in sizes.values())
     print('node cells %d   tags %d   size deterministic %.3f%%'
           % (tot, len(sizes), 100 * det / tot))
+    # NODES ONLY. A tag's low nibble is fx_table's discriminator: 9 or 0xB is a node header,
+    # 8 is a paramset TABLE ENTRY. This harvest walks cells by inter-program gaps from the
+    # tree root, and a table-rooted record's cells are entries -- so without this filter the
+    # size-law fit mixes nodes with entries and its nibble-8 "sizes" are the offset to an
+    # entry's first inline program, not a node size. That mislabelling reached walk.py's
+    # NODE_LEGEND before it was caught; the fit is restricted to node headers here so a
+    # regenerated legend cannot re-introduce it. Entry lengths are fx_entry_layout's, not
+    # this census's. The 'node cells' line above still counts both, being a raw harvest total.
     keys = [(t, c.most_common(1)[0][0], sum(c.values())) for t, c in sizes.items()
-            if not is_chain(t) and sum(c.values()) >= 10
+            if not is_chain(t) and (t & 0xF) in (9, 0xB) and sum(c.values()) >= 10
             and c.most_common(1)[0][1] / sum(c.values()) >= 0.9]
     byk = collections.defaultdict(list)
     for k in keys:
