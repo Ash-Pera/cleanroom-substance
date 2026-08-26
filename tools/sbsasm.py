@@ -117,8 +117,13 @@ UNNAMED = {9: 'legacy, version 0x20000 only'}
 # packed integer passes the "valid backward index" test trivially. That conflation is
 # what produced the shared-reference error; see FORMAT-NOTES.md.
 EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 9: [2, 3], 10: [1],
-         11: [2], 12: [2, 3], 13: [1], 14: [1], 15: [2], 18: [2], 19: [1],
+         11: [2], 12: [2, 3], 13: [1], 14: [1], 15: [2], 18: [2], 19: [1, 2],
          21: [2], 22: [1]}
+# dyngradient (19) takes TWO inputs -- its unique greyscale input at slot 1 and its shared
+# control map at slot 2 -- and slot 2 holds a valid backward record index in 2,225 of 2,225
+# records. The default was [1], which made `arity` report one input and left the fallback a
+# slot short; the computed edge_slots already read [1,2] through the walk, so this only
+# aligns the static default and the arity helper with what the records and the rule agree on.
 # Filter 9 had no entry, so `Record.edges` returned [] for it while slots 2 and 3 plainly
 # held backward record indices -- its inputs were simply unread, not absent. It is the
 # corpus's rarest filter (5 records in 4 files, all version 0x20000) so the n >= 200
