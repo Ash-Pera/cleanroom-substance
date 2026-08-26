@@ -113,9 +113,15 @@ def reference_packs(match=None):
     for png in glob.glob(os.path.join(PACKS, '*', 'reference_renders', '**', '*.png'),
                          recursive=True):
         pack = os.path.relpath(png, PACKS).split(os.sep)[0]
-        if match and match.lower() not in pack.lower():
-            continue
         out.setdefault(pack, []).append(png)
+    if match:
+        # Match the PACK NAME or any of its file names. A package directory is named for
+        # its author (`Kutejnikov__Stylized_Wooden_Roof_Tiles`) while the material is
+        # called RoofTiles everywhere else, so filtering on the directory alone silently
+        # returns nothing for the name a caller actually has in hand.
+        m = match.lower()
+        out = {k: v for k, v in out.items()
+               if m in k.lower() or any(m in os.path.basename(p).lower() for p in v)}
     return out
 
 

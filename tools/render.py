@@ -996,10 +996,40 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # exactly as before. 111 records in the reference set block here, and
                     # with the FX-Map empty-table default it is one of the two assumptions
                     # that make 14 of the 19 usable reference maps scoreable.
-                    fill = assume.assumed('uniform.fill')
-                    if fill is None:
-                        raise Unsupported("uniform has no room for a fill color at the "
-                                          "expected slot")
+                    # THE DEFAULT IS 0.0, AND THE ENGINE SAID SO. This used to refuse
+                    # unless a caller opened an `assume` scope, which was right while
+                    # nothing could arbitrate it. Two reference specimens now can, because
+                    # in both the fill reaches a declared output as a pure passthrough --
+                    # the scored MAE is EXACTLY the candidate, so the candidates are
+                    # genuinely separated rather than all washing out:
+                    #
+                    #   RoofTiles, `metallic` (record 2580), against RoofTiles_Metallic.png
+                    #     fill 0.0 -> MAE 0.0000     fill 0.5 -> 0.5000
+                    #     fill 0.25 -> 0.2500        fill 1.0 -> 1.0000
+                    #
+                    #   Stylized_Sandy_Stone_Path, `output_5` (record 1), scored against
+                    #   all six of its maps because that package names its outputs
+                    #   generically:
+                    #     fill 0.0 -> exact match to SandyStoneRoad01_Metallic.png, 0.0000
+                    #     fill 0.5 -> best is Normal at 0.0159      fill 1.0 -> AO at 0.0453
+                    #
+                    # The second is the stronger of the two: the manifest could not name
+                    # that output, and matching at 0.0000 identified it as the metallic map
+                    # on its own.
+                    #
+                    # WHAT THIS IS NOT. Both scoring outputs are constant-zero maps -- a
+                    # metallic channel for a non-metal material -- so this arbitrates the
+                    # DEFAULT FILL and nothing about how a fill combines downstream. It is
+                    # still LOW_CONFIDENCE and still marked in assume.USED, because the
+                    # value is inferred from behaviour rather than read from the file: the
+                    # record stores no colour, and no reading of it will ever produce one.
+                    #
+                    # Chesterfield cannot arbitrate this and it was tried first: there the
+                    # fill changes 6 records and 0 declared outputs, so every candidate
+                    # scores identically. An A/B that ties is not evidence for the
+                    # incumbent, which is why finding a specimen where it propagates was
+                    # the whole task.
+                    fill = assume.assumed('uniform.fill', 0.0)
                     v = np.asarray(fill, dtype=np.float32).ravel()
                     if v.size == 1:
                         v = np.repeat(v, n)
@@ -1989,14 +2019,15 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     d = mx - mn
                     S = np.where(d < 1e-9, 0.0,
                                  d / np.maximum(1e-9, 1.0 - np.abs(2.0 * L - 1.0)))
-                    H = np.zeros_like(L)
+                    # `dd` is the guarded denominator: where d is 0 the pixel is grey,
+                    # `m` is False and the sector value is discarded, so the guard only
+                    # keeps the arithmetic finite rather than changing any kept result.
                     m = d > 1e-9
-                    with np.errstate(all='ignore'):
-                        Hr = ((g0 - b0) / np.maximum(1e-9, d)) % 6.0
-                        Hg = ((b0 - r0) / np.maximum(1e-9, d)) + 2.0
-                        Hb = ((r0 - g0) / np.maximum(1e-9, d)) + 4.0
-                    H = np.where(m & (mx == r0), Hr, np.where(m & (mx == g0), Hg,
-                                 np.where(m, Hb, 0.0))) / 6.0
+                    dd = np.maximum(1e-9, d)
+                    H = np.select([m & (mx == r0), m & (mx == g0), m],
+                                  [((g0 - b0) / dd) % 6.0,
+                                   ((b0 - r0) / dd) + 2.0,
+                                   ((r0 - g0) / dd) + 4.0], default=0.0) / 6.0
                     H = (H + h_sh) % 1.0
                     S = np.clip(S + 2.0 * s_sh, 0.0, 1.0)
                     L = np.clip(L + l_sh, 0.0, 1.0)
