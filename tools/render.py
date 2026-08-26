@@ -1105,6 +1105,22 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         m = by_width[4]
                         matrix_from_program = True
                     else:
+                        # WHAT IS LEFT HERE IS ONE RECORD IN THIRTY FILES, and it needs a
+                        # specimen this corpus does not have. Desert_Sand_01 record 55 has
+                        # five programs -- a 4-wide identity (1, 0, 0, 1), a 4-wide
+                        # (0.65, 0, 0, 0.05), the shared 1-wide 2.0, the log2-size pair
+                        # (8, 7) which the rule above already sets aside, and a 2-wide
+                        # (-0.0, 0.0) taken as the offset. Two 4-wide candidates that
+                        # DISAGREE, so 9ca7c0f's "two that agree are the answer" does not
+                        # apply.
+                        #
+                        # Which is the matrix cannot be read off either one: an identity is
+                        # what an unset matrix looks like AND what a background colour is
+                        # not, and (0.65, 0, 0, 0.05) is a plausible scale and an
+                        # implausible colour. Over 60 files only 7 transformation records
+                        # have two or more 4-wide programs, and none of them sits in a
+                        # package that ships reference maps -- so there is no arbiter, and
+                        # picking the later address would be a coin toss dressed as a rule.
                         raise Unsupported("matrix is a program this cannot single out "
                                           "(%d programs, widths %s)"
                                           % (len(fprogs), sorted(k for k in by_width)))

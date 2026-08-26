@@ -299,11 +299,16 @@ def _is_leaf(hdr):
 #: RAISING IT IS NOT THE LEVER IT LOOKS LIKE, measured after batched emission made a
 #: million patterns arithmetically cheap. Over the same 30 corpus files, at max_dim 64:
 #:
-#:     cap     40,000     42 of 127 declared outputs rendered      72 s
+#:     cap     40,000     44 of 127 declared outputs rendered       74 s
+#:     cap    300,000     44 of 127                               117 s
 #:     cap  3,000,000     44 of 127                               878 s
 #:
-#: Two more outputs for twelve times the wall clock, and the cost is concentrated: three
-#: files take 114 s, 353 s and 364 s on their own. The counts that appear in the blocker
+#: ZERO more outputs for twelve times the wall clock. It was two when this note was first
+#: written, before `distance` learned to read its parameter from the derived slot (57da8db)
+#: -- those two outputs were reachable another way, and the budget was never what held them.
+#: Re-measured rather than carried forward, because a stale comparison is how a number turns
+#: into folklore. The cost is also concentrated: at 3,000,000 three files take 114 s, 353 s
+#: and 364 s on their own. The counts that appear in the blocker
 #: table -- 1,050,625 (1025^2), 2,253,001, 921,600, 102,400 (320^2), 66,049 (257^2) -- are
 #: legitimate values, squares of a grid dimension, so this budget is refusing correct work.
 #: But the records behind them mostly hit another root as soon as they emit, which is why
