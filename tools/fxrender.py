@@ -1544,6 +1544,22 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
         if size_scale is not None:
             size = size * size_scale[:size.size]
         rot = float(val(p, 'patternrotation', _ZERO1)[0])
+        # MOST PATTERNS DO NOT CARRY AN OPACITY AT ALL, which is what makes this default
+        # load-bearing rather than a corner. Over 195,933 emitted patterns in 20 files:
+        #
+        #     no opacity, so 1.0 here   163,676   83.5%
+        #     in (0, 1]                  29,802   15.2%
+        #     negative                    1,195    0.6%
+        #     exactly zero                  975    0.5%
+        #     above 1                       285    0.1%
+        #
+        # So a record's appearance is decided by the DEFAULTS for five patterns in six, and
+        # a full-cell size at full opacity is what paints an FX-Map solid white -- the
+        # `fx.sizeless` and `fx.patternsize` questions, not this one. The 0.6% negative is
+        # too small to be a systemic misread of the opacity program; it clips to 0 below and
+        # those patterns draw nothing, which for fur_var_001 record 63 means 3 of its 4
+        # patterns vanish and the 4th, which carries no parameters at all, fills the cell.
+        # That record's white is the FALLBACK drawing, not the scatter.
         col = val(p, 'opacity', _ONE1)
         if size.size < 2:
             size = np.repeat(size[:1], 2)
