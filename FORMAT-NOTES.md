@@ -36700,3 +36700,49 @@ modelled:
 No unmodelled id, so whatever branch state the engine carries down its tree is applied to the
 emission by the engine and is not visible to the bytecode. It cannot be recovered by decoding a
 program; it has to come out of the structure or not at all.
+
+### The normal formula is verified, and Bricks is green-inverted
+
+`render.py`'s normal branch says its formula is "NOT VERIFIED ... This filter's math is
+engine-side", and that not decoding `format`/`inversedy` leaves "a specimen using the other
+handedness rendering with its green channel inverted". Both halves can now be checked, with an
+arbiter that involves none of our renderer: take a package's exported HEIGHT map, run our own
+height-to-normal formula on it, and correlate the result against that package's exported NORMAL
+map.
+
+    package                       ch0      ch1      ch2      verdict
+    Chesterfield_PBR            +0.991   +0.990   +0.187    no flip
+    Stylized_Sandy_Stone_Path   +0.872   +0.859   +0.830    no flip
+    Stylized_Wooden_Roof_Tiles  +0.704   +0.875   +0.366    no flip
+    Kutejnikov__Bricks          +0.891   -0.892   +0.461    FLIPPED
+
+**The formula is right.** Central-difference the height, scale, normalise against a unit Z
+reproduces three packages' own normal maps at 0.87 to 0.99 on both gradient channels, which is
+as close as a resampled 8-bit export allows. The weaker ch2 agreement is the intensity scale,
+which this test does not constrain.
+
+**And Bricks is not structurally wrong, it is green-inverted** -- a clean sign flip at equal
+magnitude, +0.891 against -0.892. That is `inversedy`, which the permitted sources declare on
+this filter, and it is per-package: a global flip would break the other three.
+
+WHERE THE FLAG IS, on evidence that is suggestive rather than settled. Bricks record 12180 and
+Chesterfield record 121 are both `normal`, both class 0x0B19, both 123 words, and differ in
+SIX of those words -- three pointers, the intensity (3.0 against 10.0), one program word, and
+word 1, which is 5 against 1. Word 1 is the only boolean-shaped difference, and bit 2 is the
+only bit separating them. On the record that actually FEEDS each exported normal it predicts 4
+of 4: Bricks 12180 sets it, Chesterfield 121, Sandy 1452 and Wooden 1414 do not. Corpus-wide
+the bit is rare, 2 of 53 normal records, which is what a non-default option looks like.
+
+Sandy is worth spelling out because it looked like a counterexample: the package has four
+`normal` records and one of them, 175, does set the bit -- but its exported normal is fed by
+1452, which does not. Reading the flag off any record in the package rather than the one
+feeding the output would have produced a contradiction that is not there.
+
+Added as `assume.QUESTIONS['normal.inversedy']`, opt-in, NOT adopted. Scored, it moves exactly
+one channel of sixteen -- Bricks normal ch1, -0.158 to +0.158 -- and leaves the rest
+byte-identical. The reason it stays opt-in is that there is one positive specimen, and any
+field set in Bricks and clear in the other three would fit equally well.
+
+**A statistic caught out here**: mean |corr|, which decided the fx questions, is identical under
+both candidates because |-0.158| = |+0.158|. Absolute correlation is blind to a sign error. Any
+question about handedness, orientation or channel order has to be read on the SIGNED value.

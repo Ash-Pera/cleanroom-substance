@@ -2304,6 +2304,13 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # 3) and `inversedy` are not decoded, so a specimen using the other
                 # handedness renders with its green channel inverted rather than failing.
                 gy, gx = np.gradient(height)
+                # `inversedy` -- see assume.QUESTIONS['normal.inversedy']. Off by default,
+                # so this changes nothing unless a caller opens the scope.
+                if (assume.assumed('normal.inversedy') == 'word1bit2'
+                        and len(rec.words) > 1 and (rec.words[1] >> 2) & 1):
+                    gy = -gy
+                    LOW_CONFIDENCE.add(i)
+                    assume.note(i)
                 nx, ny = -gx * intensity, -gy * intensity
                 nz = np.ones_like(nx)
                 length = np.sqrt(nx * nx + ny * ny + nz * nz)

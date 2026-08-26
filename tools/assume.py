@@ -35,6 +35,49 @@ import contextlib
 # a caller may pass anything, and an unknown key is that caller's business.
 QUESTIONS = {
     'blur.intensity':     ('program', 'slot3'),
+    # THE GREEN CHANNEL'S HANDEDNESS. The permitted sources declare `inversedy` on this
+    # filter and render.py's normal branch says outright that not decoding it leaves "a
+    # specimen using the other handedness rendering with its green channel inverted".
+    # 'word1bit2' reads it from bit 2 of the record's word 1.
+    #
+    # THE ARBITER IS INDEPENDENT OF OUR RENDERER. Take a package's exported HEIGHT map,
+    # run our own height-to-normal formula on it, and correlate against that package's
+    # exported NORMAL map. Nothing of ours upstream is involved, so it measures the
+    # formula and the convention alone:
+    #
+    #     package                     ch0      ch1      verdict
+    #     Chesterfield              +0.991   +0.990    no flip
+    #     Stylized_Sandy            +0.872   +0.859    no flip
+    #     Stylized_Wooden           +0.704   +0.875    no flip
+    #     Bricks_and_tiles          +0.891   -0.892    FLIPPED
+    #
+    # That also VERIFIES THE FORMULA, which render.py records as unverified: central
+    # difference, scale, unit Z reproduces three packages' own normal maps at 0.87 to 0.99
+    # on both gradient channels. Bricks is not structurally wrong, it is green-inverted.
+    #
+    # And the bit predicts it, 4 of 4, on the record that actually FEEDS each exported
+    # normal: Bricks rec 12180 word1=5 (bit set), Chesterfield rec 121, Sandy rec 1452 and
+    # Wooden rec 1414 all word1=1 (clear). Corpus-wide the bit is rare -- 2 of 53 normal
+    # records -- which is what a non-default option looks like, and it is the ONLY
+    # boolean-shaped difference among the 6 words that differ between Bricks rec 12180 and
+    # Chesterfield rec 121, two records otherwise identical in all 123 words and class.
+    #
+    # SCORED, and it is surgical: of 16 usable channels exactly ONE moves. Bricks
+    # `normal` ch1 goes from -0.158 to +0.158 -- an anti-correlated channel becoming a
+    # correlated one -- and the other 15 come back byte-identical. It fires where predicted
+    # and nowhere else.
+    #
+    # NOTE THE STATISTIC THIS ESCAPES. The mean |corr| used to decide the fx questions is
+    # UNCHANGED at 0.2464 either way, because |-0.158| = |+0.158|. Absolute correlation
+    # cannot see a sign error, which is exactly what this question is about; the signed
+    # value is what has to be read here.
+    #
+    # THE WEAKNESS, stated because it is the whole of it: there is exactly ONE positive
+    # specimen. Any field set in Bricks and clear in the other three would fit this
+    # evidence, and rarity plus boolean shape is what distinguishes this one from the five
+    # other differing words -- not a second package that sets it. Kept OPT-IN for that
+    # reason; a second package that sets the bit and needs the flip would settle it.
+    'normal.inversedy':   ('ignore', 'word1bit2'),
     # PUT TO THE REFERENCE MAPS. `slot3` moves nothing at all -- 24 rendered outputs before
     # and after -- so the live candidate is `program`, and on the five reference packages it
     # is the single biggest lever there is: 24 -> 48 declared outputs rendered, 18 -> 24
