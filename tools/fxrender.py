@@ -1320,10 +1320,27 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # 0.135 against 0.138. Both to the third decimal.
     #
     # ONE STAMP OF SIDE 1/4 IS ONE SIXTEENTH OF A CANVAS, and sixteen is the attenuation.
-    # A quadrant subdivision two levels deep produces sixteen cells of exactly this size, so
-    # the shape of the miss is a walk that emits a single leaf where it should emit the
-    # whole subdivision. That is a question about the node walk rather than about splat, and
-    # it is handed to the structural side on those terms.
+    # A quadrant subdivision two levels deep produces sixteen cells of exactly this size.
+    #
+    # BUT THE WALK IS NOT SKIPPING A SUBDIVISION -- it emits one because the file says one.
+    # Both records are the same chain, ADDNODE(0x18B) -> STEPPER(0x099) -> LEAF(0x100B) with
+    # a single entry and no branchoffset field at all, and evaluating their `numberadded`
+    # program under the render's own seeded slots returns exactly 1.0 for each. The addnode
+    # branch then loops once, faithfully. So the emission count is a correct reading of the
+    # program, and the deficit is not a missed descent.
+    #
+    # What the two records share is the count; what differs is the size, 0.2500 against
+    # 0.4146, and the coverage deficit is exactly 1/size^2 in both -- 16.0 and 5.8. So a
+    # single stamp is asked to cover the canvas and does not, which leaves two readings: the
+    # size should be 1.0, or the STEPPER should be scanning it across the canvas in more
+    # than one step. Nothing measurable here separates them.
+    #
+    # ONE CONCRETE THREAD LEFT, and it is checkable rather than speculative. `seed_slots`
+    # supplies slots 0, 4, 8, 9, 10, 12, 14, 16 and 17. The structural side reports this
+    # 0x099 chain reading slots 14, 16, 17 AND 18, and writing the size into slot 29 which
+    # `patternsize`'s get(29) then reads. Slot 18 is read and never seeded. Whether that
+    # matters depends on what should set it, which is a question about the chain rather than
+    # about splat.
     W = W or rec.width
     H = H or rec.height
     # The footprint is the largest open question here and the one the reference renders
