@@ -988,7 +988,6 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                                         H=rec.height)).reshape(-1)
                         except Exception:
                             continue
-                        n_evaluated += 1
                         # A 2-wide program returning (log2 W, log2 H) of THIS RECORD'S
                         # OWN declared size is the output-size expression, not a
                         # parameter, and it is skipped before the collision test below.
@@ -1010,6 +1009,16 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                 and abs(float(a[0]) - math.log2(rec.width)) < 1e-6
                                 and abs(float(a[1]) - math.log2(rec.height)) < 1e-6):
                             continue
+                        # COUNTED AFTER THE SIZE EXPRESSION IS SET ASIDE, and that placement
+                        # is the whole of the second fix. `n_evaluated` is what the refusal
+                        # below means by "programs remain unread", and a size expression is
+                        # not unread -- it is read, identified, and not a parameter. Counting
+                        # it made the record refuse for carrying a program that had just
+                        # been explained. That refusal's own comment names the values it was
+                        # tripping over, "(8.0, 8.0) ... tiling or scale shaped": they are
+                        # 2**8 == 256, this record's own edge, and the same identity two
+                        # branches up already recognises.
+                        n_evaluated += 1
                         # A WIDTH SEEN TWICE IS ONLY AMBIGUOUS IF THE TWO DISAGREE. The
                         # test was "seen twice -> refuse", which throws away the case where
                         # there is nothing to choose between: concrete_049 records 36, 37,
@@ -1661,6 +1670,36 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # angle -- against the same fixed 256-pixel reference. The gradient is a
                 # central difference in pixel space, converted to UV by the record's own
                 # width and height so a warp does not change strength with resolution.
+                #
+                # THIS BRANCH IS NOT THE SUSPECT WHEN A WARP DOES NOTHING, and saying so
+                # here is the point of this note -- the measurement below cost a session
+                # that started by reading this code. On Bricks, 510 of 515 warp records
+                # return their source BYTE-IDENTICAL. That is arithmetic, not a decode
+                # fault: 345 of them are handed a gradient input whose std is exactly
+                # 0.0, and np.gradient of a constant is 0, so `in_pos` is `pos`. The
+                # other 165 get gradient std 0.0039 against intensity 0.06, which at
+                # W=64 displaces 6e-5 UV -- four thousandths of a pixel, so the sampler
+                # returns the same pixel. Both populations are the INPUT being flat.
+                #
+                # WHERE THE FLATNESS COMES FROM, traced to a leaf: the zero gradients
+                # descend through blends and dirmotionblurs to `fxmaps` records with no
+                # image edges that render as a uniform 1.0. rec5596 is the readable one
+                # -- it EMITS 1,024 patterns, a 32x32 lattice, and each carries
+                # patternsize 5.0, which `splat` reads as canvas units. Five times the
+                # canvas, a thousand times over, is a white rectangle. The emission is
+                # right and the paint is degenerate.
+                #
+                # AND THAT IS WHY THE LATTICE IS MISSING FROM THE OUTPUT. The output cone
+                # is a ~50-stage accumulator of the form `blend(prev, warp(warp_chain,
+                # G))`, which is how a motif is replicated: each warp shifts by G and the
+                # blend lays the shifted copy down. With G identically zero every warp is
+                # the identity and every blend is a no-op -- 26 consecutive stages whose
+                # std agrees to four decimals -- so the chain deposits one motif where the
+                # engine deposits a grid of them.
+                #
+                # The fix is NOT `fx.patternsize == 'cell'`; that was swept against the
+                # Bricks references and refuted, with the numbers and the reason MAE
+                # misreads it in assume.QUESTIONS['fx.patternsize'].
                 if len(rec.edges) < 2:
                     raise Unsupported("warp has fewer than 2 edges")
                 for e in rec.edges[:2]:

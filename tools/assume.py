@@ -100,6 +100,38 @@ QUESTIONS = {
     # score worse than none -- which is what cleanroom-substance-0b measured on
     # Chesterfield (normal 0.0854 -> 0.0869) for two records whose span/(G-1) is exactly
     # 1.0000 on both axes, i.e. squarely on the law rather than in its tail.
+    #
+    # SCORED ON BRICKS, AND 'cell' LOSES -- the first time either member has been put
+    # against a spatially-varying reference set rather than a span statistic. Both keys
+    # swept together over Kutejnikov__Bricks_and_tiles, five paired outputs at 128:
+    #
+    #     psize   boff     overall    AO      height  normal  roughness
+    #     canvas  canvas    0.1951  0.5758    0.3185  0.0394     0.2691
+    #     canvas  cell      0.1973  0.5879    0.3185  0.0394     0.2718
+    #     cell    canvas    0.2077  0.6149    0.3736  0.0311     0.2832
+    #     cell    cell      0.2063  0.6076    0.3741  0.0312     0.2802
+    #
+    # AND THE ONE OUTPUT 'cell' APPEARS TO WIN IS THE ONE THAT SHOWS WHY MAE CANNOT BE
+    # READ ALONE HERE. `normal` improves 0.0394 -> 0.0311, which looks like the fix
+    # landing; it is not. On this pack MAE is dominated by a constant offset -- the
+    # our-vs-reference MEAN gap is 0.56 on AO, 0.23 on height and roughness -- so it
+    # scores agreement of level, not of structure. Comparing STD against the reference's
+    # own std separates them, and every output moves the wrong way under 'cell':
+    #
+    #     output      ours(canvas)  ours(cell)   REFERENCE
+    #     AO              0.1871      0.1362      0.1719
+    #     height          0.1544      0.1139      0.1565
+    #     normal          0.0306      0.0181      0.0401
+    #     roughness       0.1219      0.0875      0.1429
+    #
+    # Under 'canvas' our contrast already sits close to the reference on all four; 'cell'
+    # shrinks it 25-40% below. `normal`'s MAE fell because the image got FLATTER while the
+    # reference is more textured than either, and a flatter image is nearer a constant --
+    # not nearer this reference. So 'cell' is refuted as a global policy on the only pack
+    # that can currently score it, and 'canvas' stays the default on evidence rather than
+    # on inertia. This does NOT clear canvas in the degenerate regime -- see the flat
+    # fxmaps leaves documented at render.py's `warp` branch, where a record emits 1,024
+    # patterns each 5.0 units across and is painted uniformly white.
     'fx.patternsize':     ('canvas', 'cell'),
     # WHAT AN ENTRY WITH NO patterntype DRAWS. `profile_for` falls back to 'rect', a hard
     # fill of the whole cell, and its own docstring says that is "what the code has always
