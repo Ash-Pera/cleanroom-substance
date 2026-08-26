@@ -38113,3 +38113,65 @@ root does not release an output unless it was the last one.
 
 Reference agreement is unchanged to four decimals: 12 usable channels, mean +0.7997 before and
 after.
+
+### Unified walk: fxmaps closed, and the fx path now runs on it
+
+`decompose.py` reproduces the input edges of every filter it covers exactly, and filter 4 was
+declined outright -- "fxmaps: payload/table filter, not a header walk". Run through
+`_interaction_walk` anyway it reports slot 2 as an image input and finds none of the real ones:
+over 25 files it agreed with `layout`'s edge slots on 1,352 records and disagreed on 183, and
+the backward-index invariant said `layout` was right in 170 of those (its slots resolve to valid
+backward record indices; the walk's were empty).
+
+Two facts close it, both exact over 1,535 records:
+
+  * **The count is the cost model's own `arity_sm` field, read from w1** -- shift 10, mask 15,
+    which is exactly the `[10, 15]` already in costs.json for this filter:
+
+        edges 0 -> field 0   1,365        edges 3 -> field 3       4
+        edges 1 -> field 1      50        edges 6 -> field 6     116
+
+    1,535 of 1,535 with no exceptions. The same field read from w0 is noise -- records with no
+    edges spread across field values 0, 1, 2, 4, 5, 8, 9, 10, 13 and 14 -- so the word matters
+    and w1 is the one.
+
+  * **The inputs are contiguous from slot 3**, and slot 2 is the FX TABLE POINTER. Layout's
+    edge slots for the records that have any are exactly [3], [3,4,5] and [3,4,5,6,7,8] --
+    never a gap, never another start. Slot 2 is what every reader in the fx path already takes
+    as `words[2] + 52`, and the interaction walk independently places the first structural slot
+    there in 1,305 of 1,305, which corroborates that hardcode from the cost model rather than
+    assuming it.
+
+With filter 4 covered, the walk agrees with the existing edge computation on **27,663 of 27,663
+records across every filter in the corpus** -- blend, blur, curve, directionalwarp, dirmotionblur,
+distance, dyngradient, emboss, fxmaps, gradient, hsl, levels, normal, pixelprocessor, sharpen,
+shuffle, text, transformation, uniform, warp and bitmap -- with one record of the unnamed filter 9
+the only decline.
+
+Behaviour is unchanged by construction, and that was checked rather than assumed: the corpus
+census stays at 46 of 127 rendered with the same flat attribution, and reference agreement stays
+at 12 usable channels with mean +0.7997.
+
+## Integration: decompose now returns `prog` (the size slot), functionally 99.7%
+
+decompose() now also returns `prog` = the size-expression slot (what size_or_baked reads), so
+sbsasm.layout can route through it. `prog` is the FIRST slot after the base region -- the first
+cls slot when there is one (peer 0b independently confirmed this against layout[1]: blend prog=4=
+cls[0], levels prog=3=cls[0]). None when that slot is itself an image-input edge (blend's
+mask-only records).
+
+Measured the right way -- functional equivalence of size_or_baked, since that is the consumer and
+it bounds-checks the slot -- decompose's prog reproduces size_or_baked on 882,396 records. Excluding
+fxmaps (whose prog is in _fxmaps_walk's table territory, left None for its owner to set), the
+residual is ~2,741: pixelprocessor's documented multi-input case (2,680 -- size_or_baked steps past
+an edge-run to a pushed program slot, which the positional size_pos does not model), text (59),
+bitmap (2). Raw-value disagreements are larger (transformation's nwords=3 out-of-bounds slot, etc.)
+but functionally identical -- size_or_baked nulls an out-of-bounds slot regardless of whether prog
+names it or None.
+
+So the size decode is ~100% reproduced bar two known pockets (pixelproc multi-input, fxmaps). Edge
+decode remains 0-diff (926,882/926,882, peer-reproduced and render-verified through Bricks: 0 rows
+differ, max pixel diff 0). Remaining before layout can route through decompose and the _compute_layout
+special cases come out: close the pixelproc multi-input prog, settle fxmaps prog with its owner, and
+fix the known param_slots gap (a state-3 field that is neither image-input nor state-01/10 is recorded
+nowhere -- peer measured 30,015 records / 6.3% for the param stage).

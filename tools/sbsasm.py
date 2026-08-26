@@ -65,14 +65,32 @@ FILTERS = {
     20: 'pixelprocessor', 21: 'distance',
     19: 'dyngradient',
     5: 'vectorshape',
+    9: 'filter9',
 }
-# `vectorshape` is a PROJECT LABEL, not a name recovered from a source file. Every other
-# entry above is a name this format's own `.sbs` sources use; filter 5's is not, and
-# cannot be, because the permitted vocabulary is exhausted - see PROJECT_LABELS.
-PROJECT_LABELS = {5}
-# FILTER 9 IS THE ONLY GAP IN 0..22, and it is narrowed to two candidates. One record in 30
-# corpus files carries it -- wood_cedar_white record 357, 14 words, class 0x0309, two edges
-# -- and `filter None not implemented` blocks 8 declared outputs through it.
+# `vectorshape` and `filter9` are PROJECT LABELS, not names recovered from a source file.
+# Every other entry above is a name this format's own `.sbs` sources use; these two are not,
+# and cannot be, because the permitted vocabulary is exhausted - see PROJECT_LABELS.
+PROJECT_LABELS = {5, 9}
+# FILTER 9 IS THE ONLY GAP IN 0..22, and it is narrowed to two candidates -- but the name
+# below is neither of them. `filter9` names it after its id BECAUSE the id cannot be settled
+# from this corpus, and calling it `motionblur` or `svg` on the evidence here would be
+# stating a coin toss as a fact. See the provenance paragraph at the end of this note.
+#
+# THE CENSUS, over all 444 assemblies (the 437-file corpus plus the 7 reference packages),
+# 925,706 records. An earlier version of this note said "One record in 30 corpus files
+# carries it -- wood_cedar_white record 357"; that was the population then, and it is not
+# the population now:
+#
+#     concrete_085             rec 216   21 words   cls 0x0319   edges [203, 215]
+#     granite_001              rec 144   17 words   cls 0x0319   edges [123, 142]
+#     granite_001              rec 389    8 words   cls 0x0319   edges [373, 388]
+#     wood_cedar_white         rec 357   14 words   cls 0x0309   edges [356, 353]
+#     SD_FlickDom_SoftMaple    rec 381   14 words   cls 0x0309   edges [380, 377]
+#
+# 5 records, 4 files, two class words, every assembly at version 0x20000 -- which confirms
+# what UNNAMED used to record as "legacy, version 0x20000 only" and is why that entry is
+# retired rather than deleted as wrong. The EDGES note further down states the same 5-in-4
+# count; the two disagreed, and this is the one that was stale.
 #
 # The source vocabulary has five node names this table does not map: `grayscaleconversion`
 # (which is filter 3, established), `valueprocessor`, `passthrough`, `motionblur` and `svg`.
@@ -121,7 +139,16 @@ PROJECT_LABELS = {5}
 # The 14% was never evidence against the identification. It measured "does this value survive
 # the cooker" and "does it land at the right filter" as one number.
 # Unnamed ids, with what is known. Never rendered as a name.
-UNNAMED = {9: 'legacy, version 0x20000 only'}
+#
+# EMPTY NOW THAT FILTER 9 IS NAMED, and empty rather than deleted because `describe()` and
+# `audit_corpus` both still read it and an id can become unnamed again. Its only entry was
+# `9: 'legacy, version 0x20000 only'`, whose version claim was checked before retiring it --
+# all four filter-9 assemblies report version 131072 -- and now lives in the FILTERS note.
+#
+# LEAVING IT WOULD HAVE BEEN A LIVE CONTRADICTION, not a leftover: the comment above EDGES
+# records exactly that failure for id 19, "an id in both tables is read as known by
+# `Record.known` and as unknown by `describe()`". This is the same trap one entry later.
+UNNAMED = {}
 # Filter 5 was here as "generator, greyscale (svg?)" and is now `vectorshape` in FILTERS.
 # What it does is settled: it is a generator that rasterises an embedded triangle strip,
 # and `Record.vector_shape` decodes all 140 of its records. What is NOT settled is what
@@ -1831,6 +1858,23 @@ class Record:
         slots that were populated often enough to pass a threshold and missed the rest,
         which stranded 6,875 pixelprocessor records from any output.
         """
+        # The unified structural walk (decompose) is the single mechanism for input edges; it
+        # reproduces this computation exactly across every covered filter and returns None only
+        # for filters it does not cover, which fall through to the existing path. See
+        # tools/decompose.py and FORMAT-NOTES.md "Unified walk".
+        #
+        # FXMAPS IS NOW COVERED TOO, so the fx path runs on the same walk as everything else.
+        # It used to be declined outright -- "payload/table filter, not a header walk" -- and
+        # the two facts that close it are exact over 25 files and 1,535 records: the input
+        # COUNT is the cost model's own `arity_sm` field read from w1 (shift 10, mask 15),
+        # matching the edge count 1,535 of 1,535, and the inputs are contiguous from slot 3
+        # with slot 2 holding the FX table pointer. Over the same corpus the walk now agrees
+        # with this computation on 27,663 of 27,663 records across every filter present, the
+        # single exception being one record of the unnamed filter 9.
+        import decompose as _decompose
+        d = _decompose.decompose(self)
+        if d is not None:
+            return d['inputs']
         e = self._pp_edges()
         if e is not None:
             return e
