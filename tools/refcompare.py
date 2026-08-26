@@ -140,6 +140,25 @@ def reference_packs(match=None):
     return out
 
 
+def graph_dir(asm, uid):
+    """The directory a graph's exports live in, from its manifest `pkgurl`.
+
+    ONE .sbsar CAN HOLD SEVERAL GRAPHS, AND THEIR EXPORTS DO NOT SHARE A NAMESPACE.
+    `Kutejnikov__Auras` declares four -- `pkg://001` to `pkg://004`, one output each -- and
+    ships `reference_renders/001/` ... `004/` to match. Pairing on the output NAME alone
+    cannot tell them apart: all four outputs are called `basecolor`, so all four scored
+    against whichever map the glob happened to return first, and three of the four scores
+    were a comparison against another graph's picture.
+
+    The manifest names the graph that declares each output, and the exporter named the
+    directories after the same graphs, so this is a lookup on both sides.
+    """
+    for g in manifest.graphs(asm):
+        if uid in g['outputs'] and g.get('pkgurl'):
+            return g['pkgurl'].rstrip('/').rsplit('/', 1)[-1] or None
+    return None
+
+
 def compare_pack(pack, refs, max_dim=SIZE):
     """Yield (output name, channel, ours, reference) arrays for every paired output."""
     asms = glob.glob(os.path.join(PACKS, pack, '**', '*.sbsasm'), recursive=True)
@@ -150,7 +169,18 @@ def compare_pack(pack, refs, max_dim=SIZE):
     produced, _failures, _synth = render.render(asm, verbose=False, max_dim=max_dim)
     for uid, _fmt, _gray, rec in asm.outputs():
         name = names.get(uid) or '?'
-        paired = [r for r in refs if _key(name) and _key(name) in _key(os.path.basename(r))]
+        pool = refs
+        gdir = graph_dir(asm, uid)
+        if gdir and any(('%s%s%s' % (os.sep, graph_dir(asm, u) or '\0', os.sep)) in r
+                        for u, _f, _g, _rc in asm.outputs() for r in refs):
+            # ONLY WHERE THE PACKAGE SORTS ITS EXPORTS BY GRAPH. Most ship one graph and
+            # put its maps straight in `reference_renders/`, and narrowing there would
+            # discard every one of them. Where the directories DO exist, an empty result is
+            # the answer: that graph exported nothing, and borrowing a sibling's map would
+            # manufacture a score rather than find one.
+            own = [r for r in refs if ('%s%s%s' % (os.sep, gdir, os.sep)) in r]
+            pool = own
+        paired = [r for r in pool if _key(name) and _key(name) in _key(os.path.basename(r))]
         if rec not in produced or not paired:
             yield name, None, None, ('not rendered' if rec not in produced
                                      else 'no matching reference')
