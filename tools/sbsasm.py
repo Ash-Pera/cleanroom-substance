@@ -3190,6 +3190,14 @@ class Assembly:
         # reported as 'records', i.e. explained.
         self.body_hi = dir_at if self.layout == 'B' else self.header['table_start']
         offs = sorted(e + 52 for e in ents)
+        # The floor for a program. `body_lo` is the header end (layout B) or directory end
+        # (layout A), and in layout B a 16-byte gap sits between the header at 0x38 and the
+        # first record: `valid_program` had only an upper bound, so a slot holding a small
+        # value (a mask edge, say 12) resolved +52 into that gap and decoded as a phantom
+        # program -- 281 of them corpus-wide, all below the first record. Code lives in
+        # record bodies, so the first record's offset is the true floor; every real program
+        # is at least 8 bytes past it, so this excludes the phantoms and no genuine program.
+        self.code_lo = offs[0] if offs else self.body_lo
         self.records = []
         for i, o in enumerate(offs):
             nxt = offs[i + 1] if i + 1 < len(offs) else self.body_hi
@@ -3294,8 +3302,8 @@ class Assembly:
         validator cannot tell a program from bytes that merely decode.
         """
         d, hi = self.data, self.body_hi
-        if p + 4 > hi:
-            return False
+        if p + 4 > hi or p < self.code_lo:
+            return False                       # past the body, or before the first record
         # 4. the address is even. Instructions are u16 tokens, so a program cannot begin
         # on an odd byte - and the count that check 1 reads is itself a u16. This is the
         # cheapest check and it was missing, which let 142 impossible programs into every
