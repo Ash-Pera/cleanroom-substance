@@ -744,6 +744,28 @@ QUESTIONS = {
     # The one record that does render comes out at mean 0.9998, std 0.0011 -- nearly flat --
     # which is not evidence the implementation is right or wrong, only that its inputs are
     # degenerate too.
+    #
+    # THE LESSON GENERALISES, AND CHECKING IT FIRST IS CHEAP. A root only has leverage if it
+    # is the LAST one in its cone; counting roots ranks by how often a cause appears, not by
+    # what removing it would free. Listing every distinct root kind per failing RoofTiles
+    # output:
+    #
+    #     height      shuffle 2, blur 1, fxmaps-empty 1
+    #     AO          shuffle 2
+    #     roughness   shuffle 4, blur 3, fxmaps-empty 1
+    #     normal      shuffle 2, blur 1, fxmaps-empty 1
+    #     basecolor   shuffle 5, blur 4, fxmaps-empty 2
+    #
+    # Every output is blocked by `shuffle`, and `fxmaps-empty` never appears without it. So
+    # implementing the second, chainless fxmaps encoding would unblock ZERO outputs here --
+    # the same trap emboss fell into, caught before the work rather than after. AO is blocked
+    # by shuffle ALONE, so that one key unblocks a channel by itself; shuffle plus blur would
+    # take height and normal as well.
+    #
+    # Which puts this whole pack behind the grayscale-default shuffle, and that is the
+    # principled refusal -- unavailable on all three avenues, record, sources and manifest.
+    # RoofTiles may simply not be scoreable, and the ordering says no amount of fxmaps or
+    # emboss work changes that.
     'emboss.intensity':   ('program', 'reference'),
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
