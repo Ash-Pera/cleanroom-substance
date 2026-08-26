@@ -883,6 +883,61 @@ def seed_slots(rec, run):
     return slots
 
 
+#: `$number` is system variable 10, and `floor($number / N)` is a grid's row index with N
+#: its width. Read by following the SSA names -- which temporary holds $number, which holds
+#: a constant, and which divides the one by the other -- rather than by matching a fixed
+#: instruction offset, so a record whose program is ordered differently still resolves.
+_ASSIGN = re.compile(r'^\s*(v\d+)\s*=\s*(.+?)\s*$')
+_SYSVAR10 = re.compile(r'^sysvar\(10[,)]')
+_CONST = re.compile(r'^([0-9]+\.[0-9]+)$')
+_DIV = re.compile(r'^\(?\s*(v\d+)\s*/\s*(v\d+)\s*\)?$')
+
+
+def grid_width(rec):
+    """N from the `floor($number / N)` a placement program uses for its row index, or None.
+
+    THE EMISSION COUNT FOR A $number-GRID RECORD, which `numberadded` does not carry. For
+    these records numberadded is an amount -- Chesterfield's reads only the aspect slot and
+    degenerates to 1 on a square canvas -- while the layout is a grid the placement program
+    hardwires. The structural side located the divisor at the first constant after the
+    `$number` read in all four Chesterfield specimens, and a byte diff of two of those
+    programs shows the whole grid block identical while only the size constants differ.
+
+    Read semantically rather than at instruction 10, because the offset is verified on four
+    records that share a program almost byte-for-byte and could shift elsewhere.
+    """
+    asm = rec.asm
+    for ptr in sorted(set(rec.programs or ())):
+        end = asm.program_span(ptr)
+        if not end:
+            continue
+        try:
+            src = transpile.transpile(asm.data, ptr, end, "python", "p")
+        except Exception:
+            continue
+        if 'slots[26]' not in src:
+            continue
+        number_vars, consts = set(), {}
+        for line in src.splitlines():
+            m = _ASSIGN.match(line)
+            if not m:
+                continue
+            name, rhs = m.group(1), m.group(2)
+            if _SYSVAR10.match(rhs):
+                number_vars.add(name)
+                continue
+            c = _CONST.match(rhs)
+            if c:
+                consts[name] = float(c.group(1))
+                continue
+            d = _DIV.match(rhs)
+            if d and d.group(1) in number_vars and d.group(2) in consts:
+                n = consts[d.group(2)]
+                if n == int(n) and 1 < n <= 64:
+                    return int(n)
+    return None
+
+
 def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     slots = {} if slots is None else slots
     nodes = chain(rec)
@@ -1040,6 +1095,9 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                     got[name] = a[j] if a.shape[0] == m else a[0]
                 out.append(got)
 
+    #: [cell count or 0/None, scanner-already-run] for the $number-grid path above.
+    _grid = [None, False]
+
     def walk(i, number):
         if len(out) > MAX_PATTERNS:
             raise Unmodelled("more than %d patterns" % MAX_PATTERNS)
@@ -1051,6 +1109,19 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             prog = progs.get('numberadded')
             if prog is None:
                 raise Unmodelled("addnode with no numberadded program")
+            # See assume.QUESTIONS['fx.gridcount']. Where the placement program lays a
+            # $number grid, the loop bound is that grid's cell count and NOT numberadded,
+            # which for these records is an amount. The scanner is also held to a single run
+            # across the whole batch: frameoffset sums the grid position and the scanner's,
+            # so re-driving the scan per emission carries every cell off-canvas.
+            if _grid[0] is None and assume.assumed('fx.gridcount') == 'divisor':
+                _w = grid_width(rec)
+                _grid[0] = _w * _w if _w else 0
+            if _grid[0]:
+                run(prog, slots, number)          # keep the initializer's slot writes
+                for k in range(_grid[0]):
+                    walk(i + 1, k)
+                return
             if 'randomseed' in progs and progs['randomseed'] is not None:
                 run(progs['randomseed'], slots, number)
             n = int(round(float(run(prog, slots, number)[0])))
@@ -1066,6 +1137,13 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 return
             for k in range(n):
                 walk(i + 1, k)
+        elif hdr == STEPPER and _grid[0]:
+            prog = progs.get(None)
+            if prog is not None and not _grid[1]:
+                run(prog, slots, number)
+                _grid[1] = True
+            walk(i + 1, number)
+            return
         elif hdr == STEPPER and assume.assumed('fx.scanner') == 'loop':
             # See assume.QUESTIONS['fx.scanner']. The body advances a position and returns
             # its own in-bounds predicate, so it is run, then the subtree emits, then the

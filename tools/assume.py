@@ -347,6 +347,44 @@ QUESTIONS = {
     #
     # Both arms above remain measurements, not fixes -- they say what the answer looks like,
     # not what produces it.
+    # WHERE A $number-GRID RECORD'S EMISSION COUNT COMES FROM. The walk takes its loop
+    # bound from `numberadded`, and for these records that is an amount rather than a bound
+    # -- Chesterfield's reads only the aspect slot and degenerates to 1 on a square canvas,
+    # and its decoded form yields only odd squares so it can never produce the 16 the layout
+    # needs. The grid is hardwired in the placement program instead, as the N in
+    # `floor($number / N)`, and 'divisor' reads it from there and emits N^2 patterns with
+    # the scanner held to one run.
+    #
+    # Two limits it is worth being explicit about. N^2 assumes rows equal columns, which is
+    # true of every specimen either side can see but is not established; a record whose
+    # column wrap differs from its row divisor would need width x height. And the divisor is
+    # matched semantically on `$number / N` rather than at the instruction offset where it
+    # was located, because that offset is verified on four records sharing one program
+    # almost byte-for-byte.
+    # SCORED ON CHESTERFIELD, and it is the largest correction this pack has had since the
+    # levels gamma. Overall MAE 0.0856 -> 0.0557, and `basecolor` goes from not rendering at
+    # all to a scored output:
+    #
+    #     output      numberadded        divisor        reference std
+    #     AO         0.0633/0.0160   0.0279/0.0824         0.0645
+    #     basecolor    not scored    0.0553/0.0536         0.0662
+    #     height     0.2480/0.1064   0.0623/0.1316         0.0970
+    #     metallic   0.0464/0.0199   0.0203/0.1181         0.1733
+    #     normal     0.0742/0.0613   0.0881/0.1512         0.0722
+    #     roughness  0.0193/0.0025   0.0160/0.0147         0.0262
+    #
+    # Five of six improve and height improves fourfold, from the worst channel in the pack
+    # to among the best. The contrast moves with it: metallic 0.0199 -> 0.1181 against a
+    # reference 0.1733, AO 0.0160 -> 0.0824 against 0.0645, where before every one of them
+    # was flat by comparison.
+    #
+    # `normal` GETS WORSE, 0.0742 -> 0.0881, and it is the one to watch rather than to
+    # explain away: its std goes 0.0613 -> 0.1512 against a reference of 0.0722, so it is
+    # now over-textured by as much as it was under-textured before. AO overshoots slightly
+    # too. Sixteen stamps where there was one is a large change and some channels have
+    # clearly gone past the mark, which is what a real correction with a remaining error
+    # looks like rather than a tuned one.
+    'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
