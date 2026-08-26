@@ -219,6 +219,33 @@ QUESTIONS = {
     # ANY current candidate, whatever divisor it uses. The blocker is the guard, not the
     # policy: G has to come from somewhere other than round(sqrt(N)) before the majority of
     # this file is even testable.
+    #
+    # THE GUARD IS NOT MERELY INCOMPLETE, IT IS INVERTED -- it selects against the records
+    # it exists to serve. Classifying every Bricks fxmaps record by what its branchoffset
+    # program actually consumes, and crossing that with which records each arm touches:
+    #
+    #     arm        touches   grid-by-input   scatter(rand)   neither
+    #     cell            88               0              40        48
+    #     oversize        68               0              25        43
+    #
+    # 88 of 88 and 68 of 68. Not one grid record is touched by either arm, and every record
+    # they do touch is a random scatter or has no $number decomposition at all. The five
+    # records in this file that ARE grids -- 5, 11, 20, 27, 33, all reading integer2 input
+    # 3616786801 = (4, 8) -- emit 32 and 8 patterns, neither a perfect square, so the guard
+    # excludes exactly the population a cell divisor is for.
+    #
+    # That is the whole explanation for both arms' scores. They apply a grid divisor
+    # exclusively to non-grids, so 'cell' damaging coherent records and 'oversize' scoring
+    # neutral are consequences of the guard, not evidence about cell units. A square
+    # emission count is not a grid: cleanroom-substance-00 reports the same from the span
+    # side -- a one-addnode chain emits in ONE dimension, where sqrt(n) is a spurious root
+    # -- and separates the populations by CHAIN SIGNATURE instead, 163 of 163 within 10% of
+    # the cell ratio for one shape against 239 of 1,321 for another. The signature is
+    # visible here too: all five grids sit under 0x8b,0x89,0x8b.
+    #
+    # So the next divisor to score is not another function of N. It is read per record from
+    # the integer2 input the position program consumes, gated on chain signature rather than
+    # on N being square, and neither existing arm is evidence for or against it.
     'fx.patternsize':     ('canvas', 'cell', 'oversize'),
     # WHAT AN ENTRY WITH NO patterntype DRAWS. `profile_for` falls back to 'rect', a hard
     # fill of the whole cell, and its own docstring says that is "what the code has always
