@@ -703,11 +703,15 @@ def walk_named_offset(asm, rec):
     if not d:
         return None
     named = []
-    for _j, _st, pos in d.get('param_slots', ()):
-        if 0 <= pos < len(rec.words):
-            p = rec.words[pos] + 52
-            if asm.body_lo <= p < asm.body_hi and asm.valid_program(p) and p not in named:
-                named.append(p)
+    # `param_slots` entries carry a WIDTH now (one entry per parameter, not per word), so
+    # this expands the run to keep scanning exactly the words it scanned before.
+    for _j, _st, _pos, _w in d.get('param_slots', ()):
+        for pos in range(_pos, _pos + max(1, _w)):
+            if 0 <= pos < len(rec.words):
+                p = rec.words[pos] + 52
+                if (asm.body_lo <= p < asm.body_hi and asm.valid_program(p)
+                        and p not in named):
+                    named.append(p)
     if len(named) != 1:
         return None
     try:

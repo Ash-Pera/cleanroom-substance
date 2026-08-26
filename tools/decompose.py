@@ -5,6 +5,7 @@ The format is a single struct (record_layout's model):
     [tag][w1?][image inputs, contiguous][one slot per set cls bit][one slot-group per w1 field][tail]
 
 `decompose(record)` walks it once and returns {inputs, cls_slots, param_slots, end}, from which
+`param_slots` entries are (w1 field, state, first slot, WIDTH IN WORDS) -- one per parameter,
 edges (= inputs), the size slot, named parameters and program slots all follow. It reads the slot
 COSTS from record_layout's cost model (costs.json), so it inherits that model's per-filter fit
 rather than re-deriving anything. Returns None only for the single unnamed filter-9 record, so
@@ -112,11 +113,23 @@ def _interaction_walk(r, s):
         if st == 0:
             continue
         idx = off + 3 * k + (st - 1)
-        for _ in range(cost(idx, True)):
-            if st == 3 and _is_image_input(r, pj, pos, masks, ri):
+        n = cost(idx, True)
+        if st in (1, 2):
+            # ONE ENTRY PER PARAMETER, CARRYING ITS WIDTH -- not one per word. A colour
+            # `levels` bakes each level as a float4, so this loop used to emit
+            # (0, 1, 4), (0, 1, 5), (0, 1, 6), (0, 1, 7) for ONE parameter, and a consumer
+            # pairing parameter NAMES against these entries misaligned by three from the
+            # first colour record it met. The walk placed them correctly throughout; only
+            # the report of where they are was wrong. See `levels`' widths in costs.json:
+            # state 1 is base 1 + cross 3, so 1 word greyscale and 4 colour, and state 2
+            # (a program POINTER) is 1 word either way.
+            if n:
+                param_slots.append((pj, st, pos, n))
+            pos += n
+            continue
+        for _ in range(n):
+            if _is_image_input(r, pj, pos, masks, ri):
                 inputs.append(pos)             # state-11 image input
-            elif st in (1, 2):
-                param_slots.append((pj, st, pos))
             pos += 1
     prog = None if size_pos in inputs else size_pos
     return {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': param_slots,
@@ -246,11 +259,16 @@ def decompose(r):
             st = (w1 >> (2 * j)) & 3
             if st == 0:
                 continue
-            for _ in range(int(round(spec['w1'][str(j)].get(str(st), 0.0)))):
-                if st == 3 and _is_image_input(r, j, pos, masks, ri):
+            n = int(round(spec['w1'][str(j)].get(str(st), 0.0)))
+            if st in (1, 2):
+                # One entry per parameter, carrying its width -- see `_interaction_walk`.
+                if n:
+                    param_slots.append((j, st, pos, n))
+                pos += n
+                continue
+            for _ in range(n):
+                if _is_image_input(r, j, pos, masks, ri):
                     inputs.append(pos)         # state-11 image input
-                elif st in (1, 2):
-                    param_slots.append((j, st, pos))
                 pos += 1
     # prog = the size-expression slot (what size_or_baked reads) = the first slot after the base
     # region (the first cls slot when there is one). None only when that slot is itself an image
