@@ -267,7 +267,28 @@ QUESTIONS = {
     # OVER-textured and badly wrong in level; it is now right in level and badly
     # UNDER-textured. That is a real residual the offset was masking, and it is not a
     # patternsize question -- no arm here moves it.
-    'fx.patternsize':     ('canvas', 'cell', 'oversize'),
+    #
+    # RE-SCORED UNDER THE SPAN GUARD (ccc896a extended to this key), which is the first
+    # measurement of this question on a population the divisor is actually for. Six arms
+    # over Bricks, patternsize x branchoffset:
+    #
+    #     psize      boff      overall MAE   summed std error
+    #     canvas     canvas         0.1302             0.2442
+    #     canvas     cell           0.1302             0.2426
+    #     cell       canvas         0.1298             0.2357
+    #     cell       cell           0.1298             0.2284
+    #
+    # 'cell' now beats 'canvas' on BOTH metrics at once -- the first time it has done so.
+    # The margin is small and one pack cannot carry a default on 0.0004 of MAE, so canvas
+    # stays the default; but every previous table had cell losing, and those were all
+    # measured through the inverted guard.
+    #
+    # 'oversize' IS RETIRED. It was a threshold on the symptom of the bad selector, and the
+    # span reading declines the coherent records structurally instead, so the extra
+    # condition never fires: cell and oversize render byte-identically on all 175 Bricks
+    # fxmaps records, 0 differing. A candidate that cannot differ from another is not an
+    # option.
+    'fx.patternsize':     ('canvas', 'cell'),
     # WHAT AN ENTRY WITH NO patterntype DRAWS. `profile_for` falls back to 'rect', a hard
     # fill of the whole cell, and its own docstring says that is "what the code has always
     # done, not because it is established". It is a DIFFERENT knob from 'fx.profile', which

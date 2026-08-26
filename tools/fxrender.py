@@ -1174,6 +1174,41 @@ def profile_value(lx, ly, profile):
 MIN_PATTERN_SIZE = 1e-6
 
 
+def _cell_divisor(patterns):
+    """Per-axis 1 / (number of cells), read from the branchoffset span, or None.
+
+    A cell-unit offset walks WHOLE CELLS, so its span across the emissions is an integer
+    number of them and a span of k means k + 1 cells. That is a property of the emissions
+    alone -- no G, no square test, no assumption that the count factors -- which is what
+    makes it usable where round(sqrt(N)) was not. See assume.QUESTIONS['fx.branchoffset']
+    for the 407-of-407 census behind it.
+
+    Factored out because the OFFSETS and the SIZES need the same number. They are the same
+    grid: if the offsets step one cell at a time, a pattern meant to fill a cell is one
+    cell across, so whatever divides the one divides the other. Deriving it twice invited
+    them to disagree, and an earlier pair of scalings that did disagree ended up
+    multiplying.
+    """
+    if not patterns:
+        return None
+    b = [np.asarray(q.get('branchoffset'), dtype=np.float64).ravel()
+         for q in patterns if q.get('branchoffset') is not None]
+    if len(b) != len(patterns) or not b:
+        return None
+    w = max(x.size for x in b)
+    a = np.array([np.pad(x, (0, w - x.size)) for x in b])
+    d = []
+    for k in range(min(2, a.shape[1])):
+        sp = float(a[:, k].max() - a[:, k].min())
+        d.append(1.0 / (round(sp) + 1.0)
+                 if sp >= 1 and abs(sp - round(sp)) < 1e-4 else 1.0)
+    if not any(x != 1.0 for x in d):
+        return None
+    while len(d) < 2:
+        d.append(1.0)
+    return np.asarray(d, dtype=np.float32)
+
+
 def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     """Draw the emitted patterns. `images` maps EDGE SLOT -> (H, W, C) array.
 
@@ -1274,23 +1309,30 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # PATTERNSIZE MAY BE IN CELLS TOO -- see assume.QUESTIONS['fx.patternsize']. Same guard
     # and same reason as the offsets below; kept a separate key because the two are coupled
     # and scoring them apart is what demonstrates it.
-    size_scale = 1.0
-    _psize = assume.assumed('fx.patternsize')
-    if _psize in ('cell', 'oversize') and patterns:
-        _gs = int(round(len(patterns) ** 0.5))
-        if _gs > 1 and _gs * _gs == len(patterns):
-            # 'oversize' scales only the records whose canvas reading is impossible on its
-            # face -- see assume.QUESTIONS['fx.patternsize']. The unconditional 'cell' also
-            # divides records already emitting coherent sub-canvas sizes (625 patterns at
-            # 0.052 becoming 0.002), which is destruction, not correction.
-            _ok = True
-            if _psize == 'oversize':
-                _med = [float(np.asarray(p['patternsize'], dtype=float).ravel()[0])
-                        for p in patterns if p.get('patternsize') is not None]
-                _ok = bool(_med) and float(np.median(_med)) > 1.0
-            if _ok:
-                size_scale = 1.0 / _gs
-                assume.note(getattr(rec, 'index', -1))
+    # THE SAME SPAN GUARD THE OFFSETS USE, for the same reason and off the same number.
+    # This used to divide by round(sqrt(N)) on a perfect-square emission count, which is not
+    # merely over-broad but INVERTED: over Bricks, 88 of 88 records it scaled were rand
+    # scatters or had no $number decomposition at all, and not one was a grid, while the
+    # file's five real grids emit 32 and 8 patterns and were excluded. Every arm scored
+    # through that guard was therefore measuring a population the divisor was not for.
+    #
+    # `_cell_divisor` replaces it with the span reading, which selects on a property of the
+    # emissions instead of on the count factoring. It is per axis, so a non-square grid gets
+    # a different divisor on each -- the case sqrt(N) could not express at all.
+    # AN 'oversize' CANDIDATE USED TO SIT HERE and has been retired, because the span guard
+    # subsumes it exactly. It scaled only records whose median patternsize exceeded 1.0, to
+    # stop the old sqrt(N) guard destroying records already emitting coherent sub-canvas
+    # sizes -- 625 patterns at 0.052 becoming 0.002. That was a threshold on a SYMPTOM,
+    # guarding against a selector that was picking the wrong records. With the span reading
+    # doing the selecting, the coherent records are declined structurally and the extra
+    # condition never fires: 'cell' and 'oversize' render byte-identically on all 175 Bricks
+    # fxmaps records, 0 differing. A candidate that cannot differ from another is not an
+    # arbitration option, so it is gone rather than left to look like one.
+    size_scale = None
+    if assume.assumed('fx.patternsize') == 'cell' and patterns:
+        size_scale = _cell_divisor(patterns)
+        if size_scale is not None:
+            assume.note(getattr(rec, 'index', -1))
 
     # THE GUARD IS THE SPAN, NOT THE COUNT. This used to divide by round(sqrt(N)) when the
     # emission count was a perfect square, which is not merely over-broad -- it selects
@@ -1315,21 +1357,9 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # divisor is per axis: a span of k cells means k + 1 of them.
     cell_scale = None
     if assume.assumed('fx.branchoffset') == 'cell' and patterns:
-        _b = [np.asarray(q.get('branchoffset'), dtype=np.float64).ravel()
-              for q in patterns if q.get('branchoffset') is not None]
-        if len(_b) == len(patterns) and _b:
-            _w = max(x.size for x in _b)
-            _a = np.array([np.pad(x, (0, _w - x.size)) for x in _b])
-            _d = []
-            for _k in range(min(2, _a.shape[1])):
-                _sp = float(_a[:, _k].max() - _a[:, _k].min())
-                _d.append(1.0 / (round(_sp) + 1.0)
-                          if _sp >= 1 and abs(_sp - round(_sp)) < 1e-4 else 1.0)
-            if any(x != 1.0 for x in _d):
-                while len(_d) < 2:
-                    _d.append(1.0)
-                cell_scale = np.asarray(_d, dtype=np.float32)
-                assume.note(getattr(rec, 'index', -1))
+        cell_scale = _cell_divisor(patterns)
+        if cell_scale is not None:
+            assume.note(getattr(rec, 'index', -1))
 
     # AN ENTRY THAT STATES NEITHER SHAPE NOR EXTENT: see assume.QUESTIONS['fx.sizeless'].
     # The default stays 'fill' -- a full-cell rect, today's behaviour -- because that is
@@ -1350,8 +1380,8 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
             base = base * cell_scale[:base.size]
         off = val(p, 'frameoffset', _ZERO2)
         size = val(p, 'patternsize', _ONE2)
-        if size_scale != 1.0:
-            size = size * size_scale
+        if size_scale is not None:
+            size = size * size_scale[:size.size]
         rot = float(val(p, 'patternrotation', _ZERO1)[0])
         col = val(p, 'opacity', _ONE1)
         if size.size < 2:
