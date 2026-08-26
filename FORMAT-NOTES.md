@@ -36195,3 +36195,102 @@ nonfinite.fill degeneracy, so its fix (whatever nonfinite.fill decides for 0/0) 
 five regardless of profile; (2) softness stays available as normal's over-texture fix, its only
 interaction being these five pre-existing 0/0s; (3) resolution-dependence is explained — the
 range collapses only when stamps go sub-pixel, so it must be checked at the scoring resolution.
+
+### The non-finite category is one shape, reached from upstream: white FX-Maps
+
+Peer 0b's note above reaches the auto-levels 0/0 from the PROFILE side — softened stamps go
+sub-pixel, the field flattens, `hi == lo`. Coming at the same degeneracy from the other end,
+over 30 corpus files at max_dim 64:
+
+    non-finite ROOT failures (not cascades)        22    every one a `pixelprocessor`
+      consumes a 1x1 pyramid reduction             18
+      does not                                      4
+
+The 18 are the same program peer 0b disassembled, and the two decodes were made
+independently and agree: `lo = 1 - max(in[2], in[3])`, `hi = max(in[0], in[1])`, result
+`(L - lo) / (hi - lo)`. The reduction feeding it is a genuine max-pyramid — 64x64 -> 16x16
+-> 4x4 -> 1x1 in MossSubstance001 records 57-60, each step `samplecol` at four 2x2 offsets
+of `$pos * 0.5` — and it is decoding correctly. The min is stored inverted in channels 2/3,
+which is why `1 - max(...)` recovers it.
+
+**So the divisor is zero because the INPUT is constant, and the input is constant because an
+FX-Map upstream rendered flat.** Walking each failure's cone back to the records that are flat
+without a flat input:
+
+    uniform            64    a constant channel is a real answer
+    fxmaps             58    the defect
+    pixelprocessor     18
+
+None of this is a numerics bug, and guarding the divide would paint over it. Whatever
+`nonfinite.fill` settles on resolves the SYMPTOM for both routes; the flat FX-Map is the
+disease on this one.
+
+### 1,369 FX-Map records render at exactly 1.0, and it is not the opacity
+
+Census over the same 30 files, of `fxmaps` records that render at all:
+
+    rendered fxmaps                              2,510
+      flat                                       1,513
+        at exactly 1.0 (white)                   1,369
+        at 0.92 / 0.00 / 0.97                      144
+      spatially varying                            997
+
+Two candidate causes were tested and one died:
+
+  * **Zero opacity — REFUTED.** The first specimen examined (`stone_stylized_adaptive`
+    rec 296) emitted 7 patterns all at opacity 0.0, which looked like the answer. Across
+    the corpus only 20 of the 1,513 flat records have all-zero opacity, and 1,336 have
+    opacity nonzero throughout. One unrepresentative specimen.
+
+  * **Short decoded chain — a real correlation, and NOT interpreted here.** White output
+    tracks how many nodes the chain walk recovers:
+
+        white 1.0    chain of 1-2 nodes   1,173      chain empty   195     3+ nodes    1
+        flat other   chain of 1-2 nodes      17      chain empty   109     3+ nodes   18
+        varied       chain of 1-2 nodes     179      chain empty   495     3+ nodes  323
+
+    That is a strong association, but it has two readings — the walk terminating early, or
+    FX-Maps with genuinely simple graphs legitimately emitting one full-cell pattern — and
+    nothing measured here separates them. Recorded as a correlation, not a defect.
+
+`fx.sizeless` is the obvious lever on the white records and it has now been put to the
+reference maps; see `assume.QUESTIONS['fx.sizeless']`. It does not survive: `fill` is the
+best of the four on the channels all four produce, and the alternatives buy 3 near-structureless
+channels at the cost of the one channel in the set with signal.
+
+### Chain-family tags are `paramset` nodes (containment)
+
+`entries()` excludes tags with high half `0x0002` as structural. Two paired sources say what
+they are. `Simulator__Grid` declares 4 `paramset` nodes and no `addnode`, and its own binary
+carries exactly 4 chain-family tags; `SubstanceDesigner__Clouds` declares 6 paramsets and
+carries 9. Corpus-wide the two encodings are near-disjoint — 1,769 records with a modelled
+chain and no chain-family tag, 372 with chain-family tags and no modelled chain, 1 with both —
+which is what two alternative encodings of the same structure look like.
+
+This SUPPORTS the existing exclusion rather than upsetting it: Grid's four paramsets declare
+no connections and no parameters at all, so they are orphan nodes contributing nothing, and
+emitting a full-cell fill for each is exactly the "what paints a record white" failure the
+`entries()` docstring already names.
+
+### Branchoffset scale, the decode half: two static exclusions leave the span a smaller question
+
+Cross-classifying every fxmaps record's branchoffset PROGRAM (rand / reads-input / neither)
+against grid_width, over the distinct-file corpus:
+
+    grid     neither  1303   scatter 0   input 0
+    nongrid  neither 10936   scatter 5218   input 23   (+ ~4475 with no branchoffset program)
+
+1. Grid records need no branchoffset scaling: all 1303 are 'neither', zero scatter/input —
+   their cells come from the $number placement, branchoffset orthogonal.
+2. Every rand-scatter branchoffset is non-grid (5218, 0 grids). 'program calls rand' is a
+   STATIC signal that catches every scale-misfire the assume.py note worried about, with no
+   span computation.
+3. The real scale question is the non-grid 'neither' group (10936) — the only records that
+   are neither $number-grids nor scatters and could legitimately tile via a branchoffset lattice.
+
+So the fx.branchoffset guard refinement: scale only if (branchoffset program not rand) AND
+(not a $number-grid via grid_width) AND (integer span). The first two are decode-static and
+remove 6521 records before any span is measured; the span then arbitrates the residual 'neither'
+group alone — the population it was always for. Turns the note's "declines right, scale unproven"
+into "scale is asked only of records that could answer yes." The span scoring on that residual
+is render-side; the two exclusions are decode and hold corpus-wide.
