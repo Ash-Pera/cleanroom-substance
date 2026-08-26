@@ -1051,11 +1051,22 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # and same reason as the offsets below; kept a separate key because the two are coupled
     # and scoring them apart is what demonstrates it.
     size_scale = 1.0
-    if assume.assumed('fx.patternsize') == 'cell' and patterns:
+    _psize = assume.assumed('fx.patternsize')
+    if _psize in ('cell', 'oversize') and patterns:
         _gs = int(round(len(patterns) ** 0.5))
         if _gs > 1 and _gs * _gs == len(patterns):
-            size_scale = 1.0 / _gs
-            assume.note(getattr(rec, 'index', -1))
+            # 'oversize' scales only the records whose canvas reading is impossible on its
+            # face -- see assume.QUESTIONS['fx.patternsize']. The unconditional 'cell' also
+            # divides records already emitting coherent sub-canvas sizes (625 patterns at
+            # 0.052 becoming 0.002), which is destruction, not correction.
+            _ok = True
+            if _psize == 'oversize':
+                _med = [float(np.asarray(p['patternsize'], dtype=float).ravel()[0])
+                        for p in patterns if p.get('patternsize') is not None]
+                _ok = bool(_med) and float(np.median(_med)) > 1.0
+            if _ok:
+                size_scale = 1.0 / _gs
+                assume.note(getattr(rec, 'index', -1))
 
     cell_scale = 1.0
     if assume.assumed('fx.branchoffset') == 'cell' and patterns:

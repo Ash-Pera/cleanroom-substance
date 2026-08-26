@@ -150,7 +150,23 @@ QUESTIONS = {
     # one guess at it and scores badly; the emission's lattice dimension taken from the
     # addnode chain that generated it is a different number for every non-square record,
     # and is the one thing that would let the other 61% be tested at all.
-    'fx.patternsize':     ('canvas', 'cell'),
+    # 'oversize' IS THE CONDITIONAL FORM, AND IT EXISTS BECAUSE THE UNCONDITIONAL ONE
+    # DAMAGES THE RECORDS THAT WERE ALREADY RIGHT. Splitting Bricks' fxmaps records by
+    # their median emitted patternsize separates two populations, and BOTH contain perfect
+    # squares, so 'cell' fires on both:
+    #
+    #     size <= 1  (22 records)   N = 9, 32, 625 ...   sizes 0.012, 0.25, 0.052
+    #     size >  1  (83 records)   N = 16, 64, 841, 1024, 1521   sizes 1.92, 2.82, 3.0, 5.0
+    #
+    # A record emitting 625 patterns at size 0.052 is already coherent as canvas units;
+    # dividing it by sqrt(625) = 25 makes it 0.002 and erases it. That is what the
+    # unconditional sweep was doing to a fifth of the records while it fixed the rest, and
+    # it is the most likely reason 'cell' scored worse overall than doing nothing.
+    #
+    # So 'oversize' applies the same 1/G ONLY where the canvas reading is self-evidently
+    # impossible -- a median patternsize above 1.0, i.e. a pattern larger than the whole
+    # image -- and leaves the coherent records alone.
+    'fx.patternsize':     ('canvas', 'cell', 'oversize'),
     # WHAT AN ENTRY WITH NO patterntype DRAWS. `profile_for` falls back to 'rect', a hard
     # fill of the whole cell, and its own docstring says that is "what the code has always
     # done, not because it is established". It is a DIFFERENT knob from 'fx.profile', which
