@@ -36757,9 +36757,19 @@ Decoded from RoofTiles rec1997/2001/2221 (all identical):
   slots[2] = 0.005859375 * (W, H) * (1, -1) = a ~12-texel offset at 2048 in a 45° (+x,-y,
   upper-right) light direction.
 - prog B (e.g. 200344): computes INTENSITY = 0.1, resolution-normalized (0.1 * 2048/size).
-So emboss ≈ intensity * (input(pos) - input(pos + light_offset)) -- a directional derivative
-of the height along the light direction, the highlight/shadow relief. Params are constant
-across these three records (fixed 45°/0.1), likely the pack's defaults. The DECODE half is
-done; implementing the built-in and confirming the exact output mapping is render-side and
-wants a reference score. Two edges per record (image + a second input) -- role of the second
-not yet pinned.
+So emboss ≈ intensity * (gradient(pos) - gradient(pos + light_offset)) applied to the base --
+a directional derivative giving the highlight/shadow relief. Both ambiguities peer 0b raised
+are now resolved:
+- THE OFFSET is resolution-INDEPENDENT. slot 2 = 0.005859375*(W,H) = 12 texels at 2048 cannot
+  be UV (12 UV is off-screen), so it is a texel COUNT, and slot 0 = (1/W,1/H) (texel size,
+  written and never re-read in the program) is what the built-in multiplies it by:
+  offset_uv = slot0*slot2 = 0.005859375*(1,-1), CONSTANT at every resolution, 45° direction.
+  So the offset carries no factor of 8; the whole resolution dependence is in the intensity
+  (0.1 calibrated to a 2048 reference, *2048/size) -- one operand, testable, not a two-way
+  ambiguity.
+- THE SECOND EDGE is the gradient input, not a mask: emboss takes [base, gradient]. The base
+  edge is a transformation/levels; the gradient edge is a shuffle (grayscale) or blur
+  (smoothed height) -- the single-channel relief source. Sample the gradient edge at pos and
+  pos+offset; the difference is the relief, applied to the base edge.
+Down to one arithmetic knob (how intensity enters the relief) for the render side to sweep
+against the reference. Highest-leverage unblock for Wooden_Roof_Tiles (5 roots + 619 cascades).
