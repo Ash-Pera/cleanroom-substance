@@ -36930,7 +36930,19 @@ reference reaches 0.589, while r and b agree to three decimals. `hsl` is not it 
 425 and 443 reproduce their gradient inputs 424 and 442 exactly, which is the identity this
 project already established for hsl records whose parameters are all at the 0.5 default.
 
-ONE LOOSE THREAD worth someone's attention: this output declares `format=16, colour=False` --
-a GREYSCALE output -- yet its exported reference is RGB and our render of it is 4-channel. The
-0.94 correlation says the pairing is right, so `colour` is either mis-decoded for this record or
-means something other than "the output has one channel".
+A LOOSE THREAD THAT WAS NOT ONE -- WITHDRAWN. This note originally read the output's
+`format=16, colour=False` as a greyscale declaration contradicting its RGB reference. That was
+my own mislabelling: `Assembly.outputs()` returns `(uid, format, GRAYSCALE, record)`, and its
+docstring says so. `grayscale=False` means chromatic, which is exactly what an RGB basecolor
+should declare. There is no contradiction and nothing to chase.
+
+Checking it did produce something, though. The grayscale flag can be verified against image
+CONTENT rather than against output identifiers, which is how its docstring justifies it
+(98.5% against a 4.2% control, by name). Over every reference-pack output whose exported map
+can be paired by name, asking whether the reference PNG is actually chromatic:
+
+    grayscale = True   -> reference is grey        42
+    grayscale = False  -> reference is CHROMATIC   26
+    disagreements                                   0
+
+68 of 68, against pixels rather than against names.

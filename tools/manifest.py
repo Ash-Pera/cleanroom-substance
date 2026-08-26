@@ -9,7 +9,7 @@ here stands on the same footing as reading a record out of the assembly.
 WHAT IS WORTH TAKING FROM IT, measured over the corpus rather than guessed:
 
   output identifiers   2,479 of 2,479 declared outputs are NAMED, 100%, none missing.
-                       `Assembly.outputs()` yields (uid, format, colour, record) and no
+                       `Assembly.outputs()` yields (uid, format, GRAYSCALE, record) and no
                        name, so this is the only source. The vocabulary is the same one
                        the reference renders use -- basecolor 349, normal 352, roughness
                        336, height 331, metallic 171, ambientocclusion 156 -- which turns
