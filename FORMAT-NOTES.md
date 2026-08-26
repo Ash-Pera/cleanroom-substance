@@ -36070,3 +36070,15 @@ equivalently 1/pitch; hardwired, identical across rec34/53/65/86) are pinned. Wh
 is the PATH by which the engine reads that divisor/pitch out of the placement program and
 makes it the emission loop bound, given our walk uses numberadded (the aspect-amount here).
 Do NOT hard-code 16.
+
+EXTRACTION (the divisor is at a decodable position, so the path may not need executing):
+in the placement program the grid width N is the constant $number is DIVIDED by — the
+`floor($number / N)` that builds the row index. Located across all four records at the same
+place: sysvar(10) at instr 9, the divisor const at instr 10 (first const after the $number
+read), N = 4.0 in every one. Semantic extraction (survives reordering): find the
+`$number / N` division; N is the grid width; emission count = N² (= 16), $number = 0..N²−1,
+scanner held once. This is exactly peer 0b's scored n=16-scanner-held config (metallic 0.0469
+vs engine 0.0483), so wiring count = N² reproduces it and the acceptance test already exists.
+Caveats to settle by score: N² assumes a square grid (rows=cols=N — true for both measured
+records); and the extraction is verified on four near-identical Chesterfield placement
+programs, so generalising to other packages is a separate check.
