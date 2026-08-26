@@ -37007,3 +37007,42 @@ particular graphs is.
 It stays available as an arbitration BASIS, since more comparable channels is exactly what
 `assume.py` exists to buy, and a candidate that lifts those fifty off zero would be saying
 something. But the baseline they sit at should be recorded honestly: it is nothing.
+
+### Looking at the Chesterfield images says in one glance what the correlations could not
+
+Every Chesterfield output renders, and every one scores at essentially zero correlation
+(basecolor 0.10-0.17, normal -0.007/+0.002/+0.138, height -0.002). Read as numbers that suggests
+the picture is wrong in some diffuse way. Rendered side by side with the engine's own export it
+is one specific thing: **we draw a few large elements where the engine draws a regular lattice of
+many.**
+
+Counting connected components above the midpoint, at 256px:
+
+    output       ours                      reference
+    height        3 blobs, median 1211px    45 blobs, median  910px
+    metallic     10 blobs, median   10px    41 blobs, median   96px
+    baseColor    10 blobs, median   18px   357 blobs, median    2px
+    normal        7 blobs, median    2px   782 blobs, median    1px
+
+`height` is the interpretable one, because both sides resolve into countable tufts: **the
+elements are close to the right SIZE -- 1211 against 910 median pixels -- and there are fifteen
+times too few of them.** The reference is a tufted sofa panel, a regular grid of buttoned
+diamonds; ours is three isolated blobs of about the right diameter sitting on an empty field.
+
+This is the same deficit `fxrender`'s docstring already records from the measurement side --
+"the stamps do not tile", "the deficit is the EMISSION COUNT, not the size or the index", where
+two records were found emitting one stamp each and losing 16x and 5.7x of their coverage. Here
+it is the whole material, in a package where every output is affected, and the ratio is the same
+order.
+
+**It also explains the correlation figures better than any of the candidates tested this
+session.** A sparse scatter of correctly-sized blobs against a fine regular lattice of the same
+blobs correlates at approximately zero -- not because the shapes are wrong, the sizes are wrong,
+the colours are wrong or the filters downstream are wrong, but because almost every reference
+tuft lands on empty canvas in ours. Chasing gain, handedness, ramp colours or blend modes on
+these channels was never going to move them while the count is out by an order of magnitude.
+
+So the emission count is not one open question among several -- for this package it is the only
+one that matters, and the fx questions arbitrated this session (`sizeless`, `rootentry`,
+`patternsize`, `branchoffset`) were all being scored on channels that this defect had already
+flattened to noise. That is why they came back undecidable.
