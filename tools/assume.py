@@ -939,6 +939,19 @@ QUESTIONS = {
     'emboss.intensity':   ('program', 'reference'),
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
+    # THE SAME QUESTION FOR THE GATE. `fx.scanner` covers the 0x99 STEPPER; the 0x89 gate is
+    # handled as a one-shot conditional -- run `switch`, walk on if true. But a gate's
+    # program is not always a pure predicate. ChesterfieldSofa records 331 and 333 carry one
+    # that ADVANCES a position and THEN tests it: instructions 29-32 read slot 14, add a
+    # step and write it back, and 41-58 compare the result against a rectangle
+    # (`x >= s0.x and x <= s0.y - 0.5 and y >= s0.z and y <= s0.w - 0.5`). Run once that
+    # emits a single stamp; run until the predicate fails it lays a row.
+    #
+    # Both records render flat WHITE today, and their difference -- record 334 is
+    # `subtract(332, 333)` -- is therefore flat BLACK, which is the input all eight of that
+    # file's directionalwarps take. The seams missing from its basecolor are drawn by that
+    # dead chain.
+    'fx.gatescan':        ('once', 'loop'),
     # WHAT A GENUINELY ZERO-WIDTH levels DOES. Where levelinlow equals levelinhigh the
     # transfer has no width, and the branch currently reads it as a STEP: everything at or
     # above the point maps to out_high, everything below to out_low. That is the arithmetic
@@ -959,6 +972,35 @@ QUESTIONS = {
     # candidate the picture suggests. It is a candidate rather than a fix because the step
     # is a defensible limit and because 116 records corpus-wide state both ends equal -- a
     # population wide enough that one specimen should not decide it.
+    # WHAT LOOKING AT THE WHOLE PACK SHOWED, recorded because the numbers do not say it and
+    # the next reader should not have to re-render to find out. Bricks Textures_1 has five
+    # graphs; under current defaults, side by side with the engine's exports:
+    #
+    #     004, 005   geometry essentially right -- medallions, rings, grid and layout all
+    #                land on the engine's; what is wrong is colour
+    #     002        a lattice IS drawn, but ours is a square grid where the engine's is an
+    #                offset/hex packing, and the engine's is denser
+    #     003        sparse: a few rectangles and stray marks where the engine has a full
+    #                running-bond brick wall
+    #     001        FLAT. Solid brown basecolor, featureless normal, uniform roughness and
+    #                height, near-white AO, against a fully detailed stone-block reference.
+    #                The same total-collapse shape graph 003 had before, on a different graph
+    #
+    # AND A SYSTEMATIC WARM CAST ON basecolor IN ALL FIVE. Channel means, ours against the
+    # engine's:
+    #
+    #     graph   ours R/B   engine R/B
+    #     001         2.58         0.85
+    #     002         1.86         0.93
+    #     003         3.22         1.52
+    #     004         2.28         1.18
+    #     005         2.78         1.15
+    #
+    # Ours runs roughly twice as warm on every graph. It is NOT a channel swap -- that would
+    # put our R/B below 1, and it is above 1 everywhere -- so it is a consistent
+    # multiplicative bias in the red-to-blue balance, shared across five graphs that
+    # otherwise differ completely. Five independent graphs failing the same way is one
+    # mechanism, not five, and it is the largest thing visible that no MAE column names.
     'levels.zerospan':    ('step', 'identity'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
