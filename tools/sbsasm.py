@@ -2043,10 +2043,13 @@ class Record:
         if self._programs is not None:
             return self._programs
         asm = self.asm
-        hit = LAYOUTS.get((self.filter_id, self.cls,
-                           self.words[1] & LAYOUT_MASK.get(self.filter_id, 0))
-                          if len(self.words) > 1 else None)
-        slots = list(hit[1]) if hit else []
+        # No LAYOUTS hit here any more. The memo used to seed the program slots and gate
+        # `classified_programs`, but the universal slot scan below (a program's start is a
+        # slot's value + 52) plus `classified_programs` recover every one it named --
+        # emptying the whole memo changes 0 program lists corpus-wide. So the slots come
+        # from the record's own program slot and the classifier, and the memo is drained
+        # from programs() as it was from the layout.
+        slots = []
         sl = self.layout[1]
         if sl is not None and sl not in slots:
             slots.insert(0, sl)
@@ -2057,10 +2060,9 @@ class Record:
             p = self.words[s] + 52
             if asm.body_lo <= p < asm.body_hi and p not in out and asm.valid_program(p):
                 out.append(p)
-        if hit is None:
-            for p in self.classified_programs():
-                if p not in out:
-                    out.append(p)
+        for p in self.classified_programs():
+            if p not in out:
+                out.append(p)
 
         # Then every OTHER slot that names a program.
         #
