@@ -22,6 +22,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sbsasm                                                        # noqa: E402
+import decompose                                                     # noqa: E402
 import disasm                                                        # noqa: E402
 import transpile                                                     # noqa: E402
 
@@ -125,14 +126,28 @@ def scan():
                     T['fx_root'] += 1
                     T['fx_root_aligned'] += (q % 4 == 0)
 
-            # The slot rule. Scored against the RECORDS, not layouts.json -- the table has
-            # 2,806 entries that disagree with the bytes they describe.
+            # The slot rule, scored against the WALK.
+            #
+            # This comment used to read "Scored against the RECORDS, not layouts.json",
+            # and the code under it did the opposite: it looked the record up in LAYOUTS
+            # and scored `pred == len(lay[1])`, the memo's own slot list. It also ran only
+            # `if lay and lay[1]`, so every record the table has no key for was skipped
+            # without appearing in the denominator -- 510 of 10,618 over 14 files, and the
+            # walk resolves 958 of the 959 unkeyed records in that sample. A claim that
+            # drops the population the table never learned cannot detect the table going
+            # stale, which is this file's entire purpose.
+            #
+            # The decoder stopped reading that memo for layout, edges and prog some time
+            # ago; the measurement layer did not follow. Scoring against `decompose` is
+            # what the comment always claimed, and it is measured over every record rather
+            # than over the ones the table happens to cover.
             ent = sbsasm.PARAM_SPEC.get(r.filter_id)
             if ent and r.filter_id not in sbsasm.PARAM_RAW and len(r.words) > 1:
-                key = (r.filter_id, r.cls,
-                       r.words[1] & sbsasm.LAYOUT_MASK.get(r.filter_id, 0))
-                lay = sbsasm.LAYOUTS.get(key) if sbsasm.LAYOUTS else None
-                if lay and lay[1]:
+                _d = decompose.decompose(r)
+                nslots = (len(_d['cls_slots'])
+                          + sum(int(t[3]) for t in _d['param_slots'] if len(t) >= 4)
+                          if _d is not None and _d.get('end') is not None else None)
+                if nslots is not None:
                     w1 = r.words[1]
                     st = tuple(0 if (w1 & m) == 0 else
                                (1 if (w1 & m) == (m & ~h) else (2 if (w1 & m) == h else 3))
@@ -144,7 +159,7 @@ def scan():
                     pred = (act + ex + (r.cls & 1) + ((r.cls >> 7) & 1)
                             + ((r.cls >> 11) & 1) + 2 * ((r.cls >> 10) & 1) - share)
                     T['slotrule_n'] += 1
-                    T['slotrule'] += (pred == len(lay[1]))
+                    T['slotrule'] += (pred == nslots)
 
             for q in program_points(a, r):
                 try:
@@ -200,9 +215,15 @@ CLAIMS = [
     ('transformation (2,792,0): slot 2 is a backward record index',
      '16,471 of 16,484 (13 exceptions)',
      lambda T: (T['trans2792_edge'], T['trans2792']), 0),
-    ('the slot rule, against layouts.json (2,806 table entries are wrong)',
-     '99.396% -- 99.992% against the records',
-     lambda T: (T['slotrule'], T['slotrule_n']), 2843),
+    # MECHANISM CHANGED, so the recorded figure is rebased rather than reproduced. This
+    # was scored against layouts.json and ran only on records the table had a key for,
+    # which dropped 22,701 records (4.8%) from its own denominator without saying so. It
+    # is now scored against the walk over every record. The previous figure is kept in the
+    # text so the change is visible rather than silently absorbed.
+    ('the slot rule, scored against the WALK over every record',
+     '98.394% -- 466,152 of 473,760 (previously 99.370% against layouts.json, which '
+     'silently skipped 22,701 unkeyed records)',
+     lambda T: (T['slotrule'], T['slotrule_n']), 7608),
     ('fxmaps tree root pointer target is 4-aligned',
      '27,637 of 27,637',
      lambda T: (T['fx_root_aligned'], T['fx_root']), 0),

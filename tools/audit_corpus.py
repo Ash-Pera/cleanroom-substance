@@ -7,6 +7,7 @@ this one is meant to make its own gaps countable.
 import collections, sys
 
 import disasm
+import decompose
 from sbsasm import (Assembly, FILTERS, UNNAMED, LAYOUTS, LAYOUT_MASK,
                     PARTIAL_EDGES)
 
@@ -67,11 +68,20 @@ def main(paths):
                 # [tag][flags][edge][edge] and ends before a parameter slot could exist,
                 # so "no parameter" is the correct answer there. Counting those as
                 # failures put the gap at 4.55% when the genuine miss is 0.55%.
-                hit = LAYOUTS.get((r.filter_id, r.cls,
-                                   r.words[1] & LAYOUT_MASK.get(r.filter_id, 0))
-                                  if len(r.words) > 1 else None)
+                # ASKED OF THE WALK, not of layouts.json. The decoder stopped reading
+                # that memo for layout, edges and prog, but this classification still
+                # looked the record up in it -- so a record the table has no key for could
+                # not be called "has no parameter slot" however plainly its own header
+                # said so, and fell through to be counted as an unread parameter instead.
+                # Over 19,631 records, 959 have no key and the walk resolves 958 of them.
+                # `_d['inputs']` is the memo's edge-slot list and `_d['param_slots']` its
+                # parameter list, so this is the same test on the same two facts, taken
+                # from the mechanism that actually decodes the record.
+                _d = decompose.decompose(r)
                 sl = r.layout[1]
-                if hit and not hit[1] and len(r.words) <= max(list(hit[0]) + [1]) + 1:
+                if (_d is not None and _d.get('end') is not None
+                        and not _d['param_slots']
+                        and len(r.words) <= max(list(_d['inputs']) + [1]) + 1):
                     tot['param_absent'] += 1
                 elif sl is not None and sl >= len(r.words):
                     tot['param_absent'] += 1
