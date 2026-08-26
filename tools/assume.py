@@ -246,6 +246,27 @@ QUESTIONS = {
     # So the next divisor to score is not another function of N. It is read per record from
     # the integer2 input the position program consumes, gated on chain signature rather than
     # on N being square, and neither existing arm is evidence for or against it.
+    #
+    # RE-SCORED AFTER THE levelinmid GAMMA FIX (b2f1d97), because every table above was
+    # measured through a bug that put a constant offset on this pack -- the same offset
+    # these notes kept warning about and working around by reading std instead of MAE. With
+    # MAE meaningful again, no arm flips:
+    #
+    #     arm        overall     AO MAE/std    height         normal         roughness
+    #     canvas      0.1253   0.1443/0.0621  0.3190/0.1541  0.0393/0.0305  0.2392/0.0887
+    #     cell        0.1338   0.1329/0.0340  0.3742/0.1133  0.0310/0.0180  0.2765/0.0348
+    #     oversize    0.1253   0.1444/0.0646  0.3187/0.1554  0.0393/0.0305  0.2393/0.0892
+    #                          (ref std 0.1719)      (0.1565)       (0.0401)       (0.1429)
+    #
+    # canvas and oversize tie on MAE to four decimals, oversize stays marginally ahead on
+    # summed std error (0.1717 against 0.1760) and cell stays worst on both. The ordering
+    # is what it was, now measured through a renderer that is not lying about level.
+    #
+    # ONE THING THE FIX MADE WORSE, and it should not be buried: our AO std fell from
+    # 0.1871 to 0.0621 against a reference of 0.1719. Before the gamma fix AO was slightly
+    # OVER-textured and badly wrong in level; it is now right in level and badly
+    # UNDER-textured. That is a real residual the offset was masking, and it is not a
+    # patternsize question -- no arm here moves it.
     'fx.patternsize':     ('canvas', 'cell', 'oversize'),
     # WHAT AN ENTRY WITH NO patterntype DRAWS. `profile_for` falls back to 'rect', a hard
     # fill of the whole cell, and its own docstring says that is "what the code has always
