@@ -36040,14 +36040,22 @@ slots[26] + slots[12] sums the $number-grid position (slot 26) with the SCANNER 
 (slot 12); a $number-grid record must run its scanner once for slot init, not re-enter it per
 emission, or slot 12 accumulates and carries the grid off-canvas.
 
-THE ONE NAMED GAP: what supplies the count of 16 is NOT recoverable from the decoded
-structure. The 0x18B addnode is minimal (node_shape (8,(4,)): one program + successor, no
-count value field). Its only program, `numberadded`, is identical across all four Chesterfield
-$number-grid records (34/53/65/86), reads slot 8 (gridsize = aspect = 1 for a square canvas),
-and computes (mod(g−1,2)+g)² — which yields only ODD squares {1,9,25}, so it can never be 16
-nor any multiple of 4 the /4 grid needs. Record-level params (fx_param2/3) are just the
-geometry boxes. So `numberadded` is a per-pattern AMOUNT (1.0 in 69.5% of 0x18B nodes), not
-the iteration count. The real FX-map iterate count appears implicit in iterate/quadrant node
-semantics not yet reverse-engineered — a distinct RE target, anchored by the measurement
-above (the answer must produce 16 for rec34, scanner-held). Do NOT hard-code 16; that fits a
-known-wanted number without a decoded source.
+THE ONE NAMED GAP (corrected): the count IS in the format — it is **(1/patternsize)²**.
+rec34 patternsize 0.25 → dim 4 → 16; rec65 0.4146 → dim 2.41 → 5.8 — both measured deficits
+to three digits, unfitted (patternsize is what 530756 computes). So the deficit was exactly
+1/size² because the count IS the tile count implied by the size: an FX-map emits enough
+size-s patterns to tile the canvas, (1/s)² of them. `numberadded` is NOT this count — it is
+a per-pattern AMOUNT (1.0 in 69.5% of 0x18B nodes); rec34's reads only slot 8 (aspect
+gridsize = 1 on a square canvas), computes (mod(g−1,2)+g)² = odd squares, and so degenerates
+to 1. Peer 0b's insight: the per-record grid dimension lives in the placement program
+530756's constants, and it tracks the deficit (rec34/53/86 carry a 4; rec65 does not).
+
+`numberadded` DOES carry a real count for other record classes: FabricSubstance009,
+ie_particles, PW_ConcreteWall read graph INPUTREFS in numberadded (count from a tiles/amount
+parameter). So there are ≥2 count sources — a parameter through numberadded, and the
+size-implied tile count (1/patternsize)². rec34 uses the second.
+
+Remaining unread piece (narrowed, with an equation-falsifier): by what path the engine turns
+patternsize into the emission loop bound for a size-tiled record, given our walk uses
+numberadded and rec34's numberadded reads aspect, not size. The rule any candidate must
+satisfy: count = (1/patternsize)² = 16 (rec34/53/86), 5.8 (rec65). Do NOT hard-code 16.
