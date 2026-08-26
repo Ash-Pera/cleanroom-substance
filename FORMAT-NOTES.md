@@ -34499,33 +34499,41 @@ four colour, stated by the tag's colour bit. Adding it takes `transformation` to
 **100.00%** header, zero overruns. The filter that broke the additive model is the one the
 width law handles most directly, and it needs exactly three fields to do it.
 
-### The same primitive one scale down: FX-Map tree nodes
+### The same primitive one scale down: FX-Map tree nodes -- and a category error corrected
 
 The record walk and the tree-node walk are the same operation. `_walk_mask` is that
 operation in isolation -- walk the set bits of a mask in order, each adding its width -- and
-both callers are compositions of it: `walk()` runs it over the record's two masks, and
-`walk_node()` runs it once over a node's tag. A node is `[tag][fields]`, the tag's low byte
-a KIND fixing a base size and the remaining bits a presence mask, with the same 1/2/4-word
-field widths. The legend for it is what `node_census.py` derives -- the tree analogue of the
-manifest's type table, read once -- and `walk_node` consumes it:
+`walk_node` applies it to a node's tag.
 
-    node kind    cells     size exact (vs the census's per-tag modal size)
-    0x48        27,402        99.97%
-    0x58         4,082       100.00%
-    0x88         2,010       100.00%
-    0x89        13,025       100.00%
-    0x8b        15,524       100.00%
-    0xcb           966       100.00%
-    (single-tag kinds 0x99, 0x9b, 0xab all 100%; 0x18 at 82%, its residue multi-node gaps)
+**An earlier version of this section overstated it, and the correction is the point.** It
+listed `0x48` (27,402 cells), `0x58` and `0x88` among the node kinds it sized at ~100%.
+Those are not nodes. An FX-Map has two structures the tag's low nibble tells apart -- NODES
+end in nibble 9 or 0xB (`0x89` markov2, `0x8b`, `0x18b` addnode, `0x0b`), paramset TABLE
+ENTRIES end in nibble 8 (`0x48`, `0x58`, `0x88`, `0x08`, `0x18`) -- and this document already
+records the second fact elsewhere (`0x48` is named a table entry, and the paramset kinds
+`0x48`/`0x08` are the terminal ones). `node_census` harvests cells by inter-program gaps from
+the tree root, and a table-rooted record's cells are ENTRIES; the census, and the legend
+built on it, mixed the two. The nibble-8 "sizes" were the offset to an entry's first inline
+program, not a node size, so they disagree with any real entry length (18 of 18 shared tags
+against `FX_ENTRY`). A peer caught it.
 
-    program pointers landing on a predicted field boundary   407 / 439 = 92.71%
+The fix strips the nibble-8 rows from `walk_node`; it now sizes only the nibble-9/0xB nodes,
+each a single fixed size, and returns None for every nibble-8 tag:
 
-The node size is computed from the tag alone, consulting no per-node table; the withdrawn
-`FX_TABLE` was a memo of exactly this. And the pointer check is a second, independent
-consequence: a program pointer sits at a field boundary the size walk predicts, never in the
-middle of a field. The underdetermined kinds (`0x08`, `0x0b`, `0x1b`, `0x98`) are left out of
-the legend and `walk_node` returns None for them rather than guessing -- the same discipline
-as `header_words` returning None for an uncatalogued filter.
+    node kind    cells     size (words)   validated by a landing test
+    0x89        13,025          4              100.00%
+    0x8b        15,524          3              100.00%
+    0xcb           966          4              100.00%
+    0x0b           533          2              100.00%   (a peer's leaf pin, 327/327)
+    (0x99, 0x9b, 0xab also 100%; genuinely underdetermined: 0x1b, 0x98)
+
+Entry lengths are NOT `walk_node`'s to give, and NOT `FX_ENTRY`'s either -- that table's
+hand-listed lengths were withdrawn in `sbsasm.py` because a clip against them discarded 260
+resolving programs to suppress 52. Entry sizing is `fx_entry_layout`'s, the general "the tag
+spells the entry out" method. The lesson for the cross-encoding checks that found so many
+smaller drifts this session: a check only works against the encoding that actually disagrees,
+and I had been validating `walk_node` against corpus harvests that shared its own conflation
+rather than against `FX_ENTRY`/`fx_entry_layout`, which would have shown the split at once.
 
 ### One principle, more than one encoding: the count-field filters
 
