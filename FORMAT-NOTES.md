@@ -35923,8 +35923,14 @@ that their spans are rational with a divisor consistent with the count.
 Corpus scan of the permitted paired sources (142 `.sbs`, tight `constantValueFloat` read):
 inverted levels mappings occur 66 times, and **every one names both endpoints
 explicitly** — 64 output inversions (`leveloutlow=1, levelouthigh=0`) and 2 input
-inversions (`levelinlow=1.0, levelinhigh=0.8`, concrete_002). There is not a single
-case where a one-sided declaration stands in for an inversion.
+inversions (`levelinlow=1.0, levelinhigh=0.8`, concrete_002).
+
+State the law as *"every inversion names both endpoints"* — not *"there are no
+one-sided declarations."* One-sided declarations at an inversion extreme DO exist
+(below); the law holds because they are authored intent, not dropped inversions.
+Phrased the robust way it survives the first one-sided extreme someone finds;
+phrased as "zero one-sided cases" it would be falsified by it. Peer 0b reproduced
+the law independently over a different scope (21/21 inversions, 96 packages; cd21ae6).
 
 Consequence for decode and render: a compiled levels with only one input-side bit set is
 therefore **never** an implied inversion — the absent side is a genuine default. The
