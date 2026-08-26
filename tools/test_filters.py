@@ -796,6 +796,88 @@ def test_blendingmode_matches_the_source_that_declares_it():
     return
 
 
+# The agreement each reference-scored channel reaches today, as a FLOOR. Not a target:
+# these are correlations against the engine's own exported maps, and the point is that a
+# change cannot quietly take one away. Set a little under the measured value so ordinary
+# float noise does not trip it; a real collapse is orders of magnitude, not percent.
+REFERENCE_FLOOR = {
+    ('Kutejnikov__Auras', 'basecolor', 0): 0.90,
+    ('Kutejnikov__Auras', 'basecolor', 1): 0.82,
+    ('Kutejnikov__Auras', 'basecolor', 2): 0.91,
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 0): 0.40,
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 1): 0.42,
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 2): 0.42,
+    ('minime453__Chesterfield_PBR_Material', 'roughness', 0): 0.26,
+    ('minime453__Chesterfield_PBR_Material', 'metallic', 0): 0.29,
+}
+
+
+def test_reference_agreement_does_not_regress():
+    """The exported maps as a RATCHET, because a sweep cannot see this.
+
+    WHY THIS EXISTS. `b2f1d97` took Auras' graph-004 basecolor -- the best agreement in this
+    repository, r = 0.92 / 0.85 / 0.94 against the package's own export -- to a CONSTANT, and
+    nothing automated noticed. The corpus sweep could not: 228 of that file's records moved
+    and exactly one of its outputs is scoreable. The blocker census could not: the output
+    still rendered. It was caught by a human re-running the scorer, four commits later.
+
+    Four sessions commit into this tree. A number that only one of them checks by hand is
+    not a check.
+
+    TWO ASSERTIONS, and the first is the sharp one:
+
+      * NOT CONSTANT. Every channel listed below currently has structure, so a per-channel
+        std of zero means the render collapsed. That is what the regression did, and it is
+        unambiguous -- no threshold to argue about.
+
+      * NOT MUCH WORSE. The recorded floors sit a little under today's values, so float
+        noise passes and a collapse does not.
+
+    PER-CHANNEL std, NOT the array's. A 4-channel constant colour has an overall std of
+    0.433, which is inter-channel spread -- the same trap refcompare's docstring records for
+    normal maps, and the one that made me call the flattened record "varying" while
+    diagnosing this.
+    """
+    try:
+        import refcompare
+    except Exception:
+        print('SKIP test_reference_agreement_does_not_regress: refcompare unavailable')
+        return
+    packs = refcompare.reference_packs()
+    if not packs:
+        print('SKIP test_reference_agreement_does_not_regress: no reference packages')
+        return
+    seen, flat, worse = {}, [], []
+    for pack, refs in sorted(packs.items()):
+        want = {k for k in REFERENCE_FLOOR if k[0] == pack}
+        if not want:
+            continue
+        for name, chan, ours, ref in refcompare.compare_pack(pack, refs):
+            if chan is None or (pack, name, chan) not in REFERENCE_FLOOR:
+                continue
+            key = (pack, name, chan)
+            o, r = ours.ravel(), ref.ravel()
+            sd = float(o.std())
+            corr = 0.0
+            if sd > 1e-9 and r.std() > 1e-9:
+                corr = float(np.corrcoef(o, r)[0, 1])
+            seen[key] = (sd, corr)
+            if sd <= 1e-9:
+                flat.append(key)
+            elif corr < REFERENCE_FLOOR[key]:
+                worse.append((key, round(corr, 4), REFERENCE_FLOOR[key]))
+    missing = sorted(set(REFERENCE_FLOOR) - set(seen))
+    if not seen:
+        print('SKIP test_reference_agreement_does_not_regress: no listed channel scored')
+        return
+    assert not flat, ('a reference-scored channel renders CONSTANT: %s -- this is the '
+                      'shape of the b2f1d97 regression' % (flat,))
+    assert not worse, ('reference agreement fell below its recorded floor: %s' % (worse,))
+    assert not missing, ('a channel that used to score no longer does: %s. Either an output '
+                         'stopped rendering or its pairing broke' % (missing,))
+    return
+
+
 # The standalone runner reads SKIP from what a check PRINTS, not from what it returns.
 # These functions used to return a count and the runner reported "skipped" when it was
 # falsy -- but a pytest test function that returns non-None is a warning today and an
@@ -810,7 +892,8 @@ if __name__ == '__main__':
                test_gradient_runs_and_stays_bounded,
                test_dyngradient_is_a_ramp_lookup,
                test_closure_never_claims_a_dependency_the_manifest_denies,
-               test_blendingmode_matches_the_source_that_declares_it):
+               test_blendingmode_matches_the_source_that_declares_it,
+               test_reference_agreement_does_not_regress):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()
