@@ -1596,27 +1596,12 @@ class Record:
                         sl = None
                 return (list(w.edge_slots), sl)
 
-        if LAYOUTS and len(self.words) > 1:
-            hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
-            if hit:
-                edges, progs = hit
-                sl = progs[0] if progs else None
-                # `pixelprocessor` states its INPUT COUNT in the low nibble of slot 1, and
-                # its parameter follows the inputs. The layout key does not encode the
-                # count, so a record with more inputs than the key's edge list covers has
-                # its parameter slot pushed along and the key's index lands on an edge.
-                #
-                #     the nibble IS the edge count      56,934 / 57,118 = 99.68%
-                #     min(edge slots) + nibble is a program  54,180 / 54,180 = 100.00%
-                #     the key's slot is a program            54,001 / 54,180 =  99.67%
-                #
-                # The two agree in 54,001 and differ exactly where the key is wrong. This
-                # is the same field `fxmaps` uses for the same purpose.
-                if f == 20 and edges:
-                    k = min(edges) + (self.words[1] & 0xF)
-                    if k < len(self.words):
-                        sl = k
-                return (list(edges), sl)
+        # The LAYOUTS memo lookup used to sit here, keyed by (filter, cls, w1 & mask). It is
+        # gone: pixelprocessor is handled by `_pp_edges` above, transformation and bitmap by
+        # the walk above, and blend/levels/dirmotionblur/directionalwarp by `_ruled`. What
+        # reached this lookup otherwise -- vectorshape, text, and the odd short record --
+        # gets the identical answer from the fixed-shape fallbacks below, verified by
+        # emptying the whole memo and finding 0 edge and 0 program changes corpus-wide.
         if f == 4:
             # Superseded by the arity field above; reachable only for a record too short
             # to hold the inputs its field claims.
