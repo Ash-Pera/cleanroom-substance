@@ -384,6 +384,20 @@ QUESTIONS = {
     # too. Sixteen stamps where there was one is a large change and some channels have
     # clearly gone past the mark, which is what a real correction with a remaining error
     # looks like rather than a tuned one.
+    #
+    # CORPUS-CHECKED SINCE, on both of its stated limits. The square assumption is confirmed
+    # POSITIVELY rather than by absence of a counterexample: over every record where both
+    # the row divisor and the column pitch can be extracted, rows equal columns exactly --
+    # 49 of 49, across N of 1, 2, 3, 5, 6, 8, 10, 11, 12, 16, 18 and 32. And N varies
+    # genuinely per record: over 80 files the divisors run 2, 3, 4, 5, 6, 7, 8, 10, 11, 12,
+    # 13, 14, 16, 18, 20, 24, 25, 30, 31, 32, 35, 39, 42, 50, 64. So `grid_width` reads a
+    # real parameter and N^2 is node semantics, not the 4 Chesterfield happens to carry.
+    #
+    # The extraction resolves on 49 of 72 scanner-and-grid records; the other 23 use a
+    # placement structure the reader does not catch, which is unparsed rather than
+    # contradicted. And the reader's upper bound turns out to fall in a gap the corpus
+    # leaves -- see `grid_width`, where the two populations are separated by a factor of two
+    # of empty space.
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),

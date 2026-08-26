@@ -933,6 +933,19 @@ def grid_width(rec):
             d = _DIV.match(rhs)
             if d and d.group(1) in number_vars and d.group(2) in consts:
                 n = consts[d.group(2)]
+                # THE UPPER BOUND SITS IN A GAP THE CORPUS LEAVES, which is what makes it a
+                # guard rather than a taste. Over 80 files the divisors found are
+                # 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 18, 20, 24, 25, 30, 31, 32,
+                # 35, 39, 42, 50, 64 -- 355 records, dense to 64 -- and then nothing at all
+                # until 128, 130 and 16384, which is 6 records. A factor of two of empty
+                # space separates the two populations.
+                #
+                # The large ones are not grids. 16384 is 128 squared, and a divisor of that
+                # size is $number used at PIXEL granularity -- a coordinate normalised by
+                # the canvas -- not a stamp index; emitting N^2 there would ask for 268
+                # million patterns. So the bound is not a cap on how big a grid may be, it
+                # is the line between two different uses of $number, and the corpus draws it
+                # rather than this code choosing it.
                 if n == int(n) and 1 < n <= 64:
                     return int(n)
     return None
