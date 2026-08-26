@@ -193,6 +193,26 @@ def compare_pack(pack, refs, max_dim=SIZE):
             own = [r for r in refs if ('%s%s%s' % (os.sep, gdir, os.sep)) in r]
             pool = own
         paired = [r for r in pool if _key(name) and _key(name) in _key(os.path.basename(r))]
+        if not paired:
+            # THE IDENTIFIER FIRST, THEN THE DECLARED CHANNEL. An output's identifier is its
+            # own name and is usually what its exported map is called too, which is why
+            # matching on it alone worked everywhere it was tried. It is not required to be
+            # either. StylizedCobblestoneStreet names its six outputs `output`, `output_1`
+            # ... `output_5`, and the same manifest declares them as baseColor, normal,
+            # roughness, ambientOcclusion, height and metallic. On identifiers that package
+            # pairs 0 of its 12 exported maps; on channels it pairs all six outputs, so a
+            # whole package sat unscoreable for want of this fallback.
+            #
+            # THE IDENTIFIER KEEPS PRIORITY and this only runs when it matched nothing, so
+            # no pairing that already works can change. It is also read from the manifest
+            # rather than chosen by fit: picking whichever reference our own render happens
+            # to resemble would guarantee a good score and measure nothing.
+            _ch = manifest.output_channels(asm).get(uid)
+            if _ch:
+                paired = [r for r in pool
+                          if _key(_ch) and _key(_ch) in _key(os.path.basename(r))]
+                if paired:
+                    name = _ch
         if rec not in produced or not paired:
             yield name, None, None, ('not rendered' if rec not in produced
                                      else 'no matching reference')

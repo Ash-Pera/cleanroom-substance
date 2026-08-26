@@ -57,6 +57,10 @@ def path_for(asm):
     return xml if os.path.exists(xml) else None
 
 
+_CHANNEL_CACHE = {}
+_MISSING = object()
+
+
 def _parsed(asm):
     key = getattr(asm, 'path', None)
     if key in _CACHE:
@@ -106,6 +110,42 @@ def output_names(asm):
     uses; `_parsed`'s third element is where it sits if a caller ever does.
     """
     return _parsed(asm)[0]
+
+
+def output_channels(asm):
+    """{output uid: declared channel name} -- 'baseColor', 'normal', 'ambientOcclusion'...
+
+    WHAT THIS IS FOR, since `output_names` deliberately did not expose it. The identifier
+    is the output's own name and the channel is what the map MEANS to a renderer. They
+    usually coincide, which is why nothing needed the distinction; where they do not, the
+    identifier can be content-free while the channel is not. StylizedCobblestoneStreet is
+    the case: its six outputs are named `output`, `output_1` ... `output_5`, and the
+    manifest separately declares them as baseColor, normal, roughness, ambientOcclusion,
+    height and metallic. Matching that pack's exported maps by identifier pairs 0 of 12;
+    by channel it pairs all of them.
+
+    Parsed by splitting on the output tag rather than with one regex spanning both, so an
+    output that declares no channel cannot borrow the next one's -- which a non-greedy
+    match across `<output ...>` boundaries would happily do.
+    """
+    got = _CHANNEL_CACHE.get(getattr(asm, 'path', None), _MISSING)
+    if got is not _MISSING:
+        return got
+    out = {}
+    xml = path_for(asm)
+    if xml:
+        try:
+            text = open(xml, encoding='utf-8', errors='replace').read()
+            for block in text.split('<output uid="')[1:]:
+                head = block.split('</output>', 1)[0]
+                uid = head.split('"', 1)[0]
+                m = re.search(r'<channel\s+names="([^"]*)"', head)
+                if uid.isdigit() and m:
+                    out[int(uid)] = m.group(1)
+        except Exception:
+            out = {}
+    _CHANNEL_CACHE[getattr(asm, 'path', None)] = out
+    return out
 
 
 def name_for(asm, uid, default=None):
