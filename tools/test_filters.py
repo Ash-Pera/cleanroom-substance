@@ -1119,15 +1119,26 @@ def test_uniform_colour_sits_where_the_source_says_it_does():
 # these are correlations against the engine's own exported maps, and the point is that a
 # change cannot quietly take one away. Set a little under the measured value so ordinary
 # float noise does not trip it; a real collapse is orders of magnitude, not percent.
+#: RATCHETED UP after `fx.gridcount` became the default -- see FORMAT-NOTES, "the tufting
+#: lattice". The old floors are kept in the comment beside each so the size of that move
+#: stays legible, and so nobody re-derives them downward by accident.
 REFERENCE_FLOOR = {
-    ('Kutejnikov__Auras', 'basecolor', 0): 0.90,
-    ('Kutejnikov__Auras', 'basecolor', 1): 0.82,
-    ('Kutejnikov__Auras', 'basecolor', 2): 0.91,
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 0): 0.40,
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 1): 0.42,
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 2): 0.42,
-    ('minime453__Chesterfield_PBR_Material', 'roughness', 0): 0.26,
-    ('minime453__Chesterfield_PBR_Material', 'metallic', 0): 0.29,
+    ('Kutejnikov__Auras', 'basecolor', 0): 0.90,            # unchanged, now 0.937
+    ('Kutejnikov__Auras', 'basecolor', 1): 0.82,            # unchanged, now 0.865
+    ('Kutejnikov__Auras', 'basecolor', 2): 0.91,            # unchanged, now 0.945
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 0): 0.88,  # was 0.40, now 0.916-0.940
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 1): 0.95,  # was 0.42, now 0.978-0.986
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 2): 0.95,  # was 0.42, now 0.981-0.985
+    ('minime453__Chesterfield_PBR_Material', 'roughness', 0): 0.80,   # was 0.26, now 0.854
+    ('minime453__Chesterfield_PBR_Material', 'metallic', 0): 0.90,    # was 0.29, now 0.952
+    # NEW ENTRIES. These channels only became worth ratcheting once the lattice appeared --
+    # before it they sat at or below 0.17 and two of them were NEGATIVE.
+    ('minime453__Chesterfield_PBR_Material', 'height', 0): 0.90,      # was -0.002, now 0.949
+    ('minime453__Chesterfield_PBR_Material', 'normal', 0): 0.86,      # was -0.007, now 0.916
+    ('minime453__Chesterfield_PBR_Material', 'normal', 1): 0.86,      # was +0.002, now 0.916
+    ('minime453__Chesterfield_PBR_Material', 'AO', 0): 0.82,          # was -0.038, now 0.875
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.60,   # was +0.101, now 0.668
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.72,   # was +0.165, now 0.780
 }
 
 

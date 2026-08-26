@@ -1186,7 +1186,12 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             # which for these records is an amount. The scanner is also held to a single run
             # across the whole batch: frameoffset sums the grid position and the scanner's,
             # so re-driving the scan per emission carries every cell off-canvas.
-            if _grid[0] is None and assume.assumed('fx.gridcount') == 'divisor':
+            # ADOPTED AS THE DEFAULT. This was opt-in; the evidence for it is now the
+            # strongest any candidate in this project has, and it is not a coverage trade --
+            # the corpus renders exactly the same 46 outputs either way, so nothing here is
+            # being bought with unlocked records. What changes is whether they are RIGHT.
+            # See assume.QUESTIONS['fx.gridcount'] for the numbers and the pictures.
+            if _grid[0] is None and assume.assumed('fx.gridcount', 'divisor') == 'divisor':
                 _w = grid_width(rec)
                 _grid[0] = _w * _w if _w else 0
             if _grid[0]:

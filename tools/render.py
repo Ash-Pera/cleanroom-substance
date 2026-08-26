@@ -630,6 +630,23 @@ def apply_blend(mode, dst, src, opacity):
         return np.clip(dst * (1.0 - opacity) + blended * opacity, 0.0, 1.0)
 
 
+
+class _SwappedEdges(object):
+    """A record view with its first two edges exchanged -- see QUESTIONS['dirwarp.edges']."""
+
+    def __init__(self, rec):
+        self._rec = rec
+
+    @property
+    def edges(self):
+        e = list(self._rec.edges)
+        e[0], e[1] = e[1], e[0]
+        return e
+
+    def __getattr__(self, name):
+        return getattr(self._rec, name)
+
+
 def render(asm, precomputed=None, verbose=True, max_dim=None,
            synth_missing_bitmaps=False, stop_after=None):
     """Evaluate every record 0..N-1 that a filter type here can handle.
@@ -1296,11 +1313,20 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # defaulted mid cannot mean a near-vertical curve, and removing that
                 # accident is what exposed this: the step belongs in the span, not in the
                 # gamma.
+                # See assume.QUESTIONS['levels.zerospan']. Under 'identity' a zero-width
+                # range passes its input through instead of thresholding it, which is what
+                # Bricks 004's emission needs: a step cannot preserve the red the engine
+                # exports, because every channel of it sits above the degenerate point.
                 degenerate = np.abs(span) < 1e-6
                 span = np.where(degenerate, 1.0, span)
-                t = np.where(degenerate,
-                             (src >= in_low).astype(np.float32),
-                             np.clip((src - in_low) / span, 0.0, 1.0))
+                _ramp = np.clip((src - in_low) / span, 0.0, 1.0)
+                if assume.assumed('levels.zerospan') == 'identity':
+                    _deg = np.clip(src, 0.0, 1.0)
+                    if np.any(degenerate):
+                        assume.note(i)
+                else:
+                    _deg = (src >= in_low).astype(np.float32)
+                t = np.where(degenerate, _deg, _ramp)
 
                 # A ZERO-WIDTH INPUT RANGE MAY BE A HALF-READ INVERSION, NOT A STEP. The
                 # step reading elsewhere in this branch is right for a range that is
@@ -1600,6 +1626,12 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     if edge_rec not in outputs:
                         raise cascade("edge -> record %s has no output yet" % edge_rec)
                 tainted = any(e in synthetic for e in rec.edges[:2])
+                # See assume.QUESTIONS['dirwarp.edges'] -- the order is a declared
+                # convention with no bytecode-level proof. Swapping it here rather than in
+                # every use below keeps the experiment to one line.
+                if assume.assumed('dirwarp.edges') == 'swapped':
+                    rec = _SwappedEdges(rec)
+                    assume.note(i)
 
                 W, H = rec.width, rec.height
                 if max_dim:
@@ -1628,7 +1660,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 height = sbsruntime.image_sampler(outputs[rec.edges[1]])(pos)[:, :1]
                 signed = 2.0 * height - 1.0
                 turn = 2.0 * np.pi * angle
-                REFERENCE_PX = 256.0
+                REFERENCE_PX = float(assume.assumed('warp.reference_px', 256.0))
                 disp = signed * intensity / REFERENCE_PX
                 in_pos = pos + np.concatenate(
                     [disp * np.cos(turn) * np.ones((N, 1), dtype=np.float32),
@@ -1827,7 +1859,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
                 intensity = np.asarray(params['intensity'], dtype=np.float32)
                 angle = np.asarray(params['mblurangle'], dtype=np.float32)
-                REFERENCE_PX = 256.0
+                REFERENCE_PX = float(assume.assumed('warp.reference_px', 256.0))
                 length = np.clip(np.abs(intensity), 0.0, 256.0) / REFERENCE_PX * 10.0
                 turn = 2.0 * np.pi * angle
                 sampler = sbsruntime.image_sampler(outputs[rec.edges[0]])
@@ -1965,7 +1997,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # np.gradient returns d/drow, d/dcol; scale each to UV by its own axis
                 # length so the displacement is resolution-independent.
                 gy, gx = np.gradient(gmap.astype(np.float32))
-                REFERENCE_PX = 256.0
+                REFERENCE_PX = float(assume.assumed('warp.reference_px', 256.0))
                 dx = (gx * W / REFERENCE_PX * intensity).reshape(N, 1)
                 dy = (gy * H / REFERENCE_PX * intensity).reshape(N, 1)
                 in_pos = pos + np.concatenate([dx, dy], axis=-1)
@@ -2576,21 +2608,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # possible constant-factor error. A separable box blur is used, which is what
                 # the parameter means before any kernel shape is assumed; a Gaussian would
                 # differ in the tails and nothing here distinguishes them.
-                REFERENCE_PX = 256.0
+                REFERENCE_PX = float(assume.assumed('warp.reference_px', 256.0))
                 radius = float(np.clip(abs(intensity), 0.0, 256.0)) / REFERENCE_PX
                 rpx = int(round(radius * max(W, H)))
                 if rpx < 1:
                     outputs[i] = src            # a blur of sub-pixel radius is the identity
                 else:
                     k = 2 * rpx + 1
-                    acc = np.zeros_like(src)
-                    for d in range(-rpx, rpx + 1):     # separable: rows then columns
-                        acc += np.roll(src, d, axis=1)
-                    acc /= k
-                    out2 = np.zeros_like(acc)
-                    for d in range(-rpx, rpx + 1):
-                        out2 += np.roll(acc, d, axis=0)
-                    outputs[i] = np.clip(out2 / k, 0.0, 1.0)
+                    if assume.assumed('blur.kernel', 'box') == 'gaussian':
+                        # See assume.QUESTIONS['blur.kernel']. sigma = rpx/2 puts the
+                        # box's half-width at two sigma, the usual correspondence.
+                        _d = np.arange(-rpx, rpx + 1, dtype=np.float64)
+                        _w = np.exp(-0.5 * (_d / max(rpx / 2.0, 1e-6)) ** 2)
+                        _w /= _w.sum()
+                        acc = np.zeros_like(src)
+                        for _j, d in enumerate(range(-rpx, rpx + 1)):
+                            acc += np.roll(src, d, axis=1) * _w[_j]
+                        out2 = np.zeros_like(acc)
+                        for _j, d in enumerate(range(-rpx, rpx + 1)):
+                            out2 += np.roll(acc, d, axis=0) * _w[_j]
+                        outputs[i] = np.clip(out2, 0.0, 1.0)
+                    else:
+                        acc = np.zeros_like(src)
+                        for d in range(-rpx, rpx + 1):     # separable: rows then columns
+                            acc += np.roll(src, d, axis=1)
+                        acc /= k
+                        out2 = np.zeros_like(acc)
+                        for d in range(-rpx, rpx + 1):
+                            out2 += np.roll(acc, d, axis=0)
+                        outputs[i] = np.clip(out2 / k, 0.0, 1.0)
                 if tainted:
                     synthetic.add(i)
 

@@ -37093,3 +37093,192 @@ connected components to 6, against the reference's 45. The relief branch now car
 the output is dominated by a different branch -- records 67/68/98/99, three large blobs at std
 0.21 -- which the cell reading does not touch. So the tufting lattice remains missing, and its
 source is that branch rather than the one repaired here.
+
+## The chainless cls-0x399 fxmaps: entries interleaved with their inline programs
+
+The "fxmaps: no readable table entries" render failure — 18% of a common class, ~3,227
+records where `fxrender.chain(rec)` is empty — is not an empty record and not a missing
+decoder. These records carry real FX entries; the walk finds one and stops.
+
+`fx_table` reaches the table at slot2+52 and steps a FIXED 8 bytes, on the premise (true for
+the ordinary form) that entries are a contiguous run. In cls-0x399 they are not: the entries sit
+at IRREGULAR positions with their inline program bytecode between them. On RoofTiles_1.1 rec1398
+the real entries are words 7, 11, 22, 26, 58, 62 — gaps of 4, 11, 4, 32, 4 — and the 0x9xxxxxx
+bytecode of each entry's program fills the space to the next. A fixed stride lands in that
+bytecode after entry one, the layout stop-rule fires, and the walk yields a single entry.
+
+So the shape is **entries interleaved with their inline programs**, not a contiguous 8-byte
+table. That statement about the format holds whether or not anyone writes the variable-stride
+stepper. LEVERAGE IS ZERO: peer 0b's cone check (4d9281f) found this root is not the last
+blocker on any scored output — Sandy Stone's five are gated by `nonfinite` alone, Auras' one by
+`blur.intensity` alone — so recovering these entries moves no score on the reference set. It is a
+decode-COMPLETENESS gap, worth stating, not worth a stepper under the live chain_family rework.
+
+**Counting the entries needs the program-resolution test, and ONLY that test.** Three cheaper
+proxies each lie here:
+- **low nibble 8** counts pointers-ending-in-8 as entries (0x240d8 is a pointer, not a tag);
+- **`fx_entry_layout` returns non-empty** counts bytecode as an entry — rec1398 word53
+  `0x9140008` decodes to a clean opacity/frameoffset/patternrotation layout, but its two
+  predicted programs resolve to 919878 and 156041284, both garbage: it is a u32 straddling two
+  instructions, not a tag;
+- **header word1** is NOT a count. It reads 20 on rec1398 but ~657–660 on most cls-0x399
+  records (453 sampled; word1==real-entry-count on only 17). Whatever it is, it is not the
+  entry tally, and a stride fitted to "reproduce 20 entries" would chase a phantom — the same
+  trap as fitting a divisor to sqrt(N).
+
+The reliable entry is one whose layout names program slots AND at least one names a program that
+lands inside a record-pointer program span. By that test rec1398 has 6 entries, not the 7 nibble
+suggests nor the 20 the header suggests.
+
+## Last-in-cone leverage, applied before the work not after
+
+The rule from `leverage-is-last-in-cone` (an unblock scores only if it is the last blocker in
+some scored output's cone) has now redirected effort three times, and twice PROSPECTIVELY:
+- `emboss` taught it expensively — implemented from a correct decode, it scored nothing because
+  every RoofTiles cone still held a `shuffle` grayscale refusal;
+- the chainless cls-0x399 fxmaps were caught in advance — real gap, zero leverage, so no stepper;
+- `curve` likewise caught in advance.
+
+The prospective form is the valuable one: run the cone check BEFORE deriving the fix, not after
+implementing it. On the current reference set the entire remaining distance to full coverage is
+two last-in-cone roots — `nonfinite.fill` (last blocker on five outputs) and `blur.intensity`
+(one) — and nothing else, however real, moves a number until those two are decided.
+
+## The `text` filter (17) records are structured, not 28%-undecoded
+
+I had carried "text-record payloads ~28% interpreted" as a large open gap. Measured, it is
+another marking artifact of the same family as vectorshape-0% and fxmaps-88%. Two separate
+things were conflated:
+
+1. **The strings themselves are decoded.** They are not in the filter-17 record at all; they
+   live in the package string table at 0x38, which `Assembly.strings()` reads
+   (RoadLinesSubstance002 carries `'SLOW\n12345\n67890'` — a road sign). The filter-17 record
+   holds the text-RENDER parameters (programs + baked float vectors for colour/position), not
+   the glyphs.
+2. **The record bytes are ~89% byte-typed** — tag, type-code (word1), program spans, baked
+   floats, small ints. Of 766 words across 59 filter-17 records, 682 are typed.
+
+The residual is not undecoded payload; it is two things, both small:
+- **word3 / word4 are type-correlated header fields**, not noise. word4 is effectively constant
+  per type-code (0xf000004 for word1 in {0x142,0x1102}, 0x40bcb4 for 0x1282, 0x18 for 0x1540);
+  word3 is `[16-bit type-tag][16-bit varying]`, its high half tracking the type (0xe2d0 or
+  0x1a42). So the only genuinely per-record unknown is word3's low 16 bits.
+- **the parameter SLOTS are typed but not NAMED** — we know which words are floats vs programs,
+  not which float is font size vs colour vs position. `_walk_layout` returns None for filter 17
+  (slot layout "not yet catalogued") and defers to the generic table, which types the slots
+  without naming them.
+
+So the honest status is: text is byte-typed and its strings are recovered; what is missing is
+slot NAMING and one 16-bit field, not 72% of the payload. Same lesson as the rest of this
+stretch — the strict "named-slot" measure and the "byte-typed" measure are different numbers,
+and quoting the strict one as if bytes were unaccounted overstates the gap.
+
+## Is the walk applied to all filters? No — but the fitted table is verifiably redundant
+
+The TIER_A mask-walk (`_walk_layout`) is NOT the decode path for all filters. It covers 12 of
+them (gradient, shuffle, uniform, warp, emboss, blur, sharpen, hsl, normal, dyngradient,
+distance, curve) — 10.4% of records. The rest do NOT fall back to `layouts.json`; they are
+decoded by other RULE families, each verified against the corpus:
+
+    _walk_layout (TIER_A mask-walk)   12 filters, 10.4% of records
+    walk via SPECS                    transformation (240k, 0 disagreements), bitmap (1,346)
+    _ruled  (w1 param-fields + cls    blend, directionalwarp, levels, dirmotionblur
+             bit-population g)
+    _pp_edges (slot-1 low nibble)     pixelprocessor (~58k)
+    fixed-shape fallbacks             vectorshape, text
+
+**The layouts.json memo (809 entries) is drained from the LAYOUT decision — but NOT from
+parameter naming.** This was measured properly (full dedup corpus, fresh assemblies, memo
+emptied and recomputed), and the split is sharp:
+
+    output              diffs when memo emptied (of 926,887 records)   verdict
+    layout (edges+prog)              0                                  table REDUNDANT
+    program_slots               31,353                                 table LOAD-BEARING
+    named_parameters           376,204  (~40%)                         table LOAD-BEARING
+
+So for the LAYOUT computation the fitted table adds nothing the rules do not already state — 95.4%
+of records have a key present in the memo, and emptying it changes 0 layouts. But the SAME memo
+still supplies named parameters and program slots that no rule reproduces: a levels record loses
+`('leveloutlow','baked',0.5)`, fxmaps records lose `fx_param1/2/3`, on 376k records. **The table
+cannot be deleted.**
+
+This retires the framing "89.6% of records are table-driven" for LAYOUT only — those records get
+their edges from rules. It does NOT clear the table for parameters. The no-fitted-tables goal is
+reached for the layout decision and NOT for parameter naming; the rule that would derive each
+filter's param bit-layout is unwritten, and ~40% of records still read their parameters from the
+memo.
+
+METHOD WARNING banked with the result: two false "table is redundant" readings had to be caught
+before this stood. (1) A 60-file sample showed 0 program_slots diffs because it under-exercised
+the param path — the full corpus shows 31,353. (2) A "fresh assembly" recheck showed 0 diffs
+everywhere because `program_slots` and `named_parameters` are PROPERTIES, and calling them as
+`r.program_slots()` raised TypeError identically in both passes, manufacturing a 0-diff. Access
+them as properties (`v() if callable(v) else v`) and test on the whole corpus, or the table looks
+deletable when it is load-bearing for 376k records. Same convenient-zero family as the rest of
+this file — a redundancy claim needs the memo actually queried AND the accessor actually run.
+
+### The tufting lattice: `numberadded` is an amount, the grid count is the divisor
+
+The Chesterfield images showed us drawing three tufts where the engine draws forty-five. The
+cause is one line, and the trail to it is worth recording because every intermediate step looked
+like the answer.
+
+Following the height output back: records 114-118 collapse to two distinct values (correct -- an
+auto-levels max-pyramid, 64->16->4->1), record 95 is `subtract(levels(92), 93)` which cancels to
+a flat 0.5 (a RELIEF filter, and the `frameoffset` finding above explains that one), and the
+branch that actually dominates arrives at record 65: an `fxmaps` whose chain is
+`0x18B` ADDNODE -> `0x99` STEPPER -> `0x100B` leaf, emitting **one** pattern.
+
+Its `numberadded` program is `((slot8 - 1) mod 2 + slot8)^2` -- an odd number squared, so 1, 9,
+25, 49. Slot 8 is set by the record's own program 544472 to `exp2(|sizelog2.x - sizelog2.y|)`,
+the ASPECT RATIO, which is exactly 1 on a square image. So `numberadded` is faithfully 1 and the
+addnode loops once, which is what `fxrender`'s docstring already concluded from two other
+records: "the emission count is a correct reading of the program".
+
+**The count is not in `numberadded`. It is in the grid.** `grid_width(rec 65)` returns 4, and
+`fx.gridcount = 'divisor'` uses `4 x 4 = 16` as the loop bound instead. Peer 0b had already
+established the safety of that from the other side -- 2,598 of 2,598 grid records carry the
+degenerate `numberadded` that reads slot 8 and nothing else, so no grid record has a real count
+to lose. What was missing was evidence that it is not merely safe but RIGHT.
+
+    Chesterfield, default render        before      after
+    height ch0                          -0.002      +0.949
+    normal ch0                          -0.007      +0.916
+    normal ch1                          +0.002      +0.916
+    AO ch0                              -0.038      +0.875
+    roughness ch0                       +0.295      +0.854
+    metallic ch0                        +0.328      +0.952
+    basecolor ch0 / ch1                 +0.101 / +0.165    +0.668 / +0.780
+
+    Bricks emission ch0 / ch1 / ch2     0.451-0.463 -> 0.916-0.940 / 0.978-0.986 / 0.981-0.985
+
+And the picture matches: the tufted panel, its buttons and its diamond lattice all appear, in
+every one of the six outputs. **The corpus renders exactly the same 46 outputs either way**, so
+none of this is bought with unlocked records -- it changes only whether the rendered ones are
+right. `fx.gridcount` is now the DEFAULT rather than opt-in, and `REFERENCE_FLOOR` has been
+ratcheted from 0.26/0.29/0.40 to 0.80/0.90/0.88 with six new channels added.
+
+### Chesterfield as a test bench: every open assumption, swept
+
+With the patterns matched, this file's correlations became worth trusting, so every candidate in
+`assume.QUESTIONS` was A/B'd against it alone. Baseline +0.7607 mean correlation over 9 usable
+channels.
+
+    question              result
+    fx.sizeless           'fill' CONFIRMED -- skip -0.037, half -0.016, quarter -0.017
+    fx.typeless_profile   'rect' CONFIRMED -- disc -0.335, paraboloid -0.374, bell -0.461,
+                          gaussian -0.522, cone -0.511
+    fx.rootentry          'draw' CONFIRMED -- skip -0.012
+    fx.profile            the data-driven PATTERN_SHAPES selection beats ALL SIXTEEN forced
+                          profiles; the best of them (rect/square) loses 0.243
+    fx.scanner            inert on this file, once == loop exactly
+    levels.inversion      inert
+    nonfinite.fill        inert (0.0, 0.5, 1.0 identical)
+    distance.*            inert -- distance does not reach this file's outputs
+    blur.intensity        inert -- 'program' and 'slot3' identical here
+    normal.inversedy      inert -- this file's normal record has bit 2 clear, correctly
+
+Three questions this session had left UNDECIDABLE (`fx.sizeless`, `fx.rootentry`, and the
+typeless profile) are decided here, all three in favour of the existing default. They were
+undecidable before because the channels they were scored on had been flattened to noise by the
+missing lattice -- which is exactly what the note on those verdicts predicted.

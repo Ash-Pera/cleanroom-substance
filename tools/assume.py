@@ -35,6 +35,23 @@ import contextlib
 # a caller may pass anything, and an unknown key is that caller's business.
 QUESTIONS = {
     'blur.intensity':     ('program', 'slot3'),
+    # THE ABSOLUTE PIXEL SCALE, which render.py flags as unverified in four places -- blur,
+    # sharpen, directionalwarp and dirmotionblur all divide `intensity` by a hardcoded 256
+    # and none of them has evidence for that number. A constant-factor error here makes
+    # every blurred or warped edge too soft or too hard by the same ratio, which is exactly
+    # the kind of defect a correlation cannot see and a picture can.
+    'warp.reference_px':  (256.0, 64.0, 128.0, 320.0, 384.0, 448.0, 512.0, 640.0,
+                           768.0, 1024.0, 2048.0),
+    # WHICH INPUT IS WARPED AND WHICH SUPPLIES THE MAP. render.py calls this "the declared,
+    # unverified-at-the-bytecode-level convention": one paired source names the connections
+    # `input1` then `inputintensity`, matching edges[0]/[1] in that order, with no
+    # independent proof. Getting it backwards produces "a plausible-looking but misdirected
+    # warp, not a crash", which is precisely the failure this project treats as worst.
+    'dirwarp.edges':      ('declared', 'swapped'),
+    # THE KERNEL SHAPE, likewise flagged: "A separable box blur is used, which is what the
+    # parameter means before any kernel shape is assumed; a Gaussian would differ in the
+    # tails and nothing here distinguishes them."
+    'blur.kernel':        ('box', 'gaussian'),
     # NOT A FORMULA -- A PROBE. `emboss` is unimplemented and heads the reference packages'
     # blocker table at 18 outputs, but a heading is what a gap TOUCHES, not what fixing it
     # would release (see FORMAT-NOTES on the census). 'passthrough' renders the filter as
@@ -922,6 +939,27 @@ QUESTIONS = {
     'emboss.intensity':   ('program', 'reference'),
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
+    # WHAT A GENUINELY ZERO-WIDTH levels DOES. Where levelinlow equals levelinhigh the
+    # transfer has no width, and the branch currently reads it as a STEP: everything at or
+    # above the point maps to out_high, everything below to out_low. That is the arithmetic
+    # limit of a ramp as its width goes to zero, and it was the right correction to make
+    # against substituting a span of 1.0.
+    #
+    # THE ENGINE APPEARS NOT TO DO IT. Bricks graph 004's `emission` is the clean specimen,
+    # because it is four isolated dots on black and nothing else. rec12578 is a levels with
+    # both ends stated at 0.051, fed by rec7369, a uniform holding the red (0.500, 0.111,
+    # 0.111). Every one of those channels is above 0.051, so the step sends all of them to
+    # 1.0 and the dots come out WHITE. The engine's exported emission is red -- R 0.6255,
+    # G 0.1674, B 0.1555 where lit -- which is rec7369's colour, not a saturation of it.
+    #
+    #   'step'      today's reading: a hard threshold at the degenerate point
+    #   'identity'  pass the input through unchanged when the range is zero-width
+    #
+    # A step cannot preserve a hue and the reference plainly does, so identity is the
+    # candidate the picture suggests. It is a candidate rather than a fix because the step
+    # is a defensible limit and because 116 records corpus-wide state both ends equal -- a
+    # population wide enough that one specimen should not decide it.
+    'levels.zerospan':    ('step', 'identity'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
     'uniform.fill':       (),      # a value, not an enumeration
