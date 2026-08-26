@@ -36178,3 +36178,20 @@ $number placement program, and their branchoffset is constant/computed, orthogon
 the fx.branchoffset SCALE guard (whose worry was scaling rand-misfires in the integer-span
 group) operates on a population DISJOINT from the count-fix grids — the two are separate
 questions, not one.
+
+### The profile-softening "50 failures" are 5 auto-levels 0/0s — nonfinite.fill, not a softness limit
+
+Under a softened typeless profile at max_dim 96, peer 0b saw ~50 lost outputs; the ROOT is
+five pixelprocessors (Kutejnikov Bricks rec326/2744/5211/7643/10330, all class 0x0099,
+byte-identical), cascading into 8518 lost records / 50 outputs. Reading their program: each is
+a per-pixel AUTO-LEVELS `(L − lo)/(hi − lo)` with lo = 1−max(input1[2],[3]), hi =
+max(input1[0],[1]) — so the divisor v12 = hi − lo is a RANGE. When the softened stamps go
+sub-pixel at res 96, coverage rounds to zero, the field flattens, hi == lo, v12 = 0, and every
+sample is 0/0 → 100% non-finite. It is the nonfinite.fill (L−min)/(max−min) family reached from
+the profile side (profile flattens the input) rather than from an empty upstream.
+
+Consequences: (1) not a new failure mode and not a class softness "breaks" — it is the existing
+nonfinite.fill degeneracy, so its fix (whatever nonfinite.fill decides for 0/0) resolves these
+five regardless of profile; (2) softness stays available as normal's over-texture fix, its only
+interaction being these five pre-existing 0/0s; (3) resolution-dependence is explained — the
+range collapses only when stamps go sub-pixel, so it must be checked at the scoring resolution.
