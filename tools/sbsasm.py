@@ -32,6 +32,19 @@ FILTERS = {
     0: 'gradient', 1: 'blend', 2: 'transformation', 3: 'shuffle', 4: 'fxmaps',
     6: 'uniform', 7: 'warp', 10: 'blur', 12: 'directionalwarp', 13: 'sharpen',
     11: 'dirmotionblur', 22: 'curve',
+    # NOT CONTAINMENT-VERIFIED, AND IT CANNOT BE FROM THIS CORPUS. Every other name here
+    # is one a permitted `.sbs` uses AND that a paired binary confirms. Filter 8 has the
+    # first half and not the second: 26 permitted sources declare an `emboss` node, and all
+    # 26 compile to a binary containing ZERO filter-8 records -- while 44 filter-8 records
+    # exist across 40 corpus files. The two populations do not overlap, so nothing here
+    # pairs a declared emboss to a filter-8 record, and the earlier attempt to locate its
+    # parameters by containment failed for that reason rather than because the values were
+    # missing. Searching the same words under unit conversions -- degrees, radians, x100,
+    # x255, negated -- adds nothing, because there is no record to search.
+    #
+    # It matters beyond the label: `filter 'emboss' not implemented` blocks 19 declared
+    # outputs, and implementing it means implementing a filter whose identity rests on an
+    # external list, with no specimen in reach to check the reading against.
     8: 'emboss',
     14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
     20: 'pixelprocessor', 21: 'distance',
