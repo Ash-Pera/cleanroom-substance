@@ -38025,3 +38025,91 @@ flattening it has not improved anything. Where correlations are negative, the me
 read without the image.
 
 The peer's refusal stands, on better grounds than either measurement gave it.
+
+## Unified walk, iteration 6: input edges reproduced at 100% across SIXTEEN filters (all families)
+
+Added the interaction model (`_interaction_walk`): a colour-interaction spec is the additive walk with a
+per-feature slot count of base[i] + (tag bit 0)*cross[i], features being the constant, the clsbits, and
+each w1 `pair`'s state==1/2/3. With it, transformation (240,615 records -- a quarter of the corpus) and
+levels (89,239) reproduce inputs AND header length at 100%. The walk now covers:
+
+    blend, blur, curve, directionalwarp, dirmotionblur, dyngradient, emboss, gradient, hsl, levels,
+    normal, pixelprocessor, sharpen, transformation, uniform, warp
+
+Inputs == current edges: 100% on all sixteen (blend and pixelproc 99.998%, one overflow record each).
+That spans every filter FAMILY in the format: additive codes, mode-absent, two-shape (warp), ramp
+(gradient/curve), arity (pixelproc), and colour-interaction (transformation/levels/emboss). The
+structural walk is now the single mechanism for the edge/input decode across the whole corpus bar the
+payload filter.
+
+Header-length (end == header_words) is 100% on 11; the off-by-a-small-constant set is dyngradient,
+normal, pixelprocessor, uniform, emboss -- a cls-slot / colour_states-cross counting detail that does
+NOT touch inputs (all 100%) and only matters for param placement on the ones that carry params (emboss;
+levels is already 100%). To reconcile next, but not blocking the edge decode.
+
+Still outside the walk: fxmaps (payload/table), distance, shuffle (per_record), bitmap, vectorshape,
+text -- a handful of small shapes plus the one genuinely different payload structure.
+
+The architectural claim is now demonstrated at corpus scale: a UNIFIED format is decoded by a UNIFIED
+walk. Inputs/edges are exact across sixteen filters and every family; parameters are 99-100% where
+PARAM_SPEC is complete (via last-n-present) and better-than-memo where they differ. Remaining to ship:
+reconcile the five end-count details, cover the small remaining shapes, then have record_layout RETURN
+the decomposition and rewire sbsasm's four methods -- retiring the five special-case paths and the memo.
+
+## Unified walk: the end-count deltas are cosmetic; the design is validated and integration-ready
+
+Ran down the five end != header_words filters. uniform was a false alarm (header_words is None on 2,826
+of its records; the walk agrees on all where it is defined). The rest are constant per-filter offsets:
+pixelprocessor -1 (a program slot the cost model's const=3 counts but the arity walk does not place),
+normal +2 and dyngradient +1 (my hardcoded BASE_INPUTS/n_hdr not matching the cost model's fitted const=1
+/1.5), emboss mixed (colour_states cross bookkeeping).
+
+These do NOT affect the decode. The two OUTPUTS are validated independently of the walk's internal end:
+- EDGES come from the walk's `inputs` list, validated at 100% across all sixteen filters.
+- PARAMS come from last-n-present, whose boundary is the cost model's header_words (authoritative), NOT
+  the walk's internal end -- so a walk that miscounts its own cls/param split still names params from the
+  correct trailing slots. Params are 99-100% where PARAM_SPEC is complete.
+So the deltas are walk-internal bookkeeping to tidy for a clean record_layout.decompose(), not correctness
+bugs. They matter only where a filter has params AND an end delta -- which is just emboss (levels, the
+other interaction param filter, is end-exact).
+
+STATE OF THE UNIFICATION after six prototype iterations: the design is validated end to end. One
+structural walk reproduces the input edges at 100% across sixteen filters spanning every format family,
+and parameters at 99-100% (better-than-memo where they differ, filling ~28k memo gaps and avoiding the
+memo's 1,004 errors). What the prototype has NOT done -- and what "shipping" now means -- is the
+integration: extend record_layout to RETURN (inputs, cls_slots, param_slots) with the end deltas
+reconciled, then rewire sbsasm's layout/edge_slots/named_parameters/program_slots to consume it and
+retire the five special-case paths plus the memo, validating 0-diff on the current-correct records and
+bytecode/render on the ones where the memo is wrong. That is a real edit to shared decoder files
+(record_layout, sbsasm) and is the next phase; the prototype has de-risked every piece it rests on.
+
+### A four-word gradient record states its count, and the count is the bound
+
+`Record.ramp` required five words: slot 2 the stop count, slot 3 the table start, slot 4 an
+upper bound. Two records in the corpus have only four -- `concrete_049` 110 and 235, class
+0x0118, words `[hdr, uid, 4, ptr]` -- so they returned None and refused with "gradient record
+carries no readable ramp", which the census attributed six declared outputs to.
+
+Slot 4 is described in that docstring as "an upper bound on the table, usually where the
+record's program begins". It is a BOUND, not the extent, and `count x width` is the extent
+exactly. The width formula already established there -- `4 + 2*colour + 2*(class bit 8)` --
+gives 6 for these records, and 6 is the only step that reads back a ramp:
+
+    width 6    positions 0.0, 0.5, 0.5042, 1.0        ascending
+    width 4    positions 0.0, 0.5, 1.0, 0.5042        out of order
+    width 8    positions 0.0, 1.0, 0.5, 0.3984        out of order
+
+A ramp's positions must ascend, so the width is singled out here rather than merely permitted.
+The values alternate 0 and 65535 -- a hard-edged black/white mask, which is what a two-stop
+pair repeated looks like.
+
+Corpus-wide every one of 591 gradient records now reads a ramp, where some previously did not.
+
+**IT RELEASES NOTHING, and the census shows why.** Rendered outputs stay at 46 of 127: the
+"no readable ramp" heading disappears and `blur intensity: slot does not read as a plausible
+intensity` rises from 14 to 20. Those six outputs were behind two gaps and are now behind one.
+That is the heading arithmetic this file records elsewhere, seen from the other side -- fixing a
+root does not release an output unless it was the last one.
+
+Reference agreement is unchanged to four decimals: 12 usable channels, mean +0.7997 before and
+after.

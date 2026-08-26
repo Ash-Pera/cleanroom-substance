@@ -2943,8 +2943,22 @@ class Record:
         (0.569, 0.020, 0.000): either a form this decode picks wrongly or a coincidental
         position collision with an unrelated record, and one specimen does not separate
         those.
+
+        A FOUR-WORD RECORD STATES ITS COUNT AND START AND NO UPPER BOUND, and the count
+        supplies one. This used to require five words, so `concrete_049` records 110 and
+        235 -- class 0x0118, words [hdr, uid, 4, ptr] -- returned None and refused with
+        "gradient record carries no readable ramp", blocking six declared outputs. Slot 4
+        is described above as "an upper bound on the table": it is a BOUND, not the extent,
+        and `count x width` is the extent exactly.
+
+        The width formula is the one already established here, and on these two records it
+        is the only one that reads back a ramp at all. `colour` is False and class bit 8 is
+        set, so width is 4 + 0 + 2 = 6, and stepping by 6 gives positions 0.0, 0.5, 0.5042,
+        1.0 -- ascending, which a ramp must be -- with values alternating 0 and 65535.
+        Stepping by 4 gives 0.0, 0.5, 1.0, 0.5042 and by 8 gives 0.0, 1.0, 0.5, 0.3984;
+        both are out of order, so the width is singled out here rather than merely allowed.
         """
-        if self.filter_id != 0 or len(self.words) < 5:
+        if self.filter_id != 0 or len(self.words) < 4:
             return None
         count = self.words[2]
         if not count:
@@ -2968,6 +2982,13 @@ class Record:
             if self.asm.body_lo <= a < self.asm.body_hi:
                 start, end = a, b
                 break
+        if start is None and len(self.words) > 3:
+            # No successor word to bound the table -- derive the end from the count. See
+            # the four-word note in this docstring.
+            a = self.words[3] + 52
+            if self.asm.body_lo <= a < self.asm.body_hi:
+                width = 4 + 2 * bool(self.colour) + 2 * ((self.cls >> 8) & 1)
+                start, end = a, a + count * width
         if start is None:
             return None
         # The table need not lie inside this record. The record directory is a sorted
