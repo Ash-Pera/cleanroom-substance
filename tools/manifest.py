@@ -98,6 +98,12 @@ def output_names(asm):
     Empty when no manifest sits beside the assembly, so callers must fall back rather
     than assume a name exists. It is 100% on this corpus and that is a property of the
     corpus, not a guarantee of the format.
+
+    The identifier is the output's OWN NAME. The manifest separately carries
+    `<channel names="...">`, which says what the map means to a renderer -- they usually
+    coincide and are not required to. Nothing here needs the distinction yet, so the
+    channel list is parsed and left unexposed rather than given an accessor no caller
+    uses; `_parsed`'s third element is where it sits if a caller ever does.
     """
     return _parsed(asm)[0]
 
@@ -105,16 +111,6 @@ def output_names(asm):
 def name_for(asm, uid, default=None):
     """The identifier for one output uid, or `default`."""
     return output_names(asm).get(uid, default)
-
-
-def channel_names(asm):
-    """Channel semantics in declaration order: baseColor, normal, roughness, ...
-
-    Separate from `output_names`: the identifier is the output's own name, while a
-    channel says what the map MEANS to a renderer. They usually coincide and are not
-    required to.
-    """
-    return _parsed(asm)[2]
 
 
 def image_input_defaults(asm):
