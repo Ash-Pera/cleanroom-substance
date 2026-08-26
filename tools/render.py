@@ -61,7 +61,7 @@ import os
 import re
 
 import numpy as np
-import transpile, sbsruntime, fxrender, distance, assume, manifest
+import transpile, sbsruntime, fxrender, distance, assume, manifest, decompose
 
 
 class Unsupported(Exception):
