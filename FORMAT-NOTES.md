@@ -35917,3 +35917,25 @@ normalised grids without needing to read the program.
 population is merely the right one to ask about. And the middle group is identified by its
 span alone -- I have not checked against the programs that those 113 really are grids, only
 that their spans are rational with a divisor consistent with the count.
+
+## Levels has no implicit inversion — an inverted map always names both endpoints
+
+Corpus scan of the permitted paired sources (142 `.sbs`, tight `constantValueFloat` read):
+inverted levels mappings occur 66 times, and **every one names both endpoints
+explicitly** — 64 output inversions (`leveloutlow=1, levelouthigh=0`) and 2 input
+inversions (`levelinlow=1.0, levelinhigh=0.8`, concrete_002). There is not a single
+case where a one-sided declaration stands in for an inversion.
+
+Consequence for decode and render: a compiled levels with only one input-side bit set is
+therefore **never** an implied inversion — the absent side is a genuine default. The
+decoder needs no inversion heuristic and the renderer needs no "complete the pair" default.
+This is the source-side counterpart to peer 0b's render-score refutation of the
+inversion-default candidate on graph 003 (fa08149): the render disagreed with the engine,
+and the sources say why — the format would have named both endpoints if inversion were meant.
+
+Genuine one-sided *extreme* input levels do exist and are authored intent, not degeneracy
+bugs: `levelinlow=1.0` alone appears in Portfolio__metal_002 (×4) and DLG-Tools__Damaged_Iron_01,
+`levelinhigh≈0.0045` alone in AB_ScrewGenerator. So a one-sided rec9/rec39 is a faithful
+decode of an authored `[1.0, default]` range. Caveat: none of these specimens, nor the actual
+Kutejnikov Bricks source behind graph 003, are in the 5 scoreable reference packs — so the
+engine's zero-width-levels behavior stays unresolved for lack of a scoreable second specimen.
