@@ -35966,11 +35966,19 @@ pattern size. A size-sized step needs 1/size steps per axis to tile, (1/size)² 
 16 for rec34 (size 0.25), 5.8 for rec65 (size 0.4146). Peer 0b measured the coverage
 deficits as exactly 16.0 and 5.8. So the node is meant to lay (1/size)² stamps by looping
 its body while the in-bounds predicate holds; a renderer that runs the body once lays one,
-giving a coverage deficit of exactly 1/size². This is the root cause of the Chesterfield
-metallic/height/AO footprint gap (and the STEPPER-driven fxmaps class generally): not a
-missing decode field, not a global size factor, but the 0x99 loop being run once instead
-of iterated. Fix is render-side (loop while the tail predicate holds, emit per step; seed
-slot 18 with the initial step direction); the semantics are the decode finding here.
+giving a coverage deficit of exactly 1/size² FOR A RECORD WHOSE GRID IS >1. Fix is
+render-side (loop while the tail predicate holds, emit per step; the addnode below seeds the
+scan state); the loop semantics are the decode finding here.
+
+**CORRECTION — this is NOT the Chesterfield footprint root cause, and the 1/size² match was
+a coincidence I over-read.** Peer 0b read the live frame: rec34's grid is legitimately 1×1.
+`gridsize` comes from program 532980 as `exp2(comp0 − comp1)` of `$outputsize` = the canvas
+ASPECT RATIO (exp2(log2 W − log2 H) = W/H), which is 1 for any square canvas — hence a
+uniform (1,1) cell size across every scanner record measured, all square. So the scanner
+runs its body once BECAUSE the geometry it is handed correctly describes one cell; it is not
+a bug for rec34. rec34's real 4×4 tiling lives elsewhere — see the $number-grid note below.
+The 0x99 loop remains a genuine latent fix for records whose grid is actually >1, off by
+default; it simply does not explain Chesterfield.
 
 ### The addnode (0x18B) numberadded program IS the scan initializer
 
@@ -35993,3 +36001,25 @@ container (Perm) fills a missing slot 18 with 0, the scan steps by zero and lays
 on the first — indistinguishable from not looping. The fix is to run the file's own
 initializer into the shared frame, NOT to hardcode slot 18 (which would fit a value the
 compiled program already carries).
+
+### rec34's real 4×4 tiling is a $number-indexed grid in the pattern-position program
+
+The Chesterfield footprint gap is NOT the scanner and NOT an aspect miscompute — both of
+those are faithful. rec34's tiling is laid by program 530756 (the node that writes the
+entry's patternsize/frameoffset slots 26/28/29/31), which reads sysvar(10) = $number
+(SYSVARS[10]='$number', confirmed) and computes the emitted position as:
+
+    pos = ( (0.125 + 0.25·($number mod 4)) mod 1 , (0.125 + 0.25·floor($number/4)) mod 1 )
+
+The 4 and the 0.25 are HARDWIRED constants. Evaluated over $number 0..15 this lands exactly
+on {0.125, 0.375, 0.625, 0.875}² — a 4×4 grid, 16 emissions. So rec34 IS a 4×4 layout, but
+expressed as a $number-indexed grid, not a scanner.
+
+The discrepancy is therefore an EMISSION COUNT tension: 530756 is built to fill $number
+0..15, but `numberadded` evaluates to 1 (it derives from gridsize=1, the aspect). One of
+sixteen cells gets a stamp — the measured 16× deficit exactly. Open: `numberadded` =
+((gridsize−1 mod 2)+gridsize)² produces only odd squares {1,9,25…} and can never equal 16,
+so the count that should fill a $number-grid is not simply "numberadded should be 16" — the
+count path for a $number-grid record is not yet pinned. What IS solid: the layout is
+unambiguously 4×4 wanting 16 emissions, and the emission count delivers 1. This is where the
+footprint gap actually lives.
