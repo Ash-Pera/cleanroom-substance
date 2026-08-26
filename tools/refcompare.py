@@ -59,6 +59,21 @@ downstream are multiplying already-sparse maps together, which is what multiply 
 So the honest reading of this table is a baseline, not a validation: nothing matches yet,
 and the single number to move is the footprint.
 
+WHERE THE RESIDUAL PROBABLY IS NOT. After the blend-opacity fix `normal` reads std 0.1018
+against the reference's 0.0968 while its MAE ROSE, 0.0783 -> 0.1039. Right variance and a
+worse error is a POSITION signature, not a size one: patterns of roughly the right extent
+landing in the wrong places score worse than no patterns at all, because a flat image whose
+mean is right is cheap on MAE. So an experiment that perturbs `patternsize` and rescores is
+likely to move nothing -- the size path is separately settled, resolving to values from 0.25
+to 2.92 including a non-square, none of them unset.
+
+The candidate is the position path, `branchoffset` + `frameoffset`. Measured by the session
+that decoded the FX structure: their combined x-extent has a median of 0.835 -- about one
+cell, which is what tiling wants -- but a p90 of 7.8, so some records place patterns well
+outside the unit square. That is a hypothesis with a number attached and not a finding; it
+is recorded here because it is the second arm of the same experiment and would otherwise be
+spent on the lane it has already been ruled out of.
+
 PROVENANCE. The exported maps are distribution data published by the material's own
 author, on the same footing as the .sbsar beside them -- the standing exclusion is of
 Adobe's engine and of Adobe's bundled .sbs sources, neither of which is involved in
