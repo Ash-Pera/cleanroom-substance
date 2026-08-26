@@ -811,6 +811,108 @@ def test_blendingmode_matches_the_source_that_declares_it():
     return
 
 
+# Colour pairings this containment finds today. A floor, for the same reason
+# BLENDMODE_PAIRINGS has one.
+UNIFORM_COLOUR_PAIRINGS = 150
+
+_OUTPUTCOLOR = re.compile(
+    r'<name v="outputcolor"/>.*?<constantValueFloat4 v="([-\d.e ]+)"/>', re.S)
+
+
+def test_uniform_colour_sits_where_the_source_says_it_does():
+    """`uniform`'s fill colour, against the sources that declare it.
+
+    render.py reads the fill from the words after the size-expression slot, and cited as
+    evidence "exact containment against a real paired source, DLG-Tools__US_Flag.sbs -- four
+    DISTINCT declared outputcolor values". That check was run with the broken pairing (see
+    `provenance.own_assembly`), so it compared US_Flag's declarations against a different
+    package's binary and its four matches were coincidences.
+
+    Re-run with each source paired to its own binary, the reading holds far more broadly
+    than the claim it was resting on:
+
+        distinctive declared colours          200
+          found in the source's own binary    182
+            at slot 2                         181
+            at slot 7                           1
+          not found                            18
+
+    A colour is counted only if it is DISTINCTIVE -- every component 0 or 1 discriminates
+    nothing, since black, white and opaque alpha occur in every file -- and only if the
+    source declares it once, so it can identify a single record.
+
+    The 18 misses are not counter-examples to the slot; they are colours the binary does not
+    contain at all, which a node feeding an instanced subgraph would produce. What would
+    falsify the reading is a colour found at some OTHER slot, and there is one, at 7.
+    """
+    try:
+        own_assembly = provenance.own_assembly
+    except AttributeError:
+        print('SKIP test_uniform_colour_sits_where_the_source_says_it_does: no pairing helper')
+        return
+    found = collections.Counter()
+    slots = collections.Counter()
+    sources = 0
+    for path in provenance.paired_sources():
+        if provenance.matches(path, provenance.EXCLUDED_AUTHORS):
+            continue
+        try:
+            text = open(path, encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        declared = []
+        for body in _SBS_NODE.findall(text):
+            if '<filter v="uniform"/>' not in body:
+                continue
+            m = _OUTPUTCOLOR.search(body)
+            if m:
+                declared.append(tuple(float(x) for x in m.group(1).split()))
+        if not declared:
+            continue
+        own = own_assembly(path)
+        if not own:
+            continue
+        try:
+            asm = Assembly(own)
+        except Exception:
+            continue
+        recs = [r for r in asm.records if r.filter_id == 6]
+        if not recs:
+            continue
+        sources += 1
+        once = collections.Counter(declared)
+        for colour in declared:
+            if once[colour] != 1 or len(colour) != 4:
+                continue
+            if all(abs(x) < 1e-9 or abs(x - 1.0) < 1e-9 for x in colour):
+                continue                      # round values discriminate nothing
+            at = None
+            for rec in recs:
+                for k in range(len(rec.words) - 3):
+                    w = np.frombuffer(np.array(rec.words[k:k + 4], dtype=np.uint32).tobytes(),
+                                      dtype='<f4')
+                    if all(abs(float(w[j]) - colour[j]) < 1e-5 for j in range(4)):
+                        at = k
+                        break
+                if at is not None:
+                    break
+            if at is None:
+                found['missing'] += 1
+            else:
+                found['found'] += 1
+                slots[at] += 1
+    if not sources:
+        print('SKIP test_uniform_colour_sits_where_the_source_says_it_does: no paired sources')
+        return
+    assert found['found'] >= UNIFORM_COLOUR_PAIRINGS, (
+        'only %d colours located, fewer than the recorded %d -- the containment has stopped '
+        'finding evidence rather than passing' % (found['found'], UNIFORM_COLOUR_PAIRINGS))
+    top = slots.most_common(1)[0]
+    assert top[0] == 2 and top[1] >= 0.9 * found['found'], (
+        'the fill colour no longer sits predominantly at slot 2: %s' % (slots.most_common(4),))
+    return
+
+
 # The agreement each reference-scored channel reaches today, as a FLOOR. Not a target:
 # these are correlations against the engine's own exported maps, and the point is that a
 # change cannot quietly take one away. Set a little under the measured value so ordinary
@@ -908,7 +1010,8 @@ if __name__ == '__main__':
                test_dyngradient_is_a_ramp_lookup,
                test_closure_never_claims_a_dependency_the_manifest_denies,
                test_blendingmode_matches_the_source_that_declares_it,
-               test_reference_agreement_does_not_regress):
+               test_reference_agreement_does_not_regress,
+               test_uniform_colour_sits_where_the_source_says_it_does):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()
