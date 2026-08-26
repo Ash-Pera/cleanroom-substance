@@ -120,6 +120,33 @@ QUESTIONS = {
     # evidence, and rarity plus boolean shape is what distinguishes this one from the five
     # other differing words -- not a second package that sets it. Kept OPT-IN for that
     # reason; a second package that sets the bit and needs the flip would settle it.
+    #
+    # ADOPTED AS THE DEFAULT (see render.py's normal branch for the full note). The
+    # reservation two paragraphs up -- one positive specimen, one moving channel -- was
+    # written before the reference-pairing fixes and the patterning work. Bricks now renders
+    # 12,585 of 12,585 records and FIVE of its graphs produce a normal with real signal, in
+    # each of TWO assemblies, fed by TEN DIFFERENT `normal` records, every one carrying
+    # word1 = 5.
+    #
+    # On all five signal-carrying graphs the correlation flips sign with its magnitude
+    # intact to three decimals -- -0.585/-0.475/-0.594/-0.504/-0.683 becoming +0.585/+0.475/
+    # +0.594/+0.504/+0.683 -- which is the signature of a handedness error and not of a gain
+    # or a geometry error. Across every reference package exactly 7 of 112 scored channels
+    # move, all `normal` ch1, all improving; the other 105 are byte-identical. Overall MAE
+    # 0.1332 -> 0.1318.
+    #
+    # The bit is also not as rare as recorded above: 118 of 1,447 normal records set it,
+    # across 40 of 444 files, against the "2 of 53" measured on a much smaller population.
+    #
+    # THE ORIGINAL RESERVATION STILL STANDS AND IS NOT DISCHARGED. Only one package with an
+    # exported normal map sets the bit on the record that feeds it, so any field set in
+    # Bricks and clear elsewhere fits this evidence just as well. `minime453__Stylized_
+    # Sandy_Stone_Path` sets the bit on rec 175 -- which feeds basecolor, AO and height --
+    # while its exported normal comes from rec 1452 with the bit CLEAR, and the
+    # renderer-free arbiter says that package needs no flip. Consistent, so nothing is
+    # refuted; not a second confirmation either. 'ignore' restores the old behaviour exactly
+    # (0.1332), and a package that sets the bit ON its normal output and does NOT need the
+    # flip would settle it the other way.
     'normal.inversedy':   ('ignore', 'word1bit2'),
     # PUT TO THE REFERENCE MAPS. `slot3` moves nothing at all -- 24 rendered outputs before
     # and after -- so the live candidate is `program`, and on the five reference packages it
@@ -1449,6 +1476,37 @@ QUESTIONS = {
     #
     # So the default does not move. A choice that improves two maps and flattens two others
     # is the half-correction this file already records being caught by twice.
+    # THE 0x08 ENTRY FAMILY: A POSITION WITH NO SHAPE. Splitting entry tags by low byte
+    # (see FORMAT-NOTES) isolates 430 entries that occur at nibble 0 and nowhere else and
+    # never state a patterntype. Their layout carries ONE program -- `branchoffset` -- and
+    # nothing that says what to draw or how big. An entry that states only where it is
+    # looks like a marker rather than a draw, and drawing it is what covers a canvas with
+    # full cells.
+    #
+    # This is narrower than `fx.sizeless`, which skips ANY typeless sizeless pattern
+    # regardless of family. That question was refused on ChesterfieldSofa partly because
+    # skipping the fills let oversized STRIPS through, which smeared its roughness -- a
+    # side effect of the fills' removal rather than of the fills themselves.
+    #
+    # SCORED AND REFUSED, and it fails the same way the broader question did. Over the
+    # reference packages, 12 usable channels: mean +0.7997 -> +0.7910, nothing gained or
+    # lost, and the movement is
+    #
+    #     roughness ch0     +0.854 -> +0.743
+    #     basecolor ch0     +0.667 -> +0.669
+    #     basecolor ch2     +0.446 -> +0.449
+    #
+    # Two thousandths of basecolor against a tenth of roughness. So the marker reading may
+    # well be right about WHAT these entries are and it is still not an improvement,
+    # because what the fills are covering is worse than the fills.
+    #
+    # AND THE OBVIOUS PAIRING DOES NOT RESCUE IT. If the fills merely hide oversized
+    # strips, skipping them plus shrinking the strips should fix both. Shrinking
+    # patternsize globally by 2, 4, 7, 10 and 20 takes the mean to 0.379, 0.236, 0.197,
+    # 0.203 and 0.174 -- it destroys the tufting lattice `fx.gridcount` established, whose
+    # sizes were already right. That experiment scales correct sizes along with the
+    # oversized ones and so cannot test the hypothesis; a narrower one would have to.
+    'fx.markers':         ('draw', 'skip'),
     # NIBBLE 0 IS NOT ONE POPULATION -- and a candidate for it was added here and REMOVED,
     # because it renders byte-identically: 0 of 1,296 fxmaps records change. The structural
     # finding is kept in FORMAT-NOTES; the lever is not, per the same rule that retired

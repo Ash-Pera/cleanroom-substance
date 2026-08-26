@@ -1149,7 +1149,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             # `patterntype`, and by the time `splat` runs the tag is gone -- so it is
             # attached here rather than re-derived, which would mean re-walking the
             # table and guessing which entry produced which emission.
-            got = {'patterntype': fx_patterntype(_t)}
+            got = {'patterntype': fx_patterntype(_t), '_tag': _t}
             for name, (kind, value) in in_eval_order(params):
                 if value is None:
                     continue
@@ -1191,7 +1191,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         m = len(numbers)
         cols = []
         for _o, _t, params in table:
-            per = {'patterntype': fx_patterntype(_t)}
+            per = {'patterntype': fx_patterntype(_t), '_tag': _t}
             wide = {}
             for name, (kind, value) in in_eval_order(params):
                 if value is None:
@@ -1858,8 +1858,13 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # the other way: this is one pattern per record with an exact signature, that one is
     # every sizeless pattern anywhere.
     _rootskip = assume.assumed('fx.rootentry') == 'skip'
+    # See assume.QUESTIONS['fx.markers'] -- the 0x08 entry family states a position and
+    # nothing else. `_tag` travels with each pattern from `emit`.
+    _markerskip = assume.assumed('fx.markers') == 'skip'
 
     for p in patterns:
+        if _markerskip and (p.get('_tag') is not None) and (int(p['_tag']) & 0xFF) == 0x08:
+            continue
         if (_rootskip and p.get('patternsize') is None and p.get('patterntype') is None
                 and p.get('branchoffset') is not None):
             _b = np.asarray(p['branchoffset'], dtype=np.float64).ravel()

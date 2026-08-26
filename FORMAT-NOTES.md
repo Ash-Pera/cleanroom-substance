@@ -37830,3 +37830,138 @@ a shape on them (`fx.typeless_profile = disc`) was measured to lose 0.34 correla
 Reading nibble-0/0x48 entries as patterntype 2 was implemented and REMOVED: 0 of 1,296 fxmaps
 records render differently, so those 80 entries never reach a splat on this corpus. The split
 itself is the finding.
+
+## Unified walk, iteration 3: inputs and header structure at ~100%, params 93-98%
+
+Two structural refinements took the walk from "reproduces the counts" to "reproduces the decode":
+
+1. **All w1 fields come AFTER the cls slots, in field order** -- not split into "state-3 inputs before
+   cls, params after". A state-3 (0b11) field is an image input; state-01/10 are params; all sit in the
+   w1-field region. This fixed the blend state-11 interleaving (inputs 97.4% -> 99.7%).
+
+2. **The backward-index invariant distinguishes a real image input from a field-specific baked value.**
+   0b11 does NOT universally mean image input: blend field 4 reads 0b11 but its slot holds a float
+   (~0.27), not a record index -- 814 of 818 are not backward indices. A state-3 slot is an edge only
+   when it holds a valid backward record index (0 <= v < this record's index), exactly the invariant the
+   current decode already applies. With it, inputs reach ~100%:
+
+    filter      inputs == edges    end == header_words
+    blend         99.998%              100%
+    blur         100%                  100%
+    directionalwarp 100%               100%
+    dirmotionblur 100%                 100%
+    gradient     100%                  100%
+    warp         100%                  100%
+
+3. **Param NAMING is a present-order zip, not a bit-index map.** PARAM_SPEC's masks do not align to the
+   cost model's 2-bit field boundaries (directionalwarp intensity is bits 1-2, warpangle bits 3-4, while
+   the cost model indexes fields at bits 0-1/2-3/...). So the walk gets the POSITION right but must name
+   the slots by zipping PARAM_SPEC's present params (in spec order) onto the walk's param positions (in
+   order), not by field index. That lifted directionalwarp params 92.0% -> 96.5%.
+
+Params now: blend 92.98%, directionalwarp 96.53%, dirmotionblur 97.76%. Blend's 22,476 disagreements are
+the 1,004 proven memo-errors plus ~21k field-state opacitymult cases that render.py already compensates
+(the walk reads the value the render uses); directionalwarp's 2,180 are a naming/placement residual with
+zero memo-errors, to chase next. The ARCHITECTURE is validated: one structural walk reproduces the input
+edges and header structure exactly across six diverse filters, and the parameters modulo the memo's own
+known errors. Next: close the dirwarp naming residual, extend to the arity filters (pixelproc/fxmaps via
+the cost model's arity term), then extend record_layout to return the decomposition and rewire sbsasm.
+
+## Unified walk: the param-naming ceiling is a field-alignment mismatch, and it is the core remaining task
+
+The unified walk reproduces edges and header structure at ~100% (iteration 3). Parameters plateau at
+92-98% across every placement variant tried (field-walk, present-order zip, last-n-present slots), and
+the ceiling has ONE root cause, now pinned:
+
+**The cost model's w1 decomposition is a COUNTING decomposition, not the structural one.** It slices w1
+into uniform 2-bit fields from bit 0 and fits a per-field cost so the SUM reproduces header_words exactly
+-- which it does, 100%. But those field boundaries do not match PARAM_SPEC's real parameter bits.
+directionalwarp is the clean example: PARAM_SPEC puts intensity at bits 1-2 and warpangle at bits 3-4
+(shifted one bit), so the cost model reads bits 2-3 as a single "state-3 field" and the walk sees zero
+params where there are two (intensity-program + warpangle-baked). The COUNT is still right; the
+NAME/POSITION assignment is not.
+
+So the unification's remaining core task is a DATA reconciliation, not more code: build, per filter, one
+w1 field spec whose sub-fields (bit range + role: named-param / image-input / unnamed-structural) both
+(a) sum to the cost model's header_words and (b) carry PARAM_SPEC's real bit-ranges and names. With that,
+the single walk names every slot; without it, any rule hits ~92-98% because it is guessing alignment.
+
+What is SOLID and done: the structural walk itself -- base arity, two-shape w1 presence, ramp handling,
+cls-slot walk, the w1-after-cls ordering, and the backward-index invariant that separates image inputs
+from field-specific baked values. Edges and header length are exact across six diverse filters. The
+92-98% param agreement is against the MEMO, and its disagreements are the memo's own known errors (blend's
+1,004 size-expr misattributions, the render-compensated field-state opacitymult cases) plus this
+alignment gap -- not walk-structure errors.
+
+Concrete next steps, in order: (1) reconcile the w1 field spec per filter (start with the two-param
+filters where PARAM_SPEC is complete: dirwarp, dirmotion); (2) extend the walk to the arity filters
+(pixelproc, fxmaps) via the cost model's arity term; (3) extend record_layout to RETURN the decomposition
+(inputs, cls_slots, param_slots) rather than only header_words; (4) rewire sbsasm's four decode methods
+through it and retire the five special cases and the memo, validating 0-diff where current is right and
+bytecode/render as truth where the memo is wrong.
+
+### The 0x08 markers may well be markers, and skipping them is still a loss
+
+The low-byte split isolates 430 entries whose family occurs only at nibble 0 and whose layout
+carries ONE program, `branchoffset` -- a position, with nothing that says what to draw or how
+big. That reads like a marker rather than a draw, and drawing markers is what covers a canvas in
+full cells. `assume.QUESTIONS['fx.markers']` tests exactly that family, which is narrower than
+`fx.sizeless` (any typeless sizeless pattern, whatever its tag).
+
+Scored over the reference packages, 12 usable channels:
+
+    mean signed correlation   +0.7997 -> +0.7910      nothing gained, nothing lost
+      roughness ch0            +0.854 -> +0.743
+      basecolor ch0            +0.667 -> +0.669
+      basecolor ch2            +0.446 -> +0.449
+
+Two thousandths of basecolor against a tenth of roughness. **The marker reading may be right
+about what these entries ARE and still not be an improvement**, because what the fills are
+covering is worse than the fills: the same oversized strips that smeared roughness under
+`fx.sizeless`.
+
+THE OBVIOUS PAIRING DOES NOT RESCUE IT, and the experiment that showed so was too blunt to
+settle anything. If the fills only hide oversized strips, skipping them AND shrinking the strips
+should fix both. Shrinking `patternsize` globally by 2, 4, 7, 10, 20 gives means of 0.379, 0.236,
+0.197, 0.203, 0.174 -- height alone falls 0.950 -> 0.863 -> 0.517. That is the tufting lattice
+being destroyed: `fx.gridcount` established those sizes and they were already right, and a global
+divisor scales them along with the oversized ones. The hypothesis is untested rather than
+refuted; testing it needs a divisor that reaches the strip entries and not the tuft entries, and
+nothing in the decode currently separates them.
+
+So three readings of the white-FX-Map population have now been scored and refused --
+`fx.sizeless`, `fx.rootentry`, `fx.markers` -- and they fail in the same way each time: the thing
+underneath is worse than the thing on top.
+
+## CORRECTION + result: the param layer is essentially done; the field misalignment is NOT a blocker
+
+The previous note called the PARAM_SPEC/cost-model field misalignment "the core remaining task". That was
+measured wrong -- I was scoring the walk against the memo's [] on records the memo has NO KEY for, and
+against the memo's own 1,004 size-expr errors, and counting both as walk failures. Measured against the
+memo's REAL (non-empty) answers, with the simple placement "params = the last n_present header slots"
+(n_present from PARAM_SPEC's present count, boundary from the cost model's header_words):
+
+    filter          agree where memo has a real answer    records recovered from memo gaps
+    directionalwarp        60,752 / 60,753  (100.00%)              +1,775
+    dirmotionblur          15,288 / 15,301  ( 99.92%)              +  338
+    blend                 182,976 /184,022  ( 99.43%)              +21,435   (residual = the 1,004 memo errors)
+    levels                 77,649 / 80,667  ( 96.26%)              +4,428    (the documented baked-widths gap)
+
+So the unified walk's parameters reproduce the memo's actual data at 99-100%, AND fill ~28k gaps the memo
+has no key for, AND avoid the memo's 1,004 known errors. It is a strictly better parameter decoder than
+layouts.json on the filters where PARAM_SPEC is complete.
+
+The field misalignment is real but IRRELEVANT to placement: last-n-present never consults the cost model's
+2-bit fields (which is where the misalignment lives) -- it uses only PARAM_SPEC's present COUNT and the
+cost model's header_words BOUNDARY. The misalignment only bites the field-walk naming approach, which
+last-n-present does not use. So there is no data-reconciliation task blocking the parameter layer after
+all; the earlier framing over-scoped it.
+
+Standing residuals, both known: blend's 1,004 memo errors (the walk is right, the memo wrong -- proven by
+offset identity earlier), and levels 96.26% (the cost model's own noted "five fields, baked widths not
+separated" gap -- a levels-specific derive_costs task, not a walk-structure problem).
+
+So the decoder unification now stands validated end to end on the core filters: edges and header via the
+structural walk (~100%), and parameters via last-n-present (99-100% + gap recovery). Remaining to ship:
+extend to the arity filters (pixelproc/fxmaps), settle levels' widths, then have record_layout return the
+decomposition and rewire sbsasm's four methods through it, retiring the five special cases and the memo.
