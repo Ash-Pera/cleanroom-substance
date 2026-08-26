@@ -35,6 +35,25 @@ import contextlib
 # a caller may pass anything, and an unknown key is that caller's business.
 QUESTIONS = {
     'blur.intensity':     ('program', 'slot3'),
+    # PUT TO THE REFERENCE MAPS. `slot3` moves nothing at all -- 24 rendered outputs before
+    # and after -- so the live candidate is `program`, and on the five reference packages it
+    # is the single biggest lever there is: 24 -> 48 declared outputs rendered, 18 -> 24
+    # scoreable channels. Scored, though, it is NEUTRAL rather than confirmed:
+    #
+    #   * all 18 channels that already scored come back BYTE-IDENTICAL. So it costs
+    #     nothing, which is worth having on its own -- it is not a trade.
+    #   * the 6 it adds carry no structure to speak of: correlations +0.140, +0.031,
+    #     +0.159, -0.158, +0.109, +0.040, with fitted slopes 0.02-0.37.
+    #
+    # So the references neither refute it nor confirm it, and it is NOT adopted as a
+    # default on the strength of the count. The confound is worth naming precisely because
+    # it is the reason the arm cannot decide: all 6 new channels are Bricks_and_tiles, and
+    # Bricks is full of FX-Maps that render at exactly 1.0 (see FORMAT-NOTES on the white
+    # FX-Maps). A washed-out generator upstream would produce exactly this signature --
+    # rendered, low variance, near-zero correlation -- whether the intensity is right or
+    # wrong. Nothing here separates a bad intensity from a good intensity applied to a bad
+    # input, and the way to separate them is to fix the white FX-Maps and re-run, not to
+    # pick a candidate.
     # 'wide' names a reading rather than a location: take component 0 of a 2-COMPONENT
     # program result. The 31 `distance` records that locate nothing have only 2-component
     # programs -- 24 of them a single `exp2(min(swizzle($sizelog2) - $sizelog2, 0))`, an

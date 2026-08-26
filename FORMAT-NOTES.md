@@ -36300,3 +36300,51 @@ mapping the population it supposedly mis-selects — the same proxy-vs-code erro
 profile means without counting rendered outputs.) What genuinely remains, unchanged: the guard
 declines correctly but its SCALE is unvalidated on the residual 10,936 non-grid 'neither'
 records — render-side, the one honest open item.
+
+### The root-cause census is a work-list, not a forecast — it counts each output once per independent root
+
+`output_census.roots_blocking` returns the SET of failures in an output's cone that are not
+themselves caused by another failure, so an output blocked by two INDEPENDENT gaps is counted
+under both. The docstring says so; the consequence is easy to misread and I misread it earlier
+in this same session, treating a 56-output heading as 56 outputs one fix away.
+
+Measured on the five reference packages, which is where it matters because they are the only
+outputs whose correctness can be checked at all:
+
+    baseline                        23 of 90 declared outputs rendered
+      top root: produced non-finite values           56
+      then:     blur intensity, class bit 12 clear   53
+
+    with nonfinite.fill = 0.5       24 of 90 rendered      (+1, not +56)
+      blur intensity, class bit 12 clear             58    (+5)
+
+Applying the fill removes the non-finite failure and the blur-intensity heading GROWS, because
+55 of those 56 outputs were blocked by both at once. This also reproduces, independently, what
+`assume.QUESTIONS['nonfinite.fill']` already recorded: +3 scoreable channels, no more.
+
+Corpus-wide the same effect is starker. `blur.intensity = 'program'` takes its own heading from
+49 outputs to 20 and the rendered count does not move at all -- 44 of 127 either way -- because
+those outputs are also waiting on shuffle weights, unreadable FX-Map tables and emboss.
+
+**So a heading is the number of outputs that gap TOUCHES, and the number it would release is
+smaller and sometimes zero.** Ranking work by these headings is what the file is for; reading
+them as a forecast overstates every one of them.
+
+### The reference packages are 23 of 90, and blur.intensity is their largest lever
+
+The corpus-wide 44-of-127 figure and the reference-package figure are different populations and
+answer different questions. Only the second is verifiable:
+
+    reference packages    7 assemblies    90 declared outputs, 0 image-fed    23 rendered
+
+`blur.intensity = 'program'` doubles that to 48 and takes scoreable channels 18 -> 24, which is
+the largest single move available anywhere in the project right now. It is recorded in
+`assume.QUESTIONS['blur.intensity']` and NOT adopted: the 18 channels that already scored come
+back byte-identical, and the 6 it adds correlate at +0.14, +0.03, +0.16, -0.16, +0.11 and +0.04.
+
+The reason that arm cannot decide is a confound worth stating on its own, because it now blocks
+two separate questions: **all six new channels are Bricks_and_tiles, and Bricks is dense in
+FX-Maps that render at exactly 1.0.** Rendered, low-variance, near-zero-correlation output is
+what a washed-out generator produces regardless of whether the filter downstream of it read its
+intensity correctly. The white FX-Maps are upstream of the arbiter itself, so fixing them is a
+precondition for arbitrating blur intensity, not an alternative to it.
