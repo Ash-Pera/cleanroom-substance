@@ -36436,3 +36436,21 @@ row-continuity), and weakly favoured over width×4 for the grayscale Bricks case
 bitmap dimension decode should raise the height nibble by 2 (or the area by 4) when
 `cls & 0x2000`. Confirmed root; exact per-axis rule for the non-Planks cases could use one
 more RGBA specimen.
+
+### The bitmap `cls` bit map — no other undecoded flag causes a bug
+
+After fixing the height×4 flag (0x2000), censused every set cls bit across 762 bitmaps to
+check for other ignored flags of the same kind:
+
+    bit 3  (0x0008)  762/762  constant "pixels" marker, informationless
+    bit 4  (0x0010)  301      ⟺ depth-16 (all 280 16-bit bitmaps) OR the height×4 class (21);
+                              redundant with bit 10 (depth) and bit 13 (height×4), not new info
+    bit 5  (0x0020)   21      co-occurs exactly with the height×4 class (part of its 0x38 marker)
+    bit 8-9 (0x0300)         channel code  (CHANNELS[hi&3])            — decoded
+    bit 10 (0x0400)  280      16-bit (bpc=2)                            — decoded
+    bit 11 (0x0800)    9      JPEG                                      — decoded
+    bit 13 (0x2000)   21      height×4 (tag height nibble +2)           — decoded (this session)
+
+So bit 13 was the only undecoded bit that carried decode-affecting information; bits 3/4/5 are
+constant or redundant with already-decoded fields. The bitmap cls decode is complete: no other
+hidden flag changes a layout, which is why the packing law is clean after the height fix.
