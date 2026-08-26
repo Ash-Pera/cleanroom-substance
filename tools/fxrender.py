@@ -1197,11 +1197,34 @@ def _cell_divisor(patterns):
         return None
     w = max(x.size for x in b)
     a = np.array([np.pad(x, (0, w - x.size)) for x in b])
+    # AN INTEGER SPAN IS NOT ENOUGH -- THE OFFSETS THEMSELVES MUST BE INTEGERS.
+    # cleanroom-substance-0b classified each record's branchoffset program and found the
+    # span test scaling 63 records whose program calls `rand`: a scatter has no cells, so
+    # dividing it by a cell count is the same category of error round(sqrt(N)) made. Their
+    # 20 program-identified grids all landed in the group this DECLINES, which was right,
+    # but the group it fired on had no identified grid in it at all.
+    #
+    # A jittered scatter can still span an integer, because the extremes are the generator's
+    # bounds; what it cannot do is put every emission on a lattice point. Requiring all
+    # offsets to be integers, and the distinct count on an axis to be exactly span + 1,
+    # separates them completely -- over 80 files, of the integer-span records:
+    #
+    #                       records   all offsets integer   distinct == span+1
+    #     program has rand       65                     0                    0
+    #     program has none      284                   284                  284
+    #
+    # 284 of 284 against 0 of 65, decided by the emissions alone. That also closes the 263
+    # 0b could not classify: a per-entry transpile cannot see a $number decomposition that
+    # happens one node up, but a full integer lattice is visible at emission time whatever
+    # node built it.
     d = []
     for k in range(min(2, a.shape[1])):
-        sp = float(a[:, k].max() - a[:, k].min())
-        d.append(1.0 / (round(sp) + 1.0)
-                 if sp >= 1 and abs(sp - round(sp)) < 1e-4 else 1.0)
+        col = a[:, k]
+        sp = float(col.max() - col.min())
+        ok = (sp >= 1 and abs(sp - round(sp)) < 1e-4
+              and bool(np.all(np.abs(col - np.round(col)) < 1e-4))
+              and len({round(float(t), 6) for t in col}) == round(sp) + 1)
+        d.append(1.0 / (round(sp) + 1.0) if ok else 1.0)
     if not any(x != 1.0 for x in d):
         return None
     while len(d) < 2:
