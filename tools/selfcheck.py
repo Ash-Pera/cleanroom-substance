@@ -207,9 +207,27 @@ def check_packing(asm, laws):
     before that fix as after. It is not evidence the offsets are right. It is a guard
     that any future correction stays a uniform shift, and it is kept precisely so the
     next reader does not mistake it for the stronger thing again.
+
+    COMPRESSED BITMAPS ARE EXCLUDED. For a JPEG bitmap (bit 3) `size` is the DECOMPRESSED
+    size, w*h*ch*bpc, not the stored byte count -- the JPEG data is far smaller, so a
+    compressed image packs TIGHTER than its `size` and the back-to-back test reports a
+    false overlap. All six overlaps in the corpus were this: GravelSubstance002's JPEG
+    images, size 1048576 (1024x1024x1) stored in ~151K, "overlapping" the next offset --
+    the known bit-3 case (see Record.bitmap). Excluding compressed images removes them.
+
+    THE REMAINING MISMATCHES ARE GAPS AND AT LEAST ONE IS UNEXPLAINED -- do not read them
+    as benign. PlanksSubstance003 rec50 declares 2048x128x4 = 1 MB (tag 0x7b21, height
+    nibble = 7) but the 4 MB before the next bitmap is CONTIGUOUS, non-repeating RGBA with
+    a constant alpha 191, and no other record declares that region (records 51-70 are
+    filters, not stored pixels). So the slot holds a 2048x512 image (height nibble 9) while
+    the tag says 128 -- either the height field is under-read by two in log2 for this class,
+    or the image is stacked in a way the size field does not cover. UNCONFIRMED as a decode
+    bug; flagged for investigation. The point of leaving this in the docstring is that the
+    packing gap is a real anchor to it, not filler to wave past.
     """
     law = laws['packing']
-    spans = sorted({(bm['offset'], bm['size']) for _r, bm in _pixel_bitmaps(asm)})
+    spans = sorted({(bm['offset'], bm['size']) for _r, bm in _pixel_bitmaps(asm)
+                    if not bm.get('compressed')})
     for k in range(len(spans) - 1):
         off, size = spans[k]
         if spans[k + 1][0] == off:                # two records sharing one image
