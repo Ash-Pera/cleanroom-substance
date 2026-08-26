@@ -176,7 +176,42 @@ def compare_pack(pack, refs, max_dim=SIZE):
     asms = glob.glob(os.path.join(PACKS, pack, '**', '*.sbsasm'), recursive=True)
     if not asms:
         return
-    asm = sbsasm.Assembly(asms[0])
+    for _asm_path in sorted(asms):
+        for _row in _compare_one(_asm_path, refs, max_dim):
+            yield _row
+
+
+def _package_refs(asm_path, refs):
+    """The subset of `refs` exported from the SAME .sbsar as `asm_path`.
+
+    ONE PACKAGE DIRECTORY CAN HOLD SEVERAL .sbsar, AND THEY ARE DIFFERENT MATERIALS.
+    `Kutejnikov__Bricks_and_tiles` ships x_Bricks_Textures_1 and x_Bricks_Textures_2 and
+    exports `reference_renders/Textures_1/` and `Textures_2/` to match. Pooling every PNG
+    in the package and taking the first name match scored Textures_1's render against
+    Textures_2's map -- a different material, not a different preset. Their roughness
+    exports differ by 0.12 in mean, which is two orders of magnitude larger than the
+    margins the fx arms are decided on.
+
+    The correspondence is read from the layout, not guessed: the extracted directory is
+    `x_<package>_<name>` and the export directory is `<name>`, so a reference directory
+    whose name is a SUFFIX of the assembly's own `x_` directory belongs to that assembly.
+    Applied only where such a directory exists, for the same reason `graph_dir` is: most
+    packages ship one .sbsar and put its maps straight in `reference_renders/`, and
+    narrowing there would discard all of them.
+    """
+    parts = os.path.normpath(asm_path).split(os.sep)
+    own = next((c for c in parts if c.startswith('x_')), None)
+    if not own:
+        return refs
+    scoped = [r for r in refs
+              if any(c and not c.startswith('x_') and own.lower().endswith(c.lower())
+                     for c in os.path.normpath(r).split(os.sep)[:-1])]
+    return scoped if scoped else refs
+
+
+def _compare_one(asm_path, refs, max_dim):
+    asm = sbsasm.Assembly(asm_path)
+    refs = _package_refs(asm_path, refs)
     names = manifest.output_names(asm)
     produced, _failures, _synth = render.render(asm, verbose=False, max_dim=max_dim)
     for uid, _fmt, _gray, rec in asm.outputs():
