@@ -35666,14 +35666,23 @@ rather than a pointer to it -- `95540288`), and a gap of +1 or +2 in 7,691 (`024
 than the layout scores). Both are `fx_entry_layout` header-width residues, not a property of
 the stride: the entry ends at its inline program, and the program states its own length.
 
-**What is not yet clean is the entry's EXTENT, not its header.** Walking the stacked inline
-programs contiguously from the pinned header end reaches 41,250 of the missed entries with
-zero phantoms; a fixed 256-byte window over the program-pointer targets reaches 78,496. The
-gap between them is entries whose programs are not laid out contiguously from the header --
-some sit a little apart -- so "how far does this entry run" still needs the 256-byte proxy to
-bound INLINE (in this entry) from POOL (shared, further off). The header START is pinned; the
-extent END is bounded but not yet derived. The stored next-pointer the entry carries (76% of
-inline-program entries hold the computed end verbatim) is the ground truth to pin it against.
+**The extent needs no computation: follow the stored next-pointer.** The entry does not just
+imply its end through its program lengths, it RECORDS it -- one of the header slots holds a
+pointer to the next entry. Which slot varies (slot 1 for `0x00020008`, slot 2 for
+`0x00420008`), but the next-pointer is always the one that reaches FURTHEST forward, past the
+entry's own inline program to the following entry. So the whole rule collapses to:
+
+    next entry = the largest forward-pointing pointer among the header slots
+                 (slots 1 .. max field slot + 1)
+    stop when the landed word fails entry_layout_holds
+
+No stride table, no program-length arithmetic, no 256-byte window, no value test on the
+target -- it reads a pointer the entry stores and follows it, which is what the original
+parser does. Over the corpus: 77,637 real entries found that the strided walk misses, 0
+phantoms, 1,918 missed (several hundred of those are the strided walk's own nibble-2 phantoms
+this rule correctly declines to visit). `FX_ENTRY` is a fit of this pointer's DISTANCE, tag by
+tag, and it is lossy because the distance is not a function of the tag -- it is a function of
+how long the entry's inline program happens to be, which the entry states and the tag does not.
 
 **Not committed.** The evidence is strong -- +78,496 real entries, 0 phantoms, 76% confirmed
 by stored pointers -- but swapping the entry walk moves the render path materially and this
