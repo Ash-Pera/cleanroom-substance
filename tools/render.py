@@ -63,7 +63,9 @@ import transpile, sbsruntime, fxrender, distance, assume, manifest
 
 
 class Unsupported(Exception):
-    pass
+    #: True when this failure is only the shadow of an upstream one -- a record whose
+    #: input was never produced. Set by `cascade()`; collected by `render` in `CASCADED`.
+    cascade = False
 
 
 #: Record indices whose output rests on a LOW-CONFIDENCE parameter read -- a value taken
@@ -191,10 +193,6 @@ def sampler_bindings(asm, rec, outputs):
         if src is not None and src in outputs:
             out[k] = src
     return out
-
-    #: True when this failure is only the shadow of an upstream one -- a record whose
-    #: input has not been produced. See `CASCADED` and `cascade()`.
-    cascade = False
 
 
 def cascade(message):
@@ -2198,6 +2196,22 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         pats = fxrender.emissions(rec, runner,
                                                   slots=fxrender.seed_slots(rec, runner))
                     except fxrender.Unmodelled as e:
+                        # A GENERATOR THAT FAILED WITH AN INPUT MISSING IS A CONSEQUENCE,
+                        # and the test is structural rather than a read of the message.
+                        # The edges are installed best-effort above -- deliberately, since
+                        # most FX-Maps never sample them -- so when one is absent and the
+                        # walk then fails, this record is downstream of whatever produced
+                        # nothing, not itself wrong. If every edge IS present and it still
+                        # fails, that is a root and stays one.
+                        #
+                        # fxrender raises its own "no sampler for input N" text, so string
+                        # matching here would have to know a second module's prose. It was
+                        # exactly that coupling that made `WoodSubstance005`'s record 194
+                        # look like the specimen's blocker when it sits three levels
+                        # downstream of record 139.
+                        if any(e2 is not None and e2 not in outputs
+                               for e2 in (rec.edges or ())):
+                            raise cascade("fxmaps: %s" % e) from e
                         raise Unsupported("fxmaps: %s" % e) from e
                     if not pats:
                         # The walk completed and a gate closed the branch -- see
