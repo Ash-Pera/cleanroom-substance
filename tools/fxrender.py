@@ -391,6 +391,33 @@ def _partners():
 PARTNER = _partners()
 
 
+#: The raster-scan state slots, and what an FX-Map that initialises them EXPLICITLY
+#: writes. Some records carry a program that assigns these constants before anything reads
+#: them (0x18B, the addnode above the 0x99 scanner, is where they come from); others read
+#: the same slots with no such program anywhere in the record and used to die on "slot N
+#: read but never set".
+#:
+#: The constants are read off the records that DO initialise, over 20 files, counting only
+#: assignments built entirely from literals:
+#:
+#:     slot 12   (0.0, 0.0) x710, 0.0 x96          zero, unanimously
+#:     slot 14   (0.0, 0.0) x710                   zero, unanimously
+#:     slot 16   0 x710, (0.0, 0.0) x92            zero, unanimously
+#:     slot 17   0 x711                            zero, unanimously
+#:     slot 18   (1.0, 0.0) x710, (0.0, 0.0) x92, 0 x1     NOT unanimous -- excluded
+#:     slot 13   2.82 x92, 0.0 x4, (0.0, 0.0) x1           NOT unanimous -- excluded
+#:
+#: Only the four that agree are seeded. 18 and 13 are the reason this is a measured table
+#: and not `default everything to zero`: 18's own initialisers say (1.0, 0.0) seven times
+#: out of eight, so a blanket zero would have been confidently wrong on the slot that
+#: holds the scan DIRECTION.
+#:
+#: `setdefault`, and only after `seed_slots` has run the record's own programs, so a real
+#: initialiser always wins. A record that renders today cannot change: the only reads this
+#: reaches are ones that previously raised.
+SCAN_STATE_DEFAULTS = {12: 0.0, 14: 0.0, 16: 0.0, 17: 0.0}
+
+
 def seed_slots(rec, run):
     """Run the record's OWN non-FX programs once, so the table can read what they set.
 
@@ -415,6 +442,8 @@ def seed_slots(rec, run):
             # A record's own program may itself read a slot nothing writes. Seeding is
             # best-effort by design: what it fails to set, the walk reports as missing.
             pass
+    for slot, value in SCAN_STATE_DEFAULTS.items():
+        slots.setdefault(slot, value)
     return slots
 
 
@@ -448,6 +477,8 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             run(prog, slots, 0)
         except Exception:
             pass          # a record program that cannot run is not fatal to the walk
+
+    closed = [False]          # did a gate evaluate against its polarity and stop a branch?
 
     def walk(i, number):
         if len(out) > MAX_PATTERNS:
@@ -501,8 +532,30 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 raise Unmodelled("markov2 with no switch program")
             if bool(run(prog, slots, number)[0]) == gate_polarity:
                 walk(i + 1, number)
+            else:
+                closed[0] = True
 
     walk(0, 0)
+    # AN EMPTY EMISSION IS A RESULT WHEN A GATE SAID SO. Four FabricSubstance005 records
+    # blocked on "emitted no patterns", and each is a single 0x89 gate whose program is
+    # three instructions -- `inputref(uid) == 0` -- on the manifest's `scale`, an
+    # Integer1 whose declared default is 4. The gate is false because the FILE says the
+    # branch is off, not because the walk failed, and refusing there reports a modelling
+    # gap that does not exist.
+    #
+    # The polarity is not a free parameter, which is what makes this safe to act on.
+    # Running the same records with gate_polarity inverted takes the four from 0 to 1
+    # pattern -- but it also takes the records that currently WORK to zero: 82 goes
+    # 45 -> 0, 161 goes 45 -> 0, and 91/138/140 go 2 -> 0. So True is right and the
+    # gated records really do emit nothing.
+    #
+    # Narrow on purpose. Only a gate closing earns an empty result; an empty walk for any
+    # other reason still raises. A `numberadded` of 0 would look identical here and is NOT
+    # covered, because that value has been seen misread -- Chainmail record 0 reads it as
+    # 257^2 -- and blanking a map on a misread count is exactly the plausible-wrong-image
+    # this renderer refuses to produce.
+    if not out and not closed[0]:
+        raise Unmodelled("emitted no patterns and no gate closed")
     return out
 
 
