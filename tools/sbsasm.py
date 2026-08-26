@@ -750,6 +750,15 @@ FX_PAYLOAD_PROG = {
 # of a tag's entries would mean the tag does not decide; 83 of 100 tags have no such slot,
 # each offset either always holding one or never. That is what a fixed record layout looks
 # like from outside, and it is the check that separates this from the withdrawn version.
+#
+# DRAINED, and kept only as evidence. `fx_table` no longer consults this census: a nibble-8
+# tag's program slots come from `fx_entry_layout` (the bit-walk), which reproduces every one
+# of the 24 census tags the corpus actually reaches and extends to the tags the census never
+# saw; a nibble-9/B "tag" is a 0x0B-family node, read by the disjoint-span scan `fx_tree`
+# runs, which is +3,480 programs over the census because a node's slots vary per instance
+# (0x0000190B is (4,7) in 129 nodes and (5,6,7,8) in 124 -- one fixed slot list cannot be
+# right for both). What is left below is a table of MEASURED slot positions, still checked
+# against the layout by `test_entry_layout_agrees_with_the_census`; it drives no reading.
 FX_ENTRY_PROGS = {
     0x00000008: [2, 3, 4, 5, 6], 0x0000019B: [2], 0x0000100B: [5], 0x0000190B: [4],
     0x0000770B: [4, 5, 8], 0x0001900B: [4, 5, 8], 0x00024D0B: [4, 5, 6, 7, 8], 0x0006910B:
@@ -2559,39 +2568,64 @@ class Record:
             # the run too. Neither signal subsumes the other.
             if (tag & 0xF) != 8 and not (o <= t < e - 3):
                 break
-            slots = FX_ENTRY_PROGS.get(tag)
-            if slots:
-                # One yield PER PROGRAM SLOT, the way `fx_tree` does it. An entry with six
-                # programs was previously reported as carrying at most one.
+            if (tag & 0xF) in (9, 0xB):
+                # A NODE reached inside the entry run. A low nibble of 9 or B is a node
+                # header, not an entry tag -- the 0x??0B leaf family, whose successor and
+                # programs `fx_tree` reads by scanning. Its program slots are NOT a fixed
+                # list: 0x0000190B alone occurs as (4,7) in 129 nodes and as (5,6,7,8) in
+                # 124, so a census stating one slot list per tag is wrong per-instance.
+                # `FX_ENTRY_PROGS` used to state exactly that and this drains it -- the same
+                # disjoint-span scan `fx_tree` runs for a `progs=None` node reads each node
+                # on its own bytes, which is +3,480 programs over that census corpus-wide.
                 any_ = False
-                for sl in slots:
+                for sl in range(2, 14):
                     if q + 4 * sl + 4 > e:
                         break
                     pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
-                    if o < pv < e and self.asm.program_span(pv, e):
+                    if o < pv < e and self.asm.program_span(pv, e) and (
+                            struct.unpack_from('<I', d, pv)[0] & 0xF) not in (9, 0xB):
                         yield q, tag, pv
                         any_ = True
                 if not any_:
                     yield q, tag, None
             else:
-                # No slot names a program, so the tag's own layout has to. Asking the
-                # layout rather than a lookup table gains 176 programs on tags no table
-                # covered, and 0.0% of them lie inside another program's byte span --
-                # the control that separates a program start from bytecode.
-                prog = None
-                off = FX_PAYLOAD_PROG.get(tag)
-                if off is not None:
-                    if o <= t < e - 3 and t + off + 4 <= e \
-                            and self.asm.program_span(t + off, e):
-                        prog = t + off
+                # THE TAG STATES ITS OWN PROGRAM SLOTS. `fx_entry_layout` walks bits 19..31
+                # in ascending order and marks each program pointer's slot; this replaces
+                # the `FX_ENTRY_PROGS` census, which it reproduces on every one of its tags
+                # and extends to the tags it never saw. Bit 26 alone (`patternsize` as a
+                # program) names slot 2 on the whole 0x040002xx.. family the census left
+                # blank, and 0.0% of the slots it adds lie inside another program's span.
+                slots = [sl for sl, _nm, kind in fx_entry_layout(tag)
+                         if kind == 'program']
+                if slots:
+                    any_ = False
+                    for sl in slots:
+                        if q + 4 * sl + 4 > e:
+                            break
+                        pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
+                        if o < pv < e and self.asm.program_span(pv, e):
+                            yield q, tag, pv
+                            any_ = True
+                    if not any_:
+                        yield q, tag, None
                 else:
-                    inline = [sl for sl, _nm, kind in fx_entry_layout(tag)
-                              if kind == 'inline']
-                    if inline:
-                        cand = q + 4 * inline[0]
-                        if cand + 4 <= e and self.asm.program_span(cand, e):
-                            prog = cand
-                yield q, tag, prog
+                    # No program bit is set, so the program -- if any -- is inline after the
+                    # baked parameters (bit 25/27/29) or at `FX_PAYLOAD_PROG`'s stated offset
+                    # for the two tags whose self-pointer base the inline rule reads wrong.
+                    prog = None
+                    off = FX_PAYLOAD_PROG.get(tag)
+                    if off is not None:
+                        if o <= t < e - 3 and t + off + 4 <= e \
+                                and self.asm.program_span(t + off, e):
+                            prog = t + off
+                    else:
+                        inline = [sl for sl, _nm, kind in fx_entry_layout(tag)
+                                  if kind == 'inline']
+                        if inline:
+                            cand = q + 4 * inline[0]
+                            if cand + 4 <= e and self.asm.program_span(cand, e):
+                                prog = cand
+                    yield q, tag, prog
             # The tag states the entry's length; 8 was a guess that happened to be the
             # second commonest. Falls back to 8 for a tag the table does not carry, so a
             # record with an unlisted tag degrades to the old behaviour rather than
