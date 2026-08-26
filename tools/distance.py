@@ -67,24 +67,66 @@ class Unlocated(Exception):
     """The record's `distance` parameter could not be identified without guessing."""
 
 
-def _locate_slot(rec):
-    """The layout rule's float, or None -- factored out so precedence can be varied.
+def _walk_params(rec):
+    """The record's parameter slots as the WALK enumerates them: [(state, position)].
 
-    Was inline in `distance_param`'s fallback. `distance.param` = 'layout' calls it BEFORE
-    the 2-component reading and the fallback still calls it after the programs, so both
-    orders run the identical code and the only thing that differs is when.
+    Ascending by position, so index 0 is the record's first parameter. `state` is the
+    field's two-bit code -- 1 baked, 2 program -- which is what makes reading this slot a
+    structural act rather than a guess about its contents.
     """
     try:
-        _e, _start = rec.layout
-        _at = _start + 1 + ((rec.cls >> 7) & 1) + ((rec.cls >> 11) & 1)
+        import decompose
+        d = decompose.decompose(rec)
     except Exception:
+        return []
+    if not d:
+        return []
+    out = []
+    for t in d.get('param_slots', ()):
+        if len(t) >= 3:
+            out.append((t[1], t[2]))
+    return sorted(out, key=lambda sp: sp[1])
+
+
+def _locate_slot(rec):
+    """`distance` from the slot the WALK names, or None.
+
+    THE SLOT COMES FROM THE WALK, NOT FROM ARITHMETIC. This used to compute
+    `rec.layout[1] + 1 + class bit 7 + class bit 11` -- `param_slots`' containment-verified
+    rule, 38 of 38 located pairings. That rule is right, and the walk says the same thing
+    without the arithmetic: over 20 files, 112 of 112 `distance` records have the formula
+    landing on a slot `decompose` independently enumerates as a PARAMETER, and in every one
+    it is parameter index 0. Two different mechanisms (containment against declared source
+    values; the cost-model walk) naming one slot is what licenses dropping the formula.
+
+    THE STATE REPLACES THE PLAUSIBILITY WINDOW. The old guard accepted the slot's bytes as
+    a float when `1e-3 < abs(f) <= 4.0 * REFERENCE_PX` -- deciding what a word IS from what
+    it LOOKS like, and the bound had already been widened once because a fixed 256 refused
+    the legitimate 512.0 in `sci_fi_elements_02` records 3733/3734. The walk states the
+    field's kind outright: of those 112 records the first parameter is baked in 106 and a
+    PROGRAM in 6, and all 6 program-state slots read as denormals when forced through
+    float32 -- exactly the "program pointer read as float" that put a parallel session's
+    `normal` intensity in the wrong slot. So a program-state slot is declined here and left
+    to the program path, on the format's own word rather than on the size of the number.
+
+    A denormal under a BAKED state is a contradiction between the walk and the bytes (4 of
+    112), and it is reported as a miss rather than resolved in either direction: the format
+    does not bake 1e-40 as a pixel radius, and inventing a reading for it is what this
+    module exists not to do. No upper bound is imposed at all now -- 512.0 is a real answer
+    on a 512-wide map, and it is the RECORD, not a constant here, that says how wide it is.
+    """
+    params = _walk_params(rec)
+    if not params:
         return None
-    if _at is None or _at >= len(rec.words):
+    state, at = params[0]
+    if at >= len(rec.words):
         return None
-    f = struct.unpack('<f', struct.pack('<I', rec.words[_at]))[0]
-    if np.isfinite(f) and 1e-3 < abs(f) <= 4.0 * REFERENCE_PX:
-        return float(f), 'slot %d by the layout rule (LOW CONFIDENCE)' % _at
-    return None
+    if state == 2:
+        return None                     # the walk says PROGRAM: not ours to read as float
+    f = struct.unpack('<f', struct.pack('<I', rec.words[at]))[0]
+    if not np.isfinite(f) or f == 0.0 or abs(f) < 1e-30:
+        return None                     # denormal under a baked state: walk vs bytes
+    return float(f), 'walk parameter slot %d (LOW CONFIDENCE)' % at
 
 
 def distance_param(rec, eval_program, inputs):
@@ -175,16 +217,27 @@ def distance_param(rec, eval_program, inputs):
     _got = _locate_slot(rec)
     if _got is not None:
         return _got
-    edges = set(rec.layout[0] or ())
-    for si in range(2, min(len(rec.words), 9)):
-        if si in edges:
+    # THE REMAINING PARAMETERS THE WALK NAMES, and only those. This used to be
+    # `for si in range(2, min(len(rec.words), 9))` -- a linear sweep over a hardcoded slot
+    # window, returning the FIRST word whose float lay in `1e-3 .. REFERENCE_PX`. That is
+    # scanning until a number looks right, the same act as the phantom program that
+    # `Record.programs` used to manufacture from bytecode: the window decided the answer,
+    # and slot 9 was a constant nobody derived. Any word in that range can pass, including
+    # an input's record index and a cls slot's unrelated quantity.
+    #
+    # The walk already enumerates which slots are parameters and which are inputs, so the
+    # sweep has nothing left to do: take the record's OWN parameters in order, skip the
+    # ones the walk calls programs, and read the baked ones. `distance` records carry one
+    # or two parameters (56 and 43 of 112 over 20 files), so this is a second candidate at
+    # most, not a scan.
+    for state, si in _walk_params(rec)[1:]:
+        if si >= len(rec.words) or state == 2:
             continue
         f = struct.unpack('<f', struct.pack('<I', rec.words[si]))[0]
-        # Denormals are program pointers read as float32. Accepting them is what put a
-        # parallel session's `normal` intensity in the wrong slot.
-        if 1e-3 < abs(f) <= REFERENCE_PX:
-            return float(f), 'baked slot %d (LOW CONFIDENCE)' % si
-    raise Unlocated('no program and no plausible baked float in the block')
+        if not np.isfinite(f) or f == 0.0 or abs(f) < 1e-30:
+            continue
+        return float(f), 'walk parameter slot %d (LOW CONFIDENCE)' % si
+    raise Unlocated('no program, and no baked value in a parameter slot the walk names')
 
 
 def is_low_confidence(how):
