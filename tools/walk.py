@@ -279,6 +279,11 @@ def validate_cls_driven(files):
 NODE_TAGS = {                       # full tag -> (size in words, [pointer word offsets])
     0x00420008: (4, [3]),
     0x00410008: (7, [6]),
+    # kind 0x88's additive law over-counts this tag by one word -- it computes 6 words but
+    # the corpus size is 5 (20 bytes) in 3 of 3 cells, and the dead node_sizes.json table
+    # agreed at 20. bit 26 is set and the 0x88 law does not charge it; from one tag its
+    # width cannot be fit, so the tag is pinned explicitly rather than guessed into the law.
+    0x14400088: (5, []),
 }
 # The CHAIN FAMILY: tags whose high 16 bits are 0x0002 are linked lists, not fixed-size
 # nodes, and their gap "sizes" are run lengths. 8,794 of 8,811 such cells are
