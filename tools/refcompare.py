@@ -24,6 +24,18 @@ a package names its outputs generically (`output`, `output_1`, ... -- see
 `minime453__Stylized_Sandy_Stone_Path`) nothing pairs and this reports so rather than
 matching by position, which would be a guess dressed as a measurement.
 
+NOT AN ORIENTATION PROBLEM, checked rather than assumed. A systematic flip or transpose
+would depress every correlation in this table while the decode underneath was correct, so
+it is cheap to ask and expensive to miss. Scoring all 14 channels under identity, flip-x,
+flip-y, flip-both, transpose, rot90 and rot270:
+
+    Auras basecolor    0.9206 / 0.8499 / 0.9385   -- identical to four decimals under all seven
+    Bricks emission    0.4454 / 0.4669 / 0.4629   -- identical under all seven
+    Chesterfield normal, height, AO               -- every variant within 0.1 of zero
+
+Nothing improves. The high scores are dominated by structure too coarse for orientation to
+matter, and the low ones are not a misoriented right answer.
+
 TWO TRAPS, both of which produced confident wrong readings before they were caught:
 
   16-BIT MAPS. AO, height, metallic and roughness export as `mode="I;16"`. `convert('L')`

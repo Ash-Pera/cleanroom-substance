@@ -64,6 +64,20 @@ QUESTIONS = {
     # rec85, Bricks rec5228. The entry is read correctly; what is unknown is what the
     # engine draws when the file states no extent.
     'fx.sizeless':        ('fill', 'skip', 'half', 'quarter'),
+    # PUT TO THE REFERENCE MAPS AND NOT SETTLED, which is worth recording so it is not
+    # tried a third time. Under any scope Chesterfield's `basecolor` renders and the
+    # scoreable table goes 14 channels -> 17. But of those 17 only 3 move between
+    # candidates, 0.5 and 1.0 give BYTE-IDENTICAL results, and the three that move
+    # separate by less than 0.001 MAE:
+    #
+    #     basecolor.0   0.0 -> (0.1299, r 0.090)   0.5 and 1.0 -> (0.1298, r 0.102)
+    #     basecolor.1   0.0 -> (0.2142, r 0.051)   0.5 and 1.0 -> (0.2142, r 0.056)
+    #     basecolor.2   0.0 -> (0.0958, r 0.043)   0.5 and 1.0 -> (0.0959, r 0.052)
+    #
+    # Two candidates being indistinguishable says the filled value barely propagates --
+    # something downstream saturates it -- so this is not an arbiter narrowly missing, it
+    # is an arbiter that cannot see the parameter. And the unblocked output correlates at
+    # 0.04-0.10 whichever value is chosen: rendering `basecolor` does not make it right.
     'nonfinite.fill':     (0.0, 0.5, 1.0),
     'uniform.fill':       (),      # a value, not an enumeration
     # The channel weights a single-input `shuffle` record applies. TWO SOURCE NODE TYPES
@@ -74,6 +88,14 @@ QUESTIONS = {
     # bit 8 says whether the weights are stored at all; where it is clear the compiler
     # emitted nothing and the engine uses the node's own default, which is not in the
     # file. A 4-tuple, so continuous rather than enumerated.
+    #
+    # TWO ROUTES TRIED, BOTH CLOSED. The reference maps cannot separate the candidates --
+    # five of them, (1,0,0,0), the luminance weights, (.25 x4), (0,0,0,1), (0,1,0,0),
+    # move 0 of 14 scoreable channels, because not one of these records reaches an output
+    # the engine exported. And the question is not degenerate either: of the 26 bit-8-clear
+    # records across 27 files, the 11 whose input renders all receive a FOUR-channel image
+    # whose channels differ, so the candidates really do produce different pictures. It is
+    # a live choice with no arbiter, holding 36 declared outputs.
     'grayscale.weights':  (),
     # WHAT UNIT A branchoffset IS IN. splat adds branchoffset to frameoffset and treats the
     # sum as canvas coordinates, but the two are not in the same unit: over 966 square-grid
