@@ -1010,9 +1010,23 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                 and abs(float(a[0]) - math.log2(rec.width)) < 1e-6
                                 and abs(float(a[1]) - math.log2(rec.height)) < 1e-6):
                             continue
-                        # a width seen twice cannot be assigned to one parameter
-                        by_width[a.size] = None if a.size in by_width else tuple(
-                            float(x) for x in a)
+                        # A WIDTH SEEN TWICE IS ONLY AMBIGUOUS IF THE TWO DISAGREE. The
+                        # test was "seen twice -> refuse", which throws away the case where
+                        # there is nothing to choose between: concrete_049 records 36, 37,
+                        # 38 and 50 each carry TWO 4-wide programs and both return exactly
+                        # (1.0, 0.0, 0.0, 1.0), the identity. Three of the four even share
+                        # one of the two program ADDRESSES with a sibling record, so the
+                        # duplication is the compiler emitting the same expression twice
+                        # rather than two different parameters landing in one width.
+                        #
+                        # Refusing there reported an ambiguity that does not exist. Two
+                        # candidates that agree ARE the answer; only a genuine disagreement
+                        # is a reason to stop.
+                        val = tuple(float(x) for x in a)
+                        if a.size in by_width and by_width[a.size] != val:
+                            by_width[a.size] = None
+                        elif a.size not in by_width:
+                            by_width[a.size] = val
 
                 if m is None:
                     if not has_matrix_param:
@@ -1745,7 +1759,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # input whose channels are the distinct constants 0.1/0.2/0.3/0.4, a
                     # record whose one-hot names channel k returns exactly that channel.
                     _edges, _start = rec.layout
-                    if _start + 4 >= len(rec.words):
+                    # ASK THE PRESENCE BIT BEFORE MEASURING THE RECORD. A record whose
+                    # class bit 8 is clear stores no weight vector, so "too short for one"
+                    # describes a slot that was never going to be there and reports a
+                    # length problem for a record that has none. It was the top blocker
+                    # under this filter -- 24 declared outputs across 30 files refused with
+                    # that message, on top of the 20 that reached the honest one -- and all
+                    # of them belong in the same place, which is the question below.
+                    if ((rec.cls >> 8) & 1) and _start + 4 >= len(rec.words):
                         raise Unsupported("shuffle single-input record too short for a "
                                           "one-hot channel selector")
                     # IT IS A WEIGHT VECTOR, NOT A ONE-HOT SELECTOR -- the one-hot form
