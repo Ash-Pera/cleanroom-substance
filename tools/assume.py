@@ -459,6 +459,20 @@ QUESTIONS = {
     # remains a valid extraction check -- grid_width returns 5 there, a third distinct value
     # -- and not a scoring one. RoofTiles and Auras are byte-identical under both arms,
     # which is the control working.
+    #
+    # THE BRICKS COUNT IS DISPUTED AND VERIFIED HERE, so a later reader knows which number
+    # this rests on. The structural side reports the committed `grid_width` returning 2
+    # records for Bricks (rec84 width 5, rec263 width 2) and only 8 programs referencing
+    # sysvar(10). Re-run against the committed function: 18 records in EACH of the pack's
+    # two assemblies, 191 fxmaps each, widths {2: 11, 4: 2, 25: 5}, at records 553, 2465,
+    # 2470, 2476, 2485, 2491, 2971, 4917 and on -- and 18 DISTINCT programs supplying them,
+    # one apiece, so it is not one program counted many times either. No record 84 or 263
+    # appears, and no width 5 exists anywhere in this pack.
+    #
+    # The two readings do not overlap at all, which means they are not the same file rather
+    # than the same file counted differently. The score above was produced by the committed
+    # function through refcompare, so it is the 18 that the number rests on; the disagreement
+    # is recorded rather than averaged.
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
