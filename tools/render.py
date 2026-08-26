@@ -1718,10 +1718,27 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # WHERE THE FLATNESS COMES FROM, traced to a leaf: the zero gradients
                 # descend through blends and dirmotionblurs to `fxmaps` records with no
                 # image edges that render as a uniform 1.0. rec5596 is the readable one
-                # -- it EMITS 1,024 patterns, a 32x32 lattice, and each carries
-                # patternsize 5.0, which `splat` reads as canvas units. Five times the
-                # canvas, a thousand times over, is a white rectangle. The emission is
-                # right and the paint is degenerate.
+                # -- it EMITS 1,024 patterns, each carrying patternsize 5.0, which
+                # `splat` reads as canvas units. Five times the canvas, a thousand times
+                # over, is a white rectangle. The emission is right and the paint is
+                # degenerate.
+                #
+                # NOT a 32x32 lattice, which is what an earlier version of this note
+                # called it: rec5596's branchoffset program uses the `rand` opcode, so its
+                # 1,024 positions are a deterministic SCATTER. sqrt(N) = 32 was a number
+                # fitted to the count, not a grid read from the file, which is exactly why
+                # dividing by it scored badly. The five records in this file that ARE
+                # grids (5, 11, 20, 27, 33) say so structurally -- their branchoffset
+                # divides $number by integer2 input uid 3616786801, whose value table entry
+                # reads (4, 8) -- and none of them is one of the oversized records.
+                #
+                # RECHECKED AFTER THE FX MASK-WALK RESTRUCTURE and unchanged: still 510 of
+                # 515 identity warps, still 26 blend stages agreeing to four decimals,
+                # still 93 flat fxmaps generators, rec5596 still 1,024 patterns at 5.0 with
+                # std 0.00390. What DID change is that the sibling leaves 5513/5515/5518
+                # now state patternsize 5.0 and use rand as well, where before they stated
+                # no extent at all -- so the whole cone is one defect now, not two. See
+                # assume.QUESTIONS['fx.sizeless'].
                 #
                 # AND THAT IS WHY THE LATTICE IS MISSING FROM THE OUTPUT. The output cone
                 # is a ~50-stage accumulator of the form `blend(prev, warp(warp_chain,

@@ -63,6 +63,20 @@ QUESTIONS = {
     # specimens turn white for exactly that reason -- Chesterfield rec43, WoodSubstance005
     # rec85, Bricks rec5228. The entry is read correctly; what is unknown is what the
     # engine draws when the file states no extent.
+    #
+    # ITS SCOPE COLLAPSED IN THE FX MASK-WALK RESTRUCTURE, and any earlier reasoning that
+    # leaned on this key has to be re-read in that light. On Bricks a sizeless entry is now
+    # 265 of 39,549 emissions -- 0.7% -- across 95 records. The three fxmaps leaves that
+    # feed the missing-lattice cone (5513, 5515, 5518) were the motivating specimens for
+    # this question and they are NO LONGER SIZELESS: they state patternsize 5.0 and their
+    # branchoffset programs use the rand opcode, so they are random-scatter records that
+    # this key does not touch at all.
+    #
+    # That is a simplification, not a loss. Those leaves used to paint white because a
+    # typeless entry fell back to a full-cell 'fill'; they now paint white because 5.0 in
+    # canvas units covers the image. Same picture, and now the SAME cause as rec5596 --
+    # one defect where the earlier reading had two. The oversized-patternsize question
+    # below now explains the whole cone on its own.
     'fx.sizeless':        ('fill', 'skip', 'half', 'quarter'),
     # PUT TO THE REFERENCE MAPS AND NOT SETTLED, which is worth recording so it is not
     # tried a third time. Under any scope Chesterfield's `basecolor` renders and the
@@ -177,8 +191,8 @@ QUESTIONS = {
     # their median emitted patternsize separates two populations, and BOTH contain perfect
     # squares, so 'cell' fires on both:
     #
-    #     size <= 1  (22 records)   N = 9, 32, 625 ...   sizes 0.012, 0.25, 0.052
-    #     size >  1  (83 records)   N = 16, 64, 841, 1024, 1521   sizes 1.92, 2.82, 3.0, 5.0
+    #     size <= 1  (27 records)   N = 9, 32, 625 ...   sizes 0.012, 0.25, 0.052
+    #     size >  1  (133 records)  N = 16, 64, 841, 1024, 1521   sizes 1.92, 2.82, 3.0, 5.0
     #
     # A record emitting 625 patterns at size 0.052 is already coherent as canvas units;
     # dividing it by sqrt(625) = 25 makes it 0.002 and erases it. That is what the
@@ -188,6 +202,23 @@ QUESTIONS = {
     # So 'oversize' applies the same 1/G ONLY where the canvas reading is self-evidently
     # impossible -- a median patternsize above 1.0, i.e. a pattern larger than the whole
     # image -- and leaves the coherent records alone.
+    #
+    # RECHECKED AFTER THE FX MASK-WALK RESTRUCTURE (FX_NODES/FX_NODES2/FX_ENTRY drained
+    # onto the walk, entry table read as a linked list). Every number above was re-measured
+    # against the new emission stream. The populations grew -- 22/83 records became 27/133,
+    # and Bricks now walks 191 fxmaps records rather than 175 -- but the shape of the split
+    # is unchanged, both halves still contain perfect squares, the 91.4% figure reproduced
+    # exactly, and canvas/cell/oversize score IDENTICALLY to four decimals on all five
+    # outputs. The scores not moving is itself explained: 80 of the 133 oversized records
+    # paint uniform white under canvas, which is also what a sizeless entry painted under
+    # the old 'fill' default, so the records that changed category did not change picture.
+    #
+    # AND THE PERFECT-SQUARE GUARD IS NOW THE DOMINANT LIMIT, worse than when 'oversize'
+    # was added. Of those 80 uniform-white oversized records, only 15 have a perfect-square
+    # emission count, so 65 -- 81% of the visibly broken records -- cannot be reached by
+    # ANY current candidate, whatever divisor it uses. The blocker is the guard, not the
+    # policy: G has to come from somewhere other than round(sqrt(N)) before the majority of
+    # this file is even testable.
     'fx.patternsize':     ('canvas', 'cell', 'oversize'),
     # WHAT AN ENTRY WITH NO patterntype DRAWS. `profile_for` falls back to 'rect', a hard
     # fill of the whole cell, and its own docstring says that is "what the code has always
