@@ -191,6 +191,31 @@ QUESTIONS = {
     # heading.
     'distance.invert':    (False, True),
     'distance.mask_edge': (0, 1),
+    # WHAT THE SECOND EDGE IS FOR, and the header answers half of it without rendering
+    # anything. A distance transform's field is scalar by construction, so a `distance`
+    # record whose header says COLOUR is not emitting one -- and the colour has to come
+    # from somewhere. Over 444 files (the 437-file corpus plus the 7 reference-shipping
+    # packages) the 1,693 two-edge `distance` records take exactly two header shapes:
+    #
+    #     record greyscale, edge0 greyscale, edge1 greyscale   1,571
+    #     record COLOUR,    edge0 greyscale, edge1 COLOUR        122
+    #
+    # No other combination occurs. Edge 0 is greyscale 1,693 of 1,693 -- it is the mask and
+    # never the payload -- and the record's own colour bit equals EDGE 1's 1,693 of 1,693.
+    # So the output's width follows edge 1. That much is read from three header bits.
+    #
+    # WHAT IS DONE WITH IT IS NOT READ FROM ANYTHING, which is why this is a question and
+    # not a decode. 'field' is the incumbent: emit the scalar field and ignore edge 1
+    # entirely, which is what every `distance` record renders as today and which the 122
+    # colour records cannot honour -- they produce one channel against a header asking for
+    # four, and refuse. 'nearest' carries edge 1's value at the nearest lit mask pixel
+    # (`distance.propagate`) and gates it by the field, so the payload fades out at the
+    # radius exactly where 'field' does.
+    #
+    # THE CENSUS IS EVIDENCE FOR THE WIDTH, NOT FOR THE OPERATION. A candidate that gets
+    # the width right can still be the wrong arithmetic, and 'nearest' is one reading of a
+    # propagation rather than the only one.
+    'distance.propagate': ('field', 'nearest'),
     # The footprint is no longer a four-way guess: `patterntype` is declared in the entry
     # tag and the manifest NAMES its values, so `fxrender.PATTERN_SHAPES` selects the shape
     # from shipped data and this question only exists to FORCE one for an experiment.
@@ -951,7 +976,7 @@ QUESTIONS = {
     # `subtract(332, 333)` -- is therefore flat BLACK, which is the input all eight of that
     # file's directionalwarps take. The seams missing from its basecolor are drawn by that
     # dead chain.
-    'fx.gatescan':        ('once', 'loop'),
+    'fx.gatescan':        ('once', 'loop', 'filter'),
     # WHAT A GENUINELY ZERO-WIDTH levels DOES. Where levelinlow equals levelinhigh the
     # transfer has no width, and the branch currently reads it as a STEP: everything at or
     # above the point maps to out_high, everything below to out_low. That is the arithmetic

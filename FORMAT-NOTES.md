@@ -37471,3 +37471,38 @@ problem with an unsolved one.
 What remains genuinely gain-shaped is Auras basecolor ch1, slope 0.321 against ch2's 0.802 -- a
 per-channel excess concentrated in green, which the earlier note on that record already narrowed
 to a single branch after the mask and after the ramp.
+
+### Why the gate scan covers one cell: the spiral and its bounds are in different spaces
+
+Continuing the previous note. The 0x89 gate in ChesterfieldSofa records 331 and 333 is a spiral
+generator with a containment test, and both halves are now read exactly:
+
+  * **The spiral.** `gteq(slot17 + 1, slot16)` compares the column counter against the ROW
+    counter -- not against a fixed width -- and on true resets slot 17 to 0, increments slot 16,
+    and multiplies the direction in slot 18 by (-1.0, 1.0). A column limit that GROWS with the
+    row, plus a sign flip, is a spiral, and it is the same spiral the branchoffsets of
+    PavingStones record 632 trace out: (0,0) (0,1) (-1,1) (-1,0) (-1,-1) (0,-1) (1,-1) ...
+    The position in slot 14 advances by slot 18 each call.
+
+  * **The bounds.** slot 0 is written by a program of exactly the shape record 65's slot-8
+    program has -- `inputref` on the size input, then `exp2(-|sizelog2.x - sizelog2.y|)` -- so it
+    is the aspect-corrected UNIT SQUARE, [0, 1, 0, 1] on a square canvas. The test is
+    `x >= s0.x` and `x <= s0.y - 0.5`, and the -0.5 is unambiguous: the immediate is the four
+    bytes `00 00 00 bf`, float32 -0.5, on a float-typed const. So the region is [0, 0.5]^2.
+
+**A spiral stepping by +/-1 against a region half a unit across leaves it on the first step**,
+which is exactly what happens: the predicate is true once and false thereafter. The two are not
+in the same space -- the step is in CELLS and the bounds are in CANVAS units -- and no reading
+of the gate's control flow can reconcile that.
+
+THE GATE IS ALSO NOT THE LIMITER, which is worth separating out. Two further readings were tried
+and neither changes anything: `fx.gatescan = 'loop'` (run until the predicate fails) and
+`'filter'` (step a bounded number of times, emit only where it holds). Both leave records 331
+and 333 emitting 4 and 6 patterns, because that count is `table entries x addnode iterations` and
+the ADDNODE runs ONCE -- its `numberadded` is the same degenerate aspect term record 65 carries.
+`grid_width` correctly declines for these two: their layout is the gate's spiral, not a
+`floor($number / N)` grid, so the `fx.gridcount` divisor has nothing to read.
+
+So these records need a count that neither `numberadded` nor `grid_width` supplies, and the only
+structure that could supply one -- the spiral's own extent -- is measured against bounds in the
+wrong units. That is the whole of what is left on the missing basecolor seams.

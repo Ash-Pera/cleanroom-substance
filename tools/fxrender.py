@@ -1267,6 +1267,20 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             prog = progs.get('switch')
             if prog is None:
                 raise Unmodelled("markov2 with no switch program")
+            if assume.assumed('fx.gatescan') == 'filter':
+                # A gate whose program SPIRALS a position and tests it against a rectangle
+                # may be a FILTER rather than a terminator: step the spiral a bounded number
+                # of times and emit only where the predicate holds, instead of stopping at
+                # the first cell that fails. See assume.QUESTIONS['fx.gatescan'].
+                _any = False
+                for _it in range(64):
+                    _v = run(prog, slots, number)
+                    if bool(np.asarray(_v, dtype=np.float64).ravel()[0]) == gate_polarity:
+                        walk(i + 1, number)
+                        _any = True
+                if not _any:
+                    closed[0] = True
+                return
             if assume.assumed('fx.gatescan') == 'loop':
                 # See assume.QUESTIONS['fx.gatescan']. Run-then-emit-then-test, the same
                 # order the STEPPER scanner arm uses, so the first stamp is identical to
