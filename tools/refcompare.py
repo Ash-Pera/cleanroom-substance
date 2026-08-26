@@ -334,9 +334,26 @@ def main(argv):
             if chan is None:
                 print('   %-12s %s' % (name, ref))
                 continue
-            print('   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f'
+            # STRUCTURE AND GAIN ARE DIFFERENT FAILURES and MAE does not separate them.
+            # The best affine fit of ours onto the reference, and the error that REMAINS
+            # after it, says which one you have: a small residual under a slope far from 1
+            # is a render with the right picture at the wrong contrast, and no amount of
+            # decoding the wrong filter will fix it.
+            #
+            # What it says today. Auras `basecolor` correlates at 0.94 and its MAE is 0.088,
+            # but the fit is y = 0.536x with a residual of 0.032 -- the structure is right
+            # and the contrast is roughly double. Chesterfield `roughness` is the opposite
+            # end: correlation 0.29, MAE 0.019, fit y = 3.389x, so the picture is faintly
+            # right at a NINTH of the reference's contrast. And Chesterfield `height` fits
+            # y = -0.001x + 0.516, a slope of zero -- ours carries no information about the
+            # reference at all, and its MAE of 0.248 is just the 0.23 offset between two
+            # means.
+            fit = np.polyfit(ours.ravel(), ref.ravel(), 1) if ours.std() > 1e-9 else (0.0, 0.0)
+            resid = float(np.abs(np.polyval(fit, ours.ravel()) - ref.ravel()).mean())
+            print('   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f  y=%.3fx%+.3f r=%.4f'
                   % (name if chan == 0 else '', chan, ours.mean(), ours.std(),
-                     ref.mean(), ref.std(), np.abs(ours - ref).mean()))
+                     ref.mean(), ref.std(), np.abs(ours - ref).mean(),
+                     fit[0], fit[1], resid))
     return 0
 
 
