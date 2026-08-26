@@ -734,6 +734,16 @@ def leaf_successor(header):
 # model found 540.
 #
 # filter -> [(name, presence mask, program mask)]
+# Filters whose parameters are placed by the structural walk rather than by the LAYOUTS
+# memo. `dirmotionblur` (11) and `directionalwarp` (12) are here; `blend` (1) and `fxmaps`
+# (4) are not, because several of their cost-model fields have width ZERO, where the walk
+# emits nothing and the memo names a slot, and which is right is not established.
+#
+# `levels` (15) IS NOT HERE AND WAS: it wins every structural comparison and REGRESSES THE
+# RENDER. See `Record._parameters_walked`, which is kept precisely so the next attempt
+# starts from the evidence rather than from the idea.
+WALKED_PARAMS = frozenset({11, 12})
+
 PARAM_SPEC = {
     1:  [('opacitymult', 0x30, 0x20)],
     12: [('intensity', 0x06, 0x04), ('warpangle', 0x18, 0x10)],
@@ -771,6 +781,19 @@ PARAM_SPEC = {
 # a float32 would invent numbers like 1.5e-33 out of small integers. Where a filter's
 # parameter types are not established, the raw word is the honest value.
 PARAM_RAW = frozenset({4})
+
+# Filters whose PARAM_SPEC program bit is VERIFIED EXACT against what the slot holds, so
+# `_read_slot` can read the kind from the header instead of probing the word. Full corpus:
+# blend 179,524 reads, levels 168,077, directionalwarp 117,657 -- 465,258 reads, ZERO
+# disagreements. `fxmaps` (1.516%, and its own entry admits two of its four pairs are ~97%)
+# and `dirmotionblur` (one record, and that one is a LAYOUTS slot error rather than a bit
+# error -- see `_read_slot`) are deliberately absent and keep reading the slot.
+BIT_EXACT_KINDS = frozenset({1, 12, 15})
+
+# Records where the program bit and the slot contents disagree on a BIT_EXACT_KINDS filter.
+# Empty on the 437-file corpus; an entry on a new one is a finding to investigate, not a
+# slot to guess at.
+_kind_conflicts = []
 
 
 # The OTHER kind mechanism: a population count in the CLASS word.
@@ -2042,21 +2065,48 @@ class Record:
             if v == 0 or (v < self.index and v < len(self.asm.records)):
                 out.append(v)
                 continue
-            # The layout descriptor does not fully determine a few keys: a slot that is
-            # an edge in most of a key's records holds a program or a baked float in the
-            # rest. Those readings are disjoint from a backward record index, so this is
-            # a positive identification rather than a fallback - the slot is not an edge
-            # in THIS record, so no edge is claimed.
+            # ANYTHING ELSE IS A MISS, REPORTED AS ONE. A forward index, or one past the
+            # end of the record table, is genuinely unexplained and stays visible rather
+            # than being absorbed into a catch-all.
             #
-            # Deliberately narrow. A forward index, or one past the end of the record
-            # table, is left as None: those are genuinely unexplained and must stay
-            # visible rather than be absorbed into a catch-all.
-            q = v + 52
-            if self.asm.body_lo <= q < self.asm.body_hi and self.asm.valid_program(q):
-                continue
-            f = struct.unpack('<f', struct.pack('<I', v))[0]
-            if v and math.isfinite(f) and 1e-6 <= abs(f) <= 1e6:
-                continue
+            # Two VALUE PROBES used to sit here and have been removed: "if `v + 52` passes
+            # `valid_program` the slot is a program, not an edge", and "if `v` reads as a
+            # float in 1e-6..1e6 it is a baked value, not an edge". Both asked what a word
+            # LOOKS like in order to decide what it IS, which is the one thing this parser
+            # is not allowed to do -- and both were legacy from the era when the layout
+            # came from `layouts.json`, which genuinely did not determine whether a given
+            # key's slot was an edge in a given record. `edge_slots` now routes through the
+            # structural walk (`decompose`), which answers that question before the value
+            # is ever consulted, so the probes were second-guessing an accessor that had
+            # already decided.
+            #
+            # Verified redundant before deleting, per-branch rather than in aggregate --
+            # an aggregate zero is what made two probes look dead once before when the
+            # accessor was simply raising. Over the FULL 437-file corpus, 1,302,039
+            # walk-named edge slots:
+            #
+            #     backward record index (the edge)       1,301,922
+            #     0xFFFFFFFF absent sentinel                   117
+            #     "looks like a program" probe                   0
+            #     "looks like a float" probe                     0
+            #     slot past record end / unexplained             0
+            #
+            # and `edges` before/after the removal is identical on all 903,616 records.
+            #
+            # WHY THEY WERE DEAD IS NOT "the format guarantees a backward index" -- that
+            # reading would be circular, and stating it here would bank the circularity.
+            # `decompose._is_image_input` used to decide an unnamed state-3 field IS an
+            # input by testing `0 < words[pos] < own_index`, the very same predicate --
+            # so the walk pre-selected slots for holding a backward index and these probes
+            # then re-tested the same thing. A tautology, which is exactly why they score
+            # 0: they were redundant, not vindicated.
+            #
+            # That upstream probe is now gone too. Over the full corpus it was asked 1,944
+            # of 10,430 state-3 decisions (18.6%; the other 8,486 came from an exact
+            # PARAM_SPEC mask) and answered False every time, so it is replaced by the
+            # per-(filter, field) law in `decompose.INPUT_FIELDS`, which reads only the
+            # header. Edges are unchanged: 903,611 of 903,611 agree with the independent
+            # `_compute_layout`/`_real_edges` model. See FORMAT-NOTES "Are slots real?".
             out.append(None)
         return out
 
@@ -2169,9 +2219,159 @@ class Record:
         record has no parameters - only that this filter's bit layout is not derived yet.
         """
         f = self.filter_id
+        if f in WALKED_PARAMS:
+            return self._parameters_walked(PARAM_SPEC[f])
         if f in PARAM_SPEC:
             return self._parameters_paired(PARAM_SPEC[f])
         return []
+
+    def _parameters_walked(self, spec):
+        """Parameters placed by the structural walk instead of by a memo lookup.
+
+        `_parameters_paired` finds a block in `LAYOUTS` by key and counts from its end.
+        `decompose` advances a cursor through the record and reports each parameter's first
+        slot and width. For `levels` the walk is strictly better, and the arbiter is not
+        plausibility -- both placements read values in [0, 1] on 6,520 of the 6,521 slots
+        they disagree about, because the disagreement is a clean off-by-one and a shifted
+        window of level positions is still a window of level positions.
+
+        THE ARBITER IS THE EDGE-XOR-PARAMETER RULE this file already asserts, scored on the
+        6,521 disagreements. The edge set is `decompose`'s `inputs`, validated 903,611 of
+        903,611 against `_compute_layout` + `_real_edges`, so it is independent of where
+        either model puts a parameter:
+
+            memo lands ON AN INPUT EDGE       1,844        walk      0
+            memo slot past end of record          1        walk      0
+
+        A parameter read out of the input-edge slot is a record index reinterpreted as a
+        float, which is why those read 0.0 rather than as anything out of range -- the
+        plausibility test cannot see it and this one can.
+
+        Coverage moves the same way. Over every corpus `levels` record: the memo never finds
+        a parameter the walk misses, the walk finds parameters on 4,351 records where the
+        memo returns nothing at all, and the two agree exactly on 153,230 slots.
+
+        `dirmotionblur` AND `directionalwarp` NOW ROUTE HERE TOO, and they need different
+        placements for a structural reason. A spec mask is matched to a cost-model field by
+        `pres == 3 << 2j`, which requires the parameter's two presence bits to sit on the
+        field grid. `dirmotionblur` is aligned (0x003 -> field 0, 0x00c -> field 1) and uses
+        that matching directly. `directionalwarp` is NOT: its `intensity` is 0x006, bits 1
+        and 2, straddling fields 0 and 1, and `warpangle` 0x018 likewise. Routing it through
+        the field match would find no name for either parameter and return [] -- both
+        parameters lost on 62,146 records, silently. It uses the POSITIONAL rule instead:
+        the present parameters occupy the LAST n slots of the header, which never consults
+        the field decomposition and so cannot be thrown by the misalignment.
+
+        WHAT DECIDED IT, corpus-wide, against the memo:
+
+            filter            records   agree   differ   memo silent   walk silent
+            directionalwarp    62,146  117,655      2       1,975          205
+            dirmotionblur      15,097   25,960     15         337            3
+
+        so the walk places 3,461 more `directionalwarp` parameters and 515 more
+        `dirmotionblur` ones, recovering 1,770 and 334 records the memo returns nothing at
+        all for, and neither path ever lands on an input edge.
+
+        THE 17 DISAGREEMENTS ARE ARBITRATED STRUCTURALLY, not by plausibility -- every one
+        of them reads as an ordinary float under both placements, which is exactly why this
+        needed an arbiter that does not look at values:
+
+            memo lands PAST the walk's header end (bytecode read as a parameter)   13
+            walk coincides with the size-expression slot                            2
+            undecided by structure (both placements inside the header)              2
+            memo favoured                                                           0
+
+        The 13 are decisive and one-sided. The 2 collisions are `dirmotionblur` records
+        with no class-word slots, where `decompose`'s `prog` (the first slot after the const
+        region) and the first parameter slot are the same position, so the walk's own two
+        answers overlap rather than the memo being right -- and on one of them, Road.sbsasm
+        record 417, the KIND BIT settles it for the walk independently: the bit says
+        `intensity` is a program, `words[3] + 52` is a valid program, and the memo's slot 4
+        holds 0.25. That record is the one `_read_slot` names as the memo's single kind
+        conflict, recorded there as pending "until that filter moves onto the walk". This is
+        that move. The 2 undecided are one `directionalwarp` record placed one slot apart
+        with both readings inside the header, and nothing here claims to resolve them.
+
+        `kind` still comes from the slot itself via `_read_slot`, not from the bit.
+
+        `levels` IS NOT ROUTED HERE, because the render says no. With 15 in `WALKED_PARAMS`,
+        `test_reference_agreement_does_not_regress` fails:
+
+            Chesterfield basecolor ch0   corr 0.5495   floor 0.60
+            Chesterfield basecolor ch1   corr 0.0268   floor 0.72
+
+        ch1 collapses. Three records -- ChesterfieldSofa 137, 210 and 218, byte-identical to
+        each other -- get nothing from the memo and `leveloutlow` 1.0 / `levelouthigh` 0.0
+        from the walk. That pair inverts the channel, and of the 12 `levels` nodes the
+        source declares, ZERO have `leveloutlow` above `levelouthigh`.
+
+        THE PLACEMENT IS NOT THE ERROR, which is why this is recorded rather than reverted
+        quietly. Record 25 of the same file is shaped identically to record 137 -- five
+        words, class 0x18, parameters at slots 3 and 4 -- and its source DECLARES the two
+        values sitting in those slots (`levelinlow` 0.211466, `levelinhigh` 0.604323). Slot
+        3 really is the first parameter for this record shape; the walk really does read
+        record 137's stored 1.0 and 0.0; the memo returns nothing only because its block
+        reserves slot 3 for the size expression. What is missing is a rule saying those
+        three records do not apply their levels at all. (1.0, 0.0) is the exact inverse of
+        the (0.0, 1.0) default and looks like a sentinel, but three identical records will
+        not carry that inference and nothing else in the file states it.
+
+        The walk is ahead on every structural measure and behind on pixels:
+
+            walk lands on an input edge          0        memo   1,844
+            walk slot past end of record         0        memo       1
+            memo finds a parameter walk misses   0        walk finds some on 4,351 records
+            source-declared values recovered     8 of 8   (slot AND value, end to end)
+
+        None of that outweighs a reference channel falling from 0.72 to 0.03. Explain record
+        137 before routing this.
+        """
+        import decompose as _decompose
+        d = _decompose.decompose(self)
+        if d is None:
+            return []
+        names = {}
+        aligned = True
+        for nm, pres, _prog in spec:
+            for j in range(16):
+                if pres == (3 << (2 * j)):
+                    names[j] = nm
+                    break
+            else:
+                aligned = False
+        if not aligned:
+            return self._parameters_positional(spec, d)
+        out = []
+        for j, _st, pos, _w in d['param_slots']:
+            nm = names.get(j)
+            if nm is None or not (0 <= pos < len(self.words)):
+                continue
+            out.append(self._read_slot(nm, pos))
+        return out
+
+    def _parameters_positional(self, spec, d):
+        """Present parameters occupy the LAST n slots of the header, in bit order.
+
+        For a spec whose presence masks do not sit on the cost model's two-bit field grid,
+        so the field match in `_parameters_walked` cannot name them. This reads the walk's
+        `end` and counts back, which is the same rule `decompose.named_params` uses and is
+        immune to the misalignment because it never decomposes w1 into fields at all.
+
+        A field in state 11 is an image INPUT rather than a parameter, and is excluded --
+        `(w1 & pres) == pres` is the whole-mask test for that state.
+        """
+        end = d.get('end')
+        if end is None:
+            return []
+        w1 = self.words[1] if len(self.words) > 1 else 0
+        present = [nm for _lb, nm in sorted((pres & -pres, nm) for nm, pres, _prog in spec
+                                            if (w1 & pres) and (w1 & pres) != pres)]
+        out = []
+        for i, nm in enumerate(present):
+            slot = end - len(present) + i
+            if 0 <= slot < len(self.words):
+                out.append(self._read_slot(nm, slot))
+        return out
 
     @property
     def program_slots(self):
@@ -2192,11 +2392,66 @@ class Record:
         return [(s, j < n) for j, s in enumerate(hit[1]) if s < len(self.words)]
 
     def _read_slot(self, name, slot):
-        """One parameter slot as (name, kind, value)."""
+        """One parameter slot as (name, kind, value).
+
+        `kind` comes from the parameter's PROGRAM BIT where that bit is verified exact, and
+        from the slot's contents everywhere else.
+
+        The format STATES whether a parameter is computed or baked: `PARAM_SPEC` carries a
+        program mask beside each presence mask (blend's `opacitymult` is presence 0x30,
+        program 0x20), and this file established that bit at 100% over 217,715 blend slots.
+        This reader used to ignore it and ask `valid_program(word + 52)` instead -- deciding
+        what a word IS by what it looks like, which is the probe that manufactured a phantom
+        program out of an instruction operand in `Record.programs`.
+
+        Where the two can be compared, full corpus, 585,105 parameter reads:
+
+            blend            179,524 reads        0 disagreements   0.000%
+            levels           168,077              0                 0.000%
+            directionalwarp  117,657              0                 0.000%
+            dirmotionblur     25,975              1                 0.004%
+            fxmaps            93,872          1,423                 1.516%
+
+        So for the first three the bit and the slot NEVER disagree, and reading the bit is
+        exactly equivalent -- the probe is removed for 465,258 of 585,105 reads with no
+        change to any value.
+
+        The other two keep reading the slot, for reasons that are about them and not about
+        the bit:
+
+        * `fxmaps` holds 1,423 of the 1,424 disagreements, and its own PARAM_SPEC entry
+          already says why -- of its four pairs "two are exact and two are near it", at
+          97.22% and 97.06%. Its bit model is unfinished, so preferring it here would be
+          adopting a 97% rule over a probe with no arbiter to say which is right.
+        * `dirmotionblur`'s single disagreement is not a bit error at all. Road.sbsasm
+          record 417 has w1=0x6, so the bit says `intensity` is a program, and the WALK
+          agrees -- it puts intensity at field 0, slot 3, state 2, and `words[3] + 52` is a
+          valid program. The 0.25 the probe reports is `words[4]`. The LAYOUTS memo, which
+          is what routes this filter, named the wrong slot. Trusting the bit while standing
+          on the memo's slot would emit `words[4] + 52` as a program pointer -- a right kind
+          on a wrong slot, which is garbage rather than a fix. The slot read is the safer
+          answer until that filter moves onto the walk.
+
+        Conflicts are RECORDED, not swallowed: `_kind_conflicts` collects any record where
+        the bit and the slot disagree on a filter this trusts. It is empty on this corpus,
+        and an entry on a new one is a finding -- the same discipline that surfaced the
+        missing `(emboss, 1)` pair in `decompose.INPUT_FIELDS` instead of guessing at it.
+        """
         raw = self.words[slot]
         ptr = raw + 52
-        if (self.asm.body_lo <= ptr < self.asm.body_hi
-                and self.asm.valid_program(ptr)):
+        slot_is_program = (self.asm.body_lo <= ptr < self.asm.body_hi
+                           and self.asm.valid_program(ptr))
+        if self.filter_id in BIT_EXACT_KINDS:
+            w1 = self.words[1] if len(self.words) > 1 else 0
+            bit_is_program = False
+            for _nm, _pres, _prog in PARAM_SPEC.get(self.filter_id, ()):
+                if _nm == name:
+                    bit_is_program = bool(w1 & _prog)
+                    break
+            if bit_is_program != slot_is_program:
+                _kind_conflicts.append((self.filter_id, name, self.index))
+            slot_is_program = bit_is_program
+        if slot_is_program:
             return (name, 'program', ptr)
         if self.filter_id in PARAM_RAW:
             return (name, 'baked', raw)
@@ -3106,6 +3361,7 @@ class Record:
         #
         # `w1` bit 26 scores 100% on the bit-0-clear subset where bit 7 was found, and 53.8%
         # corpus-wide: a coincidence inside a restricted population, tested and dropped.
+        #
         # THE WALK NAMES THE SLOT NOW, and the ladder above is what it replaces -- four
         # candidate formulas ranked by which best lands a plausible matrix, the same
         # value-probe method retired from `translation` (the Float2 sibling of this
