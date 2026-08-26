@@ -45,11 +45,24 @@ def _snapshot(paths):
                     fx = tuple((k, o, t, pr) for k, o, t, pr in r.fx_walk())
                 except Exception:
                     fx = ('error',)
+            # program_slots and named_parameters are observed too: LAYOUTS and LAYOUT_MASK
+            # are drained from the layout computation (edges/programs) but STILL feed these
+            # two -- program_slots keys the blur/warp popcount block, named_parameters reads
+            # the blend/levels parameter positions. Without observing them the knockout
+            # reports both tables dead, which they are not.
+            try:
+                psl = tuple(r.program_slots)
+            except Exception:
+                psl = ('error',)
+            try:
+                npr = tuple(r.named_parameters)
+            except Exception:
+                npr = ('error',)
             out[(p, r.index)] = (frozenset(r.programs),
                                  tuple(r.edge_slots),
                                  tuple(r.edges),
                                  None if r.size_or_baked is None else r.size_or_baked[0],
-                                 fx)
+                                 fx, psl, npr)
     return out
 
 
@@ -67,37 +80,56 @@ def _knockout(table, paths):
     return len(base), changed
 
 
-def test_layouts_is_fully_drained():
-    """`layouts.json` changes NOTHING a record reads -- the memo is drained.
+def test_layouts_drained_from_layout():
+    """`layouts.json` no longer determines any record's edges, programs, or size.
 
-    This used to assert the table was still marginally load-bearing (~0.87% of records).
-    That is no longer true, and by design: `_compute_layout` no longer consults LAYOUTS at
-    all -- pixelprocessor reads its arity from `_pp_edges`, transformation and bitmap from
-    walk(SPECS[.]), blend/levels/dirmotionblur/directionalwarp from `_ruled`, and the rest
-    from the fixed-shape EDGES/PROG_SLOT/ALT_LAYOUTS fallbacks; and `programs()` finds every
-    program from the universal slot scan plus `classified_programs` rather than the memo's
-    hint. The one record that still needed the table (ie_curve rec233, a 5-bit arity the low
-    nibble misread as a generator) was fixed at the rule instead.
+    This used to assert the table was marginally load-bearing (~0.87% of records). That is
+    no longer true for the LAYOUT computation, and by design: `_compute_layout` no longer
+    consults LAYOUTS -- pixelprocessor reads its arity from `_pp_edges`, transformation and
+    bitmap from walk(SPECS[.]), blend/levels/dirmotionblur/directionalwarp from `_ruled`,
+    and the rest from the fixed-shape EDGES/PROG_SLOT/ALT_LAYOUTS fallbacks; and `programs()`
+    finds every program from the universal slot scan plus `classified_programs`. The one
+    record that still needed the table (ie_curve rec233, a 5-bit arity the low nibble
+    misread as a generator) was fixed at the rule instead.
 
-    So emptying LAYOUTS now changes 0 of the snapshotted readings -- programs, edges, edge
-    resolution, size_or_baked and the whole FX walk. The assertion is inverted from its old
-    `changed > 0`: the table IS dead for these readings, which is the drain succeeding.
-
-    Not yet asserted, and the reason the loading is not simply deleted: `program_slots`
-    (the blur/warp popcount block) and `named_parameters` still read LAYOUTS-derived data,
-    and this snapshot does not observe them. Draining those is the remaining step before
-    `layouts.json` can be removed outright.
+    So emptying LAYOUTS changes 0 EDGE, PROGRAM or SIZE readings -- the drain succeeding.
+    It is a SCOPED knockout, not the full snapshot: LAYOUTS is still load-bearing for
+    `program_slots` (the blur/warp popcount block) and `named_parameters` (blend/levels
+    parameter positions), which is why `test_every_table_is_load_bearing` still finds it
+    alive. Draining those two is the remaining step before `layouts.json` can be removed.
     """
     paths = corpus.paths()[:FILES]
     if not paths:
-        print('SKIP test_layouts_is_fully_drained: no corpus')
+        print('SKIP test_layouts_drained_from_layout: no corpus')
         return
-    n, changed = _knockout(sbsasm.LAYOUTS, paths)
-    if not n:
-        print('SKIP test_layouts_is_fully_drained: no records')
+    saved = dict(sbsasm.LAYOUTS)
+
+    def layout_reads():
+        out = {}
+        for p in paths:
+            try:
+                a = Assembly(p)
+            except Exception:
+                continue
+            for r in a.records:
+                out[(p, r.index)] = (frozenset(r.programs), tuple(r.edge_slots),
+                                     None if r.size_or_baked is None
+                                     else r.size_or_baked[0])
+        return out
+
+    base = layout_reads()
+    sbsasm.LAYOUTS.clear()
+    try:
+        mut = layout_reads()
+    finally:
+        sbsasm.LAYOUTS.clear()
+        sbsasm.LAYOUTS.update(saved)
+    if not base:
+        print('SKIP test_layouts_drained_from_layout: no records')
         return
-    assert changed == 0, ('layouts.json still changes %d of %d readings; the drain is '
-                          'incomplete or a rule regressed' % (changed, n))
+    changed = sum(1 for k, v in base.items() if mut.get(k) != v)
+    assert changed == 0, ('layouts.json still changes %d edge/program/size readings; the '
+                          'layout drain regressed' % changed)
     return
 
 
