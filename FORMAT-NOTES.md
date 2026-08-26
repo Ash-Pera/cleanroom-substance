@@ -36640,3 +36640,63 @@ in are now measured not to be.
 Recorded so the next attempt does not spend the same effort: the useful move on the white records
 is to make them PAINT SOMETHING, and both available fallback switches only change what colour they
 are uniformly.
+
+### Correction: those are not quadrant corners, they are the first four cells of a spiral
+
+The previous note read PavingStones record 161's four typeless emissions -- at branchoffsets
+(0,0), (0,1), (1,0), (1,1) -- as the four children of a `paramset`, and took it as the compiled
+form of the quadrant subdivision the sources describe. **That reading does not survive a deeper
+specimen.** Record 632 of the same file emits 192 patterns in the same alternating shape, and its
+typeless offsets run
+
+    (0,0) (0,1) (-1,1) (-1,0) (-1,-1) (0,-1) (1,-1) (1,0) (1,1) (1,2) (0,2) (-1,2) ...
+
+which is a counterclockwise SPIRAL over an integer lattice, not a set of four corners. Record
+161's four are simply where that spiral is truncated after four cells. The source-side fact is
+unaffected -- `paramset` really does declare four outputs, counted at 108 instances -- but the
+emitted branchoffsets are not the compiled trace of it, and I should not have read one as the
+other on a specimen with exactly four.
+
+What the offsets ARE is cell coordinates. Measured over 20 files, by whether both components are
+integers:
+
+                     typed patterns        typeless patterns
+    WHITE records    9 / 3,486   0.3%      2,477 / 6,023   41.1%
+    varied records   119,289 / 152,935  78.0%      2 / 23,108   0.0%
+
+The roles invert between the two populations, which is itself unexplained: in a record that
+renders, the integer lattice is carried by the TYPED draws; in a record that renders white it is
+carried by the typeless ones. This is a distinct population from the `grid_width` records
+censused above, whose branchoffset is uniformly 'neither'.
+
+### The coherent cell-unit pairing, tested at last, and refuted
+
+`fx.patternsize` and `fx.branchoffset` were each arbitrated alone. That was incoherent: if offsets
+are in cell units then sizes must be too, and scaling one without the other is neither candidate.
+Tested together on the 7 usable reference channels:
+
+    candidate            mean MAE   mean |corr|
+    canvas / canvas       0.1090      0.4136
+    cell size only        0.1051      0.3578
+    cell offset only      0.1090      0.4136     byte-identical to default
+    BOTH cell             0.0980      0.3439
+
+The pairing gives the BEST MAE and the WORST correlation of the four -- the same gain-versus-
+structure split that refuted the size-only arm, and wider. Auras basecolor ch1 falls from 0.865
+to 0.513. And `fx.branchoffset = 'cell'` alone changes nothing at all on the scored records, so
+that arm is vacuous on this population and its apparent agreement with the default means nothing.
+
+### FX-Map programs never ask for a depth
+
+If the engine carried a subdivision depth that programs could see, they would read it. Over 20
+files, every sysvar appearing inside an FX-Map node or entry program is one of four already
+modelled:
+
+    $pos       805 uses, 803 records
+    $number    386 uses, 142 records
+    $size       36 uses,  36 records
+    $sizelog2   11 uses,  11 records
+
+No unmodelled id, so whatever branch state the engine carries down its tree is applied to the
+emission by the engine and is not visible to the bytecode. It cannot be recovered by decoding a
+program; it has to come out of the structure or not at all.
