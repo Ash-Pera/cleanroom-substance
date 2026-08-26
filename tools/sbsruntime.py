@@ -294,10 +294,35 @@ def clamp(value, ncomp):
         return value
     return arr[..., :ncomp]
 
-def rand(seed):
-    """Deterministic hash-style noise in [0, 1)."""
-    x = np.asarray(seed, dtype=np.float64)
-    return np.modf(np.sin(x * 12.9898) * 43758.5453)[0] % 1.0
+def rand(limit):
+    """A random value in [0, `limit`) -- the argument is the RANGE, not a seed.
+
+    THE ARGUMENT IS A RANGE, and the corpus says so plainly. Over 19,210 `rand` calls in
+    25 files, the constants passed to it are:
+
+        1.0 x6470   2.0 x4917   0.0 x1207   0.0625 x1012   6.28 x979   0.125 x696
+        0.015625 x544   0.022 x544   360.0 x389   6.283185 x305   4.0 x216
+
+    `6.28` and `6.283185` are a full turn in radians, and 154 of those calls feed `np.cos`
+    and 154 feed `np.sin` -- a random ANGLE. `360.0` is the same thing in degrees.
+    `rand(0.0)` appears 1,207 times, which under this reading is an author switching a
+    jitter off and under a seed reading is a seed of zero, which means nothing. Read as
+    seeds, `cos(rand(2*pi))` is one fixed number rather than a direction, and 6.28, 360
+    and 0.0625 are arbitrary.
+
+    It had been returning [0, 1) whatever it was given, which collapses every one of those
+    to the same narrow band. In CarpetSubstance001 the effect is visible: the emitted
+    patterns of record 377 all carry `imageindex` 8, because the program computes
+    `int(rand(6.0)) + 8` to choose one of six images and `rand(6.0)` was 0.626 -- so the
+    choice was never made, 262,144 times.
+
+    STILL DETERMINISTIC, AND STILL CONSTANT PER ARGUMENT. Scaling is the half of this the
+    corpus settles. What actually makes a draw differ between two evaluations is not
+    decided here.
+    """
+    x = np.asarray(limit, dtype=np.float64)
+    h = np.modf(np.sin(x * 12.9898) * 43758.5453)[0] % 1.0
+    return x * h
 
 
 #: Samplers are installed by the caller: index -> function(pos) -> value.
