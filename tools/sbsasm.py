@@ -3049,7 +3049,40 @@ class Record:
         #
         # `w1` bit 26 scores 100% on the bit-0-clear subset where bit 7 was found, and 53.8%
         # corpus-wide: a coincidence inside a restricted population, tested and dropped.
-        base = 4 * (3 + (self.cls & 1) + (self.cls >> 7 & 1))
+        # THE WALK NAMES THE SLOT NOW, and the ladder above is what it replaces -- four
+        # candidate formulas ranked by which best lands a plausible matrix, the same
+        # value-probe method retired from `translation` (the Float2 sibling of this
+        # parameter) and from blur, sharpen and warp. `transformation` declares exactly two
+        # parameters, a Float4 `matrix22` and a Float2 `offset`, so in `decompose`'s
+        # (field, state, position, WIDTH) tuples the width-4 entry IS the matrix, with
+        # nothing to choose between.
+        #
+        # SWAPPED AT ZERO DIFF, which is the point rather than a disappointment: the fitted
+        # rule was already at 100.0%, so there is no coverage to win here, only a rule
+        # selected by plausibility to remove. Over the corpus, filter 2:
+        #
+        #     bit 6 says baked   66,508 records   walk agrees 66,506   disagrees 0   silent 2
+        #     bit 6 clear       168,351           walk silent 168,349  disagrees 2
+        #
+        # The walk is consulted only where the record's OWN bit 6 says a baked matrix is
+        # there, so the 2 silent ones fall back to the formula and nothing changes. The two
+        # bit-6-clear disagreements are left alone deliberately: the walk finds a width-4
+        # slot in a record that says it has no baked matrix, and which of those two
+        # statements is wrong is not established here. They are recorded, not resolved.
+        base = None
+        if (self.words[1] >> 6 & 1) if len(self.words) > 1 else False:
+            try:
+                import decompose as _decompose
+                _d = _decompose.decompose(self)
+            except Exception:
+                _d = None
+            if _d:
+                _four = [t for t in _d.get('param_slots', ())
+                         if len(t) >= 4 and t[3] == 4]
+                if len(_four) == 1:
+                    base = 4 * _four[0][2]
+        if base is None:                    # walk silent, or no baked matrix declared
+            base = 4 * (3 + (self.cls & 1) + (self.cls >> 7 & 1))
         if base // 4 + 3 >= len(self.words):
             return None
         m = struct.unpack_from('<4f', self.asm.data, self.offset + base)
