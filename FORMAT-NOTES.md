@@ -35068,3 +35068,61 @@ infinity — the corpus raises `RuntimeWarning: overflow encountered in divide` 
 `fxrender.py:627-628` and `in square` at line 533 on real records. The infinities land
 outside `inside` and contribute nothing, so the picture is unaffected, but a guard that
 lets a value through and then relies on a later test to neutralise it is not a guard.
+
+## The max-reduction pyramid: how this format computes an image's own min and max
+
+Chasing why every declared output of `FabricSubstance005` ends in a division by zero turned
+up a construct that is everywhere: **6,615 instances across 74 of 200 files**, the largest
+single idiom found by reading programs rather than headers.
+
+**The level.** A `pixelprocessor` whose program is exactly sixteen `samplecol` calls
+combined by a fifteen-deep `max.f4` tree:
+
+    %0   sysvar.f2 8                 $pos
+    %2   mul.f2 $pos, 0.25
+    %3   samplecol.f4 %2, #0         and fifteen more at %2 + (0, .25, .5, .75)^2
+    %63  max.f4 ...                  a balanced max tree over all sixteen
+
+Sampling at `$pos * 0.25` plus the sixteen quarter offsets covers the whole unit square, so
+one level reduces its input by 4x in each axis. The records chain at a ladder of declared
+sizes and each is 1/4 the last:
+
+    256x256  ->  64x64  ->  16x16  ->  4x4  ->  1x1
+
+Four levels is 4^4 = 256, an exact full reduction of a 256-wide image. Corpus-wide the
+sizes are 16x16 (3,090), 1x1 (2,125), 4x4 (846), 8x8 (374), 128x128 (96), 256x256 (36).
+The trailing 1x1 records repeat the reduction on an already-reduced value, which is
+harmless and is what a fixed-depth ladder looks like when the image is smaller than the
+ladder was built for.
+
+**Both extremes come out of a max tree**, which is why the result looks strange until the
+consumer is read. The packed float4 is
+
+    C = (max, max, 1 - min, 1 - min)
+
+so a single `max` reduction carries the minimum too, as its complement. The consumer, in
+`FabricSubstance005` record 883, is
+
+    (samplelum(in0) - lo) / (max(C.x, C.y) - lo),    lo = 1 - max(C.z, C.w)
+
+and `1 - (1 - min)` is `min`. So the whole construct is an **auto-levels**: rescale an
+image between its own minimum and maximum. That reading is what makes the complement
+packing legible rather than arbitrary -- the `1 -` in the consumer is the inverse of the
+`1 -` at the producer.
+
+**Why it is degenerate here, and why that is not an fxmaps bug.** The pyramid's source is
+record 348, a warp fed through a levels from `fxmaps` record 345, whose single 0x89 gate is
+`inputref(scale) == 0` against a manifest default of 4. The branch is off, so the source is
+uniformly zero, so max == min == 0, so the range is zero-width at 100% of pixels and the
+division is 0/0. An auto-levels over a constant image is degenerate for ANY renderer,
+engine included; there is nothing about our arithmetic to fix. What is not established is
+what the engine writes in that case -- an output map is 8- or 16-bit integer and has no
+NaN, so something finite is written, but nothing in the file says what.
+
+**A correction to the commit that preceded this.** `ca37e83` states that record 879 "has no
+input edges and reaches its source only through graph-input sampler bindings". That is
+wrong. 879 has edge [878] and the pyramid runs 876 -> 877 -> 878 -> 879 from record 348. I
+read it off a dependency walk whose depth limit was 4, which cut the tree exactly at 879
+and printed no children -- an artifact of my own printer that I reported as a fact about
+the file. The rest of that commit stands; the accumulator is at its identity because its
+SOURCE is constant, not because it never accumulates.
