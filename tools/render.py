@@ -330,6 +330,45 @@ def synthetic_bitmap(rec, seed):
     return img[:, :, None].astype(np.float32)
 
 
+def footprint_scale(m, offset_unused, W_out, H_out, src_shape):
+    """How many SOURCE TEXELS one output pixel covers, under matrix `m`.
+
+    A step of one output pixel is (1/W_out, 0) in output-normalised space; the transform
+    maps it to (m[0], m[2]) / W_out in input-normalised space, which is that times the
+    source's own dimensions in texels. The footprint is the longer of the two axis steps.
+    """
+    Hs, Ws = src_shape[0], src_shape[1]
+    dx = np.hypot(m[0] * Ws / max(W_out, 1), m[2] * Hs / max(W_out, 1))
+    dy = np.hypot(m[1] * Ws / max(H_out, 1), m[3] * Hs / max(H_out, 1))
+    return float(max(dx, dy))
+
+
+def prefilter(src, scale):
+    """Box-reduce `src` by halves until one texel covers the sampling footprint.
+
+    MINIFICATION WITHOUT THIS IS THE BUG IT EXISTS FOR. A single bilinear tap answers
+    "what is the source AT this point"; a minifying transform needs "what is the source
+    AVERAGED over the area this output pixel covers", and the two differ by everything
+    when the source is sparse. Measured on `Chesterfield` record 128, a 4x zoom-out of a
+    source that is exactly 0.5 in 99.79% of its pixels: the 16 output positions land on 4
+    distinct texel phases per axis, every one of them on the flat part, and the output is
+    constant to 0.00000000. Box-averaging the 8x8 footprint that zoom-out covers gives
+    std 0.00293 instead.
+
+    Halving rather than an arbitrary box because a power-of-two chain is exact and needs
+    no resampling: each level is the mean of a 2x2 block. It stops on an odd dimension
+    rather than padding, which would invent edge texels -- so a 3-wide image simply does
+    not reduce, and the caller gets the point sample it would have had anyway.
+    """
+    img = src
+    while scale >= 2.0 and img.shape[0] >= 2 and img.shape[1] >= 2 \
+            and img.shape[0] % 2 == 0 and img.shape[1] % 2 == 0:
+        img = 0.25 * (img[0::2, 0::2] + img[1::2, 0::2]
+                      + img[0::2, 1::2] + img[1::2, 1::2])
+        scale /= 2.0
+    return img
+
+
 def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
     end = asm.program_span(start)
     if end is None:
@@ -887,7 +926,16 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 in_y = m[2] * c[:, 0] + m[3] * c[:, 1] + 0.5 + offset[1]
                 in_pos = np.stack([in_x, in_y], axis=-1)
 
-                result = sbsruntime.image_sampler(outputs[rec.edges[0]])(in_pos)
+                # Integrate over the footprint when the transform MINIFIES. Sampling with
+                # one bilinear tap regardless of scale is what made ten records in
+                # `Chesterfield`'s basecolor chain return an exactly constant image; see
+                # `prefilter`. Magnification is untouched -- there the footprint is under a
+                # texel and a tap is the right answer.
+                _src = outputs[rec.edges[0]]
+                _scale = footprint_scale(m, offset, W, H, np.asarray(_src).shape)
+                if _scale >= 2.0:
+                    _src = prefilter(np.asarray(_src, dtype=np.float64), _scale)
+                result = sbsruntime.image_sampler(_src)(in_pos)
                 outputs[i] = to_image(result, W * H, H, W)
                 if tainted:
                     synthetic.add(i)
