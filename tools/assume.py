@@ -282,9 +282,32 @@ QUESTIONS = {
     #
     # NOTHING IS WIRED FROM THIS. numberadded genuinely evaluates to 1, and the decoded
     # formula ((g-1 mod 2) + g)^2 yields only odd squares, so 16 is unreachable through it
-    # and the correct count must still arrive by a path neither side has pinned. Both arms
-    # above are measurements, not fixes -- they say what the answer looks like, not what
-    # produces it.
+    # and the correct count must still arrive by a path neither side has pinned.
+    #
+    # THOUGH IT MAY NOT BE MISSING FROM THE FILE, only from the addnode. The structural side
+    # searched the 0x18B node, its single program and the record-level FX params and
+    # reported the 16 absent by every path -- correct, and it stops one program short. The
+    # grid dimension is a HARDWIRED CONSTANT in the placement program, the same one that was
+    # decoded as placing at (0.125 + 0.25*($number mod 4), ...), and its constants differ
+    # per record:
+    #
+    #     rec34 prog 530756   0.125  0.25  ...  2.0  3.0  4.0  5.0
+    #     rec53 prog 537064   0.125  0.25  ...  2.0  3.0  4.0  5.0
+    #     rec86 prog 551884   0.125  0.25  ...  2.0  3.0  4.0  5.0
+    #     rec65 prog 542248   0.125  0.25  ...  1.67  2.0        <- no 4.0
+    #
+    # Three records carry the 4 whose square is the 16 the measurement demands; the fourth
+    # does not, and rec65 is exactly the record whose deficit is 5.8 rather than 16. So the
+    # count varies per record in the way its coverage does, and it is present as a decoded
+    # constant rather than absent from the format.
+    #
+    # That is a direction, not a rule: which constant is the modulus and how it becomes an
+    # iteration count is unread, and reading 4.0 out of a list that also holds 2.0, 3.0 and
+    # 5.0 by choosing the one that gives the answer would be fitting. But "the 16 is not in
+    # the bytes" is too strong, and the next pass should start at the placement program.
+    #
+    # Both arms above remain measurements, not fixes -- they say what the answer looks like,
+    # not what produces it.
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
