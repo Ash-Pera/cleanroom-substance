@@ -219,10 +219,14 @@ forward pointer at slot 2 (`node_ptr + 52`). A tree holds two distinct structure
 discriminated by the tag word's **low nibble**:
 
 - **nibble 9 or 0xB → a node header.** A node is the mask-walk one scale down:
-  `[tag][fields]`, where the tag's low byte is a *kind* fixing a constant base size and the
-  remaining tag bits are a presence mask over the same 1/2/4-word widths. Known node kinds
-  and sizes (words, including the tag): `0x8b`=3, `0x89`=4, `0xcb`=4, `0x99`=5, `0x9b`=4,
-  `0xab`=4, `0xa3`=4, `0xdb`=5, `0x0b`=2 (a leaf: tag + one pointer).
+  `[tag][fields]`, where the low byte's high nibble (bits 4-7) is a presence mask over the
+  fields and the successor pointer follows them. The successor word offset is derivable, not
+  tabled: `successor_word = base + popcount(header & 0xF0)`, `base` = 1 (nibble B) or 2
+  (nibble 9) — verified 30/30 over every header seen 10+ times. Each set bit inserts one
+  field: bit 4 a branch (two children, e.g. `0x1B`), bit 5 a `randomseed` program, bit 6 a
+  baked `randomseed`, bit 7 the base program+successor structure. So `0x0b` is a leaf
+  (successor at word 1), `0x18b` puts its successor at word 2, `0x1ab`/`0x1cb`/`0x89` at
+  word 3, `0x99` at word 4.
 - **nibble 8 → a paramset table entry**, *not* a node. The entries are a **linked list**:
   each entry stores a pointer to the next one — the header slot reaching furthest forward,
   past the entry's own inline program. The entry ends at its inline program, whose length the

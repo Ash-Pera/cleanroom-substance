@@ -35688,3 +35688,37 @@ how long the entry's inline program happens to be, which the entry states and th
 by stored pointers -- but swapping the entry walk moves the render path materially and this
 environment cannot run a reference render (numpy is broken). Recorded for a session that can
 render-verify; the stride table stays until then.
+
+## The FX-Map node successor is a popcount, so FX_NODES is a fit too
+
+`FX_NODES` (4 whole-word headers) and `FX_NODES2` (4 low-byte families) hand-list, per node
+header, where the successor pointer sits and which words hold programs. SPEC section 8 already
+asserts a node is "the mask-walk one scale down"; this measures the successor half of that and
+finds it a clean function of the header, no table needed.
+
+**The rule.** The successor word offset is
+
+    successor_word = base + popcount(header & 0xF0)      base = 1 (low nibble B), 2 (nibble 9)
+
+i.e. one plus (for addnode) the number of set bits in the header's low-byte HIGH nibble, each
+of which inserts one field ahead of the successor. Verified over every node header seen 10+
+times in 250 files: 30 of 30 headers put their successor exactly there, none below 80% modal.
+It reproduces `FX_NODES` exactly -- `0x18B`->word 2, `0x89`->3, `0x1AB`->3, `0x1CB`->3 -- and
+explains `FX_NODES2`'s positions the table states by hand: `0x0B` (no high-nibble bits) is a
+leaf with its successor at word 1, `0x1B` (bit 4) at word 2, `0x9B` (bits 4,7) at word 3.
+
+**Which field each inserted bit is.** The low-byte high nibble is a parameter mask exactly as
+the entry tag's bits 19..31 are, one scale up:
+
+    bit 4  a branch          `0x1B` has two children, not one successor
+    bit 5  randomseed, as a PROGRAM     `0x1AB` = `0x18B | 0x20`, programs at words 1 and 2
+    bit 6  randomseed, BAKED            `0x1CB` = `0x18B | 0x40`, a value word not a program
+    bit 7  the base program+successor structure (present in every non-leaf)
+
+So `FX_NODES`'s program lists follow too: word 1 is always the base program, bit 5 adds word
+2. Both node tables are fits of the same walk the record header, the FX node and the FX entry
+all run -- `[tag/mask][fields]`, set bits enumerating present fields in ascending order at a
+width fixed per kind -- now confirmed at all three scales. Draining the node walk onto it (so
+an unlisted header is walked structurally rather than stopping the chain, the way the entry
+stride drain reached 78k more entries) is the open follow-on; the successor half is settled,
+the branch and scanned-leaf cases in `FX_NODES2` are what remain to fold in.
