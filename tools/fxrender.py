@@ -1296,6 +1296,29 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # combinations. The insensitivity is the guard declining, not the divisor being
     # irrelevant, and any future candidate for this gap has to reach a population these do
     # not.
+    #
+    # AND THE DEFICIT IS THE EMISSION COUNT, NOT THE SIZE OR THE INDEX. Capturing what these
+    # two records actually emit:
+    #
+    #     rec34   ONE emission   patternsize 0.2500   frameoffset (-0.375, -0.375)  imageindex 8
+    #     rec65   ONE emission   patternsize 0.4146   frameoffset (-0.377, -0.376)  imageindex 8
+    #
+    # `imageindex` 8 is correct: of the fourteen image slots supplied, slot 8 is the only one
+    # carrying content (std 0.1489 and 0.3280), and the emission selects exactly it. So the
+    # not-established index-to-edge mapping this docstring warns about is not the fault here,
+    # and neither is a dilution across the thirteen blank inputs -- there is one stamp, and
+    # it samples the right image.
+    #
+    # The coverage then follows arithmetically. A stamp of side 0.25 covers 0.0625 of the
+    # canvas, and the image it stamps is itself lit over 0.403 of its area, so the output is
+    # lit over 0.403 x 0.0625 = 0.0252 -- against 0.025 measured. rec65: 0.787 x 0.1719 =
+    # 0.135 against 0.138. Both to the third decimal.
+    #
+    # ONE STAMP OF SIDE 1/4 IS ONE SIXTEENTH OF A CANVAS, and sixteen is the attenuation.
+    # A quadrant subdivision two levels deep produces sixteen cells of exactly this size, so
+    # the shape of the miss is a walk that emits a single leaf where it should emit the
+    # whole subdivision. That is a question about the node walk rather than about splat, and
+    # it is handed to the structural side on those terms.
     W = W or rec.width
     H = H or rec.height
     # The footprint is the largest open question here and the one the reference renders
