@@ -2369,7 +2369,16 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # the weaker of `normal`'s two paths and LOW_CONFIDENCE says so on
                     # every record that uses it.
                     _edges, start = rec.layout
-                    for sl in range(start, min(start + 8, len(rec.words))):
+                    # HOW FAR THE SCAN MAY REACH -- see assume.QUESTIONS['normal.intensity'].
+                    # The eight-word window is a search, not a reading, and `param_slots`
+                    # supplies a DERIVED slot for it to stop at: `start + 1 + bit7 + bit11`,
+                    # 38 of 38 across six other filters. Where that slot holds a value the
+                    # scan already picks exactly it, 968 of 968 -- the window never fires
+                    # early. The two arms differ only on the records where it does NOT.
+                    _hi = (start + 2 + ((rec.cls >> 7) & 1) + ((rec.cls >> 11) & 1)
+                           if assume.assumed('normal.intensity') == 'derived'
+                           else start + 8)
+                    for sl in range(start, min(_hi, len(rec.words))):
                         f = float(np.frombuffer(np.uint32(rec.words[sl]).tobytes(),
                                                 dtype=np.float32)[0])
                         if np.isfinite(f) and 1e-3 < abs(f) < 1e3:

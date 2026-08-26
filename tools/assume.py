@@ -1568,6 +1568,62 @@ QUESTIONS = {
     # finding is kept in FORMAT-NOTES; the lever is not, per the same rule that retired
     # fxrender's 'oversize' arm.
     'fx.typeless_profile': ('rect', 'disc', 'cone', 'paraboloid', 'bell', 'gaussian'),
+
+    # HOW FAR `normal`'s intensity fallback MAY SCAN. 'scan' is the incumbent: eight words
+    # from the layout start, take the first that reads as a plausible float. 'derived'
+    # stops it at the slot `param_slots` derives, `start + 1 + bit7 + bit11`.
+    #
+    # THE AGREEMENT BETWEEN THEM IS NOT THE EVIDENCE, and an earlier note in this project
+    # treated it as though it were. Over 1,379 corpus `normal` records:
+    #
+    #     rule slot holds a plausible value       968     scan picks that exact slot  968
+    #     rule slot holds a denormal or zero      390     of which the scan reaches
+    #                                                     further and finds something  68
+    #                                                     and finds nothing           322
+    #
+    # 968 of 968 is agreement between the CHALLENGER and the INCUMBENT. It measures how
+    # little would change, not whether either is right -- two readings that are wrong
+    # together agree perfectly. What it does establish is that the window never fires
+    # early: slots between the start and the derived slot hold nothing plausible, so the
+    # two arms can differ ONLY on the 68.
+    #
+    # THE 68 ARE WHERE THE EVIDENCE IS, scored by the instrument this file already uses
+    # for `blur` -- two readings of one parameter must have two agreeing distributions,
+    # against source declarations as the third, independent instrument. `normal` declares
+    # intensity p50 4.5, range -0.05..100, commonest 10, 20, 0.25, 5, 3, 0.5, 16.
+    #
+    #     population                       n     p50    in range   IS a declared value
+    #     backed by the derived slot     968    12.0      93.2%          76.8%
+    #     derived slot says NON-value     68     8.5      72.1%          35.3%
+    #
+    # Same scan, same filter, split only by whether the derived slot corroborated it. The
+    # backed population is 76.8% EXACT declared values; the overriding population is a
+    # third of that, and its members include -237.816, -77.22, -32.06, 96.0772, 105.469,
+    # 305.965 and 300.0 exactly ten times. Long mantissas are not author-typed numbers.
+    # Where the derived slot says no baked value is stored, the scan reaches six more
+    # words and finds a different quantity -- which is what `param_slots` already reports
+    # for `blur`: "where bit 12 says none is stored the same rule lands on something that
+    # is not one. That is what an absent value looks like."
+    #
+    # WHY THIS IS NOT SIMPLY ADOPTED. 35.3% of the 68 ARE declared values, so closing the
+    # window drops perhaps two dozen good readings to suppress rather more bad ones, and
+    # that is a coverage-versus-correctness call this file exists to hold open rather than
+    # settle by preference. `normal` also pairs only ONCE under `param_slots` containment
+    # (SubstanceDesignerPractice rec 362, 2.01 at slot 4, cls 0x0319, which the rule
+    # predicts) -- one specimen is corroboration, not verification, and the 38-of-38 was
+    # measured on six OTHER filters. The distributional split is the case for 'derived';
+    # the single pairing is not.
+    # AND THE REFERENCE CORPUS CANNOT SETTLE IT, which is stated here with its cause rather
+    # than left as a bare null. Scored under {'blur.intensity':'program',
+    # 'distance.param':'layout', 'nonfinite.fill':0.5} over every package shipping exported
+    # maps, both arms give mean MAE 0.0904 across 27 paired channels and ZERO channels move.
+    #
+    # That is not the two arms agreeing. Of the 72 records where they differ, 68 are in
+    # corpus files no reference package contains, and the remaining 4 sit inside a
+    # reference package but feed no paired output's cone. The instrument is silent because
+    # nothing it scores depends on the choice -- so the distributional split above is the
+    # only evidence there is, and the default does not move on it alone.
+    'normal.intensity': ('scan', 'derived'),
 }
 
 _ACTIVE = {}
