@@ -1511,7 +1511,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # Greyscale ramps are unaffected: their single value stays a u16 scaled by
                 # 65535, which is the reading already verified against an independent
                 # lookup in test_filters.py.
-                if rec.colour:
+                if rec.colour and isinstance(table[0][0], float) and len(table[0]) >= 4:
+                    # THE FLOAT FORM NEEDS NO UNPACKING. `Record.ramp`'s five-float entries
+                    # are (position, R, G, B, A) already in [0, 1] -- the u16 packing below
+                    # exists because a u16 pair has to be reassembled into RGBA8888, and
+                    # there is nothing to reassemble here.
+                    stops = np.array([e[0] for e in table], dtype=np.float32)
+                    vals = np.array([list(e[1:5]) for e in table], dtype=np.float32)
+                elif rec.colour:
                     if isinstance(table[0][0], float) or len(table[0]) < 3:
                         raise Unsupported("colour ramp is not in the u16 packed form")
                     stops = np.array([e[0] for e in table], dtype=np.float32) / 65535.0

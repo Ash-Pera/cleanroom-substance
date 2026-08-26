@@ -2821,9 +2821,28 @@ class Record:
         if self.filter_id != 0 or len(self.words) < 5:
             return None
         count = self.words[2]
-        start = self.words[3] + 52
-        end = self.words[4] + 52
-        if not count or not (self.asm.body_lo <= start < self.asm.body_hi):
+        if not count:
+            return None
+        # THE PAIR IS NOT ALWAYS AT WORD 3. Some records carry an extra float parameter
+        # there and put the pointers one word later -- Auras records 312, 424 and 442 hold
+        # 0x3F63D70A and 0x3F800000 (0.89 and 1.0) at word 3, which addresses nothing, with
+        # a perfectly good (start, end) pair at words 4 and 5.
+        #
+        # Chosen by which pair ADDRESSES THE BODY, not by a class bit: only 4 records in 40
+        # corpus files plus every reference package have the shift, and 4 records is far too
+        # thin to name a bit from -- the same reasoning the float-width note below gives for
+        # reading the span instead of the class. Word 3 is tried first, so no record that
+        # reads today can change.
+        start = end = None
+        for k in (3, 4):
+            if len(self.words) <= k + 1:
+                break
+            a = self.words[k] + 52
+            b = self.words[k + 1] + 52
+            if self.asm.body_lo <= a < self.asm.body_hi:
+                start, end = a, b
+                break
+        if start is None:
             return None
         # The table need not lie inside this record. The record directory is a sorted
         # PARTITION, not an allocation - a fact this file establishes elsewhere and this
@@ -2855,12 +2874,26 @@ class Record:
         # This also repairs a regression. Relaxing the guard to containment let 11 of these
         # through as u16 tables, since a float table always FITS a u16 reading; they were
         # being reported as ramps and read as nonsense. Exact match has to be tried first.
-        fwidth = 4 * (6 if self.colour else 3)
-        if (end - start) != count * width and (end - start) == count * fwidth:
+        # A FIVE-FLOAT FORM AS WELL: position, R, G, B, A, with no trailing -1.0. Auras
+        # records 312, 424 and 442 span exactly count * 20 bytes and decode to a ramp that
+        # reads like one -- positions ascending 0.0, 0.0696, 0.2025, 0.3249, 0.6442,
+        # 0.9515, 1.0, every component inside [0, 1], and alpha 1.0 at every stop. Under
+        # the 6-float reading the same bytes give a position sequence that does not ascend
+        # and a component of 5.4e16.
+        #
+        # Selected the same way the 6-float form is: by which width makes count * width
+        # equal the span EXACTLY. A 20-byte table fits a u16 reading and a 24-byte one does
+        # not fit these, so exact match is what separates them, and it is tried before the
+        # containment path below for the reason that path already records.
+        for fwidth in (4 * (6 if self.colour else 3), 20 if self.colour else 0):
+            if not fwidth or (end - start) == count * width:
+                continue
+            if (end - start) != count * fwidth:
+                continue
             out = [struct.unpack_from('<%df' % (fwidth // 4), self.asm.data,
                                       start + i * fwidth) for i in range(count)]
             if any(out[i][0] > out[i + 1][0] for i in range(len(out) - 1)):
-                return None
+                continue
             return out
         # Slot 4 is not always the table's end. Requiring `end - start == count * width`
         # rejected 968 records; in every one of them the span is LARGER than the table
