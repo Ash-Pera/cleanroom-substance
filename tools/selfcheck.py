@@ -215,19 +215,19 @@ def check_packing(asm, laws):
     images, size 1048576 (1024x1024x1) stored in ~151K, "overlapping" the next offset --
     the known bit-3 case (see Record.bitmap). Excluding compressed images removes them.
 
-    THE REMAINING MISMATCHES INCLUDE A CONFIRMED DECODE BUG -- do not read gaps as benign.
-    PlanksSubstance003 rec50 declares 2048x128x4 = 1 MB (tag 0x7b21, `height` = 1<<((tag>>12)
-    &0xF) = 1<<7 = 128) but the 4 MB before the next bitmap is one CONTIGUOUS 2048x512 image:
-    reshaped 512x2048x4, the row-to-row difference across the declared 128-row boundary
-    (45.9) is indistinguishable from its neighbours (44, 42), i.e. NO stacking discontinuity,
-    so it is a single image whose true height is 512 (nibble should be 9, tag says 7). The
-    decode reads only the top quarter. Corpus-wide this "stride = 4x declared size" pattern
-    is 11 raw bitmaps across 4 files (PlanksSubstance003 x7, BricksSubstance004 x2,
-    NightSkyHDRI, pbr_render) -- always ratio 4, i.e. the height nibble under by 2 in log2.
-    None is in the five scored reference packs, so it does not move any current score, but it
-    is a real correctness bug for those inputs (read at 1/4 height). Root not yet pinned: the
-    tag nibble genuinely reads 7, so either the true height lives in a field this property
-    does not consult, or the width/height-from-tag reading is wrong for non-square images.
+    THIS LAW FOUND AND ANCHORED A REAL DECODE BUG, NOW FIXED -- do not read gaps as benign.
+    PlanksSubstance003 rec50 declared 2048x128 = 1 MB but its slot held one contiguous 2048x512
+    image (row-continuity, no stacking discontinuity at the declared 128-row boundary). Root:
+    `cls & 0x2000` is a 4x-AREA flag (height x4) the tag height nibble omits, set in exactly 21
+    bitmaps corpus-wide and every one under-declared, 0 false positives. Record.height now adds
+    2 to the nibble when `filter_id==16 and cls&0x2000`; that dropped this law from 21 mismatches
+    to 2 with no clean integer ratio remaining. None of the 21 is in a scored pack.
+
+    The 2 RESIDUAL mismatches are small non-systematic data gaps (PaymentCard 1.016x,
+    GravelSubstance002 1.031x) -- NOT a power-of-2 dimension error (the tag nibbles cannot make
+    a 2-3% delta) and NOT an excluded compressed bitmap (none sits in the gap). Likely a small
+    per-image trailer or mip fragment the size field omits; low priority, left uninvestigated
+    rather than over-read.
     """
     law = laws['packing']
     spans = sorted({(bm['offset'], bm['size']) for _r, bm in _pixel_bitmaps(asm)
