@@ -223,11 +223,13 @@ def check_packing(asm, laws):
     2 to the nibble when `filter_id==16 and cls&0x2000`; that dropped this law from 21 mismatches
     to 2 with no clean integer ratio remaining. None of the 21 is in a scored pack.
 
-    The 2 RESIDUAL mismatches are small non-systematic data gaps (PaymentCard 1.016x,
-    GravelSubstance002 1.031x) -- NOT a power-of-2 dimension error (the tag nibbles cannot make
-    a 2-3% delta) and NOT an excluded compressed bitmap (none sits in the gap). Likely a small
-    per-image trailer or mip fragment the size field omits; low priority, left uninvestigated
-    rather than over-read.
+    The 2 RESIDUAL mismatches are small non-systematic gaps (PaymentCard 1.016x + 805 KB,
+    GravelSubstance002 1.031x + 131 KB). Investigated: each is RAW PIXEL DATA that no bitmap
+    record declares (GravelSubstance002's starts 00 00 00 ff repeated = black RGBA; PaymentCard's
+    is varying RGB-like), with no file signature, no clean power-of-2 dimension, and no excluded
+    compressed bitmap in the region. So orphaned raw-image data -- most likely a mip tail stored
+    inline past the base image's declared size -- not a decode error of any DECLARED bitmap.
+    ~936 KB total across the whole corpus, low priority, characterized rather than over-read.
     """
     law = laws['packing']
     spans = sorted({(bm['offset'], bm['size']) for _r, bm in _pixel_bitmaps(asm)
