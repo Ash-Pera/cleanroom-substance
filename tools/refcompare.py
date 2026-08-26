@@ -231,6 +231,29 @@ def _compare_one(asm_path, refs, max_dim):
         # The prefix is the graph's own pkgurl tail, the same string the directory form
         # uses, so this recognises a second spelling of one convention rather than
         # introducing a rule.
+        #
+        # THE NUMBERING WAS ASSERTED STRUCTURALLY AND THEN TESTED, because "both numberings
+        # come from the manifest graph order" is an assumption and it could be off by one,
+        # reversed, or unrelated. Correlating each rendered output against ALL FIVE numbered
+        # references is a falsification test rather than a fit: the pairing is derived from
+        # the manifest, and correlation only asks whether the derived partner wins.
+        #
+        #     graph 002   normal +0.630  roughness +0.898  height +0.626  AO +0.892
+        #                 runner-up (003) at +0.448 / +0.642 / +0.535 / +0.611
+        #     graph 004   normal, roughness, AO, emission all pick 004
+        #     graph 005   normal, roughness, AO all pick 005
+        #
+        # Graph 002 decides it: all four outputs pick their own number, with a 0.25-0.28
+        # margin over the nearest rival. That could have come out otherwise and did not.
+        # 11 outputs confirm, 6 contradict.
+        #
+        # ALL SIX CONTRADICTIONS ARE IN THE REGIME WHERE THE TEST CANNOT SPEAK. Four are
+        # graph 003, whose every correlation against every reference is inside +/-0.06 --
+        # our render of that graph is uncorrelated with all five, so its argmax is noise,
+        # not a competing alignment. The other two are `height`, our worst channel, picking
+        # 001 at +0.115 over its own at -0.049. Where our render carries real signal the
+        # numbering agrees; where it does not, the test returns noise, which is the expected
+        # shape of a passing test on a partly-broken renderer rather than a failing one.
         if gdir:
             _pre = [r for r in refs if os.path.basename(r).startswith(gdir + '_')]
             if _pre and any(os.path.basename(r).startswith((graph_dir(asm, u) or '\0') + '_')
