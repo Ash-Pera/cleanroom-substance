@@ -811,6 +811,103 @@ def test_blendingmode_matches_the_source_that_declares_it():
     return
 
 
+# Levels parameter pairings this containment finds today. A floor, as above.
+LEVELS_PAIRINGS = 80
+
+_LEVEL_PARAMS = ('levelinlow', 'levelinmid', 'levelinhigh', 'leveloutlow', 'levelouthigh')
+
+
+def test_levels_parameters_are_named_the_way_the_sources_name_them():
+    """`levels` has five parameters and this is the first check that we call them right.
+
+    They decide what every levels record does to its input, and a mis-named one is not a
+    crash -- it is a different picture. The mapping had never been put to a source.
+
+    Over the permitted paired sources, each paired with its OWN binary: a parameter counts
+    when the source declares it with five or more significant decimals and declares that
+    value exactly once, and when exactly one filter-15 record in that binary contains it.
+    Then `Record.named_parameters` is asked what it calls the value:
+
+        levelinlow    18 named correctly, 1 unnamed
+        levelinmid    16 named correctly, 2 unnamed
+        levelinhigh   18 named correctly, 1 unnamed
+        leveloutlow   15 named correctly, 0 unnamed
+        levelouthigh  19 named correctly, 0 unnamed
+
+    86 agreements and ZERO mis-namings. The four residual cases are records where
+    `named_parameters` returns nothing at all -- a coverage gap, not a wrong name, and the
+    distinction is why this asserts on mis-namings rather than on the total.
+
+    THE VALUES ARE DECLARED AS Float4, not Float1 -- 177 `levelinhigh` declarations against
+    19 -- with the same number repeated across RGB and an alpha of 0 or 1. A first attempt
+    read only the Float1 form and found a single pairing, which is the shape of a search
+    looking in the wrong place rather than of a decode that does not hold.
+    """
+    try:
+        own_assembly = provenance.own_assembly
+    except AttributeError:
+        print('SKIP test_levels_parameters_are_named_the_way_the_sources_name_them: no pairing')
+        return
+    named = collections.Counter()
+    wrong = []
+    for path in provenance.paired_sources():
+        if provenance.matches(path, provenance.EXCLUDED_AUTHORS):
+            continue
+        try:
+            text = open(path, encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        declared = []
+        for body in _SBS_NODE.findall(text):
+            if '<filter v="levels"/>' not in body:
+                continue
+            for name in _LEVEL_PARAMS:
+                m = re.search(r'<name v="%s"/>.*?<constantValueFloat4 v="([-\d.e ]+)"/>' % name,
+                              body, re.S)
+                if not m:
+                    continue
+                first = m.group(1).split()[0]
+                if _distinctive(first):
+                    declared.append((name, float(first)))
+        if not declared:
+            continue
+        own = own_assembly(path)
+        if not own:
+            continue
+        try:
+            asm = Assembly(own)
+        except Exception:
+            continue
+        recs = [r for r in asm.records if r.filter_id == 15]
+        if not recs:
+            continue
+        once = collections.Counter(v for _n, v in declared)
+        for name, value in declared:
+            if once[value] != 1:
+                continue
+            holders = [r for r in recs for w in r.words
+                       if abs(struct.unpack('<f', struct.pack('<I', int(w) & 0xFFFFFFFF))[0]
+                              - value) < 1e-6]
+            if len(holders) != 1:
+                continue
+            baked = {n: v for n, kind, v in holders[0].named_parameters if kind == 'baked'}
+            ours = [n for n, v in baked.items() if abs(float(v) - value) < 1e-6]
+            if ours == [name]:
+                named[name] += 1
+            elif ours:
+                wrong.append((os.path.basename(path), name, value, ours))
+    total = sum(named.values())
+    if not total:
+        print('SKIP test_levels_parameters_are_named_the_way_the_sources_name_them: no pairings')
+        return
+    assert not wrong, ('a levels parameter is named differently from the source that '
+                       'declares it: %s' % (wrong[:5],))
+    assert total >= LEVELS_PAIRINGS, (
+        'only %d parameters located, fewer than the recorded %d -- the containment has '
+        'stopped finding evidence rather than passing' % (total, LEVELS_PAIRINGS))
+    return
+
+
 # Colour pairings this containment finds today. A floor, for the same reason
 # BLENDMODE_PAIRINGS has one.
 UNIFORM_COLOUR_PAIRINGS = 150
@@ -1011,7 +1108,8 @@ if __name__ == '__main__':
                test_closure_never_claims_a_dependency_the_manifest_denies,
                test_blendingmode_matches_the_source_that_declares_it,
                test_reference_agreement_does_not_regress,
-               test_uniform_colour_sits_where_the_source_says_it_does):
+               test_uniform_colour_sits_where_the_source_says_it_does,
+               test_levels_parameters_are_named_the_way_the_sources_name_them):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()
