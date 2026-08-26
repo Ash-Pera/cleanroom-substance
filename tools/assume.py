@@ -227,8 +227,8 @@ QUESTIONS = {
     # entries that state none.
     #
     # It matters more than a catch-all usually would. Over 45 fxmaps-bearing files, giving
-    # typeless entries a falloff instead of a hard fill adds spatial structure to 300
-    # record outputs across 20 files and removes it from 13 across 3 -- because abutting
+    # typeless entries a falloff instead of a hard fill adds spatial structure to 242
+    # record outputs across 20 files and removes it from 14 across 3 -- because abutting
     # cells filled solid are flat, and the same cells with a falloff are a pattern.
     #
     # Scored against the one ground truth in the corpus, Chesterfield, no member wins
@@ -236,16 +236,27 @@ QUESTIONS = {
     #
     #     typeless     basecolor      normal   roughness(std)  metallic  height     AO
     #     rect         not rendered   0.1056   0.0718 (0.0036)   0.0454  0.2480  0.6832
-    #     disc         0.1259         0.1045   0.0719 (0.0265)   0.0481  0.2478  0.6888
+    #     disc         0.1314         0.1045   0.0719 (0.0000)   0.0481  0.2478  0.6888
     #     cone         0.1334         0.0953   0.0719 (0.0000)   0.0481  0.2490  0.6937
-    #     paraboloid   0.1320         0.0986   0.0719 (0.0000)   0.0481  0.2472  0.7003
-    #     bell         0.1341         0.0940   0.0719 (0.0000)   0.0481  0.2498  0.7075
+    #     paraboloid   0.1324         0.0986   0.0719 (0.0000)   0.0481  0.2472  0.7003
+    #     bell         0.1343         0.0940   0.0719 (0.0000)   0.0481  0.2498  0.7075
     #     gaussian     0.1357         0.0905   0.0719 (0.0000)   0.0481  0.2530  0.7070
     #
-    # Every falloff RENDERS basecolor, which 'rect' does not produce at all. gaussian takes
-    # normal from 0.1056 to 0.0905. But 'rect' keeps metallic and AO, and only 'disc' holds
-    # roughness's spatial variation -- std 0.0265 against the reference's 0.0262, where
-    # every other falloff collapses it to 0.0000 and 'rect' undershoots at 0.0036.
+    # RE-MEASURED after the FX node/entry walks were drained onto the mask-walk. Everything
+    # here held except two numbers, and one of them was carrying an argument. The basecolor
+    # column moved in its last digits (disc 0.1259 -> 0.1314, paraboloid 0.1320 -> 0.1324,
+    # bell 0.1341 -> 0.1343); every other figure is identical.
+    #
+    # WITHDRAWN: this block used to say "only 'disc' holds roughness's spatial variation --
+    # std 0.0265 against the reference's 0.0262". Under the corrected walk disc collapses
+    # roughness to 0.0000 like every other falloff. That statistic was the entire reason
+    # disc was singled out, and it was an artifact of the old enumeration.
+    #
+    # What survives: every falloff RENDERS basecolor, which 'rect' does not produce at all,
+    # and gaussian takes normal from 0.1056 to 0.0905. 'rect' still keeps metallic and AO,
+    # and now keeps the only non-zero roughness variation as well -- though at 0.0036 it
+    # undershoots the reference's 0.0262 by an order of magnitude, so no member of this set
+    # gets roughness right.
     #
     # So the default does not move. A choice that improves two maps and flattens two others
     # is the half-correction this file already records being caught by twice.

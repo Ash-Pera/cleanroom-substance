@@ -35749,3 +35749,77 @@ by the current handoff (it fires once, at the chain end, not at every leaf). So 
 an `fx_walk` change, not a one-liner, and one that moves the render path, so it waits on a
 session that can render-verify. Recorded here with the measurement so the next attempt starts
 from "the leaf is an entry wrapper" rather than rediscovering it.
+
+## Rechecking every fx conclusion against the drained node/entry walk
+
+The FX node successor and the FX entry table were both fits of a mask-walk
+(`24cf8ab`, `acb7078`, `4e5d410`, `7d1b792`). Every fx measurement recorded above was
+taken on the old enumeration, so all of it was re-run. The split is clean and worth
+recording as a split, because it says which kinds of claim were fragile.
+
+### Held, re-measured
+
+**The input banks are untouched.** All eleven bank records reproduce exactly -- same `f7`,
+same arity, same header, same rule agreement (11 of 11), same zero and repeat counts. They
+are facts about `w1` field 7 and the record's own header slots, so the tree walk cannot
+reach them. Anything derived from the RECORD LAYOUT survived; the header rule still agrees
+on 64 of 64 of plaster's records.
+
+**The footprint bound is still output-identical.** Re-hashed against the pre-`77fe022`
+`splat` over 25 files and 928 record outputs: 0 differ. The equivalence argument was
+about `profile_value`'s support, not about which emissions exist, so changing the emission
+set could not break it -- and did not.
+
+**`plaster`'s mechanism survives.** Five of six generators still paint solid white and the
+first blend downstream still takes it, so the file still renders 64/64 with 0 failures and
+flat outputs. What changed is the scale of the walk beneath it:
+
+```
+          fx_walk        fx_table       emissions
+rec  1     4 -> 10        4 -> 10        1 -> 3
+rec  3     2 -> 13        2 -> 13        1 -> 6
+rec 18     4 -> 21        0 ->  0        2 -> 11
+```
+
+Two to ten times more nodes, three to six times more emissions, same picture. The
+tree-only records (13, 14, 18) still have no readable table.
+
+**`wrap only` is still net negative**, and more so: 12 records up against 27 down, where
+it was 12 against 21.
+
+### Withdrawn
+
+**The reason `disc` was singled out is gone.** `assume.QUESTIONS['fx.typeless_profile']`
+said "only 'disc' holds roughness's spatial variation -- std 0.0265 against the
+reference's 0.0262". Under the corrected walk disc collapses roughness to 0.0000 like
+every other falloff. That one statistic was the whole case for disc and it was an artifact
+of the old enumeration. Corrected in place.
+
+**`fx.sizeless = 'half'` no longer moves roughness either.** The note above said it took
+roughness's std from 0.0036 to 0.0304 against a reference 0.0262, and called that the
+strongest evidence for it. It now leaves roughness at exactly the baseline 0.0036. The
+strongest single argument for 'half' has evaporated.
+
+**And its live-output claim was wrong by more than a little**: 29 -> 33 became 28 -> 29.
+
+What 'half' still has: 207 records up and **0 down** (was 252 and 0), basecolor rendering
+at 0.1309 where 'fill' produces nothing, normal 0.1056 -> 0.1050, metallic preserved
+exactly, against height -0.0005 and AO -0.0075. Still the only strictly non-negative
+candidate measured, and still not enough to move a default on.
+
+**The size-guard population is not what its comment described.** Six values at 1e-33 with
+twenty-nine decades of empty space became 963 values at or below 1e-30, of which 939 are
+negative or zero -- a size can be negative, which did not previously appear. The threshold
+still sits in a gap with one value anywhere near it, so the guard's conclusion is
+unchanged; its stated evidence was not. Corrected in place.
+
+**Counts that shifted without changing a conclusion**: typeless-falloff coverage 300/13 ->
+242/14; basecolor MAEs in the last digit (disc 0.1259 -> 0.1314, bell 0.1341 -> 0.1343).
+
+### What the split is telling us
+
+Everything anchored to the RECORD -- header widths, slot positions, bank capacities, the
+`profile_value` support argument -- came through unchanged. Everything anchored to a COUNT
+OF EMISSIONS moved, and the two claims that died outright were both a spatial-variation
+statistic on one map of one specimen. A number that depends on how many patterns got
+enumerated is a number about the enumerator, and this walk has now been rebuilt twice.

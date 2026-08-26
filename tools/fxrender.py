@@ -1353,10 +1353,24 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
             #     max              18.6
             #
             # Twenty-nine decades of empty space between the six and everything else.
-            # Anything in that gap separates the two populations; 1e-6 leaves better
-            # than two decades of margin below the smallest real size, and a pattern
-            # that small spans 0.004 of a pixel on a 4096-wide canvas, so nothing
-            # renderable is being refused.
+            #
+            # RE-MEASURED after the FX node/entry walks were drained onto the mask-walk,
+            # which changed this population substantially. Over the same 40 files, now
+            # 77,358 finite components:
+            #
+            #     <= 0             939   negative or zero; the sx > 0 test above takes these
+            #     <= 1e-30         963   so 24 more that sx > 0 lets through
+            #     <= 1e-06         963   nothing at all between 1e-30 and 1e-06
+            #     <= 1e-03         964   exactly one value in (1e-06, 1e-03]
+            #     min             -0.25  negative sizes exist, which they did not appear to
+            #     max              21.8
+            #
+            # The gap is still there and 1e-6 still sits inside it, with one value the
+            # nearest thing to the threshold in either direction. But the numbers above
+            # the line are the old enumeration's: the population is 963 rather than six,
+            # the smallest positive is 3.6e-42 rather than 6.259e-33, and 939 of them are
+            # non-positive rather than merely tiny. The guard does more work than it was
+            # documented as doing, and the conclusion is unchanged.
             continue
         if col.size < nchan:
             col = np.repeat(col[:1], nchan)
