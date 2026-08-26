@@ -143,9 +143,18 @@ def alter_outputs(asm):
 
     The one-sidedness is the finding. If our walk were merely DIFFERENT from the
     manifest's we would miss in both directions; missing 513 while over-claiming 0 says
-    our closure is a strict SUBSET, i.e. it does not see some paths. The likely mechanism
-    is that FX-Map and pixelprocessor programs reach images through SAMPLER INDICES rather
-    than through `Record.edges`, and an edge walk cannot follow those.
+    our closure is a strict SUBSET, i.e. it does not see some paths.
+
+    The mechanism was hypothesised to be sampler reads bypassing `Record.edges`, and that
+    is now MEASURED and mostly refuted. A program's `samplelum`/`samplecol` (opcodes 0x33,
+    0x34) carries a sampler index in token 1, and corpus-wide that index indexes INTO the
+    record's own edges in 55,916 of 56,127 sampler-reading records (99.62%): sampler k is
+    the record's k-th input edge, which an edge walk DOES follow. Only 0.37% are genuinely
+    edge-bypassing -- 197 records whose sampler index exceeds their edge count and 14 with
+    no edges at all (an FX-Map like `ie_curve` record 172 that is itself an output and asks
+    for sampler 0), and those bind to the graph's k-th image input by manifest declaration
+    order. So samplers are a small part of the 513, not the bulk of it; the larger causes
+    are elsewhere (sub-graph instances expanded at cook time being the leading candidate).
 
     Consequence worth stating plainly: closure-derived counts UNDERSTATE how many root
     causes block an output, so "one fix away" rankings are optimistic, not merely rough.

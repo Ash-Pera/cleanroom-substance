@@ -34795,3 +34795,32 @@ every payload reader is credited into one accounting, is well above 92.5%; the g
 bookkeeping seam between the layout model and the payload decoders, not a pile of bytes no
 one understands. What genuinely remains uninterpreted at the byte level is small and known:
 alignment padding, and the inline FX parameter values whose NAMES the provenance rule blocks.
+
+## The sampler index is the record's k-th edge, so samplers do not bypass the edge graph
+
+`manifest.py`'s `alteroutputs` check found our dependency closure a strict subset of the
+manifest's -- it agrees on 622 (input, output) reaches and misses 513, over-claiming none.
+The recorded hypothesis for the miss was that FX-Map and pixelprocessor programs reach
+images through SAMPLER INDICES rather than through `Record.edges`, so an edge walk cannot
+follow them. Measured, that is mostly wrong.
+
+A program samples an image with `samplelum` (0x33) or `samplecol` (0x34), and token 1 of
+that instruction is the sampler index. Extracting every sampler index in every record's
+strictly-named programs and comparing it to the record's edge count:
+
+    sampler index < the record's own edge count   55,916   99.62%   an edge, followed
+    sampler index >= edge count                       197    0.35%   graph-bound
+    record has no edges at all                         14    0.02%   graph-bound
+
+So sampler `k` is the record's k-th input edge in 99.62% of the 56,127 records that sample,
+which the edge walk already follows -- samplers ADDRESS the edge graph, they do not bypass
+it. The 0.37% that do bypass it read an index past their own inputs (an `fxmaps` reading
+sampler 33 with 2 edges) or have no edges (`ie_curve` record 172, itself an output, asking
+for sampler 0), and those bind to the graph's k-th image input by the manifest's declaration
+order -- the one place `image_inputs_for_output` is actually needed.
+
+The consequence is that the 513-path shortfall is NOT dominated by samplers. Whatever closes
+it is mostly elsewhere -- sub-graph instances expanded at cook time from packages the source
+does not contain is the leading candidate, since those add reaches no in-file edge or sampler
+can express. The "one fix away" rankings are still optimistic, but not for the reason the
+note gave.
