@@ -1449,6 +1449,10 @@ QUESTIONS = {
     #
     # So the default does not move. A choice that improves two maps and flattens two others
     # is the half-correction this file already records being caught by twice.
+    # NIBBLE 0 IS NOT ONE POPULATION -- and a candidate for it was added here and REMOVED,
+    # because it renders byte-identically: 0 of 1,296 fxmaps records change. The structural
+    # finding is kept in FORMAT-NOTES; the lever is not, per the same rule that retired
+    # fxrender's 'oversize' arm.
     'fx.typeless_profile': ('rect', 'disc', 'cone', 'paraboloid', 'bell', 'gaussian'),
 }
 

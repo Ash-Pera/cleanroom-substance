@@ -37794,3 +37794,39 @@ records: span 1, `numberadded` 1, `grid_width` None.
 
 So: refused, on the picture rather than the mean. The seam chain is now demonstrably reachable --
 that is new -- and what it draws is still the wrong size.
+
+### The nibble-0 "catch-all" is two populations, and three of its four supporting rows are empty
+
+`FX_PATTERNTYPE_BIAS`'s note records nibble 2 of an entry tag as `patterntype - 2`, with nibble 0
+as a catch-all because "patterntype 1 and 2 BOTH map to 0, and so does a patterntype the source
+declares as a function graph". Its evidence table lists four files at nibble 0. Checking those
+files' actual entry populations:
+
+    file             declares            nibble-8 entries it has
+    Simulator__Grid  patterntype 2 x3    7 entries, ALL nibble 0 (3 after excluding chain-family)
+    ie_curve         patterntype 1 x43   23 entries, nibbles 1, 2 and 7 -- NONE at nibble 0
+    ie_particles     patterntype 2 x1    no fx entries at all
+    ie_pcloud        patterntype 2 x9    no fx entries at all
+
+**Grid pairs count-exactly** -- three declared `patterntype` 2, three non-chain-family nibble-0
+entries -- which is the bias's own prediction (0 + 2) and the best single pairing the question
+has. The other three rows are not weak evidence, they are absent: the file that declares
+`patterntype` 1 has no nibble-0 entry to attribute it to, and two of the four have no entries at
+all. So the reading "1 and 2 both map to 0" rests on nothing this corpus can show; what is
+supported is 2 -> nibble 0, and 1 is simply unattested.
+
+**AND THE LOW BYTE SPLITS THE POPULATION.** Over 25 files, 2,060 non-chain-family entries:
+
+    low byte 0x48   nibbles 0,1,2,3,4,6,7,8,9,10,12,13    the normal form
+    low byte 0x08   nibble 0 ONLY, 430 entries            a distinct kind
+    low byte 0x18   nibble 0 only, 17 entries
+
+0x08 never carries a patterntype nibble and never appears with any other. Grid's count-exact
+pairing is on the 0x48 family. So the 527 nibble-0 entries are at least two things: 80 that are
+the normal form at patterntype 2, and 430+17 that are a different kind which states no shape --
+and the second group is what ChesterfieldSofa's typeless entries belong to, which is why forcing
+a shape on them (`fx.typeless_profile = disc`) was measured to lose 0.34 correlation.
+
+Reading nibble-0/0x48 entries as patterntype 2 was implemented and REMOVED: 0 of 1,296 fxmaps
+records render differently, so those 80 entries never reach a splat on this corpus. The split
+itself is the finding.
