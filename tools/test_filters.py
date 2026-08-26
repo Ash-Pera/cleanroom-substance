@@ -811,6 +811,111 @@ def test_blendingmode_matches_the_source_that_declares_it():
     return
 
 
+# Parameter pairings the all-filter containment finds today. A floor, as above.
+ALL_PARAM_PAIRINGS = 140
+
+_SBS_PARAM_BLOCK = re.compile(r'<parameter>((?:(?!</parameter>).)*?)</parameter>', re.S)
+_SBS_PARAM_NAME = re.compile(r'<name v="([a-z0-9]+)"/>')
+_SBS_PARAM_VALUE = re.compile(r'<constantValue(?:Float1|Float4) v="([-\d.e ]+)"/>')
+_SBS_FILTER = re.compile(r'<filter v="([a-z0-9]+)"/>')
+
+
+def test_no_filter_parameter_is_named_differently_from_its_source():
+    """Across EVERY filter, not just the one being worked on.
+
+    `Record.named_parameters` is what the render branches read their constants from, and a
+    wrong name there is a different picture rather than an error. The levels check above
+    covers five parameters of one filter; this covers whatever the corpus declares.
+
+    Over the permitted paired sources, each with its OWN binary, taking any Float1 or Float4
+    parameter declared with five or more significant decimals and unique in its source, and
+    landing in exactly one record of that filter:
+
+        named the same as the source   147
+        MIS-NAMED                        0
+        not named by us at all         103
+
+    The 103 are not failures. Most are parameters other code paths read -- `uniform`'s
+    outputcolor comes from the slot after the size expression, `transformation`'s matrix22
+    from `Record.matrix`, `warp`'s intensity from the program-or-slot logic -- so
+    `named_parameters` not surfacing them says nothing about whether they are read
+    correctly. What this asserts is the sharp half: where we DO name a value, we have never
+    named it something the source calls something else.
+
+    ONE PARAMETER BLOCK AT A TIME. A first version matched `<name v="...">` and the next
+    `<constantValue...>` with a non-greedy span, which crosses `</parameter>` boundaries and
+    pairs a name with the FOLLOWING parameter's value. It reported `blendingmode` as
+    mis-named 10 times -- blendingmode's own value is an Int32, so the match ran on to the
+    neighbouring `opacitymult` float. Every one of those was the regex, not the decode. It
+    is the same trap `manifest.output_channels` records for `<channel names=...>`, and it
+    produces confident wrong readings in exactly the direction that looks like a finding.
+    """
+    try:
+        own_assembly = provenance.own_assembly
+    except AttributeError:
+        print('SKIP test_no_filter_parameter_is_named_differently_from_its_source: no pairing')
+        return
+    by_name = {v: k for k, v in FILTERS.items()}
+    by_name['grayscaleconversion'] = 3
+    agreed = 0
+    wrong = []
+    for path in provenance.paired_sources():
+        if provenance.matches(path, provenance.EXCLUDED_AUTHORS):
+            continue
+        try:
+            text = open(path, encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        declared = []
+        for body in _SBS_NODE.findall(text):
+            f = _SBS_FILTER.search(body)
+            if not f or f.group(1) not in by_name:
+                continue
+            for block in _SBS_PARAM_BLOCK.findall(body):
+                n = _SBS_PARAM_NAME.search(block)
+                v = _SBS_PARAM_VALUE.search(block)
+                if not n or not v:
+                    continue
+                first = v.group(1).split()[0]
+                if _distinctive(first):
+                    declared.append((by_name[f.group(1)], n.group(1), float(first)))
+        if not declared:
+            continue
+        own = own_assembly(path)
+        if not own:
+            continue
+        try:
+            asm = Assembly(own)
+        except Exception:
+            continue
+        once = collections.Counter(v for _f, _p, v in declared)
+        by_id = collections.defaultdict(list)
+        for rec in asm.records:
+            by_id[rec.filter_id].append(rec)
+        for fid, param, value in declared:
+            if once[value] != 1:
+                continue
+            holders = [r for r in by_id.get(fid, []) for w in r.words
+                       if abs(struct.unpack('<f', struct.pack('<I', int(w) & 0xFFFFFFFF))[0]
+                              - value) < 1e-6]
+            if len(holders) != 1:
+                continue
+            baked = {n: v for n, kind, v in holders[0].named_parameters if kind == 'baked'}
+            ours = [n for n, v in baked.items() if abs(float(v) - value) < 1e-6]
+            if ours == [param]:
+                agreed += 1
+            elif ours:
+                wrong.append((os.path.basename(path), fid, param, value, ours))
+    if not agreed and not wrong:
+        print('SKIP test_no_filter_parameter_is_named_differently_from_its_source: no pairings')
+        return
+    assert not wrong, ('a parameter is named differently from the source that declares it: '
+                       '%s' % (wrong[:5],))
+    assert agreed >= ALL_PARAM_PAIRINGS, (
+        'only %d parameters located, fewer than the recorded %d' % (agreed, ALL_PARAM_PAIRINGS))
+    return
+
+
 # Levels parameter pairings this containment finds today. A floor, as above.
 LEVELS_PAIRINGS = 80
 
@@ -1109,7 +1214,8 @@ if __name__ == '__main__':
                test_blendingmode_matches_the_source_that_declares_it,
                test_reference_agreement_does_not_regress,
                test_uniform_colour_sits_where_the_source_says_it_does,
-               test_levels_parameters_are_named_the_way_the_sources_name_them):
+               test_levels_parameters_are_named_the_way_the_sources_name_them,
+               test_no_filter_parameter_is_named_differently_from_its_source):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()
