@@ -2444,19 +2444,43 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # `Kutejnikov__Bricks_and_tiles` has four declared outputs waiting on three
                 # of them, and it is the specimen with 71 of 191 fxmaps records affected by
                 # the branchoffset question -- the one that would arbitrate it.
+                # THE INTENSITY IS THE FIRST PROGRAM THAT RETURNS A SCALAR, not index 1.
+                # Index 1 was right and is still what this picks for every record that has
+                # two or more programs -- but it declined the single-program records
+                # entirely, and those have their intensity at index 0. Reading by WIDTH
+                # rather than by position covers both without choosing between them.
+                #
+                # Censused over 60 files, bit-12-clear blur records only, evaluating every
+                # program slot:
+                #
+                #     index 0    width 2 in 48 records, width 1 in 11
+                #     index 1    width 1 in 40 of 40 that have it
+                #     index 2    width 2 in 5, does not evaluate in 7
+                #
+                # Index 0 is normally a float2 -- a size or a vector, not an intensity --
+                # which is why position alone was never the rule. Values at index 1 are p25,
+                # p50 and p75 all exactly 1.000 with 100% inside (0, 64].
+                #
+                # STRICTLY ADDITIVE, and that was checked rather than assumed, because an
+                # earlier attempt here took filter_programs[-1] and mixed indices 0, 1 and 2
+                # across records, which produced a confounded measurement and a wrong
+                # refutation that had to be withdrawn. Comparing the two rules record by
+                # record: they agree on all 40 where both apply, the new one newly covers 11
+                # single-program records, and there are 0 records where the first width-1
+                # program is not index 1. No record changes the intensity it already used.
                 if intensity is None and assume.assumed('blur.intensity') == 'program':
-                    _fp = rec.filter_programs
-                    if len(_fp) > 1:
+                    for _ptr in (rec.filter_programs or ()):
                         try:
-                            _v = np.asarray(eval_program(asm, _fp[1], default_inputs(asm, 1),
+                            _v = np.asarray(eval_program(asm, _ptr, default_inputs(asm, 1),
                                                          {}, 1, W=rec.width,
                                                          H=rec.height)).reshape(-1)
-                            if _v.size == 1 and np.isfinite(_v[0]):
-                                intensity = float(_v[0])
-                                LOW_CONFIDENCE.add(i)
-                                assume.note(i)
                         except Exception:
-                            pass
+                            continue
+                        if _v.size == 1 and np.isfinite(_v[0]):
+                            intensity = float(_v[0])
+                            LOW_CONFIDENCE.add(i)
+                            assume.note(i)
+                            break
                 if intensity is None:
                     raise Unsupported(
                         "blur intensity: %s (nprog=%d, slot %d)"
