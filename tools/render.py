@@ -1248,7 +1248,32 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 span = np.where(np.abs(span) < 1e-6, 1.0, span)
                 t = np.clip((src - in_low) / span, 0.0, 1.0)
 
-                mid_norm = np.clip((in_mid - in_low) / span, 1e-4, 1 - 1e-4)
+                # `levelinmid` IS THE GAMMA ITSELF, NOT A POSITION INSIDE THE INPUT RANGE.
+                # This used to renormalise it, `(in_mid - in_low) / span`, and that is
+                # wrong for a reason that needs no reference render to see: 0.5 is the
+                # parameter's DEFAULT and means "no gamma", and a default has to be
+                # neutral. Under the renormalising form it is neutral only when in_low is
+                # 0 -- give the same untouched default an in_low of 0.5 and it becomes
+                # (0.5 - 0.5) / 0.5 = 0, clipped to 1e-4, an exponent of 0.075. A file
+                # that stores nothing at all for a parameter cannot thereby ask for a
+                # near-vertical gamma curve, so the renormalisation is a decode error by
+                # construction.
+                #
+                # It also happens to be the worst single discrepancy in the scored corpus.
+                # ChesterfieldSofa `ambientOcclusion` is record 852, a levels storing only
+                # levelinlow 0.5, leveloutlow 1.0, levelouthigh 0.0 -- an inverting remap
+                # over the top half of the range, with levelinmid left at its default. Its
+                # input is record 851, mean 0.5306. Against a reference mean of ~0.887:
+                #
+                #     renormalised (before)   exponent 0.0753   -> mean 0.2060
+                #     in_mid as gamma (now)   exponent 1.0000   -> mean 0.9386
+                #
+                # SCOPE IS EXACTLY THE RECORDS THAT WERE WRONG. For the default input
+                # range, in_low = 0 and in_high = 1, span is 1 and `(in_mid - in_low) /
+                # span` is already just in_mid, so every default-range levels record is
+                # byte-identical under both forms. Only records with a non-zero in_low or
+                # a non-unit in_high move, which is the AO-style remap above.
+                mid_norm = np.clip(in_mid, 1e-4, 1 - 1e-4)
                 with np.errstate(all="ignore"):
                     exponent = np.log(0.5) / np.log(mid_norm)
                     gamma_t = np.power(t, exponent)
