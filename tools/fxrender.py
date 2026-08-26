@@ -436,6 +436,31 @@ def chain(rec):
     return [(off, nodes[off][0], nodes[off][1]) for off in order]
 
 
+def in_eval_order(params):
+    """An entry's parameters, in the order the engine evaluates them.
+
+    PROGRAM ADDRESS ORDER, NOT TABLE ORDER, and the two disagree. Entry parameters talk to
+    each other through the slot frame -- one writes a slot another reads -- so where they
+    do, only one order is defined. Counting every such pair:
+
+        corpus, 25 files      437 dependent pairs   address 437/437   table 437/437
+        reference packages    192 dependent pairs   address 192/192   table 182/192
+
+    629 of 629 for address order against 619 of 629 for table order, and the ten
+    disagreements all fall the same way. Auras record 49 is the clearest: `opacity` sits
+    first in the table and reads slot 15, while `patternrotation` sits second and WRITES
+    it -- at the lower address. In table order the read comes first and the record dies on
+    `slot 15 read but never set`, which blocks three of the four declared outputs of the
+    smallest reference specimen in the corpus.
+
+    Baked parameters are constants and cannot participate, so they go first and their
+    relative order does not matter.
+    """
+    return sorted(params.items(),
+                  key=lambda kv: (kv[1][0] != 'baked',
+                                  kv[1][1] if isinstance(kv[1][1], int) else 0))
+
+
 def entries(rec, baked_pairs=True):
     """[(offset, tag, {name: (kind, value)})] in table order.
 
@@ -668,12 +693,12 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         try:
             param_writes = set()
             for _o, _t, params in table:
-                for _n, (kind, value) in params.items():
+                for _n, (kind, value) in in_eval_order(params):
                     if kind != 'baked' and value:
                         param_writes |= flow(value)[1]
             carried, written = set(), set()
             for _o, _t, params in table:
-                for _n, (kind, value) in params.items():
+                for _n, (kind, value) in in_eval_order(params):
                     if kind == 'baked' or not value:
                         continue
                     r, w = flow(value)
@@ -696,7 +721,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             # attached here rather than re-derived, which would mean re-walking the
             # table and guessing which entry produced which emission.
             got = {'patterntype': fx_patterntype(_t)}
-            for name, (kind, value) in params.items():
+            for name, (kind, value) in in_eval_order(params):
                 if value is None:
                     continue
                 if kind != 'baked':
@@ -739,7 +764,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         for _o, _t, params in table:
             per = {'patterntype': fx_patterntype(_t)}
             wide = {}
-            for name, (kind, value) in params.items():
+            for name, (kind, value) in in_eval_order(params):
                 if value is None:
                     continue
                 if kind != 'baked':
