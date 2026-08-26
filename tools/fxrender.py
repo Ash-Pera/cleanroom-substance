@@ -902,17 +902,14 @@ def baked_slots(tag):
     Mirrors sbsasm.fx_entry_layout's walk exactly -- same table, same order -- but keeps
     the bit index, which that function does not return.
     """
-    from sbsasm import FX_PARAM_BITS, FX_PROGRAM_BITS
-    out, sl = [], 1
-    for bit, _name, width in FX_PARAM_BITS:
-        if not (tag >> bit) & 1:
-            continue
-        if bit in FX_PROGRAM_BITS:
-            sl += 1
-        else:
-            out.append((bit, sl + 1, width))
-            sl += width
-    return out
+    # ONE WALK, not a second implementation. This used to re-walk FX_PARAM_BITS itself and
+    # its docstring above claimed the two were identical; they were not, and
+    # `sbsasm.fx_entry_walk` records the measurement. Deriving from that walk means they
+    # cannot drift again, and it drops the structural bits this function used to emit --
+    # rows every caller already discarded, because a structural bit has no PARTNER.
+    from sbsasm import fx_entry_walk
+    return [(bit, sl, width) for bit, sl, _name, kind, width in fx_entry_walk(tag)
+            if kind == 'baked']
 
 
 def _partners():

@@ -38235,3 +38235,119 @@ The general lesson is the peer's, and it applies to arbitration rather than to a
 a harness that renders below the resolution a filter needs does not add noise, it silently
 switches the filter off, and every candidate that touches that filter is then measured against
 a renderer where it cannot act.
+
+## text/bitmap prog done; param stage: last-N-present is the derivation, and it fixes the param_slots bug
+
+prog is now functionally equivalent to size_or_baked on 885,137 records -- 100% of everything except
+fxmaps (00's _fxmaps_walk, coordinating). text (17) is a source filter, prog=None. bitmap (16) has a
+size expression only when `r.cls & 1` is set; otherwise slot 2 is image data and prog=None.
+
+Param stage. Peer 0b found a real bug in decompose's `param_slots` (the cost-model field-walk): a
+state-3 field that is neither an image input nor state-01/10 falls through both branches and is dropped
+-- 30,015 records, e.g. directionalwarp w1=0xc loses intensity+warpangle. The fix is NOT to patch the
+field-walk; it is to name parameters POSITIONALLY, which sidesteps the PARAM_SPEC/cost-model field
+misalignment entirely. named_parameters = the last `n_present` header slots (present count from
+PARAM_SPEC excluding state-11 image inputs; boundary = decompose's end/header_words). Measured against
+the current named_parameters where the MEMO HAS A REAL (non-empty) ANSWER:
+
+    directionalwarp   60,752 / 60,753  (100.00%)   +1,775 gap-recoveries    <- the misalignment bug, GONE
+    dirmotionblur     15,288 / 15,301  ( 99.92%)   +  338
+    blend            182,976 /184,022  ( 99.43%)   +21,435   (1,004 disagreements are proven memo-errors)
+    levels            77,649 / 80,667  ( 96.26%)   +4,428    (the documented baked-widths gap)
+
+So the positional derivation reproduces the memo's real data at 96-100%, is MORE correct where they
+differ (fixes blend's 1,004 size-expr misattributions), and fills ~28k memo gaps. It is a strictly
+better parameter decoder than the memo except on levels, whose 96.26% is the cost model's own noted
+"five fields, baked widths not separated" gap.
+
+Before named_parameters can route through this and the LAYOUTS memo comes out: (1) resolve levels'
+baked-widths 3,018, (2) render-validate the ~28k recoveries + 1,004 error-fixes the way 0b validated
+edges (this CHANGES output, so it is not 0-diff -- it is better-than-memo, which must be confirmed
+against render/bytecode, not the memo). The param_slots field-walk is superseded for naming.
+
+## Param stage: the positional derivation is better-than-memo on all four filters, levels included
+
+The levels 3,018 "disagreements" are a 1-slot shift, and on 2,016 of them the slot the memo reads (and
+last-n-present skips) holds a DENORMAL -- a baked WIDTH (1.3e-42), not a level value. So there too the
+memo is reading a width as a parameter and the positional derivation skips it. Structurally sound: the
+baked widths sit BEFORE the level values in the header, so taking the LAST n_present slots lands on the
+values, not the widths. (1,002 of the 3,018 are not width-shaped and remain unadjudicated; and the
+denormal read is suggestive, not proof, so this stays "likely better", pending render.)
+
+So across all four PARAM_SPEC filters the positional derivation reproduces the memo's real answers at
+96-100% and, where it differs, the difference is the MEMO being wrong:
+    directionalwarp  the field-misalignment that dropped intensity+warpangle (100.00% now)
+    blend            1,004 size-expression programs misattributed to opacitymult (proven, offset identity)
+    levels           2,016 baked widths read as level values (denormal, likely)
+plus ~28k parameters the memo has no key for and the derivation recovers.
+
+Conclusion for the stage: named_parameters via last-n-present is a strictly better parameter decoder
+than layouts.json, and there is no per-filter blocker left -- levels is not a special case, it is the
+same memo-is-wrong pattern. What remains before wiring and deleting the LAYOUTS memo is a RENDER
+validation of the change (it is better-than-memo, not 0-diff, so it must be confirmed against render/
+bytecode the way 0b validated edges), and adjudicating the 1,002 non-width levels records. The
+param_slots field-walk stays superseded.
+
+### Extending the unified walk into the FX entry: two implementations, 37 tags apart
+
+The record header now runs on one walk (`decompose`, fxmaps included). The FX ENTRY had the same
+problem one level down: `sbsasm.fx_entry_layout` and `fxrender.baked_slots` were two walks of
+`FX_PARAM_BITS`, and the second's docstring said it "mirrors sbsasm.fx_entry_layout's walk
+exactly -- same table, same order".
+
+It did not. `fx_entry_layout` gives `FX_STRUCTURAL_BITS` (4, 7, 16, 17) their own branch --
+advance the cursor, emit nothing, "occupies space, is not a parameter" -- and `baked_slots` had
+no such branch, so it emitted structural bits as baked parameters. Over 20 files and 82 distinct
+entry tags they disagree on **37**, every disagreement a structural bit one reports and the other
+does not:
+
+    0x00020008   baked_slots emits slot 2 for structural bit 17, layout does not
+    0x00410008   ... bit 16
+    0x00420018   ... bits 4 and 17, slots 2 and 3
+
+**Nothing rendered differently, and that is exactly why it survived.** `baked_slots`' only caller
+looks each bit up in `PARTNER`, a structural bit has none, and the extra rows were dropped one
+line later. Both walks also advanced the cursor identically, so the slot POSITIONS never diverged
+-- only the membership of the returned list.
+
+That is the benign case of a duplicated walk, and it is not one to rely on. The same duplication
+in the baked-parameter READ is what cost 928 entries their second component (the width-2 note
+above), and that one had to be found by containment against a source declaration, not by the two
+implementations disagreeing loudly. A walk duplicated in two places will diverge; whether the
+divergence is visible is luck.
+
+Both now derive from `sbsasm.fx_entry_walk(tag)`, which returns `(bit, slot, name, kind, width)`
+with kind in program / baked / structural. `fx_entry_layout` filters out the structural rows and
+keeps its own inline-program rule (a property of the whole tag, not of any bit, so it stays where
+it is decided); `baked_slots` keeps the baked rows. All 82 tags now agree, the corpus census stays
+at 46 of 127, and reference agreement is unchanged at 12 usable channels, mean +0.8577.
+
+## CORRECTION: the param derivation is render-WORSE, not better. The memo stays.
+
+The three preceding param-stage notes claimed last-n-present was "a strictly better parameter decoder
+than layouts.json." A render validation refutes that, and the refutation is the whole point of doing it.
+
+Rendered Chesterfield twice -- current memo named_parameters vs the last-n-present derivation -- through
+refcompare. Result: 4 channels WORSE, 0 better (basecolor MAE 0.050->0.095 on all three channels,
+roughness 0.016->0.041). Isolated by filter:
+
+    blend patched alone     0 channels worse   (render-neutral: render.py already gets 0.5 via the
+                                                size_or_baked-float fallback, so the "gap recoveries"
+                                                change no pixel -- no gain either)
+    levels patched alone    4 channels worse   (the entire regression)
+
+So my levels reasoning was BACKWARDS. I argued "the baked widths sit before the values, so last-n reads
+the values and the memo reads the widths", and called the memo's denormal reads (1.8e-43) wrong. The
+render says the opposite: the memo reads the correct level VALUES, and last-n reads the WIDTHS. The
+denormal-heuristic was value-based decoding -- inferring a slot's role from whether its value looked
+like a parameter -- which this file's own no-value-based-decoding rule exists to forbid, and it pointed
+the wrong way.
+
+Net for the param stage: last-n-present is NOT a better decoder. It is render-neutral where the memo is
+already right (blend) and render-wrong where it is not (levels). named_parameters must NOT route through
+it, and the LAYOUTS memo is NOT coming out on this basis. The "96-100% agreement, +28k recoveries, 1,004
+error-fixes" figures were all measured against the memo and plausibility, never against a rendered pixel,
+and a rendered pixel overturned them. EDGES and PROG remain validated (0-diff / functional, and edges
+render-verified by 0b); only the parameter claim is retracted. The right next step for params is not a
+positional rule at all -- it is to understand levels' actual value/width slot order from the render, or
+leave named_parameters on the memo, which is correct.

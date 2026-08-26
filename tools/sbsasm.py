@@ -1215,6 +1215,53 @@ def fx_patterntype(tag):
 FX_INLINE_BITS = frozenset({25, 27, 29})
 
 
+def fx_entry_walk(tag):
+    """[(bit, slot, name, kind, width)] for one FX table entry tag -- the single walk.
+
+    `fx_entry_layout` and `fxrender.baked_slots` were two implementations of this, and the
+    second's docstring claimed it "mirrors sbsasm.fx_entry_layout's walk exactly -- same
+    table, same order". It did not. `fx_entry_layout` gives `FX_STRUCTURAL_BITS` their own
+    branch -- advance the cursor, emit nothing, "occupies space, is not a parameter" -- and
+    `baked_slots` had no such branch, so it emitted structural bits as baked parameters.
+    Over 20 files and 82 distinct entry tags the two disagree on 37, every disagreement a
+    structural bit (4, 16 or 17) that one reports and the other does not.
+
+    NOTHING RENDERED DIFFERENTLY, and that is why it survived: `baked_slots`' only caller
+    looks each bit up in `PARTNER`, a structural bit has none, and the extra rows were
+    dropped one line later. Both walks also advanced the cursor identically, so the SLOT
+    POSITIONS never diverged -- only the membership of the list. That is the benign case of
+    a duplicated walk and not one to rely on: the same duplication in the baked-parameter
+    READ cost 928 entries their second component (see the width-2 note), and that one had to
+    be found by containment rather than by the two implementations disagreeing loudly.
+
+    `kind` is 'program', 'baked' or 'structural'. The inline-program row `fx_entry_layout`
+    appends is not here -- it is a property of the whole tag, not of any one bit.
+    """
+    out, sl = [], 1
+    for bit, name, width in FX_PARAM_BITS:
+        if not (tag >> bit) & 1:
+            continue
+        if bit in FX_PROGRAM_BITS:
+            sl += 1
+            out.append((bit, sl, name, 'program', 1))
+        elif bit in FX_STRUCTURAL_BITS:
+            out.append((bit, sl + 1, name, 'structural', width))
+            sl += width
+        else:
+            out.append((bit, sl + 1, name, 'baked', width))
+            sl += width
+    return out
+
+
+def fx_entry_walk_end(tag):
+    """First slot the walk does not use -- what the inline-program rule measures from."""
+    sl = 1
+    for bit, _name, width in FX_PARAM_BITS:
+        if (tag >> bit) & 1:
+            sl += 1 if bit in FX_PROGRAM_BITS else width
+    return sl
+
+
 def fx_entry_layout(tag):
     """[(slot, name or None, 'program'|'baked'|'inline')] for one FX table entry tag.
 
@@ -1227,18 +1274,9 @@ def fx_entry_layout(tag):
     program -- its first word is the instruction count. Callers must not confuse the two:
     reading an inline slot as a pointer lands 52 bytes past a random instruction.
     """
-    out, sl = [], 1
-    for bit, name, width in FX_PARAM_BITS:
-        if not (tag >> bit) & 1:
-            continue
-        if bit in FX_PROGRAM_BITS:
-            sl += 1
-            out.append((sl, name, 'program'))
-        elif bit in FX_STRUCTURAL_BITS:
-            sl += width                      # occupies space, is not a parameter
-        else:
-            out.append((sl + 1, name, 'baked'))
-            sl += width
+    out = [(sl, name, kind) for _b, sl, name, kind, _w in fx_entry_walk(tag)
+           if kind != 'structural']
+    sl = fx_entry_walk_end(tag)
     # THE INLINE PROGRAM. `FX_TABLE` recorded, for 22 tags, "the byte offset of the
     # program within the structure the entry's +4 word addresses", and withdrew itself
     # because the entry population it described could not be enumerated safely. With the
