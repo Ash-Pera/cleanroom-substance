@@ -1271,6 +1271,32 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                              (src >= in_low).astype(np.float32),
                              np.clip((src - in_low) / span, 0.0, 1.0))
 
+                # A ZERO-WIDTH INPUT RANGE MAY BE A HALF-READ INVERSION, NOT A STEP. The
+                # step reading elsewhere in this branch is right for a range that is
+                # genuinely zero-width, but some of these are probably not: Substance
+                # inverts by setting in_low ABOVE in_high, in_low=1 and in_high=0, so a
+                # record storing only one of that pair reads as degenerate when the other
+                # half is simply not being decoded. Over 80 files, 301 of 11,396 levels
+                # records have a zero-width input range, and they split by which side the
+                # file actually states:
+                #
+                #     hi STATED 0.0, lo defaulted to 0.0     176
+                #     lo STATED 1.0, hi defaulted to 1.0       9
+                #     both stated, same value (0.002 x39, 0.5 x17, 0.0 x11, ...)   116
+                #
+                # The 116 with both sides stated are genuinely degenerate and the step
+                # reading is what they get. The 185 with ONE side stated at an extreme are
+                # the suspicious population: a file that writes in_high=0.0 and nothing else
+                # is asking for an inversion if in_low=1.0 sits in a slot this decode is
+                # missing, and asking for a constant if it does not. Those two readings are
+                # not distinguishable from this side -- levels parameters are bit-selected,
+                # so an unread parameter and an absent one look identical here.
+                #
+                # It matters because it is a live cause of flat output. Bricks graph 003's
+                # dead spine dies at exactly these: rec9 and rec18 (levelinlow 1.0, high
+                # defaulted) each flatten a gradient of std 0.31 and 0.27, and rec39
+                # (levelinhigh 0.0, low defaulted) flattens an fxmaps of std 0.28.
+                #
                 # `levelinmid` IS THE GAMMA ITSELF, NOT A POSITION INSIDE THE INPUT RANGE.
                 # This used to renormalise it, `(in_mid - in_low) / span`, and that is
                 # wrong for a reason that needs no reference render to see: 0.5 is the
