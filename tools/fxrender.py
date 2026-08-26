@@ -65,7 +65,34 @@ TWO NEGATIVE RESULTS, recorded so they are not re-run.
    direction, a metric improving while the model gets worse, and only the known-good
    record caught it.
 
-4. THE RECIPROCAL READING OF A BAKED patternsize IS UNDECIDABLE ON THIS CORPUS -- which is
+4. THE TILE LATTICE DOES NOT STEP BY patternsize. `splat` tiles with dx = px - (cx + tx)
+   for integer tx, i.e. spacing 1.0, so a pattern of size 0.15 gets reach 1 and only its
+   centre copy lands on the canvas -- one blob. ChesterfieldSofa's metallic map shows the
+   engine drawing about a 6x6 lattice from such a record and 1/0.15 = 6.7, which makes
+   size-spacing the obvious candidate. It is wrong in both directions at once: Lines record
+   0 goes from a lit fraction of 0.510 (ten bars) to 0.936, because its y-size of 0.036
+   would place about 28 overlapping rows where the file explicitly steps frameoffset by
+   0.1 ten times; and ChesterfieldSofa drops from 4 declared outputs to 1, with metallic's
+   correlation against the engine's own map falling from +0.2294 to 0.0000.
+
+   THE TEST IS THE POINT, more than the result. Every earlier entry in this list needed a
+   bespoke measurement to refute, and two readings had to be PARKED because nothing
+   available could contradict them. This one died in a single run against a two-sided test:
+
+       a ground-truth record that must keep rendering correctly   (Lines record 0)
+       a reference correlation that must not get worse            (ChesterfieldSofa)
+
+   Neither half is new, but the second only became usable when the matrix fix took
+   ChesterfieldSofa from 659 non-finite records to 0 and from 1 spatially-varying declared
+   output to 4. Before that the reference set had no scoreable output and the only
+   available metric was flatness, which negative result 1 correctly refuses to trust
+   because a falloff cannot be flat by construction. A correlation has no such defect: a
+   falloff that is wrong scores no better than a rectangle that is wrong.
+
+   Anything proposed for the frame question should be run against both halves before it is
+   argued about.
+
+5. THE RECIPROCAL READING OF A BAKED patternsize IS UNDECIDABLE ON THIS CORPUS -- which is
    a stronger statement than "unproven", and is recorded so nobody re-derives it.
 
    The reading: a BAKED patternsize is stored as 1/size. It is not idle. The words decode
