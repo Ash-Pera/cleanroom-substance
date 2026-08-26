@@ -35,6 +35,12 @@ import contextlib
 # a caller may pass anything, and an unknown key is that caller's business.
 QUESTIONS = {
     'blur.intensity':     ('program', 'slot3'),
+    # NOT A FORMULA -- A PROBE. `emboss` is unimplemented and heads the reference packages'
+    # blocker table at 18 outputs, but a heading is what a gap TOUCHES, not what fixing it
+    # would release (see FORMAT-NOTES on the census). 'passthrough' renders the filter as
+    # its first input so the true unlock can be COUNTED before any formula is guessed at.
+    # It is not a candidate reading of emboss and must never be scored as one.
+    'emboss.probe':       ('passthrough',),
     # THE GREEN CHANNEL'S HANDEDNESS. The permitted sources declare `inversedy` on this
     # filter and render.py's normal branch says outright that not decoding it leaves "a
     # specimen using the other handedness rendering with its green channel inverted".
@@ -108,6 +114,24 @@ QUESTIONS = {
     #   * the 6 it adds carry no structure to speak of: correlations +0.140, +0.031,
     #     +0.159, -0.158, +0.109, +0.040, with fitted slopes 0.02-0.37.
     #
+    # RE-SCORED with the harness fixed (keyed by assembly and by reference content, not by
+    # package), and the answer is sharper than "neutral". Against `nonfinite.fill` alone:
+    #
+    #     scored channels            19  ->  73
+    #     usable channels in common  10, byte-IDENTICAL 10, moved 0, lost 0
+    #     newly scoreable            54, of which NOT degenerate  50
+    #     mean correlation of those 50 new channels          +0.0002
+    #
+    # So it costs literally nothing, and it produces fifty genuinely varying images that
+    # have ZERO relationship to the reference maps. That is not weak agreement, it is none.
+    # Fifty channels averaging +0.0002 is, if anything, evidence AGAINST the reading rather
+    # than for it -- a roughly-right intensity applied to a roughly-right input should leave
+    # some positive correlation even with other errors present.
+    #
+    # It stays available as an arbitration BASIS -- more comparable channels is what
+    # assume.py exists to buy -- but a candidate that moves those channels off zero would be
+    # telling us something, and the baseline they sit at is nothing.
+    #
     # So the references neither refute it nor confirm it, and it is NOT adopted as a
     # default on the strength of the count. The confound is worth naming precisely because
     # it is the reason the arm cannot decide: all 6 new channels are Bricks_and_tiles, and
@@ -123,6 +147,31 @@ QUESTIONS = {
     # aspect term that is 1.0 on a square image. Whether its first component IS the
     # distance is a guess with an arbiter available, which is what this channel is for.
     'distance.param':     ('program', 'block1', 'slot5', 'wide'),
+    # ARBITRATED, AND 'wide' IS REFUTED -- by the widest margin of anything in this file, and
+    # it is the candidate that looks best on a coverage count. `distance` heads the reference
+    # packages' blocker table once blur.intensity and nonfinite.fill are open, and 'wide'
+    # takes them from 54 of 90 rendered to 74. 'program', 'block1' and 'slot5' unlock nothing
+    # at all (54 either way), so it is the only live one.
+    #
+    # Scored, keyed by assembly AND by reference content so the comparison cannot drift:
+    #
+    #     usable channels common to both       60
+    #       byte-identical                     57
+    #       MOVED                               3   Auras basecolor ch0/1/2
+    #         +0.937 -> +0.804
+    #         +0.865 -> +0.631
+    #         +0.945 -> +0.801
+    #     newly scoreable                      18
+    #       of those, NOT degenerate            0
+    #
+    # Every one of the 20 outputs it unlocks comes back carrying no picture -- all 18
+    # scoreable ones fail the variation test -- and the price is the three best-correlated
+    # channels this project has. That is the coverage-versus-correctness trade at its
+    # starkest: +20 outputs, -0.13 average correlation on the only channels that were
+    # working.
+    #
+    # `distance` therefore stays unimplemented, and its 25-output heading stays as a
+    # heading.
     'distance.invert':    (False, True),
     'distance.mask_edge': (0, 1),
     # The footprint is no longer a four-way guess: `patterntype` is declared in the entry

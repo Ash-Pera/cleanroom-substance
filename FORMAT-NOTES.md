@@ -36946,3 +36946,64 @@ can be paired by name, asking whether the reference PNG is actually chromatic:
     disagreements                                   0
 
 68 of 68, against pixels rather than against names.
+
+### Two blockers probed rather than guessed at: emboss releases nothing, distance releases nothing usable
+
+The reference packages' blocker table, with `blur.intensity` and `nonfinite.fill` open, is headed
+by `emboss` (18 outputs) and `distance` (25). Both were tested for what they would actually
+RELEASE before either was implemented, which is the discipline the census-heading note argues for.
+
+**`emboss` releases zero.** Rendering it as a pass-through -- `assume.QUESTIONS['emboss.probe']`,
+a counting probe and explicitly not a reading of the filter -- leaves the reference packages at
+54 of 90, unchanged, and the emboss heading does not even appear in the blocker table once the
+other two assumptions are open. Its 18 outputs are all blocked by something else as well. So the
+work the FILTERS note describes as still needed for emboss -- a permitted source that both pairs
+and states a value, plus the formula -- would buy nothing on this corpus even if it succeeded.
+
+**`distance` releases 20 outputs and not one of them carries a picture.** Of its four candidates,
+three (`program`, `block1`, `slot5`) unlock nothing; `wide` takes 54 of 90 to 74 of 90. Scored,
+keyed by assembly and by reference content:
+
+    usable channels common to both       60
+      byte-identical                     57
+      moved                               3    Auras basecolor ch0/1/2, ALL worse:
+                                               +0.937 -> +0.804
+                                               +0.865 -> +0.631
+                                               +0.945 -> +0.801
+    newly scoreable                      18
+      of those, NOT degenerate            0
+
+Twenty more rendered outputs, eighteen scoreable, and every one fails the variation test -- while
+the three best-correlated channels in the project lose 0.13 on average. Refuted.
+
+A HARNESS NOTE THAT CHANGED THE ANSWER. A first run of this comparison keyed channels by their
+occurrence index within an assembly, which SHIFTS when a candidate unlocks more outputs. That
+misaligned the two sides and reported "18 of 18 non-degenerate, mean corr +0.035" -- weak but
+positive -- where the aligned comparison says 0 of 18. Keying on a hash of the reference array
+fixes it, because the reference is what does not change between candidates.
+
+### What `blur.intensity = 'program'` actually buys: fifty pictures of nothing
+
+This is the largest coverage lever in the project -- it takes the reference packages from 23 of
+90 rendered to 54 -- and the narrow harness reported it as costless and mildly positive. Re-run
+with the fixed key, against `nonfinite.fill` alone:
+
+    scored channels                     19  ->  73
+    usable channels common to both      10, byte-IDENTICAL 10, moved 0, lost 0
+    newly scoreable                     54, of which NOT degenerate  50
+    mean correlation of those 50                              +0.0002
+
+The first half of that is a genuine result: opening it changes NO channel that already scored,
+so it is not a trade. The second half is the finding. Those fifty channels are not degenerate --
+they carry hundreds of distinct values and real variance -- they simply have no relationship to
+the reference maps at all. Zero, averaged over fifty.
+
+**That is worse for the reading than "weak agreement" would be.** An intensity that was roughly
+right, applied to inputs that are roughly right, should leave some positive correlation even with
+other errors in the chain; Auras basecolor manages 0.94 through the same renderer. Fifty channels
+averaging +0.0002 says either the intensity is wrong or everything downstream of it in those
+particular graphs is.
+
+It stays available as an arbitration BASIS, since more comparable channels is exactly what
+`assume.py` exists to buy, and a candidate that lifts those fifty off zero would be saying
+something. But the baseline they sit at should be recorded honestly: it is nothing.

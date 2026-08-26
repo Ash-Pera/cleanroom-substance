@@ -2214,6 +2214,18 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if tainted:
                     synthetic.add(i)
 
+            elif (rec.filter_name == "emboss"
+                  and assume.assumed('emboss.probe') == 'passthrough'):
+                # COUNTING PROBE ONLY -- see assume.QUESTIONS['emboss.probe']. Renders the
+                # record as its first input so the number of outputs emboss actually gates
+                # can be measured. This is not a reading of emboss and its images are not
+                # to be scored.
+                if not rec.edges or rec.edges[0] not in outputs:
+                    raise cascade("edge has no output yet")
+                outputs[i] = np.asarray(outputs[rec.edges[0]])
+                LOW_CONFIDENCE.add(i)
+                assume.note(i)
+
             elif rec.filter_name == "normal":
                 # A normal map from a height input. The permitted sources declare this
                 # filter's parameters as `intensity` (61 sightings), `input2alpha` (31,
