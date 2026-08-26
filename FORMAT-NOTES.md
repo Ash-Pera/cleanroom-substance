@@ -35823,3 +35823,68 @@ Everything anchored to the RECORD -- header widths, slot positions, bank capacit
 OF EMISSIONS moved, and the two claims that died outright were both a spatial-variation
 statistic on one map of one specimen. A number that depends on how many patterns got
 enumerated is a number about the enumerator, and this walk has now been rebuilt twice.
+
+## Rechecking my FX conclusions against the mask-walk restructure
+
+The FX node and entry readings were rebuilt: `node_shape` computes a node's successor as
+`base + popcount(header & 0xF0)` words, `FX_NODES`/`FX_NODES2` are retired as fits of that,
+and the entry table is a linked list rather than a strided run. Every FX conclusion I
+recorded was re-measured against the new code. Three stand, one stands with its evidence
+gone, and two are withdrawn or narrowed.
+
+**STANDS. `0x??1B` has one child and a continuation.** Word 5's target is reachable from
+word 2's subtree in 81 of 81, control 0 of 81 -- unchanged. Consistent with the new reading
+that bit 4 on a leaf is what makes a branch.
+
+**STANDS. The `0x??0B` leaf reaches an entry.** 591 of 636 leaves have an entry tag at
+word 1, and 62 records gain a table (was 591/643 and 62). The restructure explains it
+better than I did: the leaf WRAPS an entry rather than merely pointing at one.
+
+**STANDS, BUT ITS CONTROL IS VOID.** Paramless nibble-8 entries grew from 9,385 to 9,605
+and rescued records from 950 to 1,000. The justification does not survive. The
+program-span containment test that carried it read
+
+    before                              after
+    parameterised  0.0%                 0.0%
+    paramless8     0.0%                 0.0%
+    other-nibble  13.9%  (known bad)    0.0%
+
+The known-bad group now scores the same as the known-good one, so the test has no
+discriminating power at all. The entry walk no longer produces the runaway-stride junk that
+13.9% was detecting. The conclusion is not refuted; the evidence for it is simply gone, and
+it now rests on the nibble-8 argument alone. This is the "law that examined nothing"
+failure, applied to my own earlier work.
+
+**WITHDRAWN AS STATED. branchoffset is not in cell units generally.**
+
+    before   966 records   median span/(G-1) = 1.0000   69.5% within 10% of 1.0
+    after  1,496 records   median            = 0.3043   26.9%
+
+The distribution is bimodal, and the chain shape -- not the emission count -- is what
+separates it:
+
+    chain 0x89,0x8b,0xcb    n=  163   median 1.0000   163 of 163 within 10%
+    chain 0x89,0x8b         n=1,321   median 0.2727   239 of 1,321
+    chain 0x8b              n=   11   median 0.0625     0 of 11
+
+So the law is exact for one chain signature and absent elsewhere. **My guard was the wrong
+discriminator**: "the emission count is a perfect square, so G = sqrt(N)" treats any square
+count as a 2D grid, and a chain with one addnode emits n patterns in one dimension where
+sqrt(n) is a spurious root. Counting addnodes is better but not clean either (2 addnodes:
+326 of 826 within 10%), so I do not have a mechanism, only the signature.
+
+**NARROWED. patternsize is still not a canvas fraction, but the argument for CELLS is
+weaker.** Correlation with 1/G is -0.0085 over 777 records (was -0.074 over 299), so canvas
+is refused as firmly as before. What is withdrawn is the shape argument: I wrote that
+"5 and 3 alone account for 231 of the 299 records, a kernel extent rather than a continuous
+fraction". The values are now {5.0: 346, 1.5: 228, 3.0: 133, 0.8: 36, 1.29: 34}, so the
+odd-integer reading is gone and only the G-independence survives.
+
+**A NUMBER I GOT WRONG WHEN I WROTE IT.** Commit ca3a6bd states the 0x99 lattices as
+`PavingStones r44 2304 = 48 x 48`. The measurement in front of me at the time said 112
+distinct x and 48 distinct y. 2304 is indeed 48 squared, and I wrote the factorisation as
+though it were the measurement when the measurement disagreed. Re-measured now, Chipboard
+r1633 and Flagstone r219 have moved from 16 x 16 to 256 distinct x and 256 distinct y --
+one pattern per row -- so those two are withdrawn as lattices as well. What survives is the
+Brick family: nine distinct y in every one, and 315 = 9 x 35, 225 = 9 x 25, 450 = 9 x 50
+exactly.
