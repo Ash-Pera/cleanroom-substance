@@ -398,6 +398,41 @@ QUESTIONS = {
     # contradicted. And the reader's upper bound turns out to fall in a gap the corpus
     # leaves -- see `grid_width`, where the two populations are separated by a factor of two
     # of empty space.
+    #
+    # `normal`'s REGRESSION IS NOT A DOUBLE-COUNT, and the graph supplies the control that
+    # shows it: rec121 (normal) and rec120 (height) share their source, rec119. Height
+    # improved fourfold under this candidate, so rec119's level and coverage are right with
+    # sixteen stamps -- if any path here assumed a single stamp or double-counted a blend,
+    # height would have overshot by the same factor and it did the opposite. Normal is the
+    # SLOPE of that same field, and a derivative amplifies high frequency: height sits at
+    # 1.36x the reference contrast and normal at 2.09x, which is that excess passed through
+    # a derivative.
+    #
+    # SO IT IS STAMP-EDGE HARDNESS, PARTLY -- tested rather than assumed, by sweeping the
+    # profile these typeless stamps are drawn with:
+    #
+    #     profile      overall   normal MAE/std   height MAE/std
+    #     rect          0.0557   0.0881/0.1512    0.0623/0.1316
+    #     disc          0.0591   0.0772/0.1435    0.0908/0.1179
+    #     cone          0.0544   0.0814/0.1328    0.0677/0.1141
+    #     paraboloid    0.0530   0.0859/0.1405    0.0316/0.1222
+    #     bell          0.0567   0.0925/0.1457    0.0546/0.1301
+    #     gaussian      0.0605   0.0903/0.1468    0.0990/0.1293
+    #     reference std                   0.0722           0.0970
+    #
+    # Softening does pull normal's contrast down, 0.1512 to 0.1328 at its best, which is the
+    # predicted direction. It does NOT close the gap: the best profile still leaves normal
+    # at 1.84x the reference, so edge hardness is a contributor and not the whole residual.
+    # And no profile is free -- `disc` gives the best normal MAE and costs height half its
+    # gain.
+    #
+    # WORTH NOTING SEPARATELY: this question used to be undecidable. Scored before the count
+    # was fixed, no member of fx.typeless_profile won outright. With sixteen stamps instead
+    # of one, `paraboloid` now beats `rect` overall (0.0530 against 0.0557) and takes height
+    # to 0.0316 from 0.0623. An arbitration can be unanswerable because an upstream value is
+    # wrong, and answerable once it is fixed -- which is an argument for re-running old
+    # inconclusive sweeps after any correction of this size, not only the ones it obviously
+    # touches.
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
