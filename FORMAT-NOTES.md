@@ -36841,3 +36841,51 @@ it is a FLAT program-list / entry-per-program form, a second encoding distinct f
 chain. A real decode gap for a common cls; the reader for it is unbuilt. NOT a RoofTiles
 unblock (every RoofTiles output cone is also behind the shuffle grayscale-default refusal, so
 this form is never the last blocker there — leverage is last-in-cone, and it is not).
+
+### Auras basecolor: the gain is upstream of the blend, and it is not the ramp
+
+`Auras_FX` record 444 is the best-correlated output this project produces -- 0.937 / 0.865 /
+0.945 -- and it has been carrying an unexplained per-channel gain (fit slopes 0.536 / 0.321 /
+0.802) for many sessions. Four things are now ruled out, and one thing is localised.
+
+**It is not the blend mode.** Record 444 is `blend` with `blendingmode` 1 (add), edges
+[443, 425], and `opacitymult` supplied by a program. Our output is A+B to four decimals, which
+is what add at opacity 1 computes. The mode number reading is source-verified elsewhere.
+
+**It is not the blend at all.** Probing every record in the cone against the reference:
+
+    record  filter          corr / slope  r              g              b
+    444     blend           +0.94 / 0.54   +0.86 / 0.32   +0.95 / 0.80
+    425     hsl             +0.77 / 0.74   +0.57 / 0.36   +0.71 / 0.80
+    443     hsl             +0.63 / 0.47   +0.62 / 0.27   +0.75 / 0.76
+
+Both inputs are individually too bright -- slopes 0.74 and 0.47 before they ever meet. Summing
+two too-bright fields gives a too-bright field; the blend is not where the gain enters.
+
+**It is not the gradient ramps.** 424 and 442 are 7-stop ramps running black -> dark blue ->
+blue -> white, and the colour gamut they produce matches the reference closely:
+
+                r max      g max      b max
+    ours        0.767      0.708      1.000
+    reference   0.771      0.589      1.000
+
+Red and blue agree to three decimals. Ramp decoding was separately verified by containment
+(24 of 25 stops matching their sources), and this is the same answer reached from the output
+side.
+
+**And it is not a black-level problem.** The reference is mostly black -- median 0 in all three
+channels -- and so is ours, to within half a percent:
+
+    fraction below   0.001    0.01     0.05     0.25     0.50
+    reference        0.648    0.670    0.700    0.745    0.784
+    ours             0.643    0.647    0.667    0.699    0.726
+
+The two agree at the black end and diverge as the threshold rises. **So the background is right
+and the LIT pixels are too bright** -- which is what a gain of ~2 on the illuminated regions
+looks like, and it is present in each branch before the blend combines them.
+
+A NOTE ON A TEMPTING FIT. `(A+B)/2` scores much better than `A+B` -- same correlation, slopes
+1.05 / 0.64 / 1.26, MAE 0.0459 against 0.0847. It is not a Substance blend mode and adopting it
+would be curve-fitting: halving compensates for the upstream brightness rather than correcting
+it, and it would leave the same error hidden in every branch that does not happen to be summed
+in pairs.
