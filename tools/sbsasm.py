@@ -70,6 +70,23 @@ FILTERS = {
 # entry above is a name this format's own `.sbs` sources use; filter 5's is not, and
 # cannot be, because the permitted vocabulary is exhausted - see PROJECT_LABELS.
 PROJECT_LABELS = {5}
+# FILTER 9 IS THE ONLY GAP IN 0..22, and it is narrowed to two candidates. One record in 30
+# corpus files carries it -- wood_cedar_white record 357, 14 words, class 0x0309, two edges
+# -- and `filter None not implemented` blocks 8 declared outputs through it.
+#
+# The source vocabulary has five node names this table does not map: `grayscaleconversion`
+# (which is filter 3, established), `valueprocessor`, `passthrough`, `motionblur` and `svg`.
+# Pairing each permitted source with its OWN binary rules two of them out outright:
+#
+#     valueprocessor   8 permitted sources declare it (up to 8 nodes)   0 filter-9 records
+#     passthrough     25 permitted sources declare it (up to 32 nodes)  0 filter-9 records
+#
+# A source with 32 `passthrough` nodes whose binary contains no filter-9 record at all is a
+# refutation, not a miss. What remains is `motionblur` (3 sources) and `svg` (1), and every
+# one of those four is Allegorithmic-authored and source-excluded -- which FORMAT-NOTES
+# already records for motionblur in as many words: "Every file in the corpus that uses
+# `motionblur` is excluded by the provenance rule". So the id cannot be settled from this
+# corpus, and it is two candidates rather than an open field.
 # Filter 11 is `dirmotionblur`, named from the permitted sources alone. It declares exactly
 # two Float1 parameters and nothing else, which is filter 11's shape:
 #
