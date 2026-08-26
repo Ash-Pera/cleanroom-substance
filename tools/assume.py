@@ -535,6 +535,20 @@ QUESTIONS = {
     # fraction and a value above it cannot be one at all. The fired set is entirely on the
     # impossible-as-canvas side, which is the only way the two measurements could agree.
     #
+    # A LEVERAGE CHECK ACROSS THE REMAINING PACKS, run before wiring anything: the sole root
+    # of every blocked output in the scored set is one of two arbitrations, and the recovered
+    # fxmaps entry table is not among them.
+    #
+    #     Sandy Stone  output, _1, _2, _3, _4     nonfinite   ONLY
+    #     Auras        basecolor                  blur.intensity ONLY
+    #     Chesterfield  -- nothing blocked --
+    #
+    # So `nonfinite.fill` is the last root on five outputs at once and `blur.intensity` on
+    # one. A fix for the chainless fxmaps entry table -- recoverable via fx_walk on 3,224 of
+    # 3,227 empty-chain records, a genuine decode-integration gap with a known one-place fix
+    # -- has ZERO leverage on any scored pack: it is not the last root anywhere. Worth
+    # wiring on its own merits eventually; not worth wiring to move a score.
+    #
     # AND IT EXPLAINS WHY 'oversize' COULD NOT DIFFER FROM 'cell'. That candidate scaled
     # records whose median patternsize exceeds 1.0, and it was retired as byte-identical.
     # The identity is not luck: the fired set IS the oversize set, because an oversized
