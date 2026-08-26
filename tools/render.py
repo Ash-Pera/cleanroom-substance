@@ -1171,9 +1171,40 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # color -- not guessed at, raised instead like the format's own matrix
                 # reading rejects an implausible determinant rather than trust a bad slot.
                 has_prog = rec.size_or_baked is not None and rec.size_or_baked[0] == 'program'
-                start = 2 if has_prog else 1
+                # AND ONE MORE POINTER WHEN CLASS BIT 7 IS SET. Seven records read a
+                # denormal where a colour should be, and all seven carry TWO pointers
+                # ahead of the slot rather than one: MetalSubstance009 record 9887 is
+                # `[tag][ptr][ptr][1.0][bytecode...]`, a fill of exactly 1.0 one word
+                # further on than this was looking. Bit 7 is what marks them, and it is
+                # the same shape that left a `shuffle` weight vector one word out.
+                start = (2 if has_prog else 1) + (1 if (rec.cls >> 7) & 1 else 0)
                 n = 4 if rec.colour else 1
-                if len(rec.words) < start + n:
+                # CLASS BIT 8 SAYS WHETHER THE FILL IS STORED AT ALL, and asking it is not
+                # optional politeness -- 358 of 864 uniform records in 40 files (41%) were
+                # rendering the record's own BYTECODE as their colour. The words at the
+                # colour slot are the program preamble, `0x0A420001 0x70818F53`, which as
+                # float32 is 9.341e-33: a denormal, inside [0, 1], and waved through by a
+                # range check. The same value then reaches `fxrender`, where it is the
+                # 6.259e-33 / 9.341e-33 population that MIN_PATTERN_SIZE was built to
+                # reject -- so an FX-Map fed by one of these draws nothing and comes out
+                # flat black. That is how CarpetSubstance001's tufts vanish.
+                #
+                # Measured over the same 40 files, with the bit-7 offset above applied:
+                #
+                #     bit 8 set    -> a plausible colour   512 of 512
+                #     bit 8 clear  -> not a colour         351 of 352
+                #
+                # The single exception reads (1.3e-18, 0, 1, 0) -- also bytecode, just not
+                # small enough to trip the classifier's threshold, so the bit is right
+                # there too and it is the value test that is soft. Which is the point: a
+                # guard on the VALUE passes whatever lands in range, and the format's own
+                # presence bit cannot.
+                #
+                # A bit-8-clear record is then in exactly the position the one-word records
+                # below are in -- the fill is the engine's default, not something in the
+                # file -- so it takes the same arbitrated answer and the same
+                # LOW_CONFIDENCE mark.
+                if not (rec.cls >> 8) & 1 or len(rec.words) < start + n:
                     # THE COLOUR IS NOT IN THE FILE. These are one-word records -- just
                     # the tag, no programs, no colour slot -- distinguishable by class
                     # (neither bit 0 nor bits 8/9 set), and they feed `transformation` in
@@ -2130,6 +2161,66 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     for d in range(-rpx, rpx + 1):
                         out2 += np.roll(acc, d, axis=0)
                     outputs[i] = np.clip(out2 / k, 0.0, 1.0)
+                if tainted:
+                    synthetic.add(i)
+
+            elif rec.filter_name == "sharpen":
+                # WHERE ITS INTENSITY IS, read the same way `blur`'s was and confirmed by
+                # the same two-part law. `sharpen` is not in PARAM_SPEC, so there is no
+                # named parameter to consult; it takes one image edge and one scalar.
+                #
+                # The slot is the one after the size block -- 2 + nprog, or 4 when nprog is
+                # 0 and the size occupies two baked words -- and class bit 12 says whether
+                # a baked value is there at all. Over 175 records in 60 files:
+                #
+                #     rule                             plausible value at that slot
+                #     2 + nprog (4 if 0)                   138 of 175   79%
+                #     4 + popcount(cls & {7,10,11})          0            0%   (warp's rule)
+                #     2 + popcount(cls & {0,7})             54           31%   (hsl's rule)
+                #     fixed 4                               90           51%
+                #     fixed 3                               48           27%
+                #
+                # and the values it lands on are 0.25, 0.125, 0.5, 1.2, 0.8 -- a sharpen
+                # intensity distribution, not a size ladder. Bit 12 gates it exactly as it
+                # does for blur: set and plausible 138, clear and implausible 31, set with
+                # the slot past the record end 6 -- 169 of 175 = 96.6%.
+                #
+                # THE KERNEL IS A READING, and the same one `blur` documents: an unsharp
+                # mask over a 3x3 box, out = src + intensity * (src - blur(src)). What is
+                # decoded is WHERE the intensity is; what the engine convolves with is not
+                # established, and a Gaussian or a wider radius would differ in the tails.
+                # Two properties are checkable and hold by construction here: a constant
+                # image is unchanged (src - blur(src) is zero everywhere), and intensity 0
+                # is the identity.
+                if not rec.edges or rec.edges[0] not in outputs:
+                    raise cascade("edge has no output yet")
+                tainted = rec.edges[0] in synthetic
+                nprog = bin(rec.cls & 0x2881).count("1")
+                islot = 4 if nprog == 0 else 2 + nprog
+                if not (rec.cls >> 12) & 1:
+                    raise Unsupported("sharpen intensity: class bit 12 clear, so the record "
+                                      "states there is no baked intensity (nprog=%d)" % nprog)
+                if islot >= len(rec.words):
+                    raise Unsupported("sharpen intensity: slot %d past the record end"
+                                      % islot)
+                amount = float(np.frombuffer(np.uint32(rec.words[islot]).tobytes(),
+                                             dtype=np.float32)[0])
+                if not (np.isfinite(amount) and (amount == 0.0 or 1e-6 < abs(amount) < 1e4)):
+                    raise Unsupported("sharpen intensity slot does not read as a plausible "
+                                      "value (%r)" % amount)
+                W, H = rec.width, rec.height
+                if max_dim:
+                    W, H = min(W, max_dim), min(H, max_dim)
+                N = W * H
+                src = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos_grid(W, H)),
+                               N, H, W)
+                blurred = np.zeros_like(src)
+                for dy in (-1, 0, 1):
+                    row = np.roll(src, dy, axis=0)
+                    for dx in (-1, 0, 1):
+                        blurred += np.roll(row, dx, axis=1)
+                blurred /= 9.0
+                outputs[i] = np.clip(src + amount * (src - blurred), 0.0, 1.0)
                 if tainted:
                     synthetic.add(i)
 
