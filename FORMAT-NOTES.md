@@ -36160,3 +36160,21 @@ peer 0b found the count fix makes previously-UNDECIDABLE downstream arbitrations
 fx.typeless_profile had no winner scored at n=1; at n=16 paraboloid wins and takes height
 0.0623→0.0316. Lesson: re-run sweeps recorded inconclusive upstream of an fxmaps count after
 a correction of this size.
+
+### The divisor override is conflict-free: grid-record ⟺ degenerate-numberadded (2598/2598)
+
+Census over every content-distinct file: all 2598 grid records (grid_width returns N) have the
+degenerate numberadded — reads slot 8 (aspect) only, no inputref — ZERO exceptions. So "has a
+$number-grid" and "numberadded is the aspect-amount" are the same set corpus-wide. Overriding
+numberadded with N² on a grid record therefore loses nothing (no grid record carries a real
+numberadded count to lose), and the inputref-count records (Fabric, ie_particles) are disjoint
+(grid_width returns None for them, numberadded untouched). The two count mechanisms partition
+cleanly. So 'divisor' is a safe default on the grid population, on the count side.
+
+Branchoffset among grid records is uniformly 'neither': classifying each grid record's
+branchoffset program as rand(scatter) / reads-input(grid) / neither gives 1303 neither, 0
+scatter, 0 input (+36 with no branchoffset program). Grid records get their tiling from the
+$number placement program, and their branchoffset is constant/computed, orthogonal to it. So
+the fx.branchoffset SCALE guard (whose worry was scaling rand-misfires in the integer-span
+group) operates on a population DISJOINT from the count-fix grids — the two are separate
+questions, not one.
