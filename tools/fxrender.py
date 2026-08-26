@@ -1532,6 +1532,17 @@ def _cell_divisor(patterns):
     return np.asarray(d, dtype=np.float32)
 
 
+def _combine(dst, src):
+    """Fold one pattern's contribution into the canvas -- see QUESTIONS['fx.combine']."""
+    mode = assume.assumed('fx.combine', 'max')
+    if mode == 'add':
+        return dst + src
+    if mode == 'over':
+        a = np.clip(np.abs(src), 0.0, 1.0)
+        return dst * (1.0 - a) + src
+    return np.maximum(dst, src)
+
+
 def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     """Draw the emitted patterns. `images` maps EDGE SLOT -> (H, W, C) array.
 
@@ -1890,7 +1901,14 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
             continue
         if col.size < nchan:
             col = np.repeat(col[:1], nchan)
-        col = np.clip(col[:nchan], 0.0, 1.0)
+        # See assume.QUESTIONS['fx.negopacity'] -- the clip makes a negative opacity inert.
+        _neg = assume.assumed('fx.negopacity', 'clip')
+        if _neg == 'signed':
+            col = np.clip(col[:nchan], -1.0, 1.0)
+        elif _neg == 'abs':
+            col = np.clip(np.abs(col[:nchan]), 0.0, 1.0)
+        else:
+            col = np.clip(col[:nchan], 0.0, 1.0)
 
         th = 2.0 * math.pi * rot
         ct, st = math.cos(th), math.sin(th)
@@ -1948,7 +1966,7 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
                     continue
                 tile = cview[r0:r1 + 1, c0:c1 + 1]
                 if src is None:
-                    tile[hit] = np.maximum(tile[hit], col * cov[hit, None])
+                    tile[hit] = _combine(tile[hit], col * cov[hit, None])
                     continue
                 # The pattern IS the input image: local coordinates, which run
                 # -0.5..0.5 across the footprint, map straight onto its UV.
@@ -1959,8 +1977,8 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
                     sampled = sampled[:, None]
                 if sampled.shape[-1] < nchan:
                     sampled = np.repeat(sampled[:, :1], nchan, axis=-1)
-                tile[hit] = np.maximum(tile[hit],
-                                       sampled[:, :nchan] * col * cov[hit, None])
+                tile[hit] = _combine(tile[hit],
+                                     sampled[:, :nchan] * col * cov[hit, None])
     return np.clip(canvas, 0, 1).reshape(H, W, nchan)
 
 

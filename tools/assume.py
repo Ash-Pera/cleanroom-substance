@@ -977,6 +977,22 @@ QUESTIONS = {
     # file's directionalwarps take. The seams missing from its basecolor are drawn by that
     # dead chain.
     'fx.gatescan':        ('once', 'loop', 'filter'),
+    # HOW OVERLAPPING PATTERNS COMBINE. fxrender's docstring lists this among "assumptions,
+    # none of them from the format": overlaps combine with `max`. That choice makes a
+    # NEGATIVE opacity inert -- max(canvas, negative) is the canvas -- and negative opacities
+    # are not noise: ChesterfieldSofa record 331's only two drawn patterns both carry
+    # opacity -1.0, and the record renders solid white because its typeless fills win the
+    # max and nothing can carve them back. 'add' lets a negative subtract; 'over' composites
+    # by coverage.
+    'fx.combine':         ('max', 'add', 'over'),
+    # WHAT A NEGATIVE OPACITY MEANS. `splat` clips opacity to [0, 1], so a pattern carrying
+    # -1.0 draws NOTHING -- and fxrender's own census found 1,195 such patterns in 20 files,
+    # 0.6% of them, which it read as too few to be a systemic misread. On ChesterfieldSofa
+    # record 331 they are not a corner: BOTH of its drawn patterns carry -1.0, so under the
+    # clip the record has nothing but its typeless full-cell fills and renders solid white.
+    # 'signed' passes the value through so a negative can subtract (which needs
+    # `fx.combine` to be something max cannot be); 'abs' takes the magnitude.
+    'fx.negopacity':      ('clip', 'signed', 'abs'),
     # WHAT A GENUINELY ZERO-WIDTH levels DOES. Where levelinlow equals levelinhigh the
     # transfer has no width, and the branch currently reads it as a STEP: everything at or
     # above the point maps to out_high, everything below to out_low. That is the arithmetic

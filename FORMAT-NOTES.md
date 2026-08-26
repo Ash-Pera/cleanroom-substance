@@ -37506,3 +37506,177 @@ the ADDNODE runs ONCE -- its `numberadded` is the same degenerate aspect term re
 So these records need a count that neither `numberadded` nor `grid_width` supplies, and the only
 structure that could supply one -- the spiral's own extent -- is measured against bounds in the
 wrong units. That is the whole of what is left on the missing basecolor seams.
+
+## CORRECTION to the previous note: most of that "~28k memo errors" were MY rule errors
+
+The previous subsection claimed the residual disagreements were largely memo bugs and the rule was
+"more correct than the memo on ~1,004 provably and ~28k likely." The ~28k half is WRONG, and it was
+wrong for exactly the reason this file keeps warning about: value-based decoding. I saw a residual
+slot holding 0x3f000000 = 0.5, called it "a plausible opacity the memo missed," and counted it as a
+memo error. It is not. Reading the bytecode (the same directive) disproves it: on those records the
+slot my rule read is the SIZE-EXPRESSION slot — `size_or_baked` — and disassembling it shows a
+`sysvar $size` dimension computation, not an opacity. Measured: 21,276 of 21,281 blend disagreements
+(100%) are my rule reading `block[0]`, the very slot the memo correctly calls the size expression.
+So on those the MEMO is right and the RULE is wrong; 0.5 was a relative-scale size, not opacity.
+
+What actually stands:
+- **1,004 proven MEMO errors** — the memo's opacitymult program offset is byte-identical to
+  `size_or_baked`'s (a param cannot be the record's own dimension code). Rule correctly returns [].
+- **~21k RULE errors** in the "last present header slots" formulation — it placed the parameter on
+  the size slot when the size slot was the last header word. NOT memo errors.
+
+The fix that the size-slot reading implies — params = the header slots strictly AFTER the size slot
+(`range(prog+1, header_words)`), present filling the last k — moves blend 90.6% -> 99.67%, but it is
+not universal: directionalwarp 100.0% -> 99.05%, dirmotionblur 99.5% -> 98.5%, levels 92.3% -> 87.2%.
+So the param-region boundary is filter-specific; neither "last header slots" nor "after the size
+slot" is the whole rule, and levels (the documented "baked widths not separated" gap) regresses.
+
+Honest status: the parameters are NOT yet a clean memo replacement in either formulation. directional-
+warp/dirmotion are ~99-100% and closest; blend is 99.67% with the size-slot fix; levels/fxmaps remain
+open. The 1,004 memo errors are real and worth fixing in the memo regardless. The lesson logged again:
+a slot that holds a number that LOOKS like a parameter is not a parameter — disassemble the slot's
+role before scoring it. The bytecode-reading directive is what caught my own error, not just the memo's.
+
+## Definitive resolution (render.py is the authority): the blend slot-4 case is field-state-split
+
+I flip-flopped on the blend cls=0x18 residual twice. render.py has already settled it (lines ~895-926),
+and its documented, render-verified findings are the ground truth — anchoring here to stop the churn:
+
+- The `size_or_baked` PROGRAM is the record's OUTPUT-SIZE expression, not an opacity. Confirmed the
+  hard way: evaluated as opacity it gave values in the hundreds of thousands, and log2(512)=9
+  saturating `clip(d+9*s)` to 1.0 is the matte-instead-of-glossy bug it caused.
+- The BAKED `opacitymult` from `named_parameters` IS the real opacity: 3,896 of 3,898 lie in [0,1].
+
+Applying that to cls=0x18 (the ~20k residual), the w1 opacitymult field STATE splits it cleanly:
+
+    field 01 (baked)    18,677 records   slot4 = a value in [0,1]  = real opacitymult   MEMO MISSES IT
+    field 10 (program)   1,731 records   slot4 = the size program (render.py's authority)  memo right to omit
+    field 01 out-of-[0,1]    81 records   ambiguous, minor
+
+So BOTH of my earlier claims were half-right and over-generalized: the memo genuinely misses a real
+baked opacitymult on 18,677 records (my original claim, correct for the baked case, with render impact
+render.py documents), AND slot4 is the size program on 1,731 (my "correction", correct only for the
+program case). The field state is the discriminator; neither "the memo is buggy" nor "the rule reads the
+size slot" is true across the board.
+
+CONSEQUENCE for the rule: reading slot4 as opacitymult is correct when the field is 01 (baked) and wrong
+when it is 10 (the slot is the size program, and a program-driven opacity, if emitted, lives in
+`filter_programs`, which already excludes the size program). A correct param rule must be field-state-
+aware here, not merely positional. This is exactly the kind of per-filter semantic the cost model's
+`derive_costs.py` gap note ("levels: baked widths not separated") points at, and it is why the memo is
+not cleanly replaceable by a positional rule yet.
+
+METHOD lesson, third time this file logs it: do not adjudicate a slot's role from one disassembly or one
+value. The sysvar-$size program CLAMPS to [0,1] — it is an opacity computed from size, not a dimension —
+and I called it "a size expression" from the sysvar alone. Read the program's OUTPUT range and check the
+field state across the whole population before ruling. render.py had already done this work; I should
+have read it before asserting, not after flip-flopping.
+
+## The blend opacitymult memo gap does NOT reach the render — it was functionally moot
+
+After all the flip-flopping, the decisive check is what actually renders. Traced render.py's opacity
+path on the 18,677 cls=0x18 field=01 blend records where `named_parameters` returns [] (the memo
+"misses opacitymult"):
+
+    named_parameters = []            (memo omits it)
+    size_or_baked    = ('float', 0.5)
+    render.py path   -> baked_opacity None -> `elif par[0]=='float'` -> opacity = 0.5   CORRECT
+
+Slot 4 delivers 0.5 as the opacity whether it is named `opacitymult` (the rule) or reached as the
+`size_or_baked` float (render.py's existing fallthrough). The value and the rendered effect are
+identical. So the memo's omission here is a NAMING/decode-cleanliness difference, not a functional
+one — render.py's value-routing already compensates. (The field=10 program case is the one render.py's
+own comment addresses, routing size_or_baked programs to size and program-opacity to filter_programs.)
+
+LESSON (leverage, applied late): I spent several iterations deriving and re-deriving which slot is
+opacitymult, flip-flopping twice, before checking whether any of it changes a rendered pixel. It does
+not. The last-in-cone / check-the-output-first discipline applies to DECODE cleanliness too: before
+deep-diving whether the memo or a rule names a slot correctly, check whether the difference propagates
+to a render or a scored output. Here it is fully absorbed by render.py's fallthroughs. The 1,004
+size-expr misattributions are likewise absorbed (render.py takes only kind=='baked' opacity, so a
+'program' misattribution is ignored). Net: the parameter-memo imperfections found this stretch are
+real as decode cleanliness but have not been shown to move a single rendered output — that check
+should gate any further investment in replacing the memo for parameters.
+
+### `numberadded` and the gate bounds agree with each other, so Chesterfield's records really do describe one cell
+
+The obvious next move after the last note was to find the units error that confines the gate's
+spiral to a single step. There is no units error. Comparing records whose chain is exactly
+[ADDNODE, GATE] and which RENDER against ones that do not:
+
+    record                       numberadded   slot 0 (bounds)              gate true
+    Travertine 384   varied            9       [-1.0, 2.0, -1.0, 2.0]          x9
+    Travertine 396   varied           25       [-1.5, 2.5, -1.5, 2.5]         x12
+    Chesterfield 331 FLAT              1       [ 0.0, 1.0,  0.0, 1.0]          x1
+    Chesterfield 333 FLAT              1       [ 0.0, 1.0,  0.0, 1.0]          x1
+
+**9 is 3 squared and 25 is 5 squared, and 3 and 5 are the spans of those bounds.** The two
+readings corroborate each other on the records that work: `numberadded` is the cell count and the
+gate's rectangle is the region that count fills. Chesterfield's span is 1 and its `numberadded`
+is 1, consistently. So these two records genuinely describe a SINGLE CELL, the spiral genuinely
+takes one step, and the "wrong units" reading in the previous note is withdrawn -- the step is
+in cells and so are the bounds; a one-cell region is one step.
+
+That relocates the defect rather than solving it. Over 30 files, 1,179 of 1,302 [ADDNODE, GATE]
+records render flat, so this is a large population and the count is not what is wrong with it.
+
+**What is wrong with these two is the typeless entries.** Records 331 and 333 emit 4 and 6
+patterns, of which 2 and 4 state no patterntype and no patternsize and therefore take the
+full-cell fill, covering the canvas at opacity 1. Nothing drawn afterwards can survive that:
+
+  * shrinking `patternsize` by 5, 10 or 20 changes nothing (the fills have no size to shrink)
+  * `fx.sizeless = 'skip'` gives record 333 real structure -- std 0.054, min 0.73 -- and takes
+    record 331 to solid BLACK, because both of ITS drawn patterns carry opacity -1.0 and the
+    clip to [0, 1] makes them inert
+
+So two of this project's stated-but-unverified assumptions meet on one record. Both were
+parameterised and swept, nine combinations in all -- `fx.combine` (max / add / over, where the
+docstring says "overlaps combine with `max`" is an assumption none of them from the format) and
+`fx.negopacity` (clip / signed / abs). **None of the nine produces structure on either record.**
+Under `signed` + `add` record 331 goes from solid white to solid black, which is the negative
+opacity finally doing something and still not a picture.
+
+fxrender's census reads negative opacity as noise -- 1,195 patterns over 20 files, 0.6%. On this
+record it is not a corner: BOTH drawn patterns carry -1.0, so whatever it means is load-bearing
+for the seams, and clipping it to zero cannot be right.
+
+## Unifying the decoder: one structural walk replaces the memo and the special cases
+
+The decoder currently derives a record's layout through five disjoint mechanisms (`_walk_layout`
+TIER_A, `_ruled`, `_pp_edges`, the SPECS-walk, fixed-shape fallbacks) and its parameters through the
+`layouts.json` memo. But the FORMAT is one structure (record_layout's model):
+
+    [tag][w1][image inputs, contiguous][one slot per set cls bit][one slot-group per nonzero w1 field][tail]
+
+So the decoder should be one walk of that structure, not five plus a table. Prototyped it
+(scratch/unified_walk.py): using the cost model's per-bit/per-field costs, walk in canonical order and
+emit inputs, cls-slots, and param-slots in one pass. The key ordering fact, verified: state-3 (image
+input) w1 fields sit with the INPUTS (before the cls slots); state-01/10 (baked/program) w1 fields are
+the PARAMS (after the cls slots). Validated against the current decode over the corpus:
+
+    quantity                    blend    dirwarp   dirmotion   blur    gradient
+    walk end == header_words     100%     100%      100%       100%     100%      (warp fails: two-shape)
+    walk inputs == edges        97.4%    99.3%      100%       100%      0%       (gradient: mode=absent input count)
+    walk params == named_params 93.0%    92.0%     97.8%        -        -        (disagreements = known memo errors)
+
+So a single walk reproduces header_words exactly, the input edges at 97-100%, and the parameters at
+92-98% where every disagreement is a memo error already characterized above (the 1,004 size-expr
+misattributions, the field-state opacitymult cases) — i.e. the walk is the STRUCTURAL source and the
+memo the fitted approximation it would replace. This is the unification the format implies, and it is
+demonstrably feasible.
+
+Gaps to close before it can replace the current paths (all known, none blocking the architecture):
+- two-shape filters (warp, shuffle): w1 exists in only one shape; select the shape from the tag/version
+  before walking (record_layout already does this for header_words; the walk must too).
+- mode=absent filters (gradient, blur, uniform, ...): no w1 word, so the input count comes from const
+  minus the header, and gradient's edges need the base-input count checked (blur already matches 100%).
+- interaction specs (emboss colour): the additive walk does not model the tag-bit0 cross term; use
+  record_layout._interaction's structure.
+- the param field->name map: prototype keys PARAM_SPEC by the low bit of each pres mask; unnamed w1
+  fields (real structural slots with no PARAM_SPEC name) are skipped, which is correct for naming but
+  means PARAM_SPEC must eventually carry every w1 field the cost model counts.
+
+Implementation path: extend record_layout to return the full decomposition (inputs, cls_slots,
+param_slots), not just the total; then route sbsasm's `layout`/`edge_slots`/`named_parameters`/
+`program_slots` through it and retire the five special cases and the memo. Validate at each step: 0
+diffs where the current decode is right, and the bytecode/render as ground truth where the memo is wrong.
