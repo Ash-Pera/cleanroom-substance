@@ -127,11 +127,29 @@ QUESTIONS = {
     # Under 'canvas' our contrast already sits close to the reference on all four; 'cell'
     # shrinks it 25-40% below. `normal`'s MAE fell because the image got FLATTER while the
     # reference is more textured than either, and a flatter image is nearer a constant --
-    # not nearer this reference. So 'cell' is refuted as a global policy on the only pack
-    # that can currently score it, and 'canvas' stays the default on evidence rather than
-    # on inertia. This does NOT clear canvas in the degenerate regime -- see the flat
-    # fxmaps leaves documented at render.py's `warp` branch, where a record emits 1,024
-    # patterns each 5.0 units across and is painted uniformly white.
+    # not nearer this reference. So 'cell' loses wherever it applies, and 'canvas' stays
+    # the default on evidence rather than on inertia.
+    #
+    # BUT READ THAT REFUTATION AT ITS ACTUAL SCOPE, WHICH IS NARROWER THAN IT LOOKS. The
+    # 'cell' branch is guarded on a PERFECT-SQUARE emission count, because G is undefined
+    # otherwise. On Bricks that guard fires on 68 of 175 fxmaps records; the other 107
+    # (61%) have non-square counts and the sweep above did not move them AT ALL. So the
+    # table refutes the policy AS IMPLEMENTED -- divide by round(sqrt(N)) -- on the 39% it
+    # can reach. It does not refute "patternsize is in cell units" in general, and it must
+    # not be cited as if it did.
+    #
+    # AND THE DEGENERACY IT LEAVES BEHIND IS NOT SMALL. Of 39,104 emitted patternsize
+    # values in this one file, 35,739 -- 91.4% -- are GREATER THAN 1.0, i.e. read as
+    # canvas units they are patterns larger than the whole image. The three modes are
+    # 2.82, 5.0 and 3.0. A format in which nine of ten patterns overflow the canvas is not
+    # a format being read correctly, whatever the score says, and the visible consequence
+    # is documented at render.py's `warp` branch: rec5596 emits a clean 32x32 lattice of
+    # 1,024 patterns at size 5.0 and is painted uniformly white.
+    #
+    # So the open question is not canvas-or-cell, it is WHAT THE DIVISOR IS. sqrt(N) is
+    # one guess at it and scores badly; the emission's lattice dimension taken from the
+    # addnode chain that generated it is a different number for every non-square record,
+    # and is the one thing that would let the other 61% be tested at all.
     'fx.patternsize':     ('canvas', 'cell'),
     # WHAT AN ENTRY WITH NO patterntype DRAWS. `profile_for` falls back to 'rect', a hard
     # fill of the whole cell, and its own docstring says that is "what the code has always
