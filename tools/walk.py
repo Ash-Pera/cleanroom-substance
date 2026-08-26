@@ -265,8 +265,16 @@ def validate_cls_driven(files):
 # +1 = Float1, +2 = Float2, +4 = Float4. This IS the legend node_census.py derives -- the
 # tree analogue of the manifest's parameter-type table -- transcribed here as the thing the
 # walk reads. The three multi-tag kinds carry a bit->width map; the single-tag kinds have no
-# variation to walk and are stored as their one size. Genuinely underdetermined kinds (0x0b,
-# 0x1b, 0x98) are deliberately absent: walk_node returns None for them rather than guessing.
+# variation to walk and are stored as their one size. Genuinely underdetermined kinds (0x1b,
+# 0x98) are deliberately absent: walk_node returns None for them rather than guessing.
+#
+# 0x0b was on that list and is now determined as TWO words (tag + one pointer). The
+# gap-to-next-program method reads it bimodal 8/9 because a 0x0b leaf is often followed
+# immediately by another cell, so the gap overstates it; a landing test instead -- at each
+# candidate size, does the next word resolve as a node header, a chain, a program, or the
+# record end -- scores size 2 at 327/327 (100%) against 17% for size 3 and 85% for size 4.
+# A peer confirmed it independently at the record level: ChesterfieldSofa record 34's 0x100b
+# leaf has its paramset entry at leaf+8, i.e. immediately past a two-word cell.
 #
 # Kind 0x08 was on that list and should not have been. It is not underdetermined -- the fit
 # failed because it POOLED three different structures under one kind byte. Separated:
@@ -319,7 +327,7 @@ NODE_LEGEND = {
     # closing it needs node_census re-run with the pointer offsets folded into the fit.
     0x88: (3, {9: -1, 17: 1, 22: 1, 23: 2, 24: 1, 28: 2, 30: 1, 31: 2}),
     0x8b: (3, {}), 0x89: (4, {}), 0x18: (5, {}), 0xcb: (4, {}), 0x99: (5, {}),
-    0x9b: (4, {}), 0xab: (4, {}), 0xa3: (4, {}), 0xdb: (5, {}),
+    0x9b: (4, {}), 0xab: (4, {}), 0xa3: (4, {}), 0xdb: (5, {}), 0x0b: (2, {}),
 }
 
 
