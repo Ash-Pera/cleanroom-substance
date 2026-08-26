@@ -1163,16 +1163,17 @@ def fx_entry_layout(tag):
     # slots hold real programs. A length claim standing alone against a structure claim
     # corroborated 1,715 times is the one that is wrong.
     #
-    # The 52 that did not resolve are `0x95540288`'s slot 8, bit 31 (`imageindex`), and they
-    # are NOT an over-prediction -- corrected. That slot holds the entry's TRAILING program,
-    # written INLINE (the word is the instruction count) rather than as a pointer: over the
-    # whole corpus the imageindex slot is a valid inline program in 382 of 382 entries. It
-    # read as unresolved only because it was fetched as `word + 52`. `fx_named_params` now
-    # reads the last program slot inline when its pointer fails (bit 31 IS the highest
-    # program bit here), so those 382 resolve; the earlier "predicted where the entry has
-    # none" was the pointer/inline confusion, not a spurious bit. This function still marks
-    # it `'program'` because the tag alone cannot see it is the tail; the caller applies the
-    # inline rule.
+    # The 52 that did not resolve are `0x95540288`'s slot 8, bit 31 (`imageindex`). An
+    # earlier reading called these the entry's TRAILING program written inline and had
+    # `fx_named_params` recover them by reading the slot as bytecode when its pointer failed.
+    # That was WRONG, and value-driven: it decided the field's structure from whether
+    # `word` happened to decode. Measured against the entry boundary, all 1,910 such
+    # "inline programs" that have a following entry begin PAST the next entry's tag -- they
+    # are bytecode from a later structure, not a field here. So bit 31 in a short entry is an
+    # OVER-PREDICTION: the tag names a slot the entry is not long enough to hold, and its
+    # pointer duly fails to resolve. `fx_named_params` reports that as a miss (None), it does
+    # not manufacture a program. This function still emits the `'program'` row; the caller's
+    # pointer read is what correctly comes up empty.
     return out
 
 
