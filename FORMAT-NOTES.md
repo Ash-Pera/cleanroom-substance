@@ -15942,6 +15942,31 @@ Settling it needs the shape-per-header rule, and the three known shapes differ:
 the vocabulary is open, and the figure to quote for undecoded FX-Map content is **10.6%**, not
 45%.
 
+### `0x00020008` is a structural chain entry, not a pattern draw — and it paints white
+
+A table-only FX-Map that renders pure white turned out, on WoodSubstance005 record 85, to be
+five of its six "entries" carrying tag `0x00020008`. That tag is chain-family (`hi16 ==
+0x0002`) but ends in nibble 8, so it passes the entry discriminator and `fxrender` renders it
+as a paramless full-cell fallback — one white fill each. Two measurements over all 26,464
+occurrences of the tag settle that it is NOT a draw:
+
+* `word[1] + 52 == off + 8` in 26,018 of 26,464 (**98.3%**) — the second word is a pointer to
+  the *next* entry, 8 bytes on. These are a linked list, not a table of independent draws.
+* `fx_patterntype(0x00020008)` is None in **26,464 of 26,464** — there is no stated pattern
+  shape, so the reading that keeps paramless nibble-8 entries ("the patterntype rides in the
+  tag's nibble 2, so a paramless entry is a pattern of a stated shape") is empty for exactly
+  this tag: its nibble 2 is 0.
+
+So `0x00020008` is a structural chain node reached in the entry run — the same node-vs-entry
+distinction one layer down — and rendering it as a full-cell pattern is what paints white.
+It is in **8,934 of 18,067** table-bearing fxmaps records (49%), with **494** whose entries
+are *all* chain, white by construction. The containment control that called paramless nibble-8
+entries "known good" (0% inside a program span) is right that they are not misparses, but a
+chain node is not a misparse *and* not a draw. The clean discriminator for a renderer is the
+patterntype: an entry with no stated shape has nothing to fill. This is distinct from the
+other table-only-white case (ChesterfieldSofa record 43, one real entry with a patterntype),
+which is the `patternsize`/`size_out` variable-resolution problem, not this one.
+
 ### FX node-kind coverage census: four live node kinds `fx_tree` still stops on
 
 Harvesting every node-header cell (nibble 9 or 0xB, non-chain) from the tree root across the
