@@ -1335,6 +1335,26 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # size should be 1.0, or the STEPPER should be scanning it across the canvas in more
     # than one step. Nothing measurable here separates them.
     #
+    # THE REFERENCE SETTLES THE SHAPE, AND IT REFUTES BOTH READINGS ABOVE. Chesterfield's
+    # exported metallic is a regular grid of dots, spacing measured at exactly 256px on a
+    # 2048px map -- 8 across on both axes, 41 whole blobs plus clipped edges. So:
+    #
+    #   * NOT a bigger stamp. rec29, the image being stamped, is a tileable unit cell with
+    #     soft blobs at its four CORNERS. One stamp of side 1.0 puts those corners at the
+    #     canvas corners -- a 2x2 arrangement, not 8x8. Scaling the stamp cannot produce the
+    #     reference whatever value slot 29 takes.
+    #   * NOT this record's numberadded either. 8x8 is 64, and the structural side reads
+    #     this program as ((n-1) mod 2 + n)^2, which yields only ODD squares -- 1, 9, 25, 49.
+    #     64 is unreachable from it for any slot value.
+    #
+    # What the picture shows is one cell stamped once into one corner where the engine
+    # repeats it across the canvas at 1/8 spacing. Note the tile loop below reaches
+    # `min(3, ceil(max(sx, sy)))` and steps by WHOLE CANVASES, so for a pattern of side 0.25
+    # every copy but t=0 lands entirely off-canvas: the loop can wrap a pattern, but it
+    # cannot repeat one at its own pitch. Whether the repetition belongs there, in the
+    # stepper's per-emission position, or upstream of the record is not settled here, and
+    # the two candidates that were on the table are now excluded rather than untested.
+    #
     # ONE CONCRETE THREAD LEFT, and it is checkable rather than speculative. `seed_slots`
     # supplies slots 0, 4, 8, 9, 10, 12, 14, 16 and 17. The structural side reports this
     # 0x099 chain reading slots 14, 16, 17 AND 18, and writing the size into slot 29 which
