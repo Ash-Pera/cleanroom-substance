@@ -36094,17 +36094,20 @@ since the levels gamma fix. `normal` REGRESSES (0.0742→0.0881, std overshoots 
 0.0722) — a genuine residual (16 stamps where one was, some channels overshoot), left as a
 candidate not a default.
 
-Generalization census (scanner+grid fxmaps records, every 4th package, n=72):
-- divisor extraction resolves cleanly on 49/72 (68%); 23 use an unparsed placement structure.
-- **N² SQUARE assumption validated 49/49**: every record with both row-divisor N and column
-  pitch (1/pitch) has rows == cols EXACTLY, across N = 1,2,3,5,6,8,10,11,12,16,18,32 and up.
-  No non-square specimen. So grid_width is genuine per-record node semantics, not the constant
-  4 Chesterfield carried.
-- GUARD: 6 records have N>32 (RoadLines 768, GAR 128/200, terracotta 130) — square but N²
-  is an implausible emission count (768²≈590k), so those use $number at pixel granularity
-  (coordinate normalized by canvas size), and the `$number/N` extraction over-triggers. The
-  emit-N² rule needs a plausibility guard: only N≤~32 stamp-scale grids, or a structural check
-  that the divisor feeds the emission position and not a sampler coordinate.
+Generalization census — CORRECTED. My first census GATED on a 0x99 scanner in the chain,
+which was a ~15× undercount: most grid records have NO scanner (they are ADD→GATE(0x89)),
+so the gate excluded the majority. The gated numbers below (n=72, "49/49 square") describe
+only the scanner-bearing SUBSET; the real detector is fxrender.grid_width (no scanner gate),
+and over a 1/4 corpus sample it finds 662 grid records → **~2648 corpus-wide**, widths dense
+2..64 — consistent with peer 0b's own "355 records dense to 64 over 80 files" scan. My earlier
+"~180" estimate rested entirely on the scanner gate and is discarded.
+- (gated subset, still true of it) divisor extraction resolved on 49/72; every one with both
+  row-divisor N and column pitch had rows == cols exactly — a square-grid indication, but on
+  the scanner subset only. The square property should be re-verified on the grid_width
+  population before it is relied on corpus-wide.
+- GUARD (holds): grid_width bounds N to 1<N≤64. Divisors are dense to 64 then a factor-of-two
+  gap to 128/130/16384 (6 records) which are $number used at pixel granularity, not stamp
+  grids — the corpus draws the line, not the code.
 
 ### The normal-channel regression from count=N² is render-side, not decode
 
@@ -36133,17 +36136,24 @@ the five mean-dominated channels are clear to default.
 
 ### Scoreable multi-pack basis for count=N² (a second N, plus negative controls)
 
-Ran the grid_width extraction across all five scoreable reference packs:
-- Chesterfield (ChesterfieldSofa): 4 grid-fix records, N=4 (count 16) — scored, +improvement.
-- Sandy Stone (StylizedCobblestoneStreet): 1 grid-fix record, rec27, N=5 (count 25) — a
-  DIFFERENT dimension, same class (fxmaps, ADD→0x99→leaf, numberadded degenerate reads slot 8
-  =1, placement square N=5/pitch 0.2). Feeds baseColor/normal/roughness/AO/height. Unscored —
-  the discriminating second specimen.
-- Bricks (75 fxmaps), RoofTiles (113), Auras (48): ZERO 0x99-scanner fxmaps — no grids at all,
-  so the fix leaves them byte-identical. Clean negative control that the extraction/guard do
-  not fire where there is no grid.
+Ran fxrender.grid_width (the score-driving detector, no scanner gate) across all five
+scoreable reference packs:
+- Chesterfield (ChesterfieldSofa): 4 grid records, N=4 (count 16) — scored, +improvement.
+- Bricks: 2 grid records — rec84 (N=5), rec263 (N=2), both chained ADD→GATE→ADD, no scanner.
+  Scored under the 'divisor' arm, +improvement (overall 0.1239→0.1065, same signature as
+  Chesterfield: scalars up, normal down at a third grid width). A real second scoring pack.
+- Sandy Stone (StylizedCobblestoneStreet): 1 grid record, rec27, N=5 — extraction confirmed
+  but the outputs it feeds do not render, so it is an extraction check, not a scoring one.
+- RoofTiles (0), Auras (0): genuine negative controls by grid_width — byte-identical under
+  both arms.
 
-So the default can rest on two packs at two Ns plus three no-ops, not a single graph. Also,
+(An earlier version of this note claimed Bricks was a zero-grid control with "no 0x99-scanner
+fxmaps." That was the scanner-gate error: Bricks' grids are gate-based, not scanner-based, and
+grid_width finds them. Bricks is a scoring pack, not a control.) NB peer 0b's message reported
+18 Bricks grids at widths {2,4,25}, which the committed grid_width does not reproduce (it
+returns 2); the discrepancy is unresolved and the score is driven by the committed grid_width.
+
+So the default can rest on Chesterfield (N=4) + Bricks (N=2,5) with RoofTiles/Auras as controls. Also,
 peer 0b found the count fix makes previously-UNDECIDABLE downstream arbitrations decidable:
 fx.typeless_profile had no winner scored at n=1; at n=16 paraboloid wins and takes height
 0.0623→0.0316. Lesson: re-run sweeps recorded inconclusive upstream of an fxmaps count after
