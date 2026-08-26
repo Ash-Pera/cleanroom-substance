@@ -71,6 +71,13 @@ FILTERS = {
 # Every other entry above is a name this format's own `.sbs` sources use; these two are not,
 # and cannot be, because the permitted vocabulary is exhausted - see PROJECT_LABELS.
 PROJECT_LABELS = {5, 9}
+
+# Filters whose PAYLOAD legitimately holds program pointers, so `Record.programs` may not
+# bound its slot scan at the header walk's `end` for them: `fxmaps` (4) reaches programs
+# through its node/entry tree and `pixelprocessor` (20) through the pixel program's own
+# block. For every other filter a word past `end` is bytecode, and reading one as a program
+# pointer manufactures phantoms -- see the scan in `Record.programs`.
+_PAYLOAD_PROGRAM_FILTERS = {4, 20}
 # FILTER 9 IS THE ONLY GAP IN 0..22, and it is narrowed to two candidates -- but the name
 # below is neither of them. `filter9` names it after its id BECAUSE the id cannot be settled
 # from this corpus, and calling it `motionblur` or `svg` on the evidence here would be
@@ -2335,8 +2342,38 @@ class Record:
         # failures left after the width work read a cache index that nothing appeared to
         # write, and in each case the writer was a slot-named program this method did not
         # return. Enumerating them takes those failures to zero.
+        # BOUNDED BY THE WALK, because "slot" is what the paragraph above means and this
+        # loop used to read `self.words` -- EVERY word of the record. Past the walk's `end`
+        # a record is BYTECODE, so an instruction operand that happens to survive
+        # `valid_program` was returned as a program. `UHL3D-Stylized_Sand_with_Rocks_01`
+        # record 2618 is 142 words with its structure ending at word 5; word 19 is
+        # `0x10008`, mid-bytecode, and yielded "program" 65596 -- byte-identical in 177
+        # records of that file because they share an instruction sequence. It evaluates
+        # 2-wide, so `render.py`'s transformation branch saw two candidate offsets and
+        # refused on 88 records over something that is not a program at all. Same
+        # anti-pattern as the `fx_named_params` inline recovery that manufactured 2,717.
+        #
+        # Nothing this loop was FOR is lost: its own justification above is "a slot-named
+        # program this method did not return", and a slot is exactly what `end` bounds.
+        #
+        # THE TWO CARVE-OUTS ARE STRUCTURAL, NOT A FITTED LIST. `fxmaps` and
+        # `pixelprocessor` address a payload region that HOLDS program pointers by design
+        # -- the FX node/entry tree, and the pixel program's own block -- so for them the
+        # record's words past the header are still slots, just slots of another structure.
+        # Measured rather than assumed: bounding every filter takes one file from 2,229
+        # rendered records to 172, and 99.8% of fxmaps' programs plus 34.6% of
+        # pixelprocessor's are named only past `end`. Bounding the rest drops 1,470
+        # candidates over 14 files, 6.4% of their programs.
         seen = set(out)
-        for word in self.words:
+        end = None
+        if self.filter_id not in _PAYLOAD_PROGRAM_FILTERS:
+            try:
+                import decompose
+                _d = decompose.decompose(self)
+                end = _d.get('end') if _d else None
+            except Exception:
+                end = None
+        for word in (self.words if end is None else self.words[:end]):
             p = word + 52
             if p in seen:
                 continue
