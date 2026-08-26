@@ -112,6 +112,19 @@ def check_alpha_last(asm, laws):
     Self-controlling: the index is reported for every bitmap, so a decode shifted by a
     whole number of channels shows up as a mode somewhere other than the last rather
     than as a silent pass.
+
+    GRAYSCALE-RGBA TIES ARE EXCLUDED. A grayscale image replicated into four channels has
+    all four channel std EQUAL, so `argmin` returns index 0 arbitrarily -- it is not a
+    flattest-channel reading at all, it is a tie the reader has to break. Across the
+    deduped corpus that is 57 of ~165 four-channel bitmaps, and counting them as index-0
+    "violations" was the whole of the alpha_last inflation: it read as a channel-shift
+    signal (a mode at index 0) when it was grayscale replication. Excluding ties, the
+    picture is 57 at index 3 against 26/22/3 at 0/2/1 -- index 3 is still the mode, so the
+    decode is NOT channel-shifted; the residual index-0/2 cases are real DATA-IN-ALPHA
+    images (RGB flat, alpha carries the map, e.g. FacadeSubstance002) where alpha is
+    genuinely the least flat channel. Those are a true property of the image, not a decode
+    error, and not something this heuristic can turn into a pass -- so the law's real
+    content is only the mode test, and the tie exclusion is what makes that legible.
     """
     law = laws['alpha_last']
     for rec, bm in _pixel_bitmaps(asm):
@@ -120,7 +133,11 @@ def check_alpha_last(asm, laws):
         x = _samples(asm, rec, bm)
         if x is None:
             continue
-        idx = int(np.argmin(x.std(0)))
+        stds = x.std(0)
+        if float(stds.max() - stds.min()) < 1e-6:
+            law.detail['grayscale-RGBA tie (all channels equal std)'] += 1
+            continue
+        idx = int(np.argmin(stds))
         law.see(idx == 3, **{'flattest channel at index %d' % idx: 1})
 
 
