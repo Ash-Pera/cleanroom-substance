@@ -101,6 +101,36 @@ QUESTIONS = {
     # Chesterfield (normal 0.0854 -> 0.0869) for two records whose span/(G-1) is exactly
     # 1.0000 on both axes, i.e. squarely on the law rather than in its tail.
     'fx.patternsize':     ('canvas', 'cell'),
+    # WHAT AN ENTRY WITH NO patterntype DRAWS. `profile_for` falls back to 'rect', a hard
+    # fill of the whole cell, and its own docstring says that is "what the code has always
+    # done, not because it is established". It is a DIFFERENT knob from 'fx.profile', which
+    # overrides every entry including the ones that state a type; this one moves only the
+    # entries that state none.
+    #
+    # It matters more than a catch-all usually would. Over 45 fxmaps-bearing files, giving
+    # typeless entries a falloff instead of a hard fill adds spatial structure to 300
+    # record outputs across 20 files and removes it from 13 across 3 -- because abutting
+    # cells filled solid are flat, and the same cells with a falloff are a pattern.
+    #
+    # Scored against the one ground truth in the corpus, Chesterfield, no member wins
+    # outright:
+    #
+    #     typeless     basecolor      normal   roughness(std)  metallic  height     AO
+    #     rect         not rendered   0.1056   0.0718 (0.0036)   0.0454  0.2480  0.6832
+    #     disc         0.1259         0.1045   0.0719 (0.0265)   0.0481  0.2478  0.6888
+    #     cone         0.1334         0.0953   0.0719 (0.0000)   0.0481  0.2490  0.6937
+    #     paraboloid   0.1320         0.0986   0.0719 (0.0000)   0.0481  0.2472  0.7003
+    #     bell         0.1341         0.0940   0.0719 (0.0000)   0.0481  0.2498  0.7075
+    #     gaussian     0.1357         0.0905   0.0719 (0.0000)   0.0481  0.2530  0.7070
+    #
+    # Every falloff RENDERS basecolor, which 'rect' does not produce at all. gaussian takes
+    # normal from 0.1056 to 0.0905. But 'rect' keeps metallic and AO, and only 'disc' holds
+    # roughness's spatial variation -- std 0.0265 against the reference's 0.0262, where
+    # every other falloff collapses it to 0.0000 and 'rect' undershoots at 0.0036.
+    #
+    # So the default does not move. A choice that improves two maps and flattens two others
+    # is the half-correction this file already records being caught by twice.
+    'fx.typeless_profile': ('rect', 'disc', 'cone', 'paraboloid', 'bell', 'gaussian'),
 }
 
 _ACTIVE = {}

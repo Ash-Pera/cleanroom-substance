@@ -988,7 +988,10 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
         # nibble 0 is the documented catch-all -- patterntype 1, 2 and a source-declared
         # function graph all land there -- and Square is the member of it that Lines
         # record 0 confirms, so an unresolved type keeps today's hard fill.
-        return PATTERN_SHAPES.get(t, 'rect') if t is not None else 'rect'
+        if t is None:
+            # See assume.QUESTIONS['fx.typeless_profile']. Default unchanged.
+            return assume.assumed('fx.typeless_profile', 'rect')
+        return PATTERN_SHAPES.get(t, 'rect')
 
     def image_for(p):
         if not images:

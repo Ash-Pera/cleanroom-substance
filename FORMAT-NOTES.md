@@ -35427,3 +35427,80 @@ The only ground truth in the corpus cannot separate these readings.
 
 So `reach` is left as it is. What this adds is a small, clean, self-contained specimen for
 the cell-unit question, a precise mechanism, and two eliminated candidates.
+
+## Looking into the non-square tail: it is mostly not a grid, and the real lever is elsewhere
+
+`Fabric04`'s two limited generators have 20 emissions, so both cell-unit corrections are
+guarded off. The obvious next question is whether the cell law extends to non-square
+counts. It does not, and finding that out located a much larger effect.
+
+**The per-axis generalisation.** The law is stated as `span/(G-1) = 1` with `G = sqrt(N)`,
+which needs a square. Each axis has its own count of distinct positions `k` and needs no
+such assumption, so `span/(k-1)` is the same claim without the constraint. Over 44
+fxmaps-bearing files and 173 pattern-emitting records:
+
+```
+square N       54 axes   51.9% within 10% of 1.0   median 1.0000
+NON-square N   92 axes    2.2% within 10% of 1.0   median 0.0430
+```
+
+The test is calibrated by construction -- it reproduces the known law on the square
+population -- and the non-square population plainly does not follow it. The reason is
+visible in the raw statistic: non-square records have median span 0.078 with `k-1` around
+2, i.e. **most of them are not grids at all**, they are small clusters of two or three
+positions. A grid-cell correction is the wrong shape of fix for them. `Fabric04`'s clean
+20-position linear run is the exception in that population, not a representative of it.
+
+### Two more candidates down, and they turned out to be the same candidate
+
+Bringing the far emissions into view was tried two ways: dropping the `reach` clamp, and
+taking `branchoffset` modulo the canvas period so each emission is placed once. **Both
+give bit-identical corpus results** -- 12 record outputs gain coverage, 21 lose it, the
+same records and the same numbers -- because for these records the two are the same
+operation. That is a useful negative: the question is not *how* the emission is brought
+back, so no third formulation of it is worth trying.
+
+What both do is make records 5 and 12 **solid**, because their `patternsize.x` is 1.0, a
+full canvas width, and their `patterntype` is **None** -- which `profile_for` answers with
+`rect`, a hard fill of the whole cell. Abutting cells filled solid are flat.
+
+### The typeless fallback is the lever
+
+That fallback has never been an arbitrable question. `fx.profile` overrides *every* entry
+including the ones that state a type; nothing named the entries that state none. Giving
+those a falloff instead of a hard fill, over 45 files:
+
+```
+wrap only                     UP  12 records /  2 files    DOWN 21 /  5
+typeless = bell only          UP 300 records / 20 files    DOWN 13 /  3
+wrap + typeless = bell        UP 315 records / 20 files    DOWN 16 /  6
+```
+
+The wrap contributes 15 of the 315. **The typeless profile is the whole effect**, and it
+is 23:1 in its favour by coverage.
+
+Coverage is not ground truth, so all six candidates were scored on Chesterfield:
+
+```
+typeless     basecolor      normal   roughness(std)  metallic  height     AO
+rect         not rendered   0.1056   0.0718 (0.0036)   0.0454  0.2480  0.6832
+disc         0.1259         0.1045   0.0719 (0.0265)   0.0481  0.2478  0.6888
+cone         0.1334         0.0953   0.0719 (0.0000)   0.0481  0.2490  0.6937
+paraboloid   0.1320         0.0986   0.0719 (0.0000)   0.0481  0.2472  0.7003
+bell         0.1341         0.0940   0.0719 (0.0000)   0.0481  0.2498  0.7075
+gaussian     0.1357         0.0905   0.0719 (0.0000)   0.0481  0.2530  0.7070
+                            reference roughness std 0.0262
+```
+
+Every falloff **renders basecolor**, which `rect` does not produce at all. `gaussian` takes
+normal from 0.1056 to 0.0905, the largest movement in that number recorded here. But
+`rect` keeps metallic and AO, and only `disc` holds roughness's spatial variation -- std
+0.0265 against the reference's 0.0262, where every other falloff collapses it to 0.0000
+and `rect` undershoots at 0.0036.
+
+**So the default does not move.** A change that improves two maps and flattens two others
+is the half-correction this repository has already been caught by twice. What lands is
+`assume.QUESTIONS['fx.typeless_profile']` with the table above, so the question is
+arbitrable the next time a reference render can settle it -- and verified to fire:
+`fx.typeless_profile='disc'` takes Fabric04's normal coverage from 0.77 to 1.00 while the
+default reproduces the `rect` baseline exactly.
