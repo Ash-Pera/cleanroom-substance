@@ -35654,13 +35654,26 @@ a pointer in the entry (the linked-list next-pointer, slot 1 for `0x00020008`, s
 `0x00420008` landing exactly at the program end). So the entry both states its length through
 its program and records the resulting next-pointer, and `FX_ENTRY` is a fit of that.
 
-**One soft constant.** "Nearest forward program-pointer target" needs a bound to separate an
-INLINE program from one out in the pool, and the mask-walk header count is too small to supply
-it -- `0x00420008` carries an unaccounted pointer word (slot 2, the next-pointer itself) the
-tag's bits do not enumerate, so the header is longer than the walk predicts. A fixed 256-byte
-window works (78,496 found); tightening it to the predicted header + 8 drops to 33,715, which
-is the header miscount showing through, not a better rule. Pinning the header exactly is the
-remaining work.
+**The header, pinned.** The inline program begins where the mask-walk's fields end:
+
+    inline program start = 4 * (max slot fx_entry_layout emits, program OR baked, + 1)
+
+Measured against the nearest forward program-pointer target over every inline-program entry,
+that position is EXACT in 96,936 of ~107,000 -- gap 0. The residue is small and named: a gap
+of -1 in 2,056 (the `imageindex` bit-31 case, where the last program is itself the inline one
+rather than a pointer to it -- `95540288`), and a gap of +1 or +2 in 7,691 (`02400448`,
+`35520A48` and kin, where a baked field's width past the last program is a word or two more
+than the layout scores). Both are `fx_entry_layout` header-width residues, not a property of
+the stride: the entry ends at its inline program, and the program states its own length.
+
+**What is not yet clean is the entry's EXTENT, not its header.** Walking the stacked inline
+programs contiguously from the pinned header end reaches 41,250 of the missed entries with
+zero phantoms; a fixed 256-byte window over the program-pointer targets reaches 78,496. The
+gap between them is entries whose programs are not laid out contiguously from the header --
+some sit a little apart -- so "how far does this entry run" still needs the 256-byte proxy to
+bound INLINE (in this entry) from POOL (shared, further off). The header START is pinned; the
+extent END is bounded but not yet derived. The stored next-pointer the entry carries (76% of
+inline-program entries hold the computed end verbatim) is the ground truth to pin it against.
 
 **Not committed.** The evidence is strong -- +78,496 real entries, 0 phantoms, 76% confirmed
 by stored pointers -- but swapping the entry walk moves the render path materially and this
