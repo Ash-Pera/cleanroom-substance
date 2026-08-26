@@ -3242,6 +3242,30 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # 0x0608 -- bits 3, 9 and 10 -- so saturation sits one past where a
                 # sequential walk puts it, and 1.00 is a legitimate extreme where 0.0
                 # is the padding behind it.
+                # DO NOT REPLACE THIS WITH `decompose`. This branch walks the class bits
+                # sequentially at one word each, and that is a hand-rolled walk rather than
+                # the shared one -- which looks like exactly the kind of duplication the
+                # unification is retiring elsewhere in this file (blur, sharpen, warp all
+                # moved to `decompose(rec)['end']`). It must not move, because for THIS
+                # filter the shared walk is the one that is wrong.
+                #
+                # `costs.json` gives filter 14 a cost of 0.0 for every one of bits 8 to 13,
+                # so `decompose` charges no word for hue, saturation or luminosity and names
+                # no slot for any of them. Containment says otherwise. Pairing the permitted
+                # sources that declare a distinctive hsl value against their OWN binaries:
+                #
+                #     param        source              record   declared   true slot  seq  decompose
+                #     saturation   ChesterfieldSofa       866     0.6500        3        3     none
+                #     saturation   ChesterfieldSofa       351     0.5800        3        3     none
+                #     saturation   SandyStonePath        1451     0.5250        3        3     none
+                #     luminosity   ChesterfieldSofa       866     0.6000        4        4     none
+                #
+                # 4 of 4 for the sequential walk, 0 of 4 for the cost model. Those bits cost
+                # one word each and the fit says zero, which is the same class of defect as
+                # warp's `w1_present` of 1.0 (see the warp branch): costs.json is fitted from
+                # observable header boundaries and is not per-filter trustworthy just because
+                # `decompose` reads it. Where the two disagree, containment decides, and here
+                # it decides against the shared walk.
                 COST_BITS = (0, 7, 8, 9, 10, 11, 12, 13)
                 vals = {}
                 for bit, name in ((8, 'hue'), (10, 'saturation'), (12, 'luminosity')):
