@@ -8,11 +8,18 @@ tools could read Substance materials without the proprietary engine.
 
 ## What is here
 
-    FORMAT-NOTES.md        the findings — 15,000 lines, written as a lab notebook
-    OPCODES.md             the bytecode instruction catalogue
+    SPEC.md                a clean ~4-page specification of the whole format — start here
+    OPCODES.md             the bytecode instruction reference
+    FORMAT-NOTES.md        the findings — 35,000 lines, written as a lab notebook
+
+`SPEC.md` and `OPCODES.md` are the distilled references: everything a reader needs to
+locate and walk every region of the file by pointer arithmetic, with no fitted tables.
+`FORMAT-NOTES.md` is the lab notebook behind them — every measurement, failure and
+correction that produced those references.
 
     tools/                 the finished tools — see tools/README.md
       sbsasm.py            the file model: records, layouts, edges, parameters, programs
+      walk.py              the one structural primitive: the record/node mask-walk
       disasm.py            bytecode disassembler
       fxdisasm.py          walks an FX-Map tree and disassembles each node's program
       standalone_parse.py  header, interface block and value table
@@ -77,8 +84,17 @@ the figures below are the last full audit):
       parameter read               95.6%
     edge slots resolved          100.00%
     record bytes interpreted       92.5%
+    record layout by mask-walk     99.97%  (only vectorshape, provenance-walled, left)
 
-The last line is the one to read. Earlier versions of this table reported "unexplained
+**The format is one recursive mask-walk.** A structured object is `[mask][fields]`: the set
+bits of a mask enumerate which fields are present in canonical order, and each field's width
+is a constant of its kind — nothing stores an offset. The same primitive runs at three
+scales (record header, FX-Map tree node, baked value width), and `walk.py` implements it
+once. This replaced a memorised layout table: a walk reproduces record layout for 99.97% of
+the corpus with no per-record lookup and no fitted floats, and fails loudly rather than
+guessing when a spec is wrong. `SPEC.md` §6 states it.
+
+The last line of the audit table is the one to read. Earlier versions of this table reported "unexplained
 bytes 0", which was circular: `coverage()` marks a whole record extent as accounted for
 the moment the record is enumerated, and the directory is a sorted partition of the body,
 so every body byte is inside some record by construction. That measured the directory's
