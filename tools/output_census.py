@@ -58,6 +58,33 @@ def image_fed_outputs(asm):
     return fed
 
 
+def flat_origin(asm, rec, produced, flat):
+    """The record that INTRODUCES an output's flatness, walking back through flat inputs.
+
+    A FLAT OUTPUT IS NOT AUTOMATICALLY A DEFECT, and reporting the count without saying
+    what made it flat reads as ten broken renders when most are the engine's own answer.
+    Over 30 files, the 10 flat declared outputs split:
+
+        a `uniform` record that IS the output      6    metallic 0.0 on a non-metal,
+                                                        roughness 0.25, and so on -- the
+                                                        material is constant there
+        a `pixelprocessor`                         4    all four are fur_var_001 record 17,
+                                                        and its value is 1.31, outside
+                                                        [0, 1], so that one is broken
+
+    Six of the ten are correct. The four that are not are one record in one file, and they
+    are the `filter_programs[-1]` selection gap the render's channel guard already names.
+    """
+    cur, guard = rec, 0
+    while guard < 200:
+        guard += 1
+        nxt = [e for e in asm.records[cur].edges if e in produced and flat.get(e)]
+        if not nxt:
+            break
+        cur = nxt[0]
+    return asm.records[cur].filter_name
+
+
 def roots_blocking(asm, rec, failures):
     """The failures in `rec`'s cone that are not caused by another failure."""
     seen, stack, found = set(), [rec], []
@@ -99,7 +126,13 @@ def census(paths, max_dim=64):
             if rec in produced:
                 tally['rendered'] += 1
                 arr = np.asarray(produced[rec], dtype=np.float64)
-                tally['rendered flat'] += int(arr.min() == arr.max())
+                if arr.min() == arr.max():
+                    tally['rendered flat'] += 1
+                    flat = {}
+                    for j, a in produced.items():
+                        v = np.asarray(a, dtype=np.float64)
+                        flat[j] = bool(v.min() == v.max())
+                    tally['flat from ' + flat_origin(asm, rec, produced, flat)] += 1
                 continue
             for msg in roots_blocking(asm, rec, failures):
                 roots[msg.split('(')[0].strip()[:64]] += 1
@@ -121,6 +154,10 @@ def main(argv):
     print('rendered                              %d  (%.0f%% of renderable)'
           % (tally['rendered'], 100.0 * tally['rendered'] / renderable))
     print('  of those, FLAT                      %d' % tally['rendered flat'])
+    for key in sorted(k for k in tally if k.startswith('flat from ')):
+        print('    %-34s %d   %s' % (key, tally[key],
+                                     '(a constant channel is a real answer)'
+                                     if key == 'flat from uniform' else ''))
     print('\nroot causes, counted once per blocked output:')
     for msg, n in roots.most_common(20):
         print('   %4d  %s' % (n, msg))
