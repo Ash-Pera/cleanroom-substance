@@ -1265,16 +1265,20 @@ class Record:
         edges, prog = self._compute_layout()
         edges = self._real_edges(edges)
         # A slot is an edge XOR a program, never both. The _ruled branch fixes the program
-        # at `2 + base`, which is right until a state-11 field puts a mask edge there: 298
+        # at `2 + base`, which is right until a state-11 field puts a mask edge there: 300
         # blend records (5 words, [tag][w1][in][in][mask]) then have no program at all, yet
-        # `prog` still named the mask slot -- a backward record index, not a program. Where
-        # the named program slot is also an edge AND does not hold a valid program, there is
-        # no program: drop it. Guarded on valid_program so the 4 records where the slot does
-        # decode as a program (the edge classification is the error there, not the prog) keep
-        # theirs. `programs` already filters independently, so this only makes layout[1]
-        # consistent -- it never removes a program the record actually carries.
+        # `prog` still named the mask slot. The mask slot holds a backward RECORD INDEX, and
+        # that is the test -- not `valid_program`, which false-positives on two of them whose
+        # index (12, 32) happens to point +52 into the header where the bytes decode as a
+        # short program (`programs` then reported 0x40 and 0x54, offsets that sit BEFORE the
+        # record). A real program pointer is a large body offset, never a small backward
+        # index: pixelprocessor's over-read edge list names slot 11 an edge too, but slot 11
+        # holds 9812, no record index, so its genuine program survives. Where the named
+        # program slot holds a valid backward record index, it is an edge and there is no
+        # program: drop it.
         if (prog is not None and prog in set(edges) and prog < len(self.words)
-                and not self.asm.valid_program(self.words[prog] + 52)):
+                and self.words[prog] < self.index
+                and self.words[prog] < len(self.asm.records)):
             prog = None
         self._layout = r = (edges, prog)
         return r
