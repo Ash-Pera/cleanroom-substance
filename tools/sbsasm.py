@@ -1519,7 +1519,15 @@ class Record:
                 hit = (LAYOUTS or {}).get(
                     (f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
                 if hit:
-                    edges = sorted(set(edges) | set(hit[0] or []))
+                    # Slots 0 and 1 are the two mask words -- word0 (tag+cls) and word1,
+                    # which for every _RULED filter IS the two-bit-code parameter word.
+                    # They are never edges. The table memorised slot 1 as an edge for 10
+                    # dirmotionblur records whose word1 is 1 or 5 (one or two baked scalars)
+                    # -- values small enough to pass the backward-index invariant, the exact
+                    # small-integer conflation recorded against EDGES. Union only real edge
+                    # slots (>= 2); the walk's single structure fits all 5,009 headers, and
+                    # a phantom slot-1 input would have to displace that parameter word.
+                    edges = sorted(set(edges) | {s for s in (hit[0] or []) if s >= 2})
                 return (edges, prog)
 
         # The class-word-driven filters: their edges are a fixed base shape (a stated bit

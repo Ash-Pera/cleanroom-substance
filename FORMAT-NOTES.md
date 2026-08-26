@@ -2923,6 +2923,21 @@ records. That is consistent with what it is: its parameter is the per-pixel func
 held as bytecode, so there is nothing to store in the record. A filter with no float
 parameters at any size is evidence about the filter, not a gap in the sweep.
 
+### A `layouts.json` union admitted 10 parameter words as slot-1 edges
+
+Walking `dirmotionblur` (filter 11) with the mask-walk and comparing edge slots against the
+`Record` model disagreed on 10 of 5,009 records: the walk read one edge (slot 2), the model
+read two (slots 1 and 2). All 10 have `words[1]` = 1 or 5 — one or two baked scalars in the
+two-bit-code word — and the value the model called a slot-1 edge is exactly that word (1 or
+5). Slot 1 *is* `words[1]` for every `_RULED` filter (blend, levels, directionalwarp,
+dirmotionblur), so it can never be an input edge; the phantom came from `_compute_layout`
+unioning a memorised `layouts.json` hit whose edge list named slot 1, admitted because 1 and
+5 pass the backward-index invariant — the same small-integer conflation already recorded
+against `EDGES`. The walk's single structure fits all 5,009 headers exactly, and a real
+slot-1 input would have had to displace that parameter word, so the walk is right. Fixed by
+unioning only real edge slots (`>= 2`) from the table hit; `dirmotionblur` edges then agree
+100%, and no blend/levels/directionalwarp record is touched (none had a slot-0/1 edge).
+
 ### Systematic edge-slot audit: three more errors
 
 Having found `sharpen`'s edge slot wrong by auditing one filter, the same test was applied to
