@@ -39,6 +39,7 @@ Run it to validate against the established `Record` model and node census over t
 import os
 import sys
 import glob
+import struct
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -268,11 +269,22 @@ def validate_cls_driven(files):
 
 # ---------------------------------------------------------------------------
 # walk_node is NODES only, and a category error was corrected here. An FX-Map has two
-# distinct structures: NODES, whose tag ends in nibble 9 or 0xB (0x89 markov2, 0x8b, 0x18b
-# addnode, 0x0b, ...), and paramset TABLE ENTRIES, whose tag ends in nibble 8 (0x48, 0x58,
-# 0x88, 0x08, 0x18, ...). The nibble is the discriminator fx_table uses. node_census harvests
-# cells by inter-program gaps from the tree root, and a table-rooted record's "cells" are
-# ENTRIES, not nodes -- so the legend used to mix the two, its nibble-8 rows being entries
+# distinct structures: NODES, whose tag ends in nibble 9, 0xB -- or 3 (0x89 markov2, 0x8b,
+# 0x18b addnode, 0x0b, 0x1a3, ...), and paramset TABLE ENTRIES, whose tag ends in nibble 8
+# (0x48, 0x58, 0x88, 0x08, 0x18, ...). The nibble is the discriminator fx_table uses.
+#
+# THE 3 WAS MISSING from this sentence until the migrated census contradicted it. Kind 0xa3
+# has sat in NODE_LEGEND throughout, so the rule as written could not reach a row the table
+# already had -- the census came back "8 of 9", with 0xa3 unreachable rather than refuted.
+# It is a node: 46 cells, all tag 0x1a3, all shaped [tag][ptr][ptr][ptr], landing at 4 words
+# in 100% and at nothing smaller, which is exactly what NODE_LEGEND already said. The table
+# was right and the rule was short a case, so the rule is what changed. `node_census`
+# states the set as NODE_NIBBLES; this comment is prose about the same thing and the two
+# must not be allowed to drift apart again.
+#
+# node_census USED TO harvest cells by inter-program gaps from the tree root, and a
+# table-rooted record's "cells" are ENTRIES, not nodes -- so the legend used to mix the
+# two, its nibble-8 rows being entries
 # mislabelled as node kinds whose "width" was really the offset to an entry's first inline
 # program. Those rows have been REMOVED; walk_node returns None for every nibble-8 tag.
 # Entry sizing belongs to fx_entry_layout, the general "the tag spells the entry out" method
@@ -332,10 +344,39 @@ def _is_chain(tag):
 # disagreed with it on 18 of 18 shared tags). A node has no bit-mask field vocabulary of its
 # own that this project has established, so every kept kind is a single fixed size; 0x0b is
 # the leaf a peer pinned at two words (tag + one pointer, 327/327 by the landing test).
+#
+# PROVENANCE, because the two halves of this table are not equally attested and a reader
+# cannot tell them apart by looking. `node_census.py` derives it, and since that census
+# migrated off the inter-program gap onto its landing test the rows divide:
+#
+#   the nine originals -- derived under the OLD instrument (modal gap, plus a landing pin
+#   for 0x0b) and REPRODUCED EXACTLY by the new one, 9 of 9 with no disagreement. Two
+#   independent instruments, so this is corroboration and worth the name.
+#
+#   the three additions -- 0x1b, 0x09, 0x4b, kinds the gap called underdetermined because
+#   it was measuring runs of contiguous cells rather than cells. Each is a UNIQUE landing
+#   at 3 words and each was read off the bytes before being written here:
+#
+#       0000401b 00003039 0000825c | 0000018b 0000825c 000084f4   a 0x1b then a 0x8b
+#       00000009 003ad76c 003ad7e4 | 00020008 003ad774            a 0x09 then a chain
+#
+#   These have ONE instrument behind them. `validate_nodes` cannot corroborate them --
+#   it checks the legend with the landing test, which is the test that produced them, so
+#   for these three kinds its 100% is a tautology and not evidence. Said here because a
+#   table that reads as uniformly attested is how the nibble-8 rows lasted as long as
+#   they did.
+#
+#   0x49 is NOT here. It reads 3 words uniquely too, on 11 cells, which is under the
+#   census's reporting threshold. Left out rather than rounded up.
 NODE_LEGEND = {
     0x8b: (3, {}), 0x89: (4, {}), 0xcb: (4, {}), 0x99: (5, {}),
     0x9b: (4, {}), 0xab: (4, {}), 0xa3: (4, {}), 0xdb: (5, {}), 0x0b: (2, {}),
+    0x1b: (3, {}), 0x09: (3, {}), 0x4b: (3, {}),
 }
+
+# The rows the landing test SUPPLIED, as opposed to the ones it reproduced. node_census
+# reads this so its own summary cannot report a self-check as a corroboration.
+NODE_LEGEND_FROM_LANDING = frozenset({0x1b, 0x09, 0x4b})
 
 
 def _walk_mask(mask_word, const_words, bit_widths):
@@ -457,97 +498,59 @@ def _corpus_files(limit=None):
 
 
 def validate_nodes(files):
-    """Harvest fx-tree node cells (as node_census does) and check walk_node against them.
+    """Check `walk_node` against the node census -- which no longer measures by the gap.
 
-    Ground truth for a pointer is `value + 52 is a valid program`; for a size it is that the
-    cell ends on a real boundary. The walk knows neither -- it computes size and field
-    offsets from the tag alone. Two claims:
+    THE HARVEST AND THE LANDING TEST BOTH LIVE IN `node_census` NOW. This function used to
+    carry its own copy of both, character for character, and that duplication is exactly
+    the hazard `sbsasm.fx_entry_walk` documents at length: two implementations of one walk
+    drift, and the nibble-8 category error survived as long as it did because the census
+    and this validator made the same mistake in parallel and so never disagreed.
 
-        size:     a cell of walk_node's size LANDS validly -- the word where it ends begins
-                  the next node, a chain, or a program, or the cell run ends there. This
-                  replaces a gap-to-next-program comparison, which overstates a cell followed
-                  by more cells (a linked tree) and so mis-scored tightly-packed kinds.
-        pointers: every empirically-found program pointer sits on a field boundary the
-                  walk predicts (a pointer never lands in the middle of a field)
+    A second thing changed with the move. The landing test used to accept "the word is a
+    valid program pointer" as a boundary, and a node's own POINTER FIELDS look exactly like
+    that from outside -- so pointer-bearing kinds scored as landing at sizes that are not
+    theirs (0x8b at 1 as well as 3, 0xab at 1 and 2 as well as 4). `node_census.lands` drops
+    that clause; a cell followed by a program still lands, via `off == span_end`. With it
+    gone every kind here reads a single size, and all nine NODE_LEGEND entries are
+    reproduced by an instrument that consults no legend.
+
+    Returns `(size_ok, size_seen, ptr_on_boundary, ptr_total)`.
     """
-    import struct
     from collections import Counter, defaultdict
-    from sbsasm import Assembly
-    tag_sizes = defaultdict(Counter)        # tag -> Counter of observed gap sizes (words)
-    ptr = defaultdict(Counter)              # tag -> Counter of program-pointer byte offsets
+    import node_census
+
     size_ok = Counter()                     # kind -> cells whose walk size LANDS validly
     size_seen = Counter()
+    seen = Counter()                        # tag -> cells, for the pointer rates
+    ptr = defaultdict(Counter)              # tag -> Counter of program-pointer offsets
 
-    def _lands(a, off, s, end):
-        """Does a cell of the walk's size end on a real boundary? The gap-to-next-PROGRAM
-        overstates a cell followed by more cells (a linked tree), so the modal gap is the
-        wrong instrument for tightly-packed kinds like 0x0b. A landing test is robust: the
-        word where the cell ends must begin the next node, a chain, a program, or the cell
-        run itself must end there."""
-        if off == s or off == end:
-            return True
-        if off + 4 > end:
-            return False
-        w = struct.unpack_from('<I', a.data, off)[0]
-        # A valid next structure is a node header (tag nibble 9 or 0xB), a paramset table
-        # ENTRY (nibble 8), a chain, or a program. walk_node no longer recognises entries,
-        # so test the nibble directly rather than through it -- else a leaf followed by an
-        # entry, which is the common paramset case, reads as a bad landing.
-        if w > 0xFF and (w & 0xF) in (8, 9, 0xB):
-            return True
-        if _is_chain(w):
-            return True
-        q = w + 52
-        return a.body_lo <= q < a.body_hi and a.valid_program(q)
-
-    for p in files:
-        try:
-            a = Assembly(p)
-        except Exception:
+    for a, tag, pos, span_end, rec_end in node_census.harvest(files):
+        w = walk_node(tag)
+        if w is None:
             continue
-        for r in a.records:
-            if r.filter_id != 4 or len(r.words) < 4:
-                continue
-            root = r.words[2] + 52
-            if not (r.offset < root < r.end):
-                continue
-            spans = []
-            for q in r.programs:
-                if root <= q < r.end:
-                    try:
-                        spans.append((q, a.program_end(q)))
-                    except Exception:
-                        pass
-            spans.sort()
-            pos = root
-            for s, e in spans + [(r.end, r.end)]:
-                pos = (pos + 3) & ~3
-                if pos + 8 <= s:
-                    tag = struct.unpack_from('<I', a.data, pos)[0]
-                    w = walk_node(tag)
-                    if w is not None:
-                        kind = tag & 0xFF
-                        size_seen[kind] += 1
-                        tag_sizes[tag][(s - pos) // 4] += 1
-                        if _lands(a, pos + 4 * w[0], s, r.end):
-                            size_ok[kind] += 1
-                        for off in range(4, min(s - pos, 64), 4):
-                            v = struct.unpack_from('<I', a.data, pos + off)[0]
-                            q2 = v + 52
-                            if a.body_lo <= q2 < a.body_hi and a.valid_program(q2):
-                                ptr[tag][off] += 1
-                pos = max(pos, e)
-    # Pointers: every program pointer that occurs in >90% of a tag's cells must sit on a
-    # field boundary the walk predicts -- a pointer never lands in the middle of a field.
+        size_seen[tag & 0xFF] += 1
+        seen[tag] += 1
+        if node_census.lands(a, pos + 4 * w[0], span_end, rec_end):
+            size_ok[tag & 0xFF] += 1
+        for off in range(4, min(span_end - pos, 64), 4):
+            v = struct.unpack_from('<I', a.data, pos + off)[0]
+            q = v + 52
+            if a.body_lo <= q < a.body_hi and a.valid_program(q):
+                ptr[tag][off] += 1
+
+    # Pointers: every program pointer occurring in >90% of a tag's cells must sit on a
+    # field boundary the walk predicts -- a pointer never lands mid-field. INERT AT
+    # PRESENT, and said out loud rather than left to look like a passing check: every
+    # NODE_LEGEND kind is a single fixed size with an EMPTY bit->width map, so the walk
+    # predicts no field boundaries for any node and this loop has nothing to test against.
+    # It reports 0/0 until a node kind is given a field vocabulary.
     ptr_on_boundary = ptr_total = 0
     for tag, offs in ptr.items():
-        seen = sum(tag_sizes[tag].values())
         field_starts = {4 * o for o in walk_node(tag)[1].values()}
         if not field_starts:
-            continue                     # a single implicit pointer, no masked field to
-                                         # predict against -- the boundary claim does not apply
+            continue
         for off, h in offs.items():
-            if h / seen > 0.9:
+            if h / seen[tag] > 0.9:
                 ptr_total += 1
                 if off in field_starts:
                     ptr_on_boundary += 1
