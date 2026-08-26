@@ -1747,7 +1747,20 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # what the code has always done, not because it is established.
     _sizeless = assume.assumed('fx.sizeless', 'fill')
 
+    # THE ROOT ENTRY -- see assume.QUESTIONS['fx.rootentry']. A typeless, sizeless pattern at
+    # branchoffset exactly (0, 0) is the whole-canvas cell of the FX-Map's own tree, not a
+    # draw. Tested by its own key rather than by `fx.sizeless`, which the references decide
+    # the other way: this is one pattern per record with an exact signature, that one is
+    # every sizeless pattern anywhere.
+    _rootskip = assume.assumed('fx.rootentry') == 'skip'
+
     for p in patterns:
+        if (_rootskip and p.get('patternsize') is None and p.get('patterntype') is None
+                and p.get('branchoffset') is not None):
+            _b = np.asarray(p['branchoffset'], dtype=np.float64).ravel()
+            if _b.size >= 2 and not np.any(np.abs(_b[:2]) > 1e-6):
+                assume.note(getattr(rec, 'index', -1))
+                continue
         if p.get('patternsize') is None and p.get('patterntype') is None:
             if _sizeless == 'skip':
                 continue

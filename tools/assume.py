@@ -97,6 +97,35 @@ QUESTIONS = {
     # one defect where the earlier reading had two. The oversized-patternsize question
     # below now explains the whole cone on its own.
     'fx.sizeless':        ('fill', 'skip', 'half', 'quarter'),
+    # THE ROOT NODE, asked separately from `fx.sizeless` because it has its own signature
+    # and that question is decided the other way. An FX-Map's tree has a root covering the
+    # whole canvas, and a Quadrant that subdivides without drawing is `patterntype` 0 --
+    # which nibble 2 cannot distinguish, since 0, 1 and 2 all land on the catch-all.
+    #
+    # The signature is sharp. Over 30 corpus files, 1,177 records emit a pattern that states
+    # no patterntype and no patternsize at branchoffset EXACTLY (0, 0):
+    #
+    #     the corner is (0,0)          1,177 of 1,177
+    #     it is the FIRST emission     1,160 of 1,177
+    #     exactly one per record       1,098 of 1,177
+    #     the record renders flat      1,174 of 1,177   (3 varied)
+    #
+    # Drawn, it is a full-canvas stamp at the default opacity of 1.0, which is precisely what
+    # paints a record white. 'draw' is today's behaviour.
+    #
+    # PUT TO THE REFERENCE MAPS, AND THEY CANNOT DECIDE IT. The arm is not vacuous -- 125 of
+    # 694 fxmaps records in those packages change, and the white count drops from 271 to
+    # 146. But on the 7 channels that vary enough to arbitrate, 'skip' is byte-identical to
+    # 'draw': mean MAE 0.1090 and mean |corr| 0.4136 either way. Every channel it moves is
+    # one whose default render is near-constant.
+    #
+    # What it adds is Chesterfield `basecolor`, which renders only under 'skip' and is NOT
+    # degenerate there -- 331, 216 and 223 distinct values at 16%, 26% and 37% of the
+    # reference's std -- correlating at 0.101, 0.156 and 0.145. So this costs nothing
+    # measurable and produces more actual picture at weak agreement. Neutral, like
+    # `blur.intensity`, and for the same reason: the arbiter runs out before the question
+    # does.
+    'fx.rootentry':       ('draw', 'skip'),
     # AN 'inherit' CANDIDATE WAS ADDED HERE AND REMOVED, for the reason the retired
     # 'oversize' arm in fxrender gives: a candidate that cannot differ from another is not
     # an arbitration option. The idea was that a pattern stating no size inherits the last
@@ -131,10 +160,27 @@ QUESTIONS = {
     # set with real signal, whose correlation falls from 0.295 to 0.066 while its MAE rises
     # from 0.0193 to 0.0279. Every other channel moves by ~0.001, at noise level.
     #
-    # So the +3 is exactly the side effect the blend-mode note refuses to select on:
-    # unblocking a record is not evidence about the record. `fill` stays, and the white
-    # records stay white, because the thing that makes them white has not been found yet
-    # and painting them a different wrong colour would only hide it.
+    # THAT VERDICT WAS WRONG, AND THE TABLE ABOVE IS WHY -- see the correction below.
+    #
+    # CORRECTION: `fill` DOES NOT WIN; the comparison was carried by degenerate channels.
+    # The 15-channel means above include channels whose OWN render is near-constant, and a
+    # correlation computed on such a channel is not evidence. Chesterfield `roughness`
+    # renders as THREE distinct values with std 0.0023 against the reference's 0.0262, and
+    # its r = 0.295 under `fill` -- the largest single term in that 0.3827 -- is three
+    # plateaus landing near the reference's levels. Under `skip` the same channel becomes a
+    # genuinely varying image, 284 distinct values at std 0.0077, and its correlation falls
+    # to 0.066. The number got worse because the picture got real.
+    #
+    # Restricted to the 7 channels that vary enough to compare under EVERY candidate
+    # (uniq >= 20 and our std >= 10% of the reference's):
+    #
+    #     candidate         mean MAE   mean |corr|
+    #     fill               0.1090      0.4136
+    #     skip               0.1087      0.4099
+    #
+    # A tie, not a win. `fill` remains the DEFAULT because it is what the code has always
+    # done and nothing here displaces it -- but the reference set cannot presently decide
+    # this question, which is a different statement from the one this note used to make.
     #
     # AND THIS IS THE SECOND QUESTION TO FAIL ON THE SAME CHANNEL. `nonfinite.fill`'s note
     # below reports Chesterfield `basecolor` unblocking under every one of ITS candidates
@@ -887,6 +933,13 @@ QUESTIONS = {
     # too-bright image on MAE while making the picture itself worse.
     #
     # Adopting on MAE alone would have taken it. It stays `canvas`.
+    #
+    # AND THIS VERDICT SURVIVES THE DEGENERATE-CHANNEL CORRECTION that overturned
+    # `fx.sizeless`'s -- it is in fact stronger under it. On the 7 channels that vary
+    # enough to arbitrate, 'canvas' scores mean |corr| 0.4136 against 'cell' at 0.3578,
+    # a wider gap than the 0.3827/0.3533 measured over all 15. The structural loss is on
+    # Auras basecolor, which is one of the few channels in the set that is not degenerate,
+    # so removing the near-constant channels does not soften it.
     #
     # AND IT IS NOT THE WHITE RECORDS' CAUSE: 271 fxmaps records render at exactly 1.0 in
     # these packages under BOTH candidates. Whatever the 97 records it moves are, the white

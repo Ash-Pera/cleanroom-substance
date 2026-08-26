@@ -36539,3 +36539,104 @@ measured here. The test that would settle it does not need the engine: if a reco
 carry a depth, then scaling each pattern by 2^-depth should make the oversized sizes land in
 (0, 1] across the corpus rather than only on the records a span guard already accepts. Today
 nothing in the decode produces a depth, which is the missing piece rather than a wrong one.
+
+### The reference table was arbitrating with channels that carry no picture
+
+Three fx questions were decided this session on the mean MAE and mean correlation of the 15
+scoreable reference channels. That statistic is not sound, because some of those channels'
+renders are near-constant, and a correlation computed against a near-constant image measures
+quantisation rather than agreement.
+
+How near-constant, counting distinct values in our own render at max_dim 64:
+
+    channel                          uniq    our std   ref std
+    Chesterfield roughness ch0          3     0.0023    0.0262     <- decided three questions
+    Chesterfield metallic ch0           3     0.0184    0.1733
+    Chesterfield AO ch0                18     0.0371    0.0645
+    Bricks emission ch0/1/2             6     0.03-0.07 0.01-0.10
+    Stylized_* metallic ch0             1     0.0000    0.0000     <- both sides flat
+    Auras basecolor ch0/1/2         192-268   0.22-0.42 0.10-0.35
+    Chesterfield normal ch0/1/2     525-599   0.07-0.11 0.02-0.10
+    Chesterfield height ch0           436     0.1067    0.0970
+
+Chesterfield `roughness` is the case that matters. Under the default it renders as THREE
+distinct values and correlates at 0.295 -- the strongest-looking structural agreement anywhere
+in the set. Under `fx.sizeless = skip` or `fx.rootentry = skip` it becomes a genuinely varying
+image, 284 distinct values, and correlates at 0.066. **The number got worse because the picture
+got real**, and three plateaus happening to sit near the reference's levels was being read as
+the picture matching.
+
+Restricted to the 7 channels that vary enough to compare under every candidate -- uniq >= 20
+and our std at least a tenth of the reference's:
+
+    candidate            mean MAE   mean |corr|
+    default               0.1090      0.4136
+    fx.sizeless=skip      0.1087      0.4099
+    fx.rootentry=skip     0.1090      0.4136      identical to default
+    fx.patternsize=cell   0.1051      0.3578
+
+**Two verdicts change.** `fx.sizeless` was recorded as `fill` winning; on channels that can
+arbitrate it is a tie, and the reference set simply cannot decide it. `fx.rootentry` is
+byte-identical to the default on every usable channel -- also undecidable, not refuted.
+`fx.patternsize` is unaffected and in fact stronger: its structural loss is on Auras basecolor,
+which is not degenerate.
+
+`refcompare` now prints `uniq` and flags DEGENERATE channels, so this cannot be read past again.
+Of the 15 channels it scores, 8 are degenerate and 7 are usable.
+
+### The white FX-Maps have a root node, and we draw it
+
+Independently of the arbitration, the mechanism is now visible. Over 30 corpus files, 1,177
+records emit a pattern with no patterntype and no patternsize at branchoffset exactly (0, 0):
+
+    the corner is (0,0)          1,177 of 1,177
+    it is the FIRST emission     1,160 of 1,177
+    exactly one per record       1,098 of 1,177
+    the record renders flat      1,174 of 1,177      (3 varied)
+
+That is an FX-Map's root -- the whole-canvas cell of its own tree -- and drawn it is a
+full-canvas stamp at the default opacity of 1.0, which is exactly what paints a record white.
+Substance's `patterntype` 0 is a Quadrant that subdivides without drawing, and nibble 2 cannot
+distinguish it: 0, 1 and 2 all land on the catch-all.
+
+PavingStones record 161 shows the tree directly. Its twelve emissions alternate one typeless
+pattern with two typed ones, and the typeless four sit at branchoffsets (0,0), (0,1), (1,0) and
+(1,1) -- the four children of a `paramset`, which the sources say has exactly four outputs.
+
+Corpus-wide the four-corner form is rare (42 records) and the single-root form is the common one
+(1,177), so this is not yet a general model of the tree. What it is, is the first direct sight
+of one.
+
+### An arbiter the reference maps cannot give, and what it says
+
+The reference set decides almost nothing about the FX-Map questions -- 8 of its 15 channels are
+degenerate and the 7 that are not are indifferent to both skip candidates. But the shipped files
+carry an arbiter of their own. Many white FX-Maps feed the auto-levels remap `(L - lo)/(hi - lo)`,
+and an author does not ship a graph that divides by zero. If a candidate makes those generators
+produce structure, the divisor stops being zero and the non-finite failures clear. That test needs
+no exported map and no engine.
+
+Run over 30 files:
+
+    candidate           non-finite roots   flat fxmaps   white 1.0   varied   outputs
+    default                    22             1,527        1,383      1,003      44
+    fx.rootentry = skip        22             1,123          663      1,407      44
+    fx.sizeless  = skip        22               565           11      1,965      44
+
+**Neither candidate clears a single one**, and `fx.sizeless = skip` all but eliminates the white
+population while doing it -- 1,383 white records down to 11. The reason is visible in
+MossSubstance001 record 10, whose one emission carries no patterntype, no patternsize and no
+branchoffset at all: skipping it leaves the record with nothing to draw, so it renders BLACK and
+flat instead of WHITE and flat. The `flat` column falls by far less than the `white` column
+because the difference is mostly recolouring, not structure.
+
+So this closes a line of reasoning I had been treating as promising. The white is real and its
+mechanism is now understood, but **neither choosing what to do with the root nor choosing what to
+do with sizeless entries produces a varying generator**, and a constant is a constant whichever
+value it takes. The 22 auto-levels degeneracies need FX-Maps that actually emit a pattern field --
+which is the subdivision-depth gap, not a fallback policy. Two questions that looked like the way
+in are now measured not to be.
+
+Recorded so the next attempt does not spend the same effort: the useful move on the white records
+is to make them PAINT SOMETHING, and both available fallback switches only change what colour they
+are uniformly.

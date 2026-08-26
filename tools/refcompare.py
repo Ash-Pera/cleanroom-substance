@@ -372,10 +372,27 @@ def main(argv):
             # means.
             fit = np.polyfit(ours.ravel(), ref.ravel(), 1) if ours.std() > 1e-9 else (0.0, 0.0)
             resid = float(np.abs(np.polyval(fit, ours.ravel()) - ref.ravel()).mean())
+            # HOW MANY DISTINCT VALUES OUR RENDER ACTUALLY HAS, because a correlation
+            # computed against a near-constant image is not evidence and this table was
+            # being read as though it were. Chesterfield `roughness` renders as THREE
+            # distinct values with std 0.0023 against the reference's 0.0262, and its
+            # r = 0.295 -- the strongest-looking structural agreement in the whole set --
+            # is three plateaus landing near the reference's levels, not a picture that
+            # matches. That number decided three separate fx arbitrations before anyone
+            # looked at how many values were behind it.
+            #
+            # Rule of thumb, applied by eye rather than enforced here: a channel can
+            # arbitrate only if `uniq` is comfortably above ~20 AND our std is at least
+            # about a tenth of the reference's. Of the 15 channels this table scores
+            # today, 7 clear that bar.
+            uniq = int(len(np.unique(np.round(ours.ravel(), 4))))
             print('   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f  y=%.3fx%+.3f r=%.4f'
+                  ' uniq=%d%s'
                   % (name if chan == 0 else '', chan, ours.mean(), ours.std(),
                      ref.mean(), ref.std(), np.abs(ours - ref).mean(),
-                     fit[0], fit[1], resid))
+                     fit[0], fit[1], resid, uniq,
+                     '  DEGENERATE' if (uniq < 20 or ours.std() < 0.1 * ref.std())
+                     else ''))
     return 0
 
 
