@@ -426,6 +426,28 @@ QUESTIONS = {
     # And no profile is free -- `disc` gives the best normal MAE and costs height half its
     # gain.
     #
+    # RE-RUN ON TWO PACKS, AND THE TIE DOES NOT BREAK. The argument for re-running was that
+    # a verdict of "no member wins outright" was reached on one specimen, and Bricks is now
+    # a confirmed second scoring pack with 18 grid records. Scored on both, all five outputs
+    # present in each:
+    #
+    #     profile      Chesterfield   Bricks
+    #     rect               0.0646   0.1065   <- best on Bricks
+    #     disc               0.0678   0.1076
+    #     paraboloid         0.0639   0.1155   <- best on Chesterfield
+    #
+    # The packs disagree. Chesterfield prefers paraboloid, Bricks prefers rect, and neither
+    # margin is large. So a second specimen does not resolve it: the recorded verdict stands
+    # and is now better evidenced rather than overturned.
+    #
+    # AND THE SOFT PROFILES BREAK THE RENDER, which is why they are absent from that table
+    # and why a naive reading of the sweep would have inverted the answer. On Bricks,
+    # `cone`, `bell` and `gaussian` each score 0.0292 -- apparently far the best -- while
+    # scoring ONE output instead of five, with 50 records failing to render outright. The
+    # number improves because four outputs vanish. Any sweep over this key has to report the
+    # scored-output COUNT beside the mean, or a profile that destroys the render reads as a
+    # profile that fixes it.
+    #
     # WORTH NOTING SEPARATELY: this question used to be undecidable. Scored before the count
     # was fixed, no member of fx.typeless_profile won outright. With sixteen stamps instead
     # of one, `paraboloid` now beats `rect` overall (0.0530 against 0.0557) and takes height
