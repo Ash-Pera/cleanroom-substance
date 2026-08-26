@@ -35351,3 +35351,79 @@ be scored, this stays a measurement.
 patternsize back as its RAW SLOT WORD, not as a number -- the values above read as
 1084227584 and 1077936128 until viewed as float32. The emission walk converts them; a
 consumer that does not will see integers in the billions and may take them for pointers.
+
+## Fabric04's weave: the mechanism found, and two fixes measured down
+
+`Fabric04.sbsasm` renders 59 of 59 records with zero failures and produces a wrong
+picture -- the woven basecolor sits in the top rows and left column instead of tiling.
+It is a good specimen because it is small (59 records), needs no synthetic bitmaps, and
+the correct answer is known a priori: a fabric weave.
+
+**Not a regression from the footprint bound.** A/B against the pre-77fe022 `splat` gives
+59 of 59 records byte-identical, so the partial coverage predates that work.
+
+### The mechanism
+
+Four edge-less `fxmaps` generators feed the file, and two of them cover almost nothing:
+
+```
+rec  1  200 emissions   patterntype 9    opacity 0.0/1.0 alternating   size (0.10, 0.05)
+rec  5   20 emissions   patterntype None opacity all 1.0               size (1.00, 0.05)
+rec  7  200 emissions   patterntype 9    opacity 0.0/1.0 alternating   size (0.05, 0.10)
+rec 12   20 emissions   patterntype None opacity all 1.0               size (1.00, 0.05)
+```
+
+Records 5 and 12 emit twenty strips whose positions are exact on one axis and run off the
+canvas on the other:
+
+```
+rec 5   branchoffset.y  -0.475, -0.425, ... 0.475     step 0.05 = 1/20, centred, correct
+        branchoffset.x   0.00, 0.50, 1.00, ... 9.50   step 0.50, ten canvas-widths out
+```
+
+`splat` wraps patterns by tiling at integer offsets, but the tile range is
+`reach = min(3, ceil(max(sx, sy)))`, which for `sx = 1.0` is **1**. So tiles -1, 0, +1 are
+tried and every strip past x = 1.5 is dropped: four of twenty drawn. `reach` scales with
+the pattern's SIZE and is centred on zero, so it asks "is this pattern big enough to need
+neighbours" and never "is this pattern far enough away to need wrapping".
+
+### Two fixes, both measured down
+
+**Drop the clamp entirely.** Fabric04's basecolor becomes an unmistakable basketweave
+across the whole canvas -- visibly, obviously right. It is still wrong. Over 44
+fxmaps-bearing files and 1,553 record outputs, scoring coverage as (fraction of rows that
+vary) x (fraction of columns that vary):
+
+```
+coverage UP    12 records   -- every one of them Fabric04
+coverage DOWN  21 records   -- Fabric07, EvilOrb, EngineInitialization, and Fabric04
+unchanged    1,520
+```
+
+Fabric04's own `normal` (record 28) goes 0.82 -> 0.00 and its height collapses to a
+constant. The basecolor gain and the normal loss are the same event: records 5 and 12 stop
+being partial and become SOLID, which lets the weave from records 1 and 7 show everywhere
+and simultaneously removes the structure the height chain was reading out of them.
+
+**Clamp only patterns as large as the canvas**, on the reasoning that replicating a
+canvas-sized pattern can only paint over everything. Corpus effect: 1 record up, 0 down --
+and it does not reach Fabric04 at all, because records 1 and 7 already cover 84-100% and
+were never the limited ones.
+
+### Where it actually sits, and why the arbiter cannot help
+
+Records 5 and 12 have **20 emissions, which is not a perfect square**. Both existing cell
+-unit corrections -- `assume.QUESTIONS['fx.branchoffset']` and `['fx.patternsize']` -- are
+guarded to perfect-square emission counts because G is undefined otherwise, and their own
+docstrings name that tail as uncharacterised: "30% of those 966 fall outside 10% of the
+cell ratio". Fabric04 is not an exception to the cell law; it is a specimen from the tail
+the law does not yet cover, and `size.x = 1.0` being read as a full canvas width is the
+proximate cause of both wrong renders.
+
+The reference arbiter is silent. Chesterfield scores **byte-identical** under the clamp
+and without it -- normal 0.1056 / 0.1057 / 0.0497, roughness 0.0718, metallic 0.0454,
+height 0.2480, AO 0.6832 in both -- because its fxmaps records have no far-off emissions.
+The only ground truth in the corpus cannot separate these readings.
+
+So `reach` is left as it is. What this adds is a small, clean, self-contained specimen for
+the cell-unit question, a precise mechanism, and two eliminated candidates.
