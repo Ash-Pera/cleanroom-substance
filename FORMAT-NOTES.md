@@ -36828,3 +36828,16 @@ three distinct Bricks assemblies each scored against two reference directories, 
 side is still ONE package and one author's convention -- which is why this stays opt-in. A second
 package setting the bit would settle it; nothing else in this corpus can, since the test needs
 exported height AND normal maps from the same material.
+
+## A second, chainless fxmaps encoding (cls 0x399): entries are a flat program list
+
+fxrender.chain() returns EMPTY for ~18% of cls-0x399 fxmaps (1729 of 9612 in a 1/4 corpus
+sample), and entries() then raises "no readable table entries". Specimen: RoofTiles rec1398
+(cls 0x399, 88 words, no edges, 6 programs 147688..147956). Its words are POINTERS to those
+programs (0x240xx offsets = the program addresses) interleaved with constants; scanning all 88
+words for a gated FX node (nibble 9/B + bit 7, or 0x18b/0x89/0x1b low bytes) finds ONE word
+(0x11000b at 57) and it lacks the gate bit. So there is no ADD→scanner→leaf chain to walk --
+it is a FLAT program-list / entry-per-program form, a second encoding distinct from the node
+chain. A real decode gap for a common cls; the reader for it is unbuilt. NOT a RoofTiles
+unblock (every RoofTiles output cone is also behind the shuffle grayscale-default refusal, so
+this form is never the last blocker there — leverage is last-in-cone, and it is not).
