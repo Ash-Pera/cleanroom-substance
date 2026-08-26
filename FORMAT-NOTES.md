@@ -36746,3 +36746,20 @@ field set in Bricks and clear in the other three would fit equally well.
 **A statistic caught out here**: mean |corr|, which decided the fx questions, is identical under
 both candidates because |-0.158| = |+0.158|. Absolute correlation is blind to a sign error. Any
 question about handedness, orientation or channel order has to be read on the SIGNED value.
+
+## emboss: a built-in directional gradient; its programs supply params, not the algorithm
+
+`emboss` renders as "not implemented" (blocks Wooden_Roof_Tiles, 5 records + cascades). Its
+programs are NOT the algorithm -- they never sample the input (no samplelum/samplecol), so
+emboss is a hardcoded built-in (like blur) and the programs only compute its scalar params.
+Decoded from RoofTiles rec1997/2001/2221 (all identical):
+- prog A (e.g. 200216): computes the gradient SAMPLE OFFSET. slots[0] = texel size (1/W, 1/H);
+  slots[2] = 0.005859375 * (W, H) * (1, -1) = a ~12-texel offset at 2048 in a 45° (+x,-y,
+  upper-right) light direction.
+- prog B (e.g. 200344): computes INTENSITY = 0.1, resolution-normalized (0.1 * 2048/size).
+So emboss ≈ intensity * (input(pos) - input(pos + light_offset)) -- a directional derivative
+of the height along the light direction, the highlight/shadow relief. Params are constant
+across these three records (fixed 45°/0.1), likely the pack's defaults. The DECODE half is
+done; implementing the built-in and confirming the exact output mapping is render-side and
+wants a reference score. Two edges per record (image + a second input) -- role of the second
+not yet pinned.
