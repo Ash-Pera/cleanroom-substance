@@ -36503,3 +36503,39 @@ them empirically and the narrow one is the one the specimen supports.
 **None of this moves a count**, and that is worth stating plainly: 44 of 127 corpus outputs
 before and after, the same root-cause table, and all 15 reference channels identical to four
 decimals. It is a correctness fix on a verified specimen, not coverage.
+
+### Why a patternsize of 3 or 5 is not a misread: paramset nodes have FOUR outputs
+
+The white FX-Maps carry oversized patternsizes -- 1,117 of the 1,369 records that render at
+exactly 1.0 have a median at or above 1.0, and PavingStones record 161 alternates typeless
+patterns with typed ones whose size is 5.0. The natural suspicion is that the decode is wrong.
+It is not: `SubstanceDesigner__Clouds_3_Animated`, a permitted source, DECLARES
+
+    <parameter><name v="patternsize"/><constantValueFloat2 v="3 2"/>
+
+so a size of 3 by 2 is what an author writes. The units are therefore not canvas fractions, and
+the question is what they ARE fractions of.
+
+The graph vocabulary answers it. Counting output identifiers on every FX-Map graph node in the
+paired sources:
+
+    paramset   4 outputs   108      (102 excluded-author, 6 permitted)
+    paramset   0 outputs   111      leaves, nothing connected below
+    addnode    1 output     84
+    markov2    1 output     10
+
+**A `paramset` has four children.** Four children in a two-dimensional pattern generator is a
+quadrant subdivision, and a pattern whose size is measured against a cell that has been
+quartered d times occupies 1/2^d of the canvas per unit -- which is how a declared 3 becomes a
+sane footprint and how our linear chain, which has no depth at all, turns it into a full-canvas
+stamp. fxrender's docstring already says the linear-chain model has "no spatial subdivision to
+scale a size against"; this is the source-side statement of the same thing, and it says the
+subdivision is by four.
+
+STATED AS AN INFERENCE, because it is one. What is ESTABLISHED is the node arity (counted) and
+that authors declare sizes above 1 (declared). That the four outputs are spatial quadrants, and
+that patternsize divides by the depth, is the reading those two facts suggest -- it is not
+measured here. The test that would settle it does not need the engine: if a record's emissions
+carry a depth, then scaling each pattern by 2^-depth should make the oversized sizes land in
+(0, 1] across the corpus rather than only on the records a span guard already accepts. Today
+nothing in the decode produces a depth, which is the missing piece rather than a wrong one.
