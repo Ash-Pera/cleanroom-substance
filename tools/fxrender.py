@@ -182,7 +182,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assume, sbsruntime, transpile                                  # noqa: E402
-from sbsasm import Assembly, FX_NODES, fx_patterntype                                 # noqa: E402
+from sbsasm import (Assembly, FX_NODES, fx_patterntype,                              # noqa: E402
+                    fx_entry_layout)
 
 # 0x1CB joins these on the value evidence in sbsasm's FX_NODE_PARAMS: its +4 program is
 # 1.0 in 180 of 183, matching 0x18B's `numberadded` (1.0 in 69.5%) and not 0x1AB's
@@ -436,6 +437,103 @@ def chain(rec):
     return [(off, nodes[off][0], nodes[off][1]) for off in order]
 
 
+_SLOT_SET = re.compile(r'slots\[(\d+)\]\s*=')
+_SLOT_GET = re.compile(r'slots\[(\d+)\](?!\s*=)')
+
+
+def _slot_flow(asm, ptr):
+    """(slots written, slots read before being written) for the program at `ptr`."""
+    end = asm.program_span(ptr, asm.body_hi)
+    if end is None:
+        return None
+    try:
+        src = transpile.transpile(asm.data, ptr, end, "python", "prog")
+    except Exception:
+        return None
+    sets, reads = set(), set()
+    for line in src.splitlines():
+        line = line.strip()
+        m = _SLOT_SET.match(line)
+        for g in _SLOT_GET.finditer(line if m is None else line[m.end():]):
+            k = int(g.group(1))
+            if k not in sets:
+                reads.add(k)
+        if m:
+            sets.add(int(m.group(1)))
+    return sets, reads
+
+
+def _recover_last_inline(rec, tbl, order):
+    """An entry's LAST program slot may hold the program itself, not a pointer to it.
+
+    A NARROWED FORM OF A READING THAT WAS WITHDRAWN, and the withdrawal was right about
+    what it measured. `sbsasm.fx_named_params` used to re-read a failed program pointer as
+    an inline program, and 9ff1354 removed it: of the 2,717 programs that recovered, the
+    1,910 whose entry HAS A SUCCESSOR sit past the next entry's tag in 1,910 of 1,910.
+    They are bytecode from a later structure. Deciding pointer-vs-inline from whether
+    `word - 52` lands on decodable bytes is a value-driven read, and it invented an
+    `imageindex` that duplicated an earlier pointer 2,056 times.
+
+    That measurement leaves 807 unexamined -- the ones with no successor. Over 25 corpus
+    files plus every reference package, the split is total:
+
+        recovered program lies INSIDE its own entry   14    all 14 are the LAST entry
+        lies beyond the next entry's tag               4    all 4 have a successor
+
+    But "it is the last entry" is a weak test, because for a last entry the bound is just
+    the record's end. So the gate here is not containment, it is whether the recovery
+    ANSWERS A QUESTION THE RECORD ASKS: does the program write a slot that another
+    parameter of the same entry reads before writing, and that no other program in the
+    record writes? Of the 14, exactly 7 do, and they are the ones that matter --
+
+        Auras records 45, 49, 252, 256, 334 (slots 13 and 15), Chesterfield 43 (slot 0)
+
+    -- three of the four declared outputs of Auras hang on slot 15 having a writer. The
+    other 7 explain nothing and are left as misses.
+
+    A program that decodes is not evidence; a program that resolves a dangling dependency
+    in the record that names it is.
+    """
+    asm = rec.asm
+    for idx, off in enumerate(order):
+        missing = [n for n, (k, v) in tbl[off][1].items() if k == 'program' and not v]
+        if not missing:
+            continue
+        layout = fx_entry_layout(tbl[off][0])
+        slot_of = {n: sl for sl, n, how in layout if how == 'program'}
+        prog_slots = [sl for sl, _n, how in layout if how == 'program']
+        if not prog_slots:
+            continue
+        last = max(prog_slots)
+        # What the entry's OTHER programs read without writing, and what the record writes
+        # anywhere else -- the two halves of "otherwise unwritten".
+        need = set()
+        for name, (kind, value) in tbl[off][1].items():
+            if kind != 'program' or not value:
+                continue
+            f = _slot_flow(asm, value)
+            if f:
+                need |= f[1]
+        if not need:
+            continue
+        at = off + 4 * last
+        f = _slot_flow(asm, at)
+        if not f:
+            continue
+        elsewhere = set()
+        for p in (rec.programs or ()):
+            if p == at:
+                continue
+            g = _slot_flow(asm, p)
+            if g:
+                elsewhere |= g[0]
+        if not ((f[0] & need) - elsewhere):
+            continue
+        for name in missing:
+            if slot_of.get(name) == last:
+                tbl[off][1][name] = ('program', at)
+
+
 def in_eval_order(params):
     """An entry's parameters, in the order the engine evaluates them.
 
@@ -522,6 +620,7 @@ def entries(rec, baked_pairs=True):
             order.append(off)
         if name:
             tbl[off][1][name] = (kind, value)
+    _recover_last_inline(rec, tbl, order)
     if baked_pairs:
         for off in order:
             tag = tbl[off][0]
