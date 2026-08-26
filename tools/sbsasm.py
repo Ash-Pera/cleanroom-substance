@@ -705,7 +705,17 @@ FX_PAYLOAD_PROG = {
 # FX-Map table entry LENGTH, stated by the whole tag word. `'T'` means the entry is the
 # last in its table.
 #
-# The 8-byte stride this replaces was not a stride. Measured from a chain handoff -- the
+# DRAINED, kept only as a census. `fx_table` no longer steps this stride: the entries are a
+# LINKED LIST, each storing a pointer to the next -- the header slot reaching furthest forward,
+# past the entry's own inline program -- and the walk follows it. The entry ends at its inline
+# program, whose length the program states in its own first word (`_program_span_scan` reading
+# the `u16` instruction count), so the extent is structural and not a per-tag constant. This
+# table was a FIT of that pointer's distance, lossy because the distance is the inline
+# program's length, which the tag does not encode; following the stored pointer reaches 77,637
+# real entries the strided walk stopped short of, with zero phantoms. See `fx_table` and the
+# FORMAT-NOTES section "The FX entry table is a linked list".
+#
+# The 8-byte stride this once replaced was not a stride. Measured from a chain handoff -- the
 # one entry position established by pointer-following rather than by guessing -- the
 # distance to the next entry is 8 bytes in 16% of records and 24 in 40%, with a long tail.
 #
@@ -2615,19 +2625,28 @@ class Record:
                             if cand + 4 <= e and self.asm.program_span(cand, e):
                                 prog = cand
                     yield q, tag, prog
-            # The tag states the entry's length; 8 was a guess that happened to be the
-            # second commonest. Falls back to 8 for a tag the table does not carry, so a
-            # record with an unlisted tag degrades to the old behaviour rather than
-            # stopping - but a TERMINAL tag ends the table, which is what it means.
-            # An unknown tag STOPS the walk rather than falling back to 8. Falling back
-            # keeps 17% more entries and ruins them: the yielded tags then number 9,719
-            # distinct values with 81.0% in the vocabulary, against 228 and 96.5% when it
-            # stops. A small vocabulary is what a real entry population looks like, so the
-            # policy that shrinks it by a factor of 40 is the one telling the truth.
-            step = FX_ENTRY.get(tag)
-            if step is None or step == 'T':
+            # THE NEXT ENTRY IS THE POINTER THE ENTRY STORES, not a tabled stride. One header
+            # slot holds a pointer to the following entry -- the one reaching FURTHEST forward,
+            # past this entry's own inline program (slot 1 for 0x00020008, slot 2 for
+            # 0x00420008). `FX_ENTRY` was a per-tag fit of that pointer's DISTANCE, and lossy
+            # because the distance is the inline program's length -- which the entry states,
+            # `_program_span_scan` reading its instruction count -- and is not a function of the
+            # tag. Following the stored pointer reaches 77,637 real entries the stride stopped
+            # short of with zero phantoms, needs no table and tests no value on the target: the
+            # header slots come from the mask-walk and `entry_layout_holds` at the top of the
+            # loop is the stop. `FX_ENTRY` is drained by this, kept only as a census.
+            hdr = fx_entry_layout(tag)
+            span = (max(sl for sl, _n, _k in hdr) + 1) if hdr else 1
+            nxt = None
+            for sl in range(1, span + 1):
+                if q + 4 * sl + 4 > e:
+                    break
+                pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
+                if q < pv < e and (nxt is None or pv > nxt):
+                    nxt = pv
+            if nxt is None:
                 return
-            q += step
+            q = nxt
 
     def fx_tree(self):
         """For filter 4: yield (offset, header, program offset) once PER PROGRAM SLOT.

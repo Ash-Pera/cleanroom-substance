@@ -165,13 +165,18 @@ def test_every_table_is_load_bearing():
 
     A table that changes no reading is either dead or shadowed by another, and either way
     the next person should not have to find that out by experiment.
+
+    FX_ENTRY is deliberately NOT in the list: it was the FX entry-walk stride and is now
+    drained -- `fx_table` follows the linked-list next-pointer each entry stores instead, so
+    emptying FX_ENTRY changes no reading BY DESIGN. It is kept only as a census. Asserting it
+    load-bearing would fail the drain the way it would have failed LAYOUTS's.
     """
     paths = corpus.paths()[:FILES]
     if not paths:
         print('SKIP test_every_table_is_load_bearing: no corpus')
         return
     dead = []
-    for name in ('LAYOUTS', 'EDGES', 'LAYOUT_MASK', 'FX_NODES', 'FX_ENTRY'):
+    for name in ('LAYOUTS', 'EDGES', 'LAYOUT_MASK', 'FX_NODES'):
         tab = getattr(sbsasm, name, None)
         if not isinstance(tab, dict) or not tab:
             continue
@@ -191,7 +196,7 @@ def test_every_table_is_load_bearing():
 # distinction that matters: a suite that silently skips everything looks identical to a
 # passing one, which is the failure this directory has already recorded once.
 if __name__ == '__main__':
-    for fn in (test_layouts_is_load_bearing_but_barely,
+    for fn in (test_layouts_drained_from_layout,
                test_layouts_changes_no_program_discovery,
                test_every_table_is_load_bearing):
         buf = io.StringIO()

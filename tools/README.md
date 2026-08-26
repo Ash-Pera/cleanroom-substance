@@ -190,9 +190,14 @@ frame; the `paramset` table then reads that frame and computes each pattern's si
 rotation and emit condition. The connection is measured: slots at index 64 and above are
 read-and-written within one file 88.1% of the time against a 0.0% cross-file control.
 
-Entry boundaries come from the tag, which states both the entry's LENGTH (`FX_ENTRY`) and
-which of its words hold programs (`FX_ENTRY_PROGS`). Do not step 8 bytes -- that was the
-old rule and it is wrong.
+The entries are a LINKED LIST. Each entry stores a pointer to the next one -- the header slot
+reaching furthest forward, past the entry's own inline program -- and the walk follows it
+rather than stepping a tabled stride. The entry ends at its inline program, whose length the
+program states in its own first word (a `u16` instruction count), so the extent is structural,
+not a per-tag constant. `FX_ENTRY` was a fit of that pointer's distance and is drained: which
+of an entry's words hold programs comes from `fx_entry_layout`'s bit-walk (nibble 8) or the
+disjoint-span scan (nibble 9/B nodes), and `FX_ENTRY_PROGS` is likewise drained to a census.
+Do not step 8 bytes and do not read the length from a table -- both were wrong.
 
 Where a tag names no program slots the program is stored INLINE, and its position is a
 layout fact rather than a table lookup: `fx_entry_layout` puts it after the parameters, at

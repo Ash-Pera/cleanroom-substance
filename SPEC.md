@@ -223,10 +223,17 @@ discriminated by the tag word's **low nibble**:
   remaining tag bits are a presence mask over the same 1/2/4-word widths. Known node kinds
   and sizes (words, including the tag): `0x8b`=3, `0x89`=4, `0xcb`=4, `0x99`=5, `0x9b`=4,
   `0xab`=4, `0xa3`=4, `0xdb`=5, `0x0b`=2 (a leaf: tag + one pointer).
-- **nibble 8 → a paramset table entry**, *not* a node. Entry lengths are given by the
-  entry's own tag (the same "the tag spells it out" method), not by the node sizer.
-- **high half `0x0002` → a chain** (a linked list); its cells are run-length, not
-  fixed-size, and are excluded from node sizing.
+- **nibble 8 → a paramset table entry**, *not* a node. The entries are a **linked list**:
+  each entry stores a pointer to the next one — the header slot reaching furthest forward,
+  past the entry's own inline program. The entry ends at its inline program, whose length the
+  program states itself (a `u16` instruction count in its first word), so the entry extent is
+  the program's structural length, not a tabled stride. (An earlier `FX_ENTRY` stride table
+  was a per-tag *fit* of this pointer's distance, and lossy because the distance is the inline
+  program's length, which the tag does not encode; following the stored pointer reaches ~78k
+  entries the strided walk stopped short of, with zero phantoms.)
+- **high half `0x0002` → a chain** — the commonest entry, `0x00020008`, whose slot-1 pointer
+  is the next-pointer 100% of the time. These are structural linked-list cells, not
+  independent pattern draws, and are excluded from both node sizing and emission.
 
 Nodes carry the FX-Map parameters (pattern type, size, colour, etc.). The pattern
 *footprint* (`patternsize`) — how large each emitted pattern is on the canvas — is the one
