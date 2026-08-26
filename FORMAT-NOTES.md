@@ -35596,3 +35596,53 @@ try first when a reference render can settle it.
 And it does not make `plaster` plaster. The generators still emit one or two patterns where
 a noise field needs hundreds, which is the tree-only FX-Map fault above -- a separate and
 larger question.
+
+## The FX entry table is a linked list, and `FX_ENTRY`'s stride is a lossy fit of it
+
+`FX_ENTRY` maps an entry tag to a byte stride, and `fx_table` walks the table by stepping
+that many bytes from one entry to the next. Two questions exposed it as an approximation of a
+structure the format already carries: what is the table actually used for, and is the stride
+derivable rather than tabled.
+
+**What consumes it.** One call site: `step = FX_ENTRY.get(tag)` in `fx_table`. Nothing else
+reads the table. It is the entry-walk stepper and only that.
+
+**A program states its own length.** `_program_span_scan` reads a `u16` at a program's first
+two bytes as the INSTRUCTION COUNT and then walks exactly that many instructions of known
+widths. So an inline program's byte length is structural, not a decode-until-invalid guess --
+which means an entry that ends in an inline program has a derivable extent. `0x00000048` is
+the clean case: `[tag][15-instruction inline program]`, and its stride is 64 = the tag word
+plus the program's own length, exactly.
+
+**The entries are a linked list.** The dominant entry type `0x00020008` (50,965 of them)
+holds the NEXT entry's pointer in slot 1 -- `word[q+4] + 52` lands on the following entry in
+50,930 of 50,965 (100%). `FX_ENTRY[0x00020008] = 8` is redundant: it is just the constant gap
+because those entries are laid out contiguously, and the real structure is a pointer to
+follow. Other entry shapes carry the next-pointer in a different slot: `0x00420008` carries it
+in slot 2, and that pointer lands at the structural END of the entry's inline program (within
+8 bytes) in all 25,423 sightings -- past a 50-byte program that the tabled stride of 24 steps
+into the MIDDLE of. So the terminal-shape stride is not the entry's extent at all; it is a
+value tuned to land on non-entry bytes and halt the walk.
+
+**Measured against a structural walk.** Following the next-pointer instead of stepping the
+stride is not strictly better with any rough next-pointer rule yet tried, and the gap is
+informative either way:
+
+    rule for "next entry"                     agrees   finds (real/phantom)   misses (real)
+    follow slot 1 only                        60,481   8,625 / -              49,240
+    first forward pointer to a nibble-8 word 104,527  53,639 / 8,700           5,192
+    furthest-forward such pointer             86,626  76,189 / 7,615          23,095
+
+The middle row is the point: a linked-list walk reaches 53,639 real entries (they pass
+`entry_layout_holds`) that the strided walk never visits -- the stride table makes `fx_table`
+STOP EARLY on many records. But "first forward pointer landing on a low-nibble-8 word" is not
+the precise next-pointer either: the nibble-8 target test is a value check, and it chains
+through ~8,700 coincidental nibble-8 words into phantom entries. The exact structural
+selector -- which slot holds the next-pointer, as a function of the tag's shape rather than of
+which target happens to look like an entry -- is not yet pinned. Slot 1 for `0x00020008`, slot
+2 for `0x00420008`, and no single rule tested reproduces both without admitting phantoms.
+
+**Not committed.** Swapping the entry walk moves the render path by ~50k entries, and this
+environment cannot run a reference render (numpy is broken) to say which walk is correct.
+The finding is recorded for a session that can render-verify; the stride table stays in place
+until then, wrong strides and all, because it is at least a known quantity.
