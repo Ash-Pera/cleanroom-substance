@@ -1,0 +1,13 @@
+#!/bin/sh
+# Parallel test lane. One process per test, N at a time.
+#
+# The suite is not uniformly slow -- 23 of its 27 slow-lane tests finish in about 25
+# minutes of CPU between them, while four render tests in test_filters run for over
+# 15 minutes EACH (fxrender.splat evaluates every emission over the whole canvas; see
+# FORMAT-NOTES). Serially that means nobody ever sees the other 23. Per-test processes
+# with a wall cap fix the reporting even though they do not fix the four.
+#
+#   ./pt                  every slow-lane module
+#   ./pt test_fx.py       one module
+#   W=10 CAP=1800 ./pt    more workers, longer cap
+exec python3 "$(dirname "$0")/parallel_tests.py" "$@"

@@ -34685,3 +34685,82 @@ in the gaps. `size` is left as the uncompressed size, because that is what it is
 regression test reused `_pixel_bitmaps`, which requires `size` to be truthy -- and size is
 None for exactly the 45 cls-0x808 records. It passed confidently on the 9 it could see.
 The two iterators are now separate, and the count it prints is 54.
+
+## The slow test lane, measured: 4 tests of 47 are the whole problem
+
+The suite outside `./t` had never once completed in a session — three attempts, hours
+each, no result. "The tests are slow" turned out to be wrong in the way that matters:
+running every test in its own process and timing it individually,
+
+```
+43 tests pass, totalling about 25 minutes of CPU between them
+ 4 tests exceed 900 seconds EACH and never finish
+```
+
+The four are `test_curve_endpoints`, `test_curve_matches_independent_bisection`,
+`test_dirmotionblur_is_an_average` and `test_dirmotionblur_actually_smooths_and_only_along_its_angle`.
+Serially they hide the other 43 behind them, which is why the lane looked uniformly
+hopeless and why nobody had seen a green result from it.
+
+### Where the time actually goes
+
+Not in parsing: sweeping all 400 files and computing `edges` for every record takes
+**1.8 seconds**. Not in the tests, which are three-line assertions. It is one call.
+
+A `faulthandler` watchdog — needed because the process is inside a long C-level numpy
+call where a `signal.alarm` never gets delivered — puts the stack at `fxrender.py:631`
+in `splat`. Instrumenting that function on one specimen (`Marble.sbsasm` record 450, a
+64x64 render):
+
+```
+1,930,794 calls to profile_value, 7,908,463,104 point evaluations -- in 100 seconds,
+and not finished
+```
+
+7.9 billion point-evaluations for one record. The arithmetic says why: 1.93M calls over
+49 tile offsets is about **39,400 emissions**, and each one is evaluated over all 4,096
+pixels of the canvas — `dx = px - (cx + tx)` is the whole grid, every time — although a
+pattern of size `sx, sy` covers a tiny footprint of it. The loop is O(emissions x whole
+canvas) where it should be O(emissions x footprint).
+
+Two smaller things fell out of the same reading. `sx` passes the `sx > 0` and
+`max(sx, sy) <= 64` guards while still being small enough that `dx / sx` overflows to
+infinity — the corpus raises `RuntimeWarning: overflow encountered in divide` at
+`fxrender.py:627-628` on real records. And `profile_for(p)` is recomputed inside the
+49-iteration tile loop although it depends only on `p`.
+
+**This is not fixed here.** `fxrender.py` is under active edit in another session, the
+fix changes render output shape-wise (a footprint slice needs `px`/`py` as a 2-D grid),
+and the test that would validate it is the one that takes hours. It is written down
+with its measurement so it can be fixed deliberately.
+
+### What did get fixed
+
+**`render(..., stop_after=idx)`.** `_seeded` renders a whole assembly and keeps one
+record's output. Edges point backward and evaluation is a single forward pass with no
+state a later record could feed back, so stopping at the target returns exactly what a
+full render would have put there. Deliberately an early stop and **not** a
+dependency-cone prune: pruning by `Record.edges` would be unsafe, because the manifest
+oracle measured that closure as a strict subset of the real dependencies — 513 paths
+missed, 0 over-claimed — and a cone walk would silently drop the sampler-reached ones.
+
+Measured on the two `gradient` tests, which had taken 840 s and 854 s: **the pair now
+runs in 25 seconds.** It helps exactly when the target record is early in its file, and
+not at all for the four stragglers, whose targets sit late (`Marble` record 450 of 948)
+with the expensive splats ahead of them.
+
+**`_seeded` memoized.** Every filter here is probed by two tests with identical
+arguments, each re-rendering the same records from scratch.
+
+**`tools/pt`, a parallel lane.** One process per test, N at a time, with a per-test wall
+cap; no new dependency, and the isolation is wanted for its own sake since `conftest`'s
+session-wide `Assembly` cache already has to exempt `test_tables` for measuring
+counterfactuals. A capped test reports TIMEOUT and does not take the run down with it —
+the point is to see the 43 results that a serial run hides behind the 4.
+
+```
+47 tests, 9 workers:  43 passed, 0 failed, 4 timed out
+                      wall 900s, work 4,623s (5.1x)
+```
+
+The lane now reports. It does not yet finish, and the reason it does not is one function.

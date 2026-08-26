@@ -97,9 +97,35 @@ def _bezier_y(knots, x_want):
 
 
 SEEN = {}
+_SEEDED = {}
 
 
 def _seeded(name, limit, predicate=None):
+    """Memoized front for _seeded_uncached.
+
+    Every filter here is probed by two tests with identical arguments -- curve by
+    endpoints and by bisection, dirmotionblur by range and by directionality, gradient
+    by bounds and by lookup -- and each call re-rendered the same records from scratch.
+    Only predicate-free calls are shared, because a predicate is a closure this cannot
+    key on.
+    """
+    if predicate is not None:
+        for item in _seeded_uncached(name, limit, predicate):
+            yield item
+        return
+    key = (name, limit)
+    if key not in _SEEDED:
+        rows, seen_before = [], SEEN.get(name)
+        for item in _seeded_uncached(name, limit):
+            rows.append(item)
+        _SEEDED[key] = (rows, SEEN.get(name))
+    rows, seen = _SEEDED[key]
+    SEEN[name] = seen           # restore the candidate count the callers check
+    for item in rows:
+        yield item
+
+
+def _seeded_uncached(name, limit, predicate=None):
     """Yield (record, row) where `row` is the filter's response to a 0..1 linear ramp.
 
     Records `SEEN[name]` = how many CANDIDATE records were found, separately from how many
@@ -123,7 +149,8 @@ def _seeded(name, limit, predicate=None):
             SEEN[name] += 1
             try:
                 out, _f, _s = R.render(asm, precomputed={rec.edges[0]: _ramp(h, w)},
-                                       verbose=False, max_dim=64)
+                                       verbose=False, max_dim=64,
+                                       stop_after=rec.index)
             except Exception:
                 continue
             arr = out.get(rec.index)
