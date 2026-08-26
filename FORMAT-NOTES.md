@@ -35945,3 +35945,29 @@ bugs: `levelinlow=1.0` alone appears in Portfolio__metal_002 (×4) and DLG-Tools
 decode of an authored `[1.0, default]` range. Caveat: none of these specimens, nor the actual
 Kutejnikov Bricks source behind graph 003, are in the 5 scoreable reference packs — so the
 engine's zero-width-levels behavior stays unresolved for lack of a scoreable second specimen.
+
+## The 0x99 node is a bounded raster-scanner loop body, not a one-shot state update
+
+Decoding rec34/rec65 of ChesterfieldSofa (fxmaps) with the correct opcodes — `set` is
+op 0x07, NOT 0x06 (0x06 is cache_write) — reveals the 0x99 (STEPPER) node's program is a
+serpentine raster scanner, one iteration per run:
+
+- slots 16/17: nested row/column counters (slot17 wraps to 0 at slot16, slot16 advances
+  on row wrap).
+- slot 18: step-direction vector, read-then-written (an accumulator), sign-flipped ±1 at
+  row ends (const decodes to float32 [-1.0, +1.0]) — boustrophedon.
+- slot 14: accumulated position, `slot14 += slot18` each call; slot 12 = slot14, and the
+  entry's `frameoffset` reads slot 12. So the chain WRITES and ADVANCES the stamp position.
+- tail (#44-#61): a 2D in-bounds predicate comparing the position to slot 0 with ±0.5
+  (canvas half-extent) offsets — a while-body's continue test.
+
+The step magnitude is a constant in the chain (float32 0.25 for rec34) and it EQUALS the
+pattern size. A size-sized step needs 1/size steps per axis to tile, (1/size)² total —
+16 for rec34 (size 0.25), 5.8 for rec65 (size 0.4146). Peer 0b measured the coverage
+deficits as exactly 16.0 and 5.8. So the node is meant to lay (1/size)² stamps by looping
+its body while the in-bounds predicate holds; a renderer that runs the body once lays one,
+giving a coverage deficit of exactly 1/size². This is the root cause of the Chesterfield
+metallic/height/AO footprint gap (and the STEPPER-driven fxmaps class generally): not a
+missing decode field, not a global size factor, but the 0x99 loop being run once instead
+of iterated. Fix is render-side (loop while the tail predicate holds, emit per step; seed
+slot 18 with the initial step direction); the semantics are the decode finding here.
