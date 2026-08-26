@@ -19,6 +19,7 @@ and no resource ever overruns the record region.
 """
 import struct
 import standalone_parse as S
+import sbsasm
 
 CHANNELS = {1: 1, 2: 3, 3: 4}
 
@@ -51,54 +52,52 @@ def format_name(cls):
 
 
 def bitmaps(path):
-    """Yield one dict per embedded bitmap: offset, width, height, channels, depth, size."""
-    d = open(path, 'rb').read()
-    r = S.parse(path)
-    count, dir_at = r['dir_count'], r['dir_at']
-    if count < 1 or dir_at + 4 * count > len(d):
-        return
-    offs = sorted(struct.unpack_from('<%dI' % count, d, dir_at))
-    for i, e in enumerate(offs):
-        o = e + 52
-        if o + 8 > len(d):
+    """Yield one dict per embedded bitmap: offset, width, height, channels, depth, size.
+
+    THROUGH `sbsasm.Record.bitmap`, not through a second directory walk of its own. This
+    module used to re-derive the record directory from the raw bytes and decide pixels vs
+    graph input by RECORD LENGTH -- 8 bytes meant stored pixels, longer meant a named
+    input. `Record.bitmap`'s docstring records that reading as measured and wrong: a third
+    of short records name a graph input too, and the discriminator is whether slot 1 can
+    be a file offset at all (>= file size -> a uid, 157 of 157; < file size -> pixels,
+    306 of 306). Against this module, that cost 75 graph inputs over 60 specimens, 0
+    gained.
+
+    It also lacked the offset correction the model carries. The pixel region begins at 8,
+    after an eight-byte magic-plus-version header, while every record declares an offset
+    four bytes short of its data -- invisible at depth 8 with 4 channels, where four bytes
+    is exactly one pixel, and a channel rotation everywhere else. Reading `b['offset']`
+    takes that fix rather than repeating the bug.
+    """
+    asm = sbsasm.Assembly(path)
+    d = asm.data
+    for r in asm.records:
+        if r.filter_id != 16:
             continue
-        w0 = struct.unpack_from('<I', d, o)[0]
-        tag = w0 & 0xFFFF
-        if (tag & 0xFF) >> 1 != 16:
+        b = r.bitmap
+        if not b or b['kind'] != 'pixels':
             continue
-        nxt = (offs[i + 1] + 52) if i + 1 < len(offs) else r['table_start']
-        if min(nxt, len(d)) - o != 8:
-            continue                       # long form: a graph input, see graph_inputs()
-        cls = w0 >> 16
-        fmt = pixel_format(cls)
-        if not fmt:
-            continue
-        ch, bpc = fmt
-        name = FORMATS[(cls >> 8) & 0xFF][0]
-        width, height = 1 << ((tag >> 8) & 0xF), 1 << ((tag >> 12) & 0xF)
-        # Resource offsets carry the format's usual +52 skew. The first resource then
-        # lands at 0x38, immediately after the header, which is where the segment
-        # starts; reading them raw puts it 52 bytes early, inside the header.
-        start = struct.unpack_from('<I', d, o + 4)[0] + 52
-        if name == 'JPEG':
-            # [u32 length][JPEG stream]. The tag's geometry is the declared output
-            # size and need not match the stream's own SOF header.
-            if start + 6 > len(d):
+        name = format_name(r.cls)
+        pos = b['offset'] + 52              # the model's offset, already +4 corrected
+        row = {'record': r.index, 'offset': pos, 'width': r.width, 'height': r.height,
+               'channels': b.get('channels'), 'depth': b.get('depth'), 'format': name}
+        if b.get('compressed') == 'jpeg':
+            # [u32 length][stream]; the model's offset points AT the stream, so the
+            # length word is the four bytes in front of it.
+            if pos < 4 or pos + 2 > len(d):
                 continue
-            size = struct.unpack_from('<I', d, start)[0]
-            body = start + 4
-            if size <= 0 or body + size > len(d) or d[body:body + 2] != JPEG_SOI:
+            size = struct.unpack_from('<I', d, pos - 4)[0]
+            if size <= 0 or pos + size > len(d) or d[pos:pos + 2] != JPEG_SOI:
                 continue
-            yield {'record': i, 'offset': body, 'width': width, 'height': height,
-                   'channels': None, 'depth': None, 'format': name, 'size': size,
-                   'data': memoryview(d)[body:body + size]}
+            row.update(format=name or 'JPEG', size=size,
+                       data=memoryview(d)[pos:pos + size])
+            yield row
             continue
-        size = width * height * ch * bpc
-        if start + size > len(d):
+        size = b.get('size')
+        if not size or pos + size > len(d):
             continue
-        yield {'record': i, 'offset': start, 'width': width, 'height': height,
-               'channels': ch, 'depth': bpc * 8, 'format': name, 'size': size,
-               'data': memoryview(d)[start:start + size]}
+        row.update(size=size, data=memoryview(d)[pos:pos + size])
+        yield row
 
 
 if __name__ == '__main__':
@@ -110,31 +109,22 @@ if __name__ == '__main__':
 
 
 def graph_inputs(path):
-    """Yield the graph image inputs: bitmap records in their long (>=20 byte) form.
+    """Yield the graph image inputs -- bitmap records naming a uid rather than pixels.
 
-    Word 1 of such a record is the input's uid as published in the .sbsar manifest,
-    so a reader can name each one. Verified at 99.3% over 448 records in 60 specimens.
+    Was "records in their long (>= 20 byte) form", which is the length discriminator
+    `Record.bitmap` measured as wrong; see `bitmaps` above. Asking the model instead finds
+    the short-form inputs this missed: 293 against 218 over 60 specimens, none lost.
     """
-    d = open(path, 'rb').read()
-    r = S.parse(path)
-    count, dir_at = r['dir_count'], r['dir_at']
-    if count < 1 or dir_at + 4 * count > len(d):
-        return
-    offs = sorted(struct.unpack_from('<%dI' % count, d, dir_at))
-    for i, e in enumerate(offs):
-        o = e + 52
-        if o + 12 > len(d):
+    asm = sbsasm.Assembly(path)
+    for r in asm.records:
+        if r.filter_id != 16:
             continue
-        w0 = struct.unpack_from('<I', d, o)[0]
-        tag = w0 & 0xFFFF
-        if (tag & 0xFF) >> 1 != 16:
+        b = r.bitmap
+        if not b or b['kind'] != 'graph_input':
             continue
-        nxt = (offs[i + 1] + 52) if i + 1 < len(offs) else r['table_start']
-        if min(nxt, len(d)) - o < 20:
-            continue                       # short form: stored pixels, see bitmaps()
-        yield {'record': i, 'uid': struct.unpack_from('<I', d, o + 4)[0],
-               'width': 1 << ((tag >> 8) & 0xF), 'height': 1 << ((tag >> 12) & 0xF),
-               'colour': bool(tag & 1)}
+        yield {'record': r.index, 'uid': b['uid'],
+               'width': r.width, 'height': r.height, 'colour': bool(r.colour)}
+
 
 
 def strings(path, limit=4096):
