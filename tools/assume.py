@@ -336,6 +336,32 @@ QUESTIONS = {
     # the integer2 input the position program consumes, gated on chain signature rather than
     # on N being square, and neither existing arm is evidence for or against it.
     #
+    # A SECOND SCOREABLE SPECIMEN EXISTS AFTER ALL, and it agrees. The structural session
+    # checked whether any reference-shipping pack contained records affected by the selector
+    # change and found none, concluding the tightening was unscoreable. That is true of the
+    # SELECTOR change; it is not true of the arms themselves. Chesterfield is sensitive to
+    # them, and it is a single-graph, correctly-paired pack:
+    #
+    #     psize   boff     height MAE/std   normal MAE/std    metallic MAE
+    #     canvas  canvas   0.2479 / 0.1064  0.0790 / 0.0747   0.0465
+    #     canvas  cell     0.2479 / 0.1062  0.0790 / 0.0746   0.0465
+    #     cell    canvas   0.2477 / 0.1051  0.0789 / 0.0742   0.0465
+    #     cell    cell     0.2463 / 0.0998  0.0781 / 0.0719   0.0465
+    #     reference std             0.0970           0.0722
+    #
+    # cell/cell wins on MAE and on std for both channels, and its std lands nearly on the
+    # reference: normal 0.0719 against 0.0722, height 0.0998 against 0.0970, where canvas is
+    # 0.0747 and 0.1064. Same direction as Bricks, on a different pack, a different author
+    # and a single graph -- so the two specimens agree, which neither could establish alone.
+    #
+    # The margins are still small (0.0016 of MAE on height) and two packs is not a corpus,
+    # so this does not move the default by itself. It does retire "there is no second
+    # specimen", which was the stated reason the question could not progress.
+    #
+    # AND METALLIC IS COMPLETELY INSENSITIVE -- 0.0465 to four decimals under all four arms,
+    # against a reference std of 0.1733 where ours is 0.0185. Whatever makes Chesterfield's
+    # metallic flat, it is not the divisor, and that gap needs its own explanation.
+    #
     # RE-SCORED AFTER THE levelinmid GAMMA FIX (b2f1d97), because every table above was
     # measured through a bug that put a constant offset on this pack -- the same offset
     # these notes kept warning about and working around by reading std instead of MAE. With
