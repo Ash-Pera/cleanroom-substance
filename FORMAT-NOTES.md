@@ -35259,3 +35259,43 @@ files are dominated by exact squares of odd numbers -- 66,049 = 257^2 (35 record
 refused only because they exceed `MAX_PATTERNS`. Chainmail record 0 corroborates it from
 the other end: its offsets span -127.382 .. 128.618, a range of 256.000 for a grid of 257.
 That is a much larger question than this node and is recorded here rather than acted on.
+
+## branchoffset is in CELL units, frameoffset is in canvas units
+
+`splat` computes a pattern's centre as `branchoffset + frameoffset` and treats the sum as
+canvas coordinates in [-0.5, 0.5]. Two records make that impossible to sustain at once:
+
+    Chainmail record 0        branchoffset spans 256.000   over a 257 x 257 grid
+    PavingStones record 44    frameoffset  spans about 1.0 over a  48 x  48 grid
+
+Both cannot be canvas coordinates. Measured over every `fxmaps` record in 120 files that
+emits a square-grid pattern set, with `G = sqrt(N)` and the span of each parameter divided
+by both candidate units:
+
+    parameter        records   median span/(G-1)   within 10% of 1.0
+    branchoffset         966          1.0000       cell 671 / canvas 104
+    frameoffset            2          0.3125       cell   0 / canvas   2
+
+A median of **exactly 1.0000** over 966 records says branchoffset spans G-1 cells: it is in
+units of one grid cell, not one canvas. frameoffset's sample is small -- 329 records have a
+frameoffset span of zero, which is why -- but it points the other way in both of the
+records that can answer, and the two 0x99 lattice records already rendered on a canvas-unit
+frameoffset without trouble.
+
+**Confirmed a second way, by looking.** Chainmail record 0 is 257 x 257 = 66,049 patterns.
+Rendered as stored, the offsets scatter over 257 canvas widths and a single cell lands on
+screen; rendered with branchoffset divided by G, the emissions form a **regular lattice
+filling exactly the canvas**, 257 cells across. The numeric ratio and the picture agree,
+and they are independent -- one is a span arithmetic, the other is where the pixels went.
+
+**What this does NOT settle: patternsize.** Record 0's is baked, one word, 0x40A00000 =
+5.0. With the offsets corrected the grid is right but every cell is painted five cells
+wide, so coverage saturates and the render is 0.847 to 1.000 -- a lattice, but a washed-out
+one. Five cells is not obviously wrong for a scuff mark that should overlap its neighbours;
+what is missing is anything that says what unit a baked size is in. The reciprocal reading
+recorded elsewhere in these notes (1/5 = 0.2) is one candidate and is not decided here.
+
+**Scope.** This is not applied in `splat`. Dividing branchoffset by G requires knowing G at
+splat time, G is only defined for square-count records, and 30% of the 966 are not within
+10% of the cell-unit ratio -- so a blanket division would be right in the median and wrong
+in a tail I have not characterised. Recorded as a measurement, not wired in.
