@@ -2923,6 +2923,33 @@ records. That is consistent with what it is: its parameter is the per-pixel func
 held as bytecode, so there is nothing to store in the record. A filter with no float
 parameters at any size is evidence about the filter, not a gap in the sweep.
 
+### The shuffle header reads 100%: two authoring nodes, split by the colour bit
+
+`shuffle` (filter 3) sat at 47.6% header agreement in `walk.py`'s cls-driven drain and was
+listed as a filter "the file does not state". Neither is true — it was a harness defect. The
+`Record` model already reads shuffle at **100% (2,691 / 2,691)**; `walk.py`'s
+`validate_cls_driven` was passing the full `words[1]` to the cost function unconditionally,
+where the model nulls it for one of shuffle's two shapes (it applies the same treatment to
+warp's version-gated w1, but the shuffle case was never added).
+
+The discriminator is tag bit 0, the colour flag, and it separates two distinct *source*
+nodes that compile to the same filter id — confirmed against permitted `.sbs` graphs:
+
+| tag low byte | source node | inputs | w1 | record |
+|---|---|---|---|---|
+| `0x06` (bit 0 clear, grayscale) | `grayscaleconversion` | 1, at slot 1 | none | `[tag][input][channelsweights ×4 f32]`, 6 words |
+| `0x07` (bit 0 set, colour) | `shuffle` (Channel Shuffle) | 2, at slots 2–3 | packed selector | `[tag][w1][in][in]`, 4 words |
+
+The source counts corroborate the split: `grayscaleconversion` nodes are 1-input with a
+`channelsweights` parameter (156 of 240 one-input; the param seen 76×), and `shuffle` nodes
+are 2-input with `channelgreen`/`channelblue`/`channelalpha` selectors (72 of 76 two-input).
+The compiled `w1` decodes to exactly those selector bytes: `0x04020100` is `[00,01,02,04]`,
+one channel pick per byte. So slot 1 is genuinely an input in the grayscale shape (a backward
+record index) and is genuinely absent as a parameter word — the record has no w1 there — and
+the two shapes never needed a probe: the tag states which one it is. Fixed the harness to null
+w1 per tag bit 0; shuffle now reads 100% header and 100% edges in the drain, leaving
+`vectorshape` as the only filter whose layout the file does not state in readable terms.
+
 ### A `layouts.json` union admitted 10 parameter words as slot-1 edges
 
 Walking `dirmotionblur` (filter 11) with the mask-walk and comparing edge slots against the

@@ -24,8 +24,13 @@ them: two-bit presence codes (blend, levels, transformation), an arity INTEGER
 states program-slot ROLE (blur, warp). None needs a fitted table or a value probe.
 
 Cataloguing the class-word-driven filters as well drains the rest of `layouts.json`: a walk
-mechanism covers 99.19% of the manifest-bearing corpus, and what is left is only the three
-filters where the file genuinely does not state the layout (shuffle, emboss, vectorshape).
+mechanism covers 99.97% of the manifest-bearing corpus, and what is left is only vectorshape,
+whose layout the file does not state in any term this project may read (it is provenance-
+walled). shuffle was once on that list and is not: tag bit 0 states its shape exactly. The
+bit is the colour flag, and it separates two authoring nodes that share this filter id --
+grayscaleconversion (bit 0 clear, one input at slot 1 then a channelsweights float vector,
+no w1 word) and the Channel Shuffle node (bit 0 set, w1 a packed channelgreen/blue/alpha
+selector, two inputs). Both header and edges then read 100%, confirmed against source graphs.
 
 Run it to validate against the established `Record` model and node census over the corpus:
 
@@ -238,10 +243,17 @@ def validate_cls_driven(files):
                 continue
             c = stat[f]
             c['records'] += 1
-            # warp's w1 word is a version fact -- absent before 0x90000 -- and the header
-            # legend must be read with it nulled there, exactly as the model does.
+            # Two-shape filters must be read with w1 nulled in the no-w1 shape, exactly as
+            # the model does. warp's w1 is a VERSION fact (absent before 0x90000); shuffle's
+            # is a per-record TAG fact -- low byte 0x06 is grayscaleconversion (1 input at
+            # slot 1, then a channelsweights float vector, NO w1 word), 0x07 is the Channel
+            # Shuffle node (w1 = packed channelgreen/blue/alpha selectors, 2 inputs). Passing
+            # the full word1 for the 0x06 shape mis-sizes half the records and dropped this
+            # to 47.6%; nulled per tag bit 0 it is exact, matching the model at 100%.
             w1 = r.words[1]
             if f == 7 and ver < 0x90000:
+                w1 = None
+            elif f == 3 and not (r.words[0] & 1):
                 w1 = None
             h = record_layout.header_words(f, r.words[0], w1, version=ver)
             hw = r.header_words
