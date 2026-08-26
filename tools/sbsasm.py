@@ -1560,6 +1560,17 @@ class Record:
         if wl is not None:
             return wl
 
+        # pixelprocessor states its input count in the low nibble of slot 1, so its edges
+        # and program slot come from that nibble, not the memo. `_pp_edges` is the same
+        # computation `edge_slots` uses, shared so `layout[0]` and `edge_slots` agree
+        # (they disagreed on 370 records while the table served one and the nibble the
+        # other). Only the records whose nibble does not validate fall through to the
+        # table below -- draining the memo for the ~58k clean ones.
+        if f == 20:
+            e = self._pp_edges()
+            if e is not None:
+                return (e, 2 + len(e))
+
         if LAYOUTS and len(self.words) > 1:
             hit = LAYOUTS.get((f, self.cls, self.words[1] & LAYOUT_MASK.get(f, 0)))
             if hit:
@@ -1687,31 +1698,36 @@ class Record:
         slots that were populated often enough to pass a threshold and missed the rest,
         which stranded 6,875 pixelprocessor records from any output.
         """
-        if self.filter_id == 20 and len(self.words) > 1:
-            n = self.words[1]
-            if 1 <= n <= 8 and len(self.words) >= 2 + n:
-                return list(range(2, 2 + n))
-            if n == 0:
-                return []                  # a generator: no image input at all
-            # The count is the low NIBBLE, not the whole word. Reading the whole word works
-            # only while no other bit of slot 1 is set, and 437 records have one. In every
-            # one of those 437, slots 2..2+nibble hold a backward record index - so the
-            # nibble is right where the whole word is unusable, and 32 of them get more
-            # edges than the layout table offers.
-            #
-            # Applied only when the whole-word rule does not fire, so this cannot change
-            # any record that was already being read.
-            #
-            # The cap is 16, the width of the field, not 8. Capping it at 8 stranded 81
-            # records with a declared arity of 9, 12 or 13 - and in all 81, every one of
-            # slots 2..2+k-1 holds a backward record index, so the declared count is
-            # right there too. Those records were falling through to the layout table,
-            # which named slots 11, 12 and 13 as edges when they hold the pointer.
-            k = n & 0xF
-            if 1 <= k <= 16 and len(self.words) >= 2 + k \
-                    and all(0 <= self.words[2 + j] < self.index for j in range(k)):
-                return list(range(2, 2 + k))
+        e = self._pp_edges()
+        if e is not None:
+            return e
         return self.layout[0]
+
+    def _pp_edges(self):
+        """pixelprocessor edges from the arity nibble of slot 1, or None to fall to the
+        table. The count is the low nibble; inputs occupy slots 2 onward. Shared by
+        `edge_slots` and `_compute_layout` so the two agree -- the table used to serve
+        `layout[0]` while the nibble served `edge_slots`, and they disagreed on 370
+        records. Returns None for any filter but 20, or when the nibble does not validate.
+
+        The count is the low NIBBLE, not the whole word: reading the whole word works only
+        while no other bit of slot 1 is set (437 records have one, and in all of them slots
+        2..2+nibble hold a backward record index). The cap is 16, the width of the field --
+        capping at 8 stranded 81 records with a declared arity of 9, 12 or 13, all of whose
+        slots 2..2+k-1 hold a backward record index.
+        """
+        if self.filter_id != 20 or len(self.words) < 2:
+            return None
+        n = self.words[1]
+        if 1 <= n <= 8 and len(self.words) >= 2 + n:
+            return list(range(2, 2 + n))
+        if n == 0:
+            return []                      # a generator: no image input at all
+        k = n & 0xF
+        if 1 <= k <= 16 and len(self.words) >= 2 + k \
+                and all(0 <= self.words[2 + j] < self.index for j in range(k)):
+            return list(range(2, 2 + k))
+        return None
 
     @property
     def edges(self):
