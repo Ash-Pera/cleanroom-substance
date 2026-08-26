@@ -1254,7 +1254,22 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     gamma_t = np.power(t, exponent)
                 t = np.where(np.abs(mid_norm - 0.5) < 1e-6, t, gamma_t)
 
-                result = out_low + t * (out_high - out_low)
+                # CLAMPED, LIKE `blend`'S RESULT AND FOR THE SAME REASON. `t` is already
+                # in [0, 1], but the OUTPUT RANGE is not: fur_var_001 record 55 stores
+                # leveloutlow 0.62 and levelouthigh 1.31, so a white input comes out at
+                # 1.31 -- not a colour, and every consumer downstream inherits it. That
+                # record feeds `ambientOcclusion`, which is why the census reported an AO
+                # output rendering flat at 1.31.
+                #
+                # The value is not a misread. Record 54 stores (1.0, 0.0) at the same two
+                # words and inverts, which is exactly what an out-range of 1 down to 0
+                # means, and its output is 1.0 where its input is 0.0. The pair is
+                # (leveloutlow, levelouthigh) and the file really does ask for 1.31.
+                #
+                # The engine writes 8- and 16-bit unsigned maps, so it cannot emit 1.31
+                # either. `apply_blend`'s own note says this "mirrors the clamp `levels`
+                # already applies" -- it did not; `t` was clamped and the result was not.
+                result = np.clip(out_low + t * (out_high - out_low), 0.0, 1.0)
                 outputs[i] = to_image(result, N, H, W)
                 if tainted:
                     synthetic.add(i)
@@ -2980,5 +2995,36 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
             # samplers reach images without an edge, and a cone walk would silently
             # drop them.
             break
+
+    # CLAMP AT THE WRITE, NOT IN THE FILTER THAT OVERSHOT. A handful of records leave
+    # [0, 1]: `levels` does it by construction where an author set leveloutlow/
+    # levelouthigh outside the unit range, and a few pixelprocessor and blend finals land
+    # slightly past it. The values are NOT a misdecode -- corpus-wide 105 of 51,822 baked
+    # levelouthigh values fall outside [0, 1], and the ones above it are 1.01, 1.07, 1.09,
+    # 1.10, 1.14, 1.16, 1.20, 1.21, 1.23, 1.24, 1.28, 1.30, 1.31, 1.34: a tight contiguous
+    # band just past one, no garbage and no NaNs, concentrated in a few files. That is
+    # authored data being read correctly.
+    #
+    # SO THE CLAMP BELONGS HERE AND NOT IN THE `levels` BRANCH, which is where it was first
+    # proposed. Of those 105 records only 3 are declared outputs; 102 are INTERMEDIATES.
+    # Clamping inside the branch would flatten all 102 to fix the 3, and an intermediate at
+    # 1.31 feeding a multiply or a blend is headroom the engine may legitimately consume.
+    # The `apply_blend` docstring asserts that `levels` already clamps, but that assertion
+    # IS the claim under test and so cannot be its own evidence.
+    #
+    # What is not in doubt is the write: all three out-of-range outputs declare fmt 28, an
+    # unsigned-normalised format that cannot hold 1.31 whatever happened upstream of it. So
+    # a declared output is clamped and nothing else is.
+    #
+    # VALUE outputs are skipped. Their `fmt` is a tuple rather than an integer code and they
+    # carry scalars, not pixels -- the same population selfcheck's grayscale law had to be
+    # taught to skip, for the same reason: they are not images and unit-range is not their
+    # law.
+    for _uid, _fmt, _gray, _rec in asm.outputs():
+        if isinstance(_fmt, tuple) or _rec not in outputs:
+            continue
+        _arr = outputs[_rec]
+        if _arr.min() < 0.0 or _arr.max() > 1.0:
+            outputs[_rec] = np.clip(_arr, 0.0, 1.0)
 
     return outputs, failures, synthetic
