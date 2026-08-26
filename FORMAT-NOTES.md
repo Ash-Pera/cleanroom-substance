@@ -36288,9 +36288,15 @@ against grid_width, over the distinct-file corpus:
 3. The real scale question is the non-grid 'neither' group (10936) — the only records that
    are neither $number-grids nor scatters and could legitimately tile via a branchoffset lattice.
 
-So the fx.branchoffset guard refinement: scale only if (branchoffset program not rand) AND
-(not a $number-grid via grid_width) AND (integer span). The first two are decode-static and
-remove 6521 records before any span is measured; the span then arbitrates the residual 'neither'
-group alone — the population it was always for. Turns the note's "declines right, scale unproven"
-into "scale is asked only of records that could answer yes." The span scoring on that residual
-is render-side; the two exclusions are decode and hold corpus-wide.
+The map above is a true description of the corpus but is NOT a guard refinement — peer 0b
+measured it: `_cell_divisor` (the actual guard) already declines every scatter and every grid,
+because its span test requires an exact integer span ≥1 with every pattern carrying a
+branchoffset, which no rand-scatter and no $number-grid satisfies. It fires on 219 records over
+50 files, none rand, none grid. So the two static exclusions remove records the guard was never
+going to reach — cost with no effect. (The "63 rand-scatters inside the scaled group" that made
+the scale look defective was from a hand-written span-classifier PROXY, not from _cell_divisor;
+the real guard never had that misfire. Lesson, both sides: verify what the guard SELECTS before
+mapping the population it supposedly mis-selects — the same proxy-vs-code error as scoring
+profile means without counting rendered outputs.) What genuinely remains, unchanged: the guard
+declines correctly but its SCALE is unvalidated on the residual 10,936 non-grid 'neither'
+records — render-side, the one honest open item.
