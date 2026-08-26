@@ -250,6 +250,49 @@ QUESTIONS = {
     # canvas units covers the image. Same picture, and now the SAME cause as rec5596 --
     # one defect where the earlier reading had two. The oversized-patternsize question
     # below now explains the whole cone on its own.
+    #
+    # BUT IT IS STILL LOAD-BEARING SOMEWHERE ELSE, AND ONLY IN COMBINATION. Bricks
+    # Textures_1 record 12193 is a blend with `blendingmode` 2 -- SUBTRACT -- fed by two
+    # fxmaps generators, and it heads a 70-record warp accumulator (12193 -> 12194 -> ...
+    # -> 12262) that is black end to end. It is black because both operands are solid
+    # white and white minus white is nothing.
+    #
+    # Why they are white: rec 12190 emits THREE patterns, one typeless and two pyramids
+    # carrying opacity -1.0. `fx.sizeless` = 'fill' paints the typeless one as a full-cell
+    # 1.0; `fx.negopacity` = 'clip' paints the two pyramids as nothing; max-combine lets
+    # the fill win outright. rec 12192 the same with five. Two independent defaults, and
+    # each one alone is enough to produce the white:
+    #
+    #     incumbent            12190 1.0000/0.000000  12192 1.0000/0.000000  12193 0.0000/0.000000
+    #     sizeless='skip'      12190 0.0000/0.000000  12192 0.7243/0.106242  12193 0.0000/0.000000
+    #     skip + negopac='abs' 12190 0.7008/0.106793  12192 0.7243/0.106242  12193 0.0239/0.041758
+    #
+    # 'skip' alone still leaves 12190 empty, because once the fill is gone its only other
+    # patterns are the two the clip discards. So neither key can be arbitrated on this
+    # specimen by itself -- the record needs both open before its subtract has two
+    # different operands, and a sweep varying one at a time reports both as inert.
+    #
+    # WHAT THE ACCUMULATOR IS WORTH, measured causally rather than fitted. Seeding record
+    # 12262 with a constant and re-rendering graph 004's roughness, whose reference is
+    # mean 0.5569 std 0.1101:
+    #
+    #     12262 = 0.00   ours 0.3105/0.2638   MAE 0.2690   y=0.294x+0.466   r +0.704
+    #     12262 = 0.50   ours 0.4721/0.2230   MAE 0.1606   y=0.365x+0.384   r +0.740
+    #     12262 = 1.00   ours 0.6138/0.1657   MAE 0.0893   y=0.521x+0.237   r +0.785
+    #
+    # The MAE improves threefold, our std falls toward the reference's, and the fitted
+    # slope walks toward 1. The CORRELATION rising is what makes this causal rather than
+    # cosmetic: a constant substitution that only moved brightness and contrast would leave
+    # r untouched, so the black operand was destroying structure and not merely level. The
+    # values are arbitrary and the trend runs to the boundary, so this locates NO value --
+    # it establishes only that black is wrong and which way is right.
+    #
+    # AND NONE OF IT MOVES A SCORE YET. Bricks overall MAE is 0.1401 incumbent, 0.1401
+    # under 'skip', 0.1401 under skip+'abs', 0.1401 under patternsize/branchoffset 'cell',
+    # 0.1402 under all four. The revival reaches 12193 and dies again before 12262, which
+    # is still 0.0000 under every combination tried. Recorded because the mechanism is
+    # established and the remedy is not, and because a later sweep will otherwise re-derive
+    # 'both keys are inert on Bricks' from the same one-at-a-time evidence.
     'fx.sizeless':        ('fill', 'skip', 'half', 'quarter'),
     # THE ROOT NODE, asked separately from `fx.sizeless` because it has its own signature
     # and that question is decided the other way. An FX-Map's tree has a root covering the
