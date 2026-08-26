@@ -34491,10 +34491,13 @@ words rather than one. In the walk that is not a special case, it is two field w
 two parameters are the same two-bit codes at pairs (6,7) and (25,26): baked (01) spends the
 type's component count, a program (10) spends one pointer word. Reading `matrix22` as a
 baked Float4 and `offset` as a baked Float2 -- the widths the manifest types state --
-reproduces the header in **90,383 of 90,411 (99.97%)** and the single image edge in all of
-them, with zero overruns. The 0.03% residue is the both-programs corner the `.matrix`
-derivation already flagged. The filter that broke the additive model is the one the width
-law handles most directly.
+reproduces the header in 90,383 of 90,411 and the single image edge in all of them, with
+zero overruns. The 28 that missed were, like blend's, a THIRD field the minimal spec did
+not model: w1 bit 28, set in 100% of the residue and 0.0% of the rest, gates a background
+colour, and its width is the same per-channel quantity as `levels` -- one word grayscale,
+four colour, stated by the tag's colour bit. Adding it takes `transformation` to
+**100.00%** header, zero overruns. The filter that broke the additive model is the one the
+width law handles most directly, and it needs exactly three fields to do it.
 
 ### The same primitive one scale down: FX-Map tree nodes
 

@@ -147,7 +147,9 @@ SPECS = {
                         (0x300, 8, 'channel')]),  # five per-channel level fields
     2:  Spec(base=1, cls_widths={0: 1, 7: 1},   # transformation
              w1_fields=[(0xC0, 6, 4),            # matrix22 pair (6,7): baked Float4
-                        (0x06000000, 25, 2)]),   # offset pair (25,26): baked Float2
+                        (0x06000000, 25, 2),     # offset pair (25,26): baked Float2
+                        (0x10000000, 28, 'channel')]),  # background colour: per-channel
+                                                 # (Float1 grayscale / Float4 colour)
     16: Spec(base=0, cls_widths={0: 1},         # bitmap -- a generator, no image edge
              w1_fields=[],
              conj=[(24, 27, 1)]),                # bits 24+27 together: the offset word
