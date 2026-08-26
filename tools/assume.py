@@ -745,6 +745,29 @@ QUESTIONS = {
     # which is not evidence the implementation is right or wrong, only that its inputs are
     # degenerate too.
     #
+    # GREEN INVERSION DOES NOT EXPLAIN THE normal REGRESSION -- checked, because another
+    # session found Bricks' normal green-inverted and that is the pack the regression was
+    # measured on. Crossing the two keys:
+    #
+    #     pack          gridcount      inversedy    overall   normal
+    #     Bricks        numberadded    ignore        0.1559   0.0344
+    #     Bricks        numberadded    word1bit2     0.1554   0.0330
+    #     Bricks        divisor        ignore        0.1291   0.0502
+    #     Bricks        divisor        word1bit2     0.1275   0.0450
+    #     Chesterfield  numberadded    either        0.0871   0.0790
+    #     Chesterfield  divisor        either        0.0646   0.1170
+    #
+    # Inversion helps Bricks a little and leaves Chesterfield untouched -- consistent with
+    # its being one author's convention on three assemblies of one package. But the
+    # regression SURVIVES it on both: 0.0330 -> 0.0450 with the inversion corrected, and
+    # 0.0790 -> 0.1170 where the inversion does not apply at all. So the two effects are
+    # additive and independent, and the blocker is real rather than an artifact of a
+    # mis-signed channel.
+    #
+    # Note also that Chesterfield's normal reads 0.1170 here at max_dim 96 against 0.0881 at
+    # 128. A derivative channel is resolution-sensitive, which is what the edge-hardness
+    # account predicts, and it means any figure for this channel has to carry its resolution.
+    #
     # THE LESSON GENERALISES, AND CHECKING IT FIRST IS CHEAP. A root only has leverage if it
     # is the LAST one in its cone; counting roots ranks by how often a cause appears, not by
     # what removing it would free. Listing every distinct root kind per failing RoofTiles
