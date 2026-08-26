@@ -182,6 +182,43 @@ def distance_field(mask, radius_px):
     return np.clip(1.0 - d / max(float(radius_px), 1e-6), 0.0, 1.0).astype(np.float32)
 
 
+def propagate(mask, radius_px, source):
+    """`source`'s value at the nearest ON pixel of `mask`, as an (H, W, C) array.
+
+    The companion to `distance_field`: that answers HOW FAR the nearest lit pixel is, this
+    answers WHAT WAS THERE. Both come out of one `distance_transform_edt` call --
+    `return_indices` hands back the coordinates the distance was measured to, so this costs
+    an index rather than a second transform.
+
+    WHY A SECOND EDGE IS READ AT ALL. A distance transform's field is scalar by
+    construction, so a `distance` record whose header says COLOUR cannot be emitting one.
+    Over 444 files (the 437-file corpus plus the 7 reference-shipping packages) the 1,693
+    two-edge `distance` records fall into exactly two header shapes and no others:
+
+        record greyscale, edge0 greyscale, edge1 greyscale   1,571
+        record COLOUR,    edge0 greyscale, edge1 COLOUR        122
+
+    Edge 0 is greyscale in 1,693 of 1,693 -- it is never the thing being carried -- and the
+    record's own colour bit equals EDGE 1's in 1,693 of 1,693. The output's width follows
+    edge 1, which is read from three header bits and involves no rendering and no fitting.
+    That is what says edge 1 is the source; WHAT IS DONE WITH IT is the modelled part and
+    is arbitrated through `assume.QUESTIONS['distance.propagate']`.
+    """
+    if ndimage is None:
+        raise Unlocated('scipy is not available')
+    m = np.asarray(mask, dtype=np.float32)
+    if m.ndim == 3:
+        m = m[:, :, 0]
+    src = np.asarray(source, dtype=np.float32)
+    if src.ndim == 2:
+        src = src[:, :, None]
+    on = m > 0.5
+    if not on.any():
+        return np.zeros(m.shape + (src.shape[2],), dtype=np.float32)
+    _d, idx = ndimage.distance_transform_edt(~on, return_indices=True)
+    return src[idx[0], idx[1], :]
+
+
 def scale_radius(value, width):
     """`distance` is pixels at REFERENCE_PX; scale it to the grid actually being rendered.
 

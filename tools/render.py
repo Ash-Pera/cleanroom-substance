@@ -426,6 +426,25 @@ def prefilter(src, scale):
 
 _POS_SYSVAR = re.compile(r'sysvar\(8,')
 _READS_POS = {}
+_PROG_SRC = {}
+
+
+def _prog_source(asm, ptr):
+    """The transpiled source of the program at `ptr`, memoized, '' if it will not read.
+
+    Memoized because a pixelprocessor asks for the same program once per render and the
+    body-selection tie-break below asks for it again.
+    """
+    key = (id(asm), ptr)
+    got = _PROG_SRC.get(key)
+    if got is None:
+        end = asm.program_span(ptr)
+        try:
+            got = transpile.transpile(asm.data, ptr, end, "python", "prog") if end else ''
+        except Exception:
+            got = ''
+        _PROG_SRC[key] = got
+    return got
 
 
 def _reads_pos(asm, ptr):
@@ -437,12 +456,7 @@ def _reads_pos(asm, ptr):
     key = (id(asm), ptr)
     got = _READS_POS.get(key)
     if got is None:
-        end = asm.program_span(ptr)
-        try:
-            src = transpile.transpile(asm.data, ptr, end, "python", "prog") if end else ''
-        except Exception:
-            src = ''
-        got = _READS_POS[key] = bool(_POS_SYSVAR.search(src))
+        got = _READS_POS[key] = bool(_POS_SYSVAR.search(_prog_source(asm, ptr)))
     return got
 
 
@@ -773,10 +787,42 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # unique in 21 of 325 cases (29f32b4). $pos is unique in 2,561 of 3,021,
                 # and where it is not unique this falls back to the last program, so no
                 # record that renders today can change unless $pos says it was wrong.
+                #
+                # WHERE $pos IS NOT UNIQUE, A TIE AMONG IDENTICAL PROGRAMS IS NOT A TIE.
+                # The 106 records above where two programs read $pos were left to the
+                # fallback as "ambiguous", and for 32 of them that was right by accident --
+                # the last program already WAS one of the $pos bodies. But the ambiguity
+                # was never tested for degeneracy, and a large part of it is degenerate:
+                # the several $pos programs TRANSPILE TO THE SAME SOURCE, so there is no
+                # choice to make and no way for the pick to be wrong.
+                #
+                # Over 437 corpus files plus the 7 reference-shipping packages, on
+                # pixelprocessor records with more than one program:
+                #
+                #     several $pos programs, all identical      176
+                #       last program already is that body        32   -- unchanged
+                #       last program is something else          144   -- this rule fires
+                #
+                # AND THE HEADER, WHICH THIS RULE DOES NOT CONSULT, AGREES 144 OF 144.
+                # `Record.colour` states the record's channel count independently of any
+                # program. On all 144 the newly selected body's declared result width
+                # matches it and the incumbent's does not -- 144/144 against 0/144. That is
+                # a field the tie-break never reads confirming every case it changes, which
+                # is why this is not the width selector rejected above wearing a new hat:
+                # width is the CHECK here, not the criterion.
+                #
+                # ALL 144 ARE IN THE REFERENCE PACKAGES, and that is the point rather than
+                # a weakness. `corpus.paths()` is `DISTINCT.txt`, which does not contain
+                # `new_opengameart/` at all -- so every census that asked "does this rule
+                # change anything" answered 0 while the packages we actually score against
+                # were the only ones it touched. The first run of this very census said 0.
                 main = progs[-1]
                 if len(progs) > 1:
                     lit = [p for p in progs if _reads_pos(asm, p)]
                     if len(lit) == 1:
+                        main = lit[0]
+                    elif len(lit) > 1 and len(
+                            set(_prog_source(asm, p) for p in lit)) == 1:
                         main = lit[0]
                 slots = {}          # per-record frame; see the slot-frame note above
                 for p in progs:
@@ -2906,7 +2952,29 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if assume.assumed('distance.invert', False):
                     field = 1.0 - field
                     assume.note(i)
-                outputs[i] = to_image(field.reshape(-1, 1), W * H, H, W)
+                # THE SECOND EDGE, WHICH THIS FILTER HAS BEEN THROWING AWAY. See
+                # `assume.QUESTIONS['distance.propagate']`: across 444 files every one of
+                # the 1,693 two-edge `distance` records has a greyscale edge 0, and the
+                # record's own colour bit equals edge 1's in all 1,693. A scalar field
+                # cannot satisfy a colour header, so under 'field' the 122 colour ones
+                # refuse -- correctly, since they were emitting a width their own header
+                # forbids. Under 'nearest' the payload is edge 1's value at the closest lit
+                # mask pixel, faded by the same field.
+                _prop = assume.assumed('distance.propagate', 'field')
+                _payload = next((e for k, e in enumerate(rec.edges)
+                                 if k != mask_edge and e in outputs), None)
+                if _prop == 'nearest' and _payload is not None:
+                    _src_img = sbsruntime.image_sampler(outputs[_payload])(
+                        pos_grid(W, H)).reshape(H, W, -1)
+                    _vals = distance.propagate(
+                        mask, distance.scale_radius(val, W), _src_img)
+                    outputs[i] = to_image((_vals * field[:, :, None]).reshape(H * W, -1),
+                                          W * H, H, W)
+                    assume.note(i)
+                    if _payload in synthetic:
+                        synthetic.add(i)
+                else:
+                    outputs[i] = to_image(field.reshape(-1, 1), W * H, H, W)
                 if rec.edges[mask_edge] in synthetic:
                     synthetic.add(i)
 
