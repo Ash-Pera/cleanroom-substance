@@ -1668,9 +1668,43 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     if not (rec.cls >> 8) & 1:
                         # No parameter stored, so the value is the node's default and the
                         # default is not in the file -- the same shape as `uniform.fill`
-                        # before a specimen arbitrated it. No reference package in this
-                        # corpus puts one of these on a scoreable output, so it is asked
-                        # rather than guessed.
+                        # before a specimen arbitrated it.
+                        #
+                        # BIT 8 MEANS "THE SOURCE DECLARED ONE", confirmed from the sources
+                        # rather than inferred from the absence of a slot. Counting
+                        # `grayscaleconversion` nodes that declare `channelsweights`
+                        # against compiled records with bit 8 clear, over the permitted
+                        # paired sources:
+                        #
+                        #     stylized_rocks_magma   5 nodes, 3 declare -> 2 bit-8-clear
+                        #     hblend                10 nodes, 10 declare -> 0
+                        #     triDraw                2 nodes,  2 declare -> 0
+                        #     RuntimeExtensions      1 node,   1 declares -> 0
+                        #     celtic_plate           1 node,   0 declare -> 22
+                        #     ...and eleven more files declaring none, all with bit-8-clear
+                        #     records
+                        #
+                        # The first line is the one that carries it: 5 = 3 + 2 exactly, so
+                        # the nodes that declare a value are the records that store one and
+                        # the nodes that do not are the records with bit 8 clear.
+                        #
+                        # WHICH IS ALSO WHY THE SOURCES CANNOT SUPPLY THE VALUE. They omit
+                        # `channelsweights` precisely when it is the default, so the
+                        # declared values (1 0 0 0 x8, 0 1 0 0 x6, 0 0 0 1 x3, 1 1 1 1 x2
+                        # ...) are the non-defaults by construction. This is the same wall
+                        # the FX-Map parameters hit, reached from the other side.
+                        #
+                        # AND NO REFERENCE PACKAGE ARBITRATES IT, re-checked after the
+                        # blend-opacity fix moved 282 records and changed what propagates.
+                        # Only RoofTiles has bit-8-clear shuffles at all (5); three of them
+                        # refuse earlier -- "single-input record too short for a one-hot" --
+                        # one is blocked upstream, and the one that renders takes a constant
+                        # input, so every candidate weight gives an identical image. Zero
+                        # declared outputs move between (1,0,0,0) and (0,0,1,0) in any
+                        # reference package.
+                        #
+                        # So it is asked rather than guessed, and this comment records that
+                        # the asking has been tried twice from two directions.
                         w = assume.assumed('grayscale.weights')
                         if w is None:
                             raise Unsupported("shuffle stores no weight vector (class bit "
@@ -2230,20 +2264,40 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # below rests on, so it is evidence about the position as well as the
                 # values: a wrong offset does not land on a neutral-looking distribution.
                 src = np.asarray(outputs[rec.edges[0]], dtype=np.float32)
-                _inherited = sum(w for b, w in ((0, 1), (7, 1)) if (rec.cls >> b) & 1)
-                vals, sl = {}, 2 + _inherited
+                # ...AND THE WALK MUST COUNT EVERY COST-BEARING BIT, not just the
+                # inherited two and the three named here. The cost model fits hsl at
+                # const 2 with one word per set cls bit for bits 0, 7, 8, 9, 10, 11, 12
+                # and 13 -- 74 keys, 100.000% exact -- so bits 9, 11 and 13 occupy slots
+                # too, and they are common: set on 258, 246 and 263 of the 747 hsl
+                # records. Advancing one slot per NAMED bit skips them, and the walk
+                # comes out short whenever one sits below the parameter being read.
+                #
+                # It is 16 reads of 593, and every one of them is decisive:
+                #
+                #     sequential walk   reads exactly 0.0000 in 16 of 16
+                #     popcount walk     0.53 0.49 0.61 0.80 0.76 0.42, and 1.00 x10
+                #
+                # Sixteen exact zeros is not a distribution of parameters, it is the
+                # wrong word read sixteen times. mesh_accretions record 200 has cls
+                # 0x0608 -- bits 3, 9 and 10 -- so saturation sits one past where a
+                # sequential walk puts it, and 1.00 is a legitimate extreme where 0.0
+                # is the padding behind it.
+                COST_BITS = (0, 7, 8, 9, 10, 11, 12, 13)
+                vals = {}
                 for bit, name in ((8, 'hue'), (10, 'saturation'), (12, 'luminosity')):
-                    if (rec.cls >> bit) & 1:
-                        if sl >= len(rec.words):
-                            raise Unsupported("hsl mask names slot %d, record has %d"
-                                              % (sl, len(rec.words)))
-                        f = np.frombuffer(np.array([int(rec.words[sl])],
-                                                   dtype=np.uint32).tobytes(),
-                                          dtype='<f4')[0]
-                        if not np.isfinite(f) or abs(f) > 1e3:
-                            raise Unsupported("hsl %s slot is not a plausible float" % name)
-                        vals[name] = float(f)
-                        sl += 1
+                    if not (rec.cls >> bit) & 1:
+                        continue
+                    sl = 2 + sum(1 for q in COST_BITS
+                                 if q < bit and (rec.cls >> q) & 1)
+                    if sl >= len(rec.words):
+                        raise Unsupported("hsl mask names slot %d, record has %d"
+                                          % (sl, len(rec.words)))
+                    f = np.frombuffer(np.array([int(rec.words[sl])],
+                                               dtype=np.uint32).tobytes(),
+                                      dtype='<f4')[0]
+                    if not np.isfinite(f) or abs(f) > 1e3:
+                        raise Unsupported("hsl %s slot is not a plausible float" % name)
+                    vals[name] = float(f)
                 h_sh = vals.get('hue', 0.5) - 0.5
                 s_sh = vals.get('saturation', 0.5) - 0.5
                 l_sh = vals.get('luminosity', 0.5) - 0.5
