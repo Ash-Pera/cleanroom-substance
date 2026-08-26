@@ -2200,8 +2200,33 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # identity, and the corpus's values cluster tightly around 0.5.
                 if not rec.edges or rec.edges[0] not in outputs:
                     raise Unsupported("edge has no output yet")
+                # WHERE THE BLOCK STARTS is not a constant, and reading it as one cost
+                # every hsl record whose class word omits the inherited parameter. The
+                # fields follow the INHERITED block that `walk.py`'s `_CLS` describes:
+                # class bits below 8 each contribute their own slots first, and only then
+                # do hue/saturation/luminosity begin.
+                #
+                # `SBRustyTreadPlate` -- the specimen whose six nodes fixed the bit->name
+                # mapping by containment -- has bit 0 SET, so its parameters really do
+                # start at word 3, and the fixed 3 was right for it and read as a general
+                # law. `PaymentCardSubstance001` has bit 0 clear and its hsl records are
+                # three words long: [tag][edge][0.333]. There is no word 3 to read, so all
+                # six of them refused, and with them 120 cascaded records including five of
+                # the file's six outputs.
+                #
+                # Over 80 files, on hsl records that set at least one parameter bit:
+                #
+                #     start = 2 + inherited slots   59 of 59 decode inside [0, 1]
+                #                                   51 of 59 within 0.25 of neutral 0.5
+                #     CONTROL, the fixed 3          40 in range, and 19 records are too
+                #                                   short for slot 3 to exist at all
+                #
+                # The tight clustering around 0.5 is the same neutrality check the reading
+                # below rests on, so it is evidence about the position as well as the
+                # values: a wrong offset does not land on a neutral-looking distribution.
                 src = np.asarray(outputs[rec.edges[0]], dtype=np.float32)
-                vals, sl = {}, 3
+                _inherited = sum(w for b, w in ((0, 1), (7, 1)) if (rec.cls >> b) & 1)
+                vals, sl = {}, 2 + _inherited
                 for bit, name in ((8, 'hue'), (10, 'saturation'), (12, 'luminosity')):
                     if (rec.cls >> bit) & 1:
                         if sl >= len(rec.words):
