@@ -474,6 +474,23 @@ QUESTIONS = {
     #
     # A 9x rise in coverage from the count alone, pattern size untouched at 0.25.
     #
+    # A 9x9 READING OF THE REFERENCE IS A FENCEPOST, and it is worth recording because the
+    # arithmetic behind it looks convincing. Counting lit column BANDS in the exported
+    # metallic gives 9 -- but the spacing is 256px on 2048, which is 8 cells. The ninth band
+    # is the wrapped edge dot appearing clipped at both x=0 and x=2048. So the lattice is
+    # 8x8 = 64 dot positions, not 9x9 = 81, and a count derived from the 81 would be five
+    # times the coverage the reference carries.
+    #
+    # THE COMPANION ARITHMETIC IS ALSO WRONG in a way measurement settles. It reasons that
+    # 16 stamps of side 0.25 light 16 * 0.0625 = 1.0000 of the canvas against a reference of
+    # 0.055, i.e. eighteen times too bright. That assumes each stamp is FULLY lit. They are
+    # not: a stamp samples rec29, which is itself lit over 0.403 of its own area. Measured
+    # rather than estimated, 16 stamps with the scanner held give metallic lit 0.0469
+    # against the reference's 0.0483 -- a 3% difference, not 18x.
+    #
+    # And the two counts reconcile rather than compete: 16 stamps each carrying rec29's 2x2
+    # blob positions is 64 dots, which is the 8x8 the spacing shows. The account closes.
+    #
     # It stops short of the predicted ~0.40, and the residue is specific: the emitted
     # frameoffsets run -0.375, -0.125, -0.875, -0.625, -1.375, -1.125. They sit on the
     # correct 0.25 lattice, so the pitch is confirmed, but they range outside the unit
