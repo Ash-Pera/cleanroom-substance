@@ -1263,7 +1263,20 @@ class Record:
         if self._layout is not None:
             return self._layout
         edges, prog = self._compute_layout()
-        self._layout = r = (self._real_edges(edges), prog)
+        edges = self._real_edges(edges)
+        # A slot is an edge XOR a program, never both. The _ruled branch fixes the program
+        # at `2 + base`, which is right until a state-11 field puts a mask edge there: 298
+        # blend records (5 words, [tag][w1][in][in][mask]) then have no program at all, yet
+        # `prog` still named the mask slot -- a backward record index, not a program. Where
+        # the named program slot is also an edge AND does not hold a valid program, there is
+        # no program: drop it. Guarded on valid_program so the 4 records where the slot does
+        # decode as a program (the edge classification is the error there, not the prog) keep
+        # theirs. `programs` already filters independently, so this only makes layout[1]
+        # consistent -- it never removes a program the record actually carries.
+        if (prog is not None and prog in set(edges) and prog < len(self.words)
+                and not self.asm.valid_program(self.words[prog] + 52)):
+            prog = None
+        self._layout = r = (edges, prog)
         return r
 
     def _real_edges(self, slots):
