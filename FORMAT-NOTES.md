@@ -35624,25 +35624,45 @@ in slot 2, and that pointer lands at the structural END of the entry's inline pr
 into the MIDDLE of. So the terminal-shape stride is not the entry's extent at all; it is a
 value tuned to land on non-entry bytes and halt the walk.
 
-**Measured against a structural walk.** Following the next-pointer instead of stepping the
-stride is not strictly better with any rough next-pointer rule yet tried, and the gap is
-informative either way:
+**Measured against a structural walk.** Rough next-pointer rules that select a slot by whether
+its target LOOKS like an entry (low nibble 8) chain through coincidences and admit phantoms:
 
     rule for "next entry"                     agrees   finds (real/phantom)   misses (real)
     follow slot 1 only                        60,481   8,625 / -              49,240
     first forward pointer to a nibble-8 word 104,527  53,639 / 8,700           5,192
     furthest-forward such pointer             86,626  76,189 / 7,615          23,095
 
-The middle row is the point: a linked-list walk reaches 53,639 real entries (they pass
-`entry_layout_holds`) that the strided walk never visits -- the stride table makes `fx_table`
-STOP EARLY on many records. But "first forward pointer landing on a low-nibble-8 word" is not
-the precise next-pointer either: the nibble-8 target test is a value check, and it chains
-through ~8,700 coincidental nibble-8 words into phantom entries. The exact structural
-selector -- which slot holds the next-pointer, as a function of the tag's shape rather than of
-which target happens to look like an entry -- is not yet pinned. Slot 1 for `0x00020008`, slot
-2 for `0x00420008`, and no single rule tested reproduces both without admitting phantoms.
+**The rule that works, and it does not test the target's value at all.** The entry ends where
+its inline program ends, and the program states its own length:
 
-**Not committed.** Swapping the entry walk moves the render path by ~50k entries, and this
-environment cannot run a reference render (numpy is broken) to say which walk is correct.
-The finding is recorded for a session that can render-verify; the stride table stays in place
-until then, wrong strides and all, because it is at least a known quantity.
+    next entry = align4( program_span( the entry's inline program ) )         if it has one
+               = q + 4*(mask-walk header words + 1)                           otherwise
+    stop when the landed word fails entry_layout_holds  -- the same validity
+    test fx_table already applies from its second entry on
+
+where the inline program is the nearest program-pointer target that lands forward of `q`
+(within the entry, not out in the shared pool). Measured over the corpus:
+
+    agrees 107,938   finds 78,496 real / 0 phantom   misses 1,783
+
+Zero phantoms, because nothing here asks whether a word "looks like" an entry -- the stride is
+the program's own structural length and the stop is the layout test. The 78,496 are real
+(they pass `entry_layout_holds`) and the strided walk never reaches them: `FX_ENTRY` makes
+`fx_table` STOP EARLY on thousands of records. Independent confirmation from the file's own
+bytes: for 81,037 of the inline-program entries the computed next-offset is STORED verbatim as
+a pointer in the entry (the linked-list next-pointer, slot 1 for `0x00020008`, slot 2 for
+`0x00420008` landing exactly at the program end). So the entry both states its length through
+its program and records the resulting next-pointer, and `FX_ENTRY` is a fit of that.
+
+**One soft constant.** "Nearest forward program-pointer target" needs a bound to separate an
+INLINE program from one out in the pool, and the mask-walk header count is too small to supply
+it -- `0x00420008` carries an unaccounted pointer word (slot 2, the next-pointer itself) the
+tag's bits do not enumerate, so the header is longer than the walk predicts. A fixed 256-byte
+window works (78,496 found); tightening it to the predicted header + 8 drops to 33,715, which
+is the header miscount showing through, not a better rule. Pinning the header exactly is the
+remaining work.
+
+**Not committed.** The evidence is strong -- +78,496 real entries, 0 phantoms, 76% confirmed
+by stored pointers -- but swapping the entry walk moves the render path materially and this
+environment cannot run a reference render (numpy is broken). Recorded for a session that can
+render-verify; the stride table stays until then.
