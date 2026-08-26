@@ -218,8 +218,27 @@ def _compare_one(asm_path, refs, max_dim):
         name = names.get(uid) or '?'
         pool = refs
         gdir = graph_dir(asm, uid)
-        if gdir and any(('%s%s%s' % (os.sep, graph_dir(asm, u) or '\0', os.sep)) in r
-                        for u, _f, _g, _rc in asm.outputs() for r in refs):
+        # A GRAPH'S EXPORTS CAN BE MARKED BY A FILENAME PREFIX INSTEAD OF A DIRECTORY, and
+        # missing that was costing more than the sibling-package bug it sits next to.
+        # `Kutejnikov__Auras` sorts four graphs into `reference_renders/001/` ... `004/`;
+        # `Kutejnikov__Bricks_and_tiles` declares FIVE graphs and flattens their exports
+        # into one directory as `001_roughness.png` ... `005_roughness.png`. Same numbering,
+        # same meaning, and only the nested form was recognised -- so all five of Bricks'
+        # graphs pooled together and glob order decided which graph's map each output was
+        # graded against. Its `normal` output is graph 004 and was being scored against
+        # 001's or 002's picture.
+        #
+        # The prefix is the graph's own pkgurl tail, the same string the directory form
+        # uses, so this recognises a second spelling of one convention rather than
+        # introducing a rule.
+        if gdir:
+            _pre = [r for r in refs if os.path.basename(r).startswith(gdir + '_')]
+            if _pre and any(os.path.basename(r).startswith((graph_dir(asm, u) or '\0') + '_')
+                            for u, _f, _g, _rc in asm.outputs() for r in refs):
+                pool = _pre
+        if gdir and pool is refs and any(
+                ('%s%s%s' % (os.sep, graph_dir(asm, u) or '\0', os.sep)) in r
+                for u, _f, _g, _rc in asm.outputs() for r in refs):
             # ONLY WHERE THE PACKAGE SORTS ITS EXPORTS BY GRAPH. Most ship one graph and
             # put its maps straight in `reference_renders/`, and narrowing there would
             # discard every one of them. Where the directories DO exist, an empty result is
