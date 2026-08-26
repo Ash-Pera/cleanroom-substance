@@ -590,8 +590,23 @@ def seed_slots(rec, run):
             # A record's own program may itself read a slot nothing writes. Seeding is
             # best-effort by design: what it fails to set, the walk reports as missing.
             pass
-    for slot, value in SCAN_STATE_DEFAULTS.items():
-        slots.setdefault(slot, value)
+    # ONLY WHERE THE CHAIN HAS A SCANNER, and the unconditional version was a mistake I
+    # caught by reading what it produced. These slots are the 0x99 raster scan's own state
+    # -- position in 14, counters in 16 and 17 -- and a record whose chain contains no
+    # scanner has no such state to start. CarpetSubstance001 records 70 and 163 are the
+    # specimens: their chain is a lone 0x18B, their entry reads `patternsize` straight out
+    # of slot 17, and seeding it to zero made 32 patterns of size ZERO. Nothing draws, the
+    # record renders solid black, and it used to REFUSE with `slot 17 read but never set`.
+    # Trading a refusal for a blank image is the one trade this renderer is not allowed to
+    # make: the error named the gap, and the blank hid it inside 30 flat FX-Maps.
+    #
+    # The evidence the defaults rest on says the same thing on a re-read. Every explicit
+    # initialiser measured -- 710 writing (0, 0) to slot 14, 711 writing 0 to slot 17 --
+    # belongs to a record that ALSO carries a scanner to advance them. Zero is where the
+    # scan STARTS, not what the slot means in a record that never scans.
+    if any(h == STEPPER or (h & 0xFF) == STEPPER2 for _o, h, _p in chain(rec)):
+        for slot, value in SCAN_STATE_DEFAULTS.items():
+            slots.setdefault(slot, value)
     return slots
 
 
