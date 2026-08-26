@@ -37680,3 +37680,80 @@ Implementation path: extend record_layout to return the full decomposition (inpu
 param_slots), not just the total; then route sbsasm's `layout`/`edge_slots`/`named_parameters`/
 `program_slots` through it and retire the five special cases and the memo. Validate at each step: 0
 diffs where the current decode is right, and the bytecode/render as ground truth where the memo is wrong.
+
+### A multi-component baked parameter was being read as one number
+
+Following the missing basecolor seams into ChesterfieldSofa record 331 turned up a plain decode
+bug, and it is worth separating from everything speculative around it.
+
+`fx_named_params` hands a baked entry parameter back as its single raw slot WORD -- its docstring
+says so -- and `emit` unpacks that one word into one float:
+
+    got[name] = np.frombuffer(struct.pack('<I', int(value)), dtype='<f4')
+
+For a parameter the entry layout declares at width 2, that discards the second component
+silently. `entries()` has a width-aware read alongside it, but it was guarded by
+`if partner in tbl[off][1]: continue`, so the named-params scalar always won.
+
+The values lost are not degenerate:
+
+    ChesterfieldSofa   331/333    stored (5.0, 1.0)   we drew 5.0 x 5.0
+    stone_stylized     284/289    stored (1.25, 8.0)  we drew 1.25 x 1.25
+
+A 5:1 strip is what a SEAM looks like, and we were drawing a square. Over 20 files the
+population is 928 entries -- 921 `patternsize`, 6 `frameoffset`, 1 `branchoffset`.
+
+The width-aware read now overrides a scalar when the declared width exceeds one, and still
+declines when the named path already produced an array or when the entry's parameters are not
+inline. Genuinely square sizes are unaffected -- record 92 still reads (2.82, 2.82).
+
+**MEASURED NEUTRAL, and adopted anyway.** Over the reference packages: 19 channels scored before
+and after, 12 usable in common, mean signed correlation +0.7994 -> +0.7997, and NOT ONE channel
+moves by more than 0.002. Nothing is gained and nothing is lost, because the 928 entries sit
+mostly in records that are already flat for other reasons or do not reach a scored output. It is
+adopted because the layout table declares width 2 and the file contains two floats; reading one
+of them is wrong whether or not this corpus can see it.
+
+It does not fix records 331 and 333 -- they still render flat white, because their typeless
+full-cell entries still cover the canvas. The strip is now the right shape underneath.
+
+## Unified walk, iteration 2: header structure reproduced 100% across six diverse filters
+
+Refined the prototype (scratch/unified_walk.py). It now reproduces the FULL header length exactly and
+the input edges near-exactly for a diverse filter set, from one walk:
+
+    filter      walk end == header_words   walk inputs == edges
+    blend             100%                      97.4%
+    blur              100%                     100%
+    directionalwarp   100%                      99.3%
+    dirmotionblur     100%                     100%
+    gradient          100%                     100%
+    warp              100%                     100%
+
+That set spans the hard cases: 2 no-w1 filters (blur, gradient), 4 w1 filters, a two-shape filter
+(warp: w1 only from v0x90000), and a ramp filter (gradient: a colour table between inputs and cls
+slots). Three things made it work, and all three are principled, not fitted:
+
+1. Per-filter base input ARITY (~15 constants: blend 2, blur 1, warp 2, ...). This is the filter's
+   documented input count -- external format knowledge like the blend-mode table, not a 809-entry
+   memo keyed by (cls, w1).
+2. The two-shape w1-presence rule (warp: version >= 0x90000; shuffle: tag bit 0), which
+   record_layout already applies for header_words -- the walk now applies it too.
+3. `const` counts the whole base region including gradient/curve's ramp; advance past it before the
+   cls slots (`pos = max(pos, const)`).
+
+Params still reproduce named_parameters at 92-98%, and every disagreement remains a KNOWN memo error
+(the 1,004 size-expr misattributions, the field-state opacitymult cases) -- the walk is the structural
+source.
+
+THE ONE REMAINING ORDERING DETAIL: state-11 image inputs are not simply contiguous after the base
+inputs -- some cls slots precede them. blend cls=0x19 puts its state-11 input at slot 5, after a cls
+slot at 4, while the naive walk puts it at 4. This is exactly what `_ruled`'s `g` term computes
+(g = a population over specific cls bits; the state-11 edge lands at 2+base+g). So the unified walk
+needs the cls-slot / state-11-input INTERLEAVING, not just the counts -- a bounded, already-solved
+computation to fold in. Fixing it lifts both the input residual (blend 97.4->100 expected) and the
+param residual (params sit after the same slots).
+
+Remaining to a full replacement: fold in the g-interleaving; extend to the arity filters (pixelproc,
+fxmaps, distance, shuffle) via the cost model's arity term; complete PARAM_SPEC field naming; handle
+interaction specs (emboss). Then extend record_layout to return the decomposition and rewire sbsasm.

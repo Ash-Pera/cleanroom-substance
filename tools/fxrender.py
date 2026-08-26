@@ -809,7 +809,24 @@ def entries(rec, baked_pairs=True):
             tag = tbl[off][0]
             for bit, sl, width in baked_slots(tag):
                 partner = PARTNER.get(bit)
-                if partner is None or partner in tbl[off][1]:
+                if partner is None:
+                    continue
+                # A MULTI-COMPONENT BAKED PARAMETER MUST NOT BE LEFT AS A SCALAR.
+                # `fx_named_params` hands a baked parameter back as its single raw slot
+                # WORD (its docstring says so), and `emit` unpacks that one word into one
+                # float. For a parameter the layout declares at width 2 that silently
+                # discards the second component: over 20 files, 928 entries -- 921
+                # `patternsize`, 6 `frameoffset`, 1 `branchoffset` -- and the values lost
+                # are not degenerate. ChesterfieldSofa record 331 stores (5.0, 1.0), a 5:1
+                # strip, and we drew a 5x5 square; stone_stylized_adaptive record 284
+                # stores (1.25, 8.0) and we drew 1.25 x 1.25.
+                #
+                # So this read now OVERRIDES a scalar when the declared width is more than
+                # one. It still declines where the named-params path already produced an
+                # array, and still declines entirely for entries whose parameters are not
+                # inline (below).
+                _cur = tbl[off][1].get(partner)
+                if _cur is not None and (width <= 1 or isinstance(_cur[1], np.ndarray)):
                     continue
                 # THE SLOT IS INLINE ONLY WHEN THE ENTRY SAYS SO. An entry's +4 word
                 # addresses its parameters; usually that is off+8 and the slots follow the
