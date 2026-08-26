@@ -56,6 +56,8 @@ matching the actual math the compiled program performs -- and there is no eviden
 for what the real engine does at that same input (clamps to 0? saturates earlier in a
 step this reading is missing?), so it is surfaced rather than guessed at.
 """
+import math
+
 import numpy as np
 import transpile, sbsruntime, fxrender, distance, assume, manifest
 
@@ -746,8 +748,33 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # the property that already excludes exactly that size program (its own
                 # docstring says so directly); the real opacity computation, when the
                 # compiler emits one at all, is there instead.
+                # THE RECORD'S OWN NAMED PARAMETER FIRST. `opacitymult` is what a blend
+                # calls its opacity, and `Record.named_parameters` reads it from the slot
+                # PARAM_SPEC names -- so where it is baked, it is the value, and no
+                # inference is needed. It was being ignored entirely.
+                #
+                # Found on ChristmasTreeOrnamentSubstance006, whose `roughness` output came
+                # out constant 1.0 -- fully matte, for a material whose own thumbnail is a
+                # pair of glossy baubles. Record 22 is `add` at opacitymult 0.05 over
+                # inputs of mean 0.27 and 0.50, which is ~0.30. What it actually used was
+                # the fall-through below: no baked float in `size_or_baked` (that slot
+                # holds the size PROGRAM), so it evaluated `filter_programs[-1]` and got
+                # 9.0. That is not an opacity, it is log2(512) -- the record is 512 wide
+                # and the "opacity" was a size expression. `clip(d + 9*s)` saturates to 1.0
+                # everywhere, which is exactly the constant that showed up.
+                #
+                # Not a one-record fix. Over 25 files and 8,693 blend records, 3,898 carry
+                # a baked `opacitymult` and every one of them was being discarded: 3,622
+                # fell through to an opacity of 1.0 and 276 to a program. No record has
+                # both a baked opacitymult and a float in `size_or_baked`, so this
+                # displaces nothing that path was reading. And the values look like what
+                # they claim to be -- 3,896 of the 3,898 lie in [0, 1].
                 par = rec.size_or_baked
-                if par and par[0] == "float":
+                baked_opacity = next((v for nm, kind, v in (rec.named_parameters or ())
+                                      if nm == 'opacitymult' and kind == 'baked'), None)
+                if baked_opacity is not None:
+                    opacity = np.full((N, 1), float(baked_opacity), dtype=np.float32)
+                elif par and par[0] == "float":
                     opacity = np.full((N, 1), par[1], dtype=np.float32)
                 else:
                     fprogs = rec.filter_programs
@@ -925,6 +952,27 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         except Exception:
                             continue
                         n_evaluated += 1
+                        # A 2-wide program returning (log2 W, log2 H) of THIS RECORD'S
+                        # OWN declared size is the output-size expression, not a
+                        # parameter, and it is skipped before the collision test below.
+                        #
+                        # This is an identity, not a shape heuristic: `rec.width` and
+                        # `rec.height` are read from the record's header with no program
+                        # involved, so "the program returns log2 of my own size" is
+                        # checkable against something already known. An earlier reading
+                        # of this file guessed those (8.0, 8.0) values were "tiling or
+                        # scale shaped"; they are 2**8 == 256, the record's own edge.
+                        #
+                        # WITH THE CONTROL, over 8,473 bit-26 records in 80 files: of
+                        # the 7,586 the collision test already resolves, ZERO have an
+                        # accepted offset equal to log2-size, so this cannot change an
+                        # answer that currently works. Of the 887 it refuses, 825 (93%)
+                        # leave exactly one candidate once the size expression is set
+                        # aside; 62 stay ambiguous and still refuse.
+                        if (a.size == 2 and rec.width and rec.height
+                                and abs(float(a[0]) - math.log2(rec.width)) < 1e-6
+                                and abs(float(a[1]) - math.log2(rec.height)) < 1e-6):
+                            continue
                         # a width seen twice cannot be assigned to one parameter
                         by_width[a.size] = None if a.size in by_width else tuple(
                             float(x) for x in a)
@@ -1590,9 +1638,53 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # Vectors that are not plausible weights still refuse: the remainder of
                     # the 79 are infinities and values like 2.9e20, which are a slot that
                     # is not this field at all rather than an unusual mixture.
-                    hot = np.frombuffer(
-                        np.array(rec.words[_start + 1:_start + 5],
-                                 dtype=np.uint32).tobytes(), dtype=np.float32)
+                    # CLASS BIT 8 SAYS WHETHER THE VECTOR IS THERE, and the value test
+                    # below is no substitute for asking. Over 307 single-input records in
+                    # 60 files the bit and a plausible-looking float4 agree 302 times
+                    # (98.4%), and the five that disagree are the point:
+                    #
+                    #   4 records have the bit CLEAR and store no vector, but the bytecode
+                    #     sitting at that offset decodes to floats the value test accepts
+                    #     -- (0.0, -2.0, 3.0, -2.0) and (0.0, -3.0, 4.0, -3.0) among them.
+                    #     Those are an opcode word and its inline constants, and rendering
+                    #     them as weights produced a picture with no basis at all. This is
+                    #     the failure this project keeps finding: a guard on the VALUE
+                    #     passes whatever happens to look reasonable, while a guard on the
+                    #     format's own presence bit cannot.
+                    #
+                    #   1 record has the bit SET and reads all-zero at this offset; it
+                    #     carries an extra program pointer and its vector is one word
+                    #     further on. It still refuses, because where that word is has not
+                    #     been established.
+                    #
+                    # WHICH SOURCE NODE THIS IS. The paired sources settle why one filter
+                    # id has two layouts: they declare `grayscaleconversion` (100 nodes,
+                    # parameter `channelsweights`, a float4) and `shuffle` (43 nodes,
+                    # parameters `channelalpha`/`channelgreen`/`channelblue`, integer
+                    # selectors) -- two node types, one compiled filter. The weight-vector
+                    # layout is grayscaleconversion and the selector-word layout is
+                    # shuffle, which is what the two readings below already were without
+                    # knowing their names.
+                    if not (rec.cls >> 8) & 1:
+                        # No parameter stored, so the value is the node's default and the
+                        # default is not in the file -- the same shape as `uniform.fill`
+                        # before a specimen arbitrated it. No reference package in this
+                        # corpus puts one of these on a scoreable output, so it is asked
+                        # rather than guessed.
+                        w = assume.assumed('grayscale.weights')
+                        if w is None:
+                            raise Unsupported("shuffle stores no weight vector (class bit "
+                                              "8 clear) and its default is not in the file")
+                        hot = np.asarray(w, dtype=np.float32).ravel()
+                        if hot.size != 4:
+                            raise Unsupported("grayscale.weights must be 4 numbers, got %d"
+                                              % hot.size)
+                        LOW_CONFIDENCE.add(i)
+                        assume.note(i)
+                    else:
+                        hot = np.frombuffer(
+                            np.array(rec.words[_start + 1:_start + 5],
+                                     dtype=np.uint32).tobytes(), dtype=np.float32)
                     if not (np.all(np.isfinite(hot)) and np.all(np.abs(hot) <= 4.0)
                             and float(np.abs(hot).sum()) > 1e-6):
                         raise Unsupported("shuffle single-input weight vector is not "
