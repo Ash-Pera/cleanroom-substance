@@ -190,6 +190,21 @@ GATE = 0x89
 #: the order slot 12 is written in.
 STEPPER = 0x99
 
+#: 0x9B has the SAME SHAPE as the stepper -- one unnamed program and one successor -- and
+#: is walked the same way. sbsasm's FX_NODES2 gives it ((12,), (8,)): program at word 2,
+#: successor at word 3, where 0x99 has ((16,), (8,)). It became reachable only once 0x0B's
+#: successor slot was wired, and the ten records that end their chain on one are exactly
+#: the "no readable table entries" failures in the reference set (ChesterfieldSofa 79,
+#: Auras 43/250/332/370 among them).
+#:
+#: TREATED AS A PASS-THROUGH ON ITS SHAPE, not on a decoded meaning. What the program
+#: computes is not established -- 0x99 was shown to be a raster scan by reading its slot
+#: traffic, and no equivalent reading has been done here -- so this runs it for its slot
+#: side effects and continues, which is what a one-program one-successor node can do
+#: without inventing semantics. If it turns out to gate or to iterate, this is where that
+#: would go, and the records above are the specimens.
+STEPPER2 = 0x9B
+
 #: The 0x??0B family is where a chain ENDS. Its "programs" are not its own: in record 27
 #: the leaf's five programs are byte-identical to the five parameter programs of the
 #: table entry it hands off to (opacity, frameoffset, patternsize, patternrotation,
@@ -379,7 +394,8 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     if not table:
         raise Unmodelled("no readable table entries")
     for _off, hdr, _p in nodes:
-        if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER and not _is_leaf(hdr):
+        if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
+                and (hdr & 0xFF) != STEPPER2 and not _is_leaf(hdr):
             raise Unmodelled("node header %#x is not modelled" % hdr)
 
     out = []
@@ -438,7 +454,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 raise Unmodelled("numberadded = %d" % n)
             for k in range(n):
                 walk(i + 1, k)
-        elif hdr == STEPPER:
+        elif hdr == STEPPER or (hdr & 0xFF) == STEPPER2:
             # Run the state update, then continue to the single successor. The return
             # value is discarded: this program is a chain of `seq`-joined `set`s, and
             # what it produces is the slot frame the entry then reads, not a number.

@@ -472,10 +472,28 @@ FX_NODE_PARAMS = {
 # one, and the claimed starts are pairwise DISJOINT program spans in 1,589 of 1,589
 # nodes, so they are distinct programs rather than one program seen from several
 # offsets, which is what a run like (5,6,7,8,9,10) would otherwise be.
+# 0x0B CARRIES ITS SUCCESSOR IN ITS SECOND WORD, and 0x9B is what that word reaches when
+# it is not an entry. Over the five reference packages: of 338 0x0B leaves, 328 point at an
+# entry (low nibble 8) and 10 point at a 0x19B -- and those 10 records are exactly the ones
+# fx_named_params returns nothing for, i.e. every "no readable table entries" failure in
+# that set. 0x9B's own slots, measured over all 10 cells:
+#
+#     +8   in-record, and a program   10 of 10
+#     +12  in-record, and an ENTRY     10 of 10
+#
+# hence ((12,), (8,)) -- successor at word 3, program at word 2, exactly 0x99's shape.
+# NOT +4: that word is 0x00003039 in every cell seen, the same literal in two different
+# files, and +52 puts it outside the record both times. An earlier read of this scored it
+# "resolves to an ENTRY 8 of 10" because the search was body-wide, so a constant landed on
+# an unrelated nibble-8 word elsewhere in the file. The record's own extent is the bound
+# that matters here, and fx_tree already uses it. walk.py's
+# NODE_LEGEND sizes 0x9B at 4 words from an independent measurement, which is a tag plus
+# exactly these three slots.
 FX_NODES2 = {
     0x1B: ((8, 20), (16,)),   # two children, at words 2 and 5; program at word 4
     0x99: ((16,),   (8,)),    # one successor at word 4; program at word 2
-    0x0B: ((),      None),    # a leaf; programs scanned, see above
+    0x0B: ((4,),    None),    # a leaf; its SECOND WORD is the successor, see below
+    0x9B: ((12,),   (8,)),    # successor at word 3; program at word 2 -- as 0x99
 }
 
 
@@ -2267,7 +2285,19 @@ class Record:
             # and 62 records gain a table they otherwise have none of. Those 62 are not
             # marginal: they are the tree-only FX-Maps, and in StylizedCobblestoneStreet
             # two of them gate 1,158 and 1,127 of the file's 1,778 records.
-            off1 = sh[0] if sh else (4 if (h & 0xFF) == 0x0B else None)
+            # THE HANDOFF OFFSET COMES FROM THE TABLES, not from a special case. This
+            # read `4 if (h & 0xFF) == 0x0B else None`, which is FX_NODES2[0x0B]'s
+            # successor slot written out by hand -- correct while 0x0B was the only
+            # non-FX_NODES kind a chain could end on. It no longer is: with 0x9B walkable,
+            # a chain can end there instead, and 10 records across the reference packages
+            # do (ChesterfieldSofa 79, Auras 43/250/332/370) -- every "no readable table
+            # entries" failure in that set. Their table sits at the 0x9B's successor slot,
+            # word 3, and the hardcoded 4 could never find it.
+            off1 = sh[0] if sh else None
+            if off1 is None:
+                _s2 = FX_NODES2.get(h & 0xFF)
+                if _s2 and _s2[0]:
+                    off1 = _s2[0][-1]
             if off1 is not None and q + off1 + 4 <= self.asm.body_hi:
                 nxt = struct.unpack_from('<I', self.asm.data, q + off1)[0] + 52
                 if self.offset <= nxt < self.end - 7:
@@ -2514,6 +2544,7 @@ class Record:
                 if prog_slots is None:
                     # Scanned, not tabulated. Only for a type whose slots are not fixed
                     # and whose claimed starts are disjoint spans -- see FX_NODES2.
+                    emitted = False
                     for k in range(4, 14):
                         if q + 4 * k + 4 > e:
                             break
@@ -2521,9 +2552,15 @@ class Record:
                         if (o < pv < e and self.asm.program_span(pv, e)
                                 and (struct.unpack_from('<I', d, pv)[0] & 0xF) not in (9, 0xB)):
                             yield q, h, pv
-                    else:
-                        pass
-                    if not nxts:
+                            emitted = True
+                    # A NODE MUST STILL APPEAR WHEN IT HAS A SUCCESSOR. This read
+                    # `if not nxts`, equivalent while every prog_slots-None kind was
+                    # terminal. Giving 0x0B its successor below breaks that equivalence,
+                    # and measured it silently drops 68 of 1,327 fx_tree yields across the
+                    # reference packages -- a leaf that emits no program stops being
+                    # reported at all once it has a child. The condition wanted is
+                    # "nothing was emitted for this node".
+                    if not emitted:
                         yield q, h, None
                 else:
                     for sl in prog_slots:
