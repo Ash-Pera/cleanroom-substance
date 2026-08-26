@@ -258,10 +258,33 @@ QUESTIONS = {
     # square, so several stamps land off-canvas -- the `mod 1` the decoded formula specifies
     # is not taking effect here.
     #
+    # AND THE `mod 1` WAS NOT MISSING -- the residue was an artifact of how the count was
+    # forced. frameoffset is literally slots[26] + slots[12]: the $number grid PLUS the
+    # scanner's position. Forcing numberadded to 16 makes the addnode loop sixteen times,
+    # and each iteration re-runs the 0x99 body on the shared frame, so slot 12 accumulated
+    # sixteen steps and every grid position rode away on top of it. Holding the scanner to a
+    # single run while $number varies separates them:
+    #
+    #                          emissions   rec34 lit   metallic lit
+    #     baseline                     1      0.0254         0.0039
+    #     n = 16                      16      0.2285         0.0288
+    #     n = 16, scanner held once   16      0.4062         0.0469
+    #
+    # The sixteen offsets become exactly {-0.375, -0.125, 0.125, 0.375} on both axes -- the
+    # centred 4x4 grid, every one inside +-0.5 and on canvas. rec34's lit fraction reaches
+    # 0.4062 against its own input's 0.403, and metallic reaches 0.0469 against the engine
+    # export's 0.0483. The cone is explained: nothing was wrong with the size, the index,
+    # the mod, the scanner or the units, and everything was the emission count.
+    #
+    # SO rec34 HAS TWO POSITION SOURCES and the walk conflates them. The $number grid and
+    # the scanner are alternative tilings summed by frameoffset; a $number-grid record needs
+    # the scanner run once for its slot initialisation and NOT re-entered per emission.
+    #
     # NOTHING IS WIRED FROM THIS. numberadded genuinely evaluates to 1, and the decoded
     # formula ((g-1 mod 2) + g)^2 yields only odd squares, so 16 is unreachable through it
-    # and the correct count must arrive by a path neither side has pinned. Forcing it was a
-    # measurement, not a fix.
+    # and the correct count must still arrive by a path neither side has pinned. Both arms
+    # above are measurements, not fixes -- they say what the answer looks like, not what
+    # produces it.
     'fx.scanner':         ('once', 'loop'),
     'levels.inversion':   ('flat', 'complete'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
