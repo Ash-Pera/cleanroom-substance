@@ -39,6 +39,40 @@ a real decode gap, and entry COUNT does not separate constant from varying (both
 1, 2, 3 and 4+ entries), so the entries are being found and read and it is the pattern
 placement that does not reach the canvas. That rate is the part not previously written
 down; the gap itself is known.
+
+WHAT THE 46% ACTUALLY IS, chased from there. Not the chainless encoding 5e05c2f banks --
+that is real (RoofTiles rec1398 yields chain=0 and entries=0, its words a flat interleave
+of program pointers and constants) but it is a different, rarer population. Over the
+reference packs no record has unreadable entries at all, and chainlessness barely shifts
+the odds:
+
+    has a node chain    228 varying   173 CONSTANT
+    chainless           155 varying   142 CONSTANT
+
+The discriminator is whether `patternsize` is readable across an entry table, and it is
+absolute where it bites:
+
+    patternsize on ALL entries      294 varying    31 CONSTANT
+    patternsize on SOME entries       0 varying   240 CONSTANT
+    patternsize on NO entries        60 varying    53 CONSTANT
+
+240 of 240, no counterexample. That is the full-cell fallback `fxrender.entries` documents:
+an entry whose patternsize cannot be read paints the WHOLE canvas, so one unreadable entry
+in an otherwise-good table obliterates every real pattern in the record. The record does
+not degrade, it goes uniformly white.
+
+SKIPPING THOSE ENTRIES IS NOT THE FIX, and the reference says so rather than intuition.
+Dropping unsized entries in mixed tables recovers 186 records (CONSTANT 324 -> 138), and
+against the exported maps that buys nothing: 27 channels, 2 better, 11 worse, every delta
+in the fourth decimal (worst -0.0012, best +0.0014). Nominally negative, practically a
+wash. Note the metric is gameable in the direction tested -- dropping entries can only
+remove white paint, so it can only push records toward `varying` whether or not that is
+closer to the engine -- which is why the exported maps and not the constant count decide.
+
+So the flat-white cost is largely INVISIBLE to the reference set: the records it recovers
+are mostly not on scored paths. That leaves the fallback policy unarbitrated here, and
+points at reading `patternsize` properly (a328c8c) rather than at choosing a better thing
+to do when it cannot be read.
 """
 import sys
 import os
