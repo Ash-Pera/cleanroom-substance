@@ -2934,6 +2934,47 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                             dtype=np.float32)[0])
                     if np.isfinite(v) and (v == 0.0 or 1e-6 < abs(v) < 1e4):
                         intensity = v
+                # CLASS BITS 12 AND 13 ARE THE (BAKED, PROGRAM) PAIR FOR THIS PARAMETER,
+                # which is the discriminator the previous note here said was missing. Both
+                # cost ONE WORD in the fitted model -- w0 bits 28 and 29 -- so each owns a
+                # slot, and the walk says which. They are also MUTUALLY EXCLUSIVE:
+                #
+                #     blur      bit12 only 14,931    bit13 only  303    neither 137    both 0
+                #     sharpen   bit12 only  1,148    bit13 only    8    neither 167    both 0
+                #
+                # so at most one of them owns the last header slot and `end - 1` addresses
+                # whichever it is. That is the same (baked, program) bit-pair convention
+                # `PARAM_SPEC` documents for the w1 word, appearing here in the class word.
+                #
+                # WHAT THIS CORRECTS. The earlier reading was "bit 12 clear means the
+                # intensity is a program at end - 1", and it conflated three populations:
+                # bit-13 records (a real intensity program), neither-bit records (end - 1
+                # belongs to some other class bit and is not an intensity at all), and the
+                # baked ones. Evaluating end - 1 across all of them gave 60 results 1-wide
+                # and 38 2-wide, and the 2-wide ones looked like an unexplained residue.
+                # They are not a residue: restricted to the records where BIT 13 OWNS THE
+                # SLOT, over 80 files --
+                #
+                #     bit-13 records          60      slot holds a program   60 of 60
+                #     bit-13 slot == end-1    60      evaluates 1-wide       60 of 60
+                #     values                  p50 1.00, range 0..7, 6 distinct
+                #
+                # -- every one is a program, at the slot the walk names, returning a scalar
+                # whose median is 1.00, which is the distribution the trusted width-1 path
+                # reports. The 2-wide reads were bit-13-CLEAR records where end - 1 is a
+                # different bit's slot; asking which bit owns the position separates them
+                # without looking at what any of them evaluate to.
+                elif (rec.cls >> 13 & 1) and _islot is not None and _islot < len(rec.words):
+                    _p = rec.words[_islot] + 52
+                    if asm.body_lo <= _p < asm.body_hi and asm.valid_program(_p):
+                        try:
+                            _v = np.asarray(eval_program(asm, _p, default_inputs(asm, 1),
+                                                         {}, 1, W=rec.width,
+                                                         H=rec.height)).reshape(-1)
+                        except Exception:
+                            _v = np.zeros(0, dtype=np.float32)
+                        if _v.size == 1 and np.isfinite(_v[0]):
+                            intensity = float(_v[0])
                 # THE SLOT-3 FALLBACK IS WITHDRAWN. It rendered 881 records and it was
                 # reading a different field. The instrument that shows this needs no
                 # source declarations and no containment, and it was available the whole
@@ -3181,20 +3222,41 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 tainted = rec.edges[0] in synthetic
                 _d = decompose.decompose(rec)
                 islot = (_d['end'] - 1) if (_d and _d.get('end')) else None
-                if not (rec.cls >> 12) & 1:
-                    raise Unsupported("sharpen intensity: class bit 12 clear, so the record "
-                                      "states there is no baked intensity")
+                # CLASS BITS 12 AND 13 ARE THE (BAKED, PROGRAM) PAIR -- see the long note
+                # in `blur` above, which this filter shares. Bit 12 owns a baked slot, bit
+                # 13 owns a program slot, they never co-occur (1,148 / 8 / 167 / 0 here),
+                # and whichever is set owns the last header slot.
                 if islot is None:
                     raise Unsupported("sharpen intensity: the walk does not resolve this "
                                       "record's header")
                 if islot >= len(rec.words):
                     raise Unsupported("sharpen intensity: slot %d past the record end"
                                       % islot)
-                amount = float(np.frombuffer(np.uint32(rec.words[islot]).tobytes(),
-                                             dtype=np.float32)[0])
-                if not (np.isfinite(amount) and (amount == 0.0 or 1e-6 < abs(amount) < 1e4)):
-                    raise Unsupported("sharpen intensity slot does not read as a plausible "
-                                      "value (%r)" % amount)
+                amount = None
+                if (rec.cls >> 12) & 1:
+                    amount = float(np.frombuffer(np.uint32(rec.words[islot]).tobytes(),
+                                                 dtype=np.float32)[0])
+                    if not (np.isfinite(amount)
+                            and (amount == 0.0 or 1e-6 < abs(amount) < 1e4)):
+                        raise Unsupported("sharpen intensity slot does not read as a "
+                                          "plausible value (%r)" % amount)
+                elif (rec.cls >> 13) & 1:
+                    _p = rec.words[islot] + 52
+                    if asm.body_lo <= _p < asm.body_hi and asm.valid_program(_p):
+                        try:
+                            _v = np.asarray(eval_program(asm, _p, default_inputs(asm, 1),
+                                                         {}, 1, W=rec.width,
+                                                         H=rec.height)).reshape(-1)
+                        except Exception:
+                            _v = np.zeros(0, dtype=np.float32)
+                        if _v.size == 1 and np.isfinite(_v[0]):
+                            amount = float(_v[0])
+                    if amount is None:
+                        raise Unsupported("sharpen intensity: class bit 13 names a program "
+                                          "slot that does not evaluate to a scalar")
+                else:
+                    raise Unsupported("sharpen intensity: neither class bit 12 (baked) nor "
+                                      "13 (program) is set, so the record carries none")
                 W, H = rec.width, rec.height
                 if max_dim:
                     W, H = min(W, max_dim), min(H, max_dim)
