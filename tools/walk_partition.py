@@ -184,12 +184,39 @@ def header_violations(rec):
     return bad
 
 
+def overlap_violations(rec):
+    """[(slot, end)] for programs that START inside the walked header.
+
+    A header word is a SLOT, not code, so a program cannot begin inside one. This is the
+    partition invariant in its strongest form -- it needs no notion of attribution at all,
+    only the two extents, and it is the one case where a violation cannot be explained by a
+    read that was never made.
+
+    IT DOES NOT SAY WHICH SIDE IS WRONG, and that is the same duality the extent proxy has.
+    Either `valid_program` succeeded on a slot's bytes -- a baked float or a pointer parsing
+    as bytecode, which is how phantoms are made -- or the walk over-ran and `end` is too
+    large, so the word is really past the header. `walk_health` counts the second kind
+    directly (shuffle 1,623 and distance 77 records where `end` exceeds the record), and
+    both filters appear here, so neither reading can be assumed for the whole population.
+    """
+    if rec.filter_id in getattr(sbsasm, '_PAYLOAD_PROGRAM_FILTERS', {4, 20}):
+        return []
+    d = decompose.decompose(rec)
+    if not d or d.get('end') is None:
+        return []
+    end = max(d['end'], (d['prog'] + 1) if d.get('prog') is not None else 0)
+    hi = rec.offset + 4 * end
+    return [((p - rec.offset) // 4, end) for p in rec.programs
+            if rec.offset <= p < hi]
+
+
 def census(paths=None):
     paths = paths or corpus.paths()
     fx = collections.Counter()
     fx_tot = collections.Counter()
     hdr = collections.Counter()
     hdr_tot = collections.Counter()
+    ov = collections.Counter()
     for pp in paths:
         try:
             a = sbsasm.Assembly(pp)
@@ -203,6 +230,10 @@ def census(paths=None):
                 hv = []
             hdr_tot[name] += len(list(r.programs) or ())
             hdr[name] += len(hv)
+            try:
+                ov[name] += len(overlap_violations(r))
+            except Exception:
+                pass
             if r.filter_id != 4:
                 continue
             for kind, tag, k, extent, src in fx_violations(r):
@@ -213,13 +244,13 @@ def census(paths=None):
                 items = []
             fx_tot['attributions'] += sum(
                 1 for it in items if len(it) > 3 and it[3] is not None)
-    return fx, fx_tot, hdr, hdr_tot
+    return fx, fx_tot, hdr, hdr_tot, ov
 
 
 def main(argv):
     n = int(argv[0]) if argv else 80
     paths = corpus.paths()[:n]
-    fx, fx_tot, hdr, hdr_tot = census(paths)
+    fx, fx_tot, hdr, hdr_tot, ov = census(paths)
     print('walk partition check -- %d files\n' % len(paths))
     print('RECORD HEADER: programs named only by a word past the walk\'s header end')
     print('  %-20s %10s %10s' % ('filter', 'violations', 'programs'))
@@ -230,6 +261,15 @@ def main(argv):
             any_h = True
     if not any_h:
         print('  none')
+    print()
+    print('HEADER OVERLAP: a program that STARTS inside the walked header')
+    if not sum(ov.values()):
+        print('  none')
+    else:
+        for f in sorted(ov, key=lambda k: -ov[k]):
+            if ov[f]:
+                print('  %-20s %10d %10d' % (f, ov[f], hdr_tot[f]))
+        print('  %-20s %10d %10d' % ('TOTAL', sum(ov.values()), sum(hdr_tot.values())))
     print()
     print('FX STRUCTURES: a program named by a slot outside its own structure')
     if not fx:
