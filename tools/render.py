@@ -2488,6 +2488,48 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # `output_census`. Not wired because the program only reads as an intensity for
                 # some: 60 evaluate 1-wide (p50 1.00) while 38 evaluate 2-wide, the shape of
                 # `$outputsize`, and only 8 of those sit at the size-expression slot.
+                # INITIALISED PER RECORD, and it was not. Every assignment below is
+                # conditional, `render()` is one long loop over records, and Python function
+                # locals persist across iterations -- so a blur whose class bits 12 and 13
+                # are BOTH CLEAR fell through to `if intensity is None` still holding the
+                # value of whatever set it last: an earlier blur, or `warp`'s intensity, or
+                # `normal`'s. Those records then rendered, with a number belonging to
+                # another record and often another filter.
+                #
+                # The refusal below already says what should happen to them -- "the source
+                # omitted it and the engine's default applies" -- and it was unreachable for
+                # most of them. Over 60 corpus files, of the neither-bit blur records that
+                # got this far, 14 RENDERED on a leaked value and only 2 refused. `warp` and
+                # `sharpen` were never affected: both open their branch with
+                # `intensity = None` (see 2006 and 2299), which is what this line restores
+                # here.
+                #
+                # It is the failure mode this file ranks worst -- a plausible picture rather
+                # than a refusal -- and it is invisible to every aggregate check, because the
+                # leaked value is a real intensity and the record renders something that
+                # looks like a blur.
+                intensity = None
+                # INITIALISED PER RECORD, and it was not. Every assignment below is
+                # conditional, `render()` is one long loop over records, and Python function
+                # locals persist across iterations -- so a blur whose class bits 12 and 13
+                # are BOTH CLEAR fell through to `if intensity is None` still holding the
+                # value of whatever set it last: an earlier blur, or `warp`'s intensity, or
+                # `normal`'s. Those records then rendered, with a number belonging to another
+                # record and often another filter.
+                #
+                # The refusal below already says what should happen to them -- "the source
+                # omitted it and the engine's default applies" -- and it was unreachable for
+                # most of them. Over 60 corpus files, of the neither-bit blur records that
+                # reached it, 14 RENDERED on a leaked value and only 2 refused.
+                #
+                # `warp` and `sharpen` were never affected: both open their branch with
+                # `intensity = None`, which is what this line restores here.
+                #
+                # It is the failure mode this file ranks worst -- a plausible picture instead
+                # of a refusal -- and it is invisible to every aggregate check, because the
+                # leaked value is a real intensity and the record renders something that
+                # looks like a blur.
+                intensity = None
                 _pair = cls_pair_slot(rec, 28)
                 _islot = _pair[1] if _pair else None
                 _baked = bool(_pair and _pair[0] == 'baked')
