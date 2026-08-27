@@ -427,11 +427,29 @@ def main(argv):
             # means.
             fit = np.polyfit(ours.ravel(), ref.ravel(), 1) if ours.std() > 1e-9 else (0.0, 0.0)
             resid = float(np.abs(np.polyval(fit, ours.ravel()) - ref.ravel()).mean())
+            # THE CORRELATION IS PRINTED, and it did not used to be. This column was labelled
+            # `r=` and carried `resid` -- the residual AFTER the affine fit -- while the
+            # comments above it, and this file's own header, use `r` for the correlation and
+            # quote values like "r = 0.295" in that sense. Two meanings, one label, one
+            # column. A reader who knows `r` as Pearson's sees Chesterfield `normal` at
+            # 0.0235 and concludes the channel is uncorrelated noise; it correlates at
+            # 0.9490, and 0.0235 is a small residual, which is the opposite verdict. That
+            # misreading cost a session: it was reported twice as an unexplained collapse
+            # and chased through a git bisect that found nothing, because nothing had
+            # regressed.
+            #
+            # `test_reference_agreement_does_not_regress` scores the true correlation
+            # against `REFERENCE_FLOOR`, so it was always the arbiter -- this table just
+            # did not show the number the arbiter uses. Now it does, first, where a number
+            # called `corr` is expected to be, and the residual keeps its own name.
+            corr = 0.0
+            if ours.std() > 1e-9 and ref.std() > 1e-9:
+                corr = float(np.corrcoef(ours.ravel(), ref.ravel())[0, 1])
             # HOW MANY DISTINCT VALUES OUR RENDER ACTUALLY HAS, because a correlation
             # computed against a near-constant image is not evidence and this table was
             # being read as though it were. Chesterfield `roughness` renders as THREE
             # distinct values with std 0.0023 against the reference's 0.0262, and its
-            # r = 0.295 -- the strongest-looking structural agreement in the whole set --
+            # correlation 0.295 -- the strongest-looking structural agreement then --
             # is three plateaus landing near the reference's levels, not a picture that
             # matches. That number decided three separate fx arbitrations before anyone
             # looked at how many values were behind it.
@@ -441,11 +459,11 @@ def main(argv):
             # about a tenth of the reference's. Of the 15 channels this table scores
             # today, 7 clear that bar.
             uniq = int(len(np.unique(np.round(ours.ravel(), 4))))
-            print('   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f  y=%.3fx%+.3f r=%.4f'
-                  ' uniq=%d%s'
+            print('   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f  corr=%+.4f'
+                  ' y=%.3fx%+.3f resid=%.4f uniq=%d%s'
                   % (name if chan == 0 else '', chan, ours.mean(), ours.std(),
                      ref.mean(), ref.std(), np.abs(ours - ref).mean(),
-                     fit[0], fit[1], resid, uniq,
+                     corr, fit[0], fit[1], resid, uniq,
                      '  DEGENERATE' if (uniq < 20 or ours.std() < 0.1 * ref.std())
                      else ''))
     return 0
