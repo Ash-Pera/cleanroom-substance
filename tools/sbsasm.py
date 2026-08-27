@@ -3620,7 +3620,46 @@ class Record:
                     off1 = _s2[0][-1]
             if start is None and off1 is not None and q + off1 + 4 <= self.asm.body_hi:
                 nxt = struct.unpack_from('<I', self.asm.data, q + off1)[0] + 52
-                if self.offset <= nxt < self.end - 7:
+                # BOUNDED BY THE BODY, as `fx_table` is and for the reason it records:
+                # "805 fxmaps records address a table that lies outside them, and in 757
+                # of 757 resolvable cases it sits inside an earlier record". The handoff
+                # names the FIRST entry of that table, so requiring it to sit inside this
+                # record contradicts the bound on the table it points into -- and this
+                # method's own docstring, which reports 2,753 entry offsets landing outside
+                # their record against 0 node offsets.
+                #
+                # AND GATED ON THE LAYOUT, NOT ON THE TAG VOCABULARY, which is the half of
+                # this that nearly went in wrong. Relaxing the bound alone admits 62 new
+                # landings, and the word waiting at 61 of them has its low 16 bits in
+                # FX_TAG_LOW16 -- so a vocabulary test passes every one and coverage
+                # appears to jump by 53 records. It is bytecode. `fx_table`'s own stopping
+                # rule already records this exact trap: "0x09130008 is 2,322 'entries'
+                # whose low 16 bits are in FX_TAG_LOW16 and which are, every one of them, a
+                # u32 straddling two instructions."
+                #
+                # `entry_layout_holds` separates them, and it is a UNIFORM rule here rather
+                # than a patch aimed at the new cases -- which is the only reason it is
+                # trusted. Measured over every handoff landing in the corpus:
+                #
+                #     in-record (the established path)   28,559 of 28,577 hold   99.94%
+                #     outside the record, in the body         1 of      62 holds  1.6%
+                #
+                # A test the working population passes at 99.94% and the newly-admitted
+                # population fails at 98.4% is discriminating between two different kinds
+                # of thing, not thresholding one. So the body bound recovers ONE record
+                # (Desert_Sand_01 #71, whose tag 0x14b the vocabulary test would itself
+                # have rejected -- the two gates disagree in both directions), and the
+                # other 61 are refused on the correct grounds instead of by accident of the
+                # old bound.
+                #
+                # THE 18 IN-RECORD LANDINGS THAT FAIL are left admitted, deliberately.
+                # Gating them too is a separate change to an established path with its own
+                # risk, and 0.06% is as consistent with a layout-test false negative as
+                # with junk. Recorded here rather than acted on.
+                if self.asm.body_lo <= nxt < self.asm.body_hi - 7 and (
+                        self.offset <= nxt < self.end - 7
+                        or self.asm.entry_layout_holds(
+                            nxt, struct.unpack_from('<I', self.asm.data, nxt)[0])):
                     start = nxt
         # EVERY POINTER CELL STATES A PAYLOAD, not just the last one. A chain list can
         # name more than one entry (see `fx_tree`), and `start` holds one handoff.
