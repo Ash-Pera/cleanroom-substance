@@ -139,6 +139,21 @@ def _field_width(kind, code, colour):
 # fitted `2 * bit`.
 _CLS = {0: 1, 7: 1, 10: 2, 11: 1, 13: 1}
 
+def _costs_arity(filter_id, w1):
+    """The arity count for `filter_id`, read from the cost legend rather than restated.
+
+    Imported inside the call: `walk` is the structural primitive and must stay importable
+    without the fitted table, so a missing or silent legend falls back to the historical
+    nibble rather than raising -- but the fallback is the WRONG answer for counts above 15
+    and says so here, so a reader who sees it knows the legend did not load.
+    """
+    import record_layout
+    ar = record_layout.arity_field(filter_id)
+    if ar is None:
+        return (w1 >> 10) & 0xF          # legend absent: the stale nibble, knowingly
+    return (w1 >> ar[0]) & ar[1]
+
+
 SPECS = {
     1:  Spec(base=2, cls_widths=_CLS,          # blend
              w1_fields=[(0x30, 4, 'scalar'),    # opacitymult (Float1)
@@ -163,7 +178,15 @@ SPECS = {
              arity=Arity(prefix=0,
                          read=lambda w1: w1 if 1 <= w1 <= 8 else (0 if w1 == 0 else w1 & 0xF))),
     4:  Spec(base=0, cls_widths={}, w1_fields=[],  # fxmaps -- arity integer after the root
-             arity=Arity(prefix=1, read=lambda w1: (w1 >> 10) & 0xF)),
+             # ASKS THE COST LEGEND, does not restate it. This was `(w1 >> 10) & 0xF`, a
+             # hardcoded copy of a rule costs.json already holds -- and it went stale: the
+             # field is SIX bits, and a nibble truncates every count above 15 rather than
+             # failing, so this arm disagreed with `decompose` on 10 records without either
+             # side noticing (`ie_curve` #35 declares 34 inputs and the nibble read back 2).
+             # The width is settled on the structural PROG invariant over 41,164 records --
+             # 4 bits 41,118, 5 bits 41,126, 6 bits 41,128, and 7 and 8 add nothing, so 6 is
+             # pinned from both sides. Read lazily so import order stays free.
+             arity=Arity(prefix=1, read=lambda w1: _costs_arity(4, w1))),
     11: Spec(base=1, cls_widths=_CLS,           # dirmotionblur -- two-bit codes, like blend
              w1_fields=[(0x3, 0, 'scalar'),      # intensity
                         (0xc, 2, 'scalar')]),     # mblurangle

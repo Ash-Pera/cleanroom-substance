@@ -40726,3 +40726,181 @@ procedural material a disc's radius as a FRACTION of width should be invariant t
 is not, which is the fault above. But it means every reference comparison in these notes is
 between two different output sizes, and any quantity that is not resolution-stable in our
 renderer is not comparable to the reference at all.
+
+## Where the widths are stated: a negative, and the reframe it forces
+
+The question was whether the format states the per-field widths that `costs.json` fits.
+SPEC §7.2 already reads graph-input widths from declared type codes -- "the width legend
+the whole mask-walk reads rather than fits" -- so a legend demonstrably exists for one
+table, and the two places it might also cover the record side were the interface block
+(§11) and the value table (§7.1). Both are now ruled out by measurement, and ruling them
+out moved the object being fitted rather than shrinking it.
+
+### The interface block cannot be the legend: 1 : 64
+
+It is the only in-file structure known to carry type codes -- its descriptor array is
+`(type u32, uid u32)` pairs, and `standalone_parse` walks the value table with the widths
+they imply. Over 437 corpus files:
+
+    typed descriptors declared (n_in, total)        8,500
+    baked parameter slots in records (total)      544,873
+    ratio                                         1 : 64.1
+
+`ChewingGumSubstance001` declares 10 descriptors against 22,613 baked slots. This is a
+scale argument, which is the kind that cannot be wrong by a subtle mechanism: whatever the
+block declares, there is not enough of it to describe record parameters.
+
+### The value table holds graph-input defaults and nothing else
+
+`standalone_parse` reports `table_ok` at 437 of 437. THAT NUMBER IS NOT EVIDENCE, and
+noticing why is most of this finding. The parser CHOOSES the interface-block candidate
+that satisfies `tstart + span == hdr`; its closure is therefore a property of the chooser
+and true by construction. It is the same circularity as a walk wired into the accessor it
+is validated against.
+
+Re-tested against the two pointers the chooser never reads -- `table_start = trailer word 6
++ 52` (SPEC §4, 100%) and `table_end = header 0x2C + 52` (SPEC §2) -- the same equation
+closes independently:
+
+    parser tstart == trailer word 6 + 52                 437 / 437
+    descriptor span == header 0x2C - trailer word 6      437 / 437
+
+The graph-input descriptors consume the table's entire STATED extent in every file, with
+nothing left over. So no record parameter is in it, which the 1:64 ratio already implied
+from the other end. Two mechanisms, one conclusion.
+
+### The spec was wrong about where 544,873 values live
+
+SPEC §7.1 said the value table "holds every baked scalar/vector value". It does not. It
+holds the graph input defaults; a record's baked parameters are stored inline in the record
+header, one word per component. The 1:64 gap measures the error. Anyone building a reader
+from that sentence would have gone looking for 544,873 values in an array that does not
+contain them. §7 and §7.1 are corrected.
+
+### The legend is not the gap -- the KEY is
+
+A width and a type are different things, and the negative above only rules out finding
+TYPES. Testing whether the legend itself reaches the record side: over 437 files, every one
+of the 544,873 baked parameter slots has a width of 1, 2 or 4 words, and NONE falls outside
+the legend's 1..4. Width 3 (`float3`) is legal by the legend and simply does not occur.
+
+    1 word   445,178   81.70%
+    2 words   31,434    5.77%
+    4 words   68,261   12.53%
+    outside the legend        0
+
+This could have failed and did not. So §7.2's `type -> 4N` table is the width legend for
+the record side too, and what `costs.json` fits is not a width but the missing per-field
+TYPE CODE -- a KIND ASSIGNMENT per (filter, field), which is a per-filter constant rather
+than a per-record quantity. That is a much smaller and much more attackable object than
+"the fitted widths".
+
+One kind is already stated rather than assigned, which is the existence proof that the
+distinction is real: a `channel` field's component count is the tag's colour bit -- 4 words
+colour, 1 word grayscale -- so `walk._field_width` derives it. The rest of the assignment
+is open, and its legitimate route is the permitted `.sbs` sources, which declare parameter
+names and types per filter. That route depends on a source-to-record join; the entry-level
+join being built alongside this reaches 41 of 70 permitted fxmaps paramsets in 3 files of
+96, so the coverage must be checked per filter before the route is relied on.
+
+### Why the filter id is the declaration
+
+The negative has a reading that makes it a result rather than a dead end. There is no
+per-node type declaration because the format does not need one: the filter id names the
+filter, and the filter's parameter list and types are part of the engine's definition of
+it. A compiler writing this file knows the types and so does the reader it was written
+for. That is also why the remaining fitted object sits exactly where the clean-room wall
+is -- the declaration we want is in the one place this project may not read, and the
+permitted sources are the way around it rather than through it.
+
+## fxmaps' arity: one rule in three places, and two of them stale
+
+`walk.SPECS[4]` read the input count as `(w1 >> 10) & 0xF`, `decompose` carried
+`mask = max(mask, 0x3F)` over the same shift, and `costs.json` stated `arity_sm [10, 15]`.
+The two 4-bit forms truncate every count above 15 -- reporting the remainder rather than
+failing, which is why it survived: the 25-file sample that first fitted the field declares
+no fxmap with more than 15 inputs, so the nibble was sufficient there and could not see the
+truncation. `ie_curve` record 35 (`w1 = 0x8803`) declares 34 inputs and a nibble reads back
+2; walk and decompose therefore disagreed on 10 records with neither side raising anything.
+
+The width is settled on the structural PROG invariant, which can fail: fxmaps' header ends
+at `3 + n_in`, and that slot's word `+ 52` must resolve as a valid program. A truncated
+count lands `end` inside the edge run, where the word is a small backward record index and
+`+52` is not a program. Over 41,164 fxmaps records in 437 files, every width:
+
+    4 bits  41,118    5 bits  41,126    6 bits  41,128    7 bits  41,128    8 bits  41,128
+    against 4 bits, 6 gains 10 and loses 0
+
+6 is pinned from BOTH sides -- below it the count is still truncated, at and above it the
+invariant saturates -- which is what makes it a determination rather than a better guess.
+The 36 that hold at no width are a separate population and remain open.
+
+Landed as one rule in one place: `derive_costs.W1_ARITY` is `4: (10, 0x3F)` so a
+re-derivation cannot restore the nibble, `costs.json` carries `[10, 63]`, and
+`record_layout.arity_field` is the single accessor. `walk.SPECS[4]` now asks it instead of
+restating the shift, and `walk` and `decompose` agree on 41,164 of 41,164 with 0
+disagreements. `decompose`'s workaround is measured redundant -- 41,164 records unchanged
+when it is removed -- rather than assumed so.
+
+A consequence worth recording because it looks like a regression and is not:
+`record_layout.header_words` moves on exactly the 10 truncated records, e.g. `ie_curve` #35
+from 40 to 72 words. A 40-word header cannot contain 34 input slots, so the old number was
+structurally impossible; any stored fxmaps header-length figure is stale by 10.
+
+## The instrument was doing the thing it was built to catch
+
+`walk_partition`'s FX census printed rows like "entry slot 7 of a 3-word structure
+(stated)", and eight survivors at tag `0x00020018` were read as the format declaring a
+program at slot 7 inside a 3-word entry. It declares nothing of the kind:
+`fx_entry_layout(0x20018)` returns `[]`, and 793 of 796 such entries step exactly 3 words.
+
+The slot column was never a declaration. `_naming_slots` SEARCHES up to 32 words for one
+equal to `prog - 52` and reports the lowest hit; "(stated)" described the EXTENT's
+provenance and never the slot's, and the two read together as a claim by the format. What
+actually names those programs is `FX_PAYLOAD_PROG`, the last hand-stated program offset in
+`sbsasm.py` -- an address computed as `t + 20` from the entry's `+4` pointer target. The
+decode never reads a slot for it at all. So a check written to catch value-based decoding
+went looking for a value, found a coincidental match, and scored a violation that was not
+one. (Found by a parallel session; corrected in `9f25301`.)
+
+The column now reads "match at +7 words, extent 3 (stated)", and the correct reading of a
+row is: no word inside the extent equals this pointer and one outside it does. That is
+evidence the extent or the attribution is wrong. It is NOT evidence about which slot the
+format uses, and an attribution that COMPUTES an address rather than naming one is
+invisible to the check in both directions.
+
+## A no-op claim is only as good as its second arm
+
+`84de000` was reported here as a behaviour-verified no-op on `distance.py`. It is not. The
+verification had been run against the shared working tree, which on this checkout carries
+nine other sessions' in-flight edits, so it measured them as well.
+
+Re-run as HEAD-plus-only-that-edit -- two trees from `git archive HEAD tools`, one file
+swapped to `84de000~1`, nothing read from the working tree -- over all 2,268 `distance`
+records:
+
+    same value                                       2,188
+    gained an answer where the old code returned None    69   (0 lost)
+    both answer, VALUES DIFFER                           11
+
+The 69 are the plausibility window coming off and are a strict gain. The 11 are a slot
+disagreement the commit closed without noticing: the walk names a slot exactly one later
+than the old `layout[1] + 1 + cls7 + cls11` formula, reading 256.0 where the old code read
+1.0 (one record 1.28). Both numbers are plausible -- 1.0 passes the old bound and 256.0 IS
+`REFERENCE_PX` -- so plausibility cannot settle them, and every one of the 2,268 records
+returns LOW CONFIDENCE in BOTH arms, so there is no hit rate to appeal to either.
+
+Ten of the eleven landing on exactly `REFERENCE_PX` is above base rate: 256.0 is 32.1% of
+all answers in the new arm and 31.4% in the old, so ten-or-more of eleven is about 8e-5 by
+chance. But `_locate_slot` cannot manufacture it -- the constant appears nowhere in the
+function after `84de000`, which unpacks the record's own word as float32. The remaining
+suspicion is therefore the useful one: if the walk's slot is one past the real first
+parameter in these 11, the 256.0 is a genuine baked float belonging to a NEIGHBOURING
+field, which is exactly how 91% would concentrate on one value while every number stays
+plausible. That is a class-word question and needs no render arbiter.
+
+The lesson is not "check twice". It is that a no-op claim is what licenses KEEPING an
+out-of-bounds edit instead of reverting it, so it is load-bearing, and the only admissible
+form of it is two pristine trees differing in one file. Compare VALUES separately from any
+provenance string: 1,584 of the 2,268 "differed" here, and all but 11 of those were the
+description text changing.

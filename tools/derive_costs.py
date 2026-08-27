@@ -82,10 +82,31 @@ PAYLOAD = {0: 3, 22: 3, 5: 1, 4: 2, 16: 1}  # filter -> slot holding its payload
 
 # How to read words[1], per filter. The first model treated it as a code vector
 # everywhere, and the four worst rejections were exactly the four filters where it is
-# not one: an ARITY INTEGER (pixelprocessor low nibble, fxmaps bits 10-13), ABSENT
+# not one: an ARITY INTEGER (pixelprocessor low nibble, fxmaps bits 10-15), ABSENT
 # (uniform bakes a value there; filter 5 points at its payload), or PER-RECORD (warp
 # and shuffle have two shapes, and the edge run starting at slot 1 is the no-w1 shape).
-W1_ARITY = {20: (0, 0xF), 4: (10, 0xF)}      # filter -> (shift, mask)
+#
+# FXMAPS' FIELD IS SIX BITS, NOT FOUR. It was 0xF here, and a nibble truncates every count
+# above 15 -- reporting the remainder rather than failing, which is why it survived: the
+# 25-file sample that first fitted it declares no fxmap with more than 15 inputs. The width
+# is settled by the STRUCTURAL PROG invariant, which can fail: this filter's header ends at
+# 3 + n_in, and that slot's word + 52 must resolve as a valid program. A truncated count
+# lands `end` inside the edge run, where the word is a small backward record index and +52
+# is not a program. Over 41,164 fxmaps records in 437 corpus files, every width tried:
+#
+#     4 bits  41,118      5 bits  41,126      6 bits  41,128      7 and 8 bits  41,128
+#
+#     gained vs 4 bits: 6 gains 10, loses 0 -- a strict gain, no record trades away
+#
+# 6 is therefore determined from both sides rather than chosen: below it the count is still
+# truncated, at and above it the invariant saturates. `ie_curve` record 35 (w1=0x8803)
+# declares 34 inputs and a nibble reads back 2. The 36 that hold at NO width are a separate
+# population and are not addressed here.
+#
+# This is the canonical copy. Two others existed -- `decompose`'s `mask = max(mask, 0x3F)`
+# workaround and `walk.SPECS[4]`'s hardcoded `(w1 >> 10) & 0xF` -- and both are redundant
+# once costs.json carries 63; walk's stale nibble disagreed with decompose on 10 records.
+W1_ARITY = {20: (0, 0xF), 4: (10, 0x3F)}     # filter -> (shift, mask)
 W1_ABSENT = {6, 5, 16, 13, 10, 14, 19, 0, 22}
 # blur (10), hsl (14) and dyngradient (19) joined when the all-baked records entered
 # the fit: they are start-1 filters -- words[1] is their first EDGE -- and keying on an

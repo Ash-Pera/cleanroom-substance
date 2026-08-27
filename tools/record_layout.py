@@ -66,6 +66,30 @@ def costs():
     return _COSTS
 
 
+def arity_field(filter_id):
+    """(shift, mask) for a filter's w1 arity count, or None if it declares none.
+
+    THE PLACE THE ARITY ENCODING IS WRITTEN DOWN. It was three: this table, `decompose`'s
+    `mask = max(mask, 0x3F)` workaround, and `walk.SPECS[4]`'s hardcoded `(w1 >> 10) & 0xF`.
+    The three did not agree -- walk's stale nibble truncated every count above 15 and so
+    disagreed with decompose on 10 records (`ie_curve` #35 declares 34 inputs; a nibble
+    reads back 2). Callers ask here rather than restating the shift.
+
+    NOT YET THE ONLY READER, and an auditor should know it. `decompose`'s workaround still
+    exists and reads `spec['arity_sm']` STRAIGHT FROM THE COST DICT, not through this
+    accessor -- so it is a no-op that will keep working and will not appear in any search
+    for callers of `arity_field`. It is deliberately still there: `main` carries the
+    widening and the checked-out branch does not, so removing it early would truncate
+    fxmaps arity for anyone on the branch. It comes out when the refs meet, and until then
+    this docstring is the only thing that says a second reader exists.
+    """
+    spec = costs().get(str(filter_id))
+    if spec is None:
+        return None
+    ar = spec.get('arity_sm')
+    return tuple(ar) if ar else None
+
+
 W1_REFUSE = object()        # "the shape is undecidable from what you passed"
 
 

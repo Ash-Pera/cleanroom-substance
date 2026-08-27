@@ -149,7 +149,28 @@ def stated_extent(rec, kind, q, tag):
 
 
 def fx_violations(rec):
-    """[(kind, tag, slot, extent_words, source)] for attributions outside their structure."""
+    """[(kind, tag, match_offset, extent_words, source)] for attributions outside their
+    structure.
+
+    THE THIRD FIELD IS A SEARCH HIT, NOT A DECLARATION, and reporting it as one was this
+    instrument's own error rather than a finding. `_naming_slots` scans up to 32 words for
+    a word equal to `prog - 52` and returns the lowest match; the census then printed that
+    as "slot 7 of a 3-word structure (stated)", where "(stated)" describes the EXTENT's
+    provenance and never the slot's. Read together it says the format declares a program at
+    slot 7, which it does not -- `fx_entry_layout(0x20018)` declares nothing at all.
+
+    What actually produced the 8 survivors at that tag is `FX_PAYLOAD_PROG`, the one
+    hand-stated program offset left in `sbsasm.py`: an address computed as `t + 20` from the
+    entry's `+4` pointer TARGET. The decode never reads a slot for it. So this check cannot
+    see the path that named the program, went looking for one, and found a word that matched
+    by coincidence -- which is the value-based reading this file exists to catch, committed
+    by the file itself. (Found by `cleanroom-substance-0e`, corrected in 9f25301.)
+
+    The consequence for reading the output: a reported match means "no word inside the
+    extent equals this pointer, and one outside it does". That is evidence the extent or the
+    attribution is wrong; it is NOT evidence about which slot the format uses, and an
+    attribution computed rather than named is invisible to this check in both directions.
+    """
     try:
         items = list(rec.fx_walk())
     except Exception:
@@ -350,7 +371,7 @@ def census(paths=None):
             if r.filter_id != 4:
                 continue
             for kind, tag, k, extent, src in fx_violations(r):
-                fx[(kind, 'slot %d of a %d-word structure (%s)' % (k, extent, src))] += 1
+                fx[(kind, 'match at +%d words, extent %d (%s)' % (k, extent, src))] += 1
             try:
                 items = list(r.fx_walk())
             except Exception:

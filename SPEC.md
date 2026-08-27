@@ -183,13 +183,33 @@ the provenance wall (§12).
 
 A filter's parameters are either **computed** (a bytecode program) or **baked** (a
 constant). Computed parameters are pointers into the instruction stream (§10). Baked
-parameters live in the value table.
+parameters are stored **inline in the record header, one word per component** (§6.4) — not
+in the value table, which holds the graph input defaults only (§7.1).
 
 ### 7.1 Value table
 
-A single array named by trailer word 6 and bracketed by header 0x2C. It holds every baked
-scalar/vector value; 98% of its entries are byte-exact against manifest defaults, the rest
-within float-rounding, none unexplained. Values are addressed positionally by the walk.
+A single array named by trailer word 6 and bracketed by header 0x2C. It holds the **graph
+input defaults and nothing else** — 98% of its entries are byte-exact against manifest
+defaults, the rest within float-rounding, none unexplained. Values are addressed
+positionally by the widths of §7.2.
+
+An earlier version of this section said it "holds every baked scalar/vector value". That is
+false, and the error is large: measured over 437 specimens, the graph-input descriptors of
+§7.2 consume the table's **entire stated extent** — `table_start = trailer word 6 + 52` to
+`table_end = header 0x2C + 52` — in 437 of 437 files, with no room left over. Meanwhile the
+records carry **544,873 baked parameter slots** against the corpus's **8,500** descriptors,
+a ratio of 1 : 64.
+
+Those two populations are disjoint. **A record's baked parameters are stored inline in the
+record header, one word per component** (§6), and are never in the value table. A reader
+built on the old sentence would look for 544,873 values in an array that does not contain
+them.
+
+The 437/437 closure is stated deliberately in terms of the two header/trailer pointers.
+`standalone_parse` reports its own `table_ok` at 437/437 as well, and **that number is not
+evidence**: the parser selects the interface-block candidate that satisfies
+`tstart + span == hdr`, so its closure is a property of the chooser rather than of the
+format. The pointers above are ones the chooser never reads.
 
 ### 7.2 Graph-input default table
 
@@ -291,7 +311,6 @@ rather than the record header. The masks above are still well-formed, they are s
 matched. A memo that attributed header parameters to it named **0 of 95,426** slots inside the
 header it claimed them from, against `levels` at 160,106 of 169,219 (94.61%): the two are not
 one rule at two severities but a working rule and a baseless attribution.
-
 ---
 
 ## 8. FX-Map trees
