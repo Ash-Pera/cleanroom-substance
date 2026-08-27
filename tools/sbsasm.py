@@ -1077,6 +1077,27 @@ PARAM_POPCOUNT = {10: 0x2881, 7: 0x0881}
 # not deduplicate 9 misattributions. Uniqueness cuts both ways -- 9 real programs no other
 # structure names, or 9 phantoms no other structure confirms -- and this does not separate
 # them, so the bound is not applied.
+# THE ONE HAND-STATED PROGRAM OFFSET LEFT, and the entry appears to state it itself.
+# `fx_table` reaches this only when the tag declares no program slot, and 0x00020018 is
+# the only tag in it -- the comment at `fx_table` calling it "the two tags whose
+# self-pointer base the inline rule reads wrong" is stale by one.
+#
+# Every attribution it makes is also stored by the entry: over 80 files it fires 8 times,
+# and in 8 of 8 the address it computes (`t + 20`) equals the word at the entry's slot 7
+# read as a pointer. So the constant reproduces a pointer already present in the data, and
+# deriving it would drain the last hand-stated row here.
+#
+# NOT DERIVED YET, because it turns on an unsettled question. `walk_partition` reports
+# these 8 as the whole of its remaining FX violations, against a 3-word extent taken from
+# the entry's slot-1 step -- and a slot 7 cannot be inside a 3-word entry. Either the
+# extent is wrong for this tag, or slot 7 belongs to a later chain element and the equality
+# is telling us something about the neighbour instead. `fx_entry_layout(0x00020018)`
+# declares NOTHING at all, so it is not the source of a slot-7 reading either way; a
+# higher-bit variant `0x00420018` occurs in the same records and DOES declare a program, at
+# slot 4.
+#
+# Recorded rather than acted on: which tag the contradiction is against has to be settled
+# before the 8 mean anything.
 FX_PAYLOAD_PROG = {
     0x00020018: 20,                       # BYTE offset from the entry's +4 pointer
 }
