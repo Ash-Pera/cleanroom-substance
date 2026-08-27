@@ -2860,8 +2860,45 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         LOW_CONFIDENCE.add(i)
                         assume.note(i)
                     else:
+                        # THE WEIGHTS COME FROM THE WALK, NOT FROM `_start + 1`. The vector
+                        # is an ordinary class-word parameter -- w0 bit 24, four words wide
+                        # -- so `cls_pair_slot` names its slot the same way blur, sharpen
+                        # and warp already ask for theirs. `layout start + 1` was a formula
+                        # for the same position, and formulas for this format are fitted
+                        # patches: nothing here stores a slot number, every position is
+                        # implied by the bits set before it.
+                        #
+                        # It matters. Over 7,543 shuffle records with the bit set, across
+                        # the corpus and the reference packs:
+                        #
+                        #     formula slot == walk slot   6,664
+                        #     formula slot != walk slot     267
+                        #
+                        # and the 267 are not refusals, they are WRONG PICTURES -- four
+                        # words read from the wrong place and used as a weight vector.
+                        # The formula misses in both directions (cls 0x118 start=2 wants
+                        # slot 2 and the formula says 3; cls 0x199 start=2 wants slot 4),
+                        # so it is not a constant offset error that could be patched with
+                        # another term.
+                        #
+                        # The remaining 267-with-bit-set that the walk names NOTHING for are
+                        # 4-word records whose header the walk ends at 4 -- there is no room
+                        # for a four-word vector, and the length refusal below is right
+                        # about them. The walk and that check agree rather than competing.
+                        _wp = cls_pair_slot(rec, 24)
+                        if _wp is None:
+                            raise Unsupported("shuffle weight vector: the walk names no "
+                                              "class parameter at bit 24")
+                        _wstate, _wslot, _wwidth = _wp
+                        if _wstate != 'baked':
+                            # Never observed -- bit 25 is set on 0 of 7,682 shuffle records
+                            # -- so this refuses rather than inventing a program read.
+                            raise Unsupported("shuffle weight vector is a program (class "
+                                              "bit 9), which no record in the corpus has")
+                        if _wslot + 4 > len(rec.words):
+                            raise Unsupported("shuffle weight vector runs past the record")
                         hot = np.frombuffer(
-                            np.array(rec.words[_start + 1:_start + 5],
+                            np.array(rec.words[_wslot:_wslot + 4],
                                      dtype=np.uint32).tobytes(), dtype=np.float32)
                     if not (np.all(np.isfinite(hot)) and np.all(np.abs(hot) <= 4.0)
                             and float(np.abs(hot).sum()) > 1e-6):
