@@ -1369,7 +1369,26 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 elif isinstance(value, np.ndarray):
                     per[name] = value
                 else:
-                    per[name] = np.frombuffer(struct.pack('<I', int(value)), dtype='<f4')
+                    # THE SAME DECODE THE SCALAR PATH DOES, and this is where the two
+                    # drifted. `emit` was corrected to read a baked parameter as the TUPLE
+                    # OF FLOATS `fx_named_params` yields -- one per declared word -- with
+                    # its own comment recording that it "used to hand back the raw slot
+                    # word, and width-2 parameters lost their second component". This half
+                    # of the same decode never got that correction and still reinterpreted
+                    # an integer word as a float.
+                    #
+                    # It could not work. `int(value)` on a tuple raises, so EVERY batched
+                    # record carrying a baked entry parameter died here -- not merely the
+                    # width-2 ones, since `int((0.5,))` raises just as `int((0.0, 0.19))`
+                    # does. It surfaced as a TypeError in the failure message rather than
+                    # as an Unmodelled, which is why it read as an exotic record instead of
+                    # a bug: Chipboard 1682, whose `frameoffset` is baked (0.0, 0.19).
+                    #
+                    # Over 6,341 fxmaps records, every baked entry value is a tuple (7,170,
+                    # of which 4,967 are width 2) or an ndarray (48). Not one is a plain
+                    # integer, so the word-reinterpretation branch was unreachable except
+                    # to crash, and mirroring `emit` is the whole fix.
+                    per[name] = np.asarray(value, dtype=np.float32).ravel()
             cols.append((per, wide))
         for j in range(m):
             for per, wide in cols:
