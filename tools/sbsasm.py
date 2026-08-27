@@ -1203,21 +1203,6 @@ FX_PROGRAM_BITS = frozenset({20, 22, 24, 26, 28, 30, 31})
 # 3,983 entries whose stated length is too short for the bits the layout claims, and 3,960
 # of them are that tag. The `FX_ENTRY` clip added earlier hid the symptom; this removes the
 # cause. Program-slot positions are unaffected, because those depend only on the widths.
-# RE-MEASURED ON THE FULL CORPUS PLUS THE REFERENCE PACKS, and the reading holds with room
-# to spare. Every one of the four is pointer-shaped essentially always:
-#
-#     bit 4    31,276 slots    99.68% denormal
-#     bit 7    18,793          99.55% denormal  (3.75% of them RESOLVE as a program)
-#     bit 16    3,417 x4       ~99%   denormal or exactly 0
-#     bit 17   255,531          96.91% denormal  (0.31% resolve as a program)
-#
-# AND THE NEAR-MISS IS WORTH KEEPING, because it is this note's own trap sprung a fourth
-# time. Classifying these slots by "is the float in [0,1]" reports bit 7 as a clean scalar
-# parameter in 18,793 of 18,793 -- 100.00%, the kind of number that ends an argument. It is
-# meaningless: a denormal is about 1e-44, which IS in [0,1], so the test cannot tell a
-# pointer from a parameter and answers "parameter" every time. The bound that separates them
-# is `abs(f) < 1e-30`, not a range check. A plausibility window that a pointer passes is not
-# evidence, and the reason to prefer the walk is that it never has to ask.
 FX_STRUCTURAL_BITS = frozenset({4, 7, 16, 17})
 
 # PARAMETERS A TABLE ENTRY NEVER STORES, however the source declares them.
@@ -2355,21 +2340,42 @@ class Record:
             Chesterfield basecolor ch0   corr 0.5495   floor 0.60
             Chesterfield basecolor ch1   corr 0.0268   floor 0.72
 
-        ch1 collapses. Three records -- ChesterfieldSofa 137, 210 and 218, byte-identical to
-        each other -- get nothing from the memo and `leveloutlow` 1.0 / `levelouthigh` 0.0
-        from the walk. That pair inverts the channel, and of the 12 `levels` nodes the
-        source declares, ZERO have `leveloutlow` above `levelouthigh`.
+        CORRECTED ATTRIBUTION. This block previously blamed records 137, 210 and 218 -- the
+        three that read `leveloutlow` 1.0 / `levelouthigh` 0.0 where the memo returns
+        nothing. That was wrong, and the intervention that "confirmed" it was malformed: it
+        made the named records return [], which is a THIRD behaviour, not the incumbent.
+        Falling back to the memo instead, one group at a time, over the 7 records of the 124
+        where the two routes differ:
 
-        THE PLACEMENT IS NOT THE ERROR, which is why this is recorded rather than reverted
-        quietly. Record 25 of the same file is shaped identically to record 137 -- five
-        words, class 0x18, parameters at slots 3 and 4 -- and its source DECLARES the two
-        values sitting in those slots (`levelinlow` 0.211466, `levelinhigh` 0.604323). Slot
-        3 really is the first parameter for this record shape; the walk really does read
-        record 137's stored 1.0 and 0.0; the memo returns nothing only because its block
-        reserves slot 3 for the size expression. What is missing is a rule saying those
-        three records do not apply their levels at all. (1.0, 0.0) is the exact inverse of
-        the (0.0, 1.0) default and looks like a sentinel, but three identical records will
-        not carry that inference and nothing else in the file states it.
+            memo everywhere (incumbent)      ch0 +0.6658   ch1 +0.8862
+            walk everywhere                  ch0 +0.5495   ch1 +0.0268
+            memo for 137 / 210 / 218         ch0 +0.5499   ch1 +0.0260   no effect
+            memo for 348                     ch0 +0.5495   ch1 +0.0268   no effect
+            memo for 129 / 146 / 226         ch0 +0.6658   ch1 +0.8862   FULLY RESTORED
+            memo for every levels record     ch0 +0.6658   ch1 +0.8862   control
+
+        So it is 129, 146 and 226, and 137 is innocent -- routing it through the walk costs
+        nothing measurable. The inversion it reads may still be wrong, but it is not what
+        this test is objecting to.
+
+        WHAT THE THREE CULPRITS LOOK LIKE. Record 129 is six words, class 0x18, w1 0x144, so
+        three parameters at three slots and the record has exactly three to spare:
+
+            slot 2  0x80        = record 128, its input EDGE
+            slot 3  0x3f7fa377  = 0.99859
+            slot 4  0x3f800000  = 1.0
+            slot 5  0x0         = 0.0
+
+            memo   levelinhigh @2  leveloutlow @3  levelouthigh @4
+            walk   levelinhigh @3  leveloutlow @4  levelouthigh @5
+
+        The memo starts one slot EARLIER and reads the edge as `levelinhigh`, which comes
+        back as the denormal 1.79e-43 -- a record index reinterpreted as a float. The walk
+        never lands on an edge and uses every word of the record. By the edge-XOR-parameter
+        rule the walk is right, and by the reference maps the memo is: the walk's placement
+        gives `leveloutlow` 1.0 above `levelouthigh` 0.0, an inversion, and the channel
+        collapses. Both readings cannot be right and the two instruments disagree, which is
+        the whole of what is unresolved here.
 
         The walk is ahead on every structural measure and behind on pixels:
 
@@ -3458,6 +3464,54 @@ class Record:
                 # A 0x1B branches, so the walk stops being a straight line here; `pending`
                 # carries the far child and the near one continues inline. Order is not
                 # claimed to be the engine's.
+                # THE 0x1B BRANCH STATES ITS OWN SHAPE IN WORD 1, so read it instead of
+                # the hand-stated row. Over the whole corpus, all 355 `0x1B` nodes split
+                # on that word with no residue:
+                #
+                #   word 1 == 0x3039   343   [hdr][0x3039][ptr -> a distant 0x18B]
+                #                            [contiguous 0x18B]  -- two children, no
+                #                            program of its own
+                #   word 1 == 0         12   a six-word self-relative form (w2 -> +12,
+                #                            w4 -> +20, w5 -> a program), 12 of 12 exact
+                #
+                # `FX_NODES2[0x1B] = ((8, 20), (16,))` is wrong for the 343: byte 20 and
+                # byte 16 are the FOLLOWING `0x18B`'s own successor and program, since that
+                # node starts at byte 12 and `node_shape(0x18B)` is `(8, (4,))` -- 12+8 and
+                # 12+4. The row was derived by reading the neighbour's fields as this
+                # node's, which `fxrender` measured independently on 34 nodes in one file
+                # and declined to correct from there.
+                #
+                # What that costs today: nothing addresses byte 12, so the contiguous
+                # `0x18B` is NEVER VISITED AS A NODE -- its program is yielded under the
+                # `0x1B`'s offset and its successor followed as if it were the branch's.
+                # The traversal still reaches the same descendants; the node census and the
+                # program attribution are what is wrong. Reading word 1 fixes both.
+                #
+                # THE 12 ARE LEFT ON THE OLD ROW DELIBERATELY. Their six-word form is
+                # characterised but their successor is not, so there is nothing yet to put
+                # in `nxts` for them; changing their behaviour would be a guess where the
+                # 343 is a measurement. They are all in one file (`Splatter.sbsasm`).
+                _extra = []
+                if (h & 0xFF) == 0x1B and q + 8 <= e:
+                    _w1 = struct.unpack_from('<I', d, q + 4)[0]
+                    if _w1 == 0x3039:
+                        # One POINTER child at byte 8; the other child is CONTIGUOUS at
+                        # byte 12 and so cannot go in `nxts`, which pointer-reads each
+                        # offset. It is appended to the targets directly below.
+                        _extra.append(q + 12)
+                        shape2 = ((8,), None)
+                        nxts, prog_slots = shape2
+                        yield q, h, None
+                        targets = []
+                        for n_off in nxts:
+                            if q + n_off + 4 > e:
+                                return
+                            targets.append(
+                                struct.unpack_from('<I', d, q + n_off)[0] + 52)
+                        targets.extend(_extra)
+                        pending.extend(targets[1:])
+                        q = targets[0]
+                        continue
                 _lf = leaf_successor(h)
                 if _lf is not None:
                     # DERIVED, not tabulated: the mask gives the leaf's successor, so
