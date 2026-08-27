@@ -2553,6 +2553,39 @@ class Record:
         rather than by a score, and record 129's out-pair really is (1.0, 0.0) at slots 4
         and 5.
 
+        THE CONE, TRACED. Record 129's input is not flat by accident and not flat by any
+        fault upstream of it. Walking the 39 records above it:
+
+            122  shuffle          256x256  std 0.2187   real contrast
+            128  transformation    16x16   std 0.0037   <- the signal dies here
+            129  levels            16x16   std 0.0000
+
+        Record 128 is a 4x MINIFICATION -- matrix (4, 0, 0, 4) onto a 16x16 output -- and its
+        `uniq` of 16 is the giveaway: 16 output pixels at 4x zoom land on only four distinct
+        sample positions per axis. Upstream of that everything is healthy and, more to the
+        point, correct: 122 is a shuffle whose weight vector is exactly (1, 0, 0, 0), the RED
+        channel of the normal map at 121, and a normal map's X channel IS 0.5 wherever the
+        surface is flat. 121's own mean of 0.7220 is what R,G ~ 0.5 with B,A ~ 1.0 averages
+        to. So the 0.4998 reaching 129 is the right number, not a collapse to be fixed.
+
+        WHICH MAKES THE TWO READINGS STRUCTURALLY IDENTICAL AND ONLY THE MEAN DIFFERENT --
+        inverting 0.5 returns 0.5 -- and pins exactly what the reference is asking for. For a
+        levels node to turn an input of 0.5 into the ~1.0 the exported maps want, it needs
+        t = 0, which means `levelinlow` >= 0.5. The value sitting at slot 3 is 0.99859 and
+        would do precisely that -- if slot 3 were `levelinlow`.
+
+        It is not. w1 bit 2 is `levelinhigh`, and that is the one thing here with independent
+        support: record 25 of this same file sets bits 0 and 2 and its source declares
+        `levelinlow` 0.211466 and `levelinhigh` 0.604323 at slots 3 and 4. So the reading the
+        pixels require is the reading containment forbids, on the same file, for the same bit.
+
+        That is the contradiction in its smallest form. It is not a width, not a placement,
+        and not an upstream flattening -- all three are now checked. Either bit 2 means
+        something other than `levelinhigh` for this record shape and record 25 does not
+        generalise, or `render.py`'s levels evaluation is wrong for an inverted output range,
+        or the exported map is agreeing with the memo for a reason that has nothing to do
+        with record 129 and survives every intervention tried so far.
+
         WHICH MOVES THE PROBLEM RATHER THAN CLOSING IT. The levels widths are settled and
         the placement is right; the Chesterfield disagreement is therefore NOT a parameter
         layout question, and the next place to look is record 129's cone or the handling of
