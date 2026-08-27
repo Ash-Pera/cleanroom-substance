@@ -1166,6 +1166,47 @@ QUESTIONS = {
     # opacity -1.0, and the record renders solid white because its typeless fills win the
     # max and nothing can carve them back. 'add' lets a negative subtract; 'over' composites
     # by coverage.
+    # WENT AFTER THIS STRUCTURALLY AND IT DOES NOT YIELD. `blendingmode` is declared on FX
+    # paramsets in the permitted sources and read nowhere in this project, which makes it
+    # look like the obvious target. Three routes were tried and all three close:
+    #
+    #   NOT A TAG NIBBLE, by count. Only 48 constant declarations across 4 files and only
+    #   TWO distinct values, {1: 38, 2: 10}. A nibble search scores 83% for nibble 28,
+    #   which is chance -- that nibble is itself mostly 1. Two values cannot name a field.
+    #
+    #   NOT THE UNNAMED SLOT BITS. FX_PARAM_BITS leaves 4, 7, 16 and 17 unnamed, but all
+    #   four are pointer-shaped in 96.9%-99.7% of slots (see FX_STRUCTURAL_BITS), so none
+    #   of them holds a small integer mode.
+    #
+    #   NOT BITS 6/7, which looked like the answer for a while and are worth recording
+    #   because bit 6 IS A REAL DISCRIMINATOR THAT FX_PARAM_BITS DOES NOT LIST AT ALL.
+    #   Bits 6 and 7 are mutually exclusive -- 0 co-occurrences in 372,717 entry instances
+    #   and 0 among the 261 distinct tags -- splitting them 206 tags / 34 tags / 21 with
+    #   neither. `ie_particles` is the cleanest specimen the corpus can offer: two
+    #   paramsets declaring blendingmode 1 and 2, and exactly two distinct entry tags,
+    #   0x15140088 and 0x15140048, differing in nothing but those bits.
+    #
+    #   It is still not blendingmode. Two facts refute it. The bits are not symmetric --
+    #   `fx_entry_walk_end` differs by exactly 1 across all six tag pairs that differ only
+    #   in 6/7, so bit 7 buys a slot (the pointer-shaped one) and bit 6 buys none. And bit
+    #   6 tracks `patterntype`: 180 of its 206 tags carry one, against 4 of bit 7's 34. So
+    #   they discriminate a ROLE -- an entry that draws a pattern versus one that carries a
+    #   pointer -- and `ie_particles` matching a 1-and-2 declaration is a coincidence of a
+    #   two-entry file. Note also that exclusivity here is weak evidence on its own: 76 of
+    #   the 325 bit pairs are mutually exclusive over 261 distinct tags, and the strongest
+    #   of them is 25/26, the patternsize baked/program pair that is exclusive BY DESIGN.
+    #
+    # THE ACTUAL BLOCKER, which is shared by every fx question that leans on the sources:
+    # THERE IS NO ENTRY-LEVEL JOIN. A `.sbs` paramset does not map 1:1 to a compiled entry
+    # -- ie_curve declares 43 paramsets against 266 entries, ie_pcloud 11 against 333 --
+    # so counting declarations against entries is invalid, and it produced a plausible
+    # wrong answer three times in one sitting: here, for patterntype 1-vs-2, and for the
+    # gridcount divisibility. `ie_curve` and `ie_pcloud` disagree about the 6/7 mapping in
+    # exactly the way that confound predicts. Until a declaration can be tied to the entry
+    # it compiled to, this key is not arbitrable from source ground truth.
+    #
+    # This key also DOMINATES `fx.negopacity`: under 'max' two of that key's three arms are
+    # provably the same function. See its note; they move together.
     'fx.combine':         ('max', 'add', 'over'),
     # WHAT A NEGATIVE OPACITY MEANS. `splat` clips opacity to [0, 1], so a pattern carrying
     # -1.0 draws NOTHING -- and fxrender's own census found 1,195 such patterns in 20 files,
