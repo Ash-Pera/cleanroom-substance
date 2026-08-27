@@ -475,8 +475,27 @@ def _reference_px(rec):
     right to refuse it and right about what it is not; this pair is the quantity, and blur
     holds 5,159 of the 6,480 records that carry it.
 
-    Not wired: `rec.width` and this pair are two routes to the same scale and they do not
-    agree everywhere, so choosing between them is an arbitration, not a reading.
+    THE SCALE READING IS REFUTED, and the anchor it rested on is not corroborated either.
+    Two corrections to the paragraph above, both from tests run after it was written:
+
+    * `rec.width` is `1 << ((tag >> 8) & 0xF)` -- a four-bit TAG FIELD read as a log2
+      exponent. It is not a walked quantity; `decompose` derives nothing about it. So
+      "value * width == 256" was measured against a reading that nothing here confirms.
+    * If the pair were a scale relative to a per-graph output size, `value * width` would
+      be CONSTANT within one assembly. It is not: 2 distinct products in 19 files, 3 in 63,
+      and up to 12 in one. The products cluster at 256 (3,775), 1024 (984) and 512 (887)
+      but also include 127.162, 250.906 and 253.44, which are not powers of two at all.
+
+    So the pair is structurally real -- the bit-pair convention holds, the baked slot reads
+    two floats, 89% are equal-component powers of two -- and its MEANING is unknown. It is
+    not established as this function's divisor, and the resemblance to 256 in a third of
+    records is the same corpus artifact that made the fitted constant look right: those
+    records are mostly 256 wide.
+
+    What survives is narrower and still worth having: this pair is the quantity the
+    withdrawn blur slot-3 fallback was reading, and that fallback's own description of it --
+    "a size, a mip level or a tiling count, not an intensity" -- remains the best available
+    characterisation. Naming it needs an instrument neither the walk nor `rec.width` supplies.
     """
     forced = assume.assumed('warp.reference_px')
     if forced is not None and forced != 'record':
