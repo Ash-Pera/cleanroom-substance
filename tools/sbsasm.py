@@ -2919,6 +2919,37 @@ class Record:
         if self.filter_id == 4:
             return []
         asm, o, e = self.asm, self.offset, self.end
+        # BOUNDED BY THE WALK TOO, for the same reason and with the same carve-out as
+        # `programs`' slot loop: past `end` a record is BYTECODE, so an instruction operand
+        # that happens to survive `valid_program` is not a program. This loop said "the
+        # header ends at the first program the record points at INSIDE itself", which is a
+        # bound read off the VALUES; `decompose` states where the header ends.
+        #
+        # The two bounds agree almost everywhere, so this is a correctness fix rather than a
+        # coverage change. Corpus-wide, excluding `_PAYLOAD_PROGRAM_FILTERS`:
+        #
+        #     bounds agree                     678,272 of 679,775 records   99.8%
+        #     walk bound drops candidates        1,502 records, 1,688 candidates
+        #     walk bound adds candidates             1 record,      1 candidate
+        #
+        # which is the same scale `programs` measured and accepted for its own loop ("drops
+        # 1,470 candidates over 14 files"). The carve-out is structural and not a fitted
+        # list: `fxmaps` and filter 20 address a payload region that holds program pointers
+        # by design, so for them the words past the header are still slots.
+        #
+        # The inline bound is KEPT as well, as a further clip rather than a replacement. It
+        # is not equivalent -- it can stop earlier than the walk when a record points into
+        # its own bytecode early -- and nothing here establishes which is right where they
+        # differ, so both apply and the tighter one wins.
+        stop = len(self.words)
+        if self.filter_id not in _PAYLOAD_PROGRAM_FILTERS:
+            try:
+                import decompose as _decompose
+                _d = _decompose.decompose(self)
+                if _d and _d.get('end') is not None:
+                    stop = min(stop, _d['end'])
+            except Exception:
+                pass
         cand = []
         for s in range(2, len(self.words)):
             p = self.words[s] + 52
@@ -2926,7 +2957,8 @@ class Record:
                 cand.append((s, p))
         # The header ends at the first program the record points at INSIDE itself.
         inline = [(p - o) // 4 for _s, p in cand if o <= p < e]
-        stop = min(inline) if inline else len(self.words)
+        if inline:
+            stop = min(stop, min(inline))
         return [p for s, p in cand if s < stop]
 
     @property
@@ -3150,6 +3182,37 @@ class Record:
                     break
             yield off, hdr, name, prog
 
+    @property
+    def fx_root(self):
+        """For filter 4: the body offset of the FX tree/table root, or None.
+
+        THE SLOT COMES FROM THE WALK. `decompose` reports it as `root`, derived from the
+        two facts `walk.SPECS[4]` already states -- two mask words, then `Arity(prefix=1)`,
+        one fixed non-edge slot before the image inputs. Nothing here stores a slot number.
+
+        This is the one place the +52 header-to-body skew is applied to that pointer. It
+        used to be written out four times -- `fx_tree`, `fx_entry_walk`,
+        `node_census.harvest` and `reverify` each did `words[2] + 52` -- which is the
+        duplication `fx_entry_walk`'s own note warns about at length: two implementations
+        of one walk drift, and the nibble-8 category error survived as long as it did
+        because the census and walk.py's validator made the same mistake in parallel and
+        so never disagreed.
+
+        Returns None rather than a guess when the record is not filter 4, when the walk
+        declines it, or when the slot falls outside the record -- an absence a caller can
+        see, not a word from the next record.
+        """
+        if self.filter_id != 4:
+            return None
+        import decompose as _decompose
+        d = _decompose.decompose(self)
+        if d is None:
+            return None
+        slot = d.get('root')
+        if slot is None or slot >= len(self.words):
+            return None
+        return self.words[slot] + 52
+
     def fx_table(self, start=None):
         """For filter 4: yield (entry offset, tag, program offset or None) per entry.
 
@@ -3167,7 +3230,9 @@ class Record:
         if self.filter_id != 4 or len(self.words) < 3:
             return
         d = self.asm.data
-        q = self.words[2] + 52 if start is None else start
+        q = self.fx_root if start is None else start
+        if q is None:
+            return
         # Bounded by the BODY, not by this record. A record's extent is a directory
         # partition, not an allocation: 805 fxmaps records address a table that lies
         # outside them, and in 757 of 757 resolvable cases it sits inside an earlier
@@ -3325,7 +3390,9 @@ class Record:
         if self.filter_id != 4 or len(self.words) < 3:
             return
         d, o, e = self.asm.data, self.offset, self.end
-        q, seen = self.words[2] + 52, set()
+        q, seen = self.fx_root, set()
+        if q is None:
+            return
         pending = []
         while o <= q < e - 7 and q not in seen:
             seen.add(q)
