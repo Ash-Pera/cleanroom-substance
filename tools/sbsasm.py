@@ -901,8 +901,39 @@ PARAM_POPCOUNT = {10: 0x2881, 7: 0x0881}
 # `0x0A800048` is a live discrepancy, not a special case: the layout rule is off by one
 # slot for it and the reason is not known. It is tabled here so the walk stays right while
 # that stands.
+# `0x0A800048` IS GONE FROM HERE, verified dead rather than argued away. Knocking each row
+# out separately over the whole corpus, comparing every `fx_walk` output on all 41,164
+# fxmaps records:
+#
+#     drop 0x0A800048    41,164 identical,   0 differ     <- carries nothing
+#     drop 0x00020018    41,031 identical, 133 differ     <- load-bearing
+#
+# It was tabled for a discrepancy that no longer exists. Its note said "the program sits one
+# slot PAST the inline slot the rule predicts (7, not 6)", and `fx_entry_layout` now returns
+# `(7, None, 'inline')` for that tag -- the layout rule caught up at some point and the row
+# was left behind. A row kept for a fixed problem reads exactly like a row kept for a real
+# one, which is why they have to be knocked out rather than re-read.
+#
+# `0x00020018` STAYS, and what it is standing in for is now measured. Of its 796 entries,
+# 133 put a program at the tabled offset, and on all 133 A WORD OF THE ENTRY POINTS AT THAT
+# SAME ADDRESS -- word 7, unanimously, 0 reachable only by the constant. So the byte offset
+# is standing in for a pointer the entry stores.
+#
+# That does NOT make swapping the constant for "word 7" an improvement: the entry's layout
+# is empty for this tag, so word 7 is not derived from anything either. It is one fitted
+# constant for another, and the readings are identical on all 133. Left alone until the tag
+# says where its program is.
+#
+# The over-reach here does NOT repeat the `0x1B` story, and the check that would have made
+# it look as though it did is the one worth recording. On 9 of the 133, word 7 lies PAST the
+# next entry's start -- the same shape as a node reading its neighbour's fields. But every
+# one of those 9 programs is UNIQUE to this entry: 0 of 9 are also yielded by the structure
+# they appear to belong to. Bounding the read would delete 9 programs nothing else finds,
+# not deduplicate 9 misattributions. Uniqueness cuts both ways -- 9 real programs no other
+# structure names, or 9 phantoms no other structure confirms -- and this does not separate
+# them, so the bound is not applied.
 FX_PAYLOAD_PROG = {
-    0x00020018: 20, 0x0A800048: 20,       # BYTE offsets from the entry's +4 pointer
+    0x00020018: 20,                       # BYTE offset from the entry's +4 pointer
 }
 
 
@@ -996,9 +1027,34 @@ FX_ENTRY_PROGS = {
 }
 
 
+# SIX VALUES ADDED, and they were already stated elsewhere in this file. `FX_ENTRY_PROGS`
+# is keyed by whole tags and its keys imply 27 distinct low-16 values against this set's 17;
+# eight of the difference end in nibble B and are NODE headers rather than entry tags, but
+# six are entry-shaped and were simply missing here: 0x0158, 0x0658, 0x0948, 0x0958, 0x0A48,
+# 0x0A58. Two tables in one file disagreeing about the same vocabulary.
+#
+# What the omission cost, over all 367,077 entries `fx_walk` yields corpus-wide:
+#
+#     low 16 in this set, as it was      329,942    89.88%
+#     covered by the six additions        35,225     9.60%
+#     still unaccounted                    1,910     0.52%
+#
+# The structure argues for them rather than just the count. `fx_patterntype` reads NIBBLE 2
+# of this word, and the note by FX_PATTERNTYPE_SHIFT observes that "FX_TAG_LOW16's nibble 2
+# takes 0-8 and B-E, thirteen values, which is what a pattern-shape enum looks like from
+# outside". The six supply exactly the two values that were missing from that range -- 9 and
+# A -- so nibble 2 becomes 0 through E CONTIGUOUS, fifteen values with no holes. An enum
+# with two gaps in the middle is a sign of unobserved cases, not of an enum with two gaps.
+# (The additions also introduce nibble 1 = 5, where this set had only 4 and 8.)
+#
+# Safe to widen: this set is NOT the entry walk's stopping rule -- the layout is, and
+# `fx_table` breaks on `node_shape` and on a tag whose predicted programs do not resolve.
+# It is read by the vocabulary test and by the two `0x1B` handoff guards, both of which were
+# REJECTING valid tags while it was short.
 FX_TAG_LOW16 = frozenset({
-    0x0008, 0x0018, 0x0048, 0x0088, 0x0148, 0x0248, 0x0288, 0x0348, 0x0448,
-    0x0548, 0x0648, 0x0748, 0x0848, 0x0B48, 0x0C48, 0x0D48, 0x0E48,
+    0x0008, 0x0018, 0x0048, 0x0088, 0x0148, 0x0158, 0x0248, 0x0288, 0x0348,
+    0x0448, 0x0548, 0x0648, 0x0658, 0x0748, 0x0848, 0x0948, 0x0958, 0x0A48,
+    0x0A58, 0x0B48, 0x0C48, 0x0D48, 0x0E48,
 })
 FX_ENTRY = {
     0x00000048: 64, 0x00000448: 64, 0x00000E48: 64, 0x00020008: 8,
@@ -2389,6 +2445,56 @@ class Record:
         collapses. Both readings cannot be right and the two instruments disagree, which is
         the whole of what is unresolved here.
 
+        RECORD 129 IN FULL, since it is the smallest complete statement of the conflict.
+        Its input, record 128, is a near-flat mid-grey (mean 0.4998, std 0.0037). Under the
+        two routes it renders as:
+
+            memo   mean 1.0000  std 0.0000   a CONSTANT WHITE
+            walk   mean 0.4995  std 0.0037   the input, inverted
+
+        and the memo's constant is what the reference maps agree with. The arithmetic is
+        not in doubt on either side. The memo's out-pair is (0.99859, 1.0) -- an output
+        range one and a half thousandths wide, so every input lands on white whatever the
+        input range does. The walk's out-pair is (1.0, 0.0), a genuine inversion, which this
+        file separately verifies is a real thing an author asks for (fur_var_001 record 54
+        stores exactly (1.0, 0.0) and its output is 1.0 where its input is 0.0).
+
+        What propagates is the MEAN, not the structure: 129 feeds a transformation into a
+        blend where it acts as a mask, and white against mid-grey changes that blend
+        completely. That is how a record with std 0.0037 swings basecolor ch1 from +0.89 to
+        +0.03, and it is why the three sibling records that read the SAME inversion cost
+        nothing -- 137, 210 and 218 take inputs that are already 0.5 to within 0.0005, and
+        inverting 0.5 returns 0.5.
+
+        SO THE WHOLE CONFLICT IS ONE WORD: does w1 field 1 (`levelinhigh`, bit 2) consume a
+        slot in this record? If it does, the out-pair is at slots 4 and 5 and 129 inverts.
+        If it does not, the out-pair is at 3 and 4 and 129 is white.
+
+        THAT QUESTION IS NOT ARBITRABLE BY THE REFERENCE MAPS, and the control says so
+        rather than an argument. Zeroing the cost model's width for field 1 state 1 gives
+        129 the memo's out-pair and scores BETTER than the memo on ch0; zeroing field 0
+        instead leaves record 129 byte-identical -- its w1 is 0x144, bit 0 clear, so field 0
+        is in state 0 and skipped whatever its width -- and moves the score further still:
+
+            memo (incumbent)                    ch0 +0.6658   ch1 +0.8862
+            walk, cost model unchanged          ch0 +0.5495   ch1 +0.0268
+            walk, field 1 state 1 costs 0       ch0 +0.7924   ch1 +0.7583
+            walk, field 0 state 1 costs 0       ch0 +0.8398   ch1 +0.6378   <- cannot touch 129
+
+        A knob that provably does not reach the record under study moves its channel by
+        +0.29. So these are a fitting surface, not evidence about record 129.
+
+        AND CONTAINMENT REFUSES BOTH EDITS. Zeroing field 1 drops `levelinhigh` from record
+        25, whose own source declares it as 0.604323 and where it sits at slot 4; zeroing
+        field 0 drops `levelinlow` from the same record, declared 0.211466 at slot 3. Both
+        cost edits improve the picture and contradict the file's own text, which is the
+        exact shape of error this project keeps recording.
+
+        So record 129 is explained and not resolved: the walk reads it correctly given the
+        cost model, the cost model is the thing in question, and the only instrument that
+        could settle a width -- source containment -- speaks for the current widths while
+        the pixels speak against them.
+
         The walk is ahead on every structural measure and behind on pixels:
 
             walk lands on an input edge          0        memo   1,844
@@ -3130,16 +3236,39 @@ class Record:
             # entries" failure in that set. Their table sits at the 0x9B's successor slot,
             # word 3, and the hardcoded 4 could never find it.
             off1 = sh[0] if sh else None
-            if off1 is None:
+            # A NON-SENTINEL `0x1B` HANDS OFF TO THE TABLE, CONTIGUOUSLY. Both forms of
+            # this branch are three words -- `[header][word 1][pointer]` -- and WORD 1 says
+            # what follows at byte 12:
+            #
+            #     word 1 == 0x3039   the next NODE (an 0x18B), walked as a child
+            #     word 1 == 0        the first table ENTRY, and the chain ends here
+            #
+            # The second reading is not inferred from the low nibble alone. On all 12 such
+            # nodes in the corpus the word at byte 12 has its low 16 bits IN `FX_TAG_LOW16`,
+            # the established entry-tag vocabulary -- 12 of 12 -- and `fx_table(q + 12)`
+            # yields 3 to 5 entries on every one of them, where the walk as it stood reached
+            # 0 or 1. Word 2's pointer confirms it independently: it addresses q + 12 exactly
+            # (12 of 12), so the node names the entry as well as abutting it.
+            #
+            # This cannot go through `off1`, which POINTER-READS the byte it is given. The
+            # table is AT byte 12, not addressed by a word there.
+            if start is None and (h & 0xFF) == 0x1B and q + 16 <= self.asm.body_hi:
+                _w1 = struct.unpack_from('<I', self.asm.data, q + 4)[0]
+                if _w1 != 0x3039:
+                    _t = struct.unpack_from('<I', self.asm.data, q + 12)[0]
+                    if (_t & 0xFFFF) in FX_TAG_LOW16 and self.offset <= q + 12 < self.end - 7:
+                        start = q + 12
+                        off1 = None
+            if off1 is None and start is None:
                 # The LEAF's successor is derived (`leaf_successor`), not looked up; only
                 # the BRANCH still comes from the hand-stated table, and for it the handoff
                 # is the LAST child.
                 off1 = leaf_successor(h)
-            if off1 is None:
+            if off1 is None and start is None:
                 _s2 = FX_NODES2.get(h & 0xFF)
                 if _s2 and _s2[0]:
                     off1 = _s2[0][-1]
-            if off1 is not None and q + off1 + 4 <= self.asm.body_hi:
+            if start is None and off1 is not None and q + off1 + 4 <= self.asm.body_hi:
                 nxt = struct.unpack_from('<I', self.asm.data, q + off1)[0] + 52
                 if self.offset <= nxt < self.end - 7:
                     start = nxt
@@ -3524,6 +3653,21 @@ class Record:
                         pending.extend(targets[1:])
                         q = targets[0]
                         continue
+                    # NON-SENTINEL: this branch has no node children at all -- it hands
+                    # off to the TABLE, which begins contiguously at byte 12 (verified
+                    # against `FX_TAG_LOW16` on 12 of 12, and `fx_walk` starts the entry
+                    # scan there). So bytes 16 and 20, which `FX_NODES2` calls this node's
+                    # program and second successor, are the ENTRY's own fields -- the same
+                    # borrow-the-neighbour error as the sentinel form, one structure over.
+                    # Yield the node owning nothing and let the chain end here.
+                    _t3 = (struct.unpack_from('<I', d, q + 12)[0]
+                           if q + 16 <= e else 0)
+                    if (_t3 & 0xFFFF) in FX_TAG_LOW16:
+                        yield q, h, None
+                        if not pending:
+                            return
+                        q = pending.pop()
+                        continue
                 _lf = leaf_successor(h)
                 if _lf is not None:
                     # DERIVED, not tabulated: the mask gives the leaf's successor, so
@@ -3778,7 +3922,15 @@ class Record:
         except Exception:
             _d = None
         if _d:
-            _two = [t for t in _d.get('param_slots', ()) if len(t) >= 4 and t[3] == 2]
+            # BY ITS FIELD, not by "the sole two-word entry". The offset's two-bit code
+            # sits at bits 25,26, which the tiling's even-bit grid used to split across
+            # fields 12 and 13; `decompose.STRADDLED` reframes it as one field carrying the
+            # ordinary alphabet, so state 1 IS the baked Float2 and can be asked for. Over
+            # 242,931 filter-2 records the field read names the same slot the width rule
+            # named, on every record where that rule answered, and it no longer depends on
+            # no other parameter happening to be two words wide.
+            _two = [t for t in _d.get('param_slots', ())
+                    if len(t) >= 4 and t[0] == 12 and t[1] == 1]
             if len(_two) == 1:
                 s = _two[0][2]
         if s is None:
