@@ -2300,22 +2300,19 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "curve":
-                # A per-channel tone curve. `Record.curve_points` is decoded and
-                # corpus-verified: six floats per knot, read there as a position pair
-                # followed by an incoming and an outgoing tangent, and the first table
-                # read out was the identity.
+                # A per-channel tone curve. `Record.curve_points` is decoded and corpus-verified:
+                # six floats per knot, read there as a position pair followed by an incoming and
+                # an outgoing tangent, and the first table read out was the identity.
                 #
-                # The handles are ABSOLUTE positions, not offsets -- a real S-curve knot
-                # reads (0.464, 0.382) with handles (0.379, 0.119) and (0.549, 0.645),
-                # which brackets the knot on both sides only under the absolute reading.
-                # So a segment is the cubic Bezier P0=knot_i, P1=out_i, P2=in_{i+1},
-                # P3=knot_{i+1}, and y is found by inverting x(t) for t.
+                # The handles are ABSOLUTE positions, not offsets -- a real S-curve knot reads
+                # (0.464, 0.382) with handles (0.379, 0.119) and (0.549, 0.645), which brackets
+                # the knot on both sides only under the absolute reading. So a segment is the
+                # cubic Bezier P0=knot_i, P1=out_i, P2=in_{i+1}, P3=knot_{i+1}, and y is found by
+                # inverting x(t) for t.
                 #
-                # NOT verified: that the engine inverts the same way. A Bezier segment is
-                # not a function of x in general, and this bisects x(t) rather than
-                # solving it, so a curve with a non-monotonic x would differ. Every table
-                # read here has ascending x (`curve_points` checks it), where the two
-                # agree.
+                # NOT verified: that the engine inverts the same way. A Bezier segment is not a
+                # function of x in general, and this bisects x(t) rather than solving it. Every
+                # table read here has ascending x (`curve_points` checks it), where the two agree.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 knots = rec.curve_points
@@ -2360,20 +2357,16 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
             elif rec.filter_name == "dirmotionblur":
                 # Parameter locations and UNITS are settled: filter 11 declares exactly
-                # `intensity` and `mblurangle`, named by containment against the
-                # permitted sources (FORMAT-NOTES.md, the filter-naming section), and
-                # `mblurangle` is an angle in TURNS -- the same convention confirmed from
-                # bytecode for directionalwarp's `warpangle`, where 3,336 of 3,336
-                # angle-shaped programs divide by 2*pi.
+                # `intensity` and `mblurangle`, named by containment against the permitted
+                # sources (FORMAT-NOTES.md, the filter-naming section), and `mblurangle` is an
+                # angle in TURNS -- the convention confirmed from bytecode for directionalwarp's
+                # `warpangle`, where 3,336 of 3,336 angle-shaped programs divide by 2*pi.
                 #
-                # NOT verified, and shared with directionalwarp above: the absolute pixel
-                # scale of `intensity`. This uses the same fixed 256-pixel reference and
-                # inherits the same possible constant-factor error. Wrong here means a
-                # blur of the wrong LENGTH along the right direction, not a wrong shape.
-                #
-                # The kernel is a straight, uniformly weighted line through the sample
-                # point, symmetric about it -- that is what a directional motion blur is,
-                # and it is engine math rather than anything carried in this file.
+                # NOT verified, and shared with directionalwarp above: the absolute pixel scale
+                # of `intensity`. Same fixed 256-pixel reference, same possible constant-factor
+                # error. Wrong here means a blur of the wrong LENGTH along the right direction.
+                # The kernel is a straight, uniformly weighted line through the sample point,
+                # symmetric about it -- engine math rather than anything carried in this file.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
@@ -2422,83 +2415,67 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "warp":
-                # WHERE the intensity is, derived here and corpus-checked: slot
-                # 4 + class bit 11. The bit shifts the parameter block by one slot, the
-                # same one-slot-per-class-bit growth Record.matrix documents for
-                # `transformation`. Grouping warp records by class word, in files whose
-                # source declares a distinctive `intensity`:
+                # WHERE the intensity is, derived here and corpus-checked: slot 4 + class bit 11.
+                # The bit shifts the parameter block by one slot, the same one-slot-per-class-bit
+                # growth Record.matrix documents for `transformation`. Grouping warp records by
+                # class word, in files whose source declares a distinctive `intensity`:
                 #
                 #   cls 0x02319 (bit 11 clear) -> slot 4    19 hits, 1 elsewhere
                 #   cls 0x02b19 (bit 11 set)   -> slot 5    11 hits, 1 elsewhere
                 #   cls 0x02309 (bit 11 clear) -> slot 4     1 hit
                 #
-                # Applying `4 + bit11`: 31 records hold a value the source declares, 746
-                # hold a plausible undeclared one (inlined library warps, whose intensities
-                # are not in the paired source at all), 6 are implausible and 0 records are
-                # too short. Corpus-wide the slot decodes to a plausible intensity in
-                # 2,909 of 2,936 records (99.1%).
+                # Applying `4 + bit11`: 31 records hold a value the source declares, 746 hold a
+                # plausible undeclared one (inlined library warps), 6 are implausible and 0 are
+                # too short. Corpus-wide the slot decodes to a plausible intensity in 2,909 of
+                # 2,936 records (99.1%).
                 #
-                # WHICH edge is which is structural rather than assumed: `EDGES[7]` is
-                # [1, 2] and a real specimen (Hard-Science-Old__CrustyLava records
-                # 125/128/129/130) has edges[1] = record 123 in every one while edges[0]
-                # varies -- one map warping many inputs, which is what a shared gradient
-                # input looks like and not what a per-record image input looks like. The
-                # paired source names the two connections `input1` and `inputgradient`.
+                # WHICH edge is which is structural rather than assumed: `EDGES[7]` is [1, 2] and
+                # a real specimen (Hard-Science-Old__CrustyLava records 125/128/129/130) has
+                # edges[1] = record 123 in every one while edges[0] varies -- one map warping
+                # many inputs, which is what a shared gradient input looks like. The paired
+                # source names the two connections `input1` and `inputgradient`.
                 #
-                # NOT corpus-verified, and stated as such the same way `directionalwarp`'s
-                # is: the displacement FORMULA and the absolute scale. This takes the
-                # standard shape -- displace along the LOCAL GRADIENT of the gradient
-                # input, which is what distinguishes `warp` from `directionalwarp`'s fixed
-                # angle -- against the same fixed 256-pixel reference. The gradient is a
-                # central difference in pixel space, converted to UV by the record's own
-                # width and height so a warp does not change strength with resolution.
+                # NOT corpus-verified, and stated as such the same way `directionalwarp`'s is:
+                # the displacement FORMULA and the absolute scale. This takes the standard shape
+                # -- displace along the LOCAL GRADIENT of the gradient input, which is what
+                # distinguishes `warp` from `directionalwarp`'s fixed angle -- against the same
+                # fixed 256-pixel reference. The gradient is a central difference in pixel space,
+                # converted to UV by the record's own width and height.
                 #
-                # THIS BRANCH IS NOT THE SUSPECT WHEN A WARP DOES NOTHING, and saying so
-                # here is the point of this note -- the measurement below cost a session
-                # that started by reading this code. On Bricks, 510 of 515 warp records
-                # return their source BYTE-IDENTICAL. That is arithmetic, not a decode
-                # fault: 345 of them are handed a gradient input whose std is exactly
-                # 0.0, and np.gradient of a constant is 0, so `in_pos` is `pos`. The
-                # other 165 get gradient std 0.0039 against intensity 0.06, which at
-                # W=64 displaces 6e-5 UV -- four thousandths of a pixel, so the sampler
-                # returns the same pixel. Both populations are the INPUT being flat.
+                # THIS BRANCH IS NOT THE SUSPECT WHEN A WARP DOES NOTHING, and saying so here is
+                # the point of this note -- the measurement below cost a session that started by
+                # reading this code. On Bricks, 510 of 515 warp records return their source
+                # BYTE-IDENTICAL. That is arithmetic, not a decode fault: 345 are handed a
+                # gradient input whose std is exactly 0.0, and np.gradient of a constant is 0;
+                # the other 165 get gradient std 0.0039 against intensity 0.06, which at W=64
+                # displaces 6e-5 UV, four thousandths of a pixel. Both populations are the INPUT
+                # being flat.
                 #
-                # WHERE THE FLATNESS COMES FROM, traced to a leaf: the zero gradients
-                # descend through blends and dirmotionblurs to `fxmaps` records with no
-                # image edges that render as a uniform 1.0. rec5596 is the readable one
-                # -- it EMITS 1,024 patterns, each carrying patternsize 5.0, which
-                # `splat` reads as canvas units. Five times the canvas, a thousand times
-                # over, is a white rectangle. The emission is right and the paint is
-                # degenerate.
+                # WHERE THE FLATNESS COMES FROM, traced to a leaf: the zero gradients descend
+                # through blends and dirmotionblurs to `fxmaps` records with no image edges that
+                # render as a uniform 1.0. rec5596 EMITS 1,024 patterns, each carrying
+                # patternsize 5.0, which `splat` reads as canvas units. Five times the canvas, a
+                # thousand times over, is a white rectangle. The emission is right and the paint
+                # is degenerate. NOT a 32x32 lattice, which an earlier version of this note
+                # called it: rec5596's branchoffset program uses `rand`, so its 1,024 positions
+                # are a deterministic SCATTER, and sqrt(N) = 32 was a number fitted to the count
+                # rather than a grid read from the file. The five records here that ARE grids
+                # (5, 11, 20, 27, 33) say so structurally -- their branchoffset divides $number
+                # by integer2 input uid 3616786801, whose value table entry reads (4, 8).
                 #
-                # NOT a 32x32 lattice, which is what an earlier version of this note
-                # called it: rec5596's branchoffset program uses the `rand` opcode, so its
-                # 1,024 positions are a deterministic SCATTER. sqrt(N) = 32 was a number
-                # fitted to the count, not a grid read from the file, which is exactly why
-                # dividing by it scored badly. The five records in this file that ARE
-                # grids (5, 11, 20, 27, 33) say so structurally -- their branchoffset
-                # divides $number by integer2 input uid 3616786801, whose value table entry
-                # reads (4, 8) -- and none of them is one of the oversized records.
+                # RECHECKED AFTER THE FX MASK-WALK RESTRUCTURE and unchanged: still 510 of 515
+                # identity warps, still 26 blend stages agreeing to four decimals, still 93 flat
+                # fxmaps generators. What DID change is that the sibling leaves 5513/5515/5518
+                # now state patternsize 5.0 and use rand as well, so the whole cone is one defect
+                # now, not two. See assume.QUESTIONS['fx.sizeless'].
                 #
-                # RECHECKED AFTER THE FX MASK-WALK RESTRUCTURE and unchanged: still 510 of
-                # 515 identity warps, still 26 blend stages agreeing to four decimals,
-                # still 93 flat fxmaps generators, rec5596 still 1,024 patterns at 5.0 with
-                # std 0.00390. What DID change is that the sibling leaves 5513/5515/5518
-                # now state patternsize 5.0 and use rand as well, where before they stated
-                # no extent at all -- so the whole cone is one defect now, not two. See
-                # assume.QUESTIONS['fx.sizeless'].
-                #
-                # AND THAT IS WHY THE LATTICE IS MISSING FROM THE OUTPUT. The output cone
-                # is a ~50-stage accumulator of the form `blend(prev, warp(warp_chain,
-                # G))`, which is how a motif is replicated: each warp shifts by G and the
-                # blend lays the shifted copy down. With G identically zero every warp is
-                # the identity and every blend is a no-op -- 26 consecutive stages whose
-                # std agrees to four decimals -- so the chain deposits one motif where the
-                # engine deposits a grid of them.
-                #
-                # The fix is NOT `fx.patternsize == 'cell'`; that was swept against the
-                # Bricks references and refuted, with the numbers and the reason MAE
-                # misreads it in assume.QUESTIONS['fx.patternsize'].
+                # AND THAT IS WHY THE LATTICE IS MISSING FROM THE OUTPUT. The output cone is a
+                # ~50-stage accumulator of the form `blend(prev, warp(warp_chain, G))`, which is
+                # how a motif is replicated: each warp shifts by G and the blend lays the shifted
+                # copy down. With G identically zero every warp is the identity and every blend a
+                # no-op, so the chain deposits one motif where the engine deposits a grid. The
+                # fix is NOT `fx.patternsize == 'cell'`; that was swept against the Bricks
+                # references and refuted -- see assume.QUESTIONS['fx.patternsize'].
                 if len(rec.edges) < 2:
                     raise Unsupported("warp has fewer than 2 edges")
                 for e in rec.edges[:2]:
@@ -2506,115 +2483,87 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         raise cascade("edge -> record %s has no output yet" % e)
                 # ...AND IT IS THE SAME INHERITED-BLOCK WALK hsl needed, not bit 11 alone.
                 # `4 + bit11` froze one term of the mask-walk: the intensity follows the
-                # inherited block `walk.py`'s `_CLS` describes, and bits 7 and 10 shift it
-                # too. Over the corpus the shift mask is {7, 10, 11} -- searching every
-                # subset of the inherited bits {0,7,10,11,13} for the one that best lands a
-                # plausible intensity picks exactly these three, and bit 0/13 gate params
-                # that sit after the intensity so they never move it. The 592 records that
-                # set bit 10 are the proof: at `4 + bit11` a plausible value appears 88.2%
-                # of the time, at one slot later 100.0% -- while for bit-10-clear records
-                # that later slot is plausible only 5.8%, so bit 10 really does carry the
-                # intensity one slot on. Corpus-wide good-value rate 84.6% -> 85.2% (the
-                # ceiling is program intensities, which have no baked value to read), and
-                # the bit-7/10-clear majority is untouched because the popcount is then just
-                # bit 11 -- the old rule, so nothing that decoded before regresses.
+                # inherited block `walk.py`'s `_CLS` describes, and bits 7 and 10 shift it too.
+                # The 592 records that set bit 10 are the proof -- at `4 + bit11` a plausible
+                # value appears 88.2% of the time, at one slot later 100.0%, while for
+                # bit-10-clear records that later slot is plausible only 5.8%.
                 #
-                # THE INTENSITY IS THE LAST HEADER SLOT, from the walk -- the same read
-                # `blur` and `sharpen` use, and CONTAINMENT SETTLES IT for this filter
-                # rather than a distribution. `param_slots.locate` pairs a source that
-                # declares a distinctive intensity with that package's OWN binary and finds
-                # the one record holding it; the located slot is ground truth, independent
-                # of every rule here. Over the permitted paired sources:
+                # THE INTENSITY IS THE LAST HEADER SLOT, from the walk -- the same read `blur`
+                # and `sharpen` use, and CONTAINMENT SETTLES IT for this filter rather than a
+                # distribution. `param_slots.locate` pairs a source declaring a distinctive
+                # intensity with that package's OWN binary and finds the one record holding it;
+                # the located slot is ground truth, independent of every rule here:
                 #
                 #     filter            pairings   walk (end-1)   the old subset formula
                 #     warp                 13          13                 11
                 #     blur                  2           2                  2
                 #     sharpen               2           2                  2
                 #
-                # 17 of 17 for the walk. The formula this replaces missed two warp records
-                # outright, and it was FITTED BY VALUE PROBING -- its own note recorded
-                # searching every subset of the inherited bits for whichever "best lands a
-                # plausible intensity", which decides structure by whether the answer looks
-                # right. The walk has no free parameter to fit.
+                # 17 of 17 for the walk. The formula it replaces missed two warp records outright
+                # and was FITTED BY VALUE PROBING -- its own note recorded searching every subset
+                # of the inherited bits for whichever "best lands a plausible intensity", which
+                # decides structure by whether the answer looks right. The walk has no free
+                # parameter to fit.
                 #
-                # AN EARLIER NOTE HERE REJECTED THE WALK, AND THEN A CORRECTION TO IT
-                # BLAMED THE COST MODEL. Both were wrong, in the same way. The note refused
-                # the walk because `record_layout.header_words` appeared to disagree with
-                # the walk's end in 25,085 of 26,795 warp records; the correction concluded
-                # that warp's fitted `w1_present` was therefore wrong. Neither is true.
-                # `header_words` charges w1_present whenever its `w1` argument is not None,
-                # and warp has two record shapes with only one carrying a w1 word, so the
-                # measurement -- which passed `words[1]` unconditionally and version None --
-                # was asking for the wrong shape's header. Gated as its docstring requires,
-                # header_words and the walk agree in 26,795 of 26,795, exactly. The cost
-                # model was right about warp the whole time; the caller was wrong, and that
-                # gate now lives inside header_words so it cannot be omitted again.
+                # AN EARLIER NOTE HERE REJECTED THE WALK, AND THEN A CORRECTION TO IT BLAMED THE
+                # COST MODEL. Both were wrong, in the same way. The note refused the walk because
+                # `record_layout.header_words` appeared to disagree with the walk's end in 25,085
+                # of 26,795 warp records; the correction concluded warp's fitted `w1_present` was
+                # wrong. Neither is true: `header_words` charges w1_present whenever its `w1`
+                # argument is not None, and warp has two record shapes with only one carrying a
+                # w1 word, so the measurement -- passing `words[1]` unconditionally -- asked for
+                # the wrong shape's header. Gated as its docstring requires, header_words and the
+                # walk agree 26,795 of 26,795. That gate now lives inside header_words.
                 #
-                # The other half of that note is still true and is why this needed
-                # containment: class bit 12 is set in ZERO of the 26,795 warp records, so
-                # the gate that corroborates blur and sharpen does not exist here and
-                # plausibility alone could not have decided it. Corpus-wide the walk lands
-                # on a plausible float in 24,816 of 26,795 (92.6%) and never past the record
-                # end, against the formula's 23,024 (85.9%) with 176 past the end -- better,
-                # but that is corroboration, not the reason.
+                # The other half of that note stands and is why this needed containment: class
+                # bit 12 is set in ZERO of the 26,795 warp records, so the gate that corroborates
+                # blur and sharpen does not exist here and plausibility alone could not have
+                # decided it. Corpus-wide the walk lands on a plausible float in 24,816 of 26,795
+                # (92.6%) and never past the record end, against the formula's 23,024 (85.9%)
+                # with 176 past the end -- corroboration, not the reason.
                 #
-                # WHERE end-1 STOPS BEING THE RIGHT QUESTION. It holds for the filters with
-                # no `PARAM_SPEC` entry, which carry one trailing scalar. For the filters
-                # that name several, another parameter FOLLOWS the intensity and the last
-                # slot is that one instead: against the same ground truth `end-1` scores
-                # 7/10 on directionalwarp and 0/2 on dirmotionblur, missing precisely the
-                # records where `warpangle`/`mblurangle` is also present, while
-                # `decompose.named_params` scores 10/10 and 2/2. Same walk, asked for the
-                # named parameter rather than the last one -- 27 of 27 across all five.
-                # WARP'S PAIR IS (29, 30), NOT (28, 29). The class-word (baked, program)
-                # pairing is per filter, not a fixed position: blur and sharpen pair at w0
-                # bits 28/29, warp at 29/30, and bit 28 is not in warp's cost table at all.
-                # Reading warp with blur's pair reports 0 baked records and 24,815
-                # "programs", which is warp's BAKED bit misread as a program half. Asked
-                # for its own pair, warp is exact on both arms:
+                # WHERE end-1 STOPS BEING THE RIGHT QUESTION: it holds for the filters with no
+                # `PARAM_SPEC` entry, which carry one trailing scalar. Where several are named,
+                # another parameter FOLLOWS the intensity -- against the same ground truth
+                # `end-1` scores 7/10 on directionalwarp and 0/2 on dirmotionblur, missing
+                # precisely the records where `warpangle`/`mblurangle` is present, while
+                # `decompose.named_params` scores 10/10 and 2/2, and 27 of 27 across all five.
+                #
+                # WARP'S PAIR IS (29, 30), NOT (28, 29). The class-word (baked, program) pairing
+                # is per filter: blur and sharpen pair at w0 bits 28/29, warp at 29/30, and bit
+                # 28 is not in warp's cost table at all. Reading warp with blur's pair reports 0
+                # baked records and 24,815 "programs", which is warp's BAKED bit misread as a
+                # program half. Asked for its own pair, warp is exact on both arms:
                 #
                 #     baked   (bit 29)  24,815   slot reads a plain value  24,815 of 24,815
                 #     program (bit 30)   1,109   slot holds a program       1,109 of 1,109
                 #     neither              871
                 #     pair slot == end - 1                                 25,924 of 25,924
                 #
-                # THE PROGRAM ARM WAS SILENTLY RENDERING AS NO-WARP. This read `end - 1` as
-                # a float unconditionally, and on the 1,109 program records that word is a
-                # POINTER; read as float32 a pointer is a denormal near 1e-38, which passes
-                # the `-1e3 < intensity < 1e3` guard below and gives intensity 0 -- a warp
-                # that does nothing, on a record that asked for a computed one. A plausible
-                # wrong picture rather than a refusal, which is the failure this file ranks
-                # worst.
+                # THE PROGRAM ARM WAS SILENTLY RENDERING AS NO-WARP. This read `end - 1` as a
+                # float unconditionally, and on the 1,109 program records that word is a POINTER;
+                # read as float32 a pointer is a denormal near 1e-38, which passes the guard
+                # below and gives intensity 0 -- a warp that does nothing, on a record that asked
+                # for a computed one. A plausible wrong picture rather than a refusal.
                 #
-                # THE NEITHER-BIT RECORDS CARRY NO INTENSITY AT ALL, and that is now
-                # MEASURED rather than asserted. This comment used to state it as a reason
-                # for refusing; the reason was a guess that happened to be right.
-                #
-                # The header states it. Group records by class word with the intensity pair
-                # masked out, so everything else about the layout is held fixed, and compare
-                # `decompose(rec)['end']` between the baked and neither-bit members of each
-                # group. A neither-bit record is EXACTLY ONE WORD SHORTER than its baked
-                # sibling, over the corpus and the reference packs:
+                # THE NEITHER-BIT RECORDS CARRY NO INTENSITY AT ALL, and that is MEASURED. Group
+                # records by class word with the intensity pair masked out, so everything else
+                # about the layout is held fixed, and compare `decompose(rec)['end']` between the
+                # baked and neither-bit members of each group. A neither-bit record is EXACTLY
+                # ONE WORD SHORTER than its baked sibling, over the corpus and reference packs:
                 #
                 #     warp      880 of 880   one word shorter      0 the same length
                 #     blur      140 of 140   one word shorter      0 the same length
                 #     sharpen   162 of 167   one word shorter      0 the same length
                 #                            (the other 5 have no baked sibling to compare)
                 #
-                # Not one record anywhere is the same length as its baked sibling. So there
-                # is no unaccounted word for the value to be hiding in, and no slot to read
-                # more cleverly -- the parameter is absent from the record, and its value
-                # exists only as the engine's default.
-                #
-                # WHAT THAT MEANS FOR THE BLOCKER LIST, which is the useful part: warp's 30
-                # blocked outputs, blur's 20 and sharpen's 18 are NOT decode work and no
-                # amount of walking will reach them. They need one constant that this format
-                # does not contain. Counting them beside genuine decode gaps overstates how
-                # much of the corpus is still undecoded.
-                #
-                # The refusal stands rather than substituting a plausible number, for the
-                # reason the paragraph above gives: a wrong picture ranks worse here than a
-                # refusal.
+                # So there is no unaccounted word for the value to hide in and no slot to read
+                # more cleverly -- the parameter is absent, and its value exists only as the
+                # engine's default. WHAT THAT MEANS FOR THE BLOCKER LIST: warp's 30 blocked
+                # outputs, blur's 20 and sharpen's 18 are NOT decode work and no amount of
+                # walking will reach them. Counting them beside genuine decode gaps overstates
+                # how much of the corpus is still undecoded. The refusal stands rather than
+                # substituting a plausible number.
                 _pair = cls_pair_slot(rec, 29)
                 if _pair is None:
                     raise Unsupported("warp intensity: neither class bit 13 (baked) nor 14 "
@@ -2668,9 +2617,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "shuffle":
-                # Slot 1 is four selector BYTES, one per output channel, in the order
-                # red, green, blue, alpha. A selector 0-3 takes that channel from the
-                # first input, 4-7 takes channel (s - 4) from the second.
+                # Slot 1 is four selector BYTES, one per output channel, in the order red, green,
+                # blue, alpha. A selector 0-3 takes that channel from the first input, 4-7 takes
+                # channel (s - 4) from the second.
                 #
                 # Read off a permitted paired specimen, exact on all five of its records
                 # including the values the source leaves at their defaults
@@ -2914,9 +2863,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     src = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos_grid(W, H))
                     used = [k for k, w in enumerate(hot) if abs(w) > 1e-9]
                     if used and max(used) >= src.shape[-1]:
-                        # Same refusal the multi-input path makes, for the same reason: a
-                        # weight on a channel the input lacks means the reading is wrong
-                        # here, and a plausible wrong image is the worst outcome.
+                        # Same refusal the multi-input path makes, for the same reason: a weight on a
+                        # channel the input lacks means the reading is wrong here.
                         raise Unsupported("shuffle weights channel %d of an input with "
                                           "only %d" % (max(used), src.shape[-1]))
                     w = hot[:src.shape[-1]].astype(np.float32)
@@ -2954,9 +2902,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     a = src[s // 4]
                     c = s % 4
                     if c >= a.shape[-1]:
-                        # Not silently clamped to an existing channel: a selector naming a
-                        # channel the input does not carry means the reading is wrong here,
-                        # and a wrong image is worse than a refusal.
+                        # Not silently clamped to an existing channel: a selector naming a channel the
+                        # input does not carry means the reading is wrong here, and a wrong image is
+                        # worse than a refusal.
                         raise Unsupported("shuffle selects channel %d of an input with "
                                           "only %d" % (c, a.shape[-1]))
                     cols.append(a[:, c:c + 1])
@@ -2966,10 +2914,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
             elif (rec.filter_name == "emboss"
                   and assume.assumed('emboss.probe') == 'passthrough'):
-                # COUNTING PROBE ONLY -- see assume.QUESTIONS['emboss.probe']. Renders the
-                # record as its first input so the number of outputs emboss actually gates
-                # can be measured. This is not a reading of emboss and its images are not
-                # to be scored.
+                # COUNTING PROBE ONLY -- see assume.QUESTIONS['emboss.probe']. Renders the record
+                # as its first input so the number of outputs emboss gates can be measured. Not a
+                # reading of emboss, and its images are not to be scored.
                 if not rec.edges or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 outputs[i] = np.asarray(outputs[rec.edges[0]])
@@ -2977,30 +2924,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 assume.note(i)
 
             elif rec.filter_name == "normal":
-                # A normal map from a height input. The permitted sources declare this
-                # filter's parameters as `intensity` (61 sightings), `input2alpha` (31,
-                # always 0), `format` (3) and `inversedy` (1).
+                # A normal map from a height input. The permitted sources declare this filter's
+                # parameters as `intensity` (61 sightings), `input2alpha` (31, always 0),
+                # `format` (3) and `inversedy` (1).
                 #
-                # WHERE `intensity` IS -- and this is deliberately NOT a fixed slot. An
-                # earlier attempt here derived "slot 4 + class bit 11", `warp`'s rule, from
-                # containment against 22 permitted files: slot 4 held a value its own file
-                # declares in 33.7% of 98 records against a 6.5% control, and bit 11
-                # predicted slot 4 versus 5 in 43 of 44. Both numbers were real and the
-                # rule was still wrong, because the population was mixed: in most records
-                # those slots hold PROGRAM POINTERS, and a pointer read as a float is a
-                # denormal, which a naive "is it a plausible float" test accepts. The
-                # block starts at slot 3 in 201 of 201 records and carries 1 to 4 leading
-                # programs, and no popcount of the class word predicts how many (no mask
-                # reaches 90%), so `warp`'s law does not transfer.
+                # WHERE `intensity` IS -- and this is deliberately NOT a fixed slot. An earlier
+                # attempt derived "slot 4 + class bit 11", `warp`'s rule, from containment
+                # against 22 permitted files: slot 4 held a value its own file declares in 33.7%
+                # of 98 records against a 6.5% control, and bit 11 predicted slot 4 versus 5 in
+                # 43 of 44. Both numbers were real and the rule was still wrong, because the
+                # population was mixed: in most records those slots hold PROGRAM POINTERS, and a
+                # pointer read as a float is a denormal, which a naive plausibility test accepts.
+                # The block starts at slot 3 in 201 of 201 records and carries 1 to 4 leading
+                # programs, and no popcount of the class word predicts how many, so `warp`'s law
+                # does not transfer. A CONTROLLED TEST caught it: driving a real record's input
+                # with a height RAMP produced a perfectly flat normal map, which a correct
+                # implementation cannot do.
                 #
-                # A CONTROLLED TEST is what caught it and is the reason this reading is
-                # different: driving a real record's input with a height RAMP produced a
-                # perfectly flat normal map, which a correct implementation cannot do.
-                #
-                # So intensity is singled out the way `transformation` singles out its
-                # matrix and offset -- by evaluating the record's own filter programs and
-                # taking the one whose result has the right WIDTH, refusing rather than
-                # guessing when that is ambiguous. A width seen twice is not assigned.
+                # So intensity is singled out the way `transformation` singles out its matrix --
+                # by evaluating the record's own filter programs and taking the one whose result
+                # has the right WIDTH, refusing when that is ambiguous.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
@@ -3017,52 +2960,40 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if by_width.get(1) is not None:
                     intensity = by_width[1]
                 else:
-                    # No program names it: look for a baked float in the parameter block.
-                    # Denormals are excluded explicitly -- they are what a program pointer
-                    # looks like when read as a float, and accepting them is the exact
-                    # mistake above.
+                    # No program names it: look for a baked float in the parameter block. Denormals
+                    # are excluded explicitly -- they are what a program pointer looks like read as a
+                    # float, and accepting them is the exact mistake above.
                     #
-                    # THIS FALLBACK SURVIVED THE TEST THAT KILLED `blur`'s, and the
-                    # asymmetry is the evidence rather than a preference. A parameter with
-                    # two readings must have two agreeing distributions, and the SOURCE
-                    # DECLARATIONS are a third instrument independent of both:
+                    # THIS FALLBACK SURVIVED THE TEST THAT KILLED `blur`'s, and the asymmetry is the
+                    # evidence rather than a preference. A parameter with two readings must have two
+                    # agreeing distributions, and the SOURCE DECLARATIONS are a third instrument:
                     #
-                    #     normal   declared p50 4.5, range -0.05..100, commonest
-                    #              10, 20, 0.25, 5, 3, 0.5, 16
-                    #              block    p50 12, range 0.5..256, commonest
-                    #              12, 8, 16, 3, 4, 0.5          <- same regime, and it
-                    #              shares the specific values 16, 3 and 0.5 with them
-                    #
+                    #     normal   declared p50 4.5, range -0.05..100, commonest 10, 20, 0.25, 5, 3
+                    #              block    p50 12, range 0.5..256, commonest 12, 8, 16, 3, 4, 0.5
+                    #                       <- same regime, sharing the values 16, 3 and 0.5
                     #     blur     declared p50 1.25, clustered 0.2..1.25
-                    #              slot 3   72.5% exact powers of two through 64
-                    #                                            <- a different quantity
+                    #              slot 3   72.5% exact powers of two through 64  <- a different
+                    #                       quantity
                     #
-                    # So blur's is withdrawn and this one is kept and MARKED. It is still
-                    # the weaker of `normal`'s two paths and LOW_CONFIDENCE says so on
-                    # every record that uses it.
-                    # THE SLOT IS READ, NOT SEARCHED FOR. This was an eight-word window
-                    # that took the first slot reading as a float in 1e-3..1e3 -- a
-                    # plausibility SEARCH, the last one in this file, and the method every
-                    # other parameter here has been moved off. The structural answer is the
-                    # LAST HEADER SLOT, and for this filter it comes from
-                    # `record_layout.header_words` rather than from `decompose`: the two
-                    # readers of the cost model disagree here, and the walk is the one that
-                    # is wrong. `tools/walk_health.py` measures it -- the walk runs LONGER
-                    # than the additive model on 1,358 of 1,358 normal records.
+                    # So blur's is withdrawn and this one is kept and MARKED. It is still the weaker
+                    # of `normal`'s two paths and LOW_CONFIDENCE says so on every record using it.
                     #
-                    # CONTAINMENT PICKED THE WINNER, and it is the reason `end - 1` is not
-                    # used here as it is for blur, sharpen and warp. The one permitted
-                    # pairing, `SubstanceDesignerPractice` record 362, declares 2.01:
+                    # THE SLOT IS READ, NOT SEARCHED FOR. This was an eight-word window taking the
+                    # first slot reading as a float in 1e-3..1e3 -- a plausibility SEARCH, the last
+                    # one in this file. The structural answer is the LAST HEADER SLOT, and for this
+                    # filter it comes from `record_layout.header_words` rather than `decompose`: the
+                    # two readers of the cost model disagree here and the walk is the one that is
+                    # wrong (`tools/walk_health.py`: the walk runs LONGER on 1,358 of 1,358 normal
+                    # records). CONTAINMENT PICKED THE WINNER, which is why `end - 1` is not used
+                    # here as it is for blur, sharpen and warp. The one permitted pairing,
+                    # `SubstanceDesignerPractice` record 362, declares 2.01:
                     #
                     #     TRUE slot 4     header_words 5 -> hw - 1 = 4      correct
                     #                     walk end     7 -> end - 1 = 6     wrong by 2
                     #
-                    # and that record is 7 words, so the walk consumed all of it and
-                    # `end - 1` was simply the last word.
-                    #
-                    # AGAINST THE SEARCH IT REPLACES, corpus-wide over 1,379 records, and
-                    # arbitrated by STRUCTURE rather than by which value looks better --
-                    # necessary, because every one of these reads as an ordinary float:
+                    # AGAINST THE SEARCH IT REPLACES, corpus-wide over 1,379 records, arbitrated by
+                    # STRUCTURE rather than by which value looks better -- necessary, because every
+                    # one reads as an ordinary float:
                     #
                     #     agree                                             961
                     #     scan lands AT/PAST the header end (bytecode)       65
@@ -3070,15 +3001,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     #     scan finds nothing, this answers in-record        322
                     #     this slot impossible (at/past the header end)       0
                     #
-                    # The 65 are decisive: a header parameter cannot lie at or beyond the
-                    # header's end, so the window was reading bytecode and stopping at
-                    # whatever first looked like a number. The 322 are coverage the search
-                    # never had. The 10 are genuinely undecided and take the structural
-                    # answer with nothing claimed about them.
-                    #
-                    # The range test stays, as a GUARD on the named slot rather than as the
-                    # thing that chooses it. LOW_CONFIDENCE also stays: this is still the
-                    # weaker of `normal`'s two paths, the width-1 program being the other.
+                    # The 65 are decisive: a header parameter cannot lie at or beyond the header's
+                    # end. The 322 are coverage the search never had. The range test stays as a GUARD
+                    # on the named slot rather than as the thing that chooses it.
                     _sl = record_layout.header_words(
                         rec.filter_id, rec.words[0],
                         rec.words[1] if len(rec.words) > 1 else None,
@@ -3100,51 +3025,36 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 pos = pos_grid(W, H)
                 height = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos),
                                   N, H, W)[:, :, 0].astype(np.float32)
-                # NOT VERIFIED, stated as directionalwarp's is: the FORMULA and
-                # intensity's absolute scale. This filter's math is engine-side. The
-                # standard height-to-normal shape is used -- central-difference the
-                # height, scale by intensity, normalise against a unit Z. `format` (0 vs
-                # 3) and `inversedy` are not decoded, so a specimen using the other
-                # handedness renders with its green channel inverted rather than failing.
+                # NOT VERIFIED, stated as directionalwarp's is: the FORMULA and intensity's
+                # absolute scale. This filter's math is engine-side. The standard
+                # height-to-normal shape is used -- central-difference, scale by intensity,
+                # normalise against a unit Z. `format` and `inversedy` are not decoded.
                 gy, gx = np.gradient(height)
                 # `inversedy` -- see assume.QUESTIONS['normal.inversedy'].
                 #
-                # ADOPTED AS THE DEFAULT. It was opt-in because it moved exactly ONE channel
-                # -- Bricks `normal` ch1, r -0.158 to +0.158 -- and one channel is not a
-                # population. That measurement predates the reference-pairing fixes and the
-                # patterning work: Bricks now renders 12,585 of 12,585 records and FIVE of
-                # its graphs produce a normal map with real signal.
+                # ADOPTED AS THE DEFAULT. It was opt-in because it moved exactly ONE channel --
+                # Bricks `normal` ch1, r -0.158 to +0.158 -- and one channel is not a population.
+                # That measurement predates the reference-pairing fixes: Bricks now renders
+                # 12,585 of 12,585 records and FIVE of its graphs produce a normal map with real
+                # signal. On all five the correlation FLIPS SIGN WITH ITS MAGNITUDE INTACT to
+                # three decimals (-0.585 -> +0.585, -0.475, -0.594, -0.504, -0.683), which is
+                # what a handedness error looks like and what a gain or geometry error cannot.
                 #
-                # On all five the correlation FLIPS SIGN WITH ITS MAGNITUDE INTACT to three
-                # decimals, which is what a handedness error looks like and what a gain or
-                # geometry error cannot look like:
+                # SURGICAL ACROSS EVERY REFERENCE PACKAGE: of 112 scored channels exactly 7 move,
+                # all of them `normal` ch1, all of them improve, and the other 105 are
+                # byte-identical. Overall MAE 0.1332 -> 0.1318. It is TEN RECORDS, NOT ONE --
+                # each of the five graphs in each of the two Bricks assemblies feeds its normal
+                # from a DIFFERENT record, all ten carrying word1 = 5 -- and not a Bricks quirk:
+                # 118 of 1,447 normal records set the bit, across 40 of 444 files.
                 #
-                #     -0.585 -> +0.585    -0.475 -> +0.475    -0.594 -> +0.594
-                #     -0.504 -> +0.504    -0.683 -> +0.683
-                #
-                # SURGICAL ACROSS EVERY REFERENCE PACKAGE: of 112 scored channels exactly 7
-                # move, all of them `normal` ch1, all of them improve, and the other 105 are
-                # byte-identical. Overall MAE 0.1332 -> 0.1318; Bricks 0.1401 -> 0.1385;
-                # Chesterfield unchanged, because its bit is clear.
-                #
-                # TEN RECORDS, NOT ONE. Each of the five graphs in each of the two Bricks
-                # assemblies feeds its normal output from a DIFFERENT `normal` record, and
-                # all ten carry word1 = 5. The earlier "one positive specimen" was rec 12180
-                # alone because only one graph's normal rendered at the time.
-                #
-                # THE BIT IS NOT A BRICKS QUIRK: 118 of 1,447 normal records set it, across
-                # 40 of 444 files. The note's "2 of 53" was a much smaller population.
-                #
-                # WHAT WOULD STILL REFUTE IT, unchanged and worth keeping in view: only one
-                # PACKAGE with an exported normal map sets the bit on the record that feeds
-                # it, so any field that happens to be set in Bricks and clear elsewhere fits
-                # this evidence equally. The one other reference package that sets the bit
-                # anywhere -- minime453__Stylized_Sandy_Stone_Path -- sets it on rec 175,
-                # which feeds basecolor, AO and height; its exported normal comes from rec
-                # 1452 with the bit CLEAR, and the renderer-free height-to-normal arbiter
-                # says that package needs no flip. Consistent, so nothing is refuted, but it
-                # is not a second confirmation either. A package that sets the bit ON its
-                # normal output and does NOT need the flip would settle this the other way.
+                # WHAT WOULD STILL REFUTE IT: only one PACKAGE with an exported normal map sets
+                # the bit on the record that feeds it, so any field set in Bricks and clear
+                # elsewhere fits this evidence equally. The one other package setting it anywhere
+                # -- minime453__Stylized_Sandy_Stone_Path -- sets it on rec 175, which feeds
+                # basecolor, AO and height, while its exported normal comes from rec 1452 with
+                # the bit CLEAR and needs no flip. Consistent, so nothing is refuted, but not a
+                # second confirmation. A package that sets the bit ON its normal output and does
+                # NOT need the flip would settle this the other way.
                 if (assume.assumed('normal.inversedy', 'word1bit2') == 'word1bit2'
                         and len(rec.words) > 1 and (rec.words[1] >> 2) & 1):
                     gy = -gy
@@ -3163,179 +3073,119 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "blur":
-                # An isotropic blur. The source declares exactly ONE real parameter,
-                # `intensity` (64 sightings across 18 permitted files, mostly constants),
-                # plus a single `randomseed`.
+                # An isotropic blur. The source declares exactly ONE real parameter, `intensity`
+                # (64 sightings across 18 permitted files, mostly constants), plus a single
+                # `randomseed`.
                 #
                 # WHERE `intensity` IS -- and note what does NOT answer this. PARAM_POPCOUNT
                 # establishes `popcount(cls & 0x2881)` as the number of leading block slots
-                # holding PROGRAMS, exact over 43,883 slot reads. That is a verified fact
-                # about the program/constant SPLIT and it says nothing about which slot is
-                # `intensity`. Assuming intensity sits at the block start gives 6.6% own-file
-                # containment against a 6.0% control -- no signal at all. Scanning every slot:
+                # holding PROGRAMS, exact over 43,883 slot reads. That is a fact about the
+                # program/constant SPLIT and says nothing about which slot is `intensity`.
+                # Assuming it sits at the block start gives 6.6% own-file containment against a
+                # 6.0% control -- no signal. Scanning every slot:
                 #
                 #     slot 2   5.4%  CONTROL  3.6%      slot 5  20.0%  CONTROL  0.0% (n=5)
                 #     slot 3  14.6%  CONTROL  2.9%      slot 7   5.9%  CONTROL  0.0%
                 #     slot 4   2.9%  CONTROL  0.0%      slot 8   0.0%  CONTROL  0.0%
                 #
-                # Those are FILE-UNIQUE declared values only. Counting every declared
-                # value instead put slot 4 at 10.9% against a 22.4% control -- a value
-                # several files share discriminates nothing, and it was inflating a slot
-                # that is actually noise. Slot 3 survives the correction at 5x.
-                #
-                # AND THE RATE ITSELF IS NOT ACCURACY. It is ceilinged by (distinctive
-                # values the source declares) / (records the file compiles to), and
-                # instancing makes one source node compile to many records that no
-                # declaration corresponds to. The 0.0% control is the load-bearing half.
-                # The slot is therefore MARKED via LOW_CONFIDENCE rather than trusted.
-                #
-                # Slot 3 is the only one whose own-file rate exceeds its control materially,
-                # at 5x. The low ABSOLUTE rate is expected and is the same effect `warp`'s
-                # derivation records: most records are inlined library filters whose
-                # parameters are not in the paired source at all.
+                # Those are FILE-UNIQUE declared values only; counting every declared value put
+                # slot 4 at 10.9% against a 22.4% control -- a value several files share
+                # discriminates nothing. AND THE RATE ITSELF IS NOT ACCURACY: it is ceilinged by
+                # (distinctive values declared) / (records the file compiles to), and instancing
+                # makes one source node compile to many records. The 0.0% control is the
+                # load-bearing half, and the slot is MARKED via LOW_CONFIDENCE rather than
+                # trusted.
                 #
                 # THAT EVIDENCE IS WEAKER THAN THE ONE THAT ALREADY FOOLED ME. `normal` had
-                # 33.7% against 6.5% plus a 97.7% bit correlation and was still wrong,
-                # because a program pointer read as float32 is a denormal that passes a naive
-                # plausibility test. The denormal guard is applied here (1e-3 < |v| < 1e4),
-                # but containment alone is not what this rests on -- see test_filters.py,
-                # where an impulse must spread symmetrically, a constant must survive
-                # unchanged, and the blurred centroid must not move.
+                # 33.7% against 6.5% plus a 97.7% bit correlation and was still wrong, because a
+                # program pointer read as float32 is a denormal that passes a naive plausibility
+                # test. The denormal guard is applied here (1e-3 < |v| < 1e4), but this does not
+                # rest on containment -- see test_filters.py, where an impulse must spread
+                # symmetrically, a constant must survive unchanged, and the centroid must not
+                # move.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
-                # WHERE `intensity` ACTUALLY IS -- source-verified, and it is neither of
-                # the two places this code looked before.
-                #
-                # It is the BAKED FLOAT IMMEDIATELY AFTER THE SIZE BLOCK, and the size
-                # block is one slot or two depending on how the size is stored:
+                # WHERE `intensity` ACTUALLY IS -- source-verified, and it is neither of the two
+                # places this code looked before. It is the BAKED FLOAT IMMEDIATELY AFTER THE
+                # SIZE BLOCK, which is one slot or two depending on how the size is stored:
                 #
                 #     nprog == 0   size is BAKED as (w, h) at 2,3  -> intensity at slot 4
                 #     nprog >= 1   nprog POINTER slots from 2       -> intensity at 2+nprog
                 #
-                # Read straight off the slot distributions. For nprog >= 1 the leading
-                # `nprog` slots read as denormals near 1e-39 -- 188 of 188 at slot 2 for
-                # nprog==1, 557 of 557 at slots 2 AND 3 for nprog==2 -- which is what a
-                # 4-byte pointer looks like through float32. The slot straight after them
-                # carries ordinary small values (0.25, 0.5, 2, 0.125), and the ones after
-                # THAT go back to denormals and 3.2e37 junk.
+                # Read straight off the slot distributions. For nprog >= 1 the leading `nprog`
+                # slots read as denormals near 1e-39 -- 188 of 188 at slot 2 for nprog==1, 557 of
+                # 557 at slots 2 AND 3 for nprog==2 -- which is what a pointer looks like through
+                # float32; the slot straight after carries ordinary small values (0.25, 0.5, 2,
+                # 0.125), and the ones after THAT go back to denormals and 3.2e37 junk. The pair
+                # reading is not assumed: over nprog==0 records slots 2 and 3 have near-identical
+                # distributions, 99.1% and 100.0% exact powers of two, and in 102 of them the two
+                # equal the record's own width and height.
                 #
-                # The pair reading is not assumed: over nprog==0 blur records slots 2 and 3
-                # have near-identical distributions, 99.1% and 100.0% exact powers of two
-                # with the same value histogram (16 x128, 32 x94, 64 x94 ...), and in 102
-                # of them the two slots equal the record's own width and height.
+                # THE PROGRAM WAS NEVER THE INTENSITY. This code read `filter_programs[:1]` and
+                # called it that. On `flowingLava` that program evaluates to 1.0 and on
+                # `PW_ConcreteWall001` to 2.0 and 0.9428, none of which either source declares --
+                # because it is the SIZE expression. Every program-bearing blur record has been
+                # rendering with its own output size as a blur radius.
                 #
-                # THE PROGRAM WAS NEVER THE INTENSITY. This code read
-                # `filter_programs[:1]` and called it that. On `flowingLava` that program
-                # evaluates to 1.0 and on `PW_ConcreteWall001` to 2.0 and 0.9428, none of
-                # which either source declares -- because it is the SIZE expression. Every
-                # program-bearing blur record has been rendering with its own output size
-                # as a blur radius.
+                # The evidence is exact set recovery, not a rate: `flowingLava` declares 8
+                # distinct intensities and slot 3 of its nprog==1 records holds exactly those 8,
+                # one each; `rural_rock_wall` recovers 5 of 5, `EnvironmentToolkit` 2 of 2,
+                # `stylized_rocks_magma` 2 of 2, `RockyPath` 12 of 18. Across every permitted
+                # paired source, 39 of 54 declared values (72.2%) against an 11.1% CONTROL
+                # applying the same slot rule to other filters' records.
                 #
-                # The evidence is exact set recovery, not a rate. `flowingLava` declares 8
-                # distinct intensities and slot 3 of its nprog==1 blur records holds
-                # exactly those 8, one each (0.0, 0.06, 0.1, 0.2, 0.23, 0.71, 4.47, 4.5);
-                # its other 13 such records hold library-internal values the source never
-                # mentions. `rural_rock_wall` recovers 5 of 5, `EnvironmentToolkit` 2 of 2,
-                # `stylized_rocks_magma` 2 of 2, `RockyPath` 12 of 18.
+                # 0.0 is a legitimate intensity -- `flowingLava` declares it -- so it must pass
+                # the guard. What must not pass is a program POINTER read as float32.
                 #
-                # Across every permitted paired source: 39 of 54 declared values recovered
-                # (72.2%) against an 11.1% CONTROL that applies the same slot rule to
-                # records of other filters. 4 of the 15 misses are files with no blur
-                # record at all, so the rate over files that have one is 39 of 50.
-                #
-                # An earlier version of this stopped at nprog <= 1 and refused the rest,
-                # which cost 2,811 records over 8 files -- the rule generalises and there
-                # was no reason to refuse them.
-                #
-                # 0.0 is a legitimate intensity -- `flowingLava` declares it -- and means a
-                # blur that does nothing, so it must pass the guard. What must not pass is
-                # a program POINTER read as float32, which is a denormal near 1e-38.
-                # WHETHER a baked intensity is present at all is stated by CLASS-WORD
-                # BIT 12, not inferred from whether the word looks plausible. Found by
-                # walk.py's author (a49d08a): over 6,855 blur records, bit 12 is set iff
-                # the last header slot is a baked value, 6,855/6,855.
-                #
-                # It changes no behaviour today and is still worth stating: over 40 files
-                # every one of the 34 bit-12-clear records already fails the plausibility
-                # guard below, so the guard was reaching the right answer by luck. A word
-                # that happened to read as a small float would have been taken as an
-                # intensity; with the gate it cannot be, because the record says there
-                # isn't one.
+                # WHETHER a baked intensity is present at all is stated by CLASS-WORD BIT 12, not
+                # inferred from whether the word looks plausible: over 6,855 blur records, bit 12
+                # is set iff the last header slot is a baked value, 6,855/6,855 (a49d08a). Over
+                # 40 files every one of the 34 bit-12-clear records already fails the
+                # plausibility guard below, so the guard was reaching the right answer by luck.
                 intensity = None
                 # THE SLOT COMES FROM THE WALK. NOTHING IN THE FORMAT STORES A SLOT NUMBER
-                # (record_layout: "every position is implied by the bits set before it"),
-                # so a rule of the shape `base + some class bits` is a fitted patch, not a
-                # read. Two such patches disagreed about this very slot -- this file's
-                # `2 + nprog` and `param_slots.predicted_slot`'s `start + 1 + bit7 + bit11`,
-                # the latter verified by containment on 38 of 38 located pairings. They
-                # differed on a third of blur records and no reference could separate them.
+                # (record_layout: "every position is implied by the bits set before it"), so a
+                # rule of the shape `base + some class bits` is a fitted patch, not a read. Two
+                # such patches disagreed about this very slot -- this file's `2 + nprog` and
+                # `param_slots.predicted_slot`'s `start + 1 + bit7 + bit11`, the latter verified
+                # by containment on 38 of 38 located pairings. They differed on a third of blur
+                # records and no reference could separate them, BECAUSE NEITHER IS A READ: both
+                # shift by class bits the fitted cost model charges NOTHING for (bit 7 is not in
+                # blur's cls table at all; bits 0, 11 and 13 cost 0.0 words). Two wrong formulas
+                # can disagree forever.
                 #
-                # THE REASON THEY COULD NOT BE SEPARATED IS THAT NEITHER IS A READ. Both
-                # shift the read position by class bits that the fitted cost model charges
-                # NOTHING for: bit 7 is not in blur's cls table at all, and bits 0, 11 and
-                # 13 (this rule's 0x2881 mask) all cost 0.0 words. Two wrong formulas can
-                # disagree forever.
-                #
-                # The walk needs no patch. `decompose(rec)['end']` is the header boundary
-                # -- and it equals `record_layout.header_words` in 15,371 of 15,371 blur
-                # records -- so the intensity is simply the LAST HEADER SLOT, end - 1.
-                # That is what class bit 12 has been saying all along: walk.py's author
-                # measured "bit 12 is set iff the last header slot is a baked value" at
-                # 6,855/6,855, and the claim sat in this comment unwired while the two
+                # The walk needs no patch. `decompose(rec)['end']` is the header boundary -- and
+                # it equals `record_layout.header_words` in 15,371 of 15,371 blur records -- so
+                # the intensity is the LAST HEADER SLOT, end - 1. That is what class bit 12 has
+                # been saying all along, and the claim sat in this comment unwired while the two
                 # formulas argued underneath it. Over the full corpus:
                 #
                 #   filter    records   bit-12 set, plausible at end-1   bit-12 clear, not a value
                 #   blur       15,371        14,931 / 14,931                  440 / 440
                 #   sharpen     1,323         1,148 /  1,148                  175 / 175
                 #
-                # 15,371 of 15,371 and 1,323 of 1,323, on both arms, with none unresolved
-                # and none past the record end. The formulas reach 14,692 and 1,120, and
-                # they land on a DIFFERENT plausible float in 820 blur records -- a blur
-                # rendered at the wrong radius rather than one refused, which is the
-                # failure this project ranks worst.
+                # Both arms exact, none unresolved, none past the record end. The formulas reach
+                # 14,692 and 1,120, and they land on a DIFFERENT plausible float in 820 blur
+                # records -- a blur rendered at the wrong radius rather than one refused, which
+                # is the failure this project ranks worst.
                 #
-                # WHAT BIT 12 ACTUALLY SELECTS, which is narrower than "is there an
-                # intensity" and is why the refusal below reads the way it does. Over the
-                # corpus, taking the last header slot in every record of both filters:
-                #
-                #     bit 12 SET     the slot is a baked float     14,931/14,931 blur
-                #                                                   1,148/1,148  sharpen
-                #     bit 12 CLEAR   the slot is a PROGRAM POINTER    440/440    blur
-                #                                                     175/175    sharpen
-                #
-                # 15,371 of 15,371 and 1,323 of 1,323, no exceptions either way. So the bit
-                # chooses BAKED vs COMPUTED at one fixed position; it does not say the
+                # So the bit chooses BAKED vs COMPUTED at one fixed position; it does not say the
                 # parameter is absent. A bit-12-clear record has an intensity and this file
                 # refuses it -- 49 blur and 18 sharpen declared outputs over 30 files, the
-                # largest single root cause in `output_census`.
+                # largest single root cause in `output_census`. It is not wired because the
+                # program only reads as an intensity for some of them: over 80 files, 60 blur
+                # programs evaluate 1-wide (p50 1.00, range 0..7) while 38 evaluate 2-wide, the
+                # shape of `$outputsize`, and only 8 of those sit at the slot the walk calls the
+                # size expression. Reading the 1-wide ones and refusing the others would be
+                # selecting a slot by what its contents evaluate to, which is the method this
+                # file has spent its history removing.
                 #
-                # NOT WIRED, BECAUSE THE PROGRAM ONLY READS AS AN INTENSITY FOR SOME OF
-                # THEM. Evaluating the program at that slot over 80 files:
-                #
-                #     blur      60 evaluate 1-wide   p50 1.00, range 0..7, 6 distinct values
-                #                9 evaluate 2-wide   slot is NOT the size-expr slot
-                #                3 evaluate 2-wide   slot IS the size-expr slot (`prog`)
-                #     sharpen   29 evaluate 2-wide   slot is NOT the size-expr slot
-                #                5 evaluate 2-wide   slot IS the size-expr slot
-                #
-                # The 60 are convincing on their own -- a scalar whose median is 1.00 is the
-                # same distribution the trusted width-1 path reports. The other 38 are not:
-                # a 2-wide result is the shape of `$outputsize`, but only 8 of them sit at
-                # the slot the walk calls the size expression, so "it is the size program"
-                # does not cover the rest and nothing here does. Reading the 1-wide ones and
-                # refusing the others would work today and would be selecting a slot by what
-                # its contents evaluate to, which is the method this file has spent its
-                # history removing. The finding is recorded; the discriminator is missing.
-                #
-                # A THIRD INSTRUMENT AGREES, and it is one this file already trusts. The
-                # width-1 program path gives blur intensities with p50 1.00; the withdrawn
-                # slot-3 reading gave a power-of-two ladder with p50 5.00. The walk's slot
-                # gives p50 1.00 over 14,931 records (192 distinct values from 0.0125 up).
-                # It matches the trusted path and not the refuted one, and that agreement
-                # was never fitted for.
-                # w0 bits 28/29 == class bits 12/13, read through the walk rather than
-                # as "the last header slot" -- see `cls_pair_slot`.
+                # A THIRD INSTRUMENT AGREES, one this file already trusts: the width-1 program
+                # path gives p50 1.00, the withdrawn slot-3 reading gave a power-of-two ladder at
+                # p50 5.00, and the walk's slot gives p50 1.00 over 14,931 records (192 distinct
+                # values from 0.0125 up). It matches the trusted path and not the refuted one,
+                # and that agreement was never fitted for.
                 _pair = cls_pair_slot(rec, 28)
                 _islot = _pair[1] if _pair else None
                 _baked = bool(_pair and _pair[0] == 'baked')
@@ -3344,36 +3194,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                             dtype=np.float32)[0])
                     if np.isfinite(v) and (v == 0.0 or 1e-6 < abs(v) < 1e4):
                         intensity = v
-                # CLASS BITS 12 AND 13 ARE THE (BAKED, PROGRAM) PAIR FOR THIS PARAMETER,
-                # which is the discriminator the previous note here said was missing. Both
-                # cost ONE WORD in the fitted model -- w0 bits 28 and 29 -- so each owns a
-                # slot, and the walk says which. They are also MUTUALLY EXCLUSIVE:
+                # CLASS BITS 12 AND 13 ARE THE (BAKED, PROGRAM) PAIR FOR THIS PARAMETER, which
+                # is the discriminator the previous note said was missing. Both cost ONE WORD in
+                # the fitted model -- w0 bits 28 and 29 -- so each owns a slot, and the walk says
+                # which. They are also MUTUALLY EXCLUSIVE:
                 #
                 #     blur      bit12 only 14,931    bit13 only  303    neither 137    both 0
                 #     sharpen   bit12 only  1,148    bit13 only    8    neither 167    both 0
                 #
-                # so at most one of them owns the last header slot and `end - 1` addresses
-                # whichever it is. That is the same (baked, program) bit-pair convention
-                # `PARAM_SPEC` documents for the w1 word, appearing here in the class word.
+                # so at most one owns the last header slot. Same (baked, program) convention
+                # `PARAM_SPEC` documents for w1, appearing here in the class word.
                 #
-                # WHAT THIS CORRECTS. The earlier reading was "bit 12 clear means the
-                # intensity is a program at end - 1", and it conflated three populations:
-                # bit-13 records (a real intensity program), neither-bit records (end - 1
-                # belongs to some other class bit and is not an intensity at all), and the
-                # baked ones. Evaluating end - 1 across all of them gave 60 results 1-wide
-                # and 38 2-wide, and the 2-wide ones looked like an unexplained residue.
-                # They are not a residue: restricted to the records where BIT 13 OWNS THE
-                # SLOT, over 80 files --
-                #
-                #     bit-13 records          60      slot holds a program   60 of 60
-                #     bit-13 slot == end-1    60      evaluates 1-wide       60 of 60
-                #     values                  p50 1.00, range 0..7, 6 distinct
-                #
-                # -- every one is a program, at the slot the walk names, returning a scalar
-                # whose median is 1.00, which is the distribution the trusted width-1 path
-                # reports. The 2-wide reads were bit-13-CLEAR records where end - 1 is a
-                # different bit's slot; asking which bit owns the position separates them
-                # without looking at what any of them evaluate to.
+                # WHAT THIS CORRECTS. The earlier reading was "bit 12 clear means the intensity
+                # is a program at end - 1", which conflated three populations: bit-13 records (a
+                # real intensity program), neither-bit records (end - 1 belongs to another class
+                # bit), and the baked ones. Evaluating end - 1 across all of them gave 60 results
+                # 1-wide and 38 2-wide, and the 2-wide ones looked like an unexplained residue.
+                # Restricted to records where BIT 13 OWNS THE SLOT, over 80 files, all 60 hold a
+                # program at the slot the walk names, all evaluate 1-wide, p50 1.00 over 6
+                # distinct values -- the distribution the trusted width-1 path reports. The
+                # 2-wide reads were bit-13-CLEAR records where end - 1 is a different bit's slot.
                 elif (_pair and _pair[0] == 'program'
                       and _islot is not None and _islot < len(rec.words)):
                     _p = rec.words[_islot] + 52
@@ -3386,55 +3226,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             _v = np.zeros(0, dtype=np.float32)
                         if _v.size == 1 and np.isfinite(_v[0]):
                             intensity = float(_v[0])
-                # THE SLOT-3 FALLBACK IS WITHDRAWN. It rendered 881 records and it was
-                # reading a different field. The instrument that shows this needs no
-                # source declarations and no containment, and it was available the whole
-                # time: this parameter has TWO readings, and one of them -- the width-1
-                # program result -- is trusted. So the two distributions have to agree.
-                # Restricted to records where each path actually fires, over 60 files:
+                # THE SLOT-3 FALLBACK IS WITHDRAWN. It rendered 881 records and it was reading a
+                # different field. The instrument that shows this needs no source declarations
+                # and no containment: this parameter has TWO readings, one of them -- the
+                # width-1 program result -- trusted, so the two distributions have to agree.
+                # Restricted to records where each path fires, over 60 files:
                 #
                 #     from a program   n=53    p50 1.00   1.0 in 43 of 53
-                #     from slot 3      n=881   p50 5.00   72.5% are EXACT powers of two,
-                #                                         through 2, 4, 8, 16, 32 to 64
+                #     from slot 3      n=881   p50 5.00   72.5% EXACT powers of two, 2..64
                 #
-                # A ladder of exact powers of two reaching 64 is a size, a mip level or a
-                # tiling count. It is not an intensity: the permitted sources declare blur
-                # intensity as 1.0, 1.25 and 0.2 across 17 files with no power of two above
-                # 1 anywhere. And the consequence of being wrong is not subtle -- slot 3 =
-                # 64 asks for a 64-pixel radius on a 256-pixel image, which erases it.
+                # A ladder of exact powers of two reaching 64 is a size, a mip level or a tiling
+                # count. It is not an intensity: the permitted sources declare blur intensity as
+                # 1.0, 1.25 and 0.2 across 17 files with no power of two above 1 anywhere. And
+                # slot 3 = 64 asks for a 64-pixel radius on a 256-pixel image, which erases it.
+                # Containment said otherwise and was the weaker instrument -- 14.6% own-file
+                # against 2.9% is a 5x ratio on a ceilinged denominator. Two independent
+                # instruments disagree about this slot, so it is refused rather than marked. 881
+                # records stop rendering and nothing is claimed about them, which is the correct
+                # price. The KERNEL is unaffected and stays verified: impulse to a 3x3 box, max
+                # exactly 1/9, energy conserved, centroid preserved to 0.01 px. It is the radius
+                # that is not established, not the blur.
                 #
-                # Containment said otherwise and containment was the weaker instrument:
-                # 14.6% own-file against a 2.9% control survived the shared-value artifact
-                # check and still only ever established a 5x ratio on a ceilinged
-                # denominator. Two independent instruments now disagree about this slot,
-                # so it is refused rather than marked. 881 records stop rendering and
-                # nothing is claimed about them, which is the correct price -- this
-                # project's own standard is that a plausible wrong image is worse than a
-                # refusal, and 881 confidently wrong blurs feeding downstream filters is
-                # that failure at scale.
+                # (The `assume`-gated slot-3 candidate is also gone. It asked whether slot 3 is
+                # the intensity where the size is baked; the answer is no, because slot 3 is the
+                # HEIGHT half of the baked size pair.)
                 #
-                # The KERNEL is unaffected and stays verified: impulse to a 3x3 box, max
-                # exactly 1/9, energy conserved, centroid preserved to 0.01 px. It is the
-                # radius that is not established, not the blur.
-                # CANDIDATE PATH, never a result. `tools/assume.py` is the shared
-                # channel for "render under a named assumption so the engine's own
-                # exported map can arbitrate it" -- see its docstring. This one exists to
-                # settle whether withdrawing the slot-3 fallback was right: the withdrawal
-                # rests on a powers-of-two ladder to 64 against a program-path median of
-                # 1.0, which is strong but is still two of us reasoning rather than the
-                # engine answering. Anything rendered this way is marked twice, in
-                # assume.USED and in LOW_CONFIDENCE.
-                # The `assume`-gated slot-3 candidate is gone. It was asking whether
-                # slot 3 is the intensity for records where the size is baked; the answer
-                # is no, and the reason the old scan saw a powers-of-two ladder there is
-                # that slot 3 is the HEIGHT half of the baked size pair. The question it
-                # existed to arbitrate has been answered from the sources instead.
-                # WHEN BIT 12 IS CLEAR, filter_programs[1] IS THE CANDIDATE -- a candidate,
-                # under `assume`, not a decode.
-                #
-                # A PREVIOUS VERSION OF THIS COMMENT SAID THE PROGRAMS SUPPLY NOTHING, on a
-                # measurement that read `filter_programs[-1]`. That is index 0 for a
-                # one-program record, 1 for two and 2 for three, so it mixed three
+                # WHEN BIT 12 IS CLEAR, THE FIRST PROGRAM RETURNING A SCALAR IS THE CANDIDATE --
+                # a candidate, under `assume`, not a decode. A previous note said the programs
+                # supply nothing, on a measurement that read `filter_programs[-1]`: that is index
+                # 0 for a one-program record, 1 for two and 2 for three, so it mixed three
                 # populations and reported the mixture. Per index, over 40 files:
                 #
                 #     index   n    values              components
@@ -3442,50 +3262,22 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 #       1    20    1.0 x18, 3.0 x2     1-comp in 20 of 20
                 #       2     5    1.922 x5            2-comp in 5
                 #
-                # Index 1 is a SCALAR in every one of its 20 records, which is what an
-                # intensity must be and what index 0 (a size pair) mostly is not. Its values
-                # match the trusted intensity distribution -- 1.0 dominant, as on the
-                # baked path and in the sources. And the session that censused this found
-                # index 1 reads `$outputsize` in 0 of 57 records against index 0's 8 of 93,
-                # which is what separates a parameter from a size expression.
+                # Index 1 is a SCALAR in every one of its 20 records, matching the trusted
+                # intensity distribution, and reads `$outputsize` in 0 of 57 records against
+                # index 0's 8 of 93 -- which is what separates a parameter from a size
+                # expression. Reading by WIDTH rather than by position also covers the
+                # single-program records, whose intensity is at index 0: censused over 60 files
+                # on bit-12-clear records, index 0 is width 2 in 48 and width 1 in 11, index 1 is
+                # width 1 in 40 of 40. The two rules agree on all 40 where both apply, the width
+                # rule newly covers 11, and no record changes the intensity it already used.
                 #
                 # WHAT IT IS NOT: source-confirmed. Containment recovers 1 of 42 declared
-                # intensities from index 1 against a 2-of-42 control from index 0 -- nothing,
-                # in both directions, because these records are library-internal and no
-                # declaration corresponds to them. So the evidence is structural (always
-                # scalar, never reads the output size) and distributional, not a match.
-                #
-                # Hence the gate. `assume.QUESTIONS['blur.intensity']` already lists
-                # 'program' as a candidate; under that scope these records render from index
-                # 1 and are marked in USED and LOW_CONFIDENCE. With no scope open they
-                # refuse exactly as before, and the cost of refusing is stated:
-                # `Kutejnikov__Bricks_and_tiles` has four declared outputs waiting on three
-                # of them, and it is the specimen with 71 of 191 fxmaps records affected by
-                # the branchoffset question -- the one that would arbitrate it.
-                # THE INTENSITY IS THE FIRST PROGRAM THAT RETURNS A SCALAR, not index 1.
-                # Index 1 was right and is still what this picks for every record that has
-                # two or more programs -- but it declined the single-program records
-                # entirely, and those have their intensity at index 0. Reading by WIDTH
-                # rather than by position covers both without choosing between them.
-                #
-                # Censused over 60 files, bit-12-clear blur records only, evaluating every
-                # program slot:
-                #
-                #     index 0    width 2 in 48 records, width 1 in 11
-                #     index 1    width 1 in 40 of 40 that have it
-                #     index 2    width 2 in 5, does not evaluate in 7
-                #
-                # Index 0 is normally a float2 -- a size or a vector, not an intensity --
-                # which is why position alone was never the rule. Values at index 1 are p25,
-                # p50 and p75 all exactly 1.000 with 100% inside (0, 64].
-                #
-                # STRICTLY ADDITIVE, and that was checked rather than assumed, because an
-                # earlier attempt here took filter_programs[-1] and mixed indices 0, 1 and 2
-                # across records, which produced a confounded measurement and a wrong
-                # refutation that had to be withdrawn. Comparing the two rules record by
-                # record: they agree on all 40 where both apply, the new one newly covers 11
-                # single-program records, and there are 0 records where the first width-1
-                # program is not index 1. No record changes the intensity it already used.
+                # intensities from index 1 against a 2-of-42 control -- nothing, in both
+                # directions, because these records are library-internal. So the evidence is
+                # structural (always scalar, never reads the output size) and distributional.
+                # Hence the gate: under `assume.QUESTIONS['blur.intensity'] == 'program'` these
+                # render from the first scalar program and are marked in USED and
+                # LOW_CONFIDENCE; with no scope open they refuse as before.
                 if intensity is None and assume.assumed('blur.intensity') == 'program':
                     for _ptr in (rec.filter_programs or ()):
                         try:
@@ -3500,9 +3292,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             assume.note(i)
                             break
                 if intensity is None:
-                    # THE ABSENCE IS MEASURED, not assumed -- a neither-bit blur record is
-                    # one word shorter than its baked sibling in 140 of 140, and none is the
-                    # same length. See the warp branch for the method and the other counts.
+                    # THE ABSENCE IS MEASURED, not assumed -- a neither-bit blur record is one word
+                    # shorter than its baked sibling in 140 of 140. See the warp branch.
                     raise Unsupported(
                         "blur intensity: %s (walk slot %s)"
                         % ("neither class bit 12 (baked) nor 13 (program) is set, so the "
@@ -3520,11 +3311,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 N = W * H
                 pos = pos_grid(W, H)
                 src = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos), N, H, W)
-                # NOT VERIFIED, and shared with directionalwarp and dirmotionblur: the
-                # absolute pixel scale of `intensity`. Same fixed 256-pixel reference, same
-                # possible constant-factor error. A separable box blur is used, which is what
-                # the parameter means before any kernel shape is assumed; a Gaussian would
-                # differ in the tails and nothing here distinguishes them.
+                # NOT VERIFIED, and shared with directionalwarp and dirmotionblur: the absolute
+                # pixel scale of `intensity`. A separable box blur is used, which is what the
+                # parameter means before any kernel shape is assumed; a Gaussian would differ in
+                # the tails and nothing here distinguishes them.
                 REFERENCE_PX = _reference_px(rec)
                 radius = float(np.clip(abs(intensity), 0.0, 256.0)) / REFERENCE_PX
                 rpx = int(round(radius * max(W, H)))
