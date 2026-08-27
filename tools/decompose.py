@@ -293,6 +293,28 @@ def _fxmaps_walk(r, spec):
     """
     w1 = r.words[1] if len(r.words) > 1 else 0
     shift, mask = spec['arity_sm']
+    # THE COUNT FIELD IS SIX BITS, NOT THE LOW NIBBLE. The cost model states this field as
+    # (shift 10, mask 15), and a 4-bit mask TRUNCATES the count on records that declare more
+    # than 15 inputs -- reporting the remainder, not a failure. `ie_curve` record 35 states 34
+    # and reads back 2; 57 states 19 and reads 3; 79 states 20 and reads 4.
+    #
+    # Widened on the PROG INVARIANT, which is structural and can fail: layout[1] is 3 + n_in
+    # for this filter, and that slot's word + 52 must resolve to a valid program. A truncated
+    # count lands `end` inside the edge run, where the word is a small record index and +52 is
+    # not a program. Over the full corpus, 41,164 fxmaps records:
+    #
+    #     4 bits   41,118 hold the invariant       6 bits   41,128
+    #     7 and 8 bits gain nothing over 6, so 6 is the width, not merely a wider guess
+    #
+    #     both widths hold  41,118    6-bit only  10    4-bit only  0    neither  36
+    #
+    # No record that held at 4 bits fails at 6, so this is a strict gain. The 36 that hold at
+    # neither width are a different population and are not addressed here.
+    #
+    # The docstring's "1,535 of 1,535 over 25 corpus files" is not contradicted: those 25 files
+    # contain no fxmaps declaring more than 15 inputs, so the nibble was sufficient there and
+    # the sample could not see the truncation.
+    mask = max(mask, 0x3F)
     n_in = (w1 >> shift) & mask
     inputs = list(range(_FX_FIRST_INPUT, _FX_FIRST_INPUT + n_in))
     # layout[1] for fxmaps is 3 + input count (the first slot after the inputs = end), exact over
