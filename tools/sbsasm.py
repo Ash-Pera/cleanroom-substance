@@ -78,6 +78,11 @@ PROJECT_LABELS = {5, 9}
 # block. For every other filter a word past `end` is bytecode, and reading one as a program
 # pointer manufactures phantoms -- see the scan in `Record.programs`.
 _PAYLOAD_PROGRAM_FILTERS = {4, 20}
+
+# pixelprocessor records whose arity field names slots that do NOT hold backward record
+# indices. The count is believed regardless -- see `_pp_edges` -- and this is the record of
+# where that belief was not corroborated. Empty on the 437-file corpus.
+_pp_unvalidated = []
 # FILTER 9 IS THE ONLY GAP IN 0..22, and it is narrowed to two candidates -- but the name
 # below is neither of them. `filter9` names it after its id BECAUSE the id cannot be settled
 # from this corpus, and calling it `motionblur` or `svg` on the evidence here would be
@@ -2286,8 +2291,23 @@ class Record:
         # and touches no other record (0x1F == 0xF for every count below 16), while the
         # bit-16+ flag words (0x10000, ...) still take & 0x1F == 0 and fall through here.
         k = n & 0x1F
-        if 1 <= k <= 16 and len(self.words) >= 2 + k \
-                and all(0 <= self.words[2 + j] < self.index for j in range(k)):
+        if 1 <= k <= 16 and len(self.words) >= 2 + k:
+            # THE COUNT DECIDES; the slots are only OBSERVED. This arm used to require
+            # `all(0 <= words[2 + j] < index)` before believing the count -- a value test on
+            # the very slots the count names, and the last one left in this filter's path.
+            #
+            # Over the full 437-file corpus it fires 521 times and rejects 0. That is the
+            # same perfect zero the two probes in `Record.edges` scored before they were
+            # removed, and for the same reason: it re-tests a predicate the header has
+            # already settled. Arm 1 above -- 54,849 records -- never consulted a value at
+            # all, so the two arms disagreed about whether `words[1]` is to be trusted.
+            #
+            # Not deleted, SURFACED. A record whose named slots do not hold backward indices
+            # is a finding about a new corpus, not a slot to fall back on quietly, so it goes
+            # in `_pp_unvalidated` the way an unknown (filter, field) goes in
+            # `decompose._probe_fallback`. Empty on this corpus; inspect it if it fills.
+            if not all(0 <= self.words[2 + j] < self.index for j in range(k)):
+                _pp_unvalidated.append((self.filter_id, self.index, n, k))
             return list(range(2, 2 + k))
         return None
 
