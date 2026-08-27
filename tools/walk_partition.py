@@ -175,13 +175,47 @@ def header_violations(rec):
     # names that slot itself. Bounding at `end` alone reported the record's own size
     # expression as an out-of-extent read: 17 of 33 flagged over 80 files, every one
     # `j == prog == end`, `emboss` mostly. Those were this check's error, not the decode's.
-    end = max(d['end'], (d['prog'] + 1) if d.get('prog') is not None else 0)
+    end = _header_end(rec, d)
     bad = []
     for p in rec.programs:
         idxs = [j for j, w in enumerate(rec.words) if w + 52 == p]
         if idxs and all(j >= end for j in idxs):
             bad.append((min(idxs), end))
     return bad
+
+
+def _header_end(rec, d):
+    """The header's exclusive end in words, honouring how the size expression is stored.
+
+    `decompose` computes `prog` as the size-expression slot and `end` as the cursor after
+    the parameter fields, so `prog == end` whenever no parameter follows. What that last
+    word IS depends on the record, and the difference decides the bound:
+
+      POINTER   the slot holds `program - 52` and is a header word, so the header runs to
+                `prog + 1`. Bounding at `end` alone reported the record's own size
+                expression as an out-of-extent read -- 17 of 33 over 80 files, mostly
+                `emboss`.
+      INLINE    the program BEGINS at that slot: `size_or_baked` returns the slot's own
+                address, `rec.offset + 4 * prog`, rather than a pointer's target. Then the
+                word is the first word of code and the header ends at `prog`. Bounding at
+                `prog + 1` counted that first instruction word as a header slot and
+                reported every such record as an overlap -- all 43 left over 80 files,
+                `gradient` 35 of them (word 4 holds 0x9000022, an instruction; `+ 52`
+                lands 150 MB outside the file, so it was never a pointer).
+
+    Read off `size_or_baked`, which has already decided the slot's role -- not off whether
+    the word's value looks like a pointer, which is the probe this project does not make.
+    """
+    prog = d.get('prog')
+    if prog is None:
+        return d['end']
+    try:
+        sob = rec.size_or_baked
+    except Exception:
+        sob = None
+    if sob and sob[0] == 'program' and sob[1] == rec.offset + 4 * prog:
+        return max(d['end'], prog)          # inline: the slot is the program's first word
+    return max(d['end'], prog + 1)          # pointer: the slot is a header word
 
 
 def overlap_violations(rec):
@@ -204,7 +238,7 @@ def overlap_violations(rec):
     d = decompose.decompose(rec)
     if not d or d.get('end') is None:
         return []
-    end = max(d['end'], (d['prog'] + 1) if d.get('prog') is not None else 0)
+    end = _header_end(rec, d)
     hi = rec.offset + 4 * end
     return [((p - rec.offset) // 4, end) for p in rec.programs
             if rec.offset <= p < hi]
