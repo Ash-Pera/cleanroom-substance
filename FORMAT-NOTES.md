@@ -39678,3 +39678,36 @@ cost model is irreducible for that one boundary. Worth ruling out in that order:
 the directory entry's other fields, the tag's high bits, and the parameter WIDTH legend --
 the graph-input default table already reads widths from declared type codes (SPEC 7.2), so a
 width legend the file states would dissolve most of what `costs.json` fits.
+
+### The 778 gaps are embedded tables, and they state their extents too
+
+The pointer bound leaves 778 records where the walk's header end falls SHORT of the first
+program the record points at inside itself. That looked like the place to read if the cost
+model is ever to be derived rather than fitted. It is not: the gap is almost never header.
+
+    gradient   695      curve  58      everything else  25
+
+Both of the big families use the same convention, and `Record.ramp` already documents half
+of it: slot 2 is the entry COUNT, slot 3 the table START, slot 4 an upper bound "usually
+where the record's program begins". Measured against the pointer bound:
+
+    gradient   slot 3 == header end          694 of 695
+               slot 4 == first program       690 of 695
+               both, gap filled exactly      690 of 695
+    curve      slot 3 -> gap start, slot 4 -> gap end       58 of 58
+
+So the layout is `[header][embedded table][programs]`, and the table's extent is stated by
+the record's own slots 3 and 4 -- the same self-stated local extent as everything else. The
+gap was never the header running long; it was an embedded payload the walk does not model,
+sitting exactly where the record says it sits.
+
+That adds two rows to the table in the section above:
+
+    gradient ramp     slots 3 and 4 (count at slot 2)
+    curve points      slots 3 and 4 (count at slot 2)
+
+WHAT ACTUALLY REMAINS IS 21 RECORDS over 30 files -- levels 7, blend 5, transformation 3,
+warp 1, uniform 1 and a few others -- where no slot states either edge and the gap is small,
+2 to 12 words. Four more (emboss 2, transformation 2) state the END with slot 4 but not the
+start. 21 of 33,385 bounded records is 0.06%, and that -- not 778 -- is the population where
+the header/payload boundary is genuinely unaccounted for.
