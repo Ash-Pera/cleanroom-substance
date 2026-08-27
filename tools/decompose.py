@@ -115,6 +115,22 @@ def _select_spec(f, w0, w1, ver):
     spec = record_layout.costs().get(str(f))
     if spec is None:
         return None
+    # A SPEC FITTED ON MODERN VERSIONS DOES NOT ANSWER FOR OLDER ONES. `derive_costs` records
+    # `min_version` for the filters whose costs it could only establish above some version,
+    # and `record_layout.header_words` honours it by returning None -- "this filter's costs
+    # were not established", which its docstring says callers must treat as a refusal rather
+    # than an answer. This did not honour it, so `emboss`'s v5+ fit was applied to v2 records
+    # and produced a header length nothing had validated.
+    #
+    # It shows up as exactly one violation in 682,887 records of the pointer bound -- the
+    # walk's header end running PAST a program the record itself points at -- on
+    # BrickWall_02 record 330, a v2 file. That record's additive total is 6.5 words, a
+    # literal half charged by `base[0] = 4.5` on the colour flag, and the rounding tie goes
+    # to 11 where the record's own pointer says 10. Halves are the model conceding it cannot
+    # express the rule; applying one outside its fitted range is where the tie broke wrong.
+    mv = spec.get('min_version')
+    if mv is not None and (ver is None or ver < mv):
+        return None
     for v in spec.get('variants', ()):
         g = v.get('guard')
         if g is None or (w0 >> g['shift']) & g['mask'] == g['value']:
@@ -594,7 +610,47 @@ def _bounded(r, d):
     built to replace. The over-run is refused, and the cause is written down for whoever
     finishes shuffle's cost model.
     """
-    if d.get('end') is not None and d['end'] > len(r.words):
+    n = len(r.words)
+    # THE SLOT LISTS ARE BOUNDED TOO, and against the RECORD rather than against `end`.
+    #
+    # Only `end` and `prog` were checked here, so the lists could name words the record does
+    # not contain. Over corpus.paths() plus the reference packs:
+    #
+    #     inputs        0 records name a word past the record
+    #     cls_slots  1,738   (shuffle 1,643, dyngradient 74, normal 21)
+    #     param_slots   68   (distance 51, normal 17)
+    #
+    # `inputs` needs nothing, which is why this cannot move the edge readings the walk is
+    # validated on -- 903,611 of 903,611 against `_compute_layout` + `_real_edges`.
+    #
+    # AGAINST len(words), NOT AGAINST `end`, and the distinction is the whole judgement.
+    # A further 7,637 cls_slots and 3,165 param_slots sit at or past `end` and are LEFT
+    # ALONE: `end` is a cost-model output, shuffle's is provably two too long (see the split
+    # by shape above), and truncating a slot list against a number known to be wrong would
+    # bury that overrun instead of leaving it visible. `len(words)` is not a model output --
+    # a word past the end of the record does not exist, and naming it is never right under
+    # any cost model. That is the same fact this function already applies to `end` itself.
+    #
+    # WHAT IT WAS COSTING, both benign by accident rather than by design, which is why
+    # nothing caught it: `reverify`'s slotrule counts cls_slots unbounded and is saved only
+    # because no affected record is in PARAM_SPEC, and `distance._locate_slot` reads 93
+    # slots outside their own header, every one of which happens to hold exactly 0.0 and is
+    # refused by a zero guard written for something else.
+    #
+    # WHAT THIS DOES NOT DO. A slot can also START inside the record and have a WIDTH that
+    # runs off the end -- 1,373 `cls_params` and 26 `param_slots`. Those are left, and not
+    # for lack of a rule: no consumer reads the width as an extent. All three callers of
+    # `render.cls_pair_slot` take `_pair[1]` alone and guard it against `len(rec.words)`
+    # themselves, so nothing today would notice whether an over-long width were dropped or
+    # clamped. Choosing between those with no consumer to validate against is how a fitted
+    # answer gets in, so the number is recorded and the choice is left to whoever adds a
+    # reader that needs it.
+    if any(s >= n for s in d['cls_slots']) or any(t[2] >= n for t in d['param_slots']):
+        d = dict(d,
+                 cls_slots=[s for s in d['cls_slots'] if s < n],
+                 param_slots=[t for t in d['param_slots'] if t[2] < n],
+                 cls_params=[t for t in d.get('cls_params', ()) if t[1] < n])
+    if d.get('end') is not None and d['end'] > n:
         return dict(d, end=None, prog=None)
     return d
 
