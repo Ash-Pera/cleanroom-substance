@@ -38742,3 +38742,42 @@ about structures the walk does not enumerate) and the costs are not:
 
 If the check wants to see the handoff, teach the CHECK about it -- `walk_partition` already
 reads stated extents directly -- rather than changing the enumeration every consumer reads.
+
+## Every extent is stated locally except one, and that one is where all the fitting lives
+
+Pulling this session's structural findings together, because they converge on a single
+statement rather than a list.
+
+    structure               states its own extent by
+    record                  the DIRECTORY -- a sorted partition of the body
+    FX node                 its successor slot, located by the header's mask
+    FX entry                its tag's declared slots, plus the furthest-forward pointer
+    FX chain element        slot 1, the next-element pointer (0x9, 0x49, 0x?4B)
+    inline program          its own first word, a u16 instruction count
+    RECORD HEADER END       nothing
+
+Every one of those was either already known or established this session -- `node_shape`'s
+successor, `leaf_successor`, `chain_extent`, the entry's linked-list step, `fx_entry_layout`'s
+span. The pattern is not "the format is a mask-walk"; it is that EVERY EXTENT IS SELF-STATED
+AND LOCAL. That is why the next-start proxy failed on the branch (a neighbour's position is
+not a statement), why `fxrender`'s `+12` was never a constant, and why the leaf's successor
+fell out of the mask that was already there.
+
+THE EXCEPTION IS MEASURED, not assumed. Over 30 files and 38,200 records, no word inside a
+record's header equals its own header length, header byte length, record word count, or
+record byte length -- every rate is noise, the highest 0.6%, which is word 2 sometimes
+happening to hold the number 4. A record states its TOTAL extent, in the directory. What
+nothing states is the HEADER/PAYLOAD BOUNDARY inside it.
+
+AND THAT ONE BOUNDARY IS WHERE EVERYTHING FITTED SITS. `decompose` computes it from
+`costs.json`; `record_layout.header_words` is the same number by another route; `walk_health`
+exists to measure its health; the 992 "phantom" header overlaps were it over-running, since
+fixed at source; every violation `walk_partition` reports is measured from it; and
+`Record.programs` needed a bound precisely because nothing declared where the header stops.
+
+So the no-fitted-tables goal now has a single target rather than a list. Either a record
+states its header/payload split somewhere not yet looked at, or it genuinely does not and the
+cost model is irreducible for that one boundary. Worth ruling out in that order: the trailer,
+the directory entry's other fields, the tag's high bits, and the parameter WIDTH legend --
+the graph-input default table already reads widths from declared type codes (SPEC 7.2), so a
+width legend the file states would dissolve most of what `costs.json` fits.
