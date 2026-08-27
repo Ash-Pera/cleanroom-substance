@@ -39823,3 +39823,39 @@ WHAT IS NOT SETTLED: `INPUT_FIELDS` records `(21, 0): False`, so `decompose` doe
 distance's field 0 as the input even though w1 bit 0 predicts its arity exactly. The flag and
 the slot that carries the input are not yet traced to the same field, and until they are, the
 "optional input is a parameter" reading is a good fit rather than a demonstration.
+
+### Filter 3's two node types: tag bit 0 tells them apart, and it is not version dependent
+
+Filter id 3 carries two authoring nodes (SPEC 6.4), and the discriminant holds over the whole
+corpus. 7,682 filter-3 records across 437 files:
+
+    tag bit 0 = 0   grayscaleconversion   3,934   slot 1 is the first EDGE, no w1 word
+    tag bit 0 = 1   Channel Shuffle       3,748   slot 1 is the packed channel selector
+
+One-sided clean: there is no bit-0-clear record whose slot 1 fails to hold a backward record
+index -- 3,934 of 3,934 -- so the shape the flag predicts is the shape the bytes show.
+
+NOT VERSION DEPENDENT. Both shapes occur in every version the corpus has -- 0x20000, 0x40000,
+0x50000, 0x60000, 0x90000 -- in similar proportions. This is not a revision where one node
+type replaced another; they coexist throughout, so a reader cannot use the version to decide
+and does not need to.
+
+THE CAVEAT IS THE KIND OF CLAIM THIS IS. Tag bit 0 is the COLOUR FLAG (SPEC 6.2: bit 0 =
+colour, 0 grayscale, 1 colour) -- the record's own output mode, not a node-type field. It
+discriminates because `grayscaleconversion` outputs grayscale by definition and Channel
+Shuffle outputs colour. So this is a field that CO-VARIES with the node type, not one the
+format uses to state it, which is a weaker thing than `node_shape`'s successor slot or
+`chain_extent`'s next pointer, and it is worth marking as such.
+
+It would break on exactly one specimen: a Channel Shuffle whose output is grayscale, which
+would carry bit 0 = 0 and read as a `grayscaleconversion`. This corpus has none, and that is
+absence of evidence about what the authoring tool permits rather than evidence of absence. The
+tell, if one ever appears, is a bit-0-clear record whose slot 1 is not a valid backward index
+-- which is the check that currently returns 3,934 of 3,934.
+
+A MEASUREMENT NOTE, because it nearly became a finding. Testing the discriminant by asking
+whether slot 1 "looks like a backward index" flagged 18 apparent exceptions -- bit 0 set, slot
+1 numerically below the record index. All 18 are `w1 = 0x400`, arity 2: a real packed selector
+that happens to be smaller than its record's index (1024 < 1276). The test was a value probe,
+and it produced 18 false positives in a diagnostic written to check a rule against value
+probes. They corroborate the discriminant rather than challenge it.
