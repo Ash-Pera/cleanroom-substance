@@ -3280,26 +3280,43 @@ class Record:
                     return
                 nxts, prog_slots = shape2
                 if prog_slots is None:
-                    # Scanned, not tabulated. Only for a type whose slots are not fixed
-                    # and whose claimed starts are disjoint spans -- see FX_NODES2.
-                    emitted = False
-                    for k in range(4, 14):
-                        if q + 4 * k + 4 > e:
-                            break
-                        pv = struct.unpack_from('<I', d, q + 4 * k)[0] + 52
-                        if (o < pv < e and self.asm.program_span(pv, e)
-                                and (struct.unpack_from('<I', d, pv)[0] & 0xF) not in (9, 0xB)):
-                            yield q, h, pv
-                            emitted = True
-                    # A NODE MUST STILL APPEAR WHEN IT HAS A SUCCESSOR. This read
-                    # `if not nxts`, equivalent while every prog_slots-None kind was
-                    # terminal. Giving 0x0B its successor below breaks that equivalence,
-                    # and measured it silently drops 68 of 1,327 fx_tree yields across the
-                    # reference packages -- a leaf that emits no program stops being
-                    # reported at all once it has a child. The condition wanted is
-                    # "nothing was emitted for this node".
-                    if not emitted:
-                        yield q, h, None
+                    # THE LEAF NAMES NO PROGRAM, and the walk no longer pretends it does.
+                    #
+                    # This SCANNED words 4..13 and yielded anything whose `+ 52` passed
+                    # `program_span` -- a probe, the same act as the phantom programs
+                    # `Record.programs` used to manufacture from bytecode. Bit 7 clear says
+                    # a leaf has no base program structure, so a program found by sweeping
+                    # its words is not one the record named.
+                    #
+                    # Over 20 files: 28 distinct leaves reached by the walk yield 73 program
+                    # items between them (1 to 5 each), and EVERY one of the 73 is also named
+                    # by an ENTRY of the same record -- 0 unique to a leaf -- with the leaf
+                    # always yielded first. So the scan reached no program the walk does not
+                    # already have; it reached them earlier and attributed them to the wrong
+                    # node. Checked non-circularly, by excluding the leaf's own yields from
+                    # the comparison set -- including them confirms every candidate by
+                    # construction, which is how an earlier pass of this read "all confirmed"
+                    # for the wrong reason.
+                    #
+                    # RENDER-CHECKED IN ISOLATION, which is the only way it could be checked
+                    # honestly: a pristine HEAD copy with just this block replaced, against
+                    # HEAD, over four fxmaps files -- 6,077 rendered records, 0 differing.
+                    # Measuring it in the shared working tree instead said 3,968 of 6,077
+                    # differed, all of it another session's uncommitted edits and none of it
+                    # this change. The harness is deterministic (identical code twice, 0
+                    # differences); the tree was not the code under test.
+                    #
+                    # The path that made this worth checking rather than assuming:
+                    # `fxrender.emissions` seeds the slot frame by RUNNING every program of
+                    # the record the chain and table do not claim --
+                    #
+                    #     fx_progs = {p for _o, _h, ps in nodes for p in ps.values() if p}
+                    #     for prog in sorted(set(rec.programs) - fx_progs): run(prog, ...)
+                    #
+                    # -- so a scanned leaf program was being SUBTRACTED from that loop, and
+                    # dropping the scan could have started executing it as a seeder. It does
+                    # not: the table already claims all 73 through the entries that name them.
+                    yield q, h, None
                 else:
                     for sl in prog_slots:
                         if q + sl + 4 > e:
