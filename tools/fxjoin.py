@@ -58,6 +58,27 @@ from this join is a result derived from these paramsets:
 instrument for a handful of files, not for the corpus. `main()` prints these counts so the
 figure is re-measured rather than quoted from here.
 
+IT CANNOT SEE AN INSTANCE BOUNDARY, and that is the limit a caller is most likely to trip over.
+A compiled package carries entries from graphs it INSTANCES, whose paramsets are not in the
+`.sbs` at all -- `ie_curve` references 21 distinct `pkg:///` paths. Those entries share the
+parent's graph inputs, so their name sets can match a local paramset's and this join will pair
+them. Measured floor: 7 of 595 joined entries decode a `patterntype` that appears in NO
+declaration anywhere in their source file, which is proof they came from elsewhere. It is a
+FLOOR and not the rate -- an instanced entry that happens to share a declared patterntype is
+invisible to the check.
+
+`ie_curve` states it outright: its source declares `patterntype` 1 in 43 of 43 paramsets, and
+its compiled entries decode 3, 4, 9 and 10 as well as the catch-all. Four of those types are
+declared nowhere in the file.
+
+THIS IS WHERE AN ANOMALY CAME FROM, recorded because it read as a format finding first. Joining
+declared `patterntype` against the tag nibble gives 583 pairs at nibble 0 and SIX at nibble 1,
+which decodes to 3. All six are one tag, `0x95140188`, differing from the consistent
+`0x95140088` in exactly one bit -- bit 8, the nibble's low bit -- with identical parameter sets,
+and two of the six are unique 1:1 joins. That is the shape of a counterexample to the nibble
+encoding. It is not one: the file declares only patterntype 1, so an entry decoding to 3 cannot
+be its, and the pairing crossed an instance boundary. The nibble mapping is untouched.
+
 WHAT IT SETTLES, AND WHAT IT DOES NOT. It does not settle `blendingmode`, which is what it was
 built for. 585 joined pairs carry a declared `blendingmode`, but 579 declare 1 and only 6
 declare 2, and the one tag nibble that separates them perfectly is nibble 8 -- `patterntype`
