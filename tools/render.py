@@ -740,7 +740,27 @@ def walk_named_offset(asm, rec):
     named = []
     # `param_slots` entries carry a WIDTH now (one entry per parameter, not per word), so
     # this expands the run to keep scanning exactly the words it scanned before.
+    #
+    # FIELD 3 IS SKIPPED BECAUSE IT IS THE MATRIX, and that is what makes this rule work on
+    # a record whose matrix is ALSO a program. `matrix22` is the w1 pair at bits 6,7 --
+    # field 3 -- so when bit 7 is set its slot holds a program too, and "the record's single
+    # program-valued parameter slot" finds two and gives up. The offset itself cannot be
+    # named by field (its bits 25,26 straddle the tiling boundary), but the matrix can be,
+    # so the ambiguity is removed from the other side.
+    #
+    # Over the corpus plus the reference packs, 69,282 bit-26 records:
+    #
+    #     already resolved, unchanged by the skip     69,200
+    #     was ambiguous, RESOLVED by the skip             82   (exactly the bit-7 records)
+    #     resolved before and lost by the skip             0
+    #
+    # The 82 are precisely the records with bit 7 and bit 26 both set. They previously fell
+    # through to the `by_width[2]` value probe; they are now named structurally, and cross-
+    # checked against that probe on the same 82: 81 agree, 1 where the walk answers and the
+    # width rule is silent, 0 disagree.
     for _j, _st, _pos, _w in d.get('param_slots', ()):
+        if _j == 3:
+            continue
         for pos in range(_pos, _pos + max(1, _w)):
             if 0 <= pos < len(rec.words):
                 p = rec.words[pos] + 52
@@ -755,6 +775,80 @@ def walk_named_offset(asm, rec):
     except Exception:
         return None
     if v.size != 2:
+        return None
+    return tuple(float(x) for x in v)
+
+
+def walk_named_matrix(asm, rec):
+    """`transformation`'s matrix22 program, taken from the slot the WALK names, or None.
+
+    The sibling of `walk_named_offset`, and it closes the same gap one parameter over. The
+    transformation branch singles the matrix out with `by_width[4]` -- "which of this
+    record's programs returns 4 components" -- which is a question about VALUES, decided by
+    evaluating bytecode and grouping the answers. The record states it instead: `matrix22`
+    is the w1 pair at bits 6 and 7, which is FIELD 3 under the two-bit tiling `decompose`
+    reports, and the slot that field names holds the program.
+
+    THE FIELD IS THE SELECTOR, NOT THE WIDTH, and that is a real difference from
+    `walk_named_offset`, which can only ask for "the record's single program-valued
+    parameter slot". It has to, because the offset's two bits STRADDLE the tiling boundary
+    (25 is the high bit of field 12, 26 the low bit of field 13) so no one field is the
+    offset. The matrix's bits do not straddle, so it can be named directly -- and a record
+    carrying both a program matrix and a program offset is no longer ambiguous here, where
+    the "single program-valued slot" rule would see two and give up.
+
+    Structurally exact: over the corpus plus the reference packs, all 5,106 records with w1
+    bit 7 set have exactly one field-3 entry, state 2 (program), width 1, and in 5,106 of
+    5,106 that slot holds a valid program.
+
+    Cross-checked against the width rule rather than assumed, and the two are independent
+    (this reads costs.json; the width rule evaluates bytecode). All 5,106 bit-7 records,
+    with `sbsruntime.SAMPLERS` cleared per record:
+
+        agree                              5,105
+        walk answers, width rule silent        1
+        disagree                               0
+
+    The one apparent disagreement in a first pass was an artefact of the COMPARISON, not of
+    either rule: Lava record 845's matrix is (1.5, nan, 1.5, 1.5) and `nan != nan`, so tuple
+    equality reported a difference between two readings that had named the same program --
+    the record's only one. Counted with NaN-aware equality it is an agreement. (That the
+    matrix contains a NaN at all is a separate question about that record, not about which
+    program is the matrix.)
+
+    So this does not change an answer that already resolves; it turns a refusal into an
+    answer. That matters most where the width rule cannot help by construction -- the
+    branch it falls back to raises `Unsupported` for records with two disagreeing 4-wide
+    programs (Desert_Sand_01 record 55 has an identity and a (0.65, 0, 0, 0.05), and its
+    own comment concedes "picking the later address would be a coin toss dressed as a
+    rule"). The slot is not a coin toss.
+
+    Returns None whenever the walk is not decisive -- no single field-3 entry, the slot out
+    of range, no valid program there, or it does not evaluate 4-wide -- leaving the width
+    rule exactly as it was.
+    """
+    try:
+        import decompose
+        d = decompose.decompose(rec)
+    except Exception:
+        return None
+    if not d:
+        return None
+    named = [t for t in d.get('param_slots', ()) if t[0] == 3]
+    if len(named) != 1:
+        return None
+    pos = named[0][2]
+    if not (0 <= pos < len(rec.words)):
+        return None
+    p = rec.words[pos] + 52
+    if not (asm.body_lo <= p < asm.body_hi and asm.valid_program(p)):
+        return None
+    try:
+        v = np.asarray(eval_program(asm, p, default_inputs(asm, 1), {}, 1,
+                                    W=rec.width, H=rec.height)).reshape(-1)
+    except Exception:
+        return None
+    if v.size != 4:
         return None
     return tuple(float(x) for x in v)
 
@@ -1260,29 +1354,43 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         elif a.size not in by_width:
                             by_width[a.size] = val
 
+                # THE WALK IS ASKED FIRST, as it already is for the offset below.
+                # `matrix22` is the w1 pair at bits 6,7 -- field 3 -- and the slot that
+                # field names holds the program, so there is nothing to single out.
+                # Agreement with the width rule is 5,105/5,105 where that rule resolves, so
+                # this only turns refusals into answers. See `walk_named_matrix`. Evaluated
+                # once, here, rather than in the chain below, since it runs a program.
+                walk_m = (walk_named_matrix(asm, rec)
+                          if (m is None and has_matrix_param) else None)
                 if m is None:
                     if not has_matrix_param:
                         m = (1.0, 0.0, 0.0, 1.0)      # no matrix parameter: identity
+                    elif walk_m is not None:
+                        m = walk_m
+                        matrix_from_program = True
                     elif by_width.get(4):
                         m = by_width[4]
                         matrix_from_program = True
                     else:
-                        # WHAT IS LEFT HERE IS ONE RECORD IN THIRTY FILES, and it needs a
-                        # specimen this corpus does not have. Desert_Sand_01 record 55 has
-                        # five programs -- a 4-wide identity (1, 0, 0, 1), a 4-wide
-                        # (0.65, 0, 0, 0.05), the shared 1-wide 2.0, the log2-size pair
-                        # (8, 7) which the rule above already sets aside, and a 2-wide
-                        # (-0.0, 0.0) taken as the offset. Two 4-wide candidates that
-                        # DISAGREE, so 9ca7c0f's "two that agree are the answer" does not
-                        # apply.
+                        # THE CASE THIS DESCRIBED IS RESOLVED, and by the record rather
+                        # than by an arbiter. Desert_Sand_01 record 55 was the example:
+                        # five programs, two of them 4-wide and DISAGREEING -- an identity
+                        # (1, 0, 0, 1) and a (0.65, 0, 0, 0.05) -- so the width rule had
+                        # nothing to choose between them, and this comment concluded that
+                        # "picking the later address would be a coin toss dressed as a
+                        # rule" and that a specimen the corpus does not have was needed.
                         #
-                        # Which is the matrix cannot be read off either one: an identity is
-                        # what an unset matrix looks like AND what a background colour is
-                        # not, and (0.65, 0, 0, 0.05) is a plausible scale and an
-                        # implausible colour. Over 60 files only 7 transformation records
-                        # have two or more 4-wide programs, and none of them sits in a
-                        # package that ships reference maps -- so there is no arbiter, and
-                        # picking the later address would be a coin toss dressed as a rule.
+                        # No specimen was needed. The record states which program is the
+                        # matrix: w1 = 0xbf sets bit 7, so field 3 is state 2, and the walk
+                        # names slot 4, which holds 0x1d54 -- the identity. The other
+                        # 4-wide program is a different parameter. `walk_named_matrix`
+                        # answers it upstream of this branch, so a two-candidate
+                        # disagreement is no longer a reason to stop.
+                        #
+                        # What still reaches here is a record where the WALK is not
+                        # decisive either -- no single field-3 entry, or the slot it names
+                        # holds no program, or that program does not evaluate 4-wide.
+                        # Those are genuine absences, not coin tosses.
                         raise Unsupported("matrix is a program this cannot single out "
                                           "(%d programs, widths %s)"
                                           % (len(fprogs), sorted(k for k in by_width)))
