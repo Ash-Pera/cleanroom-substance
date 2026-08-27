@@ -454,6 +454,29 @@ def _reference_px(rec):
     `warp.reference_px` still wins, and passing a number pins every record to it. Absent an
     assumption the record decides, and a record that does not state a width falls back to
     256.0 rather than raising -- the same default, now the exception rather than the rule.
+
+    A SECOND, INDEPENDENT STATEMENT OF THE SAME SCALE SITS IN THE CLASS WORD, unread, and
+    is worth knowing about before anyone retunes this. The (26, 27) bit pair -- baked costs
+    2 words, program costs 1, the general convention `cls_pair_slot` documents -- is carried
+    by seven spatial filters and consumed by nothing. Its baked value is a Float2, equal in
+    both components in 5,755 of 6,480 records and an exact power of two in 5,770, running
+    0.125 to 64. Against the record's own width:
+
+        (16.0, 16)  (2.0, 128)  (4.0, 64)  (8.0, 32)  (0.5, 512)  (0.25, 1024)
+
+    -- value * width == 256 in 3,326 records, which is this function's divisor stated by the
+    record rather than assumed. It is NOT universal: (32.0, 16) and (64.0, 16) give 512 and
+    1024 across 1,577 records, so "value * width is a power of two" holds broadly while
+    "always 256" does not, and the pair's exact meaning is unsettled.
+
+    This also identifies what the WITHDRAWN blur slot-3 fallback was reading. That note
+    records "72.5% are EXACT powers of two, through 2, 4, 8, 16, 32 to 64 -- a ladder of
+    exact powers of two is a size, a mip level or a tiling count, not an intensity." It was
+    right to refuse it and right about what it is not; this pair is the quantity, and blur
+    holds 5,159 of the 6,480 records that carry it.
+
+    Not wired: `rec.width` and this pair are two routes to the same scale and they do not
+    agree everywhere, so choosing between them is an arbitration, not a reading.
     """
     forced = assume.assumed('warp.reference_px')
     if forced is not None and forced != 'record':
