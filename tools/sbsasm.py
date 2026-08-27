@@ -2736,6 +2736,28 @@ class Record:
         taking the earlier positions, which would make slot 3/4 the out pair and reproduce
         the memo's values honestly. Rotating drives every channel strongly negative
         (basecolor -0.60 / -0.98 / -0.82, AO -0.81), so the naming is not the error either.
+
+        THE WHOLE SAMPLING CLASS IS OUT TOO. Record 128, the 4x minification feeding 129, is
+        the obvious next culprit and is not one. It collapses a std-0.1356 input to std
+        0.0017 because a 16x16 grid at 4x zoom lands on four distinct fractional coordinates
+        per axis (0.125, 0.375, 0.625, 0.875) and samples the same four texels repeatedly.
+        That collapse is real -- and MEAN-PRESERVING, and only the mean reaches 129:
+
+            122 full                        mean 0.4999   std 0.1356
+            decimated 16x16                 mean 0.4915   std 0.1121
+            box-averaged 16x16 (a true mip) mean 0.4999   std 0.0776
+            point-sampled at the 4x coords  mean 0.5180   std 0.0001
+
+        Every filtering rule gives ~0.5, so no sampling fix reaches the ~1.0 the exported map
+        wants: after 129's inversion they all land at 0.48-0.50.
+
+        The matrix CONVENTION goes the same way. Reading (4, 0, 0, 4) as the sampling
+        transform (minify) or as its inverse (magnify at 0.25x) gives 0.5180 and 0.4959
+        before the levels, 0.4813 and 0.5034 after it. Neither is white.
+
+        So the thing still unaccounted for is not a filtering rule and not a transform
+        convention. Something upstream would have to deliver a value at or above
+        `levelinhigh` (0.99859) instead of a mid-grey, and nothing in the traced cone does.
         """
         import decompose as _decompose
         d = _decompose.decompose(self)
