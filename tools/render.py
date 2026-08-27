@@ -2536,9 +2536,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # wrong picture rather than a refusal, which is the failure this file ranks
                 # worst.
                 #
-                # The 871 neither-bit records carry no intensity at all (the source omitted
-                # it and the engine's default applies) and are now refused rather than
-                # reading whichever slot happens to end the header.
+                # THE NEITHER-BIT RECORDS CARRY NO INTENSITY AT ALL, and that is now
+                # MEASURED rather than asserted. This comment used to state it as a reason
+                # for refusing; the reason was a guess that happened to be right.
+                #
+                # The header states it. Group records by class word with the intensity pair
+                # masked out, so everything else about the layout is held fixed, and compare
+                # `decompose(rec)['end']` between the baked and neither-bit members of each
+                # group. A neither-bit record is EXACTLY ONE WORD SHORTER than its baked
+                # sibling, over the corpus and the reference packs:
+                #
+                #     warp      880 of 880   one word shorter      0 the same length
+                #     blur      140 of 140   one word shorter      0 the same length
+                #     sharpen   162 of 167   one word shorter      0 the same length
+                #                            (the other 5 have no baked sibling to compare)
+                #
+                # Not one record anywhere is the same length as its baked sibling. So there
+                # is no unaccounted word for the value to be hiding in, and no slot to read
+                # more cleverly -- the parameter is absent from the record, and its value
+                # exists only as the engine's default.
+                #
+                # WHAT THAT MEANS FOR THE BLOCKER LIST, which is the useful part: warp's 30
+                # blocked outputs, blur's 20 and sharpen's 18 are NOT decode work and no
+                # amount of walking will reach them. They need one constant that this format
+                # does not contain. Counting them beside genuine decode gaps overstates how
+                # much of the corpus is still undecoded.
+                #
+                # The refusal stands rather than substituting a plausible number, for the
+                # reason the paragraph above gives: a wrong picture ranks worse here than a
+                # refusal.
                 _pair = cls_pair_slot(rec, 29)
                 if _pair is None:
                     raise Unsupported("warp intensity: neither class bit 13 (baked) nor 14 "
@@ -3387,6 +3413,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             assume.note(i)
                             break
                 if intensity is None:
+                    # THE ABSENCE IS MEASURED, not assumed -- a neither-bit blur record is
+                    # one word shorter than its baked sibling in 140 of 140, and none is the
+                    # same length. See the warp branch for the method and the other counts.
                     raise Unsupported(
                         "blur intensity: %s (walk slot %s)"
                         % ("neither class bit 12 (baked) nor 13 (program) is set, so the "
@@ -3532,6 +3561,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # cannot resolve the record. Those are different answers and the absent one
                 # is the common case, so it is asked first rather than being swallowed by a
                 # message about the walk.
+                #
+                # THE ABSENCE IS MEASURED, not assumed -- a neither-bit sharpen record is
+                # one word shorter than its baked sibling in 162 of 167, and none is the
+                # same length. See the warp branch for the method and the warp/blur counts.
                 if not ((rec.words[0] >> 28) & 1 or (rec.words[0] >> 29) & 1):
                     raise Unsupported("sharpen intensity: neither class bit 12 (baked) nor "
                                       "13 (program) is set, so the source omitted it and "
