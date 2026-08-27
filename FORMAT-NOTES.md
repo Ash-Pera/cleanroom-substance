@@ -39780,3 +39780,46 @@ record states its own count. Two filters already do it and score 100.00%; the qu
 the other twenty is whether their headers state something equivalent that has not been
 looked for -- an arity field, a present-parameter count -- rather than whether their widths
 can be fitted more tightly. `arity` is the existence proof that the format is willing to say.
+
+## The five arity "mechanisms" are two, and the other three were our description
+
+Catalogued naively, every filter whose input count varies states it differently -- shuffle by
+tag bit 0, distance by w1 bit 0, blend by an aligned PARAM_SPEC field, pixelprocessor by five
+bits of w1, fxmaps by w1 bits 10..13. Five mechanisms for one concept is not what a designed
+format looks like, and it is not what this one does. Three of the five dissolve.
+
+FIRST, THE SCALE. Over 25 files and 23,758 records across 18 filters, 23,375 -- 98.4% -- have
+arity exactly equal to their filter's base. The entire question concerns 383 records. Two
+unifying rules were tried on them and both fail: the best single (source, shift, mask) field
+predicting `arity - BASE_INPUTS` scores 98.51% against a 98.39% baseline of always answering
+zero, a gain of 0.12%, and counting the state-3 fields in w1 scores 49.60%, worse than chance.
+There is no one field.
+
+SHUFFLE IS NOT VARIABLE-ARITY AT ALL. Its two populations are two record SHAPES:
+
+    tag bit 0 = 1   arity 2, HAS a w1 word     286
+    tag bit 0 = 0   arity 1, NO w1 word        229
+
+That is SPEC 6.4's two authoring nodes sharing filter id 3 -- `grayscaleconversion` and
+Channel Shuffle -- each with FIXED arity. Tag bit 0 discriminates the node type, it does not
+count inputs. We listed a filter-id collision as an arity mechanism because our model merges
+the two under one id.
+
+DISTANCE AND BLEND ARE THE SAME MECHANISM, not two. `distance`'s flag sits on the same `cls`
+(0xB19 occurs on both sides of it), so it is one node type with a parameter present or absent;
+blend's third input is an aligned PARAM_SPEC field in state 3. An optional image input is a
+PARAMETER, carrying a two-bit code like any other, and "which bit" is just which parameter --
+a per-filter fact by definition, not a per-filter mechanism.
+
+SO THE DESIGN IS TWO RULES, both uniform:
+
+    bounded inputs      each optional input is a parameter; its two-bit code says present
+    unbounded inputs    an integer count field: pixelprocessor 5 bits, fxmaps w1 bits 10..13
+
+The second exists because no per-parameter presence code can express an arity of 0..16 over
+14 distinct values. That is the whole of it.
+
+WHAT IS NOT SETTLED: `INPUT_FIELDS` records `(21, 0): False`, so `decompose` does not treat
+distance's field 0 as the input even though w1 bit 0 predicts its arity exactly. The flag and
+the slot that carries the input are not yet traced to the same field, and until they are, the
+"optional input is a parameter" reading is a good fit rather than a demonstration.
