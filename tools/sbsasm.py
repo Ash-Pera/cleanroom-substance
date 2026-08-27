@@ -51,15 +51,30 @@ FILTERS = {
     # the record, and its two floats (1.92 and 0.56 at words 5 and 6) have nothing to be
     # matched against.
     #
-    # THE SLOT IS PREDICTED EVEN SO, and it holds an intensity-shaped number.
-    # `param_slots.predicted_slot` -- layout start + 1 + bit 7 + bit 11, verified 38 of
-    # 38 on six OTHER filters -- puts emboss's float at slot 6 in
-    # stone_stylized_adaptive records 6 and 10, and both hold 10.0. That is where an
-    # intensity would be and what one would look like. It is a PREDICTION, not a
-    # pairing: no permitted source declares an emboss value, so nothing confirms the
-    # number is `intensity` rather than `lightangle`, and the FORMULA is not
-    # established at all. Implementing emboss still needs a permitted source that both
-    # pairs and states a value.
+    # A SLOT IS PREDICTED EVEN SO, AND THE PREDICTION IS OUT OF SCOPE. This cited
+    # `param_slots.predicted_slot` -- layout start + 1 + bit 7 + bit 11 -- as "verified 38 of
+    # 38 on six OTHER filters", and used it to put emboss's float at slot 6 in
+    # stone_stylized_adaptive records 6 and 10, both holding 10.0.
+    #
+    # That verification does not cover these records. `param_slots` now states its own scope
+    # in capitals -- THE RULE IS VERIFIED ONLY WHERE cls BIT 0 IS SET, all 34 containment
+    # pairings have `cls & 1`, and there are ZERO pairings with bit 0 clear -- and BOTH cited
+    # records have `cls = 0x0b198810`, bit 0 CLEAR. So the number quoted here was the one
+    # population the rule says nothing about. Corpus-wide the same split runs through this
+    # filter: 316 of 546 emboss records are bit-0-clear, so the majority are outside it.
+    #
+    # How wrong the rule can be off-scope is measured, on `distance`: with bit 0 SET its slot
+    # is what the walk enumerates as a parameter in 2,451 of 2,451, and with bit 0 CLEAR it
+    # lands on a walk parameter in 11 of 89, on a cls slot in 11, and on a word the walk
+    # accounts to no field at all in 67. Prediction on a bit-0-clear record is therefore
+    # roughly a one-in-eight shot, not a near-certainty.
+    #
+    # The 10.0 is left recorded because it is a real number at a real slot and someone will
+    # find it again -- but it is NOT evidence, and it was being read as some. It was already
+    # a PREDICTION rather than a pairing (no permitted source declares an emboss value, so
+    # nothing confirms `intensity` over `lightangle`, and the FORMULA is not established);
+    # what is corrected here is that it was also quoting a verification that excludes it.
+    # Implementing emboss still needs a permitted source that both pairs and states a value.
         8: 'emboss',
     14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
     20: 'pixelprocessor', 21: 'distance',
