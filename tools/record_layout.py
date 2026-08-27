@@ -57,6 +57,38 @@ def costs():
     return _COSTS
 
 
+W1_REFUSE = object()        # "the shape is undecidable from what you passed"
+
+
+def two_shape_w1(filter_id, word0, w1, version):
+    """The effective w1 for the filters with two record shapes, or `W1_REFUSE`.
+
+    THE ONE PLACE THIS RULE LIVES. `header_words`' own comment says the gate belongs here
+    "not in the callers", because a caller that forgets it charges `w1_present` on a record
+    that has no w1 word and comes out one word long, silently -- a session probe that missed
+    it measured warp's model as wrong in 25,085 of 26,795 records and published that. But
+    `decompose._has_w1_word` was a second copy of the same rule, so the gate lived in two
+    places and only one of them said so. It now delegates here.
+
+        warp (7)     w1 only from version 0x90000; undecidable without a version, so refuse
+        shuffle (3)  TAG BIT 0 selects the shape, and it is not a per-record accident: bit 0
+                     is the output colour flag, filter 3's parameter is PER OUTPUT CHANNEL,
+                     and the shape follows the channel count -- one channel wants weights
+                     over the inputs and carries no selector word, four want a packed
+                     per-channel selector and do. Same width legend as SPEC 6.4 everywhere
+                     else. 7,682 records, no exceptions; `derive_costs` reaches the same bit
+                     from the other side, where it beat an edge-run heuristic on all 51 of
+                     their disagreements.
+    """
+    if filter_id == 7:
+        if version is None:
+            return W1_REFUSE
+        return w1 if version >= 0x90000 else None
+    if filter_id == 3:
+        return w1 if (word0 & 1) else None
+    return w1
+
+
 @functools.lru_cache(maxsize=1 << 16)
 def header_words(filter_id, word0, w1, version=None):
     """Header length in words from the masks alone, or None if not derived.
@@ -73,9 +105,10 @@ def header_words(filter_id, word0, w1, version=None):
         codes       words[1], a vector of two-bit fields
         arity       words[1]; an integer sub-field adds one slot per unit
         absent      the filter has no w1 word; the argument is ignored
-        per_record  the record either has a w1 word or does not, and only the CALLER
-                    can tell (the edge run starting at slot 1 is the no-w1 shape) --
-                    pass words[1], or None for the no-w1 shape
+        per_record  the record either has a w1 word or does not, and the TAG says which:
+                    `two_shape_w1` gates it on word 0 bit 0. The name predates that and
+                    describes a caller contract that no longer exists -- pass words[1]
+                    unconditionally and the gate below decides
 
     The first version of this function silently ignored the arity and presence terms:
     it predicted from const+cls+codes whatever the spec held, so a pixelprocessor
@@ -94,14 +127,9 @@ def header_words(filter_id, word0, w1, version=None):
     # version; a session probe that did not implement it measured warp's model as wrong in
     # 25,085 of 26,795 records and published the conclusion. Gated here, the same comparison
     # is 26,795 of 26,795 exact. A rule the caller can forget is a rule in the wrong place.
-    if filter_id == 7:                       # warp: w1 only from version 0x90000
-        if version is None:
-            return None                      # the shape is undecidable without it: refuse
-        if version < 0x90000:
-            w1 = None
-    elif filter_id == 3:                     # shuffle: tag bit 0 selects the shape
-        if not (word0 & 1):
-            w1 = None
+    w1 = two_shape_w1(filter_id, word0, w1, version)
+    if w1 is W1_REFUSE:
+        return None                          # the shape is undecidable: refuse
     # Variant selection before anything else: a split filter stores one spec per
     # sampling class, each behind its own guard. Pick the matching one; a record
     # whose class no variant covers gets None, not a guess.
