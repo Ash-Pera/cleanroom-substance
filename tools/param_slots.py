@@ -29,7 +29,28 @@ parameter sits at
     layout start + 1 + (class bit 7) + (class bit 11)
 
 in 38 of 38 located pairings, across warp, directionalwarp, distance, blur, sharpen and
-dirmotionblur. Both bits are ones this format already charges a word for elsewhere: bit 7
+dirmotionblur.
+
+`normal` NOW SUPPORTS IT TOO, on 8 specimens where it used to have one. It was not a Float4
+problem -- normal writes `intensity` as a Float1 -- but `locate` demands a value with three
+decimals that is unique among ALL the file's records of that filter, and normal's authors use
+round numbers. Matching the exact float32 bit pattern within each file instead:
+
+    ChesterfieldSofa 121 (10.0)   SandyStonePath 1452 (16.0)   Marble_Tiles_01 2020 (8.0)
+    Mineral_Ore_01 7037 (20.0)    Obsidian_01 3585 (20.0)      Painted_Metal 1584 (5.0)
+    substance-designer-materials 740 (25.0)   SubstanceDesignerPractice 362 (2.01)
+
+Eight packages, and both candidate rules land on every one: `predicted_slot` 8 of 8, and
+`end - 1` 8 of 8 (slot 5 with end 6 for the seven cls 0x0b19 records, slot 4 with end 5 for
+the cls 0x0319 one). The remaining 65 normal nodes cannot pair and the reasons are counted
+rather than assumed: 37 declare `intensity` with no float at all, 13 declare no intensity, 9
+give it a `dynamicValue` program, 10 have no paired assembly, 4 are ambiguous within their
+file and 2 sit in files holding no normal record.
+
+ONE ARITHMETIC NOTE ON THE TABLE ABOVE, not resolved here: its per-filter counts sum to 29,
+not 38, and re-running `locate` today reproduces the 29 exactly (warp 13, directionalwarp 10,
+blur 2, sharpen 2, dirmotionblur 2, distance 0). Whatever the 38 counted, the table is what
+this function returns. Both bits are ones this format already charges a word for elsewhere: bit 7
 moves `uniform`'s fill by one, and `hsl` walks its class bits for the same reason.
 
 AND IT CORROBORATES THE BIT-12 READING RATHER THAN UPSETTING IT. `blur intensity: class bit
@@ -65,6 +86,8 @@ import provenance                                                    # noqa: E40
 import sbsasm                                                        # noqa: E402
 
 NODE = re.compile(r'<compNode>((?:(?!</compNode>).)*?)</compNode>', re.S)
+#: one <parameter> element, so a name cannot reach past its own value. See `declared`.
+PARAM = re.compile(r'<parameter>((?:(?!</parameter>).)*?)</parameter>', re.S)
 
 #: source node name -> compiled filter id, for the filters whose parameter is a plain float
 FILTERS = {'blur': 10, 'sharpen': 13, 'warp': 7, 'directionalwarp': 12,
@@ -99,10 +122,22 @@ def declared(sbs_path, node, param):
         # in the whole corpus and `locate('levels', 15, ...)` reported a single pairing.
         # Reading the first component of a FloatN turns that into 46 unambiguous pairings
         # across 35 sources, which is what settled `levels`' parameter widths.
-        m = re.search(r'<name v="%s"/>.*?<constantValueFloat\d v="([-\d.e]+)'
-                      r'(?:[ \t][-\d.e ]*)?"/>' % param, body, re.S)
-        if m and _decimals(m.group(1)) >= MIN_DECIMALS:
-            out.append(float(m.group(1)))
+        # BOUNDED TO THE PARAMETER'S OWN ELEMENT. `<name>` and the value used to be matched
+        # across `.*?` with re.S, which does not stop at `</parameter>` -- so a parameter
+        # whose value is NOT a float takes the next parameter's. `normal` is where it shows:
+        # every one of its nodes writes `input2alpha` as `<constantValueBool v="0"/>` and
+        # `intensity` as a Float1 right after, so `declared('normal', 'input2alpha')`
+        # returned INTENSITY's 2.01 and `locate` paired it to intensity's record and slot.
+        # A false pairing is worse than a missing one here: `predicted_slot`'s rule is
+        # derived from these, so a value attributed to the wrong name would be fitted as
+        # though it were evidence.
+        for pb in PARAM.findall(body):
+            if not re.search(r'<name v="%s"/>' % param, pb):
+                continue
+            m = re.search(r'<constantValueFloat\d v="([-\d.e]+)'
+                          r'(?:[ \t][-\d.e ]*)?"/>', pb)
+            if m and _decimals(m.group(1)) >= MIN_DECIMALS:
+                out.append(float(m.group(1)))
     return out
 
 

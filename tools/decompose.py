@@ -492,8 +492,11 @@ def decompose(r):
     masks = _param_field_masks(f)
     ri = r.index
     if w1 is not None:
+        # Field j sits at bit 2j + w1_shift -- 0 everywhere but `directionalwarp`, whose
+        # parameters begin at bit 1. See `derive_costs.W1_GRID_SHIFT`.
+        gsh = int(spec.get('w1_shift', 0))
         for j in sorted(int(k) for k in spec['w1']):
-            st = (w1 >> (2 * j)) & 3
+            st = (w1 >> (2 * j + gsh)) & 3
             if st == 0:
                 continue
             n = int(round(spec['w1'][str(j)].get(str(st), 0.0)))
@@ -517,8 +520,14 @@ def decompose(r):
     # bitmap (16) carries a size expression only when tag bit 0 is set; otherwise slot 2 is image
     # data (which can coincidentally parse as a program), and layout reports no size.
     prog = None if (f == 17 or (f == 16 and not (r.cls & 1)) or size_pos in inputs) else size_pos
+    # `w1_shift` is REPORTED rather than left for callers to look up again. A consumer
+    # matching a PARAM_SPEC mask to a field has to know which grid the fields are on, and
+    # re-deriving it means re-selecting the spec with arguments the caller has to
+    # reconstruct -- the failure `INPUT_FIELDS` above documents at length. The walk knows
+    # it; the walk says it.
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
                         'param_slots': param_slots, 'cls_params': cls_params,
+                        'w1_shift': gsh,
                         'end': _model_end(r, pos), 'prog': prog})
 
 
@@ -580,12 +589,23 @@ def _model_end(r, fallback):
     a non-zero delta and measure zero. Only the other direction leaks, and it leaks as slots
     allocated past a length the model believes is shorter.
 
-    WHICH SIDE IS WRONG IS NOT SETTLED HERE, and normal is the case where it can be asked:
-    containment puts a declared 2.01 at slot 4 of record 362, agreeing with `header_words - 1`
-    of 4 against the walk's `end - 1` of 6. So for normal the model's LENGTH is right while
-    the walk's input POSITIONS are the ones validated by edges (937,137 records against
-    `_compute_layout`). Both cannot hold with three cls slots and a parameter between them,
-    and no instrument here separates them.
+    FOR `normal` IT IS NOW SETTLED, AND THE MODEL WINS. That rested on one specimen and now
+    rests on eight, found by matching the exact float32 bit pattern within each file instead
+    of demanding a corpus-unique three-decimal value -- see `param_slots.declared`. Across
+    eight different packages:
+
+        seven records, cls 0x0b19   intensity at slot 5, model end 6
+        one record,    cls 0x0319   intensity at slot 4, model end 5
+
+    Intensity is at `end - 1` in 8 of 8, so the model's LENGTH is right and this walk's
+    cursor is wrong by exactly the +2 the intercept term predicts. The cursor puts normal's
+    parameter at slot 7 (or 6) where the file puts it at 5 (or 4), and its last cls slot
+    already sits at or past the model's end. `param_slots.predicted_slot` also lands on 8 of
+    8, so the two independent rules agree with each other and with the file.
+
+    That does not license truncating the slot lists against `end` generally: it is one filter,
+    and `shuffle`'s +4 still carries two negative cost terms this walk cannot represent at
+    all. But the direction is no longer open for normal.
 
     `emboss` is not this. It is the only filter whose cursor runs SHORT, and it is attributed
     elsewhere -- a v5 fit applied to v2 records.
