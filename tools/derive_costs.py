@@ -46,6 +46,15 @@ dropping late ones cannot move it -- unless a record's first inline program sits
 own header end, which no record in this corpus does. A corpus that contained one would
 break the equivalence silently.
 """
+#
+# OWNERSHIP: this file, `derive_costs.py` and the `costs.json` they produce are maintained by
+# ONE session at a time. Several Claude sessions share this working tree and one git HEAD, and
+# a change here routinely pairs with a change in `decompose.py`; when the two halves landed in
+# two sessions' commits, HEAD raised `AttributeError` on every warp and shuffle record while
+# each commit was individually fine (5faf524 / 35fe822). Send the change to the owner rather
+# than editing alongside them. Verify against a pristine `git show HEAD:` copy, never against
+# the working tree, which holds everyone's uncommitted work at once.
+#
 import bisect
 import collections
 import json

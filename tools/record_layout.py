@@ -32,6 +32,15 @@ missing for stated reasons:
     uniform                  no w1 word at all; slot 1 is an edge
     levels                   five fields, and its baked widths are not yet separated
 """
+#
+# OWNERSHIP: this file, `derive_costs.py` and the `costs.json` they produce are maintained by
+# ONE session at a time. Several Claude sessions share this working tree and one git HEAD, and
+# a change here routinely pairs with a change in `decompose.py`; when the two halves landed in
+# two sessions' commits, HEAD raised `AttributeError` on every warp and shuffle record while
+# each commit was individually fine (5faf524 / 35fe822). Send the change to the owner rather
+# than editing alongside them. Verify against a pristine `git show HEAD:` copy, never against
+# the working tree, which holds everyone's uncommitted work at once.
+#
 import functools
 import json
 import os
