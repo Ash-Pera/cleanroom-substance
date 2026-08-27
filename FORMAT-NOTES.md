@@ -38664,3 +38664,49 @@ Two consequences, both retractions:
     this and must be re-run with SAMPLERS cleared between the two renders before it means anything.
 
 Any A/B that renders twice in one process is suspect until it clears SAMPLERS.
+
+## The chain element's third word is a handoff, and fxrender's `+12` is its stated extent
+
+`fx_table`'s entry run yields words whose low nibble is 9 or 0xB -- `0x9`, `0xb`, `0x49` --
+which declare no parameter layout and which no node rule walks. I called them "not a
+structure". That was wrong, and the chain says so: following the stored pointers through
+`flowingLava` record 911,
+
+    +0  0x9      slot 1 = 0x3AD76C + 52 -> +3
+    +3  0x20008  slot 1 = 0x3AD774 + 52 -> +5
+    +5  0x9                             -> +8
+
+the list alternates between a 3-word element and a 2-word one and every step is exact. The
+previous element points AT the `0x9` and the `0x9` points at the next, so it is a linked-list
+member by the format's own statement; the walk is not phase-shifted. The "fixed stride" I
+read as a field signature is just what a two-kind alternating list looks like from outside.
+
+THE THIRD WORD IS A POINTER, AND NEVER TO A PROGRAM. Over 80 files, of 82 confirmed 3-word
+elements it targets another chain word (nibble 9/B) 66 times and an entry tag 16 times. In
+11 of 13 records every sibling targets the SAME address. All 15 distinct targets are
+UNVISITED by `fx_walk`, and 14 of the 15 hold four program pointers in their first 16 words.
+
+Eleven of those targets are headed `0x14B` -- nibble B with bit 7 clear, so `node_shape`
+declines it, `leaf_successor` declines it (`0x14B & 0xF0 = 0x40`, not clear), and `FX_NODES2`
+has no `0x4B` row. Unwalkable by every rule we have.
+
+BUT IT IS ALREADY DECODED, IN THE RENDERER. `fxrender.entries` takes `cells` = walk items
+whose low byte is `0x09` or `0x49` -- exactly these elements -- reads `off + 8`, and then
+
+    at = shared + 12 if (hdr2 & 0xFFF) in (0x04B, 0x14B) else shared
+
+THAT `+12` IS THE ELEMENT'S OWN STATED EXTENT. 60 of 66 `0x?4B` targets state a slot-1 step
+of exactly 3 words, and in all 60 the word at +12 is a nibble-8 tag. So `0x?4B` is the same
+3-word chain element as `0x9`, and skipping its stated extent lands on the real entry. The
+constant is not a constant; the element says it. The 6 outliers step 67 words -- last in
+chain, pointing far forward -- and their +12 is NOT a tag; `fxrender` survives them only
+because a later `if (tag & 0xF) != 8: continue` catches it afterwards, where the stated
+extent would have declined them structurally.
+
+So the handoff is: 3-word element -> shared pointer -> another 3-word element -> the entry
+begins after its stated extent. Coherent and self-describing throughout. What is wrong is
+only WHERE it lives: the knowledge is in the renderer as a hardcoded offset plus a two-header
+allowlist, so `sbsasm`'s walk never visits any of it. That is why these structures are
+invisible to every structural tool -- coverage, `walk_partition`, the census -- and why the
+disjoint-span scan has to sweep for their programs at all. The scan is compensating for a
+handoff the walk does not make.
