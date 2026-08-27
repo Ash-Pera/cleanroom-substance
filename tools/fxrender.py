@@ -290,23 +290,40 @@ STEPPER2 = 0x9B
 #: which is why it shares STEPPER's handling rather than getting its own.
 BRANCH = 0x1B
 
-#: A THREE-WORD CELL THE CHAIN SIMPLY CONTINUES PAST. Measured over 34 `0x1B` nodes in 40
-#: files, with no counter-example in any of the three:
+#: A THREE-WORD CELL THE CHAIN SIMPLY CONTINUES PAST. RE-MEASURED over all 355 `0x1B` nodes
+#: in the corpus plus the reference packs, and the width holds while one of the three
+#: original claims does not:
 #:
-#:     word 1 is the constant 12345 (0x3039)          34 of 34
-#:     word 2 is a pointer BACKWARDS into the body    34 of 34
-#:     word 3 is a `0x18B` node header                34 of 34
+#:     word 1 is the constant 12345 (0x3039)          343 of 355   (the other 12 hold 0)
+#:     word 2 addresses word 3, i.e. self + 12        355 of 355
+#:     word 3 is a `0x18B` node header                343 of 343   (of the 0x3039 group)
 #:
-#: Word 3 being a header in every case is what fixes the width at three, independently of
-#: how the walk arrived: the next node is contiguous, not addressed by a pointer.
+#: WORD 2 POINTS FORWARD, NOT BACKWARDS. The 34-node sample read the direction wrong:
+#: `(word 2 + 52) - node offset` is exactly 12 in 355 of 355, so word 2 is this node's one
+#: pointer and it addresses the structure immediately after the cell. The width of three
+#: stands, and now so does what the pointer is for.
 #:
-#: THIS CONTRADICTS `sbsasm.FX_NODES2['0x1b'] = ((8, 20), (16,))`, which places successors
-#: at bytes 8 and 20 and a program at byte 16 -- words 2, 5 and 4 of a cell that is only
-#: three words long. Words 4 and 5 are the FOLLOWING `0x18B` node's own program and
-#: successor (`FX_NODES['0x18b'] = (8, (4,))` reads exactly those two), so that entry was
-#: derived by reading the next node's fields as this one's. Not corrected there from here:
-#: the table drives the walk for every record, and this is the shape of one node kind
-#: measured in one place.
+#: WORD 1 SAYS WHAT FOLLOWS, which is why the two groups exist. Where it is 0x3039 the next
+#: structure is a `0x18B` NODE; in the 12 where it is 0 the next structure is a paramset
+#: ENTRY tag (low nibble 8). Same cell either way. `sbsasm`'s `fx_walk` has a value probe
+#: keyed on exactly `_w1 != 0x3039` that reads byte 12 and tests whether it looks like a tag
+#: -- it is right, and it is probing for something word 1 states outright.
+#:
+#: THE CONTRADICTION WITH `sbsasm.FX_NODES2` IS RESOLVED, in this file's favour, and the
+#: table is corrected there. It read `((8, 20), (16,))` -- successors at bytes 8 and 20, a
+#: program at 16 -- of which only byte 8 was this node's. Words 4 and 5 are the FOLLOWING
+#: `0x18B` node's own program and successor (`FX_NODES['0x18b'] = (8, (4,))` measured from
+#: the neighbour at +12): word 4 holds a valid program in 343 of 343 and word 5's successor
+#: lands inside the record in 343 of 343. That is why the old byte 20 always resolved to
+#: something in range -- it was reading the next node's successor.
+#:
+#: AND `BRANCH` ABOVE IS THE SAME NODE KIND WITH THE OPPOSITE SHAPE. Both constants are
+#: 0x1B. BRANCH says one child at word 2, a program at word 4 and a continuation at word 5;
+#: this says the cell ends at word 3 and 4/5 are the neighbour's. The measurement above
+#: decides it, and BRANCH's own discriminating test cannot: "word 5 target reachable from
+#: word 2's subtree, 81 of 81, control 0 of 81" is a TAUTOLOGY once word 2 is known to
+#: address word 3. Word 5 IS word 3's successor field, so following word 2 arrives there by
+#: construction. It could not have come out any other way, and it separates nothing.
 #:
 #: 0x3039 is the same sentinel that withdrew an earlier `0x9B` derivation in this file --
 #: a constant, present in both files examined, that looked like an entry pointer under a

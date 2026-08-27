@@ -589,8 +589,37 @@ FX_NODE_PARAMS = {
 # candidate "confirmed" by construction, which is how this first read as 266/266 for the
 # wrong reason). Removing it is therefore safe for program COVERAGE but changes which
 # programs the leaf EVALUATES as its own, which is a render question and not settled here.
+# CORRECTED. The row used to read `((8, 20), (16,))` -- successors at bytes 8 and 20 and a
+# program at byte 16, i.e. words 2, 5 and 4 -- and `fxrender` has carried a standing flag that
+# this contradicts what it derives. It does, and the flag was right: bytes 16 and 20 are the
+# NEIGHBOUR's fields, not this node's. Measured over all 355 0x1B nodes in the corpus plus the
+# reference packs:
+#
+#     (word 2 + 52) - node offset == 12                         355 of 355
+#
+# So word 2 is this node's one pointer and it addresses word 3 -- the structure immediately
+# after a THREE-WORD cell. What sits there is stated by word 1:
+#
+#     word 1 == 0x3039 (12345)   343 nodes   word 3 is a 0x18B node header, 343 of 343
+#     word 1 == 0                 12 nodes   word 3 is a paramset ENTRY tag (low nibble 8)
+#
+# And for the 343, words 4 and 5 are exactly the neighbouring 0x18B's own program and
+# successor -- `FX_NODES[0x18B] = (8, (4,))` measured from the neighbour at +12:
+#
+#     word 4 holds a valid program                              343 of 343
+#     word 5's successor lands inside the record                343 of 343
+#
+# which is why the old byte 20 always resolved to something in range: it was reading the next
+# node's successor. Byte 8 was the only part of the row that was this node's.
+#
+# The correction changes no reading -- `((8,), ())` and the empty table both differ from the
+# old row on 0 of 355 records, because `fx_table` reaches the same entries either way. It is
+# made because the row is a STATEMENT about a node's shape and the statement was wrong.
+#
+# `walk.NODE_LEGEND` reaches the same width independently: 0x1b is 3 words there, derived by
+# the landing test over the whole corpus rather than from these bytes.
 FX_NODES2 = {
-    0x1B: ((8, 20), (16,)),   # two children, at words 2 and 5; program at word 4
+    0x1B: ((8,), ()),   # one pointer, at word 2, addressing the next structure at word 3
 }
 
 
