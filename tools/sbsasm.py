@@ -735,14 +735,21 @@ def leaf_successor(header):
 #
 # filter -> [(name, presence mask, program mask)]
 # Filters whose parameters are placed by the structural walk rather than by the LAYOUTS
-# memo. `dirmotionblur` (11) and `directionalwarp` (12) are here; `blend` (1) and `fxmaps`
-# (4) are not, because several of their cost-model fields have width ZERO, where the walk
-# emits nothing and the memo names a slot, and which is right is not established.
+# memo: `blend` (1), `dirmotionblur` (11) and `directionalwarp` (12).
+#
+# (This comment said blend was NOT here, while the set below contained it. Corrected by
+# reading the set rather than the prose -- a stale comment about which arm is live is the
+# same failure mode as a stale figure, and this file has been bitten by that before.)
+#
+# `fxmaps` (4) is the one still on the memo, and its blocker is not width-zero fields: its
+# cost-model entry has `const: None` and NO w1 dictionary at all, so `decompose` routes it
+# through `_fxmaps_walk`, which returns `param_slots: []`. There is nothing for the walk to
+# place its four parameters WITH. Migrating it means deriving those positions first.
 #
 # `levels` (15) IS NOT HERE AND WAS: it wins every structural comparison and REGRESSES THE
 # RENDER. See `Record._parameters_walked`, which is kept precisely so the next attempt
 # starts from the evidence rather than from the idea.
-WALKED_PARAMS = frozenset({11, 12})
+WALKED_PARAMS = frozenset({1, 11, 12})
 
 PARAM_SPEC = {
     1:  [('opacitymult', 0x30, 0x20)],
@@ -1964,6 +1971,39 @@ class Record:
         n = record_layout.header_words(self.filter_id, self.words[0], w1, version=ver)
         if n is not None:
             return n
+        # THEN THE WALK, AND THE MEMO IS DEAD BEHIND IT. `decompose` states the same
+        # quantity structurally -- its `end` is where the slots stop and the code begins,
+        # which is this property's own definition -- so it belongs ahead of a lookup.
+        #
+        # Measured over corpus.paths() PLUS the reference packs, which are DISJOINT
+        # populations (437 files against 8, zero overlap) and had to be counted together
+        # because most censuses in this repo see only the first and every render score
+        # comes from the second:
+        #
+        #     the rule answers          900,544 of 900,859 corpus   33,426 of 33,436 packs
+        #     rule silent                   315                          10
+        #       ..memo answers                0                           0
+        #       ..walk answers              171                          10
+        #
+        # The memo answers NONE of the 325 records that reach it. Its key is
+        # (filter, cls, w1 & LAYOUT_MASK) and it is documented above as lossy; what this
+        # adds is that on the population it exists to serve it is not merely lossy but
+        # empty. It is kept below rather than deleted because deleting a table is a
+        # separate change with its own knockout, and `test_every_table_is_load_bearing`
+        # does not currently cover it.
+        #
+        # The 181 the walk recovers are all `emboss`, and the answer is admissible on every
+        # one: 2 <= end <= len(words) in 181 of 181, inputs [2, 3] matching emboss's base
+        # arity of two, ends of 4 to 7 words inside records of 13 to 83. `vectorshape` (139)
+        # and `filter9` (5) stay unanswered -- the walk is silent there too, which is an
+        # absence rather than a guess.
+        try:
+            import decompose as _decompose
+            _d = _decompose.decompose(self)
+            if _d is not None and _d.get('end') is not None:
+                return _d['end']
+        except Exception:
+            pass
         return HEADER_WORDS.get((self.filter_id, self.cls,
                                  self.words[1] & LAYOUT_MASK.get(self.filter_id, 0)))
 
@@ -3490,11 +3530,14 @@ class Record:
     def matrix(self):
         """For filter 2: the `matrix22` transform, as four float32, or None.
 
-        The matrix occupies four slots starting at `3 + class bit 0 + class bit 7`. Source matrices appear verbatim here in 66 of 72 cases across 23 permitted
-        files, the misses being nodes the cooker eliminated.
-        The values read as transforms should - `2 0 0 2`, `-1 0 0 -1`, `1.4014 0 0 1.4014`
-        - and the off-diagonals are zero in 94% and 76% of records, since most transforms
-        scale or flip without shear.
+        THE RECORD'S OWN BIT DECIDES WHETHER THERE IS ONE. w1 bit 6 says a baked `matrix22`
+        is present; the walk then names its slot, by FIELD (the w1 pair at bits 6,7). Bit 6
+        clear means no baked matrix and this returns None -- it does not go looking for one.
+
+        Source matrices appear verbatim here in 66 of 72 cases across 23 permitted files,
+        the misses being nodes the cooker eliminated. The values read as transforms should
+        - `2 0 0 2`, `-1 0 0 -1`, `1.4014 0 0 1.4014` - and the off-diagonals are zero in
+        94% and 76% of records, since most transforms scale or flip without shear.
         """
         if self.filter_id != 2:
             return None
@@ -3544,12 +3587,47 @@ class Record:
             except Exception:
                 _d = None
             if _d:
-                _four = [t for t in _d.get('param_slots', ())
-                         if len(t) >= 4 and t[3] == 4]
-                if len(_four) == 1:
-                    base = 4 * _four[0][2]
-        if base is None:                    # walk silent, or no baked matrix declared
-            base = 4 * (3 + (self.cls & 1) + (self.cls >> 7 & 1))
+                # BY FIELD, NOT BY WIDTH. `matrix22` is the w1 pair at bits 6,7 -- field 3
+                # under the two-bit tiling `decompose` reports in `param_slots[0]`. Selecting
+                # "the sole width-4 entry" instead was ambiguous whenever w1 bit 28 (the
+                # background colour) is set on a COLOUR record, because that parameter is a
+                # Float4 too: two width-4 entries, no way to choose. Corpus-wide the field
+                # rule agrees with the width rule on all 66,506 records where both answer,
+                # never disagrees, and resolves the 2 the width rule could not --
+                # NightSkyHDRISubstance001 record 1589 (slots 3 and 7) and pbr_render record
+                # 44 (slots 3 and 9), both w1 bit 28 set. 66,508 of 66,508.
+                _m = [t for t in _d.get('param_slots', ())
+                      if len(t) >= 4 and t[3] == 4 and t[0] == 3]
+                if len(_m) == 1:
+                    base = 4 * _m[0][2]
+        if base is None:
+            # NO BAKED MATRIX DECLARED, SO THERE IS NO MATRIX TO RETURN. This used to fall
+            # back to `4 * (3 + cls bit 0 + cls bit 7)` -- the last rung of the ladder above,
+            # kept "for the 2 records where the walk is silent". Instrumenting the method
+            # rather than reconstructing its inputs shows what it was really doing: the walk
+            # is consulted ONLY when bit 6 is set, so all 168,349 bit-6-CLEAR records skipped
+            # it entirely and were answered by the formula. Corpus-wide, filter 2:
+            #
+            #     bit 6 set, walk answers    66,506      bit 6 set, walk silent        2
+            #     bit 6 clear, walk silent  168,349      bit 6 clear, walk answers     2
+            #
+            # 234,855 of 234,859 -- the walk answers if and only if the record's own bit 6
+            # says a baked matrix is there. The formula produced a matrix in 276 of the
+            # records it was left to answer, 274 of them with bit 6 CLEAR, and 175 of those
+            # read from a slot PAST the walk's header end -- bytecode, or the next structure.
+            # All 276 survived only because they passed the finite/non-singular screen below,
+            # which is a plausibility window, not a reading.
+            #
+            # Nothing downstream loses a value: render.py already re-applied the bit at the
+            # call site (`m = rec.matrix if (w1 >> 6 & 1) else None`, added when honouring it
+            # took ChesterfieldSofa from 659 non-finite records to 0), so those 276 were
+            # discarded by the only consumer. The bit now lives in the accessor instead of
+            # being re-tested by each caller.
+            #
+            # The 4 off-diagonal records are recorded, not resolved: 2 where bit 6 is set and
+            # the walk finds TWO width-4 slots, and 2 where it names one in a record that says
+            # it has no baked matrix. Which statement is wrong is not established here.
+            return None
         if base // 4 + 3 >= len(self.words):
             return None
         m = struct.unpack_from('<4f', self.asm.data, self.offset + base)
@@ -3622,10 +3700,20 @@ class Record:
             _two = [t for t in _d.get('param_slots', ()) if len(t) >= 4 and t[3] == 2]
             if len(_two) == 1:
                 s = _two[0][2]
-        if s is None:                           # walk undecided: the old path, guard and all
-            if not (w >> 6 & 1 or w >> 7 & 1):  # no matrix: nothing to pack after
-                return None
-            s = 3 + (self.cls & 1) + (self.cls >> 7 & 1) + 4
+        if s is None:
+            # UNREACHABLE, AND MEASURED SO RATHER THAN ASSUMED. This was the old path --
+            # `3 + cls bit 0 + cls bit 7 + 4`, stepping over a matrix it assumed was there.
+            # Instrumenting this method over the corpus: it is called on 234,859 filter-2
+            # records, the walk answers 29,331 and is silent 205,528, and the method returns
+            # None exactly 205,528 times. Nothing reaches the formula, because the bit-25
+            # guard above already rejected every record the walk is silent on:
+            #
+            #     bit 25 set, walk answers   29,331      bit 25 set, walk silent       0
+            #     bit 25 clear, walk silent 205,528      bit 25 clear, walk answers    0
+            #
+            # 234,859 of 234,859. The walk's coverage IS the format's own declaration, so
+            # the formula had nothing left to answer. Returning None keeps that explicit.
+            return None
         if s + 1 >= len(self.words):
             return None
         o = struct.unpack_from('<2f', self.asm.data, self.offset + 4 * s)
