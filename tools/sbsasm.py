@@ -2763,6 +2763,37 @@ class Record:
     def _parameters_positional(self, spec, d):
         """Present parameters occupy the LAST n slots of the header, in bit order.
 
+        WHY `directionalwarp` CANNOT USE THE FIELD MATCH, with the mechanism rather than
+        just the symptom. `_parameters_walked` names a parameter by matching its presence
+        mask to a cost-model field, `pres == 3 << 2j`. dirwarp's masks are 0x06 (bits 1,2)
+        and 0x18 (bits 3,4) -- adjacent pairs offset by ONE BIT from the model's (0,1),
+        (2,3), (4,5) grid -- so no field matches and the match returns nothing.
+
+        THE FORMAT IS RIGHT AND THE GRID IS WRONG, which is worth stating in that order.
+        Over all 62,146 dirwarp records, w1 bit 0 is ZERO in every one, and reading the
+        pairs where PARAM_SPEC puts them gives a clean two-bit code with no state 3:
+
+            intensity   state 0    458   state 1 (baked) 58,226   state 2 (program) 3,462
+            warpangle   state 0  2,716   state 1         56,895   state 2           2,535
+
+        No state 3 in either, which is what a correctly aligned read of a scalar pair looks
+        like -- 11 is the image-input state and a float cannot take it. `_read_slot` gets
+        the same answer from the other side: dirwarp's program bit predicts program-vs-baked
+        in 117,657 of 117,657 reads.
+
+        SO THE FITTED FIELD COSTS ARE SUMS ACROSS PARAMETER BOUNDARIES, and they say so if
+        read closely. Field 0 spans the dead bit and intensity's low bit, so it can only
+        ever be state 0 or 2 -- and its costs are {1: 0, 2: 1, 3: 0}, exactly that shape.
+        Field 1 spans intensity's HIGH bit and warpangle's LOW bit, two different
+        parameters, and its state-3 cost is 2: intensity-as-program (1) plus warpangle-baked
+        (1). The header TOTAL still comes out exact at 100.000% because a misaligned
+        decomposition can sum correctly, which is why nothing caught this.
+
+        The consequence for this method: counting back from `end` is not a workaround for a
+        filter the field match happens to miss. It is the only available reading, because
+        the model's per-field attribution is wrong for this filter while its total is right,
+        and `end` is the total.
+
         For a spec whose presence masks do not sit on the cost model's two-bit field grid,
         so the field match in `_parameters_walked` cannot name them. This reads the walk's
         `end` and counts back, which is the same rule `decompose.named_params` uses and is
