@@ -4169,12 +4169,48 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                           % arr.shape[-1])
                     arr = np.asarray(outputs[i])
                 if arr.size and not np.all(np.isfinite(arr)):
-                    # UNDER AN OPEN SCOPE, write a chosen value instead of refusing. The
-                    # recurring producer is an auto-levels remap over a constant source --
-                    # max == min, so the range is zero-wide and 0/0 is degenerate for any
-                    # renderer, the engine included. Nothing here is wrong arithmetic to
-                    # repair; the only question is what the engine emits, and that is a
-                    # choice with an arbiter available rather than a decode.
+                    # MOSTLY AN ARTEFACT OF `max_dim`, NOT A PROPERTY OF THE FILE. This
+                    # said the recurring producer is "an auto-levels remap over a constant
+                    # source", which is the right SHAPE and the wrong CAUSE -- and the
+                    # difference matters, because the wrong cause makes it a question about
+                    # what the engine emits when the correct one makes it a question about
+                    # what resolution we asked for.
+                    #
+                    # Traced end to end on Bricks record 326, whose main program is exactly
+                    # that remap, `(lum - min) / (max - min)`:
+                    #
+                    #   326  pixelprocessor   0/0 at every pixel
+                    #   325  pixelprocessor   a max-reduction pyramid step, sampling four
+                    #                         quadrants and packing max and (1 - min) into
+                    #                         one RGBA -- it returns [0, 0, 1, 1], so
+                    #                         max == min == 0 and the range is zero-wide
+                    #   318  distance         ALL ZERO, and this is the actual cause
+                    #
+                    # Record 318's radius is 2.56 px at the format's 256 reference. Render
+                    # it into 64 px and that is 0.64 px -- sub-pixel, so the distance field
+                    # rounds away to nothing, the reduction sees a constant image, and the
+                    # divide downstream is 0/0. The file is fine; the raster was too small.
+                    #
+                    #   max_dim  64    rec 318 min=0 max=0    rec 326 non-finite
+                    #   max_dim 128    rec 318 min=0 max=1    rec 326 RENDERS
+                    #   max_dim 256    rec 318 min=0 max=1    rec 326 RENDERS
+                    #   full size      rec 318 min=0 max=1    rec 326 RENDERS
+                    #
+                    # And it generalises. Over the eight reference-pack assemblies:
+                    #
+                    #   max_dim  64    12 non-finite records   13,747 records rendered
+                    #   max_dim 128     2 non-finite records   24,115 records rendered
+                    #
+                    # `output_census` runs at 64 while `refcompare.RENDER_DIM` is 128, so
+                    # the blocker list has been counting at a resolution the scorer does
+                    # not use. Ten of the twelve are not decode work and not a choice.
+                    #
+                    # THE TWO THAT SURVIVE 128 ARE THE REAL QUESTION, and `nonfinite.fill`
+                    # is mis-posed for the other ten: filling them with 0.0, 0.5 or 1.0
+                    # would paint over a raster that is simply too coarse. Resolve the arm
+                    # on the survivors or not at all.
+                    #
+                    # UNDER AN OPEN SCOPE, write a chosen value instead of refusing.
                     _fill = assume.assumed('nonfinite.fill')
                     if _fill is not None:
                         outputs[i] = np.where(np.isfinite(arr), arr,
