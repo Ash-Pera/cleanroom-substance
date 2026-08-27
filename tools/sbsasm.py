@@ -947,10 +947,23 @@ def leaf_successor(header):
 # reading the set rather than the prose -- a stale comment about which arm is live is the
 # same failure mode as a stale figure, and this file has been bitten by that before.)
 #
-# `fxmaps` (4) is the one still on the memo, and its blocker is not width-zero fields: its
-# cost-model entry has `const: None` and NO w1 dictionary at all, so `decompose` routes it
-# through `_fxmaps_walk`, which returns `param_slots: []`. There is nothing for the walk to
-# place its four parameters WITH. Migrating it means deriving those positions first.
+# `fxmaps` (4) IS IN THE SET, and this comment said it was not -- the same contradiction the
+# paragraph above records being corrected for `blend`, made again one filter over. Read the
+# set, not the prose.
+#
+# What the stale text got right is the mechanism, which is worth keeping because it reads
+# like an objection and is not one: fxmaps' cost-model entry has `const: None` and no w1
+# dictionary, so `decompose` routes it through `_fxmaps_walk`, which reports `param_slots:
+# []`. The walk therefore places NO header parameters for fxmaps -- and that is the correct
+# answer rather than a gap, because fxmaps has none to place. The justification above
+# `WALKED_PARAMS` has the measurement: the memo's parameters land in the PAYLOAD (40,054
+# past the walk's end, 8 past the record entirely, 6 on an input edge, 0 inside the walked
+# header), which is `walk_partition`'s invariant failing outright, and nothing consumes
+# them -- emptying them changes 0 of 12,632 rendered records.
+#
+# So "the walk returns nothing here" is not a reason to migrate fxmaps back. Checked before
+# writing this: over 5,010 fxmaps records the walk returns 0 named parameters on all of
+# them while the memo returns 1 to 4 on 4,188, and every one of those is a misattribution.
 #
 # `levels` (15) IS NOT HERE AND WAS: it wins every structural comparison and REGRESSES THE
 # RENDER. See `Record._parameters_walked`, which is kept precisely so the next attempt
