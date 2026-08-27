@@ -2134,6 +2134,38 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # if the compiler ever emitted the weights as a PROGRAM this refusal would be a
                         # missed read. It never does -- over all 7,682 shuffle records, bit 24 set with 25
                         # clear 7,080, both clear 602, bit 25 set 0.
+                        # THE ARBITER EXISTS AND IS INERT, which is worth more than either
+                        # a value or another refusal, because the next person to reach for
+                        # it should not spend the day I did.
+                        #
+                        # `RoofTiles` is a REFERENCE PACK and five of its six declared
+                        # outputs -- height, AO, roughness, normal, basecolor -- are blocked
+                        # here, so the exported maps can in principle score a candidate.
+                        # Supplying one does unblock them: with `grayscale.weights` set and
+                        # warp's absent intensity supplied too (its cone needs both), the
+                        # file goes from 1 of 6 declared outputs to 6 of 6.
+                        #
+                        # It cannot choose between candidates. Over Rec.601 (0.3, 0.59,
+                        # 0.11), Rec.709, equal thirds, equal quarters and one-hot red, the
+                        # scored mean MAE against the pack's own maps is 0.1192 for four of
+                        # them and 0.12039 for the fifth, and the mean correlation is 0.034
+                        # -- which is no agreement at all. Sweeping warp's absent value over
+                        # 0, 0.1, 0.5, 1, 2 and 10 moves neither number by one part in 1e5.
+                        #
+                        # And that is not a threshold argument. Rendering the file twice --
+                        # once at Rec.601 with warp 0, once at one-hot red with warp 10 --
+                        # gives SIX OF SIX outputs identical in mean and standard deviation
+                        # to six decimals. The declared outputs do not depend on either
+                        # value, so this arbiter can unblock the records and cannot rank the
+                        # candidates.
+                        #
+                        # WHAT THAT SAYS ABOUT THE REFUSAL. It is correct in principle and
+                        # it cascades: a record deep in the graph declines a parameter that
+                        # provably cannot change the picture, and five outputs go with it.
+                        # The refusal stays, because "any value renders the same here" is a
+                        # fact about RoofTiles and not about the format. But the cost is now
+                        # measured rather than assumed, and the arbiter is recorded as
+                        # available-and-inert rather than as untried.
                         w = assume.assumed('grayscale.weights')
                         if w is None:
                             raise Unsupported("shuffle stores no weight vector (class bit "
