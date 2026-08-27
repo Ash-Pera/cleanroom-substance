@@ -544,6 +544,52 @@ def _model_end(r, fallback):
     Containment settles the direction independently where it can reach: `normal` record 362
     declares 2.01 at slot 4, and `header_words - 1` is 4 while the walk's `end - 1` is 6.
 
+    EVERY BOUND DISAGREEMENT, ENUMERATED, AND THE CAUSE IS ONE CATEGORY ERROR. Measured by
+    spying on this function's own two arguments over corpus.paths() plus the reference packs,
+    the walk's accumulated cursor against the model's length:
+
+        15 filters agree on 884,351 records -- bitmap, transformation, uniform, blend,
+        levels, gradient, directionalwarp, warp, hsl, blur, dirmotionblur, pixelprocessor,
+        curve, sharpen, text.
+
+        filter        cursor - model              records
+        normal        +2                            1,502
+        dyngradient    0 / +1                  105 / 2,392
+        distance      +1 / +2                  761 / 1,779
+        shuffle        0 / +4                4,028 / 3,781
+        emboss        -1, -3, -4, -6         371 / 3 / 3 / 22
+
+    `const` IS AN INTERCEPT, NOT A POSITION, and this walk uses it as one. The fit solves
+    `header = const + sum of set-bit costs`; nothing in that equation says the first slot sits
+    at index `const`. The walk's base is a structural fact -- `n_hdr` mask words plus `n_base`
+    image inputs -- and `pos = max(pos, const)` silently mixes the two. Predicting the delta
+    as `(n_hdr + n_base) - const` accounts for it exactly:
+
+        normal        predicted +2, measured +2      1,502 of 1,502
+        dyngradient   predicted +1, measured +1      2,392 of 2,392
+        distance      predicted +1, measured +1        761 of 761
+
+    and the two residuals are the representational gaps already named above, each adding to
+    that base term rather than replacing it:
+
+        distance +2   the OPTIONAL mask input this walk appends after the base (1,779 records)
+        shuffle  +4   the base term (+2) plus two NEGATIVE cost terms it cannot subtract (+2)
+
+    THE ASYMMETRY IS THE BUG. Where `const` EXCEEDS the real base, `max(pos, const)` absorbs
+    the difference and the two agree -- which is why bitmap, curve, gradient and text predict
+    a non-zero delta and measure zero. Only the other direction leaks, and it leaks as slots
+    allocated past a length the model believes is shorter.
+
+    WHICH SIDE IS WRONG IS NOT SETTLED HERE, and normal is the case where it can be asked:
+    containment puts a declared 2.01 at slot 4 of record 362, agreeing with `header_words - 1`
+    of 4 against the walk's `end - 1` of 6. So for normal the model's LENGTH is right while
+    the walk's input POSITIONS are the ones validated by edges (937,137 records against
+    `_compute_layout`). Both cannot hold with three cls slots and a parameter between them,
+    and no instrument here separates them.
+
+    `emboss` is not this. It is the only filter whose cursor runs SHORT, and it is attributed
+    elsewhere -- a v5 fit applied to v2 records.
+
     The SLOT LISTS are left as the walk built them. They are this function's own
     accumulation and a position in them can now exceed `end`; that is a true statement about
     the walk rather than something to paper over, and every consumer already bounds slots by
