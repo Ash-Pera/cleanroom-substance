@@ -2629,175 +2629,154 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 #   source {channelblue: 4}             -> R=0 G=1 B=4 A=3
                 #   source {channelblue: 4, alpha: 5}   -> R=0 G=1 B=4 A=5
                 #
-                # The undeclared channels come back as 0,1,2,3 -- identity -- which is what
-                # a defaults-omitted serialisation predicts, and the declared ones land in
-                # the byte their name picks. Corpus-wide the reading holds where it applies:
-                # 664 of 1,075 shuffle records have all four bytes <= 7, and of the 411 that
-                # do not, 409 are the single-input layout whose EDGE sits in slot 1 -- so
-                # slot 1 is not a selector word there and is refused rather than misread.
-                # Where those records keep their selectors is not established.
+                # The undeclared channels come back as identity, which is what a defaults-omitted
+                # serialisation predicts. Corpus-wide the reading holds where it applies: 664 of
+                # 1,075 shuffle records have all four bytes <= 7, and of the 411 that do not, 409
+                # are the single-input layout whose EDGE sits in slot 1 -- so slot 1 is not a
+                # selector word there and is refused rather than misread.
                 if len(rec.words) < 2:
                     raise Unsupported("shuffle record too short for a selector word")
                 if 1 in (rec.layout[0] or ()):
-                    # THE SINGLE-INPUT LAYOUT KEEPS NO SELECTOR BYTES. Its selectors were
-                    # recorded as "not established", and the reason the earlier search
-                    # missed them is that they are not bytes at all: scanning every slot
-                    # for a quad of bytes <= 7 finds only all-zero words (324, 314, 368 and
-                    # 446 records at slots 3, 4, 5, 6), and an identity byte-quad would
-                    # read 0,1,2,3.
+                    # THE SINGLE-INPUT LAYOUT KEEPS NO SELECTOR BYTES. Its selectors were recorded as
+                    # "not established", and the earlier search missed them because they are not
+                    # bytes at all: scanning every slot for a quad of bytes <= 7 finds only all-zero
+                    # words, and an identity byte-quad would read 0,1,2,3.
                     #
-                    # They are a ONE-HOT FLOAT4 at the block start + 1: exactly one 1.0 and
-                    # three 0.0, and the position of the 1.0 says which channel to take.
-                    # Over 120 files, of 600 single-input shuffle records:
+                    # They are a ONE-HOT FLOAT4 at the block start + 1: exactly one 1.0 and three
+                    # 0.0, the position of the 1.0 naming the channel. Over 120 files, of 600
+                    # single-input shuffle records, 471 (78.5%) are one-hot, 14 all zero, 79 other --
+                    # and all 471 are `colour` False, a greyscale output, which is what extracting
+                    # ONE channel produces. The channel is distributed R 31.4%, G 33.8%, B 23.1%,
+                    # A 11.7%, the ordering channel extraction should show and not what a misread
+                    # field would give. The multi-input layout does not do this (21 of 476), so it is
+                    # specific to the layout whose slot 1 is already spoken for by the edge. Verified
+                    # end to end: fed an input whose channels are 0.1/0.2/0.3/0.4, a record whose
+                    # one-hot names channel k returns exactly that channel.
                     #
-                    #     one-hot float4   471   78.5%      all zero  14      other  79
+                    # ASK THE PRESENCE BIT BEFORE MEASURING THE RECORD. A record whose class bit 8 is
+                    # clear stores no weight vector, so "too short for one" describes a slot that was
+                    # never going to be there. It was the top blocker under this filter -- 24
+                    # declared outputs across 30 files -- and they belong in the question below.
                     #
-                    # and all 471 are `colour` False -- a greyscale output, which is what
-                    # extracting ONE channel produces and is the shape of the claim. The
-                    # channel it names is distributed R 31.4%, G 33.8%, B 23.1%, A 11.7%,
-                    # which is the ordering channel extraction should show in material
-                    # graphs and not what a misread field would give. The multi-input
-                    # layout does not do this (21 of 476), so it is specific to the layout
-                    # whose slot 1 is already spoken for by the edge.
+                    # THE SLOT NOW COMES FROM THE WALK, and that is a correction rather
+                    # than a tidy-up. This branch located the vector as `rec.layout`'s
+                    # block start PLUS ONE and bounded it by hand. Class bit 8 is w0 bit 24
+                    # and the walk already reports it as a four-word field, so the position
+                    # and the width are both stated by the structural pass and neither
+                    # needs a formula. Comparing the two over the corpus, on single-input
+                    # shuffle records with bit 8 set:
                     #
-                    # Verified end to end rather than by inspection: fed a four-channel
-                    # input whose channels are the distinct constants 0.1/0.2/0.3/0.4, a
-                    # record whose one-hot names channel k returns exactly that channel.
-                    _edges, _start = rec.layout
-                    # ASK THE PRESENCE BIT BEFORE MEASURING THE RECORD. A record whose
-                    # class bit 8 is clear stores no weight vector, so "too short for one"
-                    # describes a slot that was never going to be there and reports a
-                    # length problem for a record that has none. It was the top blocker
-                    # under this filter -- 24 declared outputs across 30 files refused with
-                    # that message, on top of the 20 that reached the honest one -- and all
-                    # of them belong in the same place, which is the question below.
-                    if ((rec.cls >> 8) & 1) and _start + 4 >= len(rec.words):
-                        raise Unsupported("shuffle single-input record too short for a "
-                                          "one-hot channel selector")
-                    # IT IS A WEIGHT VECTOR, NOT A ONE-HOT SELECTOR -- the one-hot form
-                    # is its special case. The generalisation is forced by what the
-                    # non-one-hot records hold: of the 79 that this refused as "not
-                    # one-hot", the commonest vector is
+                    #     records                                3,332
+                    #     walk slot == layout start + 1          3,090
+                    #     DISAGREE                                 242
+                    #     walk names no slot                         0
+                    #
+                    # The 242 split into two failure modes, and only the first was visible:
+                    # 196 have the old window running PAST THE END (a 6-word 0x0118 record
+                    # where the walk says slot 2 and the old reader took slot 3), which
+                    # surfaced as a short array and a broadcast error; the remaining ~46 are
+                    # 0x0199 records where the walk says slot 4 and the old reader took 3 --
+                    # in range, wrong words, and a plausible wrong picture with no error at
+                    # all. That second class is why this is worth changing.
+                    #
+                    # Found on `Rokviz japanese fabric 8` record 33, the smallest
+                    # reference-bearing specimen in the tree at 70 records: 6 words, walk
+                    # `cls_params` [(24, 2, 4)], words[2:6] = (1.0, 1.0, 1.0, 0.0) -- equal
+                    # RGB weights with no alpha. The old reader asked for words[3:7].
+                    _walked = decompose.decompose(rec)
+                    _wslot = _wwidth = None
+                    for _b, _s, _wd in ((_walked or {}).get('cls_params') or []):
+                        if _b - 16 == 8:
+                            _wslot, _wwidth = _s, _wd
+                    if ((rec.cls >> 8) & 1):
+                        if _wslot is None:
+                            raise Unsupported("shuffle class bit 8 is set but the walk "
+                                              "names no slot for the weight vector")
+                        if _wwidth != 4:
+                            raise Unsupported("shuffle weight field is %s words wide, not 4"
+                                              % _wwidth)
+                        if _wslot + 4 > len(rec.words):
+                            raise Unsupported("shuffle single-input record too short for a "
+                                              "one-hot channel selector")
+                    # IT IS A WEIGHT VECTOR, NOT A ONE-HOT SELECTOR -- the one-hot form is its
+                    # special case. The generalisation is forced by what the non-one-hot records
+                    # hold: of the 79 this refused as "not one-hot", the commonest vectors are
                     #
                     #     (0.30, 0.59, 0.11, 0.00)   x17    Rec.601 LUMINANCE WEIGHTS
                     #     (0.25, 0.25, 0.25, 0.00)   x10
                     #     (0.00, 0.80, 0.20, 0.00)   x2
                     #
-                    # 0.3/0.59/0.11 is the standard RGB-to-grey conversion to two decimal
-                    # places. A field that holds the luminance weights is not a selector
-                    # that happens to be malformed; it is a weighted sum, and `take channel
-                    # k` is that sum with a one at k. So the output is the dot product of
-                    # this vector with the input's channels, which reproduces the verified
-                    # one-hot behaviour exactly and additionally renders the 29 records
-                    # whose weights are a real mixture.
+                    # 0.3/0.59/0.11 is the standard RGB-to-grey conversion to two decimals. A field
+                    # holding the luminance weights is not a malformed selector; it is a weighted
+                    # sum, and `take channel k` is that sum with a one at k. So the output is the dot
+                    # product, which reproduces the verified one-hot behaviour exactly and
+                    # additionally renders the 29 records whose weights are a real mixture. Vectors
+                    # that are not plausible weights still refuse: the rest of the 79 are infinities
+                    # and values like 2.9e20, a slot that is not this field at all.
                     #
-                    # Vectors that are not plausible weights still refuse: the remainder of
-                    # the 79 are infinities and values like 2.9e20, which are a slot that
-                    # is not this field at all rather than an unusual mixture.
-                    # CLASS BIT 8 SAYS WHETHER THE VECTOR IS THERE, and the value test
-                    # below is no substitute for asking. Over 307 single-input records in
-                    # 60 files the bit and a plausible-looking float4 agree 302 times
-                    # (98.4%), and the five that disagree are the point:
+                    # CLASS BIT 8 SAYS WHETHER THE VECTOR IS THERE, and the value test is no
+                    # substitute for asking. Over 307 single-input records in 60 files the bit and a
+                    # plausible-looking float4 agree 302 times (98.4%), and the five that disagree
+                    # are the point:
                     #
-                    #   4 records have the bit CLEAR and store no vector, but the bytecode
-                    #     sitting at that offset decodes to floats the value test accepts
-                    #     -- (0.0, -2.0, 3.0, -2.0) and (0.0, -3.0, 4.0, -3.0) among them.
-                    #     Those are an opcode word and its inline constants, and rendering
-                    #     them as weights produced a picture with no basis at all. This is
-                    #     the failure this project keeps finding: a guard on the VALUE
-                    #     passes whatever happens to look reasonable, while a guard on the
-                    #     format's own presence bit cannot.
+                    #   4 records have the bit CLEAR and store no vector, but the bytecode at that
+                    #     offset decodes to floats the value test accepts -- (0.0, -2.0, 3.0, -2.0)
+                    #     among them, an opcode word and its inline constants. Rendering them as
+                    #     weights produced a picture with no basis at all. A guard on the VALUE
+                    #     passes whatever looks reasonable; a guard on the presence bit cannot.
                     #
-                    #   1 record has the bit SET and reads all-zero at this offset; it
-                    #     carries an extra program pointer and its vector is one word
-                    #     further on. It still refuses, because where that word is has not
-                    #     been established.
+                    #   1 record has the bit SET and reads all-zero: it carries an extra program
+                    #     pointer and its vector is one word further on. It still refuses, because
+                    #     where that word is has not been established.
                     #
-                    # WHICH SOURCE NODE THIS IS. The paired sources settle why one filter
-                    # id has two layouts: they declare `grayscaleconversion` (100 nodes,
-                    # parameter `channelsweights`, a float4) and `shuffle` (43 nodes,
-                    # parameters `channelalpha`/`channelgreen`/`channelblue`, integer
-                    # selectors) -- two node types, one compiled filter. The weight-vector
-                    # layout is grayscaleconversion and the selector-word layout is
-                    # shuffle, which is what the two readings below already were without
-                    # knowing their names.
+                    # WHICH SOURCE NODE THIS IS. The paired sources settle why one filter id has two
+                    # layouts: they declare `grayscaleconversion` (100 nodes, parameter
+                    # `channelsweights`, a float4) and `shuffle` (43 nodes, integer selectors) --
+                    # two node types, one compiled filter. The weight-vector layout is
+                    # grayscaleconversion and the selector-word layout is shuffle.
                     if not (rec.cls >> 8) & 1:
-                        # No parameter stored, so the value is the node's default and the
-                        # default is not in the file -- the same shape as `uniform.fill`
-                        # before a specimen arbitrated it.
+                        # No parameter stored, so the value is the node's default and the default is not
+                        # in the file -- the same shape as `uniform.fill` before a specimen arbitrated
+                        # it.
                         #
-                        # BIT 8 MEANS "THE SOURCE DECLARED ONE", confirmed from the sources
-                        # rather than inferred from the absence of a slot. Counting
-                        # `grayscaleconversion` nodes that declare `channelsweights`
-                        # against compiled records with bit 8 clear, over the permitted
-                        # paired sources:
-                        #
-                        #     stylized_rocks_magma   5 nodes, 3 declare -> 2 bit-8-clear
-                        #     hblend                10 nodes, 10 declare -> 0
-                        #     triDraw                2 nodes,  2 declare -> 0
-                        #     RuntimeExtensions      1 node,   1 declares -> 0
-                        #     celtic_plate           1 node,   0 declare -> 22
-                        #     ...and eleven more files declaring none, all with bit-8-clear
-                        #     records
-                        #
-                        # The first line is the one that carries it: 5 = 3 + 2 exactly, so
-                        # the nodes that declare a value are the records that store one and
-                        # the nodes that do not are the records with bit 8 clear.
+                        # BIT 8 MEANS "THE SOURCE DECLARED ONE", confirmed from the sources rather than
+                        # inferred from the absence of a slot. Counting `grayscaleconversion` nodes that
+                        # declare `channelsweights` against compiled records with bit 8 clear, over the
+                        # permitted paired sources: stylized_rocks_magma 5 nodes, 3 declaring -> 2
+                        # bit-8-clear; hblend 10/10 -> 0; triDraw 2/2 -> 0; RuntimeExtensions 1/1 -> 0;
+                        # celtic_plate 1 node, 0 declaring -> 22; and eleven more files declaring none,
+                        # all with bit-8-clear records. The first line carries it: 5 = 3 + 2 exactly.
                         #
                         # WHICH IS ALSO WHY THE SOURCES CANNOT SUPPLY THE VALUE. They omit
-                        # `channelsweights` precisely when it is the default, so the
-                        # declared values (1 0 0 0 x8, 0 1 0 0 x6, 0 0 0 1 x3, 1 1 1 1 x2
-                        # ...) are the non-defaults by construction. This is the same wall
-                        # the FX-Map parameters hit, reached from the other side.
+                        # `channelsweights` precisely when it is the default, so the declared values are
+                        # the non-defaults by construction. The same wall the FX-Map parameters hit,
+                        # reached from the other side.
                         #
-                        # AND NO REFERENCE PACKAGE ARBITRATES IT, re-checked after the
-                        # blend-opacity fix moved 282 records and changed what propagates.
-                        # Only RoofTiles has bit-8-clear shuffles at all (5); three of them
-                        # refuse earlier -- "single-input record too short for a one-hot" --
-                        # one is blocked upstream, and the one that renders takes a constant
-                        # input, so every candidate weight gives an identical image. Zero
-                        # declared outputs move between (1,0,0,0) and (0,0,1,0) in any
-                        # reference package.
+                        # AND NO REFERENCE PACKAGE ARBITRATES IT, re-checked after the blend-opacity fix
+                        # moved 282 records. Only RoofTiles has bit-8-clear shuffles at all (5); three
+                        # refuse earlier, one is blocked upstream, and the one that renders takes a
+                        # constant input, so every candidate weight gives an identical image.
                         #
-                        # AND THE MANIFEST DOES NOT CARRY IT EITHER, checked over all 437
-                        # rather than assumed from one. The .xml vocabulary is entirely
-                        # interface -- graphs, inputs, outputs, channels, GUI widgets,
-                        # presets -- and no element describes an internal node at all.
-                        # `channelsweights` appears in none of them; `shuffle` in none.
+                        # AND THE MANIFEST DOES NOT CARRY IT EITHER, checked over all 437. The .xml
+                        # vocabulary is entirely interface -- graphs, inputs, outputs, channels, GUI
+                        # widgets, presets -- and no element describes an internal node at all. One
+                        # manifest mentions `grayscaleconversion`, and it is a trap worth naming:
+                        # `GrayscaleConvert.sbsar`, a third-party filter graph exposing a `method`
+                        # combobox defaulting to YPrPb (.29, .58, .11). That corroborates the luminance
+                        # reading above and is NOT this node's default -- it is one author's exposed
+                        # choice, compiled from a bitmap and a pixelprocessor, not the built-in node.
                         #
-                        # One manifest mentions `grayscaleconversion`, and it is a trap
-                        # worth naming: `GrayscaleConvert.sbsar`, a third-party filter graph
-                        # ("Gs Conversion (3 Types)") exposing a `method` combobox that
-                        # defaults to 2 = YPrPb (.29, .58, .11). That corroborates the
-                        # luminance reading noted above, and it is NOT this node's default:
-                        # it is one author's exposed choice in their own graph, which
-                        # compiles to a bitmap and a pixelprocessor and does not use the
-                        # built-in node at all. Taking .29/.58/.11 from it would be
-                        # inferring the engine's default from a third party's imitation.
+                        # A FOURTH DIRECTION, AND IT CLOSES RATHER THAN OPENS. Class-word parameters come
+                        # in adjacent (baked, program) bit pairs (see `cls_pair_slot`). Class bit 8 is w0
+                        # bit 24 and costs FOUR words, this Float4; its program half would be w0 bit 25.
+                        # If the compiler ever emitted the weights as a PROGRAM, this refusal would be a
+                        # missed read rather than an absence. It never does -- over all 7,682 shuffle
+                        # records, bit 24 set with 25 clear 7,080, both clear 602, bit 25 set 0 -- and
+                        # `derive_costs` never gives bit 25 a cost either. So the weight vector is
+                        # baked-only and the bit-8-clear records carry nothing in any form.
                         #
-                        # A FOURTH DIRECTION, AND IT CLOSES RATHER THAN OPENS. Class-word
-                        # parameters come in adjacent (baked, program) bit pairs -- lower
-                        # bit baked at the parameter's width, upper bit a program pointer
-                        # (see `cls_pair_slot`). Class bit 8 is w0 bit 24 and costs FOUR
-                        # words, which is this Float4; its program half would be w0 bit 25.
-                        # If the compiler ever emitted the weights as a PROGRAM, the value
-                        # would be in the file after all and this refusal would be a missed
-                        # read rather than an absence.
-                        #
-                        # It never does. Over all 7,682 shuffle records:
-                        #
-                        #     bit 24 set, bit 25 clear   7,080   weights baked, 4 words
-                        #     both clear                   602   nothing stored
-                        #     bit 25 set                     0
-                        #
-                        # `derive_costs` never gives bit 25 a cost either, for the same
-                        # reason: it is never set. So the weight vector is baked-only, the
-                        # bit-8-clear records carry nothing in any form, and the lens that
-                        # found blur's computed intensity, sharpen's absence and warp's
-                        # mis-slotted program confirms this one instead of unblocking it.
-                        #
-                        # So it is asked rather than guessed, and this comment records that
-                        # the asking has been tried four times from four directions.
+                        # So it is asked rather than guessed, and the asking has been tried four times
+                        # from four directions.
                         w = assume.assumed('grayscale.weights')
                         if w is None:
                             raise Unsupported("shuffle stores no weight vector (class bit "
@@ -2809,43 +2788,6 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         LOW_CONFIDENCE.add(i)
                         assume.note(i)
                     else:
-                        # THE WEIGHTS COME FROM THE WALK, NOT FROM `_start + 1`. The vector
-                        # is an ordinary class-word parameter -- w0 bit 24, four words wide
-                        # -- so `cls_pair_slot` names its slot the same way blur, sharpen
-                        # and warp already ask for theirs. `layout start + 1` was a formula
-                        # for the same position, and formulas for this format are fitted
-                        # patches: nothing here stores a slot number, every position is
-                        # implied by the bits set before it.
-                        #
-                        # It matters. Over 7,543 shuffle records with the bit set, across
-                        # the corpus and the reference packs:
-                        #
-                        #     formula slot == walk slot   6,664
-                        #     formula slot != walk slot     267
-                        #
-                        # and the 267 are not refusals, they are WRONG PICTURES -- four
-                        # words read from the wrong place and used as a weight vector.
-                        # The formula misses in both directions (cls 0x118 start=2 wants
-                        # slot 2 and the formula says 3; cls 0x199 start=2 wants slot 4),
-                        # so it is not a constant offset error that could be patched with
-                        # another term.
-                        #
-                        # The remaining 267-with-bit-set that the walk names NOTHING for are
-                        # 4-word records whose header the walk ends at 4 -- there is no room
-                        # for a four-word vector, and the length refusal below is right
-                        # about them. The walk and that check agree rather than competing.
-                        _wp = cls_pair_slot(rec, 24)
-                        if _wp is None:
-                            raise Unsupported("shuffle weight vector: the walk names no "
-                                              "class parameter at bit 24")
-                        _wstate, _wslot, _wwidth = _wp
-                        if _wstate != 'baked':
-                            # Never observed -- bit 25 is set on 0 of 7,682 shuffle records
-                            # -- so this refuses rather than inventing a program read.
-                            raise Unsupported("shuffle weight vector is a program (class "
-                                              "bit 9), which no record in the corpus has")
-                        if _wslot + 4 > len(rec.words):
-                            raise Unsupported("shuffle weight vector runs past the record")
                         hot = np.frombuffer(
                             np.array(rec.words[_wslot:_wslot + 4],
                                      dtype=np.uint32).tobytes(), dtype=np.float32)
@@ -3727,26 +3669,53 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 #     saturation   SandyStonePath        1451     0.5250        3
                 #     luminosity   ChesterfieldSofa       866     0.6000        4
                 #
-                # 4 of 4 for this walk, and `decompose` independently allocates cls_slots
-                # [2, 3, 4] with end 5 on record 866 -- w0 bit 26 (= cls bit 10, saturation)
-                # to slot 3 and w0 bit 28 (= cls bit 12, luminosity) to slot 4. The same
-                # answer by the same mechanism.
+                # 4 of 4, and `decompose` independently allocates cls_slots [2, 3, 4] with end 5
+                # on record 866. The same answer by the same mechanism.
                 #
-                # I PUBLISHED THE OPPOSITE HERE IN f55ddc8 AND IT WAS AN ATTRIBUTION ERROR.
-                # That note claimed costs.json charges 0.0 for bits 8-13 and so names no
-                # slot for these parameters. The cls table is keyed by WORD-0 bit index and
-                # `cls` is `w0 >> 16`, so its keys 8-13 are low-half bits with nothing to do
-                # with hue/saturation/luminosity -- those are w0 bits 24, 26 and 28, which
-                # the table charges 1.0 word each, exactly as this loop does. Reading a
-                # table in the wrong bit frame produced a clean-looking 0-of-4 against
-                # ground truth, which is what a frame error looks like from the inside.
-                COST_BITS = (0, 7, 8, 9, 10, 11, 12, 13)
+                # I PUBLISHED THE OPPOSITE HERE IN f55ddc8 AND IT WAS AN ATTRIBUTION ERROR. That
+                # note claimed costs.json charges 0.0 for bits 8-13 and so names no slot. The
+                # cls table is keyed by WORD-0 bit index and `cls` is `w0 >> 16`, so its keys
+                # 8-13 are low-half bits with nothing to do with hue/saturation/luminosity --
+                # those are w0 bits 24, 26 and 28, charged 1.0 word each. Reading a table in the
+                # wrong bit frame produced a clean-looking 0-of-4 against ground truth, which is
+                # what a frame error looks like from the inside.
+                # THE SLOT COMES FROM THE WALK, not from a slot formula. This branch used
+                # to compute it as `2 + (count of set COST_BITS below this bit)`, with
+                # COST_BITS a curated tuple (0, 7, 8, 9, 10, 11, 12, 13) of which class
+                # bits consume a word. That is a `base + class bits` rule, and the
+                # docstring above already says what it was really doing -- "one float32
+                # field per set bit, at words[3..] in ASCENDING BIT ORDER" is the walk's
+                # own primitive, reimplemented locally with a hardcoded bit list.
+                #
+                # Nothing in the file stores a slot number, so a formula for one is a fit
+                # until it is shown to agree with the structural pass. It does, exactly:
+                # over 437 files and all 747 hsl records, comparing the formula's slot
+                # against `decompose`'s `cls_params` for every set parameter bit --
+                #
+                #     walk agrees      593
+                #     walk disagrees     0
+                #     walk silent        0
+                #
+                # -- so the formula was never a second answer and the tuple deletes.
+                #
+                # MIND THE BIT FRAME, which has produced a wrong result here before (see
+                # the attribution error recorded above): `cls_params` is keyed by WORD-0
+                # bit index and `cls` is `w0 >> 16`, so hue/saturation/luminosity are
+                # cls bits 8/10/12 and w0 bits 24/26/28. Reading one frame as the other
+                # gives a clean-looking zero against ground truth.
+                walked = decompose.decompose(rec)
+                if walked is None:
+                    raise Unsupported("hsl record has no structural decomposition")
+                cls_slots = {b - 16: s for b, s, _w in (walked.get('cls_params') or [])
+                             if b >= 16}
                 vals = {}
                 for bit, name in ((8, 'hue'), (10, 'saturation'), (12, 'luminosity')):
                     if not (rec.cls >> bit) & 1:
                         continue
-                    sl = 2 + sum(1 for q in COST_BITS
-                                 if q < bit and (rec.cls >> q) & 1)
+                    sl = cls_slots.get(bit)
+                    if sl is None:
+                        raise Unsupported("hsl class bit %d set but the walk names no "
+                                          "slot for it" % bit)
                     if sl >= len(rec.words):
                         raise Unsupported("hsl mask names slot %d, record has %d"
                                           % (sl, len(rec.words)))

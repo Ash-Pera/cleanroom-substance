@@ -68,6 +68,13 @@ import sbsasm                                                        # noqa: E40
 import decompose                                                     # noqa: E402
 
 
+# gradient (0) and curve (22) carry an embedded table -- a colour ramp and a spline control
+# table -- between the header and the first program. Both STATE its extent: gradient at slot
+# 4, curve by the u32 count at the head of the table itself. So a pointer-bound gap is the
+# normal case for these two, not a finding.
+_TABLE_FILTERS = frozenset({0, 22})
+
+
 def _naming_slots(rec, q, prog, limit):
     """Slot indices, relative to `q`, whose word names `prog` (`word + 52 == prog`).
 
@@ -331,6 +338,51 @@ def pointer_bound(rec):
     return _header_end(rec, d), min(inline)
 
 
+def _gap_kind(rec, first):
+    """Why a gap exists: an embedded table, a program the decode names, or a coincidence.
+
+    A GAP IS NOT EVIDENCE OF A SHORT HEADER, and treating it as such was wrong for 98% of
+    the population. `pointer_bound` finds the first word of the record whose `+52` resolves
+    as a program -- a VALUE TEST over every word, payload included. That is deliberate for
+    the bound itself, which has to be independent of the cost model to be worth anything,
+    and the bound survives it: the VIOLATION count is what matters and no payload word has
+    ever coincidentally pointed INTO the walked header.
+
+    But the same value test makes the gap column nearly meaningless unclassified. Measured
+    over the full corpus, of the 13,772 gapped records:
+
+        gradient and curve      13,532   an embedded table, whose extent the record STATES
+                                         (gradient's slot 4 lands on the program in 12,223
+                                         of 12,285; curve's own point count in 95.19%)
+        everything else            240   of which 215 -- 89.6% -- are words the decode
+                                         NEVER NAMES. blend, levels, warp, sharpen,
+                                         shuffle, directionalwarp, blur and uniform are
+                                         100% coincidence; only `transformation` has any
+                                         genuinely named, 25 of its 84.
+
+    So the honest residue is 25 records, not 240, and the earlier reading of "240 records
+    where the header may run further" was this instrument mistaking a float in a payload
+    for a pointer. Same error as `_naming_slots` (see `fx_violations`), found the same way:
+    a population with no discriminating feature -- no tag bit separates the blend or levels
+    gaps from their filters' exact records at all -- is more often an artefact than a rule.
+    """
+    if rec.filter_id in _TABLE_FILTERS:
+        return 'embedded table'
+    addr = rec.offset + 4 * first
+    try:
+        if addr in set(rec.programs):
+            return 'named program'
+    except Exception:
+        pass
+    try:
+        sob = rec.size_or_baked
+        if sob and sob[0] == 'program' and sob[1] == addr:
+            return 'named program'
+    except Exception:
+        pass
+    return 'UNNAMED (value-test coincidence)'
+
+
 def census(paths=None):
     paths = paths or corpus.paths()
     fx = collections.Counter()
@@ -366,6 +418,7 @@ def census(paths=None):
                     pb['VIOLATION'] += 1
                 elif b[0] < b[1]:
                     pb['gap'] += 1
+                    pb['gap ' + _gap_kind(r, b[1])] += 1
                 else:
                     pb['exact'] += 1
             if r.filter_id != 4:
@@ -403,6 +456,14 @@ def main(argv):
     else:
         for k in ('exact', 'gap', 'VIOLATION'):
             print('  %-20s %10d %9.4f%%' % (k, pb.get(k, 0), 100.0 * pb.get(k, 0) / n))
+        # A gap unclassified is not a finding -- see `_gap_kind`. Almost all of them are an
+        # embedded table whose extent the record states, and most of the rest are a payload
+        # word this check's own value test mistook for a pointer.
+        for k in ('embedded table', 'named program',
+                  'UNNAMED (value-test coincidence)'):
+            v = pb.get('gap ' + k, 0)
+            if v:
+                print('      of which %-34s %8d' % (k, v))
         print('  %-20s %10d' % ('records bounded', n))
     print()
     print('HEADER OVERLAP: a program that STARTS inside the walked header')

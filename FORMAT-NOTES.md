@@ -40905,6 +40905,159 @@ form of it is two pristine trees differing in one file. Compare VALUES separatel
 provenance string: 1,584 of the 2,268 "differed" here, and all but 11 of those were the
 description text changing.
 
+## The renderer scores BEST where it obeys the file LEAST, and that is a result about the renderer
+
+This started as "why is one output missing at 256" and ends somewhere much less comfortable.
+
+WHAT `max_dim` ACTUALLY DOES. It is not an emulation of a smaller output size. It clamps
+each record's raster independently while leaving that record's DECLARED size untouched, so a
+record whose header states 4096 is evaluated on a 256 grid while anything reasoning about its
+size still reads 4096. The declared sizes are not uniform -- Chesterfield's 881 records span
+1x1 to 4096x4096:
+
+    1x1  17    16x16  83    128x128  17    512x512   15    2048x2048  8
+    2x2   1    32x32  16    256x16    1    1024x1024  8    4096x4096  8
+    4x4   4    64x64  19    256x256 682    2048x16    1
+    8x8   1
+
+so `max_dim` 256 clamps 40 records (4.5%), eight of them by 16x, and `max_dim` 128 clamps 722
+(82%). Neither is the file's own configuration.
+
+SO IT WAS RUN AT THE FILE'S OWN CONFIGURATION -- every record at its declared size, no cap.
+All six outputs declare 256x256 in every case, so the comparison is clean: only the
+INTERMEDIATES differ. Correlations against the package's own exports, all resampled to 256:
+
+    output       max_dim 128     max_dim 256     NATIVE (no cap)
+                 82% clamped     4.5% clamped    0% clamped
+    basecolor      +0.761          MISSING          MISSING
+    metallic       +0.889          +0.876           +0.827
+    normal         +0.868          +0.857           +0.768
+    AO             +0.870          +0.876           +0.820
+    roughness      +0.801          +0.778           +0.736
+    height         +0.946          +0.945           +0.943
+
+THE RENDERER IS MONOTONICALLY BETTER THE MORE THE FILE IS DISOBEYED. Five of six outputs are
+best at the most-clamped setting and worst at the file's own; the sixth (AO) peaks in the
+middle. The record-330 divide-by-zero that costs basecolor fails at native AND at 256, and
+survives only at 64 and 128 -- so the one configuration that produces a complete render is
+the one that discards 82% of the declared sizes.
+
+THIS CANNOT BE READ AS "128 IS THE RIGHT SETTING". A procedural material is
+resolution-independent by construction: evaluating the same graph on a finer grid should
+converge to the same picture, not a different one. Ours diverges, and it diverges TOWARD the
+reference as the grid gets coarser. The only reading consistent with that is that the
+evaluation is losing something at high sampling density which coarse sampling accidentally
+restores -- a crude low-pass standing in for filtering the renderer is not doing correctly.
+
+THAT HYPOTHESIS IS NOT ESTABLISHED HERE and is offered as the shape of the problem, not its
+solution. But three separate symptoms already recorded in these notes fit it and nothing else
+proposed does:
+
+  * record 322 collapses from 302 distinct values to a CONSTANT 1.0 between 128 and 256 --
+    which is precisely the failure `prefilter`'s own docstring says it exists to prevent,
+    every sample landing on one phase of a sparse source;
+  * Bricks graph 002's roughness dominant frequency DOUBLES with the grid, 8 cycles at 128
+    and 16 at 256, while height stays at 8 -- a feature whose size is fixed in TEXELS rather
+    than in normalised coordinates behaves exactly like this;
+  * every reference comparison shows the engine's maps carrying fine noise ours lack, on both
+    packs -- consistent with detail being aliased away rather than never generated.
+
+`prefilter`'s docstring is candid that its kernel is provisional, that no evidence in this
+repository distinguishes box from trilinear from an elliptical filter, and that refcompare
+could not see it because the records it touches "sit in chains that do not reach a scored
+output." That last clause is no longer true at native sizes: with nothing clamped, the
+filtering path is load-bearing on every output, and the scores fall.
+
+WHAT THIS INVALIDATES. Every render-derived number in these notes was measured at a clamped
+grid, which is a configuration the file does not describe. That does not make them wrong, but
+it does mean none of them is a measurement of the format -- they are measurements of a
+renderer in a state we chose. The rule stated earlier (fix `max_dim`, treat
+resolution-moving results as void) is necessary and NOT sufficient: fixing the grid makes
+results reproducible without making them faithful. Until a render is stable ACROSS grids,
+render evidence should not be used to arbitrate a decode question in either direction. That
+includes the parameter arms, and it includes `REFERENCE_FLOOR`.
+
+WHAT SURVIVES UNTOUCHED. Everything decided by structure rather than by rendering: the walk,
+the edges, the record extents, the ramp field census, the handedness arbiter (which takes the
+engine's own exported height as input and never runs our evaluator at all), and the finding
+that the reference renders were exported at non-default parameter values.
+
+## Where Bricks' basecolor orange comes from: accumulated by the two least-verified blend modes
+
+Walking graph 004's basecolor cone (1,513 records) backwards from the output and taking a mean
+colour per node, with warmth measured as mean R minus mean B.
+
+FIRST, A METHOD CORRECTION. The obvious walk -- follow the warmest input at each step -- gives
+the wrong answer. It terminates at record 7369, the `uniform` carrying the gem colour
+(0.500, 0.111, 0.111), which is the warmest thing in the cone. But 7369 enters through a
+three-edge blend whose mask (record 5613) has mean 0.039, and the blend barely moves the
+picture: destination 0.427/0.289/0.183 in, 0.427/0.284/0.180 out. The warmest input is not the
+dominant contributor. The correct walk follows edge 0, the DESTINATION, which is the composite
+spine; the src of each blend is what gets pushed into it.
+
+SECOND, EVERY COLOUR SOURCE IS READ CORRECTLY, so the orange is not a misread constant.
+Of the eight nodes that introduce warmth with no warm input, exactly one is a graph parameter
+(7369, `outputcolor`, manifest default 0.5,0.111111,0.111111 -- read exactly). The other seven
+are baked in-record, and their values sit in the record as clean consecutive RGBA floats at
+words 2-5 with words 0,1,6,7 zero:
+
+    rec 7341   0.8276 0.6722 0.1839 1.0    gold
+    rec 7320   0.4138 0.1137 0.1655 1.0    dark red
+    rec 7343   1.0000 0.9238 0.8947 1.0    warm white
+
+There is no ambiguity in those reads and no decode question here. The file does contain these
+colours.
+
+THIRD, THE ORANGE IS NOT INTRODUCED, IT IS ACCUMULATED. Following the spine from record 7292 up
+to the output at 7375, R-B climbs from -0.084 (COOL) to +0.300, in steps:
+
+    rec 7292  blend  mode 0  copy        R-B  -0.084
+    rec 7297  hsl                             +0.060     <- +0.145, the single largest step
+    rec 7319  blend  mode 9  overlay          +0.011
+    rec 7322  blend  mode 11 softlight        +0.031
+    rec 7324  blend  mode 11 softlight        +0.034
+    rec 7329  blend  mode 11 softlight        +0.105     <- +0.071
+    rec 7334  blend  mode 3  multiply         +0.025
+    rec 7342  blend  mode 11 softlight        +0.144     <- +0.118
+    rec 7344  blend  mode 9  overlay          +0.270     <- +0.126
+    rec 7356  blend  mode 11 softlight        +0.256
+    rec 7368  blend  mode 11 softlight        +0.244
+    rec 7370  blend  mode 11 softlight        +0.248
+    rec 7372  blend  mode 9  overlay          +0.275
+    rec 7375  levels                          +0.300
+
+FOURTH, AND THIS IS THE POINT. `render.py`'s own blend table states that the mode NUMBER is
+corpus-verified (low four bits of blend slot 1, 382 specimens, 0 counterexamples; and a
+containment test pairs source nodes to compiled records, 10 declared modes agreeing and 0
+disagreeing) while WHICH OPERATION EACH NUMBER NAMES is external knowledge -- Substance
+Designer's documented dropdown order -- held at "moderate, not high, confidence". Only mode 0,
+`copy`, is independently verified.
+
+Of 463 blend records in this cone, 28 are mode 0. The other 435 -- 94% -- run on the
+assumption. And the concentration is not diffuse:
+
+    mode 11 softlight    8 in the whole 1,513-record cone, 7 of them on this ~15-node spine
+    mode 9  overlay      4 in the whole cone,               3 of them on this spine
+
+The two rarest and most formula-sensitive modes in the table are almost entirely spent on the
+handful of nodes that decide basecolor's colour. Every step that WARMS the spine is an
+overlay, a softlight, a multiply or the hsl node; the one step running the one verified mode
+(7292, `copy`) leaves it cool.
+
+WHAT THIS DOES AND DOES NOT ESTABLISH. It does NOT show the modes are wrong -- no test here
+distinguishes softlight's formula from a competitor, and the notes already record that the
+reference maps cannot arbitrate mode 4 for the same structural reason (a .sbsar stores a
+filter's inputs, never its computed output, so no ground-truth tuple exists). What it does
+establish is EXPOSURE: the specific defect we see -- our basecolor orange where the engine's is
+near-neutral (0.487/0.285/0.096 against 0.333/0.339/0.342) -- is produced by a chain of
+operations whose formulas are imported rather than measured, and it is produced gradually by
+seven of them rather than at one identifiable fault. So "our basecolor is too warm" is not
+currently evidence against any single reading, and it should not be cited as such.
+
+The `hsl` node at 7297 contributing the single largest step (+0.145) is worth separate
+attention: it is not a blend at all, so it does not share the blend table's provenance, and
+nothing in these notes records how its hue arithmetic was established.
+
 ---
 
 ## `levels` has a SIXTH w1 field, and it marks a midpoint SPLIT PAIR

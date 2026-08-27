@@ -60,14 +60,11 @@ this project is built on. Two things were excluded throughout:
 That exclusion has a measured cost, and the notes record it rather than hiding it. The 140
 permitted paired sources declare exactly 24 filter names and all 24 are already assigned, so
 the two remaining ids cannot be named from anything this project may read — filter 9 not at
-all, and filter 5 only descriptively, from what its payload draws. Filter 11 was in that
-sentence for a long time and no longer belongs there: it is `dirmotionblur`, named from the
-permitted sources alone once containment was applied to its two declared `Float1`
-parameters. Three occasions where the boundary was brushed are disclosed as well: aggregate
-counts read from two excluded files before it was noticed, eight archives extracted and
-scanned before the predicate was applied rather than after, and the declared filter names of
-three excluded sources printed alongside their own provenance flag. No such observation is
-used, and all are recorded in FORMAT-NOTES.md.
+all, and filter 5 only descriptively, from what its payload draws. Three occasions where the
+boundary was brushed are disclosed as well: aggregate counts read from two excluded files before
+it was noticed, eight archives extracted and scanned before the predicate was applied rather
+than after, and the declared filter names of three excluded sources printed alongside their
+own provenance flag. No such observation is used, and all are recorded in FORMAT-NOTES.md.
 
 The **Provenance statement** at the top of `FORMAT-NOTES.md` is the auditable version of
 all of this in one place. The exclusion predicate is a single string match and can be
@@ -79,7 +76,7 @@ description of one, and it is meant to run before a new corpus is measured, not 
 Measured over 435 specimens, 895,674 records, 4.09 GB (the corpus has since grown to 438, then to 437 after one withdrawal;
 the figures below are the last full audit):
 
-    filter identified              97.9%   (99.9% with filter 5, now decoded)
+    filter identified              99.9%
     size expression or first
       parameter read               95.6%
     edge slots resolved          100.00%
@@ -100,11 +97,19 @@ which returns each record's edges and its size-or-program slot from the cost mod
 five hand-tuned layout branches it replaced run only as the fallback for the 5 unnamed
 filter-9 records. It is proven 0-diff against the independent table-based model (925,706
 records, 925,701 agree, 0 disagree, 5 uncovered) and render-verified at 0 pixel difference.
-The one decision still on a fitted table is **what baked parameters a record carries**: the
-render showed every positional rule tried was worse than the memo on `levels`, so
-`named_parameters` stays on the `LAYOUTS` memo pending a full render-seal. Edges, size
-expression and program positions are off the tables; parameter *values* are the honest
-remaining exception.
+The one decision still on a fitted table is **what baked parameters one filter carries**.
+`named_parameters` routes `blend`, `fxmaps`, `dirmotionblur` and `directionalwarp` through the
+walk; `levels` alone still reads the `LAYOUTS` memo, and that is 9.3% of records. The walk's
+placement for it is the better-evidenced one — source containment recovers 91 of 91 declared
+values at the slots the walk names, and the memo reads a parameter out of an input-edge slot
+1,844 times where the walk never does — but the render holds it back, and honestly so: routing
+it costs one package's basecolor on two independent measures, correlation and amount of
+structure. That veto is narrow rather than general. Across all five reference packs the switch
+moves 9 channels of 27, and on a different package it is the memo that comes out
+anti-correlated. The memo also cannot see a sixth `levels` field that the cost model declares,
+because its key was fitted to the five parameters known when it was fitted. Edges, size
+expression and program positions are off the tables; one filter's parameter *values* are the
+honest remaining exception.
 
 The last line of the audit table is the one to read. Earlier versions of this table reported "unexplained
 bytes 0", which was circular: `coverage()` marks a whole record extent as accounted for
