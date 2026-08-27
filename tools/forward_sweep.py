@@ -89,6 +89,41 @@ floor is unmeasured".
 
 That leaves the fallback policy unarbitrated here, and points at reading `patternsize`
 properly (a328c8c) rather than at choosing a better thing to do when it cannot be read.
+
+LEVELS' SECOND FAULT, FOUND BY DIFFERENCING TWO CONES. Routing `levels` onto the walk
+wrecks Chesterfield basecolor while IMPROVING roughness (+0.8834 -> +0.8956 at 128,
++0.8689 -> +0.9234 at 256). A wrong decode degrades broadly; a correct decode meeting one
+broken consumer degrades sharply in one place and improves elsewhere. Both outputs take the
+same corrected value from record 129, so the fault is in what basecolor reaches and
+roughness does not: 25 records, of which 12 amplify.
+
+Those 25 contain a REDUCTION PYRAMID and it is resolution-dependent:
+
+    322 blend 256x256 -> 323 pp 64x64 -> 324 pp 16x16 -> 325 pp 4x4 -> 326 pp 1x1
+    ... -> 329 pp 1x1 -> 330 pp 256x256, inputs [322, 329]
+
+That is the auto-normalise idiom -- reduce an image to a global scalar, then normalise the
+image by it. Records 326 and 329 are declared 1x1, so their values are scalars and CANNOT
+legitimately depend on the render grid. They do:
+
+    max_dim      326 (1x1)   329 (1x1)   330        871 basecolor
+    64             0.61516     0.61516   0.96910    0.51545
+    128            0.54476     0.54476   0.99177    0.51997
+    256            0.50000     0.50000   FAIL       FAIL
+
+So the normalising scalar is a function of how coarsely we chose to render, which is not a
+property of the file. basecolor is normalised by it through 330 and roughness is not, which
+is exactly why one output gets worse and the other gets better from the same correction.
+
+WHY THE MEMO LOOKED RIGHT. With `levels` on the memo, record 129 feeds a constant white
+into this pyramid and the scalar's error lands somewhere that happens to match the export.
+Correct 129 and the error is exposed rather than introduced. That is the "two faults
+cancelling" account with the second fault named: not a parameter misread, an evaluator that
+does not honour a declared 1x1 extent.
+
+Independently found from the other side by the rendering session, which traced
+basecolor's 256 failure to rec 330 non-finite <- rec 329 <- rec 322 constant at 256. Same
+records, two directions, no shared assumption.
 """
 import sys
 import os
