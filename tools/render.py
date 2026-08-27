@@ -1,60 +1,51 @@
 """Walk an Assembly's record graph in index order and evaluate what it can.
 
-Records are processed 0..N-1 -- verified corpus-wide (353,068/353,068 edges sampled)
-that every edge points to a strictly earlier record index, so a single forward pass
-suffices; nothing needs a topological sort. Handles `bitmap` records with embedded
-pixels and `pixelprocessor` records, wiring each edge to the already-computed source
-record's output via `sbsruntime.image_sampler` and sharing one dict across every
-record's `cache_read`/`cache_write` for the whole walk. `uniform` and every other
-filter type raise `Unsupported` by name rather than guess -- confirmed on a real
-specimen that a `uniform` record's own `.programs` entry can be its SIZE expression
-with no separate program for the fill color at all, so treating `.programs[-1]` as
-the color the way a `pixelprocessor`'s main program works produced a plausible-looking
-but wrong tiled image (the size expression's own (log2 width, log2 height) output,
-not a color). Where a uniform's color actually lives is not investigated.
+Records are processed 0..N-1 -- verified corpus-wide (353,068/353,068 edges
+sampled) that every edge points to a strictly earlier record index, so a single
+forward pass suffices; nothing needs a topological sort. Handles `bitmap` records
+with embedded pixels and `pixelprocessor` records, wiring each edge to the
+already-computed source record's output via `sbsruntime.image_sampler` and sharing
+one dict across every record's `cache_read`/`cache_write`. `uniform` and every
+other filter type raise `Unsupported` by name rather than guess -- confirmed on a
+real specimen that a `uniform` record's own `.programs` entry can be its SIZE
+expression with no separate program for the fill color at all, so treating
+`.programs[-1]` as the color produced a plausible-looking but wrong tiled image.
 
 No embedded-pixel `bitmap` in the corpus co-occurs with `cache_read`/`cache_write`
-while staying inside {bitmap, pixelprocessor, uniform} -- every specimen combining
-the two also uses a filter type with no runtime implementation here, so the cache
-wiring itself is verified separately (two sequential `cache_write`/`cache_read` calls
-through one `use_shared_cache` dict, exactly what this module does across records)
-rather than end to end through this walker on a real file.
+while staying inside {bitmap, pixelprocessor, uniform}, so the cache wiring itself
+is verified separately (two sequential calls through one `use_shared_cache` dict,
+exactly what this module does across records) rather than end to end on a real file.
 
-A `pixelprocessor` can carry more than one program (Record.programs' own docstring:
-directionalwarp has an intensity and an angle, warp/blur/distance/sharpen/normal/
-filter-11 the same) -- but not always as independent parameters. A real specimen has
-an earlier program that `set`s slot 0 to a random per-image seed, which only the last
-program's `get slot 0` then reads; running just the last program left that get on an
-empty `slots` dict. Every program but the last now runs once, N=1, not per-pixel,
-sharing one `slots` dict across the whole record so the earlier ones' `set`s carry
-forward to the real per-pixel body.
+A `pixelprocessor` can carry more than one program -- but not always as independent
+parameters. A real specimen has an earlier program that `set`s slot 0 to a random
+per-image seed, which only the last program's `get slot 0` then reads. Every
+program but the last now runs once, N=1, sharing one `slots` dict so the earlier
+ones' `set`s carry forward to the real per-pixel body.
 
 `max_dim` LIES IN THE DIRECTION OF "your decode is broken", and it has now cost two
 filters an afternoon each. Any filter whose effect is a RADIUS in pixels scales that
 radius with the grid, so a small parameter rounds to zero and the filter becomes an
-identity -- `blur` at intensity 0.84 spreads 1 pixel at 256 and none at 64, and `distance`
-at 0.14 goes to 0.035. The symptom is a controlled test showing NO EFFECT AT ALL: an
-impulse surviving intact, energy and centroid exactly preserved, which reads as a dead or
-mislocated parameter rather than as a sampling artifact. Verify a radius-valued filter at
-its record's NATIVE resolution before concluding anything about where its parameter lives.
+identity -- `blur` at intensity 0.84 spreads 1 pixel at 256 and none at 64, and
+`distance` at 0.14 goes to 0.035. The symptom is a controlled test showing NO EFFECT
+AT ALL: an impulse surviving intact, energy and centroid exactly preserved, which
+reads as a dead or mislocated parameter rather than as a sampling artifact. Verify a
+radius-valued filter at its record's NATIVE resolution before concluding anything.
 
-`max_dim` sweeps fast at the cost of one real inaccuracy: capping each pixelprocessor's
-OWN width/height independently does not preserve two DIFFERENT records' size ratio to
-each other, and `cache_read`/`cache_write` share a raw per-pixel array across records
-with no position-based resampling the way `image_sampler` gives edges -- confirmed on a
-real specimen where one record's write at 16x1024 capped to 16x48 (N=768) while a later
-reader's own record capped to 48x48 (N=2304), a real shape mismatch that is an artifact
-of independent per-record capping, not of the cache mechanism itself. Rendering a single
-file for real output should leave `max_dim` unset.
+`max_dim` also costs one real inaccuracy: capping each pixelprocessor's OWN
+width/height independently does not preserve two DIFFERENT records' size ratio to
+each other, and `cache_read`/`cache_write` share a raw per-pixel array across
+records with no position-based resampling -- confirmed on a real specimen where one
+record's write at 16x1024 capped to 16x48 while a later reader's own record capped
+to 48x48, a real shape mismatch that is an artifact of independent per-record
+capping. Rendering a single file for real output should leave `max_dim` unset.
 
-A corpus-wide sweep also found NaN in a small, consistent minority of real (not
-placeholder-fed) pixelprocessor outputs, always traced to the same shape: a value built
-as `sqrt(1 - dot(v, v))` (reconstructing a normal map's Z from its XY, or similar) where
-nothing in the bytecode clamps the input to sqrt to be non-negative. This is not a
-transpiler defect -- `np.sqrt` on a negative number is the correct IEEE-754 answer, NaN,
-matching the actual math the compiled program performs -- and there is no evidence here
-for what the real engine does at that same input (clamps to 0? saturates earlier in a
-step this reading is missing?), so it is surfaced rather than guessed at.
+A corpus-wide sweep also found NaN in a small, consistent minority of real
+pixelprocessor outputs, always traced to a value built as `sqrt(1 - dot(v, v))`
+(reconstructing a normal map's Z from its XY) where nothing in the bytecode clamps
+the input to be non-negative. This is not a transpiler defect -- `np.sqrt` on a
+negative number is the correct IEEE-754 answer, matching the math the compiled
+program performs -- and there is no evidence here for what the real engine does at
+that input, so it is surfaced rather than guessed at.
 """
 import math
 import os
@@ -71,24 +62,23 @@ class Unsupported(Exception):
     cascade = False
 
 
-#: Record indices whose output rests on a LOW-CONFIDENCE parameter read -- a value taken
-#: from a slot because containment merely points at it, rather than from a program that
-#: names it. Populated by `render`, cleared at the start of each call.
+#: Record indices whose output rests on a LOW-CONFIDENCE parameter read -- a value
+#: taken from a slot because containment merely points at it, rather than from a
+#: program that names it. Populated by `render`, cleared at the start of each call.
 #:
-#: This is the same device as `synth_missing_bitmaps` and its `synthetic` set, applied to
-#: parameters instead of to pixels: an output built on an invented input is not an
-#: ordinary success and should not be counted as one, and neither is an output built on a
-#: guessed parameter slot. It is deliberately NOT folded into `synthetic`, which means
-#: something narrower -- pixels this renderer invented.
+#: This is the same device as `synth_missing_bitmaps` and its `synthetic` set,
+#: applied to parameters instead of to pixels: an output built on an invented input
+#: is not an ordinary success, and neither is one built on a guessed parameter slot.
+#: It is deliberately NOT folded into `synthetic`, which means something narrower --
+#: pixels this renderer invented.
 #:
-#: WHY IT EXISTS. Containment rates for these slots cannot be read as accuracy, and the
-#: reason is a ceilinged denominator: the rate is bounded above by (distinctive values the
-#: source declares) / (records the file compiles to), and instancing makes one source node
-#: compile to many records, none of which any declaration corresponds to. So `normal`'s
-#: slot evidence at 14.6% against a 0.0% control is not "wrong five times in six" -- the
-#: control is the load-bearing half and the headline rate is close to meaningless. The
-#: honest response is neither to trust it nor to refuse: it is to MARK it, so a sweep can
-#: count these separately rather than reporting them as ordinary successes.
+#: WHY IT EXISTS. Containment rates for these slots cannot be read as accuracy: the
+#: rate is bounded above by (distinctive values the source declares) / (records the
+#: file compiles to), and instancing makes one source node compile to many records
+#: that no declaration corresponds to. So `normal`'s slot evidence at 14.6% against
+#: a 0.0% control is not "wrong five times in six" -- the control is the
+#: load-bearing half. The honest response is to MARK it, so a sweep can count these
+#: separately rather than reporting them as ordinary successes.
 LOW_CONFIDENCE = set()
 
 
@@ -97,47 +87,47 @@ LOW_CONFIDENCE = set()
 #: message for each; this says which of those messages are consequences. A root-cause
 #: analysis wants `set(failures) - CASCADED`.
 CASCADED = set()
-# THE SLOT FRAME IS PER-RECORD. Every record evaluates against its own empty dict, and
-# nothing carries across records. There is no `SplitFrame` and no shared floor any more;
-# what follows is why, because the class that used to be here was not obviously wrong.
+# THE SLOT FRAME IS PER-RECORD. Every record evaluates against its own empty dict,
+# and nothing carries across records. There is no `SplitFrame` and no shared floor
+# any more; what follows is why, because the class that used to be here was not
+# obviously wrong.
 #
-# The reading it encoded: an FX-Map's entry programs are dominated by `get <slot>` while
-# its node programs and the record's own programs do the `set`s, and the two sets were
-# measured to coincide within a FILE rather than within a record --
+# The reading it encoded: an FX-Map's entry programs are dominated by `get <slot>`
+# while its node programs and the record's own programs do the `set`s, and the two
+# sets were measured to coincide within a FILE rather than within a record --
 #
 #     slot range      read AND written in the same file     control: written elsewhere
 #     all slots               74.7%                                 52.2%
 #     slots < 64              74.1%                                 54.3%
 #     slots >= 64             88.1%   (59 of 67)                     0.0%
 #
-# -- so slots >= 64 were shared graph-wide and slots below it kept per-record. The floor
-# was put where the control went to zero, which is the right instinct applied to the wrong
-# measurement: the UNIT was wrong. An FX-Map is a record, not a file. Asked per record,
-# over 61,384 entry-program slot reads in 282 files, counting as writes only the node
-# chain and the record's own programs:
+# -- so slots >= 64 were shared graph-wide and slots below it kept per-record. The
+# floor was put where the control went to zero, which is the right instinct applied
+# to the wrong measurement: the UNIT was wrong. An FX-Map is a record, not a file.
+# Asked per record, over 61,384 entry-program slot reads in 282 files, counting as
+# writes only the node chain and the record's own programs:
 #
 #     same RECORD                 61,318 / 61,384    99.892%
 #     OTHER record, same file      7,245 / 61,384     11.8%   <- the control that matters
 #     other FILE                  54,930 / 61,384     89.5%   <- what 52-54% above was
 #
-# Cross-FILE collision is 89.5% because small slot indices collide everywhere, which is
-# exactly why the file-level figure stalled at 74% and needed a floor to say anything.
-# Against an 11.8% control the per-record answer is unambiguous, and it holds at EVERY
-# slot range -- ~100% from 0-8 up through 64+. Slots >= 64 are 118 of 61,384 reads; their
-# 0.0% cross-file control measures how rare a high slot index is, not that anything is
-# shared above it. FORMAT-NOTES.md, "The slot frame is per-RECORD".
+# Cross-FILE collision is 89.5% because small slot indices collide everywhere, which
+# is why the file-level figure stalled at 74% and needed a floor to say anything.
+# Against an 11.8% control the per-record answer is unambiguous, and it holds at
+# EVERY slot range. Slots >= 64 are 118 of 61,384 reads; their 0.0% cross-file
+# control measures how rare a high slot index is. FORMAT-NOTES.md, "The slot frame
+# is per-RECORD".
 #
 # The 0.108% that does not resolve in-record is one construct, not a channel between
-# records: 22 records in 5 files, always a lone `0x18B` node with entry tag `0x15140848`,
-# whose bare `get <slot>` pass-throughs name slots above the highest its one-node chain
-# writes. That 65 of those 66 reads name a slot some OTHER record happens to write is the
-# 11.8% coincidence rate, not evidence.
+# records: 22 records in 5 files, always a lone `0x18B` node with entry tag
+# `0x15140848`, whose bare `get <slot>` pass-throughs name slots above the highest
+# its one-node chain writes.
 #
-# Going the other way is still wrong, and that evidence stands: making the whole frame
-# graph-wide regressed 87 record outputs on `pairs2` and gained none, rooted in 9
-# `dirmotionblur` records that inherited a stale 0 and raised ZeroDivisionError. Per-record
-# is the far end of that same finding rather than a reversal of it -- measured here at
-# 10,625 records rendered against the floor's 10,624, no regressions.
+# Going the other way is still wrong, and that evidence stands: making the whole
+# frame graph-wide regressed 87 record outputs on `pairs2` and gained none, rooted
+# in 9 `dirmotionblur` records that inherited a stale 0 and raised
+# ZeroDivisionError. Per-record is the far end of that same finding -- 10,625
+# records rendered against the floor's 10,624, no regressions.
 
 
 def default_inputs(asm, N):
@@ -160,11 +150,11 @@ def sampler_bindings(asm, rec, outputs):
     there is no edge to answer with.
 
     The binding is the graph's image inputs in MANIFEST DECLARATION ORDER, which is the
-    one thing the assembly cannot supply (`manifest.image_inputs_for_output` records why
-    record order will not substitute). Only records that are themselves declared outputs
-    can be bound, because that is the only case where graph membership is known -- a
-    graph's records cannot be recovered by closure, since the whole problem is that these
-    inputs are not reachable through edges.
+    one thing the assembly cannot supply (`manifest.image_inputs_for_output` records
+    why record order will not substitute). Only records that are themselves declared
+    outputs can be bound, because that is the only case where graph membership is known
+    -- a graph's records cannot be recovered by closure, since the whole problem is
+    that these inputs are not reachable through edges.
 
     Returns {} when nothing can be bound, so the caller falls back to edge slots and a
     record that genuinely cannot be resolved still fails rather than sampling whatever
@@ -172,9 +162,9 @@ def sampler_bindings(asm, rec, outputs):
 
     EXPECT THIS TO RESOLVE FEW IMAGES, and not because the mapping is wrong: of 120
     graphs with image inputs, 107 have NO manifest default on ANY of them and ship no
-    image either, so the record a sampler correctly binds to has nothing to render. What
-    this buys is a correct binding where data exists, and an honest failure where it does
-    not -- previously indistinguishable from a missing slot.
+    image either, so the record a sampler correctly binds to has nothing to render.
+    What this buys is a correct binding where data exists, and an honest failure where
+    it does not -- previously indistinguishable from a missing slot.
     """
     try:
         table = asm.outputs()
@@ -201,12 +191,12 @@ def sampler_bindings(asm, rec, outputs):
 def cascade(message):
     """An `Unsupported` that means "an input of mine has no output", not "I am wrong".
 
-    THIS DISTINCTION WAS A STRING MATCH AND IT WAS WRONG. Callers separating causes from
-    consequences looked for the substring "has no output yet", which fourteen raise sites
-    use -- and missed the fifteenth, which says "no sampler for input 0" and means exactly
-    the same thing. The cost was not theoretical: an `fxmaps` record in
-    `WoodSubstance005` was reported as a root cause and named to another session as the
-    blocker for that specimen, when it was three levels downstream of the real one.
+    THIS DISTINCTION WAS A STRING MATCH AND IT WAS WRONG. Callers separating causes
+    from consequences looked for the substring "has no output yet", which fourteen
+    raise sites use -- and missed the fifteenth, which says "no sampler for input 0"
+    and means exactly the same thing. The cost was not theoretical: an `fxmaps` record
+    in `WoodSubstance005` was reported as a root cause and named to another session as
+    the blocker for that specimen, when it was three levels downstream of the real one.
 
     So the classification is carried on the exception rather than in its prose, and
     `render()` collects it in `CASCADED`. The message still says "has no output yet"
@@ -222,15 +212,16 @@ def cascade(message):
 def graph_input_default(asm, rec):
     """A uniform image from the manifest default for rec's image input, or None.
 
-    A `graph_input` bitmap names an image the USER supplies, and the package ships none:
-    of 45 graph-input packages whose original .sbsar is in the tree, zero ship any image
-    that is not an `icon*` or `thumbnail`, and both of those are referenced by an `icon=`
-    attribute in the manifest -- GUI decoration. So no decode recovers these; corpus-wide
-    215 of the 255 affected outputs have no value declared anywhere.
+    A `graph_input` bitmap names an image the USER supplies, and the package ships
+    none: of 45 graph-input packages whose original .sbsar is in the tree, zero ship
+    any image that is not an `icon*` or `thumbnail`, both referenced by an `icon=`
+    attribute -- GUI decoration. So no decode recovers these; corpus-wide 215 of the
+    255 affected outputs have no value declared anywhere.
 
-    What IS recoverable is the manifest's `default`, the constant the engine substitutes
-    when the input is left unconnected -- the file's own declaration rather than an
-    invention. `tools/manifest.py` carries why the assembly header cannot supply it.
+    What IS recoverable is the manifest's `default`, the constant the engine
+    substitutes when the input is left unconnected -- the file's own declaration
+    rather than an invention. `tools/manifest.py` carries why the assembly header
+    cannot supply it.
 
     Returns None rather than guessing when no default is declared, which is why this
     fills 50 of 536 graph_input records and refuses the other 486.
@@ -263,8 +254,7 @@ def load_pixels_bitmap(asm, rec):
         #
         # The decode is CHECKED against the record rather than trusted: the stream must
         # decode to exactly the width, height and channel count the record independently
-        # declares, which is how the flag was established (9 of 9) and is equally a
-        # per-file guard against a stream that is not this record's.
+        # declares, which is how the flag was established (9 of 9).
         import io
         import struct as _struct
         from PIL import Image
@@ -282,12 +272,11 @@ def load_pixels_bitmap(asm, rec):
         got = {'L': 1, 'RGB': 3, 'RGBA': 4}.get(im.mode)
         if got is None:
             raise Unsupported("bitmap's JPEG has an unhandled mode %r" % im.mode)
-        # Width and height are checked against the record every time -- a stream that is
-        # not this record's image would have to match both by accident. The CHANNEL count
-        # is checked only when the class word states one: 45 of the 54 are cls 0x808, whose
-        # channel code CHANNELS has no entry for, and for those the JPEG is the only thing
-        # that knows. Demanding agreement there would refuse exactly the records this
-        # branch exists to recover.
+        # Width and height are checked against the record every time -- a stream that is not
+        # this record's would have to match both by accident. The CHANNEL count is checked
+        # only when the class word states one: 45 of the 54 are cls 0x808, whose channel code
+        # CHANNELS has no entry for, and demanding agreement there would refuse exactly the
+        # records this branch exists to recover.
         if (im.size[0], im.size[1]) != (rec.width, rec.height):
             raise Unsupported("bitmap's JPEG is %dx%d, record declares %dx%d"
                               % (im.size[0], im.size[1], rec.width, rec.height))
@@ -298,16 +287,15 @@ def load_pixels_bitmap(asm, rec):
         return a.reshape(rec.height, rec.width, got)
     if depth is None:
         # Record.bitmap's own documented gap: a channel code CHANNELS does not cover
-        # (cls 0x808) reports 'pixels' with channels/depth/size all None rather than
-        # vanishing, since the byte offset is known even though the layout is not.
+        # (cls 0x808) reports 'pixels' with channels/depth/size all None, since the byte
+        # offset is known even though the layout is not.
         raise Unsupported("bitmap has pixels but an undecoded channel code (depth is None)")
     if off + size > len(asm.data):
-        # Not a decode error: the declared offset/size are consistent with the record's
-        # own width/height/channels/depth, but the file this .sbsasm was extracted from
-        # does not actually hold that many bytes there -- confirmed on a real specimen,
-        # short by exactly (declared size - bytes actually present), i.e. genuinely
-        # truncated, not misread. Left to `np.frombuffer` this raises a confusing
-        # `cannot reshape` error instead of naming the real problem.
+        # Not a decode error: the declared offset/size are consistent with the record's own
+        # width/height/channels/depth, but the file this .sbsasm was extracted from does not
+        # hold that many bytes there -- confirmed on a real specimen, short by exactly the
+        # missing amount, i.e. genuinely truncated. Left to `np.frombuffer` this raises a
+        # confusing `cannot reshape` error instead of naming the real problem.
         raise Unsupported("bitmap wants %d bytes at %d, file has %d" %
                           (size, off, max(0, len(asm.data) - off)))
     dtype = "<u1" if depth == 8 else "<u2"
@@ -327,16 +315,12 @@ def to_image(out, N, H, W):
     """Normalize a program's raw return value to an (H, W, k) image.
 
     An N-sample evaluation does not guarantee an N-row result: if the program's final
-    value never actually touches $pos, an edge sample, or anything else N-wide along the
-    way -- a constant fill, in whatever component count -- every runtime helper it passed
-    through (`vec` chief among them) keeps it at its own natural width-1 row count rather
-    than manufacturing a broadcast nothing asked for. That is correct in itself (`vec`'s
-    own docstring: scalars get promoted to a column, not to N rows), but it means a
-    0-d scalar (`out.shape == ()`) or a (1, k) constant both reach here needing an
-    explicit broadcast this walker has to do, not `out.reshape(H, W, out.shape[-1])`
-    blindly -- confirmed on real specimens: `out.shape[-1]` on a 0-d array is an
-    IndexError (empty shape tuple), and reshaping a (1, k) result straight into
-    (H, W, out.shape[-1]) is a size mismatch (k elements, not H*W*k).
+    value never touches $pos, an edge sample, or anything else N-wide -- a constant
+    fill, in whatever component count -- every runtime helper it passed through (`vec`
+    chief among them) keeps it at its own natural width-1 row count. That is correct in
+    itself, but it means a 0-d scalar or a (1, k) constant both reach here needing an
+    explicit broadcast: `out.shape[-1]` on a 0-d array is an IndexError, and reshaping
+    a (1, k) result straight into (H, W, k) is a size mismatch.
     """
     a = np.asarray(out)
     if a.ndim == 0:
@@ -352,9 +336,8 @@ def synthetic_bitmap(rec, seed):
     """A deterministic placeholder image for a bitmap record with no data of its own.
 
     Seeded per record so two missing bitmaps feeding the same pixelprocessor are not
-    IDENTICAL -- a comparison between them (e.g. `easy_diz`'s own `a > b` threshold)
-    would otherwise be trivially all-false everywhere, which looks like a wiring bug
-    but is really just two placeholders that happen to agree with themselves.
+    IDENTICAL -- a comparison between them would otherwise be trivially all-false
+    everywhere, which looks like a wiring bug but is two placeholders agreeing.
     """
     yy, xx = np.mgrid[0:rec.height, 0:rec.width].astype(np.float32)
     u, v = xx / max(rec.width, 1), yy / max(rec.height, 1)
@@ -366,9 +349,9 @@ def synthetic_bitmap(rec, seed):
 def footprint_scale(m, offset_unused, W_out, H_out, src_shape):
     """How many SOURCE TEXELS one output pixel covers, under matrix `m`.
 
-    A step of one output pixel is (1/W_out, 0) in output-normalised space; the transform
-    maps it to (m[0], m[2]) / W_out in input-normalised space, which is that times the
-    source's own dimensions in texels. The footprint is the longer of the two axis steps.
+    A step of one output pixel is (1/W_out, 0) in output-normalised space; the
+    transform maps it to (m[0], m[2]) / W_out in input-normalised space, which is that
+    times the source's own dimensions in texels. The footprint is the longer step.
     """
     Hs, Ws = src_shape[0], src_shape[1]
     dx = np.hypot(m[0] * Ws / max(W_out, 1), m[2] * Hs / max(W_out, 1))
@@ -382,39 +365,32 @@ def prefilter(src, scale):
     MINIFICATION WITHOUT THIS IS THE BUG IT EXISTS FOR. A single bilinear tap answers
     "what is the source AT this point"; a minifying transform needs "what is the source
     AVERAGED over the area this output pixel covers", and the two differ by everything
-    when the source is sparse. Measured on `Chesterfield` record 128, a 4x zoom-out of a
-    source that is exactly 0.5 in 99.79% of its pixels: the 16 output positions land on 4
-    distinct texel phases per axis, every one of them on the flat part, and the output is
-    constant to 0.00000000. Box-averaging the 8x8 footprint that zoom-out covers gives
-    std 0.00293 instead.
+    when the source is sparse. Measured on `Chesterfield` record 128, a 4x zoom-out of
+    a source that is exactly 0.5 in 99.79% of its pixels: the 16 output positions land
+    on 4 distinct texel phases per axis, every one on the flat part, and the output is
+    constant to 0.00000000. Box-averaging the 8x8 footprint gives std 0.00293 instead.
 
-    Halving rather than an arbitrary box because a power-of-two chain is exact and needs
-    no resampling: each level is the mean of a 2x2 block. It stops on an odd dimension
-    rather than padding, which would invent edge texels -- so a 3-wide image simply does
-    not reduce, and the caller gets the point sample it would have had anyway.
+    Halving rather than an arbitrary box because a power-of-two chain is exact and
+    needs no resampling. It stops on an odd dimension rather than padding, which would
+    invent edge texels.
 
     NOT ARBITRATED, AND THE ARBITER CANNOT SEE IT. `tools/refcompare.py` scores renders
-    against the engine's own exported maps, and every one of its numbers is IDENTICAL with
-    and without this function: the change touches 427 records in `Chesterfield` and 30 in
-    `RoofTiles` and ZERO declared outputs in either, because the records it affects sit in
-    chains that do not reach a scored output. Coverage is unchanged too. The prediction
-    made when it was written -- that `normal`'s std would move off 0.0179 toward the
-    reference's 0.0968 -- FAILED; the std did not move at all.
+    against the engine's own exported maps, and every one of its numbers is IDENTICAL
+    with and without this function: the change touches 427 records in `Chesterfield`
+    and 30 in `RoofTiles` and ZERO declared outputs in either. The prediction made when
+    it was written -- that `normal`'s std would move off 0.0179 toward the reference's
+    0.0968 -- FAILED; the std did not move at all.
 
     So what is defended here is the PRESENCE of filtering, not this kernel. The old
     behaviour returned an exactly constant image from a varying source, which is wrong
-    whatever replaces it, and that part is measured rather than argued. Power-of-two box
-    against trilinear against a proper elliptical filter is an open question, and no
-    evidence in this repository currently distinguishes them -- so a later reader should
-    treat the choice as provisional and should not cite agreement with the engine as
-    support for it, because there is none either way.
+    whatever replaces it, and that part is measured rather than argued. Power-of-two
+    box against trilinear against a proper elliptical filter is an open question, and a
+    later reader should treat the choice as provisional.
 
     DELIBERATELY NOT MARKED in LOW_CONFIDENCE, unlike `uniform.fill` or the FX-Map
-    profile. Those name a value the FORMAT does not record and a render depends on
-    guessing; this is a resampling decision that applies to every minifying transform
-    equally, and the records it touches are no more and no less trustworthy than they were
-    when they were being point-sampled. Marking 427 records per file would say something
-    false about which readings are in doubt.
+    profile. Those name a value the FORMAT does not record; this is a resampling
+    decision that applies to every minifying transform equally, and marking 427 records
+    per file would say something false about which readings are in doubt.
     """
     img = src
     while scale >= 2.0 and img.shape[0] >= 2 and img.shape[1] >= 2 \
@@ -434,68 +410,51 @@ def _reference_px(rec):
     """The pixel scale `intensity` is expressed in -- from the RECORD, not a constant.
 
     Four branches (warp, dirmotionblur, directionalwarp, blur) convert a pixel-valued
-    intensity into a UV-space displacement by dividing by a reference width, and all four
-    used a fixed 256.0 supplied by `assume.QUESTIONS['warp.reference_px']` -- eleven
-    candidate values, arbitrated by which one scored best.
+    intensity into a UV-space displacement by dividing by a reference width, and all
+    four used a fixed 256.0 supplied by `assume.QUESTIONS['warp.reference_px']` --
+    eleven candidate values, arbitrated by which one scored best.
 
     THE RECORD STATES IT. This is the principle `distance` already runs on, in
-    `scale_radius`'s own words: "512.0 is a real answer on a 512-wide map, and it is the
-    RECORD, not a constant here, that says how wide it is." A record declares its output
-    size; an intensity in pixels is in pixels OF THAT SIZE, so the divisor is that width.
+    `scale_radius`'s own words: "512.0 is a real answer on a 512-wide map, and it is
+    the RECORD, not a constant here, that says how wide it is." A record declares its
+    output size; an intensity in pixels is in pixels OF THAT SIZE.
 
     WHY THE CONSTANT SURVIVED THIS LONG, which is the whole reason it needs replacing
     rather than retuning: of 1,305 warp records in the eight reference packs, 1,287 are
-    256x256. The fitted constant is right for 98.6% of them by a property of the corpus,
-    not of the format, and wrong by 2x or 4x on the 16 records at 128 and the 2 at 64.
-    A sweep over eleven candidate constants cannot find that, because no single constant
-    is correct for a mixed-size population.
+    256x256. The fitted constant is right for 98.6% of them by a property of the
+    corpus, not of the format, and wrong by 2x or 4x on the 16 records at 128 and the 2
+    at 64. A sweep over eleven candidate constants cannot find that.
 
-    The arbitration channel is kept so the old behaviour is still reachable: an explicit
-    `warp.reference_px` still wins, and passing a number pins every record to it. Absent an
-    assumption the record decides, and a record that does not state a width falls back to
-    256.0 rather than raising -- the same default, now the exception rather than the rule.
+    The arbitration channel is kept so the old behaviour is still reachable: an
+    explicit `warp.reference_px` still wins. Absent an assumption the record decides,
+    and a record that does not state a width falls back to 256.0 -- the same default,
+    now the exception rather than the rule.
 
-    A SECOND, INDEPENDENT STATEMENT OF THE SAME SCALE SITS IN THE CLASS WORD, unread, and
-    is worth knowing about before anyone retunes this. The (26, 27) bit pair -- baked costs
-    2 words, program costs 1, the general convention `cls_pair_slot` documents -- is carried
-    by seven spatial filters and consumed by nothing. Its baked value is a Float2, equal in
-    both components in 5,755 of 6,480 records and an exact power of two in 5,770, running
-    0.125 to 64. Against the record's own width:
+    A SECOND, INDEPENDENT STATEMENT OF THE SAME SCALE SITS IN THE CLASS WORD, unread,
+    and is worth knowing about before anyone retunes this. The (26, 27) bit pair is
+    carried by seven spatial filters and consumed by nothing. Its baked value is a
+    Float2, equal in both components in 5,755 of 6,480 records and an exact power of
+    two in 5,770, running 0.125 to 64. Against the record's own width, value * width ==
+    256 in 3,326 records; it is NOT universal, since (32.0, 16) and (64.0, 16) give 512
+    and 1024 across 1,577 records.
 
-        (16.0, 16)  (2.0, 128)  (4.0, 64)  (8.0, 32)  (0.5, 512)  (0.25, 1024)
-
-    -- value * width == 256 in 3,326 records, which is this function's divisor stated by the
-    record rather than assumed. It is NOT universal: (32.0, 16) and (64.0, 16) give 512 and
-    1024 across 1,577 records, so "value * width is a power of two" holds broadly while
-    "always 256" does not, and the pair's exact meaning is unsettled.
-
-    This also identifies what the WITHDRAWN blur slot-3 fallback was reading. That note
-    records "72.5% are EXACT powers of two, through 2, 4, 8, 16, 32 to 64 -- a ladder of
-    exact powers of two is a size, a mip level or a tiling count, not an intensity." It was
-    right to refuse it and right about what it is not; this pair is the quantity, and blur
-    holds 5,159 of the 6,480 records that carry it.
-
-    THE SCALE READING IS REFUTED, and the anchor it rested on is not corroborated either.
-    Two corrections to the paragraph above, both from tests run after it was written:
+    THE SCALE READING IS REFUTED, and the anchor it rested on is not corroborated
+    either. Two corrections, both from tests run after it was written:
 
     * `rec.width` is `1 << ((tag >> 8) & 0xF)` -- a four-bit TAG FIELD read as a log2
-      exponent. It is not a walked quantity; `decompose` derives nothing about it. So
-      "value * width == 256" was measured against a reading that nothing here confirms.
-    * If the pair were a scale relative to a per-graph output size, `value * width` would
-      be CONSTANT within one assembly. It is not: 2 distinct products in 19 files, 3 in 63,
-      and up to 12 in one. The products cluster at 256 (3,775), 1024 (984) and 512 (887)
-      but also include 127.162, 250.906 and 253.44, which are not powers of two at all.
+      exponent. It is not a walked quantity, so "value * width == 256" was measured
+      against a reading that nothing here confirms.
+    * If the pair were a scale relative to a per-graph output size, `value * width`
+      would be CONSTANT within one assembly. It is not: 2 distinct products in 19
+      files, 3 in 63, up to 12 in one, and they include 127.162, 250.906 and 253.44,
+      which are not powers of two at all.
 
-    So the pair is structurally real -- the bit-pair convention holds, the baked slot reads
-    two floats, 89% are equal-component powers of two -- and its MEANING is unknown. It is
-    not established as this function's divisor, and the resemblance to 256 in a third of
-    records is the same corpus artifact that made the fitted constant look right: those
-    records are mostly 256 wide.
-
-    What survives is narrower and still worth having: this pair is the quantity the
-    withdrawn blur slot-3 fallback was reading, and that fallback's own description of it --
-    "a size, a mip level or a tiling count, not an intensity" -- remains the best available
-    characterisation. Naming it needs an instrument neither the walk nor `rec.width` supplies.
+    So the pair is structurally real and its MEANING is unknown. It is not established
+    as this function's divisor, and the resemblance to 256 in a third of records is the
+    same corpus artifact that made the fitted constant look right. What survives is
+    narrower: this pair is the quantity the withdrawn blur slot-3 fallback was reading,
+    and that fallback's own description of it -- "a size, a mip level or a tiling
+    count, not an intensity" -- remains the best available characterisation.
     """
     forced = assume.assumed('warp.reference_px')
     if forced is not None and forced != 'record':
@@ -544,17 +503,17 @@ _DEF_RE = re.compile(r'^\s*%(\d+)\s+[0-9A-F]{4}\s+(\S+?)\s+(.*)$')
 def sampler_is_annihilated(asm, ptr, index):
     """Does every use of `sample*(..., #index)`'s result get multiplied by a constant zero?
 
-    If so, WHAT IS BOUND TO THAT SAMPLER CANNOT CHANGE THE PROGRAM'S OUTPUT, and a record
-    that would otherwise refuse for an unwired input can be evaluated with anything at all.
-    That is a proof read off the record's own bytecode, not an assumption about what the
-    engine substitutes for an unconnected input -- which is unknowable here and stays
-    refused (see `grayscale.weights` for the same discipline).
+    If so, WHAT IS BOUND TO THAT SAMPLER CANNOT CHANGE THE PROGRAM'S OUTPUT, and a
+    record that would otherwise refuse for an unwired input can be evaluated with
+    anything at all. That is a proof read off the record's own bytecode, not an
+    assumption about what the engine substitutes for an unconnected input -- which is
+    unknowable here and stays refused (see `grayscale.weights` for the same discipline).
 
-    Why it comes up: five pixelprocessors in the corpus sample an index equal to their own
-    declared arity -- exactly one past the last wired input, never further -- which is what
-    a source graph with a trailing UNCONNECTED input slot compiles to. The compiler still
-    emits the sample; on three of the five it also multiplies the result by a constant 0,
-    which is the parameter that would have used it left at zero:
+    Why it comes up: five pixelprocessors in the corpus sample an index equal to their
+    own declared arity -- exactly one past the last wired input -- which is what a
+    source graph with a trailing UNCONNECTED input slot compiles to. The compiler still
+    emits the sample; on three of the five it also multiplies the result by a constant
+    0, which is the parameter that would have used it left at zero:
 
         %20  samplelum.f1  %19, #3      <- index 3, arity 3
         %21  const.f1      0
@@ -564,15 +523,14 @@ def sampler_is_annihilated(asm, ptr, index):
                                                        STRICTLY ANNIHILATED
         alien_rock_coral 155, 353, 2054                LIVE -- still refuse
 
-    The three LIVE ones use the sample as an ANGLE (x360 -> radians -> cos/sin) driving a
-    warp, so their output genuinely depends on an image nothing in the file binds: no edge,
-    no graph-input bitmap record, no manifest (that specimen ships none), and not the shared
-    cache, which is a float CSE cache and holds no images.
+    The three LIVE ones use the sample as an ANGLE driving a warp, so their output
+    genuinely depends on an image nothing in the file binds: no edge, no graph-input
+    bitmap record, no manifest, and not the shared cache, which holds no images.
 
-    NOTE the operand form. `samplelum`/`samplecol` have a 2-operand and a 3-operand encoding
-    (`0933`/`09F4` and `0D33`/`0DF4`), and the SAMPLER INDEX IS THE FIRST IMMEDIATE in both.
-    Established by the arity bound: over 80 files the first immediate is in range on 5,711 of
-    5,714 three-operand samples while the second is out of range 501 times, and the second is
+    NOTE the operand form. `samplelum`/`samplecol` have a 2-operand and a 3-operand
+    encoding, and the SAMPLER INDEX IS THE FIRST IMMEDIATE in both. Established by the
+    arity bound: over 80 files the first immediate is in range on 5,711 of 5,714
+    three-operand samples while the second is out of range 501 times, and the second is
     the constant 1 in 5,696 of them -- a mode flag, not an index.
     """
     key = (id(asm), ptr, index)
@@ -627,20 +585,17 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
     src = transpile.transpile(asm.data, start, end, "python", "prog")
     scope = {}
     exec(compile(src, "<prog>", "exec"), scope)
-    # `$number` BELONGS TO FX-MAP EMISSION, AND THE CONTEXT IS STICKY. Nothing here reads
-    # it, but `rand` does, and an FX-Map's batched emission leaves a whole COLUMN of
-    # pattern indices behind it. A pixelprocessor evaluated next then draws its randomness
-    # against however many patterns the last FX-Map happened to emit -- which is not a
-    # wrong picture but a broadcast error, `shapes (49,2) (4096,2)`, and it cost 41 records
-    # across two files before the reset was added. The same hazard the `pos` note below
-    # describes, one variable over.
+    # `$number` BELONGS TO FX-MAP EMISSION, AND THE CONTEXT IS STICKY. Nothing here
+    # reads it, but `rand` does, and an FX-Map's batched emission leaves a whole COLUMN
+    # of pattern indices behind it. A pixelprocessor evaluated next then draws its
+    # randomness against however many patterns the last FX-Map emitted -- a broadcast
+    # error, `shapes (49,2) (4096,2)`, which cost 41 records across two files.
     sbsruntime.set_context(number=0.0)
     if pos is not None or W is not None or H is not None:
-        # W/H WITHOUT pos is the case that was missing, and it is not cosmetic. A
-        # parameter program can read `$size` -- `transformation`'s offset routinely does,
-        # to express a shift in PIXELS -- and the context is global and sticky, so a
-        # caller that passed neither got whatever record happened to be evaluated last.
-        # `set_context` ignores None, so the pos-less form sets only the resolution.
+        # W/H WITHOUT pos is the case that was missing, and it is not cosmetic. A parameter
+        # program can read `$size` -- `transformation`'s offset routinely does, to express a
+        # shift in PIXELS -- and the context is global and sticky, so a caller that passed
+        # neither got whatever record was evaluated last. `set_context` ignores None.
         sbsruntime.set_context(width=W, height=H, pos=pos)
     with np.errstate(all="ignore"):
         try:
@@ -648,23 +603,20 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
         except sbsruntime.MissingSampler as e:
             # MUST come first: MissingSampler subclasses KeyError, so the handler below
             # swallows it and reports an unwired image edge as a missing slot. That exact
-            # confusion -- `SAMPLERS` and `slots` are both small-integer-keyed dicts and
-            # raised indistinguishable KeyErrors -- sent two investigations after a
-            # phantom slot frame before `sbsruntime.MissingSampler` was introduced to
-            # separate them. Removing this handler reintroduces the ambiguity silently.
-            # AN UNWIRED INPUT WHOSE VALUE IS PROVABLY DISCARDED is not a reason to refuse.
-            # If every use of this sampler's result is multiplied by a constant zero, the
-            # program computes the same output for ANY binding, so evaluating it with zeros
-            # is exact rather than assumed -- see `sampler_is_annihilated`. Anything else
-            # still refuses: what the engine substitutes for a genuinely-used unconnected
-            # input is not established, and guessing it is the thing this file does not do.
+            # confusion -- `SAMPLERS` and `slots` are both small-integer-keyed dicts and raised
+            # indistinguishable KeyErrors -- sent two investigations after a phantom slot frame
+            # before `sbsruntime.MissingSampler` was introduced. Removing this handler
+            # reintroduces the ambiguity silently.
+            #
+            # AN UNWIRED INPUT WHOSE VALUE IS PROVABLY DISCARDED is not a reason to refuse. If
+            # every use of this sampler's result is multiplied by a constant zero, the program
+            # computes the same output for ANY binding, so evaluating it with zeros is exact
+            # rather than assumed -- see `sampler_is_annihilated`. Anything else still refuses.
             idx = getattr(e, 'index', None)
             if idx is not None and sampler_is_annihilated(asm, start, idx):
-                # RESTORED AFTERWARDS, ALWAYS. `SAMPLERS` is module-global and nothing else
-                # clears it between records, which is the leak that made this file's render
-                # depend on what ran before it and invalidated two measurements. A binding
-                # installed here is scoped to this one evaluation; leaving it behind would
-                # silently satisfy a LATER record's genuinely-unwired input.
+                # RESTORED AFTERWARDS, ALWAYS. `SAMPLERS` is module-global and nothing else clears
+                # it between records, which is the leak that made this file's render depend on
+                # what ran before it. A binding installed here is scoped to this one evaluation.
                 _had = idx in sbsruntime.SAMPLERS
                 _prev = sbsruntime.SAMPLERS.get(idx)
                 sbsruntime.SAMPLERS[idx] = sbsruntime.image_sampler(
@@ -684,18 +636,15 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
                 raise cascade("input %s has no output yet -- no sampler was installed for "
                               "it, which is an unwired edge and NOT a missing slot" % e) from e
         except KeyError as e:
-            # `inputs` is keyed by uid (large, from default_inputs) and always fully
-            # populated from the package's own declarations; `slots` is keyed by small
-            # integers. With MissingSampler split off above, a bare KeyError here means a
-            # `get` of a slot this record's own programs never `set`. It did NOT mean that
-            # before that split, whatever this comment used to claim. The already-documented
-            # category from the transpiler's own execution sweep (FORMAT-NOTES.md,
-            # "Executing every program, not just transpiling it"): 9,806 sub-programs
-            # whose slots are written by ANOTHER of the record's programs sharing slot
-            # state, which this walker does not model across records. Not a new bug --
-            # confirmed on a real specimen that the record's other .programs entries
-            # (beyond .filter_programs) do not set it either, so it is not simply a
-            # missed sibling program.
+            # `inputs` is keyed by uid (large, from default_inputs) and always fully populated
+            # from the package's own declarations; `slots` is keyed by small integers. With
+            # MissingSampler split off above, a bare KeyError here means a `get` of a slot this
+            # record's own programs never `set`. It did NOT mean that before that split. The
+            # already-documented category from the transpiler's own execution sweep
+            # (FORMAT-NOTES.md, "Executing every program, not just transpiling it"): 9,806
+            # sub-programs whose slots are written by ANOTHER of the record's programs sharing
+            # slot state, which this walker does not model across records. Confirmed on a real
+            # specimen that the record's other .programs entries do not set it either.
             raise Unsupported("slot %s read but never set (cross-record/-program slot "
                               "sharing, not modeled here)" % e) from e
     return np.asarray(out)
@@ -704,39 +653,35 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
 # ---------------------------------------------------------------------------
 # Blend modes.
 #
-# WHAT IS CORPUS-VERIFIED: that `blendingmode` is the low four bits of blend's slot 1,
-# and that it takes values 0-11 -- FORMAT-NOTES.md, "The low four bits of blend slot 1
-# are `blendingmode`", a corpus-wide falsification test over 382 specimens with 0
-# counterexamples outside 0-11. Twelve values, densely used.
+# WHAT IS CORPUS-VERIFIED: that `blendingmode` is the low four bits of blend's
+# slot 1, and that it takes values 0-11 -- FORMAT-NOTES.md, a corpus-wide
+# falsification test over 382 specimens with 0 counterexamples outside 0-11.
 #
-# WHAT IS NOT: which mode each integer NAMES. That mapping is not recoverable from this
-# corpus and the reason is structural, not a coverage gap -- checked directly and
-# recorded in the session that added this:
-#   * a `.sbs` compNode has no name field, only a uid and its filter's fixed connection
-#     pins ("destination"/"source"/"opacity"), never author free text;
-#   * there are ZERO GUIComment/GUIFrame elements in any .sbs anywhere in the tree, so
-#     no artist annotation exists to read;
-#   * `.sbs` serialises the mode as a bare `constantValueInt32`, the label living in the
-#     application UI, not the file;
-#   * and a `.sbsar` stores only a filter's INPUTS as pixels, never its computed output,
-#     so no (src, dst, mode, ground-truth result) tuple exists in any .sbsar to solve
-#     for -- adding more specimens cannot change this.
+# WHAT IS NOT: which mode each integer NAMES. That mapping is not recoverable from
+# this corpus and the reason is structural, not a coverage gap:
+#   * a `.sbs` compNode has no name field, only a uid and its filter's fixed
+#     connection pins ("destination"/"source"/"opacity"), never author free text;
+#   * there are ZERO GUIComment/GUIFrame elements in any .sbs anywhere in the tree;
+#   * `.sbs` serialises the mode as a bare `constantValueInt32`, the label living
+#     in the application UI, not the file;
+#   * and a `.sbsar` stores only a filter's INPUTS as pixels, never its computed
+#     output, so no (src, dst, mode, ground-truth result) tuple exists in any
+#     .sbsar to solve for -- adding more specimens cannot change this.
 #
-# So THE ORDERING BELOW IS EXTERNAL KNOWLEDGE -- Substance Designer's documented blend
-# dropdown order -- held with moderate, not high, confidence, and is the single
-# assumption every mode but 0 rests on. It is deliberately kept as one flat table rather
-# than scattered through the dispatch: if a corpus ever contradicts it, this table is the
-# only thing that has to change.
+# So THE ORDERING BELOW IS EXTERNAL KNOWLEDGE -- Substance Designer's documented
+# blend dropdown order -- held with moderate, not high, confidence, and is the
+# single assumption every mode but 0 rests on. It is deliberately kept as one flat
+# table: if a corpus ever contradicts it, this table is the only thing to change.
 #
-# Mode 0 is the exception and is genuinely corroborated: it is the only mode this file
-# implemented before, verified against a controlled red/blue lerp, and "Copy" is exactly
-# what that verified behaviour (a straight opacity lerp of src over dst) means. The
-# externally-sourced table agreeing with an independently verified fact at its one
-# testable point is weak evidence for the rest, not proof.
+# Mode 0 is the exception and is genuinely corroborated: it is the only mode this
+# file implemented before, verified against a controlled red/blue lerp, and "Copy"
+# is exactly what that verified behaviour means. The externally-sourced table
+# agreeing with an independently verified fact at its one testable point is weak
+# evidence for the rest, not proof.
 #
-# Each function takes (dst, src) already-sampled float arrays and returns the blended
-# colour BEFORE opacity is applied; `apply_blend` does the opacity mix afterward, which
-# is the structure mode 0 was verified under.
+# Each function takes (dst, src) already-sampled float arrays and returns the
+# blended colour BEFORE opacity is applied; `apply_blend` does the opacity mix
+# afterward, which is the structure mode 0 was verified under.
 BLEND_MODES = {
     0:  ('copy',       lambda d, s: s),
     1:  ('add',        lambda d, s: d + s),                  # a.k.a. linear dodge
@@ -747,9 +692,8 @@ BLEND_MODES = {
     # described consistently but the formula is not published as an equation, so this
     # takes the reading that maps src=0 -> dst-1, src=0.5 -> dst, src=1 -> dst+1.
     #
-    # IT IS ALSO THE ONLY MODE THAT SATURATES, and that is measured, not suspected. Over
-    # Chesterfield's 356 blend records, the fraction of output pixels clipped to 1.0,
-    # by mode:
+    # IT IS ALSO THE ONLY MODE THAT SATURATES, and that is measured. Over
+    # Chesterfield's 356 blend records, the fraction of output pixels clipped to 1.0:
     #
     #     copy 0.03   multiply 0.18   switch 0.10   overlay 0.25   screen 0.00
     #     subtract 0.00   max 0.00   add 0.00      ADDSUB 0.60, and 18 of its 56
@@ -760,43 +704,35 @@ BLEND_MODES = {
     #
     # TWO ATTEMPTS TO ARBITRATE IT, BOTH REPORTED AS FAILURES rather than resolved:
     #
-    #   The exported reference maps CANNOT decide this. Rendering every reference package
-    #   under each candidate moves 3 of 11 scoreable channels, and all three are
-    #   Chesterfield's `basecolor`, which moves only between rendering and NOT rendering
-    #   -- no channel has a comparable MAE under two candidates that both produce it. So
-    #   there is no candidate the references prefer; `d + s - 0.5` merely happens to keep
-    #   an unrelated auto-levels reduction non-degenerate (see the pixelprocessor note on
-    #   0/0). Adopting a formula because it unblocks a record is selecting on a side
-    #   effect, and it is not done here.
+    #   The exported reference maps CANNOT decide this. Rendering every reference
+    #   package under each candidate moves 3 of 11 scoreable channels, and all three
+    #   are Chesterfield's `basecolor`, which moves only between rendering and NOT
+    #   rendering. So there is no candidate the references prefer; `d + s - 0.5`
+    #   merely happens to keep an unrelated auto-levels reduction non-degenerate, and
+    #   adopting a formula because it unblocks a record is selecting on a side effect.
     #
-    #   "Authors feed a mode's NEUTRAL value to switch an input off" -- REFUTED BY ITS OWN
-    #   CONTROL. Over 6,564 blend operands in the reference packages, mode 4's flat inputs
-    #   are 146 at 0.5 and 160 at 1.0, which looks like it favours a 0.5-neutral reading.
-    #   But `max`, whose neutral is unambiguously 0.0, shows 160 flat operands at 0.5 and
-    #   13 at 0.0. Authors feed 0.5 as a generic constant regardless of mode, so the
-    #   statistic does not measure neutrality and cannot be cited for mode 4 either.
+    #   "Authors feed a mode's NEUTRAL value to switch an input off" -- REFUTED BY ITS
+    #   OWN CONTROL. Over 6,564 blend operands in the reference packages, mode 4's
+    #   flat inputs are 146 at 0.5 and 160 at 1.0, which looks like a 0.5-neutral
+    #   reading. But `max`, whose neutral is unambiguously 0.0, shows 160 flat operands
+    #   at 0.5 and 13 at 0.0. Authors feed 0.5 as a generic constant regardless of
+    #   mode, so the statistic does not measure neutrality.
     #
     # The mode NUMBER is not in doubt -- see
     # test_filters.test_blendingmode_matches_the_source_that_declares_it, which pairs
-    # source nodes to compiled records by a distinctive opacity: 10 declared modes agree,
-    # 0 disagree, and 2 nodes that declare no mode decode as 0, pinning `copy` as the
-    # default. Only this FORMULA is open.
     4:  ('addsub',     lambda d, s: d + 2.0 * s - 1.0),
     5:  ('max',        lambda d, s: np.maximum(d, s)),        # a.k.a. lighten
     6:  ('min',        lambda d, s: np.minimum(d, s)),        # a.k.a. darken
-    # `switch` is handled specially in `apply_blend` -- it is a hard choice between the
-    # two inputs driven by opacity, not a per-channel function that opacity then mixes,
-    # so running it through the normal lerp would silently turn it into `copy`.
+    # `switch` is handled specially in `apply_blend` -- it is a hard choice between
+    # the two inputs driven by opacity, not a per-channel function that opacity then
+    # mixes, so running it through the normal lerp would silently turn it into `copy`.
     #
     # A CONSISTENCY CHECK THIS IDENTIFICATION PASSES, and one it could easily have
     # failed: a switch is a branch selector, so its selector should be a graph-level
-    # constant rather than a picture. Evaluating the opacity of all 102 mode-7 records in
-    # Chesterfield gives a spatially constant value in 102 of 102, and every one is
+    # constant rather than a picture. Evaluating the opacity of all 102 mode-7 records
+    # in Chesterfield gives a spatially constant value in 102 of 102, and every one is
     # exactly 0.0 or 1.0. A mode misidentified as `switch` would be reading some other
-    # filter's per-pixel parameter, and 102 of 102 constants is not what that looks like.
-    # Not proof of the number -- the containment test cited under mode 4 does that for
-    # the modes it covers, and 7 is not among them -- but it is the reading a wrong
-    # identification would have had to survive.
+    # filter's per-pixel parameter.
     7:  ('switch',     None),
     8:  ('divide',     lambda d, s: d / np.where(np.abs(s) < 1e-6, 1e-6, s)),
     9:  ('overlay',    lambda d, s: np.where(d < 0.5, 2.0 * d * s,
@@ -811,16 +747,15 @@ BLEND_MODES = {
 def apply_blend(mode, dst, src, opacity):
     """Composite `src` over `dst` under `mode` at `opacity`.
 
-    Opacity mixes the blended result back toward the destination, which is the structure
-    the one verified mode (0) was checked under: at opacity 0 every mode is a no-op and
-    the destination survives untouched. `switch` is the documented exception -- a hard
-    selection rather than a mix -- and takes opacity as its selector instead.
+    Opacity mixes the blended result back toward the destination, which is the
+    structure the one verified mode (0) was checked under: at opacity 0 every mode is
+    a no-op. `switch` is the documented exception -- a hard selection rather than a
+    mix -- and takes opacity as its selector instead.
 
     The result is clamped to [0, 1]. Several of these functions leave that range by
-    construction (`add` above 1, `subtract` below 0, `divide` arbitrarily far), and the
-    format's own images are unsigned-normalised, so an unclamped result would propagate
-    out-of-range values into every downstream record. This mirrors the clamp `levels`
-    already applies for the same reason.
+    construction (`add` above 1, `subtract` below 0, `divide` arbitrarily far) and the
+    format's own images are unsigned-normalised, so an unclamped result would
+    propagate out-of-range values into every downstream record.
     """
     entry = BLEND_MODES.get(mode)
     if entry is None:
@@ -853,22 +788,22 @@ class _SwappedEdges(object):
 def cls_pair_slot(rec, low_bit):
     """Where a class-word (baked, program) parameter pair lives, from the WALK.
 
-    The class word encodes a parameter as an ADJACENT BIT PAIR: the lower bit means the
-    value is baked in place and costs its own width, the upper means it is a program and
-    costs one pointer, and the two are mutually exclusive. That is the same two-bit code
-    `PARAM_SPEC` documents for the w1 word (00 absent, 01 baked, 10 program, 11 image
-    input), minus the state a scalar cannot take.
+    The class word encodes a parameter as an ADJACENT BIT PAIR: the lower bit means
+    the value is baked in place and costs its own width, the upper means it is a
+    program and costs one pointer, and the two are mutually exclusive. That is the
+    same two-bit code `PARAM_SPEC` documents for the w1 word, minus the state a
+    scalar cannot take.
 
-    `decompose` reports `cls_params` as (w0 bit, first slot, width), so the owner of a slot
-    is read rather than computed. Returns (state, slot, width) with state 'baked' or
-    'program', or None when neither bit is set -- which is a real answer: the source omitted
-    the parameter and the engine's default applies.
+    `decompose` reports `cls_params` as (w0 bit, first slot, width), so the owner of a
+    slot is read rather than computed. Returns (state, slot, width) with state 'baked'
+    or 'program', or None when neither bit is set -- which is a real answer: the
+    source omitted the parameter and the engine's default applies.
 
-    ASKING THE WALK MATTERS EVEN WHERE `end - 1` WOULD DO. A pair is the last thing in the
-    header only when no w1 parameter follows it, which is true for blur, sharpen and warp
-    and false for directionalwarp and dirmotionblur. Computing the position as "the last
-    header slot" instead of reading its owner scores 100% on the first group and 4.7% on
-    directionalwarp -- the difference being entirely in the arithmetic, not in the format.
+    ASKING THE WALK MATTERS EVEN WHERE `end - 1` WOULD DO. A pair is the last thing in
+    the header only when no w1 parameter follows it, which is true for blur, sharpen
+    and warp and false for directionalwarp and dirmotionblur. Computing the position
+    as "the last header slot" scores 100% on the first group and 4.7% on
+    directionalwarp -- the difference being entirely in the arithmetic.
     """
     d = None
     try:
@@ -892,43 +827,41 @@ def cls_pair_slot(rec, low_bit):
 def walk_named_offset(asm, rec):
     """`transformation`'s offset program, taken from the slot the WALK names, or None.
 
-    The width heuristic in the transformation branch asks "which of this record's programs
-    returns 2 components", which is a question about VALUES. `decompose` already answers it
-    structurally: the record's own parameter slots are enumerated by the walk, and a slot
-    holding `program - 52` names that program with nothing to choose between.
+    The width heuristic in the transformation branch asks "which of this record's
+    programs returns 2 components", which is a question about VALUES. `decompose`
+    already answers it structurally: the record's own parameter slots are enumerated
+    by the walk, and a slot holding `program - 52` names that program.
 
-    Consulting the walk matters because `Record.programs` scans EVERY word of the record,
-    not just its slots, and calls anything passing `valid_program` a program. Past the
-    walk's `end` a record is bytecode, so an instruction OPERAND that happens to survive
-    that test is returned as a program. On `UHL3D-Stylized_Sand_with_Rocks_01` word 19 of
-    a 142-word record whose structure ends at word 5 -- `0x10008`, mid-bytecode -- yields
-    "program" 65596 in 177 records, byte-identical in every one because they share an
-    instruction sequence. It evaluates 2-wide and collides with the real offset, leaving
-    `by_width[2]` ambiguous on 88 of that file's records: a refusal built on a phantom.
+    Consulting the walk matters because `Record.programs` scans EVERY word of the
+    record, not just its slots, and calls anything passing `valid_program` a program.
+    Past the walk's `end` a record is bytecode, so an instruction OPERAND that
+    survives that test is returned as a program. On
+    `UHL3D-Stylized_Sand_with_Rocks_01`, word 19 of a 142-word record whose structure
+    ends at word 5 yields "program" 65596 in 177 records, byte-identical in every one
+    because they share an instruction sequence. It evaluates 2-wide and collides with
+    the real offset, leaving `by_width[2]` ambiguous on 88 of that file's records: a
+    refusal built on a phantom.
 
-    Cross-checked against the width rule rather than assumed, and the two are independent
-    (this reads costs.json; the width rule evaluates bytecode): over 14 corpus files,
-    1,204 bit-26 `transformation` records -- 1,203 agree, 0 disagree, 1 where the walk
-    names no program. On the sand file, 149 agree and the walk answers all 88 the width
-    rule cannot. So this does not change an answer that already resolves.
+    Cross-checked against the width rule rather than assumed, and the two are
+    independent (this reads costs.json; the width rule evaluates bytecode): over 14
+    corpus files, 1,204 bit-26 `transformation` records -- 1,203 agree, 0 disagree, 1
+    where the walk names no program. On the sand file, 149 agree and the walk answers
+    all 88 the width rule cannot.
 
-    That 88 is a DECODE measurement, taken with `sbsruntime.SAMPLERS` cleared per record.
-    It is NOT a count of renders repaired -- whether a pass reaches this branch depends on
-    the graph, and on this file's own closure it does not. No render-level gain is claimed;
-    what changes is that the answer no longer rests on a value probe a phantom can deceive.
+    That 88 is a DECODE measurement, taken with `sbsruntime.SAMPLERS` cleared per
+    record. It is NOT a count of renders repaired -- whether a pass reaches this
+    branch depends on the graph. No render-level gain is claimed; what changes is
+    that the answer no longer rests on a value probe a phantom can deceive.
 
-    Returns None whenever the walk is not decisive (no field-12 program entry, the slot out
-    of range, no valid program there, or it does not evaluate 2-wide), leaving the width
-    rule exactly as it was.
+    Returns None whenever the walk is not decisive, leaving the width rule as it was.
 
     THE TENSION THIS USED TO RECORD IS RESOLVED. It read: "this does NOT settle which
-    parameter field 13 IS -- `Record.translation` reads bits 25/26 as two booleans while the
-    two-bit grid makes 26/27 one field, and that tension is open." Field 13 was not a field.
-    Bits 24 and 27 are never set in any of 242,931 filter-2 records, so the tiling's field 12
-    can only ever read 0b10 and its field 13 only 0b01 -- the halves of one code at bits
-    (25,26), which reads 01 baked / 10 program / 11 never. The two booleans and the two-bit
-    field were the same statement seen through the wrong frame. `decompose.STRADDLED` states
-    the frame; see its comment for the measurement.
+    parameter field 13 IS -- `Record.translation` reads bits 25/26 as two booleans
+    while the two-bit grid makes 26/27 one field." Field 13 was not a field. Bits 24
+    and 27 are never set in any of 242,931 filter-2 records, so field 12 can only ever
+    read 0b10 and field 13 only 0b01 -- the halves of one code at bits (25,26). The
+    two booleans and the two-bit field were the same statement seen through the wrong
+    frame; `decompose.STRADDLED` states the frame.
     """
     try:
         import decompose
@@ -937,20 +870,18 @@ def walk_named_offset(asm, rec):
         return None
     if not d:
         return None
-    # NAMED BY ITS FIELD, which it could not be until the straddle was framed. The offset's
-    # two-bit code sits at bits 25,26 and `decompose`'s tiling reads fields on EVEN bits, so
-    # the code used to split across tiling fields 12 and 13 -- one half always reading 0b10
-    # and looking like a value, the other always 0b01 and looking like a pointer. This
-    # function could only work by elimination: collect every program-valued parameter slot
-    # in the record and insist there be exactly one. That failed on the 82 records whose
-    # MATRIX is a program too, and it could never say which slot was the offset, only that
-    # one slot was left.
+    # NAMED BY ITS FIELD, which it could not be until the straddle was framed. The
+    # offset's two-bit code sits at bits 25,26 and `decompose`'s tiling reads fields
+    # on EVEN bits, so the code used to split across tiling fields 12 and 13 -- one
+    # half always reading 0b10 and looking like a value, the other always 0b01 and
+    # looking like a pointer. This function could only work by elimination: collect
+    # every program-valued parameter slot and insist there be exactly one. That failed
+    # on the 82 records whose MATRIX is a program too.
     #
-    # `decompose.STRADDLED` now relabels the two halves as the single field they are, with
-    # the format's ordinary alphabet -- state 1 baked (2 words), state 2 a program pointer
-    # (1 word) -- so the offset can be asked for directly, exactly as `walk_named_matrix`
-    # asks for field 3. Over 69,282 bit-26 records (corpus + reference packs) the field read
-    # returns the SAME program as the elimination rule in 69,282 of 69,282, the 82 included.
+    # `decompose.STRADDLED` now relabels the two halves as the single field they are,
+    # so the offset can be asked for directly, exactly as `walk_named_matrix` asks for
+    # field 3. Over 69,282 bit-26 records the field read returns the SAME program as
+    # the elimination rule in 69,282 of 69,282, the 82 included.
     named = [t for t in d.get('param_slots', ()) if t[0] == 12 and t[1] == 2]
     if len(named) != 1:
         return None
@@ -973,50 +904,38 @@ def walk_named_offset(asm, rec):
 def walk_named_matrix(asm, rec):
     """`transformation`'s matrix22 program, taken from the slot the WALK names, or None.
 
-    The sibling of `walk_named_offset`, and it closes the same gap one parameter over. The
+    The sibling of `walk_named_offset`, closing the same gap one parameter over. The
     transformation branch singles the matrix out with `by_width[4]` -- "which of this
-    record's programs returns 4 components" -- which is a question about VALUES, decided by
-    evaluating bytecode and grouping the answers. The record states it instead: `matrix22`
-    is the w1 pair at bits 6 and 7, which is FIELD 3 under the two-bit tiling `decompose`
-    reports, and the slot that field names holds the program.
+    record's programs returns 4 components" -- which is a question about VALUES. The
+    record states it instead: `matrix22` is the w1 pair at bits 6 and 7, which is
+    FIELD 3 under the two-bit tiling `decompose` reports, and the slot that field
+    names holds the program.
 
     THE FIELD IS THE SELECTOR, NOT THE WIDTH, and that is a real difference from
     `walk_named_offset`, which can only ask for "the record's single program-valued
-    parameter slot". It has to, because the offset's two bits STRADDLE the tiling boundary
-    (25 is the high bit of field 12, 26 the low bit of field 13) so no one field is the
-    offset. The matrix's bits do not straddle, so it can be named directly -- and a record
-    carrying both a program matrix and a program offset is no longer ambiguous here, where
-    the "single program-valued slot" rule would see two and give up.
+    parameter slot" because the offset's two bits STRADDLE the tiling boundary. The
+    matrix's bits do not straddle, so a record carrying both a program matrix and a
+    program offset is no longer ambiguous here.
 
-    Structurally exact: over the corpus plus the reference packs, all 5,106 records with w1
-    bit 7 set have exactly one field-3 entry, state 2 (program), width 1, and in 5,106 of
-    5,106 that slot holds a valid program.
+    Structurally exact: over the corpus plus the reference packs, all 5,106 records
+    with w1 bit 7 set have exactly one field-3 entry, state 2 (program), width 1, and
+    in 5,106 of 5,106 that slot holds a valid program.
 
-    Cross-checked against the width rule rather than assumed, and the two are independent
-    (this reads costs.json; the width rule evaluates bytecode). All 5,106 bit-7 records,
-    with `sbsruntime.SAMPLERS` cleared per record:
+    Cross-checked against the width rule rather than assumed, and the two are
+    independent (this reads costs.json; the width rule evaluates bytecode). All 5,106
+    records, with `sbsruntime.SAMPLERS` cleared per record: 5,105 agree, 1 where the
+    walk answers and the width rule is silent, 0 disagree. The one apparent
+    disagreement in a first pass was an artefact of the COMPARISON -- Lava record
+    845's matrix is (1.5, nan, 1.5, 1.5) and `nan != nan`, so tuple equality reported
+    a difference between two readings that had named the same program.
 
-        agree                              5,105
-        walk answers, width rule silent        1
-        disagree                               0
+    So this does not change an answer that already resolves; it turns a refusal into
+    an answer. That matters most where the width rule cannot help by construction --
+    the branch it falls back to raises `Unsupported` for records with two disagreeing
+    4-wide programs, whose own comment concedes "picking the later address would be a
+    coin toss dressed as a rule". The slot is not a coin toss.
 
-    The one apparent disagreement in a first pass was an artefact of the COMPARISON, not of
-    either rule: Lava record 845's matrix is (1.5, nan, 1.5, 1.5) and `nan != nan`, so tuple
-    equality reported a difference between two readings that had named the same program --
-    the record's only one. Counted with NaN-aware equality it is an agreement. (That the
-    matrix contains a NaN at all is a separate question about that record, not about which
-    program is the matrix.)
-
-    So this does not change an answer that already resolves; it turns a refusal into an
-    answer. That matters most where the width rule cannot help by construction -- the
-    branch it falls back to raises `Unsupported` for records with two disagreeing 4-wide
-    programs (Desert_Sand_01 record 55 has an identity and a (0.65, 0, 0, 0.05), and its
-    own comment concedes "picking the later address would be a coin toss dressed as a
-    rule"). The slot is not a coin toss.
-
-    Returns None whenever the walk is not decisive -- no single field-3 entry, the slot out
-    of range, no valid program there, or it does not evaluate 4-wide -- leaving the width
-    rule exactly as it was.
+    Returns None whenever the walk is not decisive, leaving the width rule as it was.
     """
     try:
         import decompose
