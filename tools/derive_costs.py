@@ -25,6 +25,26 @@ and this recovers them cold:
 The header boundary is observed as the start of the record's first inline program. For
 the two payload filters (gradient's ramp, curve's control points) the payload sits
 between header and code, so their boundary is the payload pointer instead.
+
+THAT ORACLE READS `Record.programs`, WHICH IS BOUNDED BY THE MODEL THIS SCRIPT FITS, and
+the loop is closed: costs.json -> decompose's `end` -> `Record.programs` -> the boundary
+observed here -> costs.json. A fitter that locates a bound using an accessor already
+bounded by the answer cannot be said to have measured it, however good the fit looks.
+
+MEASURED, AND IT IS INERT. `Record.programs` skips the bound for the filters in
+`_PAYLOAD_PROGRAM_FILTERS`; widening that set to every filter id makes the bound never
+apply, so the scan falls back to the unbounded form it had before the bound existed --
+an oracle that cannot see the model. Re-fitting that way emits a file BYTE-IDENTICAL to
+the checked-in costs.json: same md5, all 21 filters, the same 100.000% exact on every one
+of them, including the six the walk used to disagree about. So the loop is doing no work
+and this fit stands on its own.
+
+Worth keeping the check runnable rather than trusting the result to stay true, because
+what makes it inert is a property of the data rather than of the code: the bound only
+ever drops candidates PAST the header, and the boundary is the MINIMUM candidate, so
+dropping late ones cannot move it -- unless a record's first inline program sits past its
+own header end, which no record in this corpus does. A corpus that contained one would
+break the equivalence silently.
 """
 import bisect
 import collections
