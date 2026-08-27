@@ -2779,6 +2779,39 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # rendered at the wrong radius rather than one refused, which is the
                 # failure this project ranks worst.
                 #
+                # WHAT BIT 12 ACTUALLY SELECTS, which is narrower than "is there an
+                # intensity" and is why the refusal below reads the way it does. Over the
+                # corpus, taking the last header slot in every record of both filters:
+                #
+                #     bit 12 SET     the slot is a baked float     14,931/14,931 blur
+                #                                                   1,148/1,148  sharpen
+                #     bit 12 CLEAR   the slot is a PROGRAM POINTER    440/440    blur
+                #                                                     175/175    sharpen
+                #
+                # 15,371 of 15,371 and 1,323 of 1,323, no exceptions either way. So the bit
+                # chooses BAKED vs COMPUTED at one fixed position; it does not say the
+                # parameter is absent. A bit-12-clear record has an intensity and this file
+                # refuses it -- 49 blur and 18 sharpen declared outputs over 30 files, the
+                # largest single root cause in `output_census`.
+                #
+                # NOT WIRED, BECAUSE THE PROGRAM ONLY READS AS AN INTENSITY FOR SOME OF
+                # THEM. Evaluating the program at that slot over 80 files:
+                #
+                #     blur      60 evaluate 1-wide   p50 1.00, range 0..7, 6 distinct values
+                #                9 evaluate 2-wide   slot is NOT the size-expr slot
+                #                3 evaluate 2-wide   slot IS the size-expr slot (`prog`)
+                #     sharpen   29 evaluate 2-wide   slot is NOT the size-expr slot
+                #                5 evaluate 2-wide   slot IS the size-expr slot
+                #
+                # The 60 are convincing on their own -- a scalar whose median is 1.00 is the
+                # same distribution the trusted width-1 path reports. The other 38 are not:
+                # a 2-wide result is the shape of `$outputsize`, but only 8 of them sit at
+                # the slot the walk calls the size expression, so "it is the size program"
+                # does not cover the rest and nothing here does. Reading the 1-wide ones and
+                # refusing the others would work today and would be selecting a slot by what
+                # its contents evaluate to, which is the method this file has spent its
+                # history removing. The finding is recorded; the discriminator is missing.
+                #
                 # A THIRD INSTRUMENT AGREES, and it is one this file already trusts. The
                 # width-1 program path gives blur intensities with p50 1.00; the withdrawn
                 # slot-3 reading gave a power-of-two ladder with p50 5.00. The walk's slot
