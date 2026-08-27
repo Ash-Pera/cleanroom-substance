@@ -183,7 +183,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assume, sbsruntime, transpile                                  # noqa: E402
 from sbsasm import (Assembly, FX_NODES, fx_patterntype,                              # noqa: E402
-                    fx_entry_layout, chain_extent)
+                    fx_entry_layout)
 
 # 0x1CB joins these on the value evidence in sbsasm's FX_NODE_PARAMS: its +4 program is
 # 1.0 in 180 of 183, matching 0x18B's `numberadded` (1.0 in 69.5%) and not 0x1AB's
@@ -616,122 +616,6 @@ def _recover_last_inline(rec, tbl, order):
                 tbl[off][1][name] = ('program', at)
 
 
-def _chain_embedded_entries(rec):
-    """Entries reached through the chain-family cells, for records whose table is empty.
-
-    A `0x09` (or `0x49`) cell is five words -- `[kind][ptr][ptr][0x00020008][ptr]` -- and
-    the run of them is a linked list, which 1498ae6 established and rightly stopped drawing:
-    over 80 files, 6,846 `0x00020008` entries, the second word pointing at the next entry in
-    99.5% and no patterntype in 100%. A list node is structure, not a draw.
-
-    WHAT THE LIST POINTS AT WAS LEFT OPEN, and it is the record's actual entry. The cell's
-    THIRD word is a shared pointer -- constant across all cells of a record in 7 of 9 --
-    and following it at the format's +52 skew lands on a `0x4B` cell, whose own word 3 is a
-    table-entry tag. That is the shape the node census predicted for `0x4b` from the bytes
-    ("carries an embedded table-entry tag") and listed as uncovered.
-
-    Measured over 25 corpus files plus every reference package:
-
-        chain cells whose B + 52 is a 0x4B cell        42 of 64
-          and whose word 3 is an entry tag             36 of 42, all `0x15140088`
-        records where the follow finds an entry         6
-          and whose entries() is currently EMPTY        6 of 6
-
-    Every record the follow helps is one that had nothing, which is what makes this safe to
-    add rather than a competing reading: it cannot displace an entry that already exists.
-    `0x15140088` gives opacity, frameoffset, patternsize and patternrotation at slots 3-6,
-    the same four `0x15140848` gives at 2-5, and in flowingLava record 911 three of the four
-    resolve to programs inside the record.
-
-    Read from the words directly, because `fx_named_params` is driven by the walk and the
-    walk is exactly what does not reach here.
-
-    THE OTHER SHAPE UNDER THIS HEADING DOES NOT YIELD, and the obvious move on it has been
-    tried. Most records still reporting `no readable table entries` have a table that is
-    ENTIRELY `0x00020008` cells with no `0x09` among them -- concrete_049 records 2, 57 and
-    58, Desert_Sand_01, MossSubstance001. Those cells chain by word 1 at the +52 skew, each
-    landing on the next 8 bytes on, and the LAST one points somewhere else: concrete_049
-    record 2's final cell reaches 0x25C holding `0x00100048`, records 57 and 58 reach
-    `0x03520248`. Both end in nibble 8 and neither is chain-family, so they look exactly
-    like the real entry the chain was leading to.
-
-    They are not. `entry_layout_holds` rejects all three, and it is right to: `0x00100048`
-    names a program at slot 2 and that word is `0x0A020001`, which resolves to no program;
-    `0x03520248` names three and they are `0x09000007`, `0x40000000`, `0x00000532` --
-    bytecode and a float 2.0. A tag whose every predicted program is bytecode is not a tag.
-
-    So the walk stops correctly and this route is closed: whatever those records draw is not
-    reached by following their chain to its end.
-    """
-    data, lo, hi = rec.asm.data, rec.asm.body_lo, rec.asm.body_hi
-    out = []
-    seen = set()
-    try:
-        cells = [off for kind, off, hdr, _p in rec.fx_walk()
-                 if hdr is not None and (hdr & 0xFF) in (0x09, 0x49)]
-    except Exception:
-        return out
-    for off in cells:
-        try:
-            shared = struct.unpack_from('<I', data, off + 8)[0] + 52
-        except Exception:
-            continue
-        if not (lo <= shared < hi - 16):
-            continue
-        try:
-            hdr2 = struct.unpack_from('<I', data, shared)[0]
-        except Exception:
-            continue
-        # STEP OVER A CHAIN ELEMENT BY ITS OWN STATED EXTENT, not by a constant. This read
-        # `shared + 12 if (hdr2 & 0xFFF) in (0x04B, 0x14B) else shared`: a hardcoded offset
-        # and a two-header allowlist. The 12 is the target element's own width -- it states
-        # its next at slot 1, and over 80 files 60 of 66 `0x?4B` targets step exactly 3
-        # words, with the word at +12 a nibble-8 tag in all 60. So ask the element.
-        #
-        # The trigger is structural too: an entry tag ends in nibble 8, so a target that
-        # does NOT is a chain element to be stepped over rather than read as an entry. The
-        # 6 elements that state a far step (last in chain, 67 words) are left to the tag
-        # check below, which is what catches them today.
-        if (hdr2 & 0xF) != 8:
-            _step = chain_extent(rec.asm, shared)
-            at = shared + _step if _step else shared
-        else:
-            at = shared
-        if at in seen or not (lo <= at < hi - 4):
-            continue
-        try:
-            tag = struct.unpack_from('<I', data, at)[0]
-        except Exception:
-            continue
-        if (tag & 0xF) != 8 or (tag >> 16) == 0x0002 or not tag:
-            continue
-        # AND THE TAG MUST HOLD, the same stopping rule `fx_table` uses. Deriving the step
-        # from the element instead of assuming 12 reaches a nibble-8 word in one more case
-        # (`Desert_Sand_01` record 71, where the element states 67 words because it is last
-        # in its chain), and that word is `0x15140088` -- a tag by its nibble whose four
-        # predicted programs none of them resolve, which is bytecode, not an entry. The old
-        # constant rejected it only by accident, landing on nibble 0 instead.
-        if not rec.asm.entry_layout_holds(at, tag):
-            continue
-        seen.add(at)
-        params = {}
-        for sl, name, how in fx_entry_layout(tag):
-            if not name or at + 4 * sl + 4 > hi:
-                continue
-            w = struct.unpack_from('<I', data, at + 4 * sl)[0]
-            if how == 'baked':
-                params[name] = ('baked', w)
-            elif how == 'inline':
-                a = at + 4 * sl
-                params[name] = ('program', a if rec.asm.program_span(a, hi) else None)
-            else:
-                pv = w + 52
-                params[name] = ('program',
-                                pv if lo < pv < hi and rec.asm.program_span(pv, hi) else None)
-        out.append((at, tag, params))
-    return out
-
-
 def in_eval_order(params):
     """An entry's parameters, in the order the engine evaluates them.
 
@@ -881,6 +765,35 @@ def entries(rec, baked_pairs=True):
         if not (rec.asm.body_lo <= _nxt < rec.asm.body_hi - 7) or _nxt in tbl:
             continue
         _t2 = struct.unpack_from('<I', rec.asm.data, _nxt)[0]
+        # THE TARGET IS A HEADER WORD, AND THE ENTRIES START AFTER IT. A chain-family
+        # entry's `+4` pointer does not address another entry -- it addresses word 3 of the
+        # entry ITSELF, which holds a small non-tag word, and the run begins one word later:
+        #
+        #     [0x00020018] [ptr] [ptr] [0x00000002] [0x00420008] [ptr] ...
+        #                                ^ _nxt lands here         ^ the entries
+        #
+        # so reading at `_nxt` finds a word that is not a tag and this loop gave up one word
+        # short of the table. Stepping over it, over the records `entries()` returns empty
+        # for, corpus-wide:
+        #
+        #     chain-family entries                          143
+        #       word AFTER the header word is an entry tag  134
+        #         a table read from there yields 6 entries  133   (one yields 2)
+        #       not an entry tag                              9   (left alone)
+        #
+        # AND THEY ARE REAL ENTRIES BY THIS FILE'S OWN TEST, not by looking plausible.
+        # `entry_layout_holds` is the stopping rule that catches a walk running into
+        # bytecode -- a tag states where its programs are, so a tag naming programs that
+        # none of which resolve is not a tag, and it separates 49,528 real entries from
+        # 3,192 junk ones at 0.0% against 82.1%. Every entry recovered here passes it:
+        # 800 of 800, including all 534 whose tag is drawable rather than another
+        # chain-family link. Six entries appearing where there were none is exactly the
+        # shape a runaway produces, which is why the gate is the evidence and the count is
+        # not.
+        #
+        # The header word reads 2 while the run yields 6 entries, so it is NOT an entry
+        # count and is deliberately not named one here; what it is remains open. The
+        # recovery does not depend on its value, only on stepping over it.
         if (_t2 & 0xF) != 8 or (_t2 >> 16) == 0x0002:
             continue
         for _at, _tag, _p in rec.fx_table(_nxt):
@@ -889,10 +802,13 @@ def entries(rec, baked_pairs=True):
             tbl[_at] = (_tag, {})
             order.append(_at)
 
-    if not order:
-        for at, tag, params in _chain_embedded_entries(rec):
-            tbl[at] = (tag, params)
-            order.append(at)
+    # `_chain_embedded_entries` STOOD HERE and is gone. It reached around the walk to a
+    # chain cell's payload with an `(0x09, 0x49)` allowlist, `off + 8` as a constant slot,
+    # and a hardcoded 12-byte step over the `0x?4B` cell it landed on. `fx_tree` now walks
+    # both cell kinds by the pointers they store (`pointer_cell_successor`), so the table
+    # arrives here the ordinary way. Verified dead before removal, over the whole corpus
+    # and through this accessor: of the 233 records `entries()` still returns empty for,
+    # it would have added entries to 0.
     _recover_last_inline(rec, tbl, order)
     if baked_pairs:
         for off in order:
@@ -1139,12 +1055,73 @@ def grid_width(rec):
     return None
 
 
+def why_no_entries(rec):
+    """Why `entries()` came back empty -- the WALK, or the table read?
+
+    "no readable table entries" named the table for every one of these, and the table read
+    is not what fails in most of them. `entries()` consumes `rec.fx_table()`, which is the
+    tail of `rec.fx_walk()`: the node chain does not end on a null pointer, it ends by
+    pointing AT the first entry. So a walk that stops at its root reaches no table at all,
+    and reporting that as a table failure sends the reader to the wrong half of the
+    structure -- it sent this one there, and the fix attempted from it was a table patch
+    for a record whose table read never ran.
+
+    Corpus-wide, the records `entries()` returns empty for:
+
+        table HAS raw entries, all filtered out       192    a table question
+        walk reached NOTHING (no node, no entry)       46    a WALK question
+        walked nodes, never handed off to a table       7    a WALK question
+
+    So a fifth of them were misattributed. The message now names the half that failed and
+    the header it stopped on, because the header is the thing a reader has to go look up.
+
+    Diagnosis only -- it runs on the failure path and decides nothing.
+    """
+    asm = rec.asm
+    try:
+        walk = list(rec.fx_walk())
+    except Exception as exc:
+        return "fx_walk raised %s: %s" % (type(exc).__name__, exc)
+    nodes = [t for t in walk if t[0] == 'node']
+    raw = [t for t in walk if t[0] == 'entry']
+
+    if raw:
+        return ("table read: %d entries reached, none usable "
+                "(structural/chain-family or no readable tag)" % len(raw))
+
+    def header_at(off):
+        if off is None or not (asm.body_lo <= off < asm.body_hi - 3):
+            return None
+        return struct.unpack_from('<I', asm.data, off)[0]
+
+    if not nodes:
+        try:
+            root = rec.fx_root
+        except Exception:
+            root = None
+        if root is None:
+            return "walk: no root slot (decompose declines this record)"
+        h = header_at(root)
+        if h is None:
+            return "walk: root slot addresses %#x, outside the body" % root
+        return ("walk: stopped AT THE ROOT, %#x holds header %#010x -- not in the node "
+                "vocabulary, so no table was ever reached" % (root, h))
+
+    last = nodes[-1][1]
+    h = header_at(last)
+    return ("walk: %d node(s), then no handoff -- last node %#x holds header %#010x, "
+            "whose successor reaches no table" % (len(nodes), last, h if h is not None else 0))
+
+
 def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     slots = {} if slots is None else slots
     nodes = chain(rec)
     table = entries(rec, baked_pairs)
     if not table:
-        raise Unmodelled("no readable table entries")
+        # NAMES THE HALF THAT FAILED. This said "no readable table entries" regardless,
+        # and for 53 of the 245 records it fires on the table read never ran -- the walk
+        # stopped at its root. See `why_no_entries`.
+        raise Unmodelled("no emittable entries -- %s" % why_no_entries(rec))
     for _off, hdr, _p in nodes:
         if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
                 and (hdr & 0xFF) != STEPPER2 and (hdr & 0xFF) != PASSTHROUGH \

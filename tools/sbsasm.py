@@ -657,6 +657,13 @@ def node_shape(header):
     return (succ, tuple(progs))
 
 
+#: A pointer cell is three words -- `[header][next][payload]`. The corpus states it rather
+#: than this choosing it: of the cells the walk reaches, 362 carry a forward next-pointer and
+#: every one of them steps exactly 3 words, with 0 stepping anything else. The 62 that carry
+#: none are last in their list, and take the width the other 362 establish.
+POINTER_CELL_WORDS = 3
+
+
 def pointer_cell_successor(header):
     """Where a POINTER CELL says the structure continues -- byte offset, or None.
 
@@ -707,8 +714,37 @@ def pointer_cell_successor(header):
         return None
     nib = header & 0xF
     if nib == 9 or (nib == 0xB and header & 0x40):
-        return 8
+        return 4 * (POINTER_CELL_WORDS - 1)
     return None
+
+
+def pointer_cell_payload(asm, off):
+    """A pointer cell's payload slot, as a byte offset -- ASKED OF THE CELL.
+
+    `pointer_cell_successor` answers from the family width. This answers from the cell,
+    which is the same discipline `chain_extent`'s own comment states: the element stores
+    its next at slot 1, so `next - self` IS its width, and its payload is its LAST slot.
+
+    Over every list the walk reaches, the two readings never disagree:
+
+        pointer cells stating a width      362    all of them 3 words, none anything else
+          last slot == slot 2              362 of 362
+          last slot's target holds         362 of 362
+        stating no width                    62    last in their list (slot 1 null or
+                                                  backward), so they take the family width
+
+    So `4 * (POINTER_CELL_WORDS - 1)` is not a fitted 8: it is the last slot of a cell whose
+    width the corpus states 362 times and contradicts none. Reading the width per-cell
+    matters anyway -- a cell that ever states 4 words should have its payload read at slot 3,
+    because the cell is the authority and the family width is only what every cell has said
+    so far. Widths outside a cell's plausible range fall back rather than being followed: a
+    far-forward next-pointer is a statement about LIST POSITION, not width, which is exactly
+    why `chain_extent` returns the raw distance and leaves the decision here.
+    """
+    step = chain_extent(asm, off)
+    if step is None or step % 4 or not (8 < step <= 4 * (POINTER_CELL_WORDS + 1)):
+        step = 4 * POINTER_CELL_WORDS
+    return step - 4
 
 
 def chain_extent(asm, off):
@@ -3477,8 +3513,13 @@ class Record:
         entry is.
         """
         last = None
+        cells = []
         for off, hdr, prog in self.fx_tree():
             last = off
+            _s = (pointer_cell_payload(self.asm, off)
+                  if hdr is not None and pointer_cell_successor(hdr) is not None else None)
+            if _s is not None and off + _s + 4 <= self.asm.body_hi:
+                cells.append((off, hdr, _s))
             yield ('node', off, hdr, prog)
         start = None
         if last is not None:
@@ -3542,7 +3583,8 @@ class Record:
             if off1 is None and start is None:
                 # A pointer cell ends the chain by ADDRESSING the table at slot 2 -- the
                 # same derivation `fx_tree` walks by, so the two halves cannot drift.
-                off1 = pointer_cell_successor(h)
+                off1 = (pointer_cell_payload(self.asm, q)
+                        if pointer_cell_successor(h) is not None else None)
             if off1 is None and start is None:
                 _s2 = FX_NODES2.get(h & 0xFF)
                 if _s2 and _s2[0]:
@@ -3551,8 +3593,24 @@ class Record:
                 nxt = struct.unpack_from('<I', self.asm.data, q + off1)[0] + 52
                 if self.offset <= nxt < self.end - 7:
                     start = nxt
-        for off, tag, prog in self.fx_table(start):
-            yield ('entry', off, tag, prog)
+        # EVERY POINTER CELL STATES A PAYLOAD, not just the last one. A chain list can
+        # name more than one entry (see `fx_tree`), and `start` holds one handoff.
+        starts = []
+        for _o, _h, _s in cells:
+            t = struct.unpack_from('<I', self.asm.data, _o + _s)[0] + 52
+            if self.asm.body_lo <= t < self.asm.body_hi - 3 and t not in starts:
+                starts.append(t)
+        if not starts and start is not None:
+            starts = [start]
+        elif start is not None and start not in starts:
+            starts.append(start)
+        emitted = set()
+        for st in (starts or [None]):
+            for off, tag, prog in self.fx_table(st):
+                if off in emitted:
+                    continue
+                emitted.add(off)
+                yield ('entry', off, tag, prog)
 
     def fx_named_params(self):
         """Yield (entry offset, tag, slot, name, kind, value) for every table parameter.
@@ -3947,20 +4005,45 @@ class Record:
                             return
                         q = pending.pop()
                         continue
-                _pc = pointer_cell_successor(h)
-                if _pc is not None:
-                    # A POINTER CELL: no program, no draw -- the structure continues at the
-                    # other end of slot 2. Walking it is what lets a chain hand off to its
-                    # table the ordinary way, instead of `fxrender._chain_embedded_entries`
-                    # reaching around the walk to do it with an allowlist and two constants.
-                    yield q, h, None
-                    if q + _pc + 4 > e:
+                if pointer_cell_successor(h) is not None:
+                    # A POINTER CELL, and the list it sits in. Both are LINKED-LIST
+                    # elements that state their next at slot 1, so the list is walked by
+                    # the pointers it stores rather than by a stride:
+                    #
+                    #   [09|49][next][payload]   3 words -- states a payload at slot 2
+                    #   [0x000200.8][next]       2 words -- link only, `entries()` already
+                    #                            calls this chain-family structural, not a
+                    #                            draw (word[1]+52 == next in 98.5%)
+                    #
+                    # They strictly alternate. `stylized_rocks_magma` record 9 is why the
+                    # list has to be walked and not just entered: its three pointer cells
+                    # name TWO DISTINCT payloads (0x13ec, 0x1328), so following the first
+                    # cell's slot 2 and stopping loses the second entry outright. That is
+                    # the regression this branch was written wrong the first time and
+                    # caught by diffing entry counts against HEAD -- 12 records, all
+                    # 2 entries -> 1.
+                    #
+                    # Only the pointer cells are yielded; the links carry nothing. The
+                    # payloads are read by `fx_walk`, which follows slot 2 on each cell it
+                    # sees here -- one derivation, used by both halves.
+                    # `q` is already in `seen` -- the outer loop adds it on arrival, so
+                    # this steps rather than re-testing it and stopping on the first cell.
+                    while o <= q < e - 7:
+                        hh = struct.unpack_from('<I', d, q)[0]
+                        if pointer_cell_successor(hh) is not None:
+                            yield q, hh, None
+                        elif (hh >> 16) != 0x0002:
+                            break
+                        if q + 8 > e:
+                            break
+                        nq = struct.unpack_from('<I', d, q + 4)[0] + 52
+                        if nq in seen or not (o <= nq < e - 7):
+                            break
+                        seen.add(nq)
+                        q = nq
+                    if not pending:
                         return
-                    q = struct.unpack_from('<I', d, q + _pc)[0] + 52
-                    if not (o <= q < e - 7) or q in seen:
-                        if not pending:
-                            return
-                        q = pending.pop()
+                    q = pending.pop()
                     continue
                 _lf = leaf_successor(h)
                 if _lf is not None:
