@@ -257,6 +257,25 @@ def _interaction_walk(r, s):
         for _ in range(n):
             if _is_image_input(r, pj, pos, masks, ri):
                 inputs.append(pos)             # state-11 image input
+            else:
+                # STATE 3 IS NOT ALWAYS AN IMAGE INPUT, and a word that fails the test is
+                # still a word this field occupies. This used to advance `pos` and record
+                # NOTHING, so the walk knew the slot was taken but not by what, and every
+                # consumer reading `param_slots` was silently short.
+                #
+                # It is what hid emboss BrickWall_02 record 330's four floats -- 0.125 and
+                # 0.196 three times under a set colour flag, a per-channel Float4 by
+                # SPEC 6.4 -- from the slot-by-slot accounting while the walk still charged
+                # their width to `end`.
+                #
+                # What actually sits there, over 40 files: blend 88 of 88 a baked value;
+                # directionalwarp 60 program pointers and 58 baked; emboss 3 and 2. So it is
+                # a parameter either way, and recording it as state 3 says exactly that --
+                # the field is present and occupied, its kind is what the pointer test just
+                # declined to call an edge. Nothing is recovered that was lost: every one of
+                # those program pointers is already in `Record.programs`, which scans the
+                # header slots. What changes is that the slot is ACCOUNTED.
+                param_slots.append((pj, 3, pos, 1))
             pos += 1
     prog = None if size_pos in inputs else size_pos
     param_slots = _restraddle(r, w1, param_slots)
@@ -469,6 +488,8 @@ def decompose(r):
             for _ in range(n):
                 if _is_image_input(r, j, pos, masks, ri):
                     inputs.append(pos)         # state-11 image input
+                else:
+                    param_slots.append((j, 3, pos, 1))   # occupied, just not an edge
                 pos += 1
     # prog = the size-expression slot (what size_or_baked reads) = the first slot after the base
     # region (the first cls slot when there is one). None only when that slot is itself an image
