@@ -86,7 +86,8 @@ catalogue: operation ids `0x08`, `0x19`, `0x38`, `0x3D` are not real operations.
 
 Grouped by family, by operation id within a family, and by type (float, int, bool) within
 an id. Columns 1–4 give the opcode hex at component counts 1–4 (`·` = that width does not
-occur).
+occur). An opcode marked `*` falls below the catalogue threshold and is established
+structurally — see the note under the table.
 
 **Values and references**
 
@@ -103,6 +104,7 @@ occur).
 
 | type | id | 1 | 2 | 3 | 4 | instructions | % | files | meaning |
 |---|---|---|---|---|---|---:|---:|---:|---|
+| float | `03` | `0503`\* | · | · | · | 3,603 | — | 34 | reads the cross-record CSE cache written by `0x06` |
 | float | `04` | `0504` | `0544` | `0584` | `05C4` | 393,434 | 1.62 | 284 | get — read variable slot |
 | int | `04` | `0604` | · | · | · | 96,487 | 0.40 | 288 | get — read variable slot |
 | bool | `04` | · | `0444` | · | · | 12,755 | 0.05 | 81 | get — read variable slot |
@@ -117,6 +119,7 @@ occur).
 | float | `09` | `0D09` | `0D49` | `0D89` | `0DC9` | 708,596 | 2.92 | 390 | select / ifelse — `select(c,a,b)` |
 | int | `09` | `0E09` | · | · | · | 43,924 | 0.18 | 267 | select / ifelse |
 | bool | `09` | · | `0C49` | · | · | 6,303 | 0.03 | 74 | select / ifelse |
+| float | `0B` | `150B`\* | · | · | · | 542 | — | 20 | `while` — a loop, no immediate (see below) |
 | float | `0C` | `090C` | `094C` | `098C` | `09CC` | 1,149,426 | 4.73 | 312 | sequence — chain statements |
 | int | `0C` | `0A0C` | `0A4C` | · | · | 666,922 | 2.75 | 290 | sequence — chain statements |
 | bool | `0C` | · | `084C` | · | · | 45,232 | 0.19 | 287 | sequence — chain statements |
@@ -127,8 +130,9 @@ occur).
 |---|---|---|---|---|---|---:|---:|---:|---|
 | float | `0D` | · | `094D` | `098D` | `09CD` | 1,831,842 | 7.54 | 418 | construct vector (concatenate; always 2 operands) |
 | int | `0D` | · | `0A4D` | · | · | 5,354 | 0.02 | 171 | construct vector |
+| float | `0F` | · | · | · | `11CF`\* | 28 | — | 6 | probably `vec4` — build a 4-vector from four scalars |
 | float | `10` | `0910` | `0950` | `0990` | `09D0` | 1,276,159 | 5.25 | 408 | swizzle (packed 2-bit mask) |
-| int | `10` | `0A10` | · | · | · | 179 | 0.00 | 17 | swizzle (packed 2-bit mask) |
+| int | `10` | `0A10`\* | · | · | · | 179 | 0.00 | 17 | swizzle (packed 2-bit mask) |
 
 **Type conversion**
 
@@ -159,6 +163,7 @@ occur).
 | type | id | 1 | 2 | 3 | 4 | instructions | % | files | meaning |
 |---|---|---|---|---|---|---:|---:|---:|---|
 | bool | `1D` | · | `085D` | · | · | 55,451 | 0.23 | 380 | eq |
+| bool | `1E` | · | `085E`\* | · | · | 2,927 | — | 21 | `neq` |
 | bool | `1F` | · | `085F` | · | · | 284,788 | 1.17 | 384 | gt |
 | bool | `20` | · | `0860` | · | · | 74,169 | 0.31 | 349 | gteq |
 | bool | `21` | · | `0861` | · | · | 79,974 | 0.33 | 327 | lr (less than) |
@@ -188,8 +193,11 @@ occur).
 | float | `27` | `0527` | · | · | · | 8,610 | 0.04 | 259 | sin |
 | float | `28` | `0528` | · | · | · | 21,738 | 0.09 | 279 | sqrt |
 | float | `29` | `0529` | · | · | · | 12,707 | 0.05 | 65 | ln |
+| float | `2A` | `052A`\* | · | · | · | 3,733 | — | 45 | `exp` — 578/578 exact in `ie_processing` |
 | float | `2B` | `052B` | `056B` | · | · | 723,550 | 2.98 | 341 | exp2 |
 | float | `2D` | `052D` | · | · | · | 3,509 | 0.01 | 203 | atan2 |
+| float | `35` | `0535`\* | · | · | · | 3,903 | — | 37 | `log2` — source-confirmed via `ie_pcloud` |
+| float | `36` | `0936`\* | · | · | · | 53 | — | 8 | `pow(x, y)` — proved via sRGB closed form (see below) |
 
 **Geometry and interpolation**
 
@@ -217,21 +225,17 @@ occur).
 
 ---
 
-## Confirmed below the catalogue threshold
+## Below the catalogue threshold (`*`)
 
-The ≥20-specimen filter removes decode noise but also removes rare real instructions. These
-are established structurally, not by frequency:
+The ≥20-specimen filter removes decode noise but also removes rare real instructions. The
+eight opcodes marked `*` are established structurally, not by frequency, and their counts
+come from a filter-free re-check rather than the catalogue pass. The `%` column is a share
+of the catalogued total, which is measured without them, so it is left as `—` on those rows;
+`0A10`, which the catalogue does carry, is counted at 181 instructions in 18 specimens by
+that re-check against the 179/17 in its row.
 
-| opcode | type | comps | id | instructions | files | meaning |
-|---|---|---:|---|---:|---:|---|
-| `0503` | float | 1 | `03` | 3,603 | 34 | reads the cross-record CSE cache written by `0x06` |
-| `150B` | float | 1 | `0B` | 542 | 20 | `while` — a loop, no immediate (see below) |
-| `11CF` | float | 4 | `0F` | 28 | 6 | probably `vec4` — build a 4-vector from four scalars |
-| `0A10` | int | 1 | `10` | 181 | 18 | integer swizzle |
-| `085E` | bool | 1 | `1E` | 2,927 | 21 | `neq` |
-| `052A` | float | 1 | `2A` | 3,733 | 45 | `exp` — 578/578 exact in `ie_processing` |
-| `0535` | float | 1 | `35` | 3,903 | 37 | `log2` — source-confirmed via `ie_pcloud` |
-| `0936` | float | 1 | `36` | 53 | 8 | `pow(x, y)` — proved via sRGB closed form (see below) |
+`085E` sits in the width-2 column with the other bool comparisons, which is what its bits
+6–7 declare; those bits are inert for booleans, so the width carries no meaning there.
 
 ---
 
