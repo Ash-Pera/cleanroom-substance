@@ -36,10 +36,28 @@ WHAT IT REPORTS, and the one finding that reframes the rest:
      signal here. Three records cannot establish a rule; what they establish is that the
      value probe is standing in for something the file states.)
 
-  4. THE OPEN QUESTIONS in `assume`, with their arm counts. These are the live guesses.
-     They are not annotations -- they move pixels: on Bricks, `fx.combine=add` moves the
-     overall reference correlation from +0.209 to +0.271 while making basecolor WORSE
-     (-0.250 to -0.337). Any residual analysis is conditional on where these are set.
+  4. THE OPEN QUESTIONS in `assume`, with their arm counts. These are the live guesses,
+     and a residual analysis is conditional on where they are set.
+
+     A SWEEP THAT USED TO BE QUOTED HERE IS WITHDRAWN. It read "on Bricks, fx.combine=add
+     moves the overall reference correlation from +0.209 to +0.271 while making basecolor
+     worse (-0.250 to -0.337)". The numbers are not reproducible and should not be cited.
+     Nine arms ran as nine sequential processes over eleven minutes against this shared
+     working tree, and FOUR COMMITS LANDED INSIDE THAT WINDOW -- one bounding shuffle's
+     header, one bounding `classified_programs`' scan, and one changing `refcompare`
+     itself. So the arms did not run against the same code, and the differences between
+     them cannot be attributed to the arm.
+
+     The defence usually offered for a sequential sweep does not apply. `sbsruntime.SAMPLERS`
+     is module-level and never cleared at `render()` entry, so a file renders differently
+     depending on what rendered before it; that hazard at least moves every arm together
+     when each arm renders the same packs in the same order. CODE DRIFT DOES NOT. It is a
+     before/after difference wearing an A/B's clothes.
+
+     What survives is only the qualitative claim these questions are here for: the arms are
+     not annotations, they change output. Anything quantitative needs a SAME-MOMENT
+     comparison -- every arm in one run against one pinned tree (`git show HEAD:`, not the
+     shared checkout), with `sbsruntime.SAMPLERS.clear()` between files.
 """
 import collections
 import glob
