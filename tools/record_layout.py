@@ -32,6 +32,7 @@ missing for stated reasons:
     uniform                  no w1 word at all; slot 1 is an edge
     levels                   five fields, and its baked widths are not yet separated
 """
+import functools
 import json
 import os
 
@@ -39,6 +40,12 @@ _COSTS = None
 
 
 def costs():
+    """The fitted slot costs, loaded once.
+
+    `header_words` is memoised on (filter, word0, w1, version) and is therefore only sound
+    while this table is fixed. It is loaded once per process and never reloaded, so that
+    holds; a caller that ever swaps the table must call `header_words.cache_clear()`.
+    """
     global _COSTS
     if _COSTS is None:
         p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'costs.json')
@@ -50,6 +57,7 @@ def costs():
     return _COSTS
 
 
+@functools.lru_cache(maxsize=1 << 16)
 def header_words(filter_id, word0, w1, version=None):
     """Header length in words from the masks alone, or None if not derived.
 

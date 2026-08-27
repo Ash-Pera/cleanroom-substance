@@ -133,7 +133,8 @@ def _interaction_walk(r, s):
             pos += 1
     prog = None if size_pos in inputs else size_pos
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
-                        'param_slots': param_slots, 'end': pos, 'prog': prog})
+                        'param_slots': param_slots, 'end': _model_end(r, pos),
+                        'prog': prog})
 
 
 def _fxmaps_walk(r, spec):
@@ -279,8 +280,47 @@ def decompose(r):
     # data (which can coincidentally parse as a program), and layout reports no size.
     prog = None if (f == 17 or (f == 16 and not (r.cls & 1)) or size_pos in inputs) else size_pos
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
-                        'param_slots': param_slots, 'end': pos, 'prog': prog})
+                        'param_slots': param_slots, 'end': _model_end(r, pos),
+                        'prog': prog})
 
+
+
+def _model_end(r, fallback):
+    """The header length from `record_layout.header_words`, or `fallback`.
+
+    THE WALK AND THE MODEL ARE NOT THE SAME ARITHMETIC, and where they differ the model is
+    the one that was fitted. `derive_costs` solves `header = const + sum of set-bit costs`
+    against boundaries observed in the file, and keeps a filter only if the rounded costs
+    reproduce EVERY observed header exactly -- it currently does so for 21 filters at
+    100.000%, covering 99.98% of records, `shuffle`, `distance`, `dyngradient`, `normal`,
+    `uniform` and `emboss` among them. `header_words` evaluates that sum directly. This walk
+    approximates it by appending one slot per unit of cost, which cannot express two things
+    the fit uses: a NEGATIVE coefficient (`range(int(round(-1.0)))` yields nothing rather
+    than subtracting) and a `const` that already accounts for the base region (the walk adds
+    `n_base` input slots on top of it).
+
+    Both show up as disagreement on exactly six filters and nowhere else -- 852,238 records
+    agree, and `blur`, `sharpen` and `warp`, whose `end - 1` reads are verified by
+    containment on 15,371, 1,323 and 13 records, are all in the agreeing set, so taking the
+    model's answer changes nothing there.
+
+    Containment settles the direction independently where it can reach: `normal` record 362
+    declares 2.01 at slot 4, and `header_words - 1` is 4 while the walk's `end - 1` is 6.
+
+    The SLOT LISTS are left as the walk built them. They are this function's own
+    accumulation and a position in them can now exceed `end`; that is a true statement about
+    the walk rather than something to paper over, and every consumer already bounds slots by
+    the record. Correcting the slot positions needs the cost model's per-bit attribution,
+    which is a separate piece of work from the header length.
+    """
+    import record_layout
+    try:
+        hw = record_layout.header_words(
+            r.filter_id, r.words[0], r.words[1] if len(r.words) > 1 else None,
+            r.asm.header.get('version') if isinstance(r.asm.header, dict) else 0)
+    except Exception:
+        return fallback
+    return fallback if hw is None else hw
 
 
 def _bounded(r, d):
