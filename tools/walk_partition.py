@@ -28,24 +28,38 @@ found two structures away is real bytecode and will disassemble. The claim it ma
 WHOSE program it is, is what fails. That is exactly the failure the FX leaf scan and the
 record-header word scan both had, and it is visible here without rendering anything.
 
-THIS DOES NOT PROVE A DECODE CORRECT. Staying inside your own extent is necessary, not
-sufficient: a rule can read the wrong slot within the right structure and pass. It bounds
-the error rather than eliminating it, and it is falsifiable on 100% of the corpus instead
-of on the 5 packages a render can score.
+It bounds the error rather than eliminating it, and it is falsifiable on 100% of the corpus
+instead of on the 5 packages a render can score.
 
-THE EXTENT IS A PROXY, and that is the one place to be careful. A structure's end is taken
-as the START OF THE NEXT STRUCTURE the walk yields, which is exact only where structures
-are laid out consecutively. FX children are reached by POINTER, so a node whose child
-happens to sit three words along reads as a three-word node whether or not it is one. That
-is why a violation here is a CONFLICT to explain, not a verdict on its own: either the
-attribution crosses a boundary, or the structure is longer than the next start suggests and
-the walk has placed something inside it. Both are decode problems; they are different ones.
-Where a structure states its own extent -- an FX entry ends at its inline program, whose
-length that program's first word gives -- that stated end is the better bound and this
-check is the weaker form of it.
+THE EXTENT IS THE STRUCTURE'S OWN STATEMENT, not its neighbour's position. A node's fields
+end at the SUCCESSOR slot, which the header's mask locates (`node_shape`, `leaf_successor`,
+and the one hand-stated `FX_NODES2` branch row); an entry's tag declares its slots and the
+entry states where the next one begins by the slot reaching furthest forward. Only where a
+structure states nothing does this fall back to the next start, and those rows are labelled
+`(proxy)` so the two are never read as one measurement.
+
+THAT DISTINCTION OVERTURNED A RESULT, which is why it is worth the code. Under the proxy
+this reported 40 violations on the `0x??1B` BRANCH -- a program at word 4 of a "3-word
+structure" -- and that looked like evidence against the hand-stated `FX_NODES2` row. It was
+evidence against the proxy. The branch header states six words (its second child sits at
+word 5), and the walk yields a child three words in because children are reached by POINTER,
+not by adjacency. Under the stated extent all 40 are inside their structure and the row is
+vindicated. A neighbour's position is not a bound when the neighbour is not a neighbour.
+
+WHAT SURVIVES: zero violations wherever a structure states its extent -- 80 files / 46,841
+attributions and again at 200 files / 142,637 attributions, every remaining row `(proxy)` --
+and 18 (86 at 200 files) where none is stated -- the entry disjoint-span scan's programs,
+at slots 10..13 of words whose "tag" (`0x9`, `0xb`, `0x49`) has no entry layout at all. That
+is the sharper form of the finding: not that the scan crosses a known boundary, but that it
+attributes programs to a word that declares no shape to stay inside of.
+
+THIS DOES NOT PROVE A DECODE CORRECT either way. Staying inside your own extent is
+NECESSARY, NOT SUFFICIENT: a rule can read the wrong slot within the right structure and
+pass clean.
 """
 import collections
 import os
+import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -67,8 +81,52 @@ def _naming_slots(rec, q, prog, limit):
     return out
 
 
+def stated_extent(rec, kind, q, tag):
+    """The structure's OWN stated width in words, or None if it states none.
+
+    Preferred over the next-start proxy, because it is what the structure says about
+    itself rather than what its neighbour's position implies.
+
+      node   its fields end at the SUCCESSOR slot, which the header's mask locates:
+             `node_shape` returns that byte offset, `leaf_successor` the bit-7-clear arm,
+             and `FX_NODES2` the one branch row still stated by hand. Width is the last
+             field's slot plus one.
+      entry  the tag's layout declares its slots (`fx_entry_layout`), and the entry states
+             where the next one begins by the slot reaching furthest forward -- the linked
+             list `fx_table` walks. The nearer of the two bounds the entry's own fields.
+    """
+    if kind == 'node':
+        sh = sbsasm.node_shape(tag)
+        if sh:
+            return sh[0] // 4 + 1
+        lf = getattr(sbsasm, 'leaf_successor', lambda _t: None)(tag)
+        if lf is not None:
+            return lf // 4 + 1
+        s2 = sbsasm.FX_NODES2.get(tag & 0xFF)
+        if s2:
+            last = max(list(s2[0] or ()) + list(s2[1] or ()) or [0])
+            return last // 4 + 1
+        return None
+    hdr = sbsasm.fx_entry_layout(tag)
+    if not hdr:
+        return None
+    span = max(sl for sl, _n, _k in hdr) + 1
+    # The stored next-pointer, read exactly as `fx_table` reads it.
+    d, e = rec.asm.data, rec.end
+    nxt = None
+    for sl in range(1, span + 1):
+        if q + 4 * sl + 4 > e:
+            break
+        pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
+        if q < pv < e and (nxt is None or pv > nxt):
+            nxt = pv
+    if nxt is not None:
+        return min(span, (nxt - q) // 4)
+    return span
+
+
 def fx_violations(rec):
-    """[(kind, tag, slot, extent_words)] for FX attributions outside their own structure."""
+    """[(kind, tag, slot, extent_words, source)] for attributions outside their structure."""
     try:
         items = list(rec.fx_walk())
     except Exception:
@@ -82,7 +140,15 @@ def fx_violations(rec):
         kind, q, tag, prog = it[0], it[1], it[2], (it[3] if len(it) > 3 else None)
         if prog is None or q not in nxt:
             continue
-        extent = (nxt[q] - q) // 4              # this structure's own width, in words
+        # THE STRUCTURE'S OWN STATEMENT FIRST; the neighbour's start only where it makes
+        # none. The two disagree, and the disagreement is the point -- see the `0x??1B`
+        # branch, whose header states six words while the next structure the walk yields
+        # begins three words in.
+        extent = stated_extent(rec, kind, q, tag)
+        source = 'stated'
+        if extent is None:
+            extent = (nxt[q] - q) // 4
+            source = 'proxy'
         if extent <= 0:
             continue
         slots = _naming_slots(rec, q, prog, 32)
@@ -92,7 +158,7 @@ def fx_violations(rec):
         # slot instead would report one violation per repeat and flag correct attributions
         # that happen to have a duplicate word downstream.
         if slots and all(k >= extent for k in slots):
-            bad.append((kind, tag, min(slots), extent))
+            bad.append((kind, tag, min(slots), extent, source))
     return bad
 
 
@@ -133,8 +199,8 @@ def census(paths=None):
             hdr[name] += len(hv)
             if r.filter_id != 4:
                 continue
-            for kind, tag, k, extent in fx_violations(r):
-                fx[(kind, 'slot %d of a %d-word structure' % (k, extent))] += 1
+            for kind, tag, k, extent, src in fx_violations(r):
+                fx[(kind, 'slot %d of a %d-word structure (%s)' % (k, extent, src))] += 1
             try:
                 items = list(r.fx_walk())
             except Exception:
