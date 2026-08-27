@@ -39892,3 +39892,81 @@ all from asking what a word LOOKS like.
 
 This is an argument from the format's own per-channel width rule plus an exceptionless corpus,
 not from a source declaration; no permitted source names either node under filter 3.
+
+### Correction: four filters carry half-words, and the number that matters is TIES, not fractions
+
+f659f06 says "emboss is the only spec in costs.json whose base vector is FRACTIONAL". That is
+true of `base` and I generalised it into "emboss is the uniquely ill-fitted filter", which is
+not. I had only looked at `base`. Checking `const`, `cls` and `w1` as well:
+
+    emboss        base[0]=4.5   base[6]=2.5
+    sharpen       cls[10]=0.5   cls[11]=0.5   cls[14]=-0.5
+    dyngradient   const=1.5     cls[10]=0.5   cls[14]=0.5
+    distance      const=2.5     w1[1][1]=1.5  w1[1][2]=1.5
+
+Four filters, and `sharpen` carries a NEGATIVE half -- a field costing minus half a word,
+which has no reading as a width.
+
+THEN I OVER-CORRECTED, and the second error is the more instructive one. My first pass scored
+distance as tying on 338 of 338 records, which looked alarming; it was wrong because I summed
+`const + base + cls` and NOT `w1`, and distance's halves are in `w1`. Replicating
+`header_words`' summation faithfully -- const, cls, conj, w1_present, arity and the w1 states
+with `w1_shift` -- over 150 files:
+
+    dyngradient   24 of 682 totals non-integral   3.52%
+    every other filter                      0     0.00%
+
+`sharpen` and `distance` never tie. Their halves always PAIR into an integer, which is not a
+defect but the model's own encoding of a CONJUNCTION -- `record_layout` states it: bitmap
+tests bits 24 and 27 together, "and an additive model can only reach that through two halves
+and a rounding tie". A paired half is the model representing an AND. I flagged the encoding
+as a bug.
+
+So the real figure is 24 records, all `dyngradient`, whose header length is decided by a
+rounding tie -- and all 24 land EXACT against the pointer bound. They tie and they round
+correctly. The one tie that ever rounded wrong was emboss BrickWall_02 record 330, and its
+cause was a spec applied outside its fitted version range, not the half itself.
+
+The sentence worth keeping is therefore narrower than the one I banked: a fractional
+coefficient is not evidence of a bad fit, a NON-INTEGRAL TOTAL is, and there are 24 of those
+in the corpus.
+
+### The walk's slot lists are not bounded by its own `end`, and two consumers are saved by luck
+
+From cleanroom-substance-0b (b052476), recorded here because `walk_partition` computes its
+"accounted" set from exactly these lists. `_bounded` guards `end` and `prog`; the slot lists
+themselves are unguarded, and 9,463 records have a slot at or past `end` with 1,789 past the
+RECORD -- shuffle 3,781/1,643, dyngradient 2,400/74, distance 1,779/51, normal 1,503/21.
+
+Nothing is wrong in the output today, and 0b's phrasing for why is the part to keep: the
+invariant is STATED in `_model_end`'s docstring and ENFORCED nowhere. "Every consumer already
+bounds slots by the record" is true today and true by coincidence, and a coincidence is not a
+contract. Two of four consumers really check. The other two are saved by accidents:
+`reverify`'s slot-rule counts `cls_slots` unbounded and survives only because no affected
+record is in PARAM_SPEC, and `distance._locate_slot` reads 93 slots outside their own header,
+every one of which happens to hold exactly 0.0 and is refused by a zero guard written for a
+different purpose.
+
+### The "0 disagree against an independent model" headline is stale
+
+Recorded so it is not repeated. cleanroom-substance-ca re-measured decompose against
+`_compute_layout` + `_real_edges` directly, full corpus:
+
+    recorded    925,706 records   925,701 agree   0 disagree   5 uncovered
+    ca's re-run 903,616 records   903,291 agree  10 disagree  315 uncovered
+
+The denominator moved on its own -- corpus drift, not anything either of us did. The 315
+uncovered are decompose DECLINING, none are `_compute_layout` raising: emboss 171 (the
+min_version gate refusing a v5+ fit on v2 records, which is the correct answer and a gain),
+vectorshape 139 (no header cost model at all, as BASE_INPUTS already says), filter 9 five.
+
+The 10 disagreements are all fxmaps in `ie_curve` -- decompose reads 34/19/20/17 inputs where
+`_compute_layout` reads 2/3/4/1, the four-bit `arity_sm` truncation still live in the EDGES
+path. That is a KNOWN divergence with a DIRECTION: decompose is right and `_compute_layout`
+carries the truncated nibble. A future reader should not read 10 as noise, and must not
+"fix" decompose down to match.
+
+Being AHEAD of the independent model is not the same as AGREEING with it, and the whole value
+of that number was two unrelated mechanisms landing on one answer. These are ca's figures,
+not mine; they need re-running once the directionalwarp w1_shift change lands, because the
+tree currently holds it uncommitted.
