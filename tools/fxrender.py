@@ -795,7 +795,43 @@ def entries(rec, baked_pairs=True):
         # count and is deliberately not named one here; what it is remains open. The
         # recovery does not depend on its value, only on stepping over it.
         if (_t2 & 0xF) != 8 or (_t2 >> 16) == 0x0002:
-            continue
+            # THE POINTER LANDS ON A HEADER WORD; THE ENTRIES START AFTER IT. Measured
+            # against HEAD on the same 30 files, this is not covered by `fx_tree`'s
+            # pointer-cell walk (4fc0303): with that walk alone the table blocker is 22
+            # declared outputs and 15 outputs render FLAT; stepping this one word as well
+            # gives 11 and 9, and takes `flat from blend` 4 -> 0 and `flat from shuffle`
+            # 1 -> 0. A flat output already counts as rendered while carrying no
+            # information, so those six are the substantive part.
+            #
+            #     [0x00020018] [ptr] [ptr] [<header word>] [0x00420008] [ptr] ...
+            #                                ^ _nxt lands here   ^ the entries
+            #
+            # AND THEY ARE ENTRIES BY THIS FILE'S OWN TEST. `entry_layout_holds` is the
+            # stopping rule that catches a table walk running into bytecode -- 0.0% of
+            # 49,528 real entries fail it against 82.1% of junk -- and every entry this
+            # recovers passes: 800 of 800, including all 534 whose tag is drawable rather
+            # than another chain-family link. It is required below rather than assumed,
+            # because "six plausible words appeared" is exactly what a runaway looks like.
+            #
+            # The header word reads 2 while the run yields 6 entries, so it is NOT a count
+            # and is deliberately not named one; what it is remains open. Only stepping
+            # over it matters. The 9 of 143 whose next word is not an entry tag are left.
+            #
+            # NARROWER THAN 4fc0303 AND NOT A REPLACEMENT FOR IT. That commit reads the
+            # payload pointer the cell itself stores and walks the whole alternating list;
+            # this follows one target. Where a list names several payloads that walk gets
+            # them all and this would get one, so this is the weaker rule -- it is here
+            # because measurement says it still reaches records the walk does not, not
+            # because it is the better statement of the structure.
+            _after = _nxt + 4
+            if _after + 4 > len(rec.asm.data) or _after in tbl:
+                continue
+            _t3 = struct.unpack_from('<I', rec.asm.data, _after)[0]
+            if (_t3 & 0xF) != 8 or (_t3 >> 16) == 0x0002:
+                continue
+            if not rec.asm.entry_layout_holds(_after, _t3):
+                continue
+            _nxt, _t2 = _after, _t3
         for _at, _tag, _p in rec.fx_table(_nxt):
             if _at in tbl or (_tag & 0xF) != 8 or (_tag >> 16) == 0x0002:
                 continue
