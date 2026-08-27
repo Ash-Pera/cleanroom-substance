@@ -173,17 +173,35 @@ def _has_w1_word(f, w0, ver):
 # cost model fitted a width to each half separately and both are already right (2 words for
 # the baked Float2 under field 12, 1 word for the pointer under field 13).
 #
-# THIS TABLE IS COMPLETE, and that was swept for rather than assumed. The signature of a
-# straddle is an ADJACENT pair -- tiling field j that can only ever read 0b10, field j+1
-# that can only ever read 0b01, and the outer bits 2j and 2j+3 never set in any record.
-# Testing every filter with a `pairs` list over the corpus plus the reference packs, that
-# pattern occurs exactly ONCE: transformation 12,13.
+# COMPLETE FOR ONE SIGNATURE, NOT FOR MISALIGNED GRIDS GENERALLY -- and the difference is
+# not pedantic, because a second misaligned filter exists and this sweep cannot see it.
 #
-# Several fields match ONE HALF of it -- transformation 14, fxmaps 1/4/13, emboss 0,
-# levels 5 -- and none of those is a straddle. A field whose only nonzero state is 1 is a
-# parameter that is always baked; one whose only nonzero state is 2 is always a program.
-# That is ordinary, and calling it a framing error on the strength of the half-signature
-# would invent six fields the file does not have. Only the adjacent pair is evidence.
+# What was swept for: an ADJACENT pair -- tiling field j that can only ever read 0b10,
+# field j+1 that can only ever read 0b01, outer bits 2j and 2j+3 never set. Over the corpus
+# plus the reference packs, across every filter carrying a `pairs` list, that occurs exactly
+# ONCE: transformation 12,13. Several fields match one HALF of it (transformation 14,
+# fxmaps 1/4/13, emboss 0, levels 5) and none is a straddle -- a field whose only nonzero
+# state is 1 is a parameter that is always baked, and one whose only nonzero state is 2 is
+# always a program. Calling those framing errors would invent six fields the file does not
+# have; only the adjacent pair is evidence.
+#
+# WHAT THE SWEEP MISSES, concretely. `directionalwarp`'s grid is off by one too (35f1a93):
+# its parameters sit at bits (1,2) and (3,4), so the misalignment runs across a SEQUENCE
+# rather than sitting in one parameter with dead bits either side. Two independent reasons
+# this sweep is blind to it -- dirwarp's cost spec has no `pairs` list at all, so it was
+# never tested; and its middle field spans intensity's HIGH bit and warpangle's LOW bit,
+# two DIFFERENT parameters, so it takes state 3 and fails the "only ever 0b01" test.
+#
+# AND IT MUST NOT BE ADDED HERE, which is the substantive point rather than a scoping
+# caveat. This relabelling is only sound because each of transformation's two halves has a
+# fitted width equal to the WHOLE parameter's: field 12 state 2 costs 2 words (the baked
+# Float2) and field 13 state 1 costs 1 word (the pointer), so re-labelling recovers the
+# parameter exactly and touches no extent. dirwarp's fitted costs are SUMS ACROSS PARAMETER
+# BOUNDARIES -- `costs.json` gives its field 1 a state-3 width of 2.0, which is
+# intensity-as-program (1) plus warpangle-baked (1) -- so no relabelling can recover the two
+# extents from the one number. That filter needs the cost model re-derived on the right
+# grid, and until then counting back from `end` is the only available reading, because the
+# model's total is right where its per-field attribution is not.
 #
 # {filter: [(low tiling field, high tiling field, real shift, field id to report)]}
 STRADDLED = {2: [(12, 13, 25, 12)]}
