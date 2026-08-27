@@ -2301,11 +2301,49 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         rec.words[1] if len(rec.words) > 1 else None,
                         asm.header.get('version') if isinstance(asm.header, dict) else 0)
                     if _sl is not None and 0 <= _sl - 1 < len(rec.words):
-                        f = float(np.frombuffer(np.uint32(rec.words[_sl - 1]).tobytes(),
-                                                dtype=np.float32)[0])
-                        if np.isfinite(f) and 1e-3 < abs(f) < 1e3:
-                            intensity = f
-                            LOW_CONFIDENCE.add(i)
+                        # THE LAST HEADER SLOT HOLDS EITHER A BAKED FLOAT OR A POINTER, and
+                        # only the baked arm existed. That is the same baked/program split
+                        # `cls_pair_slot` reads for blur, sharpen, warp, shuffle and uniform,
+                        # and the slot here is the walk's, so the two arms are two readings
+                        # of ONE named slot rather than two places to look.
+                        #
+                        # Asking the pointer first, because the test that separates them is
+                        # structural: `valid_program` either resolves at that address or it
+                        # does not. The float arm's `1e-3 < abs(f) < 1e3` cannot make the
+                        # distinction -- a pointer through float32 is a denormal near 1e-40,
+                        # which the window happens to exclude, so those records fell through
+                        # to a refusal reading "neither a program nor a baked float" while
+                        # the record was in fact naming a program.
+                        #
+                        # Corpus-wide, at the last header slot of a `normal` record:
+                        #
+                        #     a valid PROGRAM, width rule also found one     263
+                        #     a valid PROGRAM, width rule found NOTHING       97
+                        #     a baked float                                  989
+                        #     neither                                          4
+                        #
+                        # The 97 are what this arm adds. They are the records that failed on
+                        # ImportTest, SubGraphTest, AnimatedExample and EvilOrb, and every
+                        # one of them reads a denormal at that slot -- 8.6e-41, 2.1e-41,
+                        # 1.35e-38 -- which is a pointer, not an intensity.
+                        _isl = _sl - 1
+                        _iptr = rec.words[_isl] + 52
+                        if (asm.body_lo <= _iptr < asm.body_hi
+                                and asm.valid_program(_iptr)):
+                            try:
+                                _iv = np.asarray(eval_program(
+                                    asm, _iptr, default_inputs(asm, 1), {}, 1)).reshape(-1)
+                            except Exception:
+                                _iv = np.zeros(0, dtype=np.float32)
+                            if _iv.size >= 1 and np.isfinite(_iv[0]):
+                                intensity = float(_iv[0])
+                                LOW_CONFIDENCE.add(i)
+                        if intensity is None:
+                            f = float(np.frombuffer(np.uint32(rec.words[_isl]).tobytes(),
+                                                    dtype=np.float32)[0])
+                            if np.isfinite(f) and 1e-3 < abs(f) < 1e3:
+                                intensity = f
+                                LOW_CONFIDENCE.add(i)
                 if intensity is None:
                     raise Unsupported("normal: intensity is neither a single-width "
                                       "program nor a baked float in the block")
