@@ -2325,6 +2325,45 @@ class Record:
 
         None of that outweighs a reference channel falling from 0.72 to 0.03. Explain record
         137 before routing this.
+
+        THREE FOLLOW-UPS, none of which unblocks it, two of which close off a wrong turn.
+
+        1. The regression is REAL, not a measurement artifact. In-process A/B renders in
+           this repository share `sbsruntime.SAMPLERS` between the two passes, and a change
+           that provably could not affect a file still moved 9 of 18 of its channels that
+           way -- so this one was re-run as two SEPARATE PROCESSES, one per condition:
+
+               memo   basecolor ch0 +0.6658   ch1 +0.8862   ch2 +0.6854
+               walk   basecolor ch0 +0.5495   ch1 +0.0268   ch2 -0.3526
+
+           ch2 does not merely fall, it goes NEGATIVE: the output is anti-correlated with
+           the engine's, which is what an inversion reaching the output looks like.
+
+        2. "(1.0, 0.0) looks like a sentinel" does not survive a census, so the argument
+           from the sources -- zero of 12 declared `levels` nodes put `leveloutlow` above
+           `levelouthigh` -- is a small-sample artifact and not evidence against the read.
+           Over 200 specimens, 17,119 records carry both:
+
+               (1.0, 0.0)          4,430   the SINGLE most common pair, 25.9%, in 148 files
+               inverted in total   4,723
+               normal              12,190
+
+           An inverted output range is the format's ordinary way to invert a map. The walk
+           is reading a real and common setting, not misreading a sentinel.
+
+        3. "Skip the inverted pairs" is NOT the missing rule. Walking `levels` but dropping
+           any pair with `leveloutlow > levelouthigh` is worse than either side above:
+
+               AO ch0        +0.9193  ->  -0.9193   (mae 0.028 -> 0.773, a clean sign flip)
+               roughness     +0.8834  ->  +0.4442
+
+           So some inversions are load-bearing -- AO depends on one -- while others wreck
+           basecolor. The population is heterogeneous and a blanket rule in either
+           direction is wrong.
+
+        What is left to find is therefore a rule about WHICH records apply their levels,
+        not about placement (source-confirmed), not about the values (real and common), and
+        not about inversion as a category (needed in some places, harmful in others).
         """
         import decompose as _decompose
         d = _decompose.decompose(self)
