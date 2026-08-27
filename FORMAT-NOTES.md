@@ -39744,3 +39744,39 @@ extents at slots 3 and 4, 4 stating their end alone, and 21 that are a neighbour
 Nothing left is evidence that the fitted header end runs short, and combined with the 0 of
 33,385 that run long, `costs.json` is now bounded on both sides by structure that owes it
 nothing.
+
+## Two filters state their header instead of costing it, and they are the only ones never wrong
+
+`costs.json` fits four different kinds of model, one per filter, and they are not equally
+good. Scored against the pointer bound -- the record's own first inline program, which owes
+the cost model nothing -- over 40 files, excluding the three filters whose embedded payload
+sits in the gap by design (fxmaps' tree, gradient's ramp, curve's table):
+
+    mode          exact    gap   viol   exact%
+    absent         1920      1      0   99.95%
+    arity          4458      0      0  100.00%
+    codes         47899     20      0   99.96%
+    per_record      470      1      0   99.79%
+
+ARITY IS THE ONLY ONE THAT IS NEVER WRONG, and the reason is what it does differently:
+it READS THE VARIABLE PART FROM THE RECORD. `fxmaps` states its input count in w1 bits
+10..13 (`arity_sm: [10, 15]`) and its header is `3 + n`, exact on 3,182 of 3,182;
+`pixelprocessor` has its arity read by `_pp_edges` off a 5-bit field. The only fitted
+numbers left are a constant and one word per unit -- both integers, both structurally
+obvious. Nothing is interpolated, so there is no rounding and nothing to round wrongly.
+
+The other three modes fit WIDTHS. `codes` fits a width per field per state, `absent` a cost
+per class bit, and both are right almost always and unverifiable in principle: a width that
+happens to fit every record in the corpus is still a fit.
+
+THE TWO ENDS OF THIS ARE THE SAME FILTER STORY TWICE. `emboss` is the only filter in
+`costs.json` whose base vector is FRACTIONAL -- 4.5 and 2.5 -- and `record_layout` says
+plainly that "an additive model can only reach that through two halves and a rounding tie".
+It is also the only filter that produced a pointer-bound violation in 682,887 records. The
+model that must split a word to fit is the model that eventually rounds the wrong way.
+
+SO THE NO-FITTED-TABLES TARGET IS NOT "FIT BETTER". It is: find, for each filter, where the
+record states its own count. Two filters already do it and score 100.00%; the question for
+the other twenty is whether their headers state something equivalent that has not been
+looked for -- an arity field, a present-parameter count -- rather than whether their widths
+can be fitted more tightly. `arity` is the existence proof that the format is willing to say.
