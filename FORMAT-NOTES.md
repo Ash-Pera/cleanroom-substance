@@ -39712,6 +39712,44 @@ warp 1, uniform 1 and a few others -- where no slot states either edge and the g
 start. 21 of 33,385 bounded records is 0.06%, and that -- not 778 -- is the population where
 the header/payload boundary is genuinely unaccounted for.
 
+## The cost model has fourteen non-integer coefficients, and one of them decides all of emboss
+
+Asked where things are still hardcoded, and the answer that matters is not a slot index -- it is
+`costs.json` itself. 21 filters, 1,443 numeric values, 31 distinct. 678 of them are 1.0 and 603 are
+0.0, so the surface is far more legend-like than free -- but **fourteen are not integers at all**,
+and two are NEGATIVE:
+
+    13.cls.10  0.5    13.cls.11  0.5    13.cls.14 -0.5    13.cls.15 -0.5    13.cls.26  1.5
+    19.cls.10  0.5    19.cls.14  0.5    19.cls.15  0.5    19.const   1.5
+    21.const   2.5    21.w1.1.1  1.5    21.w1.1.2  1.5
+    8.base[0]  4.5    8.base[6]  2.5
+
+A model of WORD COUNTS cannot have half a word or minus one. These are least-squares residue: the
+regression that produced the file was never constrained to non-negative integers, and the reader
+resolves them with `int(round(...))` -- which in Python is BANKER'S rounding, so 0.5 goes to 0, 1.5
+to 2, 2.5 to 2 and 4.5 to 4. The tie-break is an implementation detail of `round()`, not a decode.
+
+Flipping each tie the other way, over 80 files:
+
+    twelve of the fourteen        0 readings change    inert; those bits are never exercised
+    8.base[0]  4.5 -> 4 or 5     75 of 75 change      EVERY emboss record
+    8.base[6]  2.5 -> 2 or 3     12 of 75 change
+
+`8.base[0]` is arbitrated and settles cleanly. Against the independent `_compute_layout`/`_real_edges`
+model over the full corpus: **4 agrees 546 of 546, 5 agrees 0 of 546.** So banker's rounding happens
+to pick the right value -- by luck, not by design. Had the fit landed on 3.5 or 5.5 the same rule
+would have chosen differently for no reason connected to the format.
+
+`8.base[6]` is NOT arbitrable on anything available. 2 and 3 give identical agreement on edges
+(546/546 both), identical `prog` (546/546 both) and identical `end == header_words` (375 both). The
+12 readings it moves are ones no independent model reaches. It stays genuinely undecided.
+
+AND THE WAY THIS NEARLY GOT REPORTED WRONG IS THE POINT. The first sweep tested all fourteen and
+printed "0 readings change" for twelve, with the two `8.base` entries falling out as "(unreadable)"
+-- my path walker indexed a LIST with a string key. Twelve inert results and two errors reads like a
+clean finding; the two that errored were the only two that mattered. A sweep that silently drops the
+cases it cannot address is worse than one that never ran, because it produces a number.
+
 ### And the 21 are the NEXT record's FX table, so the residue is zero
 
 Read the bytes rather than the counts and the last 21 stop being a residue. Their gap words
@@ -39744,6 +39782,207 @@ extents at slots 3 and 4, 4 stating their end alone, and 21 that are a neighbour
 Nothing left is evidence that the fitted header end runs short, and combined with the 0 of
 33,385 that run long, `costs.json` is now bounded on both sides by structure that owes it
 nothing.
+
+## CORRECTION: the fractional costs are not all impossible, and pinning them breaks 471 readings
+
+I wrote that `costs.json`'s fourteen non-integer coefficients are "least-squares residue" in a model
+of word counts, and that a word count cannot be half a word. That is right for one section and WRONG
+for the other, and the measurement is what separated them.
+
+Pinning each non-integer to the integer the reader already resolves it to -- which should have been
+behaviour-preserving by construction -- changed **471 of 903,616 readings**. Reverted.
+
+The reason is the shape of the two paths:
+
+  * **The cls/const/w1 path.** `decompose` does `pos += int(round(coef))`, rounding EACH TERM. A
+    half there really is meaningless: it rounds to 0 and the information is gone. All twelve
+    fractional coefficients on this path (sharpen 13, dyngradient 19, distance 21) are INERT --
+    flipping each tie either way changes 0 readings -- so nothing depends on them today.
+
+  * **The interaction path.** `record_layout._interaction` computes
+    `total = sum(base * features) + tagbit0 * sum(cross * features)` and rounds ONCE at the end. That
+    is a DOT PRODUCT, and a regression coefficient in it has no obligation to be an integer -- only
+    the total does. emboss's `base[0] = 4.5` and `base[6] = 2.5` are coefficients of this kind, and
+    pinning them shifts the total by 0.5, which flips the rounding wherever the rest of the sum lands
+    on a boundary. That is the 471.
+
+So the honest statement is narrower than the one I made: the interaction coefficients are not
+impossible values, they are ordinary least-squares coefficients under a round-once model. What IS a
+real hazard is the per-term rounding in `decompose`'s cls path -- if a fractional coefficient there
+ever became load-bearing, `decompose` would silently discard it while `header_words`, which sums
+first, would not. The two implementations of the same model would then disagree, and today they do
+not: 862,137 of 903,301 agree, and every one of the 41,164 disagreements is `fxmaps`, whose `end`
+comes from `_fxmaps_walk` rather than the cost model at all. The 171 `header_words is None` are
+emboss.
+
+`8.base[0]` remains genuinely load-bearing -- flipping it changes all 75 emboss readings in the
+sample, and against the independent model 4 agrees 546 of 546 while 5 agrees 0 of 546. But "pin it to
+4" is not the fix, because 4 is only correct as a term in that sum. The fix, if one is wanted, is the
+one `derive_costs` already applied to `bitmap`: give the model the column it is missing so it stops
+needing a fractional coefficient to express a conjunction.
+
+## Where the walk is really the cost model: presence is read, EXTENT is fitted
+
+The walk and the cost model do different halves of the same job, and the split is worth stating
+plainly because "the record is walked" has been used to mean more than it does.
+
+WHAT IS READ FROM THE FILE, for every record: which fields are present. The class word's set bits,
+w1's two-bit codes, the arity field, the tag's colour bit, `0x3039`, the `+52` skew, and every
+pointer the structure stores. That half is genuinely structural and no table decides it.
+
+WHAT COMES FROM `costs.json`: how many words each present field occupies. Every `pos +=` in
+`decompose` advances by a fitted number. Censused over all 903,616 records by the path each takes:
+
+    codes       (fitted const + cls + w1 widths)   418,450   46.3%   blend, dirwarp, warp, ...
+    interaction (REGRESSION evaluated per field)   379,152   42.0%   transformation, levels,
+                                                                    fxmaps, uniform
+    arity       (fitted widths)                     57,965    6.4%   pixelprocessor
+    absent      (fitted widths)                     40,223    4.5%   gradient, blur, bitmap
+    per_record  (fitted widths)                      7,682    0.9%   shuffle
+    no cost model at all                               144    0.0%   vectorshape 139, filter9 5
+
+The two regimes are not equally fitted, and the second is the one to be careful about:
+
+  * **The 57.7% on `codes`/`absent`/`arity`/`per_record`** take their widths from per-(filter, class
+    bit) and per-(filter, w1 field, state) CONSTANTS. 678 of the file's values are 1.0 and 603 are
+    0.0, so this is close to a width legend -- a slot is present and costs a word, or it is not.
+
+  * **The 42.0% on `interaction` are not reading a legend at all.** `_interaction_walk` computes each
+    field's width as `int(round(base[i] + tagbit0 * cross[i]))` -- a linear model with 142 `base` and
+    137 `cross` coefficients, evaluated and rounded PER FIELD. Those coefficients need not be
+    integers and are not (emboss carries 4.5 and 2.5), because only their combination has to predict
+    a word count. `transformation` alone is 234,859 records, 26% of the corpus, decoded this way.
+
+So for two records in five, "the walk" means a regression is evaluated at each field boundary. That
+is a much weaker claim than the one the phrase suggests, and it is the honest answer to where the
+cost model still stands in for the format. `fxmaps` is the interesting inversion: it has NO cost
+model (`const: None`), and its walk -- `3 + n_in`, the input count read from w1's arity field -- is
+in that narrow sense more structural than the filters that do.
+
+Roughly 642 of `costs.json`'s 1,443 numbers are cost-bearing (cls 234, base 142, cross 137, w1 105,
+const 16, conj 3, arity 3, arity_sm 2); the remainder are the fit's own bookkeeping -- identified,
+unident, nullity, flags -- which no reader consults.
+
+## CORRECTION: the interaction "regression" is the WIDTH LEGEND, sparsely encoded -- except emboss
+
+I said last section that for 42% of records "the walk means a regression is evaluated at each field
+boundary", and called that "a much weaker claim than the phrase suggests". That is true about the
+FORM and wrong about the CONTENT, and reading the coefficients settles it.
+
+`transformation` is 74 coefficients of which **8 are nonzero**, and every one decodes to a stated
+width:
+
+    [ 0] intercept              3       tag + w1 + one base image input (slots 0,1,2)
+    [10] cls bit 16             1       an inherited scalar
+    [13] cls bit 23             1       an inherited scalar
+    [25] w1 field 3  state 01   4       matrix22 BAKED  = Float4
+    [26] w1 field 3  state 10   1       matrix22 PROGRAM = pointer
+    [29] w1 field 12 state 10   2       offset BAKED = Float2  (via STRADDLED: tiling state 10
+                                        at field 12 is the real code 01)
+    [31] w1 field 13 state 01   1       offset PROGRAM = pointer (real code 10)
+    [34] w1 field 14 state 01   1 grey / 4 colour   a PER-CHANNEL field, cross = 3
+
+That last row is SPEC 6.2's rule -- "per-channel fields are Float1 when grayscale and Float4 when
+colour" -- recovered by the fit rather than given to it. 4, 2, 1 and the 1/4 colour split are the
+type legend, not free parameters. The other 65 coefficients are zero: fields that are absent.
+
+Across all five interaction filters, asking whether the nonzero coefficients fall in the legend
+{0,1,2,3,4}:
+
+    transformation   74 coeffs,  8 nonzero   values 0,1,2,3,4          legend
+    uniform          34 coeffs,  5 nonzero   values 0,1,3              legend
+    levels           64 coeffs, 13 nonzero   values 0,1,3              legend
+    fxmaps           78 coeffs, 15 nonzero   values 0,1,3,4,16,32      16/32 are the input-bank
+                                                                       capacity ladder, structural
+    emboss           34 coeffs,  7 nonzero   values 0,1,2,2.5,3,4.5    2.5 and 4.5 -- NOT widths
+
+So **378,606 of the 379,152 interaction records (99.86%) are decoded by coefficients that are the
+width legend**. The exception is `emboss`, 546 records, carrying the only two coefficients in the
+whole cost model that cannot be read as a width -- and they are exactly the two the earlier sweep
+found load-bearing.
+
+The corrected statement, then: the interaction path is a regression in MECHANISM and a width legend
+in CONTENT, and the one filter where that breaks down is the one filter whose coefficients are
+fractional. That narrows "where the cost model stands in for the format" from 42% of records to 546
+of them. It also says what a derivation would have to reproduce, which is no longer a vague 279
+numbers but seven widths per filter and a rule for the colour split.
+
+## Can the interaction cost model go? Yes for four filters, and an alignment question that did NOT resolve
+
+`colour` is ONE BIT, so `base[i] + c0 * cross[i]` has exactly two possible values. The regression form
+is redundant: every interaction spec can be written as an explicit (feature, colour) -> width table
+with no arithmetic and no rounding. Written out, four of the five read as the format's own legend:
+
+    transformation   3 base region | 1 scalars | 4 matrix22 baked | 1 pointer
+                     2 offset baked (Float2) | 1 offset program | 1 grey / 4 colour per-channel
+    levels           3 base region | 1 scalars | five parameters, each 1 grey / 4 colour baked
+                     or 1 as a pointer -- exactly levelin{low,high,mid} and levelout{low,high}
+    uniform          1 base region | 1 scalars | one 1 grey / 4 colour per-channel field
+    fxmaps           3 base region | 1 scalars | 4 Float4 | 16 and 32, the input-bank ladder
+
+Those are widths, not coefficients, and they can be stated instead of fitted. Substituting the table
+for the dot product reproduces `decompose` exactly on 903,070 of 903,616 records -- every record of
+every filter except `emboss`.
+
+**`emboss` did not resolve, and the part I got wrong is worth recording.** It is the only
+`colour_states` filter, and there `len(cross)` is 12 against `len(base)` 17: the cross vector covers
+the twelve STATE features only. `record_layout._interaction` aligns it to the TAIL
+(`v[len(v)-len(cross):]`), so `cross[j]` pairs with feature `5+j`. `decompose.cost` indexes
+`cross[idx]` with the FULL-vector index, so it pairs `cross[5..11]` with features 5..11 and applies
+nothing to features 12..16. Read as code those are different mappings, and I built an emboss "width
+table" on the head-aligned reading which produced a 0-word present field and a 5-word field -- neither
+a legend width. Both were artefacts of my own indexing, not findings about the format.
+
+The claim that `decompose` is therefore wrong does NOT survive the arbiter. On all 375 emboss records
+where `decompose` answers, its `end` already equals `record_layout.header_words` -- 375 of 375,
+including 129 colour records where the alignment would have to matter. Correcting `decompose` to the
+tail alignment CHANGES 37 readings, which would introduce disagreements where there are none.
+
+So one of three things is true and this does not distinguish them: my reading of one of the two
+implementations is wrong, my substitute walk is wrong, or the two mappings coincide on this corpus
+for a reason not yet seen. Recorded as open rather than patched. What would settle it is an emboss
+record that activates a feature in 12..16 with `colour` set -- worth looking for before touching
+either side, because the code reads divergent and the corpus reads identical, and only one of those
+can be the whole story.
+
+## RESOLVED: the emboss alignment divergence is real, and nine records sit on the rounding tie
+
+The open question from the previous section -- code that reads divergent against a corpus that reads
+identical -- is settled by tracing one record instead of arguing about indices.
+
+`PavingStonesSubstance003` record 2844, w0=0x0B198811 (colour), w1=0x2C. Active features are
+{0, 1, 3, 4, 10, 12}, and the two implementations apply the cross vector to DIFFERENT ones:
+
+    record_layout (tail-aligned)   cross at features 10 and 12    contributes 4.0
+    decompose     (cross[idx])     cross at feature 10 only       contributes 3.0
+
+So the divergence is real -- they are not the same model. `record_layout` totals 8.5 + 4.0 = **12.5**,
+an exact tie, which `int(round())` resolves DOWN to 12 by banker's rounding; `decompose` sums its
+per-field roundings to 12 as well. They agree on 12 for unrelated reasons.
+
+Measured across every emboss record where both answer:
+
+    total is unambiguous          366    decompose agrees                    366
+    total lands on an exact TIE     9    decompose agrees with round()         9
+                                         the other tie-break disagrees        9
+
+So 375 of 375 agree today, and NINE of them agree only because the tie breaks to even. Those nine are
+precisely the hazard `derive_costs` already named for bitmap -- "a model resting on a rounding
+convention, one library change away from silently mispredicting" -- alive, in emboss, now. On the
+other 366 the differing cross application happens not to change the total, because the features the
+two disagree about are not both active.
+
+That the specimens exist was checked rather than assumed: 185 emboss records activate a feature in
+12..16 WITH colour set, so the disagreeing region is exercised, not vacuous. The earlier guess that
+the mappings "coincide because those features never fire" is wrong.
+
+Which side is right is still open and this does not settle it. `cross` has 12 entries against
+`base`'s 17, and 12 is exactly the number of STATE features (4 pairs x 3 states), which argues the
+fit indexed it by state-feature position and that `record_layout`'s tail alignment is the intended
+one. But `decompose`'s per-field rounding reaches the same answer on all 375, so the corpus cannot
+choose. What it does establish is that nine records currently depend on a tie-break, and that any
+change to either implementation must be checked against those nine specifically rather than against
+the aggregate, which will keep reporting 375/375 either way.
 
 ## Two filters state their header instead of costing it, and they are the only ones never wrong
 
@@ -39780,6 +40019,118 @@ record states its own count. Two filters already do it and score 100.00%; the qu
 the other twenty is whether their headers state something equivalent that has not been
 looked for -- an arity field, a present-parameter count -- rather than whether their widths
 can be fitted more tightly. `arity` is the existence proof that the format is willing to say.
+
+## Reading the bytecode: an arbiter for `end` that is not another model
+
+Every validation of the walk so far has been against `_compute_layout`, `header_words` or the cost
+model -- all of them models. Reading the instruction stream gives a check against the FILE.
+
+The emboss ties settle immediately under it. On `PavingStonesSubstance003` record 2844 and
+`Hex Tiles` record 1704, both exact-tie records, the word at `end` begins a coherent program:
+
+    %0   0902  inputref.f1   uid=...
+    %1   0D00  const.f1      0.4
+    %2   0914  mul.f1        %0, %1
+
+-- a graph input scaled by 0.4, and the SAME three instructions in both files. `end - 1` reads as a
+program of 0 instructions (a degenerate length word) and `end + 1` does not decode at all. So the
+nine records that agreed only because banker's rounding broke a tie to even are RIGHT, confirmed by
+the instruction stream rather than by the model that produced them.
+
+Generalised, this is a structural invariant the walk can be held to: **`end` is where the record's
+payload begins**, and for most filters the payload is bytecode. Over 207,056 records:
+
+    end IS a program start        190,629
+    end is NOT                     16,427
+    end past the record's words    29,209   (excluded, no payload to check)
+
+    blend 99.7%   transformation 99.9%   levels 99.8%   pixelprocessor 99.8%
+    uniform 99.6%   warp 99.9%   shuffle 99.7%   dirmotionblur 99.9%   blur 99.9%
+
+    fxmaps    0 of 10,795      gradient  247 of 5,204      curve  0 of 281
+
+The three zeros are the finding, not a defect: those are exactly the filters whose payload is a
+TABLE rather than bytecode -- fxmaps' node chain and entry table, gradient's ramp, curve's table.
+The invariant is "end lands on the payload"; only its SHAPE differs. Excluding them,
+**190,382 of 190,776 = 99.79%**.
+
+That is worth more than the percentage. Every "0-diff" in these notes compares one model against
+another, and two models can agree while both being wrong -- which is exactly what the emboss
+alignment question turned out to be, two different cross mappings agreeing on a rounded total. A
+check against the record's own instruction stream cannot be satisfied that way. The 394 residual
+records outside the table-payload filters are the next thing to look at, because under this check a
+residual is a claim about the file rather than a disagreement between two of our own opinions.
+
+## Chasing the residual: the bytecode invariant holds at 99.86%, and the rest is not an off-by-k
+
+Ran the "end lands on the payload" check over the whole corpus, excluding the three table-payload
+filters (fxmaps, gradient, curve), and separating the ways it can fail:
+
+    A. end IS a program start                732,128    99.86%
+    C. a program starts LATER in the tail        733     0.10%
+    D. tail nonzero, no program anywhere         319     0.04%
+    B. tail all zero (no payload at all)           0
+       end at or past the last word          109,745    (excluded: nothing to check)
+
+Category B is empty, which is worth noting on its own: no record in the corpus has a header followed
+by nothing. Where there is room after the header there is always something in it.
+
+CATEGORY C IS NOT A WALK ERROR, and the shape of the deltas is what says so. If `end` were
+systematically short for some filter, the distance to the real program start would cluster. It does
+not -- `blend`'s 245 cases spread over deltas 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 15, 17, 78, 96, 118
+and 161, and `pixelprocessor`'s over 1, 5, 8, 13, 16, 18, 43, 49, 56, 72, 77, 81, 83, 94, 157, 162 and
+735. A scatter that wide is `program_span` finding SOMETHING that validates further along the tail,
+which is the same false-positive behaviour that manufactured the phantom programs in `Record.programs`
+-- a probe answering yes on bytes that are not a program. So C and D are better read together as one
+residual of 1,052 records (0.14%) than as a systematic shift worth correcting.
+
+What is actually in those tails, on the clearest specimens: `concrete_049` records 5, 9, 13, 19, 24,
+29, 34, 48, 105 and 109 all end at slot 5 of 11 and carry the identical tail
+`[0x0, 0x80008000, 0x8000ffff, 0x8114, 0xffff8000]`. Those are packed 16-bit pairs around 0x8000 --
+the midpoint of a u16 -- which is the shape of NORMALISED VERTEX DATA, not bytecode. The record
+directory is a sorted PARTITION of the body, so a record's extent can contain bytes that are not its
+own; a header that ends correctly followed by somebody else's payload is exactly what that predicts.
+
+So the invariant survives the chase in a stronger form than it was stated: `end` lands on the start of
+the record's inline program in 99.86% of records that have room for one, the failures do not share a
+correctable offset, and the largest identifiable group of them is records whose trailing extent holds
+table-shaped data rather than instructions. The 0.14% is a claim about the corpus's layout, not about
+the walk.
+
+## CORRECTION: `SHARED` is not live, and a knockout needs a second question
+
+Two sections ago I reported `SHARED` as LIVE on 277 readings, and warned in the same breath that a
+knockout is evidence only for the readings it exercises. The warning was right and I stopped one
+question short of applying it.
+
+Emptying `SHARED` does change 277 `Record.shared_refs` readings. But `shared_refs` HAS NO CALLERS.
+Grepping the whole tree for `.shared_refs` outside its own definition returns two hits and both are
+COMMENTS -- one of which is the note I wrote making the "LIVE" claim. For comparison, on the same
+test: `named_parameters` 13 references, `edge_slots` 13, `layout` 19, `fx_walk` 20, `header_words` 22,
+`programs` 56.
+
+The file already said so, in the comment directly above the table: "That leaves one entry, consumed
+by nothing. It is kept rather than deleted only because slot 2 of `dyngradient` is a real shared
+reference and there is nowhere else to record it." `SHARED` is a census entry with a docstring, not a
+decode input, and my measurement re-derived the 277 without noticing nothing reads them.
+
+SO A KNOCKOUT NEEDS BOTH QUESTIONS, and I have now got each of them wrong once in this session:
+
+    1. does emptying the table change the reading?        -- missed for SHARED the first time,
+                                                             because the sweep never called shared_refs
+    2. does anything CONSUME that reading?                -- missed the second time, because the
+                                                             answer to (1) was yes
+
+A table can be dead in two different ways and only asking both finds either. Corrected live list:
+
+    LAYOUTS           12,562 readings   consumed by render via named_parameters   LIVE
+    FX_PAYLOAD_PROG      133 records    consumed via fx_walk                      LIVE
+    EDGES                  1 reading    filter 9's fallback, via layout           LIVE
+    SHARED               277 readings   consumed by NOTHING                       documentation
+
+Three live tables, not four. `SHARED` should be read as what its own comment calls it -- the only
+place a real fact about `dyngradient` is written down -- and not counted against the no-fitted-tables
+goal, which is about what the decoder READS.
 
 ## The five arity "mechanisms" are two, and the other three were our description
 
@@ -39823,6 +40174,40 @@ WHAT IS NOT SETTLED: `INPUT_FIELDS` records `(21, 0): False`, so `decompose` doe
 distance's field 0 as the input even though w1 bit 0 predicts its arity exactly. The flag and
 the slot that carries the input are not yet traced to the same field, and until they are, the
 "optional input is a parameter" reading is a good fit rather than a demonstration.
+
+## Is category D a walk error? No -- and the argument that settles it is not "two models agree"
+
+Category D is the 317 records where the tail after `end` is nonzero and NO program starts anywhere in
+it. Tested three ways:
+
+**1. The independent model agrees on every one.** `end == record_layout.header_words` on **317 of
+317** -- blend 273, transformation 43, levels 1. On its own this proves little; this session has
+already produced a case where two models agreed while computing different things (the emboss cross
+alignment, agreeing 375/375 on a rounded total). It is corroboration, not the argument.
+
+**2. No shift of `end` can help, by construction.** D is DEFINED as "no program starts anywhere in the
+tail". An off-by-k walk error is the hypothesis that the header really ends at `end + k` and the
+program starts there -- but there is no k for which that is true in these records. The off-by-k
+explanation is unavailable, not merely unsupported. That is the argument.
+
+**3. The tails are real repeated content, in distinct extents.** `concrete_049` records 5, 9 and 13
+are `blend`, 11 words, `end` 5, and carry the identical six-word tail
+`0x80008000 0x8000ffff 0x8114 0xffff8000 0x8000ffff`. Their extents are verified distinct and
+non-overlapping (1152-1196, 1724-1768, 2296-2340) and their HEADERS differ -- `0x185502` against
+`0x186602`, edges (3,4) against (7,8) -- so the identical tail is authored content repeated across
+records, not one buffer read three times. The file has a repeating four-record motif
+(transformation 66 / transformation 5 / blend 11 / gradient 61) and the tail repeats with it.
+
+Read as u16 pairs those words are 0x8000, 0xffff and 0x8114 -- values clustered at the midpoint and
+the top of a u16, which is the shape of normalised coordinates, and the same shape `vector_shape`
+reads as vertices and `gradient` reads as ramp stops. What exactly a `blend` record is carrying six
+words of it for is NOT established here.
+
+So: `end` is right, and the invariant holds in the form it was stated -- "end lands on the start of
+the record's payload". What D shows is that a payload is not always bytecode, which was already true
+for fxmaps, gradient and curve as whole filters, and is apparently also true for individual records
+of filters whose payload is USUALLY bytecode. That is a finding about the format, not an error in the
+walk.
 
 ### Filter 3's two node types: tag bit 0 tells them apart, and it is not version dependent
 
@@ -39892,6 +40277,86 @@ all from asking what a word LOOKS like.
 
 This is an argument from the format's own per-channel width rule plus an exceptionless corpus,
 not from a source declaration; no permitted source names either node under filter 3.
+
+## The six words are a fixed payload PREFIX, and `end` points exactly at it
+
+Chased the six-word tail from the category-D records. It is a 24-byte CONSTANT, byte-identical
+wherever it occurs:
+
+    00 00 00 00  00 80 00 80  ff ff 00 80  14 81 00 00  00 80 ff ff  ff ff 00 80
+    words: 0x0 0x80008000 0x8000ffff 0x8114 0xffff8000 0x8000ffff
+
+Of the 319 category-D records, **308 carry exactly this** -- 11 distinct tails in the whole category
+and one of them accounts for 96.6%. It spans many files (Road_01 54, Pavement_Path 46, BrickWall_02
+46, concrete_049 22, Camouflage_02 21) and sits overwhelmingly on `blend` with `cls=0x18, w1=0x10`
+(266), plus some `transformation`.
+
+WHERE IT SITS IS THE FINDING. Scanning the raw bytes of `Road_01`, all 54 occurrences end exactly at
+a record's extent end. In `concrete_049`, 22 of 30 do -- and the other 8 looked like a
+counter-example until they were located: every one of them begins at **slot 6, which is precisely
+that record's `end`**, with 28 or 8 further bytes after it. So the constant is not "at the end of a
+record" at all; it is THE FIRST THING AFTER THE HEADER, and in most records it happens to run to the
+end because nothing follows.
+
+That predicts category C's shape, and the prediction holds. C's largest `blend` delta was +6 -- and
+6 words is exactly this constant. Over the corpus:
+
+    records whose payload starts with the constant     368
+      constant IS the whole payload  (category D)      308
+      a program follows at exactly +6 (category C)      60
+                                                       ---
+                                                       368   complete, no residue
+
+So the record layout for these is `[header][6-word constant][optional program]`, and `decompose`'s
+`end` lands exactly on the constant's first word. The walk was never wrong here; the payload simply
+opens with a fixed block rather than with instructions.
+
+What the constant MEANS is not established. Read as u16 pairs it is (0,0) (0x8000,0x8000)
+(0xffff,0x8000) (0x8114,0) (0x8000,0xffff) (0xffff,0x8000) -- values at the midpoint and the extremes
+of a u16, coordinate-shaped, except that 0x8114 is 0.504 rather than the 0.5 the rest would predict.
+As f32 it is denormals and a NaN, so it is not floats. Its ROLE is settled -- a payload prefix on
+`blend cls=0x18 w1=0x10` -- and its content is not.
+
+This accounts for 368 of the roughly 1,052 residual records. The remainder are category C at
+scattered deltas (+1 through +8 and beyond, 198 of them past +8), which remains best explained as
+`program_span` validating on non-program bytes rather than as a structure.
+
+## What the six words ARE: a default four-stop gradient ramp
+
+`0x8114` is the tell, and this file had already written it down. The gradient section records that
+some ramps' "stop positions read like `[0, 32768, 33044, 65535]`, a full-range ramp" -- and
+**33044 is 0x8114**. The constant's twelve u16s are drawn from exactly that set: 0x0000, 0x8000,
+0x8114, 0xffff.
+
+Confirmed end to end on `concrete_049`. Record 5 is a `blend` at 1152..1196 whose `end` puts the
+constant at byte **1172**; record 6 is a `gradient` whose SLOT 3 holds 0x460, and 0x460 + 52 = **1172**.
+`Record.ramp` on that gradient decodes it as four stops:
+
+    (0, 0, 32768)  (32768, 65535, 32768)  (33044, 0, 32768)  (65535, 65535, 32768)
+
+So the bytes are a ramp table, they belong to the gradient, and they physically sit inside the
+PREVIOUS record's extent -- which is exactly the case `Record.ramp`'s own docstring already handles:
+"The table need not lie inside this record. The record directory is a sorted PARTITION, not an
+allocation... 654 records, and every one of them points exactly ONE record back."
+
+Corpus-wide, of 9,840 records carrying the constant at `end`:
+
+    pointed at by some record        372     owner is a gradient   369
+                                             owner is the NEXT record 368
+    NOBODY points at it            9,468
+
+So the ramp reading is PROVEN for 372 and does not explain the other 9,468, which carry the identical
+24 bytes with nothing addressing them. The honest description is a DEFAULT ramp template: the same
+black-to-white four-stop table emitted in many places, referenced only where a gradient actually
+wants the default. Whether the unreferenced copies are emitted per record or are fill is not
+established here.
+
+What this closes: the category-D "discrepancy" is not a discrepancy at all. `decompose`'s `end` is
+right, it lands on the payload, and the payload is a ramp table belonging to a neighbouring record.
+The walk was correct; the reading of what follows it was the thing missing. It also means the
+"coordinate-shaped, except 0x8114 is 0.504" observation I made last turn was the right observation
+and the wrong frame -- those are ramp STOP POSITIONS on a 0..65535 axis, not coordinates, and 33044
+is a stop just past the midpoint rather than a coordinate that fails to be 0.5.
 
 ### Correction: four filters carry half-words, and the number that matters is TIES, not fractions
 
@@ -39970,3 +40435,294 @@ Being AHEAD of the independent model is not the same as AGREEING with it, and th
 of that number was two unrelated mechanisms landing on one answer. These are ca's figures,
 not mine; they need re-running once the directionalwarp w1_shift change lands, because the
 tree currently holds it uncommitted.
+
+## The ramp's trailing per-stop u16 is a midpoint at its default, corpus-wide
+
+`Record.ramp`'s entry width is `4 + 2*colour + 2*(class bit 8)` bytes, so class bit 8 adds
+a THIRD u16 after the stop position and value(s). `render.py`'s gradient branch consumes
+only `e[1]` and `e[2]` and discards that trailing field. This asks whether that discard
+costs anything.
+
+It does not. Over 437 specimens, 17,939 gradient records carrying a ramp, 141,733 stops
+with a trailing field:
+
+    32768      141,727     99.996%
+    0                6      0.004%    wood_cedar_white rec 222/229, Pavement_Path rec 478
+
+32768 is exactly 0.5, which is what a per-stop interpolation midpoint defaults to — the
+same control a Photoshop gradient puts between two stops. Every stop in the corpus but six
+leaves it at the default, so linear interpolation between stops is right everywhere it was
+measured, and the discarded field is not a source of any render error.
+
+Entry widths over the same sweep: 3 u16 (13,784), 4 (2,375), 2 (1,753), 6 (23), 5 (4).
+
+This also closes the trailing 32768 seen in the default four-stop ramp of the previous
+section — `(0,0,32768)`, `(32768,65535,32768)` and so on. That third component was never a
+colour or a position; it is this midpoint, at its default, like almost every other stop.
+
+NOT a claim that the field IS a midpoint. A constant is consistent with many readings, and
+99.996% of one value is exactly the regime where a distribution cannot discriminate. What
+IS established is the operational half: whatever it means, it does not vary, so ignoring it
+cannot be producing a wrong picture.
+
+## The reference renders were not exported at default parameter values
+
+This bounds what `refcompare.py` can arbitrate, and it was found by chasing a render defect
+that turned out not to be one.
+
+`Kutejnikov__Bricks_and_tiles` graph 004's `emission` is the cleanest probe in the corpus:
+four glows on black, and our render correlates **+0.99** per channel against the engine's
+own export. Structure is essentially exact. The colour is not — ours peaks at
+(1.000, 0.698, 0.698) and the engine's at (0.122, 0.325, 1.000). Ours glows red, the
+engine's blue.
+
+Not a channel-order error, tested and refused: scoring all six RGB permutations improves
+the mean correlation from +0.974 to +0.987, which is noise. (And that test was POWERLESS
+on this case anyway — correlation is scale- and offset-invariant, so it cannot see WHICH
+channel is bright. Recording that because the test was chosen for exactly the case it
+could not speak to.)
+
+Tracing the emission subtree, 19 records, exactly one carries colour: record 7369, a
+`uniform`, output (0.500, 0.111, 0.111, 1.000). Its two program slots each disassemble to a
+single `inputref`, so the colour is a GRAPH PARAMETER, not a baked constant. The manifest
+names it:
+
+    <input uid="1240666825" identifier="outputcolor" type="3"
+           default="0.5,0.111111,0.111111,1"     label="Gem Color">
+
+Our render reproduces that default to three decimals. The decode is correct. The engine's
+export is blue because the author moved "Gem Color" before exporting, and the `.sbsar` does
+not record that: `<sbspresets count="0">` in all five graphs, zero `presetinput` elements.
+The value is unrecoverable from the file.
+
+WHAT THIS COSTS. Any parameter-dependent channel can disagree with its reference for this
+reason, and in general the two explanations — "we read the parameter wrong" and "the author
+tweaked it" — are not separable. They were separable here only because the parameter is a
+declared default we can read and match exactly. So a low `refcompare` score on a colour
+channel is not by itself evidence against the decode, and the REFERENCE_FLOOR test should
+not be read as if it were.
+
+## Chesterfield renders well, and its one missing output is a resolution-dependent divide
+
+`minime453__Chesterfield_PBR_Material`, 881 records, 6 declared outputs, rendered at 256 and
+scored against the package's own exports:
+
+    normal      +0.857     ours mean 0.500 0.500 0.961  |  engine 0.500 0.500 0.966
+    height      +0.945     ours 0.584                   |  engine 0.515
+    metallic    +0.876     ours 0.027                   |  engine 0.048
+    AO          +0.876     ours 0.893                   |  engine 0.887
+    roughness   +0.778     ours 0.224                   |  engine 0.235
+    basecolor   MISSING
+
+This is the best-scoring specimen measured so far and the tufted quilting reproduces
+essentially correctly. Two systematic gaps are visible rather than numerical, and they are
+the SAME two `Kutejnikov__Bricks_and_tiles` shows: the engine has small button studs at the
+diamond intersections that we do not draw, and a fabric micro-noise our surfaces lack.
+Ours are smooth where the engine's are grainy. Worth noting as a cross-file pattern rather
+than a per-file defect.
+
+THE MISSING BASECOLOR IS ONE ROOT CAUSE WITH FIVE CASCADED, and it only exists at full
+resolution. At `max_dim` 64 and 128 the file renders 881 of 881 with zero failures. At 256:
+
+    rec 330  pixelprocessor  produced non-finite values (100.0% of samples)   <-- root
+    rec 860  gradient        edge has no output yet
+    rec 863  blend           edge -> record 860 has no output yet
+    rec 864  hsl             edge has no output yet
+    rec 867  blend           edge -> record 864 has no output yet
+    rec 868  blend           edge -> record 864 has no output yet
+    rec 871  blend           edge -> record 868 has no output yet      <-- basecolor
+
+Record 330's per-pixel program (14 instructions at 0x9ab9c) ends in a division:
+
+    %13 = (lum - (1 - max(b,a))) / (max(r,g) - (1 - max(b,a)))
+
+with `lum` sampled from edge 322 and `(r,g,b,a)` from edge 329. 100% non-finite means the
+denominator is zero at every sample. Tracing both edges at the two resolutions:
+
+    max_dim 128   rec 322  blend  302 distinct, 0.8856..1.0000     rec 329  3 distinct, min 0.0892
+    max_dim 256   rec 322  blend    1 distinct, 1.0000 constant    rec 329  2 distinct, min 0.0000
+
+So record 322 LOSES ALL VARIATION at full resolution -- 302 distinct values at 128, exactly
+one at 256 -- which drives 329's r/g to 0 and makes the denominator `0 - 1 + 1 = 0`.
+
+TWO THINGS HERE ARE WRONG INDEPENDENTLY OF EACH OTHER. A blend that is constant at one
+sampling density and varied at another is the first. The second is smaller and stranger:
+record 329 is declared 1x1, and a 1x1 record's value should not depend on `max_dim` at all,
+yet it does. Both are evaluation faults, not decode faults -- the records' layout, edges and
+programs read identically at both resolutions -- so this is `render.py`'s prefilter/sampling
+path rather than anything the walk produces. Not chased further here.
+
+## The handedness arbiter: three new packages, none of them settling
+
+`assume.py` publishes a renderer-free arbiter for `normal.inversedy` -- take a package's own
+exported HEIGHT, run our height-to-normal formula, correlate signed against that package's
+own exported NORMAL -- over four packages, of which only `Kutejnikov__Bricks_and_tiles` is
+green-inverted, and `word1` bit 2 predicts it 4 of 4. The reservation it keeps open is that
+only ONE package sets that bit on the record feeding its exported normal, so any field set
+in Bricks and clear in the other three fits equally well. The settling experiment is to find
+another package that SETS the bit on its normal-feeding record.
+
+SEARCHED THE WHOLE TREE for packages shipping both an exported height and an exported
+normal, by every filename convention present (`normal`, `_nrm`, `_norm`, `_n.`, `nmap`; png,
+jpg, tga, tif, exr). Beyond the four already scored there are exactly three, all under
+`pairs6/`, and all three are new specimens rather than corpus members:
+
+    package                  ch0      ch1     verdict     normal-feeding record   bit 2
+    Rokviz_fabric_8        +0.320   +0.315    no flip     rec 19,   word1=1       clear
+    UHL3D_Stylized_Sand    +0.997   +0.998    no flip     rec 3102, word1=1       clear
+    Wood_plank_1           +0.745   +0.700    no flip     rec 126,  word1=2       clear
+
+CALIBRATED FIRST, because a new number is worthless if the instrument does not reproduce the
+published one. Re-running the arbiter on the four known packages returns
++0.981/+0.980, +0.903/+0.901, +0.952/+0.934 and +0.954/-0.948 -- magnitudes differ from
+assume.py's table (different resample size), but the SIGNS, which are the whole question,
+match 4 of 4 including Bricks' negative ch1.
+
+THE EXPERIMENT DID NOT SETTLE, and the reason is worth stating precisely: none of the three
+sets the bit on its normal-feeding record, so all three are consistent-but-not-confirming in
+exactly the way `minime453__Stylized_Sandy_Stone_Path` already was. The table is now:
+
+    bit clear, no flip     6 packages       (was 3)
+    bit set,   FLIPPED     1 package        (Bricks, unchanged)
+    bit set,   no flip     0
+
+So the "bit clear -> no flip" arm doubles its evidence and the "bit set -> flip" arm still
+rests on one package. THE CONFIRMATION IS NOT AVAILABLE FROM THIS MATERIAL: the constraint
+was never that the bit is rare -- it is set on 118 of 1,447 normal records across 40 files --
+but that files shipping BOTH exported maps are rare, and all seven that do have it clear on
+the record that matters. Obtaining it needs new reference material, not more searching.
+
+One genuinely new data point: `Wood_plank_1` has `word1=2` on its normal-feeding record, a
+value not previously seen there (the four known packages have 1, 1, 1 and 5). Bit 0 is CLEAR
+and bit 1 SET, and it needs no flip. That does not discriminate bit 2 from the alternatives
+-- Bricks differs from the others only in bit 2, so nothing outside that bit was ever a live
+candidate within word 1 -- but it does show word 1 varying in another bit with handedness
+unaffected.
+
+PROVENANCE, checked before measuring rather than after. Both paired sources
+(`UHL3D-Stylized_Sand_with_Rocks_01.sbs`, `Wood_Planks.sbs`) contain zero
+`<author v="Allegorithmic"` and are permitted; Rokviz ships no `.sbs` at all. Separately,
+`pairs6/G_Dandelion_Tile_Floor/SBS/.../dependencies/` redistributes ~75 Adobe library `.sbs`
+sources. It is NOT a rule violation and nothing reads them -- Dandelion appears 0 times in
+`corpus.paths()` (437) and 0 times in `DISTINCT.txt`, and it ships no compiled assembly for
+its own material, only two Adobe library `.sbsar` filters -- but `provenance.py` counts
+PAIRED sources, and these are unpaired dependencies, so they are invisible to that count.
+Recording it so the absence is a checked fact rather than an assumption.
+
+
+## Chesterfield metallic: the dots are placed perfectly and drawn too small, and levels is exonerated
+
+`metallic` is the most isolated output in the reference set — 41 discs on black — which makes
+it the cleanest place to ask what a near-miss actually consists of. Scored r = +0.876.
+
+WHAT IS EXACTLY RIGHT. Labelling both maps above 0.5:
+
+    ours   (256px)    41 dots    mean radius 3.52 px   = 0.0138 of width
+    engine (2048px)   41 dots    mean radius 38.84 px  = 0.0190 of width
+
+Same COUNT, 41 and 41, and the same POSITIONS — distinct dot-centre x as a fraction of width
+is 0.00/0.12/0.25/0.37/0.50/0.62/0.75/0.87/0.99 for ours against 0.01/0.12/0.25/0.37/0.50/
+0.62/0.75/0.87/0.99 for the engine. The placement grid is reproduced. Only the RADIUS is
+wrong, and by a single factor (~0.73 of the engine's), so this is one scalar rather than a
+structural error.
+
+WHERE THE RADIUS IS DECIDED. Tracing record 876 back, the subtree ends:
+
+    34  fxmaps   553 distinct, mean 0.0580, max 0.7716     smooth blob field
+    35  levels     9 distinct, mean 0.0273, max 1.0000     hard dot mask
+    861/862 transformation -> 874/875 blend -> 876         mean 0.0273 throughout
+
+Record 35 is where a smooth field becomes discs, and its mean is already the final 0.0273.
+So the radius is set entirely by that one threshold, and record 35 is a `levels` — one of the
+two filters whose parameters still come from the `LAYOUTS` memo rather than the walk. That
+is a tempting story and it is WRONG, which is the point of this section.
+
+THE TEST THAT EXONERATES LEVELS. Record 35 reads `levelinlow` 0.549, `levelinhigh` 0.631.
+Measuring the coverage-versus-threshold curve of record 34's own blob field against the
+engine's lit fraction of 0.04828:
+
+    threshold on our blob     lit fraction
+        0.450                   0.05078
+        0.4708                  0.04688     <- matches the engine
+        0.500                   0.04004
+        0.549  (= levelinlow)   0.03418
+        0.590  (= band midpoint)0.02734     <- what we currently draw
+        0.631  (= levelinhigh)  0.02148
+
+The engine's dot size needs the 0.4708 contour. `levelinlow` is 0.549. `render.py`'s levels
+branch is `clip((src - in_low) / span, 0, 1)`, so every sample below 0.549 maps to zero and
+NOTHING below that contour can be lit at any setting of the band.
+
+This kills the obvious repair before it is attempted. A missing `levelinmid` (gamma) is the
+natural suspect — we read two parameters where the filter has more, and a gamma would move
+the 0.5 output crossing within the band. It cannot help: a gamma relocates the crossing
+BETWEEN low and high, and the required contour is below LOW. No reading of record 35's
+parameters, right or wrong, produces the engine's discs.
+
+SO THE DEFICIT IS UPSTREAM, IN THE FXMAPS BLOB. Our record 34 puts 3.42% of samples above
+0.549 where the engine's discs require 4.83%. The stamp is too narrow, not the threshold too
+high. That is `fxmaps` — the OTHER memo-routed filter — and it is consistent with the
+placement being perfect while the profile is not: whatever positions the 41 stamps is read
+correctly and whatever sizes them is not.
+
+WHAT IS NOT ESTABLISHED, and deliberately not chased. 0.4708 is a number that fits, and a
+fitting number is not a mechanism. It is NOT recorded here as a parameter value, a correction
+factor, or a candidate reading of anything. The load-bearing claim is an INEQUALITY — the
+required contour lies outside the band record 35 states — and that argument holds whatever
+the true stamp profile turns out to be. The radius ratio (~0.73 by threshold area, ~0.75 by
+raw ink) is likewise a symptom measurement and not a scale factor to apply anywhere.
+
+### RETRACTED: the metallic stamp-size finding above is a sampling artifact
+
+The section above concludes that record 35's `levels` is exonerated and the deficit is
+upstream in the `fxmaps` stamp profile. **That conclusion is withdrawn.** Its load-bearing
+step was measured at one grid and does not survive being measured at three.
+
+Re-running record 34's blob and record 35's disc at 64, 128 and 256, everything expressed as
+a fraction of width so the numbers are comparable:
+
+    grid   blob max   blob > 0.549   dots   disc r/W   lit fraction
+      64     0.7265       0.04688      25    0.01410      0.01562
+     128     0.7629       0.03125      25    0.01995      0.03125
+     256     0.7716       0.03418      25    0.01866      0.02734
+    engine        -       0.04828       -    0.02192      0.04828
+
+The disc radius as a fraction of width is NOT resolution-stable, and not even monotonic:
+0.0141 -> 0.0200 -> 0.0187 against the engine's 0.0219. Neither is the coverage.
+
+THE RETRACTED ARGUMENT, EXACTLY. It was: to reach the engine's lit fraction our blob needs
+the 0.4708 contour, `levelinlow` is 0.549, and `clip((src - in_low)/span, 0, 1)` sends
+everything below 0.549 to zero -- so no reading of record 35's parameters can produce the
+engine's discs, and the fault must be the stamp profile. The inequality is real AT 256. At 64
+the blob puts 4.69% above 0.549 against the engine's 4.83%, so at that grid the band is
+almost exactly right and there is no deficit to explain. The inequality was a property of the
+sampling density, not of the record.
+
+WHAT SURVIVES. The count and the placement, because those ARE stable: 25 stamps at every
+grid, and 41 discs in the final metallic at the same positions as the engine's 41. Whatever
+positions the stamps is read correctly.
+
+WHAT DOES NOT. Every quantitative statement about the stamp SIZE, including the ~0.73 radius
+ratio, the 0.4708 contour, the exoneration of `levels`, and the attribution to `fxmaps`. None
+of them is evidence for or against any reading of `patternsize`. In particular this must NOT
+be cited in the `fx.patternsize` canvas-vs-cell arm in either direction.
+
+WHY THIS MATTERS MORE THAN THE FINDING IT KILLS. The resolution-dependence recorded earlier
+in these notes was found on a CATASTROPHIC case -- record 330 going 100% non-finite at 256
+and taking basecolor with it -- which is loud and self-announcing. This is the quiet form of
+the same fault, on a channel that renders without error and scores r = +0.876. It perturbs
+the picture silently, and the only reason it was caught is that the measurement was repeated
+at three grids instead of one.
+
+So the rule stated earlier -- score at a FIXED max_dim and treat any result that moves with
+resolution as VOID rather than as evidence -- has to be applied to render measurements
+generally and not only where the renderer complains. I wrote that rule and then immediately
+banked a finding that violates it. Recording that, because the failure mode is not "the
+renderer is broken", it is "a number measured once looks like a property of the format".
+
+A RELATED CONFOUND, noted and not resolved. The engine's exports are 2048px, i.e. produced
+at `$outputsize` 11,11, while we render at the file's declared default of 8,8 = 256. For a
+procedural material a disc's radius as a FRACTION of width should be invariant to that; ours
+is not, which is the fault above. But it means every reference comparison in these notes is
+between two different output sizes, and any quantity that is not resolution-stable in our
+renderer is not comparable to the reference at all.
