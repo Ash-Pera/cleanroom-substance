@@ -2517,16 +2517,21 @@ class Record:
         a parameter the walk misses, the walk finds parameters on 4,351 records where the
         memo returns nothing at all, and the two agree exactly on 153,230 slots.
 
-        `dirmotionblur` AND `directionalwarp` NOW ROUTE HERE TOO, and they need different
-        placements for a structural reason. A spec mask is matched to a cost-model field by
-        `pres == 3 << 2j`, which requires the parameter's two presence bits to sit on the
-        field grid. `dirmotionblur` is aligned (0x003 -> field 0, 0x00c -> field 1) and uses
-        that matching directly. `directionalwarp` is NOT: its `intensity` is 0x006, bits 1
-        and 2, straddling fields 0 and 1, and `warpangle` 0x018 likewise. Routing it through
-        the field match would find no name for either parameter and return [] -- both
-        parameters lost on 62,146 records, silently. It uses the POSITIONAL rule instead:
-        the present parameters occupy the LAST n slots of the header, which never consults
-        the field decomposition and so cannot be thrown by the misalignment.
+        `dirmotionblur` AND `directionalwarp` ROUTE HERE TOO, and both now use the FIELD
+        MATCH. `directionalwarp` used to be unable to: a spec mask is matched to a cost-model
+        field by `pres == 3 << (2j + w1_shift)`, and with the shift fixed at 0 for every
+        filter its `intensity` (0x006, bits 1 and 2) and `warpangle` (0x018) matched no field
+        at all, so it fell through to `_parameters_positional`. That was read as a fact about
+        dirwarp and was a fact about the GRID -- `costs.json` fitted its w1 fields on an even
+        grid that splits both parameters. The grid is corrected (`derive_costs.W1_GRID_SHIFT`
+        gives filter 12 a shift of 1), so 0x006 = 3 << 1 is field 0 and 0x018 = 3 << 3 is
+        field 1, and the match names both.
+
+        Verified name-for-name against the positional rule it replaces, over the corpus plus
+        the reference packs: the same names in the same order on 62,898 of 62,898 records,
+        and the parameters it reports track the declaring bits exactly -- intensity baked
+        58,959 / program 3,479, warpangle baked 57,581 / program 2,535, against w1 bit counts
+        of 58,959 / 3,479 / 57,581 / 2,535.
 
         WHAT DECIDED IT, corpus-wide, against the memo:
 
@@ -2849,10 +2854,19 @@ class Record:
         if d is None:
             return []
         names = {}
+        # THE GRID THE FIELDS ARE ON COMES FROM THE WALK. A parameter's mask matches field
+        # j at bit `2j + w1_shift`, and the shift is 0 for every filter but
+        # `directionalwarp`, whose parameters begin at bit 1. Before that offset was fitted
+        # into `costs.json`, dirwarp's 0x006 and 0x018 matched no field at all and it had to
+        # fall through to `_parameters_positional`; with the grid corrected both match
+        # exactly (0x006 = 3 << 1 -> field 0, 0x018 = 3 << 3 -> field 1) and it routes here.
+        # Verified name-for-name against the positional rule it replaces: same names in the
+        # same order on 62,898 of 62,898 records.
+        gsh = int(d.get('w1_shift', 0) or 0)
         aligned = True
         for nm, pres, _prog in spec:
             for j in range(16):
-                if pres == (3 << (2 * j)):
+                if pres == (3 << (2 * j + gsh)):
                     names[j] = nm
                     break
             else:
@@ -2870,36 +2884,31 @@ class Record:
     def _parameters_positional(self, spec, d):
         """Present parameters occupy the LAST n slots of the header, in bit order.
 
-        WHY `directionalwarp` CANNOT USE THE FIELD MATCH, with the mechanism rather than
-        just the symptom. `_parameters_walked` names a parameter by matching its presence
-        mask to a cost-model field, `pres == 3 << 2j`. dirwarp's masks are 0x06 (bits 1,2)
-        and 0x18 (bits 3,4) -- adjacent pairs offset by ONE BIT from the model's (0,1),
-        (2,3), (4,5) grid -- so no field matches and the match returns nothing.
+        NO FILTER ROUTES HERE ANY MORE, and the reason the last one did has been fixed at
+        its source rather than worked around here. `directionalwarp` used this method because
+        its masks (0x06 at bits 1,2 and 0x18 at bits 3,4) matched no field on the cost
+        model's even (0,1), (2,3), (4,5) grid. THE FORMAT WAS RIGHT AND THE GRID WAS WRONG:
+        w1 bit 0 is ZERO in all 62,898 dirwarp records, and read where PARAM_SPEC puts them
+        the pairs are a clean two-bit code with no state 3 -- which is what a correctly
+        aligned scalar pair looks like, since 11 is the image-input state and a float cannot
+        take it.
 
-        THE FORMAT IS RIGHT AND THE GRID IS WRONG, which is worth stating in that order.
-        Over all 62,146 dirwarp records, w1 bit 0 is ZERO in every one, and reading the
-        pairs where PARAM_SPEC puts them gives a clean two-bit code with no state 3:
+        The old fitted costs said so if read closely: field 0 spanned the dead bit and
+        intensity's low bit, so it could only ever be state 0 or 2, and its costs were
+        {1: 0, 2: 1, 3: 0}; field 1 spanned intensity's HIGH bit and warpangle's LOW bit --
+        two different parameters -- and its state-3 cost was 2, intensity-as-program (1)
+        plus warpangle-baked (1). The header TOTAL was exact at 100.000% throughout, because
+        a misaligned decomposition can sum correctly, which is why nothing caught it.
 
-            intensity   state 0    458   state 1 (baked) 58,226   state 2 (program) 3,462
-            warpangle   state 0  2,716   state 1         56,895   state 2           2,535
+        Re-fitting on the odd grid (`derive_costs.W1_GRID_SHIFT`) is exact at 100.000% too,
+        with FEWER columns (24 against 26) and coefficients that mean something: 1 word baked
+        and 1 word as a pointer for each parameter, and no surviving state-3 column. So the
+        field match names dirwarp now and this method has no caller.
 
-        No state 3 in either, which is what a correctly aligned read of a scalar pair looks
-        like -- 11 is the image-input state and a float cannot take it. `_read_slot` gets
-        the same answer from the other side: dirwarp's program bit predicts program-vs-baked
-        in 117,657 of 117,657 reads.
-
-        SO THE FITTED FIELD COSTS ARE SUMS ACROSS PARAMETER BOUNDARIES, and they say so if
-        read closely. Field 0 spans the dead bit and intensity's low bit, so it can only
-        ever be state 0 or 2 -- and its costs are {1: 0, 2: 1, 3: 0}, exactly that shape.
-        Field 1 spans intensity's HIGH bit and warpangle's LOW bit, two different
-        parameters, and its state-3 cost is 2: intensity-as-program (1) plus warpangle-baked
-        (1). The header TOTAL still comes out exact at 100.000% because a misaligned
-        decomposition can sum correctly, which is why nothing caught this.
-
-        The consequence for this method: counting back from `end` is not a workaround for a
-        filter the field match happens to miss. It is the only available reading, because
-        the model's per-field attribution is wrong for this filter while its total is right,
-        and `end` is the total.
+        KEPT ANYWAY, deliberately. It is the fallback for a spec whose presence masks do not
+        sit on the grid, and the next filter to be given a PARAM_SPEC entry may well be one.
+        Deleting it would make the next misalignment return [] silently instead of reading
+        the parameters positionally.
 
         For a spec whose presence masks do not sit on the cost model's two-bit field grid,
         so the field match in `_parameters_walked` cannot name them. This reads the walk's

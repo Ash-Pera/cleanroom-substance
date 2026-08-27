@@ -185,8 +185,13 @@ def header_words(filter_id, word0, w1, version=None):
         ar = spec.get('arity')
         if ar:
             total += ar['cost'] * ((w1 >> ar['shift']) & ar['mask'])
+        # Field j sits at bit 2j + w1_shift. The shift is 0 for every filter but
+        # `directionalwarp`, whose declared parameters start at bit 1 -- see
+        # `derive_costs.W1_GRID_SHIFT` for why an even grid fitted it exactly and still
+        # attributed it wrongly.
+        _gsh = int(spec.get('w1_shift', 0))
         for j, states in spec['w1'].items():
-            st = (w1 >> (2 * int(j))) & 3
+            st = (w1 >> (2 * int(j) + _gsh)) & 3
             if st:
                 total += states.get(str(st), 0.0)
     n = int(round(total))

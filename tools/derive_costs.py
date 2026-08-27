@@ -250,6 +250,34 @@ def observed():
     return obs
 
 
+# W1'S TWO-BIT FIELD GRID DOES NOT ALWAYS START AT BIT 0.
+#
+# The model reads w1 as a vector of two-bit fields and had field j at bit 2j throughout.
+# For `directionalwarp` that grid is off by one against the parameters the file actually
+# declares: PARAM_SPEC puts `intensity` at bits (1,2) and `warpangle` at bits (3,4), so an
+# even grid splits BOTH of them and its middle field spans intensity's high bit and
+# warpangle's low bit -- two different parameters in one column.
+#
+# The even fit still reported 100.000%, because a misaligned decomposition can sum
+# correctly; that is why nothing caught it. What separates the two grids is not exactness
+# but what the coefficients MEAN. Over 172 keys / 62,146 records, both are exact and the
+# odd grid is strictly smaller (24 live columns against 26):
+#
+#     even 2j     field 1 costs 1 baked, 1 program, and 2 in state 3 -- a SUM of
+#                 intensity-as-program (1) and warpangle-baked (1), across a boundary
+#     odd  2j+1   field@1 costs 1 baked / 1 program, field@3 the same, and NO state-3
+#                 column survives on either
+#
+# One word baked and one word as a pointer is exactly a Float1, and state 3 being dead is
+# exactly right for a float -- 11 is the image-input state, which a scalar cannot take.
+#
+# The offset is a fact about the filter and is stated here, not sniffed: dirwarp's w1 bit 0
+# is ZERO in all 62,898 records (corpus + reference packs), and its ten distinct w1 values
+# are all clean two-bit codes when read at 1 and 3. Bits 5 and 7 appear in 5 records
+# between them and get fields of their own under the same 2j+1 grid, costing 0 and 1 word.
+W1_GRID_SHIFT = {12: 1}
+
+
 def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     """Fit costs for one filter. Returns (spec, exact_fraction) or (None, 0.0).
 
@@ -261,6 +289,7 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     keys, junk included -- exclusion is for the fit, never for the score.
     """
     arity = W1_ARITY.get(f)
+    gsh = W1_GRID_SHIFT.get(f, 0)          # w1 field j sits at bit 2j + gsh
 
     # Which bits of word 0 may become features. 'wide' offers all 32 -- the tag's low
     # half carries layout (uniform's colour flag is tag bit 0, +3 words) -- but those
@@ -276,7 +305,7 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
             sh, m = arity
             excl = {j for j in range(16) if (m << sh) >> (2 * j) & 3}
         pairs = [j for j in range(16) if j not in excl
-                 and len({(w >> (2 * j)) & 3 for w in aw}) > 1] if aw else []
+                 and len({(w >> (2 * j + gsh)) & 3 for w in aw}) > 1] if aw else []
         return clsbits, pairs
 
     clsbits, pairs = bits_of(keys, bitrange)
@@ -310,7 +339,7 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
             sh, m = arity
             v.append(float((w1 >> sh) & m) if w1 is not None else 0.0)
         for j in pairs:
-            st = ((w1 >> (2 * j)) & 3) if w1 is not None else 0
+            st = ((w1 >> (2 * j + gsh)) & 3) if w1 is not None else 0
             v += [float(st == 1), float(st == 2), float(st == 3)]
         if colour == 'full':
             # The colour flag is tag bit 0, and its cost is not additive: a colour
@@ -507,6 +536,8 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
         spec['w1_present'] = c[i]; i += 1
     if arity is not None:
         spec['arity'] = {'shift': arity[0], 'mask': arity[1], 'cost': c[i]}; i += 1
+    if gsh:
+        spec['w1_shift'] = gsh
     for n_, j in enumerate(pairs):
         spec['w1'][str(j)] = {'1': c[i + 3 * n_], '2': c[i + 3 * n_ + 1],
                               '3': c[i + 3 * n_ + 2]}
