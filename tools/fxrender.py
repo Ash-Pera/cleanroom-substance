@@ -1123,8 +1123,31 @@ def why_no_entries(rec):
     raw = [t for t in walk if t[0] == 'entry']
 
     if raw:
-        return ("table read: %d entries reached, none usable "
-                "(structural/chain-family or no readable tag)" % len(raw))
+        # SAY WHICH KIND, because "entries reached, none usable" points at the table read
+        # and for most of these the run never reached a table at all. `fx_table` yields
+        # whatever the pointer-following lands on, and the bit-7-clear families -- leaf,
+        # branch, pointer cell -- are not entry tags: they end in nibble 9 or B where an
+        # entry ends in 8, and `entries()` drops them on exactly that. Over the records
+        # this branch fires on, the raw run is 32 pointer cells, 22 leaves and 4
+        # chain-family links against a handful of real tags, so the honest report is that
+        # the run walked cells and found no table, not that a table was unreadable.
+        #
+        # NOT a reason to stop the run on them -- that was measured and withdrawn; see
+        # `fx_table`, where a pointer cell is a WAYPOINT the pointer-following traverses to
+        # a real entry beyond it, and breaking on one cost 80 records their table.
+        cells = sum(1 for _k, _o, t, _p in walk
+                    if _k == 'entry' and (node_shape(t) is not None
+                                          or leaf_successor(t) is not None
+                                          or pointer_cell_successor(t) is not None))
+        links = sum(1 for _k, _o, t, _p in walk
+                    if _k == 'entry' and (t >> 16) == 0x0002)
+        tags = len(raw) - cells - links
+        if not tags:
+            return ("walk: the run reached %d node/cell header(s) and %d chain link(s) and "
+                    "no entry tag -- there is no table at the end of this chain"
+                    % (cells, links))
+        return ("table read: %d entry tag(s) reached, none usable (alongside %d node/cell "
+                "header(s) and %d chain link(s), which are not tags)" % (tags, cells, links))
 
     def header_at(off):
         if off is None or not (asm.body_lo <= off < asm.body_hi - 3):

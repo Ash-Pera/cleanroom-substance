@@ -4254,7 +4254,19 @@ class Record:
                 if shape2 is None:
                     return
                 nxts, prog_slots = shape2
-                if prog_slots is None:
+                # AN EMPTY PROGRAM TUPLE IS "NO PROGRAM", NOT "NO NODE". The yield below
+                # lives inside `for sl in prog_slots`, so a row stating `()` walked its node
+                # and never reported it -- invisible to `fx_walk`'s `last`, to the pointer
+                # cells it collects, and to `node_census`. `FX_NODES2[0x1B]` is such a row,
+                # and the 12 records whose root is a `0x?1b` were reported as "walk reached
+                # NOTHING" for that reason alone rather than because the header was unknown.
+                #
+                # THIS FIXES NO RECORD'S OUTPUT, and that was measured before making it: for
+                # all 12 the successor reaches exactly one entry and it passes
+                # `entry_layout_holds` in 0 of 12, so they stay empty either way. It is here
+                # because a node that walks and is never yielded is a silent hole in every
+                # consumer of this generator, and the next row stating `()` inherits it.
+                if not prog_slots:
                     # THE LEAF NAMES NO PROGRAM, and the walk no longer pretends it does.
                     #
                     # This SCANNED words 4..13 and yielded anything whose `+ 52` passed
