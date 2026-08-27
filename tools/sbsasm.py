@@ -749,7 +749,19 @@ def leaf_successor(header):
 # `levels` (15) IS NOT HERE AND WAS: it wins every structural comparison and REGRESSES THE
 # RENDER. See `Record._parameters_walked`, which is kept precisely so the next attempt
 # starts from the evidence rather than from the idea.
-WALKED_PARAMS = frozenset({11, 12})
+# `blend` (1) is here on the evidence in the commit that added it, which supersedes both
+# 77a01d1's "not chosen" note and my own revert of it. The disagreement was about what the
+# memo's `opacitymult` slot IS on records whose w1 field reads state 3:
+#
+#     the field's slot holds a backward record index   8,486 of 8,486   -> it is an EDGE
+#     the memo's opacitymult slot is the LAST class slot    373 of 373
+#     the memo's opacitymult kind on those records          always 'program', never baked
+#
+# So the memo is counting back one slot from its block end -- its documented rule -- and
+# landing on an inherited-parameter slot when the field declares an image input and there
+# is no own-parameter to find. Nothing is lost by declining it: `programs()` still returns
+# that program, and render reads `opacitymult` only when its kind is 'baked'.
+WALKED_PARAMS = frozenset({1, 11, 12})
 
 PARAM_SPEC = {
     1:  [('opacitymult', 0x30, 0x20)],
