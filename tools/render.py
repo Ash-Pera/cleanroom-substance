@@ -2708,8 +2708,29 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # built-in node at all. Taking .29/.58/.11 from it would be
                         # inferring the engine's default from a third party's imitation.
                         #
+                        # A FOURTH DIRECTION, AND IT CLOSES RATHER THAN OPENS. Class-word
+                        # parameters come in adjacent (baked, program) bit pairs -- lower
+                        # bit baked at the parameter's width, upper bit a program pointer
+                        # (see `cls_pair_slot`). Class bit 8 is w0 bit 24 and costs FOUR
+                        # words, which is this Float4; its program half would be w0 bit 25.
+                        # If the compiler ever emitted the weights as a PROGRAM, the value
+                        # would be in the file after all and this refusal would be a missed
+                        # read rather than an absence.
+                        #
+                        # It never does. Over all 7,682 shuffle records:
+                        #
+                        #     bit 24 set, bit 25 clear   7,080   weights baked, 4 words
+                        #     both clear                   602   nothing stored
+                        #     bit 25 set                     0
+                        #
+                        # `derive_costs` never gives bit 25 a cost either, for the same
+                        # reason: it is never set. So the weight vector is baked-only, the
+                        # bit-8-clear records carry nothing in any form, and the lens that
+                        # found blur's computed intensity, sharpen's absence and warp's
+                        # mis-slotted program confirms this one instead of unblocking it.
+                        #
                         # So it is asked rather than guessed, and this comment records that
-                        # the asking has been tried three times from three directions.
+                        # the asking has been tried four times from four directions.
                         w = assume.assumed('grayscale.weights')
                         if w is None:
                             raise Unsupported("shuffle stores no weight vector (class bit "
@@ -3326,8 +3347,11 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if intensity is None:
                     raise Unsupported(
                         "blur intensity: %s (walk slot %s)"
-                        % ("class bit 12 clear, so the record states there is no baked "
-                           "intensity" if not _baked else
+                        % ("neither class bit 12 (baked) nor 13 (program) is set, so the "
+                           "source omitted it and the engine's default applies"
+                           if not (_pair or _baked) else
+                           "class bit 13 names a program slot that does not evaluate to a "
+                           "scalar" if not _baked else
                            "the walk does not resolve this record's header" if _islot is None
                            else "slot does not read as a plausible intensity",
                            _islot))
