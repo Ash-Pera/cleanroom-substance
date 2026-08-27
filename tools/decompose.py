@@ -472,6 +472,38 @@ def _model_end(r, fallback):
     the walk rather than something to paper over, and every consumer already bounds slots by
     the record.
 
+    THAT LAST CLAUSE WAS AUDITED, and it holds -- but for two accidental reasons rather than
+    by construction, so it should not be leaned on. First the size of the thing being
+    claimed, over the corpus plus the reference packs, 938,147 records with an `end`:
+
+        a slot at or past its own `end`     9,463    shuffle 3,781, dyngradient 2,400,
+                                                     distance 1,779, normal 1,503
+        a slot past the RECORD entirely     1,789    shuffle 1,643, the rest 146
+
+    `walk.walk`'s loud `Overrun` fires on none of this and `_bounded` catches none of it
+    either: `_bounded` guards `end` and `prog`, and these are the SLOT LISTS, a different
+    object. The two guards are not on the same thing.
+
+    Of the four consumers, two bound correctly -- `sbsasm.program_slots` filters
+    `s < len(words)`, and safely, because an out-of-record slot sorts LAST and so cannot
+    shift the popcount index of a slot before it, and `audit_corpus` filters the same way.
+    The other two are the accidents:
+
+      `reverify`'s slotrule COUNTS rather than reads -- `len(_d['cls_slots'])` with no bound
+      -- so an inflated list would inflate the count it compares a fitted formula against.
+      It is unaffected only because it runs on PARAM_SPEC filters and NONE of the 9,463
+      affected records is in PARAM_SPEC. A filter-set disjointness, not a check.
+
+      `distance._locate_slot` bounds by the RECORD but not by `end`, and 93 distance records
+      have their first parameter slot outside their own header and inside the record, so the
+      read HAPPENS. All 93 read exactly 0.0, and the zero/denormal guard -- written for the
+      unrelated walk-vs-bytes contradiction -- refuses every one. A value coincidence, not a
+      check. 34 more sit past the record and are refused properly.
+
+    So nothing is currently wrong in the output. What is wrong is that the invariant is
+    stated here and enforced nowhere, and the next consumer to read a slot list without
+    bounding it against `end` will not be protected by either accident.
+
     THEY CANNOT BE CORRECTED FROM THIS MODEL, which is worth stating because it is the
     obvious next move and it does not work. The fit gives a header LENGTH, not an
     attribution of that length to particular slots -- `const` is an intercept, not the size
