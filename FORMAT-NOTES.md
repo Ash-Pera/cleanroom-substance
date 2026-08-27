@@ -41338,3 +41338,323 @@ field-5 records in those eight files never render at all. The population that wo
 this arm is behind the same wall as everything else in the blocker census, so `levels.interclamp`
 should be re-run when that wall moves rather than treated as settled now. It is registered as
 a live guess with two arms and an honest null, which is the correct state for it.
+
+## A renderer where every structural read comes from the walk, and Rokviz renders
+
+`tools/render2/` is `render.py` rebuilt on one rule: a filter may ask what a parameter IS
+and whether it is baked or a program, and may not ask where it sits, how wide it is, or
+what a slot's value looks like. `decompose` answers the first two questions once per
+record, in `model.View`, and every filter reads the answer by NAME.
+
+    model.py     the record as the walk states it: edges, parameters, header extent
+    ops.py       image primitives and the bytecode runner
+    filters.py   twenty filters, each reading parameters by name
+    fx.py        FX-Map emission and drawing
+    engine.py    the forward pass
+    __main__.py  render one file and score it against a package's own exports
+
+The one table left is a NAME legend -- `W1_NAMES` and `CLS_NAMES`, (filter, field) -> name.
+That is a different kind of thing from a slot legend: a slot legend goes stale when a
+neighbouring field appears or disappears, and a name legend cannot, because it never
+mentions a position.
+
+THE SPECIMEN IS `Rokviz japanese fabric 8`, for the reason recorded earlier in these notes:
+it declares two graph inputs, `$outputsize` and `$randomseed`, and neither is a colour, so
+a colour mismatch on it cannot be an author's tweak before export. 70 records, six declared
+outputs, all six exported by the engine.
+
+BEFORE AND AFTER, both renderers run in one process at one commit, `max_dim` 256, scored at
+64 against the package's own maps:
+
+    output        ch   render.py            render2
+    basecolor     0    -0.9262              +0.9758
+                  1    +0.3308              +0.9494
+                  2    +0.8607              +0.9066
+    roughness     0    -0.4754              +0.9582
+    ambientocc    0    -0.3308              +0.9701
+    height        0    +0.0466              +0.9439      MAE 0.0004
+    metallic      0     0 = 0 exactly        0 = 0 exactly
+    normal      0-2    degenerate both ways -- see below
+
+    records       70/70 both, but render.py needs `grayscale.weights` SUPPLIED: with no
+                  scope it refuses 13 records and three of the six outputs never render.
+
+`height` is the sharpest of these: mean 0.7859 against the engine's 0.78628, an MAE of
+0.0004 on a channel that was 0.0787 out. It is also the one that arbitrates independently,
+below.
+
+TWO READINGS CHANGED, and both are the walk answering where something else used to.
+
+### 1. `levels` parameters, straight from the w1 mask
+
+Record 34 is a seven-word `levels` with class bit 0 CLEAR, so it carries no inherited size
+slot and its parameters start at word 3:
+
+    LAYOUTS memo             no key for it -- reads as an identity levels
+    decompose.named_params   levelinlow = 4.6e-44, its own `start` rule counting back from
+                             `prog` and landing on the INPUT EDGE (record index 33 read as
+                             a float)
+    the w1 mask              levelinlow 0.1375, levelinhigh 0.1375,
+                             leveloutlow 1.0, levelouthigh 0.0
+
+`levelinlow == levelinhigh` with the OUTPUT range reversed is an INVERTED HARD THRESHOLD --
+1 below 0.1375, 0 above -- and that record is the mask deciding which of two palette
+branches is the material's ground and which its motifs. Read as an identity it exchanges
+them. That exchange is the "red/teal exchange" this file records earlier as an open
+question with two candidate causes eliminated; it is neither of them, and it is not a blend
+mode or a mask polarity. Record 68, which feeds `roughness`, is the same shape: four
+parameters the memo has no key for.
+
+WHERE THE PARAMETERS SIT, and it is two statements the file makes and one it does not.
+
+  * WHICH parameters are present, and whether each is baked or a program, comes from the
+    w1 MASK -- `(w1 & mask) >> shift`, SPEC 7.4's two-bit state. Not from the cost model's
+    per-(field, state) word count, which is the fitted half of costs.json (the ledger's
+    L2) and is wrong where it matters: for `normal` it charges the intensity zero words and
+    charges a class slot instead, so `Do Not Enter` record 4 -- four words, `w1` = 1, the
+    last word holding 13.6533 -- reports NO parameter at all under the cost model while its
+    own w1 says "field 0, baked". `render.py` recovers that record by a value probe over
+    the block; reading the mask names it structurally.
+  * HOW WIDE each is comes from the manifest's type legend -- Float1, Float2, Float4, or
+    per-channel, which is Float1 on a greyscale record and Float4 on a colour one. A
+    program is one pointer whatever its type.
+  * WHERE the group ENDS comes from the cost model, and only that. The header length is the
+    number `derive_costs` fits to observed boundaries and reproduces exactly, and the
+    parameters are laid out BACKWARDS from it in mask order.
+
+An end anchor rather than the walk's forward cursor, because the cursor inherits every
+mis-charged slot BEFORE the parameters: `normal` record 19 is a five-word header whose
+intensity is word 4, and the cursor puts it at 6 for the same L2 reason.
+
+READ THE MASK, NOT A FIELD INDEX. Two pairs STRADDLE the two-bit tiling --
+`transformation`'s offset at bits (25, 26) and `blend`'s second scalar at (9, 10) -- so
+under a plain `j -> bits (2j, 2j+1)` reading a baked offset appears as field 13 state 01
+and a program offset as field 12 state 10, and the two states swap meaning between the two
+fields. The board records the same straddle for `directionalwarp` as a grid SHIFT; these
+two are not a shift, and the mask is what the format states in both cases.
+
+### 2. The FX emission count, read from the placement program
+
+Record 6's FX-Map has an `addnode` whose `numberadded` evaluates to exactly 1 --
+`((slot8 - 1) mod 2 + slot8)**2` with slot8 = 1 -- and a gate whose spiral leaves its 1x1
+box after one step. One emission. Yet its own two parameter programs both divide by 45:
+
+    frameoffset = vec2(0, 0.5 + $number * (1/45)) + slot12
+    patternsize = vec2(1.41774, 0.5/(45 * $size.y) + 1/(90*sqrt2))
+
+A bar sqrt2 long at 0.125 turns -- the unit square's diagonal, at 45 degrees -- stepped by
+1/45 in y walks a perpendicular spacing of 1/(45*sqrt2) = 0.015713, and its width
+1/(90*sqrt2) = 0.0078567 is EXACTLY HALF of that. 45 emissions is a twill at 50% duty, and
+the 90 in the width is 2 x 45.
+
+THREE INDEPENDENT MEASUREMENTS AGREE ON 45, and none of them is a render score:
+
+  * THE ARITHMETIC CLOSES. 0.0078567 / 0.015713 = 0.5002 coverage.
+  * THE OUTPUT BACK-SOLVES. `height` is record 20 = `levels(18)`, 18 = `levels(17)`,
+    17 = `levels(16)` with its output range reversed. Using only the parameters the walk
+    reads, the engine's exported height mean of 0.78628 inverts to a mask 16 of mean
+    0.50008, and its full-resolution range [0.7065, 0.8663] inverts to a mask spanning the
+    whole unit interval -- a 50%-duty binary pattern, not a soft one.
+  * THE EXPORT'S FFT COUNTS THE THREADS. The 4096x4096 height map peaks at (965, 965)
+    cycles, one diagonal family, 4.24 px along a row. Record 16's baked `matrix22` is
+    (-21.4334, 0, 0, 21.4334), and 45 x 21.4334 = 964.5. Rendered at 45 the emitted field
+    peaks at (-45, +45) on its own canvas.
+
+Rendered at 45, mask 16 comes out at mean 0.5020 and `height` at MAE 0.0004.
+
+THE RULE IS DELIBERATELY NARROW, and the census is why. `fxrender.grid_width` already
+reads a count out of a placement program -- the `floor($number / N)` grid, `fx.gridcount`'s
+default arm, the reading that put the tufting lattice on Chesterfield. That stays FIRST and
+unchanged; dropping it costs Chesterfield `normal` 0.949 -> -0.011, which is how it was
+found. What is added is the one spelling it cannot express: `$number` scaled LINEARLY by
+1/N, a run of N rather than a grid.
+
+    fxmaps records                              41,906
+    no unique $number scale                     41,674     -- most records name FIVE or SIX
+                                                              candidate constants, so
+                                                              picking one would be
+                                                              inventing a number
+    exactly one candidate, two-dimensional         105     -- grid_width's own case; where
+                                                              it declines, that is its
+                                                              judgement and is left alone
+    exactly one candidate, linear                  127
+      ...of which numberadded also reads 1          86     0.21%, and the rule fires here
+
+The trigger is the file contradicting itself: an iterator that runs once under a placement
+that is a function of `$number`, so 44 of the 45 positions its own formula names are never
+drawn. Everywhere else `numberadded` is believed unchanged. Under a stated count the
+chain's scanner is held to one run (as `fxrender` already does under a grid) and so is the
+gate, for the same reason: the placement carries this pattern's position and re-driving the
+spiral adds a second one. Rokviz record 6 renders at mask mean 0.279 with the gate
+re-driven and 0.502 without.
+
+WHAT THIS DOES NOT FIX. Records 1, 3, 10 and 12 of the same file still saturate -- 729
+stamps at `patternsize` 2.82 over a 27-cell grid is about eight times the canvas -- which
+is the over-coverage the Grunge Map section above measures at 576x. Those four feed the two
+directional warps' DIRECTION maps, so on this specimen the consequence is small (both warps
+are near no-ops either way), and nothing here bears on the patternsize question.
+
+### What the specimen says about two values that are in NEITHER file
+
+`grayscaleconversion`'s `channelsweights` and `uniform`'s fill are omitted from the assembly
+when the source left them at the node default, and the manifest's vocabulary is interface
+only. `filters.DEFAULTS` is the one place this renderer takes a number from outside the
+file, every use is marked LOW_CONFIDENCE, and an `assume` scope still overrides it.
+
+`uniform.fill` = 0. Record 0 of this file is a `uniform` with class bit 8 clear and it IS
+the graph's `metallic` output; the engine's own 4096x4096 export of that output is exactly
+0.0 at every pixel -- one distinct value, min and max both zero. One specimen is one
+specimen, but it is a check the default could have failed.
+
+`grayscale.weights` = (1/3, 1/3, 1/3, 0). `de1355e` found an arbiter for this and found it
+INERT: RoofTiles' six outputs are byte-identical between Rec.601 and one-hot red. THIS FILE
+IS A LIVE ONE -- both its `grayscaleconversion` records feed scored outputs, and the
+candidates separate. Two independent arguments, neither strong alone:
+
+  * AN ABSENCE, corpus-wide. 5,457 records BAKE the vector, read from the slot the walk
+    names. The even weight is not among them at any multiplicity, while its neighbours are
+    -- (0.30, 0.59, 0.11, 0) x26 with its exact twin (0.299, 0.587, 0.114, 0) x14, and
+    (0.25, 0.25, 0.25, 0) x44. A compiler that omits a parameter exactly when it equals the
+    node default leaves the default as the value that is never written. (The population is
+    dominated by one-hot selectors -- (0,1,0,0) x968, (1,0,0,0) x912, (0,0,0,1) x770,
+    (0,0,1,0) x557 -- and about a quarter of it is garbage, so this is an argument about
+    which round candidates are absent, not a clean distribution.)
+  * THIS FILE'S OWN OUTPUTS, and the interesting part is that CORRELATION CANNOT SEE IT.
+    Both records that take the default feed scored outputs. Sweeping candidates:
+
+        weights          roughness r / MAE     AO r / MAE        basecolor r / MAE
+        (1/3,1/3,1/3,0)  +0.900 / 0.0100       +0.917 / 0.0047   +0.898 / 0.0157
+        Rec.601          +0.902 / 0.0125       +0.916 / 0.0083   +0.914 / 0.0251
+        Rec.709          +0.876 / 0.0095       +0.904 / 0.0089   +0.907 / 0.0264
+        (0.25,..,0)      +0.282 / 0.0099       +0.801 / 0.0429   +0.529 / 0.0202
+        red only         +0.929 / 0.0725       +0.752 / 0.0145   +0.880 / 0.0419
+
+    The correlations of the top two are a tie to two decimals; the MAEs are not, and the
+    even weight wins all three. `red only` is the warning: it takes the best roughness
+    CORRELATION in the table on an MAE seven times worse, which is the structure-versus-gain
+    split refcompare's own header describes.
+
+### `normal` on this file cannot be scored, and that is a resolution fact
+
+Our `normal` renders flat (0.5, 0.5, 1.0) and the export is (0.500, 0.500, 0.8987) with a
+per-channel sd of 0.211 at 4096. Both are consistent: the weave is 965 stripes across the
+canvas, so it is a 4.24 px feature at 4096 and a 0.26 px feature at the 256 the records
+declare. The engine exported at `$outputsize` (12, 12); this renderer evaluates at the
+record's declared size, where the pattern the normal map is a gradient OF does not exist.
+Downsampled to a grid where both can be compared, the reference's own sd falls to 0.0006.
+So the channel is degenerate on both sides at every resolution reached here, and no number
+from it is evidence either way.
+
+### Three cross-record leaks in `render.py`, found by rebuilding without them
+
+Rewriting the renderer to take every read from the record surfaced three places where the
+old one takes a value from somewhere the record does not name. They are recorded here as
+findings about the RENDERER, not the format.
+
+  * `blur` HAS NO `intensity = None`. Its branch assigns `intensity` in three places and
+    initialises it in none, so a `blur` whose class bits 12 and 13 are both clear -- the
+    case whose own error message says "the source omitted it and the engine's default
+    applies" -- silently reuses whatever the last `blur`, `warp` or `normal` record left in
+    the function's local. `Kutejnikov__Auras` record 342 is such a record: denying every
+    EARLIER blur its class-word intensity pair, while changing nothing about record 342's
+    own header, changes record 342's output. render2 refuses these instead, which costs 42
+    records across the five reference packs (18 in Auras, 12 in each RoofTiles) and no
+    scored channel.
+  * A PIXELPROCESSOR'S SAMPLERS ARE NEVER CLEARED. `sbsruntime.SAMPLERS` is module-global;
+    the `fxmaps` branch saves and restores it and the `pixelprocessor` branch does not, so
+    a record can read an image bound by an earlier record. render2 scopes both.
+  * `blend`'s opacity falls back to the SIZE-EXPRESSION slot when `opacitymult` is absent.
+    An absent field means the source left the multiplier at 1; it does not mean the number
+    is somewhere else.
+
+A fourth is this renderer's own and is recorded because it cost an afternoon: a parameter
+program must be evaluated at the record's DECLARED size, not at the `max_dim` render grid.
+`$size` is a property of the file and `max_dim` is a sweep shortcut, and letting it reach a
+`transformation`'s offset program made 4,058 Bricks records depend on the resolution they
+happened to be rendered at.
+
+ONE PLACE THE OLD RENDERER'S PERMISSIVENESS IS RIGHT, and render2 now matches it: an
+`fxmaps` record binds the image inputs that HAVE an output and does not refuse for the ones
+that do not. Its patterns need an image only if one of its programs samples it, and a
+program that does need the missing one raises `MissingSampler` at the point of use.
+Refusing up front cost 511 records on `MetalPlatesSubstance004` alone.
+
+### Over a corpus sample
+
+53 files, 51,286 records, both renderers in one run at `max_dim` 64:
+
+    records produced     31,973 old      32,942 new      (+969)
+    root causes             284 old         267 new
+    seconds                  97 old         293 new
+
+The refusals render2 adds are the absent-parameter ones -- `warp` 44, `blur` 7, `normal` 6,
+`distance` 13 -- plus 26 `emboss` records whose header the cost model does not cover at all
+and where `render.py` falls back to `_compute_layout`. What it stops refusing is larger:
+82 `shuffle` records that needed a supplied `grayscale.weights`, 12 `fxmaps` whose
+`numberadded` read back as 66,049 or 263,169, 7 `bitmap` records refused for a channel
+count, and 4 `normal`. The three-fold time is the price of rendering the extra records,
+concentrated in a few files: `Fabric05` renders 41 more and takes 27s against 0.2s.
+
+### Where render2 stands against render.py elsewhere, and the one place it loses
+
+Both renderers over the five reference packs in one run, at `max_dim` 128, through
+`refcompare`'s own pairing so the two columns differ only by the renderer:
+
+    corr same         15        both degenerate    6
+    corr better        3        corr worse         3
+    records        23,036 old against 22,994 new -- the difference is exactly the 42
+                   `blur` refusals above, and it costs no scored channel.
+
+The three better and the three worse are the SAME question, and it is the one the README
+already fences: routing `levels` through the walk.
+
+    basecolor        walked levels                 LAYOUTS memo
+    Rokviz    ch0    +0.9758 / mae 0.0077          -0.9784 / mae 0.1028
+              ch1    +0.9494 / mae 0.0152          +0.3545 / mae 0.0535
+              ch2    +0.9066 / mae 0.0176          +0.9029 / mae 0.0344
+      roughness      +0.9582 / mae 0.0097          -0.4909 / mae 0.1163
+      ambientocc     +0.9701 / mae 0.0042          -0.3420 / mae 0.0237
+    Bricks    ch0    +0.3748                       -0.7014
+              ch1    +0.4959                       -0.6901
+              ch2    -0.5349                       -0.6462
+    Chesterfield ch0 +0.4185 / mae 0.1016          +0.6770 / mae 0.0511
+              ch1    -0.1949 / mae 0.1216          +0.8531 / mae 0.0777
+              ch2    -0.2424 / mae 0.0808          +0.4917 / mae 0.0379
+
+Two packages for the walk, one against, which is what the README says -- but the THREE
+records that decide Chesterfield are now identified, and what they hold settles the
+placement question even though it leaves the render question open.
+
+Of Chesterfield's 124 `levels` records the two readings AGREE on 113. Seven the memo has no
+key for at all. Four differ, and swapping just three of them -- 129, 146, 226 -- moves the
+whole basecolor difference; the fourth changes nothing. Those three are identical
+six-word records with class bit 0 clear, so no inherited size slot, three parameters:
+
+    words   0x18441e  0x144  0x80  0x3f7fa377  0x3f800000  0x0
+                             ^edge  0.998588    1.0         0.0
+    walk    levelinhigh 0.998588   leveloutlow 1.0   levelouthigh 0.0     slots 3, 4, 5
+    memo    levelinhigh 0.0        leveloutlow 0.998588  levelouthigh 1.0 slots 2, 3, 4
+
+THE MEMO'S WINDOW STARTS ONE SLOT EARLY AND ITS FIRST PARAMETER IS THE INPUT EDGE. `0x80`
+is 128, a backward record index; read as a float32 it is a denormal and reports 0.0, which
+no plausibility test can see. (146 and 226 hold 0x91 and 0xe1, the same shape.) This is the
+1,899-slot failure the unification board names, caught on a package that scores it.
+
+AND THE CONSEQUENCE IS NOT SUBTLE. `levelinhigh` = 0.0 with `levelinlow` at its default 0
+is a zero-wide input span, so `levels.zerospan`'s step arm fires and every pixel takes
+`levelouthigh` -- the memo turns these three records into a CONSTANT 1.0. The walk's
+reading, `in_high` 0.9986 with the output range reversed, is a plain invert. So
+Chesterfield's basecolor prefers three of its masks replaced by white.
+
+WHAT THAT DOES AND DOES NOT SETTLE. The placement is settled: slot 2 is an edge, the walk's
+`inputs` says so and the record's own word says so, and a parameter cannot live there. What
+is NOT settled is why the render prefers the impossible read, and the honest reading of
+that is that something downstream of an INVERTING `levels` is wrong -- the semantics of
+`leveloutlow > levelouthigh`, or `levelinlow`'s default when the source omits it. That is
+an open question this specimen now poses sharply, and it is not evidence for the memo.
+
+A SECOND DIFFERENCE, RECORDED AND NOT ACTED ON. Record 348 is a COLOUR `levels`, and the
+walk reads its level fields at their real width -- `levelinlow` is a Float4 (0.264, 0.264,
+0.264, 0.0), not a scalar. Both renderers then use only the first component. Per-channel
+levels on colour records is a change neither has made, and it moves nothing here (swapping
+348 alone leaves every Chesterfield channel identical to four decimals).

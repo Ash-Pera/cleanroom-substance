@@ -124,11 +124,32 @@ no source this project may read names filter 5.
     sbsruntime.py         runtime for transpiled programs, vectorised over numpy
     run_file.py           evaluates every program in a file through one shared cache
     render.py             walks a record graph in index order and evaluates what it can
+    render2/              the same, rebuilt so every structural read comes from the walk
 
 `render.py` implements ten filters: `bitmap`, `pixelprocessor`, `blend`, `transformation`,
 `levels`, `uniform`, `directionalwarp`, `gradient`, `curve` and `dirmotionblur`. That is
 not enough to render a real material, and FORMAT-NOTES.md measures how far short it falls
 and which filter gates the rest.
+
+`render2/` is the rebuild, and the difference is not tidiness. `render.py` asks a different
+question in every filter branch -- the fitted `LAYOUTS` memo here, a value probe over
+`Record.programs` there, a hand-stated slot offset in a third -- and `render2` asks
+`decompose` ONCE per record, in `model.View`, and every filter reads the answer by name.
+The only table left is a NAME legend, (filter, field) -> name, which cannot go stale when a
+neighbouring field appears or disappears because it never mentions a position.
+
+    python3 tools/render2 <file.sbsasm> [--dim 256] [--out DIR] [--score DIR]
+
+`--score DIR` pairs each declared output against the package's own exported maps by the
+manifest's usage name. On `Rokviz japanese fabric 8` -- the specimen with no exposed colour
+parameter, so a colour mismatch cannot be an author's tweak -- it renders all 70 records
+and scores basecolor +0.976 / +0.949 / +0.907, roughness +0.958, ambient occlusion +0.970
+and height at an MAE of 0.0004, against -0.926 / +0.331 / +0.861, -0.475, -0.331 and
++0.047 for `render.py`. Two readings account for it, both the walk answering where
+something else used to: `levels` parameters taken from the field enumeration rather than
+the memo, and an FX-Map emission count taken from the placement program on the 0.21% of
+records whose iterator contradicts it. FORMAT-NOTES.md has the measurements, the census
+behind the narrow trigger, and the one channel of one package where the memo still wins.
 
 `run_file.py` exists because `cache_read` raises unless a caller threads one cache through
 a whole file. Programs are not independent: a record's program can read what an earlier
