@@ -182,8 +182,9 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assume, sbsruntime, transpile                                  # noqa: E402
-from sbsasm import (Assembly, FX_NODES, fx_patterntype,                              # noqa: E402
-                    fx_entry_layout)
+from sbsasm import (Assembly, FX_NODES, FX_NODES2, fx_patterntype,                   # noqa: E402
+                    fx_entry_layout, node_shape, leaf_successor,
+                    pointer_cell_successor)
 
 # 0x1CB joins these on the value evidence in sbsasm's FX_NODE_PARAMS: its +4 program is
 # 1.0 in 180 of 183, matching 0x18B's `numberadded` (1.0 in 69.5%) and not 0x1AB's
@@ -1140,8 +1141,24 @@ def why_no_entries(rec):
         h = header_at(root)
         if h is None:
             return "walk: root slot addresses %#x, outside the body" % root
-        return ("walk: stopped AT THE ROOT, %#x holds header %#010x -- not in the node "
-                "vocabulary, so no table was ever reached" % (root, h))
+        # "NOT IN THE VOCABULARY" WAS AN INFERENCE, AND IT WAS WRONG. This read the header
+        # itself and concluded the walk must have refused it. For all 12 records currently
+        # in this branch that is false: the header is `0x1b`, `FX_NODES2` has it, and the
+        # walk stops for an unrelated reason -- `FX_NODES2[0x1B]`'s program tuple is EMPTY,
+        # and `fx_tree` yields only from inside `for sl in prog_slots`, so the node is
+        # walked and never yielded. Exactly the misattribution this function exists to
+        # prevent, one level further in, so it now ASKS the derivations instead of guessing
+        # from the byte.
+        known = (node_shape(h) is not None or leaf_successor(h) is not None
+                 or pointer_cell_successor(h) is not None or (h & 0xFF) in FX_NODES2)
+        where = ('' if rec.offset <= root < rec.end
+                 else ' (and the root lies outside the record, inside the body)')
+        if not known:
+            return ("walk: stopped AT THE ROOT, %#x holds header %#010x -- no derivation "
+                    "and no table row knows it%s" % (root, h, where))
+        return ("walk: root %#x holds header %#010x, which the vocabulary DOES know -- the "
+                "walk reached it and yielded no node, so nothing handed off to a table%s"
+                % (root, h, where))
 
     last = nodes[-1][1]
     h = header_at(last)

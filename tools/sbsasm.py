@@ -3785,12 +3785,20 @@ class Record:
         """For filter 4: yield (entry offset, tag, program offset or None) per entry.
 
         The counterpart to `fx_tree`. A record's slot 2 addresses either a linked node
-        chain - walk it with `fx_tree` - or this: a run of consecutive 8-byte entries.
-        The two are told apart by whether the first word is a node header.
+        chain - walk it with `fx_tree` - or this: a run of entries. The two are told
+        apart by whether the first word is a node header.
 
-        Stepping is by eight bytes. Following the entry's own pointer as though it were
-        the next entry walks out of the record 77.4% of the time, because that pointer is
-        the entry's payload, not its successor.
+        STEPPING IS BY THE POINTER THE ENTRY STORES, and this said "by eight bytes" long
+        after that stopped being true -- with the paragraph below the loop already saying
+        the opposite in capitals. Both claims here were the retired `FX_ENTRY` stride and
+        its justification ("following the entry's own pointer walks out of the record
+        77.4% of the time"), and the code between them has followed the furthest-forward
+        stored pointer for some time. `while q + 8 <= e` is a BOUNDS CHECK, not a stride,
+        which is what let the wrong reading survive a look at the loop.
+
+        Recording why this mattered rather than just deleting it: a stale docstring is a
+        blocker with no measurement behind it, and this one produced a whole proposal to
+        "fix the stride" before anyone read the loop it describes.
 
         The entry layout says where an inline program sits; `FX_PAYLOAD_PROG` covers
         the two tags it gets wrong. A tag neither names yields None, not a guess.
@@ -3817,6 +3825,28 @@ class Record:
         while q + 8 <= e and limit > 0:
             limit -= 1
             tag = struct.unpack_from('<I', d, q)[0]
+            # WITHDRAWN: STOPPING THE RUN ON THE BIT-7-CLEAR FAMILIES. `node_shape` only
+            # knows bit-7-SET headers, so leaves and pointer cells appear in this run --
+            # 26 and 34 of them across 32 records that yield no usable entry -- and that
+            # looked like the run overreading into node territory. It is not. The run
+            # follows each word's furthest-forward pointer, and the pointer goes THROUGH
+            # the cell to a real entry beyond it:
+            #
+            #     fabric_002 233      0x00020008 -> 0x0000014b -> 0x0a000a48   holds
+            #     Camouflage_02 223   same shape                               holds
+            #     CardBoard 491       0x00420008 -> 0x0000014b -> 0x15000448   holds
+            #
+            # A pointer cell in the run is a WAYPOINT, not a terminator. Breaking on one
+            # costs records their table and gains none: at position 0, 80 records lost, 0
+            # gained -- `entries()` starts this run at a root that is itself a chain cell,
+            # so it refuses the run its own caller asked for. Applied from the second word
+            # instead, 3 lost, 0 gained, and those 3 are the shape above, where the entry
+            # AFTER the cell is the one `entries()` was keeping. The cells themselves cost
+            # nothing: they are not drawable tags and `entries()` filters them already.
+            #
+            # So the stop stays `node_shape` alone. Recorded rather than left to be
+            # re-derived: the census that motivated this counted waypoints as junk, and the
+            # only instrument that told the difference was the corpus entry diff.
             if node_shape(tag) is not None:
                 break
             # THE LAYOUT IS A STOPPING RULE, and it is the only one that catches this walk
