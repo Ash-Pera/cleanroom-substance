@@ -2236,6 +2236,30 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # popcount predicts how many. A CONTROLLED TEST caught it: a height RAMP produced a
                 # perfectly flat normal map. So intensity is singled out by WIDTH instead, the way
                 # `transformation` singles out its matrix, refusing when that is ambiguous.
+                #
+                # AND IT IS NOT A CLASS-WORD PAIR EITHER, which is the obvious next idea and is
+                # refuted three ways. `blur`, `sharpen`, `warp`, `shuffle` and `uniform` all keep
+                # their scalar in an adjacent (baked, program) bit pair that `cls_pair_slot` reads,
+                # so `normal` looks like it should too, and `decompose` does report pairs for it --
+                # one of {10, 11}, one of {14, 15}, bit 16, and sometimes (26, 27). Over 1,353
+                # records across the corpus and the reference packs:
+                #
+                #   * bit 15's slot names a program returning TWO components on 854 of 916 -- the
+                #     output-size expression (w, h), not a scalar. Only 62 return one.
+                #   * bit 27's slot is NOT a valid program on 1,053 of 1,065. It is not a pointer.
+                #   * bit 26 is charged TWO words and its second word reads 9.34e-33, which is the
+                #     `0x0A420001` program preamble as float32 -- bytecode, not a component. Its
+                #     first word reads 12.0, squarely in the block's observed intensity range.
+                #
+                # The (26, 27) pair IS real as a COST: grouping by class word with those bits
+                # masked, bit 27 adds exactly one word to the walk's `end` and bit 26 adds two,
+                # against records that set neither -- cls bases 0x319 (end 6 vs 5), 0x309 (6 and 7
+                # vs 5), 0x019 (6 vs 5) and 0x318 (5 vs 4). So the cost model charges the pair and
+                # the CONTENT contradicts the widths it charges, which makes bit 26's width the
+                # thing in question rather than this branch. Handed to costs.json's owner.
+                #
+                # So the width rule stays. It is not elegant and it is not a formula either -- it
+                # asks each program what it returns rather than computing where one should be.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
