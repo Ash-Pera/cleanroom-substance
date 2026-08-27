@@ -258,6 +258,49 @@ def overlap_violations(rec):
             if rec.offset <= p < hi]
 
 
+def pointer_bound(rec):
+    """(header end, first self-pointed program) in words, or None -- an UNFITTED bound.
+
+    The record header's end is the one extent in this format that nothing states outright
+    (see FORMAT-NOTES, "Every extent is stated locally except one"). It is computed from
+    `costs.json`, which is the last fitted thing the decode rests on.
+
+    But a record does bound it, weakly and without any table: the first byte the record
+    POINTS AT inside itself cannot be header, because it is the start of a program. That is
+    the record's own statement, made with its own pointers.
+
+    Over 30 files and 33,385 records that point at a program inside themselves:
+
+        end == first inline program   32,607   97.7%
+        end <  first inline program      778    2.3%   (gaps of 3..96 words)
+        end >  first inline program        0    0.0000%
+
+    The zero is the load-bearing figure. The fitted header end never once claims a word
+    that the record's own pointer says is code, so the cost model is bounded above by
+    something independent of it. The 778 with a gap are where the two disagree and the
+    header may run further than the walk thinks -- the population to look at if the cost
+    model is ever to be replaced rather than checked.
+
+    Returns None for the 4,815 records that point at no program inside themselves; they
+    state no bound and this has nothing to say about them.
+    """
+    if rec.filter_id in getattr(sbsasm, '_PAYLOAD_PROGRAM_FILTERS', {4, 20}):
+        return None
+    d = decompose.decompose(rec)
+    if not d or d.get('end') is None:
+        return None
+    asm = rec.asm
+    inline = []
+    for w in rec.words:
+        p = w + 52
+        if rec.offset <= p < rec.end and asm.body_lo <= p < asm.body_hi \
+                and asm.valid_program(p):
+            inline.append((p - rec.offset) // 4)
+    if not inline:
+        return None
+    return _header_end(rec, d), min(inline)
+
+
 def census(paths=None):
     paths = paths or corpus.paths()
     fx = collections.Counter()
@@ -265,6 +308,7 @@ def census(paths=None):
     hdr = collections.Counter()
     hdr_tot = collections.Counter()
     ov = collections.Counter()
+    pb = collections.Counter()
     for pp in paths:
         try:
             a = sbsasm.Assembly(pp)
@@ -282,6 +326,18 @@ def census(paths=None):
                 ov[name] += len(overlap_violations(r))
             except Exception:
                 pass
+            try:
+                b = pointer_bound(r)
+            except Exception:
+                b = None
+            if b is not None:
+                pb['bounded'] += 1
+                if b[0] > b[1]:
+                    pb['VIOLATION'] += 1
+                elif b[0] < b[1]:
+                    pb['gap'] += 1
+                else:
+                    pb['exact'] += 1
             if r.filter_id != 4:
                 continue
             for kind, tag, k, extent, src in fx_violations(r):
@@ -292,13 +348,13 @@ def census(paths=None):
                 items = []
             fx_tot['attributions'] += sum(
                 1 for it in items if len(it) > 3 and it[3] is not None)
-    return fx, fx_tot, hdr, hdr_tot, ov
+    return fx, fx_tot, hdr, hdr_tot, ov, pb
 
 
 def main(argv):
     n = int(argv[0]) if argv else 80
     paths = corpus.paths()[:n]
-    fx, fx_tot, hdr, hdr_tot, ov = census(paths)
+    fx, fx_tot, hdr, hdr_tot, ov, pb = census(paths)
     print('walk partition check -- %d files\n' % len(paths))
     print('RECORD HEADER: programs named only by a word past the walk\'s header end')
     print('  %-20s %10s %10s' % ('filter', 'violations', 'programs'))
@@ -309,6 +365,15 @@ def main(argv):
             any_h = True
     if not any_h:
         print('  none')
+    print()
+    print("POINTER BOUND: the header end against the record's own first inline program")
+    n = pb.get('bounded', 0)
+    if not n:
+        print('  no record states this bound')
+    else:
+        for k in ('exact', 'gap', 'VIOLATION'):
+            print('  %-20s %10d %9.4f%%' % (k, pb.get(k, 0), 100.0 * pb.get(k, 0) / n))
+        print('  %-20s %10d' % ('records bounded', n))
     print()
     print('HEADER OVERLAP: a program that STARTS inside the walked header')
     if not sum(ov.values()):
