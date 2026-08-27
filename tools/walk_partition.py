@@ -169,7 +169,13 @@ def header_violations(rec):
     d = decompose.decompose(rec)
     if not d or d.get('end') is None:
         return []
-    end = d['end']
+    # THE SIZE SLOT IS PART OF THE HEADER even though it sits AT `end`. `decompose` computes
+    # `prog` as the first slot after the base region and `end` as the cursor after the
+    # parameter fields, so `prog == end` exactly when no parameter follows -- and the walk
+    # names that slot itself. Bounding at `end` alone reported the record's own size
+    # expression as an out-of-extent read: 17 of 33 flagged over 80 files, every one
+    # `j == prog == end`, `emboss` mostly. Those were this check's error, not the decode's.
+    end = max(d['end'], (d['prog'] + 1) if d.get('prog') is not None else 0)
     bad = []
     for p in rec.programs:
         idxs = [j for j, w in enumerate(rec.words) if w + 52 == p]
