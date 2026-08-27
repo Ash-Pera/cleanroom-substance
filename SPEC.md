@@ -292,6 +292,31 @@ fourteen masks resolve to exactly one field —
     levels           s=0    levelinlow 0x0003 -> 0 ... levelouthigh 0x0300 -> 4
     fxmaps           s=0    fx_param0 0x0003 -> 0 ... fx_param3 0x0300 -> 4
 
+**`s` IS DERIVED, NOT STATED, and a reader should know which half of this section is
+measured.** The field grid, the state codes and the cursor are all read from the file. The
+SHIFT is not: it comes from `derive_costs.W1_GRID_SHIFT`, a re-fit of the cost model on the
+odd grid. Three things support it, and they are not equal:
+
+* **Structural, and independent of the fit.** `w1` bit 0 is set in **0 of 62,898**
+  `directionalwarp` records, against a control of 247,561 of 431,890 across `blend`,
+  `dirmotionblur` and `levels`. A zero that large with a live control is the file saying bit
+  0 carries nothing for this filter. Note precisely what it settles: the grid **cannot start
+  at bit 0**. It does not establish that the grid starts at bit 1 — that step is still the
+  fit.
+* **Independent of the cost model.** With the shift applied, the field rule and the retired
+  positional rule produce identical name lists on 78,783 of 78,783 records. The positional
+  rule never decomposes `w1` into fields at all, so this agreement does not rest on
+  `costs.json`. This is the support to lean on.
+* **Parsimony, and it should be discounted.** The odd-grid re-fit is exact at 100.000% with
+  24 columns against 26. So was the even grid — a misaligned decomposition can sum correctly,
+  which is why nothing caught the misalignment for as long as it stood. A fit reproducing a
+  total it does not understand is not evidence about the decomposition.
+
+So the honest statement is that the file rules out one starting position and the remaining
+choice is inferred. Read alongside §7.3: the format states the width legend and forecloses
+some placements, and what it does not state is the KEY — which field carries which type, and
+where the grid begins. Two halves of one missing declaration.
+
 `directionalwarp` is the reason the shift exists and the reason it must be read rather than
 assumed. Its `intensity` is bits 1 and 2, which STRADDLE the fields of an unshifted grid; a
 matcher that assumes `s = 0` finds no field for it, names neither of its parameters, and
