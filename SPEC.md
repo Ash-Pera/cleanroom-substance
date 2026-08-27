@@ -183,13 +183,33 @@ the provenance wall (§12).
 
 A filter's parameters are either **computed** (a bytecode program) or **baked** (a
 constant). Computed parameters are pointers into the instruction stream (§10). Baked
-parameters live in the value table.
+parameters are stored **inline in the record header, one word per component** (§6.4) — not
+in the value table, which holds the graph input defaults only (§7.1).
 
 ### 7.1 Value table
 
-A single array named by trailer word 6 and bracketed by header 0x2C. It holds every baked
-scalar/vector value; 98% of its entries are byte-exact against manifest defaults, the rest
-within float-rounding, none unexplained. Values are addressed positionally by the walk.
+A single array named by trailer word 6 and bracketed by header 0x2C. It holds the **graph
+input defaults and nothing else** — 98% of its entries are byte-exact against manifest
+defaults, the rest within float-rounding, none unexplained. Values are addressed
+positionally by the widths of §7.2.
+
+An earlier version of this section said it "holds every baked scalar/vector value". That is
+false, and the error is large: measured over 437 specimens, the graph-input descriptors of
+§7.2 consume the table's **entire stated extent** — `table_start = trailer word 6 + 52` to
+`table_end = header 0x2C + 52` — in 437 of 437 files, with no room left over. Meanwhile the
+records carry **544,873 baked parameter slots** against the corpus's **8,500** descriptors,
+a ratio of 1 : 64.
+
+Those two populations are disjoint. **A record's baked parameters are stored inline in the
+record header, one word per component** (§6), and are never in the value table. A reader
+built on the old sentence would look for 544,873 values in an array that does not contain
+them.
+
+The 437/437 closure is stated deliberately in terms of the two header/trailer pointers.
+`standalone_parse` reports its own `table_ok` at 437/437 as well, and **that number is not
+evidence**: the parser selects the interface-block candidate that satisfies
+`tstart + span == hdr`, so its closure is a property of the chooser rather than of the
+format. The pointers above are ones the chooser never reads.
 
 ### 7.2 Graph-input default table
 
@@ -209,6 +229,39 @@ The image-input width is the one version-dependent rule in the format: from asse
 version v8 (`0x0008_0000`) an image input occupies a 16-byte `f32×4` slot at its uid
 position; in v2–v6 it occupies none. Getting it wrong shifts the whole table by
 `16 × (image count)`.
+
+### 7.3 The width legend, and the key it is missing
+
+§7.2's `type -> 4N` table is the format's own width legend, stated in the file and read
+rather than fitted. It reaches the record side too: over 437 specimens every one of the
+**544,873** baked parameter slots the walk reads has a width of 1, 2 or 4 words —
+`float1`, `float2`, `float4` — and **none falls outside the legend's 1..4**. (Width 3,
+`float3`, is legal by the legend and does not occur.) Per filter:
+
+| filter | 1 word | 2 words | 4 words |
+|---|---|---|---|
+| 1 `blend` | 137,808 | 26 | — |
+| 2 `transformation` | 36 | 29,331 | 66,512 |
+| 11 `dirmotionblur` | 25,654 | — | — |
+| 12 `directionalwarp` | 115,122 | — | — |
+| 15 `levels` | 163,992 | — | 1,735 |
+| 17 `text` | 43 | 39 | 14 |
+| 18 `normal` | 971 | — | — |
+| 21 `distance` | 1,552 | 2,038 | — |
+
+So the legend is not the gap. **What the file does not state is the per-field type CODE**,
+and that is the object `costs.json` actually fits — a *kind assignment* per (filter,
+field), not a width. Two searches for a per-node type declaration came back empty and are
+recorded so they are not repeated: the interface block declares 8,500 typed descriptors
+against 544,873 slots and is framed to the graph-input table alone (§7.1), and the record
+directory holds bare offsets. The filter id *is* the declaration, and the parameter list it
+names lives in the engine.
+
+One kind is already stated rather than assigned, which is the existence proof that the
+distinction is real: a `channel` field's component count is the **tag's colour bit** — 4
+words when colour, 1 when grayscale — so `walk._field_width` derives it and does not fit
+it. The open problem is the rest of the assignment, and its legitimate route is the
+permitted `.sbs` sources, which declare parameter names and types per filter.
 
 ---
 
