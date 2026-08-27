@@ -749,7 +749,7 @@ def leaf_successor(header):
 # `levels` (15) IS NOT HERE AND WAS: it wins every structural comparison and REGRESSES THE
 # RENDER. See `Record._parameters_walked`, which is kept precisely so the next attempt
 # starts from the evidence rather than from the idea.
-WALKED_PARAMS = frozenset({1, 11, 12})
+WALKED_PARAMS = frozenset({11, 12})
 
 PARAM_SPEC = {
     1:  [('opacitymult', 0x30, 0x20)],
