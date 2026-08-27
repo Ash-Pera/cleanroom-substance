@@ -3255,8 +3255,30 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         raise Unsupported("sharpen intensity: class bit 13 names a program "
                                           "slot that does not evaluate to a scalar")
                 else:
+                    # NEITHER BIT MEANS THE SOURCE OMITTED THE PARAMETER, so the engine
+                    # substitutes its own default and the file does not contain one. That
+                    # is confirmed from the SOURCE side, which is where an absence can be
+                    # proved: over the permitted paired sources, 15 sharpen nodes, 13
+                    # declaring an `intensity` and 2 declaring none, against 45 binary
+                    # records -- 42 bit 12, 0 bit 13, 3 neither. The two sources that omit
+                    # it (`Hard-Science-Old__CrustyLava`, `SubstanceDesignerPractice`) each
+                    # have exactly one neither-bit record, and every source that declares
+                    # one on every node has zero. (`Mineral_Ore` has the third, and 3 nodes
+                    # against 27 records, so instancing puts its per-node counts out of
+                    # reach.)
+                    #
+                    # Structurally there is nowhere else to look. These records are
+                    # `end = 4` with costly class bits 16 and 27 -- base 2 + 1 + 1 -- so
+                    # every header word is accounted for and no slot is spare. The
+                    # parameter is not hidden, it is absent.
+                    #
+                    # 167 records corpus-wide, 18 declared outputs over 30 files. Rendering
+                    # them needs the ENGINE's default, which is not a decode question and
+                    # not in the file; it belongs in `assume.QUESTIONS` beside the other
+                    # substituted values, not guessed at here.
                     raise Unsupported("sharpen intensity: neither class bit 12 (baked) nor "
-                                      "13 (program) is set, so the record carries none")
+                                      "13 (program) is set, so the source omitted it and "
+                                      "the engine's default applies")
                 W, H = rec.width, rec.height
                 if max_dim:
                     W, H = min(W, max_dim), min(H, max_dim)
