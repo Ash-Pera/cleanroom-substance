@@ -2934,7 +2934,27 @@ class Record:
             else:
                 aligned = False
         if not aligned:
-            return self._parameters_positional(spec, d)
+            # UNREACHABLE, AND LOUD RATHER THAN SILENT IF IT EVER IS NOT. Every mask in
+            # every PARAM_SPEC entry resolves to exactly one field under the grid shift
+            # (SPEC 7.4), so this branch is not taken on any of 445,815 records that reach
+            # this method. It used to fall through to `_parameters_positional`, a SECOND
+            # placement rule -- and that rule and this one produce identical name lists on
+            # 78,783 of 78,783 records, so it was never a different answer, only a second
+            # implementation of the same one. Two implementations of one rule is how
+            # `walk.SPECS[4]`'s arity drifted from `decompose`'s.
+            #
+            # Deleting it silently would be worse than keeping it: the reason it was kept
+            # is that a future misaligned spec would then return [] with no signal, and an
+            # empty parameter list is indistinguishable from a filter that declares none.
+            # So the mechanism goes and the alarm stays. If this raises, a PARAM_SPEC mask
+            # is not `3 << (2j + shift)` and SPEC 7.4 needs the counter-example, not a
+            # workaround.
+            raise ValueError(
+                'filter %d has a PARAM_SPEC mask off the w1 field grid (shift %d): %r. '
+                'See SPEC 7.4 -- a presence mask must be 3 << (2j + shift).'
+                % (self.filter_id, gsh,
+                   [hex(pres) for _n, pres, _p in spec
+                    if not any(pres == (3 << (2 * j + gsh)) for j in range(16))]))
         out = []
         for j, _st, pos, _w in d['param_slots']:
             nm = names.get(j)
@@ -2943,57 +2963,6 @@ class Record:
             out.append(self._read_slot(nm, pos))
         return out
 
-    def _parameters_positional(self, spec, d):
-        """Present parameters occupy the LAST n slots of the header, in bit order.
-
-        NO FILTER ROUTES HERE ANY MORE, and the reason the last one did has been fixed at
-        its source rather than worked around here. `directionalwarp` used this method because
-        its masks (0x06 at bits 1,2 and 0x18 at bits 3,4) matched no field on the cost
-        model's even (0,1), (2,3), (4,5) grid. THE FORMAT WAS RIGHT AND THE GRID WAS WRONG:
-        w1 bit 0 is ZERO in all 62,898 dirwarp records, and read where PARAM_SPEC puts them
-        the pairs are a clean two-bit code with no state 3 -- which is what a correctly
-        aligned scalar pair looks like, since 11 is the image-input state and a float cannot
-        take it.
-
-        The old fitted costs said so if read closely: field 0 spanned the dead bit and
-        intensity's low bit, so it could only ever be state 0 or 2, and its costs were
-        {1: 0, 2: 1, 3: 0}; field 1 spanned intensity's HIGH bit and warpangle's LOW bit --
-        two different parameters -- and its state-3 cost was 2, intensity-as-program (1)
-        plus warpangle-baked (1). The header TOTAL was exact at 100.000% throughout, because
-        a misaligned decomposition can sum correctly, which is why nothing caught it.
-
-        Re-fitting on the odd grid (`derive_costs.W1_GRID_SHIFT`) is exact at 100.000% too,
-        with FEWER columns (24 against 26) and coefficients that mean something: 1 word baked
-        and 1 word as a pointer for each parameter, and no surviving state-3 column. So the
-        field match names dirwarp now and this method has no caller.
-
-        KEPT ANYWAY, deliberately. It is the fallback for a spec whose presence masks do not
-        sit on the grid, and the next filter to be given a PARAM_SPEC entry may well be one.
-        Deleting it would make the next misalignment return [] silently instead of reading
-        the parameters positionally.
-
-        For a spec whose presence masks do not sit on the cost model's two-bit field grid,
-        so the field match in `_parameters_walked` cannot name them. This reads the walk's
-        `end` and counts back, which is the same rule `decompose.named_params` uses and is
-        immune to the misalignment because it never decomposes w1 into fields at all.
-
-        A field in state 11 is an image INPUT rather than a parameter, and is excluded --
-        `(w1 & pres) == pres` is the whole-mask test for that state.
-        """
-        end = d.get('end')
-        if end is None:
-            return []
-        w1 = self.words[1] if len(self.words) > 1 else 0
-        present = [nm for _lb, nm in sorted((pres & -pres, nm) for nm, pres, _prog in spec
-                                            if (w1 & pres) and (w1 & pres) != pres)]
-        out = []
-        for i, nm in enumerate(present):
-            slot = end - len(present) + i
-            if 0 <= slot < len(self.words):
-                out.append(self._read_slot(nm, slot))
-        return out
-
-    @property
     def program_slots(self):
         """Which block slots hold programs, for the filters that encode it as a count.
 
