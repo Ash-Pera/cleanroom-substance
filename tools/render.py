@@ -2210,6 +2210,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 tainted = rec.edges[0] in synthetic
 
                 intensity = None
+                omitted = False
                 by_width = {}
                 for prog in rec.filter_programs:
                     try:
@@ -2245,13 +2246,59 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         rec.filter_id, rec.words[0],
                         rec.words[1] if len(rec.words) > 1 else None,
                         asm.header.get('version') if isinstance(asm.header, dict) else 0)
+                    # THE LAST HEADER SLOT IS NOT ALWAYS A PARAMETER. When the source
+                    # declared no intensity the header simply ends one word earlier, and
+                    # `end - 1` is then the last PROGRAM POINTER instead. A pointer read as
+                    # float32 is a denormal, so the range test below did reject it -- but as
+                    # "implausible value", which names the wrong thing: there is no value
+                    # here to be implausible. The refusal could not be acted on because it
+                    # described a failed read rather than an absent parameter.
+                    #
+                    # ASKED STRUCTURALLY INSTEAD, with `valid_program` -- the instrument
+                    # warp's program arm already uses -- over all 1,382 corpus records:
+                    #
+                    #     slot is a valid program pointer, block read junk    389
+                    #     block read junk for some other reason                 4
+                    #     slot is a pointer AND the read looked plausible       0
+                    #     read plausible, not a pointer (unchanged)           989
+                    #
+                    # The ZERO carries it: this takes no working read away, so it is a
+                    # diagnosis and not a trade. It reclassifies 389 of the 393 failures
+                    # from unreadable to absent.
+                    #
+                    # CONFIRMED BY TWIN, as warp's omission was. In
+                    # UHL3D-Stylized_Sand_with_Rocks_01 all nine `normal` records share
+                    # class word 0x00000b19, so the class word cannot be marking this and no
+                    # class-bit rule could have found it. Records 1833/1843/2193/2197 are 142
+                    # words, header 6, with a float at slot 5 (256.0); record 1908 is 122
+                    # words, header 5, and its slot 5 holds what the others hold at slot 6.
+                    # It is those records minus the parameter word.
                     if _sl is not None and 0 <= _sl - 1 < len(rec.words):
-                        f = float(np.frombuffer(np.uint32(rec.words[_sl - 1]).tobytes(),
-                                                dtype=np.float32)[0])
-                        if np.isfinite(f) and 1e-3 < abs(f) < 1e3:
-                            intensity = f
-                            LOW_CONFIDENCE.add(i)
+                        w = rec.words[_sl - 1]
+                        q = w + 52
+                        if asm.body_lo <= q < asm.body_hi and asm.valid_program(q):
+                            omitted = True
+                        else:
+                            f = float(np.frombuffer(np.uint32(w).tobytes(),
+                                                    dtype=np.float32)[0])
+                            if np.isfinite(f) and 1e-3 < abs(f) < 1e3:
+                                intensity = f
+                                LOW_CONFIDENCE.add(i)
+                if intensity is None and omitted:
+                    # The value is in neither the assembly nor the source that produced it,
+                    # so it is a question rather than a gap -- see `assume.QUESTIONS`.
+                    # Default 'refuse', so nothing renders differently unless asked.
+                    _d = assume.assumed('normal.default_intensity', 'refuse')
+                    if _d != 'refuse':
+                        intensity = float(_d)
+                        assume.note(i)
+                        LOW_CONFIDENCE.add(i)
                 if intensity is None:
+                    if omitted:
+                        raise Unsupported(
+                            "normal intensity: the last header slot holds a program "
+                            "pointer, so this record carries no baked parameter -- the "
+                            "source omitted it and the engine's default applies")
                     raise Unsupported("normal: intensity is neither a single-width "
                                       "program nor a baked float in the block")
 
