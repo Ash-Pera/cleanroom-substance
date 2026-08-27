@@ -3941,8 +3941,38 @@ class Record:
                 # `FX_ENTRY_PROGS` used to state exactly that and this drains it -- the same
                 # disjoint-span scan `fx_tree` runs for a `progs=None` node reads each node
                 # on its own bytes, which is +3,480 programs over that census corpus-wide.
+                # BOUNDED BY THE ELEMENT'S OWN STATED EXTENT. `range(2, 14)` reads
+                # twelve slots out of a structure that says how wide it is: the 0x9/0x49
+                # family declares no parameters but is a linked-list member, its slot 1
+                # pointing at the next element, and that stored step is its statement of
+                # where it ends. Corpus-wide the scan yields 59 programs from these words
+                # and NOT ONE lies inside the element it is attributed to:
+                #
+                #     a LATER element, slot 2 (its handoff pointer)     42
+                #     a LATER element, slot 1 (its next pointer)         1
+                #     lands in no element of the chain                  16
+                #
+                # So 43 of 59 name a word whose meaning is already established elsewhere
+                # -- slot 2 is the handoff `fxrender` resolves, slot 1 is the step this
+                # bound is read from -- and call it a program of the element three or more
+                # words back. `program_span` cannot catch that: a handoff pointer addresses
+                # real bytecode, so the pointer disassembles and only the OWNERSHIP is
+                # wrong. That is also why the slot list looked per-instance (0x0000190B as
+                # (4,7) in 129 nodes and (5,6,7,8) in 124) -- those are neighbours, not
+                # variants.
+                #
+                # `walk_partition.stated_extent` implements this same rule and reports the
+                # trespass ("slot 5 of a 3-word structure (stated)"). This does NOT call
+                # it, deliberately: that module is the independent arbiter for exactly this
+                # class of error, and a decode wired into the checker that validates it
+                # makes the check true by construction.
+                #
+                # Where the element states nothing -- no forward step in the body -- the
+                # scan is left at its full width rather than guessed at.
+                _step = struct.unpack_from('<I', d, q + 4)[0] + 52
+                _lim = min(14, (_step - q) // 4) if q < _step < e else 14
                 any_ = False
-                for sl in range(2, 14):
+                for sl in range(2, _lim):
                     if q + 4 * sl + 4 > e:
                         break
                     pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
