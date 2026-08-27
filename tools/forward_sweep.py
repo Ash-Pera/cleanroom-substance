@@ -69,10 +69,26 @@ wash. Note the metric is gameable in the direction tested -- dropping entries ca
 remove white paint, so it can only push records toward `varying` whether or not that is
 closer to the engine -- which is why the exported maps and not the constant count decide.
 
-So the flat-white cost is largely INVISIBLE to the reference set: the records it recovers
-are mostly not on scored paths. That leaves the fallback policy unarbitrated here, and
-points at reading `patternsize` properly (a328c8c) rather than at choosing a better thing
-to do when it cannot be read.
+So the flat-white cost is largely INVISIBLE to the reference set. WHY it is invisible is
+attenuation, NOT topology, and the first version of this note had that wrong: it said the
+recovered records are "mostly not on scored paths". cleanroom-substance-01 measured
+reachability over the eight packages and every record is on a scored path -- 34,675 of
+34,675 in the ancestor cone of some declared output, verified per file rather than by
+aggregate, with fxmaps reaching 83 of 96 outputs. These are cooked packages; dead records
+were eliminated before the corpus ever saw them.
+
+So the fxmaps records are maximally on-path and the channels still moved by at most 0.0014.
+Influence dies through the blends, levels and clamps between a record and the output it
+feeds, which is a much harder thing to work around than a reachability gap would have been.
+
+And that 0.0014 is UNCALIBRATED. Nobody has measured this renderer's reproducibility, so
+"the arms moved the scored channels by at most 0.0014" is only a conclusion if the
+instrument's own floor is known to be below it. 01 is measuring the floor. Until that
+number exists the honest form of every figure in this file is "against an instrument whose
+floor is unmeasured".
+
+That leaves the fallback policy unarbitrated here, and points at reading `patternsize`
+properly (a328c8c) rather than at choosing a better thing to do when it cannot be read.
 """
 import sys
 import os
