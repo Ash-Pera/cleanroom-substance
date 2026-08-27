@@ -39711,3 +39711,36 @@ warp 1, uniform 1 and a few others -- where no slot states either edge and the g
 2 to 12 words. Four more (emboss 2, transformation 2) state the END with slot 4 but not the
 start. 21 of 33,385 bounded records is 0.06%, and that -- not 778 -- is the population where
 the header/payload boundary is genuinely unaccounted for.
+
+### And the 21 are the NEXT record's FX table, so the residue is zero
+
+Read the bytes rather than the counts and the last 21 stop being a residue. Their gap words
+are unmistakable:
+
+    levels rec 1    0x20008 0x1f8  0x20008 0x200  0x20008 0x208  0x20008 0x210 ...
+    blend  rec 51   0x7e90b 0x1fac
+    blend  rec 328  0xa290b 0x85e4
+
+`0x20008` alternating with a rising pointer at period 2, and `0x??0B` headers -- the exact
+2-word entry element and chain element from the FX list, sitting inside `levels`, `blend`,
+`warp` and `transformation` records that have no FX-Map of their own.
+
+`sbsasm` already says why: "805 fxmaps records address a table that lies OUTSIDE them, and
+in 757 of 757 resolvable cases it sits inside an earlier record -- usually a blend or
+transformation, which cannot own an FX table. The table is a body-level structure and the
+partition simply attributes it to whichever record precedes it." Tested against these 21:
+
+    an fxmaps record roots its table inside the gap    21 of 21
+    that record is the IMMEDIATELY FOLLOWING one       21 of 21
+    its root is exactly this record's header end       20 of 21   (the 21st at +8 bytes)
+
+So the gap is not this record's anything. It is the next record's FX table, laid down before
+its owner, and the directory -- a sorted partition, not an allocation -- hands it to whoever
+precedes it. The walk's header end is right; the first program this record points at is right;
+what sits between them belongs to a different record entirely.
+
+THE WHOLE 778 IS NOW ACCOUNTED FOR: 695 gradient ramps and 58 curve tables stating their own
+extents at slots 3 and 4, 4 stating their end alone, and 21 that are a neighbour's table.
+Nothing left is evidence that the fitted header end runs short, and combined with the 0 of
+33,385 that run long, `costs.json` is now bounded on both sides by structure that owes it
+nothing.
