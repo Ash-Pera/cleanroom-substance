@@ -354,13 +354,6 @@ def _load_layouts():
 # shape is unchanged and the census stays inspectable; nothing consults it.
 LAYOUTS, HEADER_WORDS = _load_layouts()
 
-# Every slot any layout key registers as an EDGE slot, per filter. Used to recognise a
-# record whose input count the key does not encode, where the key's program slot has been
-# pushed along by extra edges.
-EDGE_SLOTS = {}
-for _k, _v in LAYOUTS.items():
-    EDGE_SLOTS.setdefault(_k[0], set()).update(_v[0])
-
 # FX-Map tree node shapes: header -> (offset of the next pointer, program slots).
 # The tree is a singly linked list entered from record slot 2, and each node carries a
 # program. 0x18B is `addnode` (exact count against source over 110 records) and its
@@ -633,6 +626,60 @@ def node_shape(header):
     if header & 0x20:                                # bit 5: randomseed program follows
         progs.append(4 * (pbase + 1))
     return (succ, tuple(progs))
+
+
+def pointer_cell_successor(header):
+    """Where a POINTER CELL says the structure continues -- byte offset, or None.
+
+    Two bit-7-clear families are neither nodes nor entries. They carry no program and draw
+    nothing; each one holds a pointer and the structure goes on at the other end of it:
+
+        nibble 9, bit 7 clear    the CHAIN cell (`0x09`, `0x49`) -- 05d472e's "0x9 IS a
+                                 structure". Slot 1 is its next in the list; slot 2 is the
+                                 pointer to the list's shared payload.
+        nibble B, bit 6 set,     the `0x?4B` cell that slot 2 lands on, which in turn
+        bit 7 clear              addresses the table entry.
+
+    Both continue at SLOT 2, and both were being reached by hand: `fxrender`'s
+    `_chain_embedded_entries` allowlisted `(0x09, 0x49)`, read `off + 8` as a constant,
+    and stepped over the `0x?4B` by a hardcoded 12; `fx_walk` computed `q + 12` for the
+    `0x1B` handoff and used the cell's own pointer only to confirm it. Following the
+    pointer retires all of that.
+
+    THE SLOT IS NOT THE MASK RULE, and that matters because `node_shape` derives every
+    other successor here from the mask. Measured on cells the walk ARRIVES at:
+
+        0x09   mask -> slot 2   59 of 59   100.0%
+        0x49   mask -> slot 3    0 of 6      0.0%      (slot 2: 6 of 6)
+
+    Bit 6 inserts a field for the bit-7-set family and does not for these, so a mask
+    popcount would be a regression on `0x49`. Slot 2 is the slot after the header and the
+    next-pointer -- the 3-word extent `chain_extent` reads, 3 words in 60 of 60 records
+    whose root is one of these cells.
+
+    That the pointer, not an offset, is the thing to follow is what separates this from the
+    constant it replaces. Over the 53 `0x?4B` cells the structure reaches (43 through a
+    chain cell's slot 2, 10 as a record root), following each slot and asking whether the
+    target passes `entry_layout_holds`:
+
+        slot 1   45 of 53   84.9%        slot 3    0 of 53    0.0%
+        slot 2   52 of 53   98.1%        slot 4   17 of 53   32.1%
+                                         slot 5    1 of 53    1.9%
+
+    and slot 2 addresses the cell + 12 in only 7 of those 53. The `12` was one sub-case's
+    layout, not the rule; the other 46 point elsewhere entirely and would be missed.
+
+    UNEXPLAINED, and left visible: one of the 53 (a `0x14b`) fails `entry_layout_holds` at
+    slot 2 and no reading is offered for it. Nor is it established what the chain LIST is
+    for -- every cell's slot 2 addresses the same shared `0x?4B`, so the list's length
+    feeds nothing read here.
+    """
+    if header & 0x80:
+        return None
+    nib = header & 0xF
+    if nib == 9 or (nib == 0xB and header & 0x40):
+        return 8
+    return None
 
 
 def chain_extent(asm, off):
@@ -2324,27 +2371,17 @@ class Record:
         addr = self.offset + 4 * sl
         if self.asm.program_span(addr, self.end):
             return ('program', addr)
-        # The layout key does not encode how many INPUTS a record has. A record with more
-        # inputs than its key's edge list covers has its program slot pushed along, and the
-        # slot the key names holds another edge - a backward record index.
+        # REMOVED HERE: a tail that recognised a program slot "pushed along" by inputs the
+        # layout key could not count, by stepping past the run of backward record indices.
+        # It was load-bearing until 1332e2f and is not now. Its whole premise was that the
+        # input count was unreadable -- `fxmaps` stated 34 inputs in a six-bit field that
+        # was read four bits wide, so `layout[1]` landed mid-run and this stepped out of it.
+        # Reading the field at its real width puts `layout[1]` on the program directly, and
+        # the walk now derives what this recovered empirically: same slots, 37/22/23/20.
         #
-        # Recognised by three things together, none of which is enough alone: the word is a
-        # backward record index, the slot is one this filter uses as an edge slot under
-        # other keys, and stepping past the run of such words lands on a valid program.
-        # That last is the one that pays: it holds in 327 of 327 records, no exceptions.
-        #
-        # These records are `pixelprocessor` with a median of 5 edges against 1 for the
-        # rest, and 350 words against 28. Multi-input records, in other words.
-        if not (0 <= v < self.index and sl in EDGE_SLOTS.get(self.filter_id, ())):
-            return None
-        k = sl
-        while k < len(self.words) and 0 <= self.words[k] < self.index:
-            k += 1
-        if k >= len(self.words):
-            return None
-        q = self.words[k] + 52
-        if self.asm.body_lo <= q < self.asm.body_hi and self.asm.valid_program(q):
-            return ('program', q)
+        # Knocked out rather than assumed dead -- the REAL property with the union emptied,
+        # against the real one, `_layout` cleared between reads so the cache cannot make
+        # both sides agree by construction: 903,616 records, 0 readings changed.
         return None
 
     @property
@@ -2579,12 +2616,32 @@ class Record:
         `levelinlow` 0.211466 and `levelinhigh` 0.604323 at slots 3 and 4. So the reading the
         pixels require is the reading containment forbids, on the same file, for the same bit.
 
-        That is the contradiction in its smallest form. It is not a width, not a placement,
-        and not an upstream flattening -- all three are now checked. Either bit 2 means
-        something other than `levelinhigh` for this record shape and record 25 does not
-        generalise, or `render.py`'s levels evaluation is wrong for an inverted output range,
-        or the exported map is agreeing with the memo for a reason that has nothing to do
-        with record 129 and survives every intervention tried so far.
+        BOTH DECODE EXPLANATIONS ARE NOW ELIMINATED, and by a source declaration rather
+        than by a score.
+
+        An inverted output range is not exotic. Over every paired source, 58 levels nodes
+        state an output range and 21 of them have `leveloutlow` above `levelouthigh` -- most
+        of those exactly (1.0, 0.0), across seven different packages. The earlier reading of
+        "0 of 12 in ChesterfieldSofa" was a twelve-node sample of one file, which is the
+        small-population error this docstring already records being made once.
+
+        And record 129's exact shape is declared, with its inversion, in another package.
+        DLG-Tools__Damaged_Iron_01 record 209 has the same w1 of 0x144, and its source says:
+
+            declared    leveloutlow 1.0   levelouthigh 0.0   levelinhigh 0.395455
+            walk reads  levelinhigh 0.395455, leveloutlow 1.0, levelouthigh 0.0
+
+        Three values, three slots, exact. So w1 bit 2 IS `levelinhigh` in this record shape --
+        record 25 generalises after all -- and `render.py` is not mishandling an inverted
+        out-range, because the parameters it is handed match a declaration exactly. Record
+        129 really is an inverter over a near-full input range, and the walk reads it right.
+
+        WHAT THAT LEAVES IS THE THIRD OPTION. The exported map agrees with the memo for a
+        reason that has nothing to do with record 129's parameters: the memo's accidental
+        constant -- produced by reading an input edge as a denormal `levelinhigh` -- is
+        masking a fault somewhere else in the graph, and routing levels correctly exposes it.
+        The reference test's veto on `levels` is therefore a symptom and not a verdict, and
+        the record to chase is no longer this one.
 
         WHICH MOVES THE PROBLEM RATHER THAN CLOSING IT. The levels widths are settled and
         the placement is right; the Chesterfield disagreement is therefore NOT a parameter
@@ -3401,6 +3458,10 @@ class Record:
                 # is the LAST child.
                 off1 = leaf_successor(h)
             if off1 is None and start is None:
+                # A pointer cell ends the chain by ADDRESSING the table at slot 2 -- the
+                # same derivation `fx_tree` walks by, so the two halves cannot drift.
+                off1 = pointer_cell_successor(h)
+            if off1 is None and start is None:
                 _s2 = FX_NODES2.get(h & 0xFF)
                 if _s2 and _s2[0]:
                     off1 = _s2[0][-1]
@@ -3804,6 +3865,21 @@ class Record:
                             return
                         q = pending.pop()
                         continue
+                _pc = pointer_cell_successor(h)
+                if _pc is not None:
+                    # A POINTER CELL: no program, no draw -- the structure continues at the
+                    # other end of slot 2. Walking it is what lets a chain hand off to its
+                    # table the ordinary way, instead of `fxrender._chain_embedded_entries`
+                    # reaching around the walk to do it with an allowlist and two constants.
+                    yield q, h, None
+                    if q + _pc + 4 > e:
+                        return
+                    q = struct.unpack_from('<I', d, q + _pc)[0] + 52
+                    if not (o <= q < e - 7) or q in seen:
+                        if not pending:
+                            return
+                        q = pending.pop()
+                    continue
                 _lf = leaf_successor(h)
                 if _lf is not None:
                     # DERIVED, not tabulated: the mask gives the leaf's successor, so
