@@ -78,6 +78,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus                                                        # noqa: E402
 import decompose                                                     # noqa: E402
+import record_layout                                                 # noqa: E402
 import sbsasm                                                        # noqa: E402
 
 
@@ -101,6 +102,50 @@ def census(paths=None):
     return st
 
 
+def model_agreement(paths=None):
+    """{filter: Counter} comparing the walk's `end` against `record_layout.header_words`.
+
+    Two INDEPENDENT readers of the same cost model. `decompose` walks the record appending
+    one slot per unit of cost; `header_words` sums the same costs arithmetically. They must
+    agree, and where they do not the model is being applied inconsistently -- which is a
+    defect locatable without any reference render, any containment pairing, or any judgement
+    about which reading "looks right".
+
+    `header_words` is called AS DOCUMENTED: its two-shape gate needs the version, and warp
+    and shuffle each have a record shape with no w1 word. Calling it with `words[1]`
+    unconditionally makes it charge `w1_present` for a record that has none -- an earlier
+    measurement did exactly that and reported warp's model as wrong in 25,085 of 26,795
+    records, when gated correctly it is 26,795 of 26,795 exact. The gate now lives inside
+    `header_words`, so passing `version` is all a caller has to get right.
+    """
+    st = collections.defaultdict(collections.Counter)
+    for p in (paths or corpus.paths()):
+        try:
+            asm = sbsasm.Assembly.cached(p)
+        except Exception:
+            continue
+        ver = asm.header.get('version') if isinstance(asm.header, dict) else 0
+        for r in asm.records:
+            c = st[sbsasm.FILTERS.get(r.filter_id, 'f%s' % r.filter_id)]
+            c['records'] += 1
+            d = decompose.decompose(r)
+            end = d.get('end') if d else None
+            w1 = r.words[1] if len(r.words) > 1 else None
+            try:
+                hw = record_layout.header_words(r.filter_id, r.words[0], w1, ver)
+            except Exception:
+                hw = None
+            if end is None or hw is None:
+                c['one side silent'] += 1
+            elif end == hw:
+                c['agree'] += 1
+            elif end > hw:
+                c['walk LONGER'] += 1
+            else:
+                c['walk SHORTER'] += 1
+    return st
+
+
 def main(argv):
     st = census(argv[1:] or None)
     print('%-18s %8s %10s %10s %10s %8s'
@@ -118,6 +163,25 @@ def main(argv):
         print('\n%d records claim a header longer than the record. A header cannot '
               'exceed its\nrecord, so every one of these is a defect in the walk rather '
               'than a gap in it.' % tot['past'])
+
+    ag = model_agreement(argv[1:] or None)
+    print('\nTHE WALK vs `header_words` -- two readers of the SAME cost model:')
+    print('%-18s %8s %10s %12s %12s %8s'
+          % ('filter', 'records', 'agree', 'walk LONGER', 'walk SHORTER', 'silent'))
+    t2 = collections.Counter()
+    for nm in sorted(ag, key=lambda k: -(ag[k]['walk LONGER'] + ag[k]['walk SHORTER'])):
+        c = ag[nm]
+        t2.update(c)
+        if c['walk LONGER'] or c['walk SHORTER']:
+            print('%-18s %8d %10d %12d %12d %8d'
+                  % (nm, c['records'], c['agree'], c['walk LONGER'],
+                     c['walk SHORTER'], c['one side silent']))
+    print('%-18s %8d %10d %12d %12d %8d'
+          % ('TOTAL(all)', t2['records'], t2['agree'], t2['walk LONGER'],
+             t2['walk SHORTER'], t2['one side silent']))
+    print('\nA disagreement here needs no render and no containment to call: the same '
+          'costs,\nread two ways, cannot give two answers. Filters absent from this list '
+          'agree exactly.')
     return 0
 
 
