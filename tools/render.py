@@ -2023,6 +2023,43 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     LOW_CONFIDENCE.add(i)
                     assume.note(i)
                     continue
+                # THIS WINDOW CANNOT TELL A COLOUR FROM A PROGRAM, and that is not a
+                # nitpick about the guard -- it is why 4,323 records render black.
+                #
+                # A pointer or an inline program header read as float32 is a DENORMAL,
+                # about 1e-40, and 1e-40 is inside [-0.01, 1.01]. So the test admits every
+                # word it was written to exclude, and it admits them as a colour of
+                # essentially zero. Over the corpus plus the reference packs:
+                #
+                #     colour slots passing this window            14,208
+                #       containing a denormal component            4,672   32.88%
+                #     greyscale records whose SOLE component
+                #       is a denormal -- the whole colour          4,323
+                #
+                # Those 4,323 are not noise and not an alpha-channel quirk. Every one is a
+                # PROGRAM: `program_span()` -- this project's own test -- says an inline
+                # program starts at that slot in 4,254 of them, and the other 69 resolve as
+                # pointed-to programs. The commonest words are 0x0a420001, 0x0a420003,
+                # 0x0a420005: low half an instruction count, high half opcode 0x0A42,
+                # `inputref.i2`. This is exactly the shape `Record.size_or_baked` already
+                # documents -- "the program can be INLINE at the slot rather than pointed at
+                # by it ... which reads as a denormal float and was being discarded".
+                #
+                # The docstring above cites "3,392 of 3,428 sampled (98.9%) decode to
+                # components in [0, 1] at exactly that position" as one of two supports for
+                # this placement. That support is hollow by a third, for this reason. The
+                # OTHER support is not: containment against declared `outputcolor` values
+                # pairs 1,975 of 1,976, and that is a real check because it compares values
+                # rather than testing a range. Placement stands; the plausibility half of
+                # its evidence does not.
+                #
+                # NOT REPAIRED HERE. The fix is to separate the two -- reject `abs(f) <
+                # 1e-30` and route those slots to the program path, which this file already
+                # does for `size_or_baked` -- and that turns 4,323 silent black fills into
+                # either an evaluated colour or an honest refusal. Both are large render
+                # changes on a population no reference map reaches, and the instrument that
+                # would arbitrate them is the one this comment is about. Left for a
+                # deliberate call, with the population and its cause now stated.
                 color = np.array(rec.words[start:start + n], dtype=np.uint32).view(np.float32)
                 if not np.all((-0.01 <= color) & (color <= 1.01) & (color == color)):
                     raise Unsupported("uniform fill color slot does not decode as a "
