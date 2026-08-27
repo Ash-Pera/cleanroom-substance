@@ -1048,24 +1048,21 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
            synth_missing_bitmaps=False, stop_after=None):
     """Evaluate every record 0..N-1 that a filter type here can handle.
 
-    `precomputed` pre-seeds outputs for records the walker cannot compute itself (e.g. a
-    graph-input bitmap) -- {record_index: (H, W, C) array}. Returns {record_index: array}
-    for every record that ended up with an output, a {record_index: reason} for every one
-    that did not, and a `synthetic` set naming which output indices came from
-    `synth_missing_bitmaps` rather than the file's own data or `precomputed`.
+    `precomputed` pre-seeds outputs for records the walker cannot compute itself
+    (e.g. a graph-input bitmap) -- {record_index: (H, W, C) array}. Returns
+    {record_index: array} for every record that ended up with an output, a
+    {record_index: reason} for every one that did not, and a `synthetic` set naming
+    which outputs came from `synth_missing_bitmaps` rather than the file's own data.
 
     `max_dim` caps the evaluation grid a `pixelprocessor` runs at, independent of the
-    record's own declared size -- sampling is position-based (`sbsruntime.image_sampler`
-    is bilinear against normalized [0, 1] coordinates, not indexed), so a downsampled
-    consumer reading a full-resolution source (or vice versa) is not a shape mismatch,
-    just a coarser look. For sweeping many files' worth of records rather than producing
-    a final image, this is the difference between minutes and seconds per file.
+    record's own declared size -- sampling is position-based, so a downsampled
+    consumer reading a full-resolution source is not a shape mismatch, just a coarser
+    look. For sweeping many files this is the difference between minutes and seconds.
 
-    `synth_missing_bitmaps` fills a `bitmap` record with no data of its own (a
-    pass-through graph input, or any other unresolved kind) with a deterministic
-    synthetic pattern instead of raising -- so a sweep can see how much of a graph
-    downstream of an external input still runs, at the cost of that branch's output no
-    longer reflecting the file's own content.
+    `synth_missing_bitmaps` fills a `bitmap` record with no data of its own with a
+    deterministic synthetic pattern instead of raising, so a sweep can see how much
+    of a graph downstream of an external input still runs -- at the cost of that
+    branch's output no longer reflecting the file's own content.
     """
     outputs = dict(precomputed or {})
     synthetic = set()
@@ -1086,16 +1083,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 elif b['kind'] == 'graph_input' and \
                         assume.assumed('graph_input.manifest_default', True) and \
                         graph_input_default(asm, rec) is not None:
-                    # The manifest declares what the engine substitutes when this image
-                    # input is left unconnected, so this is the file's own value, not an
-                    # invention. Still LOW_CONFIDENCE: that the substitution is a UNIFORM
-                    # of that value is the reading, and it is not verified against an
-                    # engine render -- the reference-render arbiter is unusable here.
+                    # The manifest declares what the engine substitutes when this image input is left
+                    # unconnected, so this is the file's own value, not an invention. Still
+                    # LOW_CONFIDENCE: that the substitution is a UNIFORM of that value is the reading,
+                    # unverified against an engine render.
                     outputs[i] = graph_input_default(asm, rec)
                     LOW_CONFIDENCE.add(i)
-                    # (the manifest parse behind this is cached per assembly path; only
-                    # the small uniform array is rebuilt, and only for records that have
-                    # a default at all -- 50 of 536 corpus-wide)
+                    # (the manifest parse is cached per assembly path; only the small uniform array is
+                    # rebuilt, and only for the 50 of 536 records that have a default at all)
                 elif synth_missing_bitmaps:
                     outputs[i] = synthetic_bitmap(rec, i)
                     synthetic.add(i)
@@ -1117,16 +1112,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(src_img)
                     own_slots.add(slot_i)
                     tainted = tainted or edge_rec in synthetic
-                # A pixelprocessor can also reach images by sampler index with no edge at
-                # all: ie_curve record 233 has edges=[], asks for sampler 8, and is itself
-                # a declared output. Same binding as the fxmaps branch -- see
-                # `sampler_bindings`. This branch was nearly missed by scoping the fix to
-                # fxmaps; of the four genuine decode-gap records, one is each.
+                # A pixelprocessor can also reach images by sampler index with no edge at all:
+                # ie_curve record 233 has edges=[], asks for sampler 8, and is itself a declared
+                # output. Same binding as the fxmaps branch -- see `sampler_bindings`. Of the four
+                # genuine decode-gap records, one is each.
                 #
-                # TESTED AGAINST `own_slots`, NOT against SAMPLERS membership: unlike the
-                # fxmaps branch this one does not clear the global, so a stale entry left
-                # by an earlier record would otherwise beat a correct binding here and be
-                # invisible -- which is the exact hazard documented in the fxmaps branch.
+                # TESTED AGAINST `own_slots`, NOT against SAMPLERS membership: unlike the fxmaps
+                # branch this one does not clear the global, so a stale entry left by an earlier
+                # record would otherwise beat a correct binding here and be invisible.
                 for slot_i, src in sampler_bindings(asm, rec, outputs).items():
                     if slot_i not in own_slots:
                         sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(outputs[src])
@@ -1134,21 +1127,19 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 progs = rec.filter_programs
                 if not progs:
                     raise Unsupported("no filter_programs")
-                # A record can carry more than one filter program (Record.programs'
-                # own docstring: directionalwarp has an intensity and an angle,
-                # warp/blur/distance/sharpen/normal/filter-11 the same) -- but not
-                # always as independent parameters. A real specimen has an earlier
-                # program that `set`s slot 0 to a random per-image seed, which only the
-                # LAST program's `get slot 0` then reads; evaluating just the last
-                # program left that get on an empty slots dict, `KeyError: 0`. Every
-                # earlier program runs once, N=1, not per-pixel, sharing one `slots`
-                # dict whose side effects (the `set`s) carry forward; only the last
-                # program is the real per-pixel body and gets $pos and the full N.
+                # A record can carry more than one filter program (Record.programs' own docstring:
+                # directionalwarp has an intensity and an angle, warp/blur/distance/sharpen/
+                # normal/filter-11 the same) -- but not always as independent parameters. A real
+                # specimen has an earlier program that `set`s slot 0 to a random per-image seed,
+                # which only the LAST program's `get slot 0` then reads; evaluating just the last
+                # program left that get on an empty slots dict. Every earlier program runs once,
+                # N=1, sharing one `slots` dict whose `set`s carry forward; only the last program
+                # is the real per-pixel body and gets $pos and the full N.
                 #
-                # WHICH ONE IS THE BODY IS DECIDED BY `$pos`, NOT BY POSITION. A per-pixel
-                # body has to know where it is; a scale, an offset or a seed does not, and
-                # `sysvar(8, ...)` is `$pos` in the transpiled source. Over 3,021
-                # pixelprocessor records in 22 files:
+                # WHICH ONE IS THE BODY IS DECIDED BY `$pos`, NOT BY POSITION. A per-pixel body
+                # has to know where it is; a scale, an offset or a seed does not, and
+                # `sysvar(8, ...)` is `$pos` in the transpiled source. Over 3,021 pixelprocessor
+                # records in 22 files:
                 #
                 #     exactly one program uses $pos     2,561
                 #       and it IS the last              2,411   -- taking the last was right
@@ -1156,49 +1147,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 #     two of four use it                  288   -- ambiguous, left alone
                 #     none uses it                        172   -- ambiguous, left alone
                 #
-                # The 150 are the records whose output this renderer had no business
-                # producing. Travertine 301's three programs are a 2-wide (7.0, 7.0) --
-                # log2 of its own 128-wide size -- a 15-instruction $pos body, and a 7-op
-                # `vec(1 + rand(1.0), 1.0)`; the last of those was being drawn as the
-                # picture, which is where the out-of-range 1.9217 in this branch's channel
-                # guard comes from. fur_var_001 record 17, whose four declared outputs
-                # render FLAT, has (8.0, 8.0) last and an 83-instruction $pos body in the
-                # middle.
+                # The 150 are the records whose output this renderer had no business producing.
+                # Travertine 301's three programs are a 2-wide (7.0, 7.0) -- log2 of its own
+                # 128-wide size -- a 15-instruction $pos body, and a 7-op `vec(1 + rand(1.0),
+                # 1.0)`; the last was being drawn as the picture, which is where the out-of-range
+                # 1.9217 in this branch's channel guard comes from.
                 #
-                # An earlier attempt used the DECLARED RESULT WIDTH instead -- pick the
-                # program whose width matches the record's own channel count -- and it was
-                # unique in 21 of 325 cases (29f32b4). $pos is unique in 2,561 of 3,021,
-                # and where it is not unique this falls back to the last program, so no
-                # record that renders today can change unless $pos says it was wrong.
+                # An earlier attempt used the DECLARED RESULT WIDTH instead and was unique in 21
+                # of 325 cases (29f32b4). $pos is unique in 2,561 of 3,021, and where it is not
+                # unique this falls back to the last program.
                 #
-                # WHERE $pos IS NOT UNIQUE, A TIE AMONG IDENTICAL PROGRAMS IS NOT A TIE.
-                # The 106 records above where two programs read $pos were left to the
-                # fallback as "ambiguous", and for 32 of them that was right by accident --
-                # the last program already WAS one of the $pos bodies. But the ambiguity
-                # was never tested for degeneracy, and a large part of it is degenerate:
-                # the several $pos programs TRANSPILE TO THE SAME SOURCE, so there is no
-                # choice to make and no way for the pick to be wrong.
-                #
-                # Over 437 corpus files plus the 7 reference-shipping packages, on
-                # pixelprocessor records with more than one program:
-                #
-                #     several $pos programs, all identical      176
-                #       last program already is that body        32   -- unchanged
-                #       last program is something else          144   -- this rule fires
+                # WHERE $pos IS NOT UNIQUE, A TIE AMONG IDENTICAL PROGRAMS IS NOT A TIE. The
+                # ambiguity was never tested for degeneracy, and a large part of it is degenerate:
+                # the several $pos programs TRANSPILE TO THE SAME SOURCE, so there is no choice to
+                # make. Over 437 corpus files plus the 7 reference-shipping packages, on records
+                # with more than one program: several $pos programs, all identical, 176 -- of
+                # which the last program already IS that body in 32 and is something else in 144.
                 #
                 # AND THE HEADER, WHICH THIS RULE DOES NOT CONSULT, AGREES 144 OF 144.
-                # `Record.colour` states the record's channel count independently of any
-                # program. On all 144 the newly selected body's declared result width
-                # matches it and the incumbent's does not -- 144/144 against 0/144. That is
-                # a field the tie-break never reads confirming every case it changes, which
-                # is why this is not the width selector rejected above wearing a new hat:
-                # width is the CHECK here, not the criterion.
+                # `Record.colour` states the channel count independently of any program; on all
+                # 144 the newly selected body's declared result width matches it and the
+                # incumbent's does not -- 144/144 against 0/144. Width is the CHECK here, not the
+                # criterion, which is why this is not the rejected width selector wearing a new
+                # hat.
                 #
-                # ALL 144 ARE IN THE REFERENCE PACKAGES, and that is the point rather than
-                # a weakness. `corpus.paths()` is `DISTINCT.txt`, which does not contain
-                # `new_opengameart/` at all -- so every census that asked "does this rule
-                # change anything" answered 0 while the packages we actually score against
-                # were the only ones it touched. The first run of this very census said 0.
+                # ALL 144 ARE IN THE REFERENCE PACKAGES, and that is the point rather than a
+                # weakness: `corpus.paths()` is `DISTINCT.txt`, which does not contain
+                # `new_opengameart/` at all, so every census asking "does this rule change
+                # anything" answered 0 while the packages we score against were the only ones it
+                # touched.
                 main = progs[-1]
                 if len(progs) > 1:
                     lit = [p for p in progs if _reads_pos(asm, p)]
@@ -1218,41 +1195,32 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)   # downstream of a synthetic placeholder somewhere
 
             elif rec.filter_name == "blend":
-                # `blendingmode` is the low nibble of slot 1 -- FORMAT-NOTES.md,
-                # "blendingmode is the low four bits of blend slot 1", corpus-wide
-                # falsified range test. WHICH mode each integer names comes from the
-                # BLEND_MODES table above and is EXTERNAL, not corpus-derived; see that
-                # table's comment for why no .sbsar can settle it. Mode 0 is the one
+                # `blendingmode` is the low nibble of slot 1 -- FORMAT-NOTES.md, corpus-wide
+                # falsified range test. WHICH mode each integer names comes from the BLEND_MODES
+                # table above and is EXTERNAL, not corpus-derived; mode 0 is the one
                 # independently verified case.
                 #
-                # Edge order -- which input is laid UNDER the other -- was carried here as
-                # an unverified convention for a long time. It is now CORPUS-VERIFIED:
-                # edges[0] is the destination, edges[1] the source.
+                # Edge order -- which input is laid UNDER the other -- was carried here as an
+                # unverified convention for a long time. It is now CORPUS-VERIFIED: edges[0] is
+                # the destination, edges[1] the source.
                 #
-                # The test (FORMAT-NOTES.md, "Blend's edge order, settled by asymmetric
-                # input types"): a paired `.sbs` names each blend's two connections
-                # `destination` and `source` outright, so the only missing link is which
-                # compiled edge slot each became. Where a blend's two inputs are fed by
-                # DIFFERENT filter types, that type pair identifies the orientation without
-                # needing any node-to-record mapping. Restricted to unordered type pairs
-                # occurring exactly ONCE on each side -- the count-exact discipline used
-                # elsewhere in this document, which is what makes the correspondence
-                # unambiguous rather than coincidental:
+                # The test (FORMAT-NOTES.md, "Blend's edge order, settled by asymmetric input
+                # types"): a paired `.sbs` names each blend's two connections `destination` and
+                # `source` outright, so the only missing link is which compiled edge slot each
+                # became. Where a blend's two inputs are fed by DIFFERENT filter types, that type
+                # pair identifies the orientation without needing any node-to-record mapping.
+                # Restricted to unordered type pairs occurring exactly ONCE on each side:
                 #
                 #     edges[0] == destination     14 of 14
                 #     edges[0] == source           0 of 14
                 #
-                # over 11 distinct file contents and 11 distinct type pairs (levels/uniform,
-                # distance/pixelprocessor, pixelprocessor/fxmaps, gradient/hsl, blend/
-                # transformation, levels/sharpen and others), with the provenance gate
-                # applied as its own step first. The control matters as much as the result:
-                # re-running the identical test with the compiled edges deliberately swapped
-                # flips it to 0 of 14 forward, so the test could have detected a reversal
-                # and did not -- it is not vacuously agreeing.
+                # over 11 distinct file contents and 11 distinct type pairs, with the provenance
+                # gate applied first. The control matters as much as the result: re-running with
+                # the compiled edges deliberately swapped flips it to 0 of 14 forward, so the test
+                # could have detected a reversal and did not.
                 #
-                # This mattered more once the asymmetric modes (subtract, divide, overlay)
-                # landed: under mode 0 alone a swap was mathematically invisible, so the
-                # assumption was both load-bearing and newly falsifiable.
+                # This mattered more once the asymmetric modes (subtract, divide, overlay) landed:
+                # under mode 0 alone a swap was mathematically invisible.
                 mode = rec.slot1_flags.get("blendingmode") if rec.slot1_flags else None
                 if mode is None:
                     raise Unsupported("blend record has no readable blendingmode")
@@ -1276,37 +1244,30 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     raise Unsupported("blend inputs disagree on channel count (%d vs %d)"
                                       % (dst.shape[-1], src.shape[-1]))
 
-                # Record.size_or_baked's own docstring: its 'program' case is the
-                # record's OUTPUT SIZE expression in 91.3% of records, not a filter
-                # parameter -- confirmed the hard way here, evaluating it as opacity
-                # directly on a real 7-blend chain gave values in the hundreds of
-                # thousands (repeated out-of-[0,1] lerp compounding across stages)
-                # before this was traced back to the parameter program reading a
-                # ($outputsize-shaped) (8, 8) input, not an opacity. filter_programs is
-                # the property that already excludes exactly that size program (its own
-                # docstring says so directly); the real opacity computation, when the
-                # compiler emits one at all, is there instead.
-                # THE RECORD'S OWN NAMED PARAMETER FIRST. `opacitymult` is what a blend
-                # calls its opacity, and `Record.named_parameters` reads it from the slot
-                # PARAM_SPEC names -- so where it is baked, it is the value, and no
-                # inference is needed. It was being ignored entirely.
+                # Record.size_or_baked's own docstring: its 'program' case is the record's OUTPUT
+                # SIZE expression in 91.3% of records, not a filter parameter -- confirmed the
+                # hard way here, evaluating it as opacity on a real 7-blend chain gave values in
+                # the hundreds of thousands before it was traced back to a program reading a
+                # ($outputsize-shaped) (8, 8) input. `filter_programs` already excludes exactly
+                # that size program.
                 #
-                # Found on ChristmasTreeOrnamentSubstance006, whose `roughness` output came
-                # out constant 1.0 -- fully matte, for a material whose own thumbnail is a
-                # pair of glossy baubles. Record 22 is `add` at opacitymult 0.05 over
-                # inputs of mean 0.27 and 0.50, which is ~0.30. What it actually used was
-                # the fall-through below: no baked float in `size_or_baked` (that slot
-                # holds the size PROGRAM), so it evaluated `filter_programs[-1]` and got
-                # 9.0. That is not an opacity, it is log2(512) -- the record is 512 wide
-                # and the "opacity" was a size expression. `clip(d + 9*s)` saturates to 1.0
-                # everywhere, which is exactly the constant that showed up.
+                # THE RECORD'S OWN NAMED PARAMETER FIRST. `opacitymult` is what a blend calls its
+                # opacity, and `Record.named_parameters` reads it from the slot PARAM_SPEC names,
+                # so where it is baked, it is the value. It was being ignored entirely.
                 #
-                # Not a one-record fix. Over 25 files and 8,693 blend records, 3,898 carry
-                # a baked `opacitymult` and every one of them was being discarded: 3,622
-                # fell through to an opacity of 1.0 and 276 to a program. No record has
-                # both a baked opacitymult and a float in `size_or_baked`, so this
-                # displaces nothing that path was reading. And the values look like what
-                # they claim to be -- 3,896 of the 3,898 lie in [0, 1].
+                # Found on ChristmasTreeOrnamentSubstance006, whose `roughness` output came out
+                # constant 1.0 -- fully matte, for a material whose own thumbnail is a pair of
+                # glossy baubles. Record 22 is `add` at opacitymult 0.05 over inputs of mean 0.27
+                # and 0.50, which is ~0.30. What it actually used was the fall-through below: no
+                # baked float in `size_or_baked`, so it evaluated `filter_programs[-1]` and got
+                # 9.0 -- not an opacity, but log2(512), the record's own width. `clip(d + 9*s)`
+                # saturates to 1.0 everywhere.
+                #
+                # Not a one-record fix. Over 25 files and 8,693 blend records, 3,898 carry a baked
+                # `opacitymult` and every one was being discarded: 3,622 fell through to an
+                # opacity of 1.0 and 276 to a program. No record has both a baked opacitymult and
+                # a float in `size_or_baked`, so this displaces nothing, and 3,896 of the 3,898
+                # lie in [0, 1].
                 par = rec.size_or_baked
                 baked_opacity = next((v for nm, kind, v in (rec.named_parameters or ())
                                       if nm == 'opacitymult' and kind == 'baked'), None)
@@ -1328,16 +1289,13 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                         pos=pos, W=W, H=H),
                             N, H, W).reshape(N, -1)[:, :1]
                     else:
-                        # No program at all beyond (possibly) the size expression:
-                        # confirmed on a real specimen (record 322) whose only program
-                        # IS the one Record.size_or_baked names, so filter_programs
-                        # correctly excludes it and leaves nothing. The compiler's own
-                        # apparent convention -- proven elsewhere in this file for
-                        # blend mode, which is never in the bytecode either when it is
-                        # the default -- is to skip emitting code for a parameter left
-                        # at its default, so absent any other information this takes
-                        # full (100%) opacity as that default rather than 0%, which
-                        # would make the blend a no-op and the edge pointless.
+                        # No program at all beyond (possibly) the size expression: confirmed on a real
+                        # specimen (record 322) whose only program IS the one Record.size_or_baked names,
+                        # so filter_programs correctly excludes it and leaves nothing. The compiler's own
+                        # convention -- proven elsewhere in this file for blend mode -- is to skip
+                        # emitting code for a parameter left at its default, so this takes full (100%)
+                        # opacity rather than 0%, which would make the blend a no-op and the edge
+                        # pointless.
                         opacity = np.full((N, 1), 1.0, dtype=np.float32)
 
                 if len(rec.edges) > 2:
@@ -1354,120 +1312,85 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "transformation":
-                # Record.matrix is baked in only 644 of 2,635 transformation records in
-                # a real specimen (24%); most of the rest compute it from a program. The
-                # largest such program found (record 3182, 97 instructions) is not a
-                # 6-float matrix+offset computation at all -- it initializes dozens of
-                # slots with rand() calls and values like scale ranges and iteration
-                # counts, the shape of a randomized tile/scatter generator's parameter
-                # block. That general case is out of scope here.
+                # Record.matrix is baked in only 644 of 2,635 transformation records in a real
+                # specimen (24%); most of the rest compute it from a program. The largest such
+                # program found (record 3182, 97 instructions) is not a 6-float matrix+offset
+                # computation at all -- it initializes dozens of slots with rand() calls, scale
+                # ranges and iteration counts, the shape of a randomized tile/scatter generator's
+                # parameter block. That general case is out of scope here.
                 #
-                # A slice of the "not baked" population is NOT that case, though: 3,103 of
-                # 3,103 sampled (x_DLG-Tools__* and a sample of x_serverhouse__*) have
-                # `rec.filter_programs` empty AND slot-1 bits 6 and 7 both clear -- the
-                # same bits Record.translation's own docstring reads as "no [matrix]
-                # parameter block to pack against". `rec.programs` being non-empty there
-                # is the record's SIZE-EXPRESSION program (filter_programs already
-                # excludes it, same trap as the blend-opacity bug elsewhere in this file)
-                # -- there is no matrix-computing code at all, only a size computation.
-                # Same compiler convention already established for blend mode (absent =
-                # 0) and blend opacity (absent = 1.0): a parameter left at its default is
-                # not emitted, so this takes identity (no scale/rotate/shear) rather than
-                # raising for that specific, corpus-confirmed shape.
+                # A slice of the "not baked" population is NOT that case: 3,103 of 3,103 sampled
+                # have `rec.filter_programs` empty AND slot-1 bits 6 and 7 both clear -- the same
+                # bits Record.translation reads as "no [matrix] parameter block to pack against".
+                # `rec.programs` being non-empty there is the record's SIZE-EXPRESSION program
+                # (filter_programs already excludes it, the same trap as the blend-opacity bug) --
+                # there is no matrix-computing code at all. Same compiler convention already
+                # established for blend mode (absent = 0) and blend opacity (absent = 1.0), so
+                # this takes identity rather than raising for that corpus-confirmed shape.
+                # `translation` had the identical bug independently: it checked `rec.programs`
+                # (482 of 729 real specimens have ONLY a size-expression program there) instead of
+                # `rec.filter_programs`. Fixed the same way.
                 #
-                # `translation` had the identical bug, independently of the above: it
-                # checked `rec.programs` (482 of 729 real "baked matrix, no baked
-                # translation" specimens have ONLY a size-expression program there, no
-                # program that could compute a translation at all) instead of
-                # `rec.filter_programs`, so it was raising "translation is a program" on
-                # records with no translation program whatsoever. Fixed the same way.
+                # Genuinely program-computed matrices/translations are still out of scope -- "has
+                # 2 components" was already tried and found wrong as a discriminator (record 167,
+                # matrix (1,0,0,-1), a pure Y-flip: the 2-component program picked this way
+                # computes a function of the record's own aspect ratio, not a translation).
                 #
-                # Genuinely program-computed matrices/translations (filter_programs
-                # non-empty) are still out of scope -- which of possibly several programs
-                # computes what is not identified, and "has 2 components" was already
-                # tried and found wrong as a discriminator (record 167, matrix (1,0,0,-1),
-                # a pure Y-flip: the 2-component program picked this way turned out to
-                # compute (0.2199, min(0.3905, 0.3905*$size.x/$size.y)), a function of the
-                # record's own aspect ratio, not a translation).
+                # WHICH DIRECTION THE MATRIX APPLIES: the conventional raster backward-mapping
+                # convention -- for each OUTPUT position, transform it INTO an input sampling
+                # position, pivoted at the texture center (0.5, 0.5) so a pure scale or flip does
+                # not shift the image off-canvas. matrix (m0, m1, m2, m3) is read row-major.
                 #
-                # Which direction the matrix applies: the conventional raster
-                # backward-mapping convention -- for each OUTPUT position, transform it
-                # INTO an input sampling position, pivoted at the texture center (0.5,
-                # 0.5) so a pure scale or flip does not shift the image off-canvas --
-                # matching how virtually every UV-space 2D transform (CSS, SVG, shader
-                # texture transforms) is conventionally applied. matrix (m0, m1, m2, m3)
-                # is read as row-major [[m0, m1], [m2, m3]].
+                # NOW VERIFIED AGAINST A REFERENCE RENDER. This said "not verified against a
+                # ground-truth reference render", which was true until ChesterfieldSofa became
+                # scoreable: the matrix header-bit fix took it from 659 non-finite records to 0
+                # and from 1 spatially-varying declared output to 4. Treating the stored matrix as
+                # the FORWARD transform and sampling with its inverse costs four of the five
+                # declared outputs and collapses metallic against the engine's own map from
+                # +0.2294 to +0.0250. Backward mapping is right, and what says so is now a
+                # correlation rather than an argument from convention. Also checked for INTERNAL
+                # consistency on clean specimens with an asymmetric test pattern: record 5115's
+                # (0,-1,1,0), a pure 90-degree rotation, turns a top stripe into a left stripe
+                # with no drift; record 956's (0.125,...) against a pattern whose CENTER is plain
+                # background gives solid black, as scale < 1 should; record 950's reciprocal (8,
+                # ...) gives multiple distinct values, consistent with tiling.
                 #
-                # NOW VERIFIED AGAINST A REFERENCE RENDER. This said "not verified
-                # against a ground-truth reference render -- none is correlated to a
-                # specific record here", which was true until ChesterfieldSofa became
-                # scoreable: the matrix header-bit fix took it from 659 non-finite records
-                # to 0 and from 1 spatially-varying declared output to 4 (5 with the
-                # uniform fill). Treating the stored matrix as the FORWARD transform and
-                # sampling with its inverse costs four of the five declared outputs and
-                # collapses metallic against the engine's own map from +0.2294 to +0.0250,
-                # its lattice going from 10 elements to 1. Backward mapping is right, and
-                # what says so is now a correlation rather than an argument from
-                # convention. Also checked for INTERNAL
-                # consistency on real, clean (no offset, no program) specimens with a
-                # controlled, asymmetric test pattern: record 5115's matrix (0,-1,1,0),
-                # a pure 90-degree rotation, turns a top stripe into a left stripe and a
-                # left stripe into a bottom stripe with no drift or artifact. Record
-                # 956's matrix (0.125,...) against a pattern whose CENTER is plain
-                # background gives solid black -- a tight zoom on that center, as scale
-                # less than 1 should be. Record 950's matrix (8,...), the reciprocal
-                # scale, gives multiple distinct values instead of one solid color --
-                # consistent with the pattern tiling/repeating, as scale greater than 1
-                # should. Both directions behave as the convention predicts; neither
-                # proves the format's own engine does not do the opposite.
-                # Which program is which, settled by the format's own bits plus one
-                # structural fact. Slot 1 bit 6 or 7 says a matrix parameter exists at all
-                # and bit 26 says the offset is program-computed (Record.translation's
-                # docstring derives both). Evaluating each filter program once at N=1 then
+                # WHICH PROGRAM IS WHICH, settled by the format's own bits plus one structural
+                # fact. Slot 1 bit 6 or 7 says a matrix parameter exists at all and bit 26 says
+                # the offset is program-computed. Evaluating each filter program once at N=1 then
                 # separates them by COMPONENT WIDTH, and the widths do not overlap:
                 #
                 #   bit 26 set, exactly one program    2,007 of 2,007 return 2 components
                 #   bit 26 clear, exactly one program  4 components (405), 2 (162), 1 (79)
                 #
-                # 100% against a control that is mostly 4-wide -- a 4-vector is a matrix22,
-                # a 2-vector is an offset. This is what makes the assignment safe where an
-                # earlier attempt was not: that one trusted ANY 2-component result as an
-                # offset without consulting bit 26, and on a real specimen (record 167,
-                # matrix (1,0,0,-1), a pure Y-flip) picked up a program computing
-                # (0.2199, min(0.3905, 0.3905*$size.x/$size.y)) -- an aspect-ratio
-                # expression, not a translation. Bit 26 is clear on that record, so the
-                # rule below never reaches it.
+                # 100% against a control that is mostly 4-wide -- a 4-vector is a matrix22, a
+                # 2-vector is an offset. This is what makes the assignment safe where an earlier
+                # attempt was not: that one trusted ANY 2-component result as an offset without
+                # consulting bit 26, and on record 167 picked up an aspect-ratio expression. Bit
+                # 26 is clear there, so the rule below never reaches it.
                 #
                 # Not verified against the source: a source that declares a CONSTANT offset
                 # compiles to a baked one (bit 25), so a containment check against declared
-                # constants tests the wrong population -- it scored 6 of 67 and that number
-                # says nothing either way. The evidence here is the width split and the bits.
+                # constants tests the wrong population -- it scored 6 of 67 and says nothing
+                # either way. The evidence is the width split and the bits.
                 fprogs = rec.filter_programs
                 w1 = rec.words[1] if len(rec.words) > 1 else 0
-                # THE HEADER SAYS WHETHER A MATRIX IS BAKED, so ask it. `Record.matrix`
-                # reads four slots by a rule established at 100% over "the 66,211 records
-                # whose slot-1 bit 6 says the matrix is baked" -- its own words -- but it
-                # never checks that bit, so for records where the bit is CLEAR it returns
-                # whatever those slots happen to hold. Over 6,666 baked matrices here:
+                # THE HEADER SAYS WHETHER A MATRIX IS BAKED, so ask it. `Record.matrix` reads four
+                # slots by a rule established at 100% over "the 66,211 records whose slot-1 bit 6
+                # says the matrix is baked" -- its own words -- but it never checks that bit, so
+                # where the bit is CLEAR it returns whatever those slots happen to hold. Over
+                # 6,666 baked matrices here: bit 6 set, 6,628 records, 0 with a denormal
+                # component; bit 6 clear, 38 records, 4 with one (10.53%). The four detectable
+                # ones all read 0x0A42xxxx in the third slot -- a packed pair rather than a float.
+                # Rejecting on the FLAG rather than on the values also covers the other 34, whose
+                # slots may read as plausible numbers while being just as unfounded.
                 #
-                #     bit 6 set     6,628 records    0 with a denormal component   0.00%
-                #     bit 6 clear      38 records    4 with a denormal component  10.53%
-                #
-                # The four detectable ones all read 0x0A42xxxx in the third slot -- a
-                # constant high half with a varying low half, a packed pair rather than a
-                # float -- and the docstring already notes pointers turning up where a
-                # matrix should be. Rejecting on the FLAG rather than on the values also
-                # covers the other 34, whose slots may read as plausible numbers while
-                # being just as unfounded; a value-plausibility guard catches only the
-                # ones that happen to look wrong.
-                #
-                # It matters out of proportion to 38 records. Such a matrix is
-                # near-singular, so it collapses the input to a point and renders a record
-                # whose input has spread 0.15 exactly flat. In ChesterfieldSofa that flat
-                # zero feeds a pixelprocessor computing v8/v12 with both terms zero -- 0/0
-                # -- and the NaN reaches 659 of the 830 records the file renders, including
-                # its `height` and `normal` outputs. Honouring the bit takes that file to 0
-                # non-finite records and its declared outputs from 1 spatial to 4 of 4.
+                # It matters out of proportion to 38 records. Such a matrix is near-singular, so
+                # it collapses the input to a point and renders a record whose input has spread
+                # 0.15 exactly flat. In ChesterfieldSofa that flat zero feeds a pixelprocessor
+                # computing v8/v12 with both terms zero -- 0/0 -- and the NaN reaches 659 of the
+                # 830 records the file renders. Honouring the bit takes that file to 0 non-finite
+                # records and its declared outputs from 1 spatial to 4 of 4.
                 m = rec.matrix if (w1 >> 6 & 1) else None
                 matrix_from_program = False
                 has_matrix_param = bool((w1 >> 6 & 1) or (w1 >> 7 & 1))
@@ -1481,76 +1404,57 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if (m is None and has_matrix_param) or offset_is_program:
                     for p in fprogs:
                         try:
-                            # At the record's DECLARED size, not the (possibly max_dim
-                            # capped) grid: `$size` is what the engine would report, and
-                            # an offset of `-1.0 / $size.x` means one pixel of the real
-                            # output. Evaluating it at a stale 256 while the record is 16
-                            # wide gets the shift wrong by 16x, in normalized units that
-                            # look perfectly plausible either way.
+                            # At the record's DECLARED size, not the (possibly max_dim capped) grid: `$size`
+                            # is what the engine would report, and an offset of `-1.0 / $size.x` means one
+                            # pixel of the real output. Evaluating it at a stale 256 while the record is 16
+                            # wide gets the shift wrong by 16x, in units that look plausible either way.
                             a = np.asarray(eval_program(asm, p, default_inputs(asm, 1),
                                                         {}, 1, W=rec.width,
                                                         H=rec.height)).reshape(-1)
                         except Exception:
                             n_failed += 1
                             continue
-                        # A 2-wide program returning (log2 W, log2 H) of THIS RECORD'S
-                        # OWN declared size is the output-size expression, not a
-                        # parameter, and it is skipped before the collision test below.
+                        # A 2-wide program returning (log2 W, log2 H) of THIS RECORD'S OWN declared size
+                        # is the output-size expression, not a parameter, and it is skipped before the
+                        # collision test below. This is an identity, not a shape heuristic: `rec.width`
+                        # and `rec.height` are read from the header with no program involved. An earlier
+                        # reading guessed those (8.0, 8.0) values were "tiling or scale shaped"; they are
+                        # 2**8 == 256, the record's own edge.
                         #
-                        # This is an identity, not a shape heuristic: `rec.width` and
-                        # `rec.height` are read from the record's header with no program
-                        # involved, so "the program returns log2 of my own size" is
-                        # checkable against something already known. An earlier reading
-                        # of this file guessed those (8.0, 8.0) values were "tiling or
-                        # scale shaped"; they are 2**8 == 256, the record's own edge.
-                        #
-                        # WITH THE CONTROL, over 8,473 bit-26 records in 80 files: of
-                        # the 7,586 the collision test already resolves, ZERO have an
-                        # accepted offset equal to log2-size, so this cannot change an
-                        # answer that currently works. Of the 887 it refuses, 825 (93%)
-                        # leave exactly one candidate once the size expression is set
+                        # WITH THE CONTROL, over 8,473 bit-26 records in 80 files: of the 7,586 the
+                        # collision test already resolves, ZERO have an accepted offset equal to
+                        # log2-size, so this cannot change an answer that currently works. Of the 887 it
+                        # refuses, 825 (93%) leave exactly one candidate once the size expression is set
                         # aside; 62 stay ambiguous and still refuse.
                         if (a.size == 2 and rec.width and rec.height
                                 and abs(float(a[0]) - math.log2(rec.width)) < 1e-6
                                 and abs(float(a[1]) - math.log2(rec.height)) < 1e-6):
                             n_size += 1
                             continue
-                        # COUNTED AFTER THE SIZE EXPRESSION IS SET ASIDE, and that placement
-                        # is the whole of the second fix. `n_evaluated` is what the refusal
-                        # below means by "programs remain unread", and a size expression is
-                        # not unread -- it is read, identified, and not a parameter. Counting
-                        # it made the record refuse for carrying a program that had just
-                        # been explained. That refusal's own comment names the values it was
-                        # tripping over, "(8.0, 8.0) ... tiling or scale shaped": they are
-                        # 2**8 == 256, this record's own edge, and the same identity two
-                        # branches up already recognises.
+                        # COUNTED AFTER THE SIZE EXPRESSION IS SET ASIDE, and that placement is the whole
+                        # of the second fix. `n_evaluated` is what the refusal below means by "programs
+                        # remain unread", and a size expression is not unread -- it is read, identified,
+                        # and not a parameter. Counting it made the record refuse for carrying a program
+                        # that had just been explained.
                         n_evaluated += 1
                         if a.size == 2:
                             n_two += 1
-                        # A WIDTH SEEN TWICE IS ONLY AMBIGUOUS IF THE TWO DISAGREE. The
-                        # test was "seen twice -> refuse", which throws away the case where
-                        # there is nothing to choose between: concrete_049 records 36, 37,
-                        # 38 and 50 each carry TWO 4-wide programs and both return exactly
-                        # (1.0, 0.0, 0.0, 1.0), the identity. Three of the four even share
-                        # one of the two program ADDRESSES with a sibling record, so the
-                        # duplication is the compiler emitting the same expression twice
-                        # rather than two different parameters landing in one width.
-                        #
-                        # Refusing there reported an ambiguity that does not exist. Two
-                        # candidates that agree ARE the answer; only a genuine disagreement
-                        # is a reason to stop.
+                        # A WIDTH SEEN TWICE IS ONLY AMBIGUOUS IF THE TWO DISAGREE. The test was "seen
+                        # twice -> refuse", which throws away the case where there is nothing to choose:
+                        # concrete_049 records 36, 37, 38 and 50 each carry TWO 4-wide programs and both
+                        # return exactly (1.0, 0.0, 0.0, 1.0). Three of the four even share one program
+                        # ADDRESS with a sibling record, so the duplication is the compiler emitting the
+                        # same expression twice. Two candidates that agree ARE the answer.
                         val = tuple(float(x) for x in a)
                         if a.size in by_width and by_width[a.size] != val:
                             by_width[a.size] = None
                         elif a.size not in by_width:
                             by_width[a.size] = val
 
-                # THE WALK IS ASKED FIRST, as it already is for the offset below.
-                # `matrix22` is the w1 pair at bits 6,7 -- field 3 -- and the slot that
-                # field names holds the program, so there is nothing to single out.
-                # Agreement with the width rule is 5,105/5,105 where that rule resolves, so
-                # this only turns refusals into answers. See `walk_named_matrix`. Evaluated
-                # once, here, rather than in the chain below, since it runs a program.
+                # THE WALK IS ASKED FIRST, as it already is for the offset below. `matrix22` is
+                # the w1 pair at bits 6,7 -- field 3 -- and the slot that field names holds the
+                # program. Agreement with the width rule is 5,105/5,105 where that rule resolves.
+                # See `walk_named_matrix`. Evaluated once, here, since it runs a program.
                 walk_m = (walk_named_matrix(asm, rec)
                           if (m is None and has_matrix_param) else None)
                 if m is None:
@@ -1563,25 +1467,16 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         m = by_width[4]
                         matrix_from_program = True
                     else:
-                        # THE CASE THIS DESCRIBED IS RESOLVED, and by the record rather
-                        # than by an arbiter. Desert_Sand_01 record 55 was the example:
-                        # five programs, two of them 4-wide and DISAGREEING -- an identity
-                        # (1, 0, 0, 1) and a (0.65, 0, 0, 0.05) -- so the width rule had
-                        # nothing to choose between them, and this comment concluded that
-                        # "picking the later address would be a coin toss dressed as a
-                        # rule" and that a specimen the corpus does not have was needed.
+                        # THE CASE THIS DESCRIBED IS RESOLVED, and by the record rather than by an
+                        # arbiter. Desert_Sand_01 record 55 was the example: five programs, two of them
+                        # 4-wide and DISAGREEING -- an identity and a (0.65, 0, 0, 0.05) -- so the width
+                        # rule had nothing to choose between them, and this comment concluded that
+                        # "picking the later address would be a coin toss dressed as a rule".
                         #
-                        # No specimen was needed. The record states which program is the
-                        # matrix: w1 = 0xbf sets bit 7, so field 3 is state 2, and the walk
-                        # names slot 4, which holds 0x1d54 -- the identity. The other
-                        # 4-wide program is a different parameter. `walk_named_matrix`
-                        # answers it upstream of this branch, so a two-candidate
-                        # disagreement is no longer a reason to stop.
-                        #
-                        # What still reaches here is a record where the WALK is not
-                        # decisive either -- no single field-3 entry, or the slot it names
-                        # holds no program, or that program does not evaluate 4-wide.
-                        # Those are genuine absences, not coin tosses.
+                        # No specimen was needed. The record states which program is the matrix: w1 = 0xbf
+                        # sets bit 7, so field 3 is state 2, and the walk names slot 4, which holds
+                        # 0x1d54 -- the identity. What still reaches here is a record where the WALK is
+                        # not decisive either. Those are genuine absences, not coin tosses.
                         raise Unsupported("matrix is a program this cannot single out "
                                           "(%d programs, widths %s)"
                                           % (len(fprogs), sorted(k for k in by_width)))
@@ -1592,11 +1487,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 offset = rec.translation
                 if offset is None:
                     if offset_is_program:
-                        # THE WALK IS ASKED FIRST -- it names the slot, so there is nothing
-                        # to single out. See `walk_named_offset`: the width rule is a
-                        # question about values, and it is the one a phantom program can
-                        # deceive. Agreement is 1,203/1,203 where the width rule resolves,
-                        # so this only turns refusals into answers.
+                        # THE WALK IS ASKED FIRST -- it names the slot, so there is nothing to single out.
+                        # See `walk_named_offset`. Agreement is 1,203/1,203 where the width rule
+                        # resolves, so this only turns refusals into answers.
                         offset = walk_named_offset(asm, rec)
                         if offset is None:
                             if by_width.get(2):
@@ -1606,51 +1499,31 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                                   "(%d programs, widths %s)"
                                                   % (len(fprogs), sorted(k for k in by_width)))
                     elif fprogs and has_matrix_param and (n_failed > 0 or n_two > 0):
-                        # WHICH programs remain unread -- the earlier form did not ask.
+                        # WHICH programs remain unread -- the earlier form did not ask. It refused
+                        # whenever the record had any filter program and a matrix parameter, including
+                        # when the ONE program present had just been consumed as the matrix. Over 1,726
+                        # records that reach here, 1,140 (66.0%) have nothing left unread by then, and for
+                        # those the message was literally false: the offset is (0, 0) by exactly the path
+                        # taken when a record has no programs at all.
                         #
-                        # It refused whenever the record had any filter program and a matrix
-                        # parameter, including when the ONE program present had just been
-                        # consumed two branches up as the matrix. Over 1,726 records that
-                        # reach here, 1,140 (66.0%) have nothing left unread by then: no
-                        # baked matrix, a single 4-wide program, and that program is the
-                        # matrix. For those the message was literally false and the offset
-                        # is (0, 0) by exactly the path taken when a record has no programs
-                        # at all -- the format says there is no baked offset and bit 26 says
-                        # it is not a program, so (0, 0) is its answer, not a guess.
+                        # The remaining 34% still refuse and should: 366 have a BAKED matrix with a
+                        # program nobody has accounted for, 166 have a matrix-from-program plus one to
+                        # four extra, and 54 have a program that will not evaluate. Their unread programs
+                        # are 2-wide values like (8.0, 8.0) and (0.918, 0.918), tiling or scale shaped
+                        # rather than translation shaped. This matters beyond the count: the refusal
+                        # severs branches -- both spatially-varying fxmaps chains in `Facade01` are
+                        # stranded behind it, which is how it was found.
                         #
-                        # The remaining 34% still refuse and should: 366 have a BAKED matrix
-                        # with a program nobody has accounted for, 166 have a
-                        # matrix-from-program plus one to four extra, and 54 have a program
-                        # that will not evaluate. Their unread programs are 2-wide values
-                        # like (8.0, 8.0) and (0.918, 0.918), which are tiling or scale
-                        # shaped rather than translation shaped, so assuming (0, 0) there
-                        # would be a guess.
-                        #
-                        # This matters beyond the count: the refusal severs branches. Both
-                        # spatially-varying fxmaps chains in `Facade01` (records 484 and 489
-                        # at std 0.1998) are stranded behind it, which is how it was found.
-                        # AND ONLY AN OFFSET-SHAPED PROGRAM COUNTS AS UNREAD. The test
-                        # was "any program left over", which refuses on programs that could
-                        # not be the offset whatever they are. An offset is a translation:
-                        # it is 2-wide, everywhere this file reads one. Over 12 files, the
-                        # records refusing here carry:
-                        #
-                        #     a 4-wide matrix + a 1-WIDE program   20
-                        #     a baked matrix  + a 1-wide program    9
-                        #     a baked matrix  + a 2-wide program    4
-                        #
-                        # The 29 with a 1-wide leftover are the same program in every case
-                        # -- wood_cedar_white's records 9, 10, 11, 18, 24 and 30 all name
-                        # address 5748, which returns 1.0 -- so it is one shared constant
-                        # parameter emitted once, and a scalar is not a translation in any
-                        # reading. Bit 26 already says the offset is not a program; a
-                        # 1-wide program is not evidence against that, and refusing on it
-                        # withheld the (0, 0) the format states.
-                        #
-                        # A 2-wide leftover still refuses, and should: that IS offset-shaped
-                        # while bit 26 says there is no offset program, and the two cannot
-                        # both be right. So does a program that would not evaluate, whose
-                        # width nobody knows.
+                        # AND ONLY AN OFFSET-SHAPED PROGRAM COUNTS AS UNREAD. The test was "any program
+                        # left over", which refuses on programs that could not be the offset whatever they
+                        # are. An offset is 2-wide, everywhere this file reads one. Over 12 files the
+                        # records refusing here carry a 4-wide matrix + a 1-WIDE program (20), a baked
+                        # matrix + a 1-wide program (9), and a baked matrix + a 2-wide program (4). The 29
+                        # with a 1-wide leftover are the same program in every case -- wood_cedar_white's
+                        # records 9, 10, 11, 18, 24 and 30 all name address 5748, returning 1.0 -- so it
+                        # is one shared constant emitted once, and a scalar is not a translation. A 2-wide
+                        # leftover still refuses, and should: that IS offset-shaped while bit 26 says
+                        # there is no offset program, and the two cannot both be right.
                         raise Unsupported("no offset bit set and %d offset-shaped program(s) "
                                           "remain unread (%d would not evaluate)"
                                           % (n_two, n_failed))
@@ -1666,11 +1539,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 in_y = m[2] * c[:, 0] + m[3] * c[:, 1] + 0.5 + offset[1]
                 in_pos = np.stack([in_x, in_y], axis=-1)
 
-                # Integrate over the footprint when the transform MINIFIES. Sampling with
-                # one bilinear tap regardless of scale is what made ten records in
-                # `Chesterfield`'s basecolor chain return an exactly constant image; see
-                # `prefilter`. Magnification is untouched -- there the footprint is under a
-                # texel and a tap is the right answer.
+                # Integrate over the footprint when the transform MINIFIES. One bilinear tap
+                # regardless of scale is what made ten records in `Chesterfield`'s basecolor chain
+                # return an exactly constant image; see `prefilter`. Magnification is untouched.
                 _src = outputs[rec.edges[0]]
                 _scale = footprint_scale(m, offset, W, H, np.asarray(_src).shape)
                 if _scale >= 2.0:
@@ -1681,18 +1552,15 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "levels":
-                # Where the five parameters live (levelinlow/levelinhigh/levelinmid/
-                # leveloutlow/levelouthigh, each independently baked-or-program) is
-                # settled corpus-wide -- FORMAT-NOTES.md, "`levels` joins after all, and
-                # the front/back question closes", 174,329/174,396 (99.96%) tail-placement
-                # reads, containment-verified against declared Float4 sources 105/132. Not
-                # settled by that research, and not re-derived here: the FORMULA itself.
-                # This is the standard Photoshop/Substance "Levels" remap -- clamp-normalize
-                # to [in_low, in_high], an optional gamma pivot around in_mid, then rescale
-                # to [out_low, out_high] -- taken as industry-standard, ubiquitous, known
-                # math rather than something needing corpus mining the way the parameter
-                # LOCATIONS did. Checked only for internal self-consistency (a controlled
-                # ramp input, below), not against a ground-truth reference renderer.
+                # Where the five parameters live (levelinlow/levelinhigh/levelinmid/leveloutlow/
+                # levelouthigh, each independently baked-or-program) is settled corpus-wide --
+                # FORMAT-NOTES.md, "`levels` joins after all, and the front/back question
+                # closes", 174,329/174,396 (99.96%) tail-placement reads, containment-verified
+                # against declared Float4 sources 105/132. Not settled by that research, and not
+                # re-derived here: the FORMULA. This is the standard Photoshop/Substance remap --
+                # clamp-normalize to [in_low, in_high], an optional gamma pivot around in_mid,
+                # then rescale to [out_low, out_high] -- taken as industry-standard known math,
+                # checked only for internal self-consistency against a controlled ramp.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
@@ -1705,10 +1573,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
                 src = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos)
 
-                # Compiler default-omission convention (already established for blend
-                # mode and blend opacity elsewhere in this file): a parameter left at
-                # its default is simply absent from the bytecode. Levels' identity
-                # transform is in_low=0, in_mid=0.5, in_high=1, out_low=0, out_high=1.
+                # Compiler default-omission convention (established for blend mode and opacity
+                # elsewhere in this file): a parameter left at its default is absent from the
+                # bytecode. Levels' identity is in 0/0.5/1, out 0/1.
                 DEFAULTS = {'levelinlow': 0.0, 'levelinmid': 0.5, 'levelinhigh': 1.0,
                            'leveloutlow': 0.0, 'levelouthigh': 1.0}
                 params = dict(DEFAULTS)
@@ -1726,10 +1593,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
                 in_low, in_mid, in_high = (params['levelinlow'], params['levelinmid'],
                                            params['levelinhigh'])
-                # See assume.QUESTIONS['levels.inversion']. Only fires where exactly ONE of
-                # the pair is stated AND it sits at an inversion extreme, which is the
-                # population the structural side isolated; a record stating both, or stating
-                # one at an ordinary value, is untouched.
+                # See assume.QUESTIONS['levels.inversion']. Only fires where exactly ONE of the
+                # pair is stated AND it sits at an inversion extreme -- the population the
+                # structural side isolated.
                 if assume.assumed('levels.inversion') == 'complete':
                     _named = {n for n, _k, _v in (rec.named_parameters or ())}
                     _lo_set = 'levelinlow' in _named
@@ -1743,30 +1609,24 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 out_low, out_high = params['leveloutlow'], params['levelouthigh']
 
                 span = in_high - in_low
-                # A ZERO-WIDTH INPUT RANGE IS A STEP, NOT A RAMP. Where in_low equals
-                # in_high the transfer has no width to interpolate across: everything below
-                # the point maps to out_low and everything at or above it to out_high.
-                # Substituting a span of 1.0 to dodge the division turns that step into a
-                # gentle ramp over the whole range, which is a different picture.
+                # A ZERO-WIDTH INPUT RANGE IS A STEP, NOT A RAMP. Where in_low equals in_high the
+                # transfer has no width to interpolate across: everything below the point maps to
+                # out_low and everything at or above it to out_high. Substituting a span of 1.0 to
+                # dodge the division turns that step into a gentle ramp over the whole range,
+                # which is a different picture.
                 #
-                # Auras record 400 is the specimen: it stores levelinlow AND levelinhigh
-                # both at 0.5900000333786011 and nothing else. Under the ramp its contrast
-                # is std 0.1262, the `distance` at record 402 below it collapses to exactly
-                # 0.0, and record 444 -- the graph-004 basecolor -- comes out a constant.
-                # Under the step it keeps its structure and that output scores
-                # r = 0.92 / 0.85 / 0.94 against the engine's own export.
+                # Auras record 400 is the specimen: it stores levelinlow AND levelinhigh both at
+                # 0.5900000333786011 and nothing else. Under the ramp its contrast is std 0.1262,
+                # the `distance` at record 402 collapses to exactly 0.0, and record 444 -- the
+                # graph-004 basecolor -- comes out constant. Under the step it keeps its structure
+                # and scores r = 0.92 / 0.85 / 0.94 against the engine's own export.
                 #
-                # THIS IS WHAT THE OLD GAMMA READING WAS DOING BY ACCIDENT. Before b2f1d97
-                # the mid point was renormalised, and for this record that gave
-                # (0.5 - 0.59) / 1.0 = -0.09, clipped to 1e-4, an exponent of 0.0753 -- a
-                # near-vertical curve that approximated the step. b2f1d97 is right that a
-                # defaulted mid cannot mean a near-vertical curve, and removing that
-                # accident is what exposed this: the step belongs in the span, not in the
-                # gamma.
-                # See assume.QUESTIONS['levels.zerospan']. Under 'identity' a zero-width
-                # range passes its input through instead of thresholding it, which is what
-                # Bricks 004's emission needs: a step cannot preserve the red the engine
-                # exports, because every channel of it sits above the degenerate point.
+                # THIS IS WHAT THE OLD GAMMA READING WAS DOING BY ACCIDENT: before b2f1d97 the mid
+                # point was renormalised, giving an exponent of 0.0753 -- a near-vertical curve
+                # that approximated the step. Removing that accident is what exposed this; the
+                # step belongs in the span, not in the gamma. See
+                # assume.QUESTIONS['levels.zerospan'], under which a zero-width range passes its
+                # input through instead of thresholding it.
                 degenerate = np.abs(span) < 1e-6
                 span = np.where(degenerate, 1.0, span)
                 _ramp = np.clip((src - in_low) / span, 0.0, 1.0)
@@ -1779,127 +1639,91 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 t = np.where(degenerate, _deg, _ramp)
 
                 # See assume.QUESTIONS['levels.interclamp']. THE CLAMP TWO LINES ABOVE IS A
-                # DECODED PARAMETER AND NOT A SAFETY RAIL. `levels` carries a SIXTH w1 field
-                # -- pair 5, bits 10 and 11 -- that `PARAM_SPEC[15]` does not name and that
-                # costs zero words in both states (`base[29]`, `base[30]` and both `cross`
-                # cells are 0.0), so it stores no value and is therefore a flag. Adobe's
-                # published documentation describes a `levels` "intermediary clamp" Boolean:
-                # whether the transformed input value is clamped to [0, 1] BEFORE the output
-                # level is computed. `(src - in_low) / span` is exactly that transformed
+                # DECODED PARAMETER AND NOT A SAFETY RAIL. `levels` carries a SIXTH w1 field --
+                # pair 5, bits 10 and 11 -- that `PARAM_SPEC[15]` does not name and that costs
+                # zero words in both states, so it stores no value and is therefore a flag.
+                # Adobe's published documentation describes a `levels` "intermediary clamp"
+                # Boolean: whether the transformed input value is clamped to [0, 1] BEFORE the
+                # output level is computed. `(src - in_low) / span` is exactly that transformed
                 # value, and `_ramp` is exactly that clamp.
                 #
-                # THE NAME IS EXTERNAL KNOWLEDGE, held at the same confidence as the blend
-                # mode dropdown order -- moderate, not high -- which is why this is an arm
-                # and not a behaviour. What the file says without it, over 90,728 `levels`
-                # records:
+                # THE NAME IS EXTERNAL KNOWLEDGE, held at the same confidence as the blend mode
+                # dropdown order -- moderate, not high -- which is why this is an arm and not a
+                # behaviour. What the file says without it, over 90,728 `levels` records:
                 #
-                #   * the field is set on 500 of them across 130 files, ALWAYS in state 1
-                #     and never in state 2 -- a parameter with no word and one non-absent
-                #     state is a flag whose non-default value is carried by presence, the
-                #     same default-omission convention this file already uses for blend's
-                #     mode and opacity;
+                #   * the field is set on 500 across 130 files, ALWAYS in state 1 and never in
+                #     state 2 -- a parameter with no word and one non-absent state is a flag whose
+                #     non-default value is carried by presence, the same default-omission
+                #     convention this file already uses for blend's mode and opacity;
                 #   * it varies with the entire rest of the record held fixed (tag 0x18bb1e,
-                #     single `levelouthigh` of 0.5: 6 set against 4 clear), so it carries
-                #     information nothing else in the record predicts;
-                #   * its input is a `pixelprocessor` 42.00% of the time against a base rate
-                #     of 1.91% -- 22x enrichment on the ONE node in this format that
-                #     computes an arbitrary value per pixel from a program, and so the one
-                #     whose output has no reason to lie in [0, 1]. Every other input filter
-                #     sits at or below its base rate.
+                #     single `levelouthigh` of 0.5: 6 set against 4 clear);
+                #   * its input is a `pixelprocessor` 42.00% of the time against a base rate of
+                #     1.91% -- 22x enrichment on the ONE node that computes an arbitrary value per
+                #     pixel, and so the one whose output has no reason to lie in [0, 1].
                 #
-                # READING PRESENCE AS "NOT THE DEFAULT" is a SECOND guess stacked on the
-                # first, and it is the one 'noclamp' encodes. 'clamp' is the incumbent and
-                # the control: it is what this branch did before the arm existed.
+                # READING PRESENCE AS "NOT THE DEFAULT" is a SECOND guess stacked on the first,
+                # and it is the one 'noclamp' encodes; 'clamp' is the incumbent and the control.
                 #
-                # THE ARM IS MEASURABLE ON ALMOST NONE OF ITS OWN POPULATION, and that is
-                # a property of the finding rather than a defect in the wiring. 492 of the
-                # 500 set only an out-parameter, leaving the input range at its default, so
-                # `t` is `src` and clamping cannot matter for an input already in range. It
-                # can differ ONLY where the input leaves the unit range -- the
-                # `pixelprocessor` population above -- and predicts no change anywhere else.
-                # A null result here is therefore a result, not a failed test.
-                #
-                # Unclamped `t` may go negative, and the gamma below raises it to a
-                # fractional power. That is already safe: `np.power` runs under
-                # `errstate(all="ignore")` and its result is selected by `np.where` only
-                # where the mid point is non-default, which is 5 of the 500.
+                # THE ARM IS MEASURABLE ON ALMOST NONE OF ITS OWN POPULATION, which is a property
+                # of the finding rather than a defect in the wiring: 492 of the 500 set only an
+                # out-parameter, so `t` is `src` and clamping cannot matter. It can differ ONLY
+                # where the input leaves the unit range. A null result here is a result.
                 if (assume.assumed('levels.interclamp') == 'noclamp'
                         and len(rec.words) > 1 and (rec.words[1] >> 10) & 3):
                     t = np.where(degenerate, _deg, (src - in_low) / span)
                     assume.note(i)
 
-                # A ZERO-WIDTH INPUT RANGE MAY BE A HALF-READ INVERSION, NOT A STEP. The
-                # step reading elsewhere in this branch is right for a range that is
-                # genuinely zero-width, but some of these are probably not: Substance
-                # inverts by setting in_low ABOVE in_high, in_low=1 and in_high=0, so a
-                # record storing only one of that pair reads as degenerate when the other
-                # half is simply not being decoded. Over 80 files, 301 of 11,396 levels
-                # records have a zero-width input range, and they split by which side the
-                # file actually states:
+                # A ZERO-WIDTH INPUT RANGE MAY BE A HALF-READ INVERSION, NOT A STEP. The step
+                # reading elsewhere in this branch is right for a range that is genuinely
+                # zero-width, but some are probably not: Substance inverts by setting in_low
+                # ABOVE in_high, in_low=1 and in_high=0, so a record storing only one of that pair
+                # reads as degenerate when the other half is simply not being decoded. Over 80
+                # files, 301 of 11,396 levels records have a zero-width input range:
                 #
                 #     hi STATED 0.0, lo defaulted to 0.0     176
                 #     lo STATED 1.0, hi defaulted to 1.0       9
-                #     both stated, same value (0.002 x39, 0.5 x17, 0.0 x11, ...)   116
+                #     both stated, same value                116
                 #
-                # The 116 with both sides stated are genuinely degenerate and the step
-                # reading is what they get. The 185 with ONE side stated at an extreme are
-                # the suspicious population: a file that writes in_high=0.0 and nothing else
-                # is asking for an inversion if in_low=1.0 sits in a slot this decode is
-                # missing, and asking for a constant if it does not. Those two readings are
-                # not distinguishable from this side -- levels parameters are bit-selected,
-                # so an unread parameter and an absent one look identical here.
+                # The 116 with both sides stated are genuinely degenerate and get the step
+                # reading. The 185 with ONE side stated at an extreme are the suspicious
+                # population, and the two readings are not distinguishable from this side --
+                # levels parameters are bit-selected, so an unread parameter and an absent one
+                # look identical. It matters because it is a live cause of flat output: Bricks
+                # graph 003's dead spine dies at exactly these.
                 #
-                # It matters because it is a live cause of flat output. Bricks graph 003's
-                # dead spine dies at exactly these: rec9 and rec18 (levelinlow 1.0, high
-                # defaulted) each flatten a gradient of std 0.31 and 0.27, and rec39
-                # (levelinhigh 0.0, low defaulted) flattens an fxmaps of std 0.28.
+                # `levelinmid` IS THE GAMMA ITSELF, NOT A POSITION INSIDE THE INPUT RANGE. This
+                # used to renormalise it, `(in_mid - in_low) / span`, which is wrong for a reason
+                # needing no reference render: 0.5 is the parameter's DEFAULT and means "no
+                # gamma", and a default has to be neutral. Under the renormalising form it is
+                # neutral only when in_low is 0 -- give the same untouched default an in_low of
+                # 0.5 and it becomes 0, clipped to 1e-4, an exponent of 0.075.
                 #
-                # `levelinmid` IS THE GAMMA ITSELF, NOT A POSITION INSIDE THE INPUT RANGE.
-                # This used to renormalise it, `(in_mid - in_low) / span`, and that is
-                # wrong for a reason that needs no reference render to see: 0.5 is the
-                # parameter's DEFAULT and means "no gamma", and a default has to be
-                # neutral. Under the renormalising form it is neutral only when in_low is
-                # 0 -- give the same untouched default an in_low of 0.5 and it becomes
-                # (0.5 - 0.5) / 0.5 = 0, clipped to 1e-4, an exponent of 0.075. A file
-                # that stores nothing at all for a parameter cannot thereby ask for a
-                # near-vertical gamma curve, so the renormalisation is a decode error by
-                # construction.
+                # It is also the worst single discrepancy in the scored corpus. ChesterfieldSofa
+                # `ambientOcclusion` is record 852, a levels storing only levelinlow 0.5,
+                # leveloutlow 1.0, levelouthigh 0.0, with levelinmid left at its default. Against
+                # a reference mean of ~0.887: renormalised, exponent 0.0753 -> mean 0.2060; in_mid
+                # as gamma, exponent 1.0000 -> mean 0.9386.
                 #
-                # It also happens to be the worst single discrepancy in the scored corpus.
-                # ChesterfieldSofa `ambientOcclusion` is record 852, a levels storing only
-                # levelinlow 0.5, leveloutlow 1.0, levelouthigh 0.0 -- an inverting remap
-                # over the top half of the range, with levelinmid left at its default. Its
-                # input is record 851, mean 0.5306. Against a reference mean of ~0.887:
-                #
-                #     renormalised (before)   exponent 0.0753   -> mean 0.2060
-                #     in_mid as gamma (now)   exponent 1.0000   -> mean 0.9386
-                #
-                # SCOPE IS EXACTLY THE RECORDS THAT WERE WRONG. For the default input
-                # range, in_low = 0 and in_high = 1, span is 1 and `(in_mid - in_low) /
-                # span` is already just in_mid, so every default-range levels record is
-                # byte-identical under both forms. Only records with a non-zero in_low or
-                # a non-unit in_high move, which is the AO-style remap above.
+                # SCOPE IS EXACTLY THE RECORDS THAT WERE WRONG: for the default input range span
+                # is 1 and the two forms are byte-identical, so only records with a non-zero
+                # in_low or a non-unit in_high move.
                 mid_norm = np.clip(in_mid, 1e-4, 1 - 1e-4)
                 with np.errstate(all="ignore"):
                     exponent = np.log(0.5) / np.log(mid_norm)
                     gamma_t = np.power(t, exponent)
                 t = np.where(np.abs(mid_norm - 0.5) < 1e-6, t, gamma_t)
 
-                # CLAMPED, LIKE `blend`'S RESULT AND FOR THE SAME REASON. `t` is already
-                # in [0, 1], but the OUTPUT RANGE is not: fur_var_001 record 55 stores
-                # leveloutlow 0.62 and levelouthigh 1.31, so a white input comes out at
-                # 1.31 -- not a colour, and every consumer downstream inherits it. That
-                # record feeds `ambientOcclusion`, which is why the census reported an AO
-                # output rendering flat at 1.31.
+                # CLAMPED, LIKE `blend`'S RESULT AND FOR THE SAME REASON. `t` is already in
+                # [0, 1], but the OUTPUT RANGE is not: fur_var_001 record 55 stores leveloutlow
+                # 0.62 and levelouthigh 1.31, so a white input comes out at 1.31 -- not a colour,
+                # and every consumer downstream inherits it. That record feeds
+                # `ambientOcclusion`, which is why the census reported an AO output flat at 1.31.
                 #
-                # The value is not a misread. Record 54 stores (1.0, 0.0) at the same two
-                # words and inverts, which is exactly what an out-range of 1 down to 0
-                # means, and its output is 1.0 where its input is 0.0. The pair is
-                # (leveloutlow, levelouthigh) and the file really does ask for 1.31.
-                #
-                # The engine writes 8- and 16-bit unsigned maps, so it cannot emit 1.31
-                # either. `apply_blend`'s own note says this "mirrors the clamp `levels`
-                # already applies" -- it did not; `t` was clamped and the result was not.
+                # The value is not a misread: record 54 stores (1.0, 0.0) at the same two words
+                # and inverts, which is exactly what an out-range of 1 down to 0 means. The
+                # engine writes 8- and 16-bit unsigned maps, so it cannot emit 1.31 either.
+                # `apply_blend`'s note says this "mirrors the clamp `levels` already applies" --
+                # it did not; `t` was clamped and the result was not.
                 result = np.clip(out_low + t * (out_high - out_low), 0.0, 1.0)
                 outputs[i] = to_image(result, N, H, W)
                 if tainted:
@@ -1907,86 +1731,62 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
             elif rec.filter_name == "uniform":
                 # Where the size expression lives was already known (word[1], if
-                # Record.size_or_baked is a program there) but the FILL COLOR was not --
-                # this used to raise unconditionally rather than repeat the mistake found
-                # elsewhere in this file, treating .programs[-1] as the color and silently
-                # producing the size expression's own (8, 8) output tiled across the image.
+                # Record.size_or_baked is a program there) but the FILL COLOR was not -- this used
+                # to raise unconditionally rather than repeat the mistake found elsewhere in this
+                # file, treating .programs[-1] as the color and silently producing the size
+                # expression's own (8, 8) output tiled across the image.
                 #
-                # Real specimens close it: the color occupies the N words immediately
-                # after the size-expression slot (word[2].. when word[1] holds a program,
-                # word[1].. directly when it does not) -- N=1 for a grayscale record
-                # (Record.colour False), N=4 (RGBA) for a colour one. Confirmed two ways
-                # corpus-wide: (1) 3,392 of 3,428 sampled (98.9%) decode to components in
-                # [0, 1] at exactly that position; (2) exact containment against a real
-                # paired source, DLG-Tools__US_Flag.sbs -- four DISTINCT declared
-                # `outputcolor` constantValueFloat4 values (a dark red, a dark blue, an
-                # off-white, pure white) each match a specific record's decoded words to
-                # 6+ significant figures, e.g. 0.745098054 0.0431372561 0.192156866 1.
+                # Real specimens close it: the color occupies the N words immediately after the
+                # size-expression slot (word[2].. when word[1] holds a program, word[1]..
+                # otherwise) -- N=1 for a greyscale record, N=4 (RGBA) for a colour one.
+                # Confirmed two ways corpus-wide: 3,392 of 3,428 sampled (98.9%) decode to
+                # components in [0, 1] at exactly that position; and exact containment against
+                # DLG-Tools__US_Flag.sbs, where four DISTINCT declared `outputcolor` Float4 values
+                # each match a specific record's decoded words to 6+ significant figures.
                 #
-                # The 1.1% residual is a second, unidentified word shape: Record.programs
-                # names one program, but the word right after it is not a program either
-                # (by Record.programs' own reading) and does not decode as a plausible
-                # color -- not guessed at, raised instead like the format's own matrix
-                # reading rejects an implausible determinant rather than trust a bad slot.
+                # The 1.1% residual is a second, unidentified word shape, raised rather than
+                # guessed at.
                 has_prog = rec.size_or_baked is not None and rec.size_or_baked[0] == 'program'
-                # AND ONE MORE POINTER WHEN CLASS BIT 7 IS SET. Seven records read a
-                # denormal where a colour should be, and all seven carry TWO pointers
-                # ahead of the slot rather than one: MetalSubstance009 record 9887 is
-                # `[tag][ptr][ptr][1.0][bytecode...]`, a fill of exactly 1.0 one word
-                # further on than this was looking. Bit 7 is what marks them, and it is
-                # the same shape that left a `shuffle` weight vector one word out.
+                # AND ONE MORE POINTER WHEN CLASS BIT 7 IS SET. Seven records read a denormal
+                # where a colour should be, and all seven carry TWO pointers ahead of the slot
+                # rather than one: MetalSubstance009 record 9887 is `[tag][ptr][ptr][1.0][bytecode
+                # ...]`, a fill of exactly 1.0 one word further on. Bit 7 marks them.
                 start = (2 if has_prog else 1) + (1 if (rec.cls >> 7) & 1 else 0)
                 n = 4 if rec.colour else 1
                 # CLASS BIT 8 SAYS WHETHER THE FILL IS STORED AT ALL, and asking it is not
                 # optional politeness -- 358 of 864 uniform records in 40 files (41%) were
-                # rendering the record's own BYTECODE as their colour. The words at the
-                # colour slot are the program preamble, `0x0A420001 0x70818F53`, which as
-                # float32 is 9.341e-33: a denormal, inside [0, 1], and waved through by a
-                # range check. The same value then reaches `fxrender`, where it is the
-                # 6.259e-33 / 9.341e-33 population that MIN_PATTERN_SIZE was built to
-                # reject -- so an FX-Map fed by one of these draws nothing and comes out
-                # flat black. That is how CarpetSubstance001's tufts vanish.
+                # rendering the record's own BYTECODE as their colour. The words at the colour
+                # slot are the program preamble, `0x0A420001 0x70818F53`, which as float32 is
+                # 9.341e-33: a denormal, inside [0, 1], waved through by a range check. The same
+                # value then reaches `fxrender`, where it is the population MIN_PATTERN_SIZE was
+                # built to reject -- so an FX-Map fed by one draws nothing and comes out flat
+                # black. That is how CarpetSubstance001's tufts vanish. Measured over the same 40
+                # files, with the bit-7 offset applied: bit 8 set -> a plausible colour 512 of
+                # 512; bit 8 clear -> not a colour 351 of 352. The single exception reads
+                # (1.3e-18, 0, 1, 0), also bytecode, just not small enough to trip the
+                # classifier's threshold -- so the bit is right there too and it is the value
+                # test that is soft.
                 #
-                # Measured over the same 40 files, with the bit-7 offset above applied:
-                #
-                #     bit 8 set    -> a plausible colour   512 of 512
-                #     bit 8 clear  -> not a colour         351 of 352
-                #
-                # The single exception reads (1.3e-18, 0, 1, 0) -- also bytecode, just not
-                # small enough to trip the classifier's threshold, so the bit is right
-                # there too and it is the value test that is soft. Which is the point: a
-                # guard on the VALUE passes whatever lands in range, and the format's own
-                # presence bit cannot.
-                #
-                # A bit-8-clear record is then in exactly the position the one-word records
-                # below are in -- the fill is the engine's default, not something in the
-                # file -- so it takes the same arbitrated answer and the same
-                # LOW_CONFIDENCE mark.
-                # BIT 8 CLEAR DOES NOT MEAN "NO FILL" -- IT CAN MEAN "THE FILL IS A
-                # PROGRAM". The bit-8 law above is right that the SLOT does not hold a
-                # colour when the bit is clear; it does not follow that the file is silent.
-                # ColorTest record 1 is the specimen: bit 8 clear, renders black, and its
-                # colour is sitting in the record as a second program -- `inputref.f4
-                # uid=3867945481`, which the header declares as (0.5, 0.5, 0.5, 1.0), a mid
-                # grey. It was rendering as (0, 0, 0, 0).
-                #
-                # A uniform's size expression is one program; a SECOND one is the colour.
-                # Over 150 files, with the bit-8-set records as the control:
+                # BIT 8 CLEAR DOES NOT MEAN "NO FILL" -- IT CAN MEAN "THE FILL IS A PROGRAM". The
+                # bit-8 law is right that the SLOT does not hold a colour when the bit is clear;
+                # it does not follow that the file is silent. ColorTest record 1 is the specimen:
+                # bit 8 clear, renders black, and its colour sits in the record as a second
+                # program -- `inputref.f4 uid=3867945481`, which the header declares as (0.5,
+                # 0.5, 0.5, 1.0). A uniform's size expression is one program; a SECOND one is the
+                # colour. Over 150 files, with the bit-8-set records as the control:
                 #
                 #                     records   have a colour program   of those, plausible
                 #     bit 8 clear       2,113            259                184  (71.0%)
                 #     bit 8 set         1,940             78                  2   (2.6%)
                 #
-                # 71% against 2.6% is a 27x enrichment in the direction the reading
-                # predicts: where the slot does not carry the fill, the program does. The
-                # recovered values are material colours rather than noise -- (0.694, 0.604,
+                # 71% against 2.6% is a 27x enrichment in the direction the reading predicts, and
+                # the recovered values are material colours rather than noise -- (0.694, 0.604,
                 # 0.490, 1.0) a tan, (0.912, 0.931, 0.950, 1.0) an off-white, 0.3218 a grey.
                 #
-                # Narrow: only when the bit is clear, only when a non-size program exists,
-                # only when it runs and yields the right component count inside [0, 1].
-                # Everything else falls through to the arbitrated default below, which is
-                # still the answer for the 1,854 bit-8-clear records that have no colour
-                # program at all -- for those the fill really is not in the file.
+                # Narrow: only when the bit is clear, only when a non-size program exists, only
+                # when it runs and yields the right component count inside [0, 1]. Everything
+                # else falls through to the arbitrated default below, still the answer for the
+                # 1,854 bit-8-clear records with no colour program at all.
                 if not (rec.cls >> 8) & 1:
                     _sb = rec.size_or_baked
                     _others = [q for q in (rec.programs or ())
@@ -2011,53 +1811,36 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             continue
 
                 if not (rec.cls >> 8) & 1 or len(rec.words) < start + n:
-                    # THE COLOUR IS NOT IN THE FILE. These are one-word records -- just
-                    # the tag, no programs, no colour slot -- distinguishable by class
-                    # (neither bit 0 nor bits 8/9 set), and they feed `transformation` in
-                    # 329 of 334 consumer links. There is nothing here to decode wrongly;
-                    # the value is the engine's default, and this format never records
-                    # defaults, which is the same wall the FX-Map parameters hit.
+                    # THE COLOUR IS NOT IN THE FILE. These are one-word records -- just the tag, no
+                    # programs, no colour slot -- distinguishable by class (neither bit 0 nor bits
+                    # 8/9 set), and they feed `transformation` in 329 of 334 consumer links. There is
+                    # nothing here to decode wrongly; the value is the engine's default, and this
+                    # format never records defaults, the same wall the FX-Map parameters hit.
                     #
-                    # So it is a CANDIDATE question rather than a decode one, and the only
-                    # thing that can answer it is an output to compare against. Under an
-                    # open `assume` scope the chosen fill is used and the record is marked
-                    # in both USED and LOW_CONFIDENCE; with no scope open it refuses
-                    # exactly as before. 111 records in the reference set block here, and
-                    # with the FX-Map empty-table default it is one of the two assumptions
-                    # that make 14 of the 19 usable reference maps scoreable.
-                    # THE DEFAULT IS 0.0, AND THE ENGINE SAID SO. This used to refuse
-                    # unless a caller opened an `assume` scope, which was right while
-                    # nothing could arbitrate it. Two reference specimens now can, because
-                    # in both the fill reaches a declared output as a pure passthrough --
-                    # the scored MAE is EXACTLY the candidate, so the candidates are
-                    # genuinely separated rather than all washing out:
+                    # THE DEFAULT IS 0.0, AND THE ENGINE SAID SO. This used to refuse unless a caller
+                    # opened an `assume` scope, which was right while nothing could arbitrate it. Two
+                    # reference specimens now can, because in both the fill reaches a declared output
+                    # as a pure passthrough -- the scored MAE is EXACTLY the candidate:
                     #
                     #   RoofTiles, `metallic` (record 2580), against RoofTiles_Metallic.png
                     #     fill 0.0 -> MAE 0.0000     fill 0.5 -> 0.5000
                     #     fill 0.25 -> 0.2500        fill 1.0 -> 1.0000
                     #
-                    #   Stylized_Sandy_Stone_Path, `output_5` (record 1), scored against
-                    #   all six of its maps because that package names its outputs
-                    #   generically:
+                    #   Stylized_Sandy_Stone_Path, `output_5` (record 1), scored against all six of
+                    #   its maps because that package names its outputs generically:
                     #     fill 0.0 -> exact match to SandyStoneRoad01_Metallic.png, 0.0000
                     #     fill 0.5 -> best is Normal at 0.0159      fill 1.0 -> AO at 0.0453
                     #
-                    # The second is the stronger of the two: the manifest could not name
-                    # that output, and matching at 0.0000 identified it as the metallic map
-                    # on its own.
+                    # The second is stronger: the manifest could not name that output, and matching
+                    # at 0.0000 identified it as the metallic map on its own.
                     #
-                    # WHAT THIS IS NOT. Both scoring outputs are constant-zero maps -- a
-                    # metallic channel for a non-metal material -- so this arbitrates the
-                    # DEFAULT FILL and nothing about how a fill combines downstream. It is
-                    # still LOW_CONFIDENCE and still marked in assume.USED, because the
-                    # value is inferred from behaviour rather than read from the file: the
-                    # record stores no colour, and no reading of it will ever produce one.
-                    #
-                    # Chesterfield cannot arbitrate this and it was tried first: there the
-                    # fill changes 6 records and 0 declared outputs, so every candidate
-                    # scores identically. An A/B that ties is not evidence for the
-                    # incumbent, which is why finding a specimen where it propagates was
-                    # the whole task.
+                    # WHAT THIS IS NOT. Both scoring outputs are constant-zero maps, so this
+                    # arbitrates the DEFAULT FILL and nothing about how a fill combines downstream.
+                    # It is still LOW_CONFIDENCE and still marked in assume.USED, because the value
+                    # is inferred from behaviour rather than read from the file. Chesterfield cannot
+                    # arbitrate it and was tried first: there the fill changes 6 records and 0
+                    # declared outputs, so every candidate scores identically, and an A/B that ties
+                    # is not evidence for the incumbent.
                     fill = assume.assumed('uniform.fill', 0.0)
                     v = np.asarray(fill, dtype=np.float32).ravel()
                     if v.size == 1:
@@ -2073,48 +1856,28 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     LOW_CONFIDENCE.add(i)
                     assume.note(i)
                     continue
-                # THIS WINDOW CANNOT TELL A COLOUR FROM A PROGRAM, AND IT NEVER HAS TO.
-                # Both halves of that matter, and an earlier version of this note got the
-                # second one badly wrong -- see the retraction below.
+                # THIS WINDOW CANNOT TELL A COLOUR FROM A PROGRAM, AND IT NEVER HAS TO. The
+                # window is tautological in FORM: a pointer or an inline program header read as
+                # float32 is a denormal, about 1e-40, which is inside [-0.01, 1.01]. So this test
+                # cannot reject a program word, and no size of sample would reveal that.
                 #
-                # The window is tautological in FORM. A pointer or an inline program header
-                # read as float32 is a denormal, about 1e-40, and 1e-40 is inside
-                # [-0.01, 1.01]. So this test cannot reject a program word; that failure is
-                # not in its reachable range and no size of sample would reveal it.
+                # It is unreachable in FACT, because the gate above takes every such record first.
+                # Over the corpus plus the reference packs, 9,512 uniform records reach THIS read
+                # and 0 have a denormal component, while 7,998 are diverted to the `uniform.fill`
+                # path. The `not (cls >> 8) & 1 or len(words) < start + n` gate is what does it,
+                # and it is STRUCTURAL -- a class bit and a length -- so it does not share this
+                # window's blind spot.
                 #
-                # It is unreachable in FACT, because the gate above this branch takes every
-                # such record first. Over the corpus plus the reference packs:
-                #
-                #     uniform records reaching THIS read                    9,512
-                #       with a denormal component                              0
-                #     diverted to the `uniform.fill` path above              7,998
-                #
-                # Zero. The `not (cls >> 8) & 1 or len(words) < start + n` gate is what does
-                # it, and it is a STRUCTURAL test -- a class bit and a length -- so it does
-                # not share this window's blind spot.
-                #
-                # RETRACTED, and recorded because the retraction is the useful part. This
-                # note previously claimed 4,323 greyscale records "render black" from a
-                # misread inline program. The 4,323 are real -- their slot at `start` does
-                # hold a program, 4,254 of them inline by `program_span()` and 69 pointed
-                # at, commonest word 0x0a420001 = one instruction of opcode 0x0A42
-                # `inputref.i2` -- and in 3,526 of them that program runs to the record end,
-                # so no colour is stored at all. But every one of the 4,323 takes the
-                # `uniform.fill` path and none reaches this line. They are not rendered
-                # black from a misread; they get the arbitrated fill, marked LOW_CONFIDENCE
-                # and noted in `assume.USED`, which is the correct handling for a record
-                # that stores no colour.
-                #
-                # The measurement that produced the false claim applied this file's `start`
-                # formula WITHOUT the gate that precedes it -- reading a branch's guard while
-                # skipping the branch's entry condition. Confirming a tautology in a test is
-                # not the same as showing the test is consulted, and the second question is
-                # the one that decides whether anything is wrong.
-                #
-                # So: the docstring's "3,392 of 3,428 sampled (98.9%) decode to components
-                # in [0, 1]" is NOT inflated by denormals on the population that reaches
-                # here, and the containment support -- 1,975 of 1,976 declared `outputcolor`
-                # values paired -- is untouched either way. The placement stands on both.
+                # RETRACTED, and recorded because the retraction is the useful part. This note
+                # previously claimed 4,323 greyscale records "render black" from a misread inline
+                # program. The 4,323 are real -- their slot at `start` does hold a program, 4,254
+                # inline by `program_span()` and 69 pointed at, commonest word 0x0a420001 -- and
+                # in 3,526 the program runs to the record end, so no colour is stored. But every
+                # one takes the `uniform.fill` path and none reaches this line. They get the
+                # arbitrated fill, marked LOW_CONFIDENCE and noted in `assume.USED`, which is the
+                # correct handling for a record that stores no colour. The measurement applied
+                # this file's `start` formula WITHOUT the gate that precedes it -- reading a
+                # branch's guard while skipping the branch's entry condition.
                 color = np.array(rec.words[start:start + n], dtype=np.uint32).view(np.float32)
                 if not np.all((-0.01 <= color) & (color <= 1.01) & (color == color)):
                     raise Unsupported("uniform fill color slot does not decode as a "
@@ -2130,47 +1893,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 outputs[i] = to_image(result, N, H, W)
 
             elif rec.filter_name == "directionalwarp":
-                # Parameter LOCATIONS are corpus-verified (FORMAT-NOTES.md,
-                # "directionalwarp's parameters are bit-selected, like levels'", 99.92%
-                # tail-placement accuracy) and warpangle's UNIT is confirmed directly
-                # from real bytecode, not inferred: programs that compute it end in
-                # `atan2(...) / 6.28319` -- 3,336 of 3,336 angle-shaped programs divide
-                # by 2*pi, i.e. the value is a FRACTION OF A FULL TURN.
+                # Parameter LOCATIONS are corpus-verified (FORMAT-NOTES.md, "directionalwarp's
+                # parameters are bit-selected, like levels'", 99.92% tail-placement accuracy) and
+                # warpangle's UNIT is confirmed directly from real bytecode: programs that compute
+                # it end in `atan2(...) / 6.28319` -- 3,336 of 3,336 angle-shaped programs divide
+                # by 2*pi, so the value is a FRACTION OF A FULL TURN.
                 #
-                # NOT corpus-verified: the displacement FORMULA itself (this filter's
-                # core math is fixed in the engine, not carried in bytecode the way a
-                # pixelprocessor's is) and intensity's absolute scale. This implements
-                # the standard directional-warp shape -- sample a second, grayscale
-                # "intensity map" input, centre it at 0 (0.5 -> no displacement), scale
-                # by `intensity` and a fixed direction from `warpangle`, and offset the
-                # main input's sampling position by the result -- with intensity taken
-                # against a fixed 256-pixel reference scale independent of the record's
-                # own resolution, matching the convention several public shader ports of
-                # this Substance node use. That constant is NOT re-derived from this
-                # corpus and could be wrong by a constant factor; real program-computed
-                # `intensity` specimens (DLG-Tools__Rusted_Metal_01 records 13/51/60/
-                # 73/74) confirm only that SOME resolution-independent normalization is
-                # real -- authors compute intensity as `min(K, K*$size.x/$size.y)` for K
-                # from 10 to 128, an aspect-ratio cap wrapped around a per-record
-                # constant, not evidence of the divisor itself.
+                # NOT corpus-verified: the displacement FORMULA (this filter's core math is fixed
+                # in the engine) and intensity's absolute scale. This implements the standard
+                # directional-warp shape -- sample a second, greyscale intensity map, centre it at
+                # 0, scale by `intensity` and a fixed direction from `warpangle`, and offset the
+                # main input's sampling position -- with intensity taken against a fixed 256-pixel
+                # reference. That constant is NOT re-derived here and could be wrong by a constant
+                # factor; real program-computed specimens (DLG-Tools__Rusted_Metal_01 records
+                # 13/51/60/73/74) confirm only that SOME resolution-independent normalization is
+                # real, since authors compute intensity as `min(K, K*$size.x/$size.y)`.
                 #
-                # Edge order (which input is warped, which supplies the intensity map)
-                # is likewise the declared, unverified-at-the-bytecode-level convention:
-                # a real paired source (DLG-Tools__Camouflage.sbs) declares this node's
-                # connections as `input1` first, `inputintensity` second, matching
-                # Record.edges[0]/[1] in that order without independent proof -- the
-                # same epistemic stance already taken for blend's destination/source
-                # pair. Wrong here means a plausible-looking but misdirected warp, not a
-                # crash.
+                # Edge order is likewise a declared, unverified convention: a real paired source
+                # (DLG-Tools__Camouflage.sbs) declares this node's connections as `input1` first,
+                # `inputintensity` second, matching Record.edges[0]/[1] without independent proof
+                # -- the same stance taken for blend's destination/source pair. Wrong here means a
+                # plausible-looking but misdirected warp, not a crash.
                 if len(rec.edges) < 2:
                     raise Unsupported("directionalwarp has fewer than 2 edges")
                 for edge_rec in rec.edges[:2]:
                     if edge_rec not in outputs:
                         raise cascade("edge -> record %s has no output yet" % edge_rec)
                 tainted = any(e in synthetic for e in rec.edges[:2])
-                # See assume.QUESTIONS['dirwarp.edges'] -- the order is a declared
-                # convention with no bytecode-level proof. Swapping it here rather than in
-                # every use below keeps the experiment to one line.
+                # See assume.QUESTIONS['dirwarp.edges'] -- the order is a declared convention
+                # with no bytecode-level proof. Swapping it here keeps the experiment to one line.
                 if assume.assumed('dirwarp.edges') == 'swapped':
                     rec = _SwappedEdges(rec)
                     assume.note(i)
@@ -2214,56 +1965,47 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "gradient":
-                # A gradient map: the input's luminance indexes an embedded ramp.
-                # `Record.ramp` is decoded and corpus-verified (FORMAT-NOTES.md); what
-                # is added here is only the lookup.
+                # A gradient map: the input's luminance indexes an embedded ramp. `Record.ramp`
+                # is decoded and corpus-verified (FORMAT-NOTES.md); what is added here is only
+                # the lookup.
                 #
-                # Which component is the POSITION was not assumed. Over every ramp with
-                # 3+ stops, component 0 ascends monotonically in 100% of tables in all
-                # four width classes, and no other component does better than 25% -- so
-                # component 0 is the stop position and the rest are values.
+                # Which component is the POSITION was not assumed. Over every ramp with 3+ stops,
+                # component 0 ascends monotonically in 100% of tables in all four width classes,
+                # and no other component does better than 25%.
                 #
-                # Only the GREYSCALE widths are implemented. The colour widths carry
-                # position plus TWO components, not three, so an RGB reading of them
-                # would be invention:
+                # Only the GREYSCALE widths are implemented. The colour widths carry position
+                # plus TWO components, not three:
                 #
                 #     (pos, value)                greyscale            603 records
                 #     (pos, value, 32768)         greyscale + cls b8 2,683
                 #     (pos, v1, v2)               colour                 144   refused
                 #     (pos, v1, v2, 32768)        colour + cls bit 8     457   refused
                 #
-                # The trailing 32768 is constant in 3,175 of 3,175 reads, so the bit-8
-                # width adds a field this does not need rather than a channel.
+                # The trailing 32768 is constant in 3,175 of 3,175 reads, so the bit-8 width adds
+                # a field this does not need rather than a channel.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 table = rec.ramp
                 if not table:
                     raise Unsupported("gradient record carries no readable ramp")
-                # THE COLOUR RAMP'S TWO VALUES ARE ONE PACKED RGBA8888. This was
-                # refused as "2 value components, not 3 -- an RGB reading would be
-                # invention", which was right to refuse and wrong about the shape: the
-                # entries are u16, so two of them are 32 bits, which is exactly four 8-bit
-                # channels rather than two 16-bit ones.
+                # THE COLOUR RAMP'S TWO VALUES ARE ONE PACKED RGBA8888. This was refused as "2
+                # value components, not 3 -- an RGB reading would be invention", which was right
+                # to refuse and wrong about the shape: the entries are u16, so two of them are 32
+                # bits, which is four 8-bit channels rather than two 16-bit ones.
                 #
                 # The signature is the alpha byte. Reading `v1 | (v2 << 16)` and unpacking
-                # little-endian, over 181 colour gradient records and 22,961 stops:
+                # little-endian, over 181 colour gradient records and 22,961 stops, byte 3 is 255
+                # in 99.9% (next commonest value: 0, seven times). A misread field does not put
+                # 255 in the same byte 99.9% of the time. And the remaining three bytes read as
+                # material colours outright -- (197, 143, 76) tan, (139, 92, 38) brown, (243,
+                # 211, 167) cream, (253, 253, 253) near-white.
                 #
-                #     byte 3 == 255      99.9%      (next commonest value: 0, seven times)
-                #
-                # A misread field does not put 255 in the same byte 99.9% of the time. And
-                # the remaining three bytes read as material colours outright -- (197, 143,
-                # 76) tan, (139, 92, 38) brown, (243, 211, 167) cream, (179, 85, 19)
-                # orange-brown, (253, 253, 253) near-white -- which is what a gradient map
-                # for sand, wood and stone should contain.
-                #
-                # Greyscale ramps are unaffected: their single value stays a u16 scaled by
-                # 65535, which is the reading already verified against an independent
-                # lookup in test_filters.py.
+                # Greyscale ramps are unaffected: their single value stays a u16 scaled by 65535,
+                # the reading already verified against an independent lookup in test_filters.py.
                 if rec.colour and isinstance(table[0][0], float) and len(table[0]) >= 4:
-                    # THE FLOAT FORM NEEDS NO UNPACKING. `Record.ramp`'s five-float entries
-                    # are (position, R, G, B, A) already in [0, 1] -- the u16 packing below
-                    # exists because a u16 pair has to be reassembled into RGBA8888, and
-                    # there is nothing to reassemble here.
+                    # THE FLOAT FORM NEEDS NO UNPACKING. `Record.ramp`'s five-float entries are
+                    # (position, R, G, B, A) already in [0, 1]; the u16 packing below exists only
+                    # because a u16 pair has to be reassembled into RGBA8888.
                     stops = np.array([e[0] for e in table], dtype=np.float32)
                     vals = np.array([list(e[1:5]) for e in table], dtype=np.float32)
                 elif rec.colour:
