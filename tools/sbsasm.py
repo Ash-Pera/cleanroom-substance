@@ -2566,6 +2566,41 @@ class Record:
         What is left to find is therefore a rule about WHICH records apply their levels,
         not about placement (source-confirmed), not about the values (real and common), and
         not about inversion as a category (needed in some places, harmful in others).
+
+        THE BLOCKING RECORDS ARE 129, 146 AND 226 -- NOT 137. Bisected by falling each
+        candidate back to the MEMO reading (not to [], which is a different answer again --
+        the memo's near-zero in_high makes the record degenerate, while [] gives defaults
+        and an identity):
+
+            memo-fallback on 129, 146, 226   basecolor +0.6658 +0.8862 +0.6854  = memo
+            memo-fallback on 137, 210, 218   basecolor +0.5499 +0.0260 -0.3524  = unchanged
+
+        So the three byte-identical 16x16 records this note was named for are RENDER-NEUTRAL
+        and never were the blocker. Only 7 of the file's 124 levels records read differently
+        at all, and the collapse is entirely those three.
+
+        AND ON THOSE THREE THE MEMO IS READING AN INPUT EDGE. Record 129 is six words:
+
+            slot 2   0x80        the input edge -- record 128
+            slot 3   0.998588    walk: levelinhigh    memo: leveloutlow
+            slot 4   1.0         walk: leveloutlow    memo: levelouthigh
+            slot 5   0.0         walk: levelouthigh   memo: (not read)
+
+        The memo reads slots 2, 3, 4, so its `levelinhigh` is the edge word 128 reinterpreted
+        as a float -- the 1.79e-43 denormal it reports. That is the exact failure the
+        edge-XOR arbiter above scores 1,844 of, and it is what makes the record degenerate
+        and therefore harmless. The walk reads 3, 4, 5, which exhausts the record exactly and
+        assigns every declared field a slot.
+
+        So the structurally invalid reading is the one that matches the engine, and the
+        complete one does not. Both pass the source-naming checks
+        (`test_levels_parameters_are_named_the_way_the_sources_name_them`, 86 agreements and
+        0 mis-namings) because no source-locatable value lands in these seven records.
+
+        Refuted while here: that the names are rotated against the slots -- out-parameters
+        taking the earlier positions, which would make slot 3/4 the out pair and reproduce
+        the memo's values honestly. Rotating drives every channel strongly negative
+        (basecolor -0.60 / -0.98 / -0.82, AO -0.81), so the naming is not the error either.
         """
         import decompose as _decompose
         d = _decompose.decompose(self)
