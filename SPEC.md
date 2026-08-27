@@ -210,6 +210,88 @@ version v8 (`0x0008_0000`) an image input occupies a 16-byte `f32×4` slot at it
 position; in v2–v6 it occupies none. Getting it wrong shifts the whole table by
 `16 × (image count)`.
 
+### 7.3 The width legend, and the key it is missing
+
+§7.2's `type -> 4N` table is the format's own width legend, stated in the file and read
+rather than fitted. It reaches the record side too: over 437 specimens every one of the
+**544,873** baked parameter slots the walk reads has a width of 1, 2 or 4 words —
+`float1`, `float2`, `float4` — and **none falls outside the legend's 1..4**. (Width 3,
+`float3`, is legal by the legend and does not occur.) Per filter:
+
+| filter | 1 word | 2 words | 4 words |
+|---|---|---|---|
+| 1 `blend` | 137,808 | 26 | — |
+| 2 `transformation` | 36 | 29,331 | 66,512 |
+| 11 `dirmotionblur` | 25,654 | — | — |
+| 12 `directionalwarp` | 115,122 | — | — |
+| 15 `levels` | 163,992 | — | 1,735 |
+| 17 `text` | 43 | 39 | 14 |
+| 18 `normal` | 971 | — | — |
+| 21 `distance` | 1,552 | 2,038 | — |
+
+So the legend is not the gap. **What the file does not state is the per-field type CODE**,
+and that is the object `costs.json` actually fits — a *kind assignment* per (filter,
+field), not a width. Two searches for a per-node type declaration came back empty and are
+recorded so they are not repeated: the interface block declares 8,500 typed descriptors
+against 544,873 slots and is framed to the graph-input table alone (§7.1), and the record
+directory holds bare offsets. The filter id *is* the declaration, and the parameter list it
+names lives in the engine.
+
+One kind is already stated rather than assigned, which is the existence proof that the
+distinction is real: a `channel` field's component count is the **tag's colour bit** — 4
+words when colour, 1 when grayscale — so `walk._field_width` derives it and does not fit
+it. The open problem is the rest of the assignment, and its legitimate route is the
+permitted `.sbs` sources, which declare parameter names and types per filter.
+
+### 7.4 The field primitive — how `w1` gates and places a parameter
+
+One rule places every parameter this project reads, and it is the §6.1 mask-walk applied to
+the second header word.
+
+**`w1` is a grid of two-bit FIELDS.** Field `j` occupies bits `(2j + s, 2j + 1 + s)`, where
+`s` is the filter's **grid shift** — `0` for every filter measured, except `directionalwarp`,
+where it is `1`. The two bits are a STATE, not a count:
+
+    00  absent          the parameter is not present; it costs no slot
+    01  baked           a constant, inline in the header, one word per component (§7.3)
+    10  program         a pointer into the instruction stream (§10)
+    11  image input     an edge — a backward record index, not a parameter at all
+
+**Placement is a cursor, not an index.** The walk visits fields in ascending `j`, and each
+present field advances the cursor by its own width. Nothing stores a slot number (§6.1), so a
+parameter's position is the sum of the widths of the fields before it and cannot be computed
+from `j` alone.
+
+**A parameter's presence mask is exactly `3 << (2j + s)`.** This is what makes the rule one
+rule rather than a per-filter table: over the five filters that declare parameters, all
+fourteen masks resolve to exactly one field —
+
+    blend            s=0    opacitymult 0x0030 -> field 2
+    dirmotionblur    s=0    intensity 0x0003 -> 0     mblurangle 0x000c -> 1
+    directionalwarp  s=1    intensity 0x0006 -> 0     warpangle  0x0018 -> 1
+    levels           s=0    levelinlow 0x0003 -> 0 ... levelouthigh 0x0300 -> 4
+    fxmaps           s=0    fx_param0 0x0003 -> 0 ... fx_param3 0x0300 -> 4
+
+`directionalwarp` is the reason the shift exists and the reason it must be read rather than
+assumed. Its `intensity` is bits 1 and 2, which STRADDLE the fields of an unshifted grid; a
+matcher that assumes `s = 0` finds no field for it, names neither of its parameters, and
+returns nothing on 62,146 records — silently, because an empty parameter list is
+indistinguishable from a filter that declares none.
+
+**The rule subsumes the positional fallback it was thought to need.** Because of that
+straddle, `directionalwarp` was placed by a separate positional rule — "the present
+parameters occupy the last `n` slots of the header". With the shift applied, the field rule
+and the positional rule produce identical name lists on **78,783 of 78,783** records across
+both filters that use it. The positional rule is not a second mechanism; it is this one seen
+from the far end of the header.
+
+**Where it is vacuous, and that is not a gap.** `fxmaps` has no parameter fields at all — the
+walk reports zero on all 41,901 records — and its parameters live in the FX entry table (§8)
+rather than the record header. The masks above are still well-formed, they are simply never
+matched. A memo that attributed header parameters to it named **0 of 95,426** slots inside the
+header it claimed them from, against `levels` at 160,106 of 169,219 (94.61%): the two are not
+one rule at two severities but a working rule and a baseless attribution.
+
 ---
 
 ## 8. FX-Map trees
