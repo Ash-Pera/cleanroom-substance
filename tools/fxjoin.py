@@ -50,11 +50,11 @@ from this join is a result derived from these paramsets:
       with a JOINABLE paramset                                  3
     permitted fxmaps paramsets                                 70
       reaching this join (a dynamic manifest-input reference)   46
-        joined to exactly one entry                              9
+        joined to exactly one entry                             13
         joined to several entries (one paramset, many instances) 32
-        no entry carries that name-set                           5
+        no entry carries that name-set                           1
 
-41 of 70, in 3 files of 96, and the bulk of them are in ONE file (`ie_curve`). This is an
+45 of 70, in 3 files of 96, and the bulk of them are in ONE file (`ie_curve`). This is an
 instrument for a handful of files, not for the corpus. `main()` prints these counts so the
 figure is re-measured rather than quoted from here.
 
@@ -167,7 +167,49 @@ def join(sbs_path):
     index = collections.defaultdict(list)
     for where, refs, tag in ent:
         index[_key(refs)].append((where[0], where[1], tag))
-    return [(refs, index.get(_key(refs), [])) for refs in src]
+    out = []
+    for refs in src:
+        hits = index.get(_key(refs), [])
+        if not hits:
+            hits = _subset_hits(refs, ent)
+        out.append((refs, hits))
+    return out
+
+
+def _subset_hits(refs, ent):
+    """Entries whose name sets are a proper SUBSET of the source's, largest first.
+
+    COMPILATION DROPS NAMES, so exact set equality is too strict for a large function graph.
+    In `ie_curve` the four paramsets that no entry matched exactly each have an entry short
+    by exactly four names, and it is the SAME four every time -- `npoints`, `is_closed`,
+    `alpha`, `tension`, in 4 of 4. A stable set, not pruning noise: those are resolved
+    before the entry's parameter program runs, so the compiled program never references
+    them.
+
+    Used only when the exact key finds nothing, and only when ONE entry is the maximal
+    subset -- a subset relation is weaker than equality and would otherwise join a small
+    set to everything containing it. Requiring the same parameter NAMES on both sides
+    (`set(erefs) == set(refs)`) keeps that from reaching across parameters.
+
+    This was found by following a warning from a peer: the residue that survives a mostly
+    right correction is the population most likely to hold a SECOND, different misreading
+    rather than more of the first. It did -- the first correction was the manifest
+    vocabulary, and this is unrelated to it.
+    """
+    best = []
+    for where, erefs, tag in ent:
+        if set(erefs) != set(refs):
+            continue
+        if all(erefs[k] <= refs[k] for k in erefs):
+            best.append((sum(len(v) for v in erefs.values()), where, tag))
+    if not best:
+        return []
+    top = max(b[0] for b in best)
+    top_hits = [b for b in best if b[0] == top]
+    if len(top_hits) != 1:
+        return []                      # ambiguous under a weaker key: decline it
+    _n, where, tag = top_hits[0]
+    return [(where[0], where[1], tag)]
 
 
 def main():
