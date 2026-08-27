@@ -3523,27 +3523,21 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
             elif rec.filter_name == "emboss":
                 # A DIRECTIONAL RELIEF, not a runnable program: the record's programs never
                 # sample an input, they only compute the built-in's scalars. Decoded by the
-                # structural side and re-derived here on RoofTiles rec1997/2001/2221, which
-                # are identical:
+                # structural side and re-derived on the identical RoofTiles rec1997/2001/2221 --
+                # prog A writes slot 0 = (1/W, 1/H), the texel size, and slot 2 = 0.005859375 *
+                # (W, H) * (1, -1), a texel COUNT (12 at 2048, so not UV on its own: 12 in UV is
+                # twelve image-widths off-screen); their product is a CONSTANT 0.005859375 in UV
+                # at every resolution, in a 45-degree (+x, -y) direction. Prog B returns
+                # 0.1 * 2048 / size, an intensity calibrated to a 2048 reference.
                 #
-                #   prog A writes slot 0 = (1/W, 1/H), the texel size, and slot 2 =
-                #     0.005859375 * (W, H) * (1, -1), a texel COUNT -- 12 texels at 2048.
-                #     Slot 0 is written and never read again, so it exists for the built-in
-                #     to multiply in, and the product is a CONSTANT 0.005859375 in UV at
-                #     every resolution, in a 45-degree (+x, -y) direction. Slot 2 cannot be
-                #     UV on its own: 12 in UV is twelve image-widths off-screen.
-                #   prog B returns 0.1 * 2048 / size, an intensity calibrated to a 2048
-                #     reference.
+                # EDGES ARE [base, gradient], Substance's Input + Input Gradient: edge 1 is a
+                # shuffle or a blur, a single-channel relief source, and edge 0 is the image the
+                # relief is applied to.
                 #
-                # EDGES ARE [base, gradient], which is Substance's Input + Input Gradient.
-                # Across these records the second is a shuffle or a blur -- a single-channel
-                # relief source -- and the first is the image the relief is applied to.
-                #
-                # HOW THE INTENSITY ENTERS IS ARBITRATED, not chosen: see
-                # assume.QUESTIONS['emboss.intensity']. The resolution scaling lives in the
-                # built-in rather than in a program, so the bytes do not say whether it
-                # amplifies the relief or compensates the sampling, and the two differ by 8x
-                # at the sizes this renders at.
+                # HOW THE INTENSITY ENTERS IS ARBITRATED, not chosen: the resolution scaling
+                # lives in the built-in rather than in a program, so the bytes do not say whether
+                # it amplifies the relief or compensates the sampling, and the two differ by 8x
+                # at the sizes this renders at. See assume.QUESTIONS['emboss.intensity'].
                 if len(rec.edges) < 2 or any(e not in outputs for e in rec.edges[:2]):
                     raise cascade("emboss edge -> record has no output yet")
                 W, H = rec.width, rec.height
@@ -3575,46 +3569,39 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "sharpen":
-                # WHERE ITS INTENSITY IS, read the same way `blur`'s was and confirmed by
-                # the same two-part law. `sharpen` is not in PARAM_SPEC, so there is no
-                # named parameter to consult; it takes one image edge and one scalar.
+                # WHERE ITS INTENSITY IS, read the same way `blur`'s was and confirmed by the
+                # same two-part law. `sharpen` is not in PARAM_SPEC, so there is no named
+                # parameter to consult; it takes one image edge and one scalar.
                 #
-                # The slot is the LAST HEADER SLOT, from the walk -- see the long note on
-                # `blur` above, which this filter shares. The table that used to sit here
-                # compared five hand-fitted formulas against each other and crowned the
-                # best of them at 79% (169 of 175 = 96.6% once bit 12 gated it). That was
-                # the wrong contest: none of the five is a read, because nothing in this
-                # format stores a slot number. `decompose(rec)['end'] - 1` scores 1,148 of
-                # 1,148 where bit 12 is set and 175 of 175 where it is clear -- 1,323 of
-                # 1,323 sharpen records against the old rule's 1,120 -- and the values it
-                # lands on (p50 0.25, running 0.0 to 1.2) are the sharpen distribution the
-                # old note described.
+                # The slot is the LAST HEADER SLOT, from the walk -- see the long note on `blur`
+                # above, which this filter shares. The table that used to sit here crowned the
+                # best of five hand-fitted formulas at 79%, which was the wrong contest: none of
+                # the five is a read, because nothing in this format stores a slot number.
+                # `decompose(rec)['end'] - 1` scores 1,148 of 1,148 where bit 12 is set and 175
+                # of 175 where it is clear -- 1,323 of 1,323 against the old rule's 1,120 -- and
+                # lands on the sharpen distribution the old note described (p50 0.25, 0.0..1.2).
                 #
-                # THE KERNEL IS A READING, and the same one `blur` documents: an unsharp
-                # mask over a 3x3 box, out = src + intensity * (src - blur(src)). What is
-                # decoded is WHERE the intensity is; what the engine convolves with is not
-                # established, and a Gaussian or a wider radius would differ in the tails.
-                # Two properties are checkable and hold by construction here: a constant
-                # image is unchanged (src - blur(src) is zero everywhere), and intensity 0
-                # is the identity.
+                # THE KERNEL IS A READING, the same one `blur` documents: an unsharp mask over a
+                # 3x3 box, out = src + intensity * (src - blur(src)). What is decoded is WHERE
+                # the intensity is; what the engine convolves with is not established, and a
+                # Gaussian or a wider radius would differ in the tails. Two properties hold by
+                # construction: a constant image is unchanged, and intensity 0 is the identity.
                 if not rec.edges or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
                 _pair = cls_pair_slot(rec, 28)
                 islot = _pair[1] if _pair else None
-                # CLASS BITS 12 AND 13 ARE THE (BAKED, PROGRAM) PAIR -- see the long note
-                # in `blur` above, which this filter shares. Bit 12 owns a baked slot, bit
-                # 13 owns a program slot, they never co-occur (1,148 / 8 / 167 / 0 here),
-                # and whichever is set owns the last header slot.
-                # ORDER MATTERS: `cls_pair_slot` returns None both when neither bit is
-                # set (the parameter is absent -- see the note below) and when the walk
-                # cannot resolve the record. Those are different answers and the absent one
-                # is the common case, so it is asked first rather than being swallowed by a
-                # message about the walk.
+                # CLASS BITS 12 AND 13 ARE THE (BAKED, PROGRAM) PAIR -- see the long note in
+                # `blur` above, which this filter shares. Bit 12 owns a baked slot, bit 13 a
+                # program slot, they never co-occur (1,148 / 8 / 167 / 0 here), and whichever is
+                # set owns the last header slot.
                 #
-                # THE ABSENCE IS MEASURED, not assumed -- a neither-bit sharpen record is
-                # one word shorter than its baked sibling in 162 of 167, and none is the
-                # same length. See the warp branch for the method and the warp/blur counts.
+                # ORDER MATTERS: `cls_pair_slot` returns None both when neither bit is set (the
+                # parameter is absent) and when the walk cannot resolve the record. Those are
+                # different answers and the absent one is the common case, so it is asked first.
+                # THE ABSENCE IS MEASURED, not assumed -- a neither-bit sharpen record is one
+                # word shorter than its baked sibling in 162 of 167, and none is the same
+                # length. See the warp branch for the method.
                 if not ((rec.words[0] >> 28) & 1 or (rec.words[0] >> 29) & 1):
                     raise Unsupported("sharpen intensity: neither class bit 12 (baked) nor "
                                       "13 (program) is set, so the source omitted it and "
@@ -3648,29 +3635,24 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         raise Unsupported("sharpen intensity: class bit 13 names a program "
                                           "slot that does not evaluate to a scalar")
                 else:
-                    # UNREACHABLE for the neither-bit case, which is refused above; this
-                    # catches a pair the walk reports in a state neither arm reads.
-                    # NEITHER BIT MEANS THE SOURCE OMITTED THE PARAMETER, so the engine
-                    # substitutes its own default and the file does not contain one. That
-                    # is confirmed from the SOURCE side, which is where an absence can be
-                    # proved: over the permitted paired sources, 15 sharpen nodes, 13
-                    # declaring an `intensity` and 2 declaring none, against 45 binary
-                    # records -- 42 bit 12, 0 bit 13, 3 neither. The two sources that omit
-                    # it (`Hard-Science-Old__CrustyLava`, `SubstanceDesignerPractice`) each
-                    # have exactly one neither-bit record, and every source that declares
-                    # one on every node has zero. (`Mineral_Ore` has the third, and 3 nodes
-                    # against 27 records, so instancing puts its per-node counts out of
-                    # reach.)
+                    # UNREACHABLE for the neither-bit case, which is refused above; this catches a
+                    # pair the walk reports in a state neither arm reads.
                     #
-                    # Structurally there is nowhere else to look. These records are
-                    # `end = 4` with costly class bits 16 and 27 -- base 2 + 1 + 1 -- so
-                    # every header word is accounted for and no slot is spare. The
-                    # parameter is not hidden, it is absent.
+                    # NEITHER BIT MEANS THE SOURCE OMITTED THE PARAMETER, so the engine substitutes
+                    # its own default and the file does not contain one. Confirmed from the SOURCE
+                    # side, which is where an absence can be proved: over the permitted paired
+                    # sources, 15 sharpen nodes -- 13 declaring an `intensity`, 2 declaring none --
+                    # against 45 binary records, 42 bit 12, 0 bit 13, 3 neither. The two sources that
+                    # omit it (`Hard-Science-Old__CrustyLava`, `SubstanceDesignerPractice`) each have
+                    # exactly one neither-bit record, and every source that declares one on every
+                    # node has zero. (`Mineral_Ore` has the third, with 3 nodes against 27 records,
+                    # so instancing puts its per-node counts out of reach.)
                     #
-                    # 167 records corpus-wide, 18 declared outputs over 30 files. Rendering
-                    # them needs the ENGINE's default, which is not a decode question and
-                    # not in the file; it belongs in `assume.QUESTIONS` beside the other
-                    # substituted values, not guessed at here.
+                    # Structurally there is nowhere else to look: these records are `end = 4` with
+                    # costly class bits 16 and 27 -- base 2 + 1 + 1 -- so every header word is
+                    # accounted for. The parameter is not hidden, it is absent. 167 records
+                    # corpus-wide, 18 declared outputs over 30 files; rendering them needs the
+                    # ENGINE's default, which belongs in `assume.QUESTIONS`, not guessed at here.
                     raise Unsupported("sharpen intensity: neither class bit 12 (baked) nor "
                                       "13 (program) is set, so the source omitted it and "
                                       "the engine's default applies")
@@ -3691,43 +3673,34 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "fxmaps":
-                # `fxmaps` is a pattern GENERATOR, not a filter over an input, so it is
-                # the one unimplemented branch that unblocks graphs on its own: 13 of the
-                # corpus's 34 one-root-cause-away graphs need only this. What it produces
-                # is honest but incomplete -- see tools/fxrender.py, which records that
-                # 96% of records render flat because `patternsize`'s coordinate space is
-                # not established, and that a nicer pattern shape does NOT fix that.
-                #
-                # Kept behind the same `Unsupported` contract as everything else: a record
-                # the FX model does not cover raises rather than returning a wrong image.
+                # `fxmaps` is a pattern GENERATOR, not a filter over an input, so it is the one
+                # unimplemented branch that unblocks graphs on its own: 13 of the corpus's 34
+                # one-root-cause-away graphs need only this. What it produces is honest but
+                # incomplete -- see tools/fxrender.py, which records that 96% of records render
+                # flat because `patternsize`'s coordinate space is not established. Kept behind
+                # the same `Unsupported` contract as everything else.
                 W, H = rec.width, rec.height
                 if max_dim:
                     W, H = min(W, max_dim), min(H, max_dim)
-                # SAMPLERS IS GLOBAL AND NOTHING CLEARS IT, so an FX program that
-                # samples index 2 does not necessarily fail -- it may silently read
-                # whatever image the LAST record to touch index 2 left behind. A wrong
-                # image rather than a refusal, and invisible to every coverage metric,
-                # which is the failure this project treats as worse than a crash.
+                # SAMPLERS IS GLOBAL AND NOTHING CLEARS IT, so an FX program that samples index 2
+                # does not necessarily fail -- it may silently read whatever image the LAST
+                # record to touch index 2 left behind. A wrong image rather than a refusal, and
+                # invisible to every coverage metric.
                 #
                 # 343 records' FX programs carry a samplelum/samplecol, so this is a real
-                # population, not a hypothetical. The indices they name are small and
-                # edge-slot-shaped: 34 distinct values corpus-wide, 0/1/2 accounting for
-                # most, one or two per record. (Read token 1 of the instruction, not token
-                # 0 -- token 0 is the coordinate OPERAND, a value reference, and reading it
-                # instead produces hundreds of distinct "indices" reaching 2009. See
-                # disasm.IMM, which states the order.)
+                # population. The indices they name are small and edge-slot-shaped: 34 distinct
+                # values corpus-wide, 0/1/2 accounting for most. (Read token 1 of the
+                # instruction, not token 0 -- token 0 is the coordinate OPERAND, and reading it
+                # instead produces hundreds of distinct "indices" reaching 2009. See disasm.IMM.)
                 #
                 # So: empty SAMPLERS for the duration, install this record's own edges
                 # best-effort, and restore afterwards. Best-effort rather than the
-                # pixelprocessor branch's "raise if an edge has no output" -- that guard is
-                # right for a FILTER, whose inputs are what it operates on, and wrong for a
-                # GENERATOR: most FX-Maps never sample their edges, and demanding the edges
-                # first turns records that render today into cascade failures. A program
-                # that genuinely needs a missing input still fails, and MissingSampler
-                # names the index it wanted.
-                #
-                # The save/restore is what makes this safe to add: no other branch's
-                # sampler state is disturbed, so nothing outside fxmaps can regress.
+                # pixelprocessor branch's "raise if an edge has no output" -- that guard is right
+                # for a FILTER and wrong for a GENERATOR: most FX-Maps never sample their edges,
+                # and demanding them first turns records that render today into cascade
+                # failures. A program that genuinely needs a missing input still fails, and
+                # MissingSampler names the index it wanted. The save/restore is what makes this
+                # safe to add: no other branch's sampler state is disturbed.
                 saved_samplers = dict(sbsruntime.SAMPLERS)
                 sbsruntime.SAMPLERS.clear()
                 try:
@@ -3737,12 +3710,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
                                 outputs[edge_rec])
                             own_slots.add(slot_i)
-                    # A record with no edge in a slot may still reach an image through the
-                    # graph's declared image inputs -- see `sampler_bindings`. Edge slots
-                    # WIN where both exist: an edge is this record's own wiring, while the
-                    # graph-input order is a fallback for slots the wiring does not cover,
-                    # and letting the fallback overwrite real wiring would substitute a
-                    # guess for a fact.
+                    # A record with no edge in a slot may still reach an image through the graph's
+                    # declared image inputs -- see `sampler_bindings`. Edge slots WIN where both
+                    # exist: an edge is this record's own wiring, and letting the fallback overwrite
+                    # it would substitute a guess for a fact.
                     for slot_i, src in sampler_bindings(asm, rec, outputs).items():
                         if slot_i not in own_slots:
                             sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
@@ -3753,44 +3724,36 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         pats = fxrender.emissions(rec, runner,
                                                   slots=fxrender.seed_slots(rec, runner))
                     except fxrender.Unmodelled as e:
-                        # A GENERATOR THAT FAILED WITH AN INPUT MISSING IS A CONSEQUENCE,
-                        # and the test is structural rather than a read of the message.
-                        # The edges are installed best-effort above -- deliberately, since
-                        # most FX-Maps never sample them -- so when one is absent and the
-                        # walk then fails, this record is downstream of whatever produced
-                        # nothing, not itself wrong. If every edge IS present and it still
-                        # fails, that is a root and stays one.
-                        #
-                        # fxrender raises its own "no sampler for input N" text, so string
-                        # matching here would have to know a second module's prose. It was
-                        # exactly that coupling that made `WoodSubstance005`'s record 194
-                        # look like the specimen's blocker when it sits three levels
-                        # downstream of record 139.
+                        # A GENERATOR THAT FAILED WITH AN INPUT MISSING IS A CONSEQUENCE, and the test is
+                        # structural rather than a read of the message. The edges are installed
+                        # best-effort above -- deliberately, since most FX-Maps never sample them -- so
+                        # when one is absent and the walk then fails, this record is downstream of
+                        # whatever produced nothing. If every edge IS present and it still fails, that is
+                        # a root and stays one. String matching would have to know a second module's
+                        # prose; it was exactly that coupling that made `WoodSubstance005`'s record 194
+                        # look like the blocker when it sits three levels downstream of record 139.
                         if any(e2 is not None and e2 not in outputs
                                for e2 in (rec.edges or ())):
                             raise cascade("fxmaps: %s" % e) from e
                         raise Unsupported("fxmaps: %s" % e) from e
                     if not pats:
-                        # The walk completed and a gate closed the branch -- see
-                        # fxrender.emissions. The map's output is its background, which is
-                        # what splat produces from an empty pattern list, so fall through
-                        # rather than refuse. An empty walk that no gate explains still
-                        # raises out of emissions() and never reaches here.
+                        # The walk completed and a gate closed the branch -- see fxrender.emissions. The
+                        # map's output is its background, which is what splat produces from an empty
+                        # pattern list, so fall through rather than refuse. An empty walk that no gate
+                        # explains still raises out of emissions() and never reaches here.
                         pass
-                    # `imageindex` names an input to use AS the pattern, so hand the
-                    # branch's already-computed edge images to the splatter keyed by edge
-                    # SLOT. `fxrender.image_for` takes the index literally and returns
-                    # None for a slot we do not supply, in which case it draws the
-                    # generated profile -- so an unmappable index degrades to the old
-                    # behaviour rather than sampling whatever image is nearest, which
-                    # would be a plausible picture from the wrong input.
+                    # `imageindex` names an input to use AS the pattern, so hand the branch's
+                    # already-computed edge images to the splatter keyed by edge SLOT.
+                    # `fxrender.image_for` takes the index literally and returns None for a slot we
+                    # do not supply, in which case it draws the generated profile -- so an unmappable
+                    # index degrades to the old behaviour rather than sampling whatever image is
+                    # nearest, which would be a plausible picture from the wrong input.
                     #
-                    # NOT a general edge-list index: over 80 files the 133 records whose
-                    # patterns all index 0 have SIX edges, and the 27 using index 1 have
-                    # THREE. A direct index would not produce that split, so `imageindex`
-                    # addresses some subset of the edges that are pattern images, and
-                    # which subset is unestablished. Passing every rendered edge under its
-                    # own slot is correct for index 0 and leaves index 1 to refuse.
+                    # NOT a general edge-list index: over 80 files the 133 records whose patterns all
+                    # index 0 have SIX edges, and the 27 using index 1 have THREE. A direct index
+                    # would not produce that split, so `imageindex` addresses some unestablished
+                    # subset of the edges. Passing every rendered edge under its own slot is correct
+                    # for index 0 and leaves index 1 to refuse.
                     images = {slot: outputs[e]
                               for slot, e in enumerate(rec.edges or ())
                               if e is not None and e in outputs}
@@ -3802,17 +3765,16 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     sbsruntime.SAMPLERS.update(saved_samplers)
 
             elif rec.filter_name == "distance":
-                # A distance transform. `tools/distance.py` carries the decode: units are
-                # pixels at a 256 reference (every declared constant lies in [0, 256] and
-                # 11 of 19 are exactly 256), and the kernel is verified by controlled input
-                # -- a single lit pixel gives zero at radius 15.81 and 39.96 for R = 16 and
-                # 40, exactly 0.500 at R/2, radial spread under 0.016.
+                # A distance transform. `tools/distance.py` carries the decode: units are pixels
+                # at a 256 reference (every declared constant lies in [0, 256] and 11 of 19 are
+                # exactly 256), and the kernel is verified by controlled input -- a single lit
+                # pixel gives zero at radius 15.81 and 39.96 for R = 16 and 40, exactly 0.500 at
+                # R/2, radial spread under 0.016.
                 #
-                # The PARAMETER is not established and is not guessed: `distance_param`
-                # takes a width-1 program result if there is exactly one, else a
-                # non-denormal baked float in the block which it marks LOW CONFIDENCE,
-                # else raises. See FORMAT-NOTES on why its containment ratio cannot be read
-                # as an accuracy and why the two-path control is unavailable here.
+                # The PARAMETER is not established and is not guessed: `distance_param` takes a
+                # width-1 program result if there is exactly one, else a non-denormal baked
+                # float in the block which it marks LOW CONFIDENCE, else raises. See
+                # FORMAT-NOTES on why its containment ratio is not an accuracy.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 try:
@@ -3835,21 +3797,19 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     assume.note(i)
                 src = outputs[rec.edges[mask_edge]]
                 mask = sbsruntime.image_sampler(src)(pos_grid(W, H)).reshape(H, W, -1)[:, :, 0]
-                # Radius scales with resolution: 0.14 px at 256 is 0.035 at 64 and the
-                # filter becomes a no-op that reads as a dead parameter. See the module
-                # docstring's max_dim warning.
+                # Radius scales with resolution: 0.14 px at 256 is 0.035 at 64 and the filter
+                # becomes a no-op that reads as a dead parameter. See the module docstring.
                 field = distance.distance_field(mask, distance.scale_radius(val, W))
                 if assume.assumed('distance.invert', False):
                     field = 1.0 - field
                     assume.note(i)
                 # THE SECOND EDGE, WHICH THIS FILTER HAS BEEN THROWING AWAY. See
-                # `assume.QUESTIONS['distance.propagate']`: across 444 files every one of
-                # the 1,693 two-edge `distance` records has a greyscale edge 0, and the
-                # record's own colour bit equals edge 1's in all 1,693. A scalar field
-                # cannot satisfy a colour header, so under 'field' the 122 colour ones
-                # refuse -- correctly, since they were emitting a width their own header
-                # forbids. Under 'nearest' the payload is edge 1's value at the closest lit
-                # mask pixel, faded by the same field.
+                # `assume.QUESTIONS['distance.propagate']`: across 444 files every one of the
+                # 1,693 two-edge `distance` records has a greyscale edge 0, and the record's own
+                # colour bit equals edge 1's in all 1,693. A scalar field cannot satisfy a
+                # colour header, so under 'field' the 122 colour ones refuse -- correctly. Under
+                # 'nearest' the payload is edge 1's value at the closest lit mask pixel, faded
+                # by the same field.
                 _prop = assume.assumed('distance.propagate', 'field')
                 _payload = next((e for k, e in enumerate(rec.edges)
                                  if k != mask_edge and e in outputs), None)
@@ -3869,78 +3829,70 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "hsl":
-                # THE PARAMETERS ARE STATED, and which bit names which is settled by
-                # containment against a paired source rather than by guessing. The class
-                # word is a presence mask exactly as walk.py describes: one float32 field
-                # per set bit, at words[3..] in ASCENDING BIT ORDER.
+                # THE PARAMETERS ARE STATED, and which bit names which is settled by containment
+                # against a paired source. The class word is a presence mask exactly as walk.py
+                # describes: one float32 field per set bit, at words[3..] in ASCENDING BIT ORDER.
                 #
                 #     cls bit  8  hue          0x1019 -> 1 param
                 #     cls bit 10  saturation   0x1419 -> 2 params
                 #     cls bit 12  luminosity   0x1519 -> 3 params
                 #
-                # SBRustyTreadPlate declares six hsl nodes and all six match a record
-                # exactly, 6 of 6, across the one-, two- and three-parameter shapes. The
-                # ordering is the part that could only come from containment: the source
-                # lists `luminosity` before `saturation` on several nodes, and the record
-                # always stores saturation first -- so the layout follows the bit order,
-                # not the order the author wrote.
+                # SBRustyTreadPlate declares six hsl nodes and all six match a record exactly,
+                # across the one-, two- and three-parameter shapes. The ordering is the part
+                # only containment could give: the source lists `luminosity` before
+                # `saturation` on several nodes and the record always stores saturation first,
+                # so the layout follows the bit order, not the author's.
                 #
-                # WHAT IS DECODED AND WHAT IS MODELLED, kept apart. The parameters and
-                # their positions are read from the file. The transform applied with them
-                # is a reading: hue as a shift in turns, saturation and luminosity as
-                # offsets, each neutral at 0.5. Neutrality is checkable and is the reason
-                # to prefer it -- a record with every parameter at 0.5 must be the
-                # identity, and the corpus's values cluster tightly around 0.5.
+                # WHAT IS DECODED AND WHAT IS MODELLED, kept apart. The parameters and their
+                # positions are read from the file. The transform is a reading: hue as a shift
+                # in turns, saturation and luminosity as offsets, each neutral at 0.5.
+                # Neutrality is checkable and is the reason to prefer it -- a record with every
+                # parameter at 0.5 must be the identity, and the corpus clusters around 0.5.
                 if not rec.edges or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
-                # WHERE THE BLOCK STARTS is not a constant, and reading it as one cost
-                # every hsl record whose class word omits the inherited parameter. The
-                # fields follow the INHERITED block that `walk.py`'s `_CLS` describes:
-                # class bits below 8 each contribute their own slots first, and only then
-                # do hue/saturation/luminosity begin.
+                # WHERE THE BLOCK STARTS is not a constant, and reading it as one cost every hsl
+                # record whose class word omits the inherited parameter. The fields follow the
+                # INHERITED block that `walk.py`'s `_CLS` describes: class bits below 8 each
+                # contribute their own slots first, and only then do hue/saturation/luminosity
+                # begin.
                 #
                 # `SBRustyTreadPlate` -- the specimen whose six nodes fixed the bit->name
-                # mapping by containment -- has bit 0 SET, so its parameters really do
-                # start at word 3, and the fixed 3 was right for it and read as a general
-                # law. `PaymentCardSubstance001` has bit 0 clear and its hsl records are
-                # three words long: [tag][edge][0.333]. There is no word 3 to read, so all
-                # six of them refused, and with them 120 cascaded records including five of
+                # mapping -- has bit 0 SET, so its parameters really do start at word 3, and the
+                # fixed 3 was right for it and read as a general law. `PaymentCardSubstance001`
+                # has bit 0 clear and its hsl records are three words long, [tag][edge][0.333],
+                # so all six refused and took 120 cascaded records with them, including five of
                 # the file's six outputs.
                 #
                 # Over 80 files, on hsl records that set at least one parameter bit:
                 #
                 #     start = 2 + inherited slots   59 of 59 decode inside [0, 1]
                 #                                   51 of 59 within 0.25 of neutral 0.5
-                #     CONTROL, the fixed 3          40 in range, and 19 records are too
-                #                                   short for slot 3 to exist at all
+                #     CONTROL, the fixed 3          40 in range, 19 records too short to have a
+                #                                   slot 3 at all
                 #
-                # The tight clustering around 0.5 is the same neutrality check the reading
-                # below rests on, so it is evidence about the position as well as the
-                # values: a wrong offset does not land on a neutral-looking distribution.
+                # The tight clustering around 0.5 is the same neutrality check the reading below
+                # rests on, so it is evidence about the position as well as the values.
                 src = np.asarray(outputs[rec.edges[0]], dtype=np.float32)
-                # ...AND THE WALK MUST COUNT EVERY COST-BEARING BIT, not just the
-                # inherited two and the three named here. The cost model fits hsl at
-                # const 2 with one word per set cls bit for bits 0, 7, 8, 9, 10, 11, 12
-                # and 13 -- 74 keys, 100.000% exact -- so bits 9, 11 and 13 occupy slots
-                # too, and they are common: set on 258, 246 and 263 of the 747 hsl
-                # records. Advancing one slot per NAMED bit skips them, and the walk
-                # comes out short whenever one sits below the parameter being read.
+                # ...AND THE WALK MUST COUNT EVERY COST-BEARING BIT, not just the inherited two
+                # and the three named here. The cost model fits hsl at const 2 with one word per
+                # set cls bit for bits 0, 7, 8, 9, 10, 11, 12 and 13 -- 74 keys, 100.000% exact
+                # -- so bits 9, 11 and 13 occupy slots too, and they are set on 258, 246 and 263
+                # of the 747 hsl records. Advancing one slot per NAMED bit skips them.
                 #
-                # It is 16 reads of 593, and every one of them is decisive:
+                # It is 16 reads of 593, and every one is decisive:
                 #
                 #     sequential walk   reads exactly 0.0000 in 16 of 16
                 #     popcount walk     0.53 0.49 0.61 0.80 0.76 0.42, and 1.00 x10
                 #
-                # Sixteen exact zeros is not a distribution of parameters, it is the
-                # wrong word read sixteen times. mesh_accretions record 200 has cls
-                # 0x0608 -- bits 3, 9 and 10 -- so saturation sits one past where a
-                # sequential walk puts it, and 1.00 is a legitimate extreme where 0.0
-                # is the padding behind it.
+                # Sixteen exact zeros is not a distribution of parameters, it is the wrong word
+                # read sixteen times. mesh_accretions record 200 has cls 0x0608 -- bits 3, 9 and
+                # 10 -- so saturation sits one past where a sequential walk puts it.
+                #
                 # THIS DUPLICATES `decompose` AND THE TWO AGREE. Kept as its own walk only
-                # because it must name WHICH parameter each slot holds, which `decompose`
-                # does not report for a filter with no PARAM_SPEC entry; the extents are the
-                # same walk. Containment confirms both, pairing the permitted sources that
-                # declare a distinctive hsl value against their OWN binaries:
+                # because it must name WHICH parameter each slot holds, which `decompose` does
+                # not report for a filter with no PARAM_SPEC entry. Containment confirms both,
+                # pairing permitted sources that declare a distinctive hsl value against their
+                # OWN binaries:
                 #
                 #     param        source              record   declared   true slot
                 #     saturation   ChesterfieldSofa       866     0.6500        3
@@ -3977,25 +3929,21 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     if not np.isfinite(f) or abs(f) > 1e3:
                         raise Unsupported("hsl %s slot is not a plausible float" % name)
                     vals[name] = float(f)
-                # A PARAMETER CARRIED AS A PROGRAM IS INVISIBLE HERE -- the loop above
-                # reads only baked slots named by class bits 8, 10 and 12 -- and 14 of the
-                # 41 hsl records in 30 files have no baked bit and one or more filter
-                # programs. They render as the identity.
+                # A PARAMETER CARRIED AS A PROGRAM IS INVISIBLE HERE -- the loop above reads
+                # only baked slots named by class bits 8, 10 and 12 -- and 14 of the 41 hsl
+                # records in 30 files have no baked bit and one or more filter programs. They
+                # render as the identity.
                 #
                 # THAT IS MOSTLY CORRECT, WHICH IS NOT WHAT IT LOOKED LIKE. Evaluating those
-                # programs over 30 files gives 43 single-component results, and 39 of them
-                # are EXACTLY 0.5 -- the neutral value under this branch's own
-                # reading, `shift = value - 0.5`. The records carrying them are class 0x2A19,
-                # 0x2A09, 0x2A99 and 0x2A18, with three, five or eight programs apiece, and
-                # every one is a node left at its defaults. An identity render is the right
-                # answer for them, so wiring the programs in would change nothing.
+                # programs over 30 files gives 43 single-component results, and 39 are EXACTLY
+                # 0.5 -- neutral under this branch's own `shift = value - 0.5`. Every one is a
+                # node left at its defaults, so wiring the programs in would change nothing.
                 #
-                # The remaining 4 return 0.0. Auras 443 and 425 are two of them, sitting
-                # between the gradient that makes the aura and the blend that outputs it,
-                # with a single program each returning 0.0 and 0.01. Their output's error is
-                # a per-channel gain -- slope 0.536 / 0.321 / 0.802 against the engine's
-                # export at correlation 0.94 -- which is the shape a missed colour adjustment
-                # leaves, so all three assignments were tried:
+                # The remaining 4 return 0.0. Auras 443 and 425 sit between the gradient that
+                # makes the aura and the blend that outputs it; their output's error is a
+                # per-channel gain (slope 0.536 / 0.321 / 0.802 at correlation 0.94), which is
+                # the shape a missed colour adjustment leaves, so all three assignments were
+                # tried against the engine's export:
                 #
                 #     assignment    ch0 MAE/corr    ch1 MAE/corr    ch2 MAE/corr
                 #     identity      0.088 / 0.937   0.101 / 0.865   0.066 / 0.945
@@ -4003,14 +3951,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 #     saturation    0.120 / 0.939   0.179 / 0.791   0.040 / 0.968
                 #     luminosity    0.070 / 0.725   0.041 / 0.296   0.086 / 0.873
                 #
-                # None is uniformly better. `saturation` buys ch2 and loses ch1;
-                # `luminosity` buys brightness and takes correlation from 0.865 to 0.296.
-                #
-                # And the structure says these two records have no parameter at all: their
-                # class is 0x0219, which sets NONE of the parameter bits -- not 8, 10 or 12,
-                # and not the 11-and-13 pair the 0.5-returning records all carry. Their one
-                # program is probably not an hsl parameter, which is consistent with every
-                # assignment of it making the picture worse.
+                # None is uniformly better, and the structure says these two records have no
+                # parameter at all: class 0x0219 sets NONE of the parameter bits, nor the 11/13
+                # pair the 0.5-returning records carry. Their one program is probably not an hsl
+                # parameter, which is consistent with every assignment making the picture worse.
                 h_sh = vals.get('hue', 0.5) - 0.5
                 s_sh = vals.get('saturation', 0.5) - 0.5
                 l_sh = vals.get('luminosity', 0.5) - 0.5
@@ -4023,9 +3967,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     d = mx - mn
                     S = np.where(d < 1e-9, 0.0,
                                  d / np.maximum(1e-9, 1.0 - np.abs(2.0 * L - 1.0)))
-                    # `dd` is the guarded denominator: where d is 0 the pixel is grey,
-                    # `m` is False and the sector value is discarded, so the guard only
-                    # keeps the arithmetic finite rather than changing any kept result.
+                    # `dd` is the guarded denominator: where d is 0 the pixel is grey, `m` is False
+                    # and the sector value is discarded, so the guard only keeps the arithmetic
+                    # finite rather than changing any kept result.
                     m = d > 1e-9
                     dd = np.maximum(1e-9, d)
                     H = np.select([m & (mx == r0), m & (mx == g0), m],
@@ -4039,10 +3983,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     Hp = H * 6.0
                     X = C * (1.0 - np.abs((Hp % 2.0) - 1.0))
                     z = np.zeros_like(C)
-                    # NOT `i` -- that is the record index this branch writes its output
-                    # under, and shadowing it made `outputs[i] = ...` key the dict by an
-                    # array. The failure was loud, but only because the key was unhashable;
-                    # a scalar sector index would have silently written the wrong record.
+                    # NOT `i` -- that is the record index this branch writes its output under, and
+                    # shadowing it made `outputs[i] = ...` key the dict by an array. Loud only
+                    # because the key was unhashable; a scalar would have written the wrong record.
                     sec = np.floor(Hp).astype(np.int32) % 6
                     pick = [sec == k for k in range(6)]
                     rr = np.select(pick, [C, X, z, z, X, C])
@@ -4054,9 +3997,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     out[:, :, 1] = np.clip(gg + mfix, 0.0, 1.0)
                     out[:, :, 2] = np.clip(bb + mfix, 0.0, 1.0)
                 else:
-                    # A GREYSCALE record has no hue or saturation to move; only the
-                    # luminosity term can act, and applying the others would be inventing
-                    # a colour the input does not carry.
+                    # A GREYSCALE record has no hue or saturation to move; only the luminosity term
+                    # can act, and applying the others would invent a colour the input lacks.
                     out = np.clip(a + l_sh, 0.0, 1.0)
                 outputs[i] = out.reshape(src.shape)
                 LOW_CONFIDENCE.add(i)
@@ -4064,44 +4006,33 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     synthetic.add(i)
 
             elif rec.filter_name == "dyngradient":
-                # `gradient` with the ramp supplied as an IMAGE rather than an embedded
-                # table. Handed over by a parallel session with the edge roles established
-                # and the sampling formula explicitly not:
+                # `gradient` with the ramp supplied as an IMAGE rather than an embedded table.
+                # Handed over by a parallel session with the edge roles established and the
+                # sampling formula explicitly not:
                 #
                 #   edge 0   size EQUALS the record's own size in 373 of 373 (100.0%)
-                #   edge 1   aspect ratio 128:1 at p10, p50 and p90; 97.9% at least 8x
-                #            wider than tall; SHARED, one strip feeding 4, 8 and 16
-                #            records in a file -- a palette, not a per-record input
+                #   edge 1   aspect ratio 128:1 at p10, p50 and p90; 97.9% at least 8x wider
+                #            than tall; SHARED, one strip feeding 4, 8 and 16 records in a file
+                #            -- a palette, not a per-record input
                 #
-                # It needs no parameter located, which is why containment found zero
-                # declaring files and the two-path control found zero programs: the filter
-                # has no numerics to declare. 288 of 294 records carry no filter program
-                # at all.
+                # It needs no parameter located, which is why containment found zero declaring
+                # files: the filter has no numerics to declare, and 288 of 294 records carry no
+                # filter program at all.
                 #
-                # THE ROW CAVEAT IS CLOSED. This branch was written when "a strip that is
-                # a multi-row palette could take the wrong row" was an open risk. Measured
-                # since: the strips' ROW-TO-ROW difference is exactly 0.000000 -- all 16
-                # rows identical, varying only along x (max step 0.2516) -- so there is no
-                # multi-row palette and any row is the same row. `Rock 3` records 220, 277,
-                # 335 and 393 all share ramp record 219 at 2048x16, whole file rendering
-                # 628 of 628.
+                # THE ROW CAVEAT IS CLOSED. Measured since this was written: the strips'
+                # row-to-row difference is exactly 0.000000 -- all 16 rows identical, varying
+                # only along x -- so there is no multi-row palette and any row is the same row.
                 #
-                # ESTABLISHED: the edge roles, and that the source's value indexes the
-                # ramp. Driving both edges through `precomputed` -- see
-                # test_dyngradient_is_a_ramp_lookup:
+                # ESTABLISHED: the edge roles, and that the source's value indexes the ramp.
+                # Driving both edges through `precomputed` -- see
+                # test_dyngradient_is_a_ramp_lookup -- an identity ramp reproduces the source, a
+                # REVERSED ramp gives 1 - source, and a step ramp gives exactly two distinct
+                # values. The reversed case is the one that carries it: a renderer ignoring the
+                # ramp passes the first test and fails that one.
                 #
-                #     identity ramp, x-ramp source  ->  output reproduces the source
-                #     REVERSED ramp                 ->  output = 1 - source
-                #     step ramp                     ->  exactly two distinct values
-                #
-                # The reversed case is the one that carries it: a renderer ignoring the
-                # ramp and passing the input through passes the first test and fails that
-                # one. The step case rules out blending -- a lookup gives two levels.
-                #
-                # STILL A CHOICE: indexing by channel 0 rather than a luminance mix. 292 of
-                # 294 of these records are greyscale so the two coincide almost everywhere,
-                # and channel 0 is what the format stores rather than a mix this would be
-                # inventing. The two colour records are where it could matter, untested.
+                # STILL A CHOICE: indexing by channel 0 rather than a luminance mix. 292 of 294
+                # records are greyscale so the two coincide almost everywhere, and channel 0 is
+                # what the format stores. The two colour records are where it could matter.
                 if len(rec.edges) < 2 or any(e not in outputs for e in rec.edges[:2]):
                     raise cascade("edge has no output yet")
                 W, H = rec.width, rec.height
@@ -4125,74 +4056,52 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
             else:
                 raise Unsupported("filter %r not implemented" % rec.filter_name)
 
-            # NON-FINITE IS NOT A RENDER. An output map is 8- or 16-bit integer and has
-            # no NaN, so whatever the engine does with a zero divisor it does not emit
-            # one; an array carrying NaN or inf is silent garbage, not a picture. Emitting
-            # it is worse than refusing, because every consumer inherits it and still
-            # counts as rendered: ChesterfieldSofa record 119 computes v8/v12 with both
-            # terms zero and its NaN reached 659 of the 830 records that file rendered,
-            # including two declared outputs, none of which reported a failure.
+            # NON-FINITE IS NOT A RENDER. An output map is 8- or 16-bit integer and has no
+            # NaN, so whatever the engine does with a zero divisor it does not emit one; an
+            # array carrying NaN or inf is silent garbage, not a picture, and every consumer
+            # inherits it while still counting as rendered. ChesterfieldSofa record 119
+            # computes v8/v12 with both terms zero and its NaN reached 659 of the 830
+            # records that file rendered, including two declared outputs, none of which
+            # reported a failure. Refusing costs coverage and makes what remains honest --
+            # the same trade as `blur`'s withdrawn fallback -- and it names the record, so a
+            # census points at the root rather than at the 659 downstream of it.
             #
-            # Refusing here costs coverage and makes what remains honest -- the same
-            # trade as `blur`'s withdrawn fallback. The failure names this record, so a
-            # blocker census points at the cause rather than at the 659 records
-            # downstream of it, which is the difference between a root and a cascade.
-            # A RECORD'S CHANNEL COUNT IS IN ITS HEADER, AND THIS RENDERER WAS NOT
-            # HONOURING IT. `Record.colour` says greyscale or RGBA; 74 of 16,652 rendered
-            # records in 20 files come out some other width, and every one is this
-            # renderer's shape rather than the file's:
+            # A RECORD'S CHANNEL COUNT IS IN ITS HEADER, AND THIS RENDERER WAS NOT HONOURING
+            # IT. `Record.colour` says greyscale or RGBA; 74 of 16,652 rendered records in
+            # 20 files come out some other width, and every one is this renderer's shape
+            # rather than the file's:
             #
             #     colour False, 2 channels   64    origin: pixelprocessor (25), inherited
             #                                      by dirmotionblur, levels, warp, blur
             #     colour True,  3 channels   10    origin: bitmap (4), a 3-channel PNG
             #
             # The 2-wide ones are why `blend inputs disagree on channel count` blocks 16
-            # declared outputs: a 2-channel image meets a 1-channel one and the blend
-            # cannot pair them. Fixing it at the blend would be fixing the symptom -- the
+            # declared outputs. Fixing it at the blend would be fixing the symptom -- the
             # producer already disagreed with its own header.
             #
-            # WHAT THE TWO COMPONENTS HOLD DECIDES WHAT TO DO, and they do not all hold the
-            # same thing. Of the 64: 20 have both components IDENTICAL, and 44 do not --
-            # and the 44 are not two candidate greys, they are out of range. Travertine
-            # records 2792, 2806, 2913 and 3090 all mean 1.9217 in component 0 against
-            # 1.0000 in component 1, and 0.9217 is `rand(1.0)`.
-            #
-            # THE PROGRAM ITSELF SAYS SO. Travertine record 301's evaluated body is four
-            # instructions -- `rand(1.0)`, `+ 1.0`, `vec(that, 1.0, ncomp=2)`, return -- and
-            # `ncomp=2` is the INSTRUCTION'S OWN declared width. The program is doing
-            # exactly what it says; it is a 2-vector by construction, on a record whose
-            # header says greyscale. So this is not a shape this renderer mangled, it is
-            # `filter_programs[-1]` selecting a program that is not the record's image
-            # body -- a scale or offset pair, judging by (1 + random, 1). The right fix is
-            # in that selection, and until someone makes it, refusing names the record it
-            # happens on.
+            # WHAT THE TWO COMPONENTS HOLD DECIDES WHAT TO DO. Of the 64, 20 have both
+            # components IDENTICAL and 44 do not -- and the 44 are out of range, not two
+            # candidate greys: Travertine 2792/2806/2913/3090 all mean 1.9217 against
+            # 1.0000, and 0.9217 is `rand(1.0)`. THE PROGRAM ITSELF SAYS SO: Travertine
+            # record 301's body is `rand(1.0)`, `+ 1.0`, `vec(that, 1.0, ncomp=2)`, return
+            # -- `ncomp=2` is the instruction's OWN declared width, on a record whose header
+            # says greyscale. So this is not a shape this renderer mangled; it is
+            # `filter_programs[-1]` selecting a program that is not the record's image body.
+            # The right fix is in that selection.
             #
             # THE OBVIOUS SELECTOR DOES NOT WORK, so that gap is real rather than lazy.
-            # "Take the program whose declared result width matches the record's own
-            # channel count" is checkable without running anything -- the transpiler emits
-            # each instruction's width as `clamp(v, n)` or `ncomp=n`, so the returned
-            # value's line states it. Over 3,021 pixelprocessor records in 22 files:
-            #
-            #     last program already states the header width       1,401
-            #     its width is unstated by this reading              1,295
-            #     states 2 where the header wants 4                    296  -- and 288 of
-            #                                                                 those have TWO
-            #                                                                 other programs
-            #                                                                 stating 4
-            #     states 2 where the header wants 1                     29  -- 21 have
-            #                                                                 exactly one
-            #
-            # Unique in 21 of 325. A selector that is ambiguous nine times in ten is not a
+            # "Take the program whose declared result width matches the header" is checkable
+            # without running anything. Over 3,021 pixelprocessor records in 22 files it is
+            # unique in 21 of 325: 1,401 already match, 1,295 state no width, 296 state 2
+            # where the header wants 4 (288 of those have two other programs stating 4), and
+            # 29 state 2 where it wants 1. A selector ambiguous nine times in ten is not a
             # selector, so the record stays refused rather than resolved by coin toss.
             #
             # So: conform where there is nothing to choose, refuse where there is. An
-            # identical pair loses no information by collapsing to one channel. A differing
-            # pair means the program's result is not this record's output, and building a
-            # plausible greyscale out of half of it is the failure this renderer refuses
-            # everywhere else.
-            #
-            # 3 channels for a colour record is the unambiguous case -- RGB with no alpha,
-            # from a PNG that has none -- and opaque is what an absent alpha means.
+            # identical pair loses no information by collapsing to one channel; a differing
+            # pair means the program's result is not this record's output. 3 channels for a
+            # colour record is unambiguous -- RGB from a PNG with no alpha, and opaque is
+            # what an absent alpha means.
             if i in outputs:
                 arr = np.asarray(outputs[i])
                 want = 4 if rec.colour else 1
@@ -4219,46 +4128,33 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                                           % arr.shape[-1])
                     arr = np.asarray(outputs[i])
                 if arr.size and not np.all(np.isfinite(arr)):
-                    # MOSTLY AN ARTEFACT OF `max_dim`, NOT A PROPERTY OF THE FILE. This
-                    # said the recurring producer is "an auto-levels remap over a constant
-                    # source", which is the right SHAPE and the wrong CAUSE -- and the
-                    # difference matters, because the wrong cause makes it a question about
-                    # what the engine emits when the correct one makes it a question about
-                    # what resolution we asked for.
+                    # MOSTLY AN ARTEFACT OF `max_dim`, NOT A PROPERTY OF THE FILE. This said the
+                    # recurring producer is "an auto-levels remap over a constant source", which is
+                    # the right SHAPE and the wrong CAUSE -- the wrong cause makes it a question
+                    # about what the engine emits when the correct one is about what resolution we
+                    # asked for.
                     #
-                    # Traced end to end on Bricks record 326, whose main program is exactly
-                    # that remap, `(lum - min) / (max - min)`:
+                    # Traced end to end on Bricks record 326, whose main program is exactly that
+                    # remap, `(lum - min) / (max - min)`:
                     #
                     #   326  pixelprocessor   0/0 at every pixel
-                    #   325  pixelprocessor   a max-reduction pyramid step, sampling four
-                    #                         quadrants and packing max and (1 - min) into
-                    #                         one RGBA -- it returns [0, 0, 1, 1], so
-                    #                         max == min == 0 and the range is zero-wide
+                    #   325  pixelprocessor   a max-reduction pyramid step returning [0, 0, 1, 1],
+                    #                         so max == min == 0 and the range is zero-wide
                     #   318  distance         ALL ZERO, and this is the actual cause
                     #
-                    # Record 318's radius is 2.56 px at the format's 256 reference. Render
-                    # it into 64 px and that is 0.64 px -- sub-pixel, so the distance field
-                    # rounds away to nothing, the reduction sees a constant image, and the
-                    # divide downstream is 0/0. The file is fine; the raster was too small.
+                    # Record 318's radius is 2.56 px at the format's 256 reference. Render it into
+                    # 64 px and that is 0.64 px -- sub-pixel, so the distance field rounds away, the
+                    # reduction sees a constant image, and the divide downstream is 0/0. At max_dim
+                    # 128 and above, 318 spans 0..1 and 326 renders. The file is fine; the raster
+                    # was too small. It generalises: over the eight reference-pack assemblies,
+                    # max_dim 64 gives 12 non-finite records and max_dim 128 gives 2.
                     #
-                    #   max_dim  64    rec 318 min=0 max=0    rec 326 non-finite
-                    #   max_dim 128    rec 318 min=0 max=1    rec 326 RENDERS
-                    #   max_dim 256    rec 318 min=0 max=1    rec 326 RENDERS
-                    #   full size      rec 318 min=0 max=1    rec 326 RENDERS
-                    #
-                    # And it generalises. Over the eight reference-pack assemblies:
-                    #
-                    #   max_dim  64    12 non-finite records   13,747 records rendered
-                    #   max_dim 128     2 non-finite records   24,115 records rendered
-                    #
-                    # `output_census` runs at 64 while `refcompare.RENDER_DIM` is 128, so
-                    # the blocker list has been counting at a resolution the scorer does
-                    # not use. Ten of the twelve are not decode work and not a choice.
-                    #
-                    # THE TWO THAT SURVIVE 128 ARE THE REAL QUESTION, and `nonfinite.fill`
-                    # is mis-posed for the other ten: filling them with 0.0, 0.5 or 1.0
-                    # would paint over a raster that is simply too coarse. Resolve the arm
-                    # on the survivors or not at all.
+                    # `output_census` runs at 64 while `refcompare.RENDER_DIM` is 128, so the
+                    # blocker list has been counting at a resolution the scorer does not use. Ten of
+                    # the twelve are not decode work and not a choice, which also mis-poses
+                    # `nonfinite.fill` for them: filling with 0.0, 0.5 or 1.0 would paint over a
+                    # raster that is simply too coarse. Resolve the arm on the two survivors or not
+                    # at all.
                     #
                     # UNDER AN OPEN SCOPE, write a chosen value instead of refusing.
                     _fill = assume.assumed('nonfinite.fill')
@@ -4285,42 +4181,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 print("rec%d (%s): ERROR - %s: %s" % (i, rec.filter_name, type(e).__name__, e))
 
         if stop_after is not None and i >= stop_after:
-            # A caller that wants ONE record's output does not need the rest of the
-            # file. Edges point backward -- a record's inputs are always at lower
-            # indices -- and evaluation is a single forward pass with no state that a
-            # later record could feed back, so stopping here returns exactly what a
-            # full render would have put in outputs[stop_after]. This is an early
-            # stop, NOT a dependency-cone prune: pruning by Record.edges would be
-            # unsafe, because the manifest oracle measured that closure as a strict
-            # SUBSET of the real dependencies (513 paths missed, 0 over-claimed) --
-            # samplers reach images without an edge, and a cone walk would silently
-            # drop them.
+            # A caller that wants ONE record's output does not need the rest of the file.
+            # Edges point backward and evaluation is a single forward pass with no state a
+            # later record could feed back, so stopping here returns exactly what a full
+            # render would have put in outputs[stop_after]. This is an early stop, NOT a
+            # dependency-cone prune: pruning by Record.edges would be unsafe, because the
+            # manifest oracle measured that closure as a strict SUBSET of the real
+            # dependencies (513 paths missed, 0 over-claimed) -- samplers reach images
+            # without an edge.
             break
 
     # CLAMP AT THE WRITE, NOT IN THE FILTER THAT OVERSHOT. A handful of records leave
     # [0, 1]: `levels` does it by construction where an author set leveloutlow/
-    # levelouthigh outside the unit range, and a few pixelprocessor and blend finals land
-    # slightly past it. The values are NOT a misdecode -- corpus-wide 105 of 51,822 baked
-    # levelouthigh values fall outside [0, 1], and the ones above it are 1.01, 1.07, 1.09,
-    # 1.10, 1.14, 1.16, 1.20, 1.21, 1.23, 1.24, 1.28, 1.30, 1.31, 1.34: a tight contiguous
-    # band just past one, no garbage and no NaNs, concentrated in a few files. That is
+    # levelouthigh outside the unit range, and a few pixelprocessor and blend finals
+    # land slightly past it. The values are NOT a misdecode -- corpus-wide 105 of
+    # 51,822 baked levelouthigh values fall outside [0, 1], and the ones above it run
+    # 1.01 to 1.34 in a tight contiguous band, no garbage and no NaNs. That is
     # authored data being read correctly.
     #
-    # SO THE CLAMP BELONGS HERE AND NOT IN THE `levels` BRANCH, which is where it was first
-    # proposed. Of those 105 records only 3 are declared outputs; 102 are INTERMEDIATES.
-    # Clamping inside the branch would flatten all 102 to fix the 3, and an intermediate at
-    # 1.31 feeding a multiply or a blend is headroom the engine may legitimately consume.
-    # The `apply_blend` docstring asserts that `levels` already clamps, but that assertion
-    # IS the claim under test and so cannot be its own evidence.
+    # SO THE CLAMP BELONGS HERE AND NOT IN THE `levels` BRANCH, which is where it was
+    # first proposed. Of those 105 records only 3 are declared outputs; 102 are
+    # INTERMEDIATES, and an intermediate at 1.31 feeding a multiply or a blend is
+    # headroom the engine may legitimately consume. (`apply_blend`'s docstring asserts
+    # that `levels` already clamps, but that assertion IS the claim under test.) All
+    # three out-of-range outputs declare fmt 28, an unsigned-normalised format that
+    # cannot hold 1.31 whatever happened upstream.
     #
-    # What is not in doubt is the write: all three out-of-range outputs declare fmt 28, an
-    # unsigned-normalised format that cannot hold 1.31 whatever happened upstream of it. So
-    # a declared output is clamped and nothing else is.
-    #
-    # VALUE outputs are skipped. Their `fmt` is a tuple rather than an integer code and they
-    # carry scalars, not pixels -- the same population selfcheck's grayscale law had to be
-    # taught to skip, for the same reason: they are not images and unit-range is not their
-    # law.
+    # VALUE outputs are skipped: their `fmt` is a tuple rather than an integer code
+    # and they carry scalars, not pixels -- the same population selfcheck's grayscale
+    # law had to skip, for the same reason.
     for _uid, _fmt, _gray, _rec in asm.outputs():
         if isinstance(_fmt, tuple) or _rec not in outputs:
             continue
