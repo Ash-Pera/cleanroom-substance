@@ -139,12 +139,19 @@ def _select_spec(f, w0, w1, ver):
 
 
 def _has_w1_word(f, w0, ver):
-    """record_layout's w1-presence rule for the two-shape filters, or None if not two-shape."""
-    if f == 7:                       # warp: w1 only from version 0x90000
-        return ver >= 0x90000
-    if f == 3:                       # shuffle: tag bit 0 selects the shape carrying w1
-        return bool(w0 & 1)
-    return None
+    """record_layout's w1-presence rule for the two-shape filters, or None if not two-shape.
+
+    DELEGATED, not reimplemented. This carried its own copy of the warp and shuffle gates,
+    which is precisely the duplication `record_layout.header_words` warns about -- "a rule
+    the caller can forget is a rule in the wrong place". Two copies is that same failure one
+    step later: the gate lived in two files and only one of them said so.
+    """
+    if f not in (3, 7):
+        return None
+    eff = record_layout.two_shape_w1(f, w0, 1, ver)
+    if eff is record_layout.W1_REFUSE:
+        return None                  # undecidable without a version: fall to the spec's mode
+    return eff is not None
 
 
 # A w1 parameter whose two-bit code does NOT sit on the tiling's even-bit grid.
@@ -491,10 +498,17 @@ def decompose(r):
     param_slots = []
     masks = _param_field_masks(f)
     ri = r.index
+    # Field j sits at bit 2j + w1_shift -- 0 everywhere but `directionalwarp`, whose
+    # parameters begin at bit 1. See `derive_costs.W1_GRID_SHIFT`.
+    #
+    # READ OUTSIDE THE `w1 is not None` GUARD, because the return reports it unconditionally.
+    # Assigning it inside raised `UnboundLocalError` on every record whose slot 1 is an EDGE
+    # rather than a w1 mask -- gradient, warp, blur, bitmap, shuffle, dyngradient, sharpen,
+    # curve and hsl, 5,017 of 66,699 records over 40 files -- which is a whole class of
+    # filter, not an edge case. `w1_shift` is a property of the SPEC and is well defined
+    # whether or not the record carries a w1 word.
+    gsh = int(spec.get('w1_shift', 0))
     if w1 is not None:
-        # Field j sits at bit 2j + w1_shift -- 0 everywhere but `directionalwarp`, whose
-        # parameters begin at bit 1. See `derive_costs.W1_GRID_SHIFT`.
-        gsh = int(spec.get('w1_shift', 0))
         for j in sorted(int(k) for k in spec['w1']):
             st = (w1 >> (2 * j + gsh)) & 3
             if st == 0:
