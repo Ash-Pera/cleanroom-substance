@@ -109,7 +109,21 @@ def stated_extent(rec, kind, q, tag):
         return None
     hdr = sbsasm.fx_entry_layout(tag)
     if not hdr:
-        return None
+        # A CHAIN ELEMENT STATES ITS EXTENT EVEN WITH NO LAYOUT. The `0x9` family declares
+        # no parameters, but it is a linked-list member like any other: the previous
+        # element's slot 1 points AT it, and its own slot 1 points at the next. That stored
+        # step is the element's own statement of where it ends -- 94 of 108 have a forward
+        # pointer there and 82 of those step exactly 3 words.
+        #
+        # No cap and no plausibility test on the distance. A last-in-chain element points
+        # far forward, which yields a huge extent that simply contains everything and
+        # reports nothing; under-reporting is the safe direction for a check whose whole
+        # value is that a violation cannot be argued with.
+        d, e = rec.asm.data, rec.end
+        if q + 8 > e:
+            return None
+        step = struct.unpack_from('<I', d, q + 4)[0] + 52
+        return (step - q) // 4 if q < step < e else None
     span = max(sl for sl, _n, _k in hdr) + 1
     # The stored next-pointer, read exactly as `fx_table` reads it.
     d, e = rec.asm.data, rec.end
