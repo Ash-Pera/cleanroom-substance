@@ -628,6 +628,25 @@ FX_NODES2 = {
 }
 
 
+#: Which low nibbles are FX node headers, and each one's `base` -- the word the successor
+#: is counted from before the mask's fields are added. ONE TABLE, SO THERE IS NO CATCH-ALL
+#: ARM: this was `nib not in (9, 0xB, 3)` guarding `base = 2 if nib == 9 else 1`, and that
+#: `else` would have handed base 1 to any nibble a later reading admitted, silently and
+#: without a measurement. A nibble now has to STATE its base to exist here at all.
+#:
+#: Prompted by a neighbouring session's report on `fx_patterntype`, whose nibble 0 is a
+#: catch-all covering two declared source types and 34% of entries, and which failed as a
+#: clean zero on one side of a join rather than as an error. The node vocabulary has no such
+#: member -- over every header the walk reaches, the low nibbles are exactly 3 (46), 9
+#: (27,521) and B (37,196), with no nibble 0 -- so this is the shape of that hazard removed,
+#: not an instance of it fixed.
+#:
+#: WHAT `base` MEANS IS OPEN. Bit 1 of the nibble happens to split these three correctly;
+#: that is a three-point fit on a two-valued output and is not written down as a rule, for
+#: the reason `leaf_successor` gives about the branch.
+NODE_BASE = {9: 2, 0xB: 1, 3: 1}
+
+
 def node_shape(header):
     """(successor byte offset, (program byte offsets,)) for one FX-Map node header, or None.
 
@@ -650,9 +669,36 @@ def node_shape(header):
     (0x99, 0x9B) exactly, and extends to headers neither table listed.
     """
     nib = header & 0xF
-    if nib not in (9, 0xB) or not (header & 0x80):
+    base = NODE_BASE.get(nib)
+    if base is None or not (header & 0x80):
         return None
-    base = 1 if nib == 0xB else 2
+    # NIBBLE 3 IS A NODE, and it was declined by this guard rather than on its merits. Its
+    # 23 words in the corpus were being reported as unusable TABLE ENTRIES -- a bucket named
+    # for the last test applied, not for what happened -- and the mask rule already predicts
+    # every field of them. The specimens are identical across three unrelated files:
+    #
+    #     slot 0  0x000001a3   header, bit 7 set, mask 0xa0
+    #     slot 1  -> +16       addresses its OWN slot 4, an inline program
+    #     slot 2  -> +24       addresses its OWN slot 6, an inline program
+    #     slot 3  -> 0x89      a GATE node: the successor
+    #
+    # popcount(0xa0) is 2, so with base 1 the successor is slot 3; bit 4 clear puts the
+    # first program at slot 1 and bit 5 adds the second at slot 2. Measured on the words the
+    # WALK REACHES, against every other slot as a control:
+    #
+    #     successor  slot 3   23 of 23   100.0%      every other slot   0.0%
+    #     program    slot 1   24 of 24   100.0%      every other slot   0.0%
+    #     program    slot 2   23 of 23   100.0%
+    #
+    # `base` IS STATED PER NIBBLE, NOT DERIVED, and that is deliberate. It is 1 for B, 2 for
+    # 9, and must be 1 here. Bit 1 of the nibble splits all three correctly -- and that is a
+    # three-point fit on a two-valued output, which is the exact inference `leaf_successor`
+    # declines to make for the branch ("two headers is not a population to fit a rule to").
+    # What base means stays open; this claims only what the corpus states.
+    #
+    # UNEXPLAINED AND LEFT OUT: `0x081`, one specimen, bit 7 set and nibble 1. Its predicted
+    # successor (slot 2) scores 0 of 1. One word is not a population either way, so it is
+    # not swept in with the 23 and it is not claimed against them.
     succ = 4 * (base + bin(header & 0xF0).count('1'))
     # (the bit-7-clear arm of this same rule is `leaf_successor` below)
     pbase = 1 + (1 if header & 0x10 else 0)          # bit 4 shifts the program one word on
@@ -1093,27 +1139,6 @@ PARAM_POPCOUNT = {10: 0x2881, 7: 0x0881}
 # not deduplicate 9 misattributions. Uniqueness cuts both ways -- 9 real programs no other
 # structure names, or 9 phantoms no other structure confirms -- and this does not separate
 # them, so the bound is not applied.
-# THE ONE HAND-STATED PROGRAM OFFSET LEFT, and the entry appears to state it itself.
-# `fx_table` reaches this only when the tag declares no program slot, and 0x00020018 is
-# the only tag in it -- the comment at `fx_table` calling it "the two tags whose
-# self-pointer base the inline rule reads wrong" is stale by one.
-#
-# Every attribution it makes is also stored by the entry: over 80 files it fires 8 times,
-# and in 8 of 8 the address it computes (`t + 20`) equals the word at the entry's slot 7
-# read as a pointer. So the constant reproduces a pointer already present in the data, and
-# deriving it would drain the last hand-stated row here.
-#
-# NOT DERIVED YET, because it turns on an unsettled question. `walk_partition` reports
-# these 8 as the whole of its remaining FX violations, against a 3-word extent taken from
-# the entry's slot-1 step -- and a slot 7 cannot be inside a 3-word entry. Either the
-# extent is wrong for this tag, or slot 7 belongs to a later chain element and the equality
-# is telling us something about the neighbour instead. `fx_entry_layout(0x00020018)`
-# declares NOTHING at all, so it is not the source of a slot-7 reading either way; a
-# higher-bit variant `0x00420018` occurs in the same records and DOES declare a program, at
-# slot 4.
-#
-# Recorded rather than acted on: which tag the contradiction is against has to be settled
-# before the 8 mean anything.
 FX_PAYLOAD_PROG = {
     0x00020018: 20,                       # BYTE offset from the entry's +4 pointer
 }
