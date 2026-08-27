@@ -1122,6 +1122,28 @@ QUESTIONS = {
     # RoofTiles may simply not be scoreable, and the ordering says no amount of fxmaps or
     # emboss work changes that.
     'emboss.intensity':   ('program', 'reference'),
+    # RE-EXAMINED STRUCTURALLY, AND 'divisor' SURVIVES WITH BETTER EVIDENCE THAN IT HAD.
+    # Two facts about the grid population, neither previously measured:
+    #
+    #   MOST GRID RECORDS ARE NESTED. Of 1,008 fxmaps records that yield a grid width,
+    #   959 carry TWO `numberadded` programs and only 49 carry one. The layout is an
+    #   addnode inside an addnode, not a single loop.
+    #
+    #   WHERE numberadded CAN BE READ ALONE IT IS 1, in 49 of 49 -- never `gw`, never
+    #   `gw*gw`, never a multiple of either. That is the degeneracy the `grid_width`
+    #   docstring reports for the four Chesterfield specimens, now shown to be the whole
+    #   single-addnode population rather than one file's quirk. Chesterfield's four read
+    #   exactly 1.0 when their slot frame is seeded.
+    #
+    # A TRAP THAT MAKES 'numberadded' LOOK CORRECT, recorded because it produced a clean
+    # false positive here before the raw values were read. Score the arms by the EMISSION
+    # COUNT -- `len(emissions(...))` under each -- and `numberadded` comes out an exact
+    # multiple of `grid_width` in 957 of 957, against 29.8% for a shuffled control. The
+    # identity is real and means nothing about the format: with two nested addnodes the
+    # emission count is a PRODUCT of two loop bounds, and a product of two integers is
+    # divisible by a small one far more often than a shuffled pairing is. The control was
+    # computed on the same contaminated quantity, so it validated arithmetic, not a
+    # mechanism. Read the parameter, not the number of things the parameter produced.
     'fx.gridcount':       ('numberadded', 'divisor'),
     'fx.scanner':         ('once', 'loop'),
     # THE SAME QUESTION FOR THE GATE. `fx.scanner` covers the 0x99 STEPPER; the 0x89 gate is
