@@ -69,14 +69,23 @@ import decompose                                                     # noqa: E40
 
 
 def _naming_slots(rec, q, prog, limit):
-    """Slot indices, relative to `q`, whose word names `prog` (`word + 52 == prog`)."""
-    base = (q - rec.offset) // 4
+    """Slot indices, relative to `q`, whose word names `prog` (`word + 52 == prog`).
+
+    ADDRESSED ABSOLUTELY, not through `rec.words`. A structure the walk yields need not lie
+    inside the record that yielded it -- an FX table is a body-level structure and the
+    directory hands it to whichever record precedes it, so `q` is routinely BEFORE
+    `rec.offset`. Indexing `rec.words[(q - rec.offset) // 4 + k]` then goes negative, and
+    Python reads from the END of the record instead of raising, so this returned slots from
+    the wrong end of the wrong structure and only crashed when the index passed `-len`.
+    It ran that way over 80 files without failing, which is the whole problem with it.
+    """
+    data, hi = rec.asm.data, rec.asm.body_hi
     out = []
     for k in range(0, limit):
-        j = base + k
-        if j >= len(rec.words):
+        at = q + 4 * k
+        if at + 4 > hi:
             break
-        if rec.words[j] + 52 == prog:
+        if struct.unpack_from('<I', data, at)[0] + 52 == prog:
             out.append(k)
     return out
 
