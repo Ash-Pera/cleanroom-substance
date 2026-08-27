@@ -113,7 +113,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import assume, sbsruntime, transpile                                  # noqa: E402
+import assume, disasm, sbsruntime, transpile                                  # noqa: E402
 from sbsasm import (Assembly, FX_NODES, FX_NODES2, fx_patterntype,                   # noqa: E402
                     fx_entry_layout, node_shape, leaf_successor,
                     pointer_cell_successor)
@@ -807,6 +807,72 @@ def grid_width(rec):
     return None
 
 
+def inline_input_refs(rec, off, limit=None):
+    """The input references an FX entry stores INLINE at slot 2, as [(uid, width, value)].
+
+    An entry of this family is `[tag][word][inline program]+` -- the programs are not
+    addressed by the tag's pointer slots, they ARE the words those slots occupy, which is
+    why every predicted pointer resolves to nothing. Each leading program is one or more
+    `inputref` instructions (opcode 0x02, width `((op >> 6) & 3) + 1`) naming a uid the
+    file's own header declares; `value` is that declaration, or None if absent.
+
+    The walk stops at the first thing that is not such a reference, because the longer
+    entries carry further content after them.
+
+    Measured over the corpus, against both populations that matter:
+
+        the refused handoff entries recognised    24 of 27     89%
+        known-good entries (false positive)        6 of 2,351  0.26%
+        bytecode inside real program spans         3 of 1,969  0.15%
+
+    Every recognised entry leads with a WIDTH-2 reference: widths are (2, 1) on 12 and
+    (2,) on 12. In `roofing_007` the pair is `0xb90ebc63` (type 8, value (8, 8) -- log2 of
+    256x256) and `0xee7caa31` (type 4, value 0), the same uids in every entry of the file.
+
+    DIAGNOSTIC ONLY, AND DELIBERATELY NOT WIRED INTO `entries()`. What each reference IS
+    remains unknown: the tag's mask declares 3 or 5 program parameters against 1 or 2 inline
+    references, so it does not describe these slots, and no permitted source sets the bits
+    that would name them. Admitting the entry would let `emit` read parameters positionally
+    out of a layout that does not match the data, which paints a plausible wrong picture --
+    strictly worse than refusing. This function exists so the structure is READABLE by
+    whoever closes the naming gap, and so `why_no_entries` can report what is actually
+    there instead of calling it unreadable.
+    """
+    a = rec.asm
+    decl = {u: v for _t, u, v in (a.header.get('inputs') or [])}
+    lim = rec.offset if limit is None else limit
+    q, out = off + 8, []
+    while q + 4 <= lim and len(out) < 8:
+        sp = a.program_span(q, a.body_hi)
+        if not sp or sp <= q:
+            break
+        try:
+            ins = list(disasm.decode(a.data, q, sp))
+        except Exception:
+            break
+        if not ins:
+            break
+        got = []
+        for _k, addr, op, toks in ins:
+            if (op & 0x3F) != 0x02:
+                got = None
+                break
+            try:
+                u = disasm.uid(addr, toks)
+            except Exception:
+                got = None
+                break
+            if u not in decl:
+                got = None
+                break
+            got.append((u, ((op >> 6) & 3) + 1, decl[u]))
+        if got is None:
+            break
+        out.extend(got)
+        q = sp
+    return out
+
+
 def why_no_entries(rec):
     """Why `entries()` came back empty -- the WALK, or the table read?
 
@@ -884,6 +950,24 @@ def why_no_entries(rec):
 
     last = nodes[-1][1]
     h = header_at(last)
+    # SAY WHAT THE HANDOFF TARGET ACTUALLY HOLDS. It is not unreadable: for 24 of the 27
+    # records in this branch it is an entry storing its programs inline as references to
+    # inputs the file itself declares. See `inline_input_refs` -- what is missing is which
+    # parameter each reference is, not what is there.
+    _sh = node_shape(h) if h is not None else None
+    if _sh:
+        try:
+            _t = struct.unpack_from('<I', asm.data, last + _sh[0])[0] + 52
+            if asm.body_lo <= _t < asm.body_hi - 8:
+                _r = inline_input_refs(rec, _t)
+                if _r:
+                    return ("walk: %d node(s) reaching an entry at %#x that stores %d inline "
+                            "input reference(s) %s -- structure read, but the tag's mask does "
+                            "not name them, so no parameter can be assigned"
+                            % (len(nodes), _t, len(_r),
+                               ', '.join('%#x(w=%d)=%s' % (u, w, v) for u, w, v in _r)))
+        except Exception:
+            pass
     return ("walk: %d node(s), then no handoff -- last node %#x holds header %#010x, "
             "whose successor reaches no table" % (len(nodes), last, h if h is not None else 0))
 
