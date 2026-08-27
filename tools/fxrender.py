@@ -1432,10 +1432,50 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
 # Most value->name pairs appear in only two files. The evidence is not their count -- it is
 # that 5..16 are contiguous and consistent, and that the table independently gets both
 # ground-truth records right, a test it could have failed.
+# WHAT THE NIBBLE CAN AND CANNOT SAY, measured rather than assumed. `fx_patterntype` reads
+# `(tag >> 8) & 0xF`, returning None for nibble 0 and `n + 2` otherwise, so its range is
+# exactly {3..17}. Two edges of this table fall outside that range and both are silent:
+#
+#   KEY 2 ('square') IS UNREACHABLE. No tag can make `fx_patterntype` return 2. The mapping
+#   is not wrong -- the permitted sources declare `patterntype` 2 ten times, so the value is
+#   real -- the NIBBLE is lossy: patterntype 1 and 2 both encode as nibble 0. The row stays
+#   because it is the correct patterntype->shape pair and a caller that learns the type by
+#   some other route should get 'square'; it is annotated because a reader counting this
+#   table's coverage would otherwise count a row nothing can select.
+#
+#   KEY 17 IS PRODUCIBLE AND MISSING. Nibble 15 yields 17, which occurs in 4 entries over
+#   the corpus plus the reference packs, and `PATTERN_SHAPES.get(t, 'rect')` turns it into a
+#   hard fill with no marker. Four entries do not say what shape 17 is, so nothing is
+#   invented here -- but the silence is the part worth removing.
+#
+# HOW MUCH RIDES ON THE CATCH-ALL, which had not been quantified. Over 372,665 FX entries in
+# the corpus plus the reference packs:
+#
+#     nibble 0 -> None, handled by assume.QUESTIONS['fx.typeless_profile']   127,349   34.17%
+#     paraboloid                                                             136,151   36.53%
+#     pyramid                                                                 37,107    9.96%
+#     bell / gaussian / halfbell / waves / gradation / the rest               109,058   19.34%
+#
+# So a THIRD of every pattern drawn takes its shape from a six-armed guess whose default is
+# 'rect', and the format does state which of patterntype 1 or 2 it is -- the sources declare
+# 43 and 10 of them as constants. Where it states it is not resolved here.
+#
+# A TEST THAT LOOKED LIKE IT RESOLVED IT AND DOES NOT, recorded so it is not repeated: take
+# files whose paramset declarations are unanimously patterntype 1 or unanimously 2, pool
+# their nibble-0 entry tags, and look for a separating bit. Bits 6, 7, 28 and 31 come out
+# near-perfectly separated, bit 31 at 100.0% vs 1.5%. It is CONFOUNDED. The two groups are
+# different FILES (195 tags from one, 336 from two others) against only 43 and 10 actual
+# declarations, so most pooled entries carry no declaration at all and any bit reflecting
+# authoring style -- bits 28 and 31 are the `patternrotation` and `imageindex` program bits,
+# i.e. whether that graph rotates or samples an image -- separates the files rather than the
+# types. Resolving this needs an entry-level join from a declaration to the entry it
+# compiled to, which the paramset ordering does not currently give.
 PATTERN_SHAPES = {
-    2: 'square', 3: 'disc', 4: 'paraboloid', 5: 'bell', 6: 'gaussian', 7: 'thorn',
+    2: 'square',        # UNREACHABLE from a tag; see above. Correct pairing, lossy nibble.
+    3: 'disc', 4: 'paraboloid', 5: 'bell', 6: 'gaussian', 7: 'thorn',
     8: 'pyramid', 9: 'brick', 10: 'gradation', 11: 'waves', 12: 'halfbell',
     13: 'ridgedbell', 14: 'crescent', 15: 'capsule', 16: 'cone',
+    # 17 is producible (nibble 15) and its shape is unknown -- 4 entries corpus-wide.
 }
 
 # Which shapes are DETERMINED by their name and which are MODELLED. A name fixes the

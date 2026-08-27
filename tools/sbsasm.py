@@ -1203,6 +1203,21 @@ FX_PROGRAM_BITS = frozenset({20, 22, 24, 26, 28, 30, 31})
 # 3,983 entries whose stated length is too short for the bits the layout claims, and 3,960
 # of them are that tag. The `FX_ENTRY` clip added earlier hid the symptom; this removes the
 # cause. Program-slot positions are unaffected, because those depend only on the widths.
+# RE-MEASURED ON THE FULL CORPUS PLUS THE REFERENCE PACKS, and the reading holds with room
+# to spare. Every one of the four is pointer-shaped essentially always:
+#
+#     bit 4    31,276 slots    99.68% denormal
+#     bit 7    18,793          99.55% denormal  (3.75% of them RESOLVE as a program)
+#     bit 16    3,417 x4       ~99%   denormal or exactly 0
+#     bit 17   255,531          96.91% denormal  (0.31% resolve as a program)
+#
+# AND THE NEAR-MISS IS WORTH KEEPING, because it is this note's own trap sprung a fourth
+# time. Classifying these slots by "is the float in [0,1]" reports bit 7 as a clean scalar
+# parameter in 18,793 of 18,793 -- 100.00%, the kind of number that ends an argument. It is
+# meaningless: a denormal is about 1e-44, which IS in [0,1], so the test cannot tell a
+# pointer from a parameter and answers "parameter" every time. The bound that separates them
+# is `abs(f) < 1e-30`, not a range check. A plausibility window that a pointer passes is not
+# evidence, and the reason to prefer the walk is that it never has to ask.
 FX_STRUCTURAL_BITS = frozenset({4, 7, 16, 17})
 
 # PARAMETERS A TABLE ENTRY NEVER STORES, however the source declares them.
