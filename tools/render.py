@@ -2023,43 +2023,48 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     LOW_CONFIDENCE.add(i)
                     assume.note(i)
                     continue
-                # THIS WINDOW CANNOT TELL A COLOUR FROM A PROGRAM, and that is not a
-                # nitpick about the guard -- it is why 4,323 records render black.
+                # THIS WINDOW CANNOT TELL A COLOUR FROM A PROGRAM, AND IT NEVER HAS TO.
+                # Both halves of that matter, and an earlier version of this note got the
+                # second one badly wrong -- see the retraction below.
                 #
-                # A pointer or an inline program header read as float32 is a DENORMAL,
-                # about 1e-40, and 1e-40 is inside [-0.01, 1.01]. So the test admits every
-                # word it was written to exclude, and it admits them as a colour of
-                # essentially zero. Over the corpus plus the reference packs:
+                # The window is tautological in FORM. A pointer or an inline program header
+                # read as float32 is a denormal, about 1e-40, and 1e-40 is inside
+                # [-0.01, 1.01]. So this test cannot reject a program word; that failure is
+                # not in its reachable range and no size of sample would reveal it.
                 #
-                #     colour slots passing this window            14,208
-                #       containing a denormal component            4,672   32.88%
-                #     greyscale records whose SOLE component
-                #       is a denormal -- the whole colour          4,323
+                # It is unreachable in FACT, because the gate above this branch takes every
+                # such record first. Over the corpus plus the reference packs:
                 #
-                # Those 4,323 are not noise and not an alpha-channel quirk. Every one is a
-                # PROGRAM: `program_span()` -- this project's own test -- says an inline
-                # program starts at that slot in 4,254 of them, and the other 69 resolve as
-                # pointed-to programs. The commonest words are 0x0a420001, 0x0a420003,
-                # 0x0a420005: low half an instruction count, high half opcode 0x0A42,
-                # `inputref.i2`. This is exactly the shape `Record.size_or_baked` already
-                # documents -- "the program can be INLINE at the slot rather than pointed at
-                # by it ... which reads as a denormal float and was being discarded".
+                #     uniform records reaching THIS read                    9,512
+                #       with a denormal component                              0
+                #     diverted to the `uniform.fill` path above              7,998
                 #
-                # The docstring above cites "3,392 of 3,428 sampled (98.9%) decode to
-                # components in [0, 1] at exactly that position" as one of two supports for
-                # this placement. That support is hollow by a third, for this reason. The
-                # OTHER support is not: containment against declared `outputcolor` values
-                # pairs 1,975 of 1,976, and that is a real check because it compares values
-                # rather than testing a range. Placement stands; the plausibility half of
-                # its evidence does not.
+                # Zero. The `not (cls >> 8) & 1 or len(words) < start + n` gate is what does
+                # it, and it is a STRUCTURAL test -- a class bit and a length -- so it does
+                # not share this window's blind spot.
                 #
-                # NOT REPAIRED HERE. The fix is to separate the two -- reject `abs(f) <
-                # 1e-30` and route those slots to the program path, which this file already
-                # does for `size_or_baked` -- and that turns 4,323 silent black fills into
-                # either an evaluated colour or an honest refusal. Both are large render
-                # changes on a population no reference map reaches, and the instrument that
-                # would arbitrate them is the one this comment is about. Left for a
-                # deliberate call, with the population and its cause now stated.
+                # RETRACTED, and recorded because the retraction is the useful part. This
+                # note previously claimed 4,323 greyscale records "render black" from a
+                # misread inline program. The 4,323 are real -- their slot at `start` does
+                # hold a program, 4,254 of them inline by `program_span()` and 69 pointed
+                # at, commonest word 0x0a420001 = one instruction of opcode 0x0A42
+                # `inputref.i2` -- and in 3,526 of them that program runs to the record end,
+                # so no colour is stored at all. But every one of the 4,323 takes the
+                # `uniform.fill` path and none reaches this line. They are not rendered
+                # black from a misread; they get the arbitrated fill, marked LOW_CONFIDENCE
+                # and noted in `assume.USED`, which is the correct handling for a record
+                # that stores no colour.
+                #
+                # The measurement that produced the false claim applied this file's `start`
+                # formula WITHOUT the gate that precedes it -- reading a branch's guard while
+                # skipping the branch's entry condition. Confirming a tautology in a test is
+                # not the same as showing the test is consulted, and the second question is
+                # the one that decides whether anything is wrong.
+                #
+                # So: the docstring's "3,392 of 3,428 sampled (98.9%) decode to components
+                # in [0, 1]" is NOT inflated by denormals on the population that reaches
+                # here, and the containment support -- 1,975 of 1,976 declared `outputcolor`
+                # values paired -- is untouched either way. The placement stands on both.
                 color = np.array(rec.words[start:start + n], dtype=np.uint32).view(np.float32)
                 if not np.all((-0.01 <= color) & (color <= 1.01) & (color == color)):
                     raise Unsupported("uniform fill color slot does not decode as a "
