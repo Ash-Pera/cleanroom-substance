@@ -38710,3 +38710,35 @@ allowlist, so `sbsasm`'s walk never visits any of it. That is why these structur
 invisible to every structural tool -- coverage, `walk_partition`, the census -- and why the
 disjoint-span scan has to sweep for their programs at all. The scan is compensating for a
 handoff the walk does not make.
+
+### Correction: the scan is not compensating for that handoff, and no programs are missing
+
+Two claims in the section above do not survive being measured, and both were mine.
+
+"The entry disjoint-span scan sweeping 12 words from a 3-word element is compensating for a
+handoff the walk does not make." NO. The scan reaches words 2..13 from the cell; the shared
+target lies inside that window in 26 of 82 cases and OUTSIDE it in 56. It is not chasing
+the handoff, it is sweeping its own neighbourhood, and I asserted a causal link between two
+findings because they sat next to each other.
+
+"14 of the 15 targets hold four program pointers, unreached." NO -- unVISITED is not
+unreached. In 76 of 76 targets holding programs, EVERY one is already in `Record.programs`,
+which for `fxmaps` scans the record's words without a header bound by design. Nothing is
+missing from program discovery; what is missing is only the ATTRIBUTION -- no structure in
+the walk claims them.
+
+That changes what extending `fx_walk` to follow the shared pointer would buy, so it is not
+the next step. What is left is narrow (the partition check and the census cannot reason
+about structures the walk does not enumerate) and the costs are not:
+
+  * IT IS A DIFFERENT RELATION. The chain's slot-1 pointer is a SEQUENCE edge -- one
+    element, one successor. The third word is a REFERENCE to a shared resource: in 11 of 13
+    records every sibling points at the same address. A walk that follows both either
+    yields one structure once per referrer or needs a dedup rule, and conflating a sequence
+    with a reference is how a walk starts inventing structure.
+  * THE CONSUMERS ALREADY DO IT. `fxrender.entries` reaches these targets through `cells`
+    and folds them into the same table. Yielding them from `fx_walk` as well risks counting
+    the identical entry twice, in the one place a duplicate is hardest to see.
+
+If the check wants to see the handoff, teach the CHECK about it -- `walk_partition` already
+reads stated extents directly -- rather than changing the enumeration every consumer reads.
