@@ -630,6 +630,29 @@ def node_shape(header):
     return (succ, tuple(progs))
 
 
+def chain_extent(asm, off):
+    """The byte extent of a chain element that states its own next at slot 1, or None.
+
+    The FX chain's elements are a linked list: each stores the next element's address, in
+    the format's usual `- 52` skew, at slot 1. That step IS the element's extent, so an
+    element states its own width without a table and without a stride.
+
+    Measured over 80 files on the `0x9`/`0x49` family and the `0x?4B` family they hand off
+    to: 94 of 108 have a forward pointer there, and where they do the step is 3 words in 82
+    of 94 (and 60 of 66 for `0x?4B`). The rest are last in chain and point far forward,
+    which is why this returns the raw distance and leaves the caller to decide -- a huge
+    extent is a real statement about a real pointer, not a value to clamp.
+
+    Returns None when slot 1 does not point forward inside the body, which is the honest
+    answer for an element that states nothing rather than a guessed default.
+    """
+    lo, hi = asm.body_lo, asm.body_hi
+    if not (lo <= off < hi - 8):
+        return None
+    nxt = struct.unpack_from('<I', asm.data, off + 4)[0] + 52
+    return (nxt - off) if off < nxt < hi else None
+
+
 def leaf_successor(header):
     """The bit-7-clear LEAF's successor byte offset, or None -- `node_shape`'s other arm.
 

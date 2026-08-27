@@ -183,7 +183,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assume, sbsruntime, transpile                                  # noqa: E402
 from sbsasm import (Assembly, FX_NODES, fx_patterntype,                              # noqa: E402
-                    fx_entry_layout)
+                    fx_entry_layout, chain_extent)
 
 # 0x1CB joins these on the value evidence in sbsasm's FX_NODE_PARAMS: its +4 program is
 # 1.0 in 180 of 183, matching 0x18B's `numberadded` (1.0 in 69.5%) and not 0x1AB's
@@ -665,7 +665,21 @@ def _chain_embedded_entries(rec):
             hdr2 = struct.unpack_from('<I', data, shared)[0]
         except Exception:
             continue
-        at = shared + 12 if (hdr2 & 0xFFF) in (0x04B, 0x14B) else shared
+        # STEP OVER A CHAIN ELEMENT BY ITS OWN STATED EXTENT, not by a constant. This read
+        # `shared + 12 if (hdr2 & 0xFFF) in (0x04B, 0x14B) else shared`: a hardcoded offset
+        # and a two-header allowlist. The 12 is the target element's own width -- it states
+        # its next at slot 1, and over 80 files 60 of 66 `0x?4B` targets step exactly 3
+        # words, with the word at +12 a nibble-8 tag in all 60. So ask the element.
+        #
+        # The trigger is structural too: an entry tag ends in nibble 8, so a target that
+        # does NOT is a chain element to be stepped over rather than read as an entry. The
+        # 6 elements that state a far step (last in chain, 67 words) are left to the tag
+        # check below, which is what catches them today.
+        if (hdr2 & 0xF) != 8:
+            _step = chain_extent(rec.asm, shared)
+            at = shared + _step if _step else shared
+        else:
+            at = shared
         if at in seen or not (lo <= at < hi - 4):
             continue
         try:
@@ -673,6 +687,14 @@ def _chain_embedded_entries(rec):
         except Exception:
             continue
         if (tag & 0xF) != 8 or (tag >> 16) == 0x0002 or not tag:
+            continue
+        # AND THE TAG MUST HOLD, the same stopping rule `fx_table` uses. Deriving the step
+        # from the element instead of assuming 12 reaches a nibble-8 word in one more case
+        # (`Desert_Sand_01` record 71, where the element states 67 words because it is last
+        # in its chain), and that word is `0x15140088` -- a tag by its nibble whose four
+        # predicted programs none of them resolve, which is bytecode, not an entry. The old
+        # constant rejected it only by accident, landing on nibble 0 instead.
+        if not rec.asm.entry_layout_holds(at, tag):
             continue
         seen.add(at)
         params = {}
