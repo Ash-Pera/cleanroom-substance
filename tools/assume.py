@@ -62,8 +62,20 @@ QUESTIONS = {
     # and none of them has evidence for that number. A constant-factor error here makes
     # every blurred or warped edge too soft or too hard by the same ratio, which is exactly
     # the kind of defect a correlation cannot see and a picture can.
-    'warp.reference_px':  (256.0, 64.0, 128.0, 320.0, 384.0, 448.0, 512.0, 640.0,
-                           768.0, 1024.0, 2048.0),
+    # 'record' IS THE ANSWER; the numbers below are fallbacks kept so the old behaviour
+    # stays reachable for A/B. The pixel scale an `intensity` is expressed in is the
+    # RECORD's declared output width, and the record states it -- see render._reference_px.
+    # This is the principle `distance.scale_radius` already runs on: "it is the RECORD, not
+    # a constant here, that says how wide it is."
+    #
+    # The eleven constants arbitrated a question that has a structural answer, and the
+    # fitted winner (256.0) is right for 1,287 of the 1,305 warp records in the eight
+    # reference packs because those packs are mostly 256x256 -- a property of the corpus,
+    # not of the format. It is wrong by 2x on the 16 records at 128 and by 4x on the 2 at
+    # 64. No single constant can be right for a mixed-size population, which is why the
+    # sweep that picked one could not fail in a way that pointed here.
+    'warp.reference_px':  ('record', 256.0, 64.0, 128.0, 320.0, 384.0, 448.0, 512.0,
+                           640.0, 768.0, 1024.0, 2048.0),
     # WHICH INPUT IS WARPED AND WHICH SUPPLIES THE MAP. render.py calls this "the declared,
     # unverified-at-the-bytecode-level convention": one paired source names the connections
     # `input1` then `inputintensity`, matching edges[0]/[1] in that order, with no

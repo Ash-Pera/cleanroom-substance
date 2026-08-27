@@ -429,6 +429,40 @@ _READS_POS = {}
 _PROG_SRC = {}
 
 
+def _reference_px(rec):
+    """The pixel scale `intensity` is expressed in -- from the RECORD, not a constant.
+
+    Four branches (warp, dirmotionblur, directionalwarp, blur) convert a pixel-valued
+    intensity into a UV-space displacement by dividing by a reference width, and all four
+    used a fixed 256.0 supplied by `assume.QUESTIONS['warp.reference_px']` -- eleven
+    candidate values, arbitrated by which one scored best.
+
+    THE RECORD STATES IT. This is the principle `distance` already runs on, in
+    `scale_radius`'s own words: "512.0 is a real answer on a 512-wide map, and it is the
+    RECORD, not a constant here, that says how wide it is." A record declares its output
+    size; an intensity in pixels is in pixels OF THAT SIZE, so the divisor is that width.
+
+    WHY THE CONSTANT SURVIVED THIS LONG, which is the whole reason it needs replacing
+    rather than retuning: of 1,305 warp records in the eight reference packs, 1,287 are
+    256x256. The fitted constant is right for 98.6% of them by a property of the corpus,
+    not of the format, and wrong by 2x or 4x on the 16 records at 128 and the 2 at 64.
+    A sweep over eleven candidate constants cannot find that, because no single constant
+    is correct for a mixed-size population.
+
+    The arbitration channel is kept so the old behaviour is still reachable: an explicit
+    `warp.reference_px` still wins, and passing a number pins every record to it. Absent an
+    assumption the record decides, and a record that does not state a width falls back to
+    256.0 rather than raising -- the same default, now the exception rather than the rule.
+    """
+    forced = assume.assumed('warp.reference_px')
+    if forced is not None and forced != 'record':
+        return float(forced)
+    w = getattr(rec, 'width', None)
+    if isinstance(w, (int, float)) and w and w > 0:
+        return float(w)
+    return 256.0
+
+
 def _prog_source(asm, ptr):
     """The transpiled source of the program at `ptr`, memoized, '' if it will not read.
 
@@ -1776,7 +1810,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 height = sbsruntime.image_sampler(outputs[rec.edges[1]])(pos)[:, :1]
                 signed = 2.0 * height - 1.0
                 turn = 2.0 * np.pi * angle
-                REFERENCE_PX = float(assume.assumed('warp.reference_px', 256.0))
+                REFERENCE_PX = _reference_px(rec)
                 disp = signed * intensity / REFERENCE_PX
                 in_pos = pos + np.concatenate(
                     [disp * np.cos(turn) * np.ones((N, 1), dtype=np.float32),
@@ -1975,7 +2009,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
                 intensity = np.asarray(params['intensity'], dtype=np.float32)
                 angle = np.asarray(params['mblurangle'], dtype=np.float32)
-                REFERENCE_PX = float(assume.assumed('warp.reference_px', 256.0))
+                REFERENCE_PX = _reference_px(rec)
                 length = np.clip(np.abs(intensity), 0.0, 256.0) / REFERENCE_PX * 10.0
                 turn = 2.0 * np.pi * angle
                 sampler = sbsruntime.image_sampler(outputs[rec.edges[0]])
@@ -2164,7 +2198,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # np.gradient returns d/drow, d/dcol; scale each to UV by its own axis
                 # length so the displacement is resolution-independent.
                 gy, gx = np.gradient(gmap.astype(np.float32))
-                REFERENCE_PX = float(assume.assumed('warp.reference_px', 256.0))
+                REFERENCE_PX = _reference_px(rec)
                 dx = (gx * W / REFERENCE_PX * intensity).reshape(N, 1)
                 dy = (gy * H / REFERENCE_PX * intensity).reshape(N, 1)
                 in_pos = pos + np.concatenate([dx, dy], axis=-1)
@@ -2859,7 +2893,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # possible constant-factor error. A separable box blur is used, which is what
                 # the parameter means before any kernel shape is assumed; a Gaussian would
                 # differ in the tails and nothing here distinguishes them.
-                REFERENCE_PX = float(assume.assumed('warp.reference_px', 256.0))
+                REFERENCE_PX = _reference_px(rec)
                 radius = float(np.clip(abs(intensity), 0.0, 256.0)) / REFERENCE_PX
                 rpx = int(round(radius * max(W, H)))
                 if rpx < 1:
