@@ -132,8 +132,8 @@ def _interaction_walk(r, s):
                 inputs.append(pos)             # state-11 image input
             pos += 1
     prog = None if size_pos in inputs else size_pos
-    return {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': param_slots,
-            'end': pos, 'prog': prog}
+    return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
+                        'param_slots': param_slots, 'end': pos, 'prog': prog})
 
 
 def _fxmaps_walk(r, spec):
@@ -278,8 +278,55 @@ def decompose(r):
     # bitmap (16) carries a size expression only when tag bit 0 is set; otherwise slot 2 is image
     # data (which can coincidentally parse as a program), and layout reports no size.
     prog = None if (f == 17 or (f == 16 and not (r.cls & 1)) or size_pos in inputs) else size_pos
-    return {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': param_slots,
-            'end': pos, 'prog': prog}
+    return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
+                        'param_slots': param_slots, 'end': pos, 'prog': prog})
+
+
+
+def _bounded(r, d):
+    """Refuse an `end` that exceeds the record instead of returning it.
+
+    A header cannot be longer than the record containing it, so `end > len(words)` is not a
+    gap in the model -- it is the model being WRONG, and every reader that takes a position
+    from `end` (blur, sharpen and warp all read `end - 1`) would be reading past the record.
+    Those readers already treat a missing `end` as "the walk does not resolve this record"
+    and refuse or fall back, so reporting None turns a confidently wrong answer into an
+    honest one. `inputs` is kept -- it comes from the record's own shape flags, not from the
+    cost arithmetic that overran.
+
+    1,795 of 903,616 records over-run (`tools/walk_health.py` counts them per filter), and
+    shuffle holds 1,623 of those with a single cause. Its two shapes are told apart by tag
+    bit 0, and the cost model expresses the difference with two NEGATIVE terms:
+    `cls[0] = -1.0` and `w1_present = -1.0`. This walk appends one slot per unit of cost, so
+    it cannot represent either -- `range(int(round(-1.0)))` yields nothing rather than
+    subtracting, and `w1_present` is never applied on this path at all. Both are silently
+    dropped and the header comes out exactly 2 too long, on all 1,623.
+
+    THE SPLIT BY SHAPE IS THE PROOF, over all 7,682 shuffle records:
+
+        shape     records    walk end == header_words    walk end > len(words)
+        no-w1       3,934          3,934 of 3,934                  0
+        w1          3,748              0 of 3,748              1,623
+
+    Perfect agreement on the shape carrying no negative term, none whatsoever on the shape
+    carrying two. `record_layout` already lists shuffle among the filters it does not derive
+    ("two record shapes, and w1 exists in only one of them"); this is what that undelivered
+    fit does when a walk applies it anyway.
+
+    NOT REPAIRED HERE, DELIBERATELY. `header_words` applies the same costs additively and
+    never over-runs, so the tempting fix is to take `end` from it. But the two models also
+    disagree about the BASE -- this walk adds `n_base` input slots on top of `const`, while
+    `header_words` treats `const` as the entire base -- and for shuffle that is a further
+    difference of 2, so they do not simply agree once the sign is fixed. Choosing between
+    them needs ground truth for shuffle's header and the corpus has none: no permitted
+    source declares a distinctive shuffle float, so containment pairs nothing here. Picking
+    the model that looks better would be the same mistake as the formulas this walk was
+    built to replace. The over-run is refused, and the cause is written down for whoever
+    finishes shuffle's cost model.
+    """
+    if d.get('end') is not None and d['end'] > len(r.words):
+        return dict(d, end=None, prog=None)
+    return d
 
 
 def named_params(r):
