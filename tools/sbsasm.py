@@ -3948,7 +3948,23 @@ class Record:
         """
         if self.filter_id != 4 or len(self.words) < 3:
             return
-        d, o, e = self.asm.data, self.offset, self.end
+        # BOUNDED BY THE BODY, NOT BY THIS RECORD -- the same correction `fx_table` already
+        # carries, for the same reason it states: "a record's extent is a directory
+        # partition, not an allocation", and an fxmaps record can address a structure that
+        # lies outside its own span. The tree was bounded by `self.offset .. self.end`, so
+        # a root outside the record made `while o <= q < e - 7` false on the FIRST
+        # iteration and this yielded nothing at all.
+        #
+        # Every root-stop record in the corpus is that case: 39 records, root outside the
+        # record in 39 of 39, inside the body in 39 of 39, and `node_shape` already knows
+        # the header in 27 of them. Those 27 were never rejected by the vocabulary -- the
+        # walk never reached the point of asking.
+        #
+        # `why_no_entries` reports them as "not in the node vocabulary" because it reads
+        # the header itself and infers the walk refused it. That inference is wrong for the
+        # 27, and it is the same misattribution that function exists to prevent, one level
+        # further in.
+        d, o, e = self.asm.data, self.asm.body_lo, self.asm.body_hi
         q, seen = self.fx_root, set()
         if q is None:
             return
