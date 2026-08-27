@@ -347,6 +347,11 @@ def _load_layouts():
     return lay, hdr
 
 
+# `HEADER_WORDS` IS STILL BUILT AND NO LONGER READ. Its 666 entries memoised the record's
+# header length, which `record_layout.header_words` and the walk's own `end` now compute:
+# emptied over the full corpus, 903,616 records with `header_words` non-None on 900,715,
+# it changes 0 readings. Kept as the loader's second return so the on-disk layouts.json
+# shape is unchanged and the census stays inspectable; nothing consults it.
 LAYOUTS, HEADER_WORDS = _load_layouts()
 
 # Every slot any layout key registers as an EDGE slot, per filter. Used to recognise a
@@ -2095,8 +2100,16 @@ class Record:
                 return _d['end']
         except Exception:
             pass
-        return HEADER_WORDS.get((self.filter_id, self.cls,
-                                 self.words[1] & LAYOUT_MASK.get(self.filter_id, 0)))
+        # THE `HEADER_WORDS` MEMO USED TO BE THE FALLBACK HERE, AND IS DRAINED. It held 666
+        # keyed entries of the same quantity the walk computes, and over the FULL corpus --
+        # 903,616 records, `header_words` non-None on 900,715 of them -- emptying it changes
+        # 0 readings. The walk answers everything it answered.
+        #
+        # Measured through the accessor it serves, not through a general sweep: a sweep of
+        # six other readings also scored `SHARED` at 0 in the same pass, and `SHARED` is LIVE
+        # on 277 readings once `shared_refs` is actually called. A knockout is evidence only
+        # for the readings it exercises.
+        return None
 
     @property
     def edge_slots(self):
@@ -2512,6 +2525,38 @@ class Record:
         field 0 drops `levelinlow` from the same record, declared 0.211466 at slot 3. Both
         cost edits improve the picture and contradict the file's own text, which is the
         exact shape of error this project keeps recording.
+
+        RESOLVED SINCE, AND AGAINST THE WIDTH HYPOTHESIS. `param_slots.declared()` read
+        only `constantValueFloat1`, and `levels` stores every parameter as
+        `constantValueFloat4` -- the scalar repeated across RGB with alpha 0 or 1 -- so it
+        matched ONE node in the whole corpus and the filter looked unpairable. Reading the
+        first component of a FloatN gives 91 pairings across 35 sources and 18 distinct w1
+        patterns, and against the walk's placement:
+
+            MATCH,  state 1 (baked)      90
+            MISMATCH, state 2 (program)   1
+
+        The single mismatch is not one: DLG-Tools__Damaged_Iron_01 record 266 has
+        `levelinhigh` in the PROGRAM form, its slot 4 holds a valid program pointer, and the
+        declared 0.7 sits inside that program's body as `const.f1 0.7` -- located by the
+        search, but not at a parameter slot. So it is 91 of 91 read correctly.
+
+        RECORD 129'S OWN SHAPE IS CONFIRMED TWICE, INDEPENDENTLY. Its w1 is 0x144, and two
+        other packages declare a levels node with exactly that pattern:
+
+            DLG-Tools__Damaged_Iron_01 rec 209   levelinhigh 4, leveloutlow 5, levelouthigh 6
+            Sho__Fur                   rec 14    levelinhigh 4, leveloutlow 5, levelouthigh 6
+
+        Both place the three parameters at three consecutive slots with `levelinhigh` first,
+        which is exactly what the walk does for record 129. So w1 field 1 DOES consume a
+        slot, the "field 1 state 1 costs 0 words" edit is refuted by source declarations
+        rather than by a score, and record 129's out-pair really is (1.0, 0.0) at slots 4
+        and 5.
+
+        WHICH MOVES THE PROBLEM RATHER THAN CLOSING IT. The levels widths are settled and
+        the placement is right; the Chesterfield disagreement is therefore NOT a parameter
+        layout question, and the next place to look is record 129's cone or the handling of
+        an inverted output range -- not this table.
 
         So record 129 is explained and not resolved: the walk reads it correctly given the
         cost model, the cost model is the thing in question, and the only instrument that

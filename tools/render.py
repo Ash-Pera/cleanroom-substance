@@ -495,6 +495,89 @@ def _reads_pos(asm, ptr):
     return got
 
 
+_DEAD_SAMPLER = {}
+_DEF_RE = re.compile(r'^\s*%(\d+)\s+[0-9A-F]{4}\s+(\S+?)\s+(.*)$')
+
+
+def sampler_is_annihilated(asm, ptr, index):
+    """Does every use of `sample*(..., #index)`'s result get multiplied by a constant zero?
+
+    If so, WHAT IS BOUND TO THAT SAMPLER CANNOT CHANGE THE PROGRAM'S OUTPUT, and a record
+    that would otherwise refuse for an unwired input can be evaluated with anything at all.
+    That is a proof read off the record's own bytecode, not an assumption about what the
+    engine substitutes for an unconnected input -- which is unknowable here and stays
+    refused (see `grayscale.weights` for the same discipline).
+
+    Why it comes up: five pixelprocessors in the corpus sample an index equal to their own
+    declared arity -- exactly one past the last wired input, never further -- which is what
+    a source graph with a trailing UNCONNECTED input slot compiles to. The compiler still
+    emits the sample; on three of the five it also multiplies the result by a constant 0,
+    which is the parameter that would have used it left at zero:
+
+        %20  samplelum.f1  %19, #3      <- index 3, arity 3
+        %21  const.f1      0
+        %22  mul.f1        %20, %21     <- annihilated
+
+        UHL3D-Stylized_Sand 2194, PavingStones003 547, stylized_round_stones 736
+                                                       STRICTLY ANNIHILATED
+        alien_rock_coral 155, 353, 2054                LIVE -- still refuse
+
+    The three LIVE ones use the sample as an ANGLE (x360 -> radians -> cos/sin) driving a
+    warp, so their output genuinely depends on an image nothing in the file binds: no edge,
+    no graph-input bitmap record, no manifest (that specimen ships none), and not the shared
+    cache, which is a float CSE cache and holds no images.
+
+    NOTE the operand form. `samplelum`/`samplecol` have a 2-operand and a 3-operand encoding
+    (`0933`/`09F4` and `0D33`/`0DF4`), and the SAMPLER INDEX IS THE FIRST IMMEDIATE in both.
+    Established by the arity bound: over 80 files the first immediate is in range on 5,711 of
+    5,714 three-operand samples while the second is out of range 501 times, and the second is
+    the constant 1 in 5,696 of them -- a mode flag, not an index.
+    """
+    key = (id(asm), ptr, index)
+    got = _DEAD_SAMPLER.get(key)
+    if got is not None:
+        return got
+    try:
+        import disasm
+        hi = asm.program_end(ptr)
+        lines = disasm.text(asm.data, ptr, hi).splitlines()
+    except Exception:
+        _DEAD_SAMPLER[key] = False
+        return False
+    defs = {}
+    for ln in lines:
+        m = _DEF_RE.match(ln)
+        if m:
+            defs[int(m.group(1))] = (m.group(2), m.group(3))
+    zero = {g for g, (op, ar) in defs.items()
+            if op.startswith('const') and ar.strip()
+            and all(t.strip() and float(t) == 0.0 for t in ar.split(','))}
+    targets = set()
+    for g, (op, ar) in defs.items():
+        if op.startswith('sample'):
+            ims = re.findall(r'#(\d+)', ar)
+            if ims and int(ims[0]) == index:
+                targets.add(g)
+    if not targets:
+        _DEAD_SAMPLER[key] = False
+        return False
+    uses = {}
+    for g, (op, ar) in defs.items():
+        for u in re.findall(r'%(\d+)', ar):
+            uses.setdefault(int(u), []).append((op, ar))
+    ok = True
+    for t in targets:
+        for op, ar in uses.get(t, ()):
+            others = [int(x) for x in re.findall(r'%(\d+)', ar) if int(x) != t]
+            if not op.startswith('mul') or not any(o in zero for o in others):
+                ok = False
+                break
+        if not ok:
+            break
+    _DEAD_SAMPLER[key] = ok
+    return ok
+
+
 def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
     end = asm.program_span(start)
     if end is None:
@@ -527,8 +610,37 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
             # raised indistinguishable KeyErrors -- sent two investigations after a
             # phantom slot frame before `sbsruntime.MissingSampler` was introduced to
             # separate them. Removing this handler reintroduces the ambiguity silently.
-            raise cascade("input %s has no output yet -- no sampler was installed for "
-                          "it, which is an unwired edge and NOT a missing slot" % e) from e
+            # AN UNWIRED INPUT WHOSE VALUE IS PROVABLY DISCARDED is not a reason to refuse.
+            # If every use of this sampler's result is multiplied by a constant zero, the
+            # program computes the same output for ANY binding, so evaluating it with zeros
+            # is exact rather than assumed -- see `sampler_is_annihilated`. Anything else
+            # still refuses: what the engine substitutes for a genuinely-used unconnected
+            # input is not established, and guessing it is the thing this file does not do.
+            idx = getattr(e, 'index', None)
+            if idx is not None and sampler_is_annihilated(asm, start, idx):
+                # RESTORED AFTERWARDS, ALWAYS. `SAMPLERS` is module-global and nothing else
+                # clears it between records, which is the leak that made this file's render
+                # depend on what ran before it and invalidated two measurements. A binding
+                # installed here is scoped to this one evaluation; leaving it behind would
+                # silently satisfy a LATER record's genuinely-unwired input.
+                _had = idx in sbsruntime.SAMPLERS
+                _prev = sbsruntime.SAMPLERS.get(idx)
+                sbsruntime.SAMPLERS[idx] = sbsruntime.image_sampler(
+                    np.zeros((1, 1, 1), dtype=np.float32))
+                try:
+                    out = scope["prog"](inputs=inputs, slots=slots)
+                except sbsruntime.MissingSampler as e2:
+                    raise cascade("input %s has no output yet -- no sampler was installed "
+                                  "for it, which is an unwired edge and NOT a missing slot"
+                                  % e2) from e2
+                finally:
+                    if _had:
+                        sbsruntime.SAMPLERS[idx] = _prev
+                    else:
+                        sbsruntime.SAMPLERS.pop(idx, None)
+            else:
+                raise cascade("input %s has no output yet -- no sampler was installed for "
+                              "it, which is an unwired edge and NOT a missing slot" % e) from e
         except KeyError as e:
             # `inputs` is keyed by uid (large, from default_inputs) and always fully
             # populated from the package's own declarations; `slots` is keyed by small
@@ -696,6 +808,45 @@ class _SwappedEdges(object):
         return getattr(self._rec, name)
 
 
+def cls_pair_slot(rec, low_bit):
+    """Where a class-word (baked, program) parameter pair lives, from the WALK.
+
+    The class word encodes a parameter as an ADJACENT BIT PAIR: the lower bit means the
+    value is baked in place and costs its own width, the upper means it is a program and
+    costs one pointer, and the two are mutually exclusive. That is the same two-bit code
+    `PARAM_SPEC` documents for the w1 word (00 absent, 01 baked, 10 program, 11 image
+    input), minus the state a scalar cannot take.
+
+    `decompose` reports `cls_params` as (w0 bit, first slot, width), so the owner of a slot
+    is read rather than computed. Returns (state, slot, width) with state 'baked' or
+    'program', or None when neither bit is set -- which is a real answer: the source omitted
+    the parameter and the engine's default applies.
+
+    ASKING THE WALK MATTERS EVEN WHERE `end - 1` WOULD DO. A pair is the last thing in the
+    header only when no w1 parameter follows it, which is true for blur, sharpen and warp
+    and false for directionalwarp and dirmotionblur. Computing the position as "the last
+    header slot" instead of reading its owner scores 100% on the first group and 4.7% on
+    directionalwarp -- the difference being entirely in the arithmetic, not in the format.
+    """
+    d = None
+    try:
+        d = decompose.decompose(rec)
+    except Exception:
+        return None
+    if not d:
+        return None
+    w0 = rec.words[0]
+    state = ('baked' if (w0 >> low_bit) & 1 else
+             'program' if (w0 >> (low_bit + 1)) & 1 else None)
+    if state is None:
+        return None
+    want = low_bit if state == 'baked' else low_bit + 1
+    for b, slot, width in d.get('cls_params', ()):
+        if b == want:
+            return (state, slot, width)
+    return None
+
+
 def walk_named_offset(asm, rec):
     """`transformation`'s offset program, taken from the slot the WALK names, or None.
 
@@ -724,11 +875,18 @@ def walk_named_offset(asm, rec):
     the graph, and on this file's own closure it does not. No render-level gain is claimed;
     what changes is that the answer no longer rests on a value probe a phantom can deceive.
 
-    Returns None whenever the walk is not decisive (no single program-valued parameter
-    slot, or it does not evaluate 2-wide), leaving the width rule exactly as it was. This
-    does NOT settle which parameter field 13 IS -- `Record.translation` reads bits 25/26 as
-    two booleans while the two-bit grid makes 26/27 one field, and that tension is open.
-    It settles only WHICH PROGRAM the record's own slot names.
+    Returns None whenever the walk is not decisive (no field-12 program entry, the slot out
+    of range, no valid program there, or it does not evaluate 2-wide), leaving the width
+    rule exactly as it was.
+
+    THE TENSION THIS USED TO RECORD IS RESOLVED. It read: "this does NOT settle which
+    parameter field 13 IS -- `Record.translation` reads bits 25/26 as two booleans while the
+    two-bit grid makes 26/27 one field, and that tension is open." Field 13 was not a field.
+    Bits 24 and 27 are never set in any of 242,931 filter-2 records, so the tiling's field 12
+    can only ever read 0b10 and its field 13 only 0b01 -- the halves of one code at bits
+    (25,26), which reads 01 baked / 10 program / 11 never. The two booleans and the two-bit
+    field were the same statement seen through the wrong frame. `decompose.STRADDLED` states
+    the frame; see its comment for the measurement.
     """
     try:
         import decompose
@@ -737,40 +895,31 @@ def walk_named_offset(asm, rec):
         return None
     if not d:
         return None
-    named = []
-    # `param_slots` entries carry a WIDTH now (one entry per parameter, not per word), so
-    # this expands the run to keep scanning exactly the words it scanned before.
+    # NAMED BY ITS FIELD, which it could not be until the straddle was framed. The offset's
+    # two-bit code sits at bits 25,26 and `decompose`'s tiling reads fields on EVEN bits, so
+    # the code used to split across tiling fields 12 and 13 -- one half always reading 0b10
+    # and looking like a value, the other always 0b01 and looking like a pointer. This
+    # function could only work by elimination: collect every program-valued parameter slot
+    # in the record and insist there be exactly one. That failed on the 82 records whose
+    # MATRIX is a program too, and it could never say which slot was the offset, only that
+    # one slot was left.
     #
-    # FIELD 3 IS SKIPPED BECAUSE IT IS THE MATRIX, and that is what makes this rule work on
-    # a record whose matrix is ALSO a program. `matrix22` is the w1 pair at bits 6,7 --
-    # field 3 -- so when bit 7 is set its slot holds a program too, and "the record's single
-    # program-valued parameter slot" finds two and gives up. The offset itself cannot be
-    # named by field (its bits 25,26 straddle the tiling boundary), but the matrix can be,
-    # so the ambiguity is removed from the other side.
-    #
-    # Over the corpus plus the reference packs, 69,282 bit-26 records:
-    #
-    #     already resolved, unchanged by the skip     69,200
-    #     was ambiguous, RESOLVED by the skip             82   (exactly the bit-7 records)
-    #     resolved before and lost by the skip             0
-    #
-    # The 82 are precisely the records with bit 7 and bit 26 both set. They previously fell
-    # through to the `by_width[2]` value probe; they are now named structurally, and cross-
-    # checked against that probe on the same 82: 81 agree, 1 where the walk answers and the
-    # width rule is silent, 0 disagree.
-    for _j, _st, _pos, _w in d.get('param_slots', ()):
-        if _j == 3:
-            continue
-        for pos in range(_pos, _pos + max(1, _w)):
-            if 0 <= pos < len(rec.words):
-                p = rec.words[pos] + 52
-                if (asm.body_lo <= p < asm.body_hi and asm.valid_program(p)
-                        and p not in named):
-                    named.append(p)
+    # `decompose.STRADDLED` now relabels the two halves as the single field they are, with
+    # the format's ordinary alphabet -- state 1 baked (2 words), state 2 a program pointer
+    # (1 word) -- so the offset can be asked for directly, exactly as `walk_named_matrix`
+    # asks for field 3. Over 69,282 bit-26 records (corpus + reference packs) the field read
+    # returns the SAME program as the elimination rule in 69,282 of 69,282, the 82 included.
+    named = [t for t in d.get('param_slots', ()) if t[0] == 12 and t[1] == 2]
     if len(named) != 1:
         return None
+    pos = named[0][2]
+    if not (0 <= pos < len(rec.words)):
+        return None
+    p = rec.words[pos] + 52
+    if not (asm.body_lo <= p < asm.body_hi and asm.valid_program(p)):
+        return None
     try:
-        v = np.asarray(eval_program(asm, named[0], default_inputs(asm, 1), {}, 1,
+        v = np.asarray(eval_program(asm, p, default_inputs(asm, 1), {}, 1,
                                     W=rec.width, H=rec.height)).reshape(-1)
     except Exception:
         return None
@@ -2926,9 +3075,11 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # gives p50 1.00 over 14,931 records (192 distinct values from 0.0125 up).
                 # It matches the trusted path and not the refuted one, and that agreement
                 # was never fitted for.
-                _d = decompose.decompose(rec)
-                _islot = (_d['end'] - 1) if (_d and _d.get('end')) else None
-                _baked = bool(rec.cls >> 12 & 1)
+                # w0 bits 28/29 == class bits 12/13, read through the walk rather than
+                # as "the last header slot" -- see `cls_pair_slot`.
+                _pair = cls_pair_slot(rec, 28)
+                _islot = _pair[1] if _pair else None
+                _baked = bool(_pair and _pair[0] == 'baked')
                 if _baked and _islot is not None and _islot < len(rec.words):
                     v = float(np.frombuffer(np.uint32(rec.words[_islot]).tobytes(),
                                             dtype=np.float32)[0])
@@ -2964,7 +3115,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # reports. The 2-wide reads were bit-13-CLEAR records where end - 1 is a
                 # different bit's slot; asking which bit owns the position separates them
                 # without looking at what any of them evaluate to.
-                elif (rec.cls >> 13 & 1) and _islot is not None and _islot < len(rec.words):
+                elif (_pair and _pair[0] == 'program'
+                      and _islot is not None and _islot < len(rec.words)):
                     _p = rec.words[_islot] + 52
                     if asm.body_lo <= _p < asm.body_hi and asm.valid_program(_p):
                         try:
@@ -3220,12 +3372,21 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if not rec.edges or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
-                _d = decompose.decompose(rec)
-                islot = (_d['end'] - 1) if (_d and _d.get('end')) else None
+                _pair = cls_pair_slot(rec, 28)
+                islot = _pair[1] if _pair else None
                 # CLASS BITS 12 AND 13 ARE THE (BAKED, PROGRAM) PAIR -- see the long note
                 # in `blur` above, which this filter shares. Bit 12 owns a baked slot, bit
                 # 13 owns a program slot, they never co-occur (1,148 / 8 / 167 / 0 here),
                 # and whichever is set owns the last header slot.
+                # ORDER MATTERS: `cls_pair_slot` returns None both when neither bit is
+                # set (the parameter is absent -- see the note below) and when the walk
+                # cannot resolve the record. Those are different answers and the absent one
+                # is the common case, so it is asked first rather than being swallowed by a
+                # message about the walk.
+                if not ((rec.words[0] >> 28) & 1 or (rec.words[0] >> 29) & 1):
+                    raise Unsupported("sharpen intensity: neither class bit 12 (baked) nor "
+                                      "13 (program) is set, so the source omitted it and "
+                                      "the engine's default applies")
                 if islot is None:
                     raise Unsupported("sharpen intensity: the walk does not resolve this "
                                       "record's header")
@@ -3233,14 +3394,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     raise Unsupported("sharpen intensity: slot %d past the record end"
                                       % islot)
                 amount = None
-                if (rec.cls >> 12) & 1:
+                if _pair and _pair[0] == 'baked':
                     amount = float(np.frombuffer(np.uint32(rec.words[islot]).tobytes(),
                                                  dtype=np.float32)[0])
                     if not (np.isfinite(amount)
                             and (amount == 0.0 or 1e-6 < abs(amount) < 1e4)):
                         raise Unsupported("sharpen intensity slot does not read as a "
                                           "plausible value (%r)" % amount)
-                elif (rec.cls >> 13) & 1:
+                elif _pair and _pair[0] == 'program':
                     _p = rec.words[islot] + 52
                     if asm.body_lo <= _p < asm.body_hi and asm.valid_program(_p):
                         try:
@@ -3255,6 +3416,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         raise Unsupported("sharpen intensity: class bit 13 names a program "
                                           "slot that does not evaluate to a scalar")
                 else:
+                    # UNREACHABLE for the neither-bit case, which is refused above; this
+                    # catches a pair the walk reports in a state neither arm reads.
                     # NEITHER BIT MEANS THE SOURCE OMITTED THE PARAMETER, so the engine
                     # substitutes its own default and the file does not contain one. That
                     # is confirmed from the SOURCE side, which is where an absence can be

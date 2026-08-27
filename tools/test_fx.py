@@ -19,6 +19,8 @@ WHAT THESE CATCH, measured by mutating the model one table at a time:
     FX_ENTRY: terminal tags become 24       coverage
     FX_ENTRY_PROGS: shift every slot by +1  coverage, entries_read_the_slots
     FX_NODES2: 0x1B child at word 4 not 5   0x1B_branches
+    FX_NODES2: 0x1B row -> ((8,12),())      NOTHING -- see 0x1B_owns_its_fields
+    fx_tree: 0x1B sentinel branch removed   0x1B_owns_its_fields (143 of 143)
     FX_LOWERING: any one binding re-pointed  fx_lowering (10 of 10 probed, see there)
 
 The first version of this file caught NONE of them, and the reason is worth keeping. Every
@@ -48,7 +50,7 @@ import disasm                                                        # noqa: E40
 import provenance                                                    # noqa: E402
 from sbsasm import (Assembly, FX_NODES, FX_NODES2, FX_TAG_LOW16,     # noqa: E402
                     FX_ENTRY, FX_ENTRY_PROGS, FX_NODE_PARAMS, FX_LOWERING,
-                    fx_entry_layout)
+                    fx_entry_layout, node_shape)
 
 LIMIT = int(os.environ.get('SBS_FX_FILES', '250'))
 
@@ -780,3 +782,88 @@ if __name__ == '__main__':
         out = buf.getvalue()
         sys.stdout.write(out)
         print('%-52s %s' % (fn.__name__, 'skipped' if 'SKIP' in out else 'ok'))
+
+
+def test_0x1B_owns_its_fields_and_does_not_borrow_its_neighbours():
+    """A sentinel `0x1B` must yield NO program and its contiguous child must be VISITED.
+
+    The ownership check, and it exists because the validity check next door cannot fail on
+    the error that actually happened. `test_0x1B_branches_to_two_distinct_children` asks
+    whether the claimed child offsets LAND ON NODE HEADERS, and a row that borrows its
+    neighbour's fields satisfies that -- the neighbour's fields point at real nodes too.
+    Mutation-tested directly: with `FX_NODES2[0x1B]` set to the shipped `((8, 20), (16,))`
+    and to the measured `((8, 12), ())`, that check passes BOTH ways. It does catch a child
+    moved to word 4, both children made identical, and nonsense offsets -- three of four --
+    so it is a real check with one blind spot, and this covers the blind spot.
+
+    WHAT OWNERSHIP MEANS HERE, stated as arithmetic rather than as plausibility. For a
+    `0x1B` whose word 1 is the `0x3039` sentinel the next node begins CONTIGUOUSLY at byte
+    12, and `node_shape` gives that node's own successor and program offsets relative to
+    ITS OWN start. So the bytes it owns are `12 + those`. For the `0x18B` that always
+    follows, `node_shape` is `(8, (4,))`, which makes 12+8 = 20 and 12+4 = 16 ITS fields --
+    exactly the two bytes `FX_NODES2[0x1B]` claimed. The claim was the neighbour's
+    successor and program read as this node's.
+
+    The consequence in the walk, which is what this asserts, is that nothing addressed byte
+    12, so the contiguous `0x18B` was never visited as a node at all: its program was
+    yielded under the `0x1B`'s offset and its successor followed as though the branch owned
+    it. Both assertions below fail on that behaviour and pass on the two-shape walk.
+
+    Scoped to the sentinel form deliberately. The 12 non-sentinel `0x1B` nodes in the
+    corpus (all in one file, word 1 = 0) have a six-word self-relative shape whose
+    successor is not established, so there is nothing here to assert about them yet.
+    """
+    checked = no_prog = child_visited = 0
+    borrowed = []
+    for p in _files():
+        try:
+            a = Assembly(p)
+        except Exception:
+            continue
+        d = a.data
+        for r in a.records:
+            if r.filter_id != 4:
+                continue
+            try:
+                items = [(off, hdr, prog) for kind, off, hdr, prog in r.fx_walk()
+                         if kind == 'node']
+            except Exception:
+                continue
+            offs = {off for off, _h, _p in items}
+            for off, hdr, prog in items:
+                if (hdr & 0xFF) != 0x1B or off + 16 > r.end:
+                    continue
+                if struct.unpack_from('<I', d, off + 4)[0] != 0x3039:
+                    continue          # the six-word form, not established
+                checked += 1
+                if prog is None:
+                    no_prog += 1
+                if (off + 12) in offs:
+                    child_visited += 1
+                # The neighbour's OWN fields, by its own shape -- this is the arithmetic
+                # that makes the claim checkable rather than a matter of taste.
+                child_hdr = struct.unpack_from('<I', d, off + 12)[0]
+                sh = node_shape(child_hdr)
+                if sh is None:
+                    continue
+                owned = {12 + sh[0]} | {12 + s for s in (sh[1] or ())}
+                claimed = set(FX_NODES2.get(0x1B, ((), ()))[0] or ())
+                claimed |= set(FX_NODES2.get(0x1B, ((), ()))[1] or ())
+                if claimed & owned:
+                    borrowed.append((os.path.basename(p), off,
+                                     sorted(claimed & owned)))
+    if not checked:
+        print('SKIP test_0x1B_owns_its_fields: no sentinel 0x1B in this corpus')
+        return
+    assert no_prog == checked, (
+        'a sentinel 0x1B yielded a program of its own on %d of %d nodes; byte 16 is the '
+        'contiguous neighbour\'s program (12 + 4), not this node\'s'
+        % (checked - no_prog, checked))
+    assert child_visited == checked, (
+        'the contiguous child at byte 12 was not visited on %d of %d sentinel 0x1B nodes '
+        '-- nothing addresses it unless the walk continues there'
+        % (checked - child_visited, checked))
+    print('0x1B ownership: %d sentinel nodes, %d yield no program, %d contiguous children '
+          'visited; %d borrow-claims against the neighbour'
+          % (checked, no_prog, child_visited, len(borrowed)))
+    return

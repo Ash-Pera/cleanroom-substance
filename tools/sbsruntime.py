@@ -365,9 +365,13 @@ def _sampler(index):
     try:
         return SAMPLERS[index]
     except KeyError:
-        raise MissingSampler(
+        exc = MissingSampler(
             "no sampler installed for input %r (the record's edge is unwired, which is "
-            "NOT a missing slot)" % (index,)) from None
+            "NOT a missing slot)" % (index,))
+        # The index as data, not only inside the message. A caller that wants to decide
+        # anything about WHICH input is missing should not have to parse prose.
+        exc.index = index
+        raise exc from None
 
 
 def sample_lum(index, pos):

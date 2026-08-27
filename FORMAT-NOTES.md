@@ -38665,6 +38665,812 @@ Two consequences, both retractions:
 
 Any A/B that renders twice in one process is suspect until it clears SAMPLERS.
 
+## Are slots real? The walk arbitrates EXTENT, and we have been reading it as if it arbitrated MEANING
+
+Asked directly, and it is the right question. The short answer: slots are real, the walk is the right
+arbiter, and we have been over-reading what it certifies.
+
+**What the walk actually proves.** `decompose` builds `param_slots` as `(field j, state st, slot pos)`
+and gets `pos` by advancing over each field by a width read from the cost model:
+`spec['w1'][str(j)].get(str(st))`. That width was FITTED per (field, state) from the corpus. So the
+walk's 0-diff result -- 925,701 records agreeing with the independent table model -- certifies that
+the number of words each field consumes is right, and therefore that every later field lands at the
+right position. It certifies POSITIONS AND EXTENTS. It says nothing about what the word at that
+position IS, because the cost model never needed to know: a baked Float1 and a program pointer both
+cost exactly one word, so the walk is blind to the difference by construction. Every "0-diff" and
+"100.00%" in these notes about layout is an extent claim. None of them is a semantic claim.
+
+**And the semantic labels do not hold.** SPEC.md 6.2 states the alphabet as 00 absent / 01 baked /
+10 program / 11 image input. Testing the label against the CONTENT of the slot the walk names
+(classifying each word as a normal float, a zero, a denormal -- which is what a body offset looks
+like read as float32 -- or a valid program pointer), over 40 files:
+
+    code 01, 4 words   17,896   float 52%, zero 48%      a baked Float4. Consistent.
+    code 01, 1 word    31,908   float 82%, denorm 13%    mostly baked. Consistent.
+    code 10, 2 words    3,620   float 94%               A BAKED FLOAT2 -- not a pointer.
+    code 10, 1 word    13,493   float 65%, denorm 28%    mixed.
+
+Code 10 is supposed to be the program state, and 94% of its two-word occurrences are ordinary floats.
+So the code does not cleanly encode baked-versus-program.
+
+**Transformation shows why, and it is a framing error rather than a wrong constant.** Per field:
+
+    field  3  code 01   17,564   float 9,022 / zero 8,530   baked matrix22 (identity is 1,0,0,1)
+    field  3  code 10      424   denorm/ptr 409             matrix as a program
+    field 12  code 10    3,530   float 3,371 / zero 157     A VALUE
+    field 13  code 01    4,755   denorm/ptr 3,921           A POINTER
+
+Field 3 obeys the canonical alphabet exactly. Fields 12 and 13 are exactly INVERTED against it. They
+are not inverted, though -- they are not two fields. `Record.translation` already records the real
+convention, found empirically and with a high MCC: **bit 25 = offset baked, bit 26 = offset program,
+mutually exclusive, 26,700 against 10,692, never both.** Bit 25 is the HIGH bit of "field 12" and bit
+26 is the LOW bit of "field 13" under a 2-bit tiling. So the offset's two-bit kind flag STRADDLES the
+tiling boundary: one parameter, whose bits the tiling splits across two invented fields, giving one
+phantom field that always looks like a value and one that always looks like a pointer.
+
+The 2-bit-per-field tiling is therefore a model that fits some of w1 and mis-frames the rest, and
+`decompose` reporting "field 12 code 10" and "field 13 code 01" is the tiling talking, not the file.
+The cost model absorbs the mis-framing without complaint because it fitted widths to whatever buckets
+it was given: bit 25 set gets 2 words (the baked Float2) and bit 26 set gets 1 word (the pointer),
+which are the correct extents. Right positions, wrong nouns.
+
+This also explains something that looked like sloppiness in `render.py` and is not. Its hand-rolled
+bit tests (bit 6/7 for the matrix, bit 25/26 for the offset) DISAGREE with the alphabet, and on the
+content they are the ones that are right. They were derived against what the slots hold; the alphabet
+was derived against how much room they take.
+
+**What this changes.** Nothing about the layout results -- the extents are measured and they hold. It
+changes what may be claimed from them: "the walk reproduces record layout" must not be read as "the
+walk knows what each slot means", and PARAM_SPEC is ABSENT for filter 2 entirely, so nothing supplies
+transformation's field-to-name map. It also reframes the open parameter problem. The reason positional
+parameter rules kept failing on `levels` may be the same defect one level down: a tiling that splits
+or merges the fields the file actually has, so no rule stated in terms of those fields can be right.
+The arbiter for MEANING has been the render all along, which is what overruled the parameter memo
+derivation and what verified the edges; the walk is the arbiter for STRUCTURE. Conflating the two is
+what let a fitted noun ride along inside a measured number.
+
+## The edge value-probes are gone -- and finding out WHY they were dead is the real result
+
+"Clean out the antipattern" applied to `Record.edges`, which took the walk's slots and then
+second-guessed each one with two value probes: `valid_program(v + 52)` -> "that is a program, not an
+edge", and `1e-6 <= abs(float32(v)) <= 1e6` -> "that is a baked value, not an edge". Asking what a
+word LOOKS like to decide what it IS, in the accessor the renderer depends on.
+
+Both are removed. `edges` now reads: a slot the record does not have is skipped, `0xFFFFFFFF` is the
+absent sentinel, a backward record index is the edge, and ANYTHING ELSE IS None -- reported as a miss,
+never reinterpreted.
+
+Verified redundant before deleting, per-branch rather than in aggregate (an aggregate zero is what
+made two probes look dead once before, when the accessor was merely raising). Full 437-file corpus,
+1,302,039 walk-named edge slots:
+
+    backward record index (the edge)       1,301,922
+    0xFFFFFFFF absent sentinel                   117
+    "looks like a program" probe                   0
+    "looks like a float" probe                     0
+    slot past record end / unexplained             0
+
+and `edges` before-vs-after is IDENTICAL on all 903,616 records.
+
+**But the reason they scored zero is not the reason I first wrote down, and the difference matters.**
+The tempting gloss -- "every slot the walk calls an input holds a backward index, so the probes were
+never needed" -- is circular, and banking it would have hidden the actual finding.
+`decompose._is_image_input` decides that an unnamed state-3 field IS an image input by testing
+`0 < words[pos] < own_index`: the SAME predicate. So the walk pre-selects slots for holding a
+backward index, and the downstream probes then re-test exactly that. They score 0 by construction.
+
+Which means the antipattern was not removed from the decoder; a DUPLICATE of it was. And the copy
+that survives is the load-bearing one. Over 50 files, of 13,862 state-3 fields:
+
+    decided by an exact PARAM_SPEC mask (structural)      614    4.4%
+    decided by the VALUE PROBE (backward-index test)   13,248   95.6%
+      -- blend 12,412, warp 417, shuffle 335, directionalwarp 82, pixelprocessor 2
+
+So the walk we have been calling the structural arbiter for edges is, for 95.6% of its input
+decisions, a value probe wearing a walk's clothes. `PARAM_SPEC` is what would answer structurally and
+it is ABSENT for several filters entirely (filter 2 among them), so there is nothing for the aligned
+test to match on and the fallback carries the decision.
+
+This does not undo the edge results -- the 0-diff cross-check against `_compute_layout` stands, and
+`_compute_layout` reaches the same answers through the independent SPECS/_ruled/EDGES tables. What it
+undoes is the CLAIM attached to them: "edges come from one structural pass reading only the cost
+model" is not true as stated. They come from a structural pass whose input predicate is, in the main,
+"does this word look like a plausible backward index". That is a fitted rule with a 1-in-N false
+positive rate, not a law the file states, and it belongs on the open list next to the two-bit tiling
+that mis-frames the offset. Same defect, same level: [[no-value-based-decoding]].
+
+Not deleted, deliberately. Unlike the two in `edges`, this probe is carrying 95.6% of the decisions,
+so removing it before its structural replacement is found would break the walk rather than clean it.
+The replacement has to come from whatever the file states about which w1 fields are inputs -- the
+thing `PARAM_SPEC` half-answers -- and that is a reverse-engineering problem, not a refactor.
+
+## The walk is fixed: image inputs are now read from the header alone. And the 95.6% was wrong.
+
+`_is_image_input`'s value probe is gone. Whether a state-3 w1 field is an image input is answered
+by the aligned PARAM_SPEC mask, then by a per-(filter, field) law; the slot's VALUE is never
+consulted. Validated against the INDEPENDENT model (`_compute_layout` + `_real_edges`/`_pp_edges`,
+which read SPECS/_ruled/EDGES and never touch costs.json): **903,611 of 903,611 agree, 0 disagree,
+5 uncovered (filter 9)**, and the unseen-pair fallback counter is 0.
+
+FIRST, THE RETRACTION. The "95.6% of the walk's edge decisions are a value probe" figure in the
+section above is WRONG, and the way it was wrong is the lesson. It came from a script that
+re-derived slot positions itself, calling `_select_spec(f, w0, w1, getattr(asm, 'version', None))`
+-- and `getattr(asm, 'version', None)` is not the `ver` decompose passes internally. A different
+spec variant was selected, with different w1 keys, so the script measured six (filter, field) pairs
+the walk NEVER VISITS: (1,0), (3,0), (3,4), (3,5), (3,12), (7,0). It reported blend field 0 as a
+130,767-record mixed case and I found a "perfect" 1,490/1,490 rule for it. The walk never asks
+about blend field 0. The rule was real about nothing.
+
+What settled it was instrumenting the function itself -- wrapping `_is_image_input` and recording
+every `(filter, field, answer)` it is actually asked -- instead of reconstructing its inputs. The
+true census, full corpus, 10,430 calls:
+
+    f=1  j=2   8,486   ALWAYS input   -- answered by the ALIGNED PARAM_SPEC mask (blend's 0x30),
+                                         never by a probe. 81.4% of all decisions.
+    f=1  j=4     963   never          f=1  j=5      7   never
+    f=8  j=1      87   never          f=12 j=1    838   never
+    f=12 j=2       2   never          f=21 j=0     47   never
+
+So the probe was deciding 1,944 of 10,430 (18.6%), not 95.6% -- and it answered False for all
+1,944. Its entire job was saying "no". Replacing it with `INPUT_FIELDS` is exact by construction,
+and the corpus agrees.
+
+Two things worth keeping from the wreckage of the wrong measurement:
+
+  * `distance`'s unnamed input -- the case the old docstring named as the reason a value probe was
+    unavoidable -- is f=21 j=0 and is NEVER an input. Its optional mask is declared structurally by
+    w1 bit 0 and never reaches this function. The stated justification for the probe was false.
+  * blend's third (mask) input is f=1 j=2, and it is decided by an exact PARAM_SPEC mask. The one
+    genuine image-input decision in the whole walk was already structural.
+
+The fallback earned its place immediately: the first table missed (8, 1) entirely, and the counter
+surfaced 87 calls rather than letting the probe answer them silently. A table that cannot say "I
+have not seen this" is a table that lies on the first new corpus.
+
+RE-STATING THE CLAIM HONESTLY, because the version in "Are slots real?" was over-broad in one
+direction and this correction over-corrects if left alone. Edges now come from a pass that reads
+only the header -- the cost model's extents, the class word, w1's states, PARAM_SPEC's masks, and a
+seven-entry law. No slot value decides anything. What has NOT changed is that the cost model's
+widths are still FITTED, and that the 2-bit tiling still mis-frames at least one parameter (the
+offset straddling bits 25/26). Extent is measured; the nouns are still partly ours.
+
+## Audit: where else is the decoder not walking the walk
+
+Systematic sweep for the signature -- code that decides a slot's POSITION or KIND by something
+other than the structure the header states. Ranked by how load-bearing each is.
+
+**1. `_read_slot` decides program-vs-baked by VALUE PROBE, and the format states it in a bit.**
+The reader does `if valid_program(word + 52): kind = 'program' else 'baked'`. But `PARAM_SPEC`
+carries a program mask per parameter -- blend's `opacitymult` is presence 0x30, program 0x20, and
+this file already recorded that bit as 100% predictive over 217,715 slots. The reader ignores it and
+asks the bytes. Measured, full corpus, 585,105 parameter reads where both can answer:
+
+    filter             compared   disagree     rate
+    blend                179,524          0   0.000%
+    levels               168,077          0   0.000%
+    directionalwarp      117,657          0   0.000%
+    dirmotionblur         25,975          1   0.004%
+    fxmaps                93,872      1,423   1.516%
+                                    -------
+                                      1,424   (99.757% agreement)
+
+For blend, levels and directionalwarp the bit and the probe agree EXACTLY -- 465,258 reads, zero
+disagreements -- so the probe is provably redundant there and can be replaced by the bit with no
+change to any reading. `dirmotionblur` disagrees once in 25,975 and that record is worth reading.
+
+fxmaps holds ALL the rest, and its own PARAM_SPEC entry already says why: of its four pairs "two are
+exact and two are near it", 97.22% and 97.06%. This measurement reproduces that independently at
+1.5%. So fxmaps is not a case of the reader preferring the wrong source -- it is a case of the BIT
+MODEL for that filter being unfinished. Switching fxmaps to the bit would be adopting a 97% rule
+over a probe, with no arbiter to say which is right; that needs the render, not a preference.
+
+**2. `named_parameters` still keys the fitted `LAYOUTS` memo** at sbsasm.py:2229, through
+`LAYOUT_MASK`, which this file elsewhere records as dropping the very field bits the slot rule needs.
+This is the last fitted table on a live path and it is already the known open item -- the parameter
+render-seal is what decides it, and that seal must be re-run with SAMPLERS cleared before it means
+anything.
+
+**3. `Record.translation` is HALF wired.** Its first path now asks the walk (`param_slots`, taking
+the single 2-word entry), and the hand-computed `s = 3 + (cls & 1) + (cls >> 7 & 1) + 4` survives
+only as the fallback when the walk is undecided. Worth measuring how often that fallback fires; if
+it is rare the arithmetic can go, and if it is common the walk is not yet describing this record.
+
+**4. `shared_refs` reads a fitted `SHARED` slot table** (sbsasm.py:2053) with no walk involvement at
+all. Small surface, but it is a table of slot indices, which is exactly what the walk exists to
+replace.
+
+**5. render.py's shuffle branch does raw arithmetic on the walk's answer** -- `words[_start + 1 :
+_start + 5]` for the one-hot weight vector. It takes `_start` from the layout and then steps by hand,
+which is the pattern that produced the transformation phantom: correct today, unprotected tomorrow.
+
+NOT on this list, deliberately: `_compute_layout`/`_real_edges` and their hand-rolled
+`g = (cls&1) + (cls>>7&1) + ...` at sbsasm.py:1745. Those are the INDEPENDENT table model and their
+whole value is that they do NOT share machinery with the walk -- every 0-diff claim in these notes
+rests on comparing against them. Converting them to the walk would delete the cross-check and
+replace it with a tautology, which is the trap already recorded twice here.
+
+## `_read_slot` now reads the program BIT where that bit is exact
+
+Third value probe removed, and this one sat in the parameter reader itself. `_read_slot` decided
+whether a parameter was computed or baked by asking `valid_program(word + 52)` -- the same probe that
+manufactured a phantom program out of an instruction operand in `Record.programs`. The format states
+the answer: `PARAM_SPEC` carries a program mask beside each presence mask, and these notes had
+already measured blend's at 100% over 217,715 slots.
+
+`BIT_EXACT_KINDS = {blend, directionalwarp, levels}` now read the bit. Verified by instrumenting
+`_read_slot` and running both implementations on IDENTICAL arguments over the full 437-file corpus:
+
+    blend            179,524 reads   identical
+    directionalwarp  117,657         identical
+    levels           168,077         identical
+    dirmotionblur     25,975         identical (still on the probe)
+    fxmaps            93,872         identical (still on the probe)
+                     -------
+                     585,105 reads, 0 differences, 0 conflicts recorded
+
+Two filters stay on the slot read, and the reasons are about them rather than about the bit:
+
+  * `fxmaps` holds 1,423 of the 1,424 bit/slot disagreements corpus-wide (1.516%). Its own
+    PARAM_SPEC entry already says why -- of four pairs, "two are exact and two are near it", 97.22%
+    and 97.06%. Preferring a 97% bit over a probe, with no arbiter, is not an improvement.
+  * `dirmotionblur`'s ONE disagreement is not a bit error. Road.sbsasm record 417 has w1=0x6, so the
+    bit says `intensity` is a program -- and the WALK agrees, putting intensity at field 0, slot 3,
+    state 2, with `words[3] + 52` a valid program. The 0.25 the probe reports is `words[4]`. The
+    LAYOUTS memo, which is what routes this filter, named the wrong slot. Trusting the bit while
+    standing on the memo's slot would emit `words[4] + 52` as a pointer: a right kind on a wrong
+    slot, which is garbage, not a fix. It is also independent evidence against the memo, and it will
+    resolve itself when dirmotionblur moves onto the walk.
+
+That last point is worth stating plainly, because it inverts the prior reasoning here. The comment
+at the memo path said "where the bit and the slot disagree, what is actually in the slot is the
+honest answer". On the corpus's single non-fxmaps disagreement that is exactly backwards -- the bit
+and the walk are both right and the slot is being read at the wrong address. The slot is not more
+honest; it is just the reading whose error mode is quieter.
+
+`_kind_conflicts` collects any future disagreement on a trusted filter rather than swallowing it --
+the same discipline that surfaced the missing `(emboss, 1)` pair instead of guessing at it. Empty on
+this corpus.
+
+## pixelprocessor IS on the walk; its sampler count is right 99.9%; the residue is 5 records
+
+Asked directly: does `pixelprocessor` use the walk? Yes. It is SPEC 6.4's second alphabet, the
+ARITY INTEGER, and `decompose` implements it -- the input count comes from w1's arity field (the cost
+model's own `arity_sm`, widened from a 4-bit mask to the full 5-bit field so arity 16 reads as 16 and
+not 0), the inputs are contiguous from slot 2, and `prog` is the slot right after them. It returns no
+`param_slots` at all, which is right: a pixelprocessor's parameters live in its pixel program, not
+its header.
+
+Checked against what the programs actually ask for. Disassembling every pixelprocessor's programs and
+collecting the sampler indices its `samplecol`/`samplelum` instructions name, over 60 files:
+
+    records whose programs sample     5,239
+      sampler set fits the arity      5,234    99.90%
+      exactly {0 .. arity-1}          5,059
+      EXCEEDS the arity               5        0.10%   -- and all five by exactly ONE
+    records with no sampler use         251
+
+So the arity read is not the problem, and the walk covers this filter properly.
+
+The five are still unexplained, and one of them is what blanks four of the sand file's six outputs:
+record 2194 declares arity 3, its edges (2188, 2191, 2193) all render, and its pixel program reads
+samplers #0, #1, #2 AND #3. Its other two programs are `inputref.i1` / `inputref.i2` on graph-input
+uids -- integer parameters, not images, and this file has no graph-input bitmap records at all -- so
+they are not the missing binding. `sampler_bindings` cannot help either: it binds only records that
+are THEMSELVES declared outputs, and 2194 is upstream of one.
+
+A HYPOTHESIS FORMED AND REFUTED, recorded because the refutation is the useful part. The four
+exceeding records I inspected share an identical header -- `w0 = 0x00998828`, `cls = 0x99` -- with
+arity varying (3, 3, 3, 2) and the sampler count always arity+1. That looked like a class-word
+signature declaring an implicit extra input. It is not: over 80 files, cls=0x99 pixelprocessors are
+4,084 FIT against 4 exceeding. 0x00998828 is simply the commonest pixelprocessor header, so sampling
+only the exceptions and reading off their most frequent feature finds the base rate, not a
+discriminator. The test that killed it is the one the hypothesis skipped -- looking at the records
+that share the marker and DON'T exhibit the behaviour.
+
+What would actually settle it: where a sampler index above the declared arity is bound. Nothing in
+the record's own header supplies it, so the candidates are the shared cache (records write slots
+other records read, already established at index 64 and above) or a binding the graph makes that the
+assembly does not restate. Until then these five refuse honestly rather than sampling whatever is
+nearby, which is the correct behaviour for an unresolved binding.
+
+## The walk was one word short on 95% of pixelprocessors, and `const` hid it
+
+Chased on the suggestion that the out-of-arity sampler might be an artifact of misalignment from
+the not-yet-walked machinery. It is a real misalignment, though not the one that explains the
+sampler.
+
+`decompose`'s arity branch assigned `prog = pos` and never advanced `pos`. The next line,
+`pos = max(pos, const)`, covered for it in exactly the records where it did not matter: const is 3,
+so at arity 0 the walk runs pos=2 -> prog=2 -> max(3,3)=3 and the class slots correctly start at 3.
+At any arity >= 1, pos is already 2+arity >= 3, const bumps nothing, and the first CLASS SLOT IS
+ALLOCATED ON TOP OF THE PROGRAM SLOT. Every later slot, and `end` with them, sits one word low.
+
+    pixelprocessor records                        57,965
+      prog COLLIDES with a class slot             55,255   95.3%
+        and the slot at the too-low `end`
+        holds a VALID PROGRAM                     55,254   99.998% of those
+
+Confirmed against an independent route before touching anything: `record_layout.header_words`
+totals the header from the same cost model by different arithmetic, and `decompose`'s end was **-1
+against it on 5,259 of 5,490 records**, equal only on the 231 arity-0 ones where const covered. After
+adding `pos += 1`: **5,490 of 5,490 exact, zero collisions.** Edges are untouched -- inputs are
+computed before this point -- and re-validating against `_compute_layout`/`_real_edges` still gives
+903,611 of 903,611 agreeing, 0 fallback hits.
+
+So a record's own pixel program was being excluded from its own header on 95% of pixelprocessors,
+reachable only through the `programs()` word scan -- the same scan that manufactures phantoms. On
+UHL3D-Stylized_Sand record 2194 the pixel program (1072772, 82 instructions) sat at slot 7 with
+end=7, named by NO record's header slot anywhere in the file.
+
+WHAT THIS DOES NOT EXPLAIN, and the correction is worth stating because the fix makes the puzzle
+HARDER rather than easier. Before it, "the program that samples #3 is a phantom belonging to another
+record" was a live explanation. It is now dead: with end=8 that program is unambiguously record
+2194's own, named by its own header slot 7. The record really does declare arity 3 and really does
+sample #0, #1, #2 and #3. Its edges are unchanged and its render is unchanged -- 2,229 records, 1 of
+6 outputs, same failure.
+
+What is known about those five records, all corpus-wide and all still open:
+
+  * 5 of 5,239 sampling pixelprocessors reference a sampler above their arity, always by exactly 1.
+  * On 2194 the extra read is ANNIHILATED: `samplelum.f1 %19, #3` feeds `mul.f1 %20, %21` where %21
+    is `const.f1 0`. Two other records (PavingStones 547, stylized_round_stones 736) match exactly.
+    Three (alien_rock_coral 155, 353, 2054) are LIVE -- the extra sample reaches the output.
+  * The shared cache cannot be the binding: it is a float CSE cache (written by 0x06, read by 0x03),
+    scalar values, not images.
+  * `sampler_bindings` cannot be either: it binds only records that are themselves declared outputs,
+    and 2194 is upstream of one.
+
+An annihilated read is a disconnected input the compiler still emitted a sample for -- any image
+bound there gives the same answer, so those three could render correctly with anything. The three
+LIVE ones cannot, and guessing what the engine substitutes for an unconnected input is the same
+refusal the grayscale weights get. Left refusing.
+
+## Chasing the three LIVE samplers: an ISA correction, a provable fix, and one open question
+
+**First, an ISA fact that nearly derailed this.** `samplelum`/`samplecol` have TWO encodings --
+2-operand (`0933`, `09F4`) and 3-operand (`0D33`, `0DF4`) -- and the SAMPLER INDEX IS THE FIRST
+IMMEDIATE in both. The 3-operand form's second immediate is a mode flag, not an index. Established
+by the arity bound over 80 files: the first immediate is within the record's declared arity on 5,711
+of 5,714 three-operand samples, while the second is out of range 501 times and is the constant 1 in
+5,696 of them. Worth stating because the three-operand form reads as `%pos, #2, #1` and invites
+exactly the wrong parse.
+
+**Strict liveness split the five.** Asking whether EVERY use of an out-of-arity sample's result is
+annihilated by a multiply with a constant zero:
+
+    UHL3D-Stylized_Sand 2194, PavingStones003 547, stylized_round_stones 736
+        arity 3, sampler 3, one use, mul by const 0        STRICTLY ANNIHILATED
+    alien_rock_coral 155, 353, 2054
+        arity 2, sampler 2, one use, feeds a warp          LIVE
+
+In all six the index is exactly the arity -- one past the last wired input, never further -- which is
+what a source graph with a trailing UNCONNECTED input slot compiles to. On the annihilated three the
+parameter that would have consumed it was left at zero, so the compiler emitted the sample and then
+multiplied it away.
+
+An annihilated read makes the binding IRRELEVANT BY PROOF: the program computes the same output for
+any image bound there. So `render` now installs a zero sampler for that case and evaluates, rather
+than refusing -- `sampler_is_annihilated` reads it off the record's own bytecode. This is not an
+assumption about what the engine substitutes for an unconnected input; that remains unknown and the
+three LIVE ones still refuse. Their sample supplies an ANGLE (x360 -> radians -> cos/sin) driving a
+warp, and nothing in the file binds it: no edge, no graph-input bitmap record, no manifest (that
+specimen ships none), and not the shared cache, which is a float CSE cache holding no images.
+
+Effect on the sand: 2,229 -> 2,288 records, and 2194 renders. NOTE 2,288 is exactly the count the
+SAMPLERS leak produced by accident -- the leak was stumbling into this same unblock unsoundly. The
+new binding is saved and restored around the one evaluation for that reason; leaving it in the
+global would satisfy a later record's genuinely-unwired input. THAT RESTORE IS NOT YET VERIFIED --
+the repeatability check was not run.
+
+**The sand's five blank outputs now reduce to two roots**, and neither is the sampler:
+
+    record 2242  distance, "colour record produced 1 channels, not 4"   gates 4 outputs
+    record 63    pixelprocessor, non-finite 100%                        gates 1 output
+
+The cache chain that looked like the blocker is downstream of 2242: 2262 writes cache 4, 2263 reads
+it and writes cache 0, 2264 reads cache 0 -- and 2251/2260/2261/2262 all fail on edges 2250 and 2259,
+whose chains both bottom at 2242. An edge-following tracer cannot see that, because the cache
+dependency is not an edge.
+
+**2242 is gated by an UNANSWERED arbitration question, not a decode gap.**
+`assume.assumed('distance.propagate')` is None, options `('field', 'nearest')`, and the default
+'field' emits a scalar -- which a colour record's header forbids, so it refuses. The record is
+exactly the shape `distance.propagate`'s docstring describes: colour record, edge 0 greyscale, edge 1
+colour, 122 such records across 444 files.
+
+It cannot be arbitrated on this corpus. Checked directly: ZERO reference-shipping packages contain a
+colour `distance` record, so no exported map can score the two arms. The question stays open for lack
+of a specimen, not for lack of trying.
+
+What can be said without arbitrating: for a COLOUR record 'field' is not one of two plausible
+readings, it is STRUCTURALLY EXCLUDED -- a scalar distance field cannot be a 4-channel output, and
+this file already trusts the colour bit enough to refuse on it. Eliminating 'field' there is
+elimination, not preference. But 'nearest' is still a MODEL of what is done with edge 1 (its value at
+the closest lit mask pixel, faded by the field), and that model is unverified. So the honest position
+is that the header rules out one arm and does not establish the other, and flipping the default would
+change render's "never emit an image it cannot defend" contract. Left for a deliberate decision
+rather than taken unilaterally.
+
+## The last hand-stated node entry, `FX_NODES2[0x1B]`, reads the NEXT node's fields as its own
+
+`FX_NODES2` is down to a single row -- `0x1B: ((8, 20), (16,))`, two successors at bytes 8 and 20
+with a program at byte 16, i.e. words 2, 4 and 5 of the cell. `fxrender` records a contradiction
+against it, measured on 34 nodes in one file: the cell is only THREE words long, so words 4 and 5
+belong to the FOLLOWING `0x18B` node, whose own `(8, (4,))` reads exactly those two. It declined to
+correct the table from there -- "this is the shape of one node kind measured in one place".
+
+It is not one place. Re-measured over the whole 437-file corpus, every `0x1B` node reached through
+`fx_walk`:
+
+    0x1B nodes                         355
+      word 1 is the constant 0x3039    343    96.6%
+      word 3 is a 0x18B node header    343    96.6%
+
+So the shape holds on 343 of 355 across the corpus, not 34 in one file, and the conclusion stands:
+the `0x1B` cell is three words -- `[header][0x3039][pointer][next node's header]` -- the next node is
+CONTIGUOUS rather than addressed, and `FX_NODES2`'s bytes 16 and 20 are the following node's program
+and successor misread as this one's. A hand-stated row derived by over-reading the neighbour.
+
+(One correction to my own probe: the "word 2 is a pointer backwards into the body" leg scored 0/355,
+because the test I wrote compared `w2 + 52` against the node offset rather than against the body
+origin. The values -- 0xe5fe0, 0xf7ff8, 0x12115c -- are plainly body offsets, so that leg is untested
+here rather than refuted, and the two legs that ARE tested carry the reading.)
+
+The 12 nodes that do not match are unexamined and are the reason this is written as a finding rather
+than applied as a patch. Correcting the row changes the FX walk for every record carrying a `0x1B`,
+so it wants its own validation pass -- and note the derived `node_shape` rule does not obviously
+supply the right answer either: for these headers it puts the successor at word 2, which is the
+pointer, not word 3, where the next header actually sits. So "migrate 0x1B onto the walk" is not a
+one-line deletion of the last table row; the mask rule and the measured shape currently disagree
+about the same node, and that disagreement is the thing to settle first.
+
+## Settled: `0x1B` is a two-child branch, and there was never a node_shape disagreement
+
+**First, retracting my own framing.** I wrote that "the derived `node_shape` rule does not obviously
+supply the right answer either: for these headers it puts the successor at word 2". That was me
+hand-applying the rule from its docstring instead of calling it. `node_shape(0x801B)` returns **None**
+-- it abstains on the whole low-byte-bit-7-clear family, exactly as its own comment says. There is no
+node_shape-versus-measurement disagreement, because node_shape declines to speak. The only
+disagreement is `FX_NODES2` versus the file, and the file wins.
+
+**And the two readings that looked contradictory are both right, about different children.** Over the
+whole corpus, every `0x1B` node reached through `fx_walk`:
+
+    0x1B nodes                                      355
+      word 1 is the sentinel 0x3039                 343
+      word 3 is a node header (contiguous child)    343
+      word 2 + 52 lands on a node header            343   -- all land on 0x18B
+
+The same 343 on all three legs. So the cell is `[header][0x3039][pointer][next node's header]`, and
+it has TWO children: one ADDRESSED by the word-2 pointer (byte 8) and one CONTIGUOUS at word 3
+(byte 12). `fxrender` measured the contiguous one and concluded the cell was three words; the table
+recorded a successor at byte 8, which is the pointed one. Neither was wrong about what it saw.
+
+`FX_NODES2[0x1B] = ((8, 20), (16,))` is wrong in exactly two places, and the earlier diagnosis holds:
+byte 8 is right, byte 20 and the program at byte 16 are the FOLLOWING `0x18B` node's own successor
+and program (`node_shape(0x18B)` returns `(8, (4,))` -- byte 12 + 8 = 20 and byte 12 + 4 = 16, which
+is the arithmetic that produced them). The measured row is `((8, 12), ())`: two children, no program
+of its own.
+
+**The 12 exceptions are one file and one shape.** All twelve are in `Splatter.sbsasm`, all have
+word 1 = 0 rather than the `0x3039` sentinel, and their word 3 is `0x54d4xxxx`/`0x54d0xxxx` -- low
+nibble 8, not a node nibble. So the corpus partitions on a value the file itself states: 343 records
+carrying the sentinel take the three-word two-child shape, 12 without it take something else that is
+not established here. That is a structural discriminator, not a fitted one.
+
+NOT APPLIED. `FX_NODES2` is keyed by low byte alone and cannot express "when word 1 is the sentinel",
+so correcting the row wholesale would impose the three-word shape on the 12 that demonstrably do not
+have it. What the correction is worth: for the 343 the walk currently yields the next node's program
+as this node's and follows a successor field belonging to the next node -- the next node is reached
+contiguously anyway, so the visible symptom is a spurious program attribution rather than a lost
+branch. Fixing it properly means either keying the family on the sentinel or letting the walk treat
+"contiguous next cell" as the continuation, which is what a chain already means.
+
+## The `0x1B` family has TWO shapes, and word 1 states which -- the last node table is now derivable
+
+Chased the 12 `0x1B` nodes that did not fit the three-word shape. They are not noise and they are not
+a walk artifact -- the phantom hypothesis is refuted by their regularity. All 12 (all in
+`Splatter.sbsasm`) have an exact, repeating structure:
+
+    w2 + 52 - off  =  +12      12 of 12     word 2 points at word 3's own address
+    w4 + 52 - off  =  +20      12 of 12     word 4 points at word 5's own address
+    w5 + 52 is a valid program 12 of 12
+
+Self-relative pointers, each naming the word after the next, ending in a program pointer. A phantom
+read of bytecode does not produce +12 and +20 twelve times out of twelve.
+
+So `0x1B` is TWO shapes, and the file states which in WORD 1:
+
+    word 1 == 0x3039   343 nodes    [hdr][0x3039][ptr -> a distant 0x18B][contiguous 0x18B]
+                                    three words, two children: one addressed, one contiguous
+    word 1 == 0         12 nodes    [hdr][0][ptr->+12][payload 0x54d4xxxx][ptr->+20][prog ptr]
+                                    six words, self-relative chain ending in a program
+
+343 + 12 = 355, the whole family, with no residue. The discriminator is a CONSTANT THE FILE STORES,
+not a fitted threshold -- the same kind of term as the `0x3039` sentinel that withdrew an earlier
+`0x9B` derivation, and the same kind of self-describing switch as `shuffle`'s tag bit 0.
+
+That is what makes the last `FX_NODES2` row removable in principle. It is one row keyed by low byte
+`0x1B`, it states `((8, 20), (16,))`, and that row is wrong for BOTH shapes: for the 343 its byte 20
+and byte 16 are the following `0x18B`'s own successor and program (12+8 and 12+4), and for the 12 the
+cell is six words with a different layout entirely. A rule keyed on word 1 covers both and needs no
+table:
+
+    word 1 == 0x3039  ->  children at bytes 8 and 12, no program of its own
+    word 1 == 0       ->  six-word form, program via the word-5 pointer
+
+STILL NOT APPLIED, and now for a better-stated reason than before. `node_shape` ABSTAINS on this
+family (bit 7 of the low byte is clear) and `FX_NODES2` is the only source, so changing it changes
+the FX walk for every record carrying a `0x1B`. The visible symptom of the current row on the 343 is
+a spurious program attribution -- the next node's program counted as this node's -- and the next node
+is reached contiguously regardless, so nothing is lost, only miscredited. Applying the two-shape rule
+is a `node_shape`/`fx_tree` change wanting its own validation pass against `test_fx.py`, which is the
+regression guard that exists precisely for this.
+
+## APPLIED: the `0x1B` branch reads its shape from word 1, and stops crediting its neighbour's program
+
+The two-shape finding is now in `fx_tree`. For a `0x1B` whose word 1 is the `0x3039` sentinel the
+walk takes one POINTER child at byte 8 and one CONTIGUOUS child at byte 12, and yields no program of
+its own. The 12 non-sentinel nodes are deliberately left on the old `FX_NODES2` row: their six-word
+self-relative form is characterised but their successor is not, so there is nothing to put in `nxts`
+for them, and changing their behaviour would be a guess where the 343 is a measurement.
+
+The contiguous child could not simply be added to `nxts`, which POINTER-READS each offset it is
+given: byte 12 holds the `0x18B`'s header itself, not a pointer to it. So the branch appends `q + 12`
+to the targets directly.
+
+What the old row was costing, now measurable as a fix: nothing addressed byte 12, so the contiguous
+`0x18B` WAS NEVER VISITED AS A NODE -- the walk yielded its program under the `0x1B`'s offset and
+followed its successor as though it were the branch's own. Over the first 120 corpus files:
+
+    sentinel 0x1B nodes reached          52
+      contiguous child now VISITED       52 of 52
+      branch yields a spurious program    0 of 52   (previously: the neighbour's)
+
+The traversal always reached the same descendants -- the error was never a lost branch. What was
+wrong is the node census (one `0x18B` missing per sentinel branch) and the program attribution (that
+`0x18B`'s program credited to the `0x1B`). Both are now right, and any census built on `fx_tree`
+changes accordingly: this is the kind of correction that moves counts these notes quote elsewhere,
+so figures derived from FX node populations should be re-read rather than assumed to carry over.
+
+## "15 passed" did NOT validate the `0x1B` change, and the test that names it cannot fail
+
+`test_fx.py` passes with the two-shape branch in place -- 15 of 15. That is not evidence the change
+is right, and saying so would repeat the mistake this file keeps recording.
+
+`test_0x1B_branches_to_two_distinct_children` is the only check that names this node kind, and it
+reads the child offsets **out of `FX_NODES2[0x1B][0]`** and then verifies those offsets against the
+file. It never asks what `fx_tree` traversed, so the code path I changed is not exercised by it at
+all. It found the nodes through `fx_tree` and then ignored what `fx_tree` did with them.
+
+Worse, it cannot fail on a wrong row. Its own docstring records the first version's defect --
+"hardcoded +8 and +20, so it validated the constants it had itself been written with and could not
+see a change to FX_NODES2" -- and the fix moved the constants from the test body into a read of the
+table. That is the same circularity one level up: the test now validates whatever the table says. Its
+substantive assertion is that both children land on node headers, and byte 20 DOES land on one --
+it is the following `0x18B`'s successor pointer, so it reaches that node's child. A row that reads
+the neighbour's fields still scores > 0.80 and still passes.
+
+So the check is satisfied by both the correct and the incorrect shape, which by this project's own
+standard -- a table that changes no reading when emptied is not carrying the decode -- means it is
+not carrying this one. The mutation it was built to catch (pointing a child at the program slot,
+word 4) it does catch; the mutation that actually occurred in the table it cannot see.
+
+What a discriminating check looks like here is a claim about the DATA rather than about the table:
+for a sentinel `0x1B`, word 3 is itself a node header in 343 of 355, and bytes 16 and 20 are the
+following node's own program and successor by the arithmetic 12+4 and 12+8. That is verifiable
+without reference to either the table or `fx_tree`, so it can fail. Deliberately NOT written by me in
+the same pass as the change it would validate -- a test authored to agree with a change I just made
+is worth very little, and the honest state to leave this in is: the change is measured (52 of 52
+contiguous children now visited, 0 spurious programs) and the suite does not yet discriminate it.
+
+## Mutation-testing the `0x1B` check: it catches three errors and is blind to the one that happened
+
+Rather than argue that `test_0x1B_branches_to_two_distinct_children` cannot see a wrong `FX_NODES2`
+row, I mutated the row and ran it. Four rows, the real check:
+
+    ((8, 20), (16,))   the row as shipped, believed WRONG          PASS
+    ((8, 12), ())      the MEASURED shape                          PASS
+    ((8, 16), (16,))   child at word 4 -- its docstring's mutation  FAIL (143, 286)
+    ((8,  8), (16,))   both children the same word                 FAIL (143, 0)
+    ((40, 44), (16,))  nonsense offsets                            FAIL (11, 96)
+
+So the check is a real check: it catches three of the four mutations probed, including the one its
+own docstring claims. What it cannot do is separate the shipped row from the measured one -- both
+pass -- which is precisely the error that occurred.
+
+WHY it is blind there is the interesting part, and it is not laziness in the check. Its assertion is
+that the child offsets point AT NODE HEADERS. Byte 20 does: it is the following `0x18B`'s successor
+pointer, and that node's successor is a real node. A row that borrows its neighbour's fields still
+points at real nodes, because the neighbour points at real nodes. The predicate "lands on a node"
+cannot distinguish a node's own field from an adjacent node's field of the same kind.
+
+A second mechanism helps it pass. Targets outside the body are `continue`d BEFORE `probed` is
+incremented, so an offset that yields out-of-range addresses is silently excluded from the ratio
+rather than counted against it. The denominator omits exactly the evidence that would convict a bad
+offset -- which is why ((8, 12), ()) also passes, even though byte 12 holds a header rather than a
+pointer and `c2 + 52` is not a meaningful address at all.
+
+The general shape of this, worth carrying beyond FX: a structural check whose predicate is "does this
+land on a valid X" is satisfied by any field that happens to reach a valid X, including a
+neighbouring record's field of the same type. Discriminating between "this node's successor" and "the
+next node's successor" needs a predicate about OWNERSHIP -- the arithmetic that ties byte 20 to
+12 + 8 and byte 16 to 12 + 4 -- not about validity. The mutation record at the top of `test_fx.py`
+should say so: its `FX_NODES2` line currently claims one mutation caught, and the row has a whole
+class of errors it does not cover.
+
+## The ownership test, and it is checked against its own change
+
+`test_0x1B_owns_its_fields_and_does_not_borrow_its_neighbours` is in `test_fx.py`. Full suite: 16
+passed (15 before), 3m04s.
+
+It asserts two things, both about OWNERSHIP rather than validity, which is what the check next door
+could not express:
+
+    a sentinel 0x1B yields NO program of its own      143 of 143
+    its contiguous child at byte 12 IS visited        143 of 143
+
+The arithmetic is what makes those checkable instead of a matter of taste. The next node begins at
+byte 12 and `node_shape` gives ITS successor and program relative to ITS OWN start, so 12+8 = 20 and
+12+4 = 16 are its fields -- the exact two bytes `FX_NODES2[0x1B]` claimed.
+
+VERIFIED IN BOTH DIRECTIONS, because a test that cannot fail on the code it validates is worth
+nothing and this file has shipped one of those before:
+
+    against the two-shape walk                        PASS
+    with the sentinel branch disabled (old behaviour) FAIL, "yielded a program of its own
+                                                      on 143 of 143 nodes"
+
+Done by mutating `sbsasm.py` itself, then restoring from a backup copy and re-running to confirm the
+restore (0 mutation markers left, test passes again) -- rather than reasoning about what the old code
+would have done.
+
+One deliberate NON-assertion: the test counts 143 borrow-claims -- `FX_NODES2[0x1B]` still names the
+neighbour's bytes -- and prints the number without failing on it. That row is now consulted only for
+the 12 non-sentinel nodes, so failing the suite over it would be flagging a live bug in a path that
+no longer runs for the sentinel form. The count keeps it visible rather than silently forgotten, and
+it goes to zero when the row is finally fixed for the 12 as well.
+
+The mutation record at the top of the file gained two rows, one of which records a mutation NOTHING
+catches:
+
+    FX_NODES2: 0x1B row -> ((8,12),())      NOTHING -- see 0x1B_owns_its_fields
+    fx_tree: 0x1B sentinel branch removed   0x1B_owns_its_fields (143 of 143)
+
+A mutation record that only lists what IS caught is an advertisement. The line that says a mutation
+is caught by nothing is the one that tells the next reader where the suite is thin.
+
+## `FX_NODES2` is drained: the last hand-stated FX node table carries nothing
+
+Both `0x1B` forms now read their shape from the file, and emptying the table changes no reading:
+
+    FX_NODES2 = {27: ((8, 20), (16,))}  vs  FX_NODES2 = {}
+    41,164 fxmaps records, 41,164 fx_walk outputs IDENTICAL
+
+The second form fell to the same question as the first -- what does word 1 say -- and the answer
+completes the family. BOTH forms are three words, `[header][word 1][pointer]`, and word 1 states what
+sits contiguously at byte 12:
+
+    word 1 == 0x3039   343 nodes   the next NODE (an 0x18B), walked as the second child
+    word 1 == 0         12 nodes   the first table ENTRY, and the node chain ends there
+
+The table reading is not inferred from the low nibble alone. On all 12, the word at byte 12 has its
+low 16 bits in `FX_TAG_LOW16`, the established entry-tag vocabulary (12 of 12), and `fx_table(q + 12)`
+yields 3 to 5 entries on every one where the walk as it stood reached 0 or 1. Word 2's pointer says
+the same thing independently: it addresses `q + 12` exactly, 12 of 12, so the node NAMES the entry as
+well as abutting it. Two independent legs and a vocabulary check, not a plausibility argument.
+
+What the old row cost these 12, and it is the same error as the sentinel form one structure over:
+bytes 16 and 20 are the ENTRY's own fields, so the walk yielded the entry's program as the node's and
+followed an entry field as a successor. Corrected, the 12 records go from 0 or 1 entries to 3 to 5 --
+**52 entries recovered, 10 of the 12 having had none at all**.
+
+So `FX_NODES2` joins `FX_NODES`, `FX_ENTRY`, `FX_ENTRY_PROGS` and `FX_TABLE`: derived away rather
+than argued away, and verified drained by emptying it against the whole corpus rather than by reading
+the code. Its remaining `.get()` calls are misses on families it never held.
+
+The FX side is now table-free for node shape, entry extent, entry program slots and inline program
+position. What is NOT closed: `FX_PAYLOAD_PROG` still states two tags the rule gets wrong, and the
+`0x1B` correction moves FX node and program counts, so any figure in these notes derived from an FX
+node census predates it and should be re-measured rather than carried over.
+
+## Re-measured: the FX node-chain census after the `0x1B` correction (supersedes the earlier table)
+
+The `0x1B` work moved node and program counts, so the stock-taking table above ("node chain:
+node_shape 2,210 headers, FX_NODES2 77 headers, uncovered 0") predates it and should not be carried
+over. Re-run at the same scope, 25 corpus files, counting DISTINCT node offsets rather than yields
+(`fx_tree` yields once per program slot, so a two-program node is yielded twice at one offset):
+
+    distinct node headers                    2,241
+      node_shape (derived mask rule)         2,209
+      leaf_successor (derived)                  28
+      0x1B, shape read from word 1               4
+      HAND-STATED                                0
+      UNCOVERED                                  0
+
+    node yields (once per program slot)      2,242
+    entries reached                         13,668
+
+So the node chain is covered end to end with nothing stated by hand -- the row that used to read
+"FX_NODES2 (hand-stated) 77 headers" is now zero, and the two families it named have separate derived
+answers: `0x0B` through `leaf_successor` (28 here) and `0x1B` through word 1 (4 here; this scope
+contains no non-sentinel form, which lives in `Splatter.sbsasm` outside the first 25 files).
+
+The old table's 77 does not reconcile with 28 + 4 = 32, and the difference is not a regression: that
+figure counted a scope and a unit this one does not (yields rather than distinct offsets, and `0x0B`
+was already on `leaf_successor` by the time it was written, so the row was stale in its own right).
+Recorded rather than quietly replaced, because a number that changes for TWO reasons -- a real
+correction and a counting-unit difference -- is exactly the kind this file has been caught carrying
+forward before.
+
+## `FX_PAYLOAD_PROG` halved: one row was kept for a discrepancy that had already been fixed
+
+Knocked each row out separately over the whole corpus, comparing every `fx_walk` output on all
+41,164 fxmaps records:
+
+    drop 0x0A800048    41,164 identical,   0 differ     carries nothing
+    drop 0x00020018    41,031 identical, 133 differ     load-bearing
+
+`0x0A800048` is removed. Its note said "the program sits one slot PAST the inline slot the rule
+predicts (7, not 6)" -- and `fx_entry_layout` now returns `(7, None, 'inline')` for that tag, so the
+layout rule reaches it unaided. The rule caught up at some point and the row was left behind. A row
+kept for a FIXED problem reads exactly like a row kept for a real one; only knocking it out
+separates them, which is the whole argument for `test_tables.py` existing.
+
+`0x00020018` stays, and what it stands in for is now measured. Of its 796 entries, 133 put a program
+at the tabled offset, and on ALL 133 a word of the entry POINTS AT THAT SAME ADDRESS -- word 7,
+unanimously, with 0 reachable only by the constant. So the byte offset is proxying for a pointer the
+entry stores.
+
+That does not make "read word 7" an improvement, and saying it did would be the easy mistake here.
+The entry's layout is EMPTY for this tag, so word 7 is not derived from anything either -- it is one
+fitted constant swapped for another, with identical readings on all 133. Left alone until the tag
+states where its program is.
+
+AND THE PATTERN THIS SESSION KEEPS FINDING DOES NOT APPLY, which is the part worth recording. On 9 of
+the 133, word 7 lies PAST THE NEXT ENTRY'S START -- exactly the shape of the `0x1B` row reading its
+neighbour's fields, twice over. I expected the same answer and checked instead of assuming: every one
+of those 9 programs is UNIQUE to this entry, 0 of 9 also yielded by the structure they appear to
+belong to. Bounding the read would DELETE 9 programs nothing else finds, not deduplicate 9
+misattributions.
+
+Uniqueness cuts both ways and this does not settle it: 9 real programs no other structure names, or 9
+phantoms no other structure confirms. Both are consistent with the evidence, so the bound stays
+unapplied. Three borrow-the-neighbour findings in a row is exactly the point at which the fourth
+starts getting assumed rather than measured.
+
+## Two tables in this file disagreed about the entry-tag vocabulary, and the enum says which was right
+
+Found while chasing `FX_PAYLOAD_PROG`: 37,135 of the 367,077 entries `fx_walk` yields corpus-wide --
+10.1% -- have a tag whose low 16 bits are NOT in `FX_TAG_LOW16`. That set is supposed to BE the
+vocabulary, so a tenth of a real entry population failing it is either a bad walk or a short table.
+
+It is a short table, and the evidence was already in the file. `FX_ENTRY_PROGS` is keyed by whole
+tags and its keys imply 27 distinct low-16 values against `FX_TAG_LOW16`'s 17. Eight of the
+difference end in nibble B and are NODE headers rather than entry tags -- correctly absent. Six are
+entry-shaped and were simply missing: **0x0158, 0x0658, 0x0948, 0x0958, 0x0A48, 0x0A58**.
+
+    low 16 in the set as it was      329,942   89.88%
+    covered by the six additions      35,225    9.60%
+    still unaccounted                  1,910    0.52%
+
+The count alone would not settle it -- a vocabulary can always be widened until everything passes,
+which is how a table stops carrying anything. What settles it is the STRUCTURE. `fx_patterntype`
+reads nibble 2 of this word, and the note at `FX_PATTERNTYPE_SHIFT` observes that "FX_TAG_LOW16's
+nibble 2 takes 0-8 and B-E, thirteen values, which is what a pattern-shape enum looks like from
+outside". The six supply exactly the two values missing from that range, 9 and A, so nibble 2 becomes
+**0 through E contiguous, fifteen values with no holes**. An enum with two gaps in the middle is a
+sign of unobserved cases; an enum with none is a sign the observation is complete. Checked after the
+edit rather than assumed: nibble 2 now yields `[0..14]` exactly.
+
+Widening is safe because this set is NOT the entry walk's stopping rule -- the layout is, and
+`fx_table` stops on `node_shape` and on a tag whose predicted programs do not resolve. `FX_TAG_LOW16`
+is read by the vocabulary test and by the two `0x1B` handoff guards added earlier this session, BOTH
+OF WHICH WERE REJECTING VALID TAGS while it was short. That is worth stating plainly: I wrote those
+guards against a table I had not checked, and they would have declined a correct handoff on any
+record whose entry tag was one of the six. They happened to be right on the 12 nodes that exercised
+them because those 12 all carry tags that were already listed.
+
 ## The chain element's third word is a handoff, and fxrender's `+12` is its stated extent
 
 `fx_table`'s entry run yields words whose low nibble is 9 or 0xB -- `0x9`, `0xb`, `0x49` --
@@ -38711,6 +39517,58 @@ invisible to every structural tool -- coverage, `walk_partition`, the census -- 
 disjoint-span scan has to sweep for their programs at all. The scan is compensating for a
 handoff the walk does not make.
 
+## Measured map: what is still NOT walked (knockout sweep, 92,626 records)
+
+Emptying each table and re-reading `edge_slots`, `layout[1]`, `edges`, `programs`,
+`named_parameters` and `header_words` over 60 files:
+
+    LAYOUTS          12,562 readings change     LIVE   the parameter memo, 809 entries
+    EDGES                 1 reading  changes    LIVE   filter 9 only -- see below
+    HEADER_WORDS          0                     drained (666 entries carrying nothing)
+    EDGE_SLOTS            0                     drained
+    PROG_SLOT             0                     drained
+    ALT_LAYOUTS           0                     drained
+    PARTIAL_EDGES         0                     drained
+    _RULED_PARAMS         0                     drained
+    PARAM_POPCOUNT        0                     drained
+
+AND THE SWEEP'S OWN FALSE ZERO, caught before reporting it. `SHARED` and the `FX_*` tables also
+scored 0 here, and that number means NOTHING for them: the six readings measured do not include
+`shared_refs` or `fx_walk`, so those tables were never exercised. Re-run against the accessor they
+actually serve, `SHARED` is **LIVE on 277 readings** -- it is `{19: [2]}`, naming slot 2 for
+`dyngradient`. A knockout is only evidence for the readings it exercises, which is the same lesson
+that nearly cost a load-bearing memo earlier: two false zeros from a test that never called the
+thing it was clearing.
+
+The single `EDGES` reading is `wood_cedar_white` record 357, **filter 9** -- the unnamed filter
+`decompose` returns None for, so it falls to `_compute_layout` and the table. That is the correct
+behaviour and not a gap: filter 9 cannot be named under the provenance rule, so it stays tabled.
+
+So the live list, everything else being derived:
+
+    LAYOUTS            parameters for `levels` and `fxmaps`   12,562 readings
+    SHARED             dyngradient's slot 2                      277 readings
+    FX_PAYLOAD_PROG    one tag's inline program                  133 records
+    EDGES              filter 9's fallback                         1 reading
+
+`HEADER_WORDS` is the notable one: 666 entries, zero readings. `record_layout.header_words` computes
+it, and this memo of the same quantity has been dead for long enough that nothing noticed. It is
+deletable on this evidence -- with the caveat above, that the evidence covers the reading it exists
+to serve and was measured through it.
+
+Not tables, but still not the walk:
+
+  * `_read_slot` reads the program BIT for blend/levels/directionalwarp and still PROBES the slot
+    for `fxmaps` and `dirmotionblur` -- the first because its own bit model is 97%, the second
+    because its one disagreement is a LAYOUTS slot error rather than a bit error.
+  * `Record.translation` asks the walk first and keeps `3 + (cls & 1) + (cls >> 7 & 1) + 4` as its
+    fallback. How often that fires is unmeasured.
+  * `render.py`'s shuffle branch takes `_start` from the layout and then steps `+1 .. +5` by hand.
+  * `decompose.INPUT_FIELDS` is a seven-entry per-(filter, field) law. It reads no VALUES, which is
+    the property that mattered, but it is fitted rather than derived from the tag's own bits.
+  * The cost model's widths are fitted throughout, and the 2-bit tiling still mis-frames at least
+    one parameter (the offset straddling bits 25/26).
+
 ### Correction: the scan is not compensating for that handoff, and no programs are missing
 
 Two claims in the section above do not survive being measured, and both were mine.
@@ -38742,6 +39600,45 @@ about structures the walk does not enumerate) and the costs are not:
 
 If the check wants to see the handoff, teach the CHECK about it -- `walk_partition` already
 reads stated extents directly -- rather than changing the enumeration every consumer reads.
+
+## Corrections to my own not-walked map, and `HEADER_WORDS` retired
+
+Two items on the map I wrote a few sections up were ALREADY STALE when I wrote them, both closed by
+the parser peer, and both better than what I had:
+
+  * **`Record.translation`'s fallback formula is gone, not merely rare.** I listed it as "kept as its
+    fallback, how often that fires is unmeasured". It was measured: over 234,859 filter-2 records the
+    walk answers 29,331 and is silent 205,528, and the bit-25 guard rejects every record the walk is
+    silent on -- 29,331 with bit 25 set and the walk answering, 205,528 with it clear and the walk
+    silent, 0 in either off-diagonal cell. Nothing reached the formula, so it was deleted and the
+    branch returns None.
+
+  * **The straddled offset is resolved, and generalised past what I found.** I reported that the
+    offset's kind bits at 25,26 cross the 2-bit tiling boundary and left it as an open framing error.
+    `decompose.STRADDLED` now relabels that pair as one field, and the case for it is stronger than
+    mine: over 242,931 filter-2 records the code read at bits (25,26) is absent 144,245 / 01 baked
+    29,404 / 10 program 69,282 with **11 never occurring**, and bits 24 and 27 are never set in any
+    record -- which is exactly why tiling field 12 can only read 0b10 and field 13 only 0b01.
+    Extents are untouched; only the label changes.
+
+    And it was SWEPT rather than assumed complete. The straddle signature is an adjacent pair whose
+    low field only ever reads 0b10, whose high field only ever reads 0b01, with the outer bits never
+    set; across every filter it occurs exactly ONCE. Several fields match half of it -- transformation
+    14, fxmaps 1/4/13, emboss 0, levels 5 -- and are correctly declined: a field whose only nonzero
+    state is 1 is a parameter that is always baked, and one whose only nonzero state is 2 is always a
+    program. Taking the half-signature would have invented six fields the file does not have. That
+    restraint is the part worth copying.
+
+**`HEADER_WORDS` is retired.** 666 entries memoising the record header length; emptied over the FULL
+corpus -- 903,616 records, `header_words` non-None on 900,715 -- it changes 0 readings, so the walk's
+own `end` and `record_layout.header_words` answer everything it answered. The lookup is removed and
+the branch returns None; the loader still returns the dict so `layouts.json`'s shape is unchanged and
+the census stays inspectable, but nothing consults it.
+
+Measured through the accessor it serves, deliberately. In the same sweep that first flagged it,
+`SHARED` also scored 0 -- and `SHARED` is LIVE on 277 readings once `shared_refs` is actually called.
+A knockout is evidence only for the readings it exercises, and a table cleared on the strength of a
+sweep that never called its consumer is the false zero this file has already paid for once.
 
 ## Every extent is stated locally except one, and that one is where all the fitting lives
 

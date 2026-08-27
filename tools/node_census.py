@@ -175,8 +175,8 @@ def harvest(files=None):
         for r in a.records:
             if r.filter_id != 4 or len(r.words) < 4:
                 continue
-            root = r.words[2] + 52
-            if not (r.offset < root < r.end):
+            root = r.fx_root                     # the walk's slot, not a hardcoded 2
+            if root is None or not (r.offset < root < r.end):
                 continue
             spans = []
             for q in r.programs:

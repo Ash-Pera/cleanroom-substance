@@ -24,6 +24,15 @@ READ THE CONTROL, NOT THE HEADLINE. `blend` scores 52% here: its declared opacit
 shallow decimals that recur across the corpus, and `blend` is the commonest filter. That is
 the method failing honestly on a case it cannot resolve, and it is the reason the diagonal
 is reported next to the off-diagonal rather than alone.
+
+THE WALK IS SCORED HERE, NOT CONSULTED. The last section of the report asks what the
+structural walk calls the slot each located value landed in. The direction is deliberate and
+it is the only non-circular one available: containment finds the slot with a raw scan of
+every word, so the walk is being MEASURED against source-declared ground truth rather than
+supplying the answer. Reversing it -- scanning only walk-named slots -- would discard 29.7%
+of the locations outright and make the rest true by construction; `record_floats` carries
+that measurement. This file is what commit f49b107 used to overrule a fitted slot formula
+for `warp`, and an arbiter wired into the thing it arbitrates stops being one.
 """
 import collections
 import glob
@@ -34,6 +43,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import decompose
 from provenance import paired_sources, matches, EXCLUDED_AUTHORS, FLAGGED_AUTHORS
 from sbsasm import Assembly, FILTERS
 
@@ -95,9 +105,33 @@ def sbsasm_for(sbs_path):
 def record_floats(rec):
     """Every slot of a record read as float32, distinctive values only.
 
-    Reads raw slots rather than `Record.named_parameters` on purpose: the point is to find
-    where a value LANDS without assuming the parameter layout that is itself derived from
-    these identifications.
+    RAW ON PURPOSE, AND IT STAYS RAW. The point is to find where a value LANDS without
+    assuming the parameter layout that is itself derived from these identifications. That
+    was always the stated reason; `walk_placement` now measures what the alternative would
+    cost, so it is a number rather than a principle.
+
+    Over 789 values located across 66 permitted paired specimens, the walk calls the
+    landing slot:
+
+        parameter (walk-named)         555   70.3%
+        inherited (class-word)         159   20.2%
+        past the walk's end             56    7.1%
+        unnamed, inside the extent      19    2.4%
+
+    Narrowing this scan to walk-named PARAMETER slots would therefore discard 234 of 789
+    locations (29.7%), and it would not discard them evenly. It would delete `uniform`
+    outright (113 of 113 land on inherited class-word slots) and all but one of `warp`
+    (22 of 23) -- the two filters whose matched control is cleanest in the report below,
+    at 260/262 against 0.3% and 25/25 against 0.5%. Widening the narrowing to ANY slot the
+    walk names still loses 75 (9.5%): `curve` and `fxmaps` land past the header entirely,
+    which is correct rather than a miss, because their values live in table regions a
+    HEADER walk does not describe.
+
+    The deeper objection is not the 29.7%. It is that the surviving 70.3% would then be
+    true by construction -- a scan that only ever looks where the walk points cannot
+    report that the walk pointed wrongly. Containment is what commit f49b107 used to
+    overrule a fitted slot formula for `warp`; an arbiter wired into the thing it arbitrates
+    stops being one. So the walk is SCORED here (see `walk_placement`) and never consulted.
     """
     out = set()
     for w in rec.words:
@@ -106,6 +140,90 @@ def record_floats(rec):
             out.add(round(v, 6))
     return out
 
+
+NAME2FID = {v: k for k, v in FILTERS.items()}
+
+
+def _walk_verdict(rec, slot):
+    """What does the walk call `slot`? Scoring only -- never consulted to find a value."""
+    try:
+        d = decompose.decompose(rec)
+    except Exception:
+        return 'walk declines'
+    if d is None:
+        return 'walk declines'
+    for entry in d['param_slots']:
+        pos, width = entry[2], entry[3]
+        if pos <= slot < pos + width:
+            return 'parameter'
+    if slot in d['inputs']:
+        return 'input edge'
+    if slot in d['cls_slots']:
+        return 'inherited'
+    end = d['end']
+    if end is not None and slot >= end:
+        return 'past walk end'
+    return 'unnamed, inside extent'
+
+
+def walk_placement(permitted_only=True):
+    """Score the WALK against containment: where does a located value actually land?
+
+    THE DIRECTION IS THE WHOLE POINT. Containment locates the slot with its own raw scan
+    -- every word of every record of the filter, no layout assumed -- and the walk is then
+    asked what it calls that slot. The walk never narrows the search, so it cannot be
+    confirmed by construction. Reversing this (scanning only walk-named slots) is the
+    tautology `record_floats` refuses, and its cost is measured in that docstring.
+
+    A value counts only when it is unique among everything its source file declares AND
+    lands in exactly one slot of one record of its own filter, so the slot is unambiguous.
+    Matching is `record_floats`' own convention -- float32 read, rounded to 6 decimals --
+    so a value counted here is one the confusion matrix also counts as found.
+
+    Returns {source filter name: Counter of verdicts}.
+    """
+    out = collections.defaultdict(collections.Counter)
+    for p in paired_sources():
+        if permitted_only and (matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)):
+            continue
+        asmf = sbsasm_for(p)
+        if not asmf:
+            continue
+        data = open(p, encoding='utf-8', errors='replace').read()
+        decl = declared(data, DEFAULT_FILTERS)
+        if not decl:
+            continue
+        try:
+            asm = Assembly(asmf)
+        except Exception:
+            continue
+        seen = collections.Counter()
+        for vals in decl.values():
+            for v in vals:
+                seen[v] += 1
+        # Index each wanted filter's slots ONCE. Scanning per declared value instead is
+        # quadratic and unusable: `gradient` alone declares 18,299 distinctive values.
+        wanted = {NAME2FID[n] for n in decl if n in NAME2FID}
+        index = {f: collections.defaultdict(list) for f in wanted}
+        for rec in asm.records:
+            slots = index.get(rec.filter_id)
+            if slots is None:
+                continue
+            for k, w in enumerate(rec.words):
+                v = struct.unpack('<f', struct.pack('<I', int(w) & 0xFFFFFFFF))[0]
+                if v == v and distinctive(v):
+                    slots[round(v, 6)].append((rec, k))
+        for name, vals in decl.items():
+            slots = index.get(NAME2FID.get(name))
+            if not slots:
+                continue
+            for v in vals:
+                if seen[v] != 1:
+                    continue
+                hits = slots.get(v)
+                if hits and len(hits) == 1:
+                    out[name][_walk_verdict(*hits[0])] += 1
+    return out
 
 # --- gradient: the values are in the ramp table, and they are quantised ------------
 #
@@ -349,3 +467,29 @@ if __name__ == '__main__':
         print("  %-16s %-8d %6d/%-5d %5.1f%%  %5d/%-6d %4.1f%%   %d"
               % (nm, fid, h, t, 100.0 * h / t, ch, ct,
                  (100.0 * ch / ct) if ct else 0.0, len(per)))
+
+    print()
+    print("where a located value LANDS, scored against the walk (the walk does not")
+    print("participate in locating it -- see record_floats)")
+    print("  %-16s %7s   %s" % ("declared on", "located", "walk calls the slot"))
+    place = walk_placement()
+    grand = collections.Counter()
+    for name in DEFAULT_FILTERS:
+        c = place.get(name)
+        if not c:
+            continue
+        grand.update(c)
+        n = sum(c.values())
+        cells = ", ".join("%s=%d" % (k, v) for k, v in c.most_common())
+        print("  %-16s %7d   %s" % (name, n, cells))
+    n = sum(grand.values())
+    if n:
+        print("  %-16s %7d   %s" % ("TOTAL", n,
+              ", ".join("%s=%d (%.1f%%)" % (k, v, 100.0 * v / n)
+                        for k, v in grand.most_common())))
+        named = sum(grand[k] for k in ("parameter", "inherited", "input edge"))
+        print("  a scan narrowed to walk-named PARAMETER slots would lose %d of %d (%.1f%%);"
+              % (n - grand["parameter"], n, 100.0 * (n - grand["parameter"]) / n))
+        print("  narrowed to ANY walk-named slot, %d of %d (%.1f%%) -- and either way the"
+              % (n - named, n, 100.0 * (n - named) / n))
+        print("  remainder would agree with the walk by construction.")

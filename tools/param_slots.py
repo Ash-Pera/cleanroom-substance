@@ -93,8 +93,14 @@ def declared(sbs_path, node, param):
     for body in NODE.findall(text):
         if '<filter v="%s"/>' % node not in body:
             continue
-        m = re.search(r'<name v="%s"/>.*?<constantValueFloat1 v="([-\d.e]+)"/>' % param,
-                      body, re.S)
+        # FLOAT4 AS WELL AS FLOAT1, and the omission was costing an entire filter. `levels`
+        # stores every one of its five parameters as `constantValueFloat4` -- the same scalar
+        # repeated across RGB with alpha 0 or 1 -- so a Float1-only pattern matched ONE node
+        # in the whole corpus and `locate('levels', 15, ...)` reported a single pairing.
+        # Reading the first component of a FloatN turns that into 46 unambiguous pairings
+        # across 35 sources, which is what settled `levels`' parameter widths.
+        m = re.search(r'<name v="%s"/>.*?<constantValueFloat\d v="([-\d.e]+)'
+                      r'(?:[ \t][-\d.e ]*)?"/>' % param, body, re.S)
         if m and _decimals(m.group(1)) >= MIN_DECIMALS:
             out.append(float(m.group(1)))
     return out

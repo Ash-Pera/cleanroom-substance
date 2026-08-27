@@ -34,18 +34,72 @@ def _param_field_masks(f):
     return {pres for _nm, pres, _prog in sbsasm.PARAM_SPEC.get(f, ())}
 
 
+# Whether a state-3 w1 field is an image input is a LAW OF (filter, field), not a per-record
+# question. Measured by INSTRUMENTING THIS FUNCTION over the full 437-file corpus -- wrapping it
+# and recording every (filter, field, answer) it is actually asked -- rather than by re-deriving
+# slot positions in a separate script. That distinction is not pedantry: the first version of this
+# table WAS built by re-derivation, and it was wrong. That script called `_select_spec` with
+# `getattr(asm, 'version', None)`, which is not the `ver` decompose passes internally, so it
+# selected a DIFFERENT spec variant with different w1 keys and dutifully measured six
+# (filter, field) pairs -- (1,0), (3,0), (3,4), (3,5), (3,12), (7,0) -- that the walk never visits
+# at all. It reported blend field 0 as a 130,767-record "mixed" case needing its own rule; the
+# walk never asks about blend field 0. Instrument the real call, do not reconstruct it.
+#
+# Every decision this function is genuinely asked to make, full corpus, 10,430 calls:
+#
+#     f=1  j=2   8,486   ALWAYS input   -- and it never reaches this table: its 2-bit range
+#                                          equals blend's PARAM_SPEC mask 0x30 exactly, so the
+#                                          aligned test above answers it structurally first.
+#     f=1  j=4     963   never input    f=1  j=5      7   never input
+#     f=8  j=1      87   never input    f=12 j=1    838   never input
+#     f=12 j=2       2   never input    f=21 j=0     47   never input
+#
+# So the split is 8,486 aligned (81.4%) against 1,944 that fell to the old value probe (18.6%),
+# and the probe returned False for all 1,944 of them -- its entire job was saying "no". An earlier
+# draft of this comment claimed 95.6% probe-decided; that came from the broken re-derivation above
+# and is retracted.
+#
+# Note what is NOT needed here: `distance`'s unnamed input, cited by the old docstring as the case
+# that made a value probe unavoidable, is f=21 j=0 and is never an input -- distance's optional
+# mask is declared structurally by w1 bit 0 in `decompose` and never reaches this function.
+INPUT_FIELDS = {
+    (1, 2): True,
+    (1, 4): False, (1, 5): False,
+    (8, 1): False,
+    (12, 1): False, (12, 2): False,
+    (21, 0): False,
+}
+
+
 def _is_image_input(r, j, pos, masks, ri):
     """Is a state-3 (0b11) w1 field at cost-model index `j`, slot `pos`, a real image input?
 
-    Two ways it can be: it is an ALIGNED named field (its 2-bit range exactly equals a PARAM_SPEC
-    mask -- e.g. blend's opacitymult, an edge even when its reference is record 0), OR the slot
-    holds a valid backward record index (a genuine input reference -- e.g. distance's unnamed
-    input). An unnamed field holding a baked value (blend's field-4 zeros) or a misaligned param
-    overlap (directionalwarp's intensity/warpangle, whose slots hold programs/floats, not small
-    indices) is neither, and is not an edge."""
+    Answered from the HEADER ONLY -- the aligned PARAM_SPEC mask, then the per-(filter, field)
+    law in `INPUT_FIELDS`, then blend field 0's bits-4|5 rule. The slot's VALUE is never
+    consulted.
+
+    It used to end with `0 < r.words[pos] < ri` -- "the slot holds something that looks like a
+    backward record index, so call it an input". That decided 1,944 of 10,430 state-3 fields
+    (18.6%), and answered False every single time. It also made the two value probes in
+    `Record.edges` score a perfect zero, since they re-tested the very predicate that had selected
+    the slots -- a tautology, not a confirmation, which is why removing them changed nothing.
+
+    The residual `_probe_fallback` list records any (filter, field) pair this table has never
+    seen. It is empty on this corpus; entries appearing on a new one are a finding to investigate,
+    not a slot to guess at. It caught (8, 1) exactly this way -- 87 calls the first table missed,
+    surfaced instead of silently probed."""
     if (3 << (2 * j)) in masks:
         return True
+    known = INPUT_FIELDS.get((r.filter_id, j))
+    if known is not None:
+        return known
+    _probe_fallback.append((r.filter_id, j))
     return pos < len(r.words) and 0 < r.words[pos] < ri
+
+
+# Every (filter, field) the table above does not cover, appended as it is hit. Empty on the
+# 437-file corpus; inspect it rather than trusting the fallback if it fills on a new one.
+_probe_fallback = []
 
 # Per-filter base image-input arity: how many input images the filter consumes before any
 # w1-declared inputs. A format fact (like the blend-mode table), not a fitted memo entry.
@@ -77,6 +131,59 @@ def _has_w1_word(f, w0, ver):
     return None
 
 
+# A w1 parameter whose two-bit code does NOT sit on the tiling's even-bit grid.
+#
+# `pairs` are FIELD INDICES and `_interaction_walk` reads each as `(w1 >> (2 * pj)) & 3`, so
+# a field can only begin at an EVEN bit. `transformation`'s offset begins at bit 25. Its
+# code therefore SPLITS across two tiling fields -- 12 (bits 24,25) takes the code's low bit
+# as its HIGH bit, 13 (bits 26,27) takes the code's high bit as its LOW bit -- and each half
+# then looks like a different parameter that is always the same thing: field 12 can only
+# ever read 0b10 and field 13 can only ever read 0b01. That is the "one phantom field that
+# always looks like a value and one that always looks like a pointer" FORMAT-NOTES records,
+# and it is an artefact of the FRAME, not something the file says.
+#
+# MEASURED over 242,931 filter-2 records (corpus + reference packs):
+#
+#     the code read at bits (25,26)   absent 144,245   01 baked 29,404   10 program 69,282
+#                                     11 NEVER
+#     bits 24 and 27                  NEVER SET, neither of them, in any record
+#     tiling field 12 states           only 0 and 2     tiling field 13 states  only 0 and 1
+#
+# Bit 24 never being set is exactly why field 12 can never read 01, and bit 27 never being
+# set is why field 13 can never read 10. Read at shift 25 the pair is the format's ordinary
+# alphabet -- 01 baked, 10 program, mutually exclusive, 11 absent -- which is what
+# `Record.translation` and `walk.SPECS[2]`'s `(0x06000000, 25, 2)` have both said all along.
+# The two halves are RELABELLED as one field below; their EXTENTS are untouched, because the
+# cost model fitted a width to each half separately and both are already right (2 words for
+# the baked Float2 under field 12, 1 word for the pointer under field 13).
+#
+# THIS TABLE IS COMPLETE, and that was swept for rather than assumed. The signature of a
+# straddle is an ADJACENT pair -- tiling field j that can only ever read 0b10, field j+1
+# that can only ever read 0b01, and the outer bits 2j and 2j+3 never set in any record.
+# Testing every filter with a `pairs` list over the corpus plus the reference packs, that
+# pattern occurs exactly ONCE: transformation 12,13.
+#
+# Several fields match ONE HALF of it -- transformation 14, fxmaps 1/4/13, emboss 0,
+# levels 5 -- and none of those is a straddle. A field whose only nonzero state is 1 is a
+# parameter that is always baked; one whose only nonzero state is 2 is always a program.
+# That is ordinary, and calling it a framing error on the strength of the half-signature
+# would invent six fields the file does not have. Only the adjacent pair is evidence.
+#
+# {filter: [(low tiling field, high tiling field, real shift, field id to report)]}
+STRADDLED = {2: [(12, 13, 25, 12)]}
+
+
+def _restraddle(r, w1, param_slots):
+    """Relabel a straddled pair as the one field it is. Positions and widths unchanged."""
+    for lo, hi, shift, fid in STRADDLED.get(r.filter_id, ()):
+        code = (w1 >> shift) & 3
+        if code not in (1, 2):
+            continue
+        param_slots = [(fid, code, pos, n) if j in (lo, hi) else (j, st, pos, n)
+                       for (j, st, pos, n) in param_slots]
+    return param_slots
+
+
 def _interaction_walk(r, s):
     """Colour-interaction spec: per-feature slot count = base[i] + (tag bit 0)*cross[i]."""
     w0 = r.words[0]
@@ -96,9 +203,13 @@ def _interaction_walk(r, s):
     size_pos = pos                           # first slot after the base region = size-expr slot
     inputs = list(range(2, pos))
     cls_slots = []
+    cls_params = []
     for i, b in enumerate(clsbits):
         if (w0 >> b) & 1:
-            for _ in range(cost(1 + i, False)):
+            n = cost(1 + i, False)
+            if n > 0:
+                cls_params.append((b, pos, n))
+            for _ in range(n):
                 cls_slots.append(pos); pos += 1
     off = 1 + len(clsbits)
     if s.get('has_absent'):
@@ -132,9 +243,22 @@ def _interaction_walk(r, s):
                 inputs.append(pos)             # state-11 image input
             pos += 1
     prog = None if size_pos in inputs else size_pos
+    param_slots = _restraddle(r, w1, param_slots)
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
-                        'param_slots': param_slots, 'end': _model_end(r, pos),
-                        'prog': prog})
+                        'param_slots': param_slots, 'cls_params': cls_params,
+                        'end': _model_end(r, pos), 'prog': prog})
+
+
+# fxmaps' header opens the way every record does -- w0 (the class word) then w1 -- and
+# `walk.SPECS[4]` gives it `Arity(prefix=1)`: exactly ONE fixed non-edge slot between the
+# masks and the image inputs, which is the FX tree/table root pointer. The root slot and the
+# first input slot are therefore ONE fact, not two, and are derived from those terms here
+# rather than both written down. `Record.fx_root` resolves the pointer and is the only place
+# the +52 body skew is applied.
+_FX_MASK_WORDS = 2                                # w0, w1
+_FX_PREFIX = 1                                    # walk.Arity(prefix=1) -- the root pointer
+FX_ROOT_SLOT = _FX_MASK_WORDS                     # = 2
+_FX_FIRST_INPUT = _FX_MASK_WORDS + _FX_PREFIX     # = 3
 
 
 def _fxmaps_walk(r, spec):
@@ -156,19 +280,28 @@ def _fxmaps_walk(r, spec):
 
       * The inputs are CONTIGUOUS FROM SLOT 3. Layout's edge slots for the records that
         have any are exactly [3], [3,4,5] and [3,4,5,6,7,8] -- never a gap, never a
-        different start. Slot 2 sits before them and holds the FX table pointer, which
-        every reader in the fx path already takes as `words[2] + 52`; the interaction walk
-        independently places the first structural slot at 2 in 1,305 of 1,305, which is
-        that hardcode corroborated from the cost model rather than assumed.
+        different start. Slot 2 sits before them and holds the FX table pointer, and the
+        interaction walk independently places the first structural slot at 2 in 1,305 of
+        1,305 -- the cost model corroborating it rather than the reader assuming it.
+
+        THAT SLOT IS NOW REPORTED, as `root`. It used to be re-derived by every reader in
+        the fx path as `words[2] + 52` -- four of them: `Record.fx_tree`,
+        `Record.fx_entry_walk`, `node_census.harvest` and `reverify`. A slot number copied
+        into four files is the shape of thing this walk exists to delete, and the copies
+        cannot disagree with the walk about fxmaps only because nobody has changed one of
+        them yet. `Record.fx_root` is the single reader now.
     """
     w1 = r.words[1] if len(r.words) > 1 else 0
     shift, mask = spec['arity_sm']
     n_in = (w1 >> shift) & mask
-    inputs = list(range(3, 3 + n_in))
+    inputs = list(range(_FX_FIRST_INPUT, _FX_FIRST_INPUT + n_in))
     # layout[1] for fxmaps is 3 + input count (the first slot after the inputs = end), exact over
     # 41,164 records / 14 distinct input counts -- the same "first slot after the base region" as
     # the main path's size_pos, verified by cleanroom-substance-00.
-    return {'inputs': inputs, 'cls_slots': [], 'param_slots': [], 'end': 3 + n_in, 'prog': 3 + n_in}
+    end = _FX_FIRST_INPUT + n_in
+    return {'inputs': inputs, 'cls_slots': [], 'param_slots': [], 'cls_params': [],
+            'end': end, 'prog': end,
+            'root': FX_ROOT_SLOT}
 
 
 def decompose(r):
@@ -214,14 +347,38 @@ def decompose(r):
         # a nonzero field with high bits (0x10001 -> arity 1) is fine.
         valid_arity = n_in >= 1 or (len(r.words) > 1 and r.words[1] == 0)
         prog = pos if (valid_arity and pos < len(r.words)) else None
+        # ADVANCE PAST THE PROGRAM SLOT. This line was missing, and `const` hid it for
+        # exactly the records where it did not matter: const is 3, so at arity 0 the walk
+        # goes pos=2 -> prog=2 -> max(3, 3) = 3 and the class slots start correctly at 3.
+        # At any arity >= 1, pos is already 2+arity >= 3, `const` bumps nothing, and the
+        # first class slot is allocated ON TOP OF the program slot -- so every later slot,
+        # and `end` with them, sits one word too low.
+        #
+        # Corpus-wide: 55,255 of 57,965 pixelprocessor records (95.3%) had `prog` colliding
+        # with a class slot, and in 55,254 of those the slot at the too-low `end` holds a
+        # VALID PROGRAM -- the record's real pixel program, excluded from its own header.
+        # Confirmed against the cost model's own independent total: `decompose`'s end was
+        # -1 against `record_layout.header_words` on 5,259 of 5,490 records, and equal on
+        # the 231 (the arity-0 ones) where `const` happened to cover for it.
+        #
+        # This is what put UHL3D-Stylized_Sand record 2194's pixel program OUTSIDE its
+        # header, so `programs()` could only reach it through the word scan -- and left it
+        # looking like a record whose program samples an input its arity does not declare.
+        if prog is not None:
+            pos += 1
         pos = max(pos, int(round(const)))
         cls_slots = []
+        cls_params = []
         for b in sorted(int(k) for k in spec['cls']):
             if (w0 >> b) & 1:
-                for _ in range(int(round(spec['cls'][str(b)]))):
+                n = int(round(spec['cls'][str(b)]))
+                if n > 0:
+                    cls_params.append((b, pos, n))
+                for _ in range(n):
                     cls_slots.append(pos); pos += 1
-        return {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
-                'end': pos, 'prog': prog}
+        return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
+                            'cls_params': cls_params, 'end': _model_end(r, pos),
+                            'prog': prog})
 
     if f not in BASE_INPUTS:
         return None                          # fxmaps payload / uncovered small shapes
@@ -242,9 +399,13 @@ def decompose(r):
     pos = max(pos, int(round(const)))        # skip ramp/table base structure (gradient/curve)
     size_pos = pos                           # first slot after the base region = size-expr slot
     cls_slots = []
+    cls_params = []
     for b in sorted(int(k) for k in spec['cls']):
         if (w0 >> b) & 1:
-            for _ in range(int(round(spec['cls'][str(b)]))):
+            n = int(round(spec['cls'][str(b)]))
+            if n > 0:
+                cls_params.append((b, pos, n))
+            for _ in range(n):
                 cls_slots.append(pos); pos += 1
     for bx, by, cv in spec.get('conj', ()):
         if (w0 >> bx & 1) and (w0 >> by & 1):
@@ -280,9 +441,8 @@ def decompose(r):
     # data (which can coincidentally parse as a program), and layout reports no size.
     prog = None if (f == 17 or (f == 16 and not (r.cls & 1)) or size_pos in inputs) else size_pos
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
-                        'param_slots': param_slots, 'end': _model_end(r, pos),
-                        'prog': prog})
-
+                        'param_slots': param_slots, 'cls_params': cls_params,
+                        'end': _model_end(r, pos), 'prog': prog})
 
 
 def _model_end(r, fallback):

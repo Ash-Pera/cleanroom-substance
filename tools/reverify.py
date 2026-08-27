@@ -119,10 +119,12 @@ def scan():
                 v = r.words[2]
                 T['trans2792_edge'] += (v < r.index and v < len(a.records))
 
-            # fxmaps tree root pointer target, under the +52 skew.
+            # fxmaps tree root pointer target, under the +52 skew. The slot and the skew
+            # both come from `Record.fx_root`, which asks the walk; this used to re-derive
+            # `words[2] + 52` itself, one of four copies of that read.
             if r.filter_id == 4 and len(r.words) > 2:
-                q = r.words[2] + 52
-                if 0 <= q < len(a.data):
+                q = r.fx_root
+                if q is not None and 0 <= q < len(a.data):
                     T['fx_root'] += 1
                     T['fx_root_aligned'] += (q % 4 == 0)
 
