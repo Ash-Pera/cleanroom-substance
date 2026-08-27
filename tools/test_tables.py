@@ -169,15 +169,34 @@ def test_every_table_is_load_bearing():
     FX_ENTRY and FX_NODES are deliberately NOT in the list: both are drained. FX_ENTRY was the
     entry-walk stride, now replaced by the linked-list next-pointer each entry stores; FX_NODES
     was the node sizer, now computed by `node_shape` from the header's mask. Emptying either
-    changes no reading BY DESIGN, and both are kept as a census. FX_NODES2 IS here -- it holds
-    the leaf/branch families `node_shape` does not derive and stays load-bearing.
+    changes no reading BY DESIGN, and both are kept as a census.
+
+    FX_NODES2 IS NOW OUT OF THE LIST TOO, and for a THIRD reason that is worth separating from
+    the other two, because the obvious readings are both wrong. It is not derived away like
+    FX_NODES -- `node_shape(0x1B)` and `leaf_successor(0x1B)` both return None, so nothing
+    derives it -- and it is not shadowed by the 0x1B value probe above it in `fx_walk`, which
+    takes only 12 of the corpus's 355 0x1B nodes (the other 343 have word 1 == 0x3039 and the
+    probe declines them). The remaining 343 DO reach `FX_NODES2[0x1B]`, and its stated byte 20
+    yields an IN-RANGE successor in 343 of 343. The table is consulted and it answers.
+
+    It is REDUNDANT: `fx_table` reaches the same entries whether or not `start` is set from
+    that answer. Measured with the accessor this snapshot actually observes, over records
+    scanned from the whole corpus for containing a 0x1B node, `fx_walk` is byte-identical with
+    and without the table on 40 of 40. So emptying it changes no reading, and the assertion
+    below would fail on a table that is doing exactly what it claims.
+
+    That distinction matters for whoever removes it. A derived table can be deleted; a
+    redundant one is only redundant against the CURRENT `fx_table`, and the 343 in-range
+    successors are a real second statement of where the handoff is. Kept as a census, like
+    the other two. Note also `fxrender`'s standing flag that the row's (8, 20) contradicts
+    what that file derives -- unresolved, and not resolved here.
     """
     paths = corpus.paths()[:FILES]
     if not paths:
         print('SKIP test_every_table_is_load_bearing: no corpus')
         return
     dead = []
-    for name in ('LAYOUTS', 'EDGES', 'LAYOUT_MASK', 'FX_NODES2'):
+    for name in ('LAYOUTS', 'EDGES', 'LAYOUT_MASK'):
         tab = getattr(sbsasm, name, None)
         if not isinstance(tab, dict) or not tab:
             continue
