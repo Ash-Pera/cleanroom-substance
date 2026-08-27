@@ -131,7 +131,7 @@ no source this project may read names filter 5.
 not enough to render a real material, and FORMAT-NOTES.md measures how far short it falls
 and which filter gates the rest.
 
-`render2/` is the rebuild, and the difference is not tidiness. `render.py` asks a different
+`render2/` is **the renderer of record**, and the difference from `render.py` is not tidiness. `render.py` asks a different
 question in every filter branch -- the fitted `LAYOUTS` memo here, a value probe over
 `Record.programs` there, a hand-stated slot offset in a third -- and `render2` asks
 `decompose` ONCE per record, in `model.View`, and every filter reads the answer by name.
@@ -150,6 +150,12 @@ something else used to: `levels` parameters taken from the field enumeration rat
 the memo, and an FX-Map emission count taken from the placement program on the 0.21% of
 records whose iterator contradicts it. FORMAT-NOTES.md has the measurements, the census
 behind the narrow trigger, and the one channel of one package where the memo still wins.
+
+`render.py` stays, as the independent model to check `render2` against -- the role
+`_compute_layout` plays for `decompose`. On `Chesterfield` at `max_dim` 256 the two agree
+to four decimals on `normal`, `height`, `metallic` and `AO`; `roughness` improves by 0.055
+and `basecolor` is produced where it was not. Two implementations of one thing drift; two
+that are known to differ, with the difference measured, do not.
 
 `run_file.py` exists because `cache_read` raises unless a caller threads one cache through
 a whole file. Programs are not independent: a record's program can read what an earlier

@@ -41658,3 +41658,172 @@ walk reads its level fields at their real width -- `levelinlow` is a Float4 (0.2
 0.264, 0.0), not a scalar. Both renderers then use only the first component. Per-channel
 levels on colour records is a change neither has made, and it moves nothing here (swapping
 348 alone leaves every Chesterfield channel identical to four decimals).
+
+## render2 becomes the renderer of record, and how it was built
+
+The section above reports what `tools/render2/` scores. This one is the construction, because
+the numbers are a consequence of one design decision and not of a hundred small ones.
+
+### The rule the whole thing is written to
+
+> A filter may ask what a parameter IS and whether it is baked or a program. It may not ask
+> where the parameter sits, how wide it is, or what a slot's value looks like.
+
+Everything else follows. `render.py` grew the other way round -- each filter branch answers
+its own structural question, so the file accumulated a `LAYOUTS` memo in one branch, a
+by-width probe over `Record.programs` in another, a hand-stated slot offset in a third, and
+a value plausibility test in a fourth. Those readings cannot be checked against each other
+because they are never asked the same question. Under the rule above there is exactly one
+place that answers, `model.View`, and every filter is a consumer of it.
+
+### What each module is responsible for
+
+    model.py     the record as the walk states it: edges, parameters, header extent
+    ops.py       image primitives, blending, and the bytecode runner
+    filters.py   twenty filters, each reading its parameters BY NAME
+    fx.py        FX-Map emission and drawing
+    engine.py    the forward pass, the channel conformance rule, failure classification
+    __main__.py  render one file and score it against a package's own exports
+
+`ops.py` contains no format knowledge at all -- it is arithmetic on arrays plus
+`sbsruntime`, which is the bytecode VM and the one part of the old renderer reused rather
+than rewritten. A VM is not a decode decision. What was rewritten is everything that
+decides WHICH program to run and WHAT its number means.
+
+NO FILTER COMPUTES A SLOT. Grepping `words[` across `filters.py` and `fx.py` returns two
+hits and both are `words[1]`, the w1 MASK word, whose position the format fixes at
+`[tag][w1?]` and which is not a per-filter decision. That is the invariant worth keeping:
+the moment a filter works out a slot POSITION it has forked the structural model, and the
+fork is invisible because both halves keep rendering.
+
+### The three things a walk cannot supply, and where they live
+
+1. WHAT A FIELD MEANS. `W1_PARAMS` maps (filter, mask) -> name and baked width;
+   `CLS_NAMES` does the same for the class word. This is a NAME legend, and it is a
+   different kind of object from a slot legend: a slot legend goes stale the moment a
+   neighbouring field appears or disappears, and a name legend cannot, because it never
+   mentions a position.
+2. THE WIDTH LAW. Float1, Float2, Float4, or per-channel -- Float1 on a greyscale record
+   and Float4 on a colour one. Read from the manifest's own parameter type codes, not
+   fitted.
+3. A VALUE THE FORMAT OMITS. `filters.DEFAULTS` -- `grayscale.weights`, `uniform.fill`,
+   and `levels`' input and output ranges -- the only place in the renderer where a number
+   comes from outside the file. Every use marks the record LOW_CONFIDENCE and an `assume`
+   scope still overrides it.
+
+Everything positional is derived from those three plus the header length: presence and
+kind from the w1 mask, width from the type legend, and the group anchored BACKWARDS from
+`decompose`'s `end`. The cost model is consulted for the header length and for nothing
+else -- deliberately, because its per-(field, state) word count is the fitted half of
+costs.json and is wrong in at least one place that matters.
+
+### Refusing is the design, not a shortfall
+
+Three of the old renderer's readings were dropped rather than reimplemented, and each drop
+costs records:
+
+  * A parameter the format does not store is refused, not reconstructed from a value probe
+    over the block. `warp` 44, `distance` 13, `blur` 7 and `normal` 6 records across a
+    53-file sample refuse here that did not before.
+  * A record whose header the cost model does not cover is refused whole, not handed to a
+    fallback layout. 26 `emboss` records.
+  * A channel count that disagrees with the record's own colour flag is refused. Three
+    channels for a colour record is RGB and gets an opaque alpha; identical channels on a
+    greyscale record are narrowed; anything else is a refusal, because inventing a fourth
+    channel is what let a weight-vector sweep pick the vector that read most of it.
+
+The counting still goes the other way. Over the same 53 files and 51,286 records, both
+renderers in one run at `max_dim` 64:
+
+    records produced     31,973 old      32,942 new      (+969)
+    root causes             284 old         267 new
+    seconds                  97 old         293 new
+
+The three-fold time is the price of rendering the extra records and is concentrated in a
+few files.
+
+### Why we switch
+
+`Rokviz japanese fabric 8` is the case the section above makes: 70 of 70 records with no
+assumption scope, against 57 for `render.py` unless `grayscale.weights` is supplied by
+hand, and basecolor from -0.926 to +0.976 on a specimen whose two graph inputs are
+`$outputsize` and `$randomseed`, so a colour mismatch cannot be an author's tweak.
+
+`Chesterfield` is the second case and it is the more ordinary one -- a file where nothing
+dramatic was wrong. Both renderers at `max_dim` 256, one process, one commit:
+
+    channel          render.py            render2
+    normal    ch0    +0.9404 / 0.0340     +0.9404 / 0.0340      identical
+              ch1    +0.9394 / 0.0340     +0.9394 / 0.0340      identical
+              ch2    +0.7989 / 0.0118     +0.7989 / 0.0118      identical
+    height           +0.9523 / 0.0721     +0.9523 / 0.0721      identical
+    metallic         +0.9723 / 0.0211     +0.9723 / 0.0211      identical
+    AO               +0.9197 / 0.0246     +0.9197 / 0.0246      identical
+    roughness        +0.8689 / 0.0162     +0.9234 / 0.0415      +0.0545
+    basecolor ch0    not produced         +0.3502 / 0.0663
+              ch1    not produced         +0.0040 / 0.1368
+              ch2    not produced         -0.3923 / 0.0959
+
+Four outputs land on the same numbers to four decimals, which is the result that matters
+most: the rebuild is not a different renderer that happens to score better, it reproduces
+the old one wherever the old one was right. `roughness` improves and `basecolor` exists
+where it did not.
+
+Across the five reference packs at `max_dim` 128 the tally is 15 channels the same, 6
+degenerate on both sides, 3 better and 3 worse -- and all six of the movers are the same
+question, `levels` routing, fenced above.
+
+So: **render2 is the renderer of record from here.** `render.py` stays as the independent
+model to check it against, which is the same role `_compute_layout` plays for `decompose`.
+Two implementations of one thing drift; two implementations that are KNOWN to differ, with
+the difference measured, do not.
+
+### The Rokviz residual is a mask contrast, and the composition is exactly right
+
+Chasing the remaining basecolor error to a place rather than a score. That output is
+LINEAR in four baked constants the walk reads:
+
+    basecolor = w_cream*cream + w_teal*teal + w_red*red + w_grey*grey,   sum(w) = 1
+
+    w_grey  = mask16                         w_red   = (1 - mask16)*mask26
+    w_teal  = (1 - mask16)(1 - mask26)*mask35
+    w_cream = (1 - mask16)(1 - mask26)(1 - mask35)
+
+Three colour equations plus the sum is four equations in four unknowns, so the weights can
+be INVERTED out of any picture -- ours or the engine's -- with no fitting. Two checks that
+the inversion is sound before reading anything off it: applied to our own render it returns
+our own masks to four decimals, and NEITHER picture needs a weight outside [0, 1] anywhere
+(0.0% of pixels on both sides). That second one is the real result. `blend` records 46, 48,
+57 and 66 bring in two further palette entries under masks 56 and 65, and if the engine's
+masks 56 and 65 were anything but zero its picture would need a fifth and sixth colour and
+the four-colour inverse would go negative. It does not. **The composition graph is
+completely understood on this file**, and the whole residual is in the three masks:
+
+    mask16     export implies 0.4818 / 0.0094      ours 0.5028 / 0.0195     r +0.011
+    mask26                    0.5045 / 0.1156           0.4607 / 0.1553     r +0.665
+    mask35                    0.7101 / 0.3568           0.6884 / 0.4631     r +0.789
+
+`mask16` correlating at zero is expected and not a defect: it is the 965-stripe weave, a
+0.26 px feature at the 256 the records declare, so at this grid it is aliasing on our side
+and an average on theirs. Its MEAN is the part that carries information, and 0.5028 against
+0.4818 is close to the 0.50008 the `height` output back-solves to independently.
+
+THE TWO ARTWORK MASKS ARE THE OPEN ITEM, and they fail the same way: ours are too
+CONTRASTY. Fitting the export's implied mask onto ours gives slope 0.495 for mask26 and
+0.608 for mask35 -- ours swings roughly twice as far, about the same centre. mask35 is the
+inverted hard threshold of record 34 and comes out binary, std 0.4631, which is exactly
+sqrt(p(1-p)) for its own mean; the export's is 0.3568 and is not binary. Something between
+those two records and the picture softens both, and it is one thing rather than two.
+
+REFUTED WHILE HERE, so nobody re-runs it: that the two input fields are misnamed. `levels`
+declares five w1 fields and `PARAM_SPEC` orders them (in_low, in_high, in_mid) while the
+Levels UI orders them (in_low, in_mid, in_high), which would turn record 34's zero-width
+span into a strong gamma and would soften exactly the right way. The file says otherwise.
+Over a corpus sample, reading the slots from the w1 mask:
+
+    ordering            in_low <= in_high        a mid inside (0, 1)
+    PARAM_SPEC's           3,684 of 3,703            1,193 of 1,200
+    the UI's                 641 of   751            4,359 of 4,412
+
+99.5% against 85.3% on the ordering constraint that has to hold for any sane remap. The
+current naming stands and record 34 really is a zero-width span.
