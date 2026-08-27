@@ -1194,6 +1194,35 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     nodes = chain(rec)
     table = entries(rec, baked_pairs)
     if not table:
+        # WHAT AN FX-MAP WITH NO DRAWABLE ENTRIES EMITS IS AN OPEN QUESTION, AND IT IS THE
+        # LAST ONE HERE. 41,088 fxmaps records yield entries and 76 do not, and all 76 are
+        # structural refusals rather than decode gaps -- measured, not assumed: for the 41
+        # that walk and never hand off, EVERY slot 1..7 of the terminal node was followed and
+        # none reaches an entry passing `entry_layout_holds` (best 4 of 29, 13.8%, noise);
+        # the 27 ending on `0x19b` point at a vocabulary word 24 bytes BEFORE their own
+        # record whose slot 6 is that record's own header, so it overlaps what it belongs to.
+        #
+        # THEY ARE NOT INERT, which is why this note exists rather than a shrug. Rendering
+        # the 28 files that contain one, at max_dim 64:
+        #
+        #     blocked by these AND other roots         102
+        #     BLOCKED ONLY BY these -- last in cone     30
+        #     blocked by other roots only               22
+        #     renders                                   12
+        #
+        # So 30 declared outputs turn on this single decision. If an FX-Map with no drawable
+        # entry emits nothing -- a background, the way a pattern list with no patterns would
+        # -- those 30 render and this should return an empty emission list instead of
+        # raising. If it is instead a sign the walk missed a table, raising is right.
+        #
+        # NOT DECIDED HERE, because nothing available settles it. The reference packs are
+        # disjoint from `corpus.paths()` (see corpus.py), so the render arbiter cannot see
+        # these records at all, and "it would make 30 more outputs appear" is the kind of
+        # argument this file exists to refuse -- an output that renders because a refusal was
+        # softened is not evidence the softening was right. What would settle it: one
+        # reference-pack record with an empty drawable table, rendered against its own
+        # reference image. Until then the refusal stands and the cost of it is stated above.
+        #
         # NAMES THE HALF THAT FAILED. This said "no readable table entries" regardless,
         # and for 53 of the 245 records it fires on the table read never ran -- the walk
         # stopped at its root. See `why_no_entries`.
