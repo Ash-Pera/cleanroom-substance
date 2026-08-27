@@ -3540,6 +3540,30 @@ class Record:
         The formula holds for 94.4% of the 17,151 records carrying a ramp pointer; the
         rest are recovered by treating slot 4 as an upper bound rather than the exact end.
 
+        NOT A FITTED CONSTANT, and the record says so itself. A sweep for slot arithmetic
+        that bypasses the walk flagged this expression on the strength of that 94.4%,
+        reading it as a formula patched by a bound. It is neither. It reads two STATED
+        bits -- the tag's colour flag and class bit 8 -- which is the same width legend
+        the walk applies everywhere else: a per-channel field's width is a constant of
+        its kind, selected by the colour flag (SPEC 6.4). Retracting that flag.
+
+        The record's own stated extent corroborates it independently. Slot 2 gives the
+        stop COUNT and the pair gives a span, so where that span is an exact multiple of
+        the count the width is a READ rather than a formula. Full corpus, 17,866 records
+        with a ramp pointer:
+
+            span exact and 4/6/8      11,707      formula agrees on 11,706   99.99%
+            span not an exact extent   6,159      slot 4 is a bound, as above
+
+        The single disagreement reads width 6 by formula and 8 by span, and NEITHER gives
+        ascending stop positions, so it is a record this decode does not read rather than
+        evidence between the two.
+
+        And the bound holds, which is a check that could have failed. Over 200 specimens,
+        7,152 ramp records: 4,594 where the span equals count x width exactly, 551 where
+        it is larger, and ZERO where count x width overruns the span the record states.
+        A width too wide would have shown up here as a table running past its own bound.
+
         Slot 2 is *not* an input edge. It reads as one - a small backward value - but
         its resolution agreement with the record is 35.5%, which is chance, where a real
         edge agrees at ~100%.
