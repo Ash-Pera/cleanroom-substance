@@ -93,11 +93,46 @@ def _locate_slot(rec):
 
     THE SLOT COMES FROM THE WALK, NOT FROM ARITHMETIC. This used to compute
     `rec.layout[1] + 1 + class bit 7 + class bit 11` -- `param_slots`' containment-verified
-    rule, 38 of 38 located pairings. That rule is right, and the walk says the same thing
-    without the arithmetic: over 20 files, 112 of 112 `distance` records have the formula
-    landing on a slot `decompose` independently enumerates as a PARAMETER, and in every one
-    it is parameter index 0. Two different mechanisms (containment against declared source
-    values; the cost-model walk) naming one slot is what licenses dropping the formula.
+    rule. The walk names the same slot without the arithmetic, and where the two disagree
+    the walk is right; both halves of that are measured below.
+
+    "NO BEHAVIOUR CHANGE" WAS MEASURED ON 20 FILES AND IS FALSE ON THE CORPUS. Re-run over
+    all 437 corpus files plus the reference packs -- 2,540 `distance` records, both sides
+    pinned, only this edit differing -- the two rules part on 80: 69 where the old arm
+    refused and this one answers, 0 lost, and 11 where both answer and disagree. A subset
+    that showed 112 of 112 identical could not see any of them.
+
+    THE SPLIT IS ENTIRELY cls BIT 0, which the formula has no term for:
+
+        cls bit 0 SET     2,451 records   formula slot == walk parameter, 2,451 of 2,451
+        cls bit 0 CLEAR      89 records   formula slot is a walk parameter in 11,
+                                          a CLS slot in 11, and a word the walk accounts
+                                          to NO field at all in 67
+
+    Where the bit is clear the parameter sits one slot later than the formula predicts.
+
+    AND THE 11 DISAGREEMENTS ARE EXACTLY THE 11 CLS-SLOT CASES -- one to one, nothing else
+    lands there. So they are not two readings of one parameter with no way to choose
+    between them: the old rule was reading a CLASS-WORD parameter and returning it as
+    `distance`. It reads 1.0 in 10 of the 11 (256.0 by the walk), and a constant 1.0 is
+    exactly what a misaligned read looks like -- the same 1.0 the 'wide' arm produces from
+    the aspect term on a square image, noted in `distance_param` below.
+
+    WHAT CONTAINMENT CAN AND CANNOT SETTLE. `param_slots.locate('distance', 21, 'distance')`
+    returns 9 pairings -- the docstring there claiming `distance` pairs zero was calling it
+    with the default parameter name `intensity`, which a distance node does not declare.
+    On all 9 the containment-verified slot IS a slot the walk enumerates as a parameter, 9
+    of 9. But every one of the 9 has cls bit 0 SET, and there are ZERO pairings with it
+    clear, so containment confirms the walk on the population where the two rules already
+    agree and cannot reach the 89 where they part.
+
+    The 11 therefore rest on structural accounting, not on declared values: the format
+    assigns the formula's target to a different field. That is falsifiable -- one permitted
+    source declaring a distinctive `distance` on a bit-0-clear record would settle it
+    directly -- and no such source exists in what this project may read.
+
+    The remaining 10 of the 69 gains are cls bit 0 SET and come from dropping the
+    plausibility window below, not from the slot.
 
     THE STATE REPLACES THE PLAUSIBILITY WINDOW. The old guard accepted the slot's bytes as
     a float when `1e-3 < abs(f) <= 4.0 * REFERENCE_PX` -- deciding what a word IS from what

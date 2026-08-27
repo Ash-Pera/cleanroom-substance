@@ -67,9 +67,37 @@ none is stored the same rule lands on something that is not one. That is what an
 value looks like, and it is independent of the distributional argument the blur branch
 makes -- this comes from sources that declare a number and binaries that contain it.
 
-WHERE IT IS BLOCKED. `distance` and `emboss` pair zero: their permitted sources declare no
-intensity with enough decimals to be distinctive, and for emboss there is exactly one
-permitted source at all -- 23 of the 24 that pair are Allegorithmic-authored and excluded.
+WHERE IT IS BLOCKED. `emboss` pairs zero: there is exactly one permitted source declaring
+it at all -- 23 of the 24 that pair are Allegorithmic-authored and excluded.
+
+`distance` DOES NOT pair zero, and the claim that it did was an artefact of how this
+function was called. `locate`'s `param` argument DEFAULTS TO 'intensity', and a distance
+node does not declare an intensity -- it declares a `distance`. Called with the parameter
+the node actually has, `locate('distance', 21, 'distance')` returns NINE pairings across
+two permitted sources (SandyStonePath, DLG-Tools__Mineral_Ore_01). The blocker was a
+default argument, not the corpus.
+
+That is worth more than nine pairings, because the blocker was quoted onward as a fact
+about the data. Before repeating "filter X cannot be reached by containment", call `locate`
+with X's own parameter name and check.
+
+THE RULE IS VERIFIED ONLY WHERE cls BIT 0 IS SET, and every pairing this module can
+produce is such a record. Over the 34 pairings that survive with node-appropriate parameter
+names (blur 1, sharpen 2, warp 11, directionalwarp 10, dirmotionblur 1, distance 9),
+`predicted_slot` names the containment-verified slot in 34 of 34 -- and all 34 have
+`cls & 1`. There are ZERO pairings with bit 0 clear, so containment says nothing whatever
+about that population.
+
+It is not a quiet gap. Over the 2,540 `distance` records in the corpus and the reference
+packs, `predicted_slot`'s slot is what the walk enumerates as a parameter in 2,451 of 2,451
+records with bit 0 SET -- and in the 89 with bit 0 CLEAR it lands on a walk parameter only
+11 times, on a CLS slot 11 times, and on a word the walk accounts to no field at all 67
+times. The rule has no term for bit 0; where the bit is clear the parameter sits one slot
+later than it predicts.
+
+So `start + 1 + bit 7 + bit 11` should be read as "verified on cls-odd records", which is
+all containment can currently license. See `distance._locate_slot` for what the 11 CLS-slot
+cases turn out to be.
 
 Restricted to PERMITTED sources: 28 of the 47 sources declaring a blur node are
 Allegorithmic-authored and excluded, which is the same wall FORMAT-NOTES records for the
