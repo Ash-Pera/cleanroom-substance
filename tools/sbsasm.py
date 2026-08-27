@@ -906,7 +906,23 @@ def leaf_successor(header):
 # landing on an inherited-parameter slot when the field declares an image input and there
 # is no own-parameter to find. Nothing is lost by declining it: `programs()` still returns
 # that program, and render reads `opacitymult` only when its kind is 'baked'.
-WALKED_PARAMS = frozenset({1, 11, 12})
+# `fxmaps` (4) is here on a structural arbiter and a knockout, not on a render score. The
+# memo attributes header parameters to it; over 150 files not ONE of those slots lies inside
+# the header it is attributed to:
+#
+#     past the walk's end, in payload   40,054      the prog/size slot   9,618
+#     past the record entirely               8      an input edge            6
+#     inside the walked header               0
+#
+# That is `walk_partition`'s invariant failing outright -- the memo is claiming payload words,
+# which belong to the FX tree and entry table, as though they were slots in the record header.
+# `_fxmaps_walk` reports no header parameters at all, and it is right to.
+#
+# Nothing reads them either: emptying fxmaps' named_parameters changes 0 of 12,632 rendered
+# records, because render's fxmaps branch takes its parameters from `fxrender`'s entry table
+# and never touches this. So routing fxmaps here drops 40,054 misattributions and costs
+# nothing.
+WALKED_PARAMS = frozenset({1, 4, 11, 12})
 
 PARAM_SPEC = {
     1:  [('opacitymult', 0x30, 0x20)],
