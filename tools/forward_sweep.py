@@ -124,6 +124,44 @@ does not honour a declared 1x1 extent.
 Independently found from the other side by the rendering session, which traced
 basecolor's 256 failure to rec 330 non-finite <- rec 329 <- rec 322 constant at 256. Same
 records, two directions, no shared assumption.
+
+RETRACTED, THE SAME DAY, BY cleanroom-substance-07's TEST. The resolution dependence above
+is an artifact of THIS HARNESS, not a property of the file. Rendering uncapped:
+
+    max_dim      326 (1x1)   329 (1x1)
+    64             0.61516     0.61516
+    128            0.54476     0.54476
+    256            0.50000     0.50000
+    None           0.50000     0.50000      <- converged and stopped
+
+A 1x1 record's own grid cannot move -- min(1, 64) is 1 -- so the dependence was never
+coming from the 1x1 record. It arrived through its INPUT, which is the failure `render.py`
+documents at its own lines 41-48: capping each pixelprocessor's width and height
+INDEPENDENTLY does not preserve two different records' size ratio to each other, and a
+reduction pyramid is the worst possible shape for that. The docstring ends "rendering a
+single file for real output should leave `max_dim` unset", and I had not.
+
+07 predicted the result from the shape of the numbers before running anything: three
+readings converging on a round value is an artifact vanishing as the cap stops binding, not
+a decode fault. That is the third time this repository has lost time to a
+resolution-dependent symptom reading as a misplaced parameter -- previously on `blur` and
+on `distance` -- so it is recorded here as a pattern rather than as a third separate
+mistake.
+
+WHAT SURVIVES, AND IT IS WORSE FOR THE LEVELS QUESTION THAN WHAT I CLAIMED. Uncapped,
+record 330 still fails non-finite and basecolor still does not render at all -- 874 records
+produced, 7 failed, 871 among them. So basecolor is SCOREABLE ONLY AT 128, which is
+precisely the regime where per-record capping distorts a reduction pyramid inside its own
+cone. Every levels arbitration anyone has run, mine included, has been run there.
+
+That does not say the memo is right or that the walk is. It says the instrument that has
+been vetoing `levels` all along has never been read in a regime where it can be trusted for
+this output, and the veto should carry that caveat until basecolor renders at full
+resolution.
+
+The cone-differencing that produced the 25 records is unaffected -- it is a graph
+computation with no render in it -- and the roughness/basecolor divergence is still real at
+both 128 and 256. What is withdrawn is the mechanism I attached to it.
 """
 import sys
 import os
