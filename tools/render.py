@@ -2789,60 +2789,33 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # ...AND THE WALK MUST COUNT EVERY COST-BEARING BIT, not just the inherited two and
                 # the three named here. The cost model fits hsl at const 2 with one word per set
                 # cls bit for bits 0, 7, 8, 9, 10, 11, 12 and 13 -- 74 keys, 100.000% exact -- so
-                # bits 9, 11 and 13 occupy slots too, set on 258, 246 and 263 of the 747 hsl
-                # records. Advancing one slot per NAMED bit skips them. It is 16 reads of 593, and
-                # every one is decisive:
+                # bits 9, 11 and 13 occupy slots too, set on 258, 246 and 263 of the 747 records.
+                # Advancing one slot per NAMED bit skips them. It is 16 reads of 593, and every one
+                # is decisive: the sequential walk reads exactly 0.0000 in 16 of 16 where the
+                # popcount walk reads ordinary parameters. Sixteen exact zeros is the wrong word
+                # read sixteen times.
                 #
-                #     sequential walk   reads exactly 0.0000 in 16 of 16
-                #     popcount walk     0.53 0.49 0.61 0.80 0.76 0.42, and 1.00 x10
-                #
-                # Sixteen exact zeros is the wrong word read sixteen times.
+                # THE SLOT COMES FROM THE WALK, not from a slot formula. This branch used to
+                # compute it as `2 + (count of set COST_BITS below this bit)`, a `base + class
+                # bits` rule reimplementing the walk's own primitive with a hardcoded bit list.
+                # Nothing in the file stores a slot number, so a formula for one is a fit until
+                # it agrees with the structural pass -- and over 437 files and all 747 hsl
+                # records it does, exactly: walk agrees 593, disagrees 0, silent 0, so the
+                # formula was never a second answer and the tuple deletes.
                 #
                 # THIS DUPLICATES `decompose` AND THE TWO AGREE. Kept as its own walk only because
                 # it must name WHICH parameter each slot holds, which `decompose` does not report
                 # for a filter with no PARAM_SPEC entry. Containment confirms both, pairing sources
-                # that declare a distinctive hsl value against their OWN binaries:
+                # that declare a distinctive value against their OWN binaries -- ChesterfieldSofa
+                # 866 saturation 0.6500 at slot 3 and luminosity 0.6000 at slot 4, 351 saturation
+                # 0.5800 at slot 3, SandyStonePath 1451 saturation 0.5250 at slot 3: 4 of 4, and
+                # `decompose` independently allocates cls_slots [2, 3, 4] on record 866.
                 #
-                #     param        source              record   declared   true slot
-                #     saturation   ChesterfieldSofa       866     0.6500        3
-                #     saturation   ChesterfieldSofa       351     0.5800        3
-                #     saturation   SandyStonePath        1451     0.5250        3
-                #     luminosity   ChesterfieldSofa       866     0.6000        4
-                #
-                # 4 of 4, and `decompose` independently allocates cls_slots [2, 3, 4] with end 5
-                # on record 866. The same answer by the same mechanism.
-                #
-                # I PUBLISHED THE OPPOSITE HERE IN f55ddc8 AND IT WAS AN ATTRIBUTION ERROR. That
-                # note claimed costs.json charges 0.0 for bits 8-13 and so names no slot. The
-                # cls table is keyed by WORD-0 bit index and `cls` is `w0 >> 16`, so its keys
-                # 8-13 are low-half bits with nothing to do with hue/saturation/luminosity --
-                # those are w0 bits 24, 26 and 28, charged 1.0 word each. Reading a table in the
-                # wrong bit frame produced a clean-looking 0-of-4 against ground truth, which is
-                # what a frame error looks like from the inside.
-                # THE SLOT COMES FROM THE WALK, not from a slot formula. This branch used
-                # to compute it as `2 + (count of set COST_BITS below this bit)`, with
-                # COST_BITS a curated tuple (0, 7, 8, 9, 10, 11, 12, 13) of which class
-                # bits consume a word. That is a `base + class bits` rule, and the
-                # docstring above already says what it was really doing -- "one float32
-                # field per set bit, at words[3..] in ASCENDING BIT ORDER" is the walk's
-                # own primitive, reimplemented locally with a hardcoded bit list.
-                #
-                # Nothing in the file stores a slot number, so a formula for one is a fit
-                # until it is shown to agree with the structural pass. It does, exactly:
-                # over 437 files and all 747 hsl records, comparing the formula's slot
-                # against `decompose`'s `cls_params` for every set parameter bit --
-                #
-                #     walk agrees      593
-                #     walk disagrees     0
-                #     walk silent        0
-                #
-                # -- so the formula was never a second answer and the tuple deletes.
-                #
-                # MIND THE BIT FRAME, which has produced a wrong result here before (see
-                # the attribution error recorded above): `cls_params` is keyed by WORD-0
-                # bit index and `cls` is `w0 >> 16`, so hue/saturation/luminosity are
-                # cls bits 8/10/12 and w0 bits 24/26/28. Reading one frame as the other
-                # gives a clean-looking zero against ground truth.
+                # MIND THE BIT FRAME. I published the opposite here in f55ddc8, claiming costs.json
+                # charges 0.0 for bits 8-13. The cls table is keyed by WORD-0 bit index and `cls`
+                # is `w0 >> 16`, so its keys 8-13 are low-half bits with nothing to do with
+                # hue/saturation/luminosity -- those are w0 bits 24, 26 and 28, charged 1.0 word
+                # each. Reading a table in the wrong bit frame gave a clean-looking 0-of-4.
                 walked = decompose.decompose(rec)
                 if walked is None:
                     raise Unsupported("hsl record has no structural decomposition")
