@@ -905,39 +905,39 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         # these records, and "it would make 30 more outputs appear" is the kind of argument this
         # file exists to refuse. What would settle it: one reference-pack record with an empty
         # drawable table, rendered against its own reference image.
-        # THE 27 ARE A REAL STRUCTURE THIS CANNOT YET READ -- not junk, and not undecidable.
-        # An earlier note here said both, on a control that was the wrong population; the
-        # correction matters more than the first answer did.
+        # THE 27 ARE DECODED. Their structure is the ordinary walk, not a mode a flag
+        # switches into, and looking for the flag is what kept this closed: bit 17 separates
+        # the family from working tags 0% against 70%, and predicts NOTHING -- program slots
+        # resolve as pointers in 99.8% of entries whether it is set or clear.
         #
-        # What they are. Their handoff target is a vocabulary tag with a decodable program
-        # sitting AT slot 2, inline rather than pointed to, 27 of 27 -- against 0.1% of
-        # 14,901 known-good entries and 1.6% of random body offsets. It is NOT inside a
-        # program span in 0 of 27, and lying inside a span is the marker `fx_table` records
-        # for 82.1% of bytecode-read-as-a-tag. Its position is ordinary too: over 40 files
-        # every out-of-record table sits BEFORE its record, 33 of 33 with none after, at 16
-        # to 1004 bytes back, and these sit at 24 to 52.
+        # THE ENTRY IS `[tag][word][inline program][inline program]`, each program stating
+        # its own extent, and the pair tiles to the record that follows: 12 of 27 land
+        # exactly on the record start and 12 more within 2 bytes (instructions are
+        # byte-granular). Not pointers to programs -- the programs are THERE, which is why
+        # every predicted pointer slot resolves to nothing and `entry_layout_holds` refuses.
         #
-        # WHY THE FIRST REJECTION WAS WRONG. It measured an inline arm against words lying
-        # inside real program spans and found 8.3% false positives. That population is 100%
-        # inside a span BY CONSTRUCTION and the 27 are 0% -- the control shared no property
-        # with the thing it was controlling for. Nor does admitting them admit a crowd: over
-        # the whole corpus there are exactly 27 out-of-record handoff candidates, and these
-        # are they. The 98.4%-fail figure quoted at the handoff guard is not visible from
-        # `corpus.paths()` and must come from the reference packs.
+        # BOTH PROGRAMS ARE ONE `inputref` INSTRUCTION. Opcode 0x02 in all 51, widths
+        # `((op >> 6) & 3) + 1` = 2 then 1, each carrying a uid, and the same uids repeat
+        # across every entry in a file. So an entry of this family holds no numeric
+        # parameters at all: it REFERENCES the graph's declared inputs. That is what
+        # `fx_entry_layout`'s inline note already observed from the other side -- "98% of
+        # these open with `inputref`, so they are image references rather than numeric
+        # parameters" -- reached here by walking rather than by a value test.
         #
-        # WHY THE REFUSAL IS STILL RIGHT, on a different ground. `fx_entry_layout` appends
-        # its `inline` slot ONLY when a tag names no program slots -- "an entry that has them
-        # already has a program at this slot in 99.0% of cases". These tags DO name program
-        # slots (0x54d40088 declares 3, 4, 7, 8, 9), so the inline rule is suppressed for
-        # precisely the family whose program is inline, and the declared slots land inside
-        # that program's own bytes. Admitting the entry would therefore read parameters out
-        # of bytecode and paint a plausible wrong picture, which is worse than refusing.
+        # AND THE FILE DECLARES THEM. Every uid resolves in the header input table, 51 of 51:
+        # `roofing_007` reads `0xb90ebc63` (type 8, width 2, value (8, 8) -- log2 256x256)
+        # and `0xee7caa31` (type 4, width 1, value 0). `default_inputs` already reads that
+        # table, so these values are recoverable from the file's own declarations.
         #
-        # SO THE GAP IS THE LAYOUT OF THIS TAG FAMILY, NOT THE WALK. Its four tags --
-        # 0x54d00048, 0x54d40088, 0x54d00748, 0x05100448 -- occur in a working entry nowhere
-        # in the corpus, so nothing here shows what their parameter bits mean when the
-        # program is inline. That is the decodable question; `entry_layout_holds` is only the
-        # messenger.
+        # WHAT IS STILL NOT KNOWN is WHICH parameter each reference is. The tag's mask
+        # declares 3 or 5 program parameters and there are 2 inline programs, so the mask is
+        # not describing these slots, and no permitted source sets the bits that would name
+        # them -- `fx_entry_layout`'s note says so for exactly this population. Structure
+        # decoded, naming not, and emitting a pattern needs the naming.
+        #
+        # So the refusal stands, and it is now a NAMED gap rather than an opaque one. What
+        # would close it: one permitted source whose FX-Map entry references an exposed
+        # input, pairing a uid to a parameter name.
         raise Unmodelled("no emittable entries -- %s" % why_no_entries(rec))
     for _off, hdr, _p in nodes:
         if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
