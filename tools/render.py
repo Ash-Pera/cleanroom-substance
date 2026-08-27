@@ -62,6 +62,7 @@ import re
 
 import numpy as np
 import transpile, sbsruntime, fxrender, distance, assume, manifest, decompose
+import record_layout
 
 
 class Unsupported(Exception):
@@ -2523,23 +2524,55 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # So blur's is withdrawn and this one is kept and MARKED. It is still
                     # the weaker of `normal`'s two paths and LOW_CONFIDENCE says so on
                     # every record that uses it.
-                    _edges, start = rec.layout
-                    # HOW FAR THE SCAN MAY REACH -- see assume.QUESTIONS['normal.intensity'].
-                    # The eight-word window is a search, not a reading, and `param_slots`
-                    # supplies a DERIVED slot for it to stop at: `start + 1 + bit7 + bit11`,
-                    # 38 of 38 across six other filters. Where that slot holds a value the
-                    # scan already picks exactly it, 968 of 968 -- the window never fires
-                    # early. The two arms differ only on the records where it does NOT.
-                    _hi = (start + 2 + ((rec.cls >> 7) & 1) + ((rec.cls >> 11) & 1)
-                           if assume.assumed('normal.intensity') == 'derived'
-                           else start + 8)
-                    for sl in range(start, min(_hi, len(rec.words))):
-                        f = float(np.frombuffer(np.uint32(rec.words[sl]).tobytes(),
+                    # THE SLOT IS READ, NOT SEARCHED FOR. This was an eight-word window
+                    # that took the first slot reading as a float in 1e-3..1e3 -- a
+                    # plausibility SEARCH, the last one in this file, and the method every
+                    # other parameter here has been moved off. The structural answer is the
+                    # LAST HEADER SLOT, and for this filter it comes from
+                    # `record_layout.header_words` rather than from `decompose`: the two
+                    # readers of the cost model disagree here, and the walk is the one that
+                    # is wrong. `tools/walk_health.py` measures it -- the walk runs LONGER
+                    # than the additive model on 1,358 of 1,358 normal records.
+                    #
+                    # CONTAINMENT PICKED THE WINNER, and it is the reason `end - 1` is not
+                    # used here as it is for blur, sharpen and warp. The one permitted
+                    # pairing, `SubstanceDesignerPractice` record 362, declares 2.01:
+                    #
+                    #     TRUE slot 4     header_words 5 -> hw - 1 = 4      correct
+                    #                     walk end     7 -> end - 1 = 6     wrong by 2
+                    #
+                    # and that record is 7 words, so the walk consumed all of it and
+                    # `end - 1` was simply the last word.
+                    #
+                    # AGAINST THE SEARCH IT REPLACES, corpus-wide over 1,379 records, and
+                    # arbitrated by STRUCTURE rather than by which value looks better --
+                    # necessary, because every one of these reads as an ordinary float:
+                    #
+                    #     agree                                             961
+                    #     scan lands AT/PAST the header end (bytecode)       65
+                    #     both inside the header -- undecided                10
+                    #     scan finds nothing, this answers in-record        322
+                    #     this slot impossible (at/past the header end)       0
+                    #
+                    # The 65 are decisive: a header parameter cannot lie at or beyond the
+                    # header's end, so the window was reading bytecode and stopping at
+                    # whatever first looked like a number. The 322 are coverage the search
+                    # never had. The 10 are genuinely undecided and take the structural
+                    # answer with nothing claimed about them.
+                    #
+                    # The range test stays, as a GUARD on the named slot rather than as the
+                    # thing that chooses it. LOW_CONFIDENCE also stays: this is still the
+                    # weaker of `normal`'s two paths, the width-1 program being the other.
+                    _sl = record_layout.header_words(
+                        rec.filter_id, rec.words[0],
+                        rec.words[1] if len(rec.words) > 1 else None,
+                        asm.header.get('version') if isinstance(asm.header, dict) else 0)
+                    if _sl is not None and 0 <= _sl - 1 < len(rec.words):
+                        f = float(np.frombuffer(np.uint32(rec.words[_sl - 1]).tobytes(),
                                                 dtype=np.float32)[0])
                         if np.isfinite(f) and 1e-3 < abs(f) < 1e3:
                             intensity = f
                             LOW_CONFIDENCE.add(i)
-                            break
                 if intensity is None:
                     raise Unsupported("normal: intensity is neither a single-width "
                                       "program nor a baked float in the block")

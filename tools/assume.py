@@ -1639,25 +1639,23 @@ QUESTIONS = {
     # for `blur`: "where bit 12 says none is stored the same rule lands on something that
     # is not one. That is what an absent value looks like."
     #
-    # WHY THIS IS NOT SIMPLY ADOPTED. 35.3% of the 68 ARE declared values, so closing the
-    # window drops perhaps two dozen good readings to suppress rather more bad ones, and
-    # that is a coverage-versus-correctness call this file exists to hold open rather than
-    # settle by preference. `normal` also pairs only ONCE under `param_slots` containment
-    # (SubstanceDesignerPractice rec 362, 2.01 at slot 4, cls 0x0319, which the rule
-    # predicts) -- one specimen is corroboration, not verification, and the 38-of-38 was
-    # measured on six OTHER filters. The distributional split is the case for 'derived';
-    # the single pairing is not.
-    # AND THE REFERENCE CORPUS CANNOT SETTLE IT, which is stated here with its cause rather
-    # than left as a bare null. Scored under {'blur.intensity':'program',
-    # 'distance.param':'layout', 'nonfinite.fill':0.5} over every package shipping exported
-    # maps, both arms give mean MAE 0.0904 across 27 paired channels and ZERO channels move.
+    # 'normal.intensity' IS WITHDRAWN: BOTH ARMS WERE NON-STRUCTURAL AND BOTH ARE GONE.
+    # It asked how far an eight-word plausibility WINDOW may reach before giving up --
+    # 'scan' for the full window, 'derived' for a stop at `start + 2 + bit7 + bit11`. The
+    # first is a search for a slot that looks like a number; the second is the same fitted
+    # `bit7 + bit11` patch withdrawn from `blur.slot`, and nothing in this format stores a
+    # slot number for either to be approximating.
     #
-    # That is not the two arms agreeing. Of the 72 records where they differ, 68 are in
-    # corpus files no reference package contains, and the remaining 4 sit inside a
-    # reference package but feed no paired output's cone. The instrument is silent because
-    # nothing it scores depends on the choice -- so the distributional split above is the
-    # only evidence there is, and the default does not move on it alone.
-    'normal.intensity': ('scan', 'derived'),
+    # The note below said the reference corpus could not settle it and the single
+    # containment pairing was "corroboration, not verification". Both remain true, and
+    # neither is needed: the question is settled STRUCTURALLY. `record_layout.header_words`
+    # names the last header slot, and against the window over 1,379 records they agree on
+    # 961, the window lands AT OR PAST THE HEADER END on 65 -- reading bytecode, which a
+    # header parameter cannot be -- and the structural read answers 322 records the window
+    # refuses outright. The lone pairing (rec 362, 2.01 at slot 4) agrees with it, and
+    # `decompose`'s `end - 1` does NOT, because the walk runs longer than the additive
+    # model on all 1,358 normal records. See the note in render.py's normal branch and
+    # tools/walk_health.py.
 }
 
 _ACTIVE = {}
