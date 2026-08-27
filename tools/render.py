@@ -1507,28 +1507,59 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # the bit is clear, only when a non-size program exists, only when it runs and
                 # yields the right component count inside [0, 1]. The 1,854 bit-8-clear records
                 # with no colour program fall through to the arbitrated default below.
-                if not (rec.cls >> 8) & 1:
-                    _sb = rec.size_or_baked
-                    _others = [q for q in (rec.programs or ())
-                               if not (_sb is not None and _sb[0] == 'program' and _sb[1] == q)]
-                    if _others:
-                        try:
-                            _v = np.asarray(eval_program(asm, _others[0],
-                                                         default_inputs(asm, 1), {}, 1)).ravel()
-                        except Exception:
-                            _v = np.zeros(0, dtype=np.float32)
-                        if _v.size == 1 and n > 1:
-                            _v = np.repeat(_v, n)
-                        if (_v.size >= n and np.all(np.isfinite(_v[:n]))
-                                and np.all((_v[:n] >= -0.01) & (_v[:n] <= 1.01))):
-                            W, H = rec.width, rec.height
-                            if max_dim:
-                                W, H = min(W, max_dim), min(H, max_dim)
-                            N = W * H
-                            outputs[i] = to_image(
-                                np.tile(np.clip(_v[:n], 0.0, 1.0).astype(np.float32), (N, 1)),
-                                N, H, W)
-                            continue
+                # THE PROGRAM FILL IS NAMED BY THE WALK, not hunted for. Everything above
+                # this point is the BAKED half of an ordinary class-word pair -- w0 bit 24,
+                # cls bit 8 -- and bit 25 is its program half, exactly the convention
+                # `cls_pair_slot` documents and `shuffle` already uses at the same bit.
+                #
+                # So the two guesses stacked here are both replaceable by one read. This
+                # took `rec.programs[0]` minus the size program (WHICH program?) and then
+                # asked whether the value landed in [0, 1] (does it LOOK like a colour?),
+                # which is a value probe of the kind this decode avoids everywhere else.
+                # Over the corpus and the reference packs, on cls-bit-8-clear records:
+                #
+                #     bit 9 set, both agree                                440
+                #     bit 9 set, the WALK finds one the heuristic MISSED   196
+                #     bit 9 set, both find one and they DISAGREE            12
+                #     bit 9 CLEAR, the heuristic fires anyway              161
+                #     neither                                            6,614
+                #
+                # The 161 are false positives on records the format says carry no program
+                # fill at all. The 12 are worse and they are this file's own documented
+                # trap: the heuristic's pointer sits 8 bytes past the walk's and evaluates
+                # to (8.0, 8.0) -- the SIZE EXPRESSION, which the comment opening this
+                # branch says it exists to avoid treating as the colour. The walk's pointer
+                # at the same records reads (1.0, 0.0, 0.0, 1.0), (1.0, 0.752, 0.0, 1.0),
+                # (0.496, 1.0, 0.0, 1.0): red, orange, yellow-green.
+                #
+                # And the slot the walk names holds a VALID PROGRAM on 647 of the 648
+                # records with bit 25 set, so the read is checked structurally rather than
+                # by whether the number that comes out looks plausible.
+                #
+                # THE BAKED HALF IS LEFT ON ITS FORMULA DELIBERATELY, for now. `start` and
+                # `n` above agree with the walk's slot AND width on 8,680 of 8,680 records
+                # where bit 24 is set, so migrating it changes no pixel and is a separate
+                # tidy-up; this branch is where the two differ.
+                _fillpair = cls_pair_slot(rec, 24)
+                if _fillpair is not None and _fillpair[0] == 'program' \
+                        and _fillpair[1] < len(rec.words):
+                    _fp = rec.words[_fillpair[1]] + 52
+                    try:
+                        _v = np.asarray(eval_program(asm, _fp,
+                                                     default_inputs(asm, 1), {}, 1)).ravel()
+                    except Exception:
+                        _v = np.zeros(0, dtype=np.float32)
+                    if _v.size == 1 and n > 1:
+                        _v = np.repeat(_v, n)
+                    if _v.size >= n and np.all(np.isfinite(_v[:n])):
+                        W, H = rec.width, rec.height
+                        if max_dim:
+                            W, H = min(W, max_dim), min(H, max_dim)
+                        N = W * H
+                        outputs[i] = to_image(
+                            np.tile(np.clip(_v[:n], 0.0, 1.0).astype(np.float32), (N, 1)),
+                            N, H, W)
+                        continue
 
                 if not (rec.cls >> 8) & 1 or len(rec.words) < start + n:
                     # THE COLOUR IS NOT IN THE FILE. These are one-word records -- just the tag, no
