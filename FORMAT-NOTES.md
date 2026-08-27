@@ -39859,3 +39859,36 @@ whether slot 1 "looks like a backward index" flagged 18 apparent exceptions -- b
 that happens to be smaller than its record's index (1024 < 1276). The test was a value probe,
 and it produced 18 false positives in a diagnostic written to check a rule against value
 probes. They corroborate the discriminant rather than challenge it.
+
+#### Correction: filter 3's flag is structural, not merely correlated
+
+The section above calls tag bit 0 a field that CO-VARIES with the node type rather than one
+that states it, and warns the rule would break on "a grayscale-output Channel Shuffle". That
+under-claims, and the counterexample cannot exist.
+
+Filter 3 is ONE operation -- channel selection -- and its parameter is PER OUTPUT CHANNEL:
+
+    1 output channel    weights over the input channels        (`grayscaleconversion`)
+    4 output channels   one source selector per output channel (Channel Shuffle, packed in w1)
+
+Tag bit 0 states the output channel count (SPEC 6.2). So it does not happen to correlate with
+the parameter shape; it DETERMINES it, by exactly the rule the walk applies everywhere else --
+SPEC 6.4's per-channel fields are Float1 when grayscale and Float4 when colour, selected by
+that same bit. Filter 3's parameter is a per-channel field, so its shape follows the flag like
+any other.
+
+Under that reading a "grayscale Channel Shuffle" is not a record we would misread. It is
+`grayscaleconversion`: with one output channel a per-output-channel selector degenerates to a
+choice over the input channels, which is what the weights vector already expresses. The two
+are not two node types that happen to differ in colour -- they are one operation at two output
+arities, which is presumably why the cooker gave them one filter id.
+
+The corpus agrees and adds nothing to argue with: 3,934 of 3,934 bit-0-clear records are
+single-input. An earlier count of 144 "apparent two-input grayscale" records was the same
+value probe failing a third time -- all 144 hold ZERO at slot 2, a zero channel weight, which
+`0 <= w < index` accepts because zero passes. Three separate false-positive populations in one
+investigation (18 selectors, 144 zero weights, and the probe this note began by criticising),
+all from asking what a word LOOKS like.
+
+This is an argument from the format's own per-channel width rule plus an exceptionless corpus,
+not from a source declaration; no permitted source names either node under filter 3.
