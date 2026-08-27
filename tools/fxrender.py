@@ -905,6 +905,23 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         # these records, and "it would make 30 more outputs appear" is the kind of argument this
         # file exists to refuse. What would settle it: one reference-pack record with an empty
         # drawable table, rendered against its own reference image.
+        # AND THE OBVIOUS READING OF THOSE 27 IS TESTED AND WITHDRAWN. Their handoff target
+        # is a vocabulary tag with a decodable program sitting AT slot 2 -- inline, not
+        # pointed to -- in 27 of 27, against 0.1% of 14,901 known-good entries and 1.6% of
+        # random body offsets; and its four tags occur in a working entry nowhere. Real
+        # signal, and it still fails its control. Over the population `entry_layout_holds`
+        # exists to exclude (2,045 words inside real program spans that look like tags and
+        # declare program slots) an inline-at-slot-2 arm passes 169, 8.3%, against 16, 0.8%,
+        # today -- tenfold more bytecode admitted to gain 27 records, because bytecode has a
+        # program at its slot 2 by construction. The secondary test discriminates nothing
+        # either: the inline programs end at rec-8/-36/-24/-10, one not word-aligned, and the
+        # bytecode control ends at a record start 0 times as well.
+        #
+        # So the guard is not too strict and the walk is not wrong; these 27 are undecidable
+        # on what the format has given up so far. Written down because 27 of 27 reads as
+        # conclusive -- the second time here a real count carried an invented reading, after
+        # the leaves and pointer cells in `fx_table`'s runs that looked like overreach and
+        # were waypoints.
         raise Unmodelled("no emittable entries -- %s" % why_no_entries(rec))
     for _off, hdr, _p in nodes:
         if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
