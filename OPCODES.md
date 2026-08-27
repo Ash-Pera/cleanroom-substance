@@ -7,6 +7,10 @@ instructions carry an operation id catalogued for their type, and **of the 82 op
 appear in 20 or more distinct specimens, none has an uncatalogued operation id**. The
 residual is component-count and length variants of named operations plus decode residue.
 
+Seven further operations — `0x03`, `0x0B`, `0x0F`, `0x1E`, `0x2A`, `0x35`, `0x36` — fall
+below that threshold and are established structurally rather than by frequency. They are in
+the table below, marked `*`, which is why it carries 48 operation ids rather than 41.
+
 The large raw opcode count is not a set of unknown operations: the encoding is
 combinatorial, so one operation appears as many opcodes across type, component count, and
 length (e.g. `0x0532`/`0x0524` are `rand`/`floor` at 1 component; `0x0861`/`0x085D` are

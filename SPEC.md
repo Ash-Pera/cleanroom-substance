@@ -293,8 +293,8 @@ are 4-aligned and separately framed by the directory.)
 ### 10.2 Operands and immediates
 
 Most operands are value numbers naming an earlier result in the same program. Some are
-immediates: the swizzle mask, variable-slot indices, and the 4-byte immediate of a
-constant (`0x00`) or an **input reference** (`0x02`). Constants with a 4-byte immediate
+immediates: the swizzle mask, variable-slot indices, the index read by `0x03`/`0x06`, and
+the 4-byte immediate of a constant (`0x00`) or an **input reference** (`0x02`). Constants with a 4-byte immediate
 come in two forms differing by `0x0400` (a 2-byte alignment pad).
 
 **Inputs are referenced by uid**: a reference opcode is followed by a `u32` input uid, and
@@ -307,12 +307,38 @@ they never appear in code.
 
 **41 operations in 63 type-specific forms, all named** (see `OPCODES.md` for the full
 table), covering 96.5% of decoded instructions by operation-id on distinct specimens; the
-residue is component/length variants plus decode noise. Notable semantics: `0x0D` construct
-vector (always 2 operands, concatenates), `0x10` swizzle, `0x09` select/ifelse, `0x32`
-seeded rand, `0x33/0x34` sample luminance/colour, `0x0B` **`while`** (a loop:
-`(init, cond, body, …)`, carries no immediate). The compiler performs common-subexpression
-elimination and inlines sub-graph instances, so instruction counts can be far below
-authored node counts.
+residue is component/length variants plus decode noise. Seven further operations — `0x03`,
+`0x0B`, `0x0F`, `0x1E`, `0x2A`, `0x35`, `0x36` — fall below that catalogue's ≥20-specimen
+threshold and are established structurally rather than by frequency; they sit in the same
+table, marked `*`.
+
+The catalogue is grouped by family, by operation id within a family:
+
+| ids | family |
+|---|---|
+| `00`–`02` | values and references — constant, system variable, input reference |
+| `03`, `04`, `07` | variable slots — get, set |
+| `09`, `0B`, `0C` | control flow and structure — select/ifelse, `while`, sequence |
+| `0D`, `0F`, `10` | vector construction and access — construct, `vec4`, swizzle |
+| `11` | type conversion — tofloat / toint |
+| `12`–`18` | arithmetic — add, sub, mul, div, mod, neg, dot |
+| `1D`–`22` | comparison — eq, neq, gt, gteq, lr (less than), lteq |
+| `1A`–`1C` | boolean logic — and, or, not |
+| `23`–`25` | sign and rounding — abs, floor, ceil |
+| `26`–`2B`, `2D`, `35`, `36` | transcendental — cos, sin, sqrt, ln, exp, exp2, atan2, log2, pow |
+| `2E`, `2F` | geometry and interpolation — cartesian (polar → xy), lerp |
+| `30`–`32` | range and noise — min, max, seeded rand |
+| `33`, `34` | sampling — luminance, colour |
+
+Family order follows operation id, with two departures the catalogue also makes: comparison
+comes before boolean logic so the relational operators read as one block, and `0x35`/`0x36`
+group with the transcendentals rather than sitting after the samplers their ids follow. `0x0D` construct
+always takes exactly two operands and concatenates; it and `0x0F` carry a declared `ncomp`
+that is authoritative over their operands' runtime widths. `0x0B` **`while`** is a loop —
+operands `(init, cond, body, …)`, no immediate — and its operands name expression trees
+re-evaluated per iteration, so it is the one instruction a straight-line translation gets
+wrong. The compiler performs common-subexpression elimination and inlines sub-graph
+instances, so instruction counts can be far below authored node counts.
 
 ### 10.4 System variables
 
