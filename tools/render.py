@@ -2432,17 +2432,58 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # records where `warpangle`/`mblurangle` is also present, while
                 # `decompose.named_params` scores 10/10 and 2/2. Same walk, asked for the
                 # named parameter rather than the last one -- 27 of 27 across all five.
-                _d = decompose.decompose(rec)
-                sl = (_d['end'] - 1) if (_d and _d.get('end')) else None
-                if sl is None:
-                    raise Unsupported("warp: the walk does not resolve this record's header")
+                # WARP'S PAIR IS (29, 30), NOT (28, 29). The class-word (baked, program)
+                # pairing is per filter, not a fixed position: blur and sharpen pair at w0
+                # bits 28/29, warp at 29/30, and bit 28 is not in warp's cost table at all.
+                # Reading warp with blur's pair reports 0 baked records and 24,815
+                # "programs", which is warp's BAKED bit misread as a program half. Asked
+                # for its own pair, warp is exact on both arms:
+                #
+                #     baked   (bit 29)  24,815   slot reads a plain value  24,815 of 24,815
+                #     program (bit 30)   1,109   slot holds a program       1,109 of 1,109
+                #     neither              871
+                #     pair slot == end - 1                                 25,924 of 25,924
+                #
+                # THE PROGRAM ARM WAS SILENTLY RENDERING AS NO-WARP. This read `end - 1` as
+                # a float unconditionally, and on the 1,109 program records that word is a
+                # POINTER; read as float32 a pointer is a denormal near 1e-38, which passes
+                # the `-1e3 < intensity < 1e3` guard below and gives intensity 0 -- a warp
+                # that does nothing, on a record that asked for a computed one. A plausible
+                # wrong picture rather than a refusal, which is the failure this file ranks
+                # worst.
+                #
+                # The 871 neither-bit records carry no intensity at all (the source omitted
+                # it and the engine's default applies) and are now refused rather than
+                # reading whichever slot happens to end the header.
+                _pair = cls_pair_slot(rec, 29)
+                if _pair is None:
+                    raise Unsupported("warp intensity: neither class bit 13 (baked) nor 14 "
+                                      "(program) is set, so the source omitted it and the "
+                                      "engine's default applies")
+                sl = _pair[1]
                 if sl >= len(rec.words):
                     raise Unsupported("warp record too short for an intensity slot")
-                intensity = float(np.frombuffer(
-                    np.uint32(rec.words[sl]).tobytes(), dtype=np.float32)[0])
-                if not (intensity == intensity and -1e3 < intensity < 1e3):
-                    raise Unsupported("warp intensity slot %d is not a plausible float"
-                                      % sl)
+                if _pair[0] == 'baked':
+                    intensity = float(np.frombuffer(
+                        np.uint32(rec.words[sl]).tobytes(), dtype=np.float32)[0])
+                    if not (intensity == intensity and -1e3 < intensity < 1e3):
+                        raise Unsupported("warp intensity slot %d is not a plausible float"
+                                          % sl)
+                else:
+                    _q = rec.words[sl] + 52
+                    intensity = None
+                    if asm.body_lo <= _q < asm.body_hi and asm.valid_program(_q):
+                        try:
+                            _v = np.asarray(eval_program(asm, _q, default_inputs(asm, 1),
+                                                         {}, 1, W=rec.width,
+                                                         H=rec.height)).reshape(-1)
+                        except Exception:
+                            _v = np.zeros(0, dtype=np.float32)
+                        if _v.size == 1 and np.isfinite(_v[0]):
+                            intensity = float(_v[0])
+                    if intensity is None:
+                        raise Unsupported("warp intensity: class bit 14 names a program "
+                                          "slot that does not evaluate to a scalar")
                 tainted = any(e in synthetic for e in rec.edges[:2])
 
                 W, H = rec.width, rec.height
