@@ -34,6 +34,7 @@ QUESTIONS = {
     'fx.negopacity':      ('clip', 'signed', 'abs'),
     'levels.zerospan':    ('step', 'identity'),
     'levels.inversion':   ('flat', 'complete'),
+    'levels.interclamp':  ('clamp', 'noclamp'),
     'nonfinite.fill':     (0.0, 0.5, 1.0),
     'uniform.fill':       (),
     'grayscale.weights':  (),

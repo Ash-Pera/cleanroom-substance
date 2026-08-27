@@ -1139,6 +1139,29 @@ REFERENCE_FLOOR = {
     ('minime453__Chesterfield_PBR_Material', 'AO', 0): 0.82,          # was -0.038, now 0.875
     ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.60,   # was +0.101, now 0.668
     ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.72,   # was +0.165, now 0.780
+    # BRICKS BASECOLOR IS ANTI-CORRELATED AND LISTED ANYWAY. These three sit at -0.70,
+    # -0.69 and -0.65: the render is not merely poor, it is inverted against the engine's
+    # own export. They are here for the FIRST assertion, not the second. Nothing was
+    # watching this output -- only Bricks' `emission` was listed -- and it is the output
+    # that moves most when `levels` routing changes (walking `levels` takes ch0 from -0.70
+    # to +0.40 and ch1 from -0.69 to +0.50, a sign flip on two of three channels that no
+    # floor would have reported either way). An unwatched channel that swings by 1.1 is
+    # exactly the b2f1d97 exposure this test exists for.
+    #
+    # READ THE CORRELATION FLOOR AS A COLLAPSE GUARD AND NOTHING MORE. `compare_pack`
+    # yields Bricks basecolor SIX times -- the package ships two .sbsar and several graphs,
+    # and `_package_refs`/`graph_dir` do not narrow basecolor to one reference the way they
+    # do for `emission` (yielded twice, +0.9951 and +0.9805, a 0.015 spread). The SAME
+    # render, identified by its sd of 0.06615, scores -0.0195 against one reference and
+    # -0.7014 against another: a 0.68 spread on identical pixels. The dict keeps the last
+    # row, which is deterministic at a given commit (sorted assemblies, fixed output
+    # order), so these floors do not flake -- but the NUMBER is a property of the pairing,
+    # not of the render, and ratcheting it upward later would be reading noise. What earns
+    # its place is that a constant basecolor now fails, and a basecolor that stops
+    # rendering now fails.
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 0): -0.72,   # now -0.7014, sd 0.0662
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 1): -0.71,   # now -0.6901, sd 0.0877
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 2): -0.67,   # now -0.6462, sd 0.1517
 }
 
 

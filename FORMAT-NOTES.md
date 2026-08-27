@@ -40904,3 +40904,284 @@ out-of-bounds edit instead of reverting it, so it is load-bearing, and the only 
 form of it is two pristine trees differing in one file. Compare VALUES separately from any
 provenance string: 1,584 of the 2,268 "differed" here, and all but 11 of those were the
 description text changing.
+
+---
+
+## `levels` has a SIXTH w1 field, and it marks a midpoint SPLIT PAIR
+
+Chasing the last load-bearing use of `layouts.json` -- `levels` is the only filter left on
+`_parameters_paired`, which is the whole of the 9.272% -- the routing question turned out to
+be blocked (below), but reading the cost model against `PARAM_SPEC[15]` turned up a field
+nothing in this project names.
+
+`costs.json` gives filter 15 `pairs: [0, 1, 2, 3, 4, 5]` -- **six** w1 parameter fields.
+`PARAM_SPEC[15]` names five (`levelinlow`, `levelinhigh`, `levelinmid`, `leveloutlow`,
+`levelouthigh`, masks `3, 12, 48, 192, 768`). Field 5 is bits 10 and 11, and
+`named_parameters` discards it silently, because the name lookup is keyed on the mask and
+there is no mask to match.
+
+IT COSTS ZERO WORDS, WHICH IS WHY NOTHING NOTICED. `_interaction_walk` charges pair *k* in
+state *st* at `base[off + 3k + (st-1)]`, and for filter 15 `off` is 14, so field 5's two cost
+cells are `base[29]` and `base[30]`. Both are 0.0, and both `cross` cells are 0.0 as well. A
+present w1 pair that consumes no slot is a FLAG, not a value -- so the walk was never short,
+`end` was never wrong, and `walk_partition` had nothing to object to. The field is invisible
+to every structural check this project runs, and visible only by reading `pairs` against the
+names.
+
+WHAT IT MARKS. Over the corpus plus the reference packs, 90,728 `levels` records, field 5 is
+set on **500 of them across 130 files**, and always in state 1 -- never 2, so it never takes
+the program form. Its discrimination is sharp, and the control is the point:
+
+    named level parameters set     field 5 SET (n=500)     field 5 CLEAR (n=90,228)
+      0                                  3    0.60%          4,175    4.63%
+      1                                497   99.40%         15,997   17.73%
+      2                                  0    0.00%         52,081   57.72%
+      3                                  0    0.00%         15,578   17.27%
+      4                                  0    0.00%          1,960    2.17%
+      5                                  0    0.00%            437    0.48%
+    -> at most one named parameter    100.00%                        22.36%
+
+And which one it is, is nearly binary: `levelouthigh` alone 245, `leveloutlow` alone 244,
+`levelinmid` 5, `levelinlow` 3, nothing at all 3. `levelinhigh` NEVER co-occurs with it.
+
+THE PAIRING IS THE FINDING. The per-file counts are almost all even, and they are even for a
+reason. Matching each field-5 record against another in the same file that sets the OTHER
+member of the out-pair:
+
+    matched (leveloutlow, levelouthigh) pairs      242   (484 of the 500 records)
+    unmatched                                       16
+    the two members share the SAME input edge      237 of 242
+    index gap 1 or 4                               210 of 242
+
+and the stored value is the same one on both sides:
+
+    leveloutlow  with field 5    0.5 x242,  -0.99 x2
+    levelouthigh with field 5    0.5 x242,   0.0 x2,  0.7071 x1
+
+So a field-5 record is one half of a TWINNED PAIR reading one input, where one twin remaps the
+output into [0.5, 1.0] and its twin into [0.0, 0.5]: one sets `leveloutlow` 0.5 against a
+defaulted `levelouthigh` of 1.0, the other sets `levelouthigh` 0.5 against a defaulted
+`leveloutlow` of 0.0. That is a signal split at the
+midpoint into its upper and lower halves, and field 5 is the bit that says a record is one
+side of such a split.
+
+IT IS NOT `outputsize`, `format` OR `randomseed`, AND CONTAINMENT SAYS SO RATHER THAN AN
+ARGUMENT. Those are the only non-level parameter names any permitted source declares on a
+`levels` node (`outputsize` 6, `format` 6, `randomseed` 1, against `levelinhigh` 186 and the
+rest). Ten such nodes exist across the permitted paired sources; seven of them pair to an own
+assembly, and every one of those assemblies has **zero** field-5 records -- CrustyLava 0 of
+110 `levels`, RockyPath 0 of 116, hblend 0 of 4. A flag that meant "this node states an output
+size" would be set exactly where a source says it is. It is set nowhere near them.
+
+SO THE FIELD IS REAL, ITS POPULATION IS CHARACTERISED, AND ITS NAME IS NOT AVAILABLE. No
+permitted source declares a sixth `levels` parameter at all, which is the provenance rule
+again rather than a gap in the analysis -- the same position filter 9 and the FX inline
+parameters are in. Nothing here proposes a mechanism for what the engine does with the bit;
+the twinning above is what the records say, not an account of why. It changes no render: the
+field costs no slot, so every value read today is read from the same word either way.
+
+### The `levels` routing is still blocked, but the veto is ONE PACK and ONE OUTPUT
+
+The `_parameters_walked` docstring records the case against routing `levels` through the walk
+as a Chesterfield basecolor collapse. That was never measured across the other packages. Run
+now over all five reference packs, one process per condition (`sbsruntime.SAMPLERS` is
+module-level and shared within a process), every scoreable channel, one commit, one batch:
+
+    pack                        output      ch    memo      walk     delta
+    Auras                       basecolor  0-2   .9353 .8515 .9476   unchanged x3
+    Bricks_and_tiles            basecolor   0   -0.7014   +0.3984   +1.0998
+    Bricks_and_tiles            basecolor   1   -0.6901   +0.4980   +1.1881
+    Bricks_and_tiles            basecolor   2   -0.6462   -0.5154   +0.1308
+    Bricks_and_tiles            emission    1   +0.9810   +0.9938   +0.0128
+    Bricks_and_tiles            emission    2   +0.9863   +0.9854   -0.0009
+    Chesterfield                basecolor   0   +0.6658   +0.5495   -0.1163
+    Chesterfield                basecolor   1   +0.8862   +0.0268   -0.8594
+    Chesterfield                basecolor   2   +0.6854   -0.3526   -1.0380
+    Chesterfield                roughness   0   +0.8834   +0.8956   +0.0122
+                                                  18 channels unchanged, 5 better, 4 worse
+
+The memo is ANTI-CORRELATED on Bricks basecolor on all three channels and the walk fixes the
+sign on two of them. That is not a small correction and no floor was watching it -- only
+Bricks' `emission` is in `REFERENCE_FLOOR`. So "the walk is ahead on structure and behind on
+pixels" is too kind to the memo: it is behind on pixels for one file and well ahead for
+another.
+
+WHAT STOPS THAT BEING AN ARGUMENT FOR LANDING IT is the second instrument, and it goes against
+the walk. Per-channel standard deviation against the reference's own:
+
+    Chesterfield basecolor      ch0            ch1            ch2
+      reference sd            0.0759         0.0880         0.0348
+      memo    sd              0.0473         0.0750         0.0385
+      walk    sd              0.1539         0.0571         0.0596
+
+The memo sits near the reference on all three; the walk puts twice the structure into ch0 and
+1.7x into ch2. Correlation and amount-of-structure are independent measures and they agree
+that Chesterfield gets worse. On Bricks the same measure says the pack is badly wrong under
+BOTH routings -- our basecolor sd runs 2x to 5x the reference's either way -- so the walk's
+gain there is bad-and-inverted becoming bad-and-upright, not a clean win, and it should not be
+cited as one.
+
+The routing therefore stays where it was. What has changed is the shape of the blocker: it is
+one file's basecolor, not a corpus-wide pixel verdict, and the memo has a documented cost of
+its own on a channel nothing was guarding.
+
+#### Qualifying the Bricks numbers above: the pairing is ambiguous for basecolor
+
+Bricks basecolor is now in `REFERENCE_FLOOR` at -0.72 / -0.71 / -0.67, which is the first
+anti-correlated entry in that table. Adding it turned up a caveat the table above needs.
+
+`compare_pack` yields Bricks basecolor **six** times, not once. The package ships two `.sbsar`
+and several graphs, and `_package_refs` / `graph_dir` narrow `emission` to one reference
+(yielded twice, +0.9951 and +0.9805, a 0.015 spread) but do NOT narrow basecolor. The same
+render -- identified by its standard deviation of 0.06615, so it is the same pixels -- scores
+
+    -0.0195   against one reference
+    -0.7014   against another
+
+a **0.68 spread on identical output**. The test keeps the last row it sees, which is stable at
+a given commit because assemblies are sorted and output order is fixed, so the floors do not
+flake; but the recorded correlation is a property of which reference the render was paired
+with, not of the render.
+
+WHAT THAT DOES AND DOES NOT COST THE A/B TABLE ABOVE. The memo-vs-walk comparison is
+apples-to-apples -- both conditions run the same iteration and keep the same last row, so the
+`+1.0998` and `+1.1881` deltas are the same pairing measured twice. What is not safe is
+reading `-0.7014` or `+0.3984` as *the* agreement for that output, or ever ratcheting these
+three floors upward: an improvement in the number could be a change in which reference won.
+Their job is the collapse assertion and the still-renders assertion, both of which are
+pairing-independent.
+
+That Bricks pairs its basecolor ambiguously while pairing its emission cleanly is itself a
+loose end in `refcompare`, not in the decode.
+
+### A NAME FOR `levels` FIELD 5, from outside: "intermediary clamp"
+
+Adobe's published documentation describes a `levels` Boolean as *"Intermediary clamp Boolean
+— determines if transformed input value is clamped to [0, 1] before computing output level."*
+That is EXTERNAL KNOWLEDGE, exactly like the blend mode dropdown order, and it is held at the
+same confidence: moderate, not high. Nothing below establishes the name; what is below is
+what the file says once the name is on the table, and it fits better than it had any obligation
+to.
+
+**1. The shape fits a Boolean, and fits it in the one way that is hard to arrange by
+accident.** The field costs zero words in BOTH states (`base[29]`, `base[30]`, and both
+`cross` cells, all 0.0), so it stores no value -- and it appears in state 1 on all 500
+records and in state 2 on none. A parameter with no word and only one non-absent state is a
+flag whose non-default value is `true`, encoded by presence. That is the compiler's
+default-omission convention this file already established for blend mode, blend opacity and
+the level parameters themselves, applied to a Boolean.
+
+**2. The bit is INDEPENDENT of the rest of the record, which is what makes it a parameter
+rather than a consequence.** Holding the tag word, the named parameter and its value all
+fixed, the bit still varies:
+
+    tag word     parameter        bit 10 SET   bit 10 CLEAR
+    0x18991e     leveloutlow 0.5       3            1
+    0x18bb1e     levelouthigh 0.5      6            4
+
+Same filter, same class word, same single parameter, same stored 0.5 -- and some records set
+it while others do not. Nothing else in the record predicts it, so it carries information of
+its own.
+
+**3. THE CONTROL IS THE STRONGEST THING HERE.** If the field means "clamp the transformed
+input", it should be set where the input can actually leave [0, 1] -- and the input's own
+filter says it is. Over every `levels` record, by the filter feeding it:
+
+    input filter        field 5 SET (n=500)     field 5 CLEAR (n=90,228)
+      pixelprocessor       210    42.00%           1,727     1.91%
+      blend                190    38.00%          47,432    52.57%
+      levels                26     5.20%           6,072     6.73%
+      transformation        25     5.00%           8,727     9.67%
+      blur                  22     4.40%           9,235    10.24%
+
+`pixelprocessor` is **22x enriched**: 42% against a base rate of 1.91%. It is also the one
+node in this format that computes an arbitrary value per pixel from a program, and therefore
+the one whose output has no reason to lie in the unit range -- these notes already record a
+`levels` out-range of 1.31 reaching an output and needing a clamp. A flag that governs
+clamping, concentrated 22-fold on the only unbounded producer, is a coincidence worth a lot.
+
+Every other input filter is at or below its base rate, so this is not "field-5 records are
+unusual in general"; it is one filter.
+
+**4. The population is a repeated idiom, not one construct and not 500 free choices.** 500
+records carry 458 distinct header signatures, so they are not byte-replicas; but they fall
+into 29 distinct (tag word, w1, header end) shapes, 362 of them in a single shape
+(`0x19881e` with w1 `0x440`/`0x500`). Treat the evidence as an authored pattern reused across
+130 files, which is stronger than n=1 and much weaker than n=500.
+
+**WHAT THE NAME DOES NOT EXPLAIN, and it should be said plainly.** It gives no account of the
+twinning -- 242 matched (`leveloutlow` 0.5, `levelouthigh` 0.5) pairs sharing an input -- nor
+of why the field never once co-occurs with `levelinhigh` (0 of 500) or with more than one
+named parameter (0 of 500, against a 77.6% base rate for two or more). A clamp Boolean is
+orthogonal to which level parameters a node sets, and this one is not. Something about the
+idiom, not about the flag, is doing that, and it is not identified here.
+
+**IT IS ALSO NOT FALSIFIABLE ON MOST OF ITS OWN POPULATION.** 492 of the 500 set only an
+out-parameter, leaving the input range at its default [0, 1], where `t` equals the input and
+clamping `t` to [0, 1] is a no-op for any input already in range. The name predicts a visible
+difference ONLY where the input leaves the unit range -- which is precisely the
+`pixelprocessor` population above, and precisely nowhere else. So the right implementation is
+an `assume.QUESTIONS` arm pair, measured, not a silent behaviour change.
+
+### And the name cannot be written down yet, for a reason that indicts the memo
+
+The obvious move -- add `('interclamp', 0xC00, 0x800)` to `PARAM_SPEC[15]` -- is UNSAFE while
+`levels` is still routed through `_parameters_paired`, and that is worth recording as a
+concrete cost of the remaining 9.272% rather than a stylistic preference.
+
+`_parameters_paired` builds `present = [nm for nm, pres, _prog in spec if w & pres]` and then
+places that many slots. A sixth spec entry would put `interclamp` into `present` for all 500
+records and place TWO parameters where the record has one, shifting the memo's window on every
+one of them. The walk cannot make that mistake: `_parameters_walked` reads
+`d['param_slots']`, the field has width 0, so it contributes no entry and nothing moves.
+
+Worse, the memo could not have found the field in the first place. `LAYOUT_MASK[15]` is
+`0x3fd` -- bits 0 and 2 through 9 -- so bits 10 and 11 are masked out of the memo's KEY
+entirely. The mask was fitted to the five parameters that were known when it was fitted, so a
+sixth field is outside it by construction. A fitted table cannot discover a field it was not
+fitted with; the walk carries this one for free, because it comes from `pairs` in the cost
+model and not from a list of names.
+
+That is the clearest statement so far of what the last 9.272% actually costs: not accuracy on
+the parameters it already knows, but blindness to the ones it does not.
+
+### `levels.interclamp` is wired, and its first result is a NULL
+
+`assume.QUESTIONS['levels.interclamp'] = ('clamp', 'noclamp')`, read in `render.py`'s `levels`
+branch immediately after `t` is formed. `clamp` is the incumbent -- what the branch did before
+the arm existed, `_ramp = np.clip((src - in_low) / span, 0.0, 1.0)`. Under `noclamp` a record
+whose w1 field 5 is set uses the unclamped `(src - in_low) / span` instead. Unscoped, nothing
+changes: `assumed()` returns None and neither branch is taken.
+
+WHAT THE ARM DOES WHEN IT FIRES, measured rather than assumed. The first test file was a bad
+one and said so loudly: `PavingStonesSubstance003` has four field-5 records and **none of them
+render** -- they are on failing paths -- so the arm marked nothing and the run proved nothing.
+That is worth recording because a 0-changed result from a file whose records never reach the
+branch is indistinguishable, at the summary line, from a 0-changed result that means something.
+
+Over eight files chosen for having `pixelprocessor`-fed field-5 records:
+
+    file                            field 5   rendered   arm marked   records changed
+    FacadeSubstance004                    8          4            4                 0
+    ChewingGumSubstance001               34          0            0                 0
+    PaintedPlasterSubstance002           12          0            0                 0
+    PaintedBricksSubstance001             8          0            0                 0
+    alien_rock_coral_formation           10          0            0                 0
+    porous_stone_mesh_concretion          6          0            0                 0
+
+So the wiring is confirmed live -- four records rendered, four marked, the condition selects
+exactly the field-5 population -- and the arm changes **nothing**. The reason is the one the
+name predicts: those four records' input is a `pixelprocessor` whose output runs
+[0.2719, 0.9969], inside the unit range, so clamping the transformed value is a no-op.
+
+AND THE NULL IS NOT AN ARTIFACT OF OUR OWN CLAMPING, which was the obvious way for this test
+to be circular. `render.py`'s `pixelprocessor` branch writes `outputs[i] = to_image(out, ...)`
+with no clip, and `to_image` does not clip either, so an out-of-range pixelprocessor result
+would survive to the `levels` record and the arm WOULD separate. We have simply not found a
+reachable field-5 record whose input leaves [0, 1].
+
+WHAT IS ACTUALLY BLOCKING THE MEASUREMENT is reachability, not the hypothesis: 74 of the 78
+field-5 records in those eight files never render at all. The population that would decide
+this arm is behind the same wall as everything else in the blocker census, so `levels.interclamp`
+should be re-run when that wall moves rather than treated as settled now. It is registered as
+a live guess with two arms and an honest null, which is the correct state for it.

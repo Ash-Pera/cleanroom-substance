@@ -1778,6 +1778,56 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     _deg = (src >= in_low).astype(np.float32)
                 t = np.where(degenerate, _deg, _ramp)
 
+                # See assume.QUESTIONS['levels.interclamp']. THE CLAMP TWO LINES ABOVE IS A
+                # DECODED PARAMETER AND NOT A SAFETY RAIL. `levels` carries a SIXTH w1 field
+                # -- pair 5, bits 10 and 11 -- that `PARAM_SPEC[15]` does not name and that
+                # costs zero words in both states (`base[29]`, `base[30]` and both `cross`
+                # cells are 0.0), so it stores no value and is therefore a flag. Adobe's
+                # published documentation describes a `levels` "intermediary clamp" Boolean:
+                # whether the transformed input value is clamped to [0, 1] BEFORE the output
+                # level is computed. `(src - in_low) / span` is exactly that transformed
+                # value, and `_ramp` is exactly that clamp.
+                #
+                # THE NAME IS EXTERNAL KNOWLEDGE, held at the same confidence as the blend
+                # mode dropdown order -- moderate, not high -- which is why this is an arm
+                # and not a behaviour. What the file says without it, over 90,728 `levels`
+                # records:
+                #
+                #   * the field is set on 500 of them across 130 files, ALWAYS in state 1
+                #     and never in state 2 -- a parameter with no word and one non-absent
+                #     state is a flag whose non-default value is carried by presence, the
+                #     same default-omission convention this file already uses for blend's
+                #     mode and opacity;
+                #   * it varies with the entire rest of the record held fixed (tag 0x18bb1e,
+                #     single `levelouthigh` of 0.5: 6 set against 4 clear), so it carries
+                #     information nothing else in the record predicts;
+                #   * its input is a `pixelprocessor` 42.00% of the time against a base rate
+                #     of 1.91% -- 22x enrichment on the ONE node in this format that
+                #     computes an arbitrary value per pixel from a program, and so the one
+                #     whose output has no reason to lie in [0, 1]. Every other input filter
+                #     sits at or below its base rate.
+                #
+                # READING PRESENCE AS "NOT THE DEFAULT" is a SECOND guess stacked on the
+                # first, and it is the one 'noclamp' encodes. 'clamp' is the incumbent and
+                # the control: it is what this branch did before the arm existed.
+                #
+                # THE ARM IS MEASURABLE ON ALMOST NONE OF ITS OWN POPULATION, and that is
+                # a property of the finding rather than a defect in the wiring. 492 of the
+                # 500 set only an out-parameter, leaving the input range at its default, so
+                # `t` is `src` and clamping cannot matter for an input already in range. It
+                # can differ ONLY where the input leaves the unit range -- the
+                # `pixelprocessor` population above -- and predicts no change anywhere else.
+                # A null result here is therefore a result, not a failed test.
+                #
+                # Unclamped `t` may go negative, and the gamma below raises it to a
+                # fractional power. That is already safe: `np.power` runs under
+                # `errstate(all="ignore")` and its result is selected by `np.where` only
+                # where the mid point is non-default, which is 5 of the 500.
+                if (assume.assumed('levels.interclamp') == 'noclamp'
+                        and len(rec.words) > 1 and (rec.words[1] >> 10) & 3):
+                    t = np.where(degenerate, _deg, (src - in_low) / span)
+                    assume.note(i)
+
                 # A ZERO-WIDTH INPUT RANGE MAY BE A HALF-READ INVERSION, NOT A STEP. The
                 # step reading elsewhere in this branch is right for a range that is
                 # genuinely zero-width, but some of these are probably not: Substance
