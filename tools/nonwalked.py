@@ -22,6 +22,30 @@ WHAT IT REPORTS, and the one finding that reframes the rest:
      reads 0.0, and no plausibility test can see it. This is the arbiter sbsasm.py already
      uses to prefer the walk for `levels`.
 
+     IT DETECTS TWO FAILURES AND ONLY TWO, and a low count from it is NOT a statement that
+     a memo is nearly right. I read one that way and it misdirected a whole wave of work.
+     The test asks "is this slot an input edge?" and "is it outside the record?". A slot
+     that is neither -- sitting in the PAYLOAD, past the header the walk ends -- passes.
+     For `fxmaps` that is the dominant case, so the test scored it 39 bad of 95,426 and I
+     reported the memo as "very nearly right". Against the containment invariant, which
+     asks whether a slot lies inside the header it is attributed to:
+
+                   memo parameter slots   inside the walked header
+         levels                 169,219            160,106   94.61%
+         fxmaps                  95,426                  0    0.00%
+
+     `fxmaps` is not a rule with 39 exceptions. It has NO header parameters -- `decompose`
+     reports zero param slots on all 41,901 records -- and every slot the memo names is a
+     payload word belonging to the FX tree or the entry table. 95,387 of them do not even
+     coincide with an entry start; the 3 that do are chance at that scale.
+
+     So the two memo-routed filters are categorically different and this test cannot tell
+     them apart. `levels` is a working rule with real exceptions, and the thesis that an
+     exception is a misunderstanding of the rule applies to it. `fxmaps` was a baseless
+     attribution, and the 39 are not its exceptions but the tail that overshot far enough
+     to trip a weak instrument. Use containment for "is this memo right"; use edge-XOR only
+     for "does this memo read a record index as a float".
+
   3. THE CENSUS BLIND SPOT. `corpus.paths()` and the reference packs are DISJOINT. Thirteen
      tools measure the corpus; three touch the packs. So every "corpus-wide" figure in this
      project excludes the only eight files with ground-truth renders, and every figure
