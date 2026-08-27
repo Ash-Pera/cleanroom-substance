@@ -2380,16 +2380,47 @@ class Record:
         Returns a list of (slot, is_program) for filters in PARAM_POPCOUNT, or [] otherwise.
         This is the class-word mechanism, not the slot-1 bit pairs of PARAM_SPEC - a filter
         uses one or the other, never both.
+
+        THE SLOT LIST COMES FROM THE WALK; only the program/baked SPLIT is the class
+        word's. This used to take the slots from LAYOUTS and `return []` whenever the
+        table had no key for the record -- so a fifth of blur and warp records reported
+        no block at all, silently, and `walk.py` consumed that empty answer. Over 120
+        specimens, 7,439 blur/warp records:
+
+            LAYOUTS had no key      1,630 (21.9%)  -- the walk names slots for 1,629
+            LAYOUTS had a key       5,809          -- walk identical on 5,795
+
+        The 14 that differ are one pattern: `warp` with cls 0x2B19, where the table says
+        slots 4, 5, 6 and the walk says 3, 4, 5. The table's list leaves slot 3 belonging
+        to nothing and puts its last slot at 6, past the walk's own header end of 6 -- the
+        same signature as every other phantom found here, a slot index that addresses
+        payload. The walk's list is contiguous with the base region and ends where the
+        header ends, so it is taken.
+
+        `test_tables.py` names draining this and `named_parameters` as the remaining step
+        before layouts.json can be removed; this is the first of the two. The table stays
+        as the fallback for a record the walk cannot resolve.
         """
         m = PARAM_POPCOUNT.get(self.filter_id)
         if m is None or len(self.words) < 2:
             return []
-        hit = LAYOUTS.get((self.filter_id, self.cls,
-                           self.words[1] & LAYOUT_MASK.get(self.filter_id, 0)))
-        if not hit:
-            return []
+        slots = None
+        try:
+            import decompose as _decompose
+            _d = _decompose.decompose(self)
+        except Exception:
+            _d = None
+        if _d is not None and _d.get('end') is not None:
+            slots = sorted(set(_d['cls_slots'])
+                           | {t[2] for t in _d.get('param_slots', ()) if len(t) >= 3})
+        if slots is None:
+            hit = LAYOUTS.get((self.filter_id, self.cls,
+                               self.words[1] & LAYOUT_MASK.get(self.filter_id, 0)))
+            if not hit:
+                return []
+            slots = list(hit[1])
         n = bin(self.cls & m).count('1')
-        return [(s, j < n) for j, s in enumerate(hit[1]) if s < len(self.words)]
+        return [(s, j < n) for j, s in enumerate(slots) if s < len(self.words)]
 
     def _read_slot(self, name, slot):
         """One parameter slot as (name, kind, value).
