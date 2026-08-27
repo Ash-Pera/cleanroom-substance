@@ -310,8 +310,24 @@ def _model_end(r, fallback):
     The SLOT LISTS are left as the walk built them. They are this function's own
     accumulation and a position in them can now exceed `end`; that is a true statement about
     the walk rather than something to paper over, and every consumer already bounds slots by
-    the record. Correcting the slot positions needs the cost model's per-bit attribution,
-    which is a separate piece of work from the header length.
+    the record.
+
+    THEY CANNOT BE CORRECTED FROM THIS MODEL, which is worth stating because it is the
+    obvious next move and it does not work. The fit gives a header LENGTH, not an
+    attribution of that length to particular slots -- `const` is an intercept, not the size
+    of the base region. shuffle shows it plainly. Its two negative coefficients (`cls[0]`
+    and `w1_present`, both -1.0) are set exactly when the record carries a w1 word, so they
+    fold into a per-shape base, and every shuffle header is `base + the positive costs`:
+
+        shape     effective base    header == base + positives
+        no-w1           2                   325 of 325
+        w1              0                   395 of 395
+
+    A per-shape refit would therefore have no negative coefficients at all -- but the w1
+    shape's base would be ZERO, and a header cannot begin at word 0 with `w0` and `w1` free.
+    The intercept is absorbing the base region rather than measuring it. So the model
+    licenses the total and nothing finer, and correcting slot POSITIONS needs a different
+    derivation than a per-bit sum against observed lengths.
     """
     import record_layout
     try:
