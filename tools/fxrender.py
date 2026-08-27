@@ -905,23 +905,39 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         # these records, and "it would make 30 more outputs appear" is the kind of argument this
         # file exists to refuse. What would settle it: one reference-pack record with an empty
         # drawable table, rendered against its own reference image.
-        # AND THE OBVIOUS READING OF THOSE 27 IS TESTED AND WITHDRAWN. Their handoff target
-        # is a vocabulary tag with a decodable program sitting AT slot 2 -- inline, not
-        # pointed to -- in 27 of 27, against 0.1% of 14,901 known-good entries and 1.6% of
-        # random body offsets; and its four tags occur in a working entry nowhere. Real
-        # signal, and it still fails its control. Over the population `entry_layout_holds`
-        # exists to exclude (2,045 words inside real program spans that look like tags and
-        # declare program slots) an inline-at-slot-2 arm passes 169, 8.3%, against 16, 0.8%,
-        # today -- tenfold more bytecode admitted to gain 27 records, because bytecode has a
-        # program at its slot 2 by construction. The secondary test discriminates nothing
-        # either: the inline programs end at rec-8/-36/-24/-10, one not word-aligned, and the
-        # bytecode control ends at a record start 0 times as well.
+        # THE 27 ARE A REAL STRUCTURE THIS CANNOT YET READ -- not junk, and not undecidable.
+        # An earlier note here said both, on a control that was the wrong population; the
+        # correction matters more than the first answer did.
         #
-        # So the guard is not too strict and the walk is not wrong; these 27 are undecidable
-        # on what the format has given up so far. Written down because 27 of 27 reads as
-        # conclusive -- the second time here a real count carried an invented reading, after
-        # the leaves and pointer cells in `fx_table`'s runs that looked like overreach and
-        # were waypoints.
+        # What they are. Their handoff target is a vocabulary tag with a decodable program
+        # sitting AT slot 2, inline rather than pointed to, 27 of 27 -- against 0.1% of
+        # 14,901 known-good entries and 1.6% of random body offsets. It is NOT inside a
+        # program span in 0 of 27, and lying inside a span is the marker `fx_table` records
+        # for 82.1% of bytecode-read-as-a-tag. Its position is ordinary too: over 40 files
+        # every out-of-record table sits BEFORE its record, 33 of 33 with none after, at 16
+        # to 1004 bytes back, and these sit at 24 to 52.
+        #
+        # WHY THE FIRST REJECTION WAS WRONG. It measured an inline arm against words lying
+        # inside real program spans and found 8.3% false positives. That population is 100%
+        # inside a span BY CONSTRUCTION and the 27 are 0% -- the control shared no property
+        # with the thing it was controlling for. Nor does admitting them admit a crowd: over
+        # the whole corpus there are exactly 27 out-of-record handoff candidates, and these
+        # are they. The 98.4%-fail figure quoted at the handoff guard is not visible from
+        # `corpus.paths()` and must come from the reference packs.
+        #
+        # WHY THE REFUSAL IS STILL RIGHT, on a different ground. `fx_entry_layout` appends
+        # its `inline` slot ONLY when a tag names no program slots -- "an entry that has them
+        # already has a program at this slot in 99.0% of cases". These tags DO name program
+        # slots (0x54d40088 declares 3, 4, 7, 8, 9), so the inline rule is suppressed for
+        # precisely the family whose program is inline, and the declared slots land inside
+        # that program's own bytes. Admitting the entry would therefore read parameters out
+        # of bytecode and paint a plausible wrong picture, which is worse than refusing.
+        #
+        # SO THE GAP IS THE LAYOUT OF THIS TAG FAMILY, NOT THE WALK. Its four tags --
+        # 0x54d00048, 0x54d40088, 0x54d00748, 0x05100448 -- occur in a working entry nowhere
+        # in the corpus, so nothing here shows what their parameter bits mean when the
+        # program is inline. That is the decodable question; `entry_layout_holds` is only the
+        # messenger.
         raise Unmodelled("no emittable entries -- %s" % why_no_entries(rec))
     for _off, hdr, _p in nodes:
         if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
