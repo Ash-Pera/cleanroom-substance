@@ -943,6 +943,33 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
                 and (hdr & 0xFF) != STEPPER2 and (hdr & 0xFF) != PASSTHROUGH \
                 and (hdr & 0xFF) != BRANCH and not _is_leaf(hdr):
+            # THE UNMODELLED HEADERS COME AS A FAMILY, and treating one as a passthrough
+            # only moves the failure to the next. Recorded so the experiment is not re-run.
+            #
+            # `0x1db` is the header the census names, 22 declared outputs behind it. It is
+            # in the node vocabulary -- `node_shape` gives (16, (8,)) -- and it sits at the
+            # chain ROOT with a downstream chain that is entirely recognised:
+            #
+            #     0x1db -> 0x1a3 -> 0x1a3 -> 0x89 -> 0x89 -> 0x19b -> 0x99 -> 0x18b
+            #                                GATE    GATE            STEPPER  ADDNODE
+            #
+            # identical in both files that carry it (flowingLava_v35 record 112, Cliff
+            # record 1). All 19 of its nodes in the corpus and the reference packs have the
+            # same shape: `+4` is the constant 0x00000002, `+8` a child, `+16` the
+            # successor, and `chain()` attaches NO named program to it -- so it is not an
+            # ADDNODE, which needs a `numberadded`.
+            #
+            # One child, one successor, no program reads like a passthrough, and that was
+            # tested rather than assumed: skipping 0x1db here clears its 6 record failures
+            # and renders NOTHING new -- 3,149 records and 2 declared outputs before and
+            # after -- because the failure simply becomes `node header 0x1a3 is not
+            # modelled`, the next node in the same chain. 0x1a3 has 0x1ab's shape
+            # (12, (4, 8)) as 0x1db has 0x1cb's, so both are one-bit neighbours of ADDNODE
+            # members and neither is one.
+            #
+            # So this is an unmodelled sub-family, not a missing row, and a passthrough for
+            # each would be a chain of guesses producing a plausible wrong picture. Naming
+            # what these kinds DO needs evidence this refusal is protecting.
             raise Unmodelled("node header %#x is not modelled" % hdr)
 
     out = []
