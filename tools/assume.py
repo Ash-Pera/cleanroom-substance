@@ -1174,6 +1174,40 @@ QUESTIONS = {
     # clip the record has nothing but its typeless full-cell fills and renders solid white.
     # 'signed' passes the value through so a negative can subtract (which needs
     # `fx.combine` to be something max cannot be); 'abs' takes the magnitude.
+    # TWO OF THESE THREE ARMS ARE THE SAME FUNCTION UNDER THE DEFAULT `fx.combine`, and
+    # that is provable rather than measured. `splat` starts its canvas at `np.zeros`, and
+    # the default fold is `np.maximum(dst, src)`. A maximum against a non-negative canvas
+    # ignores every negative src, so `clip` (which sets negatives to 0) and `signed` (which
+    # keeps them) cannot produce different pixels: nothing negative ever reaches the output.
+    #
+    # Verified on the worst case rather than left as an argument. MetalSubstance009 record
+    # 4961 emits 4,096 patterns of which 2,052 carry a NEGATIVE opacity, down to -0.4998:
+    #
+    #     combine=max    clip vs signed   max|diff| = 0.000000000   IDENTICAL
+    #                    clip vs abs      max|diff| = 0.179447889
+    #     combine=add    clip vs signed   max|diff| = 0.125429004
+    #     combine=over   clip vs signed   max|diff| = 0.160809234
+    #
+    # SO THIS QUESTION IS NOT INDEPENDENTLY ARBITRABLE. While `fx.combine` is 'max', an A/B
+    # of clip against signed is structurally void -- it cannot generate a signal, and a
+    # sweep reporting "no difference" has measured an identity, not an agreement. The two
+    # keys have to be moved together or not at all. Any past observation that negopacity
+    # "made no difference" carries no information about negopacity.
+    #
+    # WHAT THE NEGATIVES ARE, over 952,775 emitted patterns in the corpus plus the packs:
+    #
+    #     no opacity, so 1.0     764,145   80.20%
+    #     in (0, 1]              161,618   16.96%
+    #     exactly zero            15,956    1.67%
+    #     NEGATIVE                 9,735    1.02%     740 records, min -1.5693, median -0.386
+    #     above 1                  1,321    0.14%
+    #
+    # They are not a misread of one program shape: 740 distinct records across many files
+    # produce them. And they are not drift -- EXACTLY -1.0 accounts for 1,628 of the 9,735,
+    # 16.7%, which is an authored value rather than an accumulated one. A full-strength
+    # negative is what a subtract means, so 'signed' is the arm the value distribution
+    # suggests; nothing here promotes it, because the only fold that can express it is one
+    # this project has not settled either.
     'fx.negopacity':      ('clip', 'signed', 'abs'),
     # WHAT A GENUINELY ZERO-WIDTH levels DOES. Where levelinlow equals levelinhigh the
     # transfer has no width, and the branch currently reads it as a STEP: everything at or
