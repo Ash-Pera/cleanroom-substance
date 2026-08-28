@@ -999,7 +999,15 @@ def leaf_successor(header):
 WALKED_PARAMS = frozenset({1, 4, 11, 12})
 
 PARAM_SPEC = {
-    1:  [('opacitymult', 0x30, 0x20)],
+    # `blend` states the SAME parameter at either of two masks, and which one is the port's
+    # doing: connect the node's `opacity` input and the field at (4, 5) takes the
+    # image-input code while the slider moves to (9, 10). The second mask is a declared
+    # STRADDLE -- `3 << 9`, spanning fields 4 and 5 -- which `decompose.STRADDLED` relabels
+    # as the one field it is, so `_parameters_walked` resolves it against that reported id.
+    # Corpus-wide the arms never collide: 963 records read code 01 there and 170 read 10,
+    # and code 11 -- the only state this table's `x == mask` edge test would fire on --
+    # occurs 0 times in 310,697 blend records.
+    1:  [('opacitymult', 0x30, 0x20), ('opacitymult', 0x600, 0x400)],
     12: [('intensity', 0x06, 0x04), ('warpangle', 0x18, 0x10)],
     15: [('levelinlow',   0x003, 0x002), ('levelinhigh', 0x00c, 0x008),
          ('levelinmid',   0x030, 0x020), ('leveloutlow', 0x0c0, 0x080),
@@ -2974,6 +2982,15 @@ class Record:
         # Verified name-for-name against the positional rule it replaces: same names in the
         # same order on 62,898 of 62,898 records.
         gsh = int(d.get('w1_shift', 0) or 0)
+        # A DECLARED STRADDLE IS A FIELD, AND THE WALK SAYS WHICH ONE. `blend`'s relocated
+        # opacity is `3 << 9` and `transformation`'s offset `3 << 25` -- one bit off the
+        # grid, each spanning two tiling fields -- so neither can resolve by position.
+        # `decompose.STRADDLED` relabels each pair as the single field it is, positions and
+        # widths untouched, and the name binds to that reported id. Without this the mask
+        # is unresolvable and the record's parameter comes back unnamed, which is what left
+        # every masked `blend` reporting no opacity at all.
+        straddled = {3 << shift: fid for _lo, _hi, shift, fid
+                     in _decompose.STRADDLED.get(self.filter_id, ())}
         aligned = True
         for nm, pres, _prog in spec:
             for j in range(16):
@@ -2981,7 +2998,11 @@ class Record:
                     names[j] = nm
                     break
             else:
-                aligned = False
+                fid = straddled.get(pres)
+                if fid is None:
+                    aligned = False
+                else:
+                    names[fid] = nm
         if not aligned:
             # UNREACHABLE, AND LOUD RATHER THAN SILENT IF IT EVER IS NOT. Every mask in
             # every PARAM_SPEC entry resolves to exactly one field under the grid shift
@@ -3113,10 +3134,25 @@ class Record:
         if self.filter_id in BIT_EXACT_KINDS:
             w1 = self.words[1] if len(self.words) > 1 else 0
             bit_is_program = False
+            # PICK THE ARM THAT IS IN USE, NOT THE FIRST ENTRY WITH THE NAME. One parameter
+            # can be stated at either of two masks -- `blend`'s opacity moves to (9, 10)
+            # when the `opacity` port takes (4, 5) -- and both entries carry the same name,
+            # so matching on the name alone reads the WRONG arm's program bit. On a masked
+            # blend that bit is (4, 5)'s high half, set because the field holds the image
+            # input code, and every baked opacity came back as a program pointer.
+            #
+            # The arm in use is the one whose two-bit code is a PARAMETER state, 01 or 10;
+            # 00 is absent and 11 is the image input. Single-masked parameters are
+            # unaffected -- their one entry is the only candidate and its code is the state
+            # the walk already charged a slot for.
             for _nm, _pres, _prog in PARAM_SPEC.get(self.filter_id, ()):
-                if _nm == name:
-                    bit_is_program = bool(w1 & _prog)
-                    break
+                if _nm != name:
+                    continue
+                code = (w1 & _pres) >> ((_pres & -_pres).bit_length() - 1)
+                if code not in (1, 2):
+                    continue
+                bit_is_program = bool(w1 & _prog)
+                break
             if bit_is_program != slot_is_program:
                 _kind_conflicts.append((self.filter_id, name, self.index))
             slot_is_program = bit_is_program

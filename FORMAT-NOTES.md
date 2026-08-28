@@ -41945,3 +41945,41 @@ select `src`, the last four `dst`). Nothing has checked those selections against
 Reading the relocated `blend` opacity moves the channel substantially and does not fix it --
 ch1 -0.071 to +0.589 and ch0's MAE 0.069 to 0.048, against ch2 -0.368 to -0.679 -- which is
 consistent with more than one thing being wrong in that colour chain.
+
+### The relocated opacity had no name, and giving it one exposed a name-keyed reader
+
+`PARAM_SPEC[1]` carried one entry, `('opacitymult', 0x30, 0x20)`, so `named_parameters`
+resolved the field at (4, 5) and nothing else. Every masked `blend` -- the 1,133 records
+whose opacity has moved to the straddled field -- reported NO parameters at all, which is
+indistinguishable from a filter that declares none.
+
+The second arm is `('opacitymult', 0x600, 0x400)` and it is the mask SPEC 7.4 already lists.
+It cannot resolve by position, because `3 << 9` is not `3 << 2j` for any j; it resolves
+through `decompose.STRADDLED`, which is where the pair is declared and which reports the
+relabelled field the name binds to. `_parameters_walked` now consults that table before
+declaring a mask off-grid, and the alarm it raises otherwise is unchanged.
+
+WHAT THE SECOND ENTRY EXPOSED, and it is a defect in the reader rather than in the table.
+`_read_slot` took the parameter's kind from its PROGRAM BIT -- correctly, and this file
+records the bit as exact over 179,524 blend reads -- but it found the entry to read that bit
+from BY NAME, first match wins. Two entries share the name `opacitymult`, so every masked
+record read the wrong arm's bit, and that bit is (4, 5)'s high half, which on exactly those
+records is set because the field holds the image-input code. All 963 baked opacities came
+back as program pointers, values in the hundreds of millions.
+
+The arm in use is the one whose two-bit code is a PARAMETER state -- 01 or 10, against 00
+absent and 11 image input -- and reading it that way is what a one-mask parameter was
+already doing implicitly, since its single entry is its only candidate.
+
+    corpus-wide, 310,697 blend records, toggling the entry in one process
+
+    _compute_layout (the independent model decompose is validated against)   0 changed
+    decompose end / inputs / param_slots                                     0 changed
+    named_parameters                        +1,133 gained, 0 lost, 0 changed
+        of which                            963 baked, 170 program -- the two arms exactly
+        baked values outside [0, 1]         0
+    _kind_conflicts (this file's own alarm)  0
+
+That last line is the check worth keeping. `_read_slot` records a conflict whenever the
+program bit and the `valid_program` probe disagree, and it stays empty across all 1,133 --
+so the bit reading and the value reading agree on every record, program arm included.
