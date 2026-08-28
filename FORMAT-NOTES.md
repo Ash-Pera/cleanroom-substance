@@ -41827,3 +41827,121 @@ Over a corpus sample, reading the slots from the w1 mask:
 
 99.5% against 85.3% on the ordering constraint that has to hold for any sane remap. The
 current naming stands and record 34 really is a zero-width span.
+
+## `blend`'s opacity moves when its mask port is connected, and the walk now states it
+
+`SPEC 7.4` records that `blend` states its opacity at one of two masks -- `(4, 5)` when the
+node has two inputs, `(9, 10)` when the `opacity` port is connected and `(4, 5)` goes to the
+image-input code. That was read straight from the `w1` word by `render2`'s name legend and by
+nothing else, so the WALK still disagreed with it on every one of those records, and the
+disagreement was invisible because the renderer never asked the walk.
+
+    what the walk reported, unrelabelled          what the word actually holds
+    field 4 state 3   "an image input"            a plain float in [0, 1]
+    field 5 state 1   "a baked scalar"            a program pointer, read as a denormal
+                                                  1.9e-39 -- an opacity of ZERO, a blend
+                                                  that composites nothing
+
+THE VALUES SETTLE IT AND THEY SETTLE BOTH ARMS, which is what makes this a statement about the
+format rather than a preference between two readings. Over the whole 437-file corpus, every
+`blend` record whose straddled code is nonzero, tested against what sits in the word the walk
+charges -- **0 exceptions**:
+
+    code 01    963 records    every one a plain float in [0, 1]    none resolves a program
+    code 10    170 records    not one a plain float                every one resolves a program
+
+Two shipped sources say the same thing from the other side. `ChesterfieldSofa.sbs` pairs 11 of
+11 declared `opacitymult` values onto the slot the walk charges and `SandyStonePath.sbs` 7 of
+7 -- three at the relocated field in each. Both are provenance-permitted: no `<author
+v="Allegorithmic">` tag and zero occurrences of the string.
+
+### It is the same straddle the walk already models, and it was declared in only one place
+
+`decompose.STRADDLED` has held `transformation`'s `(12, 13)` pair since the sweep that found
+it, with the soundness condition stated in its own comment: relabelling is allowed only when
+each half's fitted width equals the WHOLE parameter's, so no extent moves. `blend` meets that
+condition exactly -- field 4 state 3 costs 1 word, field 5 state 1 costs 1 word, and the
+parameter is 1 word in both arms, a baked scalar or a pointer.
+
+WHY THE ORIGINAL SWEEP COULD NOT SEE IT, and it is one reason rather than two. The sweep looked
+for an adjacent pair whose low half reads only `0b10`, whose high half reads only `0b01`, with
+the outer bits never set. `blend`'s low half fails both halves of that: bit 8 is set on 22,459
+of 29,961 records over 40 files whether or not an opacity is present, so field 4 reads `0b01`
+and `0b11` and the outer bit is set. Only bit 9 belongs to the parameter.
+
+A SECOND DEFECT WAS HIDING BEHIND THE FIRST. `_restraddle` was called from `_interaction_walk`
+and nowhere else, so a `STRADDLED` entry for a filter taking the OTHER walk would have been
+inert -- and `blend` has no `interaction` key, so it takes the other walk. A straddle is a
+property of the filter's grid, not of which walk happens to read it; the call is now in both.
+
+### What changed, measured by toggling the table in one process at one commit
+
+    blend records                                            29,961 over 40 files
+    end / inputs / prog / any slot or width changed                0
+    (field, state) labels changed                                105
+        (4, 3) -> (4, 1)   75        (5, 1) -> (4, 2)   30
+
+Renders are BIT-IDENTICAL, which is the point rather than a disappointment: `render2` already
+read the value through the mask, so a walk-side correction must not move a pixel. Six files
+carrying 41 straddled blends between them, rendered both ways in one process: identical record
+counts, failure counts and pixel checksums. `Chesterfield`'s ten scored channels identical,
+`test_render2.py` 6 of 6.
+
+CORRECTED WHILE HERE. `SPEC` said the two arms were exclusive because "1,133 of 1,133 corpus
+records with (9, 10) set read state 11 at (4, 5)". They do not: **963 read `11` and the 170
+program-arm records read `01`**, because bit 9 is `(4, 5)`'s high bit while bit 10 belongs to
+the next field. The arms are exclusive by construction -- one two-bit code cannot read both
+`01` and `10` -- and it is their VALUES that tell them apart.
+
+## The three `levels` records Chesterfield's basecolor was blamed on are inert
+
+This file records an open question -- that `Chesterfield` prefers the LAYOUTS memo's reading of
+records 129, 146 and 226 over the walk's, and that "something downstream of an INVERTING
+`levels` is wrong". Both halves of that are withdrawn. The reading is settled by the package's
+own source, and the three records cannot move the channel they were blamed for.
+
+### The source arbitrates the reading, with no render involved
+
+`ChesterfieldSofa.sbs` is permitted and declares 12 `levels` nodes, each matching exactly one
+record on both the parameter SET and the values to 2e-4:
+
+    the walk (`render2.model.View`)          12 / 12
+    the LAYOUTS memo (`named_parameters`)    11 / 12
+
+The memo's one failure is record 348 -- the COLOUR `levels` this file already flagged and set
+aside. The source states `levelinhigh` 0.593045; the memo reads 0.2641, a duplicate of
+`levelinlow`. So on the package where the render prefers the memo, the source refutes it.
+
+### The records carry no signal to prefer
+
+129, 146 and 226 are `curvature_smooth`'s internal inverts: the `normal` output's R channel
+(record 122), minified 64x into a 16x16 canvas, then inverted. Their inputs are flat -- mean
+0.4999, sd 0.0017, 0.0042 and 0.0007. Four readings, one process, at `max_dim` 256:
+
+    reading of 129/146/226        basecolor ch0 / ch1 / ch2
+    invert (the walk)             +0.3502 / +0.0040 / -0.3923
+    identity                      +0.3479 / +0.0066 / -0.3965
+    pure 1-x                      +0.3473 / +0.0077 / -0.3969
+    constant 0.5                  +0.3476 / +0.0071 / -0.3967
+
+Every channel within 0.003. The invert and its exact opposite are indistinguishable here, so
+no number on this specimen is evidence about `leveloutlow > levelouthigh`.
+
+### What the memo's reading actually does, and why the old renderer looked better
+
+It outputs exactly 1.0. Record 330 is a `pixelprocessor` computing `(x - lo) / (hi - lo)` --
+auto-levels -- so a saturated branch divides 0/0, goes 100% non-finite, and takes basecolor and
+six more records out entirely. Under `render.py` the same reading leaves a residue (sd 0.0033)
+instead of an exact constant, the branch survives as a near-constant, gradient record 869
+collapses to white, and the colour layer it feeds contributes nothing. THE MEMO'S COLUMN IS A
+SWITCHED-OFF LAYER BEATING A WRONG ONE, not a reading the render prefers.
+
+### Where the residual actually is
+
+Not in `levels`. Record 862 -- the button mask -- correlates **+0.94** with the reference
+basecolor's luminance while our own output correlates -0.15, and the chain into basecolor runs
+through nine mode-7 blends, which are `switch` selectors driven by programs (the first five
+select `src`, the last four `dst`). Nothing has checked those selections against the file.
+Reading the relocated `blend` opacity moves the channel substantially and does not fix it --
+ch1 -0.071 to +0.589 and ch0's MAE 0.069 to 0.048, against ch2 -0.368 to -0.679 -- which is
+consistent with more than one thing being wrong in that colour chain.

@@ -604,16 +604,26 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 
 Two of these **straddle** the two-bit grid — `transformation`'s offset at bits (25, 26)
 and `blend`'s relocated opacity at (9, 10) — so under a plain `j → (2j, 2j+1)` reading their
-two states swap meaning between adjacent fields. Match the **mask**, never a field index.
+two states swap meaning between adjacent fields. A reader working from raw `w1` must match
+the **mask**, never a field index. Both straddles are declared to the walk in
+`decompose.STRADDLED`, which relabels the pair as the one field it is with positions and
+widths untouched, so `param_slots` reports field 12 and field 4 carrying the ordinary
+states — a consumer reading the walk does not re-derive either.
 
 **`blend` states its opacity at one of two masks.** Connect the node's `opacity` input and
 the field at (4, 5) goes to state 11 — the image-input code, §7.3 — and the slider moves to
 (9, 10). Both are the same parameter: in `ChesterfieldSofa.sbs` exactly three blend nodes
 have both a connected `opacity` port and a stated `opacitymult` (0.73, 0.40, 0.20), and
 exactly three compiled records set (9, 10), holding those three floats; `SandyStonePath.sbs`
-agrees five for five, program arm included. The two arms are exclusive — 1,133 of 1,133
-corpus records with (9, 10) set read state 11 at (4, 5) — so a reader may give them one
-name, and should refuse rather than choose if it ever sees both.
+agrees five for five, program arm included. The two arms are exclusive by construction —
+one two-bit code cannot read both 01 and 10 — so a reader may give them one name.
+
+What (4, 5) reads under a set (9, 10) depends on which arm it is, and an earlier revision of
+this paragraph had it as state 11 in all 1,133 cases. Corpus-wide it splits, because bit 9 is
+(4, 5)'s high bit and bit 10 is (6, 7)'s low bit: **963 baked-arm records read 11 at (4, 5)
+and the 170 program-arm records read 01.** The arms are told apart by their VALUES with no
+exceptions in 437 files — every one of the 963 holds a plain float in [0, 1] and resolves no
+program; not one of the 170 is a plain float and all 170 resolve a program.
 
 The `levels` order is `(low, high, mid)`, not the UI's `(low, mid, high)`: over a corpus
 sample `in_low <= in_high` holds 3,684 of 3,703 under this order and 641 of 751 under the

@@ -210,8 +210,35 @@ def _has_w1_word(f, w0, ver):
 # grid, and until then counting back from `end` is the only available reading, because the
 # model's total is right where its per-field attribution is not.
 #
+# A SECOND STRADDLE THE SWEEP COULD NOT SEE: `blend`'s opacity, fields 4 and 5 at shift 9.
+# It fails two of the three criteria above, and for one reason -- the low half's OTHER bit
+# belongs to something else. Bit 8 is set on 22,459 of 29,961 blend records over 40 files
+# whether or not an opacity is present, so field 4 reads 0b01 and 0b11 rather than "only
+# ever 0b10", and "outer bit 2j never set" is false by the same bit. Only bit 9 is the
+# parameter's.
+#
+# READ AT SHIFT 9 IT IS THE ORDINARY ALPHABET, and the VALUES say so on both arms rather
+# than the state bits saying it about themselves. Over the whole 437-file corpus, every
+# blend record whose straddled code is nonzero, against what sits in the word the walk
+# charges -- 0 exceptions:
+#
+#     code 01   963 records   every one a plain float in [0, 1]   none resolves a program
+#     code 10   170 records   not one a plain float               every one resolves a program
+#
+# Unrelabelled the walk calls the first arm "field 4, image input" and the second "field 5,
+# baked" -- a pointer read as a denormal, 1.9e-39, which is an opacity of zero and a blend
+# that composites nothing. Two shipped sources say the same thing from the other side:
+# `ChesterfieldSofa.sbs` pairs 11 of 11 declared `opacitymult` values onto the slot the walk
+# charges and `SandyStonePath.sbs` 7 of 7, three of them at this field in each.
+#
+# SOUND BY THE SAME WIDTH TEST as transformation, which is the condition this table's own
+# caveat sets: field 4 state 3 costs 1 word and field 5 state 1 costs 1 word, and the whole
+# parameter is 1 word in both arms -- a baked scalar and a pointer. So the relabelling
+# recovers the parameter and touches no extent. `directionalwarp` still must not be added,
+# for the reason above: its halves are sums across two parameters, not one parameter twice.
+#
 # {filter: [(low tiling field, high tiling field, real shift, field id to report)]}
-STRADDLED = {2: [(12, 13, 25, 12)]}
+STRADDLED = {1: [(4, 5, 9, 4)], 2: [(12, 13, 25, 12)]}
 
 
 def _restraddle(r, w1, param_slots):
@@ -538,6 +565,12 @@ def decompose(r):
     # bitmap (16) carries a size expression only when tag bit 0 is set; otherwise slot 2 is image
     # data (which can coincidentally parse as a program), and layout reports no size.
     prog = None if (f == 17 or (f == 16 and not (r.cls & 1)) or size_pos in inputs) else size_pos
+    # RELABEL HERE TOO. `_restraddle` was called only from `_interaction_walk`, so a
+    # `STRADDLED` entry for a filter that takes THIS walk was inert -- and `blend`, the
+    # filter the table's new entry is about, has no `interaction` key and takes this one.
+    # A straddle is a property of the filter's grid, not of which walk reads it.
+    if w1 is not None:
+        param_slots = _restraddle(r, w1, param_slots)
     # `w1_shift` is REPORTED rather than left for callers to look up again. A consumer
     # matching a PARAM_SPEC mask to a field has to know which grid the fields are on, and
     # re-deriving it means re-selecting the spec with arguments the caller has to
