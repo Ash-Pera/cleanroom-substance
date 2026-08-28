@@ -307,11 +307,23 @@ class View(object):
         #     clsbits = [b for b in bitrange if len({k[0] >> b & 1 for k, _, _ in keys}) > 1]
         #
         # Filter 8 has 30 distinct (cls, w1) keys in that population and bit 16 is set in
-        # ALL 30, so its word cannot be told apart from the constant -- which is what
-        # `base[0] = 4.5` is: the size word folded into the base region, with a half the fit
-        # could not attribute. Re-fitting cannot recover it. (Two commits ago I said the
-        # opposite, from a corpus count of 536 set against 10 clear; the 10 are records whose
-        # header boundary is not measurable, so the fitter never sees them.)
+        # ALL 30, so within it the word cannot be told apart from the constant -- which is
+        # what `base[0] = 4.5` is: the size word folded into the base region.
+        #
+        # AND THE REASON IS THE VERSION CUT. `derive_costs.MIN_VERSION[8] = 0x50000` drops
+        # every emboss record below v5 from the fit, and v5, v6 and v9 set bit 16 on 256, 87
+        # and 32 of 256, 87 and 32 records. The ONLY records where it is clear are v2 (6) and
+        # v4 (4) -- precisely the ones excluded. So the population is version-gated and the
+        # bit is constant BY that gate, not by the format.
+        #
+        # Refit on the excluded population and it appears: bit 16 costs 1.0 word (50 keys,
+        # 171 records, 0.9649 exact), and a fit pooling every version agrees at 1.0 (78 keys,
+        # 546 records, 0.9890). Two populations, one coefficient. What blocks adopting the
+        # pooled fit is the file's own bar -- `KEEP = 0.995` -- which the modern population
+        # clears at 1.0000 and the pooled one does not. The principled repair is a
+        # version-guarded variant rather than a pooled fit, and `derive_costs`/`costs.json`
+        # are owned by one session at a time, so it goes to that owner, not in here.
+        # (Two commits ago I wrote that re-fitting cannot recover it. It can.)
         #
         # The branch therefore stays, on a check rather than a hope: `int(round(4.5))` is 4,
         # which leaves `prog` pointing AT the folded size word instead of past it, and the

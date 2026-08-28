@@ -586,15 +586,24 @@ slot 6,905 times, `dyngradient` by one 399, `normal` by two 246.
 The walk reports it as `size_slot`, so a reader never reconstructs it. Two filters still
 have no placement to report, for different reasons, and one has nothing to place.
 
-**`emboss`** is where the fitting METHOD runs out. `derive_costs` admits a class bit only
-when it varies among the headers it can observe, and filter 8 has 30 distinct `(cls, w1)`
-keys in that population with bit 16 set in all 30 — so its word cannot be told apart from
-the constant, which is what a fractional `base[0] = 4.5` is: the size word folded into the
-base region. No re-fit recovers it; the bit does vary across the corpus (536 set, 10 clear)
-but never where a header boundary is measurable. `int(round(4.5))` leaves the first-after-
-base slot pointing AT the folded word, and it resolves as a program address in 375 of 375
-records — which is the check that warrants reading it there. A further 171 emboss records
-the walk declines outright on its `min_version` gate.
+**`emboss` is a VERSION story.** `derive_costs` admits a class bit only when it varies among
+the headers it can observe, and its population for filter 8 starts at v5 (`MIN_VERSION`).
+Bit 16 is set on every emboss record in v5, v6 and v9 (256, 87 and 32 of each) and is clear
+only in v2 (6 records) and v4 (4) — exactly the versions the cut excludes. So the bit is
+constant by the gate, not by the format, and its word is folded into the intercept, which is
+what a fractional `base[0] = 4.5` is.
+
+Refit the excluded population and the coefficient appears: **bit 16 costs 1 word** (50 keys,
+171 records, 0.9649 exact), and a fit pooling every version agrees at 1.0 (78 keys, 546
+records, 0.9890). What stops the pooled fit being adopted is the derivation's own bar,
+`KEEP = 0.995`: the modern population fits exactly (1.0000) and the pooled one does not. The
+principled repair is therefore a **version-guarded variant** — identify the feature in the
+population where it varies, apply it where it does not — not a pooled refit.
+
+Until that lands, the size slot for emboss is read at the first-after-base slot:
+`int(round(4.5))` is 4, which leaves that slot pointing AT the folded word, and it resolves
+as a program address in 375 of 375 records. A further 171 emboss records the walk declines
+outright on the `min_version` gate.
 
 **`fxmaps`** used to be in the same position and is not: filter 4 carries `base`/`clsbits`
 rather than a `cls` dictionary, every class bit below 16 costs zero words there, and walking
