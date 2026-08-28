@@ -307,7 +307,13 @@ EXPECTED = (
     ('ChesterfieldSofa', 'transformation', 'matrix22', ('w1', 3), 2, 'CONFIRMED'),
     ('SandyStonePath', 'blend', 'opacitymult', ('end', -1), 6, 'CONFIRMED'),
     ('SandyStonePath', 'normal', 'intensity', ('end', -1), 2, 'CONFIRMED'),
-    ('SandyStonePath', 'distance', 'distance', ('w1', 0), 2, 'CONFIRMED'),
+    # FIELD 1, NOT FIELD 0, AND THE SLOT DID NOT MOVE. The walk used to charge `distance`'s
+    # optional mask input twice -- once as the edge it is, once as w1 field 0 -- so the
+    # parameter block began one slot late and this pairing landed on the field before the
+    # real one. On these two records the two readings sit on the same WORD, which is why the
+    # value kept matching; they part wherever w1 bit 0 is clear. The witness is unchanged
+    # (56.2999992 and 64.2200012, records 3 and 180); only the field it is attributed to is.
+    ('SandyStonePath', 'distance', 'distance', ('w1', 1), 2, 'CONFIRMED'),
     ('SandyStonePath', 'directionalwarp', 'intensity', ('w1', 0), 5, 'CONFIRMED'),
     ('SandyStonePath', 'directionalwarp', 'warpangle', ('w1', 1), 5, 'CONFIRMED'),
 )

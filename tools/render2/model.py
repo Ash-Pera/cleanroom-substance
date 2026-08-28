@@ -122,8 +122,13 @@ W1_PARAMS = {
     # `combinedistance` and both nodes state it 0, which names nothing. Where field 1 holds
     # a PROGRAM the placement is unverified and demonstrably wrong: on those 188 records
     # every candidate slot holds a pointer, so `f_distance` keeps its own locator there.
-    21: [(0x3, 0, 'distance', 'scalar'),              # distance
-         (0xc, 2, None, 'flag')],
+    # `distance`: FIELD 1 IS THE RADIUS, and field 0 is not a parameter at all -- its low
+    # bit declares the optional mask input, which the walk places as an EDGE at the front of
+    # the header. Listing field 0 here named the wrong field and, worse, would charge this
+    # end-anchored block a word for an input that is not in it. The two arms of field 1 are
+    # the ordinary pair, and both are now read: 01 bakes the radius, 10 points at a program
+    # this filter evaluates. See `decompose`'s note in the w1 loop for the evidence.
+    21: [(0xc, 2, 'distance', 'scalar')],             # distance
     18: [(0x3, 0, 'intensity', 'scalar'),             # normal
          (0xc, 2, 'inversedy', 'flag'),
          (0x30, 4, None, 'flag')],

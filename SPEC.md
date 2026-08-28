@@ -652,8 +652,8 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 12 directionalwarp | intensity / warpangle | `0x0006` / `0x0018` | 1 / 3 | scalar |
 | 15 levels | levelinlow, levelinhigh, levelinmid, leveloutlow, levelouthigh | `0x0003`, `0x000C`, `0x0030`, `0x00C0`, `0x0300` | 0,2,4,6,8 | per-channel |
 | 18 normal | intensity | `0x0003` | 0 | scalar |
-| 21 distance | distance | `0x0003` | 0 | scalar |
-| 21 distance | *(unnamed)* | `0x000C` | 2 | flag |
+| 21 distance | *(the mask input's declaration — not a parameter)* | `0x0003` | 0 | — |
+| 21 distance | distance | `0x000C` | 2 | scalar |
 | 18 normal | inversedy | `0x000C` | 2 | flag |
 | 18 normal | *(unnamed)* | `0x0030` | 4 | flag |
 
@@ -684,15 +684,17 @@ program; not one of the 170 is a plain float and all 170 resolve a program.
 has mis-attributed a width, not found a longer header.** This was got wrong here, and the
 shape of the error is worth stating because any reader fitting slot costs to observed header
 LENGTHS can reproduce it. A header is `base + the cost of each set bit`, where the base is
-the record's own structure -- one or two mask words plus the filter's base image inputs. Fit
+the record's own structure — one or two mask words plus the filter's base image inputs. Fit
 that equation with the base left FREE and the total still comes out right while the split
 between base and bits does not: the fit is at liberty to shave words off the base and charge
 them to a bit that happens to be set in every record. Nothing that compares lengths can see
 it. A reader walking the same table FORWARDS from the real base then places the class block
-too far right and runs past the end -- on 7,119 records here (`shuffle` 3,514, `dyngradient`
+too far right and runs past the end — on 7,119 records here (`shuffle` 3,514, `dyngradient`
 2,214, `normal` 1,391), with the size expression landing two slots late on `normal` and one
 on `dyngradient`, and on ~1,000 `normal` records landing on the slot the end-anchored
-parameter block owns.
+parameter block owns. `distance` ran its own parameter past the end on 2,360 more, for a
+second reason on top of this one: its optional mask input was charged twice, once as the
+edge it is and once as a `w1` field.
 
 Pinning the base to what the record states and re-solving for the bit costs is exact on
 every record of all three filters, needs no negative or half-word coefficient, and leaves
@@ -700,10 +702,12 @@ every header length unchanged. Three things confirm the new placement rather tha
 being consistent with it: the size-expression slot resolves as a valid program in 3,640 of
 the 3,640 records where it moved, against 281 at the old position; `ChesterfieldSofa.sbs`'s
 declared `intensity` 10.0 lands on the `w1` field the legend names, where it used to land on
-the slot the walk called class bit 16; and the two independent placements -- the forward
-class walk and the end-anchored parameter block -- now agree instead of colliding.
+the slot the walk called class bit 16; and the two independent placements — the forward
+class walk and the end-anchored parameter block — now agree instead of colliding.
 
-**What the corrected attribution says about the format.** `normal`'s and `dyngradient`'s
+**What the corrected attribution says about the format.** `distance`'s `w1` field 0 is the
+mask input's declaration and its field 1 is the radius, set out with its evidence in the
+`distance` paragraph further down this section. `normal`'s and `dyngradient`'s
 class bits 10/11/14/15 declare NO slot: they are two mask pairs with exactly one bit of each
 set in every record, which is what made the over-charge invisible. And `shuffle` has two
 cost tables, one per record shape (§6.4): the one-channel shape bakes four `channelsweights`
@@ -756,10 +760,23 @@ program:
 
 `distance`'s radius is the source's own: `SandyStonePath.sbs` states 56.2999992 and
 64.2200012 on its two distance nodes and records 3 and 180 of the compiled twin hold exactly
-those at field 0. **Where field 1 holds a program the placement is unverified and wrong** --
-on those 188 corpus records every candidate slot holds a pointer, so a reader that trusts the
-width law there reads a radius of 0. The state bits say which case a record is in, so no
-value has to be inspected to tell them apart.
+those. **That witness pins a SLOT, not a field**, and the difference cost this specification
+a wrong reading for a while: on those two records the two candidate fields sit on the same
+word, because the reader was charging `distance`'s optional mask input twice — once as the
+edge it is, once as `w1` field 0 — and so began the parameter block one slot late.
+
+**Field 0 is not a parameter. Its low bit declares the optional mask INPUT**, and that is
+what its costs say: one word in states `01` and `11`, none in `10`. A cost that tracks bit 0
+alone rather than baked-versus-program is not a parameter's; a parameter costs a word for its
+value and a word for a pointer. Across the five `w1` codes the corpus holds, bit 0 set (5, 7,
+9) gives two edges and clear (6, 10) gives one, 2,277 of 2,277. **The radius is field 1**,
+whose two states are the ordinary pair.
+
+The file arbitrates the difference outright. Over 2,411 corpus `distance` records, naming
+field 1 yields 1,720 plausible baked radii, 509 baked zeros and 188 programs — and **all 188
+decode as programs**. Naming field 0 yielded 638 "programs" whose slot does not decode (a
+baked `12.8` read as an address), 105 "radii" that are denormals (a pointer read as a float),
+3 records whose parameter block could not be placed at all, and 87 with no parameter found.
 
 `sharpen` sits at the same pair as `blur`, on weaker evidence: no shipped source states a
 sharpen parameter at all (all 28 nodes are at defaults), so this rests on the pair shape —
@@ -842,7 +859,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | warp | displace input 0 by the **gradient** of input 1, scaled `·W/ref·I` |
 | normal | `n = normalise(−gx·I, −gy·I, 1)`, `out = ½ + ½n`; the gradient is per render pixel, so scale it `·W/ref` or strength tracks the preview grid |
 | emboss | `base + k·(g₁(pos) − g₁(pos + (δ, −δ)))`, `δ = 0.005859375` |
-| distance | a distance field grown from the mask input; the radius is **not** in §13.4 and is the one read still carrying a fallback of its own (69 records gained, 11 disagreeing) — mark every record it answers for |
+| distance | a distance field grown from the mask input; the radius is `w1` field 1 (§13.4), baked or a program, and a fallback locator remains for the records that name neither — mark every record it answers for |
 | pixelprocessor | the program at the **last header slot**, evaluated per pixel; earlier slots are inherited parameters and setup |
 | fxmaps | §13.7 |
 

@@ -22,24 +22,27 @@ of each set bit. The costs are in costs.json, fitted from the corpus by derive_c
 and kept only where the rounded costs reproduce EVERY observed header exactly -- currently
 12 filters and 72.25% of records with an observable boundary.
 
-THE CONSTANT IS THE RECORD'S BASE REGION, NOT A FREE INTERCEPT, and for three filters it
+THE CONSTANT IS THE RECORD'S BASE REGION, NOT A FREE INTERCEPT, and for four filters it
 was not. `derive_costs` solves `header = const + sum of set-bit costs` and nothing in that
 equation says `const` is the size of anything; a fit is free to shave words off the
 intercept and charge them to a bit that happens to be set in every record. The total comes
 out right and the DECOMPOSITION is wrong, which is invisible to a check that only compares
 lengths -- and `decompose` walks the same table forwards, from a base it computes
-structurally, so it spent the difference as slots past the header end. It did so on 7,119
-records: shuffle 3,514, dyngradient 2,214, normal 1,391 (447 files, 926,631 records).
+structurally, so it spent the difference as slots past the header end. Over 447 files and
+926,631 records: 7,119 placed a CLASS parameter at or past it (shuffle 3,514, dyngradient
+2,214, normal 1,391) and `distance` ran a w1 parameter past it on 2,360 more. Counted
+uniformly -- any slot at or past its own header end -- 8,803 records.
 
-Those three entries have been RE-ATTRIBUTED against the base the record itself states --
+Those four entries have been RE-ATTRIBUTED against the base the record itself states --
 `n_hdr` mask words plus `n_base` image inputs -- by re-solving for the class and w1 costs
 against `observed header - base` instead of `observed header`. It is the same corpus and
 the same feature set; only the intercept is pinned. The re-solve is exact on every record
-of all three, every coefficient a non-negative integer -- where dyngradient's old costs
-needed halves and shuffle's two NEGATIVE coefficients -- and `header_words` returns the
-identical length on all 926,957 records swept: the totals do not move, only their
-attribution. `decompose`'s forward cursor now ends exactly at this function's answer on all
-11,648 records of the three, where 7,158 of them used to run past it.
+of all four, every coefficient a non-negative integer -- where dyngradient's and distance's
+old costs needed halves and shuffle's two NEGATIVE coefficients -- and `header_words`
+returns the identical length on all 926,957 records swept: the totals do not move, only
+their attribution. `decompose`'s forward cursor now ends exactly at this function's answer
+on every record it covers: NOTHING in the corpus places a slot at or past its own header
+end any more, where 8,803 records did, and `_bounded` truncates nothing at all.
 
 WHAT THE PINNED FIT SAYS, and the reason to believe it beyond the arithmetic: the costs it
 produces are the ones the format's own structure predicts. `shuffle` becomes two variants
@@ -55,12 +58,22 @@ program in 3,640 of the 3,640 records where it moved, against 281 at the old pos
 `sourcematch` finds ChesterfieldSofa's declared `intensity` 10.0 on the w1 field the legend
 names, where it used to land on the slot the walk called class bit 16.
 
-WHAT IS NOT DONE: `distance` has the same defect (its `const` is 2.5 against a base of 3,
-and `decompose` charges its optional mask input twice -- once structurally, once as w1
-field 0), and a pinned re-solve for it is exact too. It is left alone here because its
-parameter slots feed `distance._locate_slot`, so moving them changes a rendered value on
-2,280 records and needs its own containment arbiter run first. 1,645 records still place a
-slot at or past their own header end and every one of them is `distance`.
+`distance` CARRIED THE SAME DEFECT PLUS ONE OF ITS OWN, and its re-solve says what its w1
+fields ARE. Its `const` was 2.5 against a base of 3, and `decompose` charged its optional
+mask input TWICE -- once as the edge the base region places, once as w1 field 0 -- so every
+parameter after it sat one slot late. Pinning the base makes field 0's costs legible: one
+word in states 01 and 11, none in 10, which tracks w1 BIT 0 and not baked-vs-program, and no
+parameter behaves that way. Field 0 is the mask input's declaration; the radius is FIELD 1,
+whose states are the ordinary pair.
+
+That re-attribution is a reader fix as much as a layout one, and the file arbitrates it.
+Over 2,411 corpus `distance` records the legend now reads 1,720 plausible baked radii, 509
+baked zeros and 188 programs, and ALL 188 decode as programs. Naming field 0 produced 638
+"programs" whose slot does not decode (a baked 12.8 read as an address), 105 "radii" that
+are denormals (a pointer read as a float), 3 records that raised `Shifted` and 87 with no
+parameter at all. `distance._locate_slot`, which takes the first parameter slot by position
+rather than by field, returns the identical answer on all 2,411 -- the slot never moved,
+only the name on it.
 
 This does not yet replace layouts.json. It replaces the part of it that can be computed,
 and reports the rest honestly rather than memorising it. The filters still missing are

@@ -123,9 +123,13 @@ UNNAMED_BUT_DECLARED = {
         # NOT DECLARED AT ALL. A program arm here moves whatever this legend does name.
         12: (3,),        # directionalwarp
         20: (2,),        # pixelprocessor -- one field, 16 words, 1 corpus record
-        21: (1,),        # distance -- field 0 is named now; field 1 is the source's
-                         # `combinedistance` on nothing better than elimination, and both
-                         # nodes state it 0, so it stays unnamed
+        21: (0,),        # distance -- field 1 is the radius and is named; field 0 is the
+                         # optional MASK INPUT's declaration, and it is here rather than in
+                         # `W1_PARAMS` because it is not a parameter: its low bit adds an
+                         # edge at the front of the header, which the walk places, and the
+                         # end-anchored parameter block must not charge itself for it. Its
+                         # costs say the same thing -- one word in states 01 and 11, none in
+                         # 10, which tracks w1 bit 0 and not baked-vs-program.
     },
     'cls': {
         # Bit 23 is a PROGRAM POINTER wherever it appears -- it decodes to 10 ops on the
@@ -449,14 +453,19 @@ def test_normal_declares_the_field_that_shifts_its_intensity():
 
 
 def test_distance_reads_the_radius_its_source_states():
-    """`distance`'s radius, and the one case the source cannot reach.
+    """`distance`'s radius: the value a source states, and the arm no source can reach.
 
-    SandyStonePath states 56.2999992 and 64.2200012 on its two distance nodes; records 3
-    and 180 of the compiled twin hold exactly those at w1 field 0. Where field 1 holds a
-    PROGRAM there is no such witness, and the walk's placement is demonstrably wrong there
-    -- every candidate slot on those records holds a pointer, which reads as 0.0 -- so
-    `f_distance` keeps its own locator for them. Both halves are asserted, because the
-    naming without the exception would render a radius of zero on 188 corpus records.
+    SandyStonePath states 56.2999992 and 64.2200012 on its two distance nodes and records 3
+    and 180 of the compiled twin hold exactly those. That is the witness, and it pins a
+    SLOT; it does not pin a field, because on those records the two candidate fields sit on
+    the same word. What pins the field is the other arm: `distance` is w1 FIELD 1, whose two
+    states are the ordinary baked/program pair, while field 0's low bit declares the
+    optional mask input. Naming field 0 read a pointer as a float on 105 corpus records and
+    a float as a program address on 638; naming field 1, all 188 program-arm records decode
+    and none of the baked ones is a denormal.
+
+    Both halves are asserted here: the declared values, and that a program arm resolves to a
+    program rather than to a plausible-looking float.
     """
     hits = glob.glob(os.path.join(ROOT, '**', 'StylizedCobblestoneStreet.sbsasm'),
                      recursive=True)
@@ -468,9 +477,9 @@ def test_distance_reads_the_radius_its_source_states():
         got = v.baked('distance')
         assert got is not None and abs(got - want) < 5e-3, \
             'record %d reads %r, the source states %r' % (index, got, want)
-    # THE EXCEPTION NEEDS ITS OWN SPECIMEN: this pack has no distance record whose field 1
-    # holds a program, so asserting it here would assert nothing. PavingStones does -- and
-    # what the walk names on those records is a pointer, which reads as 0.0.
+    # THE PROGRAM ARM NEEDS ITS OWN SPECIMEN: this pack has no distance record whose field 1
+    # holds a program. PavingStones does, and what the legend names there must be an address
+    # the file can decode -- the check that told the two namings apart in the first place.
     other = glob.glob(os.path.join(ROOT, '**', 'PavingStonesSubstance003_COMPILED.sbsasm'),
                       recursive=True)
     checked = 0
@@ -480,11 +489,15 @@ def test_distance_reads_the_radius_its_source_states():
             if (rec.filter_name != 'distance' or len(rec.words) < 2
                     or (rec.words[1] >> 2) & 3 != 2):
                 continue
-            got = model.View(asm2, rec).baked('distance')
+            v2 = model.View(asm2, rec)
+            p = v2.params.get('distance')
             checked += 1
-            assert got is None or abs(got) < 1e-30, \
-                'record %d: field 1 holds a program and field 0 reads %r, a plausible ' \
-                'radius -- f_distance\'s exception may no longer be needed' % (rec.index, got)
+            assert p is not None and p.kind == 'program', \
+                'record %d: field 1 holds a program and the legend reports %r' % (
+                    rec.index, p)
+            assert asm2.valid_program(rec.words[p.slot] + 52), \
+                'record %d: the named slot %d does not decode as a program, which is what ' \
+                'the field-0 naming looked like' % (rec.index, p.slot)
         assert checked, 'PavingStones no longer has a program-arm distance record'
     print('ok  test_distance_reads_the_radius_its_source_states (2 values from the source, '
           '%d program-arm records)' % checked)
