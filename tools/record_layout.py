@@ -50,8 +50,14 @@ guarded on tag bit 0 because its class widths differ by SHAPE -- the one-channel
 bakes four `channelsweights` words at bit 24 and carries no w1, the four-channel shape
 packs its selector into w1 and bakes nothing, which is the reading `two_shape_w1` below
 already argues from the other side. `normal`'s and `dyngradient`'s bits 10/11/14/15 come
-out at ZERO: they are two mask pairs with exactly one bit of each set in every record, so
-the over-charge was constant, and a bit that declares no slot is what a zero cost means.
+out at ZERO, and what they are is the reason: word0's low half carries the record's SIZE --
+bits 8-11 log2 width, bits 12-15 log2 height -- and those four are bits 2 and 3 of the two
+nibbles. The fit offers every bit of word0 as a feature and charged header words to the
+canvas. It stayed invisible because within log2 4..11 exactly one of bits 2 and 3 is set in
+each nibble, so the over-charge was a constant +2 and no record of either filter is outside
+that range; it is NOT invisible outside it. Under the old table one `normal` record's header
+reads 10 words at 4096x4096 and 6 at 8x8 with its parameters untouched, against 8 at every
+size under this one.
 Independently: the size expression, which the walk had been placing two slots late on
 `normal` and one late on `dyngradient`, now lands on a word that resolves as a valid
 program in 3,640 of the 3,640 records where it moved, against 281 at the old position; and

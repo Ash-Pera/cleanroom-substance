@@ -142,14 +142,15 @@ UNNAMED_BUT_DECLARED = {
         # -- those are floats, not log2 integers.
         3: (23, 26), 7: (23, 26, 27), 10: (23, 26, 27), 11: (23, 26, 27),
         12: (23, 26, 27), 13: (23, 26, 27), 21: (23, 26, 27),
-        # `normal` 10/11/14/15 and `dyngradient` 11 WERE HERE AND ARE NOT FIELDS. They were
-        # charged a word each by a fit whose intercept sat two (one) words below the base
-        # region every record of those filters actually has, and exactly one of each pair is
-        # set in every record -- so the over-charge was constant, invisible in the total, and
-        # spent as slots past the header end. With the intercept pinned to the base they cost
-        # nothing, which is what a bit that declares no slot looks like. Nothing is named
-        # here that was not named before: the entries left because the FORMAT does not
-        # declare them, not because this legend learned to read them.
+        # `normal` 10/11/14/15 and `dyngradient` 11 WERE HERE AND ARE THE RECORD'S SIZE.
+        # Word0's low half is not a presence mask: bits 8-11 are log2 width and 12-15 log2
+        # height, so these four are bits 2 and 3 of the two nibbles. A fit that offers every
+        # bit of word0 as a feature charged them a word each against an intercept two (one)
+        # words below the real base region, and within log2 4..11 exactly one of bits 2 and 3
+        # is set in each nibble -- a constant over-charge, invisible in the total, spent as
+        # slots past the header end. Nothing is named here that was not named before: the
+        # entries left because the FORMAT does not declare them, not because this legend
+        # learned to read them.
         18: (23, 26, 27),
         19: (23, 25, 26),
     },

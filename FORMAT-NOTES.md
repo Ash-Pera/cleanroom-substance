@@ -42637,3 +42637,151 @@ already doing implicitly, since its single entry is its only candidate.
 That last line is the check worth keeping. `_read_slot` records a conflict whenever the
 program bit and the `valid_program` probe disagree, and it stays empty across all 1,133 --
 so the bit reading and the value reading agree on every record, program arm included.
+
+## A fitted header LENGTH does not give you a header LAYOUT, and the intercept was eating the base region
+
+`costs.json` solves `header = const + sum of the costs of word0's set bits + the w1 field
+costs`, keeps a filter only when the rounded coefficients reproduce EVERY observed header
+exactly, and reaches 21 filters at 100.000%. That test is real and it is not enough: it
+constrains the SUM and says nothing about how the sum divides. `const` is an intercept, and
+nothing in the equation says it is the size of anything -- so the solver is free to shave
+words off the base region and charge them to a bit that is set in every record of a filter.
+The total still lands. The DECOMPOSITION is wrong, and every check that compares lengths is
+blind to it.
+
+`decompose` is not blind to it, because it walks the same table FORWARDS from a base it
+computes structurally -- `n_hdr` mask words plus the filter's base image inputs -- and then
+appends one slot per unit of cost. Where the fitted `const` is SMALLER than that real base,
+the walk spends the difference as slots past the end of the header:
+
+    a class parameter placed at or past the header end     7,119 records
+        shuffle 3,514   dyngradient 2,214   normal 1,391
+    a w1 parameter running past it                         2,360 records (distance)
+    any slot at or past its own header end                 8,803 records
+    (447 files, 926,631 records with a header end)
+
+The asymmetry is why this went unnoticed for so long. Where `const` EXCEEDS the real base
+the walk's `pos = max(pos, const)` absorbs the difference and the two agree, so bitmap,
+curve, gradient and text predict a non-zero delta and measure zero. Only the other direction
+leaks.
+
+### The fix is to stop treating the base as fitted
+
+The base is not something the fit has to discover: it is the record's own structure. Pin
+`const` to it and re-solve for the bit costs against `observed header - base` instead of
+`observed header`. Same corpus, same feature set, one fewer free parameter.
+
+    filter        before                                   after
+    normal        const 1,  bits 10/11/14/15 = 1 each      const 3,  those four = 0
+    dyngradient   const 1.5, bits 10/14/15 = 0.5, 11 = 1   const 3,  those four = 0
+    shuffle       const 2,  cls[0] = -1, w1_present = -1   two variants on tag bit 0:
+                                                           const 2 with bit 24 = 4 words,
+                                                           const 4 with bit 24 = 0
+    distance      const 2.5, w1 field 1 = 1.5 / 1.5        const 3,  field 1 = 1 / 1
+
+Exact on every record of all four, every coefficient a non-negative integer, no halves and
+no negatives left. `header_words` returns the IDENTICAL length on all 926,957 records swept
+-- the totals do not move, only their attribution -- and `decompose`'s forward cursor now
+ends exactly at the model's length on every record it covers. Nothing in the corpus places a
+slot at or past its own header end any more, and `_bounded` truncates nothing at all.
+
+### What the over-charged bits actually were: the record's SIZE
+
+Worth stating plainly, because it is the part that generalises. Word0's low half is **not** a
+presence mask -- bits 8-11 are log2 width and bits 12-15 log2 height -- and the fit offers
+every bit of word0 as a feature. Bits 10, 11, 14 and 15 are bits 2 and 3 of those two
+nibbles, and `normal` and `dyngradient` were being charged a header word for each. The fit
+was pricing the canvas.
+
+It stayed invisible because of the sizes the corpus happens to contain: within log2 4..11
+exactly one of bits 2 and 3 is set in each nibble, so the over-charge is a constant +2 and
+lands in the intercept. Every `normal` and `dyngradient` record in the corpus is inside that
+range. Outside it the old table is simply wrong, and the demonstration takes one line --
+the same `normal` record's word0 with only its size nibbles changed:
+
+    size          old costs    pinned costs
+    8x8              6              8
+    256x256          8              8       (in corpus)
+    2048x2048        8              8       (in corpus)
+    4096x4096       10              8
+    8192x4096       10              8
+
+A header whose contents have not changed cannot change length with the canvas. Nothing in
+the corpus could catch that; the structural argument catches it without a specimen.
+
+### Three arbiters, none of them the fit
+
+**The size slot must hold a program.** The class walk's bit 16 is the `$outputsize`
+expression, a pointer. It moved on 3,640 records (normal two slots, dyngradient one), and at
+the new position the word resolves as a valid program in **3,640 of 3,640**; at the old
+position, 281.
+
+**The source names the field.** `sourcematch` pairs `ChesterfieldSofa.sbs`'s declared
+`intensity` 10.0 against the compiled twin. It used to land on the slot the walk called class
+bit 16 -- the size expression -- and now lands on the w1 field the legend names `intensity`.
+
+**The two independent placements agree.** `render2.model.View` anchors w1 parameters at the
+header END and lays them out backwards; the class block is walked FORWARDS. On ~1,000 `normal`
+records they used to collide on one slot, and the renderer carried a guard that dropped the
+size slot and reported the clash. Corpus-wide the guard fired on 1,012 records; it now fires
+on 0, and its test asserts silence instead of asserting it fires.
+
+### What it cost while it stood
+
+`hsl` was a silent identity in 747 records and `sharpen` in 1,156 on a related mechanism, and
+this is the same family: the walk placed a parameter, the placement was wrong, and the record
+rendered anyway. The `normal` case put the size EXPRESSION on the slot holding `intensity`,
+so a reader following it would hand a float to the program machinery -- which is exactly what
+`distance` was doing next door, and that one did not report a clash at all.
+
+## The other half of `distance`: the cost model was paying for its mask input twice
+
+"A baked radius read as an address" settles WHICH FIELD is the radius, from the values. This
+is the same bug seen from the cost table, and it is the reason the parameter block began one
+slot late in the first place.
+
+`distance` takes an optional SECOND image input -- a mask -- declared by `w1` bit 0.
+`decompose` placed that input structurally, as the edge it is, at the slot right after the
+base input. The cost model ALSO charged `w1` field 0 a word for it. One input, two words,
+and every parameter after it one slot late: 2,360 records ran a parameter past their own
+header end, and the end-anchored legend in `render2.model` inherited the same shift because
+it charged its block for the same field.
+
+Pinned against the record's real base region -- the re-solve described in the entry
+immediately above -- the four numbers that change are small, and the halves go away:
+
+    const               2.5  ->  3      (2 mask words + 1 base image input)
+    w1 field 1, baked   1.5  ->  1
+    w1 field 1, program 1.5  ->  1
+    w1 field 0          unchanged at 1 / 0 / 1 -- and now spent on the EDGE, not on a slot
+
+`header_words` is identical on all 2,411 records either way, which is what makes this an
+attribution fix rather than a length fix, and it is why nothing that compares lengths ever
+complained.
+
+### What did not move, which is the part worth checking
+
+`distance._locate_slot` -- the fallback that reads the radius when no field names it -- takes
+the FIRST parameter slot by position rather than by field index. It therefore returns the
+identical answer on all 2,411 records before and after: the slot never moved, only the name
+on it. That is the cheapest possible confirmation that the two halves of this bug were
+cancelling, and it is why the fallback looked healthy while the legend did not.
+
+`f_distance`'s `f1_program` exception went with the cause. It read "field 1 holds a program,
+so the walk's placement is unverified, use the locator instead" -- a rule that existed only
+because the name was on the wrong field. Field 1 holding a program means the radius IS a
+program and the record names which one. Against the locator it replaces, on the five
+program-arm records of `PavingStonesSubstance003`: identical, 5 of 5 (0.0, 1.0, 1.0, 3.2,
+-3.2).
+
+### Rendered, on packs the loud configuration does not dominate
+
+Both trees in one session against one pinned parent, to complement the +6.3% above:
+
+    PavingStonesSubstance003      884 -> 905 records, 3,427 -> 3,406 failures
+    TilesSubstance009           3,704 -> 3,726 records,   960 ->   938 failures
+    Bricks (126 distance recs)  2,834 -> 3,981 records, 9,751 -> 8,604 failures,
+                                192 -> 152 low-confidence, 20 distance errors -> 0,
+                                one more declared output
+
+No pack loses a record; the reference specimen is unchanged (height mean 0.78587).

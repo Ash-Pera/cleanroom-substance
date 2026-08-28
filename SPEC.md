@@ -122,15 +122,25 @@ field; a writer emits in the same order.
 ### 6.2 The two header words
 
 ```
-word0:  low16  = flags (bit 0 = colour: 0 grayscale, 1 colour)  +  filter id
+word0:  low16  = bit 0     colour flag (0 grayscale, 1 colour)
+                 bits 1-7  filter id, as (low16 & 0xFF) >> 1
+                 bits 8-11 log2 WIDTH        the record's own canvas (§13.2)
+                 bits 12-15 log2 HEIGHT
         high16 = CLASS WORD — presence mask over INHERITED parameters
 word1:          two-bit code per field — the filter's OWN parameters
 ```
 
-- **Class word (word0 high half):** each set bit adds one inherited-parameter field, in
-  ascending bit order. Widths come from the manifest type of the parameter that bit gates
-  (§7.2): bit 10 is `$outputsize` (integer2 → 2 words); the other common inherited
-  parameters are 1 word each.
+The low half is worth spelling out because it is **not** a presence mask and a reader must
+not treat it as one: two of its nibbles are a size. A fitted cost table that offers every bit
+of word0 as a feature will happily charge header words to them, and §13.4 records what that
+cost.
+
+- **Class word (word0 high half):** the set bits are read in ascending bit order, and each
+  one that gates a stored value adds a field. Widths come from the manifest type of the
+  parameter that bit gates (§7.2): bit 10 is `$outputsize` (integer2 → 2 words); the other
+  common inherited parameters are 1 word each. **A set bit can cost nothing**, and a reader
+  that gives every set bit a slot runs its block past the end of the header — see §13.4,
+  where a fitted table charged four bits that store no value.
 - **Word1 two-bit codes:** each of the filter's own parameters is a 2-bit field:
 
   | code | meaning | cost |
@@ -197,13 +207,13 @@ An earlier version of this section said it "holds every baked scalar/vector valu
 false, and the error is large: measured over 437 specimens, the graph-input descriptors of
 §7.2 consume the table's **entire stated extent** — `table_start = trailer word 6 + 52` to
 `table_end = header 0x2C + 52` — in 437 of 437 files, with no room left over. Meanwhile the
-records carry **544,873 baked parameter slots** against the corpus's **8,500** descriptors,
+records carry **544,189 baked parameter slots** against the corpus's **8,500** descriptors,
 a ratio of 1 : 64.
 
 Those two populations are disjoint. **A record's baked parameters are stored inline in the
 record header, one word per component** (§6), and are never in the value table. A reader
-built on the old sentence would look for 544,873 values in an array that does not contain
-them.
+built on the old sentence would look for half a million values in an array that does not
+contain them.
 
 The 437/437 closure is stated deliberately in terms of the two header/trailer pointers.
 `standalone_parse` reports its own `table_ok` at 437/437 as well, and **that number is not
@@ -234,28 +244,37 @@ position; in v2–v6 it occupies none. Getting it wrong shifts the whole table b
 
 §7.2's `type -> 4N` table is the format's own width legend, stated in the file and read
 rather than fitted. It reaches the record side too: over 437 specimens every one of the
-**544,873** baked parameter slots the walk reads has a width of 1, 2 or 4 words —
+**544,189** baked parameter slots the walk reads has a width of 1, 2 or 4 words —
 `float1`, `float2`, `float4` — and **none falls outside the legend's 1..4**. (Width 3,
 `float3`, is legal by the legend and does not occur.) Per filter:
 
 | filter | 1 word | 2 words | 4 words |
 |---|---|---|---|
-| 1 `blend` | 137,808 | 26 | — |
+| 1 `blend` | 138,608 | 26 | — |
 | 2 `transformation` | 36 | 29,331 | 66,512 |
 | 11 `dirmotionblur` | 25,654 | — | — |
 | 12 `directionalwarp` | 115,122 | — | — |
 | 15 `levels` | 163,992 | — | 1,735 |
 | 17 `text` | 43 | 39 | 14 |
-| 18 `normal` | 971 | — | — |
-| 21 `distance` | 1,552 | 2,038 | — |
+| 18 `normal` | 988 | — | — |
+| 21 `distance` | 2,089 | — | — |
 
 So the legend is not the gap. **What the file does not state is the per-field type CODE**,
 and that is the object `costs.json` actually fits — a *kind assignment* per (filter,
 field), not a width. Two searches for a per-node type declaration came back empty and are
 recorded so they are not repeated: the interface block declares 8,500 typed descriptors
-against 544,873 slots and is framed to the graph-input table alone (§7.1), and the record
+against half a million slots and is framed to the graph-input table alone (§7.1), and the record
 directory holds bare offsets. The filter id *is* the declaration, and the parameter list it
 names lives in the engine.
+
+**Three rows moved when the cost model's attribution was corrected**, and the movement is
+the correction rather than new data: `distance`'s width-2 column was the phantom left by
+charging its mask input twice — the real field is one word wide and there is no width-2
+`distance` parameter at all — and `normal` gained 17 slots that the walk used to allocate
+past the end of their own records and then discard. `blend`'s row had gone stale earlier,
+when its relocated opacity arm was named. The claim the table supports is unaffected: no
+width outside 1, 2, 4 has ever appeared, and the corrected `distance` row removes the only
+row where a width came from a rounded 1.5 rather than from a type.
 
 One kind is already stated rather than assigned, which is the existence proof that the
 distinction is real: a `channel` field's component count is the **tag's colour bit** — 4
@@ -276,6 +295,13 @@ where it is `1`. The two bits are a STATE, not a count:
     01  baked           a constant, inline in the header, one word per component (§7.3)
     10  program         a pointer into the instruction stream (§10)
     11  image input     an edge — a backward record index, not a parameter at all
+
+**The state legend has one exception, and it is a field that is not a parameter.**
+`distance`'s field 0 declares that filter's optional mask INPUT from its LOW BIT alone, so
+`01` adds an edge where the legend above would read a baked value — see §6.3. Such a field
+takes no place in the parameter block, and the tell is its cost: one word in `01` and `11`
+and none in `10` tracks a single bit, where a parameter costs a word for its value and a
+word for a pointer.
 
 **Placement is a cursor, not an index.** The walk visits fields in ascending `j`, and each
 present field advances the cursor by its own width. Nothing stores a slot number (§6.1), so a
@@ -707,9 +733,16 @@ class walk and the end-anchored parameter block — now agree instead of collidi
 
 **What the corrected attribution says about the format.** `distance`'s `w1` field 0 is the
 mask input's declaration and its field 1 is the radius, set out with its evidence in the
-`distance` paragraph further down this section. `normal`'s and `dyngradient`'s
-class bits 10/11/14/15 declare NO slot: they are two mask pairs with exactly one bit of each
-set in every record, which is what made the over-charge invisible. And `shuffle` has two
+`distance` paragraph further down this section. **`normal`'s and `dyngradient`'s
+over-charged bits were the record's own SIZE**: word0 bits 8–11 and 12–15 are the log2 width
+and height (§6.2), and the fit — which offers every bit of word0 as a feature — charged a
+word to bits 10, 11, 14 and 15, which are bits 2 and 3 of those two nibbles. It stayed
+invisible because within log2 4…11 exactly one of bits 2, 3 is set in each nibble, so the
+over-charge was a constant +2, and no `normal` or `dyngradient` record in the corpus is
+outside that range. It is not invisible outside it: under the old table the same `normal`
+record reads a **10-word header at 4096×4096 and a 6-word one at 8×8**, where its parameters
+have not moved at all. Under the corrected table it reads 8 at every size, which is what a
+header whose contents do not depend on the canvas must do. And `shuffle` has two
 cost tables, one per record shape (§6.4): the one-channel shape bakes four `channelsweights`
 words at bit 24 and carries no `w1`, the four-channel shape packs its per-channel selector
 into `w1` and bakes nothing, so bit 24 costs 4 words in the first and 0 in the second. One
