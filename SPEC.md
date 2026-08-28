@@ -588,10 +588,12 @@ Three filters set the bit and get no placement, for three different reasons. `fx
 of a `cls` dictionary, every class bit below 16 costs zero words there, and running that
 rule from the record's own `end` puts bit 16 on `end` in 36,057 of 36,057 — the walk's
 answer, merely not emitted. `emboss` (371) is a real gap: bit 16 is not in filter 8's
-`clsbits` at all, and its base region rests on a fitted `4.5`; a further 171 emboss records
-are declined outright by the `min_version` gate rather than guessed at. `vectorshape` (139)
-places class parameters that do not include bit 16, and its first-after-base slot is outside
-the record's own words in 127 of them — a reader should decline, not fill in.
+`clsbits` at all — though it varies in the corpus, 536 set against 10 clear, so this is a fit
+that does not carry the feature rather than a bit that could not be fitted — and its base
+region rests on a fitted `4.5`; a further 171 emboss records are declined outright by the
+`min_version` gate. `vectorshape` (139) has no header cost model at all: the walk returns a
+stub with no size slot and no class parameters, so there is nothing to place and nothing to
+fall back to.
 
 **The inherited size slot.** Class bit 0 (word0 bit 16) set ⇒ the first slot after the
 base region is the record's output-size expression, not a parameter. Clear ⇒ there is no

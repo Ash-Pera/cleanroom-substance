@@ -307,12 +307,23 @@ class View(object):
             #                    `base[0] = 4.5`, the fitted half `decompose`'s own
             #                    min_version note calls "the model conceding it cannot
             #                    express the rule". 171 further emboss records are declined
-            #                    outright by that gate rather than guessed at.
+            #                    outright by that gate rather than guessed at. It is not
+            #                    that the bit could not be fitted: it VARIES, 536 set to 10
+            #                    clear over the corpus. The fit simply does not carry it.
+            #                    What warrants the branch meanwhile is checkable and was
+            #                    checked: the word at `prog` resolves as a program address
+            #                    in 375 of 375. Not re-checked HERE -- `Context.prog_at` is
+            #                    the single validator of that, and a second copy is the
+            #                    duplication this walk exists to delete. The range test
+            #                    below is about the FIELD being honest, not the pointer.
             #
-            # `vectorshape` never arrives: it sets the bit, the walk places class params
-            # that do not include 16, and the non-empty list keeps this branch shut. That
-            # is the right outcome -- its `prog` is outside the record's words in 127 of
-            # 139 -- and the range test above states it rather than leaving it to luck.
+            # `vectorshape` never arrives, and the reason I gave one commit ago was wrong:
+            # I read it off a counter that bucketed `None` with out-of-range and reported
+            # "outside the record's words in 127 of 139". It has no cost model at all --
+            # `decompose` returns a stub for filter 5 with `prog: None` and no `cls_params`
+            # -- so there is no candidate to fall back TO. The `is not None` test above is
+            # what actually keeps it out; the range test beside it guards a case nothing in
+            # this corpus exhibits.
             self.size_slot = self.prog_slot
 
         # EVERY class slot, named or not. An inherited parameter this legend has no name
