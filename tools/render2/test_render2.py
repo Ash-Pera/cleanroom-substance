@@ -112,6 +112,67 @@ def test_walk_reads_the_parameters_the_memo_cannot():
           % len(WALKED_PARAMETERS))
 
 
+def test_blend_reads_the_relocated_opacity():
+    """`blend`'s opacity sits at ONE OF TWO masks, and the specimen here cannot see it.
+
+    Connect a blend node's `opacity` input and the compiler moves the slider from bits
+    (4, 5) to bits (9, 10), leaving (4, 5) reading state 11 -- the image-input code. Rokviz
+    has nine such records and states no slider on any of them, so the render checks above
+    pass whether this field is read or dropped. `ChesterfieldSofa` has three, and its
+    shipped `.sbs` states what they are, which is why the assertion is written against that
+    file and skips when the corpus is absent.
+
+    Dropping the field composites at full strength: 1,133 corpus records, 963 of them a
+    stated constant as low as 0.05.
+    """
+    hits = glob.glob(os.path.join(ROOT, '**', 'ChesterfieldSofa.sbsasm'), recursive=True)
+    if not hits:
+        return _skip('test_blend_reads_the_relocated_opacity: no ChesterfieldSofa')
+    asm = sbsasm.Assembly(hits[0])
+    #: index -> the `opacitymult` its source node states, from `ChesterfieldSofa.sbs`.
+    want = {356: 0.73, 859: 0.40, 871: 0.20}
+    got = {}
+    for rec in asm.records:
+        if rec.filter_name != 'blend' or len(rec.words) < 2:
+            continue
+        w1 = rec.words[1]
+        if (w1 >> 9) & 3:
+            assert (w1 >> 4) & 3 == 3, \
+                'record %d relocates its opacity while (4, 5) is not the image-input ' \
+                'code -- the two arms are not exclusive after all' % rec.index
+            v = model.View(asm, rec)
+            got[rec.index] = v.baked('opacitymult')
+    assert set(got) == set(want), \
+        'the relocated-opacity records moved: %r, expected %r' % (sorted(got), sorted(want))
+    bad = [(i, got[i], want[i]) for i in want
+           if got[i] is None or abs(got[i] - want[i]) > 5e-4]
+    assert not bad, 'the walk no longer reads the source\'s own opacity: %r' % (bad,)
+    # AND THE GUARD FIRES. `model` refuses a record that sets both arms, on the strength
+    # of "it never happens" -- 1,133 of 1,133. A refusal nothing has ever seen refuse is
+    # indistinguishable from no refusal at all, so set both arms on a record that passes
+    # and watch it. The unmodified record goes through the same shim as the control: a
+    # broken shim would raise here too, and prove nothing about the guard.
+    class _Reworded(object):
+        def __init__(self, r, words):
+            object.__setattr__(self, '_r', r)
+            object.__setattr__(self, 'words', words)
+
+        def __getattr__(self, k):
+            return getattr(object.__getattribute__(self, '_r'), k)
+
+    rec = asm.records[356]
+    assert model.View(asm, _Reworded(rec, list(rec.words))).has('opacitymult')
+    both_arms = list(rec.words)
+    both_arms[1] = (both_arms[1] & ~0x30) | 0x10        # (4, 5) baked, (9, 10) still baked
+    try:
+        model.View(asm, _Reworded(rec, both_arms))
+    except model.Shifted:
+        pass
+    else:
+        raise AssertionError('a record setting both opacity arms was accepted')
+    print('ok  test_blend_reads_the_relocated_opacity (%d records)' % len(got))
+
+
 def test_every_record_renders():
     path = specimen()
     if not path:
@@ -240,6 +301,7 @@ def test_reference_agreement_does_not_regress():
 
 if __name__ == '__main__':
     for fn in (test_walk_reads_the_parameters_the_memo_cannot,
+               test_blend_reads_the_relocated_opacity,
                test_every_record_renders,
                test_the_render_threads_its_own_value_cache,
                test_reference_agreement_does_not_regress):

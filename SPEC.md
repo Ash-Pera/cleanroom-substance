@@ -593,7 +593,7 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | filter | parameter | mask | shift | kind |
 |---|---|---|---|---|
 | 1 blend | opacitymult | `0x0030` | 4 | scalar |
-| 1 blend | *(second scalar)* | `0x0600` | 9 | scalar |
+| 1 blend | opacitymult, relocated | `0x0600` | 9 | scalar |
 | 2 transformation | matrix22 | `0x000000C0` | 6 | Float4 |
 | 2 transformation | offset | `0x06000000` | 25 | Float2 |
 | 2 transformation | backgroundcolour | `0x10000000` | 28 | per-channel |
@@ -603,8 +603,17 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 18 normal | intensity | `0x0003` | 0 | scalar |
 
 Two of these **straddle** the two-bit grid — `transformation`'s offset at bits (25, 26)
-and `blend`'s second scalar at (9, 10) — so under a plain `j → (2j, 2j+1)` reading their
+and `blend`'s relocated opacity at (9, 10) — so under a plain `j → (2j, 2j+1)` reading their
 two states swap meaning between adjacent fields. Match the **mask**, never a field index.
+
+**`blend` states its opacity at one of two masks.** Connect the node's `opacity` input and
+the field at (4, 5) goes to state 11 — the image-input code, §7.3 — and the slider moves to
+(9, 10). Both are the same parameter: in `ChesterfieldSofa.sbs` exactly three blend nodes
+have both a connected `opacity` port and a stated `opacitymult` (0.73, 0.40, 0.20), and
+exactly three compiled records set (9, 10), holding those three floats; `SandyStonePath.sbs`
+agrees five for five, program arm included. The two arms are exclusive — 1,133 of 1,133
+corpus records with (9, 10) set read state 11 at (4, 5) — so a reader may give them one
+name, and should refuse rather than choose if it ever sees both.
 
 The `levels` order is `(low, high, mid)`, not the UI's `(low, mid, high)`: over a corpus
 sample `in_low <= in_high` holds 3,684 of 3,703 under this order and 641 of 751 under the
@@ -658,7 +667,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 |---|---|
 | bitmap | the resource payload (§9), `u8`/`u16` → `[0,1]`; or a graph input's manifest default as a uniform |
 | uniform | `outputcolor`; else a program at a walk-named slot; else the engine default |
-| blend | `dst·(1−op) + f(dst, src)·op`, clamped; `op` = `opacitymult` (absent ⇒ 1) × the mask edge if a third edge is present; `switch` selects on `op ≥ ½` instead |
+| blend | `dst·(1−op) + f(dst, src)·op`, clamped; `op` = `opacitymult` (absent ⇒ 1, and read from EITHER mask — §13.4) × the mask edge if a third edge is present; `switch` selects on `op ≥ ½` instead |
 | transformation | `in = m·(pos − ½) + ½ + offset`; area-prefilter when minifying |
 | shuffle | colour bit clear ⇒ `Σ channelsweights·src` (grayscale conversion); set ⇒ four selector bytes in `w1`, `s` picks channel `s mod 4` of input `s div 4` |
 | levels | `t = clip((src − lo)/(hi − lo))`; zero span ⇒ step at `lo`; `t ← t^(ln½/ln mid)`; `out = lo′ + t(hi′ − lo′)`, clamped. **Per channel**: on a colour record every field is a Float4 and its components genuinely differ — applying component 0 to all four remaps ALPHA by the red curve, which on one corpus record turns an opaque output almost transparent |

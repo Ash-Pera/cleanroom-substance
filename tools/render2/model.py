@@ -68,8 +68,17 @@ import decompose
 #: needed only for the header LENGTH -- which is the part `derive_costs` fits to observed
 #: boundaries and reproduces exactly.
 W1_PARAMS = {
+    # `blend` STATES ITS OPACITY IN TWO PLACES, and which one it uses is the port's doing:
+    # connect the node's `opacity` input and the slider moves to bits (9, 10) while the
+    # field at (4, 5) goes to state 11, the image-input code. Both are `opacitymult` -- the
+    # same parameter -- and the shipped sources say so outright. In `ChesterfieldSofa.sbs`
+    # exactly three blend nodes carry BOTH a connected `opacity` port AND a stated
+    # `opacitymult` (0.73, 0.40, 0.20); exactly three compiled records set bits (9, 10), and
+    # they hold those three floats. `SandyStonePath.sbs` matches five for five, the program
+    # arm included. Calling this field anything else leaves 1,133 corpus records
+    # compositing at full strength against a mask the source only wanted at 0.2.
     1:  [(0x30, 4, 'opacitymult', 'scalar'),          # blend
-         (0x600, 9, 'blendparam2', 'scalar')],
+         (0x600, 9, 'opacitymult', 'scalar')],
     2:  [(0xC0, 6, 'matrix22', 4),                    # transformation
          (0x06000000, 25, 'offset', 2),
          (0x10000000, 28, 'backgroundcolour', 'channel')],
@@ -233,6 +242,16 @@ class View(object):
                 present.append((name, 'baked', _baked_width(kind, self.colour)))
             elif code == 2:
                 present.append((name, 'program', 1))
+        # ONE ARM AT A TIME. Two entries can share a name (`blend`'s opacity is at (4, 5)
+        # or at (9, 10), never both), and a name added twice would keep the second silently
+        # while charging both widths to the layout. It has never happened in 437 files; say
+        # so out loud rather than render the wrong slot.
+        names = [t[0] for t in present]
+        if len(set(names)) != len(names):
+            raise Shifted('filter %d: two w1 fields are present under one name (%s) -- '
+                          'they are relocation arms and only one is ever set'
+                          % (rec.filter_id,
+                             ', '.join(sorted({n for n in names if names.count(n) > 1}))))
         end = self.header_end
         if present and end is not None:
             pos = end - sum(t[2] for t in present)
