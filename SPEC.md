@@ -581,8 +581,17 @@ whole block has shifted onto words that read as plausible floats. Refuse loudly.
 **The size slot is the one the class walk PLACES**, not the first slot of the class block.
 Bit 16 is the lowest class bit but not always the first placed: a flag bit below it takes a
 word first. Over 120 files the two answers differ on 7,590 records — `pixelprocessor` by one
-slot 6,905 times, `dyngradient` by one 399, `normal` by two 246. (`fxmaps` and `emboss` set
-the bit and the walk places nothing, which is the fxmaps cost-model gap, not a second rule.)
+slot 6,905 times, `dyngradient` by one 399, `normal` by two 246.
+
+Three filters set the bit and get no placement, for three different reasons. `fxmaps`
+(36,057 records) is not a gap in the data: filter 4's entry carries `base`/`clsbits` instead
+of a `cls` dictionary, every class bit below 16 costs zero words there, and running that
+rule from the record's own `end` puts bit 16 on `end` in 36,057 of 36,057 — the walk's
+answer, merely not emitted. `emboss` (371) is a real gap: bit 16 is not in filter 8's
+`clsbits` at all, and its base region rests on a fitted `4.5`; a further 171 emboss records
+are declined outright by the `min_version` gate rather than guessed at. `vectorshape` (139)
+places class parameters that do not include bit 16, and its first-after-base slot is outside
+the record's own words in 127 of them — a reader should decline, not fill in.
 
 **The inherited size slot.** Class bit 0 (word0 bit 16) set ⇒ the first slot after the
 base region is the record's output-size expression, not a parameter. Clear ⇒ there is no

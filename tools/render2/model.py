@@ -145,6 +145,15 @@ CLS_NAMES = {
     6:  {24: ('outputcolor', 'baked')},       # uniform's fill
     7:  {29: ('intensity', 'baked'), 30: ('intensity', 'program')},    # warp
     10: {28: ('intensity', 'baked'), 29: ('intensity', 'program')},    # blur
+    # `sharpen` AT THE SAME PAIR AS `blur`, and on the same kind of evidence the pair law
+    # is built from -- but WITHOUT a source to check it against, which `hsl` had and this
+    # does not: all 28 sharpen nodes in the shipped sources state no parameters at all.
+    # What is here: bit 28 holds an ordinary float on 1,148 corpus records (median 0.25,
+    # 99% inside [1e-6, 1e4]) and bit 29 holds integers-as-denormals on 8, which is the
+    # baked/program pair shape; the position is the one `blur` -- the other one-scalar
+    # filter -- uses for the same parameter name. Until this table named it, `f_sharpen`
+    # asked for `intensity`, no legend supplied it, and every record ran at the default.
+    13: {28: ('intensity', 'baked'), 29: ('intensity', 'program')},    # sharpen
     # `hsl`, THREE PARAMETERS AND SIX BITS, from the shipped sources. ChesterfieldSofa.sbs
     # states `saturation` 0.65 with `luminosity` 0.60 on one node and `saturation` 0.58 on
     # another; the compiled records set bit 26 to 0.65 / 0.58 and bit 28 to 0.60.
@@ -276,11 +285,34 @@ class View(object):
         for (bit, slot, _w) in cls_params:
             if bit == _SIZE_BIT:
                 self.size_slot = slot
-        if self.size_slot is None and (rec.words[0] >> _SIZE_BIT) & 1 and not cls_params:
-            # `fxmaps` (6,086 records) and `emboss` (47) set the bit and the walk places
-            # NOTHING: their cost entry has no class dictionary, which is the same gap that
-            # keeps fxmaps on the memo. Keep the old answer there and keep it visible --
-            # when that gap closes, this branch should delete rather than be maintained.
+        if (self.size_slot is None and (rec.words[0] >> _SIZE_BIT) & 1 and not cls_params
+                and self.prog_slot is not None
+                and 0 <= self.prog_slot < len(rec.words)):
+            # THE TWO FILTERS THAT REACH HERE ARE NOT THE SAME CASE, and the counts in the
+            # first version of this comment -- 6,086 and 47 -- were a 120-file sample
+            # printed as corpus totals. Full corpus, 437 files:
+            #
+            #   fxmaps  36,057   NOT a gap. Filter 4's cost entry has no `cls` dict but it
+            #                    does carry `base`/`clsbits`, and every class bit BELOW 16
+            #                    costs zero words there, so the class walk would place bit
+            #                    16 at exactly `end` -- which is `prog` for this filter.
+            #                    Checked by running that rule: 36,057 of 36,057 land on
+            #                    `prog`, width 1. This is a DUPLICATE of the walk's answer,
+            #                    not a second one, and it deletes by teaching
+            #                    `_fxmaps_walk` to emit its `cls_params` (which would also
+            #                    surface bits 22/23 -- one more costing class slot on 36,031
+            #                    records that nothing currently sees).
+            #   emboss     371   A REAL GAP. Filter 8's `clsbits` is [20, 23, 24, 25]: bit
+            #                    16 is not modelled at all, and `prog` rests on
+            #                    `base[0] = 4.5`, the fitted half `decompose`'s own
+            #                    min_version note calls "the model conceding it cannot
+            #                    express the rule". 171 further emboss records are declined
+            #                    outright by that gate rather than guessed at.
+            #
+            # `vectorshape` never arrives: it sets the bit, the walk places class params
+            # that do not include 16, and the non-empty list keeps this branch shut. That
+            # is the right outcome -- its `prog` is outside the record's words in 127 of
+            # 139 -- and the range test above states it rather than leaving it to luck.
             self.size_slot = self.prog_slot
 
         # EVERY class slot, named or not. An inherited parameter this legend has no name
