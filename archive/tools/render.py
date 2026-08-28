@@ -1507,59 +1507,28 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # the bit is clear, only when a non-size program exists, only when it runs and
                 # yields the right component count inside [0, 1]. The 1,854 bit-8-clear records
                 # with no colour program fall through to the arbitrated default below.
-                # THE PROGRAM FILL IS NAMED BY THE WALK, not hunted for. Everything above
-                # this point is the BAKED half of an ordinary class-word pair -- w0 bit 24,
-                # cls bit 8 -- and bit 25 is its program half, exactly the convention
-                # `cls_pair_slot` documents and `shuffle` already uses at the same bit.
-                #
-                # So the two guesses stacked here are both replaceable by one read. This
-                # took `rec.programs[0]` minus the size program (WHICH program?) and then
-                # asked whether the value landed in [0, 1] (does it LOOK like a colour?),
-                # which is a value probe of the kind this decode avoids everywhere else.
-                # Over the corpus and the reference packs, on cls-bit-8-clear records:
-                #
-                #     bit 9 set, both agree                                440
-                #     bit 9 set, the WALK finds one the heuristic MISSED   196
-                #     bit 9 set, both find one and they DISAGREE            12
-                #     bit 9 CLEAR, the heuristic fires anyway              161
-                #     neither                                            6,614
-                #
-                # The 161 are false positives on records the format says carry no program
-                # fill at all. The 12 are worse and they are this file's own documented
-                # trap: the heuristic's pointer sits 8 bytes past the walk's and evaluates
-                # to (8.0, 8.0) -- the SIZE EXPRESSION, which the comment opening this
-                # branch says it exists to avoid treating as the colour. The walk's pointer
-                # at the same records reads (1.0, 0.0, 0.0, 1.0), (1.0, 0.752, 0.0, 1.0),
-                # (0.496, 1.0, 0.0, 1.0): red, orange, yellow-green.
-                #
-                # And the slot the walk names holds a VALID PROGRAM on 647 of the 648
-                # records with bit 25 set, so the read is checked structurally rather than
-                # by whether the number that comes out looks plausible.
-                #
-                # THE BAKED HALF IS LEFT ON ITS FORMULA DELIBERATELY, for now. `start` and
-                # `n` above agree with the walk's slot AND width on 8,680 of 8,680 records
-                # where bit 24 is set, so migrating it changes no pixel and is a separate
-                # tidy-up; this branch is where the two differ.
-                _fillpair = cls_pair_slot(rec, 24)
-                if _fillpair is not None and _fillpair[0] == 'program' \
-                        and _fillpair[1] < len(rec.words):
-                    _fp = rec.words[_fillpair[1]] + 52
-                    try:
-                        _v = np.asarray(eval_program(asm, _fp,
-                                                     default_inputs(asm, 1), {}, 1)).ravel()
-                    except Exception:
-                        _v = np.zeros(0, dtype=np.float32)
-                    if _v.size == 1 and n > 1:
-                        _v = np.repeat(_v, n)
-                    if _v.size >= n and np.all(np.isfinite(_v[:n])):
-                        W, H = rec.width, rec.height
-                        if max_dim:
-                            W, H = min(W, max_dim), min(H, max_dim)
-                        N = W * H
-                        outputs[i] = to_image(
-                            np.tile(np.clip(_v[:n], 0.0, 1.0).astype(np.float32), (N, 1)),
-                            N, H, W)
-                        continue
+                if not (rec.cls >> 8) & 1:
+                    _sb = rec.size_or_baked
+                    _others = [q for q in (rec.programs or ())
+                               if not (_sb is not None and _sb[0] == 'program' and _sb[1] == q)]
+                    if _others:
+                        try:
+                            _v = np.asarray(eval_program(asm, _others[0],
+                                                         default_inputs(asm, 1), {}, 1)).ravel()
+                        except Exception:
+                            _v = np.zeros(0, dtype=np.float32)
+                        if _v.size == 1 and n > 1:
+                            _v = np.repeat(_v, n)
+                        if (_v.size >= n and np.all(np.isfinite(_v[:n]))
+                                and np.all((_v[:n] >= -0.01) & (_v[:n] <= 1.01))):
+                            W, H = rec.width, rec.height
+                            if max_dim:
+                                W, H = min(W, max_dim), min(H, max_dim)
+                            N = W * H
+                            outputs[i] = to_image(
+                                np.tile(np.clip(_v[:n], 0.0, 1.0).astype(np.float32), (N, 1)),
+                                N, H, W)
+                            continue
 
                 if not (rec.cls >> 8) & 1 or len(rec.words) < start + n:
                     # THE COLOUR IS NOT IN THE FILE. These are one-word records -- just the tag, no
@@ -2134,38 +2103,6 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # if the compiler ever emitted the weights as a PROGRAM this refusal would be a
                         # missed read. It never does -- over all 7,682 shuffle records, bit 24 set with 25
                         # clear 7,080, both clear 602, bit 25 set 0.
-                        # THE ARBITER EXISTS AND IS INERT, which is worth more than either
-                        # a value or another refusal, because the next person to reach for
-                        # it should not spend the day I did.
-                        #
-                        # `RoofTiles` is a REFERENCE PACK and five of its six declared
-                        # outputs -- height, AO, roughness, normal, basecolor -- are blocked
-                        # here, so the exported maps can in principle score a candidate.
-                        # Supplying one does unblock them: with `grayscale.weights` set and
-                        # warp's absent intensity supplied too (its cone needs both), the
-                        # file goes from 1 of 6 declared outputs to 6 of 6.
-                        #
-                        # It cannot choose between candidates. Over Rec.601 (0.3, 0.59,
-                        # 0.11), Rec.709, equal thirds, equal quarters and one-hot red, the
-                        # scored mean MAE against the pack's own maps is 0.1192 for four of
-                        # them and 0.12039 for the fifth, and the mean correlation is 0.034
-                        # -- which is no agreement at all. Sweeping warp's absent value over
-                        # 0, 0.1, 0.5, 1, 2 and 10 moves neither number by one part in 1e5.
-                        #
-                        # And that is not a threshold argument. Rendering the file twice --
-                        # once at Rec.601 with warp 0, once at one-hot red with warp 10 --
-                        # gives SIX OF SIX outputs identical in mean and standard deviation
-                        # to six decimals. The declared outputs do not depend on either
-                        # value, so this arbiter can unblock the records and cannot rank the
-                        # candidates.
-                        #
-                        # WHAT THAT SAYS ABOUT THE REFUSAL. It is correct in principle and
-                        # it cascades: a record deep in the graph declines a parameter that
-                        # provably cannot change the picture, and five outputs go with it.
-                        # The refusal stays, because "any value renders the same here" is a
-                        # fact about RoofTiles and not about the format. But the cost is now
-                        # measured rather than assumed, and the arbiter is recorded as
-                        # available-and-inert rather than as untried.
                         w = assume.assumed('grayscale.weights')
                         if w is None:
                             raise Unsupported("shuffle stores no weight vector (class bit "
@@ -2268,35 +2205,12 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # popcount predicts how many. A CONTROLLED TEST caught it: a height RAMP produced a
                 # perfectly flat normal map. So intensity is singled out by WIDTH instead, the way
                 # `transformation` singles out its matrix, refusing when that is ambiguous.
-                #
-                # AND IT IS NOT A CLASS-WORD PAIR EITHER, which is the obvious next idea and is
-                # refuted three ways. `blur`, `sharpen`, `warp`, `shuffle` and `uniform` all keep
-                # their scalar in an adjacent (baked, program) bit pair that `cls_pair_slot` reads,
-                # so `normal` looks like it should too, and `decompose` does report pairs for it --
-                # one of {10, 11}, one of {14, 15}, bit 16, and sometimes (26, 27). Over 1,353
-                # records across the corpus and the reference packs:
-                #
-                #   * bit 15's slot names a program returning TWO components on 854 of 916 -- the
-                #     output-size expression (w, h), not a scalar. Only 62 return one.
-                #   * bit 27's slot is NOT a valid program on 1,053 of 1,065. It is not a pointer.
-                #   * bit 26 is charged TWO words and its second word reads 9.34e-33, which is the
-                #     `0x0A420001` program preamble as float32 -- bytecode, not a component. Its
-                #     first word reads 12.0, squarely in the block's observed intensity range.
-                #
-                # The (26, 27) pair IS real as a COST: grouping by class word with those bits
-                # masked, bit 27 adds exactly one word to the walk's `end` and bit 26 adds two,
-                # against records that set neither -- cls bases 0x319 (end 6 vs 5), 0x309 (6 and 7
-                # vs 5), 0x019 (6 vs 5) and 0x318 (5 vs 4). So the cost model charges the pair and
-                # the CONTENT contradicts the widths it charges, which makes bit 26's width the
-                # thing in question rather than this branch. Handed to costs.json's owner.
-                #
-                # So the width rule stays. It is not elegant and it is not a formula either -- it
-                # asks each program what it returns rather than computing where one should be.
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
 
                 intensity = None
+                omitted = False
                 by_width = {}
                 for prog in rec.filter_programs:
                     try:
@@ -2332,51 +2246,59 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         rec.filter_id, rec.words[0],
                         rec.words[1] if len(rec.words) > 1 else None,
                         asm.header.get('version') if isinstance(asm.header, dict) else 0)
+                    # THE LAST HEADER SLOT IS NOT ALWAYS A PARAMETER. When the source
+                    # declared no intensity the header simply ends one word earlier, and
+                    # `end - 1` is then the last PROGRAM POINTER instead. A pointer read as
+                    # float32 is a denormal, so the range test below did reject it -- but as
+                    # "implausible value", which names the wrong thing: there is no value
+                    # here to be implausible. The refusal could not be acted on because it
+                    # described a failed read rather than an absent parameter.
+                    #
+                    # ASKED STRUCTURALLY INSTEAD, with `valid_program` -- the instrument
+                    # warp's program arm already uses -- over all 1,382 corpus records:
+                    #
+                    #     slot is a valid program pointer, block read junk    389
+                    #     block read junk for some other reason                 4
+                    #     slot is a pointer AND the read looked plausible       0
+                    #     read plausible, not a pointer (unchanged)           989
+                    #
+                    # The ZERO carries it: this takes no working read away, so it is a
+                    # diagnosis and not a trade. It reclassifies 389 of the 393 failures
+                    # from unreadable to absent.
+                    #
+                    # CONFIRMED BY TWIN, as warp's omission was. In
+                    # UHL3D-Stylized_Sand_with_Rocks_01 all nine `normal` records share
+                    # class word 0x00000b19, so the class word cannot be marking this and no
+                    # class-bit rule could have found it. Records 1833/1843/2193/2197 are 142
+                    # words, header 6, with a float at slot 5 (256.0); record 1908 is 122
+                    # words, header 5, and its slot 5 holds what the others hold at slot 6.
+                    # It is those records minus the parameter word.
                     if _sl is not None and 0 <= _sl - 1 < len(rec.words):
-                        # THE LAST HEADER SLOT HOLDS EITHER A BAKED FLOAT OR A POINTER, and
-                        # only the baked arm existed. That is the same baked/program split
-                        # `cls_pair_slot` reads for blur, sharpen, warp, shuffle and uniform,
-                        # and the slot here is the walk's, so the two arms are two readings
-                        # of ONE named slot rather than two places to look.
-                        #
-                        # Asking the pointer first, because the test that separates them is
-                        # structural: `valid_program` either resolves at that address or it
-                        # does not. The float arm's `1e-3 < abs(f) < 1e3` cannot make the
-                        # distinction -- a pointer through float32 is a denormal near 1e-40,
-                        # which the window happens to exclude, so those records fell through
-                        # to a refusal reading "neither a program nor a baked float" while
-                        # the record was in fact naming a program.
-                        #
-                        # Corpus-wide, at the last header slot of a `normal` record:
-                        #
-                        #     a valid PROGRAM, width rule also found one     263
-                        #     a valid PROGRAM, width rule found NOTHING       97
-                        #     a baked float                                  989
-                        #     neither                                          4
-                        #
-                        # The 97 are what this arm adds. They are the records that failed on
-                        # ImportTest, SubGraphTest, AnimatedExample and EvilOrb, and every
-                        # one of them reads a denormal at that slot -- 8.6e-41, 2.1e-41,
-                        # 1.35e-38 -- which is a pointer, not an intensity.
-                        _isl = _sl - 1
-                        _iptr = rec.words[_isl] + 52
-                        if (asm.body_lo <= _iptr < asm.body_hi
-                                and asm.valid_program(_iptr)):
-                            try:
-                                _iv = np.asarray(eval_program(
-                                    asm, _iptr, default_inputs(asm, 1), {}, 1)).reshape(-1)
-                            except Exception:
-                                _iv = np.zeros(0, dtype=np.float32)
-                            if _iv.size >= 1 and np.isfinite(_iv[0]):
-                                intensity = float(_iv[0])
-                                LOW_CONFIDENCE.add(i)
-                        if intensity is None:
-                            f = float(np.frombuffer(np.uint32(rec.words[_isl]).tobytes(),
+                        w = rec.words[_sl - 1]
+                        q = w + 52
+                        if asm.body_lo <= q < asm.body_hi and asm.valid_program(q):
+                            omitted = True
+                        else:
+                            f = float(np.frombuffer(np.uint32(w).tobytes(),
                                                     dtype=np.float32)[0])
                             if np.isfinite(f) and 1e-3 < abs(f) < 1e3:
                                 intensity = f
                                 LOW_CONFIDENCE.add(i)
+                if intensity is None and omitted:
+                    # The value is in neither the assembly nor the source that produced it,
+                    # so it is a question rather than a gap -- see `assume.QUESTIONS`.
+                    # Default 'refuse', so nothing renders differently unless asked.
+                    _d = assume.assumed('normal.default_intensity', 'refuse')
+                    if _d != 'refuse':
+                        intensity = float(_d)
+                        assume.note(i)
+                        LOW_CONFIDENCE.add(i)
                 if intensity is None:
+                    if omitted:
+                        raise Unsupported(
+                            "normal intensity: the last header slot holds a program "
+                            "pointer, so this record carries no baked parameter -- the "
+                            "source omitted it and the engine's default applies")
                     raise Unsupported("normal: intensity is neither a single-width "
                                       "program nor a baked float in the block")
 
@@ -2488,48 +2410,6 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # `output_census`. Not wired because the program only reads as an intensity for
                 # some: 60 evaluate 1-wide (p50 1.00) while 38 evaluate 2-wide, the shape of
                 # `$outputsize`, and only 8 of those sit at the size-expression slot.
-                # INITIALISED PER RECORD, and it was not. Every assignment below is
-                # conditional, `render()` is one long loop over records, and Python function
-                # locals persist across iterations -- so a blur whose class bits 12 and 13
-                # are BOTH CLEAR fell through to `if intensity is None` still holding the
-                # value of whatever set it last: an earlier blur, or `warp`'s intensity, or
-                # `normal`'s. Those records then rendered, with a number belonging to
-                # another record and often another filter.
-                #
-                # The refusal below already says what should happen to them -- "the source
-                # omitted it and the engine's default applies" -- and it was unreachable for
-                # most of them. Over 60 corpus files, of the neither-bit blur records that
-                # got this far, 14 RENDERED on a leaked value and only 2 refused. `warp` and
-                # `sharpen` were never affected: both open their branch with
-                # `intensity = None` (see 2006 and 2299), which is what this line restores
-                # here.
-                #
-                # It is the failure mode this file ranks worst -- a plausible picture rather
-                # than a refusal -- and it is invisible to every aggregate check, because the
-                # leaked value is a real intensity and the record renders something that
-                # looks like a blur.
-                intensity = None
-                # INITIALISED PER RECORD, and it was not. Every assignment below is
-                # conditional, `render()` is one long loop over records, and Python function
-                # locals persist across iterations -- so a blur whose class bits 12 and 13
-                # are BOTH CLEAR fell through to `if intensity is None` still holding the
-                # value of whatever set it last: an earlier blur, or `warp`'s intensity, or
-                # `normal`'s. Those records then rendered, with a number belonging to another
-                # record and often another filter.
-                #
-                # The refusal below already says what should happen to them -- "the source
-                # omitted it and the engine's default applies" -- and it was unreachable for
-                # most of them. Over 60 corpus files, of the neither-bit blur records that
-                # reached it, 14 RENDERED on a leaked value and only 2 refused.
-                #
-                # `warp` and `sharpen` were never affected: both open their branch with
-                # `intensity = None`, which is what this line restores here.
-                #
-                # It is the failure mode this file ranks worst -- a plausible picture instead
-                # of a refusal -- and it is invisible to every aggregate check, because the
-                # leaked value is a real intensity and the record renders something that
-                # looks like a blur.
-                intensity = None
                 _pair = cls_pair_slot(rec, 28)
                 _islot = _pair[1] if _pair else None
                 _baked = bool(_pair and _pair[0] == 'baked')
@@ -2824,8 +2704,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             LOW_CONFIDENCE.add(i)
                     try:
                         runner = fxrender.make_runner(asm, rec)
-                        pats = fxrender.emissions(rec, runner,
-                                                  slots=fxrender.seed_slots(rec, runner))
+                        fx_slots = fxrender.seed_slots(rec, runner)
+                        # BEFORE the walk, which mutates the frame -- see `splat`'s `cells`.
+                        fx_cells = fxrender.declared_cells(rec, fx_slots)
+                        pats = fxrender.emissions(rec, runner, slots=fx_slots)
                     except fxrender.Unmodelled as e:
                         # A GENERATOR THAT FAILED WITH AN INPUT MISSING IS A CONSEQUENCE, and the test is
                         # structural rather than a read of the message: the edges are installed
@@ -2852,7 +2734,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     images = {slot: outputs[e]
                               for slot, e in enumerate(rec.edges or ())
                               if e is not None and e in outputs}
-                    outputs[i] = fxrender.splat(rec, pats, W, H, images=images)
+                    outputs[i] = fxrender.splat(rec, pats, W, H, images=images,
+                                                cells=fx_cells)
                     if any(e in synthetic for e in (rec.edges or ()) if e is not None):
                         synthetic.add(i)
                 finally:

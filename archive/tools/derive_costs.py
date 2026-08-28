@@ -47,13 +47,13 @@ own header end, which no record in this corpus does. A corpus that contained one
 break the equivalence silently.
 """
 #
-# OWNERSHIP: this file, `derive_costs.py` and the `costs.json` they produce are maintained by
-# ONE session at a time. Several Claude sessions share this working tree and one git HEAD, and
-# a change here routinely pairs with a change in `decompose.py`; when the two halves landed in
-# two sessions' commits, HEAD raised `AttributeError` on every warp and shuffle record while
-# each commit was individually fine (5faf524 / 35fe822). Send the change to the owner rather
-# than editing alongside them. Verify against a pristine `git show HEAD:` copy, never against
-# the working tree, which holds everyone's uncommitted work at once.
+# A CHANGE HERE PAIRS WITH ONE IN `decompose.py`, and the pair has to land in ONE commit.
+# Several sessions share this working tree and one git HEAD; when the two halves landed in two
+# sessions' commits, HEAD raised `AttributeError` on every warp and shuffle record while each
+# commit was individually fine (5faf524 / 35fe822). Verify against a pristine `git show HEAD:`
+# copy, never against the working tree, which holds everyone's uncommitted work at once.
+# (This used to add a one-session-at-a-time ownership rule; it was dropped at the user's
+# direction. What replaced it is the paragraph above -- the hazard, not the etiquette.)
 #
 import bisect
 import collections
@@ -139,7 +139,13 @@ W1_CORR = {}       # filter -> (n, corr(record index, words[1])), filled by obse
 
 
 def observed():
-    """(filter, cls, w1) -> Counter of header sizes in words.
+    """`(obs, below)`, each (filter, cls, w1) -> Counter of header sizes in words.
+
+    `below` holds the records `MIN_VERSION` excludes from the fit. They are not fit
+    material -- their layout is an older version's -- but they are where the features the
+    modern population holds CONSTANT can still be seen to vary, and a constant regressor
+    cannot be told from the intercept. `main` uses them for that and nothing else.
+
 
     Also runs the W1 AUDIT into W1_CORR. Every filter above declares how to read
     words[1], and getting that wrong is the single most expensive mistake available
@@ -150,6 +156,7 @@ def observed():
     every filter every time rather than waiting to notice a key count.
     """
     obs = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
+    below_obs = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
     acc = collections.defaultdict(lambda: [0, 0.0, 0.0, 0.0, 0.0, 0.0])
     for p in corpus.paths():
         try:
@@ -225,10 +232,15 @@ def observed():
             if not (r.offset < q <= r.end):
                 continue
             f = r.filter_id
+            below = False
             if f in MIN_VERSION:
                 ver = a.header.get('version') if isinstance(a.header, dict) else 0
-                if ver < MIN_VERSION[f]:
-                    continue
+                # KEPT, NOT DROPPED. These records cannot join the fit -- their layout is a
+                # different version's and pooling them costs exactness -- but they are the
+                # only place some features VARY, and a feature that never varies cannot be
+                # told from the intercept. `main` fits them separately to identify what the
+                # modern population has folded into its constant. See `_transfer_constant`.
+                below = ver < MIN_VERSION[f]
             w1 = r.words[1]
             if f in W1_ABSENT:
                 w1 = None
@@ -263,12 +275,12 @@ def observed():
                 q = foreign[j]
             if not (r.offset < q <= r.end):
                 continue
-            obs[f][(r.words[0], w1)][(q - r.offset) // 4] += 1
+            (below_obs if below else obs)[f][(r.words[0], w1)][(q - r.offset) // 4] += 1
     W1_CORR.clear()
     for f, (n, sx, sy, sxx, syy, sxy) in acc.items():
         den = ((n * sxx - sx * sx) * (n * syy - sy * sy)) ** 0.5
         W1_CORR[f] = (n, (n * sxy - sx * sy) / den if den > 0 else float('nan'))
-    return obs
+    return obs, below_obs
 
 
 # W1'S TWO-BIT FIELD GRID DOES NOT ALWAYS START AT BIT 0.
@@ -581,9 +593,57 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
 SPLIT_SAMPLING = set()
 
 
+def _constant_set_bits(keys, bitrange=range(32)):
+    """Bits set in EVERY key: regressors this population cannot tell from the intercept.
+
+    `fit` admits a bit as a feature only when it varies, which is correct -- a column of
+    ones is the constant. But the consequence is invisible downstream: a bit absent from
+    `cls`/`clsbits` reads as "costs nothing" when it may mean "costs something, folded into
+    const". Reported as `constant_bits` so a reader can tell the two apart.
+    """
+    return [b for b in bitrange if all((k[0] >> b) & 1 for k, _, _ in keys)]
+
+
+def _bit_cost(spec, b):
+    """What a spec charges for class bit `b`, or None if it carries no coefficient."""
+    if spec is None:
+        return None
+    if spec.get('cls') is not None:
+        v = spec['cls'].get(str(b))
+        return None if v is None else float(v)
+    if spec.get('clsbits') and b in spec['clsbits']:
+        return float(spec['base'][1 + spec['clsbits'].index(b)])
+    return None
+
+
+def _transfer_constant(spec, b, cost):
+    """Give a constant-in-this-population bit its own coefficient, out of the intercept.
+
+    IDENTIFY WHERE IT VARIES, APPLY WHERE IT DOES NOT. Prediction-preserving by
+    construction: the bit is set on every key of this population, so moving `cost` from the
+    constant to the bit adds and subtracts the same word on every one of them. What changes
+    is that a WALK can now place the word instead of a caller inventing its position.
+    """
+    if spec.get('cls') is not None:
+        spec['cls'][str(b)] = cost
+        spec['const'] = spec['const'] - cost
+        return spec
+    i = bisect.bisect_left(spec['clsbits'], b)
+    spec['clsbits'].insert(i, b)
+    spec['base'].insert(1 + i, cost)
+    spec['base'][0] -= cost
+    if spec.get('interaction') == 'colour':
+        # `colour` stores two aligned halves; `colour_states` stores only the state columns
+        # in `cross`, which a class bit is not one of.
+        spec['cross'].insert(1 + i, 0.0)
+    if spec.get('identified') is not None:
+        spec['identified'].insert(1 + i, False)   # identified elsewhere, not by this fit
+    return spec
+
+
 def main():
-    obs = observed()
-    out, report = {}, []
+    obs, below_obs = observed()
+    out, report, transferred = {}, [], []
     for f, d in sorted(obs.items(), key=lambda kv: -sum(sum(c.values()) for c in kv[1].values())):
         keys = [(k, c.most_common(1)[0][0], sum(c.values())) for k, c in d.items()]
         n = sum(x[2] for x in keys)
@@ -663,9 +723,44 @@ def main():
         if exact >= KEEP:
             if f in MIN_VERSION:
                 spec['min_version'] = MIN_VERSION[f]
+            # WHAT THIS POPULATION COULD NOT SEE, said out loud. Restricted to the class
+            # word: bits 0-15 hold the filter id and are constant by construction, so
+            # "constant here" says nothing about them.
+            const_bits = _constant_set_bits(keys, range(16, 32))
+            if const_bits:
+                spec['constant_bits'] = const_bits
+            # ... and where another population CAN see it, take the coefficient from there.
+            # `below_obs` is the records `MIN_VERSION` excludes: a different version's
+            # layout, so not fit material, but the only place these bits vary.
+            bel = below_obs.get(f)
+            bkeys = ([(k, c.most_common(1)[0][0], sum(c.values())) for k, c in bel.items()]
+                     if bel else [])
+            if const_bits and len(bkeys) >= 10:
+                bspec, bexact = None, 0.0
+                for br in (range(32), range(16, 32), range(8, 32)):
+                    for cm in ('off', 'full', 'states'):
+                        try:
+                            s2, e2 = fit(f, bkeys, br, colour=cm)
+                        except Exception:
+                            continue
+                        if s2 is not None and e2 > bexact:
+                            bspec, bexact = s2, e2
+                for b in const_bits:
+                    if _bit_cost(spec, b) is not None:
+                        continue                     # this fit already charges it
+                    cst = _bit_cost(bspec, b)
+                    if cst is None or cst <= 0 or float(cst) != int(float(cst)):
+                        continue                     # not identified, or not a whole slot
+                    _transfer_constant(spec, b, float(cst))
+                    transferred.append((f, b, float(cst), bexact, len(bkeys),
+                                        sum(x[2] for x in bkeys)))
             out[str(f)] = spec
     with open(OUT, 'w') as fh:
         json.dump(out, fh, indent=0, sort_keys=True)
+    for f, b, cst, bexact, nk, nr in transferred:
+        print('transferred: filter %d bit %d costs %g word(s) -- constant in the fitted '
+              'population, identified in the %d records below its version gate (%d keys, '
+              '%.4f exact)' % (f, b, cst, nr, nk, bexact))
     print('%-16s %9s %7s %9s  %s' % ('filter', 'records', 'keys', 'exact', 'status'))
     kept = tot = 0
     for f, n, k, e, st in report:

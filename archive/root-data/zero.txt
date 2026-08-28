@@ -1,0 +1,26 @@
+files scanned=55   files rendering ZERO of their renderable outputs: 17
+
+most common root in a zero-output file:
+   6 files  warp intensity: neither class bit 13 (baked) nor 14 (progr
+   6 files  shuffle stores no weight vector (class bit 8 clear) and it
+   5 files  produced non-finite values (100.0% of samples)
+   2 files  distance: no program, and no baked value in a parameter sl
+   1 files  sharpen intensity: neither class bit 12 (baked) nor 13 (pr
+   1 files  fxmaps: no emittable entries -- walk: the run reached 1 no
+   1 files  no offset bit set and 1 offset-shaped program(s) remain un
+   1 files  fxmaps: numberadded = 921600
+   1 files  fxmaps: no emittable entries -- walk: 1 node(s), then no h
+   1 files  program at 657292 does not resolve a span
+
+  PavingStonesSubstance003_COMPILED.   5 outputs  produced non-finite values (100.0% of samples)
+  TravertineSubstance001_COMPILED.sb   5 outputs  warp intensity: neither class bit 13 (baked) nor 14 (progr
+  concrete_049.sbsasm                  6 outputs  fxmaps: no emittable entries -- walk: the run reached 1 no
+  Marble.sbsasm                        5 outputs  warp intensity: neither class bit 13 (baked) nor 14 (progr
+  AsphaltSubstance002_COMPILED.sbsas   4 outputs  produced non-finite values (100.0% of samples)
+  SurfaceImperfections08.sbsasm        3 outputs  warp intensity: neither class bit 13 (baked) nor 14 (progr
+  Concrete19-24.sbsasm                 4 outputs  warp intensity: neither class bit 13 (baked) nor 14 (progr
+  Desert_Sand_01.sbsasm                6 outputs  shuffle stores no weight vector (class bit 8 clear) and it
+  WallPanels.sbsar.sbsasm              5 outputs  distance: no program, and no baked value in a parameter sl
+  MossSubstance001_COMPILED.sbsasm     5 outputs  produced non-finite values (100.0% of samples)
+  OnyxSubstance001_COMPILED.sbsasm     4 outputs  warp intensity: neither class bit 13 (baked) nor 14 (progr
+  BricksSubstance005_COMPILED.sbsasm   5 outputs  produced non-finite values (100.0% of samples)
