@@ -68,8 +68,32 @@ class Context(object):
         return got
 
     def run(self, v, ptr, n, slots=None, pos=None, W=None, H=None):
+        """Evaluate one of `v`'s programs. `$size` is the RECORD'S DECLARED SIZE.
+
+        THE ONE PLACE THAT DECIDES IT, because two of the three ways to get this wrong are
+        invisible. `$size` is a property of the file and `max_dim` is a sweep shortcut, so
+        a parameter whose program reads `$size` must not change when the caller renders
+        smaller -- that already cost 4,058 Bricks records a resolution dependence through
+        `transformation`'s offset. And a call that passes NO size at all is worse than
+        wrong, it is ORDER-DEPENDENT: `sbsruntime.set_context` ignores None by design, so
+        the program would read whatever record ran last. That is the shape of the leak
+        `cc97a7a` fixed in `blur`, and `_fill_program`, `distance`, the `emboss` probe and
+        the FX slot seeding all call this without a size.
+
+        `pos` is the RENDER GRID and is passed through, because a per-pixel program is
+        evaluated at whatever grid the caller is drawing on. Size and position are
+        different questions and only one of them is a property of the record.
+
+        ONE CALLER OVERRIDES THE SIZE ON PURPOSE: a `pixelprocessor`'s own image program,
+        which is the only population here that reads `$pos` (of 6,793 program-valued
+        PARAMETERS across a corpus sample, zero do), so for it `$size` and `$pos` have to
+        describe the same grid or a neighbour tap becomes sub-pixel and the filter
+        silently turns into an identity.
+        """
         return run_program(self.asm, ptr, self.graph_inputs(n),
-                           {} if slots is None else slots, n, pos=pos, W=W, H=H)
+                           {} if slots is None else slots, n, pos=pos,
+                           W=v.width if W is None else W,
+                           H=v.height if H is None else H)
 
     def prog_at(self, v, slot):
         """The program a slot names, or None -- `word + 52`, bounds- and validity-checked."""
@@ -159,60 +183,72 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None):
     ctx = Context(asm, cap=max_dim)
     ctx.outputs.update(precomputed or {})
     failures, cascaded = {}, set()
-    cache = {}
-    sbsruntime.use_shared_cache(cache)
 
-    for rec in asm.records:
-        i = rec.index
-        if i in ctx.outputs:
-            continue
-        v = model.View(asm, rec)
-        try:
-            if not v.walked:
-                raise Unsupported('the cost model does not cover this record header, so '
-                                  'no slot of it can be read structurally')
-            fn = filters.FILTERS.get(v.filter)
-            if fn is None:
-                raise Unsupported('filter %r has no implementation here' % v.filter)
-            out = np.asarray(fn(ctx, v))
-            want = 4 if v.colour else 1
-            fixed = conform(out, want)
-            if fixed is None:
-                raise Unsupported('%s record produced %d channels, not %d'
-                                  % ('colour' if v.colour else 'greyscale',
-                                     out.shape[-1] if out.ndim == 3 else 1, want))
-            if fixed.size and not np.all(np.isfinite(fixed)):
-                fill = assume.assumed('nonfinite.fill')
-                if fill is None:
-                    raise Unsupported('produced non-finite values (%.1f%% of samples)'
-                                      % (100.0 * float(np.mean(~np.isfinite(fixed)))))
-                fixed = np.where(np.isfinite(fixed), fixed, np.float32(fill))
-                ctx.low_confidence.add(i)
-                assume.note(i)
-            ctx.outputs[i] = fixed
-        except Unsupported as e:
-            failures[i] = str(e)
-            if getattr(e, 'cascade', False):
-                cascaded.add(i)
-            if verbose:
-                print('rec%d (%s): SKIP - %s' % (i, v.filter, e))
-        except Exception as e:
-            failures[i] = '%s: %s' % (type(e).__name__, e)
-            if verbose:
-                print('rec%d (%s): ERROR - %s: %s' % (i, v.filter, type(e).__name__, e))
-        if stop_after is not None and i >= stop_after:
-            break
+    # THE CACHE IS THIS RENDER'S, AND IT GOES BACK WHEN THE RENDER ENDS. 0x03/0x06 are
+    # cross-record common-subexpression elimination: the writer is a different record from
+    # the reader, so answering a `cache_read` needs one dict threaded through a whole file
+    # in record order, which is what this loop is. `sbsruntime` keeps that dict in a MODULE
+    # GLOBAL, and leaving ours installed hands it to whatever runs next -- the indices are
+    # bare integers with nothing in them naming a file, so the next file's reader does not
+    # get the `NoSharedCache` its single-program caller is entitled to, it gets THIS file's
+    # value for index 3. A sweep that renders one file and then transpiles a program out of
+    # another is exactly that shape.
+    prev_cache = sbsruntime.use_shared_cache({})
+    try:
+        for rec in asm.records:
+            i = rec.index
+            if i in ctx.outputs:
+                continue
+            v = model.View(asm, rec)
+            try:
+                if not v.walked:
+                    raise Unsupported('the cost model does not cover this record header, '
+                                      'so no slot of it can be read structurally')
+                fn = filters.FILTERS.get(v.filter)
+                if fn is None:
+                    raise Unsupported('filter %r has no implementation here' % v.filter)
+                out = np.asarray(fn(ctx, v))
+                want = 4 if v.colour else 1
+                fixed = conform(out, want)
+                if fixed is None:
+                    raise Unsupported('%s record produced %d channels, not %d'
+                                      % ('colour' if v.colour else 'greyscale',
+                                         out.shape[-1] if out.ndim == 3 else 1, want))
+                if fixed.size and not np.all(np.isfinite(fixed)):
+                    fill = assume.assumed('nonfinite.fill')
+                    if fill is None:
+                        raise Unsupported('produced non-finite values (%.1f%% of samples)'
+                                          % (100.0 * float(np.mean(~np.isfinite(fixed)))))
+                    fixed = np.where(np.isfinite(fixed), fixed, np.float32(fill))
+                    ctx.low_confidence.add(i)
+                    assume.note(i)
+                ctx.outputs[i] = fixed
+            except Unsupported as e:
+                failures[i] = str(e)
+                if getattr(e, 'cascade', False):
+                    cascaded.add(i)
+                if verbose:
+                    print('rec%d (%s): SKIP - %s' % (i, v.filter, e))
+            except Exception as e:
+                failures[i] = '%s: %s' % (type(e).__name__, e)
+                if verbose:
+                    print('rec%d (%s): ERROR - %s: %s'
+                          % (i, v.filter, type(e).__name__, e))
+            if stop_after is not None and i >= stop_after:
+                break
 
-    # CLAMP AT THE WRITE, NOT IN THE FILTER THAT OVERSHOT. `levels` leaves [0, 1] by
-    # construction where an author set the output range outside the unit interval, and an
-    # INTERMEDIATE at 1.31 feeding a multiply is headroom the engine may legitimately
-    # consume. Only a declared output is clamped.
-    for _uid, fmt, _grey, ri in asm.outputs():
-        if isinstance(fmt, tuple) or ri not in ctx.outputs:
-            continue
-        a = ctx.outputs[ri]
-        if a.min() < 0.0 or a.max() > 1.0:
-            ctx.outputs[ri] = np.clip(a, 0.0, 1.0)
+        # CLAMP AT THE WRITE, NOT IN THE FILTER THAT OVERSHOT. `levels` leaves [0, 1] by
+        # construction where an author set the output range outside the unit interval, and
+        # an INTERMEDIATE at 1.31 feeding a multiply is headroom the engine may legitimately
+        # consume. Only a declared output is clamped.
+        for _uid, fmt, _grey, ri in asm.outputs():
+            if isinstance(fmt, tuple) or ri not in ctx.outputs:
+                continue
+            a = ctx.outputs[ri]
+            if a.min() < 0.0 or a.max() > 1.0:
+                ctx.outputs[ri] = np.clip(a, 0.0, 1.0)
+    finally:
+        sbsruntime.use_shared_cache(prev_cache)
 
     info = {'low_confidence': ctx.low_confidence, 'cascaded': cascaded,
             'synthetic': ctx.synthetic}

@@ -62,17 +62,26 @@ def _scalar(ctx, v, name, default, W, H, pos):
         return np.float32(default)
     if p.kind == 'baked':
         return np.float32(p.value if p.width == 1 else p.value[0])
-    return to_image(ctx.run(v, p.value, W * H, pos=pos, W=W, H=H),
+    # NO W/H: `Context.run` supplies the record's declared size. Passing the capped grid
+    # here made every program-valued `opacitymult`, all five `levels` parameters and
+    # `dirmotionblur`/`directionalwarp`'s intensity and angle read `$size` as
+    # min(declared, --dim) -- a parameter VALUE that moves when the caller previews smaller.
+    #
+    # THE CHOICE IS NOT A TASTE, and the population settles it. Over a corpus sample,
+    # 6,793 program-valued parameters of these filters: 5,338 read `$sizelog2`, 69 read
+    # `$size`, and NOT ONE reads `$pos`. They are per-record CONSTANTS that `_scalar` then
+    # broadcasts, so there is no grid-relative neighbour tap to preserve and the declared
+    # size is the only defensible answer. (A `pixelprocessor`'s own image program is the
+    # other population -- it does read `$pos` -- and keeps the render grid.) `pos` is still
+    # passed here in case a parameter program ever reads it.
+    return to_image(ctx.run(v, p.value, W * H, pos=pos),
                     W * H, H, W).reshape(W * H, -1)[:, :1]
 
 
 def _vector(ctx, v, name, width):
     """A named parameter as a `width`-long tuple, evaluating a program if that is its arm.
 
-    AT THE RECORD'S DECLARED SIZE, not the render grid. `$size` is a property of the file;
-    `max_dim` is a sweep shortcut, and letting it reach a parameter program makes a
-    transformation's offset depend on the resolution it happens to be rendered at. That
-    moved 8,863 Bricks records by up to 0.32 before it was noticed.
+    At the record's declared size, which is `Context.run`'s rule and stated there.
     """
     p = v.params.get(name)
     if p is None:
@@ -80,7 +89,7 @@ def _vector(ctx, v, name, width):
     if p.kind == 'baked':
         vals = (p.value,) if p.width == 1 else tuple(p.value)
         return vals if len(vals) == width else None
-    out = np.asarray(ctx.run(v, p.value, 1, W=v.width, H=v.height)).ravel()
+    out = np.asarray(ctx.run(v, p.value, 1)).ravel()
     return tuple(float(x) for x in out) if out.size == width else None
 
 
@@ -428,13 +437,19 @@ def f_normal(ctx, v):
     elif p.kind == 'baked':
         intensity = float(p.value)
     else:
-        got = np.asarray(ctx.run(v, p.value, 1, W=W, H=H)).ravel()
+        got = np.asarray(ctx.run(v, p.value, 1)).ravel()
         if got.size < 1 or not np.isfinite(got[0]):
             raise Unsupported('normal intensity program does not evaluate to a scalar')
         intensity = float(got[0])
 
     height = to_image(ctx.sample(v, 0, pos), N, H, W)[:, :, 0].astype(np.float32)
+    # `np.gradient` is per RENDER pixel, so an uncorrected normal halves in strength every
+    # time the grid doubles -- the engine differences adjacent pixels at the record's own
+    # resolution. Put it back on that scale, the same correction `warp` already makes.
+    # At full resolution the factor is exactly 1, so no uncapped render moves.
+    ref = _reference_px(v)
     gy, gx = np.gradient(height)
+    gx, gy = gx * (W / ref), gy * (H / ref)
     if (assume.assumed('normal.inversedy', 'word1bit2') == 'word1bit2'
             and len(v.words) > 1 and (v.words[1] >> 2) & 1):
         gy = -gy
@@ -520,7 +535,7 @@ def f_blur(ctx, v):
     if p.kind == 'baked':
         intensity = float(p.value)
     else:
-        got = np.asarray(ctx.run(v, p.value, 1, W=v.width, H=v.height)).ravel()
+        got = np.asarray(ctx.run(v, p.value, 1)).ravel()
         if got.size != 1 or not np.isfinite(got[0]):
             raise Unsupported('blur intensity program does not evaluate to a scalar')
         intensity = float(got[0])
@@ -681,7 +696,7 @@ def f_warp(ctx, v):
         if not (intensity == intensity and -1e3 < intensity < 1e3):
             raise Unsupported('warp intensity is not a plausible float (%r)' % intensity)
     else:
-        got = np.asarray(ctx.run(v, p.value, 1, W=v.width, H=v.height)).ravel()
+        got = np.asarray(ctx.run(v, p.value, 1)).ravel()
         if got.size != 1 or not np.isfinite(got[0]):
             raise Unsupported('warp intensity program does not evaluate to a scalar')
         intensity = float(got[0])
@@ -710,7 +725,7 @@ def f_emboss(ctx, v):
     if assume.assumed('emboss.intensity') == 'program':
         for q in ctx.walk_programs(v):
             try:
-                got = np.asarray(ctx.run(v, q, 1, W=v.width, H=v.height)).ravel()
+                got = np.asarray(ctx.run(v, q, 1)).ravel()
             except Exception:
                 continue
             if got.size and np.isfinite(got[0]):

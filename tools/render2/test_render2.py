@@ -29,6 +29,7 @@ if _HERE not in sys.path:
 import sbsasm                                                        # noqa: E402
 import manifest                                                      # noqa: E402
 import model                                                         # noqa: E402
+import sbsruntime                                                    # noqa: E402
 from engine import render                                            # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -109,6 +110,48 @@ def test_every_record_renders():
           % (len(outs), len(info['low_confidence'])))
 
 
+def test_the_shared_cache_does_not_outlive_the_render():
+    """A cache left installed leaks ANSWERS, not memory, so this asserts both halves.
+
+    The 0x03/0x06 indices are bare integers with nothing in them naming a file. A render
+    that leaves its dict in `sbsruntime`'s module global therefore hands the NEXT caller
+    this file's value for index 3 where it was owed a `NoSharedCache` saying it needs a
+    whole-file run -- and `NoSharedCache` is the guard that exists because "a silently
+    wrong cached value is exactly the failure mode this project's own tests exist to
+    catch". Restoring is only possible if `None` removes, so that is asserted first; it
+    used to install a fresh `{}` and a restore could not reach the default state.
+
+    The first half needs no specimen.
+    """
+    outer = {}
+    prev = sbsruntime.use_shared_cache(outer)
+    try:
+        sbsruntime.cache_write(np.float32(0.25), 7)
+        assert sbsruntime.use_shared_cache(None) is outer, \
+            'use_shared_cache must hand back the cache it replaced, or nothing can restore'
+        try:
+            sbsruntime.cache_read(7)
+        except sbsruntime.NoSharedCache:
+            pass
+        else:
+            raise AssertionError('None left a cache installed, so a restore cannot reach '
+                                 'the default state a single-program transpile needs')
+        path = specimen()
+        if not path:
+            print('ok  test_the_shared_cache_does_not_outlive_the_render (no specimen: '
+                  'removal only)')
+            return
+        sbsruntime.use_shared_cache(outer)
+        render(sbsasm.Assembly(path), max_dim=32, stop_after=0)
+        assert sbsruntime.use_shared_cache(outer) is outer, \
+            'render did not put back the cache it found'
+        assert list(outer) == [7], \
+            'render wrote into the caller\'s cache instead of its own: %r' % (list(outer),)
+        print('ok  test_the_shared_cache_does_not_outlive_the_render')
+    finally:
+        sbsruntime.use_shared_cache(prev)
+
+
 def test_reference_agreement_does_not_regress():
     path, refs = specimen(), references()
     if not path or not refs:
@@ -171,5 +214,6 @@ def test_reference_agreement_does_not_regress():
 if __name__ == '__main__':
     for fn in (test_walk_reads_the_parameters_the_memo_cannot,
                test_every_record_renders,
+               test_the_shared_cache_does_not_outlive_the_render,
                test_reference_agreement_does_not_regress):
         fn()

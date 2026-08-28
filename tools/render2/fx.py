@@ -52,7 +52,7 @@ import sbsruntime
 import transpile
 from sbsasm import fx_patterntype
 
-from ops import Unsupported, cascade, sampler
+from ops import Unsupported, sampler
 
 MAX_PATTERNS = 300000
 

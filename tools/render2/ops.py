@@ -197,9 +197,12 @@ def run_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
         scope = {}
         exec(compile(_source(asm, start), '<prog>', 'exec'), scope)
         fn = _COMPILED[key] = scope['prog']
-    sbsruntime.set_context(number=0.0)
-    if pos is not None or W is not None or H is not None:
-        sbsruntime.set_context(width=W, height=H, pos=pos)
+    # EVERY FIELD, EVERY CALL. `set_context` ignores a None by design -- which is right
+    # for its own callers and wrong here, because "no position supplied" has to MEAN no
+    # position and not "keep the last record's". `pos` is therefore assigned directly;
+    # there is no other way to clear it.
+    sbsruntime.set_context(number=0.0, width=W, height=H)
+    sbsruntime.CONTEXT['pos'] = pos
     with np.errstate(all='ignore'):
         try:
             return np.asarray(fn(inputs=inputs, slots=slots))
