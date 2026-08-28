@@ -173,6 +173,41 @@ def test_blend_reads_the_relocated_opacity():
     print('ok  test_blend_reads_the_relocated_opacity (%d records)' % len(got))
 
 
+def test_hsl_names_its_three_parameters():
+    """`hsl` states hue, saturation and luminosity in the CLASS word, and each defaults to
+    the neutral 1/2 -- so a parameter this legend fails to name is not a missing value, it
+    is a silent identity. All 747 corpus records were exactly that until the legend grew
+    filter 14.
+
+    The values are the shipped source's, not a fit: `ChesterfieldSofa.sbs` states
+    `saturation` 0.65 with `luminosity` 0.60 on one node and `saturation` 0.58 on another,
+    and a third node leaves all three dynamic -- which is the record that has to come back
+    as three PROGRAMS, or the bit pairing is wrong in a way constants cannot show.
+    """
+    hits = glob.glob(os.path.join(ROOT, '**', 'ChesterfieldSofa.sbsasm'), recursive=True)
+    if not hits:
+        return _skip('test_hsl_names_its_three_parameters: no ChesterfieldSofa')
+    asm = sbsasm.Assembly(hits[0])
+    baked = {351: {'saturation': 0.58},
+             866: {'saturation': 0.65, 'luminosity': 0.60}}
+    for index, want in sorted(baked.items()):
+        v = model.View(asm, asm.records[index])
+        for name, value in want.items():
+            got = v.baked(name)
+            assert got is not None and abs(got - value) < 5e-4, \
+                'record %d %s reads %r, the source states %r' % (index, name, got, value)
+        assert set(v.params) == set(want), \
+            'record %d names %r, the source states %r' % (index, sorted(v.params),
+                                                         sorted(want))
+    # The all-dynamic node: three PROGRAM arms, which is what pairs the odd bits with the
+    # even ones. A legend that only got the baked bits right would name nothing here.
+    v = model.View(asm, asm.records[864])
+    assert {k: p.kind for k, p in v.params.items()} == \
+        {'hue': 'program', 'saturation': 'program', 'luminosity': 'program'}, \
+        'the all-dynamic hsl record names %r' % ({k: p.kind for k, p in v.params.items()},)
+    print('ok  test_hsl_names_its_three_parameters (3 records)')
+
+
 def test_every_record_renders():
     path = specimen()
     if not path:
@@ -302,6 +337,7 @@ def test_reference_agreement_does_not_regress():
 if __name__ == '__main__':
     for fn in (test_walk_reads_the_parameters_the_memo_cannot,
                test_blend_reads_the_relocated_opacity,
+               test_hsl_names_its_three_parameters,
                test_every_record_renders,
                test_the_render_threads_its_own_value_cache,
                test_reference_agreement_does_not_regress):

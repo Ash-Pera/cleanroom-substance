@@ -111,6 +111,21 @@ CLS_NAMES = {
     6:  {24: ('outputcolor', 'baked')},       # uniform's fill
     7:  {29: ('intensity', 'baked'), 30: ('intensity', 'program')},    # warp
     10: {28: ('intensity', 'baked'), 29: ('intensity', 'program')},    # blur
+    # `hsl`, THREE PARAMETERS AND SIX BITS, from the shipped sources. ChesterfieldSofa.sbs
+    # states `saturation` 0.65 with `luminosity` 0.60 on one node and `saturation` 0.58 on
+    # another; the compiled records set bit 26 to 0.65 / 0.58 and bit 28 to 0.60.
+    # SandyStonePath.sbs states `saturation` 0.525 and its record sets bit 26 to 0.525.
+    # A source node with all three DYNAMIC compiles to bits 25, 27 and 29 -- the program
+    # arms, in the same ascending order -- which is what names bit 24/25 `hue`: it is the
+    # parameter the other two leave room for. Corpus-wide the three even bits hold ordinary
+    # floats (bit 24 n=93 median 0.49, bit 26 n=203 median 0.43, bit 28 n=297 median 0.475,
+    # all in [0,1] and all clustered on the neutral 0.5) and the three odd bits hold
+    # integers-as-denormals, which is what a program pointer looks like read as a float.
+    # Unnamed until this table said otherwise, all 747 corpus `hsl` records rendered as an
+    # identity: `_scalar` returns the 0.5 default for a parameter nothing names.
+    14: {24: ('hue', 'baked'), 25: ('hue', 'program'),                 # hsl
+         26: ('saturation', 'baked'), 27: ('saturation', 'program'),
+         28: ('luminosity', 'baked'), 29: ('luminosity', 'program')},
 }
 
 #: Class bit 0 -- w0 bit 16 -- is the inherited `$outputsize`, and it is the ONE class

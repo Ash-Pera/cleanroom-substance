@@ -628,6 +628,18 @@ program:
 | 6 uniform | outputcolor | 24 | 4 (colour) / 1 |
 | 7 warp | intensity | 29 baked, 30 program | 1 |
 | 10 blur | intensity | 28 baked, 29 program | 1 |
+| 14 hsl | hue | 24 baked, 25 program | 1 |
+| 14 hsl | saturation | 26 baked, 27 program | 1 |
+| 14 hsl | luminosity | 28 baked, 29 program | 1 |
+
+`hsl`'s three come from the shipped sources: `ChesterfieldSofa.sbs` states `saturation`
+0.65 with `luminosity` 0.60 on one node and `saturation` 0.58 on another, and the compiled
+records set bit 26 to 0.65 / 0.58 and bit 28 to 0.60; `SandyStonePath.sbs` states
+`saturation` 0.525 and its record sets bit 26 to 0.525. A node with all three dynamic
+compiles to bits 25, 27, 29 in that order, which is what names the unpaired lower bit
+`hue`. Corpus-wide the even bits hold floats in [0,1] clustered on the neutral 0.5 (bit 24
+n=93 median 0.49, bit 26 n=203 median 0.43, bit 28 n=297 median 0.475) and the odd bits
+hold integers, which is what a program pointer looks like read as a float.
 
 ### 13.5 Running a program
 
@@ -673,7 +685,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | levels | `t = clip((src − lo)/(hi − lo))`; zero span ⇒ step at `lo`; `t ← t^(ln½/ln mid)`; `out = lo′ + t(hi′ − lo′)`, clamped. **Per channel**: on a colour record every field is a Float4 and its components genuinely differ — applying component 0 to all four remaps ALPHA by the red curve, which on one corpus record turns an opaque output almost transparent |
 | curve | a cubic-Bezier transfer curve, sampled to a lookup |
 | gradient / dyngradient | a ramp indexed by the input's channel 0; `dyngradient`'s ramp is a second input's long axis |
-| hsl | hue rotate, saturation scale, luminosity shift — but §13.4 names none of the three, so every record runs at the neutral default: an identity in practice |
+| hsl | RGB → HSL, then `hue += h − ½` (mod 1), `sat ← clip(sat·2s)`, `lum ← clip(lum + lu − ½)`, back to RGB; each of the three defaults to ½, which is the neutral value — so an unnamed parameter here is silently an identity |
 | blur | separable box, radius `clip(\|I\|,0,256)/ref · max(W,H)` px; sub-pixel ⇒ identity |
 | sharpen | `src + amount·(src − box₁)`; §13.4 names no amount, so every record runs at 1 |
 | dirmotionblur | 17 taps over ±L/2 along `2π·mblurangle`, `L = clip(\|I\|,0,256)/ref · 10` |
