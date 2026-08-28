@@ -123,9 +123,9 @@ UNNAMED_BUT_DECLARED = {
         # NOT DECLARED AT ALL. A program arm here moves whatever this legend does name.
         12: (3,),        # directionalwarp
         20: (2,),        # pixelprocessor -- one field, 16 words, 1 corpus record
-        21: (0, 1),      # distance: field 0 IS `distance` (SandyStonePath states 56.3 and
-                         # 64.22; records 3 and 180 hold exactly those) and field 1's baked
-                         # arm costs nothing -- both derivable, neither derived yet
+        21: (1,),        # distance -- field 0 is named now; field 1 is the source's
+                         # `combinedistance` on nothing better than elimination, and both
+                         # nodes state it 0, so it stays unnamed
     },
     'cls': {
         # Bit 23 is a PROGRAM POINTER wherever it appears -- it decodes to 10 ops on the
@@ -431,6 +431,48 @@ def test_normal_declares_the_field_that_shifts_its_intensity():
         'the two programs return %r; intensity 5.0 is the file\'s, 0.0 is inversedy\'s' \
         % (got,)
     print('ok  test_normal_declares_the_field_that_shifts_its_intensity')
+
+
+def test_distance_reads_the_radius_its_source_states():
+    """`distance`'s radius, and the one case the source cannot reach.
+
+    SandyStonePath states 56.2999992 and 64.2200012 on its two distance nodes; records 3
+    and 180 of the compiled twin hold exactly those at w1 field 0. Where field 1 holds a
+    PROGRAM there is no such witness, and the walk's placement is demonstrably wrong there
+    -- every candidate slot on those records holds a pointer, which reads as 0.0 -- so
+    `f_distance` keeps its own locator for them. Both halves are asserted, because the
+    naming without the exception would render a radius of zero on 188 corpus records.
+    """
+    hits = glob.glob(os.path.join(ROOT, '**', 'StylizedCobblestoneStreet.sbsasm'),
+                     recursive=True)
+    if not hits:
+        return _skip('test_distance_reads_the_radius_its_source_states: no specimen')
+    asm = sbsasm.Assembly(hits[0])
+    for index, want in ((3, 56.3), (180, 64.22)):
+        v = model.View(asm, asm.records[index])
+        got = v.baked('distance')
+        assert got is not None and abs(got - want) < 5e-3, \
+            'record %d reads %r, the source states %r' % (index, got, want)
+    # THE EXCEPTION NEEDS ITS OWN SPECIMEN: this pack has no distance record whose field 1
+    # holds a program, so asserting it here would assert nothing. PavingStones does -- and
+    # what the walk names on those records is a pointer, which reads as 0.0.
+    other = glob.glob(os.path.join(ROOT, '**', 'PavingStonesSubstance003_COMPILED.sbsasm'),
+                      recursive=True)
+    checked = 0
+    if other:
+        asm2 = sbsasm.Assembly(other[0])
+        for rec in asm2.records:
+            if (rec.filter_name != 'distance' or len(rec.words) < 2
+                    or (rec.words[1] >> 2) & 3 != 2):
+                continue
+            got = model.View(asm2, rec).baked('distance')
+            checked += 1
+            assert got is None or abs(got) < 1e-30, \
+                'record %d: field 1 holds a program and field 0 reads %r, a plausible ' \
+                'radius -- f_distance\'s exception may no longer be needed' % (rec.index, got)
+        assert checked, 'PavingStones no longer has a program-arm distance record'
+    print('ok  test_distance_reads_the_radius_its_source_states (2 values from the source, '
+          '%d program-arm records)' % checked)
 
 
 def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
@@ -773,6 +815,7 @@ if __name__ == '__main__':
                test_blend_reads_the_relocated_opacity,
                test_hsl_names_its_three_parameters,
                test_normal_declares_the_field_that_shifts_its_intensity,
+               test_distance_reads_the_radius_its_source_states,
                test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
                test_the_legend_agrees_with_the_shipped_sources,
                test_every_record_renders,

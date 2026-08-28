@@ -116,6 +116,14 @@ W1_PARAMS = {
     # field 1 is the field that carries a program: 38 programs against 67 flags, where
     # field 2 is 322 flags against 1. Field 2 is left UNNAMED rather than called
     # `input2alpha` on that asymmetry alone; it is declared here for its width.
+    # `distance`'s radius, from SandyStonePath.sbs: it states 56.2999992 and 64.2200012 on
+    # its two distance nodes, and records 3 and 180 of the compiled twin hold exactly those
+    # at field 0. Field 1 is declared for its width only -- the source's other parameter is
+    # `combinedistance` and both nodes state it 0, which names nothing. Where field 1 holds
+    # a PROGRAM the placement is unverified and demonstrably wrong: on those 188 records
+    # every candidate slot holds a pointer, so `f_distance` keeps its own locator there.
+    21: [(0x3, 0, 'distance', 'scalar'),              # distance
+         (0xc, 2, None, 'flag')],
     18: [(0x3, 0, 'intensity', 'scalar'),             # normal
          (0xc, 2, 'inversedy', 'flag'),
          (0x30, 4, None, 'flag')],

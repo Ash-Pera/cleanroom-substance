@@ -798,13 +798,30 @@ def f_distance(ctx, v):
     than folded into it.
     """
     import distance as dist
-    try:
-        val, how = dist.distance_param(
-            v.rec, lambda p: ctx.run(v, p, 1), {})
-    except dist.Unlocated as e:
-        raise Unsupported('distance: %s' % e) from e
-    if dist.is_low_confidence(how):
-        ctx.low_confidence.add(v.index)
+    # THE RADIUS IS A NAMED FIELD NOW, where the source could see it: SandyStonePath states
+    # 56.3 and 64.22 and records 3 and 180 hold exactly those at w1 field 0. The locator
+    # below stays for the one case the source cannot reach -- field 1 holding a PROGRAM,
+    # where the walk's placement is unverified and reads a pointer as 0.0 while the locator
+    # evaluates the program and returns 1.0 or 0.29. That case is 188 corpus records and it
+    # is chosen on the record's own state bits, not on how the value looks.
+    p = v.params.get('distance')
+    f1_program = ((v.words[1] >> 2) & 3) == 2 if len(v.words) > 1 else False
+    val = how = None
+    if p is not None and not f1_program:
+        if p.kind == 'baked':
+            val, how = float(p.value), 'walked'
+        else:
+            got = np.asarray(ctx.run(v, p.value, 1)).ravel()
+            if got.size and np.isfinite(got[0]):
+                val, how = float(got[0]), 'walked'
+    if val is None:
+        try:
+            val, how = dist.distance_param(
+                v.rec, lambda p_: ctx.run(v, p_, 1), {})
+        except dist.Unlocated as e:
+            raise Unsupported('distance: %s' % e) from e
+        if dist.is_low_confidence(how):
+            ctx.low_confidence.add(v.index)
     W, H = v.size(ctx.cap)
     pos = pos_grid(W, H)
     mask_edge = assume.assumed('distance.mask_edge', 0)

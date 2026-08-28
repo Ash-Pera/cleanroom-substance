@@ -80,6 +80,15 @@ def _as_f32(x):
     return struct.unpack('<f', struct.pack('<f', float(x)))[0]
 
 
+def _as_int(x):
+    """A source constant as the integer a `u32` slot would hold, or None."""
+    try:
+        f = float(x)
+    except ValueError:
+        return None
+    return int(f) if f == int(f) and -2 ** 31 <= f < 2 ** 32 else None
+
+
 def source_nodes(path):
     """[{filter, uid, conns, params}] for every native filter node in a `.sbs`.
 
@@ -100,9 +109,18 @@ def source_nodes(path):
                 params[name] = ('dynamic', None)
                 continue
             try:
-                params[name] = ('const', tuple(_as_f32(p) for p in raw.split()))
+                floats = tuple(_as_f32(p) for p in raw.split())
             except ValueError:
                 params[name] = ('const', None)
+                continue
+            # BOTH READINGS ARE KEPT. `outputsize`, `format`, `mipmapmode`, `tiling` and
+            # `combinedistance` are integers, and an integer 12 in a u32 slot reads as a
+            # float denormal -- so a float-only matcher cannot see any of them, which is
+            # why the first version of this tool found no name for a class bit costing two
+            # words on six filters. The location is compared against whichever reading its
+            # words support.
+            params[name] = ('const', floats,
+                            tuple(_as_int(p) for p in raw.split()))
         out.append({'filter': f.group(1), 'uid': uid.group(1) if uid else None,
                     'conns': sorted(_CONN.findall(block)), 'params': params})
     return out
@@ -137,16 +155,22 @@ def record_locations(asm, filter_id):
             continue
         here = {}
         words = rec.words
+
+        def window(slot, n):
+            """Both readings of one span: float32, and the raw words as integers."""
+            span = tuple(words[slot:slot + n])
+            return {'f': tuple(_f32(w) for w in span), 'i': span}
+
         for (bit, slot, width) in d.get('cls_params', ()):
             n = max(1, int(width))
             if 0 <= slot and slot + n <= len(words):
-                here[('cls', bit)] = tuple(_f32(w) for w in words[slot:slot + n])
+                here[('cls', bit)] = window(slot, n)
         for (j, state, slot, width) in d.get('param_slots', ()):
             n = max(1, int(width))
             if not (0 <= slot and slot + n <= len(words)):
                 continue
             here[('w1', j)] = (('program', words[slot] + 52) if state == 2
-                               else tuple(_f32(w) for w in words[slot:slot + n]))
+                               else window(slot, n))
         end = d.get('end')
         floor = max([s for s in d.get('inputs', ()) if isinstance(s, int)] + [1]) + 1
         if isinstance(end, int):
@@ -154,11 +178,11 @@ def record_locations(asm, filter_id):
                 slot = end - k
                 if slot < floor or slot >= len(words):
                     break
-                here[('end', -k)] = (_f32(words[slot]),)
+                here[('end', -k)] = window(slot, 1)
                 if slot + 2 <= len(words):
-                    here[('end2', -k)] = tuple(_f32(w) for w in words[slot:slot + 2])
+                    here[('end2', -k)] = window(slot, 2)
                 if slot + 4 <= len(words):
-                    here[('end4', -k)] = tuple(_f32(w) for w in words[slot:slot + 4])
+                    here[('end4', -k)] = window(slot, 4)
         out.append((rec.index, here))
     return out
 
@@ -169,26 +193,37 @@ def _stated(nodes, filter_name):
     for node in nodes:
         if node['filter'] != filter_name:
             continue
-        for name, (kind, value) in node['params'].items():
-            e = stated.setdefault(name, {'consts': [], 'dynamic': 0})
+        for name, entry in node['params'].items():
+            kind, value = entry[0], entry[1]
+            e = stated.setdefault(name, {'consts': [], 'ints': [], 'dynamic': 0})
             if kind == 'dynamic':
                 e['dynamic'] += 1
             elif value is not None:
                 e['consts'].append(value)
+                ints = entry[2] if len(entry) > 2 else None
+                if ints is not None and all(i is not None for i in ints):
+                    e['ints'].append(tuple(ints))
     return stated
 
 
-def _holds(held, wanted):
-    """Does a location's value hold this stated constant, at its own WIDTH?
+def _holds(held, floats, ints=None):
+    """Does a location hold this stated constant, at its own WIDTH, under either reading?
 
     Width-exact on purpose. Letting a stated Float1 match any word of a wider window was
     the first version, and it reported `hsl`'s luminosity at seven locations at once --
     every window that happened to contain the word. The windows are offered at widths 1, 2
     and 4 instead, so the right width is its own location and a match names one place.
+
+    Both readings, because this format stores integers too: `outputsize` is written `12 12`
+    and a slot holding the integer 12 reads as a float denormal. A float-only matcher is
+    blind to every enum and every size in the file.
     """
-    if not isinstance(held, tuple) or (held and held[0] == 'program'):
+    if not isinstance(held, dict):
         return False
-    return len(wanted) == len(held) and all(a == b for a, b in zip(wanted, held))
+    if len(floats) == len(held['f']) and all(a == b for a, b in zip(floats, held['f'])):
+        return True
+    return bool(ints) and len(ints) == len(held['i']) and all(
+        a is not None and a == b for a, b in zip(ints, held['i']))
 
 
 def match(sbs_path, asm_path, only=None):
@@ -214,17 +249,20 @@ def match(sbs_path, asm_path, only=None):
         for name, info in stated.items():
             for loc in every:
                 hits, seen = 0, set()
+                by_float = {tuple(c) for c in info['consts']}
                 for _i, here in places:
                     held = here.get(loc)
                     if held is None:
                         continue
-                    for value in info['consts']:
-                        if _holds(held, value):
+                    for k, value in enumerate(info['consts']):
+                        ints = info['ints'][k] if k < len(info['ints']) else None
+                        if _holds(held, value, ints):
                             hits += 1
-                            seen.add(value)
+                            seen.add(tuple(value))
                 progs = sum(1 for _i, here in places
                             if isinstance(here.get(loc), tuple)
                             and here[loc][:1] == ('program',))
+                del by_float
                 found[(name, loc)] = {
                     'records': hits, 'distinct': len(seen),
                     'stated': len({tuple(c) for c in info['consts']}),
