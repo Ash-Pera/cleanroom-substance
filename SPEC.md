@@ -666,6 +666,16 @@ and the 170 program-arm records read 01.** The arms are told apart by their VALU
 exceptions in 437 files — every one of the 963 holds a plain float in [0, 1] and resolves no
 program; not one of the 170 is a plain float and all 170 resolve a program.
 
+**Two placements can claim one slot, and the source settles it.** The class block and the
+end-anchored parameter block are laid out from opposite ends, and on ~980 `normal` records
+they meet: the class walk puts bit 16 -- the size expression -- on the slot the parameter
+block owns, and bit 27 one further, past the header end. `ChesterfieldSofa.sbs` states
+`intensity` 10 on its one normal node and that slot holds 10.0, so the parameter is where it
+belongs and the class placement is over-long. A reader should keep the parameter, drop the
+size slot rather than treat a float as a program address, and report the clash. 6,844
+records place a class parameter past the header end at all (`shuffle` 3,478, `dyngradient`
+1,938, `normal` 983), which is the same over-long block seen from the other side.
+
 **A reader should say what it declines to read.** An unnamed field is not an error — the
 walk places it, so the layout is right — but it is invisible in a way an error is not: the
 name resolves to a default, the default is the neutral value, and the record renders. `hsl`

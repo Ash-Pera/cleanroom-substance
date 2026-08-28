@@ -14,6 +14,7 @@ The finished tools. Each runs from the repository root, where the corpus lives:
     python3 tools/test_tables.py
     python3 tools/reverify.py
     python3 tools/provenance.py
+    python3 tools/sourcematch.py [--verify] [--pairs]
 
 ## The model
 
@@ -194,6 +195,7 @@ parameter bits the slot rule needs, so no rewriting of entries can express the r
     reverify.py           re-runs FORMAT-NOTES.md's headline claims against the CURRENT
                           corpus, so a settled figure cannot quietly go stale
     provenance.py         the provenance exclusion predicate, as a re-runnable check
+    sourcematch.py        a compiled field named by the value its own .sbs states
                           rather than a description of one
     test_standalone_parse.py
                           the 59x parser rewrite against the reference it replaced, full
@@ -224,6 +226,14 @@ a channel mean. Today it reports a baseline, not a validation -- means agreeing 
 decimals with spatial variation 5.4x too small.
 
 `provenance.py` is the one to run against a new corpus before measuring anything with it.
+
+`sourcematch.py` is the arbiter for a naming question: it reads a package's `.sbs`, reads the
+compiled twin beside it, and reports every location a stated value lands in. Four of the
+legend's names were derived this way by hand before the tool existed, and `--verify` re-derives
+all nine of those rows -- which is the only way to tell a clean run from a broken parser, since
+both report nothing. Its binding limit is stock: 74 sources ship here and TWO have a compiled
+twin, so it can say nothing at all about `blur`, `warp`, `dirmotionblur`, `pixelprocessor`,
+`sharpen`, `shuffle` or `dyngradient`.
 The exclusion rule in README.md is a single string match, and this applies it and reports
 what it drops; the discipline is that it runs BEFORE any measurement, not after.
 

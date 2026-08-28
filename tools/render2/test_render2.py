@@ -450,7 +450,7 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
         return _skip('test_the_size_slot_is_the_walks_placement: no ChesterfieldSofa')
     import decompose
     asm = sbsasm.Assembly(hits[0])
-    disagree, checked = 0, 0
+    disagree, checked, clashes = 0, 0, 0
     for rec in asm.records:
         d = decompose.decompose(rec)
         if not d:
@@ -459,9 +459,23 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
         placed = dict((b, sl) for (b, sl, _n) in d.get('cls_params', ())).get(16)
         if placed is not None:
             checked += 1
-            assert v.size_slot == placed, \
-                'record %d: size_slot %r, the walk placed bit 16 at %r' \
-                % (rec.index, v.size_slot, placed)
+            # ONE EXCEPTION, AND IT IS EVIDENCE, NOT SLACK. On this specimen's `normal`
+            # records the class walk puts bit 16 on the slot the end-anchored parameter
+            # block owns -- and the SOURCE says the parameter is right: ChesterfieldSofa
+            # states `intensity` 10 on its one normal node and that slot holds 10.0. The
+            # size slot is dropped there rather than handing `walk_programs` a float as a
+            # program address, and the clash is reported through `View.ignored`.
+            clash = any(e[0] == 'clash' for e in v.ignored)
+            if clash:
+                clashes += 1
+                assert v.size_slot is None and placed in {
+                    p.slot for p in v.params.values() if p.slot is not None}, \
+                    'record %d: a clash was reported and bit 16 at %r is not on a named ' \
+                    'parameter' % (rec.index, placed)
+            else:
+                assert v.size_slot == placed, \
+                    'record %d: size_slot %r, the walk placed bit 16 at %r' \
+                    % (rec.index, v.size_slot, placed)
             if d.get('prog') is not None and placed != d['prog']:
                 disagree += 1
         if v.size_slot is not None:
@@ -472,8 +486,69 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
     assert disagree >= 28, \
         'only %d records here distinguish the walk from the block start -- this specimen ' \
         'can no longer catch the regression it was chosen for' % (disagree,)
+    assert clashes, \
+        'no record here reports a placement clash, and this specimen has one -- the guard ' \
+        'that drops a size slot landing on a named parameter is not running'
     print('ok  test_the_size_slot_is_the_walks_placement_not_the_blocks_start '
-          '(%d placed, %d where the retired rule differs)' % (checked, disagree))
+          '(%d placed, %d where the retired rule differs, %d clash with a parameter)'
+          % (checked, disagree, clashes))
+
+
+def test_the_legend_agrees_with_the_shipped_sources():
+    """The legend, checked against the packages' own `.sbs` -- continuously, not once.
+
+    `tools/sourcematch.py` is the arbiter that named `blend`'s relocated opacity, `hsl`'s
+    three, `normal`'s intensity and `distance`'s radius: a source states `saturation 0.65`
+    and one slot of the compiled twin holds 0.65. Two things are asserted here.
+
+    First that the tool still re-derives all nine of those namings -- a matcher whose output
+    is "here is what matched" reports nothing when it is broken, which looks exactly like a
+    clean run.
+
+    Second that where a confirmed match lands on a location this legend NAMES, the two agree
+    on the name. That is the check that would have caught a legend drifting away from the
+    format, and it is independent evidence: the values come from the source XML, not from
+    anything `model` computed.
+    """
+    sys.path.insert(0, os.path.join(ROOT, 'tools'))
+    import sourcematch
+    if not sourcematch.pairs(os.path.join(ROOT, 'archive', 'specimens')):
+        return _skip('test_the_legend_agrees_with_the_shipped_sources: no source pairs')
+    lost = sourcematch.verify(ROOT)
+    assert not lost, 'sourcematch no longer re-derives what it was built from: %r' % (lost,)
+
+    ids = _filter_ids()
+    disagree, checked = [], 0
+    for sbs, asm in sourcematch.pairs(os.path.join(ROOT, 'archive', 'specimens')):
+        for filter_name, param, loc, row in sourcematch.match(sbs, asm):
+            if row['verdict'] != 'CONFIRMED':
+                continue
+            fid = ids.get(filter_name)
+            kind, which = loc
+            if kind not in ('cls', 'w1'):
+                continue                      # an end-relative window names no field
+            # A W1 FIELD CAN CARRY TWO NAMES, and taking the first is how this check
+            # first reported `directionalwarp` disagreeing with itself. Its `intensity` is
+            # mask 0x6 and its `warpangle` 0x18, so field 1 -- bits (2, 3) -- holds one bit
+            # of each: the straddle SPEC 13.4 warns about, arriving as a false positive in
+            # the check written to catch drift. Every name whose mask touches the field is
+            # a candidate, and agreement means the source's name is among them.
+            if kind == 'cls':
+                entry = model.CLS_NAMES.get(fid, {}).get(which)
+                names = {entry[0]} if entry else set()
+            else:
+                names = {nm for (mask, _sh, nm, _k) in model.W1_PARAMS.get(fid, ())
+                         if nm and mask & (3 << (2 * which))}
+            if not names:
+                continue                      # unnamed here: the inventory's business
+            checked += 1
+            if param not in names:
+                disagree.append((filter_name, loc, 'legend says %r' % sorted(names),
+                                 'the source says %r' % param))
+    assert checked >= 5, 'only %d legend entries were checked against a source' % checked
+    assert not disagree, 'the legend and the sources disagree: %r' % (disagree,)
+    print('ok  test_the_legend_agrees_with_the_shipped_sources (%d namings re-derived, '
+          '%d legend entries confirmed)' % (len(sourcematch.EXPECTED), checked))
 
 
 def test_every_record_renders():
@@ -558,64 +633,6 @@ def test_the_render_threads_its_own_value_cache():
         sbsruntime.use_shared_cache(prev)
 
 
-def test_reference_agreement_does_not_regress():
-    path, refs = specimen(), references()
-    if not path or not refs:
-        return _skip('test_reference_agreement_does_not_regress: no specimen or maps')
-    from PIL import Image
-    asm = sbsasm.Assembly(path)
-    outs, _fails, _info = render(asm, max_dim=256)
-    names = manifest.output_names(asm)
-
-    def load(p):
-        im = Image.open(p)
-        a = np.asarray(im).astype(np.float64)
-        a = a / (65535.0 if (im.mode == 'I;16' or a.max() > 255) else 255.0)
-        return a[:, :, :3] if a.ndim == 3 else a[:, :, None]
-
-    def rs(x, n=64):
-        return np.stack(
-            [np.asarray(Image.fromarray((np.clip(x[:, :, c], 0, 1) * 65535)
-                                        .astype(np.uint16)).resize((n, n), Image.BILINEAR),
-                        dtype=np.float64) / 65535.0 for c in range(x.shape[2])], axis=-1)
-
-    seen, flat, worse = [], [], []
-    height_mean = None
-    for uid, _fmt, _grey, ri in asm.outputs():
-        nm = (names.get(uid) or '').lower()
-        key = re.sub(r'[^a-z]', '', nm)
-        if key not in refs or ri not in outs:
-            continue
-        o = np.asarray(outs[ri], dtype=np.float64)
-        if o.ndim == 2:
-            o = o[:, :, None]
-        if nm == 'height':
-            height_mean = float(o.mean())
-        a, b = rs(o), rs(load(refs[key]))
-        for c in range(min(a.shape[2], b.shape[2])):
-            if (nm, c) not in REFERENCE_FLOOR:
-                continue
-            x, y = a[:, :, c].ravel(), b[:, :, c].ravel()
-            seen.append((nm, c))
-            if x.std() == 0.0:
-                flat.append((nm, c))
-                continue
-            corr = float(np.corrcoef(x, y)[0, 1])
-            if corr < REFERENCE_FLOOR[(nm, c)]:
-                worse.append(((nm, c), round(corr, 4), REFERENCE_FLOOR[(nm, c)]))
-    assert not flat, 'channels collapsed to a constant: %r' % (flat,)
-    assert not worse, 'channels below their floor: %r' % (worse,)
-    missing = sorted(set(REFERENCE_FLOOR) - set(seen))
-    assert not missing, 'channels no longer produced: %r' % (missing,)
-    # The FX emission count arbiter: `height` back-solves to a mask of mean 0.5 through two
-    # `levels`, and the engine's own export means 0.78628. A wrong count moves this first.
-    assert height_mean is not None and abs(height_mean - 0.7863) < 0.004, \
-        'height mean %r is not the engine\'s 0.78628 -- the FX emission count moved' \
-        % (height_mean,)
-    print('ok  test_reference_agreement_does_not_regress (%d channels, height mean %.5f)'
-          % (len(seen), height_mean))
-
-
 def test_the_fast_sampler_is_the_shared_one():
     """`ops._fast_sampler`'s two specialisations are equalities, DTYPE INCLUDED.
 
@@ -690,6 +707,65 @@ def test_the_fast_sampler_is_the_shared_one():
           % checked)
 
 
+def test_reference_agreement_does_not_regress():
+    path, refs = specimen(), references()
+    if not path or not refs:
+        return _skip('test_reference_agreement_does_not_regress: no specimen or maps')
+    from PIL import Image
+    asm = sbsasm.Assembly(path)
+    outs, _fails, _info = render(asm, max_dim=256)
+    names = manifest.output_names(asm)
+
+    def load(p):
+        im = Image.open(p)
+        a = np.asarray(im).astype(np.float64)
+        a = a / (65535.0 if (im.mode == 'I;16' or a.max() > 255) else 255.0)
+        return a[:, :, :3] if a.ndim == 3 else a[:, :, None]
+
+    def rs(x, n=64):
+        return np.stack(
+            [np.asarray(Image.fromarray((np.clip(x[:, :, c], 0, 1) * 65535)
+                                        .astype(np.uint16)).resize((n, n), Image.BILINEAR),
+                        dtype=np.float64) / 65535.0 for c in range(x.shape[2])], axis=-1)
+
+    seen, flat, worse = [], [], []
+    height_mean = None
+    for uid, _fmt, _grey, ri in asm.outputs():
+        nm = (names.get(uid) or '').lower()
+        key = re.sub(r'[^a-z]', '', nm)
+        if key not in refs or ri not in outs:
+            continue
+        o = np.asarray(outs[ri], dtype=np.float64)
+        if o.ndim == 2:
+            o = o[:, :, None]
+        if nm == 'height':
+            height_mean = float(o.mean())
+        a, b = rs(o), rs(load(refs[key]))
+        for c in range(min(a.shape[2], b.shape[2])):
+            if (nm, c) not in REFERENCE_FLOOR:
+                continue
+            x, y = a[:, :, c].ravel(), b[:, :, c].ravel()
+            seen.append((nm, c))
+            if x.std() == 0.0:
+                flat.append((nm, c))
+                continue
+            corr = float(np.corrcoef(x, y)[0, 1])
+            if corr < REFERENCE_FLOOR[(nm, c)]:
+                worse.append(((nm, c), round(corr, 4), REFERENCE_FLOOR[(nm, c)]))
+    assert not flat, 'channels collapsed to a constant: %r' % (flat,)
+    assert not worse, 'channels below their floor: %r' % (worse,)
+    missing = sorted(set(REFERENCE_FLOOR) - set(seen))
+    assert not missing, 'channels no longer produced: %r' % (missing,)
+    # The FX emission count arbiter: `height` back-solves to a mask of mean 0.5 through two
+    # `levels`, and the engine's own export means 0.78628. A wrong count moves this first.
+    assert height_mean is not None and abs(height_mean - 0.7863) < 0.004, \
+        'height mean %r is not the engine\'s 0.78628 -- the FX emission count moved' \
+        % (height_mean,)
+    print('ok  test_reference_agreement_does_not_regress (%d channels, height mean %.5f)'
+          % (len(seen), height_mean))
+
+
+
 if __name__ == '__main__':
     for fn in (test_every_parameter_a_filter_asks_for_can_be_supplied,
                test_the_declared_fields_the_legend_ignores_are_the_known_ones,
@@ -698,6 +774,7 @@ if __name__ == '__main__':
                test_hsl_names_its_three_parameters,
                test_normal_declares_the_field_that_shifts_its_intensity,
                test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
+               test_the_legend_agrees_with_the_shipped_sources,
                test_every_record_renders,
                test_the_render_threads_its_own_value_cache,
                test_the_fast_sampler_is_the_shared_one,

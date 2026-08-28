@@ -395,6 +395,18 @@ class View(object):
             for (name, kind, width, field) in present:
                 self._add(name, kind, pos, width, field)
                 pos += width
+        # THE TWO PLACEMENTS MUST NOT OVERLAP, and on ~980 `normal` records they do: the
+        # class walk puts bit 16 -- the size expression -- on the very slot the end-anchored
+        # parameter block owns, and puts bit 27 one further, past the header end. The
+        # SOURCE settles which is right: ChesterfieldSofa states `intensity` 10 on its one
+        # normal node and that slot holds 10.0, so the parameter is where it belongs and the
+        # class placement is over-long. Keep the parameter, drop the size slot rather than
+        # hand `walk_programs` a float as a program address, and report the clash.
+        taken = {p.slot for p in self.params.values() if p.slot is not None}
+        if self.size_slot is not None and self.size_slot in taken:
+            self.ignored.append(('clash', _SIZE_BIT, self.size_slot, 1))
+            self.size_slot = None
+
         # Slots the cost model calls parameters keep their place in the PROGRAM candidate
         # list even where this legend has no name for them.
         for (_j, state, slot, _w) in d.get('param_slots', ()):
