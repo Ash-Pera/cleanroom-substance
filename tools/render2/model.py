@@ -256,12 +256,20 @@ class View(object):
 
     WHERE THE W1 PARAMETERS SIT: anchored at `header_end` and laid out BACKWARDS, in field
     order, each field taking its own width. Not at the walk's forward cursor, and the
-    difference is not cosmetic -- `normal` record 19 is a 5-word header whose intensity is
-    slot 4, and the forward cursor puts it at 6, because the cost model charges class slots
+    difference was not cosmetic -- `normal` record 19 is a 5-word header whose intensity is
+    slot 4, and the forward cursor put it at 6, because the cost model charged class slots
     for w0 bits 11 and 15 that this filter does not spend (the defect commit 28d4b6b names).
     Anchoring at the end is immune to a mis-charged slot BEFORE the parameters and wrong
     only if the header length itself is wrong -- and the header length is the one number
     `derive_costs` fits to observed boundaries and reproduces exactly.
+
+    THE TWO NOW AGREE, WHICH IS NOT A REASON TO STOP ANCHORING AT THE END. Those two bits
+    were the free intercept's shadow -- they declare no slot, and cost nothing once
+    `costs.json` was re-attributed against the record's own base region (see
+    `record_layout`) -- so the forward cursor lands on slot 4 as well. The anchor earned its
+    keep by being right while the cursor was wrong, and it is still the placement that
+    cannot be moved by a mis-attributed class width: the failure that has just been
+    corrected once is not thereby guaranteed against twice.
 
     The class-word parameters keep the forward cursor, because they sit before the w1
     fields and an end anchor cannot reach them. Both are the walk; neither is a memo.
@@ -375,13 +383,25 @@ class View(object):
             for (name, kind, width, field) in present:
                 self._add(name, kind, pos, width, field)
                 pos += width
-        # THE TWO PLACEMENTS MUST NOT OVERLAP, and on ~980 `normal` records they do: the
-        # class walk puts bit 16 -- the size expression -- on the very slot the end-anchored
-        # parameter block owns, and puts bit 27 one further, past the header end. The
-        # SOURCE settles which is right: ChesterfieldSofa states `intensity` 10 on its one
-        # normal node and that slot holds 10.0, so the parameter is where it belongs and the
-        # class placement is over-long. Keep the parameter, drop the size slot rather than
-        # hand `walk_programs` a float as a program address, and report the clash.
+        # THE TWO PLACEMENTS MUST NOT OVERLAP, and on 1,012 `normal` records they did: the
+        # class walk put bit 16 -- the size expression -- on the very slot the end-anchored
+        # parameter block owns, and bit 27 one further, past the header end. The SOURCE
+        # settled which was right: ChesterfieldSofa states `intensity` 10 on its one normal
+        # node and that slot holds 10.0, so the parameter was where it belongs and the class
+        # placement was over-long.
+        #
+        # THAT WAS THE SYMPTOM, AND ITS CAUSE IS FIXED. `normal`'s costs charged four class
+        # bits that declare no slot, paid for out of an intercept two words below the base
+        # region every record of that filter has; with `costs.json` re-attributed against
+        # that base (see `record_layout`) the class block ends exactly at the header end and
+        # nothing overlaps -- 0 clashes over 447 files, where the same sweep counted 1,012.
+        #
+        # THE GUARD STAYS. What it does is right whatever the cause: keep the parameter, drop
+        # the size slot rather than hand `walk_programs` a float as a program address, and
+        # say so through `ignored`. It costs one set membership per record, and
+        # `test_the_size_slot_is_the_walks_placement_not_the_blocks_start` now asserts it is
+        # SILENT rather than asserting it fires -- so a placement that goes wrong again is
+        # caught there instead of being absorbed here.
         taken = {p.slot for p in self.params.values() if p.slot is not None}
         if self.size_slot is not None and self.size_slot in taken:
             self.ignored.append(('clash', _SIZE_BIT, self.size_slot, 1))

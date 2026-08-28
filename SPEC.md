@@ -680,15 +680,37 @@ and the 170 program-arm records read 01.** The arms are told apart by their VALU
 exceptions in 437 files — every one of the 963 holds a plain float in [0, 1] and resolves no
 program; not one of the 170 is a plain float and all 170 resolve a program.
 
-**Two placements can claim one slot, and the source settles it.** The class block and the
-end-anchored parameter block are laid out from opposite ends, and on ~980 `normal` records
-they meet: the class walk puts bit 16 -- the size expression -- on the slot the parameter
-block owns, and bit 27 one further, past the header end. `ChesterfieldSofa.sbs` states
-`intensity` 10 on its one normal node and that slot holds 10.0, so the parameter is where it
-belongs and the class placement is over-long. A reader should keep the parameter, drop the
-size slot rather than treat a float as a program address, and report the clash. 6,844
-records place a class parameter past the header end at all (`shuffle` 3,478, `dyngradient`
-1,938, `normal` 983), which is the same over-long block seen from the other side.
+**The class block ends exactly where the header ends, and a reader whose block runs past it
+has mis-attributed a width, not found a longer header.** This was got wrong here, and the
+shape of the error is worth stating because any reader fitting slot costs to observed header
+LENGTHS can reproduce it. A header is `base + the cost of each set bit`, where the base is
+the record's own structure -- one or two mask words plus the filter's base image inputs. Fit
+that equation with the base left FREE and the total still comes out right while the split
+between base and bits does not: the fit is at liberty to shave words off the base and charge
+them to a bit that happens to be set in every record. Nothing that compares lengths can see
+it. A reader walking the same table FORWARDS from the real base then places the class block
+too far right and runs past the end -- on 7,119 records here (`shuffle` 3,514, `dyngradient`
+2,214, `normal` 1,391), with the size expression landing two slots late on `normal` and one
+on `dyngradient`, and on ~1,000 `normal` records landing on the slot the end-anchored
+parameter block owns.
+
+Pinning the base to what the record states and re-solving for the bit costs is exact on
+every record of all three filters, needs no negative or half-word coefficient, and leaves
+every header length unchanged. Three things confirm the new placement rather than merely
+being consistent with it: the size-expression slot resolves as a valid program in 3,640 of
+the 3,640 records where it moved, against 281 at the old position; `ChesterfieldSofa.sbs`'s
+declared `intensity` 10.0 lands on the `w1` field the legend names, where it used to land on
+the slot the walk called class bit 16; and the two independent placements -- the forward
+class walk and the end-anchored parameter block -- now agree instead of colliding.
+
+**What the corrected attribution says about the format.** `normal`'s and `dyngradient`'s
+class bits 10/11/14/15 declare NO slot: they are two mask pairs with exactly one bit of each
+set in every record, which is what made the over-charge invisible. And `shuffle` has two
+cost tables, one per record shape (§6.4): the one-channel shape bakes four `channelsweights`
+words at bit 24 and carries no `w1`, the four-channel shape packs its per-channel selector
+into `w1` and bakes nothing, so bit 24 costs 4 words in the first and 0 in the second. One
+additive table cannot hold both without a negative coefficient, which is exactly what the
+free-intercept fit produced.
 
 **A reader should say what it declines to read.** An unnamed field is not an error — the
 walk places it, so the layout is right — but it is invisible in a way an error is not: the
@@ -723,7 +745,7 @@ program:
 
 | filter | parameter | word0 bits | width |
 |---|---|---|---|
-| 3 shuffle | channelsweights | 24 | 4 |
+| 3 shuffle | channelsweights | 24 | 4 (one-channel shape) / 0 (four-channel) |
 | 6 uniform | outputcolor | 24 | 4 (colour) / 1 |
 | 7 warp | intensity | 29 baked, 30 program | 1 |
 | 10 blur | intensity | 28 baked, 29 program | 1 |

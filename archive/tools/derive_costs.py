@@ -45,6 +45,28 @@ ever drops candidates PAST the header, and the boundary is the MINIMUM candidate
 dropping late ones cannot move it -- unless a record's first inline program sits past its
 own header end, which no record in this corpus does. A corpus that contained one would
 break the equivalence silently.
+
+RE-RUNNING THIS WOULD REVERT THREE ENTRIES, AND THIS IS THE ONLY WARNING OF IT. `const`
+here is a FREE intercept, and the equation says nothing about it being the size of
+anything -- so the solver is at liberty to shave words off it and charge them to a bit
+that is set in every record of a filter. The total is unaffected, which is the whole test
+applied above, and the DECOMPOSITION is wrong: `decompose` walks the same table forwards
+from a base it computes structurally (mask words + base image inputs), so it spends the
+difference as class slots past the header end. That happened on 7,119 records -- shuffle
+3,514, dyngradient 2,214, normal 1,391 -- and put `normal`'s size expression on the slot
+its `intensity` occupies.
+
+The live `tools/costs.json` therefore carries those three entries RE-SOLVED with the
+intercept pinned to that structural base, `shuffle` split into two guarded variants because
+its class widths differ by record shape. The re-solve is exact on every record, every
+coefficient a non-negative integer, and every header length is identical to what this
+script emits -- only the attribution differs. See `record_layout`'s module docstring for
+the derivation and its arbiters. Nothing here implements it: this script has been archived
+out of `render2`'s import closure, its neighbouring `corpus.py` and `sbsasm.py` went with
+the live tools, and it cannot run in place as it stands. Whoever makes it runnable again
+should pin the base in the fit itself rather than re-attributing afterwards -- and until
+then, a re-run silently undoes the fix, which is why this paragraph is here rather than in
+a commit message.
 """
 #
 # A CHANGE HERE PAIRS WITH ONE IN `decompose.py`, and the pair has to land in ONE commit.

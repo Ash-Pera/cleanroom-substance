@@ -776,7 +776,9 @@ def _model_end(r, fallback):
 
     EVERY BOUND DISAGREEMENT, ENUMERATED, AND THE CAUSE IS ONE CATEGORY ERROR. Measured by
     spying on this function's own two arguments over corpus.paths() plus the reference packs,
-    the walk's accumulated cursor against the model's length:
+    the walk's accumulated cursor against the model's length -- as it stood BEFORE the cost
+    table was re-attributed, which is the state the rest of this docstring explains and the
+    three lines below no longer reproduce:
 
         15 filters agree on 884,351 records -- bitmap, transformation, uniform, blend,
         levels, gradient, directionalwarp, warp, hsl, blur, dirmotionblur, pixelprocessor,
@@ -810,53 +812,44 @@ def _model_end(r, fallback):
     a non-zero delta and measure zero. Only the other direction leaks, and it leaks as slots
     allocated past a length the model believes is shorter.
 
-    FOR `normal` IT IS NOW SETTLED, AND THE MODEL WINS. That rested on one specimen and now
-    rests on eight, found by matching the exact float32 bit pattern within each file instead
-    of demanding a corpus-unique three-decimal value -- see `param_slots.declared`. Across
-    eight different packages:
+    THREE OF THE FIVE ARE FIXED, AND THE FIX WAS IN THE TABLE, NOT HERE. `costs.json`'s
+    entries for `normal`, `dyngradient` and `shuffle` have been re-solved with the intercept
+    PINNED to the base region this walk computes structurally -- see `record_layout`'s module
+    docstring for the derivation and the arbiters. The re-solve is exact on every record,
+    every coefficient a non-negative integer, and `header_words` answers the identical length
+    on all 926,957 records; what changes is the ATTRIBUTION, and with it where this walk puts
+    the class block. The cursor now ends exactly at the model's length on all 11,648 records
+    of the three, where 7,158 used to run past it, and no class parameter is placed at or
+    past a header end anywhere in the corpus except in `distance`.
+
+    `normal`'s direction was settled by containment before that, and the re-attribution
+    agrees with it -- which is the point. Across eight packages, found by matching the exact
+    float32 bit pattern within each file:
 
         seven records, cls 0x0b19   intensity at slot 5, model end 6
         one record,    cls 0x0319   intensity at slot 4, model end 5
 
-    Intensity is at `end - 1` in 8 of 8, so the model's LENGTH is right and this walk's
-    cursor is wrong by exactly the +2 the intercept term predicts. The cursor puts normal's
-    parameter at slot 7 (or 6) where the file puts it at 5 (or 4), and its last cls slot
-    already sits at or past the model's end. `param_slots.predicted_slot` also lands on 8 of
-    8, so the two independent rules agree with each other and with the file.
+    Intensity is at `end - 1` in 8 of 8, so the model's LENGTH was right and the cursor was
+    wrong by exactly the +2 the intercept term predicts. It now lands there by walking
+    forwards as well.
 
-    That does not license truncating the slot lists against `end` generally: it is one filter,
-    and `shuffle`'s +4 still carries two negative cost terms this walk cannot represent at
-    all. But the direction is no longer open for normal.
+    WHAT IS LEFT. `distance` (+1 / +2) has the same defect and one of its own: this walk adds
+    its optional mask input structurally AND the fit charges the same word to w1 field 0, so
+    the two must be reconciled together. A pinned re-solve for it is exact, but its parameter
+    slots feed `distance._locate_slot`, so moving them changes a rendered value on 2,280
+    records and wants its own containment run first; it is deliberately not in this change.
+    `emboss` is not this at all -- it is the only filter whose cursor runs SHORT, and it is a
+    v5 fit applied to v2 records.
 
-    `emboss` is not this. It is the only filter whose cursor runs SHORT, and it is attributed
-    elsewhere -- a v5 fit applied to v2 records.
-
-    The SLOT LISTS are left as the walk built them. They are this function's own
-    accumulation and a position in them can now exceed `end`; that is a true statement about
-    the walk rather than something to paper over, and every consumer already bounds slots by
-    the record.
-
-    THAT LAST CLAUSE WAS AUDITED, and it holds -- but for two accidental reasons rather than
-    by construction, so it should not be leaned on. First the size of the thing being
-    claimed, over the corpus plus the reference packs, 938,147 records with an `end`:
-
-        a slot at or past its own `end`     9,463    shuffle 3,781, dyngradient 2,400,
-                                                     distance 1,779, normal 1,503
-        a slot past the RECORD entirely     1,789    shuffle 1,643, the rest 146
-
-    `walk.walk`'s loud `Overrun` fires on none of this and `_bounded` catches none of it
-    either: `_bounded` guards `end` and `prog`, and these are the SLOT LISTS, a different
-    object. The two guards are not on the same thing.
-
-    Of the four consumers, two bound correctly -- `sbsasm.program_slots` filters
-    `s < len(words)`, and safely, because an out-of-record slot sorts LAST and so cannot
-    shift the popcount index of a slot before it, and `audit_corpus` filters the same way.
-    The other two are the accidents:
+    THE SLOT LISTS ARE THE WALK'S OWN ACCUMULATION, and a position in them can still exceed
+    `end` -- for `distance`, on 1,645 records. Every consumer bounds slots by the record, and
+    two of the four do so only by accident, which is worth keeping in view now that only one
+    filter is left to trip over it:
 
       `reverify`'s slotrule COUNTS rather than reads -- `len(_d['cls_slots'])` with no bound
       -- so an inflated list would inflate the count it compares a fitted formula against.
-      It is unaffected only because it runs on PARAM_SPEC filters and NONE of the 9,463
-      affected records is in PARAM_SPEC. A filter-set disjointness, not a check.
+      It is unaffected only because it runs on PARAM_SPEC filters and no affected record is
+      in PARAM_SPEC. A filter-set disjointness, not a check.
 
       `distance._locate_slot` bounds by the RECORD but not by `end`, and 93 distance records
       have their first parameter slot outside their own header and inside the record, so the
@@ -864,26 +857,20 @@ def _model_end(r, fallback):
       unrelated walk-vs-bytes contradiction -- refuses every one. A value coincidence, not a
       check. 34 more sit past the record and are refused properly.
 
-    So nothing is currently wrong in the output. What is wrong is that the invariant is
-    stated here and enforced nowhere, and the next consumer to read a slot list without
-    bounding it against `end` will not be protected by either accident.
+    The other two bound correctly: `sbsasm.program_slots` filters `s < len(words)`, safely,
+    because an out-of-record slot sorts LAST and so cannot shift the popcount index of a slot
+    before it, and `audit_corpus` filters the same way.
 
-    THEY CANNOT BE CORRECTED FROM THIS MODEL, which is worth stating because it is the
-    obvious next move and it does not work. The fit gives a header LENGTH, not an
-    attribution of that length to particular slots -- `const` is an intercept, not the size
-    of the base region. shuffle shows it plainly. Its two negative coefficients (`cls[0]`
-    and `w1_present`, both -1.0) are set exactly when the record carries a w1 word, so they
-    fold into a per-shape base, and every shuffle header is `base + the positive costs`:
-
-        shape     effective base    header == base + positives
-        no-w1           2                   325 of 325
-        w1              0                   395 of 395
-
-    A per-shape refit would therefore have no negative coefficients at all -- but the w1
-    shape's base would be ZERO, and a header cannot begin at word 0 with `w0` and `w1` free.
-    The intercept is absorbing the base region rather than measuring it. So the model
-    licenses the total and nothing finer, and correcting slot POSITIONS needs a different
-    derivation than a per-bit sum against observed lengths.
+    AN EARLIER REVISION OF THIS DOCSTRING SAID THIS COULD NOT BE DONE, and the argument is
+    worth keeping because it was nearly right. It ran: the fit gives a header LENGTH, not an
+    attribution of that length to particular slots; shuffle's own negative coefficients fold
+    into a per-shape base, and a per-shape refit would give the w1 shape a base of ZERO,
+    which is impossible when `w0` and `w1` occupy the first two words. Every step of that is
+    true of a fit whose intercept is FREE. What it missed is that the base is not something
+    the fit has to discover: it is `n_hdr` mask words plus `n_base` image inputs, a
+    structural fact this walk already computes, and pinning it turns the underdetermined
+    half of the model into a solved one. shuffle's "impossible" zero base was the tell --
+    an intercept absorbing a base region it was never measuring.
     """
     import record_layout
     try:
@@ -906,56 +893,62 @@ def _bounded(r, d):
     honest one. `inputs` is kept -- it comes from the record's own shape flags, not from the
     cost arithmetic that overran.
 
-    1,795 of 903,616 records over-run (`tools/walk_health.py` counts them per filter), and
-    shuffle holds 1,623 of those with a single cause. Its two shapes are told apart by tag
-    bit 0, and the cost model expresses the difference with two NEGATIVE terms:
+    IT NO LONGER FIRES, AND THE RECORD OF WHY IS THE POINT. When this guard was written the
+    walk's own accumulated cursor was the `end` it returned, 1,795 of 903,616 records
+    over-ran, and shuffle held 1,623 of them with a single cause: its two shapes are told
+    apart by tag bit 0, and the cost model expressed the difference with two NEGATIVE terms,
     `cls[0] = -1.0` and `w1_present = -1.0`. This walk appends one slot per unit of cost, so
-    it cannot represent either -- `range(int(round(-1.0)))` yields nothing rather than
-    subtracting, and `w1_present` is never applied on this path at all. Both are silently
-    dropped and the header comes out exactly 2 too long, on all 1,623.
+    it can represent neither -- `range(int(round(-1.0)))` yields nothing rather than
+    subtracting, and `w1_present` is never applied on this path at all -- and the header came
+    out exactly 2 too long on all 1,623.
 
-    THE SPLIT BY SHAPE IS THE PROOF, over all 7,682 shuffle records:
+    THE SPLIT BY SHAPE WAS THE PROOF, over all 7,682 shuffle records of the time:
 
         shape     records    walk end == header_words    walk end > len(words)
         no-w1       3,934          3,934 of 3,934                  0
         w1          3,748              0 of 3,748              1,623
 
     Perfect agreement on the shape carrying no negative term, none whatsoever on the shape
-    carrying two. `record_layout` already lists shuffle among the filters it does not derive
-    ("two record shapes, and w1 exists in only one of them"); this is what that undelivered
-    fit does when a walk applies it anyway.
+    carrying two.
 
-    NOT REPAIRED HERE, DELIBERATELY. `header_words` applies the same costs additively and
-    never over-runs, so the tempting fix is to take `end` from it. But the two models also
-    disagree about the BASE -- this walk adds `n_base` input slots on top of `const`, while
-    `header_words` treats `const` as the entire base -- and for shuffle that is a further
-    difference of 2, so they do not simply agree once the sign is fixed. Choosing between
-    them needs ground truth for shuffle's header and the corpus has none: no permitted
-    source declares a distinctive shuffle float, so containment pairs nothing here. Picking
-    the model that looks better would be the same mistake as the formulas this walk was
-    built to replace. The over-run is refused, and the cause is written down for whoever
-    finishes shuffle's cost model.
+    BOTH HALVES OF THAT ARE NOW GONE. `_model_end` takes the length from `header_words`
+    rather than from the cursor, so an over-long cursor stopped reaching this guard; and
+    shuffle's costs have since been re-solved as two variants, one per shape, with the
+    intercept pinned to the base region -- no negative term survives, and the walk's cursor
+    ends exactly at the model's length on all 7,804 of its records. Over 447 files and
+    926,957 records nothing reaches this branch at all.
+
+    KEPT ANYWAY, because what it asserts is a fact about the FORMAT and not about any fit: a
+    header cannot be longer than the record containing it. It costs nothing while it is
+    right, and it is the shape of the failure a future cost change would produce.
     """
     n = len(r.words)
     # THE SLOT LISTS ARE BOUNDED TOO, and against the RECORD rather than against `end`.
     #
     # Only `end` and `prog` were checked here, so the lists could name words the record does
-    # not contain. Over corpus.paths() plus the reference packs:
+    # not contain. Over corpus.paths() plus the reference packs, when this was written:
     #
     #     inputs        0 records name a word past the record
     #     cls_slots  1,738   (shuffle 1,643, dyngradient 74, normal 21)
     #     param_slots   68   (distance 51, normal 17)
     #
+    # Re-measured over 447 files after the three filters' costs were re-attributed, by
+    # spying on this function's own argument: cls_slots 0, param_slots 51 -- all distance.
+    # The truncation is doing nothing for shuffle, dyngradient and normal because there is
+    # nothing left to truncate, which is what fixing the attribution rather than the symptom
+    # looks like from here.
+    #
     # `inputs` needs nothing, which is why this cannot move the edge readings the walk is
     # validated on -- 903,611 of 903,611 against `_compute_layout` + `_real_edges`.
     #
     # AGAINST len(words), NOT AGAINST `end`, and the distinction is the whole judgement.
-    # A further 7,637 cls_slots and 3,165 param_slots sit at or past `end` and are LEFT
-    # ALONE: `end` is a cost-model output, shuffle's is provably two too long (see the split
-    # by shape above), and truncating a slot list against a number known to be wrong would
-    # bury that overrun instead of leaving it visible. `len(words)` is not a model output --
-    # a word past the end of the record does not exist, and naming it is never right under
-    # any cost model. That is the same fact this function already applies to `end` itself.
+    # Slots at or past `end` are LEFT ALONE -- 1,696 param_slot positions, every one of them
+    # `distance`'s, down from 7,637 cls_slots and 3,165 param_slots before the
+    # re-attribution. `end` is a cost-model output and distance's attribution is still known
+    # wrong, so truncating a slot list against it would bury the remaining overrun instead of
+    # leaving it visible. `len(words)` is not a model output -- a word past the end of the
+    # record does not exist, and naming it is never right under any cost model. That is the
+    # same fact this function already applies to `end` itself.
     #
     # WHAT IT WAS COSTING, both benign by accident rather than by design, which is why
     # nothing caught it: `reverify`'s slotrule counts cls_slots unbounded and is saved only

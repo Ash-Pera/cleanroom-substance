@@ -138,8 +138,16 @@ UNNAMED_BUT_DECLARED = {
         # -- those are floats, not log2 integers.
         3: (23, 26), 7: (23, 26, 27), 10: (23, 26, 27), 11: (23, 26, 27),
         12: (23, 26, 27), 13: (23, 26, 27), 21: (23, 26, 27),
-        18: (10, 11, 14, 15, 23, 26, 27),
-        19: (11, 23, 25, 26),
+        # `normal` 10/11/14/15 and `dyngradient` 11 WERE HERE AND ARE NOT FIELDS. They were
+        # charged a word each by a fit whose intercept sat two (one) words below the base
+        # region every record of those filters actually has, and exactly one of each pair is
+        # set in every record -- so the over-charge was constant, invisible in the total, and
+        # spent as slots past the header end. With the intercept pinned to the base they cost
+        # nothing, which is what a bit that declares no slot looks like. Nothing is named
+        # here that was not named before: the entries left because the FORMAT does not
+        # declare them, not because this legend learned to read them.
+        18: (23, 26, 27),
+        19: (23, 25, 26),
     },
 }
 
@@ -235,18 +243,25 @@ def _declared_without_a_name():
             continue
         entry = costs.get(str(fid), {})
         cov_w1, cov_cls = model._covered_bits(fid)
+        # ONE SPEC OR A LIST OF VARIANTS, and the answer is the union over them. This read
+        # `entry['cls']` directly, so a filter stored as variants declared NOTHING here and
+        # left the inventory silently rather than failing -- which is the opposite of what
+        # this instrument is for. `shuffle` became two variants when its costs were
+        # re-attributed against its own base region: its class widths differ by record
+        # shape, and one spec cannot hold both without a negative coefficient.
+        specs = entry.get('variants') or [entry]
         # `int(round(...))` is `decompose`'s own rule for turning a fitted cost into words.
-        rows = tuple(int(j) for j, states in sorted(entry.get('w1', {}).items(),
-                                                    key=lambda kv: int(kv[0]))
-                     if not ((3 << (2 * int(j))) & cov_w1)
-                     and max(int(round(v)) for v in states.values()) >= 1)
-        if rows:
-            got['w1'][fid] = rows
-        rows = tuple(int(b) for b, c in sorted(entry.get('cls', {}).items(),
-                                               key=lambda kv: int(kv[0]))
-                     if int(b) not in cov_cls and int(round(c)) >= 1)
-        if rows:
-            got['cls'][fid] = rows
+        w1_rows, cls_rows = set(), set()
+        for spec in specs:
+            w1_rows |= {int(j) for j, states in spec.get('w1', {}).items()
+                        if not ((3 << (2 * int(j))) & cov_w1)
+                        and max(int(round(v)) for v in states.values()) >= 1}
+            cls_rows |= {int(b) for b, c in spec.get('cls', {}).items()
+                         if int(b) not in cov_cls and int(round(c)) >= 1}
+        if w1_rows:
+            got['w1'][fid] = tuple(sorted(w1_rows))
+        if cls_rows:
+            got['cls'][fid] = tuple(sorted(cls_rows))
     return got
 
 
@@ -501,12 +516,16 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
         placed = dict((b, sl) for (b, sl, _n) in d.get('cls_params', ())).get(16)
         if placed is not None:
             checked += 1
-            # ONE EXCEPTION, AND IT IS EVIDENCE, NOT SLACK. On this specimen's `normal`
-            # records the class walk puts bit 16 on the slot the end-anchored parameter
-            # block owns -- and the SOURCE says the parameter is right: ChesterfieldSofa
-            # states `intensity` 10 on its one normal node and that slot holds 10.0. The
-            # size slot is dropped there rather than handing `walk_programs` a float as a
-            # program address, and the clash is reported through `View.ignored`.
+            # THE ONE EXCEPTION IS GONE, AND ITS CAUSE WITH IT. This specimen's `normal`
+            # record used to put bit 16 on the slot the end-anchored parameter block owns
+            # -- 1,012 records corpus-wide -- because the cost model charged `normal` four
+            # class bits that declare no slot and paid for them out of an intercept two
+            # words below the record's base region. With those costs re-attributed the
+            # class block ends exactly at the header end and bit 16 lands two slots
+            # earlier, on a word that resolves as a program in 1,358 of 1,358 records where
+            # it moved (the old slot did in 251). The guard stays -- it is what stands
+            # between a float and `walk_programs` if a placement ever goes wrong again --
+            # and this asserts it is now silent rather than asserting it fires.
             clash = any(e[0] == 'clash' for e in v.ignored)
             if clash:
                 clashes += 1
@@ -528,11 +547,13 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
     assert disagree >= 28, \
         'only %d records here distinguish the walk from the block start -- this specimen ' \
         'can no longer catch the regression it was chosen for' % (disagree,)
-    assert clashes, \
-        'no record here reports a placement clash, and this specimen has one -- the guard ' \
-        'that drops a size slot landing on a named parameter is not running'
+    assert not clashes, \
+        '%d record(s) here report a placement clash. The class block is over-long again: ' \
+        'a class parameter is landing on the slot the end-anchored parameter block owns, ' \
+        'which is the shape `normal` had before its costs were pinned to its base region' \
+        % (clashes,)
     print('ok  test_the_size_slot_is_the_walks_placement_not_the_blocks_start '
-          '(%d placed, %d where the retired rule differs, %d clash with a parameter)'
+          '(%d placed, %d where the retired rule differs, %d clashing with a parameter)'
           % (checked, disagree, clashes))
 
 

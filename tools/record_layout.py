@@ -22,13 +22,55 @@ of each set bit. The costs are in costs.json, fitted from the corpus by derive_c
 and kept only where the rounded costs reproduce EVERY observed header exactly -- currently
 12 filters and 72.25% of records with an observable boundary.
 
+THE CONSTANT IS THE RECORD'S BASE REGION, NOT A FREE INTERCEPT, and for three filters it
+was not. `derive_costs` solves `header = const + sum of set-bit costs` and nothing in that
+equation says `const` is the size of anything; a fit is free to shave words off the
+intercept and charge them to a bit that happens to be set in every record. The total comes
+out right and the DECOMPOSITION is wrong, which is invisible to a check that only compares
+lengths -- and `decompose` walks the same table forwards, from a base it computes
+structurally, so it spent the difference as slots past the header end. It did so on 7,119
+records: shuffle 3,514, dyngradient 2,214, normal 1,391 (447 files, 926,631 records).
+
+Those three entries have been RE-ATTRIBUTED against the base the record itself states --
+`n_hdr` mask words plus `n_base` image inputs -- by re-solving for the class and w1 costs
+against `observed header - base` instead of `observed header`. It is the same corpus and
+the same feature set; only the intercept is pinned. The re-solve is exact on every record
+of all three, every coefficient a non-negative integer -- where dyngradient's old costs
+needed halves and shuffle's two NEGATIVE coefficients -- and `header_words` returns the
+identical length on all 926,957 records swept: the totals do not move, only their
+attribution. `decompose`'s forward cursor now ends exactly at this function's answer on all
+11,648 records of the three, where 7,158 of them used to run past it.
+
+WHAT THE PINNED FIT SAYS, and the reason to believe it beyond the arithmetic: the costs it
+produces are the ones the format's own structure predicts. `shuffle` becomes two variants
+guarded on tag bit 0 because its class widths differ by SHAPE -- the one-channel shape
+bakes four `channelsweights` words at bit 24 and carries no w1, the four-channel shape
+packs its selector into w1 and bakes nothing, which is the reading `two_shape_w1` below
+already argues from the other side. `normal`'s and `dyngradient`'s bits 10/11/14/15 come
+out at ZERO: they are two mask pairs with exactly one bit of each set in every record, so
+the over-charge was constant, and a bit that declares no slot is what a zero cost means.
+Independently: the size expression, which the walk had been placing two slots late on
+`normal` and one late on `dyngradient`, now lands on a word that resolves as a valid
+program in 3,640 of the 3,640 records where it moved, against 281 at the old position; and
+`sourcematch` finds ChesterfieldSofa's declared `intensity` 10.0 on the w1 field the legend
+names, where it used to land on the slot the walk called class bit 16.
+
+WHAT IS NOT DONE: `distance` has the same defect (its `const` is 2.5 against a base of 3,
+and `decompose` charges its optional mask input twice -- once structurally, once as w1
+field 0), and a pinned re-solve for it is exact too. It is left alone here because its
+parameter slots feed `distance._locate_slot`, so moving them changes a rendered value on
+2,280 records and needs its own containment arbiter run first. 1,645 records still place a
+slot at or past their own header end and every one of them is `distance`.
+
 This does not yet replace layouts.json. It replaces the part of it that can be computed,
 and reports the rest honestly rather than memorising it. The filters still missing are
 missing for stated reasons:
 
     pixelprocessor, fxmaps   their w1 carries an ARITY INTEGER, not two-bit codes, so a
                              per-field cost model cannot express it (0.0% and 10.4%)
-    warp, shuffle            two record shapes, and w1 exists in only one of them
+    warp                     two record shapes, and w1 exists in only one of them
+                             (`shuffle` was here; it is now two guarded variants, one per
+                             shape, which is what its two shapes needed all along)
     uniform                  no w1 word at all; slot 1 is an edge
     levels                   five fields, and its baked widths are not yet separated
 """
@@ -86,6 +128,13 @@ def arity_field(filter_id):
     spec = costs().get(str(filter_id))
     if spec is None:
         return None
+    # THE TOP-LEVEL SPEC, NOT A VARIANT. A filter stored as `variants` keeps its costs one
+    # level down and this would read past them -- `shuffle` is stored that way since its
+    # class widths were split by record shape. It is safe today because the only entry with
+    # an `arity_sm` is `fxmaps`, which has no variants, and the same test in
+    # `test_the_declared_fields_the_legend_ignores_are_the_known_ones` was NOT safe and
+    # silently dropped a whole filter. If a variant-carrying filter ever declares an arity,
+    # this needs `header_words`' guard-selection loop, not a `.get`.
     ar = spec.get('arity_sm')
     return tuple(ar) if ar else None
 
