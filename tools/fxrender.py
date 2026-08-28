@@ -113,7 +113,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import assume, disasm, sbsruntime, transpile                                  # noqa: E402
+import assume, disasm, sbsruntime, transpile                          # noqa: E402
 from sbsasm import (Assembly, FX_NODES, FX_NODES2, fx_patterntype,                   # noqa: E402
                     fx_entry_layout, node_shape, leaf_successor,
                     pointer_cell_successor)
@@ -352,6 +352,26 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
         sbsruntime.set_context(width=rec.width, height=rec.height,
                                number=number if isinstance(number, np.ndarray)
                                else float(number))
+        # `$pos` IS NOT A PARAMETER OF THIS RECORD, so it has to be cleared and not merely
+        # left unset. `set_context` ignores a None by design -- right for its own callers,
+        # wrong here -- so the only way to say "no position" is to assign it, exactly as
+        # `render2.ops.run_program` does for the same reason.
+        #
+        # Nothing here supplied one because the census behind that decision counted the
+        # wrong population: "of 6,793 program-valued PARAMETERS, not one reads $pos" is
+        # true and says nothing about FX-Map NODE programs, which were never counted. They
+        # do read it -- 26,758 of 41,164 fxmaps records across the corpus carry a program
+        # that does, 65.0% -- and every one of them was reading whatever grid the last
+        # record rendered on. On EvilOrb at --dim 64 that was 8,531 of 8,629 $pos reads,
+        # and record 65's placement program returned (4096,) instead of (1,): a per-pattern
+        # gate inflated to one value per pixel of another record's canvas.
+        #
+        # ZERO IS NOT THE RIGHT ANSWER EITHER. An FX-Map's $pos is per-iteration state the
+        # quadrant walk owes each node, and this module has no mechanism to supply it; see
+        # `assume.QUESTIONS['fx.pos']`. This line buys determinism, not correctness -- the
+        # records that read $pos are wrong in a stated way now instead of wrong in an
+        # order-dependent one.
+        sbsruntime.CONTEXT['pos'] = None
         inputs = shared_inputs
         with np.errstate(all="ignore"):
             try:
@@ -824,72 +844,6 @@ def grid_width(rec):
     return None
 
 
-def inline_input_refs(rec, off, limit=None):
-    """The input references an FX entry stores INLINE at slot 2, as [(uid, width, value)].
-
-    An entry of this family is `[tag][word][inline program]+` -- the programs are not
-    addressed by the tag's pointer slots, they ARE the words those slots occupy, which is
-    why every predicted pointer resolves to nothing. Each leading program is one or more
-    `inputref` instructions (opcode 0x02, width `((op >> 6) & 3) + 1`) naming a uid the
-    file's own header declares; `value` is that declaration, or None if absent.
-
-    The walk stops at the first thing that is not such a reference, because the longer
-    entries carry further content after them.
-
-    Measured over the corpus, against both populations that matter:
-
-        the refused handoff entries recognised    24 of 27     89%
-        known-good entries (false positive)        6 of 2,351  0.26%
-        bytecode inside real program spans         3 of 1,969  0.15%
-
-    Every recognised entry leads with a WIDTH-2 reference: widths are (2, 1) on 12 and
-    (2,) on 12. In `roofing_007` the pair is `0xb90ebc63` (type 8, value (8, 8) -- log2 of
-    256x256) and `0xee7caa31` (type 4, value 0), the same uids in every entry of the file.
-
-    DIAGNOSTIC ONLY, AND DELIBERATELY NOT WIRED INTO `entries()`. What each reference IS
-    remains unknown: the tag's mask declares 3 or 5 program parameters against 1 or 2 inline
-    references, so it does not describe these slots, and no permitted source sets the bits
-    that would name them. Admitting the entry would let `emit` read parameters positionally
-    out of a layout that does not match the data, which paints a plausible wrong picture --
-    strictly worse than refusing. This function exists so the structure is READABLE by
-    whoever closes the naming gap, and so `why_no_entries` can report what is actually
-    there instead of calling it unreadable.
-    """
-    a = rec.asm
-    decl = {u: v for _t, u, v in (a.header.get('inputs') or [])}
-    lim = rec.offset if limit is None else limit
-    q, out = off + 8, []
-    while q + 4 <= lim and len(out) < 8:
-        sp = a.program_span(q, a.body_hi)
-        if not sp or sp <= q:
-            break
-        try:
-            ins = list(disasm.decode(a.data, q, sp))
-        except Exception:
-            break
-        if not ins:
-            break
-        got = []
-        for _k, addr, op, toks in ins:
-            if (op & 0x3F) != 0x02:
-                got = None
-                break
-            try:
-                u = disasm.uid(addr, toks)
-            except Exception:
-                got = None
-                break
-            if u not in decl:
-                got = None
-                break
-            got.append((u, ((op >> 6) & 3) + 1, decl[u]))
-        if got is None:
-            break
-        out.extend(got)
-        q = sp
-    return out
-
-
 def why_no_entries(rec):
     """Why `entries()` came back empty -- the WALK, or the table read?
 
@@ -967,24 +921,6 @@ def why_no_entries(rec):
 
     last = nodes[-1][1]
     h = header_at(last)
-    # SAY WHAT THE HANDOFF TARGET ACTUALLY HOLDS. It is not unreadable: for 24 of the 27
-    # records in this branch it is an entry storing its programs inline as references to
-    # inputs the file itself declares. See `inline_input_refs` -- what is missing is which
-    # parameter each reference is, not what is there.
-    _sh = node_shape(h) if h is not None else None
-    if _sh:
-        try:
-            _t = struct.unpack_from('<I', asm.data, last + _sh[0])[0] + 52
-            if asm.body_lo <= _t < asm.body_hi - 8:
-                _r = inline_input_refs(rec, _t)
-                if _r:
-                    return ("walk: %d node(s) reaching an entry at %#x that stores %d inline "
-                            "input reference(s) %s -- structure read, but the tag's mask does "
-                            "not name them, so no parameter can be assigned"
-                            % (len(nodes), _t, len(_r),
-                               ', '.join('%#x(w=%d)=%s' % (u, w, v) for u, w, v in _r)))
-        except Exception:
-            pass
     return ("walk: %d node(s), then no handoff -- last node %#x holds header %#010x, "
             "whose successor reaches no table" % (len(nodes), last, h if h is not None else 0))
 
@@ -1006,71 +942,11 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         # these records, and "it would make 30 more outputs appear" is the kind of argument this
         # file exists to refuse. What would settle it: one reference-pack record with an empty
         # drawable table, rendered against its own reference image.
-        # THE 27 ARE DECODED. Their structure is the ordinary walk, not a mode a flag
-        # switches into, and looking for the flag is what kept this closed: bit 17 separates
-        # the family from working tags 0% against 70%, and predicts NOTHING -- program slots
-        # resolve as pointers in 99.8% of entries whether it is set or clear.
-        #
-        # THE ENTRY IS `[tag][word][inline program][inline program]`, each program stating
-        # its own extent, and the pair tiles to the record that follows: 12 of 27 land
-        # exactly on the record start and 12 more within 2 bytes (instructions are
-        # byte-granular). Not pointers to programs -- the programs are THERE, which is why
-        # every predicted pointer slot resolves to nothing and `entry_layout_holds` refuses.
-        #
-        # BOTH PROGRAMS ARE ONE `inputref` INSTRUCTION. Opcode 0x02 in all 51, widths
-        # `((op >> 6) & 3) + 1` = 2 then 1, each carrying a uid, and the same uids repeat
-        # across every entry in a file. So an entry of this family holds no numeric
-        # parameters at all: it REFERENCES the graph's declared inputs. That is what
-        # `fx_entry_layout`'s inline note already observed from the other side -- "98% of
-        # these open with `inputref`, so they are image references rather than numeric
-        # parameters" -- reached here by walking rather than by a value test.
-        #
-        # AND THE FILE DECLARES THEM. Every uid resolves in the header input table, 51 of 51:
-        # `roofing_007` reads `0xb90ebc63` (type 8, width 2, value (8, 8) -- log2 256x256)
-        # and `0xee7caa31` (type 4, width 1, value 0). `default_inputs` already reads that
-        # table, so these values are recoverable from the file's own declarations.
-        #
-        # WHAT IS STILL NOT KNOWN is WHICH parameter each reference is. The tag's mask
-        # declares 3 or 5 program parameters and there are 2 inline programs, so the mask is
-        # not describing these slots, and no permitted source sets the bits that would name
-        # them -- `fx_entry_layout`'s note says so for exactly this population. Structure
-        # decoded, naming not, and emitting a pattern needs the naming.
-        #
-        # So the refusal stands, and it is now a NAMED gap rather than an opaque one. What
-        # would close it: one permitted source whose FX-Map entry references an exposed
-        # input, pairing a uid to a parameter name.
         raise Unmodelled("no emittable entries -- %s" % why_no_entries(rec))
     for _off, hdr, _p in nodes:
         if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
                 and (hdr & 0xFF) != STEPPER2 and (hdr & 0xFF) != PASSTHROUGH \
                 and (hdr & 0xFF) != BRANCH and not _is_leaf(hdr):
-            # THE UNMODELLED HEADERS COME AS A FAMILY, and treating one as a passthrough
-            # only moves the failure to the next. Recorded so the experiment is not re-run.
-            #
-            # `0x1db` is the header the census names, 22 declared outputs behind it. It is
-            # in the node vocabulary -- `node_shape` gives (16, (8,)) -- and it sits at the
-            # chain ROOT with a downstream chain that is entirely recognised:
-            #
-            #     0x1db -> 0x1a3 -> 0x1a3 -> 0x89 -> 0x89 -> 0x19b -> 0x99 -> 0x18b
-            #                                GATE    GATE            STEPPER  ADDNODE
-            #
-            # identical in both files that carry it (flowingLava_v35 record 112, Cliff
-            # record 1). All 19 of its nodes in the corpus and the reference packs have the
-            # same shape: `+4` is the constant 0x00000002, `+8` a child, `+16` the
-            # successor, and `chain()` attaches NO named program to it -- so it is not an
-            # ADDNODE, which needs a `numberadded`.
-            #
-            # One child, one successor, no program reads like a passthrough, and that was
-            # tested rather than assumed: skipping 0x1db here clears its 6 record failures
-            # and renders NOTHING new -- 3,149 records and 2 declared outputs before and
-            # after -- because the failure simply becomes `node header 0x1a3 is not
-            # modelled`, the next node in the same chain. 0x1a3 has 0x1ab's shape
-            # (12, (4, 8)) as 0x1db has 0x1cb's, so both are one-bit neighbours of ADDNODE
-            # members and neither is one.
-            #
-            # So this is an unmodelled sub-family, not a missing row, and a passthrough for
-            # each would be a chain of guesses producing a plausible wrong picture. Naming
-            # what these kinds DO needs evidence this refusal is protecting.
             raise Unmodelled("node header %#x is not modelled" % hdr)
 
     out = []
@@ -1534,6 +1410,100 @@ def _cell_divisor(patterns):
     return np.asarray(d, dtype=np.float32)
 
 
+def gate_bounds_slots(rec):
+    """Slots the chain's GATE nodes read as a float4, in chain order.
+
+    Selected BY OPCODE -- `get`, float, four components -- not by looking for a slot whose
+    seeded value happens to be shaped like a rectangle. The distinction matters: reading the
+    box out of the instruction stream is a structural fact about the program, while scanning
+    the slot frame for a plausible 4-vector is value-based decoding, and would have picked up
+    slot 4 as readily as slot 0 on Grunge_Map_16 (both hold the same box; only slot 0 is
+    read).
+    """
+    asm = rec.asm
+    out = []
+    for _off, hdr, progs in chain(rec):
+        if hdr != GATE:
+            continue
+        for _name, ptr in progs.items():
+            if not ptr:
+                continue
+            end = asm.program_span(ptr, asm.body_hi)
+            if not end:
+                continue
+            try:
+                stream = list(disasm.decode(asm.data, ptr, end))
+            except Exception:
+                continue
+            for _k, _addr, op, toks in stream:
+                _ntok, ty, comps, oid = disasm.fields(op)
+                if oid == 0x04 and ty == 1 and comps == 4:
+                    out.append(int(toks[disasm.pad_bytes(toks) // 2]))
+    return out
+
+
+def declared_cells(rec, slots):
+    """(nx, ny) -- the cell lattice the record DECLARES, or None.
+
+    WHY A SECOND INSTRUMENT EXISTS FOR A NUMBER `_cell_divisor` ALREADY DERIVES. That one
+    infers the lattice from the SPREAD of the emitted offsets, so it needs the emissions to
+    land on exact integers, and a jitter of any size destroys the evidence. The records where
+    the oversize defect is actually visible are exactly the ones it therefore declines --
+    Grunge_Map_16 record 0 walks a spiral and then adds `cartesian(rand(1.5), ...)` to every
+    position, so its offsets span 9.38 on an axis where the lattice is 8 wide. An arbitration
+    arm that no-ops wherever the question is answerable cannot settle the question, and that,
+    not the canvas-versus-cell choice itself, was what blocked `fx.patternsize`.
+
+    THE LATTICE IS NOT INFERRED HERE, IT IS READ. The GATE's own program tests the walked
+    position against a rectangle held in a slot, and that rectangle is the extent of the
+    lattice in the walk's units:
+
+        Grunge_Map_16   r0/r1   slot 0 = (-3.5, 4.5, -3.5, 4.5)   8 wide   N = 64 = 8x8
+        ChesterfieldSofa r92/93 slot 0 = (-2.0, 3.0, -2.0, 3.0)   5 wide   N = 25 = 5x5
+        Rokviz fabric 8  r6     slot 0 = ( 0.0, 1.0,  0.0, 1.0)   1 wide   N =  1
+
+    The walk steps by a `const.f2 1, 0` direction vector rotated a quarter turn at each wrap,
+    so its unit IS one cell; a box eight units wide is therefore a canvas eight cells across.
+    Grunge_Map_16 corroborates the reading three ways at once from data the divisor never
+    touches: the addnode's `numberadded` reads as `((n-1) mod 2 + n)^2` over slot 8 = 8, which
+    is 81 -- a 9x9 spiral -- and the gate clips it to the 8x8 box, giving the 64 emissions
+    actually observed.
+
+    IT IS SILENT, BY CONSTRUCTION, ON EVERY RECORD THAT ARBITRATES AGAINST CHANGE. Lines
+    record 0 -- the one record known to render correctly, whose size of 1.414 any divisor
+    above 1 would destroy -- has no GATE at all, so there is no box to read. Rokviz record 6
+    and ChesterfieldSofa 34/65 have one and it is a single cell, which divides by 1. That is
+    the shape a new instrument should have: it cannot move the records whose correctness is
+    already established, because they do not declare a lattice.
+    """
+    for k in gate_bounds_slots(rec):
+        v = slots.get(k)
+        if v is None:
+            continue
+        a = np.asarray(v, dtype=np.float64).ravel()
+        if a.size != 4:
+            continue
+        nx, ny = a[1] - a[0], a[3] - a[2]
+        if (nx >= 1 and ny >= 1 and abs(nx - round(nx)) < 1e-4
+                and abs(ny - round(ny)) < 1e-4):
+            return (int(round(nx)), int(round(ny)))
+    return None
+
+
+def cell_divisor(rec, patterns, cells=None):
+    """Per-axis 1 / (cells across): the DECLARATION where there is one, else the inference.
+
+    Precedence, not fallback. `declared_cells` reads a number the file states; `_cell_divisor`
+    reconstructs it from where the emissions happened to land. Where both speak they are
+    measuring the same lattice, so a disagreement is a defect in one of them rather than a
+    choice to be made per record -- see FORMAT-NOTES for the agreement census.
+    """
+    if cells is not None:
+        d = [1.0 / float(cells[0]), 1.0 / float(cells[min(1, len(cells) - 1)])]
+        return None if not any(x != 1.0 for x in d) else np.asarray(d, dtype=np.float32)
+    return _cell_divisor(patterns)
+
+
 def _combine(dst, src):
     """Fold one pattern's contribution into the canvas -- see QUESTIONS['fx.combine']."""
     mode = assume.assumed('fx.combine', 'max')
@@ -1545,8 +1515,14 @@ def _combine(dst, src):
     return np.maximum(dst, src)
 
 
-def splat(rec, patterns, W=None, H=None, profile=None, images=None):
+def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
     """Draw the emitted patterns. `images` maps EDGE SLOT -> (H, W, C) array.
+
+    `cells` is the record's declared (nx, ny) cell lattice from `declared_cells`, which the
+    caller reads from the slot frame BEFORE the walk runs. It is passed in rather than
+    re-derived because the walk mutates that frame: the gate's box happens to be a slot no
+    chain writes, but a divisor that depended on when it was read would be a trap for the
+    next person, not a property of the file.
 
     When `images` is supplied and a pattern carries `imageindex`, the pattern IS that image
     sampled over its own footprint rather than a generated profile.
@@ -1647,8 +1623,8 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # candidate is retired, having thresholded on a SYMPTOM and now rendering byte-identically
     # to 'cell' on all 175 Bricks records.
     size_scale = None
-    if assume.assumed('fx.patternsize') == 'cell' and patterns:
-        size_scale = _cell_divisor(patterns)
+    if assume.assumed('fx.patternsize') == 'cell' and (patterns or cells):
+        size_scale = cell_divisor(rec, patterns, cells)
         if size_scale is not None:
             assume.note(getattr(rec, 'index', -1))
 
@@ -1664,14 +1640,14 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # while sqrt(N) would have missed 41; the other 2,983 are fractional, and those are what
     # the old guard was scaling. The divisor is per axis.
     frame_scale = None
-    if assume.assumed('fx.frameoffset') == 'cell' and patterns:
-        frame_scale = _cell_divisor(patterns)
+    if assume.assumed('fx.frameoffset') == 'cell' and (patterns or cells):
+        frame_scale = cell_divisor(rec, patterns, cells)
         if frame_scale is not None:
             assume.note(getattr(rec, 'index', -1))
 
     cell_scale = None
-    if assume.assumed('fx.branchoffset') == 'cell' and patterns:
-        cell_scale = _cell_divisor(patterns)
+    if assume.assumed('fx.branchoffset') == 'cell' and (patterns or cells):
+        cell_scale = cell_divisor(rec, patterns, cells)
         if cell_scale is not None:
             assume.note(getattr(rec, 'index', -1))
 
@@ -1845,10 +1821,13 @@ def render_record(path, idx, size=256):
     rec = asm.records[idx]
     if rec.filter_id != 4:
         raise Unmodelled("record %d is %s, not fxmaps" % (idx, rec.filter_name))
-    pats = emissions(rec, make_runner(asm, rec))
+    runner = make_runner(asm, rec)
+    slots = seed_slots(rec, runner)
+    cells = declared_cells(rec, slots)
+    pats = emissions(rec, runner, slots=slots)
     if not pats:
         raise Unmodelled("emitted no patterns")
-    return splat(rec, pats, size, size), pats
+    return splat(rec, pats, size, size, cells=cells), pats
 
 
 def save(img, out):
