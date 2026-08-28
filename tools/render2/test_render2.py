@@ -28,6 +28,7 @@ if _HERE not in sys.path:
 
 import sbsasm                                                        # noqa: E402
 import manifest                                                      # noqa: E402
+import filters as filters_mod                                        # noqa: E402
 import model                                                         # noqa: E402
 import ops                                                           # noqa: E402
 import sbsruntime                                                    # noqa: E402
@@ -101,6 +102,183 @@ def references():
                        recursive=True):
         out[re.sub(r'[^a-z]', '', os.path.basename(p).rsplit('_', 1)[-1][:-4].lower())] = p
     return out
+
+
+#: (filter id) -> the w1 fields, and the class bits, that the format DECLARES and charges
+#: words for and that §13.4's legend does not cover. Frozen so a NEW one fails here instead
+#: of waiting for a review: `hsl` was a silent identity in 747 records and `sharpen` in
+#: 1,156, and neither showed up in any count, because a name nothing supplies reads as its
+#: default and a default renders.
+#:
+#: To retire an entry, name the field (and delete the entry). To add one, say in a comment
+#: what is known about it. Bits, not field indices: `blend`'s relocated opacity straddles
+#: fields 4 and 5, and an index-based reading would call both unnamed.
+UNNAMED_BUT_DECLARED = {
+    'w1': {
+        # DECLARED FOR THEIR WIDTH, still unread: `W1_PARAMS` carries these with no name, so
+        # the placement is right and the value is not read. Being here is the difference
+        # between "we know it is there" and "it silently moves a named parameter".
+        1:  (3,),        # blend -- two words, put `opacitymult` two slots late until 1241661
+        18: (2,),        # normal -- a flag beside `inversedy`
+        # NOT DECLARED AT ALL. A program arm here moves whatever this legend does name.
+        12: (3,),        # directionalwarp
+        20: (2,),        # pixelprocessor -- one field, 16 words, 1 corpus record
+        21: (0, 1),      # distance: field 0 IS `distance` (SandyStonePath states 56.3 and
+                         # 64.22; records 3 and 180 hold exactly those) and field 1's baked
+                         # arm costs nothing -- both derivable, neither derived yet
+    },
+    'cls': {
+        # Bit 23 is a PROGRAM POINTER wherever it appears -- it decodes to 10 ops on the
+        # simple filters, 14-82 on pixelprocessor -- and `walk_programs` already offers
+        # every class slot to the program machinery, so these are run; what is unknown is
+        # which parameter each computes.
+        0: (23,), 1: (23,), 14: (23,), 20: (23,), 22: (23,),
+        # (26, 27) is a per-filter parameter pair, baked then program: blur holds
+        # (16.0, 16.0), warp (0.9801, 0.9801), directionalwarp (0.99, 1.0). NOT `$outputsize`
+        # -- those are floats, not log2 integers.
+        3: (23, 26), 7: (23, 26, 27), 10: (23, 26, 27), 11: (23, 26, 27),
+        12: (23, 26, 27), 13: (23, 26, 27), 21: (23, 26, 27),
+        18: (10, 11, 14, 15, 23, 26, 27),
+        19: (11, 23, 25, 26),
+    },
+}
+
+
+def _filter_ids():
+    return {n: i for i, n in sbsasm.FILTERS.items()}
+
+
+def _asks_without_a_legend(count=False):
+    """(filter, id, name) for every parameter name a filter asks for and no legend supplies.
+
+    Read out of `filters.py`'s own syntax tree rather than a list kept beside it, so adding
+    a filter that asks for a name is enough to be checked.
+    """
+    import ast
+    tree = ast.parse(open(os.path.join(_HERE, 'filters.py'), encoding='utf-8').read())
+    ids = _filter_ids()
+    askers = {'_scalar': 2, '_vector': 2, '_channelwise': 2}     # index of the name argument
+    bad, checked = [], 0
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        declared = [d.args[0].value for d in node.decorator_list
+                    if isinstance(d, ast.Call) and getattr(d.func, 'id', '') == 'filt']
+        if not declared:
+            continue
+        asked = set()
+        for n in ast.walk(node):
+            if not isinstance(n, ast.Call) or not n.args:
+                continue
+            f = n.func
+            if isinstance(f, ast.Name) and f.id in askers and len(n.args) > askers[f.id]:
+                a = n.args[askers[f.id]]
+            elif isinstance(f, ast.Attribute) and (
+                    f.attr in ('baked', 'program', 'has')
+                    or (f.attr == 'get' and isinstance(f.value, ast.Attribute)
+                        and f.value.attr == 'params')):
+                a = n.args[0]
+            else:
+                continue
+            if isinstance(a, ast.Constant) and isinstance(a.value, str):
+                asked.add(a.value)
+        fid = ids.get(declared[0])
+        supply = set()
+        if fid is not None:
+            supply |= {t[2] for t in model.W1_PARAMS.get(fid, ()) if t[2]}
+            supply |= {e[0] for e in model.CLS_NAMES.get(fid, {}).values()}
+        checked += 1
+        bad.extend((declared[0], fid, name) for name in sorted(asked - supply))
+    return (bad, checked) if count else bad
+
+
+def test_every_parameter_a_filter_asks_for_can_be_supplied():
+    """A NAME NOTHING SUPPLIES IS A SILENT IDENTITY, not an error.
+
+    `_scalar` and its neighbours return the stated default when `View.params` has no entry,
+    and every one of those defaults is the neutral value -- so a filter asking for a name no
+    legend produces renders, produces plausible output, and does nothing. That is what `hsl`
+    did in all 747 corpus records (hue, saturation and luminosity all defaulted to 1/2) and
+    `sharpen` in 1,156 (intensity defaulted to 1).
+
+    Read out of `filters.py`'s own syntax tree rather than a list kept beside it, so adding
+    a filter that asks for a name is enough to be checked.
+    """
+    bad, checked = _asks_without_a_legend(count=True)
+    assert checked > 15, 'the filter table was not read: %d functions' % checked
+    assert not bad, ('these filters ask for a parameter no legend can supply, so every '
+                     'record renders at the default: %r' % (bad,))
+    # AND IT CAN FIRE. This check passes by finding nothing, which is the same output a
+    # broken scan produces -- so take a legend away and watch it come back. `sharpen` is
+    # the one that was actually in this state until the legend named bit 28.
+    saved = model.CLS_NAMES.pop(13)
+    try:
+        again = _asks_without_a_legend()
+        assert ('sharpen', 13, 'intensity') in again, \
+            'with filter 13 unnamed the scan still reports %r -- it is not looking' % (again,)
+    finally:
+        model.CLS_NAMES[13] = saved
+    print('ok  test_every_parameter_a_filter_asks_for_can_be_supplied (%d filters)' % checked)
+
+
+def _declared_without_a_name():
+    """{'w1'|'cls': {filter id: fields}} the format declares, charges words for, and no
+    name covers. From `costs.json` and the legends alone -- no corpus: it states what this
+    renderer declines to read, not how often that happens."""
+    import json
+    costs = json.load(open(os.path.join(ROOT, 'tools', 'costs.json'), encoding='utf-8'))
+    ids = _filter_ids()
+    got = {'w1': {}, 'cls': {}}
+    for name in filters_mod.FILTERS:
+        fid = ids.get(name)
+        if fid is None:
+            continue
+        entry = costs.get(str(fid), {})
+        cov_w1, cov_cls = model._covered_bits(fid)
+        # `int(round(...))` is `decompose`'s own rule for turning a fitted cost into words.
+        rows = tuple(int(j) for j, states in sorted(entry.get('w1', {}).items(),
+                                                    key=lambda kv: int(kv[0]))
+                     if not ((3 << (2 * int(j))) & cov_w1)
+                     and max(int(round(v)) for v in states.values()) >= 1)
+        if rows:
+            got['w1'][fid] = rows
+        rows = tuple(int(b) for b, c in sorted(entry.get('cls', {}).items(),
+                                               key=lambda kv: int(kv[0]))
+                     if int(b) not in cov_cls and int(round(c)) >= 1)
+        if rows:
+            got['cls'][fid] = rows
+    return got
+
+
+def test_the_declared_fields_the_legend_ignores_are_the_known_ones():
+    """The other half: a field the FORMAT declares, charged words, that no name covers.
+
+    This is the `normal` shape -- fields 1 and 2 were declared, cost a word as a program,
+    and their absence from the legend moved `intensity` -- and the `blend` field 3 shape,
+    where two unnamed words put the opacity two slots late. `UNNAMED_BUT_DECLARED` is what
+    is known to be uncovered; this fails when the set moves in either direction.
+    """
+    got = _declared_without_a_name()
+    for half in ('w1', 'cls'):
+        new_ = {k: v for k, v in got[half].items() if UNNAMED_BUT_DECLARED[half].get(k) != v}
+        gone = {k: v for k, v in UNNAMED_BUT_DECLARED[half].items() if got[half].get(k) != v}
+        assert not new_ and not gone, (
+            '%s: the declared-but-unnamed set moved. Now uncovered and not in the '
+            'inventory: %r. In the inventory and no longer uncovered -- name it in SPEC '
+            'and delete the entry: %r' % (half, new_, gone))
+    # AND IT CAN FIRE: take `hsl`'s six names away and its class bits must reappear.
+    saved = model.CLS_NAMES.pop(14)
+    model._covered_bits.cache_clear()          # or the mutation is invisible; see model.py
+    try:
+        again = _declared_without_a_name()
+        assert set(again['cls'].get(14, ())) >= {24, 26, 28}, \
+            'with filter 14 unnamed the scan reports %r for hsl -- it is not looking' \
+            % (again['cls'].get(14),)
+    finally:
+        model.CLS_NAMES[14] = saved
+        model._covered_bits.cache_clear()
+    print('ok  test_the_declared_fields_the_legend_ignores_are_the_known_ones '
+          '(%d w1, %d class)' % (len(got['w1']), len(got['cls'])))
 
 
 def test_walk_reads_the_parameters_the_memo_cannot():
@@ -306,8 +484,22 @@ def test_every_record_renders():
     outs, fails, info = render(asm, max_dim=128)
     assert not fails, 'records failed with no assumption scope: %r' % (fails,)
     assert len(outs) == len(asm.records)
-    print('ok  test_every_record_renders (%d records, %d low-confidence)'
-          % (len(outs), len(info['low_confidence'])))
+    # THE RENDER REPORTS WHAT IT DECLINED TO READ. Not an error and not low-confidence --
+    # the walk placed these fields, so the layout is right -- but a count that exists is the
+    # difference between `hsl` being an identity in 747 records and nobody noticing.
+    ignored = info['ignored']
+    assert ignored, ('nothing reported as ignored on a specimen that has 7 such records -- '
+                     'the channel is not wired, which is exactly the silence it exists to '
+                     'break')
+    for i, entries in ignored.items():
+        w0 = asm.records[i].words[0]
+        w1 = asm.records[i].words[1] if len(asm.records[i].words) > 1 else 0
+        for (half, which, _slot, _w) in entries:
+            stated = (w0 >> which) & 1 if half == 'cls' else (w1 >> (2 * which)) & 3
+            assert stated, ('record %d is reported as ignoring %s %s and its own word does '
+                            'not state it' % (i, half, which))
+    print('ok  test_every_record_renders (%d records, %d low-confidence, %d stating a '
+          'field no name covers)' % (len(outs), len(info['low_confidence']), len(ignored)))
 
 
 def test_the_render_threads_its_own_value_cache():
@@ -424,13 +616,90 @@ def test_reference_agreement_does_not_regress():
           % (len(seen), height_mean))
 
 
+def test_the_fast_sampler_is_the_shared_one():
+    """`ops._fast_sampler`'s two specialisations are equalities, DTYPE INCLUDED.
+
+    The dtype assertion is the point of this test, not decoration. The four-corner lerp
+    multiplies by `u - u0` with `u0` an int64, so it returns float64 even over a float32
+    image, while the exact-texel gather carries the image's dtype unless it is corrected.
+    That single difference moved 567 of 3,047 records on PlasticSubstance003 -- and the
+    ad-hoc check written alongside the optimisation passed anyway, because it used ONE
+    dtype for both the image and the positions. So both are varied here independently.
+    """
+    rng = np.random.default_rng(20260827)
+    shapes = [(256, 256, 1), (16, 16, 4), (128, 128, 3), (100, 60, 2)]   # last is not pow2
+    checked = 0
+    for H, W, C in shapes:
+        img = rng.random((H, W, C))
+        gx = np.tile((np.arange(W) + 0.5) / W, H)
+        gy = np.repeat((np.arange(H) + 0.5) / H, W)
+        cases = {
+            # the 62% case: an image sampled at its own pixel centres
+            'identity': np.stack([gx, gy], axis=-1),
+            # texel centres reached from outside [0, 1], so the wrap is exercised too
+            'wrapped': np.stack([gx + 2.0, gy - 3.0], axis=-1),
+            'random': np.concatenate([rng.uniform(-3.0, 4.0, (2000, 2)),
+                                      np.array([[0.0, 0.0], [1.0, 1.0],
+                                                [-1e-9, 1.0 + 1e-9]])]),
+        }
+        for name, pos in cases.items():
+            for idt in (np.float32, np.float64):
+                for pdt in (np.float32, np.float64):
+                    im, ps = img.astype(idt), pos.astype(pdt)
+                    want = sbsruntime.image_sampler(im)(ps)
+                    got = ops._fast_sampler(im)(ps)
+                    where = '%dx%dx%d %s img=%s pos=%s' % (
+                        H, W, C, name, np.dtype(idt).name, np.dtype(pdt).name)
+                    assert got.dtype == want.dtype, \
+                        '%s: dtype %s, shared gives %s' % (where, got.dtype, want.dtype)
+                    assert got.shape == want.shape, \
+                        '%s: shape %s, shared gives %s' % (where, got.shape, want.shape)
+                    assert np.array_equal(got, want, equal_nan=True), \
+                        '%s: max|d| %r' % (where, float(np.nanmax(np.abs(got - want))))
+                    checked += 1
+    # The identity-grid branch: `pos_grid` for the IMAGE's own dimensions is answered
+    # without any index arithmetic, and must agree with the shared sampler to the bit and
+    # the dtype -- while a grid for OTHER dimensions must not take that branch at all.
+    for H, W, C in [(64, 64, 1), (32, 16, 3)]:
+        img = rng.random((H, W, C))
+        for idt in (np.float32, np.float64):
+            im = img.astype(idt)
+            grid = ops.pos_grid(W, H)
+            assert not grid.flags.writeable, 'pos_grid must hand back a read-only array'
+            assert grid is ops.pos_grid(W, H), 'pos_grid must memoise, or `is` cannot work'
+            want = sbsruntime.image_sampler(im)(grid)
+            got = ops._fast_sampler(im)(grid)
+            assert got.dtype == want.dtype and np.array_equal(got, want), \
+                'identity grid %dx%dx%d img=%s' % (H, W, C, np.dtype(idt).name)
+            assert got.base is None and not np.shares_memory(got, im), \
+                'the identity branch must copy, not alias the record it sampled'
+            # a grid of the WRONG size is an ordinary resample, not the identity
+            other = ops.pos_grid(W * 2, H * 2)
+            assert np.array_equal(ops._fast_sampler(im)(other),
+                                  sbsruntime.image_sampler(im)(other)), \
+                'a foreign grid took the identity branch'
+            checked += 3
+    # And the toggle really reaches the shared implementation, so an A/B measures something.
+    saved = ops.FAST_SAMPLER
+    try:
+        ops.FAST_SAMPLER = False
+        assert ops.sampler(np.zeros((8, 8, 1))).__qualname__.startswith('image_sampler')
+    finally:
+        ops.FAST_SAMPLER = saved
+    print('ok  test_the_fast_sampler_is_the_shared_one (%d dtype/position combinations)'
+          % checked)
+
+
 if __name__ == '__main__':
-    for fn in (test_walk_reads_the_parameters_the_memo_cannot,
+    for fn in (test_every_parameter_a_filter_asks_for_can_be_supplied,
+               test_the_declared_fields_the_legend_ignores_are_the_known_ones,
+               test_walk_reads_the_parameters_the_memo_cannot,
                test_blend_reads_the_relocated_opacity,
                test_hsl_names_its_three_parameters,
                test_normal_declares_the_field_that_shifts_its_intensity,
                test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
                test_every_record_renders,
                test_the_render_threads_its_own_value_cache,
+               test_the_fast_sampler_is_the_shared_one,
                test_reference_agreement_does_not_regress):
         fn()

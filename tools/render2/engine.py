@@ -198,11 +198,15 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None):
     """Evaluate every record. Returns (outputs, failures, info).
 
     `info` carries `low_confidence` -- records whose output rests on a value the FORMAT
-    does not record -- and `cascaded`, the failures that are only consequences.
+    does not record -- `cascaded`, the failures that are only consequences, and `ignored`,
+    records that STATE a field this renderer's legend does not name. The last is the one
+    that used to be invisible: an unnamed parameter reads as its default, and a default
+    renders, so `hsl` was an identity in 747 records and `sharpen` in 1,156 without either
+    ever appearing in a count.
     """
     ctx = Context(asm, cap=max_dim)
     ctx.outputs.update(precomputed or {})
-    failures, cascaded = {}, set()
+    failures, cascaded, ignored = {}, set(), {}
 
     # THE VALUE CACHE IS `ctx.cache` AND NOTHING IS INSTALLED ANYWHERE. Record order is
     # what makes a `cache_read` answerable -- writers precede readers, over 7,074 matched
@@ -216,6 +220,13 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None):
             # parameter block lands on an input edge or a mask word, and that is one
             # RECORD's refusal, not the file's.
             v = model.View(asm, rec)
+            if v.ignored:
+                # A FIELD THE RECORD STATES AND NO NAME COVERS. Kept as its own channel,
+                # not folded into `low_confidence`: that set means "a value the format does
+                # not record was assumed", and 57,731 pixelprocessor records carrying an
+                # unnamed class pointer would drown it. This one says the opposite -- the
+                # value IS in the file and this renderer did not read it.
+                ignored[i] = tuple(v.ignored)
             if not v.walked:
                 raise Unsupported('the cost model does not cover this record header, so '
                                   'no slot of it can be read structurally')
@@ -266,5 +277,5 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None):
             ctx.outputs[ri] = np.clip(a, 0.0, 1.0)
 
     info = {'low_confidence': ctx.low_confidence, 'cascaded': cascaded,
-            'synthetic': ctx.synthetic}
+            'synthetic': ctx.synthetic, 'ignored': ignored}
     return ctx.outputs, failures, info

@@ -41,6 +41,8 @@ colour parameters, so a mismatch cannot be an author's tweak:
 So this is not a tidier spelling of the old reads. It is a different answer, and the
 reference arbitrates it.
 """
+import functools
+
 import numpy as np
 
 import decompose
@@ -120,8 +122,13 @@ W1_PARAMS = {
 }
 
 
+@functools.lru_cache(maxsize=None)
 def _covered_bits(fid):
     """(w1 bits, class bits) this legend can name for one filter.
+
+    MEMOISED, and a caller that MUTATES either legend -- the checks that prove they can
+    still detect a missing name do exactly that -- must call `_covered_bits.cache_clear()`,
+    or the mutation is invisible here and the check passes by not looking.
 
     Bits, not field indices: `blend`'s relocated opacity straddles the two-bit grid, and an
     index-based reading calls both halves unnamed.

@@ -68,6 +68,17 @@ def main(argv=None):
     outs, fails, info = render(asm, max_dim=a.dim)
     print('%d/%d records, %d failures, %d low-confidence'
           % (len(outs), len(asm.records), len(fails), len(info['low_confidence'])))
+    ign = info.get('ignored') or {}
+    if ign:
+        by_filter = {}
+        for i, entries in ign.items():
+            for (half, which, _slot, _w) in entries:
+                by_filter.setdefault((asm.records[i].filter_name, half, which), 0)
+                by_filter[(asm.records[i].filter_name, half, which)] += 1
+        top = sorted(by_filter.items(), key=lambda kv: -kv[1])[:6]
+        print('   %d records state a field no name covers: %s'
+              % (len(ign), ', '.join('%s %s %s x%d' % (f, h, w, n)
+                                     for (f, h, w), n in top)))
     roots = sorted(set(fails) - info['cascaded'])
     for i in roots[:20]:
         print('   rec %-5d %-16s %s' % (i, asm.records[i].filter_name, fails[i]))
