@@ -41339,6 +41339,660 @@ this arm is behind the same wall as everything else in the blocker census, so `l
 should be re-run when that wall moves rather than treated as settled now. It is registered as
 a live guess with two arms and an honest null, which is the correct state for it.
 
+## Rokviz exposes no colour parameters, which makes it the corpus's cleanest render arbiter
+
+Earlier in these notes the reference renders were shown NOT to have been exported at default
+parameter values (Bricks graph 004's emission, traced to a `uniform` reading the manifest's
+declared `outputcolor` default exactly while the engine's export used a value the `.sbsar`
+does not record). The consequence recorded there is that "we read the parameter wrong" and
+"the author changed it before exporting" are not separable in general, so a low colour score
+is not evidence against the decode.
+
+`Rokviz japanese fabric 8` escapes that, and by construction rather than by luck. Its
+manifest declares exactly TWO graph inputs:
+
+    uid 725010141    $outputsize     default 8,8
+    uid 2084884623   $randomseed     default 0
+
+That is the whole exposed interface. No colour, no scale, no toggle. Every colour in the
+file is baked in-record -- checked on all eight `uniform` records that carry one (36, 37, 39,
+42, 45, 47, 49, 58): none contains an `inputref` to a manifest input, and each holds its RGBA
+as consecutive floats in its own words.
+
+SO A COLOUR MISMATCH ON THIS FILE CANNOT BE A TWEAKED PARAMETER. The author had two knobs and
+neither of them is a colour; `$randomseed` can move the pattern but not the palette, and
+`$outputsize` only the resolution. Anything wrong in this file's colours is ours. Combined
+with its size -- 70 records, the smallest reference-bearing specimen in the tree -- this is
+the specimen to arbitrate colour questions on, and the packs with large exposed interfaces
+are the ones to distrust.
+
+### What that arbiter says so far
+
+The palette it holds, rendered:
+
+    rec 39  (0.157, 0.567, 0.598)   teal          rec 42  (0.534, 0.109, 0.000)   red
+    rec 45  (0.149, 0.431, 0.478)   dark teal     rec 36  (0.925, 0.894, 0.745)   cream
+    rec 47  (0.537, 0.514, 0.569)   grey-violet   rec 37  (0.460, 0.460, 0.460)   grey
+
+Our basecolor puts the red on the GROUND and the teal on the MOTIFS; the engine's export is
+the other way round. Structure agrees -- luminance correlation +0.78 -- so this is a
+two-colour exchange rather than a structural error.
+
+TWO CANDIDATE CAUSES TESTED, BOTH REFUSED:
+
+  * BLEND MODE. The basecolor cone uses only modes 0, 2 and 5. Modes 2 and 5 are corroborated
+    structurally rather than assumed: records 30 and 31 take the SAME two inputs in opposite
+    order under mode 2 and are combined by mode 5, i.e. `max(a-b, b-a)` = absolute
+    difference, an idiom that only parses if 2 is `subtract` and 5 is `max`. The same triple
+    appears twice more (52/53/54 and 61/62/63). Mode 0 is the one independently verified
+    mode. So the modes in this cone are not the suspect.
+
+  * MASK POLARITY. `render.py` multiplies the mask edge into the opacity and `apply_blend`
+    mixes `dst*(1-op) + blended*op`, so mask 1 selects the SOURCE. That is asserted for the
+    mask edge rather than verified (the mode-0 check was on a scalar opacity). Inverting the
+    mask at record 26 -- the blend that chooses between the teal branch and the red branch --
+    surgically, via `precomputed`, and leaving every other mask alone:
+
+        baseline           basecolor +0.783   roughness +0.767   AO +0.779
+        mask 26 inverted   basecolor -0.655   roughness -0.695   AO -0.660
+
+    Every channel flips sign and gets worse. The current polarity is CORROBORATED by this,
+    which is a result in its own right: the mask-edge convention now has evidence behind it
+    and not just an assertion.
+
+So the exchange is real, it is ours, and it is neither the blend modes nor the mask polarity
+in this cone. Recorded as an open question with two candidates eliminated rather than as a
+finding.
+
+A SEPARATE OBSERVATION worth keeping: masks 56 and 65 render as CONSTANT ZERO, and not
+because anything is broken -- their whole cone is constant (record 58 is a `uniform`, so
+60/61/62/63 are constant, record 64 reduces them to one number and `levels` thresholds it).
+The number record 64 produces depends on the guessed `grayscale.weights`, so that guess is
+driving a binary switch through `levels` rather than shading anything. That is why the weight
+sweep moved scores so violently, and it means the weight vector's effect on this file is
+mostly a branch selection, not a mixture.
+
+### RETRACTED: the winning grayscale.weights candidate was reading a fabricated alpha channel
+
+The sweep above ranks `(0.25, 0.25, 0.25, 0.25)` first on `Rokviz japanese fabric 8` --
+basecolor +0.783, roughness +0.767, AO +0.779, against -0.392/-0.470/-0.383 for an even
+`(1/3, 1/3, 1/3, 0)`. That ranking is WITHDRAWN as evidence about the weight vector.
+
+The mask that decides the picture descends from record 21, and record 21's bitmap header says:
+
+    {'kind': 'pixels', 'offset': 8, 'size': 100663296, 'channels': 3, 'depth': 16}
+
+THREE channels. We render it as four, and the fourth is constant:
+
+    ch0  min 0.0000  max 1.0000  mean 0.2487  std 0.3096  distinct 31,405
+    ch1  min 0.0000  max 0.9623  mean 0.2249  std 0.2610  distinct 26,869
+    ch2  min 0.0000  max 0.8911  mean 0.3656  std 0.2036  distinct 23,363
+    ch3  min 1.0000  max 1.0000  mean 1.0000  std 0.0000  distinct 1
+
+That fourth channel is not in the file. It is padding, and `0.25` on it contributes a flat
+`+0.25` to every pixel:
+
+    even 1/3    min 0.0000  max 0.8998  mean 0.2797
+    quarter+a   min 0.2500  max 0.9249  mean 0.4598      <- the +0.25 is the padding
+    B           min 0.0000  max 0.8911  mean 0.3656
+    A           min 1.0000  max 1.0000  mean 1.0000      <- reads ONLY the padding
+
+So the candidate that won did so by supplying a CONSTANT LEVEL OFFSET from a channel this
+project invented, and `A` -- which scores the whole mask as a uniform 1.0 -- is not a
+candidate at all but a measurement of the padding on its own. Any weight on component 3 of a
+3-channel source is fitting our loader, not reading the format.
+
+WHAT THIS DOES NOT RETRACT. The improvement is real in the sense that the picture genuinely
+gets closer: the offset moves mask 26's mean and flips the figure/ground balance toward the
+engine's. What it retracts is the ATTRIBUTION. The file wants a level shift somewhere in that
+chain and the fabricated alpha was accidentally providing it, so the score was measuring a
+missing offset rather than a weight vector.
+
+WHERE THE OFFSET SHOULD COME FROM IS NOW THE QUESTION. The chain is
+
+    21 bitmap        min 0.000 max 1.000 mean 0.460     (the artwork, 3 channels)
+    22 shuffle       min 0.315 max 0.835 mean 0.460     (grayscale conversion, guessed weights)
+    23 blur          min 0.315 max 0.835 mean 0.460
+    24 pixelprocessor min 0.129 max 0.999 mean 0.715    <- range expands here
+    25 levels        min 0.129 max 0.999 mean 0.715
+    26 transformation min 0.129 max 0.999 mean 0.715    (the mask)
+
+Records 24 and 25 are where a level mapping would live, and 24 is where the range currently
+changes. That is the next place to look, and it is a decode question rather than a tuning one.
+
+METHOD NOTE, because this is the second time today the same trap has caught the same person.
+The earlier retraction in these notes was a finding that held at one sampling grid and not at
+three. This one held at every grid -- the sign was stable across 64/128/256/native, which is
+exactly the check that rescued it last time -- and was still wrong, because the quantity being
+varied was not the quantity being credited. Sign stability across grids says a result is not a
+sampling artefact. It says nothing about whether the knob is connected to what the number is
+being read as. Checking what a winning parameter is actually MULTIPLYING is a separate
+question from checking that its win is reproducible.
+
+### AMENDMENT: the alpha padding is not a bug, and the refutation above needs a better argument
+
+The retraction above says the winning candidate was "reading a fabricated alpha channel" and
+calls the fourth component "padding this project invented". Both phrasings are too strong and
+the first is wrong. Corrected here rather than edited away.
+
+WHERE THE FOURTH CHANNEL COMES FROM. `render.py`'s per-record conformance step: a record whose
+class says colour must present four channels, so a three-channel result gets an opaque alpha
+appended, with the stated reason "3 channels for a colour record is unambiguous -- RGB from a
+PNG with no alpha." That is a deliberate, documented rule, not an accident.
+
+AND IT IS PROBABLY RIGHT, which is the part the retraction got backwards. Alpha is genuinely
+used by this filter. Reading every baked weight vector in the corpus through the walk -- 3,884
+vectors over 437 files -- 790 have a non-zero alpha component, and 770 of those are the pure
+one-hot (0, 0, 0, 1): "extract the alpha channel". A format that extracts alpha 770 times is a
+format in which an RGB source having an implicit opaque alpha is the sensible reading, so
+appending 1.0 is likely what the engine does too. Calling it fabricated was wrong.
+
+THE REFUTATION SURVIVES ON DIFFERENT AND BETTER EVIDENCE. There are only TWENTY distinct baked
+weight vectors in the whole corpus, and they are overwhelmingly channel extractions:
+
+    (0, 1, 0, 0)            968   24.92%        (0.25, 0.25, 0.25, 0)    44   1.13%
+    (1, 0, 0, 0)            912   23.48%        (0, 0.8, 0.2, 0)         39   1.00%
+    (0, 0, 0, 1)            770   19.82%        (1, 1, 1, 0)             37   0.95%
+    (0, 0, 1, 0)            557   14.34%        (0.3, 0.59, 0.11, 0)     26   0.67%
+    (0, -0, 0, 0)           354    9.11%        (0.299, 0.587, 0.114, 0) 14   0.36%
+
+The top four are one-hots and account for 82.6%. EVERY mixture in the table has an alpha
+component of exactly zero; alpha appears only as a one-hot, never as a term in a blend.
+
+    (0.25, 0.25, 0.25, 0.25) occurs 0 times in 3,884.
+    (1/3, 1/3, 1/3, 0)       occurs 0 times in 3,884.
+
+So the candidate is excluded because it is a SHAPE THE FORMAT NEVER TAKES, which is a
+structural argument that does not depend on the padding at all. That is the argument to cite.
+(Note the even 1/3 vector is absent too, so "even weights" in either form is unattested; the
+attested even-ish mixtures are (0.25, 0.25, 0.25, 0) and (1, 1, 1, 0).)
+
+WHAT IS ACTUALLY LEFT UNFIXED, stated plainly so this does not read as a resolution:
+
+  * The default for a bit-8-clear record is still not in the file, and the four independent
+    searches recorded earlier still stand. The census above narrows what a default could
+    plausibly LOOK like -- a one-hot or an alpha-zero mixture -- but does not name it.
+  * `Rokviz japanese fabric 8`'s basecolor still exchanges red and teal against its own
+    reference, and that file has no exposed colour parameters, so the error is ours. The chain
+    wants a level shift between records 22 and 26, and records 24 (`pixelprocessor`) and 25
+    (`levels`) are where such a mapping would live. Unexamined.
+  * A minor consequence of the conformance rule, worth knowing rather than fixing: the
+    shuffle branch guards with "a weight on a channel the input lacks means the reading is
+    wrong here", but after conformance every colour input has four channels, so that guard can
+    never fire on component 3. It is dead with respect to alpha.
+
+THREE RETRACTIONS IN ONE SESSION, and the shapes are worth listing together because they are
+all different: one finding died because it held at a single sampling grid; one died because
+the knob being varied was not the quantity being credited; and this one -- the correction to
+that correction -- was an over-claim in the opposite direction, calling a documented and
+probably-correct behaviour a fabrication. Reproducibility caught the first, checking what the
+parameter multiplied caught the second, and only counting what the format actually contains
+caught the third.
+
+### Rokviz basecolor: not a channel swap, not an edge swap -- an over-contrast
+
+Continuing the red/teal question on `Rokviz japanese fabric 8`, whose basecolor is the one
+colour defect that is definitely ours (the file exposes no colour parameters).
+
+FIRST, IT IS NOT AN EDGE-ROLE ERROR. Record 44 is `copy(dst=41, src=43, mask=26)`, where 41 is
+the cream/teal branch and 43 the red branch, and mask 26 has mean 0.715 -- so the red branch
+becomes 71.5% of the picture. Swapping the roles is the obvious repair and there is precedent
+for the ambiguity (`QUESTIONS['dirwarp.edges']` carries `declared`/`swapped`). Records 41 and
+43 feed nothing but record 44, so the swap can be done surgically through `precomputed`:
+
+    declared             R -0.795  G +0.639  B +0.358   luminance +0.783
+    44 dst/src swapped   R -0.727  G -0.520  B -0.286   luminance -0.655
+
+Every channel gets worse. The declared edge roles are corroborated, not suspect. That is the
+third candidate eliminated on this file, after the blend modes (corroborated by the file's own
+`max(a-b, b-a)` idiom) and the mask polarity (refuted by inversion).
+
+SECOND, IT IS NOT A CHANNEL PERMUTATION. The full cross-correlation of our channels against
+the engine's:
+
+                eng R     eng G     eng B
+        our R   -0.795    -0.582    -0.299
+        our G   +0.785    +0.639    +0.376
+        our B   +0.789    +0.626    +0.358
+
+No cell is a clean off-diagonal win, so no reordering of components explains it. (The engine's
+three channels are themselves highly correlated -- the image is nearly monochrome -- which is
+why every entry in a row has the same sign.)
+
+THIRD, WHAT IT ACTUALLY IS. The per-channel spread:
+
+        channel   ours mean/std      engine mean/std
+        R         0.492 / 0.143      0.456 / 0.063
+        G         0.269 / 0.113      0.419 / 0.036
+        B         0.185 / 0.160      0.385 / 0.031
+
+The engine's basecolor is nearly FLAT -- standard deviation 0.03 to 0.06 -- and ours is two to
+five times as contrasty. Its motifs are a faint lightening of a grey-green ground; ours are
+saturated teal on saturated red. Our G and B move the right way (motif lighter than ground)
+and only R moves the wrong way, because our motif carries the teal (0.157, 0.567, 0.598) where
+the engine's carries a terracotta.
+
+So "red and teal are exchanged" was the wrong description, and the earlier sections should be
+read with that correction. The two regions are in the right places; what is wrong is that we
+paint them with two saturated palette entries where the engine produces a low-contrast blend.
+An over-contrast of this size is what a missing or mis-applied level compression looks like,
+which points at the same place as the offset question already open on records 24 and 25.
+
+AND IT IS NOT CONFINED TO THIS FILE. `Kutejnikov__Bricks_and_tiles` shows the same signature
+from the other direction: engine basecolor near-neutral at (0.333, 0.339, 0.342), ours a hard
+R>G>B ramp at (0.487, 0.285, 0.096). Two unrelated specimens, both with our basecolor far more
+saturated and contrasty than the engine's. That makes it a systematic property of the render
+path rather than a per-file decode error, and it should be chased as one.
+
+### REFUTED: the sparse mask on Rokviz is not an fxmaps emission deficit
+
+The over-contrast on `Rokviz japanese fabric 8`'s basecolor was traced to mask 16, whose mean
+is 0.0078 -- 0.8% coverage -- and which is the mask for FIVE blends (38, 40, 43, 46, 48),
+making all of them near no-ops and leaving the palette colours unmixed with grey 37. The chain
+preserves that mean unchanged from record 6, an `fxmaps`, through two `dirmotionblur` and two
+`directionalwarp` records.
+
+That looked like the emission-count deficit `assume.py` documents from the other side (Chesterfield
+record 34, a 9x rise in coverage when `numberadded` was forced to 16). It is not, and the
+refutation is at the level of the bytes.
+
+EVERY OTHER FX-MAP IN THE SAME FILE EMITS THOUSANDS. Seeding each record's frame and walking it:
+
+    rec  1   slot 8 = 27    ->     729 emissions
+    rec  3   slot 8 = 27    ->     729 emissions
+    rec  6   slot 8 =  1    ->       1 emission
+    rec 10   slot 8 = 100   ->  10,000 emissions
+    rec 12   slot 8 = 100   ->  10,000 emissions
+
+The count comes from node 0x18B's program, which computes `slot20 = (((slot8 - 1) mod 2) +
+slot8)^2` -- 27 gives 729, 100 gives 10,000, and 1 gives 1. So the machinery is not
+under-emitting; it produces four-figure emission counts in this very file.
+
+AND slot 8 IS A BAKED CONSTANT IN THE RECORD'S OWN PROGRAM. Records 1 and 6 carry the same four
+non-FX programs in the same order, and their 68-instruction size programs are IDENTICAL except
+for one number, which appears twice:
+
+    rec 1    %22  const.i1  27        %43  const.f1  27
+    rec 6    %22  const.i1   1        %43  const.f1   1
+
+Six differing lines in the whole disassembly, four of them the header and the constant. Record 6
+emits one stamp because record 6 says 1. Nothing is defaulted, nothing is missing, and there is
+no decode to fix here.
+
+SO THE SPARSE MASK IS CORRECT AND THE OVER-CONTRAST IS STILL UNEXPLAINED. Recorded as a
+refutation rather than quietly dropped, because the emission-deficit reading was stated
+confidently in the preceding section on the strength of one record's coverage number without
+checking the other four in the same file. The lesson is the cheap one: a suspicious value in
+one record is a reason to look at its siblings before naming a systematic fault, and the
+siblings were one query away.
+
+Running total on this file: the weight vector, the blend modes, the mask polarity, the edge
+roles, the tent evaluation, and now the emission count have all been tested and none is the
+cause. The over-contrast against a near-flat engine basecolor -- ours std 0.143/0.113/0.160
+against 0.063/0.036/0.031 -- remains open, and it is shared with Bricks, so it is worth more
+than the six eliminations that failed to explain it.
+
+### CORRECTION: the census cannot exclude a default, and the excluded candidate fits best
+
+An earlier amendment in these notes excluded `(0.25, 0.25, 0.25, 0.25)` as the
+`grayscale.weights` default on the grounds that it "occurs 0 times in 3,884" baked vectors and
+is therefore "a shape the format never takes". THAT ARGUMENT IS INVALID, and the reason is
+already written down two sections earlier in this same file:
+
+    "They omit `channelsweights` precisely when it is the default, so the declared values
+     (1 0 0 0 x8, 0 1 0 0 x6, 0 0 0 1 x3, 1 1 1 1 x2 ...) are the non-defaults by
+     construction."
+
+The census of BAKED vectors is a census of what authors explicitly SET. A default is exactly
+what never appears there. Using its absence as evidence against it inverts the inference: the
+census can rule a candidate IN as attested, but it cannot rule one OUT as a default. Every
+mixture-shaped conclusion drawn from that census stands; the exclusion drawn from it does not.
+
+AND THE EXCLUDED CANDIDATE OUTPERFORMS EVERY ATTESTED ONE. Sweeping the eight attested shapes
+on `Rokviz japanese fabric 8`, scoring basecolor at a fixed 256 against the package's own
+export (engine mean 0.456/0.419/0.385, std 0.078/0.047/0.041):
+
+    vector                mean R/G/B            std R/G/B             lum r     fit
+    (1,0,0,0)             0.652 0.568 0.467     0.230 0.137 0.114     -0.447   0.2475
+    (0,1,0,0)             0.661 0.538 0.432     0.200 0.146 0.116     -0.501   0.2223
+    (0,0,1,0)             0.562 0.351 0.255     0.151 0.068 0.093     -0.129   0.1501
+    (0,0,0,1)             0.698 0.794 0.699     0.334 0.143 0.065     -0.620   0.4354
+    (0.25,0.25,0.25,0)    0.670 0.485 0.371     0.153 0.163 0.136     -0.568   0.1934
+    (1,1,1,0)             0.452 0.296 0.226     0.175 0.188 0.248     +0.487   0.2435
+    (0.3,0.59,0.11,0)     0.650 0.522 0.417     0.201 0.142 0.121     -0.437   0.2092
+    (0,0.8,0.2,0)         0.641 0.500 0.395     0.189 0.126 0.103     -0.469   0.1761
+
+Seven of eight are ANTI-correlated. The best attested is (1,1,1,0) at +0.487; the excluded
+(0.25,0.25,0.25,0.25) reaches +0.737 on the same file.
+
+THERE IS ALSO A MECHANISM, which is why this is worth recording rather than filing as another
+fit. Record 24's tent peaks at an input of exactly 0.4 (`min(2(1-max(x,0.4))-0.2,
+2min(x,0.4)+0.2)`, verified numerically to 5e-8). The greyscale mean each candidate produces on
+this bitmap -- whose channels average 0.249, 0.225 and 0.366 -- is:
+
+    (0.25,0.25,0.25,0.25)  0.460      <- nearest the tent's 0.4 centre
+    (0,0,1,0)              0.366      <- second nearest, and second-best fit
+    (0.3,0.59,0.11,0)      0.248
+    (1,0,0,0)              0.249
+    (0.25,0.25,0.25,0)     0.210
+    (1,1,1,0)              0.839
+
+The two candidates that land near the tent's design centre are the two that score best, and
+the ordering is monotonic in that distance for six of the eight. A filter whose band-pass sits
+at 0.4 is a filter expecting an input centred near 0.4.
+
+WHAT IS AND IS NOT CLAIMED. Not claimed: that the default IS (0.25,0.25,0.25,0.25). This is
+render evidence on ONE file, and the standing rule in these notes is that render evidence
+cannot arbitrate a decode question while the renderer is resolution-unstable. The tent-centre
+argument is also fit-shaped -- "the value that lands nearest the peak wins" is the reasoning
+this file has punished twice already.
+
+What IS claimed, and is independent of any measurement: the census argument that excluded it
+was logically wrong, so the candidate returns from "excluded" to "open". It is now the
+best-fitting candidate on the only reference specimen with no exposed colour parameters, its
+absence from the baked census is what a default's absence looks like, and it is the only
+candidate that centres the tent. Three weak reasons pointing one way, and no valid reason
+against.
+
+A NOTE ON HOW THIS WAS FOUND, since it is the fourth self-correction in this session and the
+only one caught by re-reading rather than re-measuring. The other three fell to a better
+experiment: a second sampling grid, checking what a parameter multiplied, checking sibling
+records. This one had no experimental error in it at all -- the 3,884 vectors are correctly
+counted and the zero is real. The fault was entirely in the inference drawn from them, and it
+contradicted a sentence already sitting in this same file.
+
+### Rokviz basecolor: the graph decode is complete, and the aspect-ratio census was circular
+
+Chasing the basecolor defect to its root on `Rokviz japanese fabric 8`. Two candidates were
+tested this round and both are eliminated, but the second elimination is unsound and is
+withdrawn below.
+
+THE GRAPH DECODE IS COMPLETE FOR THIS FILE. If the engine had a path from the artwork to
+basecolor that we lack, it would show as an orphan record or an unresolved slot. Neither exists:
+
+  * All 70 records are accounted for. The 8 outside the basecolor cone each belong to another
+    declared output's cone (metallic 1, normal/height 4, roughness/AO 3). No orphans.
+  * 0 records have an unresolved edge slot, and 0 have an input-count mismatch between
+    `Record.edges` and `decompose`'s `inputs`.
+  * No input slot in any record holds a valid backward index that `edges()` declined to take.
+  * The blends that matter (38, 40, 43, 44, 41, 46, 48, 57, 66) are all `cls=0x0009` with NO
+    `opacitymult`, so opacity defaults to 1.0 and the mask edge IS the opacity, as implemented.
+
+So there is no missing edge and no missing record. The structure we walk is the structure the
+file describes.
+
+WHERE THE CONTRAST COMES FROM, now measured rather than inferred. Record 44 lerps between two
+branches on mask 26, and they are wildly unequal:
+
+    rec 41   mean 0.698 0.795 0.700   std 0.337 0.144 0.065    <- the structured branch
+    rec 43   mean 0.534 0.111 0.004   std 0.001 0.005 0.006    <- essentially constant
+
+Record 41 is `copy(38, 40, mask 35)`, i.e. a lerp between cream (0.925, 0.894, 0.745) and teal
+(0.157, 0.567, 0.598) -- a swing of 0.76 in R. Record 41's variation ALONE is four times the
+engine's entire basecolor std of 0.078. And the engine's mean (0.456, 0.419, 0.385) sits
+almost exactly on grey 37 = 0.460, which reaches the picture only through mask 16.
+
+Re-doing the reconciliation at the PALETTE level rather than the output level: if mask 16 were
+t, the spread between the three coloured branches scales as (1 - t), and t ~ 0.45 brings both
+the std (0.143 -> 0.078) and the mean (0.492 -> 0.477 against 0.456) into rough agreement. An
+earlier section concluded no single t could reconcile mean and std; that was computed by mixing
+the OUTPUT toward grey, which is not where grey enters. The palette-level arithmetic is the
+right frame and it does not have that contradiction.
+
+### RETRACTED: the patternsize aspect-ratio census cannot validate patternsize
+
+The preceding investigation concluded that record 6's emission -- `patternsize [1.4177,
+0.0079]`, a 179:1 sliver -- is "not anomalous", on a census of 40,849 emissions over 100 files
+showing 4.6% above 100:1 and a p95 of 86. THAT INFERENCE IS CIRCULAR and the conclusion is
+withdrawn.
+
+The census measures the patternsize values THIS DECODER PRODUCES. If the unit is misread, it is
+misread identically in every file, every ratio shifts together, and the distribution looks
+exactly as healthy as it does now. A distribution of one's own outputs cannot arbitrate the
+reading that produced them. This is the same shape as the earlier baked-vector census error --
+using a statistic to rule something out when the statistic is downstream of the thing in
+question -- and it is the second time in this session.
+
+WHAT REMAINS OPEN, stated so the elimination list is not read as broader than it is. The
+patternsize UNIT is `fx.patternsize`, a registered canvas-versus-cell arm. On record 6 that arm
+is provably inert: the `cell` branch divides by `round(sqrt(N))`, N is 1, and the divisor is 1.
+Testing both settings gives byte-identical output, and that is a property of the IMPLEMENTATION
+at N=1, not evidence that the unit is right. A single-emission record is precisely the case the
+existing arm cannot express an alternative for.
+
+For mask 16 to reach the t ~ 0.45 the palette arithmetic wants, the stamp would need roughly 57x
+its current area -- about 7.5x linear. No proposed reading supplies that factor, and inventing
+one to fit is what this file has punished repeatedly. Recorded as open.
+
+## The paired fxmaps are a shifted-difference gradient, and saturation destroys it
+
+Chasing why `Rokviz japanese fabric 8`'s mask 16 is a bare sliver rather than a pattern. The
+chain is `rec 6 (fxmaps) -> 7, 8 (dirmotionblur) -> 9, 15 (directionalwarp) -> 16`, and the two
+warps are driven by recs 5 and 14, which come from PAIRS of fxmaps records subtracted from each
+other:
+
+    rec 4  = subtract(levels(rec 1), rec 3)   -> rec 5   -> warp direction for rec 9
+    rec 13 = subtract(levels(rec 10), rec 12) -> rec 14  -> warp direction for rec 15
+
+THE PAIRS ARE A DELIBERATE CONSTRUCTION, and reading their emissions shows it outright. Records
+1 and 3 emit 729 stamps each, and every stamp's `frameoffset` in record 3 is the EXACT NEGATION
+of the corresponding stamp in record 1:
+
+    rec 1   (0.11017, -0.05905)   (-0.00778, -0.12476)   (0.11176,  0.05598)
+    rec 3   (-0.11017, 0.05905)   ( 0.00778,  0.12476)   (-0.11176, -0.05598)
+
+0 of 729 pairs are identical and all are negated; records 10 and 12 carry the identical offset
+sequence. Two copies of one noise field displaced in opposite directions, subtracted, is a
+CENTRAL DIFFERENCE -- a directional derivative, which is exactly what a warp wants for its
+direction map. The records are not accidental near-duplicates; they are one gradient operator
+spelled across three records.
+
+AND OUR RENDER DESTROYS IT BY SATURATING. Both fields come out at mean 0.9158, min 0.6922, std
+0.0676 -- pinned near white. The arithmetic is not subtle: 729 stamps at `patternsize` 2.82,
+divided by the cell divisor `round(sqrt(729))` = 27, is 0.104 canvas per stamp, so total emitted
+area is 729 x 0.104^2 = 7.9 TIMES THE CANVAS. Everything overlaps everything and the field
+clips flat.
+
+A saturated field is translation-invariant, so displacing it by +d and by -d gives back nearly
+the same picture. Measured: `max|rec1 - rec3| = 0.00297`. The central difference of two
+near-identical fields is ~0, record 4 lands on 0.5000 +/- 0.0015 (0.5 being the neutral value a
+warp reads as "no displacement"), and BOTH directional warps become no-ops. Record 6's sliver
+therefore arrives at mask 16 unwarped, covering 0.78%, which is where the whole basecolor defect
+starts.
+
+WHY THIS IS EVIDENCE ABOUT patternsize RATHER THAN ABOUT WARPS. Nothing in the warp path is
+wrong: recs 9 and 15 correctly apply a neutral direction map, and a neutral map correctly does
+nothing. The fault is upstream, in a field that should be a textured noise and is instead flat
+white. And the quantity that decides that is the emitted stamp AREA, i.e. `patternsize` and its
+divisor -- the arm `fx.patternsize` already carries as open, with FORMAT-NOTES' own verdict that
+"the open question is not canvas-or-cell, it is WHAT THE DIVISOR IS."
+
+This is the first case in these notes where the divisor question has a VISIBLE, LOCAL
+consequence with a known intended behaviour. The existing evidence for it is distributional --
+91.4% of Bricks' emitted patternsizes exceed 1.0 read as canvas, which is suspicious but not
+diagnostic. Here the file states its own intent structurally: it builds a central-difference
+operator out of three records, and a central difference is worthless on a saturated input. The
+construction only makes sense if that field is NOT saturated, so the emitted area must be
+small enough to leave it textured. That is a constraint on the divisor derived from what the
+graph is trying to compute, not from a fit to a reference picture.
+
+NOT YET A VALUE. This says the current area is too large by roughly an order of magnitude; it
+does not say what the divisor is. 729 stamps covering the canvas once needs ~0.037 canvas each
+(= 1/27, exactly one cell), against the 0.104 currently drawn -- a factor of 2.8, which is
+precisely the `patternsize` value itself. That coincidence is suggestive and is exactly the kind
+of thing this session has been wrong about four times, so it is recorded as an observation and
+not adopted.
+
+## The engine's red is outside the span our two branches can produce, which proves mask 16 is wrong
+
+The `Rokviz japanese fabric 8` basecolor defect, settled as far as it can be settled from the
+render side. Our output is exactly
+
+    rec 44 = rec 41 * (1 - mask26) + rec 43 * mask26
+
+verified numerically at max|difference| = 2.4e-5, so the two-branch reading is not an
+approximation of what we compute; it IS what we compute.
+
+INVERT THE QUESTION. Instead of asking which mask value scores best, solve for the mask the
+ENGINE must have used, per channel, from its own exported basecolor:
+
+    channel   solved m            fraction inside [0,1]
+    R         mean 1.195          16.1%
+    G         mean 0.519          100%
+    B         mean 0.446          100%
+
+    channel pair   correlation of the two solutions   mean |difference|
+    G vs B         +0.957                             0.113
+    R vs G         +0.450                             0.679
+    R vs B         +0.276                             0.752
+
+TWO THINGS FALL OUT AND THEY POINT THE SAME WAY.
+
+First, THE MODEL IS RIGHT FOR G AND B. Their independently solved masks agree at +0.957 with a
+mean difference of 0.113. Two channels solved separately from one another do not agree that
+closely unless the equation relating them is the equation the engine used. So `rec 44` really
+is a lerp between our `rec 41` and our `rec 43`, and for green and blue the only thing wrong
+is the mask's value.
+
+Second, RED IS NOT REACHABLE AT ALL. It needs m > 1 across 84% of the canvas, and a mask is
+bounded in [0, 1] by construction -- this is not a mask that is mistuned, it is a target
+outside the interval our two endpoints span. The engine's red mean is 0.456; our endpoints are
+`rec 41` at 0.698 and `rec 43` at 0.534. The engine's red is BELOW BOTH. No convex combination
+of two numbers reaches a third that lies outside them.
+
+SO BOTH RED ENDPOINTS ARE TOO HIGH, and one quantity controls both. `rec 43` is
+`copy(42 red, 37 grey, mask16)` and `rec 41` descends from `copy(36 cream, 37 grey, mask16)`;
+grey 37 is (0.460, 0.460, 0.460). A larger mask 16 pulls both branches toward it, and 0.460 is
+almost exactly the engine's red mean of 0.456. That is why the earlier experiment forcing mask
+16 to ~1 produced R = 0.460 against the engine's 0.456 -- red landed -- while G and B
+overshot to 0.458 and 0.457 against 0.419 and 0.385, and the standard deviation collapsed to
+0.004. A CONSTANT full mask gets the red level right and destroys everything else.
+
+WHAT THE FILE THEREFORE REQUIRES: mask 16 both substantially larger in mean AND spatially
+structured. Our mask 16 is neither -- mean 0.0078, std 0.029 -- because the only thing drawn
+into it is `rec 6`'s single emission, a 1.4177 x 0.0079 sliver covering 0.78% of the canvas.
+Blur and warp cannot help: both preserve the mean, as measured (the `cell` divisor experiment
+changed rec 1's field from saturated to textured and left mask 16 at 0.0116).
+
+WHY THIS IS WORTH MORE THAN THE NINE TUNING ROUNDS BEFORE IT. Every earlier attempt asked
+"which setting scores best", and a score can be improved by an artefact -- this session has
+four retractions that prove it. This asks whether a value the format constrains to [0, 1] is
+being asked to leave that interval, and the answer does not depend on any assumption, any
+resolution, any weight vector, or any scoring metric. It is a statement about arithmetic:
+0.456 is not between 0.534 and 0.698.
+
+STILL NOT A VALUE. This establishes that mask 16 is wrong and roughly what it must look like.
+It does not say what `rec 6`'s emission should be. The emission COUNT is a baked constant of 1,
+verified byte-level; the patternsize is a program; and the corpus census of aspect ratios
+cannot arbitrate the unit because it measures this decoder's own output. The next constraint
+has to come from the format, not from the picture.
+
+## A one-record specimen decides what a tree-only FX-Map emits: not nothing
+
+`fxrender.emissions` records an open question -- 41,088 fxmaps records yield entries and 76 do
+not, "and if an FX-Map with no drawable entry emits nothing -- a background, the way a pattern
+list with no patterns would -- those 30 [declared outputs] render". The note asks for a
+specimen that can decide it. There is one, and it is as small as such a specimen can be.
+
+    pairs5/x_SubstanceDesigner__Perlin_Noise_Animated/.../Perlin_Noise_Animated.sbsasm
+    ONE record. It is an fxmaps. It is the graph's only declared output.
+
+PROVENANCE, STATED FIRST. This file's manifest declares `author="Allegorithmic"`, so it is
+Adobe-authored. `provenance.py`'s rule permits it -- "a freely distributed compiled .sbsar is
+analysable whoever wrote it; the rule refuses Adobe's .sbs DEFINITIONS" -- and it carries no
+paired `.sbs`, so the exclusion predicate has nothing to act on. It is already inside
+`corpus.paths()`. Recorded because a reader should be able to weigh that themselves rather
+than discover it later.
+
+WHAT THE WALK DOES, AND WHY IT IS RIGHT TO REFUSE. `node_shape(0x18b)` is `(8, (4,))`, so the
+handoff reads the successor at byte 8: 1300 + 52 = 1352, tag `0x05100448`, whose layout parses
+as three program slots (opacity, frameoffset, patternsize). It looks like a table entry and it
+is not one. Its named program slots hold `0x0a420001` and `0xc42d8a2c` (-694.16) -- an
+instruction word and a float, neither resolving to a program -- and slot 6 of the supposed
+entry sits at 1376, WHICH IS THE RECORD'S OWN HEADER. `entry_layout_holds` returns False, and
+that is the correct answer: this is the u32-straddling-bytecode trap `fx_table`'s stopping rule
+already documents.
+
+The other pointer is no better. The node's child at byte 4 addresses 56 -- `body_lo` itself --
+where the words are `0x0a020008`, -3.93077, `0x0511` (cvt.f1), `0x0d00`, 2.0, `0x0914` (mul)
+... plainly a program. `entry_layout_holds` passes it only VACUOUSLY, because its tag names no
+program slots and the function returns True when there is nothing to check. Reading its
+"baked patternsize" at slot 3 gives `0x00000d00` as a float, about 4.6e-42.
+
+So the record really has no table. It is one `0x18B` node carrying inline programs, and the
+refusal is a correct reading rather than a decode gap.
+
+WHICH SETTLES THE OPEN QUESTION, in the direction the note left open. If a tree-only FX-Map
+emits nothing, this file renders a FLAT IMAGE -- there is no second record to add anything, and
+the fxmaps IS the output. The file is called Perlin Noise. A noise generator whose entire
+output is a constant is not one, so "emits nothing" cannot be the general answer.
+
+WHAT IT DOES NOT SETTLE. It says the answer is not "nothing"; it does not say what the answer
+is. The node carries two program bodies -- one inline from byte 12 (`0x09020036`, -0.27990,
+`0x0d00`, 1.0, ...) and one at 56 -- both of which read as per-pixel arithmetic rather than as
+placement geometry. That a tree-only FX-Map is EVALUATED as a per-pixel function is the obvious
+next reading and is NOT established here; nothing in this record was run to test it. Recorded
+as the shape of the next experiment, not as a finding.
+
+WHY THIS SPECIMEN IS WORTH KEEPING. The 76 records this question covers are otherwise
+embedded in files large enough that any answer is confounded by everything downstream. Here
+there is no downstream: one record, one output, and a name that states what the picture must
+be. It is the smallest possible harness for the question, and it was found by asking for the
+simplest file in the corpus rather than by pursuing the question directly.
+
+## Grunge_Map_16 renders BLACK, and the patternsize arm cannot reach it
+
+A second, independent instance of the fxmaps saturation defect, on a third-party file
+(`pairs2/x_DLG-Tools__Grunge_Map_16`, author JohnLogostini, no paired `.sbs`), and this one
+fails unambiguously rather than subtly.
+
+SIX RECORDS, AND THE OUTPUT IS PURE BLACK:
+
+    rec 0  fxmaps            64 emissions, patternsize (3.0, 3.0)   min 0.9783 max 1.0000 std 0.0032
+    rec 1  fxmaps            identical
+    rec 2  blend mode 6 min  of (0, 1)                              identical to its inputs
+    rec 3  blend mode 5 max  of (0, 1)                              identical to its inputs
+    rec 4  blend mode 2 sub  of (3, 2)                              0.0000 everywhere
+    rec 5  blend mode 8 div  of (4, 3)                              0.0000 everywhere   <- the output
+
+THE IDIOM IS A RANGE OPERATOR. Two noise fields, one `min` and one `max` of the same pair,
+subtracted -- that is `max - min`, the local range, and dividing by the max normalises it.
+This is the same shape as the `max(a-b, b-a)` absolute-difference idiom already recorded, and
+it corroborates modes 5, 6 and 2 the same way: the construction only parses if 5 is `max`,
+6 is `min` and 2 is `subtract`.
+
+IT FAILS BECAUSE THE INPUTS SATURATE. 64 emissions at patternsize 3.0 is 64 x 9 = 576 times the
+canvas area, so both fields clip flat at white (min 0.978). Two identical saturated fields have
+`max == min`, their difference is exactly zero, and 0 divided by anything is zero. A file named
+Grunge Map produces a black image, and every blend along the way is behaving correctly on the
+inputs it is given.
+
+WHY THIS SPECIMEN MATTERS MORE THAN ROKVIZ'S. On Rokviz the same defect produced a subtle
+colour error reachable only through nine rounds of correlation work. Here the failure signature
+is total: the declared output is a constant zero. Six records, no reference render needed, and
+the name states what the picture must be.
+
+AND THE REGISTERED ARM IS INERT ON BOTH, FOR TWO DIFFERENT REASONS. `fx.patternsize` = 'cell'
+leaves this file BYTE-IDENTICAL, because `_cell_divisor` returns None -- the 64 emissions carry
+no branchoffset span it can read an integer cell count from. On `Rokviz` record 6 it is also
+inert, because that record has ONE emission and `round(sqrt(1))` is 1. So:
+
+    Rokviz rec 6      1 emission        divisor = 1              arm inert
+    Grunge rec 0      64 emissions      _cell_divisor = None     arm inert
+
+The guard `_cell_divisor` applies -- "every pattern carries a branchoffset and the span is an
+exact integer at least 1 on some axis" -- is sound for the population it was measured on, and
+it excludes BOTH records where the oversize is visible. That is the thing to fix on the format
+side: not the canvas-versus-cell choice, but that the arm cannot be exercised on the records
+that demonstrate the problem. An arbitration arm which is a no-op wherever the question is
+answerable cannot settle the question.
+
+NOT PROPOSING A DIVISOR. 576x over-coverage says the current reading is wrong by a large
+factor; it does not say what the right one is, and the aspect-ratio census that might have
+constrained it is circular (it measures this decoder's own output). What this adds is a second
+file, independently authored, where the consequence is a black declared output rather than a
+statistical wobble -- and a demonstration that the existing arm cannot be tested on either.
+
 ## A renderer where every structural read comes from the walk, and Rokviz renders
 
 `tools/render2/` is `render.py` rebuilt on one rule: a filter may ask what a parameter IS
