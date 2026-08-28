@@ -251,12 +251,19 @@ class Perm(dict):
         return 0.5
 
 
-def make_runner(asm, rec):
+def make_runner(asm, rec, programs=None, cache_funcs=None):
     # PER ASSEMBLY, NOT PER RECORD. `cache` holds compiled program objects, `spans` program
     # extents and `flows` slot read/write sets -- all keyed on `ptr` alone, none depending on
     # which record is asking. They were being rebuilt per record, so a program reached from
     # two records was transpiled twice: over twelve files, 3,142 transpile() calls for 1,370
     # distinct programs, with the most-shared program built fourteen times.
+    #
+    # `cache_funcs` is a caller's (cache_read, cache_write) for the 0x03/0x06 value cache,
+    # bound into every namespace built here instead of `sbsruntime`'s module global. A
+    # caller that passes it MUST pass its own `programs` memo too, and it is refused below
+    # if it does not: the substitution lives in the compiled function's namespace, so a
+    # function memoized on the assembly would carry one caller's cache to the next one to
+    # ask for that address. Spans and flows stay on the assembly -- they are pure in `ptr`.
     _memo = getattr(asm, '_fx_runner_memo', None)
     if _memo is None:
         _memo = ({}, {}, {})
@@ -265,6 +272,11 @@ def make_runner(asm, rec):
         except AttributeError:
             pass                      # __slots__ assembly: fall back to per-record
     cache, _spans_memo, _flows_memo = _memo
+    if cache_funcs is not None and programs is None:
+        raise ValueError("a bound value cache needs the caller's own program memo, "
+                         "not the assembly's shared one")
+    if programs is not None:
+        cache = programs
 
     # BUILT ONCE PER RECORD, NOT ONCE PER EMISSION. The graph's declared input values do not
     # change while a record renders -- they are read straight off `asm.header` -- but this
@@ -331,6 +343,11 @@ def make_runner(asm, rec):
             src = transpile.transpile(asm.data, ptr, end, "python", "prog")
             scope = {}
             exec(compile(src, "<fx>", "exec"), scope)
+            if cache_funcs is not None:
+                # The transpiled source imports these two from `sbsruntime` at its own
+                # module level; rebinding them in the scope points them at the caller's
+                # cache, because `prog.__globals__` IS this scope.
+                scope["cache_read"], scope["cache_write"] = cache_funcs
             fn = cache[ptr] = scope["prog"]
         sbsruntime.set_context(width=rec.width, height=rec.height,
                                number=number if isinstance(number, np.ndarray)
