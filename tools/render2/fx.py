@@ -42,6 +42,7 @@ both, and reads the DIMENSIONALITY too: a program that decomposes $number into a
 a column walks an N x N grid, one that scales it linearly walks a run of N.
 """
 import math
+import re
 import struct
 
 import numpy as np
@@ -217,8 +218,147 @@ def _grid_width(rec):
     return _WIDTH_CACHE[key]
 
 
-def emissions(rec, run, slots):
-    """[{parameter: value}] for every pattern the record draws, in emission order."""
+#: THERE IS NO SIZE THRESHOLD, and the obvious one is a pessimisation. `fxrender` keeps a
+#: `BATCH_MIN` because there the decision is made BEFORE the walk; here the count is only
+#: known after it, so declining a small record means walking the chain a SECOND time to
+#: emit scalar. On PlasticSubstance003, 148 of 181 records draw fewer than 32 patterns, so
+#: a threshold of 32 would double-walk 82% of them to save the stacking of 900 patterns.
+#: The only refusal left is a table that cannot be batched at all, which `batch_reads`
+#: answers before the walk starts.
+
+
+_CACHE_READ = re.compile(r'cache_read\((\d+)\)')
+_CACHE_WRITE = re.compile(r'cache_write\([^,]+,\s*(\d+)\)')
+
+
+def _prog_source(asm, ptr):
+    """The program's transpiled Python source, from `ops`' own memo, or None."""
+    import ops
+    try:
+        return ops._source(asm, ptr)
+    except Exception:
+        return None
+
+
+def batch_reads(asm, run, nodes, table):
+    """The slots the entry parameters read, or None if the table cannot be batched.
+
+    WHAT THE CHAIN CARRIES AND WHAT THE TABLE DOES NOT. A gate's `switch` is a scanner: it
+    reads slots 18/20/21/22 and writes 16/18/20/21/22/25, so emission k's frame is a
+    function of emission k-1's and the chain has to be walked one pattern at a time. The
+    ENTRY parameters are the other kind -- they read the frame and write no slot back --
+    which makes each of them a pure function of ($number, frame) and lets ONE evaluation
+    over m rows answer for m patterns.
+
+    THE 0x03/0x06 CACHE IS THE SECOND STATE CHANNEL and it is not visible to `run.flow`,
+    which reports slots only. 164 of 181 records on PlasticSubstance003 have an entry
+    parameter that calls `cache_write`, so refusing them all would leave this path
+    switched off for 91% of the population. The writes themselves are reproducible --
+    the scalar walk leaves the LAST pattern's value at the index and `_collapse_cache`
+    puts exactly that there -- so what has to be refused instead is a cache index that is
+    both WRITTEN by an entry parameter and READ by anything that runs against a different
+    pattern than the write: a chain program (which the batched path now runs entirely
+    BEFORE the table rather than interleaved with it) or another entry parameter (which
+    under the scalar walk would read pattern k-1's write, a loop-carried dependence the
+    batch flattens). Indices are literals in the transpiled call, so they are read off it.
+
+    `None` means "run the scalar walk", never "run something approximate".
+    """
+    flow = getattr(run, 'flow', None)
+    if flow is None:
+        return None
+    reads = set()
+    writes_idx, reads_idx = set(), set()
+    for _o, _t, params in table:
+        for _n, (kind, value) in fxrender.in_eval_order(params):
+            if kind == 'baked' or not value:
+                continue
+            src = _prog_source(asm, value)
+            if src is None:
+                return None
+            try:
+                r, w = flow(value)
+            except Exception:
+                return None
+            if w:
+                return None
+            reads |= r
+            writes_idx |= {int(x) for x in _CACHE_WRITE.findall(src)}
+            reads_idx |= {int(x) for x in _CACHE_READ.findall(src)}
+    for _o, _h, ps in nodes:
+        for value in ps.values():
+            if not value:
+                continue
+            src = _prog_source(asm, value)
+            if src is None:
+                return None
+            reads_idx |= {int(x) for x in _CACHE_READ.findall(src)}
+    if reads_idx & writes_idx:
+        return None
+    return reads
+
+
+def _collapse_cache(cache, before, m):
+    """Leave the LAST pattern's value at every index the batch wrote, as the walk would.
+
+    A batched `cache_write` stores an (m, C) column where the scalar walk stored one row
+    per pattern and left the last. The cache holds one value per index for a LATER RECORD
+    to read back, so an m-row array there is not a faster answer, it is a different one.
+    """
+    if m < 2:
+        return
+    for k, v in list(cache.items()):
+        if before.get(k) is v:
+            continue
+        a = np.asarray(v)
+        if a.ndim == 2 and a.shape[0] == m:
+            cache[k] = a[-1:]
+
+
+def _stack(frames, keys, m):
+    """The m recorded frames as one {slot: (m, C)} frame, or None if they do not stack.
+
+    A slot nothing rewrote between emissions is the SAME ARRAY OBJECT in every frame, so
+    it is passed through at its own width instead of being tiled to m identical rows --
+    which is most of them, and the difference is the whole memory cost of this path.
+    """
+    out = {}
+    for k in keys:
+        col = []
+        for f in frames:
+            v = f.get(k)
+            if v is None:
+                return None
+            col.append(v)
+        first = col[0]
+        if all(v is first for v in col):
+            out[k] = first
+            continue
+        try:
+            rows = [np.asarray(v).reshape(1, -1) for v in col]
+            if len({r.shape[1] for r in rows}) != 1:
+                return None
+            out[k] = np.concatenate(rows, axis=0)
+        except Exception:
+            return None
+    return out
+
+
+def emissions(rec, run, slots, cache=None):
+    """[{parameter: value}] for every pattern the record draws, in emission order.
+
+    THE CHAIN IS WALKED ONCE PER PATTERN AND THE TABLE IS EVALUATED ONCE. Those are two
+    different costs and only one of them is sequential. A gate's `switch` carries state --
+    it reads the slots it writes, so pattern k's frame is pattern k-1's advanced -- and no
+    reordering of the walk is available. The entry parameters carry none: they read the
+    frame and write nothing, so one run of the same program over an (m, 1) `$number`
+    against the m frames the walk recorded gives the same m answers it gave one at a time.
+    See `batch_reads` for how "carries none" is decided and `_batch_emit` for the run.
+
+    The scalar path is unchanged and is still the arbiter: anything the batched one cannot
+    stack falls back to it FROM THE FRAME THE WALK STARTED WITH, so a refusal costs a
+    re-walk and never an approximation.
+    """
     nodes = fxrender.chain(rec)
     table = fxrender.entries(rec)
     if not table:
@@ -242,11 +382,88 @@ def emissions(rec, run, slots):
         except Exception:
             pass
 
+    reads = batch_reads(rec.asm, run, nodes, table)
+    if reads is not None:
+        seed = dict(slots)
+        frames, closed = _walk(rec, run, slots, nodes, table, reads)
+        got = _batch_emit(run, table, frames, reads, cache)
+        if got is not None:
+            if not got and not closed:
+                raise Unsupported('fxmaps: emitted no patterns and no gate closed')
+            return got
+        # THE FRAMES WOULD NOT STACK. Restore the frame the walk started from: the chain
+        # has been driven and its writes are in `slots`, so re-walking without this would
+        # start pattern 0 on pattern N's state.
+        slots.clear()
+        slots.update(seed)
+
+    out, closed = _walk(rec, run, slots, nodes, table, None)
+    if not out and not closed:
+        raise Unsupported('fxmaps: emitted no patterns and no gate closed')
+    return out
+
+
+def _batch_emit(run, table, frames, reads, cache=None):
+    """Every recorded frame's patterns, one evaluation per entry parameter, or None."""
+    m = len(frames)
+    numbers = np.array([n for n, _f in frames], dtype=np.float64)
+    stacked = _stack([f for _n, f in frames], sorted(reads), m)
+    if stacked is None:
+        return None
+    before = dict(cache) if cache is not None else {}
+    cols = []
+    for _o, tag, params in table:
+        per = {'patterntype': fx_patterntype(tag), '_tag': tag}
+        wide = {}
+        for name, (kind, value) in fxrender.in_eval_order(params):
+            if value is None:
+                continue
+            if kind != 'baked':
+                # A FRESH FRAME PER PARAMETER. `batch_reads` has already refused any
+                # parameter that writes a slot, so nothing should reach the dict -- the
+                # copy is what makes that a fact rather than a hope, and it is one dict
+                # per parameter, not per pattern.
+                a = np.asarray(run(value, dict(stacked), numbers, flatten=False))
+                # ROWS ARE PATTERNS ONLY WHEN THERE ARE m OF THEM. A program reading
+                # neither `$number` nor a stacked slot returns ONE row however wide, and
+                # that row is one value's components, not a per-pattern column.
+                if a.ndim == 0:
+                    a = a.reshape(1, 1)
+                elif a.ndim == 1:
+                    a = a[:, None] if a.shape[0] == m else a[None, :]
+                if a.shape[0] not in (1, m):
+                    return None
+                wide[name] = a
+            elif isinstance(value, np.ndarray):
+                per[name] = value
+            else:
+                per[name] = np.asarray(value, dtype=np.float32).ravel()
+        cols.append((per, wide))
+    if cache is not None:
+        _collapse_cache(cache, before, m)
+    out = []
+    for j in range(m):
+        for per, wide in cols:
+            got = dict(per)
+            for name, a in wide.items():
+                got[name] = a[j] if a.shape[0] == m else a[0]
+            out.append(got)
+    return out
+
+
+def _walk(rec, run, slots, nodes, table, collect):
+    """Drive the chain. `collect` is the slot set to record per pattern, or None to emit.
+
+    Returns (patterns or (number, frame) pairs, whether a gate closed a branch).
+    """
     out = []
     closed = [False]
     ran_once = set()
 
     def emit(number):
+        if collect is not None:
+            out.append((float(number), {k: slots[k] for k in collect if k in slots}))
+            return
         for _o, tag, params in table:
             got = {'patterntype': fx_patterntype(tag), '_tag': tag}
             for name, (kind, value) in fxrender.in_eval_order(params):
@@ -260,8 +477,15 @@ def emissions(rec, run, slots):
                     got[name] = np.asarray(value, dtype=np.float32).ravel()
             out.append(got)
 
+    # THE BUDGET IS COUNTED IN PATTERNS IN BOTH ARMS. `emit` appends one dict per TABLE
+    # ENTRY when it is emitting and one per EMISSION when it is recording frames, so
+    # `len(out)` is the pattern count only in the first case. Left as `len(out)`, a record
+    # with four entries would be refused at the same budget scalar and allowed four times
+    # as many patterns batched -- a runtime bound that moved with an optimisation.
+    per_emission = 1 if collect is None else max(len(table), 1)
+
     def walk(i, number, mode):
-        if len(out) > MAX_PATTERNS:
+        if len(out) * per_emission > MAX_PATTERNS:
             raise Unsupported('fxmaps: more than %d patterns' % MAX_PATTERNS)
         if i == len(nodes):
             emit(number)
@@ -317,9 +541,7 @@ def emissions(rec, run, slots):
         raise Unsupported('fxmaps: node header %#x is not modelled' % hdr)
 
     walk(0, 0, 'chain')
-    if not out and not closed[0]:
-        raise Unsupported('fxmaps: emitted no patterns and no gate closed')
-    return out
+    return out, closed[0]
 
 
 def _known_node(hdr):
@@ -382,15 +604,95 @@ def _combine(dst, src):
     return np.maximum(dst, src)
 
 
+def _blend(dst, src, mode, where):
+    """`_combine` written INTO `dst`, under a mask, without gathering the tile.
+
+    The line this replaces was `tile[hit] = _combine(tile[hit], src[hit])`, which is three
+    fancy-index passes over the tile -- a gather of the destination, a gather of the
+    source, and a scatter back -- where a `where=`-guarded ufunc is one. It is the whole
+    cost of drawing: 802 million pixel-evaluations go through here on one 256px render of
+    PlasticSubstance003, against a canvas of six million, because the patterns overlap
+    about 130-fold.
+
+    The values are the same ones `_combine` computes, at the same positions, in the same
+    order -- `where` suppresses the write, it does not change the arithmetic -- so this is
+    an equality, not an approximation. It is A/B'd against the gathering form by toggling
+    `fx.BLEND_IN_PLACE`.
+    """
+    if mode == 'add':
+        np.add(dst, src, out=dst, where=where)
+        return
+    if mode == 'over':
+        a = np.clip(np.abs(src), 0.0, 1.0)
+        np.copyto(dst, dst * (1.0 - a) + src, where=where)
+        return
+    np.maximum(dst, src, out=dst, where=where)
+
+
+#: Toggle for the paragraph above, so the two forms can be measured in ONE process against
+#: one set of patterns. Off restores the gathering form exactly.
+BLEND_IN_PLACE = True
+
+#: Second toggle, for `_coverage` and the 1-D sample grids. Off sends every tile back
+#: through `fxrender.profile_value` on 2-D `dx`/`dy`, which is what this replaces.
+FAST_RASTER = True
+
+
+def _coverage(lx, ly, prof):
+    """`fxrender.profile_value`, with the redundant `inside` mask dropped where it is one.
+
+    `profile_value` closes every profile with a multiply by `inside`, the |lx|,|ly| <= 0.5
+    box. For the profiles below the multiply cannot change a value: each one ends in a
+    `clip(..., 0, 1)` whose argument is already <= 0 outside the box, so the sample is zero
+    there with or without the mask, and inside the box the mask is 1.
+
+        bell, paraboloid    zero once r >= 1, and 4lx^2 + 4ly^2 < 1 implies |lx|, |ly| < 0.5
+        pyramid             zero once max(|2lx|, |2ly|) >= 1, which IS the box
+
+    So this is an equality over every input, not a fast approximation, and it saves the
+    two absolutes, the two comparisons, the `and`, the `astype` and the multiply -- seven
+    of the seventeen passes `bell` makes over a tile, on the 94% of patterns that ARE bell.
+    NOT extended to `gaussian` (its exponential is nonzero everywhere), `gradation` (a ramp
+    in x alone, unbounded in y) or `capsule` (bounded in y only), which keep the mask by
+    going through `profile_value` unchanged.
+
+    The `sqrt` is deliberately kept even where the result is immediately squared: `r * r`
+    is not bit-identical to the sum under it, and this function is held to equality.
+    """
+    if not FAST_RASTER:
+        return fxrender.profile_value(lx, ly, prof)
+    if prof == 'bell':
+        r = np.sqrt((2.0 * lx) ** 2 + (2.0 * ly) ** 2)
+        t = np.clip(1.0 - r * r, 0.0, 1.0)
+        return (t * t).astype(np.float32)
+    if prof == 'paraboloid':
+        r = np.sqrt((2.0 * lx) ** 2 + (2.0 * ly) ** 2)
+        return np.clip(1.0 - r * r, 0.0, 1.0).astype(np.float32)
+    if prof == 'pyramid':
+        c = np.maximum(np.abs(2.0 * lx), np.abs(2.0 * ly))
+        return np.clip(1.0 - c, 0.0, 1.0).astype(np.float32)
+    return fxrender.profile_value(lx, ly, prof)
+
+
 def splat(rec, patterns, W, H, images=None):
     """Draw the emitted patterns onto a W x H canvas."""
     nchan = 4 if rec.colour else 1
     canvas = np.zeros((H, W, nchan), np.float32)
-    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
-    pxg = (xx + 0.5) / W - 0.5
-    pyg = (yy + 0.5) / H - 0.5
+    # ONE ROW AND ONE COLUMN, NOT TWO FULL GRIDS. `pxg` never varied down a column nor
+    # `pyg` across a row, so the mgrid pair spent H*W building W + H distinct numbers and
+    # every tile then subtracted its centre out of a 2-D slice. The broadcast below
+    # produces the same float32 values in the same order.
+    if FAST_RASTER:
+        pxg = (np.arange(W, dtype=np.float32) + 0.5) / W - 0.5
+        pyg = (np.arange(H, dtype=np.float32) + 0.5) / H - 0.5
+    else:
+        yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+        pxg = (xx + 0.5) / W - 0.5
+        pyg = (yy + 0.5) / H - 0.5
 
     forced = assume.assumed('fx.profile')
+    # ONCE PER RECORD. `_combine` asked `assume` for this on every tile it drew.
+    mode = assume.assumed('fx.combine', 'max')
     cell = None
     for key in ('fx.branchoffset', 'fx.patternsize', 'fx.frameoffset'):
         if assume.assumed(key) == 'cell':
@@ -476,15 +778,19 @@ def splat(rec, patterns, W, H, images=None):
                 r1 = min(math.ceil((uy + hy + 0.5) * H - 0.5), H - 1)
                 if c0 > c1 or r0 > r1:
                     continue
-                dx = pxg[r0:r1 + 1, c0:c1 + 1] - ux
-                dy = pyg[r0:r1 + 1, c0:c1 + 1] - uy
+                if FAST_RASTER:
+                    dx = (pxg[c0:c1 + 1] - ux)[None, :]
+                    dy = (pyg[r0:r1 + 1] - uy)[:, None]
+                else:
+                    dx = pxg[r0:r1 + 1, c0:c1 + 1] - ux
+                    dy = pyg[r0:r1 + 1, c0:c1 + 1] - uy
                 lx = (dx * ct + dy * st) / sx
                 ly = (-dx * st + dy * ct) / sy
                 if prof in ('rect', 'square'):
                     hit = (np.abs(lx) <= 0.5) & (np.abs(ly) <= 0.5)
                     cov = None
                 else:
-                    cov = fxrender.profile_value(lx, ly, prof)
+                    cov = _coverage(lx, ly, prof)
                     hit = cov > 0
                 if not hit.any():
                     continue
@@ -492,6 +798,9 @@ def splat(rec, patterns, W, H, images=None):
                 if src is None:
                     if cov is None and hit.all():
                         tile[...] = _combine(tile, col)
+                    elif BLEND_IN_PLACE:
+                        _blend(tile, col if cov is None else col * cov[:, :, None],
+                               mode, hit[:, :, None])
                     else:
                         tile[hit] = _combine(tile[hit],
                                              col if cov is None else col * cov[hit, None])
@@ -555,7 +864,7 @@ def render_fxmaps(ctx, v):
         run = fxrender.make_runner(ctx.asm, rec, programs=ctx.fx_funcs,
                                    cache_funcs=ctx.cache_funcs)
         try:
-            pats = emissions(rec, run, fxrender.seed_slots(rec, run))
+            pats = emissions(rec, run, fxrender.seed_slots(rec, run), cache=ctx.cache)
         except fxrender.Unmodelled as e:
             raise Unsupported('fxmaps: %s' % e) from e
         return splat(rec, pats, W, H, images=images)
