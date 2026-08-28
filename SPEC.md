@@ -163,6 +163,21 @@ field with code `11`, and — for a few filters — an *arity integer* (§6.4). 
 are backward indices, a walk can be checked loudly: any slot the walk calls an edge must
 hold a value `< own index`, or the walk is wrong.
 
+**One `w1` field declares an edge on its LOW BIT, not on the full code `11`.** `distance`'s
+field 0 is the case: it charges a word in states `01` and `11` and nothing in `10`, which is
+a cost tracking bit 0 alone rather than baked-versus-program, and no parameter costs that way.
+Over the corpus's five `distance` `w1` values, bit 0 set (5, 7, 9) gives two edges and clear
+(6, 10) gives one, **2,277 of 2,277**. Such a field is *not* part of the end-anchored
+parameter block (§13.4) and must not be charged a word in it — doing so begins the block one
+slot late and silently renames every parameter after it.
+
+**The same loud check applies to programs.** A slot the walk calls a program must hold a
+decodable program at `value + 52`, exactly as an edge slot must hold a backward index. This
+is worth asserting rather than assuming: reading a baked `5.120025` as the address
+`0x40a3d70a + 52` is what the mis-charged field above produced, and it is invisible without
+the check — a wrong radius renders, a wrong address does not, and only one of them announces
+itself. On one specimen the unchecked read blocked 1,581 further records.
+
 ### 6.4 The four layout alphabets
 
 The file states each filter's layout in one of four self-describing ways; a reader
@@ -378,7 +393,28 @@ discriminated by the tag word's **low nibble**:
   field: bit 4 a branch (two children, e.g. `0x1B`), bit 5 a `randomseed` program, bit 6 a
   baked `randomseed`, bit 7 the base program+successor structure. So `0x0b` is a leaf
   (successor at word 1), `0x18b` puts its successor at word 2, `0x1ab`/`0x1cb`/`0x89` at
-  word 3, `0x99` at word 4.
+  word 3, `0x99`/`0x1db` at word 4.
+
+  **Bit 4 makes a branch on a NODE too, not only on a leaf, and the successor rule does not
+  see the second child.** `0x1db` (bits 4, 6, 7) is the case, and all 23 in the corpus are
+  one structure byte for byte: `[0x1db][2][program][child][child][0x09000013]`. The
+  computed successor — word 4 — is the *second* child; word 3, which the mask spends on
+  bit 6's baked `randomseed`, is the first. It is a child and not a value that happens to
+  dereference: **the program at word 2 ends exactly where word 3's target begins, 23 of 23**,
+  so the child abuts its own node's program, the same contiguity `0x1B`'s sentinel form uses.
+  Following it reaches an entry table in 20 of 23 against 0 of 23 for the neighbouring word
+  as a control, and the same test over every other family stays at the noise floor (`0x89`
+  w2 1 of 47, `0x1cb` w2 2 of 30, `0x99` w3 0 of 44). Both children are `0x1a3` and open
+  identical chains. The node's program is not a selector: one distinct source across all 23,
+  reading nothing, writing constants to slots 1–6 and returning a literal `1` — a state
+  initialiser, which is the role `0x1B`'s program also plays. So `0x1db` is the `0x1B`
+  BRANCH shape wearing bit 7, and a reader that dispatches on bit 7 first will never see it.
+
+  **A reader following only the computed successor draws half of such a record.** 23 records
+  across 12 files walk one table entry and drop one, and the two carry different parameter
+  masks (`0x55300158` dropped against `0x05300758` walked, constant across every file — they
+  cook from one template). Whether the engine draws both children or selects one is **not
+  established**: no specimen with a `0x1db` ships an export.
 - **nibble 8 → a paramset table entry**, *not* a node. The entries are a **linked list**:
   each entry stores a pointer to the next one — the header slot reaching furthest forward,
   past the entry's own inline program. The entry ends at its inline program, whose length the
@@ -498,6 +534,10 @@ instances, so instruction counts can be far below authored node counts.
 `0x01` reads a system variable by immediate: 0 `$time`, 1 `$size`, 3 `$sizelog2`,
 8 `$pos`, 10 `$number` (FX-Map only).
 
+`$pos` means **two different things** depending on which program reads it — the sampling
+coordinate in a `pixelprocessor`, the node's own base position in an FX-Map. Supplying the
+first where the second is meant renders nothing. See §13.5.
+
 ---
 
 ## 11. Interface block
@@ -517,7 +557,13 @@ It aggregates every graph in a multi-graph package. `validate_corpus.py` confirm
 
 This specification was produced clean-room: no Adobe Substance engine binary was run,
 disassembled, or inspected, and any source file bearing `<author v="Allegorithmic">` was
-excluded from analysis. The format's *structure* is fully recovered — a reader can locate
+excluded from analysis. That exclusion is now a predicate rather than a habit —
+`corpus.sources()` returns only permitted `.sbs` paths and `corpus.source_excluded()` checks
+one, and every tool that reads a source goes through them. It was enforced by nothing until
+a reading of FX-Map `$pos` was taken from an excluded file and had to be withdrawn; **131 of
+the 491 sources here bear the tag**, and for FX-Maps specifically they are the whole of the
+interesting population, so a negative measured over the permitted sources means "absent from
+what may be examined" and never "absent from the format". The format's *structure* is fully recovered — a reader can locate
 and walk every region above from the file alone. What remains open is *semantics*: the
 meaning of some filter parameters, the FX-Map pattern footprint (§8), and a handful of
 provenance-walled specifics (e.g. `vectorshape` layout, inline FX parameter names).
@@ -853,6 +899,41 @@ image program is the other population: it does read `$pos`, and for it `$size` a
 must describe the same grid or a neighbour tap goes sub-pixel and the filter silently
 becomes an identity.
 
+**`$pos` MEANS TWO DIFFERENT THINGS, and "the grid being drawn on" is only the first.** The
+census above counts filter PARAMETERS and says nothing about FX-Map NODE programs, which
+are a third population and a large one: 26,758 of 41,164 fxmaps records (65.0%) carry a
+program that reads `$pos`. It is read at two components in 26,907 of 26,907 reads and
+immediately ADDED in 99.5% of them. The split against the sampler is clean — of the programs
+reading `$pos`, 54,661 of 55,462 `pixelprocessor` ones feed `samplelum`/`samplecol` (98.6%)
+against **17 of 26,803** fxmaps ones (0.06%). Inside an FX-Map `$pos` is not a sampling
+coordinate.
+
+Its consumer is the GATE. Of 26,741 fxmaps records whose chain reads `$pos`, 26,591 read it
+in an `0x89` gate's program and 150 in the stepper's, while only 34 read it in a named entry
+parameter at all. The idiom is `$pos + <an offset the program itself scans>` tested against a
+float4 rectangle the record bakes — a cull, not a placement. So `$pos` is the **absolute base
+of a relative walk**: the scan the program keeps in its own slots is the relative part, and
+`$pos` is what it is measured from.
+
+**The value is the origin, and the record's own bounding rectangle says so.** Its bounds are
+whole or half integers and the walk steps by whole units, so only `$pos` = 0 puts the scan on
+the lattice the bounds are aligned to — a mechanism, not a fit. Emissions against the integer
+cells each rectangle encloses: on the reference specimen, records 1/3 bound `[-13, 14]` in
+both axes = 27², and emit 729 at the origin against 676 from a corner-based frame; another
+specimen's record bounds `[-4, 5]` = 9², and emits 81 against 64. A corner frame misses on
+three records and wins on none. It is also a per-node CONSTANT: every per-pattern candidate
+breaks the same count (a `$number` cell grid gives 416 and 1,792 where the rectangles hold
+729 and 10,000; any per-pattern jitter at all gives 716 for 729). And nothing argues it must
+be non-zero — across 26,803 `$pos`-reading FX programs not one divides by a `$pos`-derived
+value.
+
+Two further things refuse the per-pixel reading outright: a walk consumes one verdict per
+pattern, so a per-pixel `$pos` returns N verdicts of which all but the first are silently
+dropped; and supplying the render grid takes the reference specimen from 70 rendered records
+to 41 and removes `height` entirely. The remaining open case is a SUBDIVIDED FX-Map (§13.7) —
+the chain walk is flat, so there is one node position and it is the root's. See
+`assume.QUESTIONS['fx.pos']`.
+
 **How an image reaches a program.** `samplelum`/`samplecol` take a **sampler index**, and
 it is the *first* immediate in both their 2- and 3-operand encodings — established by the
 arity bound: the first immediate is in range on 5,711 of 5,714 three-operand samples, while
@@ -911,7 +992,7 @@ Walk the chain of §8 nodes; the table entries at its end are the draws.
 | `0x18B` `0x1AB` `0x1CB` `0x20B` | **iterate** — run the subtree `numberadded` times, `$number` = 0…n−1 |
 | `0x89` | **gate** — its program returns a predicate; walk on while true |
 | `0x99` `0x??9B` | **stepper** — a per-iteration state update (a raster/spiral position); run it, then continue |
-| `0x??1B` | pass through to the successor |
+| `0x??1B` `0x1DB` | **branch** — a state-initialiser program and TWO children (§8). `0x??1B` walks both; for `0x1DB` whether the engine draws both or selects one is unestablished, and a reader following only the computed successor draws half the record |
 | `0x??0B` | leaf — the entry table draws |
 
 **The emission count**, in this order:
@@ -940,6 +1021,22 @@ footprint.
 squares over-covers the canvas by orders of magnitude on most records, and no frame model
 tested reconciles it. This is the principal remaining blocker to rendering FX-Maps
 generally, and it is independent of the emission count above.
+
+**Subdivision — not found.** A node whose children cover different parts of their parent's
+region would give each child a different `$pos` (§13.5). None is in evidence. Of 155 distinct
+node headers reached across the compiled corpus, `0x1db` is the ONLY one whose word 1 equals
+its number of trailing node pointers, and it is two-way at every instance — no three- or
+four-way variant exists. The shipped sources agree as far as they can be read: over 266
+FX-Map graphs in the 34 third-party sources that contain one, **no node has more than one
+child**, every node being an `addnode` with one successor, a one-child `markov2`, or a leaf
+`paramset`. A two-way branch's arms cover the same region and share a position, so nothing
+here subdivides.
+
+This is a NEGATIVE BOUNDED BY THE CLEAN-ROOM RULE (§12), not a claim about the format. The
+`.sbs` sources that do branch are Allegorithmic-authored and therefore excluded from
+analysis, so the honest statement is that subdivision is absent from what may be examined —
+not that Substance lacks it. Until a compiled subdividing node is found, an FX-Map has one
+node position and it is the root's.
 
 ### 13.8 What the file does not state
 

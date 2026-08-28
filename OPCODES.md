@@ -246,7 +246,9 @@ that re-check against the 179/17 in its row.
 ## Notable operations
 
 **System variables (`0x01`).** Read by immediate: 0 `$time`, 1 `$size`, 3 `$sizelog2`,
-8 `$pos`, 10 `$number` (FX-Map only).
+8 `$pos`, 10 `$number` (FX-Map only). `$pos` is **two variables under one name**: the
+sampling coordinate in a `pixelprocessor` (98.6% of its readers there feed a sampler), the
+node's own base position in an FX-Map (0.06% do). See SPEC §13.5.
 
 **`0x0B` = `while`.** A loop, carrying no immediate. Operands are `(init, cond, body, …)`:
 position 1 is bool in 616/616 (the condition) and position 2 self-references in 56.5% of

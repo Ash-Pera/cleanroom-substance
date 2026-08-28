@@ -682,6 +682,38 @@ def node_shape(header):
     (0x1B) families, whose two-child / scanned-program shapes `FX_NODES2` still states by hand.
     Reproduces the retired `FX_NODES` (four whole-word headers) and the linear `FX_NODES2` rows
     (0x99, 0x9B) exactly, and extends to headers neither table listed.
+
+    KNOWN WRONG FOR 0x01DB, AND NOT CORRECTED HERE. This function hands that header back a
+    single successor at byte 16 and spends byte 12 as bit 6's baked `randomseed`. Byte 12 is
+    a SECOND CHILD. All 23 in the corpus are one structure, byte for byte:
+
+        w0  0x000001db      w3  -> a 0x1a3 node, contiguous          23 of 23
+        w1  0x00000002      w4  -> a 0x1a3 node, far away            23 of 23
+        w2  -> a program    w5  0x09000013
+
+    and the evidence is not the pointer alone. `program_span(w2)` ENDS EXACTLY WHERE w3's
+    target begins, 23 of 23 -- the child abuts its own node's program, which is what makes it
+    a child and not a value that happens to dereference. Following w3's chain reaches an entry
+    table in 20 of 23, against 0 of 23 for the neighbouring word as a control; the same test
+    over every other family stays at the noise floor (0x0089 w2 1 of 47, 0x01cb w2 2 of 30,
+    0x0099 w3 0 of 44). And the node's own program is not a selector: one distinct source
+    across all 23, reading nothing, writing constants to slots 1-6 and returning a literal 1.
+    So this is the `0x1B` BRANCH shape wearing bit 7 -- word 1 a discriminator constant, one
+    contiguous child, one distant one, a state initialiser for a program. `fx_tree` already
+    walks 0x1B's two children through `pending`; 0x01db never reaches that path precisely
+    BECAUSE bit 7 is set and this function answers first.
+
+    WHAT IT COSTS: the walk takes w4 and drops w3, so 23 records in 12 files (Cliff,
+    Cobblestone, RMF_Floor, RockyGround, RockyPath, Small_Rocks, rural_rock_wall,
+    flowingLava, three desert_*) render ONE of their two branches -- one table entry walked,
+    one dropped, and the two carry different parameter masks (0x55300158 dropped against
+    0x05300758 walked, constant across every file: they cook from one template).
+
+    LEFT ALONE DELIBERATELY. Correcting it changes what 23 records draw, and nothing here can
+    say whether the engine draws both children or picks one -- the reference specimen has no
+    0x01db, and none of the 12 files ships an export. "It would double the patterns in 23
+    records" is the argument this file refuses elsewhere ("no emittable entries", `fx_tree`),
+    and it is refused here too. What would settle it: an export for any one of the 12.
     """
     nib = header & 0xF
     base = NODE_BASE.get(nib)

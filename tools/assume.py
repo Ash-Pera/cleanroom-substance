@@ -47,6 +47,71 @@ QUESTIONS = {
     'fx.rootentry':       ('draw', 'skip'),
     'emboss.intensity':   ('program', 'reference'),
     'fx.gridcount':       ('numberadded', 'divisor'),
+    # WHAT `$pos` IS INSIDE AN FX-MAP. It is NOT the sampling coordinate it is in a
+    # `pixelprocessor`, and the split is clean: of the programs that read `$pos`, 54,661 of
+    # 55,462 pixelprocessor ones feed `samplelum`/`samplecol` (98.6%) against 17 of 26,803
+    # fxmaps ones (0.06%). That is the residue in `sbsruntime.SYSVARS`' own note -- $pos
+    # feeds a sampler in 34,180 of 86,627 uses -- resolved: the sampling half is
+    # pixelprocessor's and the rest is FX-Map gates.
+    #
+    # ITS CONSUMER IS THE GATE. Of 26,741 fxmaps records whose chain reads $pos, 26,591 read
+    # it in the program of an 0x89 gate and 150 in the stepper's; only 34 records read it in
+    # a NAMED ENTRY PARAMETER at all (patternrotation 41, opacity 4, frameoffset 2). It is a
+    # predicate input, not a placement one, read two-component in 26,907 of 26,907 reads and
+    # immediately ADDED in 99.5% of them -- a base the node's own scanned offset is measured
+    # from. The idiom is `$pos + <offset the program advances itself>` tested against a
+    # float4 rectangle the record bakes: a cull, not a placement.
+    #
+    # THE RECORD'S OWN RECTANGLE ARBITRATES THE VALUE, and it is a mechanism rather than a
+    # fit: the bounds are whole or half integers and the walk steps by whole units, so only
+    # `$pos` = 0 puts the scan on the lattice the bounds are aligned to. Emissions against
+    # the integer cells the rectangle encloses:
+    #
+    #     Rokviz 1/3     [-13, 14, -13, 14]         27x27 =    729    origin 729    corner 676
+    #     Rokviz 10/12   [-49.5, 50.5, ...]        100x100 = 10,000   origin ok     corner ok
+    #     EvilOrb 2      [-4, 5, -4, 5]               9x9 =     81    origin  81    corner  64
+    #     EvilOrb 65/67  [-31.5, 32.5, ...]         64x64 =  4,096    origin ok     corner ok
+    #
+    # 'corner' misses on three and never wins. (EvilOrb 11/12 match neither -- rectangle
+    # 7x7 = 49 against 441 and 324 -- and are an outer multiplier, not evidence either way.)
+    #
+    # 'pixel' IS REFUSED, not merely unchosen. The walk takes
+    # `bool(run(prog, slots, number)[0])` -- ONE verdict per pattern -- so a per-pixel $pos
+    # returns N verdicts and the walk silently keeps pixel 0's; that is precisely the
+    # corruption the pre-fix `$pos` leak produced. And the reference specimen says so
+    # outright: at $pos = (128, 128) Rokviz falls from 70 rendered records to 41 and stops
+    # producing `height`.
+    #
+    # IT IS A PER-NODE CONSTANT, not a per-pattern value. Every per-pattern arm breaks the
+    # rectangle count on Rokviz: a $number cell grid gives 416 and 1,792 where the rectangles
+    # hold 729 and 10,000, a normalised $number gives 8,415, and ANY per-pattern jitter at
+    # all gives 716 for 729.
+    #
+    # NOTHING IS SINGULAR AT ZERO, so no program argues it must be non-zero: across 26,803
+    # $pos-reading fx programs, not one divides by a $pos-derived value. One record
+    # (NetSubstance001 rec 50) takes a polar conversion of it, which is defined at the
+    # origin.
+    #
+    # EVERY FIGURE ABOVE IS FROM THE COMPILED CORPUS. An earlier version of this comment
+    # argued the same conclusion from named function graphs in the shipped `.sbs` sources.
+    # Those sources are `<author v="Allegorithmic"/>` and SPEC 12 excludes them from
+    # analysis, so that leg has been removed -- along with the parameter names it supplied.
+    # The conclusion did not rest on it: it was corroboration, and the arbitration was
+    # always the record's own rectangle. What may be read says nothing either way -- across
+    # the 34 third-party sources containing an FX-Map, `$pos` appears inside one exactly
+    # once, in `patternrotation`/`frameoffset`/`patternsize`, never in a gate.
+    #
+    # WHAT WOULD MOVE THIS: a SUBDIVIDED FX-Map -- a node whose children cover different
+    # parts of their parent's region and so inherit different positions. `chain` is a FLAT
+    # walk, so today there is one node position and it is the root's, and the place to
+    # thread a per-node one is `make_runner`'s `run`. Searched for and not found: of 155
+    # distinct node headers reached, `0x1db` is the only one whose word 1 equals its number
+    # of trailing node pointers, and it is two-way at every instance -- arms that cover the
+    # same region and share a `$pos`. Across the 266 FX-Map graphs in third-party sources, no
+    # node has more than one child at all. That negative is BOUNDED BY THE CLEAN-ROOM RULE:
+    # the sources that do branch are Allegorithmic and may not be read, so the claim is
+    # "absent from what may be examined", not "absent from the format".
+    'fx.pos':             ('origin', 'corner'),
     'fx.scanner':         ('once', 'loop'),
     'fx.gatescan':        ('once', 'loop', 'filter'),
     'fx.combine':         ('max', 'add', 'over'),

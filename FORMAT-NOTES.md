@@ -42638,6 +42638,92 @@ That last line is the check worth keeping. `_read_slot` records a conflict whene
 program bit and the `valid_program` probe disagree, and it stays empty across all 1,133 --
 so the bit reading and the value reading agree on every record, program arm included.
 
+## A baked radius read as an address, and the 1,581 records behind it
+
+Brick02 rendered 714 of 2,315 records with 1,601 failures, and 1,598 of those were cascades
+from three roots. One root:
+
+    rec 61  distance  program at 1084479294 does not resolve a span
+
+`1084479294` is `0x40a3d73e`, and `0x40a3d73e` is not an address. Slot 5 of that record holds
+`0x40a3d70a`, which is the float32 **5.120025** — the filter's radius — and `0x40a3d70a + 52`
+is the number in the message. The walk had dereferenced a baked value.
+
+### The witness pinned a slot, and the naming assumed it pinned a field
+
+`distance`'s radius was named from the source: `SandyStonePath.sbs` states 56.2999992 and
+64.2200012, and records 3 and 180 of the compiled twin hold exactly those. Both records are
+`w1` field 0 = `01`, field 1 = `01`. **Under either naming the value sits on the same word**,
+so the witness could not tell the two apart, and the reading that went into the legend --
+field 0 -- was the wrong one. It survived because the only records that can distinguish it are
+the ones no source witnesses.
+
+The file distinguishes them immediately. Over 2,277 corpus `distance` records, grouped by the
+state of each candidate field, asking only what sits at the named slot:
+
+    field 1 = 01   2,089 records    value   100.0%    program   0.0%
+    field 1 = 10     188 records    value     0.0%    program 100.0%
+
+    field 0 = 01   1,552 records    program   6.8%
+    field 0 = 10     678 records    program  12.2%
+    field 0 = 11      47 records    program   0.0%
+
+Field 1 predicts the slot's contents perfectly, both ways. Field 0 predicts nothing -- its
+rates are the base rate of a word happening to look like a pointer. **The radius is field 1.**
+
+### What field 0 is instead
+
+Not a parameter. Its costs are one word in `01` and `11` and none in `10` -- a cost that
+tracks bit 0 alone, where a parameter costs a word for a value and a word for a pointer. It
+declares the optional mask INPUT, and the edge count confirms it: bit 0 set (`w1` 5, 7, 9)
+gives two edges, clear (6, 10) gives one, 2,277 of 2,277. Charging it a word in the
+end-anchored parameter block began that block one slot late, which is the whole bug.
+
+### The configuration that made it visible, and the one that hid it
+
+Only records where the two fields DISAGREE can expose the error, and only one direction of
+disagreement is loud:
+
+    f0=01 f1=01   1,447   both readings agree      -- silent
+    f0=10 f1=10      83   both readings agree      -- silent
+    f0=01 f1=10     105   wrong reading: a pointer read as a float (denormal radius) -- silent
+    f0=10 f1=01     595   wrong reading: a float read as an address -- LOUD
+
+Of those 595, the named slot resolved to a valid program in **0**, the slot one earlier in
+569, and 579 held a float-shaped word. A 0-of-595 rate is not a near miss; nothing about the
+placement was marginal. But note which line found it: the 105 records reading a denormal
+radius rendered perfectly happily and are still, in principle, the harder half of this bug --
+a wrong radius renders, a wrong address does not, and only one of them announces itself.
+
+### What it was worth
+
+Declining the undecodable pointer, before the naming itself was corrected, over the 30 corpus
+files carrying the loud configuration:
+
+    records           19,148 -> 20,363    (+1,215, +6.3%)
+    failures          10,795 ->  9,580    (-1,215)
+    declared outputs      27 ->     34    of 145
+    files losing anything: 0
+
+Brick02 alone went 714 -> 2,295 records, 1,601 -> 20 failures, 2/6 -> 5/6 declared outputs.
+One record was gating 1,581 others. Its remaining failure is a `warp` with no stated
+intensity, which is a §13.8 value the file does not contain.
+
+Correcting the NAME rather than declining the read gives the same coverage and the right
+values: 1,720 plausible baked radii, 509 baked zeros and 188 programs, all 188 decoding,
+against the old naming's 638 undecodable "programs", 105 denormal "radii", 3 records whose
+block could not be placed and 87 with no parameter at all.
+
+### The check that should have been there all along
+
+SPEC 6.3 has said for a long time that a slot the walk calls an EDGE must hold a backward
+index or the walk is wrong. The same sentence was never written for programs, and it is the
+same sentence: a slot the walk calls a program must decode at `+52`. It costs one call and it
+converts this entire class of error from a silent wrong render into a refusal that names the
+record. It is now stated in 6.3 and asserted in the `distance` filter, where it is inert under
+the corrected naming and kept anyway.
+
+
 ## A fitted header LENGTH does not give you a header LAYOUT, and the intercept was eating the base region
 
 `costs.json` solves `header = const + sum of the costs of word0's set bits + the w1 field
