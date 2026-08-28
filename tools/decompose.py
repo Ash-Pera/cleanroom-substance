@@ -500,18 +500,17 @@ def _fxmaps_walk(r, spec):
     # sampled. So the fitted length stops AT the payload rather than reaching into it, which is
     # the opposite of what it was declined for.
     #
-    # WHAT SITS BETWEEN THE CLASS CURSOR AND `end` IS HEADER CONTENT THIS WALK DOES NOT PLACE:
-    # 120,380 slots over 37,318 records, and they read as parameters, not as payload --
+    # WHAT SAT BETWEEN THE CLASS CURSOR AND `end` WAS HEADER CONTENT THIS WALK DID NOT PLACE:
+    # 120,380 slots over 37,318 records, reading as parameters and not as payload --
     #
     #     valid program pointer   56,366   46.8%        zero          11,613    9.6%
     #     plausible float         51,650   42.9%        other          1,751    1.5%
     #
-    # -- which is a gap in the WALK, to be closed by walking those slots. Shortening `end` to
-    # sit in front of them is the one repair that cannot be right: it makes the walk's own
-    # cursor overrun the length it reports, and it hides the gap in the field a reader would
-    # use to find it. `end` is never BELOW the class cursor (equal on 3,846, above on the
-    # rest) and never past the record (0 of 41,164), so nothing this arm places falls outside
-    # it, and `prog` keeps the first-after-inputs slot the invariant above validates.
+    # -- which was a gap in the WALK, and the parameter block below closes it. Shortening
+    # `end` to sit in front of those slots would have been the one repair that cannot be
+    # right: it makes the walk's own cursor overrun the length it reports, and it hides the
+    # gap in the field a reader would use to find it. `end` is never past the record (0 of
+    # 41,164), and `prog` keeps the first-after-inputs slot the invariant above validates.
     pos = prog
     cls_slots, cls_params = [], []
     for i, b in enumerate(spec.get('clsbits', ())):
@@ -523,7 +522,63 @@ def _fxmaps_walk(r, spec):
         for _ in range(n):
             cls_slots.append(pos)
             pos += 1
-    return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
+    # THE SIX W1 PAIRS ARE THIS FILTER'S OWN PARAMETERS, and this arm used to return
+    # `param_slots: []` while the cost model charged every one of them. `costs.json`'s
+    # filter-4 spec is a `colour` interaction carrying `pairs: [0, 1, 2, 3, 4, 13]` -- w1
+    # two-bit fields at bits 0-1, 2-3, 4-5, 6-7, 8-9 and 26-27, clear of the arity field at
+    # 10-15 -- and walking them from the class cursor with the SAME `_feature_cost` the
+    # class block uses lands this cursor on `record_layout.header_words` in 41,164 of 41,164
+    # corpus records. The arithmetic closes exactly; nothing is left over.
+    #
+    # A TOTAL THAT CLOSES DOES NOT PROVE THE ORDER, so every placed slot was checked against
+    # what its own state declares it to be -- state 1 a baked value, state 2 a program
+    # pointer -- by the record's own bytes:
+    #
+    #     pair 0 st1   9,699 slots   9,699 baked      pair 3 st1     341     341 baked
+    #     pair 1 st1  24,265        24,265 baked      pair 3 st2  28,246  28,246 pointers
+    #     pair 2 st1  27,407        27,407 baked      pair 4 st2  27,980  27,980 pointers
+    #     pair 2 st2     130           130 pointers
+    #
+    # 118,068 of 118,068 placed value slots agree with their declared state. A misordered
+    # walk cannot do that: a baked float read one slot early is a pointer and fails the test.
+    #
+    # STATE 3 IS AN IMAGE INPUT HERE TOO, and by the walk's existing header-only rule rather
+    # than a new one: `PARAM_SPEC[4]`'s `fx_param0` presence mask IS 3, so
+    # `_is_image_input` answers True for field 0 without consulting the slot. All 596 hold a
+    # backward record index, which corroborates the rule and is not it. They matter because
+    # they are inputs the ARITY COUNT DOES NOT COVER -- this filter's edge list is the
+    # contiguous arity run PLUS any state-3 field, and the run alone missed one input on 596
+    # records. The docstring's "inputs are contiguous from slot 3" is unharmed: these sit
+    # past the class block, and no record has a gap inside its arity run.
+    #
+    # A zero-width field is recorded as ABSENT rather than as a slot, as in `_interaction_
+    # walk`: `pairs` 4 state 1 and 13 state 1 both cost 0, and 13 state 1 occurs on 23
+    # records that place nothing.
+    off = 1 + len(spec.get('clsbits', ()))
+    if spec.get('has_absent'):
+        off += 1
+    if spec.get('arity_sm') is not None:
+        off += 1
+    masks = _param_field_masks(r.filter_id)
+    param_slots = []
+    for k, pj in enumerate(spec.get('pairs', ())):
+        st = (w1 >> (2 * pj)) & 3
+        if st == 0:
+            continue
+        n = _feature_cost(spec, off + 3 * k + (st - 1), r.words[0] & 1, True)
+        if st in (1, 2):
+            if n:
+                param_slots.append((pj, st, pos, n))
+            pos += n
+            continue
+        for _ in range(n):
+            if _is_image_input(r, pj, pos, masks, r.index):
+                inputs.append(pos)
+            else:
+                param_slots.append((pj, 3, pos, 1))
+            pos += 1
+    return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
+                        'param_slots': param_slots,
                         'cls_params': cls_params, 'end': _model_end(r, pos), 'prog': prog,
                         'size_slot': _size_slot(cls_params), 'root': FX_ROOT_SLOT})
 
