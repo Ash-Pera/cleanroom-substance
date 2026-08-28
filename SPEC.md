@@ -367,7 +367,8 @@ discriminated by the tag word's **low nibble**:
 
 Nodes carry the FX-Map parameters (pattern type, size, colour, etc.). The pattern
 *footprint* (`patternsize`) — how large each emitted pattern is on the canvas — is the one
-FX-Map field not yet decoded, and is the principal blocker to correct rendering.
+FX-Map field not yet decoded, and is the principal blocker to correct rendering. How many
+patterns a record emits, and where each lands, is §13.7.
 
 ---
 
@@ -493,5 +494,249 @@ disassembled, or inspected, and any source file bearing `<author v="Allegorithmi
 excluded from analysis. The format's *structure* is fully recovered — a reader can locate
 and walk every region above from the file alone. What remains open is *semantics*: the
 meaning of some filter parameters, the FX-Map pattern footprint (§8), and a handful of
-provenance-walled specifics (e.g. `vectorshape` layout, inline FX parameter names). Reading
-the file and reconstructing its graph is solved; rendering it pixel-for-pixel is not.
+provenance-walled specifics (e.g. `vectorshape` layout, inline FX parameter names).
+
+Rendering is no longer wholly open. §13 states a renderer completely enough to rebuild
+one, and on the corpus specimen whose two graph inputs are `$outputsize` and `$randomseed`
+— so that a colour mismatch cannot be an author's tweak before export — it reproduces all
+six declared outputs against the package's own exported maps at r = +0.98 / +0.95 / +0.91
+(basecolor), +0.96 (roughness), +0.97 (ambient occlusion) and a height mean of 0.7859
+against 0.78628. What is not solved is generality: §13.6 names three filters that run at
+defaults for want of a name-legend row, §13.7 names the footprint, and §13.8 names three
+values the file does not contain at all.
+
+---
+
+## 13. Evaluating a graph — the renderer
+
+Sections 1–12 are enough to *read* a file. This section is what a reader needs to *run*
+one: `tools/render2/` is written from it and nothing else. Where a value is not in the
+file it says so (§13.8); everything else is derived from the sections above.
+
+### 13.1 Filter ids
+
+```
+0 gradient   1 blend    2 transformation  3 shuffle    4 fxmaps    5 vectorshape
+6 uniform    7 warp     8 emboss          9 (unnamed) 10 blur     11 dirmotionblur
+12 directionalwarp      13 sharpen       14 hsl       15 levels    16 bitmap
+17 text     18 normal   19 dyngradient   20 pixelprocessor        21 distance  22 curve
+```
+
+Ids 5, 9 and 17 are not evaluated: 5 and 9 are provenance-walled (§12), 17 is a glyph
+source. The other twenty are §13.6.
+
+### 13.2 The pass
+
+**What a record is drawn at.** Its own tag, two nibbles: `width = 1 << ((tag >> 8) & 0xF)`,
+`height = 1 << ((tag >> 12) & 0xF)`. One exception, and it is stated by a class bit rather
+than guessed: on `bitmap` records class bit 13 (`word0 & 0x20000000`) is a 4×-**area** flag
+the height nibble omits — 11 records across the corpus set it and all 11 store an image
+exactly four times their declared area, against 0 false positives on ~570 bitmaps with the
+bit clear, so `height` gains a factor of 4. Without it a decoder reads the top quarter of
+each.
+
+**Which records are outputs.** An 8-byte entry per declared output sits between the record
+directory (§5) and the first record — one entry per output on 591 of 591 layout-A
+specimens. Word 1 is the **record index** (a valid one in 3,249 of 3,249); word 0's low
+half `>> 4` is the manifest's `format` attribute, and bit 2 of that is a grayscale flag
+(98.5% grayscale when set against 4.2% when clear, over outputs whose identifier names
+them). An entry whose high half is 2 — 48 of 3,249 — is a numeric **value** output rather
+than an image, and all 48 name a `pixelprocessor`. This is the attribution earlier notes
+called structurally absent; it is not absent, it is in a region nothing had read.
+
+Every edge is a **backward** record index (§6.3), so one forward pass in index order
+suffices — no topological sort. Each record produces an `(H, W, C)` image, `C` = 1 when
+word0 bit 0 is clear and 4 when set. A record whose input has no output yet fails as a
+*cascade* (a consequence); everything else is a *root* failure, and the distinction is
+what makes a blocker census meaningful.
+
+Conform each result to the record's own channel count, and refuse rather than invent:
+3 channels on a colour record is RGB and gains an opaque alpha; a greyscale record whose
+channels are identical is narrowed; anything else means the wrong program ran. Clamp only
+**declared outputs** to [0, 1] — an intermediate above 1 is headroom a later multiply may
+legitimately consume.
+
+### 13.3 Reading a record's parameters
+
+Three questions, three answers, and only the third comes from a fitted table:
+
+| question | answer | from |
+|---|---|---|
+| which parameters are present, baked or program? | the `w1` two-bit state | §7.4, the file |
+| how wide is each baked one? | Float1/2/4, per-channel by the colour bit | §7.3, the file |
+| where does the block start? | `header_end − Σ widths`, laid **forwards in ascending mask order** | the cost model's header length only |
+
+**Anchor at the end, not at the walk's forward cursor.** The cursor inherits any slot the
+cost model mis-charges *before* the parameters; the end anchor is wrong only if the header
+*length* is wrong, and the length is the one quantity `derive_costs` fits to observed
+boundaries and reproduces exactly. `normal` is the case that separates them: a five-word
+header whose intensity is word 4, where the cursor says 6.
+
+**Check it.** Two slots can never hold a parameter, and neither answer comes from the
+fitted per-field charge: an **input edge** (§6.3) and the two mask words. A block reaching
+either means the name legend below is missing a field that sits after a listed one — the
+whole block has shifted onto words that read as plausible floats. Refuse loudly. Silent on
+84,700 records carrying named parameters: 0 reach either.
+
+**The inherited size slot.** Class bit 0 (word0 bit 16) set ⇒ the first slot after the
+base region is the record's output-size expression, not a parameter. Clear ⇒ there is no
+size slot and that position is the first parameter. Reading it unconditionally is how a
+`blur` whose 3-word header is `[tag][edge][intensity]` reports its intensity as its size.
+
+### 13.4 The name legend
+
+The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presence mask;
+`kind` is the baked width. A `program` arm is one pointer whatever its kind.
+
+**Own parameters (`w1`)**
+
+| filter | parameter | mask | shift | kind |
+|---|---|---|---|---|
+| 1 blend | opacitymult | `0x0030` | 4 | scalar |
+| 1 blend | *(second scalar)* | `0x0600` | 9 | scalar |
+| 2 transformation | matrix22 | `0x000000C0` | 6 | Float4 |
+| 2 transformation | offset | `0x06000000` | 25 | Float2 |
+| 2 transformation | backgroundcolour | `0x10000000` | 28 | per-channel |
+| 11 dirmotionblur | intensity / mblurangle | `0x0003` / `0x000C` | 0 / 2 | scalar |
+| 12 directionalwarp | intensity / warpangle | `0x0006` / `0x0018` | 1 / 3 | scalar |
+| 15 levels | levelinlow, levelinhigh, levelinmid, leveloutlow, levelouthigh | `0x0003`, `0x000C`, `0x0030`, `0x00C0`, `0x0300` | 0,2,4,6,8 | per-channel |
+| 18 normal | intensity | `0x0003` | 0 | scalar |
+
+Two of these **straddle** the two-bit grid — `transformation`'s offset at bits (25, 26)
+and `blend`'s second scalar at (9, 10) — so under a plain `j → (2j, 2j+1)` reading their
+two states swap meaning between adjacent fields. Match the **mask**, never a field index.
+
+The `levels` order is `(low, high, mid)`, not the UI's `(low, mid, high)`: over a corpus
+sample `in_low <= in_high` holds 3,684 of 3,703 under this order and 641 of 751 under the
+other.
+
+**Inherited parameters (class word)** — an adjacent bit pair, lower = baked, upper =
+program:
+
+| filter | parameter | word0 bits | width |
+|---|---|---|---|
+| 3 shuffle | channelsweights | 24 | 4 |
+| 6 uniform | outputcolor | 24 | 4 (colour) / 1 |
+| 7 warp | intensity | 29 baked, 30 program | 1 |
+| 10 blur | intensity | 28 baked, 29 program | 1 |
+
+### 13.5 Running a program
+
+`$size` is the **record's declared size**, always — it is a property of the file and a
+caller's preview resolution must not reach it. `$pos` is the grid actually being drawn on.
+Reset both on every call: a program evaluated with neither supplied must not inherit the
+last record's, which is an order-dependent cross-record leak.
+
+Of 6,793 program-valued parameters across a corpus sample, 5,338 read `$sizelog2`, 69 read
+`$size` and **none** reads `$pos` — they are per-record constants. A `pixelprocessor`'s own
+image program is the other population: it does read `$pos`, and for it `$size` and `$pos`
+must describe the same grid or a neighbour tap goes sub-pixel and the filter silently
+becomes an identity.
+
+**How an image reaches a program.** `samplelum`/`samplecol` take a **sampler index**, and
+it is the *first* immediate in both their 2- and 3-operand encodings — established by the
+arity bound: the first immediate is in range on 5,711 of 5,714 three-operand samples, while
+the second is out of range 501 times and is the constant `1` in 5,696 of them. Bind sampler
+`k` to the record's `k`-th edge (§6.3). A record with no edges that is itself a declared
+output can still sample: bind then in the manifest's image-input declaration order, which is
+the one thing the assembly cannot supply. Expect this to resolve few images and fail
+honestly for the rest — of 120 graphs with image inputs, 107 have no manifest default on any
+of them and ship no image either.
+
+The `0x03`/`0x06` value cache is cross-record common-subexpression elimination: the writer
+is one record and the reader another, so it needs one dict threaded through a whole file in
+record order — which the §13.2 pass is. Its indices name no file, so it must not outlive
+the render.
+
+### 13.6 Filter semantics
+
+`ref` = the record's own declared width (a pixel-valued intensity is relative to it, not to
+a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel-centred,
+`(col + 0.5) / W`.
+
+| filter | output |
+|---|---|
+| bitmap | the resource payload (§9), `u8`/`u16` → `[0,1]`; or a graph input's manifest default as a uniform |
+| uniform | `outputcolor`; else a program at a walk-named slot; else the engine default |
+| blend | `dst·(1−op) + f(dst, src)·op`, clamped; `op` = `opacitymult` (absent ⇒ 1) × the mask edge if a third edge is present; `switch` selects on `op ≥ ½` instead |
+| transformation | `in = m·(pos − ½) + ½ + offset`; area-prefilter when minifying |
+| shuffle | colour bit clear ⇒ `Σ channelsweights·src` (grayscale conversion); set ⇒ four selector bytes in `w1`, `s` picks channel `s mod 4` of input `s div 4` |
+| levels | `t = clip((src − lo)/(hi − lo))`; zero span ⇒ step at `lo`; `t ← t^(ln½/ln mid)`; `out = lo′ + t(hi′ − lo′)`, clamped |
+| curve | a cubic-Bezier transfer curve, sampled to a lookup |
+| gradient / dyngradient | a ramp indexed by the input's channel 0; `dyngradient`'s ramp is a second input's long axis |
+| hsl | hue rotate, saturation scale, luminosity shift — but §13.4 names none of the three, so every record runs at the neutral default: an identity in practice |
+| blur | separable box, radius `clip(\|I\|,0,256)/ref · max(W,H)` px; sub-pixel ⇒ identity |
+| sharpen | `src + amount·(src − box₁)`; §13.4 names no amount, so every record runs at 1 |
+| dirmotionblur | 17 taps over ±L/2 along `2π·mblurangle`, `L = clip(\|I\|,0,256)/ref · 10` |
+| directionalwarp | displace input 0 by `(2·h − 1)·I/ref` along `2π·warpangle`, `h` = input 1 |
+| warp | displace input 0 by the **gradient** of input 1, scaled `·W/ref·I` |
+| normal | `n = normalise(−gx·I, −gy·I, 1)`, `out = ½ + ½n`; the gradient is per render pixel, so scale it `·W/ref` or strength tracks the preview grid |
+| emboss | `base + k·(g₁(pos) − g₁(pos + (δ, −δ)))`, `δ = 0.005859375` |
+| distance | a distance field grown from the mask input; the radius is **not** in §13.4 and is the one read still carrying a fallback of its own (69 records gained, 11 disagreeing) — mark every record it answers for |
+| pixelprocessor | the program at the **last header slot**, evaluated per pixel; earlier slots are inherited parameters and setup |
+| fxmaps | §13.7 |
+
+Blend modes: `0 copy, 1 add, 2 subtract, 3 multiply, 4 addsub, 5 max, 6 min, 7 switch,
+8 divide, 9 overlay, 10 screen, 11 softlight`. Modes 2, 5 and 6 are corroborated
+structurally: two records taking the same pair in opposite order under mode 2, combined by
+mode 5, is `max(a−b, b−a)` — an absolute difference, which only parses if 2 is subtract and
+5 is max.
+
+### 13.7 FX-Map evaluation
+
+Walk the chain of §8 nodes; the table entries at its end are the draws.
+
+| node | role |
+|---|---|
+| `0x18B` `0x1AB` `0x1CB` `0x20B` | **iterate** — run the subtree `numberadded` times, `$number` = 0…n−1 |
+| `0x89` | **gate** — its program returns a predicate; walk on while true |
+| `0x99` `0x??9B` | **stepper** — a per-iteration state update (a raster/spiral position); run it, then continue |
+| `0x??1B` | pass through to the successor |
+| `0x??0B` | leaf — the entry table draws |
+
+**The emission count**, in this order:
+
+1. If a placement program lays a `$number` **grid** — `floor($number / N)` — the bound is
+   that grid's cell count `N²`, not `numberadded`, which for those records is an amount.
+2. Otherwise, if `numberadded` is 1 *and* a placement program scales `$number` **linearly**
+   by exactly one constant `1/N`, the bound is `N`. This is the file contradicting itself —
+   a record computing N positions and visiting one — and it fires on 86 of 41,906 records.
+   Read the constant off the **bytecode**, not off decompiled source: integer constants are
+   spelled bare, and `const.i1 27` reinterpreted as float32 is 3.78e-44.
+3. Otherwise `numberadded`.
+
+Under 1 or 2 the chain's stepper and gate run **once**, not per emission: the placement
+already carries each pattern's position and re-driving the spiral adds a second one.
+
+**Drawing.** Each entry emits a pattern at `branchoffset + frameoffset`, of size
+`patternsize`, rotated `patternrotation` turns, tiled at unit spacing; overlaps combine by
+`max`. The shape is the entry tag's `patterntype` nibble (§8): `3 disc, 4 paraboloid,
+5 bell, 6 gaussian, 7 thorn, 8 pyramid, 9 brick, 10 gradation, 11 waves, 12 half bell,
+13 ridged bell, 14 crescent, 15 capsule, 16 cone`; nibble 0 is a catch-all that includes
+Square. `imageindex`, when present, makes the pattern an input image sampled over its own
+footprint.
+
+**Still open** (§8): `patternsize`'s coordinate space. A median footprint of 2.82 unit
+squares over-covers the canvas by orders of magnitude on most records, and no frame model
+tested reconciles it. This is the principal remaining blocker to rendering FX-Maps
+generally, and it is independent of the emission count above.
+
+### 13.8 What the file does not state
+
+Three values the compiler omits when the source left the node at its default, so they are
+in neither the assembly nor the manifest. Any renderer needs them; every use should be
+marked, because they are the only numbers in it that come from outside the file.
+
+| value | used by | evidence |
+|---|---|---|
+| `channelsweights` | grayscale conversion | of 5,457 baked vectors corpus-wide the even weight `(⅓,⅓,⅓,0)` never appears, while its neighbours do — an argument from an absence |
+| `uniform` fill | uniform with class bit 24 clear | black; one specimen's `metallic` output is such a record and its export is exactly 0.0 at every pixel |
+| `levels` ranges | absent level fields | in `(0, ½, 1)`, out `(0, 1)` |
+
+`normal` and `blur` intensities are also omitted on some records. There the honest answer
+is to **refuse**: unlike the three above, nothing constrains them, and a rendered guess is
+indistinguishable from a read.
+
+Three filters have no located parameters at all and run at defaults everywhere — `sharpen`
+(41 records sampled, 0 located), `hsl` (25, 0) and `text`. Naming their fields is the
+obvious next increment and needs only §13.4 rows, not new machinery.
