@@ -36,10 +36,23 @@ from engine import Context, render                                   # noqa: E40
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 #: Set a little under the measured value, per channel, so float noise passes and a
-#: collapse does not. `normal` and `metallic` are absent on purpose: both are degenerate on
-#: this specimen at every resolution this renderer reaches, and a correlation against a
-#: near-constant is not evidence. The MEAN is asserted for `height` instead, which is the
-#: channel that arbitrates the FX emission count.
+#: collapse does not. The MEAN is asserted for `height` instead of a correlation, because
+#: that is the channel arbitrating the FX emission count.
+#:
+#: `metallic` is absent because it is 0 on both sides. `normal` is absent for a REASON THIS
+#: COMMENT USED TO STATE WRONGLY -- it said normal was degenerate "on this specimen at every
+#: resolution", which is true of what we render and false of what the engine exported. The
+#: export at its native 4096 has std 0.211 in X and Y: full relief. Ours is 0.5000 +- 0.0009,
+#: flat. Two separate things hid that: every score here resamples to 64, and averaging a
+#: normal map cancels its slopes (the export box-averaged to 256 falls to std 0.0017).
+#:
+#: The part resolution does NOT explain: mean Z. Averaging preserves a mean, and the export's
+#: is 0.8987 against our 1.0000 -- 0.101 apart, which is the difference between a surface with
+#: slopes and a flat one. The cause is that the two images are different renders: the manifest
+#: declares `$outputsize` default 8,8 (256) and the maps were exported at 12,12 (4096), while
+#: a record's size is baked in its tag, so `max_dim` can only cap and never raise. Until this
+#: renderer can be told an `$outputsize`, every scale-dependent channel is being compared
+#: across two parameterizations, and a floor here would assert the wrong thing.
 REFERENCE_FLOOR = {
     ('basecolor', 0): 0.95,          # measured +0.9758
     ('basecolor', 1): 0.92,          # measured +0.9494

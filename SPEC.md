@@ -641,6 +641,17 @@ compiles to bits 25, 27, 29 in that order, which is what names the unpaired lowe
 n=93 median 0.49, bit 26 n=203 median 0.43, bit 28 n=297 median 0.475) and the odd bits
 hold integers, which is what a program pointer looks like read as a float.
 
+**`$outputsize` is a graph INPUT, and a record's size is the default baked through it.**
+The size in a record's tag (§6) is what the graph resolves to at the manifest's declared
+`$outputsize` default — `Rokviz` declares `8,8`, so its output records read 256×256 — and an
+exporter that sets `12,12` renders the same graph at 4096×4096. A reader that takes the tag
+as the only size therefore renders one parameterization and cannot render the other, and a
+cap like `max_dim` only lowers it. Scale-free channels are unaffected (`Rokviz`'s basecolor
+correlates +0.98 against a 4096 export) but anything measured in pixels is not: the same
+graph's normal map is flat at 256 and has slopes of std 0.211 at 4096, and its mean Z —
+which is invariant under downsampling, so no resampling can reconcile it — is 1.0 against
+the export's 0.899.
+
 ### 13.5 Running a program
 
 `$size` is the **record's declared size**, always — it is a property of the file and a
