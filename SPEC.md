@@ -583,17 +583,29 @@ Bit 16 is the lowest class bit but not always the first placed: a flag bit below
 word first. Over 120 files the two answers differ on 7,590 records — `pixelprocessor` by one
 slot 6,905 times, `dyngradient` by one 399, `normal` by two 246.
 
-Three filters set the bit and get no placement, for three different reasons. `fxmaps`
-(36,057 records) is not a gap in the data: filter 4's entry carries `base`/`clsbits` instead
-of a `cls` dictionary, every class bit below 16 costs zero words there, and running that
-rule from the record's own `end` puts bit 16 on `end` in 36,057 of 36,057 — the walk's
-answer, merely not emitted. `emboss` (371) is a real gap: bit 16 is not in filter 8's
-`clsbits` at all — though it varies in the corpus, 536 set against 10 clear, so this is a fit
-that does not carry the feature rather than a bit that could not be fitted — and its base
-region rests on a fitted `4.5`; a further 171 emboss records are declined outright by the
-`min_version` gate. `vectorshape` (139) has no header cost model at all: the walk returns a
-stub with no size slot and no class parameters, so there is nothing to place and nothing to
-fall back to.
+The walk reports it as `size_slot`, so a reader never reconstructs it. Two filters still
+have no placement to report, for different reasons, and one has nothing to place.
+
+**`emboss`** is where the fitting METHOD runs out. `derive_costs` admits a class bit only
+when it varies among the headers it can observe, and filter 8 has 30 distinct `(cls, w1)`
+keys in that population with bit 16 set in all 30 — so its word cannot be told apart from
+the constant, which is what a fractional `base[0] = 4.5` is: the size word folded into the
+base region. No re-fit recovers it; the bit does vary across the corpus (536 set, 10 clear)
+but never where a header boundary is measurable. `int(round(4.5))` leaves the first-after-
+base slot pointing AT the folded word, and it resolves as a program address in 375 of 375
+records — which is the check that warrants reading it there. A further 171 emboss records
+the walk declines outright on its `min_version` gate.
+
+**`fxmaps`** used to be in the same position and is not: filter 4 carries `base`/`clsbits`
+rather than a `cls` dictionary, every class bit below 16 costs zero words there, and walking
+that rule from the first slot after the inputs puts bit 16 there in 36,057 of 36,057 records
+— the walk's own answer, formerly not emitted. Its `end` is deliberately NOT advanced past
+the class block: for this filter `end` is the first-after-inputs slot (the role the general
+walk calls `size_pos`), and the fitted header length is longer than the class cursor by +1
+to +7 words, so a third number would agree with neither.
+
+**`vectorshape`** has no header cost model at all — the walk returns a stub with no size slot
+and no class parameters. Nothing to place, and nothing to fall back to.
 
 **The inherited size slot.** Class bit 0 (word0 bit 16) set ⇒ the first slot after the
 base region is the record's output-size expression, not a parameter. Clear ⇒ there is no
@@ -644,6 +656,14 @@ this paragraph had it as state 11 in all 1,133 cases. Corpus-wide it splits, bec
 and the 170 program-arm records read 01.** The arms are told apart by their VALUES with no
 exceptions in 437 files — every one of the 963 holds a plain float in [0, 1] and resolves no
 program; not one of the 170 is a plain float and all 170 resolve a program.
+
+**A reader should say what it declines to read.** An unnamed field is not an error — the
+walk places it, so the layout is right — but it is invisible in a way an error is not: the
+name resolves to a default, the default is the neutral value, and the record renders. `hsl`
+was an identity in 747 corpus records and `sharpen` in 1,156 on exactly that mechanism.
+Report per record the fields the walk placed and the legend does not name, as its own count
+rather than folded into the assumed-value one: the two mean opposite things, and 57,731
+`pixelprocessor` records carrying an unnamed class pointer would drown the other.
 
 **A `flag` is zero words baked and one word as a program**, and both arms have to be
 declared or the placement shifts. `normal`'s fields 1 and 2 cost nothing when baked — the

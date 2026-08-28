@@ -255,6 +255,49 @@ def test_normal_declares_the_field_that_shifts_its_intensity():
     print('ok  test_normal_declares_the_field_that_shifts_its_intensity')
 
 
+def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
+    """`size_slot` is where the class walk PUT bit 16, and nothing reconstructs it.
+
+    The retired rule took `prog` -- where the class BLOCK starts -- which is the same word
+    only when no costing class bit precedes bit 16. It differs on 7,590 records over 120
+    files, and it survived because `walk_programs` unions the size slot with every class
+    slot: the right word was in the candidate list either way, so a wrong `size_slot` never
+    had to be right. That is why this asserts the FIELD rather than a render.
+
+    ChesterfieldSofa is the specimen because Rokviz cannot see it: 0 of its 70 records have
+    a class bit costing a word before bit 16, while Chesterfield has 28 that do.
+    """
+    hits = glob.glob(os.path.join(ROOT, '**', 'ChesterfieldSofa.sbsasm'), recursive=True)
+    if not hits:
+        return _skip('test_the_size_slot_is_the_walks_placement: no ChesterfieldSofa')
+    import decompose
+    asm = sbsasm.Assembly(hits[0])
+    disagree, checked = 0, 0
+    for rec in asm.records:
+        d = decompose.decompose(rec)
+        if not d:
+            continue
+        v = model.View(asm, rec)
+        placed = dict((b, sl) for (b, sl, _n) in d.get('cls_params', ())).get(16)
+        if placed is not None:
+            checked += 1
+            assert v.size_slot == placed, \
+                'record %d: size_slot %r, the walk placed bit 16 at %r' \
+                % (rec.index, v.size_slot, placed)
+            if d.get('prog') is not None and placed != d['prog']:
+                disagree += 1
+        if v.size_slot is not None:
+            assert 0 <= v.size_slot < len(rec.words), \
+                'record %d: size_slot %d is outside its %d words' \
+                % (rec.index, v.size_slot, len(rec.words))
+    assert checked > 0, 'no record on this specimen places a size expression'
+    assert disagree >= 28, \
+        'only %d records here distinguish the walk from the block start -- this specimen ' \
+        'can no longer catch the regression it was chosen for' % (disagree,)
+    print('ok  test_the_size_slot_is_the_walks_placement_not_the_blocks_start '
+          '(%d placed, %d where the retired rule differs)' % (checked, disagree))
+
+
 def test_every_record_renders():
     path = specimen()
     if not path:
@@ -386,6 +429,7 @@ if __name__ == '__main__':
                test_blend_reads_the_relocated_opacity,
                test_hsl_names_its_three_parameters,
                test_normal_declares_the_field_that_shifts_its_intensity,
+               test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
                test_every_record_renders,
                test_the_render_threads_its_own_value_cache,
                test_reference_agreement_does_not_regress):

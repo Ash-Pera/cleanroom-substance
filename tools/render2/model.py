@@ -120,6 +120,20 @@ W1_PARAMS = {
 }
 
 
+def _covered_bits(fid):
+    """(w1 bits, class bits) this legend can name for one filter.
+
+    Bits, not field indices: `blend`'s relocated opacity straddles the two-bit grid, and an
+    index-based reading calls both halves unnamed.
+    """
+    w1 = 0
+    for (mask, _shift, name, _kind) in W1_PARAMS.get(fid, ()):
+        if name is not None:
+            w1 |= mask
+    cls = {_SIZE_BIT} | set(CLS_NAMES.get(fid, {}))
+    return w1, cls
+
+
 def _baked_width(kind, colour):
     """A baked field's width in words, from the manifest's type legend.
 
@@ -239,7 +253,7 @@ class View(object):
     """
     __slots__ = ('rec', 'asm', 'index', 'filter', 'filter_id', 'colour', 'width',
                  'height', 'words', 'inputs', 'params', 'size_slot', 'walked',
-                 'header_end', 'unnamed', 'prog_slot', 'cls_slots')
+                 'header_end', 'unnamed', 'prog_slot', 'cls_slots', 'ignored')
 
     def __init__(self, asm, rec):
         self.rec, self.asm, self.index = rec, asm, rec.index
@@ -248,6 +262,9 @@ class View(object):
         self.width, self.height = rec.width, rec.height
         self.words = rec.words
         self.params, self.unnamed, self.inputs = {}, [], []
+        #: (kind, field-or-bit, slot, words) the walk placed and no name covers. See
+        #: `_covered_bits`; the render reads none of these.
+        self.ignored = []
         self.cls_slots = []
         self.size_slot = self.header_end = self.prog_slot = None
         self.walked = False
@@ -268,62 +285,39 @@ class View(object):
             v = rec.words[slot] if 0 <= slot < len(rec.words) else None
             self.inputs.append(v if (v is not None and 0 <= v < rec.index) else None)
 
-        # THE SIZE SLOT IS THE ONE THE WALK PLACES. It used to be `prog` gated on a re-test
-        # of word0 bit 16 -- asking the word a question the walk had already answered, and
-        # getting a different answer: `prog` is where the class block STARTS, and bit 16 is
-        # the lowest class bit only when no flag bit precedes it. Over 120 files the two
-        # disagree on 7,590 records -- `pixelprocessor` by one slot 6,905 times,
-        # `dyngradient` by one 399, `normal` by two 246 -- and the bit-16 word is the one
-        # that holds the size expression.
-        #
-        # Nothing rendered differently, because `walk_programs` also offers every class slot
-        # as a candidate, so the right word was always in the list and the wrong `size_slot`
-        # merely added a spare. That is what made it look benign: a second answer that never
-        # had to be right.
+        # THE SIZE SLOT IS A FIELD THE WALK RETURNS. It used to be reconstructed here --
+        # `prog` gated on a re-test of word0 bit 16 -- and `prog` is where the class block
+        # STARTS, which is the same word only when no costing class bit precedes bit 16.
+        # Over 120 files those differ on 7,590 records. `decompose` now places it and says
+        # so, so there is nothing left to reconcile.
         self.prog_slot = d.get('prog')
-        cls_params = d.get('cls_params', ())
-        for (bit, slot, _w) in cls_params:
-            if bit == _SIZE_BIT:
-                self.size_slot = slot
-        if (self.size_slot is None and (rec.words[0] >> _SIZE_BIT) & 1 and not cls_params
+        self.size_slot = d.get('size_slot')
+
+        # ONE FILTER STILL HAS NO ANSWER TO TAKE, and it is a limit of the METHOD rather
+        # than a gap someone forgot to fill. `derive_costs` admits a class bit only when it
+        # VARIES among the headers it can observe:
+        #
+        #     clsbits = [b for b in bitrange if len({k[0] >> b & 1 for k, _, _ in keys}) > 1]
+        #
+        # Filter 8 has 30 distinct (cls, w1) keys in that population and bit 16 is set in
+        # ALL 30, so its word cannot be told apart from the constant -- which is what
+        # `base[0] = 4.5` is: the size word folded into the base region, with a half the fit
+        # could not attribute. Re-fitting cannot recover it. (Two commits ago I said the
+        # opposite, from a corpus count of 536 set against 10 clear; the 10 are records whose
+        # header boundary is not measurable, so the fitter never sees them.)
+        #
+        # The branch therefore stays, on a check rather than a hope: `int(round(4.5))` is 4,
+        # which leaves `prog` pointing AT the folded size word instead of past it, and the
+        # word there resolves as a program address in 375 of 375 emboss records. It is not
+        # re-checked here -- `Context.prog_at` is the single validator of program pointers.
+        # A further 171 emboss records `decompose` declines outright on its min_version gate.
+        #
+        # `fxmaps` used to be here too, 36,057 records of it. Its own walk places the bit now.
+        # The tests below are about the FIELD being honest: a slot inside the record, or None.
+        if (self.size_slot is None and (rec.words[0] >> _SIZE_BIT) & 1
+                and not d.get('cls_params')
                 and self.prog_slot is not None
                 and 0 <= self.prog_slot < len(rec.words)):
-            # THE TWO FILTERS THAT REACH HERE ARE NOT THE SAME CASE, and the counts in the
-            # first version of this comment -- 6,086 and 47 -- were a 120-file sample
-            # printed as corpus totals. Full corpus, 437 files:
-            #
-            #   fxmaps  36,057   NOT a gap. Filter 4's cost entry has no `cls` dict but it
-            #                    does carry `base`/`clsbits`, and every class bit BELOW 16
-            #                    costs zero words there, so the class walk would place bit
-            #                    16 at exactly `end` -- which is `prog` for this filter.
-            #                    Checked by running that rule: 36,057 of 36,057 land on
-            #                    `prog`, width 1. This is a DUPLICATE of the walk's answer,
-            #                    not a second one, and it deletes by teaching
-            #                    `_fxmaps_walk` to emit its `cls_params` (which would also
-            #                    surface bits 22/23 -- one more costing class slot on 36,031
-            #                    records that nothing currently sees).
-            #   emboss     371   A REAL GAP. Filter 8's `clsbits` is [20, 23, 24, 25]: bit
-            #                    16 is not modelled at all, and `prog` rests on
-            #                    `base[0] = 4.5`, the fitted half `decompose`'s own
-            #                    min_version note calls "the model conceding it cannot
-            #                    express the rule". 171 further emboss records are declined
-            #                    outright by that gate rather than guessed at. It is not
-            #                    that the bit could not be fitted: it VARIES, 536 set to 10
-            #                    clear over the corpus. The fit simply does not carry it.
-            #                    What warrants the branch meanwhile is checkable and was
-            #                    checked: the word at `prog` resolves as a program address
-            #                    in 375 of 375. Not re-checked HERE -- `Context.prog_at` is
-            #                    the single validator of that, and a second copy is the
-            #                    duplication this walk exists to delete. The range test
-            #                    below is about the FIELD being honest, not the pointer.
-            #
-            # `vectorshape` never arrives, and the reason I gave one commit ago was wrong:
-            # I read it off a counter that bucketed `None` with out-of-range and reported
-            # "outside the record's words in 127 of 139". It has no cost model at all --
-            # `decompose` returns a stub for filter 5 with `prog: None` and no `cls_params`
-            # -- so there is no candidate to fall back TO. The `is not None` test above is
-            # what actually keeps it out; the range test beside it guards a case nothing in
-            # this corpus exhibits.
             self.size_slot = self.prog_slot
 
         # EVERY class slot, named or not. An inherited parameter this legend has no name
@@ -333,10 +327,17 @@ class View(object):
         # down with them -- because their setup program sits in an unnamed class slot.
         self.cls_slots = [s for s in d.get('cls_slots', ()) if 0 <= s < len(rec.words)]
         cls_names = CLS_NAMES.get(rec.filter_id, {})
+        cov_w1, cov_cls = _covered_bits(rec.filter_id)
         for (bit, slot, width) in d.get('cls_params', ()):
             entry = cls_names.get(bit)
             if entry is not None:
                 self._add(entry[0], entry[1], slot, width)
+            elif bit not in cov_cls:
+                # THE RECORD STATES A FIELD THIS LEGEND DOES NOT READ. Not an error -- the
+                # walk placed it, so the layout is right and the render goes on -- but it is
+                # the thing that has to be visible: `hsl` was an identity in 747 records and
+                # `sharpen` in 1,156, and both looked like ordinary output.
+                self.ignored.append(('cls', bit, slot, width))
 
         # The filter's OWN parameters, from the w1 word, anchored at the header end and
         # laid out in ascending mask order, each taking its own width.
@@ -378,6 +379,8 @@ class View(object):
         # Slots the cost model calls parameters keep their place in the PROGRAM candidate
         # list even where this legend has no name for them.
         for (_j, state, slot, _w) in d.get('param_slots', ()):
+            if _w >= 1 and not ((3 << (2 * _j)) & cov_w1):
+                self.ignored.append(('w1', _j, slot, _w))
             if state == 2 and 0 <= slot < len(rec.words):
                 self.unnamed.append((_j, Param(None, 'program', slot, 1,
                                                rec.words[slot] + 52)))

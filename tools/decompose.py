@@ -25,6 +25,40 @@ words, or the render. See FORMAT-NOTES.md "Unified walk".
 import record_layout
 
 
+#: word0 bit for the inherited size expression -- class bit 0.
+_SIZE_BIT = 16
+
+
+def _size_slot(cls_params):
+    """The slot the class walk PLACED the size expression in, or None.
+
+    THE WALK ANSWERS THIS, NOT THE CALLER. Readers used to reconstruct it by re-testing
+    word0 bit 16 and taking `prog`, which is where the class block STARTS -- the same word
+    only when no costing class bit precedes bit 16. Over 120 files the two answers differ on
+    7,590 records (`pixelprocessor` by one slot 6,905 times, `dyngradient` by one 399,
+    `normal` by two 246). Returning it here leaves one answer with one contract: the slot
+    holding the inherited size expression, or None when the record has none or this walk
+    cannot place it. None is a REFUSAL, never a zero.
+    """
+    return next((sl for (b, sl, _n) in cls_params if b == _SIZE_BIT), None)
+
+
+def _feature_cost(spec, idx, c0, is_state):
+    """One interaction feature's slot count: `base[idx] + colour * cross[idx]`, rounded.
+
+    Shared by `_interaction_walk` and `_fxmaps_walk` because it is one rule. The fxmaps arm
+    declines the interaction spec's ROLES -- it calls slot 2 an image input and misses the
+    real ones -- but not its COSTS, and a second copy of this arithmetic is the duplication
+    `fx_entry_walk`'s note is about.
+    """
+    base, cross = spec['base'], spec['cross']
+    if idx >= len(base):
+        return 0
+    states_only = spec.get('interaction') == 'colour_states'
+    x = cross[idx] if (idx < len(cross) and (not states_only or is_state)) else 0.0
+    return int(round(base[idx] + c0 * x))
+
+
 def _param_field_masks(f):
     """The exact PARAM_SPEC presence masks for this filter. A cost-model w1 field reading 0b11
     is a genuine image input only when its 2-bit range EXACTLY equals one of these masks (an
@@ -257,15 +291,10 @@ def _interaction_walk(r, s):
     w0 = r.words[0]
     w1 = r.words[1] if len(r.words) > 1 else 0
     c0 = w0 & 1
-    base, cross = s['base'], s['cross']
     clsbits, pairs = s['clsbits'], s['pairs']
-    states_only = s['interaction'] == 'colour_states'
 
     def cost(idx, is_state):
-        if idx >= len(base):
-            return 0
-        x = cross[idx] if (idx < len(cross) and (not states_only or is_state)) else 0.0
-        return int(round(base[idx] + c0 * x))
+        return _feature_cost(s, idx, c0, is_state)
 
     pos = cost(0, False)
     size_pos = pos                           # first slot after the base region = size-expr slot
@@ -333,7 +362,8 @@ def _interaction_walk(r, s):
     param_slots = _restraddle(r, w1, param_slots)
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
                         'param_slots': param_slots, 'cls_params': cls_params,
-                        'end': _model_end(r, pos), 'prog': prog})
+                        'end': _model_end(r, pos), 'prog': prog,
+                        'size_slot': _size_slot(cls_params)})
 
 
 # fxmaps' header opens the way every record does -- w0 (the class word) then w1 -- and
@@ -412,9 +442,37 @@ def _fxmaps_walk(r, spec):
     # 41,164 records / 14 distinct input counts -- the same "first slot after the base region" as
     # the main path's size_pos, verified by cleanroom-substance-00.
     end = _FX_FIRST_INPUT + n_in
-    return {'inputs': inputs, 'cls_slots': [], 'param_slots': [], 'cls_params': [],
-            'end': end, 'prog': end,
-            'root': FX_ROOT_SLOT}
+    # THE CLASS BLOCK IS WALKABLE HERE TOO, and it used to be left empty -- which pushed
+    # every caller that needed the size slot into re-deriving it from `prog`. Filter 4
+    # carries `base`/`clsbits` rather than a `cls` dictionary, and this arm declines the
+    # interaction spec's ROLES (it calls slot 2 an image input and misses the real ones),
+    # not its COSTS. Walked from the first slot after the inputs, bit 16 lands on `prog` in
+    # 36,057 of 36,057 corpus records at width 1, so what the callers were synthesising was
+    # this walk's own answer; 36,031 of them also carry bit 22 or 23, one further costing
+    # class slot that nothing has ever looked at.
+    #
+    # `end` IS NOT ADVANCED PAST THEM, and that is measured rather than lazy. For this
+    # filter `end` == `prog` is the FIRST-AFTER-INPUTS slot -- the role the general walk
+    # calls `size_pos`, not the role it calls `end` -- and it is what the prog invariant in
+    # this docstring validates over 41,164 records. Advancing it to the end of the class
+    # block would produce a third number agreeing with neither: `record_layout.header_words`
+    # is longer than the class-block cursor by +1 to +7 words across 36,000 records (equal
+    # on only 3,846), because the fitted length for fxmaps also charges parameters that live
+    # in the PAYLOAD, not the header. So the class slots deliberately sit at and past `end`.
+    pos = end
+    cls_slots, cls_params = [], []
+    for i, b in enumerate(spec.get('clsbits', ())):
+        if not (r.words[0] >> b) & 1:
+            continue
+        n = _feature_cost(spec, 1 + i, r.words[0] & 1, False)
+        if n > 0:
+            cls_params.append((b, pos, n))
+        for _ in range(n):
+            cls_slots.append(pos)
+            pos += 1
+    return {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
+            'cls_params': cls_params, 'end': end, 'prog': end,
+            'size_slot': _size_slot(cls_params), 'root': FX_ROOT_SLOT}
 
 
 def decompose(r):
@@ -428,7 +486,11 @@ def decompose(r):
             return None
         return _fxmaps_walk(r, spec)
     if f == 5:                               # vectorshape: source geometry, no header cost model,
-        return {'inputs': [], 'cls_slots': [], 'param_slots': [], 'end': None, 'prog': None}  # no inputs
+        # `cls_params` and `size_slot` stated rather than omitted: a caller reading
+        # `d.get('cls_params', ())` cannot tell an empty walk from an absent key, and this
+        # record has no size slot to place -- not one this walk failed to find.
+        return {'inputs': [], 'cls_slots': [], 'param_slots': [], 'cls_params': [],
+                'end': None, 'prog': None, 'size_slot': None}
     ver = r.asm.header.get('version') if isinstance(r.asm.header, dict) else 0
     w0 = r.words[0]
     spec = _select_spec(f, w0, r.words[1] if len(r.words) > 1 else None, ver)
@@ -491,7 +553,7 @@ def decompose(r):
                     cls_slots.append(pos); pos += 1
         return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
                             'cls_params': cls_params, 'end': _model_end(r, pos),
-                            'prog': prog})
+                            'prog': prog, 'size_slot': _size_slot(cls_params)})
 
     if f not in BASE_INPUTS:
         return None                          # fxmaps payload / uncovered small shapes
@@ -578,7 +640,7 @@ def decompose(r):
     # it; the walk says it.
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
                         'param_slots': param_slots, 'cls_params': cls_params,
-                        'w1_shift': gsh,
+                        'w1_shift': gsh, 'size_slot': _size_slot(cls_params),
                         'end': _model_end(r, pos), 'prog': prog})
 
 
