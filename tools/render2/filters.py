@@ -607,7 +607,18 @@ def f_sharpen(ctx, v):
     N = W * H
     pos = pos_grid(W, H)
     src = to_image(ctx.sample(v, 0, pos), N, H, W)
-    amount = float(v.baked('intensity', 1.0) or 1.0)
+    # `v.baked(name, 1.0) or 1.0` read the baked arm ONLY and turned a stated 0.0 into 1.0,
+    # which mattered the moment the legend started supplying this parameter at all.
+    p = v.params.get('intensity')
+    if p is None:
+        amount = 1.0                      # absent: the node default, and NOT recorded here
+    elif p.kind == 'baked':
+        amount = float(p.value)
+    else:
+        got = np.asarray(ctx.run(v, p.value, 1)).ravel()
+        if got.size < 1 or not np.isfinite(got[0]):
+            raise Unsupported('sharpen intensity program does not evaluate to a scalar')
+        amount = float(got[0])
     return np.clip(src + amount * (src - _box(src, 1)), 0.0, 1.0)
 
 

@@ -672,9 +672,19 @@ program:
 | 6 uniform | outputcolor | 24 | 4 (colour) / 1 |
 | 7 warp | intensity | 29 baked, 30 program | 1 |
 | 10 blur | intensity | 28 baked, 29 program | 1 |
+| 13 sharpen | intensity | 28 baked, 29 program | 1 |
 | 14 hsl | hue | 24 baked, 25 program | 1 |
 | 14 hsl | saturation | 26 baked, 27 program | 1 |
 | 14 hsl | luminosity | 28 baked, 29 program | 1 |
+
+`sharpen` sits at the same pair as `blur`, on weaker evidence: no shipped source states a
+sharpen parameter at all (all 28 nodes are at defaults), so this rests on the pair shape —
+bit 28 holds an ordinary float on 1,148 corpus records (median 0.25) and bit 29 holds
+integers on 8 — and on the position being the one the other one-scalar filter uses. Of the
+1,148 stated values, **1.0 never appears**, which is consistent with 1 being the node
+default this table assumes when the field is absent; that is an argument from an absence and
+`blur`, whose modal baked intensity IS 1.0 at 10,200 records, is the standing reminder that
+such an argument can be wrong.
 
 `hsl`'s three come from the shipped sources: `ChesterfieldSofa.sbs` states `saturation`
 0.65 with `luminosity` 0.60 on one node and `saturation` 0.58 on another, and the compiled
@@ -742,7 +752,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | gradient / dyngradient | a ramp indexed by the input's channel 0; `dyngradient`'s ramp is a second input's long axis |
 | hsl | RGB → HSL, then `hue += h − ½` (mod 1), `sat ← clip(sat·2s)`, `lum ← clip(lum + lu − ½)`, back to RGB; each of the three defaults to ½, which is the neutral value — so an unnamed parameter here is silently an identity |
 | blur | separable box, radius `clip(\|I\|,0,256)/ref · max(W,H)` px; sub-pixel ⇒ identity |
-| sharpen | `src + amount·(src − box₁)`; §13.4 names no amount, so every record runs at 1 |
+| sharpen | `src + amount·(src − box₁)`; `amount` = `intensity`, absent ⇒ 1. Read the baked arm only and a stated 0 (6 corpus records) is indistinguishable from an absent one |
 | dirmotionblur | 17 taps over ±L/2 along `2π·mblurangle`, `L = clip(\|I\|,0,256)/ref · 10` |
 | directionalwarp | displace input 0 by `(2·h − 1)·I/ref` along `2π·warpangle`, `h` = input 1 |
 | warp | displace input 0 by the **gradient** of input 1, scaled `·W/ref·I` |
