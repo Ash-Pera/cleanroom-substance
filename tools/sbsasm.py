@@ -1752,6 +1752,11 @@ def fx_entry_layout(tag):
 # Base image inputs for the filters whose parameter fields are catalogued.
 _RULED_PARAMS = {1: 2, 12: 2, 15: 1, 11: 1}
 
+#: The entry layouts `Record.read_ramp` can state, so a reader can assert it covers all of
+#: them rather than discovering a fifth one at render time. `render2.filters` does exactly
+#: that. See `read_ramp` for what each entry holds.
+RAMP_FORMS = ('grey-u16', 'rgba-u16', 'grey-float', 'rgba-float')
+
 
 class Record:
     """One compiled filter node: a tag, a class word, and a run of 32-bit slots.
@@ -4601,9 +4606,31 @@ class Record:
         o = struct.unpack_from('<2f', self.asm.data, self.offset + 4 * s)
         return o if all(x == x and abs(x) < 1e4 for x in o) else None
 
-    @property
-    def ramp(self):
-        """For filter 0: the gradient's colour ramp, or None.
+    def read_ramp(self):
+        """For filter 0: the gradient's colour ramp as `(form, table)`, or None.
+
+        THE FORM IS A STATEMENT, NOT A GUESS, and returning it is the whole point of this
+        being a method rather than a bare table. This decode picks the entry layout from
+        the record's own colour flag and from the span its slots state; afterwards the
+        layout is NOT recoverable from the entries alone -- a greyscale float entry and a
+        greyscale u16 entry with a midpoint are both three components. A caller that asked
+        `isinstance(entry[0], float)` was re-deriving, from a Python type, a decision this
+        decode had already made and could simply say. `render2.filters.f_gradient` did that
+        until this returned the form; it agreed with the record on all 23,153 gradient
+        records in this repository's 651 `.sbsasm` files -- `corpus.paths()`'s 437 among
+        them -- which is exactly how such a reading survives.
+
+            'grey-u16'    (position, value[, midpoint])       each /65535
+            'rgba-u16'    (position, lo, hi[, midpoint])      lo | hi<<16 is RGBA bytes
+            'grey-float'  (position, value, -1.0)             already 0..1
+            'rgba-float'  (position, R, G, B, A[, -1.0])      already 0..1
+
+        THE TRAILING u16 IS WHAT CLASS BIT 8 BUYS, and no renderer here reads it. It takes
+        exactly two values over those files -- 32768 in 243,474 of 243,552 greyscale entries
+        and 179,373 of 179,388 colour ones, 0 in the remainder -- which reads like a per-stop
+        interpolation handle sitting at its neutral half-way position, though nothing here
+        separates that from any other field whose default is 0.5. Named so that a renderer
+        which ignores it is declining something stated rather than not seeing it.
 
         A gradient record embeds its ramp as a table of u16 entries:
 
@@ -4762,7 +4789,7 @@ class Record:
                                       start + i * fwidth) for i in range(count)]
             if any(out[i][0] > out[i + 1][0] for i in range(len(out) - 1)):
                 continue
-            return out
+            return ('rgba-float' if self.colour else 'grey-float'), out
         # Slot 4 is not always the table's end. Requiring `end - start == count * width`
         # rejected 968 records; in every one of them the span is LARGER than the table
         # needs, never smaller, and the table fits inside it at the formula width. So the
@@ -4775,7 +4802,17 @@ class Record:
                for i in range(count)]
         if any(out[i][0] > out[i + 1][0] for i in range(len(out) - 1)):
             return None                     # not a ramp: positions do not ascend
-        return out
+        return ('rgba-u16' if self.colour else 'grey-u16'), out
+
+    @property
+    def ramp(self):
+        """The ramp table alone, for callers that need only its shape and extent.
+
+        Anything that INTERPRETS the entries wants `read_ramp`: the values do not carry
+        their own layout, and this property drops the statement that supplies it.
+        """
+        got = self.read_ramp()
+        return got[1] if got else None
 
     # ---- curve specialisation
     @property

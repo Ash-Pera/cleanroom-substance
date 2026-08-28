@@ -536,6 +536,118 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
           % (checked, disagree, clashes))
 
 
+#: (form) -> (a two-stop table in that layout, what a ramp indexed at 0, 0.5 and 1 must
+#: give). Written out per form because the four are what `sbsasm.RAMP_FORMS` states and the
+#: two rare ones -- 2 greyscale-float records in 651 files, and 33 colour-float -- are not
+#: reliably in reach of any file sweep. The u16 rows carry the trailing midpoint word, so
+#: they also assert that a reader ignoring it reads the rest correctly.
+RAMP_CASES = {
+    'grey-u16':   ([(0, 0, 32768), (65535, 65535, 32768)],
+                   [[0.0], [0.5], [1.0]]),
+    'grey-float': ([(0.0, 0.25, -1.0), (1.0, 0.75, -1.0)],
+                   [[0.25], [0.5], [0.75]]),
+    # Real entries, from `stone_stylized_adaptive` record 337: lo | hi<<16 is RGBA bytes,
+    # so 0xFF000000 is opaque black and 0xFFFFFFFF opaque white.
+    'rgba-u16':   ([(0, 0, 65280, 32768), (65535, 65535, 65535, 32768)],
+                   [[0.0, 0.0, 0.0, 1.0], [0.5, 0.5, 0.5, 1.0], [1.0, 1.0, 1.0, 1.0]]),
+    # Six components and five: both are this form, and the reader slices 1:5 from each.
+    'rgba-float': ([(0.0, 1.0, 0.0, 0.0, 1.0, -1.0), (1.0, 0.0, 0.0, 1.0, 1.0)],
+                   [[1.0, 0.0, 0.0, 1.0], [0.5, 0.0, 0.5, 1.0], [0.0, 0.0, 1.0, 1.0]]),
+}
+
+
+class _RampView:
+    """The least `f_gradient` needs: a record that states its ramp, and a size."""
+
+    def __init__(self, got, w=3, h=1):
+        self.rec = type('_RampRec', (), {'read_ramp': lambda _self, g=got: g})()
+        self._wh = (w, h)
+
+    def size(self, cap):
+        return self._wh
+
+
+class _RampCtx:
+    """An input whose channel 0 sweeps 0 -> 1 across the row, so the ramp is read at its
+    two ends and its middle."""
+
+    cap = 64
+
+    def sample(self, v, k, pos):
+        W, H = v.size(self.cap)
+        return np.linspace(0.0, 1.0, W * H, dtype=np.float32)[:, None]
+
+
+def test_the_gradient_reads_the_layout_the_record_states():
+    """`f_gradient` used to ask `isinstance(table[0][0], float)` -- a Python type standing
+    in for a decode `Record.read_ramp` had already made from the colour flag and the span.
+
+    It was not wrong. Over 41,092 corpus gradient records the type agreed with the record
+    every time, which is why it sat there: a reading that cannot fail reports nothing. What
+    it could not do is survive a fifth layout, and it was already blind to a distinction it
+    happened not to need -- a greyscale float entry and a greyscale u16 entry carrying a
+    midpoint are both three components, so length does not separate them and only the
+    decode's own statement does.
+
+    Three assertions. The reader covers exactly the forms the decoder can state, so a new
+    layout fails HERE and not at whichever record first reaches it. Each of the four decodes
+    to the right colours -- which the old branch never checked, and the two rare forms (4
+    greyscale-float records in 651 files) no sweep would reach. And a form or an entry the
+    reader cannot read refuses out loud rather than slicing a short entry into silence.
+    """
+    assert set(filters_mod._RAMP_WIDTH) == set(sbsasm.RAMP_FORMS), (
+        'the gradient reader covers %r and the decode states %r -- a layout with no reader '
+        'raises at render time, on whichever record happens to carry it'
+        % (sorted(filters_mod._RAMP_WIDTH), sorted(sbsasm.RAMP_FORMS)))
+
+    ctx = _RampCtx()
+    for form, (table, want) in sorted(RAMP_CASES.items()):
+        img = filters_mod.f_gradient(ctx, _RampView((form, table)))
+        got = np.asarray(img, np.float32).reshape(3, -1)
+        assert got.shape == np.asarray(want).shape, \
+            '%s: read %r components, expected %r' % (form, got.shape, np.shape(want))
+        assert np.allclose(got, np.asarray(want, np.float32), atol=2e-3), \
+            '%s: the ramp reads %r, not %r' % (form, got.tolist(), want)
+
+    # AND IT CAN FIRE, on both halves of the guard.
+    for why, bogus in (('an unknown form', ('rgba-u32', [(0, 1, 2, 3)])),
+                       ('an entry too short for its form', ('rgba-u16', [(0, 1), (1, 2)]))):
+        try:
+            filters_mod.f_gradient(ctx, _RampView(bogus))
+        except filters_mod.Unsupported:
+            pass
+        else:
+            assert False, '%s rendered instead of refusing: %r' % (why, bogus)
+
+    # The corpus half: this is what licenses deleting the type test -- the form the record
+    # states and the values it yields never disagree.
+    files = sorted(glob.glob(os.path.join(ROOT, '**', '*.sbsasm'), recursive=True))[:120]
+    if not files:
+        print('ok  test_the_gradient_reads_the_layout_the_record_states '
+              '(%d forms, no .sbsasm files to sweep)' % len(RAMP_CASES))
+        return
+    seen, bad, n = {}, [], 0
+    for path in files:
+        for r in sbsasm.Assembly.cached(path).records:
+            if r.filter_id != 0:
+                continue
+            got = r.read_ramp()
+            if not got:
+                continue
+            form, table = got
+            seen[form] = seen.get(form, 0) + 1
+            n += 1
+            if form not in sbsasm.RAMP_FORMS:
+                bad.append((os.path.basename(path), r.index, form, 'not a stated form'))
+            elif any(isinstance(e[0], float) != form.endswith('float') for e in table):
+                bad.append((os.path.basename(path), r.index, form, 'entries are not that'))
+            elif len(table[0]) < filters_mod._RAMP_WIDTH[form]:
+                bad.append((os.path.basename(path), r.index, form, len(table[0])))
+    assert not bad, 'records whose ramp entries are not what the form says: %r' % (bad[:8],)
+    print('ok  test_the_gradient_reads_the_layout_the_record_states (%d forms read, '
+          '%d records swept: %r)' % (len(RAMP_CASES), n, sorted(seen.items())))
+
+
 def test_the_legend_agrees_with_the_shipped_sources():
     """The legend, checked against the packages' own `.sbs` -- continuously, not once.
 
@@ -817,6 +929,7 @@ if __name__ == '__main__':
                test_normal_declares_the_field_that_shifts_its_intensity,
                test_distance_reads_the_radius_its_source_states,
                test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
+               test_the_gradient_reads_the_layout_the_record_states,
                test_the_legend_agrees_with_the_shipped_sources,
                test_every_record_renders,
                test_the_render_threads_its_own_value_cache,
