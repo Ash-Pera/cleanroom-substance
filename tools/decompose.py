@@ -422,7 +422,7 @@ def _fxmaps_walk(r, spec):
     #
     # Widened on the PROG INVARIANT, which is structural and can fail: layout[1] is 3 + n_in
     # for this filter, and that slot's word + 52 must resolve to a valid program. A truncated
-    # count lands `end` inside the edge run, where the word is a small record index and +52 is
+    # count lands `prog` inside the edge run, where the word is a small record index and +52 is
     # not a program. Over the full corpus, 41,164 fxmaps records:
     #
     #     4 bits   41,118 hold the invariant       6 bits   41,128
@@ -438,10 +438,11 @@ def _fxmaps_walk(r, spec):
     # the sample could not see the truncation.
     n_in = (w1 >> shift) & mask
     inputs = list(range(_FX_FIRST_INPUT, _FX_FIRST_INPUT + n_in))
-    # layout[1] for fxmaps is 3 + input count (the first slot after the inputs = end), exact over
-    # 41,164 records / 14 distinct input counts -- the same "first slot after the base region" as
-    # the main path's size_pos, verified by cleanroom-substance-00.
-    end = _FX_FIRST_INPUT + n_in
+    # layout[1] for fxmaps is 3 + input count, exact over 41,164 records / 14 distinct input
+    # counts -- the same "first slot after the base region" as the main path's size_pos,
+    # verified by cleanroom-substance-00. That slot is `prog`, and it is ONLY `prog`; `end`
+    # is a different quantity and is taken from the cost model below, as in every other arm.
+    prog = _FX_FIRST_INPUT + n_in
     # THE CLASS BLOCK IS WALKABLE HERE TOO, and it used to be left empty -- which pushed
     # every caller that needed the size slot into re-deriving it from `prog`. Filter 4
     # carries `base`/`clsbits` rather than a `cls` dictionary, and this arm declines the
@@ -451,15 +452,42 @@ def _fxmaps_walk(r, spec):
     # this walk's own answer; 36,031 of them also carry bit 22 or 23, one further costing
     # class slot that nothing has ever looked at.
     #
-    # `end` IS NOT ADVANCED PAST THEM, and that is measured rather than lazy. For this
-    # filter `end` == `prog` is the FIRST-AFTER-INPUTS slot -- the role the general walk
-    # calls `size_pos`, not the role it calls `end` -- and it is what the prog invariant in
-    # this docstring validates over 41,164 records. Advancing it to the end of the class
-    # block would produce a third number agreeing with neither: `record_layout.header_words`
-    # is longer than the class-block cursor by +1 to +7 words across 36,000 records (equal
-    # on only 3,846), because the fitted length for fxmaps also charges parameters that live
-    # in the PAYLOAD, not the header. So the class slots deliberately sit at and past `end`.
-    pos = end
+    # `end` IS THE FITTED HEADER LENGTH HERE TOO. This arm used to return ONE number in both
+    # fields -- `end` == `prog` == the first slot after the inputs -- so fxmaps' `end` carried
+    # the role the general walk calls `size_pos` and no other filter's `end` carries, and it
+    # sat below the walk's OWN class slots: the class cursor exceeded it by +2 on 36,031
+    # corpus records, +1 on 5,129, and 0 on 4.
+    #
+    # THE REASON RECORDED FOR THAT WAS WRONG, AND THE RECORD'S OWN ROOT POINTER SAYS SO. The
+    # claim was that `record_layout.header_words` cannot be the header length because the fit
+    # "also charges parameters that live in the PAYLOAD" -- inferred from the direction of the
+    # disagreement, never tested against anything outside the fit. fxmaps has an independent
+    # boundary to test it with: where `fx_root` lands inside the record, no header word can sit
+    # at or past it. Over the 40,754 corpus records whose root does:
+    #
+    #     header_words <= the root slot   40,744    exactly ON it 12,389, four short 27,956
+    #     header_words >  the root slot       10    all ie_curve / ie_particles, the same
+    #                                               high-arity records the arity note above
+    #                                               names, and no others
+    #
+    # The four-short population is not header the fit missed either: the four words before the
+    # root node are a fixed prologue -- 05c40001 00000000 05c40001 00000004 -- in every record
+    # sampled. So the fitted length stops AT the payload rather than reaching into it, which is
+    # the opposite of what it was declined for.
+    #
+    # WHAT SITS BETWEEN THE CLASS CURSOR AND `end` IS HEADER CONTENT THIS WALK DOES NOT PLACE:
+    # 120,380 slots over 37,318 records, and they read as parameters, not as payload --
+    #
+    #     valid program pointer   56,366   46.8%        zero          11,613    9.6%
+    #     plausible float         51,650   42.9%        other          1,751    1.5%
+    #
+    # -- which is a gap in the WALK, to be closed by walking those slots. Shortening `end` to
+    # sit in front of them is the one repair that cannot be right: it makes the walk's own
+    # cursor overrun the length it reports, and it hides the gap in the field a reader would
+    # use to find it. `end` is never BELOW the class cursor (equal on 3,846, above on the
+    # rest) and never past the record (0 of 41,164), so nothing this arm places falls outside
+    # it, and `prog` keeps the first-after-inputs slot the invariant above validates.
+    pos = prog
     cls_slots, cls_params = [], []
     for i, b in enumerate(spec.get('clsbits', ())):
         if not (r.words[0] >> b) & 1:
@@ -470,9 +498,9 @@ def _fxmaps_walk(r, spec):
         for _ in range(n):
             cls_slots.append(pos)
             pos += 1
-    return {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
-            'cls_params': cls_params, 'end': end, 'prog': end,
-            'size_slot': _size_slot(cls_params), 'root': FX_ROOT_SLOT}
+    return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
+                        'cls_params': cls_params, 'end': _model_end(r, pos), 'prog': prog,
+                        'size_slot': _size_slot(cls_params), 'root': FX_ROOT_SLOT})
 
 
 def decompose(r):
