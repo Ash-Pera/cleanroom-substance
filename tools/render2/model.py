@@ -110,6 +110,27 @@ CLS_NAMES = {
 _SIZE_BIT = 16
 
 
+class Shifted(ValueError):
+    """The end-anchored parameter block landed somewhere a parameter cannot be.
+
+    The name legend cannot go STALE -- it never mentions a position -- but it can be
+    INCOMPLETE, and that is the failure this catches: one unlisted `w1` field sitting
+    after a listed one pushes the whole block late, and the words it lands on read as
+    perfectly plausible floats. Nothing about the values says so; only the structure does.
+
+    Two slots can never hold a parameter, and neither answer comes from the fitted
+    per-field charge, so this is independent of the part of the cost model that is known
+    wrong here: an INPUT EDGE (the walk names it from the base-input count and the
+    state-3 fields, and it holds a backward record index), and the two mask words the
+    format fixes at the head of every record. A block reaching either is the exact shape
+    of the LAYOUTS memo's failure on Chesterfield 129/146/226, where `levelinhigh` was the
+    input edge read as a denormal 0.0.
+
+    Silent on the corpus: over 84,700 records carrying named parameters, 0 reach an edge,
+    0 reach a mask word and 0 run past the record. It costs nothing until it is right.
+    """
+
+
 class Param(object):
     """One parameter the walk located. `kind` is 'baked' or 'program'."""
     __slots__ = ('name', 'kind', 'slot', 'width', 'value')
@@ -204,6 +225,7 @@ class View(object):
         # The filter's OWN parameters, from the w1 word, anchored at the header end and
         # laid out in ascending mask order, each taking its own width.
         w1 = rec.words[1] if len(rec.words) > 1 else 0
+        n_masks = 2 if len(rec.words) > 1 else 1
         present = []
         for (mask, shift, name, kind) in W1_PARAMS.get(rec.filter_id, ()):
             code = (w1 & mask) >> shift
@@ -214,6 +236,16 @@ class View(object):
         end = self.header_end
         if present and end is not None:
             pos = end - sum(t[2] for t in present)
+            in_slots = [s for s in d.get('inputs', ()) if isinstance(s, int)]
+            if pos < n_masks or (in_slots and pos <= max(in_slots)) \
+                    or end > len(rec.words):
+                raise Shifted(
+                    'filter %d: the named parameters would start at slot %d, which is %s '
+                    '-- a `w1` field this legend does not name is taking the space'
+                    % (rec.filter_id, pos,
+                       'inside the record\'s masks' if pos < n_masks else
+                       'an input edge' if in_slots and pos <= max(in_slots) else
+                       'past the record\'s %d words' % len(rec.words)))
             for (name, kind, width) in present:
                 self._add(name, kind, pos, width)
                 pos += width

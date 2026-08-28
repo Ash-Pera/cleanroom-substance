@@ -25,7 +25,7 @@ import sbsruntime
 
 import filters
 import model
-from ops import Unsupported, conform, run_program, sampler
+from ops import Unsupported, bind, conform, run_program, sampler
 
 
 class Context(object):
@@ -39,6 +39,25 @@ class Context(object):
         self.synthetic = set()
         self._bindings = {}
         self._inputs = {}
+
+        # THE 0x03/0x06 VALUE CACHE IS THIS CONTEXT'S, not `sbsruntime`'s module global.
+        # The two opcodes are cross-record common-subexpression elimination -- a value one
+        # record's program computes and another reads back by index -- so answering a
+        # `cache_read` needs one dict threaded through a whole file in record order, which
+        # is what `render` is. The indices are bare integers with nothing in them naming a
+        # file, so a dict reachable by every caller at once cannot say WHOSE index 3 it is
+        # holding: a global made a leak between two files possible, and installing and
+        # restoring one only made it brief. Held here, the reader and the writer are the
+        # same evaluation because they are the same closure, and two Contexts are two
+        # caches whether or not they overlap.
+        #
+        # `_funcs` and `fx_funcs` are the programs compiled against it, and they live
+        # here for that reason and not for speed: a function bound to one cache must never
+        # be handed to a Context holding another. See `ops.bind`.
+        self.cache = {}
+        self.cache_funcs = sbsruntime.cache_functions(self.cache)
+        self._funcs = {}
+        self.fx_funcs = {}
 
     # -- inputs ------------------------------------------------------------------
 
@@ -90,7 +109,8 @@ class Context(object):
         describe the same grid or a neighbour tap becomes sub-pixel and the filter
         silently turns into an identity.
         """
-        return run_program(self.asm, ptr, self.graph_inputs(n),
+        fn = bind(self.asm, ptr, self.cache, self._funcs)
+        return run_program(fn, self.graph_inputs(n),
                            {} if slots is None else slots, n, pos=pos,
                            W=v.width if W is None else W,
                            H=v.height if H is None else H)
@@ -184,71 +204,66 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None):
     ctx.outputs.update(precomputed or {})
     failures, cascaded = {}, set()
 
-    # THE CACHE IS THIS RENDER'S, AND IT GOES BACK WHEN THE RENDER ENDS. 0x03/0x06 are
-    # cross-record common-subexpression elimination: the writer is a different record from
-    # the reader, so answering a `cache_read` needs one dict threaded through a whole file
-    # in record order, which is what this loop is. `sbsruntime` keeps that dict in a MODULE
-    # GLOBAL, and leaving ours installed hands it to whatever runs next -- the indices are
-    # bare integers with nothing in them naming a file, so the next file's reader does not
-    # get the `NoSharedCache` its single-program caller is entitled to, it gets THIS file's
-    # value for index 3. A sweep that renders one file and then transpiles a program out of
-    # another is exactly that shape.
-    prev_cache = sbsruntime.use_shared_cache({})
-    try:
-        for rec in asm.records:
-            i = rec.index
-            if i in ctx.outputs:
-                continue
+    # THE VALUE CACHE IS `ctx.cache` AND NOTHING IS INSTALLED ANYWHERE. Record order is
+    # what makes a `cache_read` answerable -- writers precede readers, over 7,074 matched
+    # pairs with zero exceptions -- and this loop is that order. See `Context.__init__`.
+    for rec in asm.records:
+        i = rec.index
+        if i in ctx.outputs:
+            continue
+        try:
+            # INSIDE the try: `View` raises `model.Shifted` when the end-anchored
+            # parameter block lands on an input edge or a mask word, and that is one
+            # RECORD's refusal, not the file's.
             v = model.View(asm, rec)
-            try:
-                if not v.walked:
-                    raise Unsupported('the cost model does not cover this record header, '
-                                      'so no slot of it can be read structurally')
-                fn = filters.FILTERS.get(v.filter)
-                if fn is None:
-                    raise Unsupported('filter %r has no implementation here' % v.filter)
-                out = np.asarray(fn(ctx, v))
-                want = 4 if v.colour else 1
-                fixed = conform(out, want)
-                if fixed is None:
-                    raise Unsupported('%s record produced %d channels, not %d'
-                                      % ('colour' if v.colour else 'greyscale',
-                                         out.shape[-1] if out.ndim == 3 else 1, want))
-                if fixed.size and not np.all(np.isfinite(fixed)):
-                    fill = assume.assumed('nonfinite.fill')
-                    if fill is None:
-                        raise Unsupported('produced non-finite values (%.1f%% of samples)'
-                                          % (100.0 * float(np.mean(~np.isfinite(fixed)))))
-                    fixed = np.where(np.isfinite(fixed), fixed, np.float32(fill))
-                    ctx.low_confidence.add(i)
-                    assume.note(i)
-                ctx.outputs[i] = fixed
-            except Unsupported as e:
-                failures[i] = str(e)
-                if getattr(e, 'cascade', False):
-                    cascaded.add(i)
-                if verbose:
-                    print('rec%d (%s): SKIP - %s' % (i, v.filter, e))
-            except Exception as e:
-                failures[i] = '%s: %s' % (type(e).__name__, e)
-                if verbose:
-                    print('rec%d (%s): ERROR - %s: %s'
-                          % (i, v.filter, type(e).__name__, e))
-            if stop_after is not None and i >= stop_after:
-                break
+            if not v.walked:
+                raise Unsupported('the cost model does not cover this record header, so '
+                                  'no slot of it can be read structurally')
+            fn = filters.FILTERS.get(v.filter)
+            if fn is None:
+                raise Unsupported('filter %r has no implementation here' % v.filter)
+            out = np.asarray(fn(ctx, v))
+            want = 4 if v.colour else 1
+            fixed = conform(out, want)
+            if fixed is None:
+                raise Unsupported('%s record produced %d channels, not %d'
+                                  % ('colour' if v.colour else 'greyscale',
+                                     out.shape[-1] if out.ndim == 3 else 1, want))
+            if fixed.size and not np.all(np.isfinite(fixed)):
+                fill = assume.assumed('nonfinite.fill')
+                if fill is None:
+                    raise Unsupported('produced non-finite values (%.1f%% of samples)'
+                                      % (100.0 * float(np.mean(~np.isfinite(fixed)))))
+                fixed = np.where(np.isfinite(fixed), fixed, np.float32(fill))
+                ctx.low_confidence.add(i)
+                assume.note(i)
+            ctx.outputs[i] = fixed
+        # `rec.filter_name`, NOT `v.filter`: building the View is inside the try now, so
+        # `v` is not bound when it is the View that raised.
+        except Unsupported as e:
+            failures[i] = str(e)
+            if getattr(e, 'cascade', False):
+                cascaded.add(i)
+            if verbose:
+                print('rec%d (%s): SKIP - %s' % (i, rec.filter_name, e))
+        except Exception as e:
+            failures[i] = '%s: %s' % (type(e).__name__, e)
+            if verbose:
+                print('rec%d (%s): ERROR - %s: %s'
+                      % (i, rec.filter_name, type(e).__name__, e))
+        if stop_after is not None and i >= stop_after:
+            break
 
-        # CLAMP AT THE WRITE, NOT IN THE FILTER THAT OVERSHOT. `levels` leaves [0, 1] by
-        # construction where an author set the output range outside the unit interval, and
-        # an INTERMEDIATE at 1.31 feeding a multiply is headroom the engine may legitimately
-        # consume. Only a declared output is clamped.
-        for _uid, fmt, _grey, ri in asm.outputs():
-            if isinstance(fmt, tuple) or ri not in ctx.outputs:
-                continue
-            a = ctx.outputs[ri]
-            if a.min() < 0.0 or a.max() > 1.0:
-                ctx.outputs[ri] = np.clip(a, 0.0, 1.0)
-    finally:
-        sbsruntime.use_shared_cache(prev_cache)
+    # CLAMP AT THE WRITE, NOT IN THE FILTER THAT OVERSHOT. `levels` leaves [0, 1] by
+    # construction where an author set the output range outside the unit interval, and an
+    # INTERMEDIATE at 1.31 feeding a multiply is headroom the engine may legitimately
+    # consume. Only a declared output is clamped.
+    for _uid, fmt, _grey, ri in asm.outputs():
+        if isinstance(fmt, tuple) or ri not in ctx.outputs:
+            continue
+        a = ctx.outputs[ri]
+        if a.min() < 0.0 or a.max() > 1.0:
+            ctx.outputs[ri] = np.clip(a, 0.0, 1.0)
 
     info = {'low_confidence': ctx.low_confidence, 'cascaded': cascaded,
             'synthetic': ctx.synthetic}

@@ -186,17 +186,46 @@ def _source(asm, start):
     return got
 
 
-_COMPILED = {}
+_CODE = {}
 
 
-def run_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
-    """Evaluate the program at `start` over N samples. Returns its raw array."""
+def _code(asm, start):
+    """The program's compiled code object. Pure in (path, address), so it is shared."""
     key = (getattr(asm, 'path', id(asm)), start)
-    fn = _COMPILED.get(key)
+    got = _CODE.get(key)
+    if got is None:
+        got = _CODE[key] = compile(_source(asm, start), '<prog>', 'exec')
+    return got
+
+
+def bind(asm, start, cache, memo):
+    """The program at `start`, with its 0x03/0x06 halves bound to `cache`.
+
+    THE COMPILED FUNCTION IS NOT SHARED, AND THE CODE OBJECT IS. Transpiling and compiling
+    depend on nothing but the bytes at `start`, so `_SRC` and `_CODE` are keyed by (path,
+    address) and every caller reuses them. What differs per caller is the NAMESPACE the
+    function runs in: the transpiled source imports `cache_read` and `cache_write` from
+    `sbsruntime` at its own module level, and rebinding those two names in the scope after
+    the exec points them at this caller's dict instead of the module global. `prog`'s
+    `__globals__` IS that scope, so the substitution reaches every call.
+
+    `memo` is the caller's dict, not a module global, and that is the whole point: a
+    function compiled against one cache must never be handed to a caller holding another.
+    Keeping the memo beside the cache makes that unrepresentable rather than merely
+    unlikely -- the pair is created together and collected together.
+    """
+    key = (getattr(asm, 'path', id(asm)), start)
+    fn = memo.get(key)
     if fn is None:
         scope = {}
-        exec(compile(_source(asm, start), '<prog>', 'exec'), scope)
-        fn = _COMPILED[key] = scope['prog']
+        exec(_code(asm, start), scope)
+        scope['cache_read'], scope['cache_write'] = sbsruntime.cache_functions(cache)
+        fn = memo[key] = scope['prog']
+    return fn
+
+
+def run_program(fn, inputs, slots, N, pos=None, W=None, H=None):
+    """Evaluate `bind`'s function over N samples. Returns its raw array."""
     # EVERY FIELD, EVERY CALL. `set_context` ignores a None by design -- which is right
     # for its own callers and wrong here, because "no position supplied" has to MEAN no
     # position and not "keep the last record's". `pos` is therefore assigned directly;

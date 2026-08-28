@@ -29,8 +29,9 @@ if _HERE not in sys.path:
 import sbsasm                                                        # noqa: E402
 import manifest                                                      # noqa: E402
 import model                                                         # noqa: E402
+import ops                                                           # noqa: E402
 import sbsruntime                                                    # noqa: E402
-from engine import render                                            # noqa: E402
+from engine import Context, render                                   # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -60,6 +61,21 @@ WALKED_PARAMETERS = {
 }
 
 
+def _skip(reason):
+    """A skip a RUNNER can see.
+
+    `print('SKIP ...'); return` is a PASS under pytest, which is the silent-green mode
+    this file's own docstring is written against -- the corpus is not redistributed, so
+    every render check here is one missing directory away from reporting nothing wrong.
+    Under pytest this raises the framework's skip; run as a script it prints and the
+    caller returns.
+    """
+    pytest = sys.modules.get('pytest')
+    if pytest is not None:
+        pytest.skip(reason)
+    print('SKIP ' + reason)
+
+
 def specimen():
     hits = glob.glob(os.path.join(ROOT, '**', 'Rokviz japanese fabric 8.sbsasm'),
                      recursive=True)
@@ -78,8 +94,7 @@ def test_walk_reads_the_parameters_the_memo_cannot():
     """The structural half: what the walk names, from the record's own words."""
     path = specimen()
     if not path:
-        print('SKIP test_walk_reads_the_parameters_the_memo_cannot: no specimen')
-        return
+        return _skip('test_walk_reads_the_parameters_the_memo_cannot: no specimen')
     asm = sbsasm.Assembly(path)
     bad = []
     for (index, name), want in sorted(WALKED_PARAMETERS.items()):
@@ -100,8 +115,7 @@ def test_walk_reads_the_parameters_the_memo_cannot():
 def test_every_record_renders():
     path = specimen()
     if not path:
-        print('SKIP test_every_record_renders: no specimen')
-        return
+        return _skip('test_every_record_renders: no specimen')
     asm = sbsasm.Assembly(path)
     outs, fails, info = render(asm, max_dim=128)
     assert not fails, 'records failed with no assumption scope: %r' % (fails,)
@@ -110,44 +124,58 @@ def test_every_record_renders():
           % (len(outs), len(info['low_confidence'])))
 
 
-def test_the_shared_cache_does_not_outlive_the_render():
-    """A cache left installed leaks ANSWERS, not memory, so this asserts both halves.
+def test_the_render_threads_its_own_value_cache():
+    """0x03/0x06 answered from the Context's dict, with NOTHING installed in the module.
 
-    The 0x03/0x06 indices are bare integers with nothing in them naming a file. A render
-    that leaves its dict in `sbsruntime`'s module global therefore hands the NEXT caller
-    this file's value for index 3 where it was owed a `NoSharedCache` saying it needs a
-    whole-file run -- and `NoSharedCache` is the guard that exists because "a silently
-    wrong cached value is exactly the failure mode this project's own tests exist to
-    catch". Restoring is only possible if `None` removes, so that is asserted first; it
-    used to install a fresh `{}` and a restore could not reach the default state.
+    The two opcodes are cross-record common-subexpression elimination and their indices
+    are bare integers with nothing in them naming a file, so a dict every caller can reach
+    at once cannot say whose index 3 it is holding. The whole render therefore runs with
+    the module global REMOVED -- under an installed one this asserts nothing, because the
+    programs would reach it and pass either way.
 
-    The first half needs no specimen.
+    The binding is then checked on the mechanism rather than on a record that happens to
+    exercise it: `Rokviz` uses no 0x03/0x06 at all (8 of 60 corpus files do), and a test
+    that can only fail on a file this repository does not redistribute is a test that
+    reports nothing wrong.
     """
-    outer = {}
-    prev = sbsruntime.use_shared_cache(outer)
+    path = specimen()
+    if not path:
+        return _skip('test_the_render_threads_its_own_value_cache: no specimen')
+    asm = sbsasm.Assembly(path)
+    prev = sbsruntime.use_shared_cache(None)
     try:
-        sbsruntime.cache_write(np.float32(0.25), 7)
-        assert sbsruntime.use_shared_cache(None) is outer, \
-            'use_shared_cache must hand back the cache it replaced, or nothing can restore'
+        assert sbsruntime.use_shared_cache(None) is None, \
+            'use_shared_cache(None) must REMOVE, or a render cannot be run without one'
+        _outs, fails, _info = render(asm, max_dim=64)
+        assert not fails, 'records failed with no cache installed: %r' % (fails,)
+        assert sbsruntime.use_shared_cache(None) is None, \
+            'the render installed a module-global cache'
+
+        # TWO CONTEXTS OVER ONE ASSEMBLY ARE TWO CACHES. Asserted through the compiled
+        # program's own namespace, which is where `ops.bind`'s substitution has to land:
+        # `prog.__globals__` is the scope the transpiled source imported into.
+        a, b = Context(asm), Context(asm)
+        ptr = None
+        for rec in asm.records:
+            v = model.View(asm, rec)
+            got = a.walk_programs(v, include_prog_slot=True) if v.walked else []
+            if got:
+                ptr = got[0]
+                break
+        assert ptr is not None, 'the specimen names no program to bind'
+        fa = ops.bind(asm, ptr, a.cache, a._funcs)
+        fb = ops.bind(asm, ptr, b.cache, b._funcs)
+        assert fa is not fb, 'two Contexts were handed one compiled program'
+        fa.__globals__['cache_write'](np.float32(0.5), 3)
+        assert list(a.cache) == [3], 'the write missed its own Context: %r' % (a.cache,)
+        assert not b.cache, "the write reached the other Context: %r" % (b.cache,)
         try:
-            sbsruntime.cache_read(7)
+            fb.__globals__['cache_read'](3)
         except sbsruntime.NoSharedCache:
             pass
         else:
-            raise AssertionError('None left a cache installed, so a restore cannot reach '
-                                 'the default state a single-program transpile needs')
-        path = specimen()
-        if not path:
-            print('ok  test_the_shared_cache_does_not_outlive_the_render (no specimen: '
-                  'removal only)')
-            return
-        sbsruntime.use_shared_cache(outer)
-        render(sbsasm.Assembly(path), max_dim=32, stop_after=0)
-        assert sbsruntime.use_shared_cache(outer) is outer, \
-            'render did not put back the cache it found'
-        assert list(outer) == [7], \
-            'render wrote into the caller\'s cache instead of its own: %r' % (list(outer),)
-        print('ok  test_the_shared_cache_does_not_outlive_the_render')
+            raise AssertionError("one Context read another's cached value")
+        print('ok  test_the_render_threads_its_own_value_cache')
     finally:
         sbsruntime.use_shared_cache(prev)
 
@@ -155,8 +183,7 @@ def test_the_shared_cache_does_not_outlive_the_render():
 def test_reference_agreement_does_not_regress():
     path, refs = specimen(), references()
     if not path or not refs:
-        print('SKIP test_reference_agreement_does_not_regress: no specimen or maps')
-        return
+        return _skip('test_reference_agreement_does_not_regress: no specimen or maps')
     from PIL import Image
     asm = sbsasm.Assembly(path)
     outs, _fails, _info = render(asm, max_dim=256)
@@ -214,6 +241,6 @@ def test_reference_agreement_does_not_regress():
 if __name__ == '__main__':
     for fn in (test_walk_reads_the_parameters_the_memo_cannot,
                test_every_record_renders,
-               test_the_shared_cache_does_not_outlive_the_render,
+               test_the_render_threads_its_own_value_cache,
                test_reference_agreement_does_not_regress):
         fn()

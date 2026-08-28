@@ -42,38 +42,69 @@ both, and reads the DIMENSIONALITY too: a program that decomposes $number into a
 a column walks an N x N grid, one that scales it linearly walks a run of N.
 """
 import math
-import re
+import struct
 
 import numpy as np
 
 import assume
+import disasm
 import fxrender
 import sbsruntime
-import transpile
 from sbsasm import fx_patterntype
 
 from ops import Unsupported, sampler
 
 MAX_PATTERNS = 300000
 
-_ASSIGN = re.compile(r'^\s*(v\d+)\s*=\s*(.+?)\s*$')
-_SYS10 = re.compile(r'^sysvar\(10[,)]')
-_CONST = re.compile(r'^([0-9]+\.[0-9]+(?:e-?\d+)?)$')
-_BIN = re.compile(r'^\(?\s*(v\d+)\s*([*/])\s*(v\d+)\s*\)?$')
-
 _GRID_CACHE = {}
+
+#: Opcodes that mean `$number` has been decomposed rather than scaled -- a row/column
+#: split, which is `grid_width`'s two-axis case and not this one. Read BROADLY on purpose:
+#: a false "two-dimensional" only declines the record and falls back to `numberadded`,
+#: while a missed one would emit N patterns where the record wants N**2.
+_DECOMPOSE = ('mod', 'cvt', 'floor')
+
+#: The `$number` system variable's id. See sbsruntime.SYSVARS.
+_NUMBER = 10
+
+
+def _const_value(addr, op, toks):
+    """A `const` instruction's value, as a float, respecting its TYPE.
+
+    `disasm.floats` reinterprets the immediate as float32, which is right for a float
+    constant and garbage for an integer one -- `const.i1 27` reads back as 3.78e-44. The
+    opcode's type field says which, and an integer divisor spelled `const.i1 45` is
+    exactly the case a reader that only understands floats cannot see.
+    """
+    _ntok, ty, _comps, _oid = disasm.fields(op)
+    imm = disasm.immediate(addr, toks)
+    if imm is None or len(imm) < 4:
+        return None
+    if ty == 2:
+        return float(struct.unpack_from('<I', imm, 0)[0])
+    got = disasm.floats(addr, toks)
+    return float(got[0]) if got else None
 
 
 def number_grid(rec):
     """(N, dims) the placement programs state for `$number`, or None.
 
     N is the constant `$number` is scaled by -- `$number / N` or `$number * (1/N)`, the
-    same statement in two spellings. `dims` is 2 when the program also decomposes
-    `$number` with a floor or a modulus, which is a two-axis layout of N x N cells, and 1
-    when it scales it linearly, which is a run of N.
+    same statement in two spellings. `dims` is 2 when the program also DECOMPOSES
+    `$number`, which is a two-axis layout and `grid_width`'s case, and 1 when it scales it
+    linearly, which is a run of N.
 
-    Bounded at 4096 because above that `$number` is a coordinate normalised by the canvas
-    rather than a stamp index, and emitting N**2 there would ask for millions of patterns.
+    READ OFF THE BYTECODE, NOT OFF TRANSPILED PYTHON. This walked `transpile`'s output
+    with regular expressions, which coupled the emission count -- and through it the one
+    number the suite guards, Rokviz's `height` mean -- to that module's exact formatting,
+    so a reformat would have changed a render silently. It was also incomplete in a way
+    that mattered: the constant pattern required a decimal point, and `transpile` emits
+    integer constants bare (`v24 = 1`), so every integer-spelled divisor was invisible.
+    Instructions are the format's own statement and have neither problem.
+
+    Registers are implicit: instruction k defines register k and its operand tokens name
+    earlier registers, so this is a small SSA walk. Bounded at 4096 because above that
+    `$number` is a coordinate normalised by the canvas rather than a stamp index.
     """
     key = (getattr(rec.asm, 'path', id(rec.asm)), rec.index)
     if key in _GRID_CACHE:
@@ -92,39 +123,38 @@ def number_grid(rec):
         end = asm.program_span(ptr)
         if not end:
             continue
+        num, const = set(), {}
         try:
-            src = transpile.transpile(asm.data, ptr, end, 'python', 'p')
+            stream = list(disasm.decode(asm.data, ptr, end))
         except Exception:
             continue
-        if 'sysvar(10' not in src:
-            continue
-        nvars, consts = set(), {}
-        for line in src.splitlines():
-            m = _ASSIGN.match(line)
-            if not m:
+        for k, addr, op, toks in stream:
+            nm = disasm.name(op)
+            if nm == 'sysvar':
+                if toks and toks[0] == _NUMBER:
+                    num.add(k)
                 continue
-            name, rhs = m.group(1), m.group(2)
-            if _SYS10.match(rhs):
-                nvars.add(name)
+            if nm == 'const':
+                v = _const_value(addr, op, toks)
+                if v is not None:
+                    const[k] = v
                 continue
-            c = _CONST.match(rhs)
-            if c:
-                consts[name] = float(c.group(1))
-                continue
-            b = _BIN.match(rhs)
-            if b:
-                a, op, d = b.group(1), b.group(2), b.group(3)
-                for x, y in ((a, d), (d, a)):
-                    if x in nvars and y in consts and consts[y]:
-                        n = (1.0 / consts[y]) if op == '*' else consts[y]
+            # An operand token is a register only if it names an EARLIER instruction;
+            # anything else in the tuple is an immediate.
+            regs = [t for t in toks if t < k]
+            if nm in ('mul', 'div') and len(toks) >= 2:
+                a, b = toks[0], toks[1]
+                pairs = ((a, b), (b, a)) if nm == 'mul' else ((a, b),)
+                for x, y in pairs:
+                    if x in num and const.get(y):
+                        n = (1.0 / const[y]) if nm == 'mul' else const[y]
                         if abs(n - round(n)) < 1e-3 and 1 < round(n) <= 4096:
                             found.add(int(round(n)))
-                        nvars.add(name)
-                continue
-            if any(nv in rhs for nv in nvars):
-                if 'floor' in rhs or 'sbs_mod' in rhs or '%' in rhs:
+                        num.add(k)
+            if any(r in num for r in regs):
+                if nm in _DECOMPOSE:
                     dims = 2
-                nvars.add(name)
+                num.add(k)
     got = (found.pop(), dims) if len(found) == 1 else None
     _GRID_CACHE[key] = got
     return got
@@ -522,7 +552,8 @@ def render_fxmaps(ctx, v):
                 sbsruntime.SAMPLERS[k] = sampler(ctx.outputs[srci])
                 images[k] = ctx.outputs[srci]
                 ctx.low_confidence.add(v.index)
-        run = fxrender.make_runner(ctx.asm, rec)
+        run = fxrender.make_runner(ctx.asm, rec, programs=ctx.fx_funcs,
+                                   cache_funcs=ctx.cache_funcs)
         try:
             pats = emissions(rec, run, fxrender.seed_slots(rec, run))
         except fxrender.Unmodelled as e:
