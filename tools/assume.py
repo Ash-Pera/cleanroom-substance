@@ -32,7 +32,10 @@ QUESTIONS = {
     'normal.default_intensity': ('refuse', 0.5, 1.0, 2.0, 4.0, 8.0, 16.0),
     'blur.kernel':        ('box', 'gaussian'),
     'emboss.probe':       ('passthrough',),
-    'normal.inversedy':   ('ignore', 'word1bit2'),
+    # 'word1bit2' is the archived renderer's reading -- bit 2 as a BOOLEAN, which sees
+    # a baked flag and misses the 38 corpus records whose field 1 holds a program.
+    # 'field1' reads the two-bit code the walk declares, both arms.
+    'normal.inversedy':   ('ignore', 'word1bit2', 'field1'),
     'distance.param':     ('program', 'block1', 'slot5', 'wide', 'layout'),
     'distance.invert':    (False, True),
     'distance.mask_edge': (0, 1),

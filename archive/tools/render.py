@@ -2704,8 +2704,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             LOW_CONFIDENCE.add(i)
                     try:
                         runner = fxrender.make_runner(asm, rec)
-                        pats = fxrender.emissions(rec, runner,
-                                                  slots=fxrender.seed_slots(rec, runner))
+                        fx_slots = fxrender.seed_slots(rec, runner)
+                        # BEFORE the walk, which mutates the frame -- see `splat`'s `cells`.
+                        fx_cells = fxrender.declared_cells(rec, fx_slots)
+                        pats = fxrender.emissions(rec, runner, slots=fx_slots)
                     except fxrender.Unmodelled as e:
                         # A GENERATOR THAT FAILED WITH AN INPUT MISSING IS A CONSEQUENCE, and the test is
                         # structural rather than a read of the message: the edges are installed
@@ -2732,7 +2734,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     images = {slot: outputs[e]
                               for slot, e in enumerate(rec.edges or ())
                               if e is not None and e in outputs}
-                    outputs[i] = fxrender.splat(rec, pats, W, H, images=images)
+                    outputs[i] = fxrender.splat(rec, pats, W, H, images=images,
+                                                cells=fx_cells)
                     if any(e in synthetic for e in (rec.edges or ()) if e is not None):
                         synthetic.add(i)
                 finally:

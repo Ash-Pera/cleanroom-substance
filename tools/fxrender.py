@@ -4,172 +4,104 @@
 Structure and NAMES come from the repository: `Record.fx_node_params()` names the chain's
 programs (`numberadded`, `switch`, `randomseed`) and `Record.fx_named_params()` names the
 table's (`opacity`, `branchoffset`, `frameoffset`, `patternsize`, `patternrotation`,
-`patternsuppl`, `imageindex`), both derived by source containment with controls.
-
-What is added here is only what those tables do not cover: WHEN each program runs, and
-what to do with the numbers once you have them.
+`patternsuppl`, `imageindex`), both derived by source containment with controls. What is
+added here is only what those tables do not cover: WHEN each program runs, and what to do
+with the numbers once you have them.
 
     addnode   n = numberadded; walk the rest of the chain n times, $number = 0..n-1
     markov2   walk on only if `switch` is true
     table     each entry emits one pattern at the current $number
 
 A node's program is evaluated once per VISIT, not once per record -- that is what lets a
-slot the table reads carry a per-iteration value.
-
-Assumptions, none of them from the format: pattern shape is a filled RECTANGLE
-(`patterntype` is declared and unlocated); overlaps combine with `max`; patterns tile into
-neighbouring cells; the gate passes on true.
+slot the table reads carry a per-iteration value. Assumptions, none from the format:
+overlaps combine with `max`; patterns tile into neighbouring cells; the gate passes on true.
 
 WHAT THIS PRODUCES, and where it stops. `Stadsspel__Lines` record 0 renders correctly end
-to end: one `0x18B` node over one entry, whose three programs evaluate to a per-iteration
-y step, a size of (1.414, 0.036) -- 1.414 being the unit square's diagonal -- and 0.125
-turns. Ten bars, 45 degrees, spaced 1/10: the file is named `Lines` and nothing in the
-decode used its name. Three numbers that all have to be right at once.
+to end: one `0x18B` node over one entry, whose three programs give a per-iteration y step,
+a size of (1.414, 0.036) -- 1.414 being the unit square's diagonal -- and 0.125 turns. Ten
+bars, 45 degrees, spaced 1/10, from a file named `Lines` whose name the decode never used.
+Corpus-wide it does not: over 1,521 records that emit patterns at all, 96% render FLAT, and
+patternsize has median 2.82 in records that render flat against 0.50 in records that render
+a picture. A pattern 2.8 unit squares wide paints everything one colour, so the coordinate
+space `patternsize` is expressed in is the open question, upstream of everything else here.
 
-Corpus-wide it does not. Over 1,521 records that emit patterns at all, 96% render FLAT,
-and the cause is measurable rather than mysterious:
-
-    patternsize, median   2.82  in records that render flat
-                          0.50  in records that render a picture
-
-A pattern 2.8 unit squares wide paints everything one colour. So the coordinate space
-`patternsize` is expressed in is the open question, and it is upstream of everything else
-here.
-
-TWO NEGATIVE RESULTS, recorded so they are not re-run.
+NEGATIVE RESULTS, recorded so they are not re-run.
 
 1. IT IS NOT THE SHAPE ASSUMPTION. Swapping the filled rectangle for a falloff profile
    takes "renders a picture" from 4.1% to 97.3% -- and means nothing, because a profile
-   with falloff cannot produce a flat image by construction, so the metric is defeated
-   rather than passed. Looked at, those renders are one soft blob per tile. A better
-   shape does not rescue a size that is too large; it only stops the failure from being
-   visible in the flatness number. This is why the flatness metric alone must not be used
-   to score a pattern-shape hypothesis.
+   with falloff cannot produce a flat image BY CONSTRUCTION, so the metric is defeated
+   rather than passed. This is why flatness alone must not score a shape hypothesis.
 
-2. THE FRAME IS NOT 1/sqrt(n). If n patterns tiled a grid, `patternsize / sqrt(n)` would
-   concentrate near 1. It does not: the fraction landing in [0.2, 2] moves 55.0% -> 60.4%
-   while the spread widens at both ends (p10 0.374 -> 0.060). Whatever sets the scale, it
-   is not the pattern count.
+2. THE FRAME IS NOT 1/sqrt(n). The fraction of `patternsize / sqrt(n)` landing in [0.2, 2]
+   moves 55.0% -> 60.4% while the spread widens at both ends (p10 0.374 -> 0.060).
 
-3. THE FRAME IS NOT A PER-LEVEL POWER OF TWO ON NODE DEPTH. `walk` treats the node graph
-   as a linear chain, so an obvious candidate was a missing per-level halving. Evaluating
-   `patternsize` for real over 1,034 pattern-emitting records (it is a PROGRAM in most
-   entries and invisible to a static read), the best-scoring divisor is `2^chain length`:
-   median 0.480 against the 0.50 that characterises records rendering a picture, and
-   79.6% landing in [0.2, 2] against 51.2% raw. It is also WRONG. `Stadsspel__Lines`
-   record 0 has chain length 1 and a patternsize of 1.414 -- the unit square's diagonal,
-   verified end to end -- so any divisor above 1 destroys the one record known to be
-   correct. The variants that preserve it, `2^(chain-1)` and the numerically identical
-   `2^(addnode levels)`, reach only median 0.961 at 63.8%: better than raw, nowhere near
-   0.50. Note the shape of that failure -- it is negative result 1 again from a different
-   direction, a metric improving while the model gets worse, and only the known-good
-   record caught it.
+3. THE FRAME IS NOT A PER-LEVEL POWER OF TWO ON NODE DEPTH. Over 1,034 pattern-emitting
+   records the best-scoring divisor is `2^chain length`, median 0.480 against the 0.50 that
+   characterises a record rendering a picture -- and it is WRONG, since Lines record 0 has
+   chain length 1 and a patternsize of 1.414, so any divisor above 1 destroys the one
+   record known to be correct. Note the shape of that failure: a metric improving while the
+   model gets worse.
 
-4. THE TILE LATTICE DOES NOT STEP BY patternsize. `splat` tiles with dx = px - (cx + tx)
-   for integer tx, i.e. spacing 1.0, so a pattern of size 0.15 gets reach 1 and only its
-   centre copy lands on the canvas -- one blob. ChesterfieldSofa's metallic map shows the
-   engine drawing about a 6x6 lattice from such a record and 1/0.15 = 6.7, which makes
-   size-spacing the obvious candidate. It is wrong in both directions at once: Lines record
-   0 goes from a lit fraction of 0.510 (ten bars) to 0.936, because its y-size of 0.036
-   would place about 28 overlapping rows where the file explicitly steps frameoffset by
-   0.1 ten times; and ChesterfieldSofa drops from 4 declared outputs to 1, with metallic's
-   correlation against the engine's own map falling from +0.2294 to 0.0000.
+4. THE TILE LATTICE DOES NOT STEP BY patternsize. `splat` tiles at spacing 1.0, so a
+   pattern of size 0.15 gets reach 1 and only its centre copy lands -- while
+   ChesterfieldSofa's metallic shows the engine drawing about a 6x6 lattice from such a
+   record, and 1/0.15 = 6.7. It is wrong in both directions at once: Lines record 0 goes
+   from a lit fraction of 0.510 to 0.936, and ChesterfieldSofa drops from 4 declared
+   outputs to 1 with metallic's correlation falling +0.2294 -> 0.0000.
 
-   THE TEST IS THE POINT, more than the result. Every earlier entry in this list needed a
-   bespoke measurement to refute, and two readings had to be PARKED because nothing
-   available could contradict them. This one died in a single run against a two-sided test:
+   THE TEST IS THE POINT, more than the result. Every earlier entry needed a bespoke
+   measurement to refute and two had to be PARKED because nothing could contradict them.
+   This one died in a single run against a two-sided test -- a ground-truth record that
+   must keep rendering correctly (Lines record 0) and a reference correlation that must not
+   get worse (ChesterfieldSofa), the second half usable only once the matrix fix took that
+   file from 659 non-finite records to 0. Anything proposed for the frame question should
+   be run against both halves before it is argued about.
 
-       a ground-truth record that must keep rendering correctly   (Lines record 0)
-       a reference correlation that must not get worse            (ChesterfieldSofa)
-
-   Neither half is new, but the second only became usable when the matrix fix took
-   ChesterfieldSofa from 659 non-finite records to 0 and from 1 spatially-varying declared
-   output to 4. Before that the reference set had no scoreable output and the only
-   available metric was flatness, which negative result 1 correctly refuses to trust
-   because a falloff cannot be flat by construction. A correlation has no such defect: a
-   falloff that is wrong scores no better than a rectangle that is wrong.
-
-   Anything proposed for the frame question should be run against both halves before it is
-   argued about.
-
-5. THE RECIPROCAL READING OF A BAKED patternsize IS UNDECIDABLE ON THIS CORPUS -- which is
-   a stronger statement than "unproven", and is recorded so nobody re-derives it.
-
-   The reading: a BAKED patternsize is stored as 1/size. It is not idle. The words decode
-   as clean float32 clustering on 5.0, 3.0, 1.5, 8.0, 2.0, 1.0 and 4.0; read as canvas
-   fractions they paint everything, read as reciprocals they are 1/5, 1/3, 2/3, 1/8, 1/2,
-   1 and 1/4. Per record it lands median exactly 0.500 -- the value that characterises a
-   record which renders a picture -- with 88.7% in [0.02, 1.5] against 41.8% as-is. It
-   also explains the asymmetry no frame model did: 62% of oversized records have a baked
-   patternsize against 27% of correctly-sized ones.
-
-   WHY IT IS NOT IMPLEMENTED. Both records with independent ground truth -- Stadsspel__Lines
-   record 0 and sci_fi_elements_02 record 86 -- take patternsize from a PROGRAM, so a rule
-   touching only baked values cannot break either. The property that makes it safe is the
-   property that makes it unfalsifiable, and two hypotheses died here today on exactly that
-   ground: a plausibility gain that no available record could contradict.
-
-   WHAT WOULD DECIDE IT, stated as a search rather than left open. A record whose geometry
-   is OVERDETERMINED -- more constraints than degrees of freedom -- so the footprint is
-   forced rather than chosen, AND whose patternsize is baked. Record 86 is the precedent
-   in the other currency: six patterns at radius 0.433, rotations stepping exactly 1/6
-   turn, size 0.866 = 2 x radius, so every hard footprint passes through the centre and
-   coverage is forced. An evenly-stepped ring is NOT sufficient on its own; a ring whose
-   size is unrelated to its radius is still free and decides nothing. Two shapes qualify:
-
-       a ring where size and radius stand in a forced ratio, baked size
-       a 0x99 lattice chain with a baked size -- the lattice already forces coverage
-       (a parallel session's nine specimens run 2304 = 48 x 48, 450 = 9 x 50, 256 = 16 x 16,
-       overdetermined in exactly this sense, but their sizes come from programs)
-
-   Searched: 0 candidates over 60 files, baked patternsize with 3-24 patterns and either
-   evenly-stepped rotations or a constant-radius ring. One such record decides the question
-   in a single render; nothing else in this corpus will.
+5. THE RECIPROCAL READING OF A BAKED patternsize IS UNDECIDABLE ON THIS CORPUS -- stronger
+   than "unproven". The reading: a BAKED patternsize is stored as 1/size, and it is not
+   idle: the words decode as clean float32 clustering on 5.0, 3.0, 1.5, 8.0, 2.0, 1.0 and
+   4.0, whose reciprocals land median exactly 0.500 with 88.7% in [0.02, 1.5] against 41.8%
+   as-is, and it explains an asymmetry no frame model did (62% of oversized records have a
+   baked patternsize against 27% of correctly-sized ones). WHY IT IS NOT IMPLEMENTED: both
+   records with independent ground truth take patternsize from a PROGRAM, so a rule
+   touching only baked values cannot break either -- the property that makes it safe is the
+   property that makes it unfalsifiable. WHAT WOULD DECIDE IT: a record whose geometry is
+   OVERDETERMINED, so the footprint is forced rather than chosen, AND whose patternsize is
+   baked. Record 86 is the precedent in the other currency -- six patterns at radius 0.433,
+   rotations stepping exactly 1/6 turn, size 0.866 = 2 x radius. Searched: 0 candidates
+   over 60 files.
 
 WHY THIS MATTERS MORE THAN THE FILTER WORK. Perturbation over 140 files: of 112 declared
 outputs that render flat, the flat SOURCE records in their closure were replaced with
-varying patterns and the output re-rendered. 89 then varied, 4 stayed flat, and 19 had no
-flat source to perturb. So 89 of the 93 testable -- 95.7% -- are flat because their
-sources are constant, NOT because the filter chain destroys variation; it transmits fine.
-The constant sources are `fxmaps` (367) and `uniform` (300), and nothing else. This is why
-three filters landing in one session moved `produced` and left the picture count alone:
-they were never the constraint. `patternsize` is.
-
-The positions say the same thing from the other side: the x-extent of
-`branchoffset + frameoffset` across one record's patterns has median 0.835 -- about a unit
-square, as expected -- but a p90 of 7.8. Some records place patterns far outside the unit
-square, which a frame model would explain and this renderer does not have.
+varying patterns and the output re-rendered. 89 then varied, 4 stayed flat, 19 had no flat
+source -- so 89 of the 93 testable, 95.7%, are flat because their sources are constant, NOT
+because the filter chain destroys variation. The constant sources are `fxmaps` (367) and
+`uniform` (300), and nothing else.
 
 A POSITIVE RESULT, source-confirmed: patternsize is a plain [0,1] canvas fraction, and the
-open question is a VARIABLE-RESOLUTION problem, not a coordinate-space scale. Reading the
-permitted FX-Map sources settles what `patternsize` is expressed in. These graphs have no
-Quadrant node -- their whole node vocabulary is addnode (596), paramset (480), markov2 (80),
-so there is no spatial subdivision to scale a size against, and the linear-chain model is
-topologically right. And in 220 of 230 patternsize programs the value is simply READ from a
-cross-node variable (`get_float2("size_out")`, 96; a gated `get_float1`, 124), set in a setup
-node, not computed at the draw site. `ie_pcloud`'s own author comment states the chain:
+open question is a VARIABLE-RESOLUTION problem, not a coordinate-space scale. The permitted
+FX-Map sources have no Quadrant node -- their whole vocabulary is addnode (596), paramset
+(480), markov2 (80) -- so there is no spatial subdivision to scale a size against, and the
+linear-chain model is topologically right. And in 220 of 230 patternsize programs the value
+is simply READ from a cross-node variable set in a setup node, not computed at the draw
+site. `ie_pcloud`'s own author comment states the chain:
 
     cloud_img_size = pow2(tofloat2(cloud_size))     # 2 ** cloud_size, an integer2 input
     size_out       = (1, 1) / cloud_img_size        # the reciprocal
     ... paramset patternsize = get_float2("size_out")
 
 With the default `cloud_size = (7, 7)`, `size_out = 1/128 = 0.0078` -- a point in a point
-cloud, correct. `ie_curve` reaches a small size the other way (`p_size` input default 0.01,
-read directly). Either way the drawn size is SMALL and lives behind a variable. So the median
-2.82 is not a size in a mysterious space; it is what `size_out` reads when its setup chain
-(input -> `pow2` -> reciprocal -> the variable slot) has not been resolved to its small value
-by the time the paramset reads it. This confirms negative-result 5's reciprocal reading as the
-format's real convention -- size is written as `1/pow2(N)` in the source, for PROGRAM sizes
-which are the majority, not just as a baked-byte trick -- and it explains the asymmetry (the
-oversized records are the ones whose size variable defaulted).
+cloud. So the median 2.82 is not a size in a mysterious space; it is what `size_out` reads
+when its setup chain has not resolved to its small value by the time the paramset reads it.
+This confirms negative-result 5's reciprocal reading as the format's real convention --
+size is written as `1/pow2(N)` for PROGRAM sizes, the majority -- and explains the
+asymmetry: the oversized records are the ones whose size variable defaulted.
 
-WHAT TO CHECK NEXT (needs a working render, which this author's env cannot run -- numpy is
-broken here). For a cloud record, assert the walk holds `size_out ~= 1 / 2**cloud_size`
-(~0.008 at the default) in `slots` at the moment a paramset reads it. If it does not, the
-setup `set` program that computes it is either not run before the read or writes a different
-slot number than the read -- a `seed_slots`/ordering bug -- and that, not a frame scale, is
-what paints the corpus flat. The two-sided test from negative-result 4 still applies: Lines
-record 0 (baked-free, must stay a picture) and ChesterfieldSofa's reference correlation.
+WHAT TO CHECK NEXT. For a cloud record, assert the walk holds `size_out ~= 1/2**cloud_size`
+in `slots` at the moment a paramset reads it. If it does not, the setup `set` program that
+computes it is either not run before the read or writes a different slot than the read -- a
+`seed_slots`/ordering bug -- and that, not a frame scale, is what paints the corpus flat.
+The two-sided test from negative-result 4 applies.
 """
 import argparse
 import os
@@ -181,7 +113,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import assume, sbsruntime, transpile                                  # noqa: E402
+import assume, disasm, sbsruntime, transpile                                  # noqa: E402
 from sbsasm import (Assembly, FX_NODES, FX_NODES2, fx_patterntype,                   # noqa: E402
                     fx_entry_layout, node_shape, leaf_successor,
                     pointer_cell_successor)
@@ -198,97 +130,60 @@ _SCAN_TRACE = None
 # A CLAIM MADE HERE AND WITHDRAWN. 921c775 said collapsing these four costs Chesterfield's
 # `height` and `normal`: records 92 and 93 are subtracted at record 95, their renders agree
 # to within 0.0063 so the subtract cancels, and 92's third chain node is `0x1CB` where 93's
-# is `0x18B`. The inference was that the walker fails to distinguish two maps the format
-# distinguishes.
-#
-# IT DOES DISTINGUISH THEM. Emitting both and comparing pattern by pattern: 25 patterns
-# each, and ALL 25 DIFFER -- the frameoffsets are mirrored, (0.110, -0.059) against
-# (-0.110, +0.059). The walk is not collapsing anything.
-#
-# What washes the difference out is downstream: every pattern has `patternsize` (2.82, 2.82),
-# nearly three cells across, so each one covers the canvas several times over and 25 of them
-# overlapping give a near-uniform field whichever way the offsets point. Move the stamps and
-# the picture barely moves. That is the oversized-patternsize question another session is
-# working, not a node-vocabulary gap.
-#
-# The measurement that misled me is worth keeping: salting `rand` per record moves every
-# near-zero Chesterfield channel slightly the right way -- normal ch0 -0.0069 -> +0.0297,
-# height -0.0015 -> +0.0207 -- which I read as support for the collapse. It is equally
-# consistent with jittering an over-covered field. A change that improves four channels by
-# 0.03 does not tell you WHY, and I treated it as though it did.
+# is `0x18B`. IT DOES DISTINGUISH THEM -- emitting both and comparing pattern by pattern,
+# all 25 DIFFER, the frameoffsets mirrored (0.110, -0.059) against (-0.110, +0.059). What
+# washes the difference out is downstream: every pattern has `patternsize` (2.82, 2.82), so
+# 25 overlapping give a near-uniform field whichever way the offsets point. The measurement
+# that misled me is worth keeping: salting `rand` per record moves every near-zero
+# Chesterfield channel slightly the right way, which I read as support for the collapse
+# when it is equally consistent with jittering an over-covered field.
 ADDNODE = frozenset({0x18B, 0x1AB, 0x20B, 0x1CB})
 GATE = 0x89
 
 #: One successor, one unnamed program, and the program is a per-iteration STATE UPDATE
-#: rather than a count or a predicate. In StylizedCobblestoneStreet record 27 it reads
-#: slots 14/16/17/18 and writes 12/14/16/17/18: a counter in 17 wrapping against 16, a
-#: direction vector in 18 rotated a quarter turn (`mul.f2` by (-1, 1) on a swizzle) when
-#: it wraps, and a position in 14 advanced by that direction. The 0x18B node above it
-#: initialises those same five slots.
+#: rather than a count or a predicate. In StylizedCobblestoneStreet record 27 it reads slots
+#: 14/16/17/18 and writes 12/14/16/17/18: a counter in 17 wrapping against 16, a direction
+#: vector in 18 rotated a quarter turn when it wraps, and a position in 14 advanced by it.
 #:
-#: IT IS A RASTER SCAN, not the serpentine this comment first called it. Plotting the
-#: emitted offsets in emission order shows each row laid left to right and then a jump
-#: back to begin the row above -- a serpentine would reverse along alternate rows and
-#: need no return. Over the nine records in 260 files that exercise it with more than one
-#: pattern, EVERY emission lands at a distinct offset (2304 of 2304, 450 of 450, 256 of
-#: 256) against 15% of records without a 0x99, and in all nine the count divides exactly
-#: by the number of distinct rows:
+#: IT IS A RASTER SCAN, not the serpentine this comment first called it -- plotting the
+#: emitted offsets in emission order shows each row laid left to right then a jump back to
+#: begin the row above, where a serpentine would reverse along alternate rows and need no
+#: return. Over the nine records in 260 files that exercise it with more than one pattern,
+#: EVERY emission lands at a distinct offset (2304 of 2304, 450 of 450, 256 of 256) against
+#: 15% of records without a 0x99, and in all nine the count divides exactly by the number of
+#: distinct rows -- nine courses in every brick record (Brick02 r23 432 = 9x48, Brick03 r23
+#: 450 = 9x50, PavingStones r44 2304 = 48x48). Where the distinct x count EXCEEDS the row
+#: length the extra values are the running-bond offset.
 #:
-#:     Brick02  r12   81 = 9 x 9      Brick03  r12  108 = 9 x 12
-#:     Brick02  r17  315 = 9 x 35     Brick03  r17  225 = 9 x 25
-#:     Brick02  r23  432 = 9 x 48     Brick03  r23  450 = 9 x 50
-#:     Chipboard r1633  256 = 16 x 16     Flagstone r219  256 = 16 x 16
-#:     PavingStones r44   2304 = 48 x 48
-#:
-#: Nine courses in every brick record. Where the distinct x count EXCEEDS the row length
-#: (Brick02 r12 has 10 for 9, r23 has 64 for 48) the extra x values are the running-bond
-#: offset -- always more than the row length, never fewer, which is what an alternating
-#: course offset does and what a broken stepper could not do.
-#:
-#: It is the pattern's position, not incidental state: the table entry's `frameoffset`
-#: and `opacity` programs both read slot 12, which the stepper writes as *this*
-#: iteration's position (`slot 12 = slot 14` before slot 14 advances). So the node runs
-#: its program and continues to its single successor -- run first, then emit, which is
-#: the order slot 12 is written in.
+#: It is the pattern's position, not incidental state: the entry's `frameoffset` and
+#: `opacity` programs both read slot 12, which the stepper writes as *this* iteration's
+#: position. So it runs its program then continues -- run first, then emit.
 STEPPER = 0x99
 
 #: 0x9B has the SAME SHAPE as the stepper -- one unnamed program and one successor -- and
-#: is walked the same way. sbsasm's FX_NODES2 gives it ((12,), (8,)): program at word 2,
-#: successor at word 3, where 0x99 has ((16,), (8,)). It became reachable only once 0x0B's
-#: successor slot was wired, and the ten records that end their chain on one are exactly
-#: the "no readable table entries" failures in the reference set (ChesterfieldSofa 79,
-#: Auras 43/250/332/370 among them).
+#: is walked the same way. sbsasm's FX_NODES2 gives it ((12,), (8,)) where 0x99 has
+#: ((16,), (8,)). It became reachable only once 0x0B's successor slot was wired, and the
+#: ten records that end their chain on one are exactly the "no readable table entries"
+#: failures in the reference set (ChesterfieldSofa 79, Auras 43/250/332/370 among them).
 #:
 #: TREATED AS A PASS-THROUGH ON ITS SHAPE, not on a decoded meaning. What the program
 #: computes is not established -- 0x99 was shown to be a raster scan by reading its slot
 #: traffic, and no equivalent reading has been done here -- so this runs it for its slot
-#: side effects and continues, which is what a one-program one-successor node can do
-#: without inventing semantics. If it turns out to gate or to iterate, this is where that
+#: side effects and continues. If it turns out to gate or to iterate, this is where that
 #: would go, and the records above are the specimens.
 STEPPER2 = 0x9B
 
 #: The 0x??1B family: ONE child at word 2, a program at word 4, and a CONTINUATION at
-#: word 5 -- not two children, which is what test_fx's name for it still says.
-#:
-#: Both readings satisfy that test (the two words differ and both land on node headers),
-#: and the file separates them. If word 5 is the continuation, following word 2's subtree
-#: along its own next-pointers must ARRIVE at word 5's target; if it is an independent
-#: second branch, it must not. Over every 0x??1B node in 150 files:
-#:
-#:     word 5 target reachable from word 2's subtree     81 of 81
-#:     control -- another node in the same record         0 of 81
-#:
-#: So the subtree already flows into the continuation and a linear walk visits everything
-#: a tree walk would. That is why this needs no tree machinery, only a run-and-continue,
-#: and it is why the estimate that it required a tree walk was wrong.
-#:
-#: Two further facts make the flat index walk exactly right, both 81 of 81: the child at
-#: word 2 is always the NEXT node in the address-ordered chain, and `progs[None]` -- the
-#: only name chain() gives these nodes -- is always word 4's program.
-#:
-#: The program is not a selector. It is around 104 instructions of `rand` and `cartesian`
-#: writing slots 25/27/29/30: a state initialiser, the role STEPPER's program also plays,
-#: which is why it shares STEPPER's handling rather than getting its own.
+#: word 5 -- not two children, which is what test_fx's name for it still says. Both
+#: readings satisfy that test, and the file separates them: if word 5 is the continuation,
+#: following word 2's subtree along its own next-pointers must ARRIVE at word 5's target,
+#: which over every 0x??1B node in 150 files it does in 81 of 81 against 0 of 81 for the
+#: control. So a linear walk visits everything a tree walk would. (See PASSTHROUGH: that
+#: test is a tautology under the other reading of the same constant.) Two further facts
+#: make the flat index walk exactly right, both 81 of 81: the child at word 2 is always the
+#: NEXT node in the address-ordered chain, and `progs[None]` is always word 4's program.
+#: The program is not a selector -- it is ~104 instructions of `rand` and `cartesian`
+#: writing slots 25/27/29/30, a state initialiser, the role STEPPER's program also plays.
 BRANCH = 0x1B
 
 #: A THREE-WORD CELL THE CHAIN SIMPLY CONTINUES PAST. RE-MEASURED over all 355 `0x1B` nodes
@@ -299,69 +194,36 @@ BRANCH = 0x1B
 #:     word 2 addresses word 3, i.e. self + 12        355 of 355
 #:     word 3 is a `0x18B` node header                343 of 343   (of the 0x3039 group)
 #:
-#: WORD 2 POINTS FORWARD, NOT BACKWARDS. The 34-node sample read the direction wrong:
-#: `(word 2 + 52) - node offset` is exactly 12 in 355 of 355, so word 2 is this node's one
-#: pointer and it addresses the structure immediately after the cell. The width of three
-#: stands, and now so does what the pointer is for.
-#:
-#: WORD 1 SAYS WHAT FOLLOWS, which is why the two groups exist. Where it is 0x3039 the next
-#: structure is a `0x18B` NODE; in the 12 where it is 0 the next structure is a paramset
-#: ENTRY tag (low nibble 8). Same cell either way. `sbsasm`'s `fx_walk` has a value probe
-#: keyed on exactly `_w1 != 0x3039` that reads byte 12 and tests whether it looks like a tag
-#: -- it is right, and it is probing for something word 1 states outright.
-#:
-#: THE CONTRADICTION WITH `sbsasm.FX_NODES2` IS RESOLVED, in this file's favour, and the
-#: table is corrected there. It read `((8, 20), (16,))` -- successors at bytes 8 and 20, a
-#: program at 16 -- of which only byte 8 was this node's. Words 4 and 5 are the FOLLOWING
-#: `0x18B` node's own program and successor (`FX_NODES['0x18b'] = (8, (4,))` measured from
-#: the neighbour at +12): word 4 holds a valid program in 343 of 343 and word 5's successor
-#: lands inside the record in 343 of 343. That is why the old byte 20 always resolved to
-#: something in range -- it was reading the next node's successor.
-#:
-#: AND `BRANCH` ABOVE IS THE SAME NODE KIND WITH THE OPPOSITE SHAPE. Both constants are
-#: 0x1B. BRANCH says one child at word 2, a program at word 4 and a continuation at word 5;
-#: this says the cell ends at word 3 and 4/5 are the neighbour's. The measurement above
-#: decides it, and BRANCH's own discriminating test cannot: "word 5 target reachable from
-#: word 2's subtree, 81 of 81, control 0 of 81" is a TAUTOLOGY once word 2 is known to
-#: address word 3. Word 5 IS word 3's successor field, so following word 2 arrives there by
-#: construction. It could not have come out any other way, and it separates nothing.
-#:
-#: 0x3039 is the same sentinel that withdrew an earlier `0x9B` derivation in this file --
-#: a constant, present in both files examined, that looked like an entry pointer under a
-#: body-wide search.
+#: WORD 2 POINTS FORWARD, NOT BACKWARDS -- the 34-node sample read the direction wrong. WORD
+#: 1 SAYS WHAT FOLLOWS: 0x3039 means a `0x18B` NODE, and in the 12 where it is 0 it is a
+#: paramset ENTRY tag, which is what `sbsasm`'s `fx_walk` value probe on `_w1 != 0x3039` is
+#: really testing for. THE CONTRADICTION WITH `sbsasm.FX_NODES2` IS RESOLVED in this file's
+#: favour: it read `((8, 20), (16,))`, of which only byte 8 was this node's, since words 4
+#: and 5 belong to the FOLLOWING node. AND `BRANCH` ABOVE IS THE SAME NODE KIND WITH THE
+#: OPPOSITE SHAPE -- both constants are 0x1B, this measurement decides between them, and
+#: BRANCH's own test cannot: "word 5 reachable from word 2's subtree, 81 of 81" is a
+#: TAUTOLOGY once word 2 is known to address word 3.
 PASSTHROUGH = 0x1B
 
 #: The 0x??0B family is where a chain ENDS. Its "programs" are not its own: in record 27
-#: the leaf's five programs are byte-identical to the five parameter programs of the
-#: table entry it hands off to (opacity, frameoffset, patternsize, patternrotation,
-#: patternsuppl at the same five addresses). The leaf IS the entry seen from the node
-#: side, so the walk passes straight through it and the table does the emitting.
+#: the leaf's five programs are byte-identical to the five parameter programs of the table
+#: entry it hands off to, at the same five addresses. The leaf IS the entry seen from the
+#: node side, so the walk passes straight through it and the table does the emitting.
 def _is_leaf(hdr):
     return (hdr & 0xFF) == 0x0B
-#: The per-record emission budget. A runtime bound, not a format fact -- a record asking for
-#: more is refused rather than rendered slowly.
+#: The per-record emission budget. A runtime bound, not a format fact -- a record asking
+#: for more is refused rather than rendered slowly.
 #:
 #: RAISING IT IS NOT THE LEVER IT LOOKS LIKE, measured after batched emission made a
-#: million patterns arithmetically cheap. Over the same 30 corpus files, at max_dim 64:
-#:
-#:     cap     40,000     44 of 127 declared outputs rendered       74 s
-#:     cap    300,000     44 of 127                               117 s
-#:     cap  3,000,000     44 of 127                               878 s
-#:
-#: ZERO more outputs for twelve times the wall clock. It was two when this note was first
-#: written, before `distance` learned to read its parameter from the derived slot (57da8db)
-#: -- those two outputs were reachable another way, and the budget was never what held them.
-#: Re-measured rather than carried forward, because a stale comparison is how a number turns
-#: into folklore. The cost is also concentrated: at 3,000,000 three files take 114 s, 353 s
-#: and 364 s on their own. The counts that appear in the blocker
-#: table -- 1,050,625 (1025^2), 2,253,001, 921,600, 102,400 (320^2), 66,049 (257^2) -- are
-#: legitimate values, squares of a grid dimension, so this budget is refusing correct work.
-#: But the records behind them mostly hit another root as soon as they emit, which is why
-#: lifting the budget moves the output count by two.
-#:
-#: Splat is what costs now, not emission: emission runs at about 3 us per pattern batched,
-#: and drawing one is 50-80 us. Making a million-pattern record affordable is a splat
-#: problem, and until it is solved raising this number buys almost nothing.
+#: million patterns arithmetically cheap. Over the same 30 corpus files at max_dim 64, a
+#: cap of 40,000 renders 44 of 127 declared outputs in 74 s, 300,000 renders 44 in 117 s,
+#: and 3,000,000 renders 44 in 878 s -- ZERO more outputs for twelve times the wall clock.
+#: It was two when this note was first written, before `distance` learned to read its
+#: parameter from the derived slot; re-measured rather than carried forward, because a
+#: stale comparison is how a number turns into folklore. The blocker-table counts are
+#: legitimate squares of a grid dimension, so this budget IS refusing correct work, but
+#: those records mostly hit another root as soon as they emit. Splat is what costs now:
+#: emission is about 3 us per pattern batched, drawing one is 50-80 us.
 MAX_PATTERNS = 40000
 
 _SLOT_WRITE = re.compile(r'slots\[(\d+)\]\s*=')
@@ -389,14 +251,19 @@ class Perm(dict):
         return 0.5
 
 
-def make_runner(asm, rec):
-    # PER ASSEMBLY, NOT PER RECORD. `cache` holds compiled program objects, `spans`
-    # program extents and `flows` slot read/write sets -- all three keyed on `ptr`
-    # alone, and none of them depends on which record is asking. They were being rebuilt
-    # for every record, so a program reached from two records was transpiled and
-    # compiled twice. Measured over twelve files: 3,142 transpile() calls for 1,370
-    # distinct programs, a 2.3x repeat, with the most-shared program built fourteen
-    # times.
+def make_runner(asm, rec, programs=None, cache_funcs=None):
+    # PER ASSEMBLY, NOT PER RECORD. `cache` holds compiled program objects, `spans` program
+    # extents and `flows` slot read/write sets -- all keyed on `ptr` alone, none depending on
+    # which record is asking. They were being rebuilt per record, so a program reached from
+    # two records was transpiled twice: over twelve files, 3,142 transpile() calls for 1,370
+    # distinct programs, with the most-shared program built fourteen times.
+    #
+    # `cache_funcs` is a caller's (cache_read, cache_write) for the 0x03/0x06 value cache,
+    # bound into every namespace built here instead of `sbsruntime`'s module global. A
+    # caller that passes it MUST pass its own `programs` memo too, and it is refused below
+    # if it does not: the substitution lives in the compiled function's namespace, so a
+    # function memoized on the assembly would carry one caller's cache to the next one to
+    # ask for that address. Spans and flows stay on the assembly -- they are pure in `ptr`.
     _memo = getattr(asm, '_fx_runner_memo', None)
     if _memo is None:
         _memo = ({}, {}, {})
@@ -405,17 +272,19 @@ def make_runner(asm, rec):
         except AttributeError:
             pass                      # __slots__ assembly: fall back to per-record
     cache, _spans_memo, _flows_memo = _memo
+    if cache_funcs is not None and programs is None:
+        raise ValueError("a bound value cache needs the caller's own program memo, "
+                         "not the assembly's shared one")
+    if programs is not None:
+        cache = programs
 
-    # BUILT ONCE PER RECORD, NOT ONCE PER EMISSION. The graph's declared input values do
-    # not change while a record renders -- they are read straight off `asm.header` -- but
-    # this dict used to be rebuilt inside `run`, which an FX-Map calls several times for
-    # every pattern it emits. CarpetSubstance001 record 365 emits 262,144 patterns, so
-    # the 22 `np.array(...).reshape(1, -1)` calls below were being made about six million
-    # times to produce six million copies of the same 22 numbers.
-    #
-    # Safe to share: `Perm` is only ever READ by transpiled code (`inputs[uid]`), and its
-    # `__missing__` returns a default without storing it, so no program can mutate what
-    # the next one sees.
+    # BUILT ONCE PER RECORD, NOT ONCE PER EMISSION. The graph's declared input values do not
+    # change while a record renders -- they are read straight off `asm.header` -- but this
+    # dict used to be rebuilt inside `run`, which an FX-Map calls several times for every
+    # pattern. CarpetSubstance001 record 365 emits 262,144 patterns, so the 22
+    # `np.array(...).reshape(1, -1)` calls below were being made about six million times.
+    # Safe to share: `Perm` is only ever READ by transpiled code, and its `__missing__`
+    # returns a default without storing it.
     shared_inputs = Perm()
     for _t, uid, val in asm.header.get('inputs') or []:
         if val:
@@ -431,15 +300,13 @@ def make_runner(asm, rec):
     def flow(ptr):
         """(slots read before this program writes them, slots it writes).
 
-        The batched emission below needs to know whether a slot a program writes is
-        SCRATCH -- written before it is ever read, so the value it arrived with cannot
-        matter -- or STATE carried from the previous pattern. The distinction is visible
-        in the transpiled source, which assigns and reads slots by literal index, so it is
-        read off there rather than guessed from the values.
-
-        Reported for the program alone. A slot that is scratch here can still be state for
-        the record if ANOTHER program reads it without writing it first, which is why the
-        caller unions `read_first` across every program that can run.
+        The batched emission below needs to know whether a slot a program writes is SCRATCH --
+        written before it is ever read, so the value it arrived with cannot matter -- or STATE
+        carried from the previous pattern. The distinction is visible in the transpiled source,
+        which assigns and reads slots by literal index, so it is read off there rather than
+        guessed from the values. Reported for the program alone: a slot that is scratch here can
+        still be state for the record if ANOTHER program reads it without writing it first, which
+        is why the caller unions `read_first` across every program that can run.
         """
         got = flows.get(ptr)
         if got is not None:
@@ -476,6 +343,11 @@ def make_runner(asm, rec):
             src = transpile.transpile(asm.data, ptr, end, "python", "prog")
             scope = {}
             exec(compile(src, "<fx>", "exec"), scope)
+            if cache_funcs is not None:
+                # The transpiled source imports these two from `sbsruntime` at its own
+                # module level; rebinding them in the scope points them at the caller's
+                # cache, because `prog.__globals__` IS this scope.
+                scope["cache_read"], scope["cache_write"] = cache_funcs
             fn = cache[ptr] = scope["prog"]
         sbsruntime.set_context(width=rec.width, height=rec.height,
                                number=number if isinstance(number, np.ndarray)
@@ -485,12 +357,11 @@ def make_runner(asm, rec):
             try:
                 out = scope_call(fn, inputs, slots)
             except sbsruntime.MissingSampler as e:
-                # MUST precede the bare KeyError: MissingSampler subclasses it, so without
-                # this an unwired image input is reported as a missing SLOT. render.py had
-                # exactly this bug, it was fixed there, and this file -- committed one turn
-                # later -- reintroduced it. It is why an A/B over the sampling records
-                # showed "no sampler 0" in every arm while 18 records failed with a message
-                # about slots: the category was real and the label was wrong.
+                # MUST precede the bare KeyError: MissingSampler subclasses it, so without this an
+                # unwired image input is reported as a missing SLOT. render.py had exactly this bug, it
+                # was fixed there, and this file -- committed one turn later -- reintroduced it. It is
+                # why an A/B over the sampling records showed "no sampler 0" in every arm while 18
+                # records failed with a message about slots.
                 raise Unmodelled("no sampler for input %s (an unwired edge, NOT a "
                                  "missing slot)" % e) from e
             except KeyError as e:
@@ -549,33 +420,20 @@ def _slot_flow(asm, ptr):
 def _recover_last_inline(rec, tbl, order):
     """An entry's LAST program slot may hold the program itself, not a pointer to it.
 
-    A NARROWED FORM OF A READING THAT WAS WITHDRAWN, and the withdrawal was right about
-    what it measured. `sbsasm.fx_named_params` used to re-read a failed program pointer as
-    an inline program, and 9ff1354 removed it: of the 2,717 programs that recovered, the
-    1,910 whose entry HAS A SUCCESSOR sit past the next entry's tag in 1,910 of 1,910.
-    They are bytecode from a later structure. Deciding pointer-vs-inline from whether
-    `word - 52` lands on decodable bytes is a value-driven read, and it invented an
-    `imageindex` that duplicated an earlier pointer 2,056 times.
+    A NARROWED FORM OF A READING THAT WAS WITHDRAWN, and the withdrawal was right about what it
+    measured. `sbsasm.fx_named_params` used to re-read a failed program pointer as an inline
+    program, and 9ff1354 removed it: of the 2,717 programs that recovered, the 1,910 whose
+    entry HAS A SUCCESSOR sit past the next entry's tag in 1,910 of 1,910 -- bytecode from a
+    later structure -- and deciding pointer-vs-inline from whether `word - 52` lands on
+    decodable bytes invented an `imageindex` that duplicated an earlier pointer 2,056 times.
 
-    That measurement leaves 807 unexamined -- the ones with no successor. Over 25 corpus
-    files plus every reference package, the split is total:
-
-        recovered program lies INSIDE its own entry   14    all 14 are the LAST entry
-        lies beyond the next entry's tag               4    all 4 have a successor
-
-    But "it is the last entry" is a weak test, because for a last entry the bound is just
-    the record's end. So the gate here is not containment, it is whether the recovery
-    ANSWERS A QUESTION THE RECORD ASKS: does the program write a slot that another
-    parameter of the same entry reads before writing, and that no other program in the
-    record writes? Of the 14, exactly 7 do, and they are the ones that matter --
-
-        Auras records 45, 49, 252, 256, 334 (slots 13 and 15), Chesterfield 43 (slot 0)
-
-    -- three of the four declared outputs of Auras hang on slot 15 having a writer. The
-    other 7 explain nothing and are left as misses.
-
-    A program that decodes is not evidence; a program that resolves a dangling dependency
-    in the record that names it is.
+    That leaves 807 unexamined, the ones with no successor, and the split is total: 14
+    recovered programs lie INSIDE their own entry and all 14 are the LAST entry, while 4 lie
+    beyond the next tag and all 4 have a successor. But "it is the last entry" is weak, since
+    for a last entry the bound is just the record's end. So the gate is whether the recovery
+    ANSWERS A QUESTION THE RECORD ASKS: does the program write a slot another parameter of the
+    same entry reads before writing, and that no other program in the record writes? Of the 14,
+    exactly 7 do -- and three of Auras's four declared outputs hang on slot 15 having a writer.
     """
     asm = rec.asm
     for idx, off in enumerate(order):
@@ -620,22 +478,16 @@ def _recover_last_inline(rec, tbl, order):
 def in_eval_order(params):
     """An entry's parameters, in the order the engine evaluates them.
 
-    PROGRAM ADDRESS ORDER, NOT TABLE ORDER, and the two disagree. Entry parameters talk to
-    each other through the slot frame -- one writes a slot another reads -- so where they
-    do, only one order is defined. Counting every such pair:
-
-        corpus, 25 files      437 dependent pairs   address 437/437   table 437/437
-        reference packages    192 dependent pairs   address 192/192   table 182/192
-
-    629 of 629 for address order against 619 of 629 for table order, and the ten
-    disagreements all fall the same way. Auras record 49 is the clearest: `opacity` sits
-    first in the table and reads slot 15, while `patternrotation` sits second and WRITES
-    it -- at the lower address. In table order the read comes first and the record dies on
-    `slot 15 read but never set`, which blocks three of the four declared outputs of the
-    smallest reference specimen in the corpus.
-
-    Baked parameters are constants and cannot participate, so they go first and their
-    relative order does not matter.
+    PROGRAM ADDRESS ORDER, NOT TABLE ORDER, and the two disagree. Entry parameters talk to each
+    other through the slot frame -- one writes a slot another reads -- so where they do, only
+    one order is defined. Counting every such pair: 437 dependent pairs over 25 corpus files
+    where both orders score 437/437, and 192 in the reference packages where address scores
+    192/192 against table order's 182/192. 629 of 629 against 619 of 629, and the ten
+    disagreements all fall the same way. Auras record 49 is the clearest: `opacity` sits first
+    in the table and reads slot 15, while `patternrotation` sits second and WRITES it -- at the
+    lower address -- so in table order the record dies on `slot 15 read but never set`, which
+    blocks three of the four declared outputs of the smallest reference specimen. Baked
+    parameters are constants and cannot participate, so they go first.
     """
     return sorted(params.items(),
                   key=lambda kv: (kv[1][0] != 'baked',
@@ -645,89 +497,48 @@ def in_eval_order(params):
 def entries(rec, baked_pairs=True):
     """[(offset, tag, {name: (kind, value)})] in table order.
 
-    `baked_pairs` additionally reads each UNNAMED baked (odd) bit as the baked form of
-    the parameter the next even bit names -- the reading argued for in
-    FX-RENDER-HANDOFF.md section 3, and NOT what sbsasm's FX_PARAM_BITS says (it leaves
-    those bits None). It is a flag precisely so the two readings can be compared: with it
-    off, an entry that bakes its patternsize falls back to a full-cell default and paints
-    the whole canvas.
+    `baked_pairs` additionally reads each UNNAMED baked (odd) bit as the baked form of the
+    parameter the next even bit names -- the reading argued for in FX-RENDER-HANDOFF.md
+    section 3, and NOT what sbsasm's FX_PARAM_BITS says. It is a flag precisely so the two
+    readings can be compared: with it off, an entry that bakes its patternsize falls back to
+    a full-cell default and paints the whole canvas.
     """
-    # THE TABLE IS THE ENTRY LIST, NOT THE PARAMETER LIST. This used to derive `order`
-    # from fx_named_params(), so an entry whose tag sets no parameter bits was invisible
-    # and the record reported "no readable table entries" -- 9,385 entries across 220
-    # files, and 950 records that thereby had no table at all. They are not nothing: the
-    # patterntype still rides in the tag's nibble 2, so a paramless entry is a pattern of
-    # a stated shape at default transform, which is the full-cell fallback below.
-    #
-    # That they are real entries and not a walk running into bytecode is the program-span
-    # containment control, with both of its controls present in the same measurement:
+    # THE TABLE IS THE ENTRY LIST, NOT THE PARAMETER LIST. This used to derive `order` from
+    # fx_named_params(), so an entry whose tag sets no parameter bits was invisible and the
+    # record reported "no readable table entries" -- 9,385 entries across 220 files, and 950
+    # records that thereby had no table at all. They are not nothing: the patterntype still
+    # rides in the tag's nibble 2, so a paramless entry is a pattern of a stated shape at
+    # default transform. That they are real entries and not a walk running into bytecode is the
+    # program-span containment control, with both of its controls in one measurement:
     #
     #     group           entries   inside a program span
     #     parameterised      5621        1        0.0%     (known good)
     #     paramless8         9385        0        0.0%
     #     other-nibble        808      112       13.9%     (known bad: node headers)
     #
-    # Restricted to nibble 8 for exactly that reason -- the nibble-b words in the same
-    # walk ARE node headers and score 13.9%, so they stay out. Note the payload-pointer
-    # test cannot be used here: a paramless entry has no program, so its +4 word points
-    # nowhere by construction (0.3% against 97.9%), which measures the absence of
-    # parameters rather than the absence of an entry.
-    # ...WITH ONE EXCEPTION, AND THE JUSTIFICATION ABOVE IS WHAT EXCLUDES IT. A paramless
-    # nibble-8 entry is kept because "the patterntype still rides in the tag's nibble 2".
-    # For the CHAIN FAMILY -- high 16 bits 0x0002 -- that sentence is empty: nibble 2 is
-    # zero and `fx_patterntype` returns None for every one of them, so there is no stated
-    # shape to fall back to. They are structural, not draws:
+    # Restricted to nibble 8 for exactly that reason. The payload-pointer test cannot be used:
+    # a paramless entry has no program, so its +4 word points nowhere by construction.
     #
-    #     group                          entries   word[1]+52 == next entry
-    #     chain-family, no patterntype      6918          98.5%
-    #     other, no patterntype             5439          15.9%
+    # ...WITH ONE EXCEPTION. For the CHAIN FAMILY -- high 16 bits 0x0002 -- "the patterntype
+    # rides in nibble 2" is empty: nibble 2 is zero and `fx_patterntype` returns None for every
+    # one. They are structural, not draws -- 98.5% of 6,918 chain-family typeless entries point
+    # at the entry that follows against 15.9% of 5,439 other typeless ones, a linked list
+    # rather than a table of independent patterns, and emitting one full-cell fill each is what
+    # paints a record white. "SKIP ENTRIES WHOSE PATTERNTYPE IS None" IS NOT EQUIVALENT, and
+    # that second row is why: it would drop 5,439 entries that mostly do not chain, among them
+    # 3,332 of tag 0x00420008, which `FX_ENTRY_PROGS` gives a program slot. Those are real draws.
     #
-    # 98.5% of them point at the entry that follows, which is a linked list and not a
-    # table of independent patterns. Emitting one full-cell fill each is what paints a
-    # record white: `WoodSubstance005` record 85 has six entries, five of them this tag.
-    #
-    # THE OTHER DISCRIMINATOR OFFERED FOR THIS WAS "skip entries whose patterntype is
-    # None", and it is NOT equivalent -- the second row above is why. It would also drop
-    # 5,439 entries that are not chain-family and mostly do not chain, among them 3,332 of
-    # tag 0x00420008, which `FX_ENTRY_PROGS` gives a program slot. Those are real draws
-    # and dropping them would trade a white record for a missing one.
-    #
-    # WITHDRAWN, A THIRD DISCRIMINATOR: "bit 6 of the tag's low byte". It looked stronger
-    # than either of the two above and it is not equivalent to them, so it is recorded here
-    # rather than left to be re-derived.
-    #
-    # What made it look strong. The low byte of a tag takes 0x48 on essentially every entry
-    # whose patterntype nibble is NAMED -- nibbles 1 through 14, 0x48 or 0x58 throughout --
-    # and 0x08 on the bulk of nibble 0, a value that occurs nowhere else. `fx_entry_layout`
-    # never reads bit 6 (FX_PARAM_BITS begins at bit 4; bits 3, 5 and 6 are absent from it),
-    # so the parameter names come from bits 19-31 alone and the agreement between the two
-    # halves of the word is two independent declarations, not one wearing two hats. And the
-    # chain family falls out of it almost exactly: of 4,456 chain entries, 4,455 are
-    # bit-6-clear and one is not (0x00024868). A rule established by the next-pointer test
-    # on the HIGH half, reproduced by a single bit in the LOW half.
-    #
-    # Why it is still wrong. It is strictly broader than the chain family, and the 2,899
-    # entries it would newly exclude fail the very test that established the family. Whole
-    # corpus, exact criterion, restricted as the rows above are to entries with no
-    # patterntype:
-    #
-    #     chain-family, no patterntype        19861   word[1]+52 == next entry   100.0%
-    #     other, no patterntype               15616                                3.9%
-    #       ..of which bit 6 clear, not chain 14958                                3.5%
-    #       ..of which bit 6 SET                658                               13.8%
-    #
-    # The newly-excluded group does not chain -- it scores BELOW the bit-6-set entries it
-    # would be separated from, and level with the "other" group this code already treats as
-    # draws. 2,708 of the 2,899 are tag 0x00420008, which the paragraph above defends by
-    # name, and this is the instrument that vindicates it. (Counts here are corpus-wide; the
-    # two rows in the paragraph above are over 120 files. Same direction, different
-    # population -- these corroborate those, they do not reproduce them.)
-    #
-    # So bit 6 marks something nearer "the patterntype nibble is meaningful" than "this
-    # entry is structural", and the white-generator family is NOT explained by it. That
-    # question stays open: 97 of 97 solid-white fxmaps records in Kutejnikov__Bricks_and_tiles
-    # have at least one typeless entry and 0 have none -- but so do 17 of the 94 that are
-    # not white, and nothing yet separates those two populations.
+    # WITHDRAWN, A THIRD DISCRIMINATOR: "bit 6 of the tag's low byte". It looked strong -- the
+    # low byte is 0x48 on essentially every named-patterntype entry and 0x08 on the bulk of
+    # nibble 0, `fx_entry_layout` never reads bit 6 so the two halves are independent
+    # declarations, and the chain family falls out almost exactly (4,455 of 4,456). Still
+    # wrong: strictly broader than the chain family, and the 2,899 entries it would newly
+    # exclude score 3.5% on the next-pointer test that established the family -- BELOW the
+    # 13.8% of the bit-6-set entries they would be separated from. So bit 6 marks something
+    # nearer "the patterntype nibble is meaningful" than "this entry is structural", and the
+    # white-generator family is NOT explained by it. That stays open: 97 of 97 solid-white
+    # fxmaps records in Kutejnikov__Bricks_and_tiles have a typeless entry and 0 have none --
+    # but so do 17 of the 94 that are not white.
     tbl, order, chain_family = {}, [], []
     for off, tag, _p in rec.fx_table():
         if (tag >> 16) == 0x0002:
@@ -748,17 +559,15 @@ def entries(rec, baked_pairs=True):
     # THE CHAIN-FAMILY RUN ENDS BY POINTING AT A DRAW ENTRY, and the linear walk does not
     # follow it. `fx_table` steps eight bytes at a time; the chain family is a linked list
     # (97.5% of its entries point at the one that follows) and its LAST link leaves the run
-    # entirely. Where it lands is a real draw the table otherwise never reaches.
+    # entirely, landing on a real draw the table otherwise never reaches.
     #
-    # Containment says so rather than plausibility. `SubstanceDesigner__Clouds_3_Animated`
-    # is permitted, declares exactly two `paramset` nodes carrying patterntype 8,
-    # patternsize "3 2" and randomseeds 42 and 16, and its own binary's record 50 walks four
-    # chain-family entries and stops. The fourth one's next-pointer lands on tag
-    # 0x13520658 -- patterntype nibble 6, so type 8 -- whose parameter block holds 42 and
-    # (3.0, 2.0); the second entry, tag 0x13100658, holds 16 and (3.0, 2.0). Two of two, on
-    # three declared values each, and the randomseeds tell the two apart.
-    #
-    # 20 records across 30 corpus files reach a draw entry this way that the walk misses.
+    # Containment says so rather than plausibility. `SubstanceDesigner__Clouds_3_Animated` is
+    # permitted, declares exactly two `paramset` nodes carrying patterntype 8, patternsize
+    # "3 2" and randomseeds 42 and 16, and its own binary's record 50 walks four chain-family
+    # entries and stops. The fourth's next-pointer lands on tag 0x13520658 -- patterntype
+    # nibble 6, so type 8 -- whose parameter block holds 42 and (3.0, 2.0); the second entry
+    # holds 16 and (3.0, 2.0). Two of two, on three declared values each, and the randomseeds
+    # tell the two apart. 20 records across 30 corpus files reach a draw entry this way.
     for _o in chain_family:
         if _o + 8 > len(rec.asm.data):
             continue
@@ -766,64 +575,33 @@ def entries(rec, baked_pairs=True):
         if not (rec.asm.body_lo <= _nxt < rec.asm.body_hi - 7) or _nxt in tbl:
             continue
         _t2 = struct.unpack_from('<I', rec.asm.data, _nxt)[0]
-        # THE TARGET IS A HEADER WORD, AND THE ENTRIES START AFTER IT. A chain-family
-        # entry's `+4` pointer does not address another entry -- it addresses word 3 of the
-        # entry ITSELF, which holds a small non-tag word, and the run begins one word later:
+        # THE TARGET IS A HEADER WORD, AND THE ENTRIES START AFTER IT. A chain-family entry's `+4`
+        # pointer does not address another entry -- it addresses word 3 of the entry ITSELF, which
+        # holds a small non-tag word, and the run begins one word later:
         #
-        #     [0x00020018] [ptr] [ptr] [0x00000002] [0x00420008] [ptr] ...
-        #                                ^ _nxt lands here         ^ the entries
+        #     [0x00020018] [ptr] [ptr] [<header word>] [0x00420008] [ptr] ...
+        #                                ^ _nxt lands here   ^ the entries
         #
-        # so reading at `_nxt` finds a word that is not a tag and this loop gave up one word
-        # short of the table. Stepping over it, over the records `entries()` returns empty
-        # for, corpus-wide:
-        #
-        #     chain-family entries                          143
-        #       word AFTER the header word is an entry tag  134
-        #         a table read from there yields 6 entries  133   (one yields 2)
-        #       not an entry tag                              9   (left alone)
-        #
-        # AND THEY ARE REAL ENTRIES BY THIS FILE'S OWN TEST, not by looking plausible.
-        # `entry_layout_holds` is the stopping rule that catches a walk running into
-        # bytecode -- a tag states where its programs are, so a tag naming programs that
-        # none of which resolve is not a tag, and it separates 49,528 real entries from
-        # 3,192 junk ones at 0.0% against 82.1%. Every entry recovered here passes it:
-        # 800 of 800, including all 534 whose tag is drawable rather than another
-        # chain-family link. Six entries appearing where there were none is exactly the
-        # shape a runaway produces, which is why the gate is the evidence and the count is
-        # not.
-        #
-        # The header word reads 2 while the run yields 6 entries, so it is NOT an entry
-        # count and is deliberately not named one here; what it is remains open. The
-        # recovery does not depend on its value, only on stepping over it.
+        # so reading at `_nxt` finds a word that is not a tag and this loop gave up one word short
+        # of the table. Stepping over it: of 143 chain-family entries, 134 have an entry tag in the
+        # word AFTER the header word, and a table read from there yields 6 entries in 133 of them.
+        # AND THEY ARE REAL ENTRIES BY THIS FILE'S OWN TEST: `entry_layout_holds` catches a walk
+        # running into bytecode -- a tag naming programs none of which resolve is not a tag --
+        # separating 49,528 real entries from 3,192 junk ones at 0.0% against 82.1%, and every
+        # entry recovered here passes it, 800 of 800. Six entries appearing where there were none
+        # is exactly the shape a runaway produces, which is why the gate is the evidence and the
+        # count is not. The header word reads 2 while the run yields 6, so it is NOT a count.
         if (_t2 & 0xF) != 8 or (_t2 >> 16) == 0x0002:
-            # THE POINTER LANDS ON A HEADER WORD; THE ENTRIES START AFTER IT. Measured
-            # against HEAD on the same 30 files, this is not covered by `fx_tree`'s
-            # pointer-cell walk (4fc0303): with that walk alone the table blocker is 22
-            # declared outputs and 15 outputs render FLAT; stepping this one word as well
-            # gives 11 and 9, and takes `flat from blend` 4 -> 0 and `flat from shuffle`
-            # 1 -> 0. A flat output already counts as rendered while carrying no
-            # information, so those six are the substantive part.
+            # NARROWER THAN 4fc0303 AND NOT A REPLACEMENT FOR IT. That commit reads the payload
+            # pointer the cell itself stores and walks the whole alternating list; this follows one
+            # target, so where a list names several payloads that walk gets them all and this gets
+            # one. It is here because measurement says it still reaches records the walk does not.
             #
-            #     [0x00020018] [ptr] [ptr] [<header word>] [0x00420008] [ptr] ...
-            #                                ^ _nxt lands here   ^ the entries
-            #
-            # AND THEY ARE ENTRIES BY THIS FILE'S OWN TEST. `entry_layout_holds` is the
-            # stopping rule that catches a table walk running into bytecode -- 0.0% of
-            # 49,528 real entries fail it against 82.1% of junk -- and every entry this
-            # recovers passes: 800 of 800, including all 534 whose tag is drawable rather
-            # than another chain-family link. It is required below rather than assumed,
-            # because "six plausible words appeared" is exactly what a runaway looks like.
-            #
-            # The header word reads 2 while the run yields 6 entries, so it is NOT a count
-            # and is deliberately not named one; what it is remains open. Only stepping
-            # over it matters. The 9 of 143 whose next word is not an entry tag are left.
-            #
-            # NARROWER THAN 4fc0303 AND NOT A REPLACEMENT FOR IT. That commit reads the
-            # payload pointer the cell itself stores and walks the whole alternating list;
-            # this follows one target. Where a list names several payloads that walk gets
-            # them all and this would get one, so this is the weaker rule -- it is here
-            # because measurement says it still reaches records the walk does not, not
-            # because it is the better statement of the structure.
+            # Measured against HEAD on the same 30 files: with `fx_tree`'s pointer-cell walk alone
+            # the table blocker is 22 declared outputs and 15 outputs render FLAT; stepping this one
+            # word as well gives 11 and 9, and takes `flat from blend` 4 -> 0 and `flat from shuffle`
+            # 1 -> 0. A flat output already counts as rendered while carrying no information, so
+            # those six are the substantive part.
             _after = _nxt + 4
             if _after + 4 > len(rec.asm.data) or _after in tbl:
                 continue
@@ -839,13 +617,11 @@ def entries(rec, baked_pairs=True):
             tbl[_at] = (_tag, {})
             order.append(_at)
 
-    # `_chain_embedded_entries` STOOD HERE and is gone. It reached around the walk to a
-    # chain cell's payload with an `(0x09, 0x49)` allowlist, `off + 8` as a constant slot,
-    # and a hardcoded 12-byte step over the `0x?4B` cell it landed on. `fx_tree` now walks
-    # both cell kinds by the pointers they store (`pointer_cell_successor`), so the table
-    # arrives here the ordinary way. Verified dead before removal, over the whole corpus
-    # and through this accessor: of the 233 records `entries()` still returns empty for,
-    # it would have added entries to 0.
+    # `_chain_embedded_entries` STOOD HERE and is gone. It reached around the walk to a chain
+    # cell's payload with an `(0x09, 0x49)` allowlist, `off + 8` as a constant slot, and a
+    # hardcoded 12-byte step. `fx_tree` now walks both cell kinds by the pointers they store,
+    # so the table arrives here the ordinary way. Verified dead before removal: of the 233
+    # records `entries()` still returns empty for, it would have added entries to 0.
     _recover_last_inline(rec, tbl, order)
     if baked_pairs:
         for off in order:
@@ -854,47 +630,34 @@ def entries(rec, baked_pairs=True):
                 partner = PARTNER.get(bit)
                 if partner is None:
                     continue
-                # A MULTI-COMPONENT BAKED PARAMETER MUST NOT BE LEFT AS A SCALAR.
-                # `fx_named_params` hands a baked parameter back as its single raw slot
-                # WORD (its docstring says so), and `emit` unpacks that one word into one
-                # float. For a parameter the layout declares at width 2 that silently
-                # discards the second component: over 20 files, 928 entries -- 921
-                # `patternsize`, 6 `frameoffset`, 1 `branchoffset` -- and the values lost
-                # are not degenerate. ChesterfieldSofa record 331 stores (5.0, 1.0), a 5:1
-                # strip, and we drew a 5x5 square; stone_stylized_adaptive record 284
-                # stores (1.25, 8.0) and we drew 1.25 x 1.25.
+                # A MULTI-COMPONENT BAKED PARAMETER MUST NOT BE LEFT AS A SCALAR. `fx_named_params` used
+                # to hand a baked parameter back as its single raw slot WORD, and `emit` unpacked that
+                # one word into one float, which for a parameter the layout declares at width 2 silently
+                # discards the second component: over 20 files, 928 entries -- 921 `patternsize`, 6
+                # `frameoffset`, 1 `branchoffset` -- and the values lost are not degenerate.
+                # ChesterfieldSofa record 331 stores (5.0, 1.0), a 5:1 strip, and we drew a 5x5 square.
                 #
-                # THE WIDTH OVERRIDE IS GONE, because the read it compensated for is fixed
-                # at the root: `fx_named_params` now yields a baked parameter at its declared
-                # WIDTH (a tuple of floats), so a width-2 parameter no longer arrives here as
-                # a single number. This loop is back to what it is for -- pairing an UNNAMED
-                # baked bit with the parameter the next bit names -- and defers to anything
-                # the named path already produced.
+                # THE WIDTH OVERRIDE IS GONE, because the read it compensated for is fixed at the root:
+                # `fx_named_params` now yields a baked parameter at its declared WIDTH. This loop is back
+                # to what it is for -- pairing an UNNAMED baked bit with the parameter the next bit names.
                 if partner in tbl[off][1]:
                     continue
-                # THE SLOT IS INLINE ONLY WHEN THE ENTRY SAYS SO. An entry's +4 word
-                # addresses its parameters; usually that is off+8 and the slots follow the
-                # tag, which is what this read assumes. Where it points somewhere else the
-                # parameters are in a separate block and reading inline returns whatever
-                # happens to sit there -- for Clouds_3_Animated record 50 that is (0.0, 0.0)
-                # against a source-declared patternsize of (3, 2).
-                #
-                # The block IS locatable -- both of that file's entries hold their declared
-                # randomseed and patternsize at word1+52 -- but two specimens do not
-                # establish the slot arithmetic inside it: patternsize lands at block+4
-                # slots for one entry and block+3 for the other, and no single base explains
-                # both. So this DECLINES rather than guessing, and the parameter reads as
-                # absent instead of as zero. See FORMAT-NOTES on the parameter block.
+                # THE SLOT IS INLINE ONLY WHEN THE ENTRY SAYS SO. An entry's +4 word addresses its
+                # parameters; usually that is off+8 and the slots follow the tag, which is what this read
+                # assumes. Where it points somewhere else the parameters are in a separate block and
+                # reading inline returns whatever sits there -- for Clouds_3_Animated record 50 that is
+                # (0.0, 0.0) against a source-declared patternsize of (3, 2). The block IS locatable, but
+                # two specimens do not establish the slot arithmetic inside it: patternsize lands at
+                # block+4 slots for one entry and block+3 for the other. So this DECLINES rather than
+                # guessing, and the parameter reads as absent instead of as zero.
                 if not (off + 4 <= len(rec.asm.data) - 4):
                     continue
                 _w1 = struct.unpack_from('<I', rec.asm.data, off + 4)[0] + 52
-                # NARROWED TO THE CONFIGURATION THE SPECIMEN SHOWS. `fx_table` calls this
-                # word the entry's PAYLOAD, and for most entries it plausibly addresses a
-                # program while the baked slots stay inline -- declining all 399 non-inline
-                # reads over 12 files on the strength of two entries would be over-broad,
-                # and it changed no measured output either way. What both Clouds entries
-                # have is a word1 pointing BACKWARD, before the tag, where an inline slot
-                # cannot be. 15 entries in 30 files are in that configuration.
+                # NARROWED TO THE CONFIGURATION THE SPECIMEN SHOWS. `fx_table` calls this word the
+                # entry's PAYLOAD, and for most entries it plausibly addresses a program while the baked
+                # slots stay inline -- declining all 399 non-inline reads over 12 files on the strength
+                # of two entries would be over-broad. What both Clouds entries have is a word1 pointing
+                # BACKWARD, before the tag, where an inline slot cannot be. 15 entries in 30 files.
                 if _w1 < off + 8:
                     continue
                 raw = rec.asm.data[off + 4 * sl:off + 4 * sl + 4 * width]
@@ -910,10 +673,8 @@ def baked_slots(tag):
     the bit index, which that function does not return.
     """
     # ONE WALK, not a second implementation. This used to re-walk FX_PARAM_BITS itself and
-    # its docstring above claimed the two were identical; they were not, and
-    # `sbsasm.fx_entry_walk` records the measurement. Deriving from that walk means they
-    # cannot drift again, and it drops the structural bits this function used to emit --
-    # rows every caller already discarded, because a structural bit has no PARTNER.
+    # claimed the two were identical; they were not, and `sbsasm.fx_entry_walk` records the
+    # measurement. Deriving from that walk means they cannot drift again.
     from sbsasm import fx_entry_walk
     return [(bit, sl, width) for bit, sl, _name, kind, width in fx_entry_walk(tag)
             if kind == 'baked']
@@ -929,14 +690,11 @@ def _partners():
 PARTNER = _partners()
 
 
-#: The raster-scan state slots, and what an FX-Map that initialises them EXPLICITLY
-#: writes. Some records carry a program that assigns these constants before anything reads
-#: them (0x18B, the addnode above the 0x99 scanner, is where they come from); others read
-#: the same slots with no such program anywhere in the record and used to die on "slot N
-#: read but never set".
-#:
-#: The constants are read off the records that DO initialise, over 20 files, counting only
-#: assignments built entirely from literals:
+#: The raster-scan state slots, and what an FX-Map that initialises them EXPLICITLY writes.
+#: Some records carry a program that assigns these constants before anything reads them
+#: (0x18B, the addnode above the 0x99 scanner); others read the same slots with no such
+#: program and used to die on "slot N read but never set". Read off the records that DO
+#: initialise, over 20 files, counting only assignments built entirely from literals:
 #:
 #:     slot 12   (0.0, 0.0) x710, 0.0 x96          zero, unanimously
 #:     slot 14   (0.0, 0.0) x710                   zero, unanimously
@@ -945,14 +703,10 @@ PARTNER = _partners()
 #:     slot 18   (1.0, 0.0) x710, (0.0, 0.0) x92, 0 x1     NOT unanimous -- excluded
 #:     slot 13   2.82 x92, 0.0 x4, (0.0, 0.0) x1           NOT unanimous -- excluded
 #:
-#: Only the four that agree are seeded. 18 and 13 are the reason this is a measured table
-#: and not `default everything to zero`: 18's own initialisers say (1.0, 0.0) seven times
-#: out of eight, so a blanket zero would have been confidently wrong on the slot that
-#: holds the scan DIRECTION.
-#:
-#: `setdefault`, and only after `seed_slots` has run the record's own programs, so a real
-#: initialiser always wins. A record that renders today cannot change: the only reads this
-#: reaches are ones that previously raised.
+#: Only the four that agree are seeded. 18 and 13 are why this is a measured table and not
+#: `default everything to zero`: 18's initialisers say (1.0, 0.0) seven times out of eight,
+#: so a blanket zero would have been confidently wrong on the slot holding the scan
+#: DIRECTION. `setdefault`, and only after `seed_slots` has run the record's own programs.
 SCAN_STATE_DEFAULTS = {12: 0.0, 14: 0.0, 16: 0.0, 17: 0.0}
 
 
@@ -961,12 +715,10 @@ def seed_slots(rec, run):
 
     The FX table reads slots the chain never writes -- 58.9% of fxmaps records died on
     `slot N read but never set` when only the chain was run. The writers are the record's
-    other programs, which is what FORMAT-NOTES' "the slot frame is per-RECORD" (99.892%
-    against an 11.8% control) says: the frame's unit is the record, so every program the
-    record names shares it, not just the chain's.
-
-    Evaluated once at N=1 into the dict the walk then uses. Takes rendering from 27.9% to
-    85.2% of fxmaps records -- the single largest lever in this file.
+    other programs, which is what "the slot frame is per-RECORD" (99.892% against an 11.8%
+    control) says: the frame's unit is the record, so every program the record names shares
+    it. Evaluated once at N=1 into the dict the walk then uses. Takes rendering from 27.9%
+    to 85.2% of fxmaps records -- the single largest lever in this file.
     """
     slots = {}
     fx = {p for _o, _h, _n, p in rec.fx_node_params()}
@@ -980,20 +732,16 @@ def seed_slots(rec, run):
             # A record's own program may itself read a slot nothing writes. Seeding is
             # best-effort by design: what it fails to set, the walk reports as missing.
             pass
-    # ONLY WHERE THE CHAIN HAS A SCANNER, and the unconditional version was a mistake I
-    # caught by reading what it produced. These slots are the 0x99 raster scan's own state
-    # -- position in 14, counters in 16 and 17 -- and a record whose chain contains no
-    # scanner has no such state to start. CarpetSubstance001 records 70 and 163 are the
-    # specimens: their chain is a lone 0x18B, their entry reads `patternsize` straight out
-    # of slot 17, and seeding it to zero made 32 patterns of size ZERO. Nothing draws, the
-    # record renders solid black, and it used to REFUSE with `slot 17 read but never set`.
-    # Trading a refusal for a blank image is the one trade this renderer is not allowed to
-    # make: the error named the gap, and the blank hid it inside 30 flat FX-Maps.
-    #
-    # The evidence the defaults rest on says the same thing on a re-read. Every explicit
-    # initialiser measured -- 710 writing (0, 0) to slot 14, 711 writing 0 to slot 17 --
-    # belongs to a record that ALSO carries a scanner to advance them. Zero is where the
-    # scan STARTS, not what the slot means in a record that never scans.
+    # ONLY WHERE THE CHAIN HAS A SCANNER, and the unconditional version was a mistake caught
+    # by reading what it produced. These slots are the 0x99 raster scan's own state, and a
+    # record whose chain contains no scanner has no such state to start.
+    # CarpetSubstance001 records 70 and 163 are the specimens: their chain is a lone 0x18B,
+    # their entry reads `patternsize` straight out of slot 17, and seeding it to zero made
+    # 32 patterns of size ZERO -- solid black, where it used to REFUSE with `slot 17 read
+    # but never set`. Trading a refusal for a blank image is the one trade this renderer is
+    # not allowed to make. The evidence the defaults rest on says the same on a re-read:
+    # every explicit initialiser measured belongs to a record that ALSO carries a scanner to
+    # advance them. Zero is where the scan STARTS, not what the slot means without one.
     if any(h == STEPPER or (h & 0xFF) == STEPPER2 for _o, h, _p in chain(rec)):
         for slot, value in SCAN_STATE_DEFAULTS.items():
             slots.setdefault(slot, value)
@@ -1001,9 +749,8 @@ def seed_slots(rec, run):
 
 
 #: `$number` is system variable 10, and `floor($number / N)` is a grid's row index with N
-#: its width. Read by following the SSA names -- which temporary holds $number, which holds
-#: a constant, and which divides the one by the other -- rather than by matching a fixed
-#: instruction offset, so a record whose program is ordered differently still resolves.
+#: its width. Read by following the SSA names rather than by matching a fixed instruction
+#: offset, so a record whose program is ordered differently still resolves.
 _ASSIGN = re.compile(r'^\s*(v\d+)\s*=\s*(.+?)\s*$')
 _SYSVAR10 = re.compile(r'^sysvar\(10[,)]')
 _CONST = re.compile(r'^([0-9]+\.[0-9]+)$')
@@ -1017,27 +764,18 @@ def grid_width(rec):
     these records numberadded is an amount -- Chesterfield's reads only the aspect slot and
     degenerates to 1 on a square canvas -- while the layout is a grid the placement program
     hardwires. The structural side located the divisor at the first constant after the
-    `$number` read in all four Chesterfield specimens, and a byte diff of two of those
-    programs shows the whole grid block identical while only the size constants differ.
-
-    Read semantically rather than at instruction 10, because the offset is verified on four
-    records that share a program almost byte-for-byte and could shift elsewhere.
+    `$number` read in all four Chesterfield specimens. Read semantically rather than at
+    instruction 10, because that offset is verified on four records that share a program
+    almost byte-for-byte and could shift elsewhere.
     """
     asm = rec.asm
-    # THE FX WALK NAMES THE CANDIDATES, not `Record.programs`. `programs` reaches an
-    # fxmaps record's payload through a scan over the record's words, which for this filter
-    # is deliberately unbounded -- the payload holds program pointers by design, so the
-    # bound that `Record.programs` applies to every other filter is lifted here (see
-    # `_PAYLOAD_PROGRAM_FILTERS`). That makes the candidate list a superset of the
-    # structure: an instruction operand inside an FX program's bytecode can enter it, and
-    # this function would then transpile bytecode and read a divisor out of it.
-    #
-    # It does not today, and that was checked rather than assumed: over 10 files every one
-    # of the 22 records that yields a grid width yields it from a program `fx_walk` names,
-    # 22 of 22. So this is the same answer arrived at structurally instead of by luck --
-    # `fx_walk` follows the node chain or the parameter table, whichever the root addresses,
-    # so it enumerates the record's real programs rather than every word that survives
-    # `valid_program`. It also stops this from transpiling candidates that are not programs.
+    # THE FX WALK NAMES THE CANDIDATES, not `Record.programs`. `programs` reaches an fxmaps
+    # record's payload through a scan over the record's words that is deliberately unbounded
+    # for this filter, which makes the candidate list a superset of the structure: an
+    # instruction operand inside an FX program's bytecode can enter it, and this function
+    # would then transpile bytecode and read a divisor out of it. It does not today, and
+    # that was checked rather than assumed -- over 10 files, all 22 records that yield a
+    # grid width yield it from a program `fx_walk` names.
     cands = set()
     try:
         for _item in rec.fx_walk():
@@ -1074,45 +812,96 @@ def grid_width(rec):
             d = _DIV.match(rhs)
             if d and d.group(1) in number_vars and d.group(2) in consts:
                 n = consts[d.group(2)]
-                # THE UPPER BOUND SITS IN A GAP THE CORPUS LEAVES, which is what makes it a
-                # guard rather than a taste. Over 80 files the divisors found are
-                # 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 18, 20, 24, 25, 30, 31, 32,
-                # 35, 39, 42, 50, 64 -- 355 records, dense to 64 -- and then nothing at all
-                # until 128, 130 and 16384, which is 6 records. A factor of two of empty
-                # space separates the two populations.
-                #
-                # The large ones are not grids. 16384 is 128 squared, and a divisor of that
-                # size is $number used at PIXEL granularity -- a coordinate normalised by
-                # the canvas -- not a stamp index; emitting N^2 there would ask for 268
-                # million patterns. So the bound is not a cap on how big a grid may be, it
-                # is the line between two different uses of $number, and the corpus draws it
-                # rather than this code choosing it.
+                # THE UPPER BOUND SITS IN A GAP THE CORPUS LEAVES, which is what makes it a guard rather
+                # than a taste. Over 80 files the divisors found run 2, 3, 4, 5, 6, 7, 8, 10 ... 50, 64
+                # -- 355 records, dense to 64 -- and then nothing at all until 128, 130 and 16384, which
+                # is 6 records. The large ones are not grids: 16384 is 128 squared, and a divisor that
+                # size is $number used at PIXEL granularity, a coordinate normalised by the canvas, not
+                # a stamp index; emitting N^2 there would ask for 268 million patterns. So the bound is
+                # the line between two uses of $number, and the corpus draws it rather than this code.
                 if n == int(n) and 1 < n <= 64:
                     return int(n)
     return None
 
 
+def inline_input_refs(rec, off, limit=None):
+    """The input references an FX entry stores INLINE at slot 2, as [(uid, width, value)].
+
+    An entry of this family is `[tag][word][inline program]+` -- the programs are not
+    addressed by the tag's pointer slots, they ARE the words those slots occupy, which is
+    why every predicted pointer resolves to nothing. Each leading program is one or more
+    `inputref` instructions (opcode 0x02, width `((op >> 6) & 3) + 1`) naming a uid the
+    file's own header declares; `value` is that declaration, or None if absent.
+
+    The walk stops at the first thing that is not such a reference, because the longer
+    entries carry further content after them.
+
+    Measured over the corpus, against both populations that matter:
+
+        the refused handoff entries recognised    24 of 27     89%
+        known-good entries (false positive)        6 of 2,351  0.26%
+        bytecode inside real program spans         3 of 1,969  0.15%
+
+    Every recognised entry leads with a WIDTH-2 reference: widths are (2, 1) on 12 and
+    (2,) on 12. In `roofing_007` the pair is `0xb90ebc63` (type 8, value (8, 8) -- log2 of
+    256x256) and `0xee7caa31` (type 4, value 0), the same uids in every entry of the file.
+
+    DIAGNOSTIC ONLY, AND DELIBERATELY NOT WIRED INTO `entries()`. What each reference IS
+    remains unknown: the tag's mask declares 3 or 5 program parameters against 1 or 2 inline
+    references, so it does not describe these slots, and no permitted source sets the bits
+    that would name them. Admitting the entry would let `emit` read parameters positionally
+    out of a layout that does not match the data, which paints a plausible wrong picture --
+    strictly worse than refusing. This function exists so the structure is READABLE by
+    whoever closes the naming gap, and so `why_no_entries` can report what is actually
+    there instead of calling it unreadable.
+    """
+    a = rec.asm
+    decl = {u: v for _t, u, v in (a.header.get('inputs') or [])}
+    lim = rec.offset if limit is None else limit
+    q, out = off + 8, []
+    while q + 4 <= lim and len(out) < 8:
+        sp = a.program_span(q, a.body_hi)
+        if not sp or sp <= q:
+            break
+        try:
+            ins = list(disasm.decode(a.data, q, sp))
+        except Exception:
+            break
+        if not ins:
+            break
+        got = []
+        for _k, addr, op, toks in ins:
+            if (op & 0x3F) != 0x02:
+                got = None
+                break
+            try:
+                u = disasm.uid(addr, toks)
+            except Exception:
+                got = None
+                break
+            if u not in decl:
+                got = None
+                break
+            got.append((u, ((op >> 6) & 3) + 1, decl[u]))
+        if got is None:
+            break
+        out.extend(got)
+        q = sp
+    return out
+
+
 def why_no_entries(rec):
     """Why `entries()` came back empty -- the WALK, or the table read?
 
-    "no readable table entries" named the table for every one of these, and the table read
-    is not what fails in most of them. `entries()` consumes `rec.fx_table()`, which is the
-    tail of `rec.fx_walk()`: the node chain does not end on a null pointer, it ends by
-    pointing AT the first entry. So a walk that stops at its root reaches no table at all,
-    and reporting that as a table failure sends the reader to the wrong half of the
-    structure -- it sent this one there, and the fix attempted from it was a table patch
-    for a record whose table read never ran.
-
-    Corpus-wide, the records `entries()` returns empty for:
-
-        table HAS raw entries, all filtered out       192    a table question
-        walk reached NOTHING (no node, no entry)       46    a WALK question
-        walked nodes, never handed off to a table       7    a WALK question
-
-    So a fifth of them were misattributed. The message now names the half that failed and
-    the header it stopped on, because the header is the thing a reader has to go look up.
-
-    Diagnosis only -- it runs on the failure path and decides nothing.
+    "no readable table entries" named the table for every one of these, and the table read is
+    not what fails in most of them. `entries()` consumes `rec.fx_table()`, the tail of
+    `rec.fx_walk()`: the node chain ends by pointing AT the first entry, so a walk that stops
+    at its root reaches no table at all, and reporting that as a table failure sends the reader
+    to the wrong half of the structure -- it sent this one there, and the fix attempted from it
+    was a table patch for a record whose table read never ran. Corpus-wide, of the records
+    `entries()` returns empty for: 192 have raw entries all filtered out (a table question), 46
+    reached NOTHING and 7 walked nodes without handing off (both WALK questions). Diagnosis
+    only.
     """
     asm = rec.asm
     try:
@@ -1123,18 +912,13 @@ def why_no_entries(rec):
     raw = [t for t in walk if t[0] == 'entry']
 
     if raw:
-        # SAY WHICH KIND, because "entries reached, none usable" points at the table read
-        # and for most of these the run never reached a table at all. `fx_table` yields
-        # whatever the pointer-following lands on, and the bit-7-clear families -- leaf,
-        # branch, pointer cell -- are not entry tags: they end in nibble 9 or B where an
-        # entry ends in 8, and `entries()` drops them on exactly that. Over the records
-        # this branch fires on, the raw run is 32 pointer cells, 22 leaves and 4
-        # chain-family links against a handful of real tags, so the honest report is that
-        # the run walked cells and found no table, not that a table was unreadable.
-        #
-        # NOT a reason to stop the run on them -- that was measured and withdrawn; see
-        # `fx_table`, where a pointer cell is a WAYPOINT the pointer-following traverses to
-        # a real entry beyond it, and breaking on one cost 80 records their table.
+        # SAY WHICH KIND, because "entries reached, none usable" points at the table read and
+        # for most of these the run never reached a table at all. The bit-7-clear families --
+        # leaf, branch, pointer cell -- are not entry tags: they end in nibble 9 or B where an
+        # entry ends in 8. Over the records this branch fires on, the raw run is 32 pointer
+        # cells, 22 leaves and 4 chain-family links against a handful of real tags. NOT a reason
+        # to stop the run on them -- that was measured and withdrawn; a pointer cell is a
+        # WAYPOINT, and breaking on one cost 80 records their table.
         cells = sum(1 for _k, _o, t, _p in walk
                     if _k == 'entry' and (node_shape(t) is not None
                                           or leaf_successor(t) is not None
@@ -1164,14 +948,12 @@ def why_no_entries(rec):
         h = header_at(root)
         if h is None:
             return "walk: root slot addresses %#x, outside the body" % root
-        # "NOT IN THE VOCABULARY" WAS AN INFERENCE, AND IT WAS WRONG. This read the header
-        # itself and concluded the walk must have refused it. For all 12 records currently
-        # in this branch that is false: the header is `0x1b`, `FX_NODES2` has it, and the
-        # walk stops for an unrelated reason -- `FX_NODES2[0x1B]`'s program tuple is EMPTY,
-        # and `fx_tree` yields only from inside `for sl in prog_slots`, so the node is
-        # walked and never yielded. Exactly the misattribution this function exists to
-        # prevent, one level further in, so it now ASKS the derivations instead of guessing
-        # from the byte.
+        # "NOT IN THE VOCABULARY" WAS AN INFERENCE, AND IT WAS WRONG. This read the header and
+        # concluded the walk must have refused it. For all 12 records in this branch that is
+        # false: the header is `0x1b`, `FX_NODES2` has it, and the walk stops for an unrelated
+        # reason -- `FX_NODES2[0x1B]`'s program tuple is EMPTY and `fx_tree` yields only from
+        # inside `for sl in prog_slots`. Exactly the misattribution this function exists to
+        # prevent, one level further in, so it now ASKS the derivations instead of guessing.
         known = (node_shape(h) is not None or leaf_successor(h) is not None
                  or pointer_cell_successor(h) is not None or (h & 0xFF) in FX_NODES2)
         where = ('' if rec.offset <= root < rec.end
@@ -1185,6 +967,24 @@ def why_no_entries(rec):
 
     last = nodes[-1][1]
     h = header_at(last)
+    # SAY WHAT THE HANDOFF TARGET ACTUALLY HOLDS. It is not unreadable: for 24 of the 27
+    # records in this branch it is an entry storing its programs inline as references to
+    # inputs the file itself declares. See `inline_input_refs` -- what is missing is which
+    # parameter each reference is, not what is there.
+    _sh = node_shape(h) if h is not None else None
+    if _sh:
+        try:
+            _t = struct.unpack_from('<I', asm.data, last + _sh[0])[0] + 52
+            if asm.body_lo <= _t < asm.body_hi - 8:
+                _r = inline_input_refs(rec, _t)
+                if _r:
+                    return ("walk: %d node(s) reaching an entry at %#x that stores %d inline "
+                            "input reference(s) %s -- structure read, but the tag's mask does "
+                            "not name them, so no parameter can be assigned"
+                            % (len(nodes), _t, len(_r),
+                               ', '.join('%#x(w=%d)=%s' % (u, w, v) for u, w, v in _r)))
+        except Exception:
+            pass
     return ("walk: %d node(s), then no handoff -- last node %#x holds header %#010x, "
             "whose successor reaches no table" % (len(nodes), last, h if h is not None else 0))
 
@@ -1194,54 +994,92 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     nodes = chain(rec)
     table = entries(rec, baked_pairs)
     if not table:
-        # WHAT AN FX-MAP WITH NO DRAWABLE ENTRIES EMITS IS AN OPEN QUESTION, AND IT IS THE
-        # LAST ONE HERE. 41,088 fxmaps records yield entries and 76 do not, and all 76 are
-        # structural refusals rather than decode gaps -- measured, not assumed: for the 41
-        # that walk and never hand off, EVERY slot 1..7 of the terminal node was followed and
-        # none reaches an entry passing `entry_layout_holds` (best 4 of 29, 13.8%, noise);
-        # the 27 ending on `0x19b` point at a vocabulary word 24 bytes BEFORE their own
-        # record whose slot 6 is that record's own header, so it overlaps what it belongs to.
+        # WHAT AN FX-MAP WITH NO DRAWABLE ENTRIES EMITS IS AN OPEN QUESTION, AND IT IS THE LAST
+        # ONE HERE. 41,088 fxmaps records yield entries and 76 do not, and all 76 are structural
+        # refusals rather than decode gaps: for the 41 that walk and never hand off, EVERY slot
+        # 1..7 of the terminal node was followed and none reaches an entry passing
+        # `entry_layout_holds`; the 27 ending on `0x19b` point 24 bytes BEFORE their own record.
         #
-        # THEY ARE NOT INERT, which is why this note exists rather than a shrug. Rendering
-        # the 28 files that contain one, at max_dim 64:
+        # THEY ARE NOT INERT -- over the 28 files that contain one, 30 declared outputs are
+        # BLOCKED ONLY BY these, last in cone. NOT DECIDED HERE, because nothing settles it: the
+        # reference packs are disjoint from `corpus.paths()`, so the render arbiter cannot see
+        # these records, and "it would make 30 more outputs appear" is the kind of argument this
+        # file exists to refuse. What would settle it: one reference-pack record with an empty
+        # drawable table, rendered against its own reference image.
+        # THE 27 ARE DECODED. Their structure is the ordinary walk, not a mode a flag
+        # switches into, and looking for the flag is what kept this closed: bit 17 separates
+        # the family from working tags 0% against 70%, and predicts NOTHING -- program slots
+        # resolve as pointers in 99.8% of entries whether it is set or clear.
         #
-        #     blocked by these AND other roots         102
-        #     BLOCKED ONLY BY these -- last in cone     30
-        #     blocked by other roots only               22
-        #     renders                                   12
+        # THE ENTRY IS `[tag][word][inline program][inline program]`, each program stating
+        # its own extent, and the pair tiles to the record that follows: 12 of 27 land
+        # exactly on the record start and 12 more within 2 bytes (instructions are
+        # byte-granular). Not pointers to programs -- the programs are THERE, which is why
+        # every predicted pointer slot resolves to nothing and `entry_layout_holds` refuses.
         #
-        # So 30 declared outputs turn on this single decision. If an FX-Map with no drawable
-        # entry emits nothing -- a background, the way a pattern list with no patterns would
-        # -- those 30 render and this should return an empty emission list instead of
-        # raising. If it is instead a sign the walk missed a table, raising is right.
+        # BOTH PROGRAMS ARE ONE `inputref` INSTRUCTION. Opcode 0x02 in all 51, widths
+        # `((op >> 6) & 3) + 1` = 2 then 1, each carrying a uid, and the same uids repeat
+        # across every entry in a file. So an entry of this family holds no numeric
+        # parameters at all: it REFERENCES the graph's declared inputs. That is what
+        # `fx_entry_layout`'s inline note already observed from the other side -- "98% of
+        # these open with `inputref`, so they are image references rather than numeric
+        # parameters" -- reached here by walking rather than by a value test.
         #
-        # NOT DECIDED HERE, because nothing available settles it. The reference packs are
-        # disjoint from `corpus.paths()` (see corpus.py), so the render arbiter cannot see
-        # these records at all, and "it would make 30 more outputs appear" is the kind of
-        # argument this file exists to refuse -- an output that renders because a refusal was
-        # softened is not evidence the softening was right. What would settle it: one
-        # reference-pack record with an empty drawable table, rendered against its own
-        # reference image. Until then the refusal stands and the cost of it is stated above.
+        # AND THE FILE DECLARES THEM. Every uid resolves in the header input table, 51 of 51:
+        # `roofing_007` reads `0xb90ebc63` (type 8, width 2, value (8, 8) -- log2 256x256)
+        # and `0xee7caa31` (type 4, width 1, value 0). `default_inputs` already reads that
+        # table, so these values are recoverable from the file's own declarations.
         #
-        # NAMES THE HALF THAT FAILED. This said "no readable table entries" regardless,
-        # and for 53 of the 245 records it fires on the table read never ran -- the walk
-        # stopped at its root. See `why_no_entries`.
+        # WHAT IS STILL NOT KNOWN is WHICH parameter each reference is. The tag's mask
+        # declares 3 or 5 program parameters and there are 2 inline programs, so the mask is
+        # not describing these slots, and no permitted source sets the bits that would name
+        # them -- `fx_entry_layout`'s note says so for exactly this population. Structure
+        # decoded, naming not, and emitting a pattern needs the naming.
+        #
+        # So the refusal stands, and it is now a NAMED gap rather than an opaque one. What
+        # would close it: one permitted source whose FX-Map entry references an exposed
+        # input, pairing a uid to a parameter name.
         raise Unmodelled("no emittable entries -- %s" % why_no_entries(rec))
     for _off, hdr, _p in nodes:
         if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
                 and (hdr & 0xFF) != STEPPER2 and (hdr & 0xFF) != PASSTHROUGH \
                 and (hdr & 0xFF) != BRANCH and not _is_leaf(hdr):
+            # THE UNMODELLED HEADERS COME AS A FAMILY, and treating one as a passthrough
+            # only moves the failure to the next. Recorded so the experiment is not re-run.
+            #
+            # `0x1db` is the header the census names, 22 declared outputs behind it. It is
+            # in the node vocabulary -- `node_shape` gives (16, (8,)) -- and it sits at the
+            # chain ROOT with a downstream chain that is entirely recognised:
+            #
+            #     0x1db -> 0x1a3 -> 0x1a3 -> 0x89 -> 0x89 -> 0x19b -> 0x99 -> 0x18b
+            #                                GATE    GATE            STEPPER  ADDNODE
+            #
+            # identical in both files that carry it (flowingLava_v35 record 112, Cliff
+            # record 1). All 19 of its nodes in the corpus and the reference packs have the
+            # same shape: `+4` is the constant 0x00000002, `+8` a child, `+16` the
+            # successor, and `chain()` attaches NO named program to it -- so it is not an
+            # ADDNODE, which needs a `numberadded`.
+            #
+            # One child, one successor, no program reads like a passthrough, and that was
+            # tested rather than assumed: skipping 0x1db here clears its 6 record failures
+            # and renders NOTHING new -- 3,149 records and 2 declared outputs before and
+            # after -- because the failure simply becomes `node header 0x1a3 is not
+            # modelled`, the next node in the same chain. 0x1a3 has 0x1ab's shape
+            # (12, (4, 8)) as 0x1db has 0x1cb's, so both are one-bit neighbours of ADDNODE
+            # members and neither is one.
+            #
+            # So this is an unmodelled sub-family, not a missing row, and a passthrough for
+            # each would be a chain of guesses producing a plausible wrong picture. Naming
+            # what these kinds DO needs evidence this refusal is protecting.
             raise Unmodelled("node header %#x is not modelled" % hdr)
 
     out = []
 
-    # THE RECORD'S OWN PROGRAMS SEED THE FRAME. This session's "slot frame is per-RECORD"
-    # finding counts as writers the node chain AND the record's own programs -- 99.892%
-    # of entry slot reads resolve against an 11.8% control. Running only the chain left
-    # 58.9% of records failing on `slot N read but never set`, because the record's own
-    # programs are where the constants live. Evaluated once, N=1, in address order, into
-    # the same dict -- exactly what render.py already does for a pixelprocessor's
-    # non-final programs.
+    # THE RECORD'S OWN PROGRAMS SEED THE FRAME. The "slot frame is per-RECORD" finding
+    # counts as writers the node chain AND the record's own programs -- 99.892% of entry
+    # slot reads resolve against an 11.8% control. Running only the chain left 58.9% of
+    # records failing on `slot N read but never set`, because the record's own programs are
+    # where the constants live.
     fx_progs = {p for _o, _h, ps in nodes for p in ps.values() if p}
     for _o, _t, params in table:
         for _k, (kind, value) in params.items():
@@ -1254,25 +1092,15 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             pass          # a record program that cannot run is not fatal to the walk
 
     # IS THE SLOT FRAME SCRATCH OR STATE, for the programs an emission runs? A parameter
-    # program that writes a slot is not by itself a reason to refuse batching: the
-    # commonest case is a per-pattern random seed, written at the top of the program and
-    # read back two lines later, whose incoming value cannot affect anything. What would
-    # break batching is a slot carried BETWEEN patterns -- written by one emission and
-    # read by the next before it writes it.
-    #
-    # AND THE ORDER MATTERS, which the first version of this check missed. On
-    # CarpetSubstance001 record 365 the parameters talk to each other through the frame
-    # WITHIN one emission: `opacity` writes slots 26, 28, 29 and 31, and `frameoffset`,
-    # `patternsize`, `patternrotation` and `imageindex` each read one of them. Comparing
-    # bare unions calls that carried state and refuses to batch -- but the write happens
-    # first, in the same emission, so the value never crosses a pattern boundary. Batching
-    # preserves it exactly: slot 26 holds an (m, k) array whose row j is what pattern j
-    # would have seen, and the reader is row-aligned with it.
-    #
-    # So the walk is simulated instead: parameters in evaluation order, accumulating what
-    # has been written, and a read counts as CARRIED only if the slot is one a parameter
-    # writes and nothing has written it yet this emission. Chain node programs are added
-    # too, since those do run between patterns when the chain is not all leaves.
+    # program that writes a slot is not by itself a reason to refuse batching -- the commonest
+    # case is a per-pattern random seed whose incoming value cannot matter. What would break
+    # batching is a slot carried BETWEEN patterns. AND THE ORDER MATTERS, which the first
+    # version of this check missed: on CarpetSubstance001 record 365 `opacity` writes slots
+    # 26, 28, 29 and 31 and four other parameters each read one, so a bare union calls that
+    # carried state -- but the write happens first, in the same emission, and batching
+    # preserves it exactly. So the walk is simulated instead: parameters in evaluation order,
+    # and a read counts as CARRIED only if a parameter writes that slot and nothing has
+    # written it yet this emission.
     flow = getattr(run, 'flow', None)
     batchable = False
     if flow is not None:
@@ -1302,10 +1130,10 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
 
     def emit(number):
         for _o, _t, params in table:
-            # THE TAG TRAVELS WITH THE PATTERN. The shape is selected per entry from
-            # `patterntype`, and by the time `splat` runs the tag is gone -- so it is
-            # attached here rather than re-derived, which would mean re-walking the
-            # table and guessing which entry produced which emission.
+            # THE TAG TRAVELS WITH THE PATTERN. The shape is selected per entry from `patterntype`,
+            # and by the time `splat` runs the tag is gone -- so it is attached here rather than
+            # re-derived, which would mean re-walking the table and guessing which entry produced
+            # which emission.
             got = {'patterntype': fx_patterntype(_t), '_tag': _t}
             for name, (kind, value) in in_eval_order(params):
                 if value is None:
@@ -1324,26 +1152,16 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     def emit_batch(numbers):
         """`emit` for a whole range of pattern indices, in one evaluation per parameter.
 
-        WHY THIS IS THE WHOLE COST. An FX-Map parameter program is a few dozen numpy
-        operations on ONE row, and numpy charges per call, not per element: profiling
-        CarpetSubstance001 record 365 counted 1,341 Python calls per emitted pattern, and
-        that record emits 262,144 of them. The work is negligible and the per-call
-        overhead is everything, which is exactly the case batching fixes -- the same
-        program over m rows costs almost what it costs over one.
+        WHY THIS IS THE WHOLE COST. An FX-Map parameter program is a few dozen numpy operations on
+        ONE row, and numpy charges per call, not per element: profiling CarpetSubstance001 record
+        365 counted 1,341 Python calls per emitted pattern, and that record emits 262,144 of them.
 
-        WHEN IT IS ALLOWED, and the two guards that decide. Batching evaluates every
-        pattern against ONE slot frame, so it is only equivalent where the frame does not
-        move between patterns:
-
-          * every node below the addnode must be a leaf -- a 0x99 raster scan or a 0x89
-            gate would advance or branch per pattern, and the caller checks this before
-            calling;
-          * no parameter program may WRITE a slot. That is not statically known here, so
-            pattern 0 is emitted scalar first and the frame is compared by identity; if
-            anything moved, the caller falls back and nothing has been batched yet.
-
-        A program that ignores $number returns a single row, which is broadcast rather
-        than indexed -- the same value the scalar path would have produced m times.
+        WHEN IT IS ALLOWED. Batching evaluates every pattern against ONE slot frame, so it is only
+        equivalent where the frame does not move between patterns: every node below the addnode
+        must be a leaf (a raster scan or a gate would advance or branch per pattern, and the caller
+        checks this), and no parameter program may WRITE a slot -- not statically known here, so
+        pattern 0 is emitted scalar first and the frame compared by identity. A program that
+        ignores $number returns a single row, broadcast rather than indexed.
         """
         m = len(numbers)
         cols = []
@@ -1355,12 +1173,10 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                     continue
                 if kind != 'baked':
                     a = np.asarray(run(value, slots, numbers, flatten=False))
-                    # NORMALISE TO (rows, components) AND SAY WHETHER THE ROWS ARE
-                    # PATTERNS. A program that ignores $number returns one row however
-                    # wide it is, and the module's 1-D convention (see `_col`: a 1-D array
-                    # is N samples of one component) only holds when the length IS the
-                    # batch -- a 1-D result of any other length is one value's components,
-                    # which is what the scalar path's `.ravel()` hands back.
+                    # NORMALISE TO (rows, components) AND SAY WHETHER THE ROWS ARE PATTERNS. A program that
+                    # ignores $number returns one row however wide it is, and the module's 1-D convention
+                    # only holds when the length IS the batch -- a 1-D result of any other length is one
+                    # value's components, which is what the scalar path's `.ravel()` hands back.
                     if a.ndim == 0:
                         a = a.reshape(1, 1)
                     elif a.ndim == 1:
@@ -1369,25 +1185,16 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 elif isinstance(value, np.ndarray):
                     per[name] = value
                 else:
-                    # THE SAME DECODE THE SCALAR PATH DOES, and this is where the two
-                    # drifted. `emit` was corrected to read a baked parameter as the TUPLE
-                    # OF FLOATS `fx_named_params` yields -- one per declared word -- with
-                    # its own comment recording that it "used to hand back the raw slot
-                    # word, and width-2 parameters lost their second component". This half
-                    # of the same decode never got that correction and still reinterpreted
-                    # an integer word as a float.
-                    #
-                    # It could not work. `int(value)` on a tuple raises, so EVERY batched
-                    # record carrying a baked entry parameter died here -- not merely the
-                    # width-2 ones, since `int((0.5,))` raises just as `int((0.0, 0.19))`
-                    # does. It surfaced as a TypeError in the failure message rather than
-                    # as an Unmodelled, which is why it read as an exotic record instead of
-                    # a bug: Chipboard 1682, whose `frameoffset` is baked (0.0, 0.19).
-                    #
-                    # Over 6,341 fxmaps records, every baked entry value is a tuple (7,170,
-                    # of which 4,967 are width 2) or an ndarray (48). Not one is a plain
-                    # integer, so the word-reinterpretation branch was unreachable except
-                    # to crash, and mirroring `emit` is the whole fix.
+                    # THE SAME DECODE THE SCALAR PATH DOES, and this is where the two drifted. `emit` was
+                    # corrected to read a baked parameter as the TUPLE OF FLOATS `fx_named_params` yields;
+                    # this half never got that correction and still reinterpreted an integer word as a
+                    # float. It could not work: `int(value)` on a tuple raises, so EVERY batched record
+                    # carrying a baked entry parameter died here -- not merely the width-2 ones, since
+                    # `int((0.5,))` raises just as `int((0.0, 0.19))` does. It surfaced as a TypeError
+                    # rather than an Unmodelled, which is why it read as an exotic record instead of a bug:
+                    # Chipboard 1682, whose `frameoffset` is baked (0.0, 0.19). Over 6,341 fxmaps records
+                    # every baked entry value is a tuple (7,170, of which 4,967 are width 2) or an ndarray
+                    # (48) -- not one is a plain integer, so the branch was unreachable except to crash.
                     per[name] = np.asarray(value, dtype=np.float32).ravel()
             cols.append((per, wide))
         for j in range(m):
@@ -1411,16 +1218,13 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             prog = progs.get('numberadded')
             if prog is None:
                 raise Unmodelled("addnode with no numberadded program")
-            # See assume.QUESTIONS['fx.gridcount']. Where the placement program lays a
-            # $number grid, the loop bound is that grid's cell count and NOT numberadded,
-            # which for these records is an amount. The scanner is also held to a single run
-            # across the whole batch: frameoffset sums the grid position and the scanner's,
-            # so re-driving the scan per emission carries every cell off-canvas.
-            # ADOPTED AS THE DEFAULT. This was opt-in; the evidence for it is now the
-            # strongest any candidate in this project has, and it is not a coverage trade --
-            # the corpus renders exactly the same 46 outputs either way, so nothing here is
-            # being bought with unlocked records. What changes is whether they are RIGHT.
-            # See assume.QUESTIONS['fx.gridcount'] for the numbers and the pictures.
+            # See assume.QUESTIONS['fx.gridcount']. Where the placement program lays a $number
+            # grid, the loop bound is that grid's cell count and NOT numberadded, which for these
+            # records is an amount. The scanner is also held to a single run across the whole batch:
+            # frameoffset sums the grid position and the scanner's, so re-driving the scan per
+            # emission carries every cell off-canvas. ADOPTED AS THE DEFAULT -- and not a coverage
+            # trade, since the corpus renders exactly the same 46 outputs either way. What changes
+            # is whether they are RIGHT.
             if _grid[0] is None and assume.assumed('fx.gridcount', 'divisor') == 'divisor':
                 _w = grid_width(rec)
                 _grid[0] = _w * _w if _w else 0
@@ -1434,10 +1238,9 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             n = int(round(float(run(prog, slots, number)[0])))
             if not 0 <= n <= MAX_PATTERNS:
                 raise Unmodelled("numberadded = %d" % n)
-            # Everything below is a leaf, so no node between here and the table can move
-            # the slot frame, and the patterns differ only in $number -- which is what
-            # makes one evaluation over every index equivalent to n evaluations. See
-            # `emit_batch` for the second condition and how it is decided.
+            # Everything below is a leaf, so no node between here and the table can move the slot
+            # frame, and the patterns differ only in $number. See `emit_batch` for the second
+            # condition and how it is decided.
             if n > BATCH_MIN and batchable and all(_is_leaf(nodes[j][1])
                                                    for j in range(i + 1, len(nodes))):
                 emit_batch(np.arange(n, dtype=np.float64))
@@ -1452,11 +1255,10 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             walk(i + 1, number)
             return
         elif hdr == STEPPER and assume.assumed('fx.scanner') == 'loop':
-            # See assume.QUESTIONS['fx.scanner']. The body advances a position and returns
-            # its own in-bounds predicate, so it is run, then the subtree emits, then the
-            # predicate decides whether to go round again -- run-then-emit, matching the
-            # single-shot order exactly so the first stamp is unchanged and the loop only
-            # adds the ones that were missing.
+            # See assume.QUESTIONS['fx.scanner']. The body advances a position and returns its own
+            # in-bounds predicate, so it is run, then the subtree emits, then the predicate decides
+            # whether to go round again -- matching the single-shot order exactly, so the first
+            # stamp is unchanged and the loop only adds the ones that were missing.
             prog = progs.get(None)
             if prog is None:
                 walk(i + 1, number)
@@ -1485,11 +1287,9 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 run(prog, slots, number)
             walk(i + 1, number)
         elif (hdr & 0xFF) == PASSTHROUGH:
-            # Continue to the successor and run NOTHING. The cell is three words -- see
-            # PASSTHROUGH -- and the pointer it holds is real but its role is not
-            # established, so evaluating it would be writing this record's slot frame from
-            # a word whose meaning is a guess. Walking past it is the conservative half of
-            # the reading: the chain's shape is measured, the pointer's use is not.
+            # Continue to the successor and run NOTHING. The cell is three words -- see PASSTHROUGH
+            # -- and the pointer it holds is real but its role is not established, so evaluating it
+            # would be writing this record's slot frame from a word whose meaning is a guess.
             walk(i + 1, number)
         elif _is_leaf(hdr):
             walk(i + 1, number)             # the leaf is the entry; the table emits
@@ -1498,10 +1298,9 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             if prog is None:
                 raise Unmodelled("markov2 with no switch program")
             if assume.assumed('fx.gatescan') == 'filter':
-                # A gate whose program SPIRALS a position and tests it against a rectangle
-                # may be a FILTER rather than a terminator: step the spiral a bounded number
-                # of times and emit only where the predicate holds, instead of stopping at
-                # the first cell that fails. See assume.QUESTIONS['fx.gatescan'].
+                # A gate whose program SPIRALS a position and tests it against a rectangle may be a
+                # FILTER rather than a terminator: step the spiral a bounded number of times and emit
+                # only where the predicate holds. See assume.QUESTIONS['fx.gatescan'].
                 _any = False
                 for _it in range(64):
                     _v = run(prog, slots, number)
@@ -1532,23 +1331,15 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
 
     walk(0, 0)
     # AN EMPTY EMISSION IS A RESULT WHEN A GATE SAID SO. Four FabricSubstance005 records
-    # blocked on "emitted no patterns", and each is a single 0x89 gate whose program is
-    # three instructions -- `inputref(uid) == 0` -- on the manifest's `scale`, an
-    # Integer1 whose declared default is 4. The gate is false because the FILE says the
-    # branch is off, not because the walk failed, and refusing there reports a modelling
-    # gap that does not exist.
+    # blocked on "emitted no patterns", and each is a single 0x89 gate whose program is three
+    # instructions -- `inputref(uid) == 0` -- on the manifest's `scale`, an Integer1 whose
+    # declared default is 4. The gate is false because the FILE says the branch is off.
     #
-    # The polarity is not a free parameter, which is what makes this safe to act on.
-    # Running the same records with gate_polarity inverted takes the four from 0 to 1
-    # pattern -- but it also takes the records that currently WORK to zero: 82 goes
-    # 45 -> 0, 161 goes 45 -> 0, and 91/138/140 go 2 -> 0. So True is right and the
-    # gated records really do emit nothing.
-    #
-    # Narrow on purpose. Only a gate closing earns an empty result; an empty walk for any
-    # other reason still raises. A `numberadded` of 0 would look identical here and is NOT
-    # covered, because that value has been seen misread -- Chainmail record 0 reads it as
-    # 257^2 -- and blanking a map on a misread count is exactly the plausible-wrong-image
-    # this renderer refuses to produce.
+    # The polarity is not a free parameter, which is what makes this safe: inverting it takes
+    # the four from 0 to 1 pattern and takes the records that currently WORK to zero (82 and
+    # 161 go 45 -> 0). Narrow on purpose -- only a gate closing earns an empty result. A
+    # `numberadded` of 0 looks identical here and is NOT covered, because that value has been
+    # seen misread (Chainmail record 0 reads it as 257^2).
     if not out and not closed[0]:
         raise Unmodelled("emitted no patterns and no gate closed")
     return out
@@ -1558,58 +1349,27 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
 # corpus is scanned for <guicomboboxitem value= text=>, and the shape-named items form one
 # contiguous, self-consistent sequence: 2 Square, 3 Disc, 4 Paraboloid, 5 Bell, 6 Gaussian,
 # 7 Thorn, 8 Pyramid, 9 Brick, 10 Gradation, 11 Waves, 12 Half bell, 13 Ridged Bell,
-# 14 Crescent, 15 Capsule, 16 Cone. `fx_patterntype` already supplies the value from the
-# tag nibble plus FX_PATTERNTYPE_BIAS, so the selector and the enumeration meet.
+# 14 Crescent, 15 Capsule, 16 Cone.
 #
-# IT PREDICTS THE TWO RECORDS WE HAVE GROUND TRUTH FOR, which is what makes it more than a
-# plausible table. Stadsspel__Lines record 0 is nibble 0 -- the documented catch-all, i.e.
-# Square -- and renders correctly as a hard bar today. sci_fi_elements_02 record 86 is
-# nibble 8 -> 10 -> Gradation, and its six patterns at radius 0.433 with size 0.866 are
-# geometrically FORCED to cover the canvas under any hard footprint (diameter = 2 x radius,
-# so each passes through the centre); only a falloff resolves it, which is what a gradation
-# is. Both were established before this table existed.
+# IT PREDICTS THE TWO RECORDS WE HAVE GROUND TRUTH FOR, which makes it more than a
+# plausible table. Stadsspel__Lines record 0 is nibble 0 -- the catch-all, i.e. Square --
+# and renders correctly as a hard bar. sci_fi_elements_02 record 86 is nibble 8 -> 10 ->
+# Gradation, and its six patterns at radius 0.433 with size 0.866 are geometrically FORCED
+# to cover the canvas under any hard footprint; only a falloff resolves it, which is what a
+# gradation is. Both were established before this table existed, so the evidence is not the
+# pair count -- it is that 5..16 are contiguous and the table gets both right.
 #
-# Most value->name pairs appear in only two files. The evidence is not their count -- it is
-# that 5..16 are contiguous and consistent, and that the table independently gets both
-# ground-truth records right, a test it could have failed.
-# WHAT THE NIBBLE CAN AND CANNOT SAY, measured rather than assumed. `fx_patterntype` reads
-# `(tag >> 8) & 0xF`, returning None for nibble 0 and `n + 2` otherwise, so its range is
-# exactly {3..17}. Two edges of this table fall outside that range and both are silent:
-#
-#   KEY 2 ('square') IS UNREACHABLE. No tag can make `fx_patterntype` return 2. The mapping
-#   is not wrong -- the permitted sources declare `patterntype` 2 ten times, so the value is
-#   real -- the NIBBLE is lossy: patterntype 1 and 2 both encode as nibble 0. The row stays
-#   because it is the correct patterntype->shape pair and a caller that learns the type by
-#   some other route should get 'square'; it is annotated because a reader counting this
-#   table's coverage would otherwise count a row nothing can select.
-#
-#   KEY 17 IS PRODUCIBLE AND MISSING. Nibble 15 yields 17, which occurs in 4 entries over
-#   the corpus plus the reference packs, and `PATTERN_SHAPES.get(t, 'rect')` turns it into a
-#   hard fill with no marker. Four entries do not say what shape 17 is, so nothing is
-#   invented here -- but the silence is the part worth removing.
-#
-# HOW MUCH RIDES ON THE CATCH-ALL, which had not been quantified. Over 372,665 FX entries in
-# the corpus plus the reference packs:
-#
-#     nibble 0 -> None, handled by assume.QUESTIONS['fx.typeless_profile']   127,349   34.17%
-#     paraboloid                                                             136,151   36.53%
-#     pyramid                                                                 37,107    9.96%
-#     bell / gaussian / halfbell / waves / gradation / the rest               109,058   19.34%
-#
-# So a THIRD of every pattern drawn takes its shape from a six-armed guess whose default is
-# 'rect', and the format does state which of patterntype 1 or 2 it is -- the sources declare
-# 43 and 10 of them as constants. Where it states it is not resolved here.
-#
-# A TEST THAT LOOKED LIKE IT RESOLVED IT AND DOES NOT, recorded so it is not repeated: take
-# files whose paramset declarations are unanimously patterntype 1 or unanimously 2, pool
-# their nibble-0 entry tags, and look for a separating bit. Bits 6, 7, 28 and 31 come out
-# near-perfectly separated, bit 31 at 100.0% vs 1.5%. It is CONFOUNDED. The two groups are
-# different FILES (195 tags from one, 336 from two others) against only 43 and 10 actual
-# declarations, so most pooled entries carry no declaration at all and any bit reflecting
-# authoring style -- bits 28 and 31 are the `patternrotation` and `imageindex` program bits,
-# i.e. whether that graph rotates or samples an image -- separates the files rather than the
-# types. Resolving this needs an entry-level join from a declaration to the entry it
-# compiled to, which the paramset ordering does not currently give.
+# WHAT THE NIBBLE CAN AND CANNOT SAY. `fx_patterntype` reads `(tag >> 8) & 0xF`, returning
+# None for nibble 0 and `n + 2` otherwise, so its range is exactly {3..17}. KEY 2 IS
+# UNREACHABLE -- the sources declare patterntype 2 ten times so the value is real, but
+# nibble 0 encodes both 1 and 2. KEY 17 IS PRODUCIBLE AND MISSING -- nibble 15 yields it in
+# 4 entries corpus-wide. And a THIRD of every pattern drawn takes its shape from the
+# catch-all: of 372,665 FX entries, nibble 0 is 127,349 (34.17%) against paraboloid 136,151
+# and pyramid 37,107. A TEST THAT LOOKED LIKE IT RESOLVED WHICH OF TYPE 1 OR 2 AND DOES
+# NOT: pooling nibble-0 tags from files whose declarations are unanimous separates on bits
+# 6, 7, 28 and 31, bit 31 at 100.0% vs 1.5% -- CONFOUNDED, since the groups are different
+# FILES (195 tags against 336) with only 43 and 10 declarations between them, so any bit
+# reflecting authoring style separates the files rather than the types.
 PATTERN_SHAPES = {
     2: 'square',        # UNREACHABLE from a tag; see above. Correct pairing, lossy nibble.
     3: 'disc', 4: 'paraboloid', 5: 'bell', 6: 'gaussian', 7: 'thorn',
@@ -1619,10 +1379,9 @@ PATTERN_SHAPES = {
 }
 
 # Which shapes are DETERMINED by their name and which are MODELLED. A name fixes the
-# family -- gaussian is radial and falls off, square does not -- but not always the exact
-# analytic form, and pretending otherwise would repeat the mistake this file already
-# records: a shape that cannot be flat by construction passes a flatness check without
-# being right. Callers can subtract the modelled ones from a coverage figure.
+# family -- gaussian is radial and falls off, square does not -- but not always the
+# exact analytic form, and pretending otherwise would repeat this file's own mistake: a
+# shape that cannot be flat by construction passes a flatness check without being right.
 SHAPE_MODELLED = frozenset({'bell', 'thorn', 'brick', 'waves', 'halfbell',
                             'ridgedbell', 'crescent', 'capsule'})
 
@@ -1630,21 +1389,14 @@ SHAPE_MODELLED = frozenset({'bell', 'thorn', 'brick', 'waves', 'halfbell',
 def profile_value(lx, ly, profile):
     """Pattern coverage at local coordinates, |lx|,|ly| <= 0.5 inside the footprint.
 
-    The shape is no longer unknown. `patterntype` is declared in the entry tag and the
-    manifest names its values (see PATTERN_SHAPES), so the footprint is selected from
-    shipped data instead of assumed. What remains a modelling choice is the exact profile
-    for the eight names in SHAPE_MODELLED, whose family is fixed by the name but whose
-    curve is not.
+    The shape is no longer unknown: `patterntype` is declared in the entry tag and the manifest
+    names its values (see PATTERN_SHAPES), so the footprint is selected from shipped data. What
+    remains a modelling choice is the exact profile for the eight names in SHAPE_MODELLED.
 
-    WHY A GLOBAL PROFILE COULD NEVER HAVE WORKED, and why the earlier attempt to score one
-    was uninformative: 1,218 records are the Square catch-all and need a hard fill, while
-    roughly 670 are Paraboloid, Gradation, Gaussian or Bell and need falloff. Any single
-    answer breaks one group or the other, so a corpus-wide flatness score was measuring
-    the metric rather than the format.
-
-    The two legacy names stay: 'rect' is an alias for square, and 'cone' was already here.
-    An unknown name still raises rather than silently reaching a default -- a channel that
-    accepts a value it cannot honour is the failure this project keeps being caught by.
+    WHY A GLOBAL PROFILE COULD NEVER HAVE WORKED: 1,218 records are the Square catch-all and
+    need a hard fill, while roughly 670 are Paraboloid, Gradation, Gaussian or Bell and need
+    falloff, so any single answer breaks one group and a corpus-wide flatness score was
+    measuring the metric rather than the format. An unknown name raises rather than defaulting.
     """
     inside = (np.abs(lx) <= 0.5) & (np.abs(ly) <= 0.5)
     if profile in ('rect', 'square'):
@@ -1707,22 +1459,15 @@ _RAND_CALL = re.compile(r'\brand\(')
 def branchoffset_is_rand(rec):
     """Does this record's branchoffset program call `rand`?
 
-    A STATIC EXCLUSION FOR THE CELL-SCALE GUARD, and it settles by decode what the span
-    test could only guess at. Cross-classifying every fxmaps record's branchoffset program
-    against `grid_width` over the distinct-file corpus, the structural side finds every
-    rand-scatter branchoffset is NON-grid -- 5,218 of them, and zero grids -- so a scatter
-    can be recognised before any span is computed. It matters because the span test
-    misfires on exactly these -- or so an earlier census here reported, finding 63
-    rand-scatters inside "the integer-span group". That census used a hand-written span
-    classifier rather than `_cell_divisor` itself, and the two do not select the same set:
-    `_cell_divisor` additionally requires every pattern to carry a branchoffset and the span
-    to be an exact integer at least 1 on some axis. Measured against the SHIPPED guard, the
-    misfire does not exist -- over 50 files it fires on 219 records, of which none calls
-    rand and none is a grid.
-
-    So this function is a census instrument, not a filter. It is kept because the result it
-    produced is worth being able to reproduce: the exclusions it would apply are already
-    implied by the span test, and a proxy for a guard is not the guard.
+    A CENSUS INSTRUMENT, NOT A FILTER. Cross-classifying every fxmaps record's branchoffset
+    program against `grid_width`, every rand-scatter branchoffset is NON-grid -- 5,218 of them,
+    zero grids -- so a scatter can be recognised before any span is computed. An earlier census
+    reported 63 rand-scatters inside "the integer-span group", but it used a hand-written span
+    classifier rather than `_cell_divisor` itself, which additionally requires every pattern to
+    carry a branchoffset and the span to be an exact integer. Measured against the SHIPPED
+    guard the misfire does not exist -- over 50 files it fires on 219 records, none calling
+    rand and none a grid. Kept because the result is worth reproducing; a proxy for a guard is
+    not the guard.
     """
     asm = rec.asm
     try:
@@ -1750,14 +1495,13 @@ def _cell_divisor(patterns):
     A cell-unit offset walks WHOLE CELLS, so its span across the emissions is an integer
     number of them and a span of k means k + 1 cells. That is a property of the emissions
     alone -- no G, no square test, no assumption that the count factors -- which is what
-    makes it usable where round(sqrt(N)) was not. See assume.QUESTIONS['fx.branchoffset']
-    for the 407-of-407 census behind it.
+    makes it usable where round(sqrt(N)) was not. See
+    assume.QUESTIONS['fx.branchoffset'] for the 407-of-407 census behind it.
 
     Factored out because the OFFSETS and the SIZES need the same number. They are the same
     grid: if the offsets step one cell at a time, a pattern meant to fill a cell is one
-    cell across, so whatever divides the one divides the other. Deriving it twice invited
-    them to disagree, and an earlier pair of scalings that did disagree ended up
-    multiplying.
+    cell across. Deriving it twice invited them to disagree, and an earlier pair of
+    scalings that did disagree ended up multiplying.
     """
     if not patterns:
         return None
@@ -1767,26 +1511,14 @@ def _cell_divisor(patterns):
         return None
     w = max(x.size for x in b)
     a = np.array([np.pad(x, (0, w - x.size)) for x in b])
-    # AN INTEGER SPAN IS NOT ENOUGH -- THE OFFSETS THEMSELVES MUST BE INTEGERS.
-    # cleanroom-substance-0b classified each record's branchoffset program and found the
-    # span test scaling 63 records whose program calls `rand`: a scatter has no cells, so
-    # dividing it by a cell count is the same category of error round(sqrt(N)) made. Their
-    # 20 program-identified grids all landed in the group this DECLINES, which was right,
-    # but the group it fired on had no identified grid in it at all.
-    #
-    # A jittered scatter can still span an integer, because the extremes are the generator's
-    # bounds; what it cannot do is put every emission on a lattice point. Requiring all
-    # offsets to be integers, and the distinct count on an axis to be exactly span + 1,
-    # separates them completely -- over 80 files, of the integer-span records:
-    #
-    #                       records   all offsets integer   distinct == span+1
-    #     program has rand       65                     0                    0
-    #     program has none      284                   284                  284
-    #
-    # 284 of 284 against 0 of 65, decided by the emissions alone. That also closes the 263
-    # 0b could not classify: a per-entry transpile cannot see a $number decomposition that
-    # happens one node up, but a full integer lattice is visible at emission time whatever
-    # node built it.
+    # AN INTEGER SPAN IS NOT ENOUGH -- THE OFFSETS THEMSELVES MUST BE INTEGERS. An earlier
+    # classification found the span test scaling 63 records whose branchoffset program calls
+    # `rand`: a scatter has no cells, so dividing it by a cell count is the same category of
+    # error round(sqrt(N)) made. A jittered scatter can still span an integer, because the
+    # extremes are the generator's bounds; what it cannot do is put every emission on a
+    # lattice point. Requiring all offsets to be integers, and the distinct count on an axis
+    # to be exactly span + 1, separates them completely -- over 80 files, 284 of 284
+    # integer-span records with no rand pass both tests against 0 of 65 with rand.
     d = []
     for k in range(min(2, a.shape[1])):
         col = a[:, k]
@@ -1817,116 +1549,46 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     """Draw the emitted patterns. `images` maps EDGE SLOT -> (H, W, C) array.
 
     When `images` is supplied and a pattern carries `imageindex`, the pattern IS that image
-    sampled over its own footprint rather than a generated profile. For those records the
-    shape question does not arise -- there is no footprint to guess.
+    sampled over its own footprint rather than a generated profile.
 
     HOW OFTEN IT APPLIES, and what it must not be over-read as. Over 80 files, 176 fxmaps
-    records carry `imageindex` on their entries:
-
-        every pattern indexes 0     133 records   -- and these have SIX edges
-        at least one indexes 1       27 records   -- and these have THREE
-        values seen                  0.0 x54,518 and 1.0 x27; no other value exists
-
-    If `imageindex` were a direct index into the edge list, six-edge records would be
-    expected to use more than index 0. They do not, so it indexes something narrower -- a
-    subset of edges that are pattern images -- and that mapping is NOT established. So
-    `image_for` takes the index literally and returns None when the caller did not supply
-    it, which draws the generated profile instead. Silently falling back to the first
-    available image would sample the wrong input on the 27 and produce a plausible picture
-    from it, which is the failure mode this decode keeps being caught by.
+    records carry `imageindex`: 133 index 0 on every pattern and have SIX edges, 27 index 1
+    somewhere and have THREE, and the only values anywhere are 0.0 (x54,518) and 1.0 (x27). If
+    it were a direct index into the edge list, six-edge records would be expected to use more
+    than index 0. They do not, so it indexes a narrower subset of edges that are pattern
+    images, and that mapping is NOT established -- so `image_for` takes the index literally and
+    returns None when the caller did not supply it, rather than falling back to the first
+    available image and sampling the wrong input on the 27.
     """
-    # WHAT IS WRONG WITH THIS FUNCTION IS COVERAGE, NOT VALUE, and that is measured rather
-    # than inferred. Chesterfield's metallic and height cones each bottom out at an fxmaps
-    # sampling an image input, and comparing each one's output against its own input:
+    # WHAT IS WRONG WITH THIS FUNCTION IS COVERAGE, NOT VALUE, and that is measured. On
+    # Chesterfield's metallic and height cones -- each bottoming out at an fxmaps sampling an
+    # image input -- the mean WHERE LIT survives to three decimals (rec34 0.1438 -> 0.1427,
+    # rec65 0.4991 -> 0.4901) while the LIT FRACTION collapses 16x and 5.7x. So the sampling,
+    # the opacity and the profile amplitude all work, and the whole-image attenuation is
+    # exactly that coverage ratio: the stamps do not tile. No arbitration arm reaches it --
+    # both records are BYTE-IDENTICAL under fx.patternsize and fx.branchoffset, because
+    # `_cell_divisor` declines them.
     #
-    #     record   input lit / mean-where-lit     output lit / mean-where-lit
-    #     rec34         0.403 / 0.1438                 0.025 / 0.1427
-    #     rec65         0.787 / 0.4991                 0.138 / 0.4901
+    # THE DEFICIT IS THE EMISSION COUNT, NOT THE SIZE OR THE INDEX. Both emit ONE pattern, at
+    # patternsize 0.2500 and 0.4146, both imageindex 8 -- correct, since slot 8 is the only one
+    # of fourteen carrying content -- and the coverage follows arithmetically (0.403 x 0.0625 =
+    # 0.0252 against 0.025 measured), the deficit being exactly 1/size^2. The walk is NOT
+    # skipping a subdivision: both are ADDNODE -> STEPPER -> LEAF with a single entry whose
+    # `numberadded` evaluates to exactly 1.0.
     #
-    # The mean WHERE LIT survives to three decimals. Every pixel a pattern writes gets very
-    # nearly the right value, so the sampling, the opacity and the profile amplitude are all
-    # doing their job. What collapses is how many pixels get written at all -- 16x on rec34,
-    # 5.7x on rec65 -- and the whole-image attenuation is exactly that coverage ratio
-    # (0.0036/0.0580 = 0.062 against 0.025/0.403 = 0.062). The stamps do not tile.
-    #
-    # That is the same defect as the missing lattice documented at render.py's `warp` note,
-    # now quantified against a reference rather than against a picture, and it is the
-    # measured form of the footprint question this file's docstring calls its largest open
-    # one.
-    #
-    # NO CURRENT ARBITRATION ARM REACHES IT. fx.patternsize and fx.branchoffset leave both
-    # records BYTE-IDENTICAL under 'cell' and 'canvas' -- `_cell_divisor` declines them --
-    # which is why Chesterfield's metallic MAE is 0.0465 to four decimals under all four
-    # combinations. The insensitivity is the guard declining, not the divisor being
-    # irrelevant, and any future candidate for this gap has to reach a population these do
-    # not.
-    #
-    # AND THE DEFICIT IS THE EMISSION COUNT, NOT THE SIZE OR THE INDEX. Capturing what these
-    # two records actually emit:
-    #
-    #     rec34   ONE emission   patternsize 0.2500   frameoffset (-0.375, -0.375)  imageindex 8
-    #     rec65   ONE emission   patternsize 0.4146   frameoffset (-0.377, -0.376)  imageindex 8
-    #
-    # `imageindex` 8 is correct: of the fourteen image slots supplied, slot 8 is the only one
-    # carrying content (std 0.1489 and 0.3280), and the emission selects exactly it. So the
-    # not-established index-to-edge mapping this docstring warns about is not the fault here,
-    # and neither is a dilution across the thirteen blank inputs -- there is one stamp, and
-    # it samples the right image.
-    #
-    # The coverage then follows arithmetically. A stamp of side 0.25 covers 0.0625 of the
-    # canvas, and the image it stamps is itself lit over 0.403 of its area, so the output is
-    # lit over 0.403 x 0.0625 = 0.0252 -- against 0.025 measured. rec65: 0.787 x 0.1719 =
-    # 0.135 against 0.138. Both to the third decimal.
-    #
-    # ONE STAMP OF SIDE 1/4 IS ONE SIXTEENTH OF A CANVAS, and sixteen is the attenuation.
-    # A quadrant subdivision two levels deep produces sixteen cells of exactly this size.
-    #
-    # BUT THE WALK IS NOT SKIPPING A SUBDIVISION -- it emits one because the file says one.
-    # Both records are the same chain, ADDNODE(0x18B) -> STEPPER(0x099) -> LEAF(0x100B) with
-    # a single entry and no branchoffset field at all, and evaluating their `numberadded`
-    # program under the render's own seeded slots returns exactly 1.0 for each. The addnode
-    # branch then loops once, faithfully. So the emission count is a correct reading of the
-    # program, and the deficit is not a missed descent.
-    #
-    # What the two records share is the count; what differs is the size, 0.2500 against
-    # 0.4146, and the coverage deficit is exactly 1/size^2 in both -- 16.0 and 5.8. So a
-    # single stamp is asked to cover the canvas and does not, which leaves two readings: the
-    # size should be 1.0, or the STEPPER should be scanning it across the canvas in more
-    # than one step. Nothing measurable here separates them.
-    #
-    # THE REFERENCE SETTLES THE SHAPE, AND IT REFUTES BOTH READINGS ABOVE. Chesterfield's
-    # exported metallic is a regular grid of dots, spacing measured at exactly 256px on a
-    # 2048px map -- 8 across on both axes, 41 whole blobs plus clipped edges. So:
-    #
-    #   * NOT a bigger stamp. rec29, the image being stamped, is a tileable unit cell with
-    #     soft blobs at its four CORNERS. One stamp of side 1.0 puts those corners at the
-    #     canvas corners -- a 2x2 arrangement, not 8x8. Scaling the stamp cannot produce the
-    #     reference whatever value slot 29 takes.
-    #   * NOT this record's numberadded either. 8x8 is 64, and the structural side reads
-    #     this program as ((n-1) mod 2 + n)^2, which yields only ODD squares -- 1, 9, 25, 49.
-    #     64 is unreachable from it for any slot value.
-    #
-    # What the picture shows is one cell stamped once into one corner where the engine
-    # repeats it across the canvas at 1/8 spacing. Note the tile loop below reaches
-    # `min(3, ceil(max(sx, sy)))` and steps by WHOLE CANVASES, so for a pattern of side 0.25
-    # every copy but t=0 lands entirely off-canvas: the loop can wrap a pattern, but it
-    # cannot repeat one at its own pitch. Whether the repetition belongs there, in the
-    # stepper's per-emission position, or upstream of the record is not settled here, and
-    # the two candidates that were on the table are now excluded rather than untested.
-    #
-    # ONE CONCRETE THREAD LEFT, and it is checkable rather than speculative. `seed_slots`
-    # supplies slots 0, 4, 8, 9, 10, 12, 14, 16 and 17. The structural side reports this
-    # 0x099 chain reading slots 14, 16, 17 AND 18, and writing the size into slot 29 which
-    # `patternsize`'s get(29) then reads. Slot 18 is read and never seeded. Whether that
-    # matters depends on what should set it, which is a question about the chain rather than
-    # about splat.
+    # THE REFERENCE SETTLES THE SHAPE AND REFUTES BOTH READINGS THAT WERE ON THE TABLE.
+    # Chesterfield's exported metallic is a regular grid of dots at exactly 256px on a 2048px
+    # map -- 8 across. NOT a bigger stamp: rec29, the image stamped, is a tileable unit cell
+    # with blobs at its four CORNERS, so one stamp of side 1.0 gives a 2x2 arrangement. NOT
+    # this record's numberadded: 8x8 is 64, and that program reads as ((n-1) mod 2 + n)^2,
+    # which yields only ODD squares. The engine repeats one cell at 1/8 spacing while the tile
+    # loop below steps by WHOLE CANVASES. ONE THREAD LEFT: this chain reads slots 14, 16, 17
+    # AND 18, and `seed_slots` supplies all but 18.
     W = W or rec.width
     H = H or rec.height
     # The footprint is the largest open question here and the one the reference renders
-    # could settle, so it is arbitrable: `assume.scope(**{'fx.profile': 'bell'})` renders a
-    # candidate. Absent a scope this is 'rect', today's behaviour, unchanged.
-    # An explicit scope still wins, so a candidate can be forced for an experiment. With
-    # none, the shape comes from the entry's own patterntype -- data, not an assumption.
+    # could settle, so it is arbitrable. An explicit scope still wins; with none, the shape
+    # comes from the entry's own patterntype -- data, not an assumption.
     forced = profile if profile is not None else assume.assumed('fx.profile', None)
 
     def profile_for(p):
@@ -1962,95 +1624,45 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     pyg = (yy + 0.5) / H - 0.5
     cview = canvas.reshape(H, W, nchan)
 
-    # `val` reads one emitted parameter as a flat float32 array. Defined once, outside
-    # the loop, and taking the pattern as an argument: a closure over `p` was being
-    # rebuilt for every pattern, which is a code object and a cell per emission for no
-    # gain.
+    # `val` reads one emitted parameter as a flat float32 array. Defined once, outside the
+    # loop: a closure over `p` was being rebuilt for every pattern, a code object and a
+    # cell per emission for no gain.
     def val(pat, name, default):
         v = pat.get(name)
         return np.asarray(default, dtype=np.float32) if v is None \
             else np.asarray(v, dtype=np.float32).ravel()
 
-    # BRANCHOFFSET MAY BE IN CELL UNITS -- see assume.QUESTIONS['fx.branchoffset']. Over
-    # 966 square-grid records its span / (G - 1) has median exactly 1.0000, so it spans
-    # G - 1 cells rather than the canvas, and Chainmail record 0 renders as a single cell
-    # under the canvas reading and as a full 257 x 257 lattice under this one.
+    # BRANCHOFFSET MAY BE IN CELL UNITS -- see assume.QUESTIONS['fx.branchoffset']. Over 966
+    # square-grid records its span / (G - 1) has median exactly 1.0000, so it spans G - 1 cells
+    # rather than the canvas, and Chainmail record 0 renders as a single cell under the canvas
+    # reading and as a full 257 x 257 lattice under this one. Reproduced independently on 224
+    # square-grid records from a separate walk, median 1.0000, p25 and p75 both 1.0000.
     #
-    # Opt-in, and guarded twice. Nothing happens unless a caller opened a scope, and even
-    # then only when the emission count is a perfect square, because G is undefined
-    # otherwise -- 30% of those 966 fall outside 10% of the cell ratio and that tail is not
-    # characterised. A span statistic cannot settle it; a scored render can.
-    #
-    # REPRODUCED INDEPENDENTLY before adoption: 224 square-grid records from a separate
-    # walk give span/(G-1) median 1.0000 with p25 AND p75 both 1.0000, 76.8% within 10%.
-    # The law is not one session's artifact.
-    #
-    # OPT-IN FOR A MEASURED REASON, not merely from caution. An earlier version applied
-    # this scaling unconditionally to every square-count record, and that is wrong:
-    # `PavingStonesSubstance003` records 38/40/42/45 have G=4 and span 0.750, so
-    # span/(G-1) = 0.250 -- CANVAS is right for them and 'cell' makes them worse. The
-    # unconditional form also scored worse on the only ground truth available, Chesterfield
-    # `normal` MAE 0.1039 -> 0.1055 and height 0.2461 -> 0.2480, on a specimen where only
-    # 2 of 16 rendering fxmaps records are even affected.
-    #
-    # Those two scalings briefly coexisted and MULTIPLIED, dividing a square-grid record by
-    # G twice. Only this one remains.
-    # PATTERNSIZE MAY BE IN CELLS TOO -- see assume.QUESTIONS['fx.patternsize']. Same guard
-    # and same reason as the offsets below; kept a separate key because the two are coupled
-    # and scoring them apart is what demonstrates it.
-    # THE SAME SPAN GUARD THE OFFSETS USE, for the same reason and off the same number.
-    # This used to divide by round(sqrt(N)) on a perfect-square emission count, which is not
-    # merely over-broad but INVERTED: over Bricks, 88 of 88 records it scaled were rand
-    # scatters or had no $number decomposition at all, and not one was a grid, while the
-    # file's five real grids emit 32 and 8 patterns and were excluded. Every arm scored
-    # through that guard was therefore measuring a population the divisor was not for.
-    #
-    # `_cell_divisor` replaces it with the span reading, which selects on a property of the
-    # emissions instead of on the count factoring. It is per axis, so a non-square grid gets
-    # a different divisor on each -- the case sqrt(N) could not express at all.
-    # AN 'oversize' CANDIDATE USED TO SIT HERE and has been retired, because the span guard
-    # subsumes it exactly. It scaled only records whose median patternsize exceeded 1.0, to
-    # stop the old sqrt(N) guard destroying records already emitting coherent sub-canvas
-    # sizes -- 625 patterns at 0.052 becoming 0.002. That was a threshold on a SYMPTOM,
-    # guarding against a selector that was picking the wrong records. With the span reading
-    # doing the selecting, the coherent records are declined structurally and the extra
-    # condition never fires: 'cell' and 'oversize' render byte-identically on all 175 Bricks
-    # fxmaps records, 0 differing. A candidate that cannot differ from another is not an
-    # arbitration option, so it is gone rather than left to look like one.
-    # THE STATIC EXCLUSIONS WERE TRIED HERE AND ARE NOT NEEDED -- see `branchoffset_is_rand`,
-    # which is kept for the census that showed it. Excluding rand-scatters and $number-grids
-    # before measuring the span removes ZERO records from what `_cell_divisor` actually
-    # fires on: over 50 files it scales 219 records, of which none calls rand and none is a
-    # grid. The guard is already clean, and adding a transpile per record to exclude nothing
-    # is cost without effect.
+    # OPT-IN FOR A MEASURED REASON. An earlier version applied the scaling unconditionally,
+    # which is wrong: `PavingStonesSubstance003` records 38/40/42/45 have G=4 and span 0.750,
+    # so span/(G-1) = 0.250 and CANVAS is right for them, and it scored worse on the only
+    # ground truth available (Chesterfield `normal` MAE 0.1039 -> 0.1055). Two such scalings
+    # briefly coexisted and MULTIPLIED. PATTERNSIZE MAY BE IN CELLS TOO, kept a separate key
+    # because the two are coupled and scoring them apart is what demonstrates it; an 'oversize'
+    # candidate is retired, having thresholded on a SYMPTOM and now rendering byte-identically
+    # to 'cell' on all 175 Bricks records.
     size_scale = None
     if assume.assumed('fx.patternsize') == 'cell' and patterns:
         size_scale = _cell_divisor(patterns)
         if size_scale is not None:
             assume.note(getattr(rec, 'index', -1))
 
-    # THE GUARD IS THE SPAN, NOT THE COUNT. This used to divide by round(sqrt(N)) when the
-    # emission count was a perfect square, which is not merely over-broad -- it selects
-    # AGAINST its own target. cleanroom-substance-0b classified every Bricks fxmaps record
-    # by what its branchoffset program consumes and crossed that with what the arm touched:
-    # 88 of 88 records it scaled were rand scatters or had no $number decomposition at all,
-    # and NOT ONE was a grid. That file's five real grids read an integer2 input (4, 8) and
-    # emit 32 and 8 patterns -- neither a perfect square -- so the sqrt test excluded
-    # exactly the population a cell divisor exists for.
+    # THE GUARD IS THE SPAN, NOT THE COUNT. This used to divide by round(sqrt(N)) on a
+    # perfect-square emission count, which is not merely over-broad -- it selects AGAINST its
+    # own target: of the Bricks records it scaled, 88 of 88 were rand scatters or had no
+    # $number decomposition at all and NOT ONE was a grid, while that file's five real grids
+    # emit 32 and 8 patterns, neither a perfect square.
     #
-    # A cell-unit offset walks WHOLE CELLS, so its span is an integer number of them. That
-    # is a property of the emissions alone: no G, no square test, no assumption that the
-    # count factors. Over 110 files:
-    #
-    #     records with a branchoffset span            3,390
-    #       span is an exact integer                    407
-    #         and (span + 1) divides the count          407   <- 407 of 407
-    #         sqrt(N) would have MISSED it               41
-    #       span is fractional (canvas-like)          2,983   <- the old guard scaled these
-    #
-    # 407 of 407 self-consistent, against a guard right about 27% of what it touched. The
-    # divisor is per axis: a span of k cells means k + 1 of them.
-    # See assume.QUESTIONS['fx.frameoffset'] -- the third coordinate, which nothing scaled.
+    # A cell-unit offset walks WHOLE CELLS, so its span is an integer number of them -- a
+    # property of the emissions alone. Over 110 files, of 3,390 records with a branchoffset
+    # span, 407 have an exact integer span and in 407 of 407 (span + 1) divides the count,
+    # while sqrt(N) would have missed 41; the other 2,983 are fractional, and those are what
+    # the old guard was scaling. The divisor is per axis.
     frame_scale = None
     if assume.assumed('fx.frameoffset') == 'cell' and patterns:
         frame_scale = _cell_divisor(patterns)
@@ -2068,11 +1680,10 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
     # what the code has always done, not because it is established.
     _sizeless = assume.assumed('fx.sizeless', 'fill')
 
-    # THE ROOT ENTRY -- see assume.QUESTIONS['fx.rootentry']. A typeless, sizeless pattern at
-    # branchoffset exactly (0, 0) is the whole-canvas cell of the FX-Map's own tree, not a
-    # draw. Tested by its own key rather than by `fx.sizeless`, which the references decide
-    # the other way: this is one pattern per record with an exact signature, that one is
-    # every sizeless pattern anywhere.
+    # THE ROOT ENTRY -- see assume.QUESTIONS['fx.rootentry']. A typeless, sizeless pattern
+    # at branchoffset exactly (0, 0) is the whole-canvas cell of the FX-Map's own tree, not
+    # a draw. Tested by its own key rather than by `fx.sizeless`, which the references
+    # decide the other way: this is one pattern per record with an exact signature.
     _rootskip = assume.assumed('fx.rootentry') == 'skip'
     # See assume.QUESTIONS['fx.markers'] -- the 0x08 entry family states a position and
     # nothing else. `_tag` travels with each pattern from `emit`.
@@ -2106,21 +1717,11 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
             size = size * size_scale[:size.size]
         rot = float(val(p, 'patternrotation', _ZERO1)[0])
         # MOST PATTERNS DO NOT CARRY AN OPACITY AT ALL, which is what makes this default
-        # load-bearing rather than a corner. Over 195,933 emitted patterns in 20 files:
-        #
-        #     no opacity, so 1.0 here   163,676   83.5%
-        #     in (0, 1]                  29,802   15.2%
-        #     negative                    1,195    0.6%
-        #     exactly zero                  975    0.5%
-        #     above 1                       285    0.1%
-        #
-        # So a record's appearance is decided by the DEFAULTS for five patterns in six, and
-        # a full-cell size at full opacity is what paints an FX-Map solid white -- the
-        # `fx.sizeless` and `fx.patternsize` questions, not this one. The 0.6% negative is
-        # too small to be a systemic misread of the opacity program; it clips to 0 below and
-        # those patterns draw nothing, which for fur_var_001 record 63 means 3 of its 4
-        # patterns vanish and the 4th, which carries no parameters at all, fills the cell.
-        # That record's white is the FALLBACK drawing, not the scatter.
+        # load-bearing rather than a corner. Over 195,933 emitted patterns in 20 files, 163,676
+        # (83.5%) have none and take 1.0 here; 29,802 are in (0, 1], 1,195 negative, 975 exactly
+        # zero, 285 above 1. So a record's appearance is decided by the DEFAULTS for five patterns
+        # in six, and a full-cell size at full opacity is what paints an FX-Map solid white -- the
+        # `fx.sizeless` and `fx.patternsize` questions, not this one.
         col = val(p, 'opacity', _ONE1)
         if size.size < 2:
             size = np.repeat(size[:1], 2)
@@ -2138,41 +1739,18 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
         if max(sx, sy) > 64.0:
             continue          # a pattern 64 cells across is a misread, not a pattern
         if min(sx, sy) < MIN_PATTERN_SIZE:
-            # ...and neither is a pattern 1e-33 cells across. The upper bound above had
-            # no lower twin, so a size small enough to make dx / sx overflow float32 was
-            # admitted and then neutralised downstream: the ratio came out inf, inf
-            # failed the |lx| <= 0.5 test inside profile_value, and the emission drew
-            # nothing. Correct output by accident, announced as RuntimeWarning: overflow
-            # encountered in divide. A guard that admits a value and leaves a later test
-            # to cancel it is not a guard.
+            # ...and neither is a pattern 1e-33 cells across. The upper bound had no lower twin, so a
+            # size small enough to make dx / sx overflow float32 was admitted and then neutralised
+            # downstream: the ratio came out inf, inf failed the |lx| <= 0.5 test, and the emission
+            # drew nothing -- correct output by accident, announced as a RuntimeWarning. A guard that
+            # admits a value and leaves a later test to cancel it is not a guard.
             #
-            # The threshold is not a round number picked to be safe -- it sits in a gap
-            # the corpus itself leaves. Over 40 fxmaps-bearing files, 75,136 finite
-            # patternsize components:
-            #
-            #     <= 1e-30            6   two distinct values, 6.259e-33 and 9.341e-33
-            #     next smallest    4.07e-04, then 5.23e-03, ...
-            #     max              18.6
-            #
-            # Twenty-nine decades of empty space between the six and everything else.
-            #
-            # RE-MEASURED after the FX node/entry walks were drained onto the mask-walk,
-            # which changed this population substantially. Over the same 40 files, now
-            # 77,358 finite components:
-            #
-            #     <= 0             939   negative or zero; the sx > 0 test above takes these
-            #     <= 1e-30         963   so 24 more that sx > 0 lets through
-            #     <= 1e-06         963   nothing at all between 1e-30 and 1e-06
-            #     <= 1e-03         964   exactly one value in (1e-06, 1e-03]
-            #     min             -0.25  negative sizes exist, which they did not appear to
-            #     max              21.8
-            #
-            # The gap is still there and 1e-6 still sits inside it, with one value the
-            # nearest thing to the threshold in either direction. But the numbers above
-            # the line are the old enumeration's: the population is 963 rather than six,
-            # the smallest positive is 3.6e-42 rather than 6.259e-33, and 939 of them are
-            # non-positive rather than merely tiny. The guard does more work than it was
-            # documented as doing, and the conclusion is unchanged.
+            # The threshold sits in a gap the corpus leaves. RE-MEASURED after the FX walks were
+            # drained onto the mask-walk: over 40 files, of 77,358 finite patternsize components 939
+            # are <= 0 (the sx > 0 test takes those) and 963 are <= 1e-30, with NOTHING between 1e-30
+            # and 1e-06 and exactly one value in (1e-06, 1e-03]. The old enumeration counted six at
+            # 6.259e-33; the population is now 963 and the smallest positive is 3.6e-42, so the guard
+            # does more work than it was documented as doing.
             continue
         if col.size < nchan:
             col = np.repeat(col[:1], nchan)
@@ -2190,27 +1768,18 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
         reach = int(min(3, math.ceil(max(sx, sy))))
         prof = profile_for(p)          # depends only on `p`; was recomputed 49 times
         # THE FOOTPRINT, NOT THE CANVAS. profile_value multiplies every profile by
-        # `inside = (|lx| <= 0.5) & (|ly| <= 0.5)`, so coverage is exactly zero outside
-        # the pattern's own box and a point outside it can never write to the canvas.
-        # Evaluating all H*W points per emission was therefore pure waste, and at scale
-        # it was the whole cost of the slow test lane: Marble.sbsasm record 450 at 64x64
-        # ran 1,930,794 profile_value calls over 7,908,463,104 points -- about 39,400
-        # emissions x 49 tile offsets x every one of 4,096 pixels -- and had not
-        # finished after 100 seconds.
-        #
-        # The footprint is a rectangle of half-extents sx/2, sy/2 rotated by th, so its
-        # axis-aligned bounding box has half-extents:
+        # `inside = (|lx| <= 0.5) & (|ly| <= 0.5)`, so a point outside the pattern's own box
+        # can never write to the canvas and evaluating all H*W points per emission was pure
+        # waste. At scale it was the whole cost: Marble record 450 at 64x64 ran 1,930,794
+        # profile_value calls over 7,908,463,104 points and had not finished after 100 s.
+        # The footprint is a rectangle of half-extents sx/2, sy/2 rotated by th:
         hx = 0.5 * (sx * abs(ct) + sy * abs(st))
         hy = 0.5 * (sx * abs(st) + sy * abs(ct))
-        # ONLY THE TILES THAT CAN REACH THE CANVAS. The canvas spans -0.5..0.5, so a copy
-        # at offset t contributes only while `cx + t` is within `hx` of that span; every
-        # other t produced an empty bounding box and was thrown away one line later. For a
-        # pattern a single pixel across -- a carpet tuft at 1/512 -- that was eight of
-        # every nine tiles, each costing four scalar floor/ceils to reject.
-        #
-        # The bounds are the same inequality the box test applies, solved for t, so no
-        # tile that used to draw anything is skipped: it narrows the loop, it does not
-        # change what any surviving tile does.
+        # ONLY THE TILES THAT CAN REACH THE CANVAS. The canvas spans -0.5..0.5, so a copy at
+        # offset t contributes only while `cx + t` is within `hx` of that span; for a pattern
+        # a single pixel across that was eight of every nine tiles. The bounds are the same
+        # inequality the box test applies, solved for t, so no tile that used to draw
+        # anything is skipped.
         txlo = max(-reach, math.ceil(-0.5 - cx - hx))
         txhi = min(reach, math.floor(0.5 - cx + hx))
         tylo = max(-reach, math.ceil(-0.5 - cy - hy))
@@ -2218,13 +1787,10 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
         for ty in range(tylo, tyhi + 1):
             for tx in range(txlo, txhi + 1):
                 ux, uy = cx + tx, cy + ty
-                # px = (col + 0.5)/W - 0.5, so col = (px + 0.5)*W - 0.5. Floor/ceil the
-                # ends rather than round them: a box that clips a pixel must still
-                # include it, or the slice would drop coverage the full grid had.
-                #
-                # `math`, not `numpy`: these are four scalars per tile, and a numpy call
-                # on a Python float costs about half a microsecond of dispatch to do one
-                # flop. At 262,144 patterns that was most of the splat.
+                # px = (col + 0.5)/W - 0.5, so col = (px + 0.5)*W - 0.5. Floor/ceil the ends rather
+                # than round them: a box that clips a pixel must still include it. `math`, not
+                # `numpy`: these are four scalars per tile, and a numpy call on a Python float costs
+                # about half a microsecond of dispatch to do one flop.
                 c0 = max(math.floor((ux - hx + 0.5) * W - 0.5), 0)
                 c1 = min(math.ceil((ux + hx + 0.5) * W - 0.5), W - 1)
                 r0 = max(math.floor((uy - hy + 0.5) * H - 0.5), 0)
@@ -2235,14 +1801,12 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
                 dy = pyg[r0:r1 + 1, c0:c1 + 1] - uy
                 lx = (dx * ct + dy * st) / sx
                 ly = (-dx * st + dy * ct) / sy
-                # A HARD FILL NEEDS NO COVERAGE ARRAY. For 'rect'/'square',
-                # profile_value returns exactly inside.astype(float32) -- ones and
-                # zeros -- so `cov[hit]` is all 1.0 and `col * cov[hit, None]` is `col`
-                # broadcast. Building the float array and multiplying by it is the
-                # dominant cost of the whole render path: measured over 12 files, splat
-                # evaluates 91,461,962 points, 8,559 per profile_value call, and the
-                # typeless entries that default to a hard fill are exactly the ones
-                # whose footprint covers half the canvas. Same values, bit for bit.
+                # A HARD FILL NEEDS NO COVERAGE ARRAY. For 'rect'/'square', profile_value returns
+                # exactly inside.astype(float32), so `cov[hit]` is all 1.0 and the multiply is a
+                # broadcast. Building the array is the dominant cost of the render path: over 12
+                # files splat evaluates 91,461,962 points, and the typeless entries that default to
+                # a hard fill are exactly the ones whose footprint covers half the canvas. Same
+                # values, bit for bit.
                 if prof in ('rect', 'square'):
                     hit = (np.abs(lx) <= 0.5) & (np.abs(ly) <= 0.5)
                     cov = None
@@ -2254,10 +1818,8 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None):
                 tile = cview[r0:r1 + 1, c0:c1 + 1]
                 if src is None:
                     if cov is None and hit.all():
-                        # The footprint covers the whole slice, so there is no mask to
-                        # apply -- boolean indexing an all-true mask copies the block
-                        # out and back for nothing. A full-cell hard fill is the common
-                        # case here, because a typeless entry defaults to one.
+                        # The footprint covers the whole slice, so there is no mask to apply -- boolean
+                        # indexing an all-true mask copies the block out and back for nothing.
                         tile[...] = _combine(tile, col)
                     else:
                         tile[hit] = _combine(tile[hit],

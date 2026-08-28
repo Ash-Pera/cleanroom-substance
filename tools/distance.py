@@ -88,7 +88,7 @@ def _walk_params(rec):
     return sorted(out, key=lambda sp: sp[1])
 
 
-def _locate_slot(rec):
+def _locate_slot(rec, run=None):
     """`distance` from the slot the WALK names, or None.
 
     THE SLOT COMES FROM THE WALK, NOT FROM ARITHMETIC. This used to compute
@@ -157,7 +157,41 @@ def _locate_slot(rec):
     if at >= len(rec.words):
         return None
     if state == 2:
-        return None                     # the walk says PROGRAM: not ours to read as float
+        # THE WALK NAMES WHICH PROGRAM, so "left to the program path" gave away the one
+        # thing worth having. That path takes a width-1 result from `rec.filter_programs`
+        # and only when there is EXACTLY ONE, so a record with none or several refuses --
+        # while the record itself says which slot holds the pointer.
+        #
+        # HOW OFTEN THIS MATTERS, stated honestly because it is not often. 77 records have
+        # state 2 with a valid program at the named slot, but `distance_param`'s first
+        # branch already resolves 73 of them: it takes a width-1 result when the record has
+        # EXACTLY ONE, and these mostly do. This arm reaches the remaining 4 -- the records
+        # with state 2 and NO width-1 program to search at all, so the search has nothing to
+        # return and the record still names the pointer. AB_ScrewGeneratorPlus is the whole
+        # population; records 123 and 268 go from "no program, and no baked value in a
+        # parameter slot the walk names" to rendering, and 17 and 162 stay blocked on an
+        # upstream cascade.
+        #
+        # It is kept for the direction rather than the four: the walk names WHICH program,
+        # and the branch above searches for one. A search that happens to find the right
+        # answer 73 times is not the same claim as a read.
+        #
+        # This is the same gap `normal` had at its own walk-named slot: one arm for a baked
+        # float, none for a pointer, and a value test that cannot tell them apart because a
+        # pointer through float32 is a denormal. `valid_program` decides it structurally.
+        if run is None:
+            return None                 # caller cannot evaluate; leave it to the program path
+        ptr = int(rec.words[at]) + 52
+        asm = rec.asm
+        if not (asm.body_lo <= ptr < asm.body_hi and asm.valid_program(ptr)):
+            return None
+        try:
+            v = np.asarray(run(ptr)).ravel()
+        except Exception:
+            return None
+        if v.size >= 1 and np.isfinite(v[0]):
+            return float(v[0]), 'walk parameter slot %d, PROGRAM (LOW CONFIDENCE)' % at
+        return None
     f = struct.unpack('<f', struct.pack('<I', rec.words[at]))[0]
     if not np.isfinite(f) or f == 0.0 or abs(f) < 1e-30:
         return None                     # denormal under a baked state: walk vs bytes
@@ -195,7 +229,7 @@ def distance_param(rec, eval_program, inputs):
         # This arm defers to the slot rule and keeps the 2-component reading only for
         # records the rule cannot serve. `_locate_slot` is the same code path the fallback
         # uses; calling it here changes the ORDER and nothing else.
-        _slot = _locate_slot(rec)
+        _slot = _locate_slot(rec, eval_program)
         if _slot is not None:
             return _slot
     if not widths and assume.assumed('distance.param') in ('wide', 'layout'):
@@ -249,7 +283,7 @@ def distance_param(rec, eval_program, inputs):
     # Still LOW CONFIDENCE. The rule is verified on records that DECLARE a value in a
     # paired source; these records are not among them, so the slot is derived and the value
     # in it is read, not confirmed.
-    _got = _locate_slot(rec)
+    _got = _locate_slot(rec, eval_program)
     if _got is not None:
         return _got
     # THE REMAINING PARAMETERS THE WALK NAMES, and only those. This used to be

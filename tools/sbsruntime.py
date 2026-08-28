@@ -429,9 +429,16 @@ def use_shared_cache(cache=None):
 
     Returns the previous one, so a caller can restore it. With no cache installed both
     halves raise, which is the default and the safe one for a single-program transpile.
+
+    `None` REMOVES, and it has to, because `None` is what a restore passes. A caller that
+    threads a cache saves the previous one and puts it back when it is done; outside any
+    such caller the previous one IS `None`, and this used to install a fresh `{}` for it
+    instead -- so the restore could not reach the default state, and `cache_read` went on
+    answering "read before anything wrote it" where the truthful answer is "you are a
+    single program and there is no cache". Pass `{}` to install an empty one on purpose.
     """
     global _CACHE
-    prev, _CACHE = _CACHE, ({} if cache is None else cache)
+    prev, _CACHE = _CACHE, cache
     return prev
 
 
@@ -477,3 +484,32 @@ def cache_write(value, index):
             "cache, not a single program" % index)
     _CACHE[index] = value
     return value
+
+
+def cache_functions(cache):
+    """`(cache_read, cache_write)` bound to `cache`, for a caller that threads its own.
+
+    The pair above reaches the cache through a MODULE GLOBAL, which answers "is there a
+    cache" but cannot answer "whose". A caller that evaluates a whole file in record order
+    owns its dict and binds these two into the namespace its programs run in, so the
+    question never has to be asked: the reader and the writer are the same evaluation
+    because they are the same closure. Two files rendered by two callers cannot see each
+    other's index 3 even for the length of one render, and nothing has to be uninstalled
+    afterwards.
+
+    The indices are bare integers with nothing in them naming a file, which is why the
+    ownership has to be carried by the caller rather than checked at the read.
+
+    `use_shared_cache` stays for callers that cannot bind a namespace -- and for the
+    single-program transpile, which has no caller to thread anything and should raise.
+    """
+    def cache_read(index):
+        if index not in cache:
+            raise NoSharedCache("cache index %r read before anything wrote it" % index)
+        return cache[index]
+
+    def cache_write(value, index):
+        cache[index] = value
+        return value
+
+    return cache_read, cache_write

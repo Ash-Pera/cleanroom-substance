@@ -118,6 +118,16 @@ def stated_extent(rec, kind, q, tag):
         lf = getattr(sbsasm, 'leaf_successor', lambda _t: None)(tag)
         if lf is not None:
             return lf // 4 + 1
+        # THE POINTER CELL STATES ITS WIDTH TOO, and this did not ask because the cell was
+        # not a node when this function was written. `fx_tree` now walks the bit-7-clear
+        # nibble-9 and `0x?4B` families -- 442 of them are yielded as nodes -- and all three
+        # branches above decline every one, so each fell through to the neighbour-start proxy
+        # that the docstring says is the weaker signal. Same rule as the branches above: the
+        # fields end at the slot the header locates, width is that slot plus one, which is
+        # `POINTER_CELL_WORDS` (3) and is what 362 of 362 cells stating a width say.
+        pc = getattr(sbsasm, 'pointer_cell_successor', lambda _t: None)(tag)
+        if pc is not None:
+            return pc // 4 + 1
         s2 = sbsasm.FX_NODES2.get(tag & 0xFF)
         if s2:
             last = max(list(s2[0] or ()) + list(s2[1] or ()) or [0])

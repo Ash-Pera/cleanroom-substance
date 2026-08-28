@@ -14,6 +14,7 @@ The finished tools. Each runs from the repository root, where the corpus lives:
     python3 tools/test_tables.py
     python3 tools/reverify.py
     python3 tools/provenance.py
+    python3 tools/sourcematch.py [--verify] [--pairs]
 
 ## The model
 
@@ -124,11 +125,38 @@ no source this project may read names filter 5.
     sbsruntime.py         runtime for transpiled programs, vectorised over numpy
     run_file.py           evaluates every program in a file through one shared cache
     render.py             walks a record graph in index order and evaluates what it can
+    render2/              the same, rebuilt so every structural read comes from the walk
 
 `render.py` implements ten filters: `bitmap`, `pixelprocessor`, `blend`, `transformation`,
 `levels`, `uniform`, `directionalwarp`, `gradient`, `curve` and `dirmotionblur`. That is
 not enough to render a real material, and FORMAT-NOTES.md measures how far short it falls
 and which filter gates the rest.
+
+`render2/` is **the renderer of record**, and the difference from `render.py` is not tidiness. `render.py` asks a different
+question in every filter branch -- the fitted `LAYOUTS` memo here, a value probe over
+`Record.programs` there, a hand-stated slot offset in a third -- and `render2` asks
+`decompose` ONCE per record, in `model.View`, and every filter reads the answer by name.
+The only table left is a NAME legend, (filter, field) -> name, which cannot go stale when a
+neighbouring field appears or disappears because it never mentions a position.
+
+    python3 tools/render2 <file.sbsasm> [--dim 256] [--out DIR] [--score DIR]
+
+`--score DIR` pairs each declared output against the package's own exported maps by the
+manifest's usage name. On `Rokviz japanese fabric 8` -- the specimen with no exposed colour
+parameter, so a colour mismatch cannot be an author's tweak -- it renders all 70 records
+and scores basecolor +0.976 / +0.949 / +0.907, roughness +0.958, ambient occlusion +0.970
+and height at an MAE of 0.0004, against -0.926 / +0.331 / +0.861, -0.475, -0.331 and
++0.047 for `render.py`. Two readings account for it, both the walk answering where
+something else used to: `levels` parameters taken from the field enumeration rather than
+the memo, and an FX-Map emission count taken from the placement program on the 0.21% of
+records whose iterator contradicts it. FORMAT-NOTES.md has the measurements, the census
+behind the narrow trigger, and the one channel of one package where the memo still wins.
+
+`render.py` stays, as the independent model to check `render2` against -- the role
+`_compute_layout` plays for `decompose`. On `Chesterfield` at `max_dim` 256 the two agree
+to four decimals on `normal`, `height`, `metallic` and `AO`; `roughness` improves by 0.055
+and `basecolor` is produced where it was not. Two implementations of one thing drift; two
+that are known to differ, with the difference measured, do not.
 
 `run_file.py` exists because `cache_read` raises unless a caller threads one cache through
 a whole file. Programs are not independent: a record's program can read what an earlier
@@ -167,6 +195,7 @@ parameter bits the slot rule needs, so no rewriting of entries can express the r
     reverify.py           re-runs FORMAT-NOTES.md's headline claims against the CURRENT
                           corpus, so a settled figure cannot quietly go stale
     provenance.py         the provenance exclusion predicate, as a re-runnable check
+    sourcematch.py        a compiled field named by the value its own .sbs states
                           rather than a description of one
     test_standalone_parse.py
                           the 59x parser rewrite against the reference it replaced, full
@@ -197,6 +226,14 @@ a channel mean. Today it reports a baseline, not a validation -- means agreeing 
 decimals with spatial variation 5.4x too small.
 
 `provenance.py` is the one to run against a new corpus before measuring anything with it.
+
+`sourcematch.py` is the arbiter for a naming question: it reads a package's `.sbs`, reads the
+compiled twin beside it, and reports every location a stated value lands in. Four of the
+legend's names were derived this way by hand before the tool existed, and `--verify` re-derives
+all nine of those rows -- which is the only way to tell a clean run from a broken parser, since
+both report nothing. Its binding limit is stock: 74 sources ship here and TWO have a compiled
+twin, so it can say nothing at all about `blur`, `warp`, `dirmotionblur`, `pixelprocessor`,
+`sharpen`, `shuffle` or `dyngradient`.
 The exclusion rule in README.md is a single string match, and this applies it and reports
 what it drops; the discipline is that it runs BEFORE any measurement, not after.
 

@@ -25,6 +25,51 @@ words, or the render. See FORMAT-NOTES.md "Unified walk".
 import record_layout
 
 
+#: word0 bit for the inherited size expression -- class bit 0.
+_SIZE_BIT = 16
+
+
+def _size_slot(cls_params):
+    """The slot the class walk PLACED the size expression in, or None.
+
+    THE WALK ANSWERS THIS, NOT THE CALLER. Readers used to reconstruct it by re-testing
+    word0 bit 16 and taking `prog`, which is where the class block STARTS -- the same word
+    only when no costing class bit precedes bit 16. Over 120 files the two answers differ on
+    7,590 records (`pixelprocessor` by one slot 6,905 times, `dyngradient` by one 399,
+    `normal` by two 246). Returning it here leaves one answer with one contract: the slot
+    holding the inherited size expression, or None when the record has none or this walk
+    cannot place it. None is a REFUSAL, never a zero.
+    """
+    return next((sl for (b, sl, _n) in cls_params if b == _SIZE_BIT), None)
+
+
+def _feature_cost(spec, idx, c0, is_state):
+    """One interaction feature's slot count: `base[idx] + colour * cross[idx]`, rounded.
+
+    Shared by `_interaction_walk` and `_fxmaps_walk` because it is one rule. The fxmaps arm
+    declines the interaction spec's ROLES -- it calls slot 2 an image input and misses the
+    real ones -- but not its COSTS, and a second copy of this arithmetic is the duplication
+    `fx_entry_walk`'s note is about.
+    """
+    base, cross = spec['base'], spec['cross']
+    if idx >= len(base):
+        return 0
+    if spec.get('interaction') == 'colour_states':
+        # CROSS HOLDS ONLY THE STATE COLUMNS, so it is indexed by the STATE ORDINAL and not
+        # by the full column index. `record_layout._interaction` takes the same slice from
+        # the other end -- `vs = v[len(v) - len(cross):]` -- and this took `cross[idx]`,
+        # which for the one `colour_states` spec in the file (emboss, len(base) 17 against
+        # len(cross) 12) is off by five: it charged one state's colour coefficient to
+        # another and dropped the last five entirely. Two implementations of one rule, and
+        # the header LENGTH never showed it because `end` comes from `_model_end`, i.e.
+        # from `record_layout` -- only the slot POSITIONS this walk hands out were wrong.
+        j = idx - (len(base) - len(cross))
+        x = cross[j] if (is_state and 0 <= j < len(cross)) else 0.0
+    else:
+        x = cross[idx] if idx < len(cross) else 0.0
+    return int(round(base[idx] + c0 * x))
+
+
 def _param_field_masks(f):
     """The exact PARAM_SPEC presence masks for this filter. A cost-model w1 field reading 0b11
     is a genuine image input only when its 2-bit range EXACTLY equals one of these masks (an
@@ -104,10 +149,12 @@ _probe_fallback = []
 # Per-filter base image-input arity: how many input images the filter consumes before any
 # w1-declared inputs. A format fact (like the blend-mode table), not a fitted memo entry.
 BASE_INPUTS = {
-    0: 1, 1: 2, 2: 1, 3: 1, 7: 2, 8: 2, 10: 1, 11: 1, 12: 2,
+    0: 1, 1: 2, 2: 1, 3: 1, 6: 0, 7: 2, 8: 2, 10: 1, 11: 1, 12: 2,
     13: 1, 14: 1, 15: 1, 16: 0, 17: 0, 18: 1, 19: 2, 21: 1, 22: 1,
     # 16 bitmap / 17 text are source-side: no image inputs. shuffle (3) is two-shape, handled
     # in decompose; vectorshape (5) has no header cost model (source geometry, no edges).
+    # 6 uniform is a generator and takes none; it reaches only `_interaction_walk`, which
+    # needs the arity to place the base region without asking the fitted constant for it.
 }
 
 
@@ -210,8 +257,35 @@ def _has_w1_word(f, w0, ver):
 # grid, and until then counting back from `end` is the only available reading, because the
 # model's total is right where its per-field attribution is not.
 #
+# A SECOND STRADDLE THE SWEEP COULD NOT SEE: `blend`'s opacity, fields 4 and 5 at shift 9.
+# It fails two of the three criteria above, and for one reason -- the low half's OTHER bit
+# belongs to something else. Bit 8 is set on 22,459 of 29,961 blend records over 40 files
+# whether or not an opacity is present, so field 4 reads 0b01 and 0b11 rather than "only
+# ever 0b10", and "outer bit 2j never set" is false by the same bit. Only bit 9 is the
+# parameter's.
+#
+# READ AT SHIFT 9 IT IS THE ORDINARY ALPHABET, and the VALUES say so on both arms rather
+# than the state bits saying it about themselves. Over the whole 437-file corpus, every
+# blend record whose straddled code is nonzero, against what sits in the word the walk
+# charges -- 0 exceptions:
+#
+#     code 01   963 records   every one a plain float in [0, 1]   none resolves a program
+#     code 10   170 records   not one a plain float               every one resolves a program
+#
+# Unrelabelled the walk calls the first arm "field 4, image input" and the second "field 5,
+# baked" -- a pointer read as a denormal, 1.9e-39, which is an opacity of zero and a blend
+# that composites nothing. Two shipped sources say the same thing from the other side:
+# `ChesterfieldSofa.sbs` pairs 11 of 11 declared `opacitymult` values onto the slot the walk
+# charges and `SandyStonePath.sbs` 7 of 7, three of them at this field in each.
+#
+# SOUND BY THE SAME WIDTH TEST as transformation, which is the condition this table's own
+# caveat sets: field 4 state 3 costs 1 word and field 5 state 1 costs 1 word, and the whole
+# parameter is 1 word in both arms -- a baked scalar and a pointer. So the relabelling
+# recovers the parameter and touches no extent. `directionalwarp` still must not be added,
+# for the reason above: its halves are sums across two parameters, not one parameter twice.
+#
 # {filter: [(low tiling field, high tiling field, real shift, field id to report)]}
-STRADDLED = {2: [(12, 13, 25, 12)]}
+STRADDLED = {1: [(4, 5, 9, 4)], 2: [(12, 13, 25, 12)]}
 
 
 def _restraddle(r, w1, param_slots):
@@ -230,19 +304,26 @@ def _interaction_walk(r, s):
     w0 = r.words[0]
     w1 = r.words[1] if len(r.words) > 1 else 0
     c0 = w0 & 1
-    base, cross = s['base'], s['cross']
     clsbits, pairs = s['clsbits'], s['pairs']
-    states_only = s['interaction'] == 'colour_states'
+    spec_mode = s.get('mode')
 
     def cost(idx, is_state):
-        if idx >= len(base):
-            return 0
-        x = cross[idx] if (idx < len(cross) and (not states_only or is_state)) else 0.0
-        return int(round(base[idx] + c0 * x))
+        return _feature_cost(s, idx, c0, is_state)
 
-    pos = cost(0, False)
+    # THE BASE REGION IS STRUCTURAL, NOT FITTED. This asked `cost(0)` -- the model's
+    # intercept -- for two different things at once: how many words the masks and edges take
+    # (which is what `inputs` is read off) and where the class block starts. They are the
+    # same number today, on 321,054 of 321,054 records across the four interaction filters
+    # (emboss 4, levels 3, transformation 3, uniform 1) -- but only by arithmetic accident,
+    # because the intercept is a fitted LENGTH that also absorbs any class word every record
+    # of the population carries. Take a word out of that intercept, as `derive_costs` now
+    # does for a constant bit identified in another population, and an intercept-derived
+    # base region loses an EDGE. Masks plus arity says what the region is; the fit says what
+    # the header costs. Two questions, two answers.
+    n_masks = 1 if spec_mode == 'absent' else 2
+    pos = n_masks + BASE_INPUTS[r.filter_id] if r.filter_id in BASE_INPUTS else cost(0, False)
     size_pos = pos                           # first slot after the base region = size-expr slot
-    inputs = list(range(2, pos))
+    inputs = list(range(n_masks, pos))
     cls_slots = []
     cls_params = []
     for i, b in enumerate(clsbits):
@@ -306,7 +387,8 @@ def _interaction_walk(r, s):
     param_slots = _restraddle(r, w1, param_slots)
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
                         'param_slots': param_slots, 'cls_params': cls_params,
-                        'end': _model_end(r, pos), 'prog': prog})
+                        'end': _model_end(r, pos), 'prog': prog,
+                        'size_slot': _size_slot(cls_params)})
 
 
 # fxmaps' header opens the way every record does -- w0 (the class word) then w1 -- and
@@ -365,7 +447,7 @@ def _fxmaps_walk(r, spec):
     #
     # Widened on the PROG INVARIANT, which is structural and can fail: layout[1] is 3 + n_in
     # for this filter, and that slot's word + 52 must resolve to a valid program. A truncated
-    # count lands `end` inside the edge run, where the word is a small record index and +52 is
+    # count lands `prog` inside the edge run, where the word is a small record index and +52 is
     # not a program. Over the full corpus, 41,164 fxmaps records:
     #
     #     4 bits   41,118 hold the invariant       6 bits   41,128
@@ -381,13 +463,69 @@ def _fxmaps_walk(r, spec):
     # the sample could not see the truncation.
     n_in = (w1 >> shift) & mask
     inputs = list(range(_FX_FIRST_INPUT, _FX_FIRST_INPUT + n_in))
-    # layout[1] for fxmaps is 3 + input count (the first slot after the inputs = end), exact over
-    # 41,164 records / 14 distinct input counts -- the same "first slot after the base region" as
-    # the main path's size_pos, verified by cleanroom-substance-00.
-    end = _FX_FIRST_INPUT + n_in
-    return {'inputs': inputs, 'cls_slots': [], 'param_slots': [], 'cls_params': [],
-            'end': end, 'prog': end,
-            'root': FX_ROOT_SLOT}
+    # layout[1] for fxmaps is 3 + input count, exact over 41,164 records / 14 distinct input
+    # counts -- the same "first slot after the base region" as the main path's size_pos,
+    # verified by cleanroom-substance-00. That slot is `prog`, and it is ONLY `prog`; `end`
+    # is a different quantity and is taken from the cost model below, as in every other arm.
+    prog = _FX_FIRST_INPUT + n_in
+    # THE CLASS BLOCK IS WALKABLE HERE TOO, and it used to be left empty -- which pushed
+    # every caller that needed the size slot into re-deriving it from `prog`. Filter 4
+    # carries `base`/`clsbits` rather than a `cls` dictionary, and this arm declines the
+    # interaction spec's ROLES (it calls slot 2 an image input and misses the real ones),
+    # not its COSTS. Walked from the first slot after the inputs, bit 16 lands on `prog` in
+    # 36,057 of 36,057 corpus records at width 1, so what the callers were synthesising was
+    # this walk's own answer; 36,031 of them also carry bit 22 or 23, one further costing
+    # class slot that nothing has ever looked at.
+    #
+    # `end` IS THE FITTED HEADER LENGTH HERE TOO. This arm used to return ONE number in both
+    # fields -- `end` == `prog` == the first slot after the inputs -- so fxmaps' `end` carried
+    # the role the general walk calls `size_pos` and no other filter's `end` carries, and it
+    # sat below the walk's OWN class slots: the class cursor exceeded it by +2 on 36,031
+    # corpus records, +1 on 5,129, and 0 on 4.
+    #
+    # THE REASON RECORDED FOR THAT WAS WRONG, AND THE RECORD'S OWN ROOT POINTER SAYS SO. The
+    # claim was that `record_layout.header_words` cannot be the header length because the fit
+    # "also charges parameters that live in the PAYLOAD" -- inferred from the direction of the
+    # disagreement, never tested against anything outside the fit. fxmaps has an independent
+    # boundary to test it with: where `fx_root` lands inside the record, no header word can sit
+    # at or past it. Over the 40,754 corpus records whose root does:
+    #
+    #     header_words <= the root slot   40,744    exactly ON it 12,389, four short 27,956
+    #     header_words >  the root slot       10    all ie_curve / ie_particles, the same
+    #                                               high-arity records the arity note above
+    #                                               names, and no others
+    #
+    # The four-short population is not header the fit missed either: the four words before the
+    # root node are a fixed prologue -- 05c40001 00000000 05c40001 00000004 -- in every record
+    # sampled. So the fitted length stops AT the payload rather than reaching into it, which is
+    # the opposite of what it was declined for.
+    #
+    # WHAT SITS BETWEEN THE CLASS CURSOR AND `end` IS HEADER CONTENT THIS WALK DOES NOT PLACE:
+    # 120,380 slots over 37,318 records, and they read as parameters, not as payload --
+    #
+    #     valid program pointer   56,366   46.8%        zero          11,613    9.6%
+    #     plausible float         51,650   42.9%        other          1,751    1.5%
+    #
+    # -- which is a gap in the WALK, to be closed by walking those slots. Shortening `end` to
+    # sit in front of them is the one repair that cannot be right: it makes the walk's own
+    # cursor overrun the length it reports, and it hides the gap in the field a reader would
+    # use to find it. `end` is never BELOW the class cursor (equal on 3,846, above on the
+    # rest) and never past the record (0 of 41,164), so nothing this arm places falls outside
+    # it, and `prog` keeps the first-after-inputs slot the invariant above validates.
+    pos = prog
+    cls_slots, cls_params = [], []
+    for i, b in enumerate(spec.get('clsbits', ())):
+        if not (r.words[0] >> b) & 1:
+            continue
+        n = _feature_cost(spec, 1 + i, r.words[0] & 1, False)
+        if n > 0:
+            cls_params.append((b, pos, n))
+        for _ in range(n):
+            cls_slots.append(pos)
+            pos += 1
+    return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
+                        'cls_params': cls_params, 'end': _model_end(r, pos), 'prog': prog,
+                        'size_slot': _size_slot(cls_params), 'root': FX_ROOT_SLOT})
 
 
 def decompose(r):
@@ -401,7 +539,11 @@ def decompose(r):
             return None
         return _fxmaps_walk(r, spec)
     if f == 5:                               # vectorshape: source geometry, no header cost model,
-        return {'inputs': [], 'cls_slots': [], 'param_slots': [], 'end': None, 'prog': None}  # no inputs
+        # `cls_params` and `size_slot` stated rather than omitted: a caller reading
+        # `d.get('cls_params', ())` cannot tell an empty walk from an absent key, and this
+        # record has no size slot to place -- not one this walk failed to find.
+        return {'inputs': [], 'cls_slots': [], 'param_slots': [], 'cls_params': [],
+                'end': None, 'prog': None, 'size_slot': None}
     ver = r.asm.header.get('version') if isinstance(r.asm.header, dict) else 0
     w0 = r.words[0]
     spec = _select_spec(f, w0, r.words[1] if len(r.words) > 1 else None, ver)
@@ -464,7 +606,7 @@ def decompose(r):
                     cls_slots.append(pos); pos += 1
         return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
                             'cls_params': cls_params, 'end': _model_end(r, pos),
-                            'prog': prog})
+                            'prog': prog, 'size_slot': _size_slot(cls_params)})
 
     if f not in BASE_INPUTS:
         return None                          # fxmaps payload / uncovered small shapes
@@ -538,6 +680,12 @@ def decompose(r):
     # bitmap (16) carries a size expression only when tag bit 0 is set; otherwise slot 2 is image
     # data (which can coincidentally parse as a program), and layout reports no size.
     prog = None if (f == 17 or (f == 16 and not (r.cls & 1)) or size_pos in inputs) else size_pos
+    # RELABEL HERE TOO. `_restraddle` was called only from `_interaction_walk`, so a
+    # `STRADDLED` entry for a filter that takes THIS walk was inert -- and `blend`, the
+    # filter the table's new entry is about, has no `interaction` key and takes this one.
+    # A straddle is a property of the filter's grid, not of which walk reads it.
+    if w1 is not None:
+        param_slots = _restraddle(r, w1, param_slots)
     # `w1_shift` is REPORTED rather than left for callers to look up again. A consumer
     # matching a PARAM_SPEC mask to a field has to know which grid the fields are on, and
     # re-deriving it means re-selecting the spec with arguments the caller has to
@@ -545,7 +693,7 @@ def decompose(r):
     # it; the walk says it.
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
                         'param_slots': param_slots, 'cls_params': cls_params,
-                        'w1_shift': gsh,
+                        'w1_shift': gsh, 'size_slot': _size_slot(cls_params),
                         'end': _model_end(r, pos), 'prog': prog})
 
 

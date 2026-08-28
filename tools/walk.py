@@ -157,11 +157,18 @@ def _costs_arity(filter_id, w1):
 SPECS = {
     1:  Spec(base=2, cls_widths=_CLS,          # blend
              w1_fields=[(0x30, 4, 'scalar'),    # opacitymult (Float1)
-                        (0x600, 9, 'scalar')]),  # a second Float1 parameter: a two-bit code
-                                                 # at bits (9,10) -- 01 baked, 10 program --
+                        (0x600, 9, 'scalar')]),  # opacitymult AGAIN, relocated: connect the
+                                                 # node's `opacity` input and the slider
+                                                 # moves here while (4,5) goes to state 11,
+                                                 # the image-input code. A two-bit code at
+                                                 # bits (9,10) -- 01 baked, 10 program --
                                                  # with bit 8 as its always-on present flag.
                                                  # NOT a size nibble: the baked slot is a
                                                  # float in [0,1], not a magnitude count.
+                                                 # ChesterfieldSofa.sbs states three such
+                                                 # sliders and the compiled file sets three
+                                                 # of these fields, holding those floats;
+                                                 # SandyStonePath.sbs agrees five for five.
     15: Spec(base=1, cls_widths=_CLS,          # levels
              w1_fields=[(0x003, 0, 'channel'), (0x00c, 2, 'channel'),
                         (0x030, 4, 'channel'), (0x0c0, 6, 'channel'),
