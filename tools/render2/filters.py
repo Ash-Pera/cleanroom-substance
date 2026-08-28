@@ -78,6 +78,31 @@ def _scalar(ctx, v, name, default, W, H, pos):
                     W * H, H, W).reshape(W * H, -1)[:, :1]
 
 
+def _channelwise(ctx, v, name, default, W, H, pos, nchan):
+    """A per-channel parameter, kept at its real WIDTH instead of collapsed to one value.
+
+    `levels`' five fields are per-channel (SPEC 13.4): Float1 on a greyscale record and
+    Float4 on a colour one, and on a colour record the four components are genuinely
+    different -- Chesterfield record 348 holds `levelinlow` = (0.264, 0.264, 0.264, 0.0)
+    and `levelinhigh` = (0.593, 0.593, 0.593, 1.0), an RGB remap with alpha left alone.
+    Reading component 0 and applying it to all four is a known wrong read: it remaps alpha
+    by the red curve.
+
+    Returned as a `(nchan,)` vector so it broadcasts against the `(N, C)` source, which is
+    all the surrounding arithmetic needs -- every step of it is already elementwise.
+    """
+    p = v.params.get(name)
+    if p is None:
+        return np.float32(default)
+    if p.kind == 'baked':
+        if p.width == 1:
+            return np.float32(p.value)
+        vals = np.asarray(p.value, dtype=np.float32).ravel()
+        return vals[:nchan] if vals.size >= nchan else np.float32(vals[0])
+    got = to_image(ctx.run(v, p.value, W * H, pos=pos), W * H, H, W).reshape(W * H, -1)
+    return got[:, :nchan] if got.shape[-1] >= nchan else got[:, :1]
+
+
 def _vector(ctx, v, name, width):
     """A named parameter as a `width`-long tuple, evaluating a program if that is its arm.
 
@@ -389,12 +414,16 @@ def f_levels(ctx, v):
     N = W * H
     pos = pos_grid(W, H)
     src = ctx.sample(v, 0, pos)
+    nchan = src.shape[-1]
 
-    lo = _scalar(ctx, v, 'levelinlow', DEFAULTS['levels.in'][0], W, H, pos)
-    mid = _scalar(ctx, v, 'levelinmid', DEFAULTS['levels.in'][1], W, H, pos)
-    hi = _scalar(ctx, v, 'levelinhigh', DEFAULTS['levels.in'][2], W, H, pos)
-    out_lo = _scalar(ctx, v, 'leveloutlow', DEFAULTS['levels.out'][0], W, H, pos)
-    out_hi = _scalar(ctx, v, 'levelouthigh', DEFAULTS['levels.out'][1], W, H, pos)
+    def par(name, default):
+        return _channelwise(ctx, v, name, default, W, H, pos, nchan)
+
+    lo = par('levelinlow', DEFAULTS['levels.in'][0])
+    mid = par('levelinmid', DEFAULTS['levels.in'][1])
+    hi = par('levelinhigh', DEFAULTS['levels.in'][2])
+    out_lo = par('leveloutlow', DEFAULTS['levels.out'][0])
+    out_hi = par('levelouthigh', DEFAULTS['levels.out'][1])
 
     # A ZERO-WIDE INPUT SPAN IS A THRESHOLD, not a division to guard against, and it is
     # how this format writes a hard binarisation: `levelinlow == levelinhigh` with the
