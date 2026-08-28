@@ -578,6 +578,12 @@ either means the name legend below is missing a field that sits after a listed o
 whole block has shifted onto words that read as plausible floats. Refuse loudly. Silent on
 84,700 records carrying named parameters: 0 reach either.
 
+**The size slot is the one the class walk PLACES**, not the first slot of the class block.
+Bit 16 is the lowest class bit but not always the first placed: a flag bit below it takes a
+word first. Over 120 files the two answers differ on 7,590 records — `pixelprocessor` by one
+slot 6,905 times, `dyngradient` by one 399, `normal` by two 246. (`fxmaps` and `emboss` set
+the bit and the walk places nothing, which is the fxmaps cost-model gap, not a second rule.)
+
 **The inherited size slot.** Class bit 0 (word0 bit 16) set ⇒ the first slot after the
 base region is the record's output-size expression, not a parameter. Clear ⇒ there is no
 size slot and that position is the first parameter. Reading it unconditionally is how a
@@ -601,6 +607,8 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 12 directionalwarp | intensity / warpangle | `0x0006` / `0x0018` | 1 / 3 | scalar |
 | 15 levels | levelinlow, levelinhigh, levelinmid, leveloutlow, levelouthigh | `0x0003`, `0x000C`, `0x0030`, `0x00C0`, `0x0300` | 0,2,4,6,8 | per-channel |
 | 18 normal | intensity | `0x0003` | 0 | scalar |
+| 18 normal | inversedy | `0x000C` | 2 | flag |
+| 18 normal | *(unnamed)* | `0x0030` | 4 | flag |
 
 Two of these **straddle** the two-bit grid — `transformation`'s offset at bits (25, 26)
 and `blend`'s relocated opacity at (9, 10) — so under a plain `j → (2j, 2j+1)` reading their
@@ -624,6 +632,22 @@ this paragraph had it as state 11 in all 1,133 cases. Corpus-wide it splits, bec
 and the 170 program-arm records read 01.** The arms are told apart by their VALUES with no
 exceptions in 437 files — every one of the 963 holds a plain float in [0, 1] and resolves no
 program; not one of the 170 is a plain float and all 170 resolve a program.
+
+**A `flag` is zero words baked and one word as a program**, and both arms have to be
+declared or the placement shifts. `normal`'s fields 1 and 2 cost nothing when baked — the
+mask state IS the value — so omitting them looks free, but their program arm is a pointer:
+38 corpus records put a program in field 1 while `intensity` is also a program, and an
+end-anchored reader charging one width instead of two reads field 1's pointer as
+`intensity`. Those 38 records ran the wrong program, and it evaluates to 0 on every one of
+them — a flat normal where the file says 5, 10, 15, 20.
+
+Field 1 is `inversedy` on an argument that is suggestive and not conclusive: of the three
+parameters the shipped sources write on a normal node — `intensity`, `inversedy`,
+`input2alpha` — the one seen driven by a program is `inversedy` (`normal_format == <int>`,
+the DirectX/OpenGL switch), and field 1 is the field that carries programs (38 against 67
+flags, where field 2 is 322 flags against 1). Field 2 is left unnamed on that asymmetry
+alone. Reading either as a single BIT rather than a two-bit code sees the baked arm and
+calls the program arm absent.
 
 The `levels` order is `(low, high, mid)`, not the UI's `(low, mid, high)`: over a corpus
 sample `in_low <= in_high` holds 3,684 of 3,703 under this order and 641 of 751 under the
@@ -702,7 +726,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | uniform | `outputcolor`; else a program at a walk-named slot; else the engine default |
 | blend | `dst·(1−op) + f(dst, src)·op`, clamped; `op` = `opacitymult` (absent ⇒ 1, and read from EITHER mask — §13.4) × the mask edge if a third edge is present; `switch` selects on `op ≥ ½` instead |
 | transformation | `in = m·(pos − ½) + ½ + offset`; area-prefilter when minifying |
-| shuffle | colour bit clear ⇒ `Σ channelsweights·src` (grayscale conversion); set ⇒ four selector bytes in `w1`, `s` picks channel `s mod 4` of input `s div 4` |
+| shuffle | colour bit clear ⇒ `Σ channelsweights·src` (grayscale conversion); set ⇒ four selector bytes in `w1`, `s` picks channel `s mod 4` of input `s div 4`. The cost model ALSO declares seven w1 fields for filter 3 (0, 4, 5, 8, 9, 12, 13) — every one charging zero words in every state, so it makes no claim about layout and cannot contradict the byte reading; nor can it confirm it. No shipped source contains a colour-arm shuffle node (44 are `grayscaleconversion`), so this one is read from the values alone: every byte holds 0–7, and a reader should refuse the record rather than guess when one does not |
 | levels | `t = clip((src − lo)/(hi − lo))`; zero span ⇒ step at `lo`; `t ← t^(ln½/ln mid)`; `out = lo′ + t(hi′ − lo′)`, clamped. **Per channel**: on a colour record every field is a Float4 and its components genuinely differ — applying component 0 to all four remaps ALPHA by the red curve, which on one corpus record turns an opaque output almost transparent |
 | curve | a cubic-Bezier transfer curve, sampled to a lookup |
 | gradient / dyngradient | a ramp indexed by the input's channel 0; `dyngradient`'s ramp is a second input's long axis |

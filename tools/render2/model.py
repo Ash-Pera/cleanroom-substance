@@ -91,12 +91,36 @@ W1_PARAMS = {
          (0x030, 4, 'levelinmid', 'channel'),
          (0x0c0, 6, 'leveloutlow', 'channel'),
          (0x300, 8, 'levelouthigh', 'channel')],
-    18: [(0x3, 0, 'intensity', 'scalar')],            # normal
+    # `normal` DECLARES THREE FIELDS AND THIS TABLE NAMED ONE. Fields 1 and 2 are flags
+    # whose baked arm costs nothing, so leaving them out looked free -- but their PROGRAM
+    # arm is a word, and 38 corpus records put a program in field 1 while `intensity` is
+    # also a program. Anchored at the end and charging one width, `intensity` was reading
+    # field 1's pointer and running the wrong program.
+    #
+    # Field 1 is `inversedy` on evidence that is suggestive, not conclusive, and the
+    # assumption gate says so: of the three parameters the shipped sources ever write on a
+    # normal node -- `intensity`, `inversedy`, `input2alpha` -- the one seen driven by a
+    # program is `inversedy` (`normal_format == <int>`, the DirectX/OpenGL switch), and
+    # field 1 is the field that carries a program: 38 programs against 67 flags, where
+    # field 2 is 322 flags against 1. Field 2 is left UNNAMED rather than called
+    # `input2alpha` on that asymmetry alone; it is declared here for its width.
+    18: [(0x3, 0, 'intensity', 'scalar'),             # normal
+         (0xc, 2, 'inversedy', 'flag'),
+         (0x30, 4, None, 'flag')],
 }
 
 
 def _baked_width(kind, colour):
-    """A baked field's width in words, from the manifest's type legend."""
+    """A baked field's width in words, from the manifest's type legend.
+
+    `flag` is ZERO WORDS: the mask state IS the value, and the cost model agrees -- for
+    filter 18 it charges fields 1 and 2 one word in state `program` and nothing in state
+    `baked`. A field whose baked arm costs nothing still has to be DECLARED, because its
+    program arm costs one word and the placement is anchored at the header end: an
+    undeclared program sitting after `intensity` moves intensity's slot by one.
+    """
+    if kind == 'flag':
+        return 0
     if kind == 'channel':
         return 4 if colour else 1
     return kind if isinstance(kind, int) else 1
@@ -225,13 +249,28 @@ class View(object):
             v = rec.words[slot] if 0 <= slot < len(rec.words) else None
             self.inputs.append(v if (v is not None and 0 <= v < rec.index) else None)
 
-        # THE SIZE SLOT IS PRESENT IFF CLASS BIT 0 IS. `decompose` reports `prog` for every
-        # record, set or clear, so a `blur` whose 3-word header is [tag][edge][intensity]
-        # has `prog = 2` pointing at its intensity -- which is what makes `size_or_baked`
-        # answer ('float', 0.38) on a record that carries no size expression at all. The
-        # class word says whether the inherited parameter is there; ask it.
+        # THE SIZE SLOT IS THE ONE THE WALK PLACES. It used to be `prog` gated on a re-test
+        # of word0 bit 16 -- asking the word a question the walk had already answered, and
+        # getting a different answer: `prog` is where the class block STARTS, and bit 16 is
+        # the lowest class bit only when no flag bit precedes it. Over 120 files the two
+        # disagree on 7,590 records -- `pixelprocessor` by one slot 6,905 times,
+        # `dyngradient` by one 399, `normal` by two 246 -- and the bit-16 word is the one
+        # that holds the size expression.
+        #
+        # Nothing rendered differently, because `walk_programs` also offers every class slot
+        # as a candidate, so the right word was always in the list and the wrong `size_slot`
+        # merely added a spare. That is what made it look benign: a second answer that never
+        # had to be right.
         self.prog_slot = d.get('prog')
-        if (rec.words[0] >> _SIZE_BIT) & 1:
+        cls_params = d.get('cls_params', ())
+        for (bit, slot, _w) in cls_params:
+            if bit == _SIZE_BIT:
+                self.size_slot = slot
+        if self.size_slot is None and (rec.words[0] >> _SIZE_BIT) & 1 and not cls_params:
+            # `fxmaps` (6,086 records) and `emboss` (47) set the bit and the walk places
+            # NOTHING: their cost entry has no class dictionary, which is the same gap that
+            # keeps fxmaps on the memo. Keep the old answer there and keep it visible --
+            # when that gap closes, this branch should delete rather than be maintained.
             self.size_slot = self.prog_slot
 
         # EVERY class slot, named or not. An inherited parameter this legend has no name
@@ -254,14 +293,14 @@ class View(object):
         for (mask, shift, name, kind) in W1_PARAMS.get(rec.filter_id, ()):
             code = (w1 & mask) >> shift
             if code == 1:
-                present.append((name, 'baked', _baked_width(kind, self.colour)))
+                present.append((name, 'baked', _baked_width(kind, self.colour), shift // 2))
             elif code == 2:
-                present.append((name, 'program', 1))
+                present.append((name, 'program', 1, shift // 2))
         # ONE ARM AT A TIME. Two entries can share a name (`blend`'s opacity is at (4, 5)
         # or at (9, 10), never both), and a name added twice would keep the second silently
         # while charging both widths to the layout. It has never happened in 437 files; say
         # so out loud rather than render the wrong slot.
-        names = [t[0] for t in present]
+        names = [t[0] for t in present if t[0] is not None]
         if len(set(names)) != len(names):
             raise Shifted('filter %d: two w1 fields are present under one name (%s) -- '
                           'they are relocation arms and only one is ever set'
@@ -280,8 +319,8 @@ class View(object):
                        'inside the record\'s masks' if pos < n_masks else
                        'an input edge' if in_slots and pos <= max(in_slots) else
                        'past the record\'s %d words' % len(rec.words)))
-            for (name, kind, width) in present:
-                self._add(name, kind, pos, width)
+            for (name, kind, width, field) in present:
+                self._add(name, kind, pos, width, field)
                 pos += width
         # Slots the cost model calls parameters keep their place in the PROGRAM candidate
         # list even where this legend has no name for them.
@@ -295,6 +334,8 @@ class View(object):
             return
         if kind == 'program':
             value = self.words[slot] + 52
+        elif width == 0:
+            value = 1.0                 # a flag: the mask state IS the value
         elif width == 1:
             value = float(_floats(self.words, slot, 1)[0])
         else:

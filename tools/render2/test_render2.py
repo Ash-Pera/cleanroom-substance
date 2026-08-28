@@ -221,6 +221,40 @@ def test_hsl_names_its_three_parameters():
     print('ok  test_hsl_names_its_three_parameters (3 records)')
 
 
+def test_normal_declares_the_field_that_shifts_its_intensity():
+    """A field with a zero-word baked arm still has a one-word PROGRAM arm.
+
+    `normal` declares three w1 fields and this legend named one. Fields 1 and 2 cost
+    nothing baked -- the mask state is the value -- so leaving them out of the legend looked
+    free. It is not: with `intensity` also a program, the end-anchored placement charges one
+    width where the record spent two, and `intensity` reads field 1's pointer. 38 corpus
+    records are in that state and the program they were running returns 0.0 on every one --
+    a flat normal map where the file says 5.
+
+    Asserted on the VALUES the two programs return, not on the slots alone: a placement that
+    is off by one still yields a float, and a slot number does not say which program ran.
+    """
+    hits = glob.glob(os.path.join(ROOT, '**', 'stone_stylized_adaptive.sbsasm'),
+                     recursive=True)
+    if not hits:
+        return _skip('test_normal_declares_the_field_that_shifts_its_intensity: no specimen')
+    asm = sbsasm.Assembly(hits[0])
+    v = model.View(asm, asm.records[18])
+    assert v.rec.filter_name == 'normal', 'record 18 is %r' % (v.rec.filter_name,)
+    kinds = {k: p.kind for k, p in v.params.items()}
+    assert kinds == {'intensity': 'program', 'inversedy': 'program'}, \
+        'record 18 names %r' % (kinds,)
+    assert v.params['intensity'].slot < v.params['inversedy'].slot, \
+        'the fields are placed in descending mask order'
+    ctx = Context(asm)
+    got = {n: float(np.asarray(ctx.run(v, v.params[n].value, 1)).ravel()[0])
+           for n in ('intensity', 'inversedy')}
+    assert abs(got['intensity'] - 5.0) < 1e-6 and abs(got['inversedy']) < 1e-6, \
+        'the two programs return %r; intensity 5.0 is the file\'s, 0.0 is inversedy\'s' \
+        % (got,)
+    print('ok  test_normal_declares_the_field_that_shifts_its_intensity')
+
+
 def test_every_record_renders():
     path = specimen()
     if not path:
@@ -351,6 +385,7 @@ if __name__ == '__main__':
     for fn in (test_walk_reads_the_parameters_the_memo_cannot,
                test_blend_reads_the_relocated_opacity,
                test_hsl_names_its_three_parameters,
+               test_normal_declares_the_field_that_shifts_its_intensity,
                test_every_record_renders,
                test_the_render_threads_its_own_value_cache,
                test_reference_agreement_does_not_regress):

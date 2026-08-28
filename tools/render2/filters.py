@@ -479,9 +479,22 @@ def f_normal(ctx, v):
     ref = _reference_px(v)
     gy, gx = np.gradient(height)
     gx, gy = gx * (W / ref), gy * (H / ref)
-    if (assume.assumed('normal.inversedy', 'word1bit2') == 'word1bit2'
-            and len(v.words) > 1 and (v.words[1] >> 2) & 1):
-        gy = -gy
+    # FIELD 1 IS A TWO-BIT CODE, NOT A BIT. Reading `(w1 >> 2) & 1` sees state 01 and calls
+    # state 10 absent, so a program-valued inversedy -- which is how the sources actually
+    # write it, `normal_format == <int>` off a graph input -- reads as "not inverted" and
+    # its program is never run. That the field IS inversedy remains an assumption; that it
+    # has two arms is the walk's own declaration.
+    inv = v.params.get('inversedy')
+    if assume.assumed('normal.inversedy', 'field1') != 'ignore' and inv is not None:
+        if inv.kind == 'baked':
+            flip = True
+        else:
+            got = np.asarray(ctx.run(v, inv.value, 1)).ravel()
+            if got.size < 1 or not np.isfinite(got[0]):
+                raise Unsupported('normal inversedy program does not evaluate to a scalar')
+            flip = bool(got[0] > 0.5)
+        if flip:
+            gy = -gy
         ctx.low_confidence.add(v.index)
         assume.note(v.index)
     nx, ny = -gx * intensity, -gy * intensity
