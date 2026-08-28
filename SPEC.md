@@ -599,6 +599,7 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | filter | parameter | mask | shift | kind |
 |---|---|---|---|---|
 | 1 blend | opacitymult | `0x0030` | 4 | scalar |
+| 1 blend | *(unnamed)* | `0x00C0` | 6 | 2 words |
 | 1 blend | opacitymult, relocated | `0x0600` | 9 | scalar |
 | 2 transformation | matrix22 | `0x000000C0` | 6 | Float4 |
 | 2 transformation | offset | `0x06000000` | 25 | Float2 |

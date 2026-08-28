@@ -77,7 +77,17 @@ W1_PARAMS = {
     # they hold those three floats. `SandyStonePath.sbs` matches five for five, the program
     # arm included. Calling this field anything else leaves 1,133 corpus records
     # compositing at full strength against a mask the source only wanted at 0.2.
+    #
+    # FIELD 3 IS TWO WORDS AND SITS BETWEEN THEM. Unnamed, and the cost model charges its
+    # baked arm 2 words -- so a reader that places only `opacitymult` lands two slots late:
+    # RoofingTilesSubstance003 record 26 reads -0.0 where the record holds 0.86. Only 26
+    # corpus records set it, always baked; the other two states are charged nothing and are
+    # unobserved, so nothing here claims to know what they would cost. What the field IS is
+    # also unknown -- the shipped sources write six blend parameters (blendingmode,
+    # colorblending, opacitymult, outputsize, format, tiling) and the two words look like
+    # packed 16-bit halves -- so it is declared for its width and left unnamed.
     1:  [(0x30, 4, 'opacitymult', 'scalar'),          # blend
+         (0xC0, 6, None, 2),
          (0x600, 9, 'opacitymult', 'scalar')],
     2:  [(0xC0, 6, 'matrix22', 4),                    # transformation
          (0x06000000, 25, 'offset', 2),
