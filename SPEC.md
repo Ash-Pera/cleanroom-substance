@@ -586,24 +586,36 @@ slot 6,905 times, `dyngradient` by one 399, `normal` by two 246.
 The walk reports it as `size_slot`, so a reader never reconstructs it. Two filters still
 have no placement to report, for different reasons, and one has nothing to place.
 
-**`emboss` is a VERSION story.** `derive_costs` admits a class bit only when it varies among
-the headers it can observe, and its population for filter 8 starts at v5 (`MIN_VERSION`).
-Bit 16 is set on every emboss record in v5, v6 and v9 (256, 87 and 32 of each) and is clear
-only in v2 (6 records) and v4 (4) — exactly the versions the cut excludes. So the bit is
-constant by the gate, not by the format, and its word is folded into the intercept, which is
-what a fractional `base[0] = 4.5` is.
+**`emboss` was a VERSION story, and it is fixed.** `derive_costs` admits a class bit only
+when it varies among the headers it can observe, and its population for filter 8 starts at v5
+(`MIN_VERSION`). Bit 16 is set on every emboss record in v5, v6 and v9 (256, 87 and 32 of
+each) and clear only in v2 (6 records) and v4 (4) — exactly the versions the cut excludes. So
+the bit was constant by the gate, not by the format, and its word sat folded into a fitted
+intercept of `4.5`.
 
-Refit the excluded population and the coefficient appears: **bit 16 costs 1 word** (50 keys,
-171 records, 0.9649 exact), and a fit pooling every version agrees at 1.0 (78 keys, 546
-records, 0.9890). What stops the pooled fit being adopted is the derivation's own bar,
-`KEEP = 0.995`: the modern population fits exactly (1.0000) and the pooled one does not. The
-principled repair is therefore a **version-guarded variant** — identify the feature in the
-population where it varies, apply it where it does not — not a pooled refit.
+The repair is the general rule: **identify a feature where it varies, apply it where it does
+not.** The derivation now fits the excluded population too — not to ship its spec, whose
+exactness is below the bar, but to read coefficients off it — and transfers a constant bit's
+cost into the modern spec when, and only when, **every filter that can see that bit agrees on
+it**. Bit 16 is charged 1.0 by all 20 such filters, so it transfers; bit 27 is charged 1.0 by
+eight and 0.0 by two, so it is a per-filter fact and does not. Without that second test both
+moved, and the walk's cursor went from one word short of the fitted length to one word long.
 
-Until that lands, the size slot for emboss is read at the first-after-base slot:
-`int(round(4.5))` is 4, which leaves that slot pointing AT the folded word, and it resolves
-as a program address in 375 of 375 records. A further 171 emboss records the walk declines
-outright on the `min_version` gate.
+The transfer is prediction-preserving by construction — the bit is set on every record of the
+population, so a word leaving the intercept and arriving on the bit cancels — and measured:
+`header_words` is identical on all 546 emboss records. What changes is that the walk now
+PLACES the word: `size_slot` comes from the class walk on all 375 walkable records, the last
+caller-side guess is deleted, and the walk's own cursor matches the fitted header length on
+366 of them where it previously matched none. A further 171 records the walk still declines
+on the `min_version` gate.
+
+A second, independent thing had to be right for that to work. The fitted intercept was
+answering two questions at once — how many words the masks and edges take, and where the
+class block starts — and they are the same number only by arithmetic accident. Taking a word
+out of the intercept deleted an EDGE from every emboss record until the base region was
+derived from masks-plus-arity instead: `2 + arity` (`1 + arity` where the filter has no `w1`
+word) agrees with the intercept on 321,054 of 321,054 interaction records, so separating them
+changed nothing and made the transfer safe.
 
 **`fxmaps`** used to be in the same position and is not: filter 4 carries `base`/`clsbits`
 rather than a `cls` dictionary, every class bit below 16 costs zero words there, and walking
@@ -640,6 +652,8 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 12 directionalwarp | intensity / warpangle | `0x0006` / `0x0018` | 1 / 3 | scalar |
 | 15 levels | levelinlow, levelinhigh, levelinmid, leveloutlow, levelouthigh | `0x0003`, `0x000C`, `0x0030`, `0x00C0`, `0x0300` | 0,2,4,6,8 | per-channel |
 | 18 normal | intensity | `0x0003` | 0 | scalar |
+| 21 distance | distance | `0x0003` | 0 | scalar |
+| 21 distance | *(unnamed)* | `0x000C` | 2 | flag |
 | 18 normal | inversedy | `0x000C` | 2 | flag |
 | 18 normal | *(unnamed)* | `0x0030` | 4 | flag |
 
@@ -717,6 +731,13 @@ program:
 | 14 hsl | hue | 24 baked, 25 program | 1 |
 | 14 hsl | saturation | 26 baked, 27 program | 1 |
 | 14 hsl | luminosity | 28 baked, 29 program | 1 |
+
+`distance`'s radius is the source's own: `SandyStonePath.sbs` states 56.2999992 and
+64.2200012 on its two distance nodes and records 3 and 180 of the compiled twin hold exactly
+those at field 0. **Where field 1 holds a program the placement is unverified and wrong** --
+on those 188 corpus records every candidate slot holds a pointer, so a reader that trusts the
+width law there reads a radius of 0. The state bits say which case a record is in, so no
+value has to be inspected to tell them apart.
 
 `sharpen` sits at the same pair as `blur`, on weaker evidence: no shipped source states a
 sharpen parameter at all (all 28 nodes are at defaults), so this rests on the pair shape —

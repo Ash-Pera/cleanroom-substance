@@ -616,6 +616,29 @@ def _bit_cost(spec, b):
     return None
 
 
+def _format_wide_cost(out, b, minimum=5):
+    """The cost EVERY filter that can see bit `b` agrees on, or None if they do not.
+
+    A coefficient this population cannot see may be borrowed only when it is a property of
+    the FORMAT rather than of one filter. Bit 16, the inherited size expression, is charged
+    1.0 by all 20 filters whose fit can see it; bit 27 is charged 1.0 by eight and 0.0 by
+    two, so it is a per-filter fact and borrowing it is a guess. Without this test the
+    emboss transfer took both, and the walk's cursor -- which the header length does not
+    expose, because `end` comes from the fitted model -- went from one word short to one
+    word long.
+    """
+    vals = {}
+    for sp in out.values():
+        v = _bit_cost(sp, b)
+        if v is not None:
+            vals.setdefault(v, 0)
+            vals[v] += 1
+    if len(vals) != 1:
+        return None
+    (v, n), = vals.items()
+    return v if n >= minimum else None
+
+
 def _transfer_constant(spec, b, cost):
     """Give a constant-in-this-population bit its own coefficient, out of the intercept.
 
@@ -751,6 +774,8 @@ def main():
                     cst = _bit_cost(bspec, b)
                     if cst is None or cst <= 0 or float(cst) != int(float(cst)):
                         continue                     # not identified, or not a whole slot
+                    if _format_wide_cost(out, b) != float(cst):
+                        continue                     # a per-filter fact, not a format one
                     _transfer_constant(spec, b, float(cst))
                     transferred.append((f, b, float(cst), bexact, len(bkeys),
                                         sum(x[2] for x in bkeys)))

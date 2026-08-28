@@ -300,44 +300,16 @@ class View(object):
         self.prog_slot = d.get('prog')
         self.size_slot = d.get('size_slot')
 
-        # ONE FILTER STILL HAS NO ANSWER TO TAKE, and it is a limit of the METHOD rather
-        # than a gap someone forgot to fill. `derive_costs` admits a class bit only when it
-        # VARIES among the headers it can observe:
-        #
-        #     clsbits = [b for b in bitrange if len({k[0] >> b & 1 for k, _, _ in keys}) > 1]
-        #
-        # Filter 8 has 30 distinct (cls, w1) keys in that population and bit 16 is set in
-        # ALL 30, so within it the word cannot be told apart from the constant -- which is
-        # what `base[0] = 4.5` is: the size word folded into the base region.
-        #
-        # AND THE REASON IS THE VERSION CUT. `derive_costs.MIN_VERSION[8] = 0x50000` drops
-        # every emboss record below v5 from the fit, and v5, v6 and v9 set bit 16 on 256, 87
-        # and 32 of 256, 87 and 32 records. The ONLY records where it is clear are v2 (6) and
-        # v4 (4) -- precisely the ones excluded. So the population is version-gated and the
-        # bit is constant BY that gate, not by the format.
-        #
-        # Refit on the excluded population and it appears: bit 16 costs 1.0 word (50 keys,
-        # 171 records, 0.9649 exact), and a fit pooling every version agrees at 1.0 (78 keys,
-        # 546 records, 0.9890). Two populations, one coefficient. What blocks adopting the
-        # pooled fit is the file's own bar -- `KEEP = 0.995` -- which the modern population
-        # clears at 1.0000 and the pooled one does not. The principled repair is a
-        # version-guarded variant rather than a pooled fit, and `derive_costs`/`costs.json`
-        # are owned by one session at a time, so it goes to that owner, not in here.
-        # (Two commits ago I wrote that re-fitting cannot recover it. It can.)
-        #
-        # The branch therefore stays, on a check rather than a hope: `int(round(4.5))` is 4,
-        # which leaves `prog` pointing AT the folded size word instead of past it, and the
-        # word there resolves as a program address in 375 of 375 emboss records. It is not
-        # re-checked here -- `Context.prog_at` is the single validator of program pointers.
-        # A further 171 emboss records `decompose` declines outright on its min_version gate.
-        #
-        # `fxmaps` used to be here too, 36,057 records of it. Its own walk places the bit now.
-        # The tests below are about the FIELD being honest: a slot inside the record, or None.
-        if (self.size_slot is None and (rec.words[0] >> _SIZE_BIT) & 1
-                and not d.get('cls_params')
-                and self.prog_slot is not None
-                and 0 <= self.prog_slot < len(rec.words)):
-            self.size_slot = self.prog_slot
+        # THE BRANCH THAT USED TO SIT HERE IS GONE. `emboss` was the last filter whose size
+        # expression this file had to guess at -- `prog`, on the strength of the word there
+        # resolving as a program in 375 of 375 records. It guessed right, and the walk now
+        # says so for itself: `derive_costs` takes class bit 16's cost from the records BELOW
+        # emboss's version gate, the only ones where that bit varies, and transfers it into
+        # the modern spec, where it had been folded invisibly into a fitted 4.5. The transfer
+        # is allowed only because every filter that can see bit 16 charges it exactly one
+        # word -- a fact about the FORMAT, not about emboss. `record_layout.header_words` is
+        # unchanged on all 546 records, and the walk's own cursor now matches that length on
+        # 366 of 375 where it used to match none.
 
         # EVERY class slot, named or not. An inherited parameter this legend has no name
         # for can still hold a PROGRAM, and a filter that needs to run its record's setup

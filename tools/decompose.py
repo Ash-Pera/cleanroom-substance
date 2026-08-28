@@ -54,8 +54,19 @@ def _feature_cost(spec, idx, c0, is_state):
     base, cross = spec['base'], spec['cross']
     if idx >= len(base):
         return 0
-    states_only = spec.get('interaction') == 'colour_states'
-    x = cross[idx] if (idx < len(cross) and (not states_only or is_state)) else 0.0
+    if spec.get('interaction') == 'colour_states':
+        # CROSS HOLDS ONLY THE STATE COLUMNS, so it is indexed by the STATE ORDINAL and not
+        # by the full column index. `record_layout._interaction` takes the same slice from
+        # the other end -- `vs = v[len(v) - len(cross):]` -- and this took `cross[idx]`,
+        # which for the one `colour_states` spec in the file (emboss, len(base) 17 against
+        # len(cross) 12) is off by five: it charged one state's colour coefficient to
+        # another and dropped the last five entirely. Two implementations of one rule, and
+        # the header LENGTH never showed it because `end` comes from `_model_end`, i.e.
+        # from `record_layout` -- only the slot POSITIONS this walk hands out were wrong.
+        j = idx - (len(base) - len(cross))
+        x = cross[j] if (is_state and 0 <= j < len(cross)) else 0.0
+    else:
+        x = cross[idx] if idx < len(cross) else 0.0
     return int(round(base[idx] + c0 * x))
 
 
@@ -138,10 +149,12 @@ _probe_fallback = []
 # Per-filter base image-input arity: how many input images the filter consumes before any
 # w1-declared inputs. A format fact (like the blend-mode table), not a fitted memo entry.
 BASE_INPUTS = {
-    0: 1, 1: 2, 2: 1, 3: 1, 7: 2, 8: 2, 10: 1, 11: 1, 12: 2,
+    0: 1, 1: 2, 2: 1, 3: 1, 6: 0, 7: 2, 8: 2, 10: 1, 11: 1, 12: 2,
     13: 1, 14: 1, 15: 1, 16: 0, 17: 0, 18: 1, 19: 2, 21: 1, 22: 1,
     # 16 bitmap / 17 text are source-side: no image inputs. shuffle (3) is two-shape, handled
     # in decompose; vectorshape (5) has no header cost model (source geometry, no edges).
+    # 6 uniform is a generator and takes none; it reaches only `_interaction_walk`, which
+    # needs the arity to place the base region without asking the fitted constant for it.
 }
 
 
@@ -292,13 +305,25 @@ def _interaction_walk(r, s):
     w1 = r.words[1] if len(r.words) > 1 else 0
     c0 = w0 & 1
     clsbits, pairs = s['clsbits'], s['pairs']
+    spec_mode = s.get('mode')
 
     def cost(idx, is_state):
         return _feature_cost(s, idx, c0, is_state)
 
-    pos = cost(0, False)
+    # THE BASE REGION IS STRUCTURAL, NOT FITTED. This asked `cost(0)` -- the model's
+    # intercept -- for two different things at once: how many words the masks and edges take
+    # (which is what `inputs` is read off) and where the class block starts. They are the
+    # same number today, on 321,054 of 321,054 records across the four interaction filters
+    # (emboss 4, levels 3, transformation 3, uniform 1) -- but only by arithmetic accident,
+    # because the intercept is a fitted LENGTH that also absorbs any class word every record
+    # of the population carries. Take a word out of that intercept, as `derive_costs` now
+    # does for a constant bit identified in another population, and an intercept-derived
+    # base region loses an EDGE. Masks plus arity says what the region is; the fit says what
+    # the header costs. Two questions, two answers.
+    n_masks = 1 if spec_mode == 'absent' else 2
+    pos = n_masks + BASE_INPUTS[r.filter_id] if r.filter_id in BASE_INPUTS else cost(0, False)
     size_pos = pos                           # first slot after the base region = size-expr slot
-    inputs = list(range(2, pos))
+    inputs = list(range(n_masks, pos))
     cls_slots = []
     cls_params = []
     for i, b in enumerate(clsbits):
