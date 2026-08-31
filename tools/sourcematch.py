@@ -53,6 +53,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
+import corpus                                                         # noqa: E402
 import decompose                                                      # noqa: E402
 import sbsasm                                                         # noqa: E402
 
@@ -307,7 +308,13 @@ EXPECTED = (
     ('ChesterfieldSofa', 'transformation', 'matrix22', ('w1', 3), 2, 'CONFIRMED'),
     ('SandyStonePath', 'blend', 'opacitymult', ('end', -1), 6, 'CONFIRMED'),
     ('SandyStonePath', 'normal', 'intensity', ('end', -1), 2, 'CONFIRMED'),
-    ('SandyStonePath', 'distance', 'distance', ('w1', 0), 2, 'CONFIRMED'),
+    # FIELD 1, NOT FIELD 0, AND THE SLOT DID NOT MOVE. The walk used to charge `distance`'s
+    # optional mask input twice -- once as the edge it is, once as w1 field 0 -- so the
+    # parameter block began one slot late and this pairing landed on the field before the
+    # real one. On these two records the two readings sit on the same WORD, which is why the
+    # value kept matching; they part wherever w1 bit 0 is clear. The witness is unchanged
+    # (56.2999992 and 64.2200012, records 3 and 180); only the field it is attributed to is.
+    ('SandyStonePath', 'distance', 'distance', ('w1', 1), 2, 'CONFIRMED'),
     ('SandyStonePath', 'directionalwarp', 'intensity', ('w1', 0), 5, 'CONFIRMED'),
     ('SandyStonePath', 'directionalwarp', 'warpangle', ('w1', 1), 5, 'CONFIRMED'),
 )
@@ -341,9 +348,15 @@ def verify(root=None):
 
 
 def pairs(root):
-    """[(sbs, sbsasm)] -- the sources this repository ships that HAVE a compiled twin."""
+    """[(sbs, sbsasm)] -- the sources this repository ships that HAVE a compiled twin.
+
+    THROUGH `corpus.sources`, WHICH APPLIES SPEC 12. This globbed directly, and that is how
+    the clean-room boundary came to be enforced by nobody: the rule was in the spec and the
+    glob was in the code. Both specimens this function actually finds are untagged and so
+    unaffected -- the filter is here for the case where they are not.
+    """
     out = []
-    for sbs in sorted(glob.glob(os.path.join(root, '**', '*.sbs'), recursive=True)):
+    for sbs in corpus.sources(root):
         pack = os.path.dirname(sbs)
         twins = sorted(glob.glob(os.path.join(pack, '**', '*.sbsasm'), recursive=True))
         if twins:
@@ -387,9 +400,12 @@ def main(argv=None):
 
     found = pairs(os.path.join(root, 'archive', 'specimens'))
     if a.pairs:
-        every = glob.glob(os.path.join(root, 'archive', 'specimens', '**', '*.sbs'),
-                          recursive=True)
-        print('%d sources, %d with a compiled twin' % (len(every), len(found)))
+        spec_dir = os.path.join(root, 'archive', 'specimens')
+        every = [p for p in glob.glob(os.path.join(spec_dir, '**', '*.sbs'), recursive=True)
+                 if not p.endswith('.sbsar')]
+        readable = corpus.sources(spec_dir)
+        print('%d sources, %d readable under SPEC 12, %d with a compiled twin'
+              % (len(every), len(readable), len(found)))
         for sbs, asm in found:
             print('   %-46s %s' % (os.path.basename(sbs), os.path.basename(asm)))
         return 0
@@ -397,11 +413,18 @@ def main(argv=None):
     if a.target:
         sbs = a.target if a.target.endswith('.sbs') else None
         if sbs is None:
-            hits = glob.glob(os.path.join(a.target, '**', '*.sbs'), recursive=True)
+            hits = corpus.sources(a.target)
             if not hits:
-                print('no .sbs under %s' % a.target)
+                print('no readable .sbs under %s' % a.target)
                 return 1
             sbs = hits[0]
+        # A PATH NAMED ON THE COMMAND LINE STILL GETS CHECKED. `corpus.sources` covers the
+        # directory form; this is the other way in, and skipping it would leave the boundary
+        # enforced everywhere except where a person types the filename themselves.
+        elif corpus.source_excluded(sbs):
+            print('%s is excluded by SPEC 12 (author %r)'
+                  % (os.path.basename(sbs), corpus.source_author(sbs)))
+            return 1
         asm = a.asm or next((t for s, t in found if s == sbs), None)
         if asm is None:
             hits = sorted(glob.glob(os.path.join(os.path.dirname(sbs), '**', '*.sbsasm'),

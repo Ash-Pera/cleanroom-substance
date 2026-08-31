@@ -669,32 +669,53 @@ def f_directionalwarp(ctx, v):
 # Table-driven tone, and the two-input spatial filters
 # ---------------------------------------------------------------------------
 
+#: How many components of a `read_ramp` entry `f_gradient` actually slices, per form. The
+#: keys are asserted against `sbsasm.RAMP_FORMS` by the suite, so a new layout in the decode
+#: fails there rather than at whichever record happens to reach it first. Entries may be one
+#: component WIDER than this -- the trailing midpoint word, which nothing here reads.
+_RAMP_WIDTH = {'grey-u16': 2, 'rgba-u16': 3, 'grey-float': 2, 'rgba-float': 5}
+
+
 @filt('gradient')
 def f_gradient(ctx, v):
     """A colour or greyscale ramp indexed by the input's first channel.
 
-    The ramp table itself is `Record.ramp`, whose stop/value packing is a decode this
+    The ramp table itself is `Record.read_ramp`, whose stop/value packing is a decode this
     module does not restate. Its ONE fitted piece is documented there and is not touched
     here: a one-word-late read patched onto three records of a single reference pack.
+
+    THE LAYOUT IS READ FROM THE RECORD, NOT FROM THE VALUES. This used to branch on
+    `isinstance(table[0][0], float)` and on the entry's length -- asking what a Python
+    object was, where the decode that built it had already chosen the layout from the
+    colour flag and the span. It agreed with the record on all 23,153 gradient records in
+    the 651 `.sbsasm` files here, which is how a reading like this survives a review: it is
+    not wrong, it is unfalsifiable. Two of the four layouts are three components wide, so the day a fifth
+    arrives the type is no longer enough and nothing would say so. `read_ramp` states the
+    layout; `_RAMP_WIDTH` is what this reader needs from each, and a form it cannot read
+    refuses out loud instead of slicing a short entry into a wrong-width array.
     """
-    table = v.rec.ramp
-    if not table:
+    got = v.rec.read_ramp()
+    if not got:
         raise Unsupported('gradient record carries no readable ramp')
+    form, table = got
+    if form not in _RAMP_WIDTH:
+        raise Unsupported('gradient ramp form %r has no reader here' % (form,))
+    if len(table[0]) < _RAMP_WIDTH[form]:
+        raise Unsupported('%s ramp entry is %d components, needs %d'
+                          % (form, len(table[0]), _RAMP_WIDTH[form]))
     W, H = v.size(ctx.cap)
     N = W * H
-    if v.colour and isinstance(table[0][0], float) and len(table[0]) >= 4:
+    if form == 'rgba-float':
         stops = np.array([e[0] for e in table], np.float32)
         vals = np.array([list(e[1:5]) for e in table], np.float32)
-    elif v.colour:
-        if isinstance(table[0][0], float) or len(table[0]) < 3:
-            raise Unsupported('colour ramp is not in the u16 packed form')
+    elif form == 'grey-float':
+        stops = np.array([e[0] for e in table], np.float32)
+        vals = np.array([e[1] for e in table], np.float32)
+    elif form == 'rgba-u16':
         stops = np.array([e[0] for e in table], np.float32) / 65535.0
         packed = [(int(e[1]) | (int(e[2]) << 16)) & 0xFFFFFFFF for e in table]
         vals = np.array([[(u >> (8 * k)) & 0xFF for k in range(4)] for u in packed],
                         np.float32) / 255.0
-    elif isinstance(table[0][0], float):
-        stops = np.array([e[0] for e in table], np.float32)
-        vals = np.array([e[1] for e in table], np.float32)
     else:
         stops = np.array([e[0] for e in table], np.float32) / 65535.0
         vals = np.array([e[1] for e in table], np.float32) / 65535.0
@@ -798,16 +819,43 @@ def f_distance(ctx, v):
     than folded into it.
     """
     import distance as dist
-    # THE RADIUS IS A NAMED FIELD NOW, where the source could see it: SandyStonePath states
-    # 56.3 and 64.22 and records 3 and 180 hold exactly those at w1 field 0. The locator
-    # below stays for the one case the source cannot reach -- field 1 holding a PROGRAM,
-    # where the walk's placement is unverified and reads a pointer as 0.0 while the locator
-    # evaluates the program and returns 1.0 or 0.29. That case is 188 corpus records and it
-    # is chosen on the record's own state bits, not on how the value looks.
+    # THE RADIUS IS FIELD 1, AND BOTH OF ITS ARMS ARE READ HERE. It was named at field 0,
+    # which is not a parameter at all: field 0's low bit declares the optional mask INPUT,
+    # and the walk was charging that input twice -- once as the edge it is, once as this
+    # field -- so the parameter block started one slot late and the wrong field carried the
+    # name. On the records a source can witness the two coincide, which is why the naming
+    # held up: SandyStonePath states 56.3 and 64.22 and records 3 and 180 hold exactly
+    # those. Everywhere else they part, and the file says which is right -- see below.
+    #
+    # THE SLOT MUST ACTUALLY HOLD A PROGRAM, and that check is what found this. Under the
+    # field-0 naming, the named slot resolved to a valid program in 0 of 595 records while
+    # the slot one earlier did in 569; 579 of the 595 held a float-shaped word, Brick02
+    # record 61 being the shape of all of them -- `5.120025` read as an address
+    # (`0x40a3d70a + 52`). Reading the state bits differently would have been a third guess
+    # about a placement two rules already disagreed on, so this asked the file, which is the
+    # loud check §6.3 applies to edges; declining gained 1,215 records (+6.3%) and 7 declared
+    # outputs over the 30 files carrying the configuration, with the reference specimen
+    # byte-identical.
+    #
+    # WITH THE NAME ON FIELD 1 THE DECLINE IS NEVER NEEDED: over 2,411 corpus `distance`
+    # records the legend now reads 1,720 plausible baked radii, 509 baked zeros and 188
+    # programs, and ALL 188 decode. Under the old naming the same sweep produced 638
+    # undecodable "programs", 105 denormal "radii" (pointers read as floats), 3 records that
+    # raised `Shifted` and 87 with no parameter at all. The guard stays because what it
+    # asserts is right whatever the naming, and it is now silent.
     p = v.params.get('distance')
-    f1_program = ((v.words[1] >> 2) & 3) == 2 if len(v.words) > 1 else False
+    if p is not None and p.kind == 'program':
+        _raw = v.words[p.slot] if (p.slot is not None
+                                   and 0 <= p.slot < len(v.words)) else None
+        if _raw is None or not ctx.asm.valid_program(_raw + 52):
+            p = None
     val = how = None
-    if p is not None and not f1_program:
+    # `f1_program` USED TO GUARD THIS LINE -- "field 1 holds a program, so the walk's
+    # placement is unverified" -- and it was a symptom of the name being on field 0. Field 1
+    # holding a program now means the radius IS a program and the record names it. Against
+    # the locator it replaces, on the five program-arm records of PavingStonesSubstance003:
+    # identical, 5 of 5 (0.0, 1.0, 1.0, 3.2, -3.2).
+    if p is not None:
         if p.kind == 'baked':
             val, how = float(p.value), 'walked'
         else:

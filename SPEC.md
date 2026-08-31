@@ -122,15 +122,25 @@ field; a writer emits in the same order.
 ### 6.2 The two header words
 
 ```
-word0:  low16  = flags (bit 0 = colour: 0 grayscale, 1 colour)  +  filter id
+word0:  low16  = bit 0     colour flag (0 grayscale, 1 colour)
+                 bits 1-7  filter id, as (low16 & 0xFF) >> 1
+                 bits 8-11 log2 WIDTH        the record's own canvas (§13.2)
+                 bits 12-15 log2 HEIGHT
         high16 = CLASS WORD — presence mask over INHERITED parameters
 word1:          two-bit code per field — the filter's OWN parameters
 ```
 
-- **Class word (word0 high half):** each set bit adds one inherited-parameter field, in
-  ascending bit order. Widths come from the manifest type of the parameter that bit gates
-  (§7.2): bit 10 is `$outputsize` (integer2 → 2 words); the other common inherited
-  parameters are 1 word each.
+The low half is worth spelling out because it is **not** a presence mask and a reader must
+not treat it as one: two of its nibbles are a size. A fitted cost table that offers every bit
+of word0 as a feature will happily charge header words to them, and §13.4 records what that
+cost.
+
+- **Class word (word0 high half):** the set bits are read in ascending bit order, and each
+  one that gates a stored value adds a field. Widths come from the manifest type of the
+  parameter that bit gates (§7.2): bit 10 is `$outputsize` (integer2 → 2 words); the other
+  common inherited parameters are 1 word each. **A set bit can cost nothing**, and a reader
+  that gives every set bit a slot runs its block past the end of the header — see §13.4,
+  where a fitted table charged four bits that store no value.
 - **Word1 two-bit codes:** each of the filter's own parameters is a 2-bit field:
 
   | code | meaning | cost |
@@ -152,6 +162,21 @@ in this order: a filter's fixed *base* image inputs (contiguous from slot 2), an
 field with code `11`, and — for a few filters — an *arity integer* (§6.4). Because edges
 are backward indices, a walk can be checked loudly: any slot the walk calls an edge must
 hold a value `< own index`, or the walk is wrong.
+
+**One `w1` field declares an edge on its LOW BIT, not on the full code `11`.** `distance`'s
+field 0 is the case: it charges a word in states `01` and `11` and nothing in `10`, which is
+a cost tracking bit 0 alone rather than baked-versus-program, and no parameter costs that way.
+Over the corpus's five `distance` `w1` values, bit 0 set (5, 7, 9) gives two edges and clear
+(6, 10) gives one, **2,277 of 2,277**. Such a field is *not* part of the end-anchored
+parameter block (§13.4) and must not be charged a word in it — doing so begins the block one
+slot late and silently renames every parameter after it.
+
+**The same loud check applies to programs.** A slot the walk calls a program must hold a
+decodable program at `value + 52`, exactly as an edge slot must hold a backward index. This
+is worth asserting rather than assuming: reading a baked `5.120025` as the address
+`0x40a3d70a + 52` is what the mis-charged field above produced, and it is invisible without
+the check — a wrong radius renders, a wrong address does not, and only one of them announces
+itself. On one specimen the unchecked read blocked 1,581 further records.
 
 ### 6.4 The four layout alphabets
 
@@ -197,13 +222,13 @@ An earlier version of this section said it "holds every baked scalar/vector valu
 false, and the error is large: measured over 437 specimens, the graph-input descriptors of
 §7.2 consume the table's **entire stated extent** — `table_start = trailer word 6 + 52` to
 `table_end = header 0x2C + 52` — in 437 of 437 files, with no room left over. Meanwhile the
-records carry **544,873 baked parameter slots** against the corpus's **8,500** descriptors,
+records carry **544,189 baked parameter slots** against the corpus's **8,500** descriptors,
 a ratio of 1 : 64.
 
 Those two populations are disjoint. **A record's baked parameters are stored inline in the
 record header, one word per component** (§6), and are never in the value table. A reader
-built on the old sentence would look for 544,873 values in an array that does not contain
-them.
+built on the old sentence would look for half a million values in an array that does not
+contain them.
 
 The 437/437 closure is stated deliberately in terms of the two header/trailer pointers.
 `standalone_parse` reports its own `table_ok` at 437/437 as well, and **that number is not
@@ -234,28 +259,37 @@ position; in v2–v6 it occupies none. Getting it wrong shifts the whole table b
 
 §7.2's `type -> 4N` table is the format's own width legend, stated in the file and read
 rather than fitted. It reaches the record side too: over 437 specimens every one of the
-**544,873** baked parameter slots the walk reads has a width of 1, 2 or 4 words —
+**544,189** baked parameter slots the walk reads has a width of 1, 2 or 4 words —
 `float1`, `float2`, `float4` — and **none falls outside the legend's 1..4**. (Width 3,
 `float3`, is legal by the legend and does not occur.) Per filter:
 
 | filter | 1 word | 2 words | 4 words |
 |---|---|---|---|
-| 1 `blend` | 137,808 | 26 | — |
+| 1 `blend` | 138,608 | 26 | — |
 | 2 `transformation` | 36 | 29,331 | 66,512 |
 | 11 `dirmotionblur` | 25,654 | — | — |
 | 12 `directionalwarp` | 115,122 | — | — |
 | 15 `levels` | 163,992 | — | 1,735 |
 | 17 `text` | 43 | 39 | 14 |
-| 18 `normal` | 971 | — | — |
-| 21 `distance` | 1,552 | 2,038 | — |
+| 18 `normal` | 988 | — | — |
+| 21 `distance` | 2,089 | — | — |
 
 So the legend is not the gap. **What the file does not state is the per-field type CODE**,
 and that is the object `costs.json` actually fits — a *kind assignment* per (filter,
 field), not a width. Two searches for a per-node type declaration came back empty and are
 recorded so they are not repeated: the interface block declares 8,500 typed descriptors
-against 544,873 slots and is framed to the graph-input table alone (§7.1), and the record
+against half a million slots and is framed to the graph-input table alone (§7.1), and the record
 directory holds bare offsets. The filter id *is* the declaration, and the parameter list it
 names lives in the engine.
+
+**Three rows moved when the cost model's attribution was corrected**, and the movement is
+the correction rather than new data: `distance`'s width-2 column was the phantom left by
+charging its mask input twice — the real field is one word wide and there is no width-2
+`distance` parameter at all — and `normal` gained 17 slots that the walk used to allocate
+past the end of their own records and then discard. `blend`'s row had gone stale earlier,
+when its relocated opacity arm was named. The claim the table supports is unaffected: no
+width outside 1, 2, 4 has ever appeared, and the corrected `distance` row removes the only
+row where a width came from a rounded 1.5 rather than from a type.
 
 One kind is already stated rather than assigned, which is the existence proof that the
 distinction is real: a `channel` field's component count is the **tag's colour bit** — 4
@@ -276,6 +310,13 @@ where it is `1`. The two bits are a STATE, not a count:
     01  baked           a constant, inline in the header, one word per component (§7.3)
     10  program         a pointer into the instruction stream (§10)
     11  image input     an edge — a backward record index, not a parameter at all
+
+**The state legend has one exception, and it is a field that is not a parameter.**
+`distance`'s field 0 declares that filter's optional mask INPUT from its LOW BIT alone, so
+`01` adds an edge where the legend above would read a baked value — see §6.3. Such a field
+takes no place in the parameter block, and the tell is its cost: one word in `01` and `11`
+and none in `10` tracks a single bit, where a parameter costs a word for its value and a
+word for a pointer.
 
 **Placement is a cursor, not an index.** The walk visits fields in ascending `j`, and each
 present field advances the cursor by its own width. Nothing stores a slot number (§6.1), so a
@@ -352,7 +393,28 @@ discriminated by the tag word's **low nibble**:
   field: bit 4 a branch (two children, e.g. `0x1B`), bit 5 a `randomseed` program, bit 6 a
   baked `randomseed`, bit 7 the base program+successor structure. So `0x0b` is a leaf
   (successor at word 1), `0x18b` puts its successor at word 2, `0x1ab`/`0x1cb`/`0x89` at
-  word 3, `0x99` at word 4.
+  word 3, `0x99`/`0x1db` at word 4.
+
+  **Bit 4 makes a branch on a NODE too, not only on a leaf, and the successor rule does not
+  see the second child.** `0x1db` (bits 4, 6, 7) is the case, and all 23 in the corpus are
+  one structure byte for byte: `[0x1db][2][program][child][child][0x09000013]`. The
+  computed successor — word 4 — is the *second* child; word 3, which the mask spends on
+  bit 6's baked `randomseed`, is the first. It is a child and not a value that happens to
+  dereference: **the program at word 2 ends exactly where word 3's target begins, 23 of 23**,
+  so the child abuts its own node's program, the same contiguity `0x1B`'s sentinel form uses.
+  Following it reaches an entry table in 20 of 23 against 0 of 23 for the neighbouring word
+  as a control, and the same test over every other family stays at the noise floor (`0x89`
+  w2 1 of 47, `0x1cb` w2 2 of 30, `0x99` w3 0 of 44). Both children are `0x1a3` and open
+  identical chains. The node's program is not a selector: one distinct source across all 23,
+  reading nothing, writing constants to slots 1–6 and returning a literal `1` — a state
+  initialiser, which is the role `0x1B`'s program also plays. So `0x1db` is the `0x1B`
+  BRANCH shape wearing bit 7, and a reader that dispatches on bit 7 first will never see it.
+
+  **A reader following only the computed successor draws half of such a record.** 23 records
+  across 12 files walk one table entry and drop one, and the two carry different parameter
+  masks (`0x55300158` dropped against `0x05300758` walked, constant across every file — they
+  cook from one template). Whether the engine draws both children or selects one is **not
+  established**: no specimen with a `0x1db` ships an export.
 - **nibble 8 → a paramset table entry**, *not* a node. The entries are a **linked list**:
   each entry stores a pointer to the next one — the header slot reaching furthest forward,
   past the entry's own inline program. The entry ends at its inline program, whose length the
@@ -472,6 +534,10 @@ instances, so instruction counts can be far below authored node counts.
 `0x01` reads a system variable by immediate: 0 `$time`, 1 `$size`, 3 `$sizelog2`,
 8 `$pos`, 10 `$number` (FX-Map only).
 
+`$pos` means **two different things** depending on which program reads it — the sampling
+coordinate in a `pixelprocessor`, the node's own base position in an FX-Map. Supplying the
+first where the second is meant renders nothing. See §13.5.
+
 ---
 
 ## 11. Interface block
@@ -491,7 +557,13 @@ It aggregates every graph in a multi-graph package. `validate_corpus.py` confirm
 
 This specification was produced clean-room: no Adobe Substance engine binary was run,
 disassembled, or inspected, and any source file bearing `<author v="Allegorithmic">` was
-excluded from analysis. The format's *structure* is fully recovered — a reader can locate
+excluded from analysis. That exclusion is now a predicate rather than a habit —
+`corpus.sources()` returns only permitted `.sbs` paths and `corpus.source_excluded()` checks
+one, and every tool that reads a source goes through them. It was enforced by nothing until
+a reading of FX-Map `$pos` was taken from an excluded file and had to be withdrawn; **131 of
+the 491 sources here bear the tag**, and for FX-Maps specifically they are the whole of the
+interesting population, so a negative measured over the permitted sources means "absent from
+what may be examined" and never "absent from the format". The format's *structure* is fully recovered — a reader can locate
 and walk every region above from the file alone. What remains open is *semantics*: the
 meaning of some filter parameters, the FX-Map pattern footprint (§8), and a handful of
 provenance-walled specifics (e.g. `vectorshape` layout, inline FX parameter names).
@@ -652,8 +724,8 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 12 directionalwarp | intensity / warpangle | `0x0006` / `0x0018` | 1 / 3 | scalar |
 | 15 levels | levelinlow, levelinhigh, levelinmid, leveloutlow, levelouthigh | `0x0003`, `0x000C`, `0x0030`, `0x00C0`, `0x0300` | 0,2,4,6,8 | per-channel |
 | 18 normal | intensity | `0x0003` | 0 | scalar |
-| 21 distance | distance | `0x0003` | 0 | scalar |
-| 21 distance | *(unnamed)* | `0x000C` | 2 | flag |
+| 21 distance | *(the mask input's declaration — not a parameter)* | `0x0003` | 0 | — |
+| 21 distance | distance | `0x000C` | 2 | scalar |
 | 18 normal | inversedy | `0x000C` | 2 | flag |
 | 18 normal | *(unnamed)* | `0x0030` | 4 | flag |
 
@@ -680,15 +752,48 @@ and the 170 program-arm records read 01.** The arms are told apart by their VALU
 exceptions in 437 files — every one of the 963 holds a plain float in [0, 1] and resolves no
 program; not one of the 170 is a plain float and all 170 resolve a program.
 
-**Two placements can claim one slot, and the source settles it.** The class block and the
-end-anchored parameter block are laid out from opposite ends, and on ~980 `normal` records
-they meet: the class walk puts bit 16 -- the size expression -- on the slot the parameter
-block owns, and bit 27 one further, past the header end. `ChesterfieldSofa.sbs` states
-`intensity` 10 on its one normal node and that slot holds 10.0, so the parameter is where it
-belongs and the class placement is over-long. A reader should keep the parameter, drop the
-size slot rather than treat a float as a program address, and report the clash. 6,844
-records place a class parameter past the header end at all (`shuffle` 3,478, `dyngradient`
-1,938, `normal` 983), which is the same over-long block seen from the other side.
+**The class block ends exactly where the header ends, and a reader whose block runs past it
+has mis-attributed a width, not found a longer header.** This was got wrong here, and the
+shape of the error is worth stating because any reader fitting slot costs to observed header
+LENGTHS can reproduce it. A header is `base + the cost of each set bit`, where the base is
+the record's own structure — one or two mask words plus the filter's base image inputs. Fit
+that equation with the base left FREE and the total still comes out right while the split
+between base and bits does not: the fit is at liberty to shave words off the base and charge
+them to a bit that happens to be set in every record. Nothing that compares lengths can see
+it. A reader walking the same table FORWARDS from the real base then places the class block
+too far right and runs past the end — on 7,119 records here (`shuffle` 3,514, `dyngradient`
+2,214, `normal` 1,391), with the size expression landing two slots late on `normal` and one
+on `dyngradient`, and on ~1,000 `normal` records landing on the slot the end-anchored
+parameter block owns. `distance` ran its own parameter past the end on 2,360 more, for a
+second reason on top of this one: its optional mask input was charged twice, once as the
+edge it is and once as a `w1` field.
+
+Pinning the base to what the record states and re-solving for the bit costs is exact on
+every record of all three filters, needs no negative or half-word coefficient, and leaves
+every header length unchanged. Three things confirm the new placement rather than merely
+being consistent with it: the size-expression slot resolves as a valid program in 3,640 of
+the 3,640 records where it moved, against 281 at the old position; `ChesterfieldSofa.sbs`'s
+declared `intensity` 10.0 lands on the `w1` field the legend names, where it used to land on
+the slot the walk called class bit 16; and the two independent placements — the forward
+class walk and the end-anchored parameter block — now agree instead of colliding.
+
+**What the corrected attribution says about the format.** `distance`'s `w1` field 0 is the
+mask input's declaration and its field 1 is the radius, set out with its evidence in the
+`distance` paragraph further down this section. **`normal`'s and `dyngradient`'s
+over-charged bits were the record's own SIZE**: word0 bits 8–11 and 12–15 are the log2 width
+and height (§6.2), and the fit — which offers every bit of word0 as a feature — charged a
+word to bits 10, 11, 14 and 15, which are bits 2 and 3 of those two nibbles. It stayed
+invisible because within log2 4…11 exactly one of bits 2, 3 is set in each nibble, so the
+over-charge was a constant +2, and no `normal` or `dyngradient` record in the corpus is
+outside that range. It is not invisible outside it: under the old table the same `normal`
+record reads a **10-word header at 4096×4096 and a 6-word one at 8×8**, where its parameters
+have not moved at all. Under the corrected table it reads 8 at every size, which is what a
+header whose contents do not depend on the canvas must do. And `shuffle` has two
+cost tables, one per record shape (§6.4): the one-channel shape bakes four `channelsweights`
+words at bit 24 and carries no `w1`, the four-channel shape packs its per-channel selector
+into `w1` and bakes nothing, so bit 24 costs 4 words in the first and 0 in the second. One
+additive table cannot hold both without a negative coefficient, which is exactly what the
+free-intercept fit produced.
 
 **A reader should say what it declines to read.** An unnamed field is not an error — the
 walk places it, so the layout is right — but it is invisible in a way an error is not: the
@@ -723,7 +828,7 @@ program:
 
 | filter | parameter | word0 bits | width |
 |---|---|---|---|
-| 3 shuffle | channelsweights | 24 | 4 |
+| 3 shuffle | channelsweights | 24 | 4 (one-channel shape) / 0 (four-channel) |
 | 6 uniform | outputcolor | 24 | 4 (colour) / 1 |
 | 7 warp | intensity | 29 baked, 30 program | 1 |
 | 10 blur | intensity | 28 baked, 29 program | 1 |
@@ -734,10 +839,23 @@ program:
 
 `distance`'s radius is the source's own: `SandyStonePath.sbs` states 56.2999992 and
 64.2200012 on its two distance nodes and records 3 and 180 of the compiled twin hold exactly
-those at field 0. **Where field 1 holds a program the placement is unverified and wrong** --
-on those 188 corpus records every candidate slot holds a pointer, so a reader that trusts the
-width law there reads a radius of 0. The state bits say which case a record is in, so no
-value has to be inspected to tell them apart.
+those. **That witness pins a SLOT, not a field**, and the difference cost this specification
+a wrong reading for a while: on those two records the two candidate fields sit on the same
+word, because the reader was charging `distance`'s optional mask input twice — once as the
+edge it is, once as `w1` field 0 — and so began the parameter block one slot late.
+
+**Field 0 is not a parameter. Its low bit declares the optional mask INPUT**, and that is
+what its costs say: one word in states `01` and `11`, none in `10`. A cost that tracks bit 0
+alone rather than baked-versus-program is not a parameter's; a parameter costs a word for its
+value and a word for a pointer. Across the five `w1` codes the corpus holds, bit 0 set (5, 7,
+9) gives two edges and clear (6, 10) gives one, 2,277 of 2,277. **The radius is field 1**,
+whose two states are the ordinary pair.
+
+The file arbitrates the difference outright. Over 2,411 corpus `distance` records, naming
+field 1 yields 1,720 plausible baked radii, 509 baked zeros and 188 programs — and **all 188
+decode as programs**. Naming field 0 yielded 638 "programs" whose slot does not decode (a
+baked `12.8` read as an address), 105 "radii" that are denormals (a pointer read as a float),
+3 records whose parameter block could not be placed at all, and 87 with no parameter found.
 
 `sharpen` sits at the same pair as `blur`, on weaker evidence: no shipped source states a
 sharpen parameter at all (all 28 nodes are at defaults), so this rests on the pair shape —
@@ -781,6 +899,41 @@ image program is the other population: it does read `$pos`, and for it `$size` a
 must describe the same grid or a neighbour tap goes sub-pixel and the filter silently
 becomes an identity.
 
+**`$pos` MEANS TWO DIFFERENT THINGS, and "the grid being drawn on" is only the first.** The
+census above counts filter PARAMETERS and says nothing about FX-Map NODE programs, which
+are a third population and a large one: 26,758 of 41,164 fxmaps records (65.0%) carry a
+program that reads `$pos`. It is read at two components in 26,907 of 26,907 reads and
+immediately ADDED in 99.5% of them. The split against the sampler is clean — of the programs
+reading `$pos`, 54,661 of 55,462 `pixelprocessor` ones feed `samplelum`/`samplecol` (98.6%)
+against **17 of 26,803** fxmaps ones (0.06%). Inside an FX-Map `$pos` is not a sampling
+coordinate.
+
+Its consumer is the GATE. Of 26,741 fxmaps records whose chain reads `$pos`, 26,591 read it
+in an `0x89` gate's program and 150 in the stepper's, while only 34 read it in a named entry
+parameter at all. The idiom is `$pos + <an offset the program itself scans>` tested against a
+float4 rectangle the record bakes — a cull, not a placement. So `$pos` is the **absolute base
+of a relative walk**: the scan the program keeps in its own slots is the relative part, and
+`$pos` is what it is measured from.
+
+**The value is the origin, and the record's own bounding rectangle says so.** Its bounds are
+whole or half integers and the walk steps by whole units, so only `$pos` = 0 puts the scan on
+the lattice the bounds are aligned to — a mechanism, not a fit. Emissions against the integer
+cells each rectangle encloses: on the reference specimen, records 1/3 bound `[-13, 14]` in
+both axes = 27², and emit 729 at the origin against 676 from a corner-based frame; another
+specimen's record bounds `[-4, 5]` = 9², and emits 81 against 64. A corner frame misses on
+three records and wins on none. It is also a per-node CONSTANT: every per-pattern candidate
+breaks the same count (a `$number` cell grid gives 416 and 1,792 where the rectangles hold
+729 and 10,000; any per-pattern jitter at all gives 716 for 729). And nothing argues it must
+be non-zero — across 26,803 `$pos`-reading FX programs not one divides by a `$pos`-derived
+value.
+
+Two further things refuse the per-pixel reading outright: a walk consumes one verdict per
+pattern, so a per-pixel `$pos` returns N verdicts of which all but the first are silently
+dropped; and supplying the render grid takes the reference specimen from 70 rendered records
+to 41 and removes `height` entirely. The remaining open case is a SUBDIVIDED FX-Map (§13.7) —
+the chain walk is flat, so there is one node position and it is the root's. See
+`assume.QUESTIONS['fx.pos']`.
+
 **How an image reaches a program.** `samplelum`/`samplecol` take a **sampler index**, and
 it is the *first* immediate in both their 2- and 3-operand encodings — established by the
 arity bound: the first immediate is in range on 5,711 of 5,714 three-operand samples, while
@@ -820,7 +973,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | warp | displace input 0 by the **gradient** of input 1, scaled `·W/ref·I` |
 | normal | `n = normalise(−gx·I, −gy·I, 1)`, `out = ½ + ½n`; the gradient is per render pixel, so scale it `·W/ref` or strength tracks the preview grid |
 | emboss | `base + k·(g₁(pos) − g₁(pos + (δ, −δ)))`, `δ = 0.005859375` |
-| distance | a distance field grown from the mask input; the radius is **not** in §13.4 and is the one read still carrying a fallback of its own (69 records gained, 11 disagreeing) — mark every record it answers for |
+| distance | a distance field grown from the mask input; the radius is `w1` field 1 (§13.4), baked or a program, and a fallback locator remains for the records that name neither — mark every record it answers for |
 | pixelprocessor | the program at the **last header slot**, evaluated per pixel; earlier slots are inherited parameters and setup |
 | fxmaps | §13.7 |
 
@@ -839,7 +992,7 @@ Walk the chain of §8 nodes; the table entries at its end are the draws.
 | `0x18B` `0x1AB` `0x1CB` `0x20B` | **iterate** — run the subtree `numberadded` times, `$number` = 0…n−1 |
 | `0x89` | **gate** — its program returns a predicate; walk on while true |
 | `0x99` `0x??9B` | **stepper** — a per-iteration state update (a raster/spiral position); run it, then continue |
-| `0x??1B` | pass through to the successor |
+| `0x??1B` `0x1DB` | **branch** — a state-initialiser program and TWO children (§8). `0x??1B` walks both; for `0x1DB` whether the engine draws both or selects one is unestablished, and a reader following only the computed successor draws half the record |
 | `0x??0B` | leaf — the entry table draws |
 
 **The emission count**, in this order:
@@ -868,6 +1021,22 @@ footprint.
 squares over-covers the canvas by orders of magnitude on most records, and no frame model
 tested reconciles it. This is the principal remaining blocker to rendering FX-Maps
 generally, and it is independent of the emission count above.
+
+**Subdivision — not found.** A node whose children cover different parts of their parent's
+region would give each child a different `$pos` (§13.5). None is in evidence. Of 155 distinct
+node headers reached across the compiled corpus, `0x1db` is the ONLY one whose word 1 equals
+its number of trailing node pointers, and it is two-way at every instance — no three- or
+four-way variant exists. The shipped sources agree as far as they can be read: over 266
+FX-Map graphs in the 34 third-party sources that contain one, **no node has more than one
+child**, every node being an `addnode` with one successor, a one-child `markov2`, or a leaf
+`paramset`. A two-way branch's arms cover the same region and share a position, so nothing
+here subdivides.
+
+This is a NEGATIVE BOUNDED BY THE CLEAN-ROOM RULE (§12), not a claim about the format. The
+`.sbs` sources that do branch are Allegorithmic-authored and therefore excluded from
+analysis, so the honest statement is that subdivision is absent from what may be examined —
+not that Substance lacks it. Until a compiled subdividing node is found, an FX-Map has one
+node position and it is the root's.
 
 ### 13.8 What the file does not state
 

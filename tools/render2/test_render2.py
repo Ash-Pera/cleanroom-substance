@@ -123,9 +123,13 @@ UNNAMED_BUT_DECLARED = {
         # NOT DECLARED AT ALL. A program arm here moves whatever this legend does name.
         12: (3,),        # directionalwarp
         20: (2,),        # pixelprocessor -- one field, 16 words, 1 corpus record
-        21: (1,),        # distance -- field 0 is named now; field 1 is the source's
-                         # `combinedistance` on nothing better than elimination, and both
-                         # nodes state it 0, so it stays unnamed
+        21: (0,),        # distance -- field 1 is the radius and is named; field 0 is the
+                         # optional MASK INPUT's declaration, and it is here rather than in
+                         # `W1_PARAMS` because it is not a parameter: its low bit adds an
+                         # edge at the front of the header, which the walk places, and the
+                         # end-anchored parameter block must not charge itself for it. Its
+                         # costs say the same thing -- one word in states 01 and 11, none in
+                         # 10, which tracks w1 bit 0 and not baked-vs-program.
     },
     'cls': {
         # Bit 23 is a PROGRAM POINTER wherever it appears -- it decodes to 10 ops on the
@@ -138,8 +142,17 @@ UNNAMED_BUT_DECLARED = {
         # -- those are floats, not log2 integers.
         3: (23, 26), 7: (23, 26, 27), 10: (23, 26, 27), 11: (23, 26, 27),
         12: (23, 26, 27), 13: (23, 26, 27), 21: (23, 26, 27),
-        18: (10, 11, 14, 15, 23, 26, 27),
-        19: (11, 23, 25, 26),
+        # `normal` 10/11/14/15 and `dyngradient` 11 WERE HERE AND ARE THE RECORD'S SIZE.
+        # Word0's low half is not a presence mask: bits 8-11 are log2 width and 12-15 log2
+        # height, so these four are bits 2 and 3 of the two nibbles. A fit that offers every
+        # bit of word0 as a feature charged them a word each against an intercept two (one)
+        # words below the real base region, and within log2 4..11 exactly one of bits 2 and 3
+        # is set in each nibble -- a constant over-charge, invisible in the total, spent as
+        # slots past the header end. Nothing is named here that was not named before: the
+        # entries left because the FORMAT does not declare them, not because this legend
+        # learned to read them.
+        18: (23, 26, 27),
+        19: (23, 25, 26),
     },
 }
 
@@ -235,18 +248,25 @@ def _declared_without_a_name():
             continue
         entry = costs.get(str(fid), {})
         cov_w1, cov_cls = model._covered_bits(fid)
+        # ONE SPEC OR A LIST OF VARIANTS, and the answer is the union over them. This read
+        # `entry['cls']` directly, so a filter stored as variants declared NOTHING here and
+        # left the inventory silently rather than failing -- which is the opposite of what
+        # this instrument is for. `shuffle` became two variants when its costs were
+        # re-attributed against its own base region: its class widths differ by record
+        # shape, and one spec cannot hold both without a negative coefficient.
+        specs = entry.get('variants') or [entry]
         # `int(round(...))` is `decompose`'s own rule for turning a fitted cost into words.
-        rows = tuple(int(j) for j, states in sorted(entry.get('w1', {}).items(),
-                                                    key=lambda kv: int(kv[0]))
-                     if not ((3 << (2 * int(j))) & cov_w1)
-                     and max(int(round(v)) for v in states.values()) >= 1)
-        if rows:
-            got['w1'][fid] = rows
-        rows = tuple(int(b) for b, c in sorted(entry.get('cls', {}).items(),
-                                               key=lambda kv: int(kv[0]))
-                     if int(b) not in cov_cls and int(round(c)) >= 1)
-        if rows:
-            got['cls'][fid] = rows
+        w1_rows, cls_rows = set(), set()
+        for spec in specs:
+            w1_rows |= {int(j) for j, states in spec.get('w1', {}).items()
+                        if not ((3 << (2 * int(j))) & cov_w1)
+                        and max(int(round(v)) for v in states.values()) >= 1}
+            cls_rows |= {int(b) for b, c in spec.get('cls', {}).items()
+                         if int(b) not in cov_cls and int(round(c)) >= 1}
+        if w1_rows:
+            got['w1'][fid] = tuple(sorted(w1_rows))
+        if cls_rows:
+            got['cls'][fid] = tuple(sorted(cls_rows))
     return got
 
 
@@ -434,14 +454,19 @@ def test_normal_declares_the_field_that_shifts_its_intensity():
 
 
 def test_distance_reads_the_radius_its_source_states():
-    """`distance`'s radius, and the one case the source cannot reach.
+    """`distance`'s radius: the value a source states, and the arm no source can reach.
 
-    SandyStonePath states 56.2999992 and 64.2200012 on its two distance nodes; records 3
-    and 180 of the compiled twin hold exactly those at w1 field 0. Where field 1 holds a
-    PROGRAM there is no such witness, and the walk's placement is demonstrably wrong there
-    -- every candidate slot on those records holds a pointer, which reads as 0.0 -- so
-    `f_distance` keeps its own locator for them. Both halves are asserted, because the
-    naming without the exception would render a radius of zero on 188 corpus records.
+    SandyStonePath states 56.2999992 and 64.2200012 on its two distance nodes and records 3
+    and 180 of the compiled twin hold exactly those. That is the witness, and it pins a
+    SLOT; it does not pin a field, because on those records the two candidate fields sit on
+    the same word. What pins the field is the other arm: `distance` is w1 FIELD 1, whose two
+    states are the ordinary baked/program pair, while field 0's low bit declares the
+    optional mask input. Naming field 0 read a pointer as a float on 105 corpus records and
+    a float as a program address on 638; naming field 1, all 188 program-arm records decode
+    and none of the baked ones is a denormal.
+
+    Both halves are asserted here: the declared values, and that a program arm resolves to a
+    program rather than to a plausible-looking float.
     """
     hits = glob.glob(os.path.join(ROOT, '**', 'StylizedCobblestoneStreet.sbsasm'),
                      recursive=True)
@@ -453,9 +478,9 @@ def test_distance_reads_the_radius_its_source_states():
         got = v.baked('distance')
         assert got is not None and abs(got - want) < 5e-3, \
             'record %d reads %r, the source states %r' % (index, got, want)
-    # THE EXCEPTION NEEDS ITS OWN SPECIMEN: this pack has no distance record whose field 1
-    # holds a program, so asserting it here would assert nothing. PavingStones does -- and
-    # what the walk names on those records is a pointer, which reads as 0.0.
+    # THE PROGRAM ARM NEEDS ITS OWN SPECIMEN: this pack has no distance record whose field 1
+    # holds a program. PavingStones does, and what the legend names there must be an address
+    # the file can decode -- the check that told the two namings apart in the first place.
     other = glob.glob(os.path.join(ROOT, '**', 'PavingStonesSubstance003_COMPILED.sbsasm'),
                       recursive=True)
     checked = 0
@@ -465,11 +490,15 @@ def test_distance_reads_the_radius_its_source_states():
             if (rec.filter_name != 'distance' or len(rec.words) < 2
                     or (rec.words[1] >> 2) & 3 != 2):
                 continue
-            got = model.View(asm2, rec).baked('distance')
+            v2 = model.View(asm2, rec)
+            p = v2.params.get('distance')
             checked += 1
-            assert got is None or abs(got) < 1e-30, \
-                'record %d: field 1 holds a program and field 0 reads %r, a plausible ' \
-                'radius -- f_distance\'s exception may no longer be needed' % (rec.index, got)
+            assert p is not None and p.kind == 'program', \
+                'record %d: field 1 holds a program and the legend reports %r' % (
+                    rec.index, p)
+            assert asm2.valid_program(rec.words[p.slot] + 52), \
+                'record %d: the named slot %d does not decode as a program, which is what ' \
+                'the field-0 naming looked like' % (rec.index, p.slot)
         assert checked, 'PavingStones no longer has a program-arm distance record'
     print('ok  test_distance_reads_the_radius_its_source_states (2 values from the source, '
           '%d program-arm records)' % checked)
@@ -501,12 +530,16 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
         placed = dict((b, sl) for (b, sl, _n) in d.get('cls_params', ())).get(16)
         if placed is not None:
             checked += 1
-            # ONE EXCEPTION, AND IT IS EVIDENCE, NOT SLACK. On this specimen's `normal`
-            # records the class walk puts bit 16 on the slot the end-anchored parameter
-            # block owns -- and the SOURCE says the parameter is right: ChesterfieldSofa
-            # states `intensity` 10 on its one normal node and that slot holds 10.0. The
-            # size slot is dropped there rather than handing `walk_programs` a float as a
-            # program address, and the clash is reported through `View.ignored`.
+            # THE ONE EXCEPTION IS GONE, AND ITS CAUSE WITH IT. This specimen's `normal`
+            # record used to put bit 16 on the slot the end-anchored parameter block owns
+            # -- 1,012 records corpus-wide -- because the cost model charged `normal` four
+            # class bits that declare no slot and paid for them out of an intercept two
+            # words below the record's base region. With those costs re-attributed the
+            # class block ends exactly at the header end and bit 16 lands two slots
+            # earlier, on a word that resolves as a program in 1,358 of 1,358 records where
+            # it moved (the old slot did in 251). The guard stays -- it is what stands
+            # between a float and `walk_programs` if a placement ever goes wrong again --
+            # and this asserts it is now silent rather than asserting it fires.
             clash = any(e[0] == 'clash' for e in v.ignored)
             if clash:
                 clashes += 1
@@ -528,12 +561,126 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
     assert disagree >= 28, \
         'only %d records here distinguish the walk from the block start -- this specimen ' \
         'can no longer catch the regression it was chosen for' % (disagree,)
-    assert clashes, \
-        'no record here reports a placement clash, and this specimen has one -- the guard ' \
-        'that drops a size slot landing on a named parameter is not running'
+    assert not clashes, \
+        '%d record(s) here report a placement clash. The class block is over-long again: ' \
+        'a class parameter is landing on the slot the end-anchored parameter block owns, ' \
+        'which is the shape `normal` had before its costs were pinned to its base region' \
+        % (clashes,)
     print('ok  test_the_size_slot_is_the_walks_placement_not_the_blocks_start '
-          '(%d placed, %d where the retired rule differs, %d clash with a parameter)'
+          '(%d placed, %d where the retired rule differs, %d clashing with a parameter)'
           % (checked, disagree, clashes))
+
+
+#: (form) -> (a two-stop table in that layout, what a ramp indexed at 0, 0.5 and 1 must
+#: give). Written out per form because the four are what `sbsasm.RAMP_FORMS` states and the
+#: two rare ones -- 2 greyscale-float records in 651 files, and 33 colour-float -- are not
+#: reliably in reach of any file sweep. The u16 rows carry the trailing midpoint word, so
+#: they also assert that a reader ignoring it reads the rest correctly.
+RAMP_CASES = {
+    'grey-u16':   ([(0, 0, 32768), (65535, 65535, 32768)],
+                   [[0.0], [0.5], [1.0]]),
+    'grey-float': ([(0.0, 0.25, -1.0), (1.0, 0.75, -1.0)],
+                   [[0.25], [0.5], [0.75]]),
+    # Real entries, from `stone_stylized_adaptive` record 337: lo | hi<<16 is RGBA bytes,
+    # so 0xFF000000 is opaque black and 0xFFFFFFFF opaque white.
+    'rgba-u16':   ([(0, 0, 65280, 32768), (65535, 65535, 65535, 32768)],
+                   [[0.0, 0.0, 0.0, 1.0], [0.5, 0.5, 0.5, 1.0], [1.0, 1.0, 1.0, 1.0]]),
+    # Six components and five: both are this form, and the reader slices 1:5 from each.
+    'rgba-float': ([(0.0, 1.0, 0.0, 0.0, 1.0, -1.0), (1.0, 0.0, 0.0, 1.0, 1.0)],
+                   [[1.0, 0.0, 0.0, 1.0], [0.5, 0.0, 0.5, 1.0], [0.0, 0.0, 1.0, 1.0]]),
+}
+
+
+class _RampView:
+    """The least `f_gradient` needs: a record that states its ramp, and a size."""
+
+    def __init__(self, got, w=3, h=1):
+        self.rec = type('_RampRec', (), {'read_ramp': lambda _self, g=got: g})()
+        self._wh = (w, h)
+
+    def size(self, cap):
+        return self._wh
+
+
+class _RampCtx:
+    """An input whose channel 0 sweeps 0 -> 1 across the row, so the ramp is read at its
+    two ends and its middle."""
+
+    cap = 64
+
+    def sample(self, v, k, pos):
+        W, H = v.size(self.cap)
+        return np.linspace(0.0, 1.0, W * H, dtype=np.float32)[:, None]
+
+
+def test_the_gradient_reads_the_layout_the_record_states():
+    """`f_gradient` used to ask `isinstance(table[0][0], float)` -- a Python type standing
+    in for a decode `Record.read_ramp` had already made from the colour flag and the span.
+
+    It was not wrong. Over 41,092 corpus gradient records the type agreed with the record
+    every time, which is why it sat there: a reading that cannot fail reports nothing. What
+    it could not do is survive a fifth layout, and it was already blind to a distinction it
+    happened not to need -- a greyscale float entry and a greyscale u16 entry carrying a
+    midpoint are both three components, so length does not separate them and only the
+    decode's own statement does.
+
+    Three assertions. The reader covers exactly the forms the decoder can state, so a new
+    layout fails HERE and not at whichever record first reaches it. Each of the four decodes
+    to the right colours -- which the old branch never checked, and the two rare forms (4
+    greyscale-float records in 651 files) no sweep would reach. And a form or an entry the
+    reader cannot read refuses out loud rather than slicing a short entry into silence.
+    """
+    assert set(filters_mod._RAMP_WIDTH) == set(sbsasm.RAMP_FORMS), (
+        'the gradient reader covers %r and the decode states %r -- a layout with no reader '
+        'raises at render time, on whichever record happens to carry it'
+        % (sorted(filters_mod._RAMP_WIDTH), sorted(sbsasm.RAMP_FORMS)))
+
+    ctx = _RampCtx()
+    for form, (table, want) in sorted(RAMP_CASES.items()):
+        img = filters_mod.f_gradient(ctx, _RampView((form, table)))
+        got = np.asarray(img, np.float32).reshape(3, -1)
+        assert got.shape == np.asarray(want).shape, \
+            '%s: read %r components, expected %r' % (form, got.shape, np.shape(want))
+        assert np.allclose(got, np.asarray(want, np.float32), atol=2e-3), \
+            '%s: the ramp reads %r, not %r' % (form, got.tolist(), want)
+
+    # AND IT CAN FIRE, on both halves of the guard.
+    for why, bogus in (('an unknown form', ('rgba-u32', [(0, 1, 2, 3)])),
+                       ('an entry too short for its form', ('rgba-u16', [(0, 1), (1, 2)]))):
+        try:
+            filters_mod.f_gradient(ctx, _RampView(bogus))
+        except filters_mod.Unsupported:
+            pass
+        else:
+            assert False, '%s rendered instead of refusing: %r' % (why, bogus)
+
+    # The corpus half: this is what licenses deleting the type test -- the form the record
+    # states and the values it yields never disagree.
+    files = sorted(glob.glob(os.path.join(ROOT, '**', '*.sbsasm'), recursive=True))[:120]
+    if not files:
+        print('ok  test_the_gradient_reads_the_layout_the_record_states '
+              '(%d forms, no .sbsasm files to sweep)' % len(RAMP_CASES))
+        return
+    seen, bad, n = {}, [], 0
+    for path in files:
+        for r in sbsasm.Assembly.cached(path).records:
+            if r.filter_id != 0:
+                continue
+            got = r.read_ramp()
+            if not got:
+                continue
+            form, table = got
+            seen[form] = seen.get(form, 0) + 1
+            n += 1
+            if form not in sbsasm.RAMP_FORMS:
+                bad.append((os.path.basename(path), r.index, form, 'not a stated form'))
+            elif any(isinstance(e[0], float) != form.endswith('float') for e in table):
+                bad.append((os.path.basename(path), r.index, form, 'entries are not that'))
+            elif len(table[0]) < filters_mod._RAMP_WIDTH[form]:
+                bad.append((os.path.basename(path), r.index, form, len(table[0])))
+    assert not bad, 'records whose ramp entries are not what the form says: %r' % (bad[:8],)
+    print('ok  test_the_gradient_reads_the_layout_the_record_states (%d forms read, '
+          '%d records swept: %r)' % (len(RAMP_CASES), n, sorted(seen.items())))
 
 
 def test_the_legend_agrees_with_the_shipped_sources():
@@ -817,6 +964,7 @@ if __name__ == '__main__':
                test_normal_declares_the_field_that_shifts_its_intensity,
                test_distance_reads_the_radius_its_source_states,
                test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
+               test_the_gradient_reads_the_layout_the_record_states,
                test_the_legend_agrees_with_the_shipped_sources,
                test_every_record_renders,
                test_the_render_threads_its_own_value_cache,

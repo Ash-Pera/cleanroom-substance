@@ -682,6 +682,38 @@ def node_shape(header):
     (0x1B) families, whose two-child / scanned-program shapes `FX_NODES2` still states by hand.
     Reproduces the retired `FX_NODES` (four whole-word headers) and the linear `FX_NODES2` rows
     (0x99, 0x9B) exactly, and extends to headers neither table listed.
+
+    KNOWN WRONG FOR 0x01DB, AND NOT CORRECTED HERE. This function hands that header back a
+    single successor at byte 16 and spends byte 12 as bit 6's baked `randomseed`. Byte 12 is
+    a SECOND CHILD. All 23 in the corpus are one structure, byte for byte:
+
+        w0  0x000001db      w3  -> a 0x1a3 node, contiguous          23 of 23
+        w1  0x00000002      w4  -> a 0x1a3 node, far away            23 of 23
+        w2  -> a program    w5  0x09000013
+
+    and the evidence is not the pointer alone. `program_span(w2)` ENDS EXACTLY WHERE w3's
+    target begins, 23 of 23 -- the child abuts its own node's program, which is what makes it
+    a child and not a value that happens to dereference. Following w3's chain reaches an entry
+    table in 20 of 23, against 0 of 23 for the neighbouring word as a control; the same test
+    over every other family stays at the noise floor (0x0089 w2 1 of 47, 0x01cb w2 2 of 30,
+    0x0099 w3 0 of 44). And the node's own program is not a selector: one distinct source
+    across all 23, reading nothing, writing constants to slots 1-6 and returning a literal 1.
+    So this is the `0x1B` BRANCH shape wearing bit 7 -- word 1 a discriminator constant, one
+    contiguous child, one distant one, a state initialiser for a program. `fx_tree` already
+    walks 0x1B's two children through `pending`; 0x01db never reaches that path precisely
+    BECAUSE bit 7 is set and this function answers first.
+
+    WHAT IT COSTS: the walk takes w4 and drops w3, so 23 records in 12 files (Cliff,
+    Cobblestone, RMF_Floor, RockyGround, RockyPath, Small_Rocks, rural_rock_wall,
+    flowingLava, three desert_*) render ONE of their two branches -- one table entry walked,
+    one dropped, and the two carry different parameter masks (0x55300158 dropped against
+    0x05300758 walked, constant across every file: they cook from one template).
+
+    LEFT ALONE DELIBERATELY. Correcting it changes what 23 records draw, and nothing here can
+    say whether the engine draws both children or picks one -- the reference specimen has no
+    0x01db, and none of the 12 files ships an export. "It would double the patterns in 23
+    records" is the argument this file refuses elsewhere ("no emittable entries", `fx_tree`),
+    and it is refused here too. What would settle it: an export for any one of the 12.
     """
     nib = header & 0xF
     base = NODE_BASE.get(nib)
@@ -1751,6 +1783,11 @@ def fx_entry_layout(tag):
 
 # Base image inputs for the filters whose parameter fields are catalogued.
 _RULED_PARAMS = {1: 2, 12: 2, 15: 1, 11: 1}
+
+#: The entry layouts `Record.read_ramp` can state, so a reader can assert it covers all of
+#: them rather than discovering a fifth one at render time. `render2.filters` does exactly
+#: that. See `read_ramp` for what each entry holds.
+RAMP_FORMS = ('grey-u16', 'rgba-u16', 'grey-float', 'rgba-float')
 
 
 class Record:
@@ -4601,9 +4638,31 @@ class Record:
         o = struct.unpack_from('<2f', self.asm.data, self.offset + 4 * s)
         return o if all(x == x and abs(x) < 1e4 for x in o) else None
 
-    @property
-    def ramp(self):
-        """For filter 0: the gradient's colour ramp, or None.
+    def read_ramp(self):
+        """For filter 0: the gradient's colour ramp as `(form, table)`, or None.
+
+        THE FORM IS A STATEMENT, NOT A GUESS, and returning it is the whole point of this
+        being a method rather than a bare table. This decode picks the entry layout from
+        the record's own colour flag and from the span its slots state; afterwards the
+        layout is NOT recoverable from the entries alone -- a greyscale float entry and a
+        greyscale u16 entry with a midpoint are both three components. A caller that asked
+        `isinstance(entry[0], float)` was re-deriving, from a Python type, a decision this
+        decode had already made and could simply say. `render2.filters.f_gradient` did that
+        until this returned the form; it agreed with the record on all 23,153 gradient
+        records in this repository's 651 `.sbsasm` files -- `corpus.paths()`'s 437 among
+        them -- which is exactly how such a reading survives.
+
+            'grey-u16'    (position, value[, midpoint])       each /65535
+            'rgba-u16'    (position, lo, hi[, midpoint])      lo | hi<<16 is RGBA bytes
+            'grey-float'  (position, value, -1.0)             already 0..1
+            'rgba-float'  (position, R, G, B, A[, -1.0])      already 0..1
+
+        THE TRAILING u16 IS WHAT CLASS BIT 8 BUYS, and no renderer here reads it. It takes
+        exactly two values over those files -- 32768 in 243,474 of 243,552 greyscale entries
+        and 179,373 of 179,388 colour ones, 0 in the remainder -- which reads like a per-stop
+        interpolation handle sitting at its neutral half-way position, though nothing here
+        separates that from any other field whose default is 0.5. Named so that a renderer
+        which ignores it is declining something stated rather than not seeing it.
 
         A gradient record embeds its ramp as a table of u16 entries:
 
@@ -4762,7 +4821,7 @@ class Record:
                                       start + i * fwidth) for i in range(count)]
             if any(out[i][0] > out[i + 1][0] for i in range(len(out) - 1)):
                 continue
-            return out
+            return ('rgba-float' if self.colour else 'grey-float'), out
         # Slot 4 is not always the table's end. Requiring `end - start == count * width`
         # rejected 968 records; in every one of them the span is LARGER than the table
         # needs, never smaller, and the table fits inside it at the formula width. So the
@@ -4775,7 +4834,17 @@ class Record:
                for i in range(count)]
         if any(out[i][0] > out[i + 1][0] for i in range(len(out) - 1)):
             return None                     # not a ramp: positions do not ascend
-        return out
+        return ('rgba-u16' if self.colour else 'grey-u16'), out
+
+    @property
+    def ramp(self):
+        """The ramp table alone, for callers that need only its shape and extent.
+
+        Anything that INTERPRETS the entries wants `read_ramp`: the values do not carry
+        their own layout, and this property drops the statement that supplies it.
+        """
+        got = self.read_ramp()
+        return got[1] if got else None
 
     # ---- curve specialisation
     @property

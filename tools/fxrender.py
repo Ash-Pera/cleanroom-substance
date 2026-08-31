@@ -140,6 +140,17 @@ _SCAN_TRACE = None
 ADDNODE = frozenset({0x18B, 0x1AB, 0x20B, 0x1CB})
 GATE = 0x89
 
+#: `$pos` for an FX-Map node, per `assume.QUESTIONS['fx.pos']`.
+#:
+#: SPELT AS A ZERO ROW, NOT AS None, even though `sbsruntime.sysvar` reads None back as
+#: zeros and the two are identical today. "The origin" is an ASSERTION about where this node
+#: is; None is the ABSENCE of one, and this module has just finished paying for a place where
+#: an absence silently meant a value. They are the same number and different claims, and only
+#: one of them survives `sysvar` being taught to refuse an unset `$pos` -- which is the
+#: natural way to catch the next leak of this kind. Both entries are module constants, so
+#: neither costs an allocation per call.
+_FX_POS = {'origin': np.zeros((1, 2)), 'corner': np.array([[-0.5, -0.5]])}
+
 #: One successor, one unnamed program, and the program is a per-iteration STATE UPDATE
 #: rather than a count or a predicate. In StylizedCobblestoneStreet record 27 it reads slots
 #: 14/16/17/18 and writes 12/14/16/17/18: a counter in 17 wrapping against 16, a direction
@@ -366,12 +377,11 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
         # and record 65's placement program returned (4096,) instead of (1,): a per-pattern
         # gate inflated to one value per pixel of another record's canvas.
         #
-        # ZERO IS NOT THE RIGHT ANSWER EITHER. An FX-Map's $pos is per-iteration state the
-        # quadrant walk owes each node, and this module has no mechanism to supply it; see
-        # `assume.QUESTIONS['fx.pos']`. This line buys determinism, not correctness -- the
-        # records that read $pos are wrong in a stated way now instead of wrong in an
-        # order-dependent one.
-        sbsruntime.CONTEXT['pos'] = None
+        # WHAT IT IS INSTEAD is the FX-Map node's own base position, which the gate adds its
+        # scanned offset to -- see `assume.QUESTIONS['fx.pos']` for the census that says so
+        # and for why 'origin' is the default. The chain walk is flat, so there is one node
+        # position and it is the root's; a subdivided tree would have to thread it here.
+        sbsruntime.CONTEXT['pos'] = _FX_POS[assume.assumed('fx.pos', 'origin')]
         inputs = shared_inputs
         with np.errstate(all="ignore"):
             try:

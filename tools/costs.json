@@ -760,60 +760,31 @@ true
 },
 "18": {
 "cls": {
-"10": 1.0,
-"11": 1.0,
-"12": -0.0,
-"13": -0.0,
-"14": 1.0,
-"15": 1.0,
+"10": 0.0,
+"11": 0.0,
+"12": 0.0,
+"13": 0.0,
+"14": 0.0,
+"15": 0.0,
 "16": 1.0,
-"20": -0.0,
-"21": -0.0,
+"20": 0.0,
+"21": 0.0,
 "23": 1.0,
 "24": 0.0,
-"25": -0.0,
+"25": 0.0,
 "26": 2.0,
 "27": 1.0,
 "8": 0.0,
-"9": -0.0
+"9": 0.0
 },
 "conj": [],
-"const": 1.0,
+"const": 3.0,
 "constant_bits": [
 19
 ],
+"derivation": "base-pinned re-attribution: the intercept is the record's own base region (mask words + base image inputs) and the class/w1 costs are the remainder. Exact on every record, integer and non-negative; totals identical to the free-intercept fit. See record_layout.header_words.",
 "flags": [],
-"identified": [
-false,
-true,
-false,
-false,
-false,
-true,
-false,
-false,
-false,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true
-],
 "mode": "codes",
-"nullity": 3,
-"unident": 0,
 "w1": {
 "0": {
 "1": 1.0,
@@ -826,7 +797,7 @@ true
 "3": 0.0
 },
 "2": {
-"1": -0.0,
+"1": 0.0,
 "2": 1.0,
 "3": 0.0
 }
@@ -835,14 +806,14 @@ true
 "19": {
 "cls": {
 "0": 0.0,
-"10": 0.5,
-"11": 1.0,
+"10": 0.0,
+"11": 0.0,
 "12": 0.0,
-"13": -0.0,
-"14": 0.5,
-"15": 0.5,
+"13": 0.0,
+"14": 0.0,
+"15": 0.0,
 "16": 1.0,
-"20": -0.0,
+"20": 0.0,
 "21": 0.0,
 "23": 1.0,
 "25": 1.0,
@@ -852,34 +823,13 @@ true
 "9": 0.0
 },
 "conj": [],
-"const": 1.5,
+"const": 3.0,
 "constant_bits": [
 19
 ],
+"derivation": "base-pinned re-attribution: the intercept is the record's own base region (mask words + base image inputs) and the class/w1 costs are the remainder. Exact on every record, integer and non-negative; totals identical to the free-intercept fit. See record_layout.header_words.",
 "flags": [],
-"identified": [
-false,
-true,
-true,
-true,
-false,
-false,
-true,
-true,
-false,
-false,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true
-],
 "mode": "absent",
-"nullity": 2,
-"unident": 4,
 "w1": {},
 "w1_present": 0.0
 },
@@ -1165,34 +1115,13 @@ true
 "27": 1.0
 },
 "conj": [],
-"const": 2.5,
+"const": 3.0,
 "constant_bits": [
 19
 ],
+"derivation": "base-pinned re-attribution: the intercept is the record's own base region (mask words + base image inputs) and the class/w1 costs are the remainder. Exact on every record, integer and non-negative; totals identical to the free-intercept fit. See record_layout.header_words.",
 "flags": [],
-"identified": [
-false,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-false,
-false,
-false,
-false,
-false,
-true,
-true,
-true,
-true
-],
 "mode": "codes",
-"nullity": 2,
-"unident": 3,
 "w1": {
 "0": {
 "1": 1.0,
@@ -1200,8 +1129,8 @@ true
 "3": 1.0
 },
 "1": {
-"1": 1.5,
-"2": 1.5,
+"1": 1.0,
+"2": 1.0,
 "3": 0.0
 },
 "2": {
@@ -1259,74 +1188,40 @@ true
 "w1_present": 0.0
 },
 "3": {
+"mode": "per_record",
+"variants": [
+{
 "cls": {
-"0": -1.0,
+"0": 0.0,
 "10": 0.0,
-"11": -0.0,
+"11": 0.0,
 "12": 0.0,
-"13": -0.0,
-"14": -0.0,
-"15": -0.0,
+"13": 0.0,
+"14": 0.0,
+"15": 0.0,
 "16": 1.0,
-"20": -0.0,
-"21": -0.0,
+"20": 0.0,
+"21": 0.0,
 "23": 1.0,
 "24": 4.0,
 "26": 1.0,
 "28": 0.0,
-"8": -0.0,
-"9": -0.0
+"8": 0.0,
+"9": 0.0
 },
 "conj": [],
 "const": 2.0,
 "constant_bits": [
 19
 ],
+"derivation": "base-pinned re-attribution: the intercept is the record's own base region (mask words + base image inputs) and the class/w1 costs are the remainder. Exact on every record, integer and non-negative; totals identical to the free-intercept fit. See record_layout.header_words.",
 "flags": [],
-"identified": [
-true,
-false,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-false,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true,
-true
-],
+"guard": {
+"mask": 1,
+"shift": 0,
+"value": 0
+},
 "mode": "per_record",
-"nullity": 1,
-"unident": 2,
 "w1": {
 "0": {
 "1": 0.0,
@@ -1364,7 +1259,80 @@ true
 "3": 0.0
 }
 },
-"w1_present": -1.0
+"w1_present": 0.0
+},
+{
+"cls": {
+"0": 0.0,
+"10": 0.0,
+"11": 0.0,
+"12": 0.0,
+"13": 0.0,
+"14": 0.0,
+"15": 0.0,
+"16": 1.0,
+"20": 0.0,
+"21": 0.0,
+"23": 1.0,
+"24": 0.0,
+"26": 1.0,
+"28": 0.0,
+"8": 0.0,
+"9": 0.0
+},
+"conj": [],
+"const": 4.0,
+"constant_bits": [
+19
+],
+"derivation": "base-pinned re-attribution: the intercept is the record's own base region (mask words + base image inputs) and the class/w1 costs are the remainder. Exact on every record, integer and non-negative; totals identical to the free-intercept fit. See record_layout.header_words.",
+"flags": [],
+"guard": {
+"mask": 1,
+"shift": 0,
+"value": 1
+},
+"mode": "per_record",
+"w1": {
+"0": {
+"1": 0.0,
+"2": 0.0,
+"3": 0.0
+},
+"12": {
+"1": 0.0,
+"2": 0.0,
+"3": 0.0
+},
+"13": {
+"1": 0.0,
+"2": 0.0,
+"3": 0.0
+},
+"4": {
+"1": 0.0,
+"2": 0.0,
+"3": 0.0
+},
+"5": {
+"1": 0.0,
+"2": 0.0,
+"3": 0.0
+},
+"8": {
+"1": 0.0,
+"2": 0.0,
+"3": 0.0
+},
+"9": {
+"1": 0.0,
+"2": 0.0,
+"3": 0.0
+}
+},
+"w1_present": 0.0
+}
+]
 },
 "4": {
 "arity_sm": [

@@ -45,6 +45,28 @@ ever drops candidates PAST the header, and the boundary is the MINIMUM candidate
 dropping late ones cannot move it -- unless a record's first inline program sits past its
 own header end, which no record in this corpus does. A corpus that contained one would
 break the equivalence silently.
+
+RE-RUNNING THIS WOULD REVERT THREE ENTRIES, AND THIS IS THE ONLY WARNING OF IT. `const`
+here is a FREE intercept, and the equation says nothing about it being the size of
+anything -- so the solver is at liberty to shave words off it and charge them to a bit
+that is set in every record of a filter. The total is unaffected, which is the whole test
+applied above, and the DECOMPOSITION is wrong: `decompose` walks the same table forwards
+from a base it computes structurally (mask words + base image inputs), so it spends the
+difference as class slots past the header end. That happened on 7,119 records -- shuffle
+3,514, dyngradient 2,214, normal 1,391 -- and put `normal`'s size expression on the slot
+its `intensity` occupies.
+
+The live `tools/costs.json` therefore carries those three entries RE-SOLVED with the
+intercept pinned to that structural base, `shuffle` split into two guarded variants because
+its class widths differ by record shape. The re-solve is exact on every record, every
+coefficient a non-negative integer, and every header length is identical to what this
+script emits -- only the attribution differs. See `record_layout`'s module docstring for
+the derivation and its arbiters. Nothing here implements it: this script has been archived
+out of `render2`'s import closure, its neighbouring `corpus.py` and `sbsasm.py` went with
+the live tools, and it cannot run in place as it stands. Whoever makes it runnable again
+should pin the base in the fit itself rather than re-attributing afterwards -- and until
+then, a re-run silently undoes the fix, which is why this paragraph is here rather than in
+a commit message.
 """
 #
 # A CHANGE HERE PAIRS WITH ONE IN `decompose.py`, and the pair has to land in ONE commit.
@@ -138,6 +160,55 @@ KEEP = 0.995                     # a filter is kept only at this exactness or be
 W1_CORR = {}       # filter -> (n, corr(record index, words[1])), filled by observed()
 
 
+def _payload_first_word(owner, target, host):
+    """The earliest word of `owner`'s payload lying inside `host`, which is NOT always
+    where `owner`'s pointer lands.
+
+    The clamp this feeds was written for a gradient's ramp, and for a ramp the pointer IS
+    the first word: 700 of 700 foreign gradient payloads land exactly on the header the
+    fitted model states for the record they land in. An FX TREE DOES NOT. Its root node can carry a data word written
+    just BEFORE the root, and the walk from the root reaches nodes earlier than it -- so the
+    pointer lands one or more words into a structure that has already begun, and the clamp
+    reports those words as part of the host's header.
+
+    Over `corpus.paths()`, 343 fxmaps payloads land inside another record whose header the
+    fitted model states. Against that model, the pointer alone is right on 244 of them and
+    this is right on 304 -- and NOTHING THAT AGREED STOPS AGREEING: there is no case in the
+    corpus where the pointer is the boundary and this reads earlier. Gradient (700 of 700)
+    and bitmap (3 of 3) are untouched, which is the control: for a ramp and for stored
+    pixels the pointer really is the first word.
+
+    Across the whole observation table it takes the within-key contradictions from 41 to 1
+    and the disagreements with the model from 65 to 26.
+
+    THE REMAINING 39 ARE NOT ADDRESSED. They sit 7, 10 or 15 words late (28, 6 and 5 of
+    them), and neither the tree walk nor the root's own words reach back that far; whatever
+    else an fxmaps record writes ahead of its root is not read here. They are a minority
+    inside their keys and the robust trim drops them, which is why they cost nothing today
+    and why a fit that lost that trim would want them found first.
+    """
+    first = target
+    if owner.filter_id != 4:
+        return first
+    try:
+        for (off, _hdr, prog) in owner.fx_tree():
+            for x in (off, prog):
+                if x is not None and host.offset < x < first:
+                    first = x
+    except Exception:
+        pass
+    # The root's own words, read out of the HOST -- the target is inside it by construction,
+    # so a backward pointer here resolves inside the host too, and cannot reach past it.
+    base = (target - host.offset) // 4
+    for t in range(4):
+        if base + t >= len(host.words):
+            break
+        v = host.words[base + t] + 52
+        if host.offset < v < first:
+            first = v
+    return first
+
+
 def observed():
     """`(obs, below)`, each (filter, cls, w1) -> Counter of header sizes in words.
 
@@ -171,9 +242,11 @@ def observed():
         # mismeasured v2 gradients, the ramp of record N+1 begins at word 5 of record
         # N, exactly where record N's header should end. So the header boundary is the
         # earliest in-record target of ANY record's payload pointer, not just its own.
-        foreign = sorted(r.words[PAYLOAD[r.filter_id]] + 52 for r in a.records
-                         if r.filter_id in PAYLOAD
-                         and len(r.words) > PAYLOAD[r.filter_id])
+        foreign = sorted(((r.words[PAYLOAD[r.filter_id]] + 52, r.index, r)
+                          for r in a.records if r.filter_id in PAYLOAD
+                          and len(r.words) > PAYLOAD[r.filter_id]),
+                         key=lambda t: (t[0], t[1]))
+        foreign_at = [t for t, _, _ in foreign]
         for i, r in enumerate(a.records):
             if len(r.words) < 2:
                 continue
@@ -270,9 +343,9 @@ def observed():
             # floats where a grayscale bakes one -- and keying on cls alone left 3,209
             # records as within-key minorities that no fit could reach. Bits that do not
             # vary within a filter never become features, so widening the mask is free.
-            j = bisect.bisect_right(foreign, r.offset)
-            if j < len(foreign) and foreign[j] < q:
-                q = foreign[j]
+            j = bisect.bisect_right(foreign_at, r.offset)
+            if j < len(foreign) and foreign_at[j] < q:
+                q = _payload_first_word(foreign[j][2], foreign_at[j], r)
             if not (r.offset < q <= r.end):
                 continue
             (below_obs if below else obs)[f][(r.words[0], w1)][(q - r.offset) // 4] += 1
