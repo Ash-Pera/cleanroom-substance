@@ -10,7 +10,13 @@ This swaps each test module's `Assembly` name for `Assembly.cached` after collec
 Tests that never sweep are unaffected; tests that construct via keyword or subclass
 would bypass the cache and still be correct, just slower.
 """
+import os
 import sys
+
+# The archive cut moved these tests out of the directory holding the modules they test:
+# `sbsasm` and its neighbours stayed in tools/, the suite came here, and nothing put the
+# two back in touch. Every module below errored at collection until this line existed.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools'))
 
 import sbsasm
 

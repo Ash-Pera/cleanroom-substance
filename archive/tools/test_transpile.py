@@ -54,8 +54,11 @@ def corpus_roots():
     env = os.environ.get("SBS_CORPUS")
     if env:
         return [env]
-    here = os.path.dirname(os.path.abspath(__file__))
-    return [os.path.dirname(here)]
+    # Ask the loader rather than counting directories up from this file. The archive cut
+    # moved this suite from tools/ to archive/tools/, and a hardcoded one-level walk went
+    # on resolving -- to archive/, where no specimen lives -- instead of failing loudly.
+    import corpus
+    return [corpus.ROOT]
 
 
 def find_specimen(basename):

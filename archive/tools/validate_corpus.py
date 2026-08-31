@@ -52,7 +52,29 @@ def pack(t, dv):
 # printed "no specimens found" and stopped. That is the same defect that had reverify.py
 # silently checking 3 files of 438; it is louder here, but it is the same defect, so it
 # gets the same fix rather than a note telling the next reader where to stand.
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#
+# Counting directories up from __file__ is what broke the third time: the fix above assumed
+# this file sits one level below the root, the archive cut moved it to archive/tools/, and a
+# two-level walk went on resolving -- to archive/, which contains no specimen -- instead of
+# failing. Walk up for a marker the root actually has, and raise if it is not there.
+def _find_root():
+    d = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        if os.path.exists(os.path.join(d, 'SPEC.md')):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            raise RuntimeError('repository root not found above %s (no SPEC.md)' % __file__)
+        d = parent
+
+
+_ROOT = _find_root()
+
+# The same cut that moved this file away from the corpus moved it away from the modules it
+# imports: `sbsasm` and friends stayed in tools/. Under pytest conftest.py puts them on the
+# path, but this script's own entry point is a subprocess with no such help, and `analyse`
+# imports sbsasm lazily -- so the break surfaced as an empty stdout, not an ImportError.
+sys.path.insert(0, os.path.join(_ROOT, 'tools'))
 
 
 def specimens():

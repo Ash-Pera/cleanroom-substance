@@ -57,8 +57,12 @@ import glob
 import hashlib
 import os
 import re
+import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _repo_root                                                    # noqa: E402
+
+ROOT = _repo_root.ROOT
 
 EXCLUDED_AUTHORS = [
     'Allegorithmic',     # Adobe, pre-acquisition -- Adobe's own bundled library sources
@@ -128,8 +132,12 @@ def own_assembly(sbs_path):
 def paired_sources():
     """Distinct-by-content .sbs files that have a sibling .sbsar -- the rule's population."""
     found, seen, out = [], set(), []
+    # Two bases, not one: pairs* are at the root and new_sbs/new_opengameart moved under
+    # archive/specimens/. Searching only the root silently narrowed this rule's population
+    # to the pairs, which is the one failure mode a provenance predicate must not have.
     for d in SEARCH_DIRS:
-        found += glob.glob(os.path.join(ROOT, d, "**", "*.sbs"), recursive=True)
+        for base in _repo_root.BASES:
+            found += glob.glob(os.path.join(base, d, "**", "*.sbs"), recursive=True)
     for p in sorted(found):
         if not os.path.exists(p[:-4] + ".sbsar"):
             continue

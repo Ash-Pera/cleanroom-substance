@@ -10,32 +10,47 @@ tools could read Substance materials without the proprietary engine.
 
     SPEC.md                a clean ~4-page specification of the whole format — start here
     OPCODES.md             the bytecode instruction reference
-    FORMAT-NOTES.md        the findings — 35,000 lines, written as a lab notebook
+    FORMAT-NOTES.md        the findings — ~43,000 lines, written as a lab notebook
 
 `SPEC.md` and `OPCODES.md` are the distilled references: everything a reader needs to
 locate and walk every region of the file by pointer arithmetic, with no fitted tables.
 `FORMAT-NOTES.md` is the lab notebook behind them — every measurement, failure and
 correction that produced those references.
 
-    tools/                 the finished tools — see tools/README.md
+    tools/                 the maintained tools — see tools/README.md
       sbsasm.py            the file model: records, layouts, edges, parameters, programs
       walk.py              the one structural primitive: the record/node mask-walk
+      decompose.py         the structural walk of a record header — edges, size slot
+      record_layout.py     the layout rule as one function; decompose reads its cost model
       disasm.py            bytecode disassembler
-      fxdisasm.py          walks an FX-Map tree and disassembles each node's program
-      standalone_parse.py  header, interface block and value table
-      extract_bitmaps.py   embedded images, and graph inputs by manifest uid
-      extract_shapes.py    filter 5's embedded vector artwork, as PNG or SVG
-      expand_instances.py  expands sub-graph instances using only in-file graphs
       transpile.py         compiles a program's bytecode to Python source
-      render.py            walks a record graph and evaluates the filters it implements
-      audit_corpus.py      runs the model over a corpus and reports every gap
-      validate_corpus.py   structural checks against the .sbsar manifests
-      reverify.py          re-runs the notes' headline claims against the CURRENT corpus
-      provenance.py        the provenance exclusion predicate, as a re-runnable check
+      sbsruntime.py        runtime for transpiled programs, vectorised over numpy
+      render2/             the renderer of record — every structural read comes from the walk
+      fxrender.py          FX-Map tree evaluation
+      standalone_parse.py  header, interface block and value table
+      sourcematch.py       a compiled field named by the value its own .sbs states
 
-Exploratory scripts that produced individual findings are left in the root. They are one-off
-analyses rather than maintained interfaces, and several encode assumptions the notes later
-correct.
+`tools/README.md` covers these in full, along with `corpus.py`, `manifest.py`,
+`node_census.py`, `assume.py`, `distance.py` and `isa.py`.
+
+    archive/               everything outside render2's import closure — see archive/README.md
+      tools/provenance.py        the provenance exclusion predicate, as a re-runnable check
+      tools/reverify.py          re-runs the notes' headline claims against the CURRENT corpus
+      tools/audit_corpus.py      runs the model over a corpus and reports every gap
+      tools/validate_corpus.py   structural checks against the .sbsar manifests
+      tools/render.py            the earlier renderer, superseded by render2/
+      tools/fxdisasm.py          walks an FX-Map tree and disassembles each node's program
+      tools/extract_bitmaps.py   embedded images, and graph inputs by manifest uid
+      tools/extract_shapes.py    filter 5's embedded vector artwork, as PNG or SVG
+      tools/expand_instances.py  expands sub-graph instances using only in-file graphs
+      tools/derive_costs.py      regenerates tools/costs.json, which render2 reads on every run
+      tools/test_*.py            the test suite; `./t` is the fast lane, `./pt` the parallel one
+
+The archive is a cut along `render2`'s transitive import closure, not a judgement about
+what is useful: `derive_costs.py` and the test suite are both live dependencies that
+happen to sit outside it. The pre-`tools/` exploratory scripts are in `archive/root-scripts/`.
+They are one-off analyses rather than maintained interfaces, and several encode assumptions
+the notes later correct.
 
 ## What is not here
 
@@ -68,13 +83,16 @@ own provenance flag. No such observation is used, and all are recorded in FORMAT
 
 The **Provenance statement** at the top of `FORMAT-NOTES.md` is the auditable version of
 all of this in one place. The exclusion predicate is a single string match and can be
-re-run against any corpus: `tools/provenance.py` is that check as code rather than a
+re-run against any corpus: `archive/tools/provenance.py` is that check as code rather than a
 description of one, and it is meant to run before a new corpus is measured, not after.
 
 ## Where the format stands
 
-Measured over 435 specimens, 895,674 records, 4.09 GB (the corpus has since grown to 438, then to 437 after one withdrawal;
-the figures below are the last full audit):
+Measured over 435 specimens, 895,674 records, 4.09 GB. These are the last **full** audit and
+are a dated snapshot, not a live figure: the corpus has since settled at 437 (438 before one
+withdrawal), and the attribution fixes of 2026-08-28 — the pinned base region, `distance`'s
+double-charged mask input — landed after this table was taken. Re-run `audit_corpus.py` to
+refresh it; the ranking in FORMAT-NOTES.md's most recent status section is the current one.
 
     filter identified              99.9%
     size expression or first
@@ -151,3 +169,27 @@ measurement that settled each one. Several sections exist only to record that a 
 finding was wrong and how it was caught. That is deliberate: in a format with no
 documentation, the tests that discriminate are worth more than the conclusions, and a
 conclusion without its test is not reusable.
+
+## Licence
+
+Split deliberately, because the code and the documentation are trying to do different things.
+
+    tools/, archive/       MPL-2.0        see LICENSE
+    SPEC.md, OPCODES.md,
+      FORMAT-NOTES.md      CC-BY-4.0      see LICENSE-DOCS
+
+The documentation is permissive on purpose. The goal of this project is independent
+reimplementations in other people's tools, and a copyleft specification works against
+that — an implementer should never have to wonder whether reading `SPEC.md` makes their
+decoder a derivative work. Attribution is the only condition.
+
+The code is MPL-2.0, which is copyleft per FILE rather than per program. Improvements to
+these files stay open, but the files can be linked into projects under other licences —
+including both GPL projects like Blender and permissively licensed ones like Godot, which
+a whole-program copyleft would have shut out. Given that interoperability with exactly
+those tools is the point, that is the trade this project wants.
+
+`archive/specimens/sbsarx/` carries its own MIT licence and is unaffected.
+
+Nothing here licenses the corpus: those files belong to their authors, are not
+redistributed in this repository, and arrive under their own terms.

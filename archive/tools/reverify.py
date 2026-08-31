@@ -21,12 +21,14 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _repo_root                                                    # noqa: E402
+_repo_root.add_tools_to_path()
 import sbsasm                                                        # noqa: E402
 import decompose                                                     # noqa: E402
 import disasm                                                        # noqa: E402
 import transpile                                                     # noqa: E402
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = _repo_root.ROOT
 LIST = os.path.join(ROOT, 'DISTINCT.txt')
 
 

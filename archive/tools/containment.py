@@ -43,11 +43,14 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import _repo_root
+_repo_root.add_tools_to_path()
+
 import decompose
 from provenance import paired_sources, matches, EXCLUDED_AUTHORS, FLAGGED_AUTHORS
 from sbsasm import Assembly, FILTERS
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = _repo_root.ROOT
 
 NODE = re.compile(r'<compNode>((?:(?!</compNode>).)*?)</compNode>', re.S)
 # `.sbs` serialises a value TWO ways -- as a direct attribute (`<x v="1"/>`) and nested

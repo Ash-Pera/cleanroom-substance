@@ -22,7 +22,11 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+# Not dirname(HERE): the archive cut put this suite two levels below the repo root, and a
+# one-level walk resolves to archive/ rather than failing. corpus.ROOT is the loader's own
+# answer, and it is the thing these tests are checking against anyway.
+import corpus as _corpus
+ROOT = _corpus.ROOT
 EXPECTED = 437   # 438 until the provenance exclusion of one specimen (2026-08-24)
 
 

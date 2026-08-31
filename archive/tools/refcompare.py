@@ -121,12 +121,14 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _repo_root                                                    # noqa: E402
+_repo_root.add_tools_to_path()
 import manifest                                                      # noqa: E402
 import render                                                        # noqa: E402
 import sbsasm                                                        # noqa: E402
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PACKS = os.path.join(ROOT, 'new_opengameart')
+ROOT = _repo_root.ROOT
+PACKS = os.path.join(_repo_root.SPECIMENS, 'new_opengameart')
 SIZE = 64
 
 # THE GRID WE RENDER ON IS NOT THE GRID WE COMPARE ON, and conflating them was costing more

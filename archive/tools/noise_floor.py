@@ -90,11 +90,13 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _repo_root                                                    # noqa: E402
+_repo_root.add_tools_to_path()
 import render as R                                                   # noqa: E402
 import sbsruntime                                                    # noqa: E402
 from sbsasm import Assembly                                          # noqa: E402
 
-REF_GLOB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+REF_GLOB = os.path.join(_repo_root.SPECIMENS,
                         'new_opengameart', '**', '*.sbsasm')
 
 
