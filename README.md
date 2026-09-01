@@ -115,19 +115,29 @@ which returns each record's edges and its size-or-program slot from the cost mod
 five hand-tuned layout branches it replaced run only as the fallback for the 5 unnamed
 filter-9 records. It is proven 0-diff against the independent table-based model (925,706
 records, 925,701 agree, 0 disagree, 5 uncovered) and render-verified at 0 pixel difference.
-The one decision still on a fitted table is **what baked parameters one filter carries**.
-`named_parameters` routes `blend`, `fxmaps`, `dirmotionblur` and `directionalwarp` through the
-walk; `levels` alone still reads the `LAYOUTS` memo, and that is 9.3% of records. The walk's
-placement for it is the better-evidenced one — source containment recovers 91 of 91 declared
-values at the slots the walk names, and the memo reads a parameter out of an input-edge slot
-1,844 times where the walk never does — but the render holds it back, and honestly so: routing
-it costs one package's basecolor on two independent measures, correlation and amount of
-structure. That veto is narrow rather than general. Across all five reference packs the switch
-moves 9 channels of 27, and on a different package it is the memo that comes out
-anti-correlated. The memo also cannot see a sixth `levels` field that the cost model declares,
-because its key was fitted to the five parameters known when it was fitted. Edges, size
-expression and program positions are off the tables; one filter's parameter *values* are the
-honest remaining exception.
+
+**Baked parameter values are now off the tables too, and `layouts.json` is drained.**
+`named_parameters` used to route four filters through the walk and leave `levels` — 9.3% of
+records — on the fitted `LAYOUTS` memo. It no longer does, and the arbiter is source
+containment rather than the renderer: over every permitted paired source that declares a
+`levels` node, matching declared nodes to records on the parameter set and the values to
+2e-4, the walk recovers 82 of 93 against the memo's 69, ahead on 10 files and behind on none.
+Structurally the memo reads a parameter out of an input-edge slot 1,844 times and past the
+walked header end 133 times, where the walk does neither, ever. The render veto that held
+this back for months was re-run and withdrawn: the one package it protected, Chesterfield,
+scores better under the memo only because three `levels` records emit a constant white — a
+value no correct placement can produce, reproduced to four decimals by simply forcing those
+records to 1.0, and gone at `max_dim` 256, where the memo's reading takes a pixelprocessor
+100% non-finite and the channel does not render at all. Across all five reference packs the
+switch moves 9 channels of 27, mean MAE 0.0883 → 0.0669, and flips one package's basecolor
+from anti-correlated to positive on all three channels. With `levels` on the walk nothing
+reads `layouts.json`: emptying it changes 0 of 160,672 readings, against 9.272% before.
+What that switch does *not* fix is stated with it: Chesterfield's basecolor channel 2 is
+anti-correlated under the walk at both resolutions, −0.72 and −0.85, and it now has a floor
+watching it. The fault is in the nine mode-7 switch blends its colour chain runs through,
+not in the placement. Edges, size expressions, program positions and parameter values are
+all structural now. What is *not* decided by a walk is what a field MEANS — that is a name
+legend, and it never mentions a position.
 
 The last line of the audit table is the one to read. Earlier versions of this table reported "unexplained
 bytes 0", which was circular: `coverage()` marks a whole record extent as accounted for

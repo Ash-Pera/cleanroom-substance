@@ -49,10 +49,15 @@ fallbacks). It is proven 0-diff against the independent `_compute_layout`+`_real
 `programs()`) is unchanged corpus-wide; 0b render-verified it at 0 pixel difference across all
 affected filters. One caveat, stated in `decompose.py`'s docstring: because `edge_slots` and
 `Record.layout` now *call* decompose, validating decompose against them is circular — check it
-against `_compute_layout`/`_real_edges`, the raw words, or the render. **Parameters are the one
-decision still on the fitted `LAYOUTS` memo**, not decompose: the render showed every positional
-parameter rule tried was worse than the memo on `levels`, so `Record.named_parameters` stays on
-the table pending a full render-seal. See FORMAT-NOTES.md "Unified walk" / "Better decoder".
+against `_compute_layout`/`_real_edges`, the raw words, or the render. **Parameters are on the
+walk too now, and `layouts.json` is drained.** `WALKED_PARAMS` covers every filter in
+`PARAM_SPEC`, `levels` included, so `_parameters_paired` has no caller and emptying `LAYOUTS`
+or `LAYOUT_MASK` changes 0 of 160,672 readings — against 9.272% before, which was exactly the
+`levels` share. `_parameters_paired` stays as the independent second model, the role
+`_compute_layout` plays for `decompose`. What decided `levels` was source containment, not the
+render: 82 of 93 declared nodes recovered against the memo's 69 over 21 permitted paired
+sources. See FORMAT-NOTES.md "Unified walk" / "Better decoder" and
+"`levels` goes on the walk".
 
 Two readings sit side by side, deliberately:
 

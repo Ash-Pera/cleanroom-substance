@@ -93,10 +93,12 @@ def test_layouts_drained_from_layout():
     misread as a generator) was fixed at the rule instead.
 
     So emptying LAYOUTS changes 0 EDGE, PROGRAM or SIZE readings -- the drain succeeding.
-    It is a SCOPED knockout, not the full snapshot: LAYOUTS is still load-bearing for
-    `program_slots` (the blur/warp popcount block) and `named_parameters` (blend/levels
-    parameter positions), which is why `test_every_table_is_load_bearing` still finds it
-    alive. Draining those two is the remaining step before `layouts.json` can be removed.
+    It is a SCOPED knockout, not the full snapshot, and it was scoped because LAYOUTS was
+    still load-bearing for `program_slots` (the blur/warp popcount block) and
+    `named_parameters` (`levels`' parameter positions). Both are drained now --
+    `test_layouts_is_fully_drained` is the unscoped version and asserts zero over the whole
+    snapshot -- so this one is kept as the narrower statement it always was, not as the
+    boundary of what the table no longer does.
     """
     paths = corpus.paths()[:FILES]
     if not paths:
@@ -190,13 +192,21 @@ def test_every_table_is_load_bearing():
     successors are a real second statement of where the handoff is. Kept as a census, like
     the other two. Note also `fxrender`'s standing flag that the row's (8, 20) contradicts
     what that file derives -- unresolved, and not resolved here.
+
+    LAYOUTS AND LAYOUT_MASK LEFT THIS LIST for a FOURTH reason: they are drained, on
+    purpose, and the drain finished. `layouts.json` was down to one consumer --
+    `Record.named_parameters` for `levels`, 9.272% of records -- and routing `levels`
+    through the structural walk took that to zero. `test_layouts_is_fully_drained` below
+    asserts the emptied-table result this list would now read as a failure, which is the
+    right shape: a table that must change nothing needs an assertion that it changes
+    nothing, not an assertion that it changes something.
     """
     paths = corpus.paths()[:FILES]
     if not paths:
         print('SKIP test_every_table_is_load_bearing: no corpus')
         return
     dead = []
-    for name in ('LAYOUTS', 'EDGES', 'LAYOUT_MASK'):
+    for name in ('EDGES',):
         tab = getattr(sbsasm, name, None)
         if not isinstance(tab, dict) or not tab:
             continue
@@ -209,6 +219,44 @@ def test_every_table_is_load_bearing():
     return
 
 
+def test_layouts_is_fully_drained():
+    """`layouts.json` now changes NO reading this model makes, of any kind.
+
+    `test_layouts_drained_from_layout` above is the SCOPED version -- edges, programs and
+    size only -- and it was scoped because the table still placed `levels`' parameters
+    through `Record._parameters_paired`. It no longer does: `WALKED_PARAMS` covers every
+    filter in `PARAM_SPEC`, so `_parameters_paired` has no caller, and `program_slots`'
+    LAYOUTS fallback is reached 0 times in 42,166 corpus blur/warp records because
+    `decompose` answers first on every one of them.
+
+    So this runs the FULL snapshot -- programs, edge slots, edges, size, the FX walk,
+    `program_slots` and `named_parameters` -- with each table emptied, and asserts zero.
+    Before the routing it read 14,897 of 160,672 (9.272%) for both tables, which is exactly
+    the `levels` share.
+
+    IT IS A REAL ASSERTION AND NOT A TAUTOLOGY, which is the thing to check about a test
+    that expects nothing to happen: `_knockout` on EDGES over the same paths returns 4, so
+    the machinery does detect a table that is consulted. Route `levels` back to the memo
+    and this fails immediately.
+    """
+    paths = corpus.paths()[:FILES]
+    if not paths:
+        print('SKIP test_layouts_is_fully_drained: no corpus')
+        return
+    for name in ('LAYOUTS', 'LAYOUT_MASK'):
+        tab = getattr(sbsasm, name)
+        n, changed = _knockout(tab, paths)
+        if not n:
+            print('SKIP test_layouts_is_fully_drained: no records')
+            return
+        print('    %-14s %7d of %7d records read differently without it'
+              % (name, changed, n))
+        assert changed == 0, (
+            '%s still decides %d of %d readings -- layouts.json is not drained, and '
+            'something has been routed back onto the memo' % (name, changed, n))
+    return
+
+
 # The standalone runner reads SKIP from what a check PRINTS, not from what it returns.
 # These functions used to return a count and the runner reported "skipped" when it was
 # falsy -- but a pytest test function that returns non-None is a warning today and an
@@ -218,6 +266,7 @@ def test_every_table_is_load_bearing():
 if __name__ == '__main__':
     for fn in (test_layouts_drained_from_layout,
                test_layouts_changes_no_program_discovery,
+               test_layouts_is_fully_drained,
                test_every_table_is_load_bearing):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):

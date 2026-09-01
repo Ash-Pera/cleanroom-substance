@@ -41135,6 +41135,13 @@ field costs no slot, so every value read today is read from the same word either
 
 ### The `levels` routing is still blocked, but the veto is ONE PACK and ONE OUTPUT
 
+**SUPERSEDED.** The routing landed. See "`levels` goes on the walk, and `layouts.json` is
+drained" at the end of this file: the veto was re-run on its own instrument and withdrawn,
+and the table below is superseded by an A/B taken after the 2026-08-28 attribution fixes.
+The section is kept because the shape of the argument -- and the sd column, which is the
+half that looked strongest and was measuring a switched-off layer -- is what the later
+measurement had to answer.
+
 The `_parameters_walked` docstring records the case against routing `levels` through the walk
 as a Chesterfield basecolor collapse. That was never measured across the other packages. Run
 now over all five reference packs, one process per condition (`sbsruntime.SAMPLERS` is
@@ -41277,6 +41284,11 @@ difference ONLY where the input leaves the unit range -- which is precisely the
 an `assume.QUESTIONS` arm pair, measured, not a silent behaviour change.
 
 ### And the name cannot be written down yet, for a reason that indicts the memo
+
+**PARTLY SUPERSEDED.** The reason below is exactly right and no longer binding: `levels` is
+on the walk, so adding the sixth entry is now measured at 0 changed readings of 85,820. The
+name is still not written down, for the separate reason that it is external knowledge at
+moderate confidence and the field surfaces no value.
 
 The obvious move -- add `('interclamp', 0xC00, 0x800)` to `PARAM_SPEC[15]` -- is UNSAFE while
 `levels` is still routed through `_parameters_paired`, and that is worth recording as a
@@ -42549,6 +42561,12 @@ the next field. The arms are exclusive by construction -- one two-bit code canno
 
 ## The three `levels` records Chesterfield's basecolor was blamed on are inert
 
+**FOLLOWED THROUGH.** This section withdrew both halves of the veto; the routing itself
+landed later. See "`levels` goes on the walk, and `layouts.json` is drained" at the end of
+this file for the re-run figures -- the containment score is 82 of 93 nodes over 21 sources
+rather than 12 of 12 on one, and the four-arm inertness table below reproduces to within
+0.002 after the 2026-08-28 attribution fixes moved the absolute numbers.
+
 This file records an open question -- that `Chesterfield` prefers the LAYOUTS memo's reading of
 records 129, 146 and 226 over the walk's, and that "something downstream of an INVERTING
 `levels` is wrong". Both halves of that are withdrawn. The reading is settled by the package's
@@ -42871,3 +42889,216 @@ Both trees in one session against one pinned parent, to complement the +6.3% abo
                                 one more declared output
 
 No pack loses a record; the reference specimen is unchanged (height mean 0.78587).
+
+## `levels` goes on the walk, and `layouts.json` is drained
+
+The `_parameters_walked` docstring, this file's "The three `levels` records Chesterfield's
+basecolor was blamed on are inert", and README.md all recorded the same standoff: the walk
+wins every structural comparison for `levels`, the memo wins one package's basecolor, and
+the routing stays on the memo. `sbsasm.WALKED_PARAMS` is now `{1, 4, 11, 12, 15}`. What
+follows is the measurement, re-run rather than cited, and it includes the veto's own
+instrument coming out the other way.
+
+The corpus here is 437 files and 85,820 `levels` records, 9.27% of the 925,706 the audit
+counts. The 2026-08-28 attribution fixes -- the pinned base region and `distance`'s
+double-charged mask input -- landed between the old figures and these, and they moved
+Chesterfield's numbers substantially, so nothing below matches the earlier tables digit for
+digit.
+
+### The arbiter that does not go through a renderer
+
+Source containment, widened past `ChesterfieldSofa` to every permitted paired source with a
+compiled twin. Each declared `levels` node is matched to at most one record, on the
+parameter SET and the values to 2e-4, by maximum bipartite matching so one node cannot claim
+two records and inflate the score:
+
+    21 files, 93 declared nodes        walk 82        memo 69
+
+    ahead for the walk   10 files    level   11 files    ahead for the memo   0 files
+
+    ChesterfieldSofa                     12 / 11        DLG-Tools__Damaged_Iron_01   12 / 11
+    SubstanceDesignerPractice            11 /  9        LGMLtools__fz_explosion       4 /  2
+    substance-designer-materials RockWall 2 /  0        DLG-Tools__Mineral_Ore_01     6 /  5
+    SandyStonePath                        7 /  6        Hard-Science-Old__RockyPath   1 /  0
+
+The memo is not merely less complete, it is wrong where it differs, and `ChesterfieldSofa`
+is the file that shows it -- the same file whose render was the whole of the veto. Record
+348 is a fourteen-word COLOUR `levels`; the source states `levelinhigh` 0.593045; the walk
+reads it at slot 8 and the memo reads 0.264098 at slot 5, a duplicate of `levelinlow`.
+
+That also settles a width. `_parameters_paired`'s docstring says "baked levels are one word
+whether the record is colour or greyscale (colour records with 2 baked parameters have a
+2-slot block, 550 of 550)". The cost model charges 4 for a colour record -- `costs.json`
+gives filter 15 `interaction: colour` with a `cross` of 3 on each parameter's baked arm --
+and record 348 is a source-declared instance of the cost model being right and the memo's
+block being a fit to the wrong shape. 1,735 corpus slots are read at width 4.
+
+### The structural ledger, corpus-wide
+
+    memo lands ON AN INPUT EDGE           1,844        walk        0
+    memo lands PAST the walked header end   133        walk        0
+    memo finds a parameter the walk misses      0
+    walk finds a parameter the memo misses  8,327  on 4,352 records
+    slots the two agree on                153,230
+    slots they place differently            6,520
+
+A parameter read out of an input-edge slot is a record index reinterpreted as a float, which
+is why those come back as denormals near zero rather than as anything out of range: a
+plausibility test cannot see them and the edge-XOR-parameter rule can. The edge set is
+`decompose`'s `inputs`, which is validated against `_compute_layout` + `_real_edges` and so
+does not depend on where either model puts a parameter.
+
+### The render veto, re-run, all five packs
+
+One process per condition, `refcompare.RENDER_DIM`, every scoreable channel:
+
+    pack                    output      ch     memo     walk     delta
+    Bricks_and_tiles        basecolor    0  -0.0398  +0.4270  +0.4669
+    Bricks_and_tiles        basecolor    1  +0.1615  +0.5475  +0.3860
+    Bricks_and_tiles        basecolor    2  +0.0324  +0.5148  +0.4824
+    Bricks_and_tiles        emission     1  +0.9837  +0.9926  +0.0089
+    Bricks_and_tiles        emission     2  +0.9885  +0.9836  -0.0049
+    Chesterfield            basecolor    0  +0.6281  +0.5985  -0.0296
+    Chesterfield            basecolor    1  +0.9636  +0.6544  -0.3093
+    Chesterfield            basecolor    2  +0.8224  -0.7216  -1.5441
+    Chesterfield            roughness    0  +0.8834  +0.8956  +0.0122
+                                  18 of 27 channels unchanged, 5 better, 4 worse
+                                  mean MAE over all 27   memo 0.0883   walk 0.0669
+
+Bricks' basecolor is the memo at or below zero on all three channels and the walk at +0.43
+to +0.51. Read the sign, not the magnitude: the pairing ambiguity recorded earlier for that
+output is unchanged, and both conditions keep the same last row, so the DELTAS are
+apples-to-apples while the absolute numbers are a property of which reference won.
+
+### Chesterfield's basecolor is accounted for, not traded away
+
+Bisected by falling individual records back to the memo, and -- the arm that settles it --
+by forcing three records to a constant while everything else walks:
+
+    memo everywhere                  base +0.6281 / +0.9636 / +0.8224   rough +0.8834
+    walk, 129/146/226 = CONSTANT 1   base +0.6281 / +0.9636 / +0.8224   rough +0.8834
+    walk, memo for 129/146/226       base +0.6281 / +0.9636 / +0.8224   rough +0.8834
+    walk everywhere                  base +0.5985 / +0.6544 / -0.7216   rough +0.8956
+    walk, memo for 348               base +0.5985 / +0.6544 / -0.7216   no effect
+    walk, memo for 137/210/218       base +0.5990 / +0.6545 / -0.7224   no effect
+
+Only 7 of the file's 124 `levels` records read differently at all, and the entire channel
+difference is three of them. What those three do under the memo is emit a constant white,
+and that is not a reading of their parameters: the memo's `levelinhigh` for them is slot 2,
+the INPUT EDGE, read as 0.0, which collapses the input span. Four readings that ARE
+available to the record agree with each other and disagree with the memo:
+
+    reading of 129/146/226        basecolor ch0 / ch1 / ch2
+    invert (the walk)             +0.5985 / +0.6544 / -0.7216
+    identity                      +0.5982 / +0.6540 / -0.7213
+    pure 1-x                      +0.5973 / +0.6537 / -0.7197
+    constant 0.5                  +0.5978 / +0.6538 / -0.7205
+
+Every channel within 0.002. Their input is a near-flat 0.4998 (record 128, a 4x
+minification), so the invert and its exact opposite are indistinguishable here. A score no
+correct placement can reach is not evidence for a placement.
+
+### And it does not survive its own instrument at a higher resolution
+
+The same two conditions at `max_dim` 256 rather than 128:
+
+    memo   874 records, 7 failures    basecolor NOT RENDERED
+    walk   881 records, 0 failures    basecolor +0.7149 / +0.8536 / -0.8500
+                                      roughness +0.9234 against the memo's +0.8689
+
+Record 330 is a `pixelprocessor` computing `(x - lo) / (hi - lo)`. Under the memo's reading
+it divides 0/0, goes 100% non-finite, and takes basecolor and six more records out. At 128
+the same reading merely saturates: record 330 comes back at mean 0.9918 sd 0.0731 and the
+gradient at 869 collapses to an exact constant 1.0, where under the walk they are 0.5986 sd
+0.2905 and 0.8577 sd 0.2641. The memo's Chesterfield basecolor is a switched-off layer
+scoring well, and at one more doubling of resolution it stops existing.
+
+WHAT IS STILL WRONG, and it should not be buried: Chesterfield basecolor ch2 is
+ANTI-CORRELATED under the walk at both resolutions, -0.72 at 128 and -0.85 at 256. That is a
+real fault and this does not fix it. It is now watched -- `REFERENCE_FLOOR` has an entry for
+it -- and the place to look is the one this file already named: the nine mode-7 switch
+blends in the colour chain, and record 862's mask, which correlates +0.94 with the
+reference's luminance while our own output correlates -0.15.
+
+### The two walk placements agree, which is the non-circular half
+
+`Record.named_parameters` and `render2.model.View` are two DIFFERENT placement rules, not
+one rule read twice. The first advances `decompose`'s forward cursor and takes each width
+from the cost model's per-(field, state) charge; the second anchors at `header_end` and lays
+the fields out backwards, taking each width from the manifest's type legend (SPEC 13.3).
+They are wrong in different ways when they are wrong -- the end anchor is immune to a
+mis-charged slot BEFORE the parameters, the cursor is immune to a mis-fitted header length.
+
+Over all 85,820 corpus `levels` records they agree on the name set, the kind and the value:
+
+    identical   85,820 of 85,820        name set differs 0     value differs 0
+
+So the placement this routing adopts is the one both rules reach independently, and the
+source containment above is a third instrument agreeing with both.
+
+### What the switch changed, and what it did not
+
+Corpus-wide, both routings computed in one process, over every record of every filter the
+parameter paths touch:
+
+    filter            records    named_parameters changed    program_slots changed
+    blend (1)         310,697            0                          0
+    fxmaps (4)         41,164            0                          0
+    warp (7)           26,795            0                          0
+    blur (10)          15,371            0                          0
+    dirmotionblur (11) 15,097            0                          0
+    directionalwarp (12) 62,146          0                          0
+    levels (15)        85,820        6,910                          0
+
+So 471,270 records of the six other filters are byte-identical and 78,910 of the 85,820
+`levels` records are too. The 6,910 are the disagreement measured above.
+
+### `layouts.json` is now drained, and that is the real size of this change
+
+`levels` was its last consumer. `program_slots` keeps a `LAYOUTS` fallback for the blur/warp
+popcount block, and over the whole corpus that fallback is REACHED 0 times in 42,166
+blur/warp records -- `decompose` answers first on every one. Knocking each table out over
+the 120-file sample `test_tables.py` uses, full snapshot (programs, edge slots, edges, size,
+the FX walk, `program_slots`, `named_parameters`):
+
+    before      LAYOUTS      14,897 of 160,672   (9.272%)      LAYOUT_MASK   14,897 (9.272%)
+    after       LAYOUTS           0 of 160,672   (0.000%)      LAYOUT_MASK        0 (0.000%)
+                EDGES             4 of 160,672 -- unchanged, and the control
+
+9.272% is exactly the `levels` share of the corpus, which is the arithmetic saying the same
+thing: the table's whole remaining job was this one filter's parameter positions.
+`test_every_table_is_load_bearing` would now report both tables DEAD, which is correct and
+is not a failure, so they move out of that list and into
+`test_layouts_is_fully_drained`, which asserts the zero instead. EDGES staying at 4 is what
+keeps that from being a tautology: the knockout machinery still detects a table that is
+consulted.
+
+`_parameters_paired` is kept, unreachable, as the independent second model -- the role
+`_compute_layout` plays for `decompose`. Two implementations of one thing drift; two that
+are known to differ, with the difference measured, do not.
+
+### The sixth field comes along for free, and could not have
+
+`costs.json` gives filter 15 six w1 pairs and `PARAM_SPEC[15]` names five. Field 5 (bits 10,
+11) is set on 455 corpus records, always in state 1, and costs zero words in both states.
+(The 500 quoted in "`levels` has a SIXTH w1 field" is the corpus PLUS the reference packs;
+over the 437-file corpus alone it is 455, and the state-1-only finding is unchanged.)
+Adding `('interclamp', 0xC00, 0x800)` to the spec, corpus-wide:
+
+    the walk    0 of 85,820 readings change    -- width 0, so no `param_slots` entry
+    the memo  431 of the 455 field-5 records read a SIXTH WORD that is not a parameter
+              (9.34e-33 and similar: the next record's bytecode as a float), and 1 record
+              has an existing parameter moved
+
+`_parameters_paired` builds `present = [nm for nm, pres, _prog in spec if w & pres]` and
+places that many slots, so a zero-width field costs it a slot it does not have. Worse, it
+could not have found the field at all: `LAYOUT_MASK[15]` is `0x3fd`, so bits 10 and 11 are
+outside the memo's KEY by construction -- the mask was fitted to the five parameters known
+when it was fitted. This is the concrete cost of a fitted table that the placement figures
+do not show: not accuracy on the parameters it knows, but blindness to the ones it does not.
+
+The NAME is still not written down. "Intermediary clamp" is external knowledge held at
+moderate confidence, the field surfaces no value because it consumes no word, and
+`assume.QUESTIONS['levels.interclamp']` remains the honest place for it with its recorded
+null. What the routing changes is that adding the name is now SAFE, where before it was a
+431-record regression waiting to happen.

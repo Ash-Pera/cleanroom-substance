@@ -1013,6 +1013,144 @@ def test_levels_parameters_are_named_the_way_the_sources_name_them():
     return
 
 
+#: `levels` nodes the walk's placement recovers whole, across every permitted paired
+#: source. A floor. The memo recovered 69 of the same 93 when it was retired.
+LEVELS_NODES_RECOVERED = 82
+
+
+def _levels_declared(path):
+    """[{name: ('const', v) | ('dynamic', None)}] for each `levels` node in a source.
+
+    The first component of a FloatN, because `levels` writes every parameter as
+    `constantValueFloat4` -- the scalar repeated across RGB with an alpha. Reading only
+    the Float1 form is what made this filter look unpairable for so long.
+    """
+    try:
+        text = open(path, encoding='utf-8', errors='replace').read()
+    except OSError:
+        return []
+    out = []
+    for body in _SBS_NODE.findall(text):
+        if '<filter v="levels"/>' not in body:
+            continue
+        got = {}
+        for name in _LEVEL_PARAMS:
+            m = re.search(r'<name v="%s"/><relativeTo v="\d+"/><paramValue>'
+                          r'(?:<constantValueFloat\d v="([-\d.e ]+)"/>|(<dynamicValue>))'
+                          % name, body)
+            if not m:
+                continue
+            got[name] = (('const', float(m.group(1).split()[0])) if m.group(1)
+                         else ('dynamic', None))
+        if got:
+            out.append(got)
+    return out
+
+
+def _max_matching(edges, n_left):
+    """Kuhn's algorithm. A declared node may claim at most ONE record, and vice versa."""
+    match = {}
+
+    def aug(u, seen):
+        for v in edges.get(u, ()):
+            if v in seen:
+                continue
+            seen.add(v)
+            if v not in match or aug(match[v], seen):
+                match[v] = u
+                return True
+        return False
+
+    return sum(1 for u in range(n_left) if aug(u, set()))
+
+
+def test_levels_placement_is_the_one_the_sources_confirm():
+    """The arbiter that retired the `LAYOUTS` memo for `levels`, as a standing check.
+
+    `test_levels_parameters_are_named_the_way_the_sources_name_them` above asks whether a
+    located value is called the right thing. This asks the harder question the routing
+    turned on: given a declared node, does the reading reproduce that node's WHOLE
+    parameter set at the values it states? A placement that is one slot out still names
+    things correctly on the records where nothing shifted, and fails here.
+
+    A declared node matches a record when the SET of level parameters agrees exactly and
+    every stated constant is within 2e-4 of the value read at its slot (a stated
+    `dynamicValue` must read as a program). The pairing is a maximum bipartite matching so
+    one node cannot claim two records and inflate the count.
+
+    When this was measured, over 21 permitted paired sources and 93 declared nodes:
+
+        the walk (`WALKED_PARAMS`)          82
+        the LAYOUTS memo (`_parameters_paired`)   69, ahead on 0 of the 21 files
+
+    The memo's misses are not near-misses. `ChesterfieldSofa` record 348 is a colour
+    `levels` whose source states `levelinhigh` 0.593045; the walk reads it at slot 8, four
+    words after `levelinlow`, and the memo reads 0.264098 at slot 5 -- a duplicate of
+    `levelinlow`, because it charges a colour parameter one word instead of four.
+
+    THIS IS NOT CIRCULAR and that is the point of it: the values come from the packages'
+    own `.sbs`, which no part of the decode reads.
+    """
+    from sbsasm import PARAM_SPEC, WALKED_PARAMS
+    if 15 not in WALKED_PARAMS:
+        # Not a skip: the routing having been reverted is exactly what this catches.
+        assert False, ('`levels` is back on the LAYOUTS memo. It recovered 69 of 93 '
+                       'source-declared nodes there against the walk\'s 82 -- see '
+                       'FORMAT-NOTES "`levels` goes on the walk"')
+    spec = PARAM_SPEC[15]
+    seen = collections.Counter()
+    behind = []
+    for path in provenance.paired_sources():
+        if provenance.matches(path, provenance.EXCLUDED_AUTHORS):
+            continue
+        nodes = _levels_declared(path)
+        own = provenance.own_assembly(path) if nodes else None
+        if not own:
+            continue
+        try:
+            recs = [r for r in Assembly(own).records if r.filter_id == 15]
+        except Exception:
+            continue
+        if not recs:
+            continue
+        got = {}
+        for which in ('walk', 'memo'):
+            reads = []
+            for r in recs:
+                try:
+                    read = (r.named_parameters if which == 'walk'
+                            else r._parameters_paired(spec))
+                except Exception:
+                    read = []
+                reads.append({n: (k, v) for n, k, v in read})
+            edges = {}
+            for i, decl in enumerate(nodes):
+                edges[i] = [j for j, rd in enumerate(reads)
+                            if set(rd) == set(decl)
+                            and all((rd[n][0] == 'program') if kind == 'dynamic'
+                                    else (rd[n][0] == 'baked'
+                                          and abs(float(rd[n][1]) - v) <= 2e-4)
+                                    for n, (kind, v) in decl.items())]
+            got[which] = _max_matching(edges, len(nodes))
+        seen['nodes'] += len(nodes)
+        seen['walk'] += got['walk']
+        seen['memo'] += got['memo']
+        if got['memo'] > got['walk']:
+            behind.append((os.path.basename(path), got['walk'], got['memo']))
+    if not seen['nodes']:
+        print('SKIP test_levels_placement_is_the_one_the_sources_confirm: no pairings')
+        return
+    assert not behind, ('the memo recovers MORE source-declared levels nodes than the walk '
+                        'on %s -- that was true on 0 of 21 files when levels was routed' %
+                        (behind,))
+    assert seen['walk'] >= LEVELS_NODES_RECOVERED, (
+        'the walk recovers %d of %d declared levels nodes, below the recorded %d'
+        % (seen['walk'], seen['nodes'], LEVELS_NODES_RECOVERED))
+    print('ok  test_levels_placement_is_the_one_the_sources_confirm '
+          '(%d of %d nodes, memo %d)' % (seen['walk'], seen['nodes'], seen['memo']))
+    return
+
+
 # Colour pairings this containment finds today. A floor, for the same reason
 # BLENDMODE_PAIRINGS has one.
 UNIFORM_COLOUR_PAIRINGS = 150
@@ -1137,8 +1275,27 @@ REFERENCE_FLOOR = {
     ('minime453__Chesterfield_PBR_Material', 'normal', 0): 0.86,      # was -0.007, now 0.916
     ('minime453__Chesterfield_PBR_Material', 'normal', 1): 0.86,      # was +0.002, now 0.916
     ('minime453__Chesterfield_PBR_Material', 'AO', 0): 0.82,          # was -0.038, now 0.875
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.60,   # was +0.101, now 0.668
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.72,   # was +0.165, now 0.780
+    # CHESTERFIELD BASECOLOR: LOWERED, WHICH IS THE ONE MOVE THIS TABLE IS NOT SUPPOSED TO
+    # MAKE, so the reason is here rather than in a commit message. Routing `levels` through
+    # the structural walk (`sbsasm.WALKED_PARAMS`) takes these three channels from
+    # +0.6281 / +0.9636 / +0.8224 to +0.5985 / +0.6544 / -0.7216.
+    #
+    # The old numbers were not an agreement. Walking everything but forcing records 129,
+    # 146 and 226 to a CONSTANT 1.0 image reproduces them to four decimals -- and those
+    # three records only emit a constant under the memo because it reads their INPUT EDGE
+    # as a `levelinhigh` of 0.0. Four legitimate readings of the same records (invert,
+    # identity, 1-x, constant 0.5) agree with each other to 0.002 on every channel and all
+    # four give the numbers below, so the record's own parameters cannot produce the old
+    # score under any placement. At `max_dim` 256 the memo's reading takes record 330's
+    # pixelprocessor 100% non-finite and this output does not render at all, while the walk
+    # renders it at +0.7149 / +0.8536 / -0.8500. See `sbsasm.Record._parameters_walked`.
+    #
+    # ch2 IS NEW AND IS NEGATIVE, listed for the first assertion. It is the one thing the
+    # routing genuinely costs on the pixels, and leaving it unwatched is the exposure the
+    # Bricks entries below were added for.
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.55,   # was 0.60, now 0.5985
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.60,   # was 0.72, now 0.6544
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2): -0.78,  # new, now -0.7216
     # BRICKS BASECOLOR IS ANTI-CORRELATED AND LISTED ANYWAY. These three sit at -0.70,
     # -0.69 and -0.65: the render is not merely poor, it is inverted against the engine's
     # own export. They are here for the FIRST assertion, not the second. Nothing was
@@ -1159,9 +1316,14 @@ REFERENCE_FLOOR = {
     # not of the render, and ratcheting it upward later would be reading noise. What earns
     # its place is that a constant basecolor now fails, and a basecolor that stops
     # rendering now fails.
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 0): -0.72,   # now -0.7014, sd 0.0662
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 1): -0.71,   # now -0.6901, sd 0.0877
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 2): -0.67,   # now -0.6462, sd 0.1517
+    # THESE THREE ARE NOW POSITIVE and the floors are deliberately NOT ratcheted to match.
+    # With `levels` on the walk they read +0.4270 / +0.5475 / +0.5148 against the -0.0398 /
+    # +0.1615 / +0.0324 recorded here, which is the sign flip the note above predicted --
+    # but the pairing ambiguity described above is unchanged, so raising these would be
+    # ratcheting a property of which reference won rather than of the render.
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 0): -0.72,   # was -0.7014, now +0.4270
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 1): -0.71,   # was -0.6901, now +0.5475
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 2): -0.67,   # was -0.6462, now +0.5148
 }
 
 
@@ -1249,6 +1411,7 @@ if __name__ == '__main__':
                test_reference_agreement_does_not_regress,
                test_uniform_colour_sits_where_the_source_says_it_does,
                test_levels_parameters_are_named_the_way_the_sources_name_them,
+               test_levels_placement_is_the_one_the_sources_confirm,
                test_no_filter_parameter_is_named_differently_from_its_source):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
