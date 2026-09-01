@@ -43102,3 +43102,211 @@ moderate confidence, the field surfaces no value because it consumes no word, an
 `assume.QUESTIONS['levels.interclamp']` remains the honest place for it with its recorded
 null. What the routing changes is that adding the name is now SAFE, where before it was a
 431-record regression waiting to happen.
+
+## The 7.5% of uninterpreted record bytes was 92% bookkeeping, and the row was never code
+
+`README.md` reported `record bytes interpreted 92.5%`, the lowest row in the audit table by
+a wide margin — edges 100.00%, layout 99.97%, size expression 95.64%. Nobody had asked what
+the missing 7.5% was. The answer is that most of it was decoded weeks ago and the rest is
+padding, and the reason nobody noticed is mechanical.
+
+### The row was never implemented
+
+"92.5% of record bytes" entered this document in `8fa476b` and `README.md` in `0f21ceb`.
+**Neither commit touched a `.py` file.** `git log -S"record bytes interpreted" -- '*.py'`
+returns nothing; so do `-S"uninterpreted"` and `-S"would have to guess"`. `coverage()` does
+not compute it — it classifies whole-file byte regions and its docstring points *at* the
+figure rather than producing one, which is how it reads as if something computed it.
+
+So the number could not be re-run, and it was not. This is `corpus.py`'s lesson one level
+up: a correction recorded in prose does not propagate to code. Here it is worse than that —
+there was no code to propagate to, so the figure could not go stale *loudly*. It went stale
+silently for eight days while the walk migration moved it four points.
+
+There is a second mechanical half. `archive/tools/audit_corpus.py` — the tool
+`tools/README.md` documents as `python3 tools/audit_corpus.py` and which prints every
+headline figure here — **has not been runnable as documented since the archive cut**. It
+died on line 9, `import disasm`: the modules it audits stayed in `tools/` and it did not,
+and only `conftest.py` inserts that path. `conftest` runs under pytest, and pytest never
+collects this file because it defines no test. Both are fixed: `audit_corpus.py` resolves
+`tools/` itself, and it now computes the byte row.
+
+### Reconstructing it, and checking the reconstruction against the tree that produced it
+
+The metric, restated from the description in "0 unexplained bytes was measuring the
+directory" — the tag, the slots the layout names, decoded programs, FX-Map nodes, payload
+readers — over a canvas of every byte, in three tiers:
+
+    header      the tag and every slot the walk enumerates, bounded by the header end
+    +programs   the bodies of the programs `Record.programs` returns   <- the README row
+    +payloads   read_ramp, curve_points, vector_shape, bitmap, and fx_walk's nodes and
+                entries at their stated extents
+
+`referenced_programs()` is deliberately **not** credited. It is the permissive scan, and
+letting it raise a coverage number would be the same circularity the original retraction is
+about: coverage must move because something was decoded, not because something was scanned.
+
+The reconstruction is checked the only way it can be, by running the identical script
+against `git archive` exports of older trees over the identical 437-file corpus — 903,616
+records, 284,490,036 record bytes, byte-identical denominators in all four runs:
+
+    tree                             header   +programs   +payloads
+    8f973fa  2026-08-24              6.834%     92.296%     92.980%
+    5638c97  2026-08-27              7.398%     96.500%     97.716%
+    39cf326  2026-08-31 (pre-levels) 7.398%     96.500%     98.557%
+    HEAD     2be7128                 7.398%     96.500%     98.557%
+
+`8f973fa` is the commit that pinned 92.5% into `coverage()`'s docstring, and the
+reconstruction gives **92.296%** there. So the definition above is the one that produced the
+row, and the row was an honest measurement of its own moment. It is now four points stale on
+its own terms and 6.75 points stale once the payload readers are credited at their true
+extents, which gives **99.254%**.
+
+Note what did *not* move it: `fc8c5e0`, the `levels` routing that drained `layouts.json`,
+changes the byte figure by 0.000. It moves *which* slot a parameter is read from, not how
+many words are named, so a byte metric cannot see it — the same reason the size-expression
+row did not move. Two rows measured the same fix and both correctly report nothing.
+
+### One denominator error, retracted
+
+"record bytes interpreted 92.5% **of 65 MB of record bytes**" (this document, under "The
+honest measure") is wrong by a factor of four. The corpus holds **284.5 MB** of record
+bytes. 65,791,679 was the *numerator in words*, from the same measurement written up under
+"The record framing is 92.5% emittable" — where it is correctly labelled words, against
+71,140,204 record words total. 71,140,204 words is 284.6 MB, which reproduces here to 0.02%.
+The two write-ups are the same measurement and one of them mislabelled words as bytes.
+
+The per-filter table under "The honest measure" is stale rather than wrong. Then and now:
+
+    gradient        43.3%  ->  99.75%      pixelprocessor  90.8%  ->  99.77%
+    fid 5            0.0%  ->  81.24%      blend           98.2%  ->  99.50%
+    fxmaps          90.9%  ->  98.62%      levels          95.1%  ->  99.57%
+    shuffle         93.5%  ->  99.74%      transformation  95.5%  ->  99.17%
+    warp            96.6%  ->  99.66%      distance        96.6%  ->  99.54%
+
+`gradient` is the largest single mover and the reason is recorded three sections later:
+`b137996` read the colour ramp, one day after the 43.3% was measured. The figure that
+surfaced the gap was corrected by the work it prompted and never re-taken.
+
+### The canvas has to be file-wide, and this is not a detail
+
+The record directory is a sorted **partition**, not an allocation — `ramp`, `vector_shape`
+and `fx_tree` each say so in their own docstrings — so a gradient's ramp table, an FX-Map's
+entry run and a vectorshape strip routinely sit inside a *neighbouring* record's extent.
+Marked per record, those bytes are charged to a record that does not own them and credited
+to none. Measured both ways over the full corpus the difference is 132,370 bytes, and it is
+pure misattribution. That `transformation` and `blend` are the second and third largest
+residual holders is the same effect: neither has a payload of its own, and of their
+non-padding residual **43.6% and 39.0% is immediately preceded by a decoded FX entry or FX
+node** — it is FX-Map structure continuing past what the walk marks, inside a record that
+merely contains it. 20.2% and 17.0% of it falls inside a span an `fxmaps` record in the same
+file addresses, which is a lower bound, since an fxmaps span here is only the hull of the
+offsets `fx_walk` reaches.
+
+A second, larger accounting seam: an FX entry credited a token 8 bytes instead of the extent
+`fx_table`'s docstring states — to the end of its own inline program, or to the next entry —
+understates the corpus by **1,984,574 bytes**. That is a marking bug in the metric, not a
+decode gap: the same `fx_walk` call reaches the same structures either way. Crediting it
+takes `fxmaps` from 95.20% to 98.62% and the corpus from 98.556% to 99.254%.
+
+### What the residual actually is
+
+2,123,304 bytes, 0.746% of record bytes. **None of it lies inside a walked header** — the
+header/tail split is 0 / 2,123,304, so the walk names every byte of every header it covers
+and the entire residual is record tail.
+
+    alignment pad, 2 bytes, zero, decoded structure on both sides  1,454,936   68.52%
+    other word                                                       345,808   16.29%
+    unaligned residual (fxmaps 91,618 of it)                          92,474    4.36%
+    pointer into the body that is not a program                       69,336    3.27%
+    plausible float                                                   67,368    3.17%
+    pointer to a program THIS MODEL HAS ALREADY DECODED               43,428    2.05%
+    zero word                                                         27,172    1.28%
+    small integer                                                     22,664    1.07%
+
+**Two thirds of the residual is the alignment pad.** 727,527 two-byte runs at 2 mod 4, and
+**727,527 of 727,527 are `00 00`** — 100.0%, no exceptions — with a decoded program on the
+left and a decoded structure on the right in 726,748 of them. That is the pad
+`disasm.immediate` and SPEC already describe: instructions legitimately sit at 2 mod 4, so a
+program ending there is followed by two bytes of nothing before the next 4-aligned structure.
+A byte whose meaning is "pad" is not an undecoded byte, and counting it as one is the metric
+choosing a definition, not the format hiding anything.
+
+The 43,428 bytes of "pointer to an already-decoded program" are the same kind of thing from
+the other end — the model demonstrably follows those words (the program they name is in
+`referenced_programs`, and 314,040 of the 316,002 such words in the pre-fix accounting point
+at bytes already marked as program body), it simply does not mark the pointer word itself.
+
+### The three-way split
+
+    (b) the metric counting the wrong thing        3,615,426   85.3%
+          the per-record canvas                      132,370
+          FX entries credited 8 bytes deep         1,984,574
+          the alignment pad                        1,454,936
+          words naming an already-decoded program     43,428
+    (a) a real gap in the decode                     624,822   14.7%   = 0.220% of bytes
+    (c) provenance-walled                                116   0.003%  filter 9, 5 records
+
+Class (a), by filter:
+
+    vectorshape     171,836      transformation  113,846      levels          28,416
+    fxmaps          169,086      blend           105,156      everything else 36,482
+
+**It clusters by file as hard as by filter**: 32 of 437 specimens hold half of it.
+`Grid.sbsasm` alone is 6.2% of the whole residual and 65.75% of its own record bytes.
+
+`Grid` is worth naming because it is not mystery either. Records 4, 5 and 7 are three
+~65,540-byte blobs with the same word histogram — `0xFFFFFFFF` about 85% of the way through,
+with `0xFFFFFF00`/`0x000000FF` edges. Record 5 is a `bitmap` with class bit 8 set and is
+decoded as `inline_pixels`; records 4 and 7 are a `transformation` and a `blend` carrying the
+other two in their extents, and no reader claims them. 131,068 bytes — 21% of the entire
+real gap — is two constant-fill images in one specimen.
+
+### The one real bug this found: `vector_shape` stops at a length word its record contradicts
+
+Filter 5's payload is `[word0][length word][vertices]`, and `Record.vector_shape` takes the
+extent from the embedded length word: `n = (w + 23) // 2`. For **13 of 139 records** that
+length is short of the payload, and the record's own slot 2 — which the method's docstring
+already calls "payload end, OR a float parameter, depending on the class word" — states
+where it really ends. Exceptionless within that group:
+
+    slot 2 is a body pointer (not a float)                   13 of 13
+    slot 2 span == record span minus exactly 8               13 of 13
+    (slot 2 span - 8) divisible by 4, i.e. a whole vertex    13 of 13
+    bytes the length word omits                             146,440
+
+The other six of the 19 short records are class `0x218`, where slot 2 holds `0x3F800000`
+= 1.0 and states nothing; their 25,396 bytes stay open.
+
+The omitted bytes are vertex data. They read as smoothly-marching `u16` pairs — `(0x80b1,
+0xffff) (0x80b1, 0xffff) (0x80b1, 0xfffe) (0x80b1, 0xfffc)` — with the same value profile as
+the credited payload. **What they are not is settled**: the strip test this decode is built
+on, consecutive faces of opposite signed area, gives 62.24% over 25,998 faces against a
+37.92% shuffled control. Above chance, and nowhere near the 99.52% the credited payload
+gives, so this is more vertex data of the same kind and NOT simply the same strip continued.
+Two hypotheses were tried and one is refuted: there is no second `[kind][length]` sub-header
+at `start + n` in any of the 13 (the word there is `0x2f657d95`, `0xffff80b1`, `0x179748d1`
+— vertex data, not a header), so a chain of sub-payloads is out. Extending the extent to
+slot 2 is a change to `tools/`, is written up as a patch and is not applied here.
+
+This is the class the size-expression investigation found — a word the record plainly states,
+rejected by a bound taken from somewhere else. There it was `valid_program`'s floor; here it
+is an embedded length word preferred over the record's own pointer.
+
+**The first draft of the fix was wrong, and the corpus caught it, not the reading.** Written
+as "use slot 2 whenever it is a body pointer", it also fires on `RoadSubstance002`, whose
+filter-5 payloads lie *outside* their own record — the case the method's own next paragraph
+describes. There slot 2 names an address megabytes away, and 70 records grew to 3.6 **million**
+vertices each, 83 of 139 changing instead of 13. The bound that makes it right is
+`self.offset <= off < self.end`: every one of the 13 genuine cases has its payload inside its
+own extent. Recorded because the failure mode is exactly the one this repository keeps
+finding — a rule fitted to the population that surfaced it, checked against that population
+only. The before/after over all 139 records is what caught it, and it takes eleven seconds.
+
+### What should replace the row
+
+    record bytes interpreted       99.25%     of 284.5 MB over 903,616 records
+      genuine residual              0.220%    624,822 bytes; 32 files hold half of it
+
+and the number is now produced by `archive/tools/audit_corpus.py` rather than by this
+paragraph, which is the actual repair.

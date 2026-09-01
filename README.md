@@ -93,13 +93,17 @@ are a dated snapshot, not a live figure: the corpus has since settled at 437 (43
 withdrawal), and the attribution fixes of 2026-08-28 — the pinned base region, `distance`'s
 double-charged mask input — landed after this table was taken. Re-run `audit_corpus.py` to
 refresh it; the ranking in FORMAT-NOTES.md's most recent status section is the current one.
+Two rows have been re-measured against the current 437 files and 903,616 records since —
+the size-expression row, which did not move, and the byte row, which moved 6.75 points.
 
     filter identified              99.9%
     size expression or first
       parameter read               95.64%  see below - 4.35 of the missing 4.36 points are
                                            records that HAVE no parameter slot
     edge slots resolved          100.00%
-    record bytes interpreted       92.5%
+    record bytes interpreted       99.25%  was 92.5%, which was honest when taken: on its
+                                           own definition today's tree gives 96.50%, and
+                                           99.25% crediting every payload reader - see below
     record layout by mask-walk     99.97%  (only vectorshape, provenance-walled, left)
 
 **The size-expression row does not mean what it looks like, and re-running it does not move
@@ -165,11 +169,36 @@ not in the placement. Edges, size expressions, program positions and parameter v
 all structural now. What is *not* decided by a walk is what a field MEANS — that is a name
 legend, and it never mentions a position.
 
-The last line of the audit table is the one to read. Earlier versions of this table reported "unexplained
-bytes 0", which was circular: `coverage()` marks a whole record extent as accounted for
-the moment the record is enumerated, and the directory is a sorted partition of the body,
-so every body byte is inside some record by construction. That measured the directory's
-completeness, not the segmenter's. 92.5% counts only bytes the model can put a meaning to.
+**The byte row was never code, and that is why it went stale.** Earlier versions of this
+table reported "unexplained bytes 0", which was circular: `coverage()` marks a whole record
+extent as accounted for the moment the record is enumerated, and the directory is a sorted
+partition of the body, so every body byte is inside some record by construction. That
+measured the directory's completeness, not the segmenter's. The replacement counts only
+bytes the model can put a meaning to — but `git log -S` finds no script that ever computed
+it. It entered the notes and this README in prose, and `coverage()`'s docstring points *at*
+the figure instead of producing one. So the row nobody could re-run was the row that looked
+worst, which is `corpus.py`'s lesson one level up. `audit_corpus.py` now computes it, over a
+FILE-WIDE canvas because the directory is a partition and not an allocation: ramps, FX entry
+runs and vectorshape strips routinely lie inside a *neighbouring* record's extent, and a
+per-record canvas charges them to a record that does not own them.
+
+Re-measured, and the old number checks out as a measurement of its own moment. The same
+script against `git archive 8f973fa` — the commit that pinned 92.5% into `coverage()`'s
+docstring — over today's 437 files and 903,616 records gives **92.296%**. Against HEAD it
+gives 96.50% on that identical definition, and 99.25% once the payload readers this
+repository already has are credited at their stated extents. The 7.5% was real in August. Half of
+it has since been genuinely decoded — mostly by `Record.ramp` (`gradient` 43.3% → 99.75%)
+and by the walk migration reaching programs the layout table could not name — and most of
+the rest was never undecoded, only unmarked.
+
+What is left is 2,123,304 bytes, 0.746%, and 68.5% of that is the two-byte alignment pad —
+727,527 of 727,527 of them `00 00`, with a decoded structure on each side. The genuine
+residual is **624,822 bytes, 0.220% of record bytes**: `vectorshape` 171,836 (one real
+payload-extent bug, 13 records, fix written up as a patch and not applied), `fxmaps`
+169,086 of entry-table parameter words,
+219,002 in `transformation` and `blend` of which 131,068 are two constant-fill image blobs
+in a single specimen, and 64,898 everywhere else. See FORMAT-NOTES.md, "The 7.5% of
+uninterpreted record bytes".
 
 Decoded: the container, the record directory as a sorted extent map, the tag's filter and
 resolution fields, 22 of 23 filter ids — 21 named from the format's own sources and
