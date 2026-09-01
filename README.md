@@ -96,10 +96,36 @@ refresh it; the ranking in FORMAT-NOTES.md's most recent status section is the c
 
     filter identified              99.9%
     size expression or first
-      parameter read               95.6%
+      parameter read               95.64%  see below - 4.35 of the missing 4.36 points are
+                                           records that HAVE no parameter slot
     edge slots resolved          100.00%
     record bytes interpreted       92.5%
     record layout by mask-walk     99.97%  (only vectorshape, provenance-walled, left)
+
+**The size-expression row does not mean what it looks like, and re-running it does not move
+it.** Measured again over the current 437 files and 903,616 records it is 95.64%, identical
+to four decimal places at the commit before the 2026-08-28 attribution fixes and after them.
+The number is stable because its denominator is wrong, not because the decode is stuck: it
+is `1 - (records where size_or_baked returns None) / records`, and a record whose header
+ends before a parameter slot could exist returns `None` correctly. `audit_corpus.py` prints
+that split on the next four lines and this table dropped it. The split:
+
+    record has no parameter slot   39,303   4.350%   correct, not a miss
+    slot is an edge or a ramp bound     38   0.004%   read, not a parameter
+    genuinely unread                    63   0.007%
+
+63 records, in two pockets, neither of them a placement failure. 30 hold a real program
+pointer that `valid_program` refuses only because its floor is the FIRST RECORD's offset:
+all 30 are v2 files whose code region precedes the records, 27 of the 30 programs end
+exactly AT that floor, and `program_span` - which the same docstring calls "the single
+definition of is a program" - accepts every one of them. The other 33 hold a small integer
+(`curve`'s point count, 26 of them), and `size_or_baked`'s program/zero/float trichotomy has
+no arm for an integer. The non-circular arbiter says the placement itself is not the
+problem: over the 742,120 records where the class walk NAMES a size slot, the word there
+resolves as a valid program in 742,106 - **99.998%**, against 23.1% one slot away and 1.3%
+at a random other slot in the same records. That number is what the 2026-08-28 fixes moved.
+It was 99.577% before them, so the fixes closed 3,126 of 3,140 misplacements and did not
+touch the headline row at all.
 
 **The format is one recursive mask-walk.** A structured object is `[mask][fields]`: the set
 bits of a mask enumerate which fields are present in canonical order, and each field's width
