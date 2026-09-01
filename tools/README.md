@@ -3,18 +3,35 @@
 The finished tools. Each runs from the repository root, where the corpus lives:
 
     python3 tools/sbsasm.py <file.sbsasm> [record limit]
-    python3 tools/fxdisasm.py <file.sbsasm> <record index>
-    python3 tools/extract_bitmaps.py <file.sbsasm>
-    python3 tools/extract_shapes.py <file.sbsasm> [outdir] [--size 512] [--svg]
-    python3 tools/audit_corpus.py
-    python3 tools/validate_corpus.py
-    python3 tools/test_transpile.py
-    python3 tools/test_filters.py
-    python3 tools/test_fx.py
-    python3 tools/test_tables.py
-    python3 tools/reverify.py
-    python3 tools/provenance.py
     python3 tools/sourcematch.py [--verify] [--pairs]
+
+The archive cut — a boundary along `render2`'s transitive import closure, stated in
+`archive/README.md` — moved everything else in this list to `archive/tools/`. They still run
+from the repository root, and being archived is not a judgement about whether they are
+useful: `derive_costs.py` regenerates a table `render2` reads on every run, and the test
+suite is the test suite.
+
+    python3 archive/tools/fxdisasm.py <file.sbsasm> <record index>
+    python3 archive/tools/extract_bitmaps.py <file.sbsasm>
+    python3 archive/tools/extract_shapes.py <file.sbsasm> [outdir] [--size 512] [--svg]
+    python3 archive/tools/audit_corpus.py
+    python3 archive/tools/validate_corpus.py
+    python3 archive/tools/reverify.py
+    python3 archive/tools/provenance.py
+
+The test modules are pytest modules rather than scripts, and `conftest.py` is what puts
+`tools/` on their path — running one directly as `python3 test_filters.py` does not import.
+Use the lanes:
+
+    cd archive/tools && ./t                            # fast lane, ~30s
+    cd archive/tools && ./pt                           # parallel lane, one process per test
+    cd archive/tools && python3 -m pytest -q test_filters.py
+
+Below, any module not present in `tools/` is in `archive/tools/`. As of this writing that is
+`attribute_outputs`, `audit_corpus`, `containment`, `derive_costs`, `derive_layouts`,
+`expand_instances`, `extract_bitmaps`, `extract_shapes`, `fxdisasm`, `fxparams`,
+`gen_layouts`, `provenance`, `refcompare`, `render`, `reverify`, `run_file`, `slot_rules`,
+`standalone_parse_ref`, `validate_corpus` and every `test_*`.
 
 ## The model
 
