@@ -49,11 +49,23 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 #:
 #: The part resolution does NOT explain: mean Z. Averaging preserves a mean, and the export's
 #: is 0.8987 against our 1.0000 -- 0.101 apart, which is the difference between a surface with
-#: slopes and a flat one. The cause is that the two images are different renders: the manifest
-#: declares `$outputsize` default 8,8 (256) and the maps were exported at 12,12 (4096), while
-#: a record's size is baked in its tag, so `max_dim` can only cap and never raise. Until this
-#: renderer can be told an `$outputsize`, every scale-dependent channel is being compared
-#: across two parameterizations, and a floor here would assert the wrong thing.
+#: slopes and a flat one. This comment used to name the cause: the manifest declares
+#: `$outputsize` default 8,8 (256), the maps were exported at 12,12 (4096), and a record's
+#: size is baked in its tag, so the two images are different renders.
+#:
+#: THAT HYPOTHESIS HAS NOW BEEN TESTED AND IT IS WRONG FOR THIS SPECIMEN. `render` takes an
+#: `outputsize` (see `engine.record_sizes`), and rendering this file at 12,12 moves every
+#: channel here by less than 0.0001 and leaves normal Z at exactly 1.0000. The reason is
+#: measurable and is the same measurement that makes the parameter matter elsewhere: this
+#: graph contains ZERO `switch` blends and zero programs reading `$sizelog2`, against 98 of
+#: ChesterfieldSofa's 102 switches, so nothing in it is a function of the output size except
+#: the grid it is drawn on. Rokviz's flat normal is a defect in what we compute from a nearly
+#: flat height, not a parameterization mismatch, and it is still open.
+#:
+#: The mismatch is real and it is not this. See
+#: `test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it`: every
+#: reference pack in this corpus ships maps exported at an `$outputsize` its own file does
+#: not declare, and on Chesterfield saying so takes basecolor ch2 from -0.58 to +0.77.
 REFERENCE_FLOOR = {
     ('basecolor', 0): 0.95,          # measured +0.9758
     ('basecolor', 1): 0.92,          # measured +0.9494
@@ -613,6 +625,103 @@ class _RampCtx:
         return np.linspace(0.0, 1.0, W * H, dtype=np.float32)[:, None]
 
 
+def test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it():
+    """`$outputsize` is a graph INPUT, and the tag is its value at one setting only.
+
+    THE BUG THIS GUARDS. Every `.sbsar` in this corpus declares `$outputsize` 8,8 (256)
+    and every reference map beside one was exported larger -- 512, 1024, 2048, 4096. That
+    is not the same render at a different resolution on a `dynamicsize` graph: a record's
+    size slot holds a PROGRAM of `$outputsize`, and 98 of ChesterfieldSofa's 102 `switch`
+    blends take their selector from a program that compares `$sizelog2` against a
+    constant. Ten of those sit in the chain into `basecolor`, gated at K = 3..12, so at
+    `$outputsize` 8 six select `src` and four `dst` while at 11 nine select `src` and one
+    `dst`. Reading the tag renders a DIFFERENT GRAPH from the one the exporter ran, and
+    Chesterfield's basecolor channel 2 spent months being read as a filter defect on the
+    strength of it -- it is -0.58 against the export at the declared size and +0.85 at the
+    exported one, with the rest of the chain untouched.
+
+    THREE ASSERTIONS, and the middle one is the sharp one:
+
+      * the selectors are what is claimed -- ten of them, gated on `$sizelog2`, three
+        changing branch between the declared output size and the exported one.
+      * `record_sizes` is NOT a uniform scale of the tag. At `$outputsize` 11, 795 of
+        881 records grow 8x, 76 do not move at all -- a fixed-size stage of a mip pyramid
+        states an absolute size and ignores the input -- and 10 grow 2x or 4x. Multiplying
+        the tag by 8, which is the obvious shortcut and was the first thing tried here, is
+        wrong on 86 records and lands basecolor ch2 at +0.56 against the export where
+        reading each record's own expression lands it at +0.63 (`max_dim` 128).
+      * the DEFAULT is unchanged. `outputsize=None` must return None, because every other
+        check in this repository and the whole `test_filters` floor table is scored at the
+        declared size.
+    """
+    hits = glob.glob(os.path.join(ROOT, '**', 'ChesterfieldSofa.sbsasm'), recursive=True)
+    if not hits:
+        return _skip('test_a_records_size_is_a_function_of_outputsize: no ChesterfieldSofa')
+    import disasm
+    from engine import declared_outputsize, record_sizes
+    asm = sbsasm.Assembly(hits[0])
+
+    assert record_sizes(asm, None) is None, \
+        'record_sizes must be inert without an $outputsize -- everything else is scored ' \
+        'at the declared one'
+    declared = declared_outputsize(asm)
+    assert declared == (8, 8), 'ChesterfieldSofa declares $outputsize %r' % (declared,)
+
+    # -- the selectors ---------------------------------------------------------------
+    # The chain into basecolor, oldest first. Each is `$sizelog2.x < K ? 0.0 : 1.0`, and
+    # `ops.blend` reads a switch's opacity as "1 takes src". That reading is what makes
+    # the chain coherent: at K > $sizelog2 the record passes its dst through unchanged,
+    # which is an octave being SKIPPED because the output is too small to carry it. Under
+    # the opposite reading every one of these ten returns the coarsest octave at every
+    # size, which is not a filter anyone would compile ten of.
+    chain = [237, 246, 256, 266, 276, 285, 293, 301, 309, 320]
+    gates = []
+    for i in chain:
+        rec = asm.records[i]
+        assert (rec.slot1_flags or {}).get('blendingmode') == 7, \
+            'record %d is no longer a switch blend' % i
+        v = model.View(asm, rec)
+        p = v.params.get('opacitymult')
+        assert p is not None and p.kind == 'program', \
+            'record %d states no selector program' % i
+        ptr = v.words[p.slot] + 52
+        txt = disasm.text(asm.data, ptr, asm.program_span(ptr))
+        got = re.findall(r'sysvar\.\w+\s+3\b', txt)
+        assert got, 'record %d selector no longer reads $sizelog2:\n%s' % (i, txt)
+        found = re.findall(r'const\.f1\s+(\d+)\s*$', txt, re.M)
+        assert found, 'record %d selector states no threshold:\n%s' % (i, txt)
+        gates.append(int(found[0]))
+    assert gates == list(range(3, 13)), \
+        'the LOD thresholds are %r, not the octaves 3..12' % (gates,)
+    at_declared = sum(1 for k in gates if declared[0] >= k)
+    at_exported = sum(1 for k in gates if 11 >= k)
+    assert (at_declared, at_exported) == (6, 9), \
+        'the selections are %d src at the declared size and %d at the exported one, ' \
+        'not 6 and 9' % (at_declared, at_exported)
+
+    # -- the sizes -------------------------------------------------------------------
+    sizes = record_sizes(asm, (11, 11))
+    assert sizes and len(sizes) == len(asm.records)
+    grew = {}
+    for rec in asm.records:
+        w, _h = sizes[rec.index]
+        grew[w // rec.width] = grew.get(w // rec.width, 0) + 1
+    assert grew.get(1, 0) >= 60 and grew.get(8, 0) >= 700 and len(grew) >= 3, \
+        'sizes at $outputsize 11 group as %r -- a uniform scale of the tag would put ' \
+        'every record in one bucket, and it is wrong for the ones that are not' % (grew,)
+    assert max(grew) == 8, \
+        'some record grew by %rx, which no size expression in this file states: the ' \
+        'no-expression fallback is copying its parent instead of scaling by the factor ' \
+        'the parent moved, and that turns a 16x16 minification into an identity' % (max(grew),)
+    assert sizes[871] == (2048, 2048), \
+        'the basecolor record is %r at $outputsize 11, not the 2048 the export is' \
+        % (sizes[871],)
+    print('ok  test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it '
+          '(10 gates %d..%d, %d src at 8 and %d at 11, size groups %r)'
+          % (gates[0], gates[-1], at_declared, at_exported,
+             sorted(grew.items())))
+
+
 def test_the_gradient_reads_the_layout_the_record_states():
     """`f_gradient` used to ask `isinstance(table[0][0], float)` -- a Python type standing
     in for a decode `Record.read_ramp` had already made from the colour flag and the span.
@@ -964,6 +1073,7 @@ if __name__ == '__main__':
                test_normal_declares_the_field_that_shifts_its_intensity,
                test_distance_reads_the_radius_its_source_states,
                test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
+               test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it,
                test_the_gradient_reads_the_layout_the_record_states,
                test_the_legend_agrees_with_the_shipped_sources,
                test_every_record_renders,

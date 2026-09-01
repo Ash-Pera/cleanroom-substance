@@ -56,16 +56,55 @@ def references(directory):
     return out
 
 
+def _outputsize_warning(asm, refs, used):
+    """Say so when the exported maps were not produced at the `$outputsize` being rendered.
+
+    THE FILE DECLARES A DEFAULT AND THE EXPORTER DID NOT HAVE TO USE IT, and on a
+    `dynamicsize` graph the two are a different render, not the same render at a different
+    resolution: every size expression is a function of `$outputsize`, and a `switch` blend
+    whose selector program compares `$sizelog2` against a constant takes the OTHER branch.
+    `ChesterfieldSofa` declares 8 (256) and ships 2048 maps, and ten switches in its
+    colour chain read `$sizelog2`; scoring the two against each other without saying so is
+    how that package's basecolor spent months being read as a filter defect.
+
+    A warning and not a default, because the reference's pixel dimensions are evidence
+    about the export and not a statement by the file.
+    """
+    from engine import declared_outputsize
+    decl = declared_outputsize(asm)
+    if decl is None:
+        return
+    now = used or decl
+    sizes = set()
+    for p in refs.values():
+        try:
+            from PIL import Image
+            sizes.add(Image.open(p).size[0])
+        except Exception:
+            pass
+    implied = sorted({int(round(np.log2(s))) for s in sizes if s and s & (s - 1) == 0})
+    if implied and implied != [now[0]]:
+        print('   NOTE: rendering at $outputsize %s (file declares %s); the reference '
+              'maps are %s px, i.e. $outputsize %s. Pass --outputsize %d to compare like '
+              'with like.' % (now[0], decl[0], sorted(sizes), implied,
+                              implied[-1]))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='render2')
     ap.add_argument('path')
     ap.add_argument('--dim', type=int, default=256)
     ap.add_argument('--out')
     ap.add_argument('--score')
+    ap.add_argument('--outputsize', type=int, default=None,
+                    help='render the graph at $outputsize = this log2 size (8 = 256, '
+                         '11 = 2048). Defaults to what the file declares. NOT --dim: '
+                         '--dim caps the pixel grid, this is the size expressions read.')
     a = ap.parse_args(argv)
 
     asm = sbsasm.Assembly(a.path)
-    outs, fails, info = render(asm, max_dim=a.dim)
+    os_log2 = None if a.outputsize is None else (a.outputsize, a.outputsize)
+    outs, fails, info = render(asm, max_dim=a.dim, outputsize=os_log2)
     print('%d/%d records, %d failures, %d low-confidence'
           % (len(outs), len(asm.records), len(fails), len(info['low_confidence'])))
     ign = info.get('ignored') or {}
@@ -87,6 +126,8 @@ def main(argv=None):
 
     names = manifest.output_names(asm)
     refs = references(a.score) if a.score else {}
+    if refs:
+        _outputsize_warning(asm, refs, os_log2)
     scores = []
     for uid, fmt, _grey, ri in asm.outputs():
         nm = (names.get(uid) or '').lower()

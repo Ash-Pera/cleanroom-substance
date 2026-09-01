@@ -25,7 +25,7 @@ import sbsruntime
 
 import filters
 import model
-from ops import Unsupported, bind, conform, run_program, sampler
+from ops import Unsupported, bind, conform, run_program, sampler       # noqa: F401
 
 
 class Context(object):
@@ -194,8 +194,120 @@ def _cascade(e):
     return exc
 
 
-def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None):
+# ---------------------------------------------------------------------------
+# `$outputsize`
+# ---------------------------------------------------------------------------
+
+def outputsize_uid(asm):
+    """The uid of the graph's `$outputsize` input, or None.
+
+    BY IDENTIFIER, from the manifest, not by type. `$outputsize` is a type-8 integer2 and
+    so is any author-exposed 2-vector of integers, so picking "the type-8 input" would
+    silently pick someone's tile count on the next file.
+    """
+    for uid, entry in (manifest.alter_outputs(asm) or {}).items():
+        if len(entry) > 1 and entry[1] == '$outputsize':
+            return uid
+    return None
+
+
+def declared_outputsize(asm):
+    """The `$outputsize` the file's own interface block declares, as (log2 w, log2 h)."""
+    uid = outputsize_uid(asm)
+    for _t, u, val in asm.header.get('inputs') or []:
+        if u == uid and val and len(val) >= 2:
+            return (int(val[0]), int(val[1]))
+    return None
+
+
+def record_sizes(asm, outputsize):
+    """Each record's (W, H) in pixels with the graph rendered at `$outputsize`.
+
+    THE TAG IS NOT THE ANSWER WHEN THE OUTPUT SIZE IS NOT THE DEFAULT, and on a
+    `dynamicsize` graph that is most of the interesting cases. A record's size slot holds
+    a PROGRAM returning `(log2 w, log2 h)`, and on `ChesterfieldSofa` 674 of 746 such
+    programs read `$outputsize` and add a constant, 45 ignore it entirely (a fixed-size
+    stage of a mip pyramid), 5 add half of the shift and 5 a third. So the sizes do not
+    move together and a uniform scale of the tag is wrong for 55 records of 881.
+
+    THE EXPRESSION IS ONLY TRUSTED WHERE IT REPRODUCES THE TAG. Evaluated at the file's
+    own declared `$outputsize` a correct size program must return the tag's own nibbles;
+    where it does not -- 28 records here, 16 of them `fxmaps`, whose size slot names a
+    program returning `$randomseed` -- this reader has misidentified the slot and its
+    answer at any OTHER output size is worth nothing. Those fall back, and the fallback is
+    the record's INPUTS rather than its tag: a node with no size expression of its own
+    takes its parent's size, edges point strictly backwards, so the answer is already
+    computed. A record with neither an expression nor an input -- a `bitmap`, a `uniform`
+    -- keeps its tag, which for a bitmap is the payload's own dimensions and must not move.
+
+    Returns {record index: (W, H)}, or None when the graph declares no `$outputsize`.
+    """
+    if outputsize is None:
+        return None
+    declared = declared_outputsize(asm)
+    uid = outputsize_uid(asm)
+    if declared is None or uid is None:
+        return None
+    base = {}
+    for _t, u, val in asm.header.get('inputs') or []:
+        if val:
+            base[u] = np.array(val, np.float32).reshape(1, -1)
+
+    def at(size_log2):
+        got = dict(base)
+        got[uid] = np.array(size_log2, np.float32).reshape(1, -1)
+        return got
+
+    want, cache, out = at(outputsize), {}, {}
+    for rec in asm.records:
+        v = model.View(asm, rec)
+        size = None
+        slot = v.size_slot
+        if slot is not None and 0 <= slot < len(v.words):
+            ptr = v.words[slot] + 52
+            if asm.body_lo <= ptr < asm.body_hi and asm.valid_program(ptr):
+                try:
+                    fn = bind(asm, ptr, {}, cache)
+                    ref = np.ravel(run_program(fn, at(declared), {}, 1,
+                                               W=rec.width, H=rec.height))
+                    got = np.ravel(run_program(fn, want, {}, 1,
+                                               W=rec.width, H=rec.height))
+                except Exception:
+                    ref = got = np.zeros(0)
+                # A NEGATIVE OR ABSURD log2 IS THE SLOT BEING WRONG, not a tiny record.
+                # Clamping it to 1 px would make a misread slot look like an answer; the
+                # bound is what makes the tag check able to fail.
+                if len(ref) >= 2 and len(got) >= 2 and \
+                        all(0 <= int(x) <= 16 for x in (ref[0], ref[1], got[0], got[1])) \
+                        and (1 << int(ref[0]), 1 << int(ref[1])) == (rec.width, rec.height):
+                    size = (1 << int(got[0]), 1 << int(got[1]))
+        if size is None:
+            # RELATIVE TO THE PARENT, NOT EQUAL TO IT. A node with no size expression
+            # takes its parent's size at a relative offset, and the offset is what the
+            # tags already record: 84 of these records are the 16x16 minifications inside
+            # `curvature_smooth` hanging off a 256x256 normal, so copying the parent's new
+            # size makes them 2048x2048 and turns a deliberate 64x downsample into an
+            # identity. Scale the tag by the factor the parent moved instead, which leaves
+            # the ratio the file states untouched.
+            scale = max((out[e][0] / float(asm.records[e].width)
+                         for e in v.inputs if e is not None and e in out), default=None)
+            if scale:
+                size = (max(1, int(round(rec.width * scale))),
+                        max(1, int(round(rec.height * scale))))
+        out[rec.index] = size or (rec.width, rec.height)
+    return out
+
+
+def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None,
+           outputsize=None):
     """Evaluate every record. Returns (outputs, failures, info).
+
+    `outputsize` is the graph input `$outputsize` as (log2 w, log2 h) and defaults to the
+    one the file itself declares, which is what the tag's size nibbles were baked at. It
+    is NOT `max_dim`: `max_dim` caps the pixel grid this sweep draws on and is a property
+    of the caller, while `$outputsize` is the size the GRAPH is being evaluated at and
+    every size expression in the file is a function of it. Scoring a render against an
+    exported map produced at a different `$outputsize` compares two different graphs.
 
     `info` carries `low_confidence` -- records whose output rests on a value the FORMAT
     does not record -- `cascaded`, the failures that are only consequences, and `ignored`,
@@ -207,6 +319,7 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None):
     ctx = Context(asm, cap=max_dim)
     ctx.outputs.update(precomputed or {})
     failures, cascaded, ignored = {}, set(), {}
+    sizes = record_sizes(asm, outputsize) or {}
 
     # THE VALUE CACHE IS `ctx.cache` AND NOTHING IS INSTALLED ANYWHERE. Record order is
     # what makes a `cache_read` answerable -- writers precede readers, over 7,074 matched
@@ -219,7 +332,7 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None):
             # INSIDE the try: `View` raises `model.Shifted` when the end-anchored
             # parameter block lands on an input edge or a mask word, and that is one
             # RECORD's refusal, not the file's.
-            v = model.View(asm, rec)
+            v = model.View(asm, rec, size=sizes.get(i))
             if v.ignored:
                 # A FIELD THE RECORD STATES AND NO NAME COVERS. Kept as its own channel,
                 # not folded into `low_confidence`: that set means "a value the format does

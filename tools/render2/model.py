@@ -283,11 +283,17 @@ class View(object):
                  'height', 'words', 'inputs', 'params', 'size_slot', 'walked',
                  'header_end', 'unnamed', 'prog_slot', 'cls_slots', 'ignored')
 
-    def __init__(self, asm, rec):
+    def __init__(self, asm, rec, size=None):
         self.rec, self.asm, self.index = rec, asm, rec.index
         self.filter, self.filter_id = rec.filter_name, rec.filter_id
         self.colour = bool(rec.colour)
-        self.width, self.height = rec.width, rec.height
+        # THE TAG'S SIZE IS THE SIZE AT ONE `$outputsize`, not the record's only size.
+        # Every size expression in a dynamic-size graph is a function of the graph input
+        # `$outputsize`, and the tag caches its value at the manifest's DEFAULT. `size`
+        # is that function re-evaluated at some other output size -- see
+        # `engine.record_sizes`, which is the only thing that computes one. None keeps
+        # the tag, so nothing changes unless a caller asks for a different output size.
+        self.width, self.height = (rec.width, rec.height) if size is None else size
         self.words = rec.words
         self.params, self.unnamed, self.inputs = {}, [], []
         #: (kind, field-or-bit, slot, words) the walk placed and no name covers. See

@@ -43310,3 +43310,203 @@ only. The before/after over all 139 records is what caught it, and it takes elev
 
 and the number is now produced by `archive/tools/audit_corpus.py` rather than by this
 paragraph, which is the actual repair.
+
+# Chesterfield's basecolor ch2: the nine switches are right and the OUTPUT SIZE is wrong
+
+*Written for FORMAT-NOTES.md. Owner: merge as a new section; it closes the "Where the
+residual actually is" open question in "The three `levels` records Chesterfield's basecolor
+was blamed on are inert", and it retracts one comment in `tools/render2/test_render2.py`.*
+
+## The answer to the question that was asked
+
+The lead was: the basecolor chain runs through nine mode-7 `switch` blends, "the first five
+select `src` and the last four `dst`", and "nothing has checked those selections against the
+file". They have now been checked.
+
+**They are ten, not nine, and every one of them selects exactly what the file says.** The
+chain into `basecolor` is 237 -> 246 -> 256 -> 266 -> 276 -> 285 -> 293 -> 301 -> 309 -> 320,
+each a `blend` with `blendingmode` 7 whose `opacitymult` is a program. All ten programs are
+the same seven instructions:
+
+    %0  sysvar.f2   3          ; $sizelog2
+    %1  swizzle.f1  %0, #0     ; .x
+    %2  const.f1    K
+    %3  lt.b2       %1, %2
+    %4  const.f1    0
+    %5  const.f1    1
+    %6  select.f1   %3, %4, %5 ; $sizelog2.x < K ? 0.0 : 1.0
+
+with K running 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 in chain order. It is a mip pyramid: octave K
+is switched in when the output is big enough to carry it, and skipped when it is not. Our
+`ops.blend` reads a switch's opacity as "1 takes `src`", and that reading is what makes the
+chain coherent -- at K > `$sizelog2` the record passes its `dst` straight through, which is
+an octave being skipped. Under the opposite reading all ten return the coarsest octave at
+every size, which is not a filter anyone compiles ten of. That is an arbiter that does not
+run the renderer.
+
+Six select `src` and four `dst`, not five and four; the recorded "first five" was off by one.
+
+**The selections are not the defect. What we got wrong is `$sizelog2`.**
+
+## Every reference pack in this corpus was exported at an `$outputsize` its own file does not declare
+
+`ChesterfieldSofa.xml` declares `<input identifier="$outputsize" default="8,8">` -- 256 --
+and every output `dynamicsize="yes"`. The shipped maps beside it are **2048 x 2048**. The
+exporter set `$outputsize` to 11,11; the file's baked tag is its value at 8,8.
+
+This is not one package:
+
+    pack                                    declares   maps shipped   implied $outputsize
+    Kutejnikov__Auras                        (8, 8)      512 px            9
+    Kutejnikov__Bricks_and_tiles             (8, 8)     1024 px           10
+    Kutejnikov__Stylized_Wooden_Roof_Tiles   (8, 8)     2048 px           11
+    minime453__Chesterfield_PBR_Material     (8, 8)     2048 px           11
+    minime453__Stylized_Sandy_Stone_Path     (8, 8)     2048 px           11
+    Rokviz japanese fabric 8                 (8, 8)     4096 px           12
+
+Five of six, and the sixth (Rokviz) was already recorded in `test_render2.py`. So every
+reference score this project has ever taken compared our render of one graph against the
+engine's render of a *differently parameterised* graph. On a `dynamicsize` graph that is not
+the same picture at another resolution: a record's size slot holds a PROGRAM of
+`$outputsize`, and on Chesterfield **98 of 102 `switch` blends take their selector from a
+program comparing `$sizelog2` against a constant.**
+
+At `$outputsize` 8 the ten chain switches read 6 `src` / 4 `dst`. At 11 they read 9 / 1.
+Three of ten take the other branch.
+
+## What it costs, measured
+
+`render2` now takes an `$outputsize` (`--outputsize N`, default = whatever the file
+declares, so nothing moves unless asked). `ChesterfieldSofa`, scored against its own
+exported maps:
+
+                          max_dim 128            max_dim 256            max_dim 1024
+                       declared 8  ->  11     declared 8  ->  11     declared 8  ->  11
+    basecolor ch0        +0.6102  +0.5471       +0.6285  +0.5602       +0.6342  +0.5541
+    basecolor ch1        +0.8038  +0.9668       +0.8451  +0.9785       +0.8481  +0.9815
+    basecolor ch2        -0.6422  +0.6326       -0.5871  +0.7399       -0.5763  +0.7679
+    normal    ch0        +0.9461  +0.9538       +0.9404  +0.9488       +0.9404  +0.9463
+    normal    ch1        +0.9452  +0.9508       +0.9394  +0.9450       +0.9395  +0.9420
+    normal    ch2        +0.6865  +0.6054       +0.7989  +0.7557       +0.7989  +0.8148
+    roughness            +0.9234  +0.9297       +0.9234  +0.9265       +0.9234  +0.9250
+    metallic             +0.9816  +0.9981       +0.9723  +0.9999       +0.9723  +1.0000
+    height               +0.9528  +0.9566       +0.9523  +0.9562       +0.9523  +0.9560
+    AO                   +0.9192  +0.8596       +0.9197  +0.8717       +0.9182  +0.9254
+    mean                 +0.7127  +0.8401       +0.7333  +0.8682       +0.7351  +0.8813
+
+**basecolor ch2 stops being anti-correlated.** -0.5763 to +0.7679 at `max_dim` 1024, a swing
+of 1.34, with no filter, parameter or placement touched -- only the value of one graph input.
+
+`metallic` is the channel to read for whether this is real rather than a lucky rotation. It
+is the button mask, resolution-insensitive, and it goes to **+1.0000 at MAE 0.0004** where it
+sat at +0.9723 / MAE 0.0211. That is the export reproduced, not approached.
+
+## The switches alone do NOT do it, and that is the discriminating measurement
+
+Flipping only the ten selectors to their `$outputsize` 11 branch while leaving every
+record's size, every filter and every parameter at the declared 8:
+
+    max_dim   all at declared 8                switch selectors only at 11
+    128       +0.6102 / +0.8038 / -0.6422      +0.5994 / +0.7984 / -0.6165
+    256       +0.6285 / +0.8451 / -0.5871      +0.6071 / +0.8417 / -0.5225
+
+ch2 moves 0.026 and 0.065 and stays deeply anti-correlated. The lead was pointing at the
+right *file*, at the wrong *mechanism*: the switches are a symptom of the output size, and
+they carry a twentieth of it. The other nineteen twentieths are the 795 records whose SIZE
+changes -- the fixed-size pyramid stages 193/194 (9,9), 199/200 (10,10) and the rest, which
+at `$outputsize` 8 all clamp to 8,8 and collapse into each other, and record 330's
+`pixelprocessor` auto-levels, which normalises by a range those octaves set.
+
+## Record 862 was already fine, and the recorded -0.15 is stale
+
+862, the button mask, correlates **+0.89** with the reference basecolor's luminance under
+the *declared* size and +0.85 at 11. The -0.15 in the notes predates the `levels` routing of
+`fc8c5e0`. Its chain -- 862 <- 861 <- 35 (`levels`) <- 34 (`fxmaps`) -- has no divergence in
+shape from what the source implies at any step. That lead is closed as already fixed.
+
+## Why "just multiply the tag by 8" is wrong
+
+It was the first thing tried and it is worth recording as a failure. Evaluating all 746
+Chesterfield size expressions at 8,8 and at 11,11:
+
+    674 records   add the whole shift        (log2 delta 3, 3)
+     45 records   ignore $outputsize          (delta 0, 0) -- an absolute-size pyramid stage
+      5 records   add a third of the shift    (delta 1, 1)
+      5 records   add two thirds              (delta 2, 2)
+      1 record    shifts width only           (delta 3, 0)
+     16 records   `fxmaps` whose size slot names a program returning $randomseed
+
+The sizes do not move together. A uniform x8 of the tag is wrong on 86 of 881 records and
+lands ch2 at +0.5580 where reading each expression lands it at +0.6326 (`max_dim` 128).
+
+Two rules make the reading falsifiable rather than fitted:
+
+  * **The expression is trusted only where it reproduces the tag** at the file's OWN
+    declared `$outputsize`. 718 of 746 do. The 28 that do not -- 16 `fxmaps`, 9
+    `pixelprocessor`, 3 `transformation` -- are records where this reader has misidentified
+    the slot, and its answer at any *other* output size is worth nothing.
+  * **A record with no size expression is relative to its PARENT, not equal to it.** The
+    first version copied the parent's new size and turned `curvature_smooth`'s 84 16x16
+    minifications into 2048x2048 identities. Scaling the tag by the factor the parent moved
+    leaves the ratio the file states untouched, and the size histogram then has no bucket no
+    size expression states: 795 x8, 76 x1, 5 x2, 5 x4, maximum 8.
+
+## What this does NOT fix, and what it exposes
+
+* **basecolor ch0 gets worse**, +0.6342 -> +0.5541 at `max_dim` 1024, and it does not
+  recover with grid resolution (0.5471 / 0.5602 / 0.5557 / 0.5541 at 128 / 256 / 512 /
+  1024). This is the one channel that moves the wrong way and it is now the open one.
+* **Our ch2 is far too flat either way**: sd 0.0092 against the export's 0.0348 at
+  `max_dim` 1024, and 0.0131 at the declared size. A correlation on a channel with a
+  quarter of the reference's variation is weak evidence whichever sign it has. The MAE
+  barely moves (0.0867 -> 0.0901) because the mean is 0.27 against 0.185 in both. The sign
+  flip is real; the channel is not solved.
+* **`normal` ch0/ch1 sd collapses** from 0.126 to 0.016 against the export's 0.097 while
+  the *correlation* improves. Something in the `normal` chain scales with `$size` in a way
+  that does not survive being drawn on a smaller grid, and it is not the switches.
+* **AO and normal ch2 degrade at small `max_dim` and recover monotonically**: AO 0.8596 /
+  0.8717 / 0.9114 / 0.9254 at 128 / 256 / 512 / 1024, normal ch2 0.6054 / 0.7557 / 0.8098 /
+  0.8148. That trend is the evidence that their degradation is the grid-versus-declared-size
+  mismatch of the sweep and not the reading -- they are converging on the declared-size
+  numbers from below as the grid approaches 2048.
+
+## Retracted: `$outputsize` does not explain Rokviz's flat normal
+
+`test_render2.py`'s `REFERENCE_FLOOR` comment named this mismatch as the cause of that
+specimen's normal Z reading 1.0000 against the export's 0.8987, and said so as a prediction
+the renderer could not yet test. It can now, and **the prediction fails**: rendering
+`Rokviz japanese fabric 8` at `$outputsize` 12 moves every scored channel by less than
+0.0001 and leaves normal Z at exactly 1.0000.
+
+The reason is measurable and is the same census that makes the parameter matter elsewhere:
+
+    specimen        records   mode-7 switch blends   gated on $sizelog2
+    Chesterfield        881          102                     98
+    Bricks           12,585        1,760                  1,440
+    RoofTiles         2,630          245                    119
+    Rokviz               70            0                      0
+
+Rokviz has nothing in it that is a function of the output size except the grid it is drawn
+on. Its flat normal is a defect in what we compute from a nearly flat height and is still
+open. The comment has been rewritten to say so.
+
+## Code
+
+* `tools/render2/engine.py` -- `outputsize_uid`, `declared_outputsize`, `record_sizes`;
+  `render(..., outputsize=None)`.
+* `tools/render2/model.py` -- `View(asm, rec, size=None)`.
+* `tools/render2/__main__.py` -- `--outputsize N`, and a NOTE printed whenever `--score`'s
+  reference maps imply an `$outputsize` other than the one being rendered. That note is the
+  part that stops this recurring: it fires on all six packs above.
+* `tools/render2/test_render2.py` -- `test_a_records_size_is_a_function_of_outputsize_and_
+  the_switches_read_it` (structural, no render): the ten gates are K = 3..12, 6 select `src`
+  at the declared size and 9 at the exported one, `record_sizes(asm, None)` is inert, and no
+  record grows by a factor no expression states.
+
+`outputsize=None` returns None from `record_sizes` and `View` keeps the tag, so the default
+path is unchanged -- re-measured bit-identical on Chesterfield at 128 and 256 after the
+change. **No floor was ratcheted.** `test_filters.REFERENCE_FLOOR` is scored through
+`refcompare` -> `render.py`, which this work does not touch, so its Chesterfield basecolor
+ch2 entry of -0.78 still watches exactly what it watched. Ratcheting it on the strength of a
+number `render2` produced under a flag the floor does not pass would be recording someone
+else's measurement.
