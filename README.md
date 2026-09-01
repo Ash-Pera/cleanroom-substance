@@ -94,12 +94,14 @@ withdrawal), and the attribution fixes of 2026-08-28 — the pinned base region,
 double-charged mask input — landed after this table was taken. Re-run `audit_corpus.py` to
 refresh it; the ranking in FORMAT-NOTES.md's most recent status section is the current one.
 Two rows have been re-measured against the current 437 files and 903,616 records since —
-the size-expression row, which did not move, and the byte row, which moved 6.75 points.
+the size-expression row, which did not move on re-measurement and then moved 0.003 points
+when the `valid_program` floor was retired, and the byte row, which moved 6.75 points.
 
     filter identified              99.9%
     size expression or first
       parameter read               95.64%  see below - 4.35 of the missing 4.36 points are
-                                           records that HAVE no parameter slot
+                                           records that HAVE no parameter slot. 95.6426%
+                                           since the floor went; it was 95.6393%
     edge slots resolved          100.00%
     record bytes interpreted       99.25%  was 92.5%, which was honest when taken: on its
                                            own definition today's tree gives 96.50%, and
@@ -118,18 +120,36 @@ that split on the next four lines and this table dropped it. The split:
     slot is an edge or a ramp bound     38   0.004%   read, not a parameter
     genuinely unread                    63   0.007%
 
-63 records, in two pockets, neither of them a placement failure. 30 hold a real program
-pointer that `valid_program` refuses only because its floor is the FIRST RECORD's offset:
-all 30 are v2 files whose code region precedes the records, 27 of the 30 programs end
-exactly AT that floor, and `program_span` - which the same docstring calls "the single
-definition of is a program" - accepts every one of them. The other 33 hold a small integer
-(`curve`'s point count, 26 of them), and `size_or_baked`'s program/zero/float trichotomy has
-no arm for an integer. The non-circular arbiter says the placement itself is not the
-problem: over the 742,120 records where the class walk NAMES a size slot, the word there
-resolves as a valid program in 742,106 - **99.998%**, against 23.1% one slot away and 1.3%
-at a random other slot in the same records. That number is what the 2026-08-28 fixes moved.
-It was 99.577% before them, so the fixes closed 3,126 of 3,140 misplacements and did not
-touch the headline row at all.
+63 records, in two pockets, neither of them a placement failure, **and one of the two has
+since closed.** 30 held a real program pointer that `valid_program` refused only because
+its floor was the FIRST RECORD's offset - all 30 in v2 files whose code region precedes the
+records. That floor is gone and those 30 read, so the split is now 39,303 / 38 / 33 and the
+headline is 95.6426%, which is the size of the pocket and not a change of method. The
+remaining 33 hold a small integer (`curve`'s point count, 26 of them), and
+`size_or_baked`'s program/zero/float trichotomy has no arm for an integer.
+
+**What the floor was really doing was slot-role work in address disguise, and there is now
+one predicate instead of two.** An input edge's word is a record index and a record's offset
+is `index + 52` - the same universal skew a program pointer uses - so `edge_word + 52` is
+by construction the offset of the record the edge names, and asking the program predicate
+about it is a category error. In layout A `body_lo` sits past the directory and a small
+index lands nowhere; in layout B the body starts at 0x38, so every small word aliases the
+version-2 prologue, and a floor over that prologue suppressed the aliases along with 11,440
+bytes of real code. `valid_program` and `program_span` - which its own docstring already
+called "the single definition of is a program" - disagreed on **8,310 addresses** on four
+separate axes, of which the floor was one; they are now one function, and the rule that
+replaced the floor is the walk's: only a slot can name a program, and the walk states which
+words are slots. Over the window the floor used to cover, 8,463 record words land there and
+3.5% decode as a program - but **30 of 30** of the ones the walk names as a size or program
+slot do, against 1.9% for input edges and 3.2% for the record's own header words.
+
+The non-circular arbiter says the placement itself was never the problem, and it improved:
+over the 742,120 records where the class walk NAMES a size slot, the word there resolves as
+a valid program in 742,117 - **99.9996%**, against 23.1% one slot away and 1.2% at a random
+other slot in the same records. It was 99.577% before the 2026-08-28 attribution fixes and
+99.9981% after them; retiring the floor closed 11 of the remaining 14. The last 3 are
+`Texture_Randomizer` records whose slot word is odd, and no floor or predicate makes an odd
+address a pointer.
 
 **The format is one recursive mask-walk.** A structured object is `[mask][fields]`: the set
 bits of a mask enumerate which fields are present in canonical order, and each field's width

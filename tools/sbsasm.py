@@ -3532,14 +3532,41 @@ class Record:
         # candidates over 14 files, 6.4% of their programs.
         seen = set(out)
         end = None
-        if self.filter_id not in _PAYLOAD_PROGRAM_FILTERS:
-            try:
-                import decompose
-                _d = decompose.decompose(self)
-                end = _d.get('end') if _d else None
-            except Exception:
-                end = None
-        for word in (self.words if end is None else self.words[:end]):
+        _d = None
+        try:
+            import decompose
+            _d = decompose.decompose(self)
+        except Exception:
+            _d = None
+        if _d is not None and self.filter_id not in _PAYLOAD_PROGRAM_FILTERS:
+            end = _d.get('end')
+        # NOT EVERY WORD IS A SLOT, AND THE WALK SAYS WHICH ARE. Two kinds of word in the
+        # region below are not pointers and never were, and both used to be excluded by
+        # accident rather than on purpose -- by `Assembly.code_lo`, a floor at the first
+        # record's offset that this predicate no longer has. See `code_lo` for why that
+        # floor was wrong (layout B puts 11,440 bytes of real programs BELOW it) and why
+        # it worked anyway (in layout B every small word aliases that region, so a floor
+        # over it suppressed the aliases along with the code).
+        #
+        #   * INPUT EDGES. An edge's word is a record index and a record's offset IS
+        #     `index + 52` -- the same universal skew a program pointer uses -- so
+        #     `edge_word + 52` is exactly the offset of the record the edge names. Asking
+        #     whether a program starts there is a category error: the answer is "yes"
+        #     whenever the named record's first words happen to decode, which they do
+        #     11 times corpus-wide today and 60 more once the floor is gone.
+        #   * THE RECORD'S OWN HEADER WORDS, `hdr` of them: w0 the tag, and w1 the flags
+        #     word where the shape carries one. w0 is large and aliases nothing; w1 is a
+        #     small bitfield and aliases the layout-B prologue 108 times.
+        #
+        # `hdr` is read from the walk and not assumed to be 2, because `uniform` has no w1
+        # and puts its size expression at slot 1.
+        _skip = set()
+        if _d is not None:
+            _skip.update(_d.get('inputs') or ())
+            _skip.update(range(_d.get('hdr') or 0))
+        for _s, word in enumerate(self.words if end is None else self.words[:end]):
+            if _s in _skip:
+                continue
             p = word + 52
             if p in seen:
                 continue
@@ -3740,16 +3767,26 @@ class Record:
         # its own bytecode early -- and nothing here establishes which is right where they
         # differ, so both apply and the tighter one wins.
         stop = len(self.words)
-        if self.filter_id not in _PAYLOAD_PROGRAM_FILTERS:
-            try:
-                import decompose as _decompose
-                _d = _decompose.decompose(self)
-                if _d and _d.get('end') is not None:
-                    stop = min(stop, _d['end'])
-            except Exception:
-                pass
+        try:
+            import decompose as _decompose
+            _d = _decompose.decompose(self)
+        except Exception:
+            _d = None
+        if _d is not None and self.filter_id not in _PAYLOAD_PROGRAM_FILTERS:
+            if _d.get('end') is not None:
+                stop = min(stop, _d['end'])
+        # SAME SKIP AS `programs`, and for the same reason: an input edge's word is a
+        # record index, so `edge_word + 52` is the offset of the record it names and asking
+        # whether a program starts there is a category error; and the record's own header
+        # words are not slots at all. This loop began at a HARDCODED 2 -- the right answer
+        # for every shape that carries a w1 word and wrong for `uniform`, which has none
+        # and puts its size expression at slot 1. The walk states both, so both are read.
+        _first = 2 if _d is None else (_d.get('hdr') or 0)
+        _edges = set(_d.get('inputs') or ()) if _d is not None else set()
         cand = []
-        for s in range(2, len(self.words)):
+        for s in range(_first, len(self.words)):
+            if s in _edges:
+                continue
             p = self.words[s] + 52
             if asm.body_lo <= p < asm.body_hi and asm.valid_program(p):
                 cand.append((s, p))
@@ -5408,13 +5445,28 @@ class Assembly:
         # reported as 'records', i.e. explained.
         self.body_hi = dir_at if self.layout == 'B' else self.header['table_start']
         offs = sorted(e + 52 for e in ents)
-        # The floor for a program. `body_lo` is the header end (layout B) or directory end
-        # (layout A), and in layout B a 16-byte gap sits between the header at 0x38 and the
-        # first record: `valid_program` had only an upper bound, so a slot holding a small
-        # value (a mask edge, say 12) resolved +52 into that gap and decoded as a phantom
-        # program -- 281 of them corpus-wide, all below the first record. Code lives in
-        # record bodies, so the first record's offset is the true floor; every real program
-        # is at least 8 bytes past it, so this excludes the phantoms and no genuine program.
+        # Where the record region begins. NOT a floor for programs any more, and the
+        # retraction is the point.
+        #
+        # It used to be one: `_valid_program` refused any `p < code_lo` on the ground that
+        # "code lives in record bodies", which killed 281 phantoms in layout B. That
+        # premise is FALSE for layout B -- the version-2 prologue in [body_lo, code_lo) is
+        # 11,440 bytes of PROGRAMS across the 30 files that have one, 84.8% of it tiled by
+        # 121 of them, and one binds the graph's random seed. The floor was throwing away
+        # real code: 30 records hold a size expression it refused on the floor alone, all
+        # 30 in that prologue, 27 of them ending exactly AT `code_lo`.
+        #
+        # What the floor was actually doing was SLOT-ROLE work in address disguise. An
+        # input edge's word is a record index, and a record offset IS `index + 52` -- the
+        # same skew a program pointer uses -- so `edge_word + 52` is by construction the
+        # offset of the record the edge names, and asking the program predicate about it is
+        # a category error, not a hard question. In layout A `body_lo` is past the
+        # directory, so a small edge index lands nowhere and the error is invisible; in
+        # layout B the body starts at 0x38 and every small word aliases the prologue, which
+        # is where the 281 came from. The rule that replaces the floor is in `programs()`:
+        # the walk names which slots are edges and which are the record's header words, and
+        # only the rest can name a program. See `program_span`, which is now the single
+        # predicate, and carries no floor at all.
         self.code_lo = offs[0] if offs else self.body_lo
         self.records = []
         for i, o in enumerate(offs):
@@ -5494,115 +5546,18 @@ class Assembly:
 
     # ---- programs
     def valid_program(self, p, slack=0):
+        """`program_span` returning non-None. NOT a second implementation.
+
+        This was one for a long time, and the drift it produced is written up in
+        `program_span`'s docstring. The two are now the same function: everything below is
+        a cache in front of one call.
+        """
         k = (p, slack)
         hit = self._vp_cache.get(k)
         if hit is not None:
             return hit
-        r = self._valid_program(p, slack)
-        self._vp_cache[k] = r
+        r = self._vp_cache[k] = self.program_span(p, self.body_hi, slack) is not None
         return r
-
-    def _valid_program(self, p, slack=0):
-        """A program is valid only if it decodes exactly AND its operands are possible.
-
-        Three checks, each of which a run of arbitrary bytes fails:
-
-        1. the declared instruction count decodes to exactly that many instructions;
-        2. every opcode is well-formed and its id is one the format actually uses
-           (`isa.plausible`) - the raw length rule accepts 47% of all u16 values, which
-           is why a scan for programs finds so many that are not programs;
-        3. every operand that is a value reference names an EARLIER value. This is
-           three-address code, results are numbered contiguously, so an operand at or
-           beyond its own instruction's number is impossible.
-
-        Check 3 is the one with teeth. Over programs a record's slots name it is violated
-        by 0.00% of instructions; over scan-discovered candidates, by 65%. Without it a
-        validator cannot tell a program from bytes that merely decode.
-        """
-        d, hi = self.data, self.body_hi
-        if p + 4 > hi or p < self.code_lo:
-            return False                       # past the body, or before the first record
-        # 4. the address is even. Instructions are u16 tokens, so a program cannot begin
-        # on an odd byte - and the count that check 1 reads is itself a u16. This is the
-        # cheapest check and it was missing, which let 142 impossible programs into every
-        # figure. They are not evenly spread: over the corpus, 1,915,402 of the 1,915,613
-        # programs that transpile start 4-aligned, while misaligned starts are 12% of the
-        # 125 that fail - an enrichment of about 1,800x.
-        #
-        # The requirement is 4, not 2. A pointer is a slot value plus the universal skew
-        # of 52, and 52 is 0 mod 4, so a program that begins at a record word boundary
-        # arrives 4-aligned. Of the 226 starts that were not, 218 (96.5%) are positively
-        # accounted for as not being programs at all:
-        #
-        #     odd, impossible for a u16 stream                142
-        #     even, but the span overlaps a 4-aligned program  74
-        #     even, standalone, and malformed - these two are   2
-        #       the ONLY remaining truncated-immediate failures
-        #                                                    ---
-        #                                                     218   of 226
-        #
-        # Eight are unexplained and are lost by this check. That is the trade taken:
-        # 0.0004% of programs against 218 that are demonstrably not programs, one of
-        # which was inflating the transpiler's failure list. See FORMAT-NOTES.md.
-        if p & 3:
-            return False
-        # `slack` admits operands up to k + slack - 1: a program whose numbering starts
-        # at S = slack, referencing that many values defined BEFORE it. Pixelprocessor's
-        # per-pixel function is the case that needs it: value 0 is the implicit POSITION
-        # input, so its operands run one ahead of the local count. Measured over the 264
-        # big-surplus pixelprocessor records: 0 validate at S=0, 151 at exactly S=1
-        # regardless of arity, and the control -- the same S=1 probe at a random aligned
-        # offset inside the same regions -- passes 0 of 264. Callers other than the
-        # tiling probe leave slack at 0; loosening the default would re-admit exactly
-        # the garbage the strict check exists to reject.
-        n = struct.unpack_from('<H', d, p)[0]
-        # The bound is the FIELD's range, not a guess about programs. The cap sat at
-        # 20,000 as an anti-garbage margin and silently rejected the corpus's largest
-        # per-pixel functions -- 45 records whose functions run 21,102 to 41,493
-        # instructions, every one decoding cleanly and operand-exact once the cap
-        # lifts. Garbage does not survive 20,000 consecutive opcode-and-operand
-        # checks; the checks are the filter, the cap never was.
-        if not (1 <= n <= 0xFFFF):
-            return False
-        q, k = p + 2, 0
-        while k < n and q + 2 <= hi:
-            op = struct.unpack_from('<H', d, q)[0]
-            if not isa.plausible(op):
-                return False
-            L = isa.LEN.get(op)
-            oid = op & 0x3F
-            imm = disasm.IMM.get(oid)
-            if imm != 'all' and L > 1:
-                pos = imm or ()
-                for i in range(L - 1):
-                    if i in pos:
-                        continue
-                    if oid == 0x0B and i >= 3:
-                        # A VALIDATION exemption for the while opcode's trailing
-                        # operands, and deliberately not a semantic claim - this
-                        # document has adopted and withdrawn readings of those tokens
-                        # twice. The fact that forces it: a 185-instruction library
-                        # function, byte-identical across five files, carries token 4
-                        # = 4096 at instruction 180, which no ordering check can
-                        # accept and no honest reading calls a value reference. The
-                        # control: exempting tokens 3+ newly admits 0 of 2,622 random
-                        # body offsets, and recovers 68 real per-pixel functions.
-                        continue
-                    v = struct.unpack_from('<H', d, q + 2 + 2 * i)[0]
-                    # 0xFFFF is the absent marker, not a value number - the u16 form of the
-                    # 0xFFFFFFFF an absent edge uses. Rejecting it as an impossible forward
-                    # reference threw away 10 `pixelprocessor` programs in `US_Flag`,
-                    # consecutive records at a 356-byte stride, each pointing at a
-                    # 56-instruction program inside its own record.
-                    #
-                    # This does not weaken check 3. Over 622,587 slot targets that land in
-                    # the body, 126,700 are valid strictly and allowing 0xFFFF admits
-                    # exactly ONE more - the exemption reaches the sentinel and nothing else.
-                    if v >= k + slack and v != 0xFFFF:
-                        return False
-            q += 2 * L
-            k += 1
-        return k == n
 
     def entry_layout_holds(self, off, tag):
         """Does the entry at `off` have a program where its tag says it should?
@@ -5624,38 +5579,83 @@ class Assembly:
                 return True
         return False
 
-    def program_span(self, p, hi=None):
+    def program_span(self, p, hi=None, slack=0):
         """End offset of the program at p, or None. Bounded by `hi` when given.
 
-        Memoised. The scan underneath is a pure function of (p, hi) over `self.data`,
-        which is the mapped file and never mutated -- so caching is behaviour-identical,
-        not an approximation. It is worth doing because this is not called once per
-        program but once per FX-Map node evaluation: a single 3029-record assembly
-        renders with 118,539 calls to it, re-decoding the same few hundred byte ranges
-        and spending 16.2M `struct.unpack_from` calls to reach answers it already had.
+        **THE single definition of "is a program".** `valid_program` is this returning
+        non-None -- literally, as one call, not as a second implementation that agrees.
+        It used to be a second implementation, and drifted apart from this one four
+        separate times. Three of them were only ever recorded here after the fact, so the
+        drift is written down as an inventory rather than as a story:
 
-        This is the single definition of "is a program"; `valid_program` is this
-        returning non-None. They used to be two implementations of the same idea and
-        drifted apart -- this one checked only instruction lengths, so a tightening
-        applied to the other silently did not reach the scan that finds most programs.
+            axis                        which one was right   addresses they disagreed on
+            ------------------------------------------------------------------------
+            4-byte alignment            valid_program                             7,887
+            the `code_lo` floor         program_span (it had none)                  344
+            the `while` opcode's
+              trailing operands         valid_program                                70
+            instruction-count cap       valid_program (0xFFFF, not 20,000)           45
+                                                                          --------------
+                                        8,310 distinct addresses, over every word of every
+                                        record in the corpus read as `word + 52`; 36 of
+                                        them are on both of the first two axes.
 
-        That drift had a second instance this docstring did not yet cover: `valid_program`
-        exempts the 0xFFFF absent-edge sentinel from the backward-reference check (see its
-        own comment -- 10 `pixelprocessor` programs in `US_Flag` point at a slot carrying
-        it, not an impossible forward reference), but this function rejected it like any
-        other out-of-range operand. `valid_program(p)` could return True while
-        `program_span(p)` returned None for the exact same program, which broke the
-        "returning non-None" equivalence the two are supposed to have.
+        The first three are folded in below; they were tightenings applied to the boolean
+        and never carried across to the scan that finds most programs, which meant the
+        scan both accepted bytes the boolean rejected AND rejected 45 of the corpus's
+        largest per-pixel functions and 70 programs carrying a `while`. The fourth is
+        retired rather than folded in -- see `Assembly.__init__` on `code_lo` and
+        `Record.programs` for the structural rule that replaced it.
+
+        Two earlier notes, kept because they are the same failure twice more: this
+        function once checked only instruction lengths, missing `isa.plausible` and the
+        backward-reference rule entirely; and it once rejected the 0xFFFF absent-edge
+        sentinel that the boolean exempted, so `valid_program(p)` was True while
+        `program_span(p)` was None for the same program.
+
+        The checks, each of which a run of arbitrary bytes fails:
+
+        1. the address is 4-aligned (below);
+        2. the declared instruction count decodes to exactly that many instructions, and
+           the whole span fits inside `hi`;
+        3. every opcode is well-formed and its id is one the format actually uses
+           (`isa.plausible`) - the raw length rule accepts 47% of all u16 values, which
+           is why a scan for programs finds so many that are not programs;
+        4. every operand that is a value reference names an EARLIER value. This is
+           three-address code, results are numbered contiguously, so an operand at or
+           beyond its own instruction's number is impossible.
+
+        Check 4 is the one with teeth. Over programs a record's slots name it is violated
+        by 0.00% of instructions; over scan-discovered candidates, by 65%. Without it a
+        validator cannot tell a program from bytes that merely decode.
+
+        `slack` admits operands up to k + slack - 1: a program whose numbering starts at
+        S = slack, referencing that many values defined BEFORE it. Pixelprocessor's
+        per-pixel function is the case that needs it: value 0 is the implicit POSITION
+        input, so its operands run one ahead of the local count. Measured over the 264
+        big-surplus pixelprocessor records: 0 validate at S=0, 151 at exactly S=1
+        regardless of arity, and the control -- the same S=1 probe at a random aligned
+        offset inside the same regions -- passes 0 of 264. Callers other than the tiling
+        probe leave slack at 0; loosening the default would re-admit exactly the garbage
+        the strict check exists to reject.
+
+        Memoised. The scan underneath is a pure function of (p, hi, slack) over
+        `self.data`, which is the mapped file and never mutated -- so caching is
+        behaviour-identical, not an approximation. It is worth doing because this is not
+        called once per program but once per FX-Map node evaluation: a single 3029-record
+        assembly renders with 118,539 calls to it, re-decoding the same few hundred byte
+        ranges and spending 16.2M `struct.unpack_from` calls to reach answers it already
+        had.
         """
         hi = self.body_hi if hi is None else hi
         try:
             cache = self._span_cache
         except AttributeError:
             cache = self._span_cache = {}
-        key = (p, hi)
+        key = (p, hi, slack)
         if key in cache:
             return cache[key]
-        cache[key] = v = self._program_span_scan(p, hi)
+        cache[key] = v = self._program_span_scan(p, hi, slack)
         return v
 
     def program_result(self, p):
@@ -5682,13 +5682,61 @@ class Assembly:
         cache[p] = v = (ty, ncomp)
         return v
 
-    def _program_span_scan(self, p, hi):
-        """Uncached scan. See `program_span`, which is the entry point."""
+    def _program_span_scan(self, p, hi, slack=0):
+        """Uncached scan. See `program_span`, which is the entry point and the docs."""
         d = self.data
         if p + 4 > hi:
             return None
+        # THE ADDRESS IS 4-ALIGNED. Instructions are u16 tokens, so a program cannot begin
+        # on an odd byte - and the count is itself a u16. This check was in the boolean and
+        # not here, which let 142 impossible programs into every figure that came through
+        # this side. They are not evenly spread: over the corpus, 1,915,402 of the
+        # 1,915,613 programs that transpile start 4-aligned, while misaligned starts are
+        # 12% of the 125 that fail - an enrichment of about 1,800x.
+        #
+        # The requirement is 4, not 2, and that is a fact about the FORMAT rather than
+        # about pointers. The old argument here was a pointer argument -- "a pointer is a
+        # slot value plus the universal skew of 52, and 52 is 0 mod 4" -- which says
+        # nothing about a program no pointer names. The layout-B prologue is exactly that
+        # population: 11,440 bytes across 30 files, holding programs no record slot
+        # addresses. Tiling those prologues greedily WITHOUT this check finds 121 programs
+        # covering 9,704 bytes (84.8%), and **not one of the 121 starts at 2 mod 4** --
+        # they abut ends that routinely do (0x44..0x5e, then the next program at 0x88), so
+        # the cooker pads each program start up to 4. A 4-stepping scan that re-aligns its
+        # resume finds the identical 121 programs and the identical 9,704 bytes.
+        #
+        # That retires the claim in `coverage()` that "programs are not 4-aligned ... a
+        # 4-byte scan cannot see half the possible starts ... 42.7% versus 84.8%". The
+        # 42.7% was a scan that resumed at a 2-mod-4 program END and then stepped by 4,
+        # so it walked the wrong lattice forever after its first hit. It measured its own
+        # stepping, not the format.
+        #
+        # Of the 226 starts that were not 4-aligned, 218 (96.5%) are positively accounted
+        # for as not being programs at all:
+        #
+        #     odd, impossible for a u16 stream                142
+        #     even, but the span overlaps a 4-aligned program  74
+        #     even, standalone, and malformed - these two are   2
+        #       the ONLY remaining truncated-immediate failures
+        #                                                    ---
+        #                                                     218   of 226
+        #
+        # Eight are unexplained and are lost by this check. That is the trade taken:
+        # 0.0004% of programs against 218 that are demonstrably not programs, one of
+        # which was inflating the transpiler's failure list. See FORMAT-NOTES.md.
+        if p & 3:
+            return None
         n = struct.unpack_from('<H', d, p)[0]
-        if not (1 <= n <= 20000):
+        # The bound is the FIELD's range, not a guess about programs. The cap sat at
+        # 20,000 as an anti-garbage margin and silently rejected the corpus's largest
+        # per-pixel functions -- 45 records whose functions run 21,102 to 41,493
+        # instructions, every one decoding cleanly and operand-exact once the cap
+        # lifts. Garbage does not survive 20,000 consecutive opcode-and-operand
+        # checks; the checks are the filter, the cap never was. This was lifted in the
+        # boolean and left at 20,000 here, so 44 `pixelprocessor` class-parameter
+        # programs and one `US_Flag` SIZE slot resolved through one predicate and not
+        # the other.
+        if not (1 <= n <= 0xFFFF):
             return None
         q = p + 2
         for k in range(n):
@@ -5707,8 +5755,28 @@ class Assembly:
                 for i in range(L - 1):
                     if i in pos:
                         continue
+                    if oid == 0x0B and i >= 3:
+                        # A VALIDATION exemption for the while opcode's trailing
+                        # operands, and deliberately not a semantic claim - this
+                        # document has adopted and withdrawn readings of those tokens
+                        # twice. The fact that forces it: a 185-instruction library
+                        # function, byte-identical across five files, carries token 4
+                        # = 4096 at instruction 180, which no ordering check can
+                        # accept and no honest reading calls a value reference. The
+                        # control: exempting tokens 3+ newly admits 0 of 2,622 random
+                        # body offsets, and recovers 68 real per-pixel functions.
+                        continue
                     v = struct.unpack_from('<H', d, q + 2 + 2 * i)[0]
-                    if v >= k and v != 0xFFFF:
+                    # 0xFFFF is the absent marker, not a value number - the u16 form of the
+                    # 0xFFFFFFFF an absent edge uses. Rejecting it as an impossible forward
+                    # reference threw away 10 `pixelprocessor` programs in `US_Flag`,
+                    # consecutive records at a 356-byte stride, each pointing at a
+                    # 56-instruction program inside its own record.
+                    #
+                    # This does not weaken check 4. Over 622,587 slot targets that land in
+                    # the body, 126,700 are valid strictly and allowing 0xFFFF admits
+                    # exactly ONE more - the exemption reaches the sentinel and nothing else.
+                    if v >= k + slack and v != 0xFFFF:
                         return None
             q += 2 * L
         return q
@@ -5760,20 +5828,22 @@ class Assembly:
             q += 4 + 4 * n
 
     def program_end(self, p):
+        """End of the program at `p`, raising if there is not one there.
+
+        `program_span` with the answer spelled as an exception, for the callers that ask
+        only after the predicate has already said yes. It was a THIRD walk of the same
+        instruction stream -- lengths only, no bounds, no plausibility -- and a third walk
+        is a third thing to drift; `program_span`'s docstring is an inventory of what
+        happened when there were two.
+        """
         hit = self._pe_cache.get(p)
         if hit is not None:
             return hit
-        r = self._program_end(p)
+        r = self.program_span(p)
+        if r is None:
+            raise ValueError('no program at 0x%x' % p)
         self._pe_cache[p] = r
         return r
-
-    def _program_end(self, p):
-        d = self.data
-        n = struct.unpack_from('<H', d, p)[0]
-        q = p + 2
-        for _ in range(n):
-            q += 2 * isa.LEN[struct.unpack_from('<H', d, q)[0]]
-        return q
 
     def disassemble(self, p):
         return disasm.text(self.data, p, self.body_hi)
@@ -5831,25 +5901,37 @@ class Assembly:
         # no record slot names -- one of them binds the graph's random-seed input, and
         # every version-2 package emits the same 72-byte preamble to do it.
         #
-        # Scanned on TWO-byte alignment, not four. Programs are not 4-aligned: the
-        # alignment pad exists precisely because instructions legitimately sit at 2 mod 4,
-        # and a 4-byte scan cannot see half the possible starts. On one specimen that
-        # difference was 2% of the prologue understood versus 91%; corpus-wide, 42.7%
-        # versus 84.8%.
+        # Scanned 4-ALIGNED, and the resume is re-aligned, which is the whole of it.
+        #
+        # This used to step by two, on the stated ground that "programs are not 4-aligned:
+        # the alignment pad exists precisely because instructions legitimately sit at 2 mod
+        # 4, and a 4-byte scan cannot see half the possible starts ... corpus-wide, 42.7%
+        # versus 84.8%". WITHDRAWN. The 42.7% was this loop's own bug: a program ENDS at 2
+        # mod 4 routinely, `q = end` then put the cursor on the odd lattice, and `q += 4`
+        # kept it there forever after the first hit. It measured the stepping.
+        #
+        # These 30 prologues are the one population where programs exist that no pointer
+        # names, so they are the place to settle whether 4-alignment is a fact about the
+        # format or only about pointers. Tiled with the alignment check REMOVED from the
+        # predicate: 121 programs, 9,704 of 11,440 bytes (84.8%), and not one of the 121
+        # starts at 2 mod 4 -- they abut ends that do (0x44..0x5e, next program at 0x88),
+        # so the cooker pads each start up to 4. Stepping and resuming on 4 finds the
+        # identical 121 programs and the identical 9,704 bytes. It is a fact about the
+        # format, and it now lives in `program_span` where the rest of the predicate is.
         if self.layout == 'B' and self.records:
             first = min(r.offset for r in self.records)
-            q = max(0, self.body_lo)
+            q = (max(0, self.body_lo) + 3) & ~3
             while q + 4 <= first:
                 if seen[q]:
-                    q += 2
+                    q += 4
                     continue
                 end = self.program_span(q, first)
                 if end and end > q:
                     mark(q, end, 6)
                     nprog += 1
-                    q = end
+                    q = (end + 3) & ~3
                 else:
-                    q += 2
+                    q += 4
             # Whatever is still unclaimed is the prologue's index table: (tag, offset)
             # pairs pointing inside it. Named rather than left in 'unexplained', because
             # it is a known structure that is simply not decoded.

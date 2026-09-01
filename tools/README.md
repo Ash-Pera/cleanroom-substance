@@ -93,6 +93,18 @@ Two readings sit side by side, deliberately:
   header end the record states — recovering 9,825 programs at 20.77% of dropped-key records
   against a 0.25% control on records the table does know. `fxmaps` is excluded; see the
   method's docstring for why.
+
+  **Only a slot can name a program, and the walk states which words are slots.** Both scans
+  — `programs`' and `classified_programs`' — skip the record's own header words (`hdr` from
+  `decompose`: w0, plus w1 where the shape carries one, so 1 for `uniform` and not a
+  hardcoded 2) and its input-edge slots. An edge's word is a record index and a record's
+  offset is `index + 52`, the same universal skew a program pointer uses, so `edge_word + 52`
+  is the offset of the record the edge names and a program predicate has nothing to say about
+  it. This rule replaced `Assembly.code_lo` as a floor inside `valid_program`, which was
+  doing the same job by address and getting the version-2 prologue wrong; it drops 423
+  program attributions corpus-wide, 401 of them addresses another record in the same file
+  still names properly and the remaining 22 addresses that lie physically inside a *different*
+  record than the one claiming them.
 * `Assembly.referenced_programs()` is **permissive** - every program some word in the file points
   at. It exists because FX-Map records reach programs through their tree and the version-2
   prologue holds programs no record names, and both looked like undecoded regions until this was
@@ -103,6 +115,12 @@ Two readings sit side by side, deliberately:
 `Assembly.outputs()` returns `(uid, format, grayscale, record index)` for each graph output. The
 output table is one 8-byte entry per output, immediately after the record directory in both file
 layouts. Earlier sections of the notes record this attribution as structurally absent; it is not.
+
+`Assembly.program_span(p, hi, slack)` is **the single definition of "is a program"**, and
+`valid_program` is one call to it. They were two implementations for a long time and drifted
+apart on four axes — 4-byte alignment, the instruction-count cap, the `while` opcode's
+trailing operands, and the `code_lo` floor — disagreeing on 8,310 addresses corpus-wide.
+Do not add a check to one of them.
 
 **Reading an immediate goes through `disasm.immediate`, `disasm.uid` or `disasm.floats`.**
 Immediate-carrying opcodes have two forms differing by `0x0400`, the longer emitting a 2-byte pad

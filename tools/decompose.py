@@ -387,7 +387,7 @@ def _interaction_walk(r, s):
     param_slots = _restraddle(r, w1, param_slots)
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
                         'param_slots': param_slots, 'cls_params': cls_params,
-                        'end': _model_end(r, pos), 'prog': prog,
+                        'end': _model_end(r, pos), 'prog': prog, 'hdr': n_masks,
                         'size_slot': _size_slot(cls_params)})
 
 
@@ -578,7 +578,7 @@ def _fxmaps_walk(r, spec):
                 param_slots.append((pj, 3, pos, 1))
             pos += 1
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
-                        'param_slots': param_slots,
+                        'param_slots': param_slots, 'hdr': _FX_MASK_WORDS,
                         'cls_params': cls_params, 'end': _model_end(r, pos), 'prog': prog,
                         'size_slot': _size_slot(cls_params), 'root': FX_ROOT_SLOT})
 
@@ -598,7 +598,7 @@ def decompose(r):
         # `d.get('cls_params', ())` cannot tell an empty walk from an absent key, and this
         # record has no size slot to place -- not one this walk failed to find.
         return {'inputs': [], 'cls_slots': [], 'param_slots': [], 'cls_params': [],
-                'end': None, 'prog': None, 'size_slot': None}
+                'end': None, 'prog': None, 'size_slot': None, 'hdr': 0}
     ver = r.asm.header.get('version') if isinstance(r.asm.header, dict) else 0
     w0 = r.words[0]
     spec = _select_spec(f, w0, r.words[1] if len(r.words) > 1 else None, ver)
@@ -660,7 +660,7 @@ def decompose(r):
                 for _ in range(n):
                     cls_slots.append(pos); pos += 1
         return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
-                            'cls_params': cls_params, 'end': _model_end(r, pos),
+                            'cls_params': cls_params, 'end': _model_end(r, pos), 'hdr': 2,
                             'prog': prog, 'size_slot': _size_slot(cls_params)})
 
     if f not in BASE_INPUTS:
@@ -761,9 +761,18 @@ def decompose(r):
     # re-deriving it means re-selecting the spec with arguments the caller has to
     # reconstruct -- the failure `INPUT_FIELDS` above documents at length. The walk knows
     # it; the walk says it.
+    #
+    # `hdr` is reported for the same reason, and is the count of leading words that are
+    # the record's OWN header rather than slots the walk allocates: w0, plus w1 where the
+    # shape carries one. Every arm of this module already computes it -- `n_hdr` here,
+    # `n_masks` in `_interaction_walk`, `_FX_MASK_WORDS` in `_fxmaps_walk`, 2 in the arity
+    # walk -- and every one of them then dropped it. It is NOT the constant 2: `uniform`
+    # has no w1, so its `hdr` is 1 and its SIZE EXPRESSION lives at slot 1 (16,763 records
+    # place `prog` there). A caller that wants "the slots that could name a program" needs
+    # this and `inputs`; guessing either is how a flags word gets read as a pointer.
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
                         'param_slots': param_slots, 'cls_params': cls_params,
-                        'w1_shift': gsh, 'size_slot': _size_slot(cls_params),
+                        'w1_shift': gsh, 'size_slot': _size_slot(cls_params), 'hdr': n_hdr,
                         'end': _model_end(r, pos), 'prog': prog})
 
 
