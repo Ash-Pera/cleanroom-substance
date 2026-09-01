@@ -5130,6 +5130,36 @@ class Record:
             return None
         kind, w = struct.unpack_from('<2I', d, off)
         n = (w + 23) // 2
+        # SLOT 2 OVERRIDES THE EMBEDDED LENGTH WORD WHERE IT STATES A LONGER PAYLOAD.
+        # `n` is short of the payload in 13 of 139 records, and in all 13 slot 2 -- which
+        # this docstring already calls the payload end -- says where it really stops.
+        # Exceptionless within that group: slot 2 is a body pointer 13 of 13, its span is
+        # the record's span minus exactly 8 in 13 of 13, and that span less the 8-byte
+        # payload header is a whole number of 4-byte vertices in 13 of 13. It recovers
+        # 146,440 bytes, 23% of the corpus's entire uninterpreted record-byte residual.
+        #
+        # WHAT THIS DOES NOT ESTABLISH. The recovered bytes are vertex data of the same
+        # kind -- smoothly marching u16 pairs with the credited payload's value profile --
+        # but they are not simply the same strip continued: the alternating-signed-area
+        # test this decode rests on gives 62.24% over 25,998 faces against a 37.92%
+        # shuffled control, where the credited payload gives 99.52%. A chain of
+        # `[kind][length]` sub-payloads is refuted -- there is no header at `off + n` in
+        # any of the 13. So this extends the located EXTENT, which is what the byte
+        # accounting measures, and leaves the sub-strip structure of the tail open.
+        #
+        # The 6 remaining short records are class 0x218, where slot 2 holds 0x3F800000 and
+        # is the float parameter this docstring's other arm describes. They are untouched.
+        # BOUNDED BY THIS RECORD, and that bound is load-bearing. Without it, slot 2 is
+        # accepted wherever it happens to be a body pointer, and on RoadSubstance002 --
+        # where the payload lies OUTSIDE its own record, the case two paragraphs down --
+        # it names an address megabytes away and 70 records grow to 3.6 million vertices.
+        # All 13 genuine cases have their payload inside their own extent with slot 2
+        # landing exactly 8 bytes short of the record end.
+        if len(self.words) > 2:
+            e2 = self.words[2] + 52
+            if (self.offset <= off < self.end and self.offset < e2 <= self.end
+                    and off + n <= e2 and (e2 - off - 8) % 4 == 0):
+                n = e2 - off
         # The payload need not lie inside this record: the record directory is a sorted
         # PARTITION, not an allocation, and 76 of 140 of these point outside their own
         # extent -- 6 of them below the first record entirely. Same as `ramp`.
@@ -5756,9 +5786,15 @@ class Assembly:
         Record extents are marked accounted for on enumeration, and the record directory is
         a sorted partition of the body, so every body byte is inside some record by
         construction. Reporting 0 unexplained therefore measures the directory's
-        completeness, not the segmenter's understanding. The figure to quote is 92.5% of
-        record bytes interpreted; see FORMAT-NOTES.md, "0 unexplained bytes was measuring
-        the directory".
+        completeness, not the segmenter's understanding. The figure to quote is **99.25% of
+        record bytes interpreted**, and `archive/tools/audit_corpus.py` computes it. For
+        eight days this line pointed at 92.5%, a figure NO SCRIPT IN THIS REPOSITORY HAS
+        EVER PRODUCED: it was written into FORMAT-NOTES.md and the README in prose, both
+        commits touching no `.py` file, so the one audit row that could not be re-run was
+        the row that looked worst. Re-measured against `git archive 8f973fa` it reproduces
+        at 92.296%, which was honest then and is four points stale now on its own
+        definition. See FORMAT-NOTES.md, "0 unexplained bytes was measuring the directory"
+        and "The 7.5% of uninterpreted record bytes".
 
         `unreached` also credits programs that no record slot points at - FX-Map tree
         programs and the layout-B prologue. It costs a scan of the file; pass False for
