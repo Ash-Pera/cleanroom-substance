@@ -287,7 +287,16 @@ def main(paths):
                 # parameter this model failed to read. A four-word blend is
                 # [tag][flags][edge][edge] and ends before a parameter slot could exist,
                 # so "no parameter" is the correct answer there. Counting those as
-                # failures put the gap at 4.55% when the genuine miss is 0.55%.
+                # failures puts the gap at 4.36% when the genuine miss is 0.004% -- 33
+                # records of 903,616, against 39,303 that correctly have no slot.
+                #
+                # This line said 0.55% for eight days and decayed twice unnoticed, which is
+                # the argument for printing all three tiers below rather than one union.
+                # `2be7128` found the residual was 63 records, not 0.55% of them, because
+                # this comment's own distinction had never been applied to the union the
+                # README quoted; `66b559a` then closed 30 of the 63 by retiring
+                # `valid_program`'s address floor. Both numbers here are printed by this
+                # tool now, so the next reader checks instead of trusting a comment.
                 # ASKED OF THE WALK, not of layouts.json. The decoder stopped reading
                 # that memo for layout, edges and prog, but this classification still
                 # looked the record up in it -- so a record the table has no key for could

@@ -206,7 +206,16 @@ Re-measured, and the old number checks out as a measurement of its own moment. T
 script against `git archive 8f973fa` — the commit that pinned 92.5% into `coverage()`'s
 docstring — over today's 437 files and 903,616 records gives **92.296%**. Against HEAD it
 gives 96.50% on that identical definition, and 99.25% once the payload readers this
-repository already has are credited at their stated extents. The 7.5% was real in August. Half of
+repository already has are credited at their stated extents.
+
+Re-run again after `66b559a` retired `valid_program`'s address floor, since a change to which
+words may name a program is exactly the kind that could move a byte count: **96.499% and
+99.254%**, unmoved at the precision quoted. The uninterpreted residual goes 2,123,304 bytes to
+2,123,332 — 28 bytes in 284.5 MB, and the row stands. That check took two minutes because the
+figure is now something a script produces; the whole reason it was wrong for eight days is
+that it was not.
+
+The 7.5% was real in August. Half of
 it has since been genuinely decoded — mostly by `Record.ramp` (`gradient` 43.3% → 99.75%)
 and by the walk migration reaching programs the layout table could not name — and most of
 the rest was never undecoded, only unmarked.

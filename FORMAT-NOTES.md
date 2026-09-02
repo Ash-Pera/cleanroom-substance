@@ -43510,3 +43510,125 @@ change. **No floor was ratcheted.** `test_filters.REFERENCE_FLOOR` is scored thr
 ch2 entry of -0.78 still watches exactly what it watched. Ratcheting it on the strength of a
 number `render2` produced under a flag the floor does not pass would be recording someone
 else's measurement.
+
+## Only a slot can name a program, and that retires the floor two predicates disagreed about
+
+Two predicates answered "is this word a program". `valid_program` carried a floor at the
+first record's offset on the ground that code lives in record bodies; `program_span`, which
+`valid_program`'s own docstring calls "the single definition", carried none. The docstring
+recorded that drift TWICE and it was never resolved. In a format whose one claim is that a
+primitive is implemented once, two answers to one question is the thing to remove.
+
+### The drift was four axes, not one
+
+Every word of every record in the corpus, read as `word + 52` and kept if in range --
+8,310 distinct addresses where the two disagree:
+
+    axis                              which was right    addresses
+    4-byte alignment                  valid_program          7,887
+    the code_lo floor                 program_span             344
+    `while` trailing operands         valid_program             70
+    instruction cap 0xFFFF vs 20,000  valid_program             45
+
+36 addresses are on both of the first two. The cap and the `while` exemption were
+tightenings applied to the boolean and never carried across, so `program_span` was silently
+refusing 44 `pixelprocessor` class-parameter programs and one `US_Flag` SIZE SLOT. So the
+floor was not the only thing wrong, and the predicate that was right about the floor was
+wrong about three other things.
+
+After: **0 disagreements over 9,863,188 in-range addresses.** `_valid_program` is deleted and
+so is `_program_end`, a THIRD walk of the same instruction stream that nobody had counted;
+`program_end` delegates to `program_span`.
+
+### The floor was slot-role work wearing an address costume
+
+An edge's word is a record INDEX, and a record's offset is `index + 52` -- the same universal
+skew a program pointer uses. So `edge_word + 52` is, by construction, the offset of the record
+that edge names. It is always a legal record start. Asking a program predicate about it is a
+category error, and no address rule can fix a category error.
+
+Why the floor appeared to work: in layout A `body_lo` sits past the directory, so an edge's
+`+52` lands nowhere and the question never arises. In layout B the body starts at 0x38 and
+every small word aliases the version-2 prologue -- which is where the 281 phantoms came from.
+The floor suppressed them, at the cost of covering 11,440 bytes of real code.
+
+### The rule that replaced it, and the control that argues for it
+
+Only a slot can name a program, and the walk states which words are slots. Both scans skip
+the walk's input-edge slots and the record's own header words. `decompose` gained `hdr` for
+this, and it is NOT the constant 2: `uniform` has no w1 and puts its size expression at slot
+1, 16,763 records, where `classified_programs` had `range(2, ...)` hardcoded.
+
+Both arms, which is the only way this claim is worth anything -- 30/30 structural slots
+accepted, 27 of the 30 ending exactly at `code_lo`; **0 of 60** edge-slot phantoms returned.
+
+Over the whole window the floor covered, `[body_lo, code_lo)` across the 30 layout-B files:
+8,463 record words land there and 3.5% decode as a program, so the base rate is low and the
+separation is the finding.
+
+    walk-named size/program slot    30/30    100.0%
+    walk-named INPUT EDGE           60/3145    1.9%
+    the record's own header word   100/3115    3.2%
+    any other slot                 106/2173    4.9%
+
+An address rule cannot produce that table. A slot rule does, because the question was never
+about addresses.
+
+### Withdrawn: "programs are not 4-aligned"
+
+`coverage()` claimed 42.7% against 84.8% and used it to justify a 2-byte scan. The layout-B
+prologues are the only population of programs no pointer names, so they are the only place
+the question can be asked. Tiled with the alignment check removed: 121 programs, 9,704 of
+11,440 bytes -- 84.8% -- and **not one of the 121 starts at 2 mod 4**. They abut ends that
+routinely do, so the cooker pads each start to 4. A 4-stepping scan that re-aligns its resume
+finds the identical 121 and the identical 9,704.
+
+The 42.7% was the loop resuming at a 2-mod-4 program END and then stepping by 4 forever. The
+alignment check was correct all along; the measurement that argued against it was the bug.
+
+### What moved, corpus-wide, over 903,616 records
+
+    size_or_baked        30 records change, all None -> ('program', p)
+    edges                 0
+    Record.programs     +95 / -423 over 506 records
+    coverage()          unexplained still 0; 42 bytes move to layout_b_prologue
+    referenced_programs -254 spans, all misaligned; +113, all 4-aligned
+
+Of the 423 dropped, 401 addresses are still named properly by another record in the same
+file; the other 22 lie physically inside a DIFFERENT record than the one claiming them and
+remain reachable through `referenced_programs()`. 68 records end with no program at all, 57
+of them `uniform` records that all claimed one address through their identical tag word, in a
+record hundreds of positions away.
+
+The 42 bytes are a correction, not a loss: every one was credited to a program at an ODD
+address (`concrete_049` 0x85, 0xed, 0x145, 0x185, 0x199, 0x1ed).
+
+### The arbiter this predicate underpins
+
+Over the 742,120 records where the class walk NAMES a size slot, does the word there resolve
+as a valid program:
+
+                            before        after
+    resolves             742,106       742,117
+                         99.9981%      99.9996%
+    CONTROL one slot away  23.10%        23.10%
+    CONTROL random slot     1.21%         1.21%
+
+Misses 14 -> 3. The 11 Pocket-A records closed; the 3 remaining are `Texture_Randomizer`,
+whose slot word is odd and is not a pointer under any floor.
+
+### Where the first rule was too loose
+
+65 of the 95 additions sit at words inside the walk's `end` that the walk allocates NO slot
+to. The clearest is `gradient`'s ramp base structure: slot 2 holds the constant **4** in 41
+records of `concrete_049`, and `4 + 52 = 0x38` is a real prologue program address. That is the
+same aliasing one level down, and "only a slot" is not yet tight enough to catch it.
+
+The complete rule is "only a slot the walk ALLOCATES can name a program". It was built and
+measured, and **it is a no-op in `programs()`** -- `classified_programs` reaches those same
+words by a different route. Applying it there too would move a mechanism whose precision
+figures were measured under `range(2, ...)` on a different question, so it is left for the
+next pass rather than folded in silently.
+
+Render unmoved: reference height mean 0.78587, byte-identical. Fast lane 19, tables+fx+bitmap
+24, render2 15, `test_filters -k reference_agreement` passed.
