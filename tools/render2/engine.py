@@ -240,7 +240,7 @@ def record_sizes(asm, outputsize):
     FIRST -- so a walk that reads the block in ascending bit order hands `size_slot` the
     SEED pointer and leaves the size expression on the next word. 102,173 corpus records
     across 19 filters set both bits. `decompose` now walks the block in emission order on
-    every one of its four arms (`_CLASS_ORDER_SWAPS`, `_class_block`), the last of them --
+    every one of its four arms (`_class_emission_order`, `_class_block`), the last of them --
     the additive-spec arm, 4,280 records over 13 filters, `blend` 2,445 the largest -- as of
     the commit that rewrote this paragraph. The reading is verified by the bytes at those
     slots rather than by the walk that placed them: the first returns ONE component and the

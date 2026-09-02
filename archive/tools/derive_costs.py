@@ -46,7 +46,18 @@ dropping late ones cannot move it -- unless a record's first inline program sits
 own header end, which no record in this corpus does. A corpus that contained one would
 break the equivalence silently.
 
-RE-RUNNING THIS STILL REVERTS FOUR ENTRIES, AND THIS IS THE ONLY WARNING OF IT. `const`
+RE-RUNNING THIS STILL REVERTS TWO ENTRIES, AND THIS IS THE ONLY WARNING OF IT. It reverted
+FOUR until the canvas tie-break below (`_better` / `_canvas_charge`): `normal` (18) and
+`dyngradient` (19) were two of the four re-solved by hand, and this script now derives their
+entries itself, arriving at the SAME numbers -- `const` 3.0 and no coefficient on word0's
+size nibbles for both. That is the strongest thing that can be said for the tie-break, since
+it was written from SPEC 6.2 and not from those entries. The two it still reverts are
+`shuffle` (3) and `distance` (21). Their re-attribution is not about the canvas and this
+script has no mechanism for it; note that the reversion is of the ATTRIBUTION and never of
+the LENGTH -- `header_words` returns the identical answer on all 903,616 corpus records under
+either table.
+
+`const`
 here is a FREE intercept for every filter but the ones in `PIN_BASE`, and the equation says
 nothing about it being the size of anything -- so the solver is at liberty to shave words
 off it and charge them to a bit that is set in every record of a filter. The total is
@@ -57,10 +68,11 @@ happened on 7,119 records -- shuffle 3,514, dyngradient 2,214, normal 1,391 -- a
 `normal`'s size expression on the slot its `intensity` occupies. `distance` had the same
 defect plus one of its own.
 
-The live `tools/costs.json` therefore carries THOSE FOUR entries -- shuffle (3), normal
+The live `tools/costs.json` therefore carries THOSE ENTRIES -- shuffle (3), normal
 (18), dyngradient (19), distance (21) -- re-solved outside this script with the intercept
 pinned to that structural base, `shuffle` split into two guarded variants because its class
-widths differ by record shape. The re-solve is exact on every record, every coefficient a
+widths differ by record shape. 18 and 19 are now this script's own answer as well; 3 and 21
+are still hand entries. The re-solve is exact on every record, every coefficient a
 non-negative integer, and every header length is identical to what this script emits -- only
 the attribution differs. See `record_layout`'s module docstring for the derivation and its
 arbiters. A re-run silently undoes those four, so a re-run's output must be merged rather
@@ -75,10 +87,14 @@ went with the live tools, and its own directory insert then found neither; `_rep
 puts `tools/` back on the path.
 
 THE CONTROL FOR ANY CHANGE HERE is that an unchanged run reproduces its own last output
-byte for byte. It does: with `W1_GRID_SHIFT[8]` and `PIN_BASE` reverted, a full run emits
-`archive/tools/costs.json` at the same md5, all 21 filters, the same 100.000% exact on each.
-So a diff after a change is attributable to the change and to nothing else -- which is how
-the emboss re-derivation was shown to move filter 8's entry and no other.
+byte for byte. It does, and it was re-taken before the canvas tie-break landed: a full run of
+the unmodified script emitted `archive/tools/costs.json` at md5
+`d2076b3db97488da2c8a067721ffd524`, the file's own checked-in md5, all 21 filters at the same
+100.000% exact. (An earlier revision of this paragraph said the control needed
+`W1_GRID_SHIFT[8]` and `PIN_BASE` reverted; that was true when those landed and has not been
+true since the file was refreshed.) So a diff after a change is attributable to the change and
+to nothing else -- which is how the emboss re-derivation was shown to move filter 8's entry
+and no other, and how the canvas tie-break was shown to move 13, 18 and 19 and no others.
 """
 #
 # A CHANGE HERE PAIRS WITH ONE IN `decompose.py`, and the pair has to land in ONE commit.
@@ -758,6 +774,80 @@ def _constant_set_bits(keys, bitrange=range(32)):
     return [b for b in bitrange if all((k[0] >> b) & 1 for k, _, _ in keys)]
 
 
+#: word0's log2 WIDTH and log2 HEIGHT nibbles. SPEC 6.2: the tag's low half is not a
+#: presence mask, and two of its nibbles are a SIZE. A cost model that offers every bit of
+#: word0 as a feature will charge header words to them, and the result is a header length
+#: that depends on the record's ASPECT RATIO for a header whose contents do not.
+CANVAS_BITS = range(8, 16)
+
+
+def _canvas_charge(spec):
+    """How much a candidate spec charges to the canvas nibbles, in words.
+
+    THE DEFECT THIS MEASURES IS NOT HYPOTHETICAL AND IS NOT VISIBLE IN `exact`. `sharpen`
+    was fitted at 1.00000 with
+
+        cls10 +0.5   cls11 +0.5   cls14 -0.5   cls15 -0.5   cls26 1.5
+
+    -- bits 2 and 3 of the two size nibbles, plus the baked `$pixelsize` at 1.5 where every
+    other filter that has it charges the Float2's 2. Inside log2 4..11 exactly one of bits 2
+    and 3 is set in each nibble, so the four halves cancel and the fifth is absorbed by the
+    rounding tie: the model is exact on all 1,323 corpus records. Outside that range it is
+    not the same model at all --
+
+        word0 0x1b19...1a   16x16      canvas fit 5   canvas-free fit 5
+                            4096x4096  canvas fit 5   canvas-free fit 5
+                            16x4096    canvas fit 4   canvas-free fit 5
+                            4096x16    canvas fit 6   canvas-free fit 5
+
+    -- and the same fit run on the class word alone is exact at 1.00000 too, with cls26 at
+    exactly 2 and no half anywhere. `dyngradient` carried the same defect in this script's
+    output (`const` 1.5, four halves) and had already been re-solved by hand outside it;
+    running that filter through this tie-break reproduces the hand re-solve.
+
+    SCORED, NOT FORBIDDEN. `bits_of` may still offer these bits -- the format byte candidate
+    exists because `bitmap`'s 0xaa/0xbb formats really do cost a word -- and a candidate that
+    NEEDS them will be strictly more exact and win on that. This only settles TIES, where the
+    choice was otherwise made by which candidate happened to be fitted first.
+    """
+    if spec is None:
+        return 0.0
+    if spec.get('cls') is not None:
+        return sum(abs(float(v)) for b, v in spec['cls'].items() if int(b) in CANVAS_BITS)
+    tot = 0.0
+    for i, b in enumerate(spec.get('clsbits', ())):
+        if b in CANVAS_BITS:
+            tot += abs(float(spec['base'][1 + i]))
+            if spec.get('interaction') == 'colour':
+                tot += abs(float(spec['cross'][1 + i]))
+    return tot
+
+
+def _better(cand, cand_exact, best, best_exact):
+    """Is `cand` the candidate to keep? More exact, or equally exact and charging less to
+    the canvas nibbles.
+
+    Ties used to go to whichever candidate was fitted FIRST, and try order is not a fact
+    about the format. Three of `sharpen`'s four candidates are exact at 1.00000 and only one
+    of them is free of the canvas; the one that won was simply first.
+
+    THE TIE-BREAK IS DELIBERATELY NARROW. A general "prefer the lawful model" rule -- fewer
+    flagged coefficients, or fewer flagged plus unidentified ones -- was tried first and it
+    reshuffles model FAMILIES rather than bit ranges: it moved `shuffle` from a blind
+    `cls0 = -1` to a pinned `w1_present = -2`, and it moved `pixelprocessor` off its additive
+    arity spec entirely, which `decompose`'s arity arm requires. Neither has anything to do
+    with the defect. The canvas charge names the defect and nothing else, and it changes
+    exactly two filters.
+    """
+    if cand is None:
+        return False
+    if best is None:
+        return True
+    if cand_exact != best_exact:
+        return cand_exact > best_exact
+    return _canvas_charge(cand) < _canvas_charge(best)
+
+
 def _bit_cost(spec, b):
     """What a spec charges for class bit `b`, or None if it carries no coefficient."""
     if spec is None:
@@ -860,24 +950,24 @@ def main():
                                                           's' if len(variants) > 1 else '')))
             out[str(f)] = {'variants': variants} if len(variants) > 1 else variants[0]
             continue
+        # EVERY CANDIDATE IS COMPARED BY THE SAME RULE -- more exact, or equally exact
+        # and less lawless (`_better`). It used to be a chain of `>` against whichever
+        # candidate happened to be fitted first, which decides ties by TRY ORDER; three
+        # of `sharpen`'s four candidates are exact at 1.00000 and only one of them is
+        # lawful, and the one that won was simply first. See `_lawless`.
         spec, exact = fit(f, keys, range(32))
-        spec2, exact2 = fit(f, keys, range(16, 32))
-        if exact2 > exact:                        # narrow (cls-only) model wins
-            spec, exact = spec2, exact2
         # The FORMAT byte (word0 bits 8-15) carries layout for some filters -- bitmap's
         # 0xaa/0xbb formats cost one extra word -- but bits 0-7 are junk features that
         # hurt the integer refinement, so the mask that sees the format byte without
         # them is its own candidate. bitmap: 99.33% under both other masks, 100.00%
         # under this one.
-        spec2b, exact2b = fit(f, keys, range(8, 32))
-        if spec2b is not None and exact2b > exact:
-            spec, exact = spec2b, exact2b
-        spec3, exact3 = fit(f, keys, range(32), colour='full')
-        if spec3 is not None and exact3 > exact:  # colour-interaction model wins
-            spec, exact = spec3, exact3
-        spec4, exact4 = fit(f, keys, range(16, 32), colour='states')
-        if spec4 is not None and exact4 > exact:  # lean colour-x-baked variant wins
-            spec, exact = spec4, exact4
+        for _cand in ((range(16, 32), 'off'),      # narrow: the class word alone
+                      (range(8, 32), 'off'),       # + the format byte, without bits 0-7
+                      (range(32), 'full'),         # colour-interaction
+                      (range(16, 32), 'states')):  # lean colour-x-baked
+            _s, _e = fit(f, keys, _cand[0], colour=_cand[1])
+            if _better(_s, _e, spec, exact):
+                spec, exact = _s, _e
         # Conjunction candidate, last because it is the most expensive in columns and
         # should only win where the format really does test two bits together.
         for _br in (range(8, 32), range(16, 32), range(32)):
@@ -889,6 +979,11 @@ def main():
             # because rint breaks 2.5 down; the conjunction says what the format does.
             # Exactness alone cannot separate them, so the width law is the tie-break --
             # which is the whole point of insisting every coefficient be a type width.
+            # THIS IS NOT `_better`, and the difference is the point: that one settles
+            # which BIT RANGE a candidate saw, this one settles which SHAPE the model has,
+            # and a conjunction spec and an additive one are not two readings of the same
+            # feature set. Scored on `flags` -- the violations the data pins -- because the
+            # 0.5 pair it exists to beat is pinned.
             better = exact5 > exact or (
                 exact5 == exact and spec is not None
                 and len(spec5.get('flags', ())) < len(spec.get('flags', ())))

@@ -301,11 +301,38 @@ def _restraddle(r, w1, param_slots):
 
 #: THE CLASS BLOCK'S EMISSION ORDER, as a format constant rather than a per-filter branch.
 #:
-#: `clsbits` is ascending and the block is not. Class bit 23 gates `$randomseed` and bit 16
-#: gates `$outputsize`, and bit 23's slot is emitted FIRST. This states that one fact once,
-#: for every walk of the block; see FORMAT-NOTES.md, "A `levels` record, bit by bit -- and
-#: the class block is not in ascending bit order" for the measurement, and SPEC §6.1, which
-#: lists this as the second of two exceptions to ascending order.
+#: `clsbits` is ascending and the block is not. THE RULE IS A SORT, NOT A PAIR:
+#: **class bit 16 (`$outputsize`) is emitted LAST within the low class group (bits 16-23),
+#: and the filter's own bits 24-31 follow in ascending order.**
+#:
+#: THIS REPLACED A PAIRWISE SWAP `((23, 16),)`, WHICH WAS WRONG ON 3 RECORDS. Bit 23 gates
+#: `$randomseed` and bit 16 `$outputsize`, and stating only "23 before 16" misses every
+#: record that sets a costing class bit between them without setting 23. Scored on the
+#: 214,298 records where the candidate orders place bit 16 in different slots at all -- by
+#: whether that slot's word resolves a program returning a TWO-COMPONENT integer, which a
+#: size expression is and a seed is not:
+#:
+#:     order                                      valid program        two-component
+#:     16 last in the low group (this rule)    214,298 / 214,298         214,298
+#:     swap 23 before 16 (the old rule)        214,295 / 214,298         214,295
+#:     plain ascending                         214,295 / 214,298         112,122
+#:     bit 16 last overall / descending        169,944 / 214,298         100,440
+#:
+#: The three records the swap misses are `Texture_Randomizer.sbsasm` records 0, 2 and 5 --
+#: the only records in the corpus that set class bit 22, which costs a word and is the only
+#: costing class bit strictly between 16 and 23. They set 16 and 22 and NOT 23, so a
+#: pairwise `(23, 16)` swap never fires. Walked under this rule their bit-22 slot opens
+#: `0x0A42 inputref` on uid 1786583393, which that file's manifest declares
+#: `identifier="$outputsize" type="8" default="8,8"`, and the bit-16 slot holds a constant
+#: `0x203`; walked ascending the two are exchanged.
+#:
+#: WHAT THIS CORPUS CANNOT SEPARATE, and it is worth stating rather than leaving implied:
+#: "bit 16 last in the low group" and "the SYSTEM variables are emitted first, then the
+#: filter's own bits" predict the identical order on every record here, because bits 17-21
+#: cost no word in any filter and 22/23 are the only other observable members of the low
+#: group. The specimen that would separate them is a record setting a COSTING class bit in
+#: 17-21 together with bit 16; the corpus has none. The rule below is the economical one --
+#: it predicts, where a growing list of pairs only records.
 #:
 #: THERE IS NO EXEMPTION. `pixelprocessor` (20) was exempted here, and the exemption was an
 #: artefact of THIS module rather than a fact about the format, so the set it lived in is gone
@@ -317,10 +344,17 @@ def _restraddle(r, w1, param_slots):
 #: `$outputsize` on 56,141 of 56,142 that set bit 16, and that block ends exactly one slot before
 #: the fitted header length on 57,965 of 57,965. The arity arm below used to allocate the pixel
 #: program's slot IN FRONT of the class block, which shifted both class labels by one and is what
-#: made the filter look like it does not swap; it now walks the class block from `2 + n_in` in
-#: emission order and puts the filter's own program after it. See FORMAT-NOTES.md, "Every filter,
-#: bit by bit", and the note in the arity arm for the A/B this landed on.
-_CLASS_ORDER_SWAPS = ((23, 16),)
+#: made the filter look like it does not obey the order; it now walks the class block from
+#: `2 + n_in` in emission order and puts the filter's own program after it. See FORMAT-NOTES.md,
+#: "Every filter, bit by bit", and the note in the arity arm for the A/B this landed on.
+#:
+#: THE LOW GROUP IS `b < 24`, WHICH INCLUDES WORD0's LOW HALF. An additive spec's `cls`
+#: dict offers bits 0-15 as features too (SPEC 6.2: two of those nibbles are a SIZE, not a
+#: presence mask), and none of them allocates a slot -- every such coefficient in
+#: `costs.json` rounds to zero. They sort ahead of bit 16 either way, so the key does not
+#: have to special-case them, and it must not exclude them: a bit whose cost is zero today
+#: and nonzero tomorrow belongs in the same group its neighbours are in.
+_CLASS_LOW_GROUP_LAST = 16       # the bit that goes last in the low group (bits < 24)
 
 
 def _class_emission_order(filter_id, clsbits):
@@ -330,17 +364,14 @@ def _class_emission_order(filter_id, clsbits):
     cost cell is keyed on the former, so reordering the walk must not reorder the lookup.
     That separation is the whole reason this returns pairs.
 
-    `filter_id` is kept in the signature although no filter is exempt: the swap is a format
-    constant that every filter obeys, and the argument is what a future per-filter finding
-    would key on rather than something the caller has to supply for its own sake.
+    `filter_id` is kept in the signature although no filter is exempt: the order is a
+    format constant that every filter obeys, and the argument is what a future per-filter
+    finding would key on rather than something the caller has to supply for its own sake.
     """
-    order = list(enumerate(clsbits))
-    for first, second in _CLASS_ORDER_SWAPS:
-        by_bit = {b: k for k, (_i, b) in enumerate(order)}
-        if first in by_bit and second in by_bit and by_bit[first] > by_bit[second]:
-            item = order.pop(by_bit[first])
-            order.insert(by_bit[second], item)
-    return order
+    return sorted(enumerate(clsbits),
+                  key=lambda t: (0 if t[1] < 24 else 1,
+                                 1 if t[1] == _CLASS_LOW_GROUP_LAST else 0,
+                                 t[1]))
 
 
 def _class_block(r, clsbits, pos, cost):
@@ -350,7 +381,7 @@ def _class_block(r, clsbits, pos, cost):
     width)` triples for the bits that cost something, and the cursor after the block.
 
     THIS EXISTS BECAUSE FOUR COPIES OF ONE RULE IS HOW THE RULE GOT MISSED. The block's
-    emission order is a format constant (`_CLASS_ORDER_SWAPS`), and it was applied at three
+    emission order is a format constant (`_class_emission_order`), and it was applied at three
     of the four loops that walked the block: `550de51` routed the interaction and fxmaps
     arms through it, `c70269f` the arity arm, and the additive-spec arm in `decompose` kept
     iterating `sorted(spec['cls'])` for another two commits -- labelling bits 16 and 23
@@ -427,7 +458,7 @@ def _interaction_walk(r, s):
     # 23 inserts a slot in front of it. `pixelprocessor` takes the arity arm and not this one;
     # it swaps like everything else, and the arity arm walks the block in the same emission
     # order -- no filter is exempt, and all four walks now share one loop.
-    # See `_CLASS_ORDER_SWAPS` and `_class_block`.
+    # See `_class_emission_order` and `_class_block`.
     #
     # NOTHING IS MISPLACED BY THIS -- both bits cost one word, so `end`, `inputs` and every
     # `param_slots` entry are unaffected and no header runs long. What is wrong is the
@@ -437,7 +468,8 @@ def _interaction_walk(r, s):
     #
     # The fix WAS a class-block ORDER legend (a format constant, like the name legend, that
     # states an emission order and never a position), not a per-filter branch, and it landed
-    # at 550de51 -- `_CLASS_ORDER_SWAPS` above. The paragraph before this one describes what
+    # at 550de51 -- `_class_emission_order` above, since restated as a sort rather than a
+    # pair. The paragraph before this one describes what
     # the walk did BEFORE that commit and is what the swap is there to prevent. See
     # FORMAT-NOTES.md, "A `levels` record, bit by bit -- and the class block is not in
     # ascending bit order", and "Every filter, bit by bit" for the second measurement of the
@@ -739,7 +771,8 @@ def decompose(r):
         # THE CLASS BLOCK COMES FIRST, AND THE FILTER'S OWN PROGRAM AFTER IT. This arm used
         # to hand out the program slot at `2 + n_in`, in FRONT of the class block, which
         # shifted every class label one word late and is the whole reason `pixelprocessor`
-        # looked like an exception to the class block's emission order (`_CLASS_ORDER_SWAPS`).
+        # looked like an exception to the class block's emission order
+        # (`_class_emission_order`).
         # The header is `[w0][w1 arity][inputs][bit 23][bit 16][the filter's own program]`,
         # and the arbiter is the manifest identifier of the graph input each slot's program
         # reads with its first `inputref`, taken by POSITION rather than by the walk's labels:
@@ -811,7 +844,7 @@ def decompose(r):
     size_pos = pos                           # first slot after the base region = size-expr slot
     # EMISSION ORDER, NOT ASCENDING BIT ORDER -- the same legend, and now the same LOOP, as
     # the other three walks. This arm iterated `sorted(spec['cls'])` until now: the fourth
-    # copy of a rule `_CLASS_ORDER_SWAPS` states once, and the copy that was missed when
+    # copy of a rule `_class_emission_order` states once, and the copy that was missed when
     # 550de51 routed the interaction and fxmaps arms through the legend and c70269f the arity
     # arm. It labelled class bits 16 and 23 backwards on 4,280 records over 13 filters --
     # blend 2,445, dirmotionblur 750, directionalwarp 528, warp 269, shuffle 70, gradient 54,

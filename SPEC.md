@@ -125,9 +125,37 @@ plausible numbers rather than a failure.**
 
 1. **Filter 17 `text`'s `w1` parameter block** is laid `matrix22`, `position`, `fontsize`
    (§13.4) — bits 10, 6, 8. This applies to the parameter block alone.
-2. **The class block emits bit 23 before bit 16, in EVERY filter.** Class bit 16 gates
+2. **The class block emits bit 16 LAST within the low class group (bits 16–23), in EVERY
+   filter; the filter's own bits 24–31 follow in ascending order.** Class bit 16 gates
    `$outputsize` and bit 23 gates `$randomseed` (§13.4), and when both are set the
    `$randomseed` pointer takes the first class slot and the size expression the second.
+
+   **This was stated here as the pair "23 before 16", and a pair is wrong on 3 records.**
+   Scored on the 214,298 corpus records where the candidate orders place bit 16's slot
+   differently at all, by whether that slot resolves a program returning a **two-component
+   integer** — which a size expression is and a seed is not:
+
+   | order | valid program | two-component |
+   |---|---|---|
+   | bit 16 last in the low group | 214,298 / 214,298 | **214,298** |
+   | swap 23 before 16 | 214,295 / 214,298 | 214,295 |
+   | plain ascending | 214,295 / 214,298 | 112,122 |
+   | bit 16 last overall / descending | 169,944 / 214,298 | 100,440 |
+
+   The three the pair misses are `Texture_Randomizer` records 0, 2 and 5 — the only corpus
+   records that set class bit **22**, which costs a word and is the only costing class bit
+   strictly between 16 and 23. They set 16 and 22 and **not** 23, so a pairwise swap never
+   fires. Under the sort rule their bit-16 slot resolves a two-component program whose first
+   `inputref` names the uid the manifest declares `identifier="$outputsize" type="8"` on 3
+   of 3, and their bit-22 slot holds the constant `0x203`; walked ascending the two are
+   exchanged.
+
+   **What this corpus cannot separate.** "Bit 16 last in the low group" and "the system
+   variables are emitted first, then the filter's own bits" predict the identical order on
+   every record here: bits 17–21 cost no word in any filter, so 22 and 23 are the only other
+   observable members of the low group. The specimen that would separate them is a record
+   setting a **costing** class bit in 17–21 together with bit 16, and there is none. The rule
+   above is the one stated because it predicts; a list of pairs only records.
    Measured over **all 102,173 corpus records that set both**, across 19 filters, and taken
    by slot POSITION rather than by any reader's labels: the first class slot's program
    returns **one** component in 102,173 of 102,173 — a size never can — and the second

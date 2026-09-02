@@ -486,7 +486,8 @@ def walk(spec, word0, word1, n_words, legend=None):
     # says. (Widths already resolved into cls_widths.)
     #
     # ASCENDING BIT ORDER IS NOT THE FORMAT'S ORDER -- the class block emits bit 23 before
-    # bit 16 (SPEC 6.1, `decompose._CLASS_ORDER_SWAPS`). It is sound HERE, and only here,
+    # bit 16, and more precisely emits bit 16 LAST of the low group 16-23 (SPEC 6.1,
+    # `decompose._class_emission_order`). It is sound HERE, and only here,
     # because this loop emits POSITIONS and never names which bit owns one: both bits are
     # one word wide in `_CLS`, so the two orders allocate the identical list. A reader that
     # adds a bit -> slot mapping to this walk inherits the exception and must apply it; that
