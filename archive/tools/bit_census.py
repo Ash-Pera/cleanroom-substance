@@ -25,30 +25,26 @@ would blur together:
     free         the cost model carries a coefficient and it is zero. The bit is DECLARED to
                  the walk and gates no stored value -- class bits 19/20/21 are this. Nothing
                  is misplaced by these, whatever they mean.
-    constant     `constant_bits`: set on every record the fit could see, so its cost cannot
-                 be told from the intercept. NOT the same as "free"; see `derive_costs.
-                 _constant_set_bits`.
-    unmodelled   set in the corpus and the spec carries no coefficient at all. This is the
-                 only column where a slot could be going unplaced, and it is the one to
-                 read first. `derive_costs.bits_of` admits a bit as a feature only when it
-                 VARIES over the fit population, and the fit population is the records with
-                 an observable header boundary -- so a bit set on some records of a filter
-                 and absent from its spec means the two populations differ.
+    unmodelled   set in the corpus and the legend carries no cell at all. This is the only
+                 column where a slot could be going unplaced, and it is the one to read
+                 first. A cell exists only where the derivation's population could SEE the
+                 bit vary, and that population is the records with an observable header
+                 boundary -- so a bit set on some records of a filter and absent from its
+                 entry means the two populations differ.
 
-PER-FILTER MODE LOGIC, WHICH IS WHY THIS IS NOT A ONE-LINER. `costs.json` runs five shapes
-and a naive reader gets three of them wrong:
+A `?` MARKS A CELL THIS COLOUR DID NOT MEASURE. `legend.json` records the provenance of
+every (cell, colour) reading, and 36 of the 214 are the legend PREDICTING a colour the
+corpus never exercises. The fitted table this replaced stored those absences as zeros,
+indistinguishable from a measured zero; the flag is what stops that being read as a
+measurement.
 
-    cls dict + w1 dict      the plain additive spec (levels, normal, ...)
-    interaction colour      `clsbits` + `pairs` + base/cross vectors, NO `cls` key at all
-    interaction colour_states   same, but `cross` holds only the state columns
-    mode 'arity'            w1 is an input COUNT, not a code grid (pixelprocessor)
-    variants                one spec per record shape behind a guard (shuffle)
-
-A previous attempt to separate "understood" from "merely unnamed" read `spec['pairs']`
-unconditionally and got `None` for `blend`, `text` and `pixelprocessor` -- the three filters
-that do not use the interaction form. The spec is selected here through
-`decompose._select_spec`, per record, so variants and `min_version` guards are honoured for
-free and the census describes the spec that actually answered for that record.
+ONE SPEC SHAPE, WHERE THERE WERE FIVE. `costs.json` ran `plain`, `colour`, `colour_states`,
+`arity` and `variants`, and a naive reader got three of them wrong: an earlier attempt at
+this census read `spec['pairs']` unconditionally and got `None` for `blend`, `text` and
+`pixelprocessor`, the three filters that did not use the interaction form. Every filter's
+legend entry has the same shape now -- `cls` and `w1` are dicts of KINDS -- and the
+mode-dependent extras (`arity`, `conj`, `shape4`, `edge_bits`) are optional keys that mean
+the same thing wherever they appear.
 
 THE W1 PRESENCE RULE IS THE WALK'S, NOT `len(words) > 1`. `uniform` has no w1 word and its
 slot 1 is an EDGE; `warp` and `shuffle` each have one shape that carries a w1 word and one
@@ -116,14 +112,15 @@ NAMED_ELSEWHERE_W1 = {
 #:            with `_fill_program`, a value probe over every program slot.
 #:     8:27   `emboss`'s `$pixelsize`, and the one entry here whose SLOT is also wrong: bit 27
 #:            is set on 375 of the 375 emboss records the fit could see, so it is in
-#:            `constant_bits` and its word went into the intercept, and the walk then charges
-#:            that word to `w1` field 0. The program sitting there is the same
-#:            `sysvar..exp2` on 358 records and an `inputref` on a graph input named
-#:            `$pixelsize` on 8. See SPEC 7.4 and FORMAT-NOTES.md for the grid shift that
-#:            goes with it.
+#:            set on all 375 of the emboss records the derivation can see, so no fit with a
+#:            free intercept could tell its word from the constant and the walk charged that
+#:            word to `w1` field 0. Under the width legend the intercept is pinned and the
+#:            residual determines the bit at one word, and the slot is a class slot. The
+#:            program sitting there is the same `sysvar..exp2` on 358 records and an
+#:            `inputref` on a graph input named `$pixelsize` on 8. See SPEC 7.3.
 PENDING_CLS = {
     6:  {25: 'outputcolor (program arm)'},
-    8:  {27: '$pixelsize (program; the walk charges its word to w1 field 0)'},
+    8:  {27: '$pixelsize (program; a class slot the walk places, since the base is pinned)'},
     7:  {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
     10: {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
     11: {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
@@ -134,117 +131,129 @@ PENDING_CLS = {
 }
 
 
-def _spec_clsbits(spec):
-    """The class bits this spec carries a coefficient for, in the fit's own column order.
+def _legend_spec(f, ver):
+    """The legend entry answering for a record of filter `f` at assembly version `ver`.
 
-    Two shapes: `cls` is a dict (JSON-sorted, so recovered by sorting numerically -- the
-    fit built it from an ascending bitrange, so sorted order IS the column order), and
-    `clsbits` is the interaction form's explicit list.
+    ONE SHAPE, WHERE THERE WERE FIVE. `costs.json` ran `plain`, `colour`, `colour_states`,
+    `arity` and `variants`, and a naive reader got three of them wrong -- an early attempt
+    at this census read `spec['pairs']` unconditionally and got `None` for `blend`, `text`
+    and `pixelprocessor`, the three filters that did not use the interaction form. The
+    width legend has one shape for every filter: `cls` and `w1` are dicts of KINDS, and
+    the mode-dependent extras (`arity`, `conj`, `shape4`, `edge_bits`) are optional keys
+    that mean the same thing wherever they appear.
     """
-    if spec.get('cls') is not None:
-        return sorted(int(k) for k in spec['cls'])
-    return list(spec.get('clsbits', ()))
+    sp = record_layout.legend().get(str(f))
+    if sp is None:
+        return None
+    mv = sp.get('min_version')
+    if mv is not None and (ver is None or ver < mv):
+        return None                      # this filter's modern layout only
+    return sp
+
+
+def _spec_clsbits(spec):
+    """Every class bit the legend carries a cell for, costing or not.
+
+    `cls_free` is the bits a population SAW and measured at zero: declared to the walk,
+    gating no stored value. Keeping them separate from `cls` is what lets `cls_status`
+    report `free` rather than `unmodelled`, which is the distinction this census exists
+    for -- a bit charged NOTHING and unnamed misplaces no word whatever it means.
+    """
+    bits = {int(k) for k in spec.get('cls', {})}
+    bits |= set(spec.get('cls_free', ()))
+    sh4 = spec.get('shape4')
+    if sh4 is not None:
+        bits.add(sh4[0])
+    return sorted(bits)
 
 
 def _spec_fields(spec):
-    """The w1 FIELD indices the spec carries costs for, and the grid shift."""
-    gsh = int(spec.get('w1_shift', 0))
-    if spec.get('cls') is not None:
-        return sorted(int(k) for k in spec.get('w1', {})), gsh
-    return list(spec.get('pairs', ())), gsh
+    """The w1 BIT OFFSETS the legend declares a field at.
+
+    Not indices, and there is no grid shift to return alongside them: a field begins at
+    its own bit. `directionalwarp`'s are 1, 3, 7 and `emboss`'s 1, 3, 5, 7, and the pair
+    that no even grid could hold -- `blend`'s relocated opacity at 9,
+    `transformation`'s offset at 25 -- are ordinary entries here.
+    """
+    return sorted(int(k) for k in spec.get('w1', {}))
 
 
 def _cls_cost(spec, b, colour):
-    """What the spec charges for class bit `b` on a record of this colour, or None.
+    """What the legend charges for class bit `b` on a record of this colour, or None.
 
-    None is "carries no coefficient", never zero -- the distinction between `unmodelled`
-    and `free` is the whole census.
+    None is "carries no cell", never zero -- the distinction between `unmodelled` and
+    `free` is the whole census.
     """
-    if spec.get('cls') is not None:
-        v = spec['cls'].get(str(b))
-        return None if v is None else int(round(float(v)))
-    bits = list(spec.get('clsbits', ()))
-    if b not in bits:
-        return None
-    return decompose._feature_cost(spec, 1 + bits.index(b), float(colour), False)
+    if str(b) in spec.get('cls', {}):
+        return record_layout.width(spec['cls'][str(b)], colour)
+    sh4 = spec.get('shape4')
+    if sh4 is not None and b == sh4[0]:
+        return record_layout.width(sh4[1], colour)
+    if b in spec.get('cls_free', ()):
+        return 0
+    return None
 
 
-def _field_cost(spec, j, state, colour):
-    """What the spec charges for w1 field `j` in `state`, or None if it carries no cell."""
-    if spec.get('cls') is not None:
-        cell = spec.get('w1', {}).get(str(j))
-        if cell is None:
-            return None
-        v = cell.get(str(state))
-        return None if v is None else int(round(float(v)))
-    pairs = list(spec.get('pairs', ()))
-    if j not in pairs:
+def _field_cost(spec, sh, state, colour):
+    """What the legend charges for the w1 field at bit `sh` in `state`, or None.
+
+    STATES 2 AND 3 ARE ONE WORD IN EVERY FILTER -- a pointer is a pointer and an edge slot
+    is a slot. Only the BAKED state carries a width, which is the cell the legend stores.
+    The fit had a free coefficient per (field, state) and got several of them wrong where
+    the field was misframed; `emboss` bit 1's program arm came out 0.5 grey / 1.0 colour,
+    which is not a width in any legend.
+
+    A cell whose kind is None is one the corpus never bakes in either colour (`fxmaps` at
+    bit 8 is the only one): the width is unknown rather than zero, and this says so.
+    """
+    if str(sh) not in spec.get('w1', {}):
         return None
-    off = 1 + len(spec.get('clsbits', ()))
-    if spec.get('has_absent'):
-        off += 1
-    if spec.get('arity_sm') is not None:
-        off += 1
-    return decompose._feature_cost(spec, off + 3 * pairs.index(j) + (state - 1),
-                                   float(colour), True)
+    if state == 1:
+        return record_layout.width(spec['w1'][str(sh)], colour)
+    return 1 if state in (2, 3) else 0
 
 
 def _arity_bits(spec):
     """The w1 bits an arity count occupies, as a mask, or 0.
 
-    `arity` (the additive form, pixelprocessor) and `arity_sm` (the interaction form,
-    fxmaps) are the same field written twice; `decompose` widens both when it reads them,
-    and the census reports the WIDENED extent, since those are the bits a record can set.
+    The legend states the field's true width -- five bits for `pixelprocessor`, six for
+    `fxmaps` -- so there is nothing to widen. The fit read four for both, and `decompose`
+    carried a `mask | (mask + 1)` workaround for one of them while the missing fifth bit
+    reappeared in the fit as a phantom "w1 field 2 bakes 16 words" cell.
     """
     ar = spec.get('arity')
-    if ar:
-        m = ar.get('mask', 0)
-        return (m | (m + 1)) << ar.get('shift', 0)      # decompose widens 0xf -> 0x1f
-    sm = spec.get('arity_sm')
-    if sm:
-        return sm[1] << sm[0]
-    return 0
+    return (ar[1] << ar[0]) if ar else 0
 
 
-def _identified(spec):
-    """{label: bool} from the fit's `identified` vector, or {} if it cannot be aligned.
+def _identified(spec, colour):
+    """{label: bool} -- did the corpus MEASURE this cell in this colour, or predict it?
 
-    Rebuilds `derive_costs.fit`'s column labels in the order `row()` emits them. Where the
-    rebuilt list and the stored vector disagree in length the answer is {} rather than a
-    guess -- a mis-aligned identifiability flag is worse than none, because it reads as a
-    statement about a bit it does not describe.
+    From `legend.json`'s `evidence` map, which names the source of every (cell, colour)
+    reading: `measured` and `residual` are readings of this colour's own records, and
+    `unexercised` / `no-records` / `format-wide` / `other-colour` / `unmeasured` are the
+    legend predicting a width the corpus does not separate here. The fitted table stored
+    those absences as zeros, indistinguishable from a measured zero, which is exactly
+    what a census must not repeat.
     """
-    ident = spec.get('identified')
-    if not ident:
-        return {}
-    labels = ['const'] + ['cls%d' % b for b in _spec_clsbits(spec)]
-    labels += ['cls%d&cls%d' % (bx, by) for bx, by, _c in spec.get('conj', ())]
-    if spec.get('has_absent') or spec.get('w1_present') is not None:
-        labels.append('w1_present')
-    if spec.get('arity') or spec.get('arity_sm'):
-        labels.append('arity')
-    fields, _gsh = _spec_fields(spec)
-    for j in fields:
-        labels += ['f%d.1' % j, 'f%d.2' % j, 'f%d.3' % j]
-    if spec.get('interaction') == 'colour':
-        labels = labels + ['colour*' + n for n in labels]
-    elif spec.get('interaction') == 'colour_states':
-        labels = labels + ['colour*' + n for n in labels[len(labels) - 3 * len(fields):]]
-    if len(labels) != len(ident):
-        return {}
-    return {lab: bool(v) for lab, v in zip(labels, ident)}
+    cn = 'colour' if colour else 'grey'
+    out = {}
+    for lab, ev in (spec.get('evidence') or {}).items():
+        kind, _dot, num = lab.partition('.')
+        if kind not in ('cls', 'w1', 'shape4'):
+            continue
+        out['%s%s' % ('cls' if kind != 'w1' else 'f', num)] = \
+            ev.get(cn) in ('measured', 'residual')
+    return out
 
 
 def _w1_of(r, spec, ver):
     """The record's w1 word, or None when its shape carries no w1 word.
 
-    THE WALK'S RULE, not `len(words) > 1`. `decompose._has_w1_word` delegates the two-shape
-    gate to `record_layout.two_shape_w1`; the spec's mode decides the rest. `uniform` is
-    mode 'absent' and its slot 1 is an image edge.
+    THE WALK'S RULE, not `len(words) > 1`. `record_layout.has_w1` is the single statement
+    of it; `uniform` has none at all and its slot 1 is an image edge, and `warp` and
+    `shuffle` each have one shape that carries the word and one that does not.
     """
-    tw = decompose._has_w1_word(r.filter_id, r.words[0], ver)
-    has = tw if tw is not None else (spec.get('mode') != 'absent')
-    if not has or len(r.words) < 2:
+    if not decompose._has_w1_word(r.filter_id, r.words[0], ver) or len(r.words) < 2:
         return None
     return r.words[1]
 
@@ -281,10 +290,8 @@ class FilterCensus(object):
         self.spec_keys = collections.Counter()  # a short description of the spec that answered
         self.specs = {}                         # description -> spec
         self.modelled_cls = set()
-        self.constant_cls = set()
         self.modelled_fields = set()
         self.arity_mask = 0
-        self.gsh = 0
         self.free_mask = 0                      # w1 bits whose field costs 0 in every state
         self.free_values = collections.Counter()  # the value those bits carry
 
@@ -299,14 +306,11 @@ class FilterCensus(object):
         if spec is None:
             self.uncovered += 1
             return
-        key = spec.get('_key', '')
-        self.spec_keys[key] += 1
-        self.specs[key] = spec
+        self.spec_keys[spec['name']] += 1
+        self.specs[spec['name']] = spec
         self.modelled_cls |= set(_spec_clsbits(spec))
-        self.constant_cls |= set(spec.get('constant_bits', ()))
-        fields, gsh = _spec_fields(spec)
+        fields = _spec_fields(spec)
         self.modelled_fields |= set(fields)
-        self.gsh = gsh
         self.arity_mask |= _arity_bits(spec)
         for b in range(16, 32):
             if (w0 >> b) & 1:
@@ -321,7 +325,7 @@ class FilterCensus(object):
                 self.w1_set[b] += 1
         free = 0
         for j in fields:
-            st = (w1 >> (2 * j + gsh)) & 3
+            st = (w1 >> j) & 3
             self.states[j][st] += 1
             if st:
                 self.field_cost[(j, st)][_field_cost(spec, j, st, colour)] += 1
@@ -331,7 +335,7 @@ class FilterCensus(object):
             # rather than as three state counts, because the state framing says nothing
             # about a field that never allocates.
             if not any(_field_cost(spec, j, s, colour) for s in (1, 2, 3)):
-                free |= 3 << (2 * j + gsh)
+                free |= 3 << j
         self.free_mask |= free
         if free:
             self.free_values[w1 & free] += 1
@@ -358,7 +362,7 @@ class FilterCensus(object):
         costs = self.cls_cost[b]
         vals = {c for c in costs if c is not None}
         if not costs or set(costs) == {None}:
-            return ('constant' if b in self.constant_cls else 'unmodelled'), None
+            return 'unmodelled', None
         cost = max(vals) if vals else None
         if cost and cost > 0:
             return 'costed', cost
@@ -386,8 +390,9 @@ class FilterCensus(object):
                 st = 'arity'
                 j = None
             else:
-                j = (b - self.gsh) // 2 if b >= self.gsh else None
-                if j is not None and j in self.modelled_fields:
+                j = next((sh for sh in sorted(self.modelled_fields)
+                          if sh <= b <= sh + 1), None)
+                if j is not None:
                     cells = [c for (jj, s), cc in self.field_cost.items() if jj == j
                              for c in cc if c]
                     st = 'costed' if any(c > 0 for c in cells) else 'free'
@@ -416,19 +421,12 @@ def run(paths, wanted=None, check=False):
             c = cens.get(f)
             if c is None:
                 c = cens[f] = FilterCensus(f)
-            w1raw = r.words[1] if len(r.words) > 1 else None
-            spec = None
-            if f == 5:
-                spec = None                     # vectorshape: no header cost model at all
-            else:
-                try:
-                    spec = decompose._select_spec(f, r.words[0], w1raw,
-                                                  0 if f == 4 else ver)
-                except Exception:
-                    spec = None
-            if spec is not None and '_key' not in spec:
-                g = spec.get('guard')
-                spec['_key'] = ('c%d' % g['value']) if g else ''
+            # `vectorshape` (5) has no legend entry -- source geometry, no edges -- and
+            # `_legend_spec` returns None for it without a special case.
+            try:
+                spec = _legend_spec(f, ver)
+            except Exception:
+                spec = None
             c.add(r, spec, ver)
             if check and spec is not None:
                 try:
@@ -484,9 +482,12 @@ def report(cens, out=sys.stdout):
             print('  %d records no spec answered for' % c.uncovered, file=out)
         spec = next(iter(c.specs.values()), None)
         if spec is not None:
-            ident = _identified(spec)
-            print('  mode %-10s interaction %-14s w1 grid shift %d%s' % (
-                spec.get('mode'), spec.get('interaction') or '-', c.gsh,
+            # The identifiability flags are reported for the COLOUR the filter has most
+            # records of, because a cell can be measured in one colour and predicted in the
+            # other and a single flag has to say which population it describes.
+            ident = _identified(spec, 1 if c.colour * 2 >= c.records else 0)
+            print('  has_w1 %-8s base %-4s fixed %-3s%s' % (
+                spec.get('has_w1'), spec.get('base'), spec.get('fixed'),
                 '   arity bits 0x%x' % c.arity_mask if c.arity_mask else ''), file=out)
         else:
             ident = {}
@@ -531,7 +532,7 @@ def report(cens, out=sys.stdout):
             w1named = c.named_w1_bits()
             allf = sorted(set(c.states) | set(c.modelled_fields))
             for j in allf:
-                bits = (2 * j + c.gsh, 2 * j + 1 + c.gsh)
+                bits = (j, j + 1)
                 sc = c.states[j]
                 if not any(s for s in sc if s):
                     continue
@@ -544,14 +545,15 @@ def report(cens, out=sys.stdout):
                 costs = ' '.join('%d:%s' % (s, '/'.join(
                     str(x) for x in sorted(k for k in c.field_cost[(j, s)] if k is not None))
                     or '-') for s in (1, 2, 3) if sc[s])
-                print('    field %-3d bits %2d,%-3d  %-30s cost %-14s %s' % (
-                    j, bits[0], bits[1],
+                idf = ident.get('f%d' % j)
+                print('    field@%-2d  bits %2d,%-3d %s %-30s cost %-14s %s' % (
+                    j, bits[0], bits[1], ' ' if idf is not False else '?',
                     ' '.join('%s:%d' % (('baked', 'prog', 'edge')[s - 1], sc[s])
                              for s in (1, 2, 3) if sc[s]),
                     costs, '/'.join(nm) if nm else '--'), file=out)
             loose = [b for b in sorted(c.w1_set)
                      if not (c.arity_mask >> b) & 1
-                     and ((b - c.gsh) // 2) not in c.modelled_fields]
+                     and not any(sh <= b <= sh + 1 for sh in c.modelled_fields)]
             if loose:
                 print('    bits in no modelled field: %s' % ' '.join(
                     '%d:%d' % (b, c.w1_set[b]) for b in loose), file=out)
@@ -609,7 +611,7 @@ def to_json(cens):
                 for b, v in sorted(c.cls_cost.items())},
             'unaccounted_cls': c.unaccounted_cls(),
             'unaccounted_w1': c.unaccounted_w1(),
-            'grid_shift': c.gsh, 'arity_mask': c.arity_mask,
+            'arity_mask': c.arity_mask,
         }
     return out
 

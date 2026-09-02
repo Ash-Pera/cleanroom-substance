@@ -21,7 +21,7 @@ correction that produced those references.
       sbsasm.py            the file model: records, layouts, edges, parameters, programs
       walk.py              the one structural primitive: the record/node mask-walk
       decompose.py         the structural walk of a record header — edges, size slot
-      record_layout.py     the layout rule as one function; decompose reads its cost model
+      record_layout.py     the layout rule as one function — SPEC §7.3's width legend
       disasm.py            bytecode disassembler
       transpile.py         compiles a program's bytecode to Python source
       sbsruntime.py        runtime for transpiled programs, vectorised over numpy
@@ -44,11 +44,13 @@ correction that produced those references.
       tools/extract_bitmaps.py   embedded images, and graph inputs by manifest uid
       tools/extract_shapes.py    filter 5's embedded vector artwork, as PNG or SVG
       tools/expand_instances.py  expands sub-graph instances using only in-file graphs
-      tools/derive_costs.py      regenerates tools/costs.json, which render2 reads on every run
+      tools/derive_legend.py     derives tools/legend.json — one KIND per header cell, which
+                                 record_layout and decompose read on every run
+      tools/derive_costs.py      the earlier FITTED cost model, kept as the independent one
       tools/test_*.py            the test suite; `./t` is the fast lane, `./pt` the parallel one
 
 The archive is a cut along `render2`'s transitive import closure, not a judgement about
-what is useful: `derive_costs.py` and the test suite are both live dependencies that
+what is useful: `derive_legend.py` and the test suite are both live dependencies that
 happen to sit outside it. The pre-`tools/` exploratory scripts are in `archive/root-scripts/`.
 They are one-off analyses rather than maintained interfaces, and several encode assumptions
 the notes later correct.
@@ -171,10 +173,29 @@ guessing when a spec is wrong. `SPEC.md` §6 states it.
 
 That walk is now the **live decode path**, not just a check that could reproduce the table.
 `Record.layout` and `edge_slots` route through one structural pass (`tools/decompose.py`),
-which returns each record's edges and its size-or-program slot from the cost model alone; the
-five hand-tuned layout branches it replaced run only as the fallback for the 5 unnamed
+which returns each record's edges and its size-or-program slot from the width legend alone;
+the five hand-tuned layout branches it replaced run only as the fallback for the 5 unnamed
 filter-9 records. It is proven 0-diff against the independent table-based model (925,706
 records, 925,701 agree, 0 disagree, 5 uncovered) and render-verified at 0 pixel difference.
+
+**And the last fitted table is off the live path.** The header model was
+`header = const + Σ per-bit costs`, fitted per filter with a free intercept and real-valued
+coefficients — 688 numeric cells over five spec shapes, plus a per-filter `w1` grid shift and
+a straddle table to put back together the two fields no even grid could hold. It is now
+SPEC §7.3's **width legend**: `header = n_hdr + n_base + n_fixed + Σ width(kind)`, with each
+`w1` field read at its own bit, and every cell one KIND from `0 1 2 4 C`. **106 kinds over
+107 cells** replace the 688 floats, and nothing in the live path reads a fitted number: there
+is no intercept, no float, no negative coefficient, no per-state cell, no interaction mode
+and no fitted variant. The two models answer the identical header length on **903,301 of
+903,301** corpus records with the same 315 refusals, and the walks they drive agree slot for
+slot on **903,440 of 903,440** — `inputs`, `cls_slots`, `param_slots`, `cls_params`, `end`,
+`hdr`, `prog`, `size_slot` and `root`, no exceptions. The fitted model is kept in
+`archive/tools/` as the independent second one, the role `render.py` plays for `render2`.
+Its two remaining halves went with it: `sharpen` was still pricing the record's CANVAS, at
+±0.5 on word0's log2-size nibbles, latent only because the twelve resolutions in the corpus
+make the halves cancel. What the legend cannot separate it MARKS: 36 of its 214
+(cell, colour) pairs are exercised in one colour only, so their other colour is a prediction,
+and the fitted table stored those absences as zeros indistinguishable from measured ones.
 
 **Baked parameter values are now off the tables too, and `layouts.json` is drained.**
 `named_parameters` used to route four filters through the walk and leave `levels` — 9.3% of

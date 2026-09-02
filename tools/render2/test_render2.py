@@ -146,21 +146,40 @@ UNNAMED_BUT_DECLARED = {
         # DECLARED FOR THEIR WIDTH, still unread: `W1_PARAMS` carries these with no name, so
         # the placement is right and the value is not read. Being here is the difference
         # between "we know it is there" and "it silently moves a named parameter".
-        1:  (3,),        # blend -- two words, put `opacitymult` two slots late until 1241661
+        1:  (6,),        # blend -- two words, put `opacitymult` two slots late until 1241661
+        # `fxmaps` AND `emboss` ARE NEW HERE AND NOTHING ABOUT THEM CHANGED. Both were
+        # stored by `costs.json` in the INTERACTION form -- `clsbits` + `pairs` + base/cross
+        # vectors, with no `cls` or `w1` key at all -- so `_declared_without_a_name` read
+        # `spec.get('w1', {})` on them, got nothing, and reported them as declaring no
+        # fields. That is the same blindness this file's `_legend_spec` note describes from
+        # the other side, and it is why an inventory built on a five-shape table could not
+        # be trusted to be complete. SPEC 7.3's width legend has one shape per filter and
+        # both filters' fields are visible: `fxmaps`' five are named by `sbsasm.PARAM_SPEC`
+        # (fx_param0..3) but not by `model.W1_PARAMS`, which is what this scan reads, and
+        # `emboss`' four are unnamed anywhere.
+        4:  (0, 2, 4, 6, 8),   # fxmaps
+        8:  (1, 3, 5, 7),      # emboss
         # `normal` field 2 WAS HERE and is now `input2alpha`. Its one program arm in the
         # corpus is `inputref.b2` on a graph input the manifest names `Alpha_Channel_Content`
         # -- see `model.W1_PARAMS`. Naming it changes no pixel: `f_normal` still writes a
         # constant alpha and reads the field for nothing.
         # NOT DECLARED AT ALL. A program arm here moves whatever this legend does name.
-        12: (3,),        # directionalwarp
-        20: (2,),        # pixelprocessor -- one field, 16 words, 1 corpus record
-        21: (0,),        # distance -- field 1 is the radius and is named; field 0 is the
-                         # optional MASK INPUT's declaration, and it is here rather than in
-                         # `W1_PARAMS` because it is not a parameter: its low bit adds an
-                         # edge at the front of the header, which the walk places, and the
-                         # end-anchored parameter block must not charge itself for it. Its
-                         # costs say the same thing -- one word in states 01 and 11, none in
-                         # 10, which tracks w1 bit 0 and not baked-vs-program.
+        12: (7,),        # directionalwarp
+        # `pixelprocessor` 2 AND `distance` 0 LEFT, and neither was ever a field.
+        #
+        # pixelprocessor's was "one field, 16 words, 1 corpus record" -- the FIFTH BIT of
+        # its arity integer seen through a two-bit frame. The fit read the arity as four
+        # bits, so the bit that says "16 inputs" had nowhere to go and came back as a
+        # 16-word baked parameter; `decompose` then carried `mask | (mask + 1)` to widen the
+        # nibble back. The legend states the field as (shift 0, mask 31) and the cell, the
+        # widening and the entry all go together.
+        #
+        # distance's was its optional MASK INPUT's declaration -- not a parameter: its LOW
+        # BIT alone adds an edge at the front of the header (SPEC 6.3), and the end-anchored
+        # parameter block must not charge itself for it. Its fitted costs said the same
+        # thing and nothing could act on it -- one word in states 01 and 11, none in 10,
+        # which tracks a single bit and not baked-versus-program. The legend states it as an
+        # `edge_bits` entry, so it is no longer a declared field to be unnamed.
     },
     'cls': {
         # Bit 23 is a PROGRAM POINTER wherever it appears -- it decodes to 10 ops on the
@@ -168,6 +187,14 @@ UNNAMED_BUT_DECLARED = {
         # every class slot to the program machinery, so these are run; what is unknown is
         # which parameter each computes.
         0: (23,), 1: (23,), 14: (23,), 20: (23,), 22: (23,),
+        # THE SAME FIVE FILTERS AGAIN, for the same reason as the `w1` half above:
+        # `transformation`, `fxmaps`, `uniform`, `emboss` and `levels` were stored in
+        # `costs.json`'s INTERACTION form, which carries `clsbits` and no `cls` key, so this
+        # scan read `spec.get('cls', {})` on them and reported that they declare no class
+        # bits at all. Every entry below is a bit those filters have always set and always
+        # charged a word for. `fxmaps` 22 is the bit only three corpus records set;
+        # `uniform` 25 is its `outputcolor` program arm; `emboss` 27 is its `$pixelsize`.
+        2: (23,), 4: (22, 23), 6: (23, 25), 8: (23, 27), 15: (23,),
         # (26, 27) is a per-filter parameter pair, baked then program: blur holds
         # (16.0, 16.0), warp (0.9801, 0.9801), directionalwarp (0.99, 1.0). NOT `$outputsize`
         # -- those are floats, not log2 integers.
@@ -267,33 +294,36 @@ def test_every_parameter_a_filter_asks_for_can_be_supplied():
 
 def _declared_without_a_name():
     """{'w1'|'cls': {filter id: fields}} the format declares, charges words for, and no
-    name covers. From `costs.json` and the legends alone -- no corpus: it states what this
-    renderer declines to read, not how often that happens."""
+    name covers. From `legend.json` and the legends alone -- no corpus: it states what this
+    renderer declines to read, not how often that happens.
+
+    THE `w1` KEYS ARE BIT OFFSETS. SPEC 7.3's width legend keys every field on the bit it
+    begins at, so a presence mask is `3 << offset`; this used to read `costs.json`'s field
+    INDICES on an even grid and had to write `3 << (2 * j)`. It also had to union over
+    `variants` -- one spec per record shape, which is how `shuffle`'s class widths were
+    expressed while a single additive spec could not hold both without a negative
+    coefficient -- and there are no variants left to union.
+    """
     import json
-    costs = json.load(open(os.path.join(ROOT, 'tools', 'costs.json'), encoding='utf-8'))
+    leg = json.load(open(os.path.join(ROOT, 'tools', 'legend.json'), encoding='utf-8'))
     ids = _filter_ids()
     got = {'w1': {}, 'cls': {}}
     for name in filters_mod.FILTERS:
         fid = ids.get(name)
         if fid is None:
             continue
-        entry = costs.get(str(fid), {})
+        entry = leg.get(str(fid), {})
         cov_w1, cov_cls = model._covered_bits(fid)
-        # ONE SPEC OR A LIST OF VARIANTS, and the answer is the union over them. This read
-        # `entry['cls']` directly, so a filter stored as variants declared NOTHING here and
-        # left the inventory silently rather than failing -- which is the opposite of what
-        # this instrument is for. `shuffle` became two variants when its costs were
-        # re-attributed against its own base region: its class widths differ by record
-        # shape, and one spec cannot hold both without a negative coefficient.
-        specs = entry.get('variants') or [entry]
-        # `int(round(...))` is `decompose`'s own rule for turning a fitted cost into words.
-        w1_rows, cls_rows = set(), set()
-        for spec in specs:
-            w1_rows |= {int(j) for j, states in spec.get('w1', {}).items()
-                        if not ((3 << (2 * int(j))) & cov_w1)
-                        and max(int(round(v)) for v in states.values()) >= 1}
-            cls_rows |= {int(b) for b, c in spec.get('cls', {}).items()
-                         if int(b) not in cov_cls and int(round(c)) >= 1}
+        # A `w1` cell charges at least one word unless its kind is 0 -- a program pointer and
+        # an edge slot are one word in every state, so only a kind-0 field is free. A `cls`
+        # cell is in `cls` at all only when it costs something; the bits measured at zero are
+        # in `cls_free` and are not declared fields.
+        w1_rows = {int(j) for j, kind in entry.get('w1', {}).items()
+                   if not ((3 << int(j)) & cov_w1) and kind != 0}
+        cls_rows = {int(b) for b in entry.get('cls', {}) if int(b) not in cov_cls}
+        sh4 = entry.get('shape4')
+        if sh4 is not None and sh4[0] not in cov_cls and sh4[1]:
+            cls_rows.add(sh4[0])
         if w1_rows:
             got['w1'][fid] = tuple(sorted(w1_rows))
         if cls_rows:
@@ -855,7 +885,7 @@ def test_the_legend_agrees_with_the_shipped_sources():
                 names = {entry[0]} if entry else set()
             else:
                 names = {nm for (mask, _sh, nm, _k) in model.W1_PARAMS.get(fid, ())
-                         if nm and mask & (3 << (2 * which))}
+                         if nm and mask & (3 << which)}   # `which` is the field's own BIT
             if not names:
                 continue                      # unnamed here: the inventory's business
             checked += 1
@@ -887,7 +917,7 @@ def test_every_record_renders():
         w0 = asm.records[i].words[0]
         w1 = asm.records[i].words[1] if len(asm.records[i].words) > 1 else 0
         for (half, which, _slot, _w) in entries:
-            stated = (w0 >> which) & 1 if half == 'cls' else (w1 >> (2 * which)) & 3
+            stated = (w0 >> which) & 1 if half == 'cls' else (w1 >> which) & 3   # `which` is the field's own BIT (SPEC 7.3)
             assert stated, ('record %d is reported as ignoring %s %s and its own word does '
                             'not state it' % (i, half, which))
     print('ok  test_every_record_renders (%d records, %d low-confidence, %d stating a '

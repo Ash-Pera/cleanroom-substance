@@ -780,11 +780,13 @@ def walk_named_offset(asm, rec):
     # every program-valued parameter slot and insist there be exactly one. That failed
     # on the 82 records whose MATRIX is a program too.
     #
-    # `decompose.STRADDLED` now relabels the two halves as the single field they are,
-    # so the offset can be asked for directly, exactly as `walk_named_matrix` asks for
-    # field 3. Over 69,282 bit-26 records the field read returns the SAME program as
-    # the elimination rule in 69,282 of 69,282, the 82 included.
-    named = [t for t in d.get('param_slots', ()) if t[0] == 12 and t[1] == 2]
+    # The offset is the w1 field at bit 25 and `decompose` reports it under that bit, so
+    # it can be asked for directly, exactly as `walk_named_matrix` asks for the field at
+    # bit 6. (It used to take two phantom half-fields and a straddle table to say the same
+    # thing, because the reader imposed an even two-bit grid the format does not have.)
+    # Over 69,282 bit-26 records the field read returns the SAME program as the elimination
+    # rule in 69,282 of 69,282, the 82 included.
+    named = [t for t in d.get('param_slots', ()) if t[0] == 25 and t[1] == 2]
     if len(named) != 1:
         return None
     pos = named[0][2]
@@ -808,19 +810,17 @@ def walk_named_matrix(asm, rec):
 
     The sibling of `walk_named_offset`, closing the same gap one parameter over. The
     transformation branch singles the matrix out with `by_width[4]` -- a question about
-    VALUES. The record states it instead: `matrix22` is the w1 pair at bits 6 and 7,
-    FIELD 3 under the two-bit tiling `decompose` reports, and the slot that field names
-    holds the program.
+    VALUES. The record states it instead: `matrix22` is the w1 field at bit 6, which is the
+    id `decompose` reports, and the slot that field names holds the program.
 
-    THE FIELD IS THE SELECTOR, NOT THE WIDTH, which is a real difference from
-    `walk_named_offset`: that one can only ask for "the record's single program-valued
-    parameter slot", because the offset's two bits STRADDLE the tiling boundary. The
-    matrix's bits do not, so a record carrying both a program matrix and a program
-    offset is no longer ambiguous here.
+    THE FIELD IS THE SELECTOR, NOT THE WIDTH. `walk_named_offset` used to be unable to say
+    that, because the offset's two bits fell across the boundary of the even two-bit grid
+    the reader imposed, so it could only ask for "the record's single program-valued
+    parameter slot". Both fields are now read at their own bits and neither is ambiguous.
 
-    Structurally exact: all 5,106 records with w1 bit 7 set have exactly one field-3
-    entry, state 2 (program), width 1, and in 5,106 of 5,106 that slot holds a valid
-    program. Cross-checked against the independent width rule (this reads costs.json;
+    Structurally exact: all 5,106 records with w1 bit 7 set have exactly one entry at bit
+    6, state 2 (program), width 1, and in 5,106 of 5,106 that slot holds a valid
+    program. Cross-checked against the independent width rule (this reads the width legend;
     that evaluates bytecode): 5,105 agree, 1 where the walk answers alone, 0 disagree.
     The one apparent disagreement in a first pass was an artefact of the COMPARISON --
     Lava record 845's matrix is (1.5, nan, 1.5, 1.5) and `nan != nan`.
@@ -836,7 +836,7 @@ def walk_named_matrix(asm, rec):
         return None
     if not d:
         return None
-    named = [t for t in d.get('param_slots', ()) if t[0] == 3]
+    named = [t for t in d.get('param_slots', ()) if t[0] == 6]
     if len(named) != 1:
         return None
     pos = named[0][2]
@@ -2367,10 +2367,11 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # An isotropic blur. The source declares exactly ONE real parameter, `intensity`
                 # (64 sightings across 18 permitted files), plus a single `randomseed`.
                 #
-                # WHERE `intensity` IS -- and note what does NOT answer this. PARAM_POPCOUNT
-                # establishes `popcount(cls & 0x2881)` as the number of leading block slots holding
-                # PROGRAMS, exact over 43,883 reads, which says nothing about which slot is
-                # `intensity`. Assuming the block start gives 6.6% own-file containment against a
+                # WHERE `intensity` IS -- and note what does NOT answer this.
+                # `CLS_PROGRAM_BITS` establishes which of this filter's class bits place a
+                # PROGRAM slot -- {16, 23, 27, 29}, exact on every one of 44,259 slot reads,
+                # where the popcount it replaced was exact on the same reads and 1,109 warp
+                # slots short -- and that says nothing about which slot is `intensity`. Assuming the block start gives 6.6% own-file containment against a
                 # 6.0% control; scanning every slot, only slot 3 exceeds its control materially
                 # (14.6% against 2.9%), and counting every declared value rather than file-unique
                 # ones put slot 4 at 10.9% against a 22.4% control. AND THE RATE ITSELF IS NOT

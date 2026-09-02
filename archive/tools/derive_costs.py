@@ -1,6 +1,28 @@
 #!/usr/bin/env python3
 """Derive each filter's SLOT COSTS from the corpus, and emit costs.json.
 
+RETIRED AS THE LIVE MODEL, KEPT AS THE INDEPENDENT ONE. `record_layout` and `decompose`
+read SPEC 7.3's WIDTH LEGEND now (`tools/legend.json`, derived by `derive_legend.py`):
+one KIND per header cell from the five-symbol alphabet `0 1 2 4 C`, 106 kinds over 107
+cells, against the 688 fitted numeric cells this script emits. The two agree on
+`header_words` for 903,301 of 903,301 corpus records with the same 315 refusals, and the
+walk they drive agrees slot for slot on 903,440 of 903,440 -- `inputs`, `cls_slots`,
+`param_slots`, `cls_params`, `end`, `hdr`, `prog`, `size_slot` and `root`, no exceptions.
+
+That is why this stays. It is the second model, the role `render.py` plays for `render2`
+and `_compute_layout` plays for `decompose`: two implementations that are known to differ
+in method and measured to agree do not drift silently. `tools/costs.json` is GONE -- nothing
+in the live path reads it -- and this script writes only its own `archive/tools/costs.json`,
+so the "a re-run silently reverts four hand-solved entries, merge rather than copy" hazard
+below is a description of the past and no longer a live warning about the tree.
+
+WHAT THE LEGEND REMOVED FROM THIS FILE'S OUTPUT, and every item is a thing the fit had to
+invent because its intercept was free and its coefficients were reals: the intercept, the
+halves (`sharpen` was still pricing the record's CANVAS at 5fcf06b), the negative
+coefficients (`shuffle`'s two), the per-(field, state) cells, the `base`/`cross` vectors and
+the `colour`/`colour_states` interaction modes, the `variants`, `W1_GRID_SHIFT`, and
+`decompose`'s `STRADDLED` relabelling table. See `record_layout`'s module docstring.
+
 A record is a struct with two presence masks, and its header size is therefore a sum:
 
     header = const + SUM over set cls bits of that parameter's cost

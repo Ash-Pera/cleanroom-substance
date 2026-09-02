@@ -310,7 +310,8 @@ def pointer_bound(rec):
 
     The record header's end is the one extent in this format that nothing states outright
     (see FORMAT-NOTES, "Every extent is stated locally except one"). It is computed from
-    `costs.json`, which is the last fitted thing the decode rests on.
+    SPEC 7.3's width legend -- structural counts plus one type width per set bit, no longer
+    a fitted sum, but still a derived KIND per cell rather than something the file states.
 
     But a record does bound it, weakly and without any table: the first byte the record
     POINTS AT inside itself cannot be header, because it is the start of a program. That is

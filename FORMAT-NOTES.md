@@ -45672,3 +45672,238 @@ zero+string+font, `pixelprocessor`'s own program. Kinds are `1 2 4` words or `C`
     20  pixelprocessor    always     0    1     16:1 23:1                    --   + arity(0,31)
     21  distance          always     1    0     16:1 23:1 26:2 27:1          2:1  + edge bit 0
     22  curve             never      1    2     16:1 23:1                    --
+
+# The width legend is the model now, and the fourth alphabet was a count standing in for a per-bit fact
+
+The landing pass for "the cost model is a width legend", appended after that section rather
+than replacing it: what it predicted is what happened, with two exceptions disclosed below
+and one thing deliberately left alone.
+
+`record_layout.header_words` and `decompose` read `tools/legend.json` — one KIND per header
+cell from the alphabet `0 1 2 4 C` — and nothing in the live path reads a fitted number.
+`tools/costs.json` is deleted. `archive/tools/derive_costs.py` and its own
+`archive/tools/costs.json` stay as the INDEPENDENT model, the role `render.py` plays for
+`render2`, and are what everything below is A/B'd against.
+
+## The control first
+
+An unmodified `derive_costs` run still reproduces its own last output byte for byte,
+md5 `52abccd020da09d2dd61927dd35ed6a3` before and after, so the model this pass is measured
+against has not moved and the diffs below are attributable. (The md5 quoted in that script's
+own docstring, `d2076b3db97488da2c8a067721ffd524`, is stale — it predates the canvas
+tie-break refresh the same docstring describes. Flagged, not fixed.)
+
+## The A/B, over the whole corpus, both models decomposing every record
+
+`header_words`, legend against fit, over all 903,616 corpus records with the OLD model loaded
+from `git show HEAD:` copies so nothing in the working tree can answer for it:
+
+    both answer and agree   903,301
+    disagree                      0
+    both refuse                 315     emboss below MIN_VERSION 171, vectorshape 139,
+                                        filter 9 5 -- the same 315, filter for filter
+
+Slot for slot, `decompose` against `decompose`, 903,440 records compared (the 176 both
+refuse are emboss 171 + filter 9 5; `vectorshape`'s 139 take the stub in both):
+
+    inputs        903,440 / 903,440        cls_params    903,440 / 903,440
+    param_slots   903,440 / 903,440        end           903,440 / 903,440
+    cls_slots     903,440 / 903,440        hdr           903,440 / 903,440
+    prog          903,440 / 903,440        size_slot     903,440 / 903,440
+    root          903,440 / 903,440
+
+`param_slots` is compared on (first slot, width, state), and the comparison is by filter:
+all 22 filters show zero differences on every field. **The invariants the bar names — `end`,
+`inputs`, `hdr`, `param_slots` — do not move at all.**
+
+The three guards:
+
+    walk cursor == the stated header length      903,301 / 903,301
+    edge slots holding a backward index        1,302,475 / 1,302,475
+    state-2 slots resolving a program             198,224 / 198,224
+
+The first is taken by spying on `decompose._model_end`'s own two arguments, so `cursor` is
+what the forward walk accumulated and the length is what the arithmetic model returns; they
+are not the same computation. The other two are `bit_census.py --check`, unchanged.
+
+## What the field ids became, since that is the one thing that DID change
+
+`param_slots` used to report a cost-model field INDEX on an even grid; it reports the BIT the
+field begins at. The map is a bijection with no ambiguity anywhere, measured by running both
+walks over the corpus and pairing their entries by slot:
+
+    blend            2 -> 4       3 -> 6       4 -> 9
+    transformation   3 -> 6      12 -> 25     14 -> 28
+    fxmaps           0 -> 0       1 -> 2       2 -> 4      3 -> 6      4 -> 8
+    emboss           0 -> 1       1 -> 3       2 -> 5      3 -> 7
+    dirmotionblur    0 -> 0       1 -> 2
+    directionalwarp  0 -> 1       1 -> 3       3 -> 7
+    levels           0 -> 0       1 -> 2       2 -> 4      3 -> 6      4 -> 8
+    text             3 -> 6       4 -> 8       5 -> 10
+    normal           0 -> 0       1 -> 2       2 -> 4
+    distance         1 -> 2
+
+Six call sites read a field id by number and were renumbered with it: `sourcematch`'s
+EXPECTED fixture (three rows), `sbsasm`'s two `transformation` accessors, `render.py`'s two,
+and `render2.model`'s `3 << (2j)` presence test. Nothing moved but the number.
+
+## The deriver, and where the draft on disk was wrong
+
+`archive/tools/derive_legend.py` was written by an earlier session and left untracked and
+unvalidated. Its stated tables — `HAS_W1`, `BASE`, `FIXED`, `FIXED_AT`, `W1_OFFSETS`,
+`EDGE_BITS`, `ARITY`, `CONJ`, `SHAPE4`, `MIN_VERSION`, `W1_ORDER` — are sound and are kept.
+Its SOLVER is not, and running it as found gives:
+
+    emboss    exact 0.00813 grey / 0.93023 colour, class bit 23 charged TWO words,
+              w1 bit 3 coming back as [0, 1] -- a cell outside the alphabet
+    overall   198 cells, 84 of them predicted rather than measured
+
+Two bugs, and both are the same mistake in different places: **it resolved every
+unidentifiable column from outside at once, instead of resolving one and re-testing.**
+
+* `emboss` sets class bits 16, 19 and 27 on all 375 records the version gate admits, so the
+  data states only their SUM, 2. The draft pinned all three — 16 from the format-wide rule,
+  19 and 27 to zero because no format-wide agreement exists for 27 (fourteen filters charge
+  it 1 and three charge it 0) — which leaves one word for the free columns to absorb, and
+  class bit 23 absorbed it. Resolving ONE blind column at a time and recomputing
+  identifiability on the remaining free submatrix after each is enough: with 16 at 1 and 19
+  at 0 pinned, **the residual determines bit 27 at 1**, which is what eight other filters
+  charge it and what its slot holds. The closure is the check.
+* It borrowed a width from the other colour of the same filter as a NUMBER. A kind is a pair
+  of widths and only two of the five share one — `Float1` is `(1, 1)` and per-channel is
+  `(1, 4)` — so a 4 measured in COLOUR says nothing about grey and a 1 measured in GREY says
+  nothing about colour. Those are the only two ambiguous directions and every other reading
+  carries across exactly. The draft borrowed `emboss`'s w1 bit 7 into grey at 4, where the
+  answer is 1 and the kind is per-channel.
+
+With the solver rewritten the derivation is **exact = 1.00000 on every filter in both
+colours but one**, and reproduces the legend table that section published, cell for cell:
+
+    106 kinds over 107 cells, 32 of them a bit offset
+    214 (cell, colour) pairs carry a kind
+    evidence: measured 168, no-records 19, unexercised 17, residual 6,
+              format-wide 2, other-colour 2
+
+against `costs.json`'s 688 fitted numeric cells. The one exception is disclosed next.
+
+## The disclosed miss: `transformation` grey, 25 records
+
+`transformation` grey comes in at 0.99989. Two keys, 25 records, both unanimous in the
+observation table:
+
+    w0 0x03197704  w1 0x3e   observed header 5, on 9 records
+    w0 0x03195504  w1 0x3e   observed header 5, on 16 records
+
+The legend says 4. **So does the fitted model** — `record_layout.header_words` at HEAD
+returns 4 for both keys — so this is not a regression and not a cost of the change; it is a
+pre-existing 25-record gap that the fit's robust trim and coordinate descent hid inside a
+reported 100.000%, and the pinned per-colour solve surfaces it. `w1 = 0x3e` sets bits 1
+through 5, and neither model has a field there: the legend declares `transformation` fields
+at 6, 25 and 28, and the fit's even-grid fields 0, 1 and 2 are all charged zero. Something
+in bits 1-5 costs one word on these records and nothing anywhere says what.
+
+The specimen that would settle it is a `transformation` record setting a strict subset of
+bits 1-5, which would separate them; the corpus holds `0x3e` and nothing adjacent.
+
+## Unexercised cells are MARKED, not written as zeros
+
+Of the 214 (cell, colour) pairs the legend needs a kind for, **36 are exercised in one colour
+only** — 19 because the filter has no record of the other colour at all, 17 because it has
+records and none set the cell. The fitted table stored both as `0.0`, indistinguishable from
+a measured zero. `legend.json` carries an `evidence` map naming the source of every pair, and
+`bit_census` prints a `?` against any cell this colour did not measure.
+
+    no records of that colour at all (19)
+      hsl grey            cls 16, 23, 24, 25, 26, 27, 28, 29
+      text colour         cls 16;  w1 6, 8, 10
+      normal grey         cls 16, 23, 26, 27;  w1 0, 2, 4
+
+    records, but the cell is never exercised (17)
+      shuffle colour      cls 26, shape4 24        fxmaps colour   cls 22, w1 6
+      fxmaps both         w1 8                     emboss colour   cls 23
+      emboss grey         w1 5                     blur colour     cls 23
+      dirmotionblur col.  cls 26                   dirwarp colour  w1 7
+      sharpen colour      cls 23                   sharpen grey    cls 26
+      bitmap grey         conj 24+27               dyngradient col cls 23
+      distance colour     cls 23                   curve colour    cls 23
+
+`fxmaps` w1 bit 8 is the one cell **neither** colour ever bakes, so the legend has no reading
+for it at all and stores `null`. It costs nothing to the header today — states 2 and 3 are
+one word whatever the kind — and `header_words` REFUSES rather than guessing if a record ever
+does bake there. That is the whole point of the mark: a `null` cannot be mistaken for a zero.
+
+Four cells resolve to zero as `unmeasured` — `emboss` class bits 24 and 25, `text` class bit
+24 — meaning nothing anywhere in the corpus measures them and zero is the only honest value.
+They are marked as such rather than presented as readings.
+
+## SPEC 6.4's fourth alphabet: it is not a count, and the per-bit reading is strictly better
+
+The claim in the theory pass was that the class-word popcount alphabet is subsumed because
+"each class bit's kind decides its own role". **That is not what the corpus says and the
+first half of it is false.** A kind is a WIDTH. `blur`'s class bits 27 and 29 are both one
+word and both are program pointers; `warp`'s bit 29 is one word and a VALUE while its bit 30
+is one word and a POINTER. A width of 1 cannot mean "a pointer".
+
+What is true, and is the same measurement read correctly, is that **the role is a law of the
+BIT.** Scored against what the slot holds — `valid_program(words[slot] + 52)`, never against
+the walk's labels — over the whole corpus, no bit of either filter is anywhere in between:
+
+    warp   bit 16  26,559/26,559   bit 23    269/269    bit 27  19,388/19,388
+           bit 30   1,109/1,109    bit 26      0/860    bit 29       0/24,815
+    blur   bit 16   9,981/9,981    bit 23     51/51     bit 27   8,675/8,675
+           bit 29     303/303      bit 26      0/10,318 bit 28       0/14,931
+
+So the pointers are `warp` {16, 23, 27, 30} and `blur` {16, 23, 27, 29}, and
+`PARAM_POPCOUNT`'s mask is exactly that set MINUS warp's bit 30. The A/B, on the same slots
+and the same ground truth, `Record.program_slots` under each rule:
+
+    filter    records    popcount exact   per-bit exact      slots   popcount   per-bit
+    warp       26,791            25,682          26,791     73,000     71,891    73,000
+    blur       15,371            15,371          15,371     44,259     44,259    44,259
+
+A strict gain: nothing that agreed stops agreeing, and warp's 1,109 bit-30 records come
+right. The count is also wrong by CONSTRUCTION for warp and not for blur, which is why the
+old note recorded 99.889% against 100.000% and could not say why: the count fills the block
+positionally from the front, and warp emits a value bit (29) BEFORE a pointer bit (30).
+
+`sbsasm.PARAM_POPCOUNT` is now `sbsasm.CLS_PROGRAM_BITS`, `program_slots` reads the bit that
+placed each slot, and `walk.check_popcount` is kept as the retired rule's own refutation --
+its docstring says warp is EXPECTED below 100% there and what a 100% reading would mean.
+
+Note where this leaves the alphabet count. Role is not a layout alphabet: both readings cost
+one word, so the header is the same length either way and what changes is what the word
+MEANS. It is a name-legend fact and it lives with the names. SPEC 6.4 therefore has three
+alphabets -- two-bit codes, arity integer, paired conjunction -- and not "four to two"; the
+theory pass' arithmetic counted the fourth as removed and the third as absorbed, and the
+third is still there on `bitmap`.
+
+## What was NOT landed, and why
+
+**`text`'s block order.** The legend records `w1_order: [10, 6, 8]` for filter 17 and
+`decompose` does not apply it. SPEC 6.1's second exception is real and `render2.model`
+already implements it — it walks `W1_PARAMS` in the written order rather than sorting it —
+but `decompose` has always emitted ascending, and applying the exception there moves
+`param_slots` on the 14 records that bake all three fields, from (5, 2w) (7, 1w) (8, 4w) to
+(5, 4w) (9, 2w) (11, 1w). That is a change to a slot list, not a relabel, and the bar for
+this pass names `param_slots` as an invariant. It owes its own A/B and its own render check.
+The fact is stated in `legend.json` so the next pass has it in one place.
+
+**`fxmaps`' unbaked cell.** See above: `null`, not a guess.
+
+**The `evidence` map is not yet an input to anything.** It is written, printed by
+`bit_census`, and read by nobody at decode time. A reader that wanted to refuse a record
+whose width is a prediction rather than a reading has the data and no wiring.
+
+## Every number in this section, and how to re-take it
+
+    header_words A/B, walk A/B, cursor guard   ad-hoc, ~20s each over corpus.paths()
+    the two loud checks                        archive/tools/bit_census.py --check
+    the derivation                             archive/tools/derive_legend.py --dry-run
+    derive_costs reproduces its own output     archive/tools/derive_costs.py, md5 the result
+    the popcount A/B                           Record.program_slots vs popcount, both against
+                                               valid_program on the same slots
+
+Harness after the change: `test_filters.py test_tables.py` (the REFERENCE_FLOOR lane) and
+`./t`, `test_tables.py test_fx.py test_bitmap.py`, `render2/test_render2.py test_text.py
+test_sampler.py` -- results with the report that accompanies this section. No floor was
+lowered.

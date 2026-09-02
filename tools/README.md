@@ -8,14 +8,15 @@ The finished tools. Each runs from the repository root, where the corpus lives:
 The archive cut — a boundary along `render2`'s transitive import closure, stated in
 `archive/README.md` — moved everything else in this list to `archive/tools/`. They still run
 from the repository root, and being archived is not a judgement about whether they are
-useful: `derive_costs.py` regenerates a table `render2` reads on every run, and the test
-suite is the test suite.
+useful: `derive_legend.py` regenerates `tools/legend.json`, which `render2` reads on every
+run through `decompose`, and the test suite is the test suite.
 
     python3 archive/tools/fxdisasm.py <file.sbsasm> <record index>
     python3 archive/tools/extract_bitmaps.py <file.sbsasm>
     python3 archive/tools/extract_shapes.py <file.sbsasm> [outdir] [--size 512] [--svg]
     python3 archive/tools/audit_corpus.py
     python3 archive/tools/bit_census.py [filter ...] [--check] [--json out.json]
+    python3 archive/tools/derive_legend.py [--dry-run]
     python3 archive/tools/validate_corpus.py
     python3 archive/tools/reverify.py
     python3 archive/tools/provenance.py
@@ -30,6 +31,7 @@ Use the lanes:
 
 Below, any module not present in `tools/` is in `archive/tools/`. As of this writing that is
 `attribute_outputs`, `audit_corpus`, `containment`, `derive_costs`, `derive_layouts`,
+`derive_legend`,
 `expand_instances`, `extract_bitmaps`, `extract_shapes`, `fxdisasm`, `fxparams`,
 `gen_layouts`, `provenance`, `refcompare`, `render`, `reverify`, `run_file`, `slot_rules`,
 `standalone_parse_ref`, `validate_corpus` and every `test_*`.
@@ -42,7 +44,8 @@ Below, any module not present in `tools/` is in `archive/tools/`. As of this wri
     sbsasm.py             the file model: records, layouts, edges, parameters, programs
     decompose.py          the one structural walk of a record header — edges, size slot,
                           program slots — that replaced the five layout special cases
-    record_layout.py      the record layout rule, as one function; decompose reads its cost model
+    record_layout.py      the record layout rule, as one function: SPEC 7.3's WIDTH LEGEND,
+                          read from legend.json. decompose walks the same table forwards
     slot_rules.py         every rule that decides a record's slot layout, each verified
     corpus.py             the canonical corpus list, deduplicated by CONTENT
 
@@ -58,7 +61,7 @@ than as a plausible-looking result.
 
 **`Record.layout` and `edge_slots` now route through `decompose.py`, not a table.** One
 structural pass — `[tag][w1?][image inputs][one slot per set class bit][one slot-group per w1
-field][tail]`, reading only `record_layout`'s cost model — returns `(edges, size-or-program
+field][tail]`, reading only `record_layout`'s width legend — returns `(edges, size-or-program
 slot)` for every record, and `_compute_layout` runs only as the fallback for the 5 unnamed
 filter-9 records. This retired the five hand-tuned branches that used to decide layout
 (`_walk_layout`, `_ruled`, `_pp_edges`, the SPECS-walk, and the fixed-shape/`ALT_LAYOUTS`
@@ -228,13 +231,19 @@ record's program wrote.
 ## Deriving the tables
 
     derive_layouts.py     derives layouts.json: (filter, class, layout bits) -> slot roles
-    derive_costs.py       derives costs.json: each filter's slot costs from the corpus.
-                          It writes its OWN copy, `archive/tools/costs.json`; the live
-                          `tools/costs.json` carries four entries re-solved outside it, so a
-                          re-run is MERGED entry by entry and never copied over. Its
-                          docstring says which four and how to tell a real change from a
-                          reversion -- an unchanged run reproduces its last output byte for
-                          byte, which is the control every change here is diffed against.
+    derive_legend.py      derives tools/legend.json: one KIND per header cell, from the
+                          five-symbol alphabet `0 1 2 4 C`. This is the LIVE model --
+                          `record_layout` and `decompose` read nothing else -- and it is
+                          idempotent, so a re-run cannot revert a hand entry because there
+                          are none. It marks every (cell, colour) pair the corpus does not
+                          exercise rather than storing it as a measured zero.
+    derive_costs.py       derives archive/tools/costs.json: each filter's slot costs, fitted.
+                          RETIRED AS THE LIVE MODEL and kept as the INDEPENDENT one -- the
+                          role render.py plays for render2. `tools/costs.json` is gone and
+                          nothing in the live path reads a fitted number. An unchanged run
+                          reproduces its last output byte for byte, which is the control
+                          every change there is diffed against, and it is the model the
+                          legend was A/B'd against over the whole corpus.
     gen_layouts.py        why layouts.json CANNOT be regenerated from the slot rule
     node_census.py        harvests fx-tree node cells and derives the node size law
     fxparams.py           re-derives the FX-Map entry parameter names from sources
@@ -253,7 +262,7 @@ parameter bits the slot rule needs, so no rewriting of entries can express the r
                           and the source-side check on `FX_LOWERING` -- see below
     audit_corpus.py       runs the model over a corpus and reports every gap
     bit_census.py         every bit of every record header, per filter: which are SET,
-                          which the cost model places, which the legend names -- and
+                          which the width legend places, which the name legend names -- and
                           SPEC 6.3's two loud checks over the whole corpus
     validate_corpus.py    structural checks against the .sbsar manifests
     attribute_outputs.py  cross-checks the output table against the manifest's alteroutputs

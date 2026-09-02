@@ -62,13 +62,14 @@ import decompose
 #: the two states swap meaning between the two fields. The mask is what the format states.
 #:
 #: THIS REPLACES `decompose`'s `param_slots` FOR NAMED PARAMETERS, deliberately. That list
-#: is built from the cost model's per-(field, state) WORD COUNT, which is the fitted half of
-#: costs.json (the ledger's L2), and it is wrong in at least one place that matters: for
-#: `normal` it charges the intensity zero words and charges a class slot instead, so a
-#: four-word record whose w1 says "field 0, baked" reports no parameter at all. Read the
-#: presence from the w1 word and the width from the type legend, and the cost model is
-#: needed only for the header LENGTH -- which is the part `derive_costs` fits to observed
-#: boundaries and reproduces exactly.
+#: was built from the FITTED per-(field, state) word count, and it was wrong in at least one
+#: place that matters: for `normal` it charged the intensity zero words and charged a class
+#: slot instead, so a four-word record whose w1 said "field 0, baked" reported no parameter
+#: at all. Read the presence from the w1 word and the width from the type legend, and the
+#: header model is needed only for the LENGTH. Since the width legend landed (SPEC 7.3) the
+#: two agree -- the second element of each tuple below is the field's own bit, which is
+#: exactly what `param_slots` reports -- so this list is a NAME legend beside a width one
+#: rather than a correction of it, and it stays because a name is what it carries.
 W1_PARAMS = {
     # `blend` STATES ITS OPACITY IN TWO PLACES, and which one it uses is the port's doing:
     # connect the node's `opacity` input and the slider moves to bits (9, 10) while the
@@ -160,11 +161,13 @@ W1_PARAMS = {
     # order gives diagonal matrices in five files, an exact rotation matrix in `Speed Limit`,
     # and a layout that reads (SPEED at y -0.22 above LIMIT at -0.03).
     #
-    # `align_flag` is charged ZERO words in every state by costs.json, so the mask state is
-    # the value and declaring it moves nothing. It is named for what was measured, not for a
-    # meaning; `text._anchor` is its only reader. Its PROGRAM arm (bit 13) is charged 0 words
-    # too and is unobserved in 437 files, and `View` would charge it one and shift the block
-    # -- so a file that sets bit 13 is a thing to look at rather than to trust.
+    # `align_flag` costs ZERO words in every state -- the width legend declares no field at
+    # bit 12 for filter 17 at all, and the fit before it charged 0 in every state, which is
+    # the same claim twice -- so the mask state is the value and declaring it moves nothing.
+    # It is named for what was measured, not for a meaning; `text._anchor` is its only
+    # reader. Its PROGRAM arm (bit 13) costs 0 too and is unobserved in 437 files, and `View`
+    # would charge it one and shift the block -- so a file that sets bit 13 is a thing to
+    # look at rather than to trust.
     17: [(0xC00, 10, 'matrix22', 4),                  # text
          (0xC0, 6, 'position', 2),
          (0x300, 8, 'fontsize', 'scalar'),
@@ -302,13 +305,13 @@ class View(object):
     slot 4, and the forward cursor put it at 6, because the cost model charged class slots
     for w0 bits 11 and 15 that this filter does not spend (the defect commit 28d4b6b names).
     Anchoring at the end is immune to a mis-charged slot BEFORE the parameters and wrong
-    only if the header length itself is wrong -- and the header length is the one number
-    `derive_costs` fits to observed boundaries and reproduces exactly.
+    only if the header length itself is wrong -- and the header length is the one number a
+    fit to observed boundaries reproduces exactly whatever it does to the attribution.
 
     THE TWO NOW AGREE, WHICH IS NOT A REASON TO STOP ANCHORING AT THE END. Those two bits
-    were the free intercept's shadow -- they declare no slot, and cost nothing once
-    `costs.json` was re-attributed against the record's own base region (see
-    `record_layout`) -- so the forward cursor lands on slot 4 as well. The anchor earned its
+    were the free intercept's shadow -- they declare no slot, and have no cell at all under
+    SPEC 7.3's width legend, whose base is `n_hdr + n_base + n_fixed` and has no intercept
+    to shave -- so the forward cursor lands on slot 4 as well. The anchor earned its
     keep by being right while the cursor was wrong, and it is still the placement that
     cannot be moved by a mis-attributed class width: the failure that has just been
     corrected once is not thereby guaranteed against twice.
@@ -438,11 +441,12 @@ class View(object):
         # node and that slot holds 10.0, so the parameter was where it belongs and the class
         # placement was over-long.
         #
-        # THAT WAS THE SYMPTOM, AND ITS CAUSE IS FIXED. `normal`'s costs charged four class
-        # bits that declare no slot, paid for out of an intercept two words below the base
-        # region every record of that filter has; with `costs.json` re-attributed against
-        # that base (see `record_layout`) the class block ends exactly at the header end and
-        # nothing overlaps -- 0 clashes over 447 files, where the same sweep counted 1,012.
+        # THAT WAS THE SYMPTOM, AND ITS CAUSE IS FIXED. `normal`'s fitted costs charged four
+        # class bits that declare no slot -- word0's log2 size nibbles -- paid for out of an
+        # intercept two words below the base region every record of that filter has. With the
+        # base pinned and those bits given no cell (SPEC 7.3, and see `record_layout`) the
+        # class block ends exactly at the header end and nothing overlaps -- 0 clashes over
+        # 447 files, where the same sweep counted 1,012.
         #
         # THE GUARD STAYS. What it does is right whatever the cause: keep the parameter, drop
         # the size slot rather than hand `walk_programs` a float as a program address, and
@@ -457,8 +461,12 @@ class View(object):
 
         # Slots the cost model calls parameters keep their place in the PROGRAM candidate
         # list even where this legend has no name for them.
+        # `_j` IS THE FIELD'S OWN BIT OFFSET, not an index into an even grid. `decompose`
+        # reports SPEC 7.3's width-legend keys, so the presence mask is `3 << _j` and the
+        # two straddling fields this used to mis-cover -- `transformation`'s offset at 25
+        # and `blend`'s relocated opacity at 9 -- resolve like every other.
         for (_j, state, slot, _w) in d.get('param_slots', ()):
-            if _w >= 1 and not ((3 << (2 * _j)) & cov_w1):
+            if _w >= 1 and not ((3 << _j) & cov_w1):
                 self.ignored.append(('w1', _j, slot, _w))
             if state == 2 and 0 <= slot < len(rec.words):
                 self.unnamed.append((_j, Param(None, 'program', slot, 1,

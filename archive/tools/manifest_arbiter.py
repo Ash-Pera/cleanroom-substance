@@ -258,9 +258,10 @@ def legend_names():
     EITHER carries a name, so this tool's unnamed list is the census's unnamed list and not
     a wider one it would be flattering to report.
 
-    A mask is turned into a field index by its LOW BIT, which is the straddle rule SPEC 13.4
-    states: `blend`'s relocated opacity is 0x600 and `decompose.STRADDLED` relabels the pair
-    as the field of its low bit, so 0x600 -> field 4 here matches what `param_slots` reports.
+    A mask is turned into a field id by its LOW BIT, and that IS the field id: SPEC 7.3's
+    width legend keys every `w1` cell on the bit its two-bit code begins at, so `blend`'s
+    relocated opacity 0x600 is the field at bit 9 and matches what `param_slots` reports
+    with no per-filter grid shift and no straddle relabelling in between.
     """
     out = {}
     r2 = os.path.join(_TOOLS, 'render2')
@@ -268,16 +269,9 @@ def legend_names():
         sys.path.insert(0, r2)
     import model                                                       # noqa: E402
     import bit_census                                                  # noqa: E402
-    shifts = {}
-    try:
-        import derive_costs
-        shifts = dict(getattr(derive_costs, 'W1_GRID_SHIFT', {}) or {})
-    except Exception:
-        pass
 
     def field_of(fid, mask):
-        lo = (mask & -mask).bit_length() - 1
-        return (lo - shifts.get(fid, 0)) // 2
+        return (mask & -mask).bit_length() - 1
 
     for fid, spec in getattr(model, 'W1_PARAMS', {}).items():
         fname = sbsasm.FILTERS.get(fid, 'filter%d' % fid)
@@ -313,38 +307,27 @@ def silent_roles():
     single most important thing this tool reports, because it is most of the census's
     unnamed list.
 
-    Read off `costs.json` through `record_layout.costs()` rather than hard-coded, so the
-    list re-derives itself if the cost model changes under it.
+    Read off `legend.json` through `record_layout.legend()` rather than hard-coded, so the
+    list re-derives itself if the width legend changes under it.
 
-    Returns [(filter name, field, program-state words, baked-state words)].
+    WHAT THIS REPORTS IS NOW A MUCH SHORTER LIST, AND THE REASON IS THE MODEL. Under the
+    fitted table a field's PROGRAM state had its own free coefficient, and several came back
+    at zero -- `blend`'s field 4 and `distance`'s field 0 among them -- so this tool
+    correctly reported that there was no pointer to disassemble. The width legend charges
+    ONE WORD for a program pointer in every filter and every field, because a pointer is a
+    pointer, so nothing is silent on the program side any more. What IS silent is a field
+    whose baked KIND is 0: `normal`'s two booleans, where the mask state is the whole value.
+
+    Returns [(filter name, field bit, program-state words, baked-state words)].
     """
     import record_layout
     out = []
-    for key, spec in sorted(record_layout.costs().items(), key=lambda kv: int(kv[0])):
+    for key, spec in sorted(record_layout.legend().items(), key=lambda kv: int(kv[0])):
         fid = int(key)
         fname = sbsasm.FILTERS.get(fid, 'filter%d' % fid)
-        seen = {}
-        for v in (spec.get('variants') or [spec]):
-            if v.get('w1'):                              # additive spec: {field: {state: n}}
-                for j, states in v['w1'].items():
-                    k = int(j)
-                    p0, b0 = seen.get(k, (0.0, 0.0))
-                    seen[k] = (max(p0, abs(states.get('2', 0.0) or 0.0)),
-                               max(b0, abs(states.get('1', 0.0) or 0.0)))
-            elif v.get('pairs') is not None:             # interaction spec: base + colour*cross
-                off = 1 + len(v.get('clsbits') or ())
-                if v.get('has_absent'):
-                    off += 1
-                if v.get('arity_sm') is not None:
-                    off += 1
-                for k, pj in enumerate(v['pairs']):
-                    idx = off + 3 * k
-                    prog = max(decompose._feature_cost(v, idx + 1, c0, True) for c0 in (0, 1))
-                    baked = max(decompose._feature_cost(v, idx, c0, True) for c0 in (0, 1))
-                    p0, b0 = seen.get(pj, (0.0, 0.0))
-                    seen[pj] = (max(p0, prog), max(b0, baked))
-        for j in sorted(seen):
-            out.append((fname, j, seen[j][0], seen[j][1]))
+        for j, kind in sorted(spec.get('w1', {}).items(), key=lambda kv: int(kv[0])):
+            baked = record_layout.width(kind, 1)
+            out.append((fname, int(j), 1.0, float(baked) if baked is not None else 0.0))
     return out
 
 

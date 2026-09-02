@@ -341,18 +341,24 @@ def test_the_legend_covers_every_field_the_format_charges_for():
     """No `w1` field of filter 17 is declared, charged a word, and unnamed.
 
     This is the `normal` failure shape one filter over: an undeclared field sitting inside
-    an end-anchored block moves every named parameter after it. `costs.json` states which
+    an end-anchored block moves every named parameter after it. `legend.json` states which
     fields cost words; `W1_TEXT` must name all of them.
+
+    THE KEYS ARE BIT OFFSETS (SPEC 7.3), so a field's presence mask is `3 << offset`. This
+    used to read `costs.json`'s field INDICES on an even grid and write `3 << (2 * j)`;
+    filter 17's fields are at bits 6, 8 and 10 either way, but the frame is the one the
+    rest of the model now uses.
     """
     import json
-    costs = json.load(open(os.path.join(ROOT, 'tools', 'costs.json'), encoding='utf-8'))
-    entry = costs.get('17')
+    leg = json.load(open(os.path.join(ROOT, 'tools', 'legend.json'), encoding='utf-8'))
+    entry = leg.get('17')
     if entry is None:
-        return _skip('test_the_legend_covers_every_field: costs.json has no filter 17')
+        return _skip('test_the_legend_covers_every_field: legend.json has no filter 17')
     covered, _cls = model._covered_bits(17)
-    charged = {int(j) for j, states in entry.get('w1', {}).items()
-               if max(int(round(x)) for x in states.values()) >= 1}
-    missing = {j for j in charged if not ((3 << (2 * j)) & covered)}
+    # A cell of kind 0 costs nothing baked; every other kind costs at least one word, and a
+    # program pointer or an edge slot costs one whatever the kind is.
+    charged = {int(j) for j, kind in entry.get('w1', {}).items() if kind != 0}
+    missing = {j for j in charged if not ((3 << j) & covered)}
     assert not missing, \
         'filter 17 charges words for w1 fields %r and no name covers them' % sorted(missing)
     print('ok  test_the_legend_covers_every_field_the_format_charges_for (%d fields)'

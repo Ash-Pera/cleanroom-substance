@@ -224,7 +224,8 @@ word1:          two-bit code per field — the filter's OWN parameters
 The low half is worth spelling out because it is **not** a presence mask and a reader must
 not treat it as one: two of its nibbles are a size. A fitted cost table that offers every bit
 of word0 as a feature will happily charge header words to them, and §13.4 records what that
-cost.
+cost. §7.3's width legend has no cell on any bit below 16, because a width comes from a type
+and not from a regression.
 
 - **Class word (word0 high half):** the set bits are read in ascending bit order, and each
   one that gates a stored value adds a field. Widths come from the manifest type of the
@@ -269,21 +270,44 @@ is worth asserting rather than assuming: reading a baked `5.120025` as the addre
 the check — a wrong radius renders, a wrong address does not, and only one of them announces
 itself. On one specimen the unchecked read blocked 1,581 further records.
 
-### 6.4 The four layout alphabets
+### 6.4 The layout alphabets
 
-The file states each filter's layout in one of four self-describing ways; a reader
-handles all four with the one primitive and needs no fitted table:
+The file states each filter's layout in one of three self-describing ways; a reader
+handles all three with the one primitive and needs no fitted table:
 
 1. **Two-bit presence codes** — word1 as above (blend, levels, transformation, warps).
+   A field begins at **its own bit** (§7.3); there is no grid and no per-filter shift.
 2. **Arity integer** — the header states an input *count* as a small integer in word1 and
-   the walk reads that many edge slots (pixelprocessor; fxmaps, after its tree-root
-   pointer).
+   the walk reads that many edge slots (pixelprocessor, five bits at 0; fxmaps, six bits
+   at 10, after its tree-root pointer).
 3. **Paired conjunction** — two class-word bits that, set *together*, name one field
    (bitmap's bits 24+27 = the pixel-offset word).
-4. **Class-word popcount** — the number of leading block slots that are *programs* is
-   `popcount(class_word & mask)`; the rest are baked (blur, warp). This decides slot
-   *role*, and through role, extent (e.g. `nprog == 0` ⇒ a baked `(w,h)` size pair
-   instead of one program pointer).
+
+**There was a fourth, and it was a count standing in for a per-bit fact.** It read: the
+number of *leading* block slots that are programs is `popcount(class_word & mask)`, the
+rest baked, filled positionally from the front of the block (blur, warp). What the corpus
+says instead is that **each class bit is a pointer or a value and always the same one.**
+Scored against what the slot holds — `valid_program(word + 52)`, never against any reader's
+labels — every class bit of both filters is all-or-nothing:
+
+| filter | pointer bits | value bits |
+|---|---|---|
+| warp | 16 (26,559/26,559), 23 (269/269), 27 (19,388/19,388), 30 (1,109/1,109) | 26 (0/860), 29 (0/24,815) |
+| blur | 16 (9,981/9,981), 23 (51/51), 27 (8,675/8,675), 29 (303/303) | 26 (0/10,318), 28 (0/14,931) |
+
+The popcount mask is that pointer set **minus warp's bit 30**, and warp emits a value bit
+(29) *before* that pointer bit, which no positional count can express. On the same slots and
+the same ground truth, per-bit is exact on **26,791 of 26,791** warp records against the
+count's 25,682 (73,000 slots against 71,891) and identical on blur's **15,371 of 15,371**.
+Nothing that agreed stops agreeing.
+
+Role is not a layout alphabet at all, and that is why it leaves this list: both readings
+cost one word, so the header is the same length either way, and what changes is what the
+word *means*. That is a name-legend fact (§13.4), and it lives beside the other names —
+`sbsasm.CLS_PROGRAM_BITS`. The extent consequence the old rule carried is unaffected and
+still holds: when no pointer bit is set the size is two baked words `(w, h)` rather than one
+program pointer, so a blur header is five words with a baked size and four with a computed
+one.
 
 A walk mechanism reproduces record layout for **99.97%** of the manifest-bearing corpus.
 Two-shape filters state which shape a record takes with a single stated term — e.g.
@@ -349,7 +373,42 @@ position; in v2–v6 it occupies none. Getting it wrong shifts the whole table b
 ### 7.3 The width legend, and the key it is missing
 
 §7.2's `type -> 4N` table is the format's own width legend, stated in the file and read
-rather than fitted. It reaches the record side too: over 437 specimens every one of the
+rather than fitted. **It is now the whole of the record-header model as well**, and the
+header length is one sum over it:
+
+```
+header = n_hdr + n_base + n_fixed
+       + SUM over set class bits of        width(kind)
+       + SUM over w1 FIELDS -- a two-bit code AT ITS OWN BIT OFFSET -- of
+             00 absent  -> 0        01 baked   -> width(kind)
+             10 program -> 1        11 edge    -> 1
+       + arity                (the two filters whose w1 holds an input count, §6.4)
+       + one conjunction      (bitmap 24+27, §6.4)
+
+width:  0 -> 0   1 -> 1   2 -> 2   4 -> 4   C -> 1 grey / 4 colour
+n_hdr = 1 + (this record carries a w1 word)
+```
+
+`n_hdr` counts mask words, `n_base` is the filter's fixed image-input arity (§6.3) and
+`n_fixed` its fixed prefix — the ramp pair, the FX tree root, the bitmap pixel word,
+`text`'s zero + string + font, `pixelprocessor`'s own program. Every term is a structural
+count or a width from the type legend above. **There is no intercept, no float, no negative
+coefficient, no per-state cell and no grid shift**, and the whole table is 106 kinds over
+107 cells — 32 of them the bit a `w1` field begins at. A model with 688 fitted numeric cells
+across five spec shapes stood here before it, and the two answer the identical header length
+on 903,301 of 903,301 corpus records with the same 315 refusals.
+
+**A kind is a pair of widths and the corpus does not always give both.** Only two of the
+five share a width — `Float1` is `(1, 1)` and per-channel is `(1, 4)` — so a cell exercised
+in one colour only is a reading in that colour and a *prediction* in the other. **36 of the
+214 (cell, colour) pairs are in that state**: 19 because the filter has no record of the
+other colour at all (`text` is grey on all 59, `normal` and `hsl` colour on every one), 17
+because it has records and none set the cell (`blur` / `sharpen` / `distance` / `curve` /
+`dyngradient` class bit 23 in colour, `emboss` w1 bit 5 in grey, `fxmaps` class bit 22 in
+colour). An implementation must mark those, not store them as zeros — the fitted table
+stored them as zeros and they were indistinguishable from measured ones.
+
+The legend reaches the parameter slots as well: over 437 specimens every one of the
 **544,189** baked parameter slots the walk reads has a width of 1, 2 or 4 words —
 `float1`, `float2`, `float4` — and **none falls outside the legend's 1..4**. (Width 3,
 `float3`, is legal by the legend and does not occur.) Per filter:
@@ -366,12 +425,19 @@ rather than fitted. It reaches the record side too: over 437 specimens every one
 | 21 `distance` | 2,089 | — | — |
 
 So the legend is not the gap. **What the file does not state is the per-field type CODE**,
-and that is the object `costs.json` actually fits — a *kind assignment* per (filter,
-field), not a width. Two searches for a per-node type declaration came back empty and are
+and that is the whole of what the table derives — a *kind assignment* per (filter, cell),
+not a width. Two searches for a per-node type declaration came back empty and are
 recorded so they are not repeated: the interface block declares 8,500 typed descriptors
 against half a million slots and is framed to the graph-input table alone (§7.1), and the record
 directory holds bare offsets. The filter id *is* the declaration, and the parameter list it
 names lives in the engine.
+
+**A width does not decide a ROLE, and the two must not be conflated.** `blur`'s class bits
+27 and 29 are both one word and both are program pointers; its bits 26 and 28 are two words
+and one word and both are baked values — but `warp`'s bit 29 is one word and a value while
+its bit 30 is one word and a pointer. So a `1` in this table means "one word", never "a
+pointer". Which one-word cells hold pointers is a name-legend fact and is stated with the
+names (§6.4, §13.4).
 
 **Three rows moved when the cost model's attribution was corrected**, and the movement is
 the correction rather than new data: `distance`'s width-2 column was the phantom left by
@@ -380,7 +446,10 @@ charging its mask input twice — the real field is one word wide and there is n
 past the end of their own records and then discard. `blend`'s row had gone stale earlier,
 when its relocated opacity arm was named. The claim the table supports is unaffected: no
 width outside 1, 2, 4 has ever appeared, and the corrected `distance` row removes the only
-row where a width came from a rounded 1.5 rather than from a type.
+row where a width came from a rounded 1.5 rather than from a type. Under the legend no
+width comes from a rounding at all: every cell is solved as an integer against a pinned
+base, and the two remaining halves the fit still carried — `emboss`'s w1 bit 1 at "0.5 grey
+/ 1.0 colour" and `sharpen`'s four canvas bits at ±0.5 — have no cell.
 
 One kind is already stated rather than assigned, which is the existence proof that the
 distinction is real: a `channel` field's component count is the **tag's colour bit** — 4
@@ -393,20 +462,32 @@ permitted `.sbs` sources, which declare parameter names and types per filter.
 One rule places every parameter this project reads, and it is the §6.1 mask-walk applied to
 the second header word.
 
-**`w1` is a grid of two-bit FIELDS.** Field `j` occupies bits `(2j + s, 2j + 1 + s)`, where
-`s` is the filter's **grid shift** — `0` for every filter whose costs are derived, except
-`directionalwarp` and `emboss`, where it is `1`. `emboss` was the second filter found with
-this signature and its costs have since been re-derived on the odd grid. Read at `s = 0` it
-was the only filter in the corpus that failed §6.3's program check, and it failed it
-completely — 450 slots whose state says `program` and not one of which decodes. Read at
-`s = 1`, with the intercept pinned to the record's own base region (2 mask words + 2 image
-inputs + one word each for class bits 23, 27 and 16) and fields 0/1 scalar, 2/3 per-channel,
-the fitted header length is reproduced on **375 of its 375** covered records and the two words
-in question are the plain floats they look like (1.0 and 0.25 on `sci_fi_elements_02` record
-3807). With that re-derivation in `costs.json`, §6.3's program check reads **198,224 of
-198,224** corpus-wide, where it read 198,581 of 199,031 — the whole residual was this one
-grid. The measurement is in FORMAT-NOTES.md, "Every filter, bit by bit", and the A/B appended
-after it. The two bits are a STATE, not a count:
+**`w1` is a set of two-bit FIELDS, and a field begins at ITS OWN BIT.** There is no grid.
+A filter declares an offset per field and the field occupies bits `(b, b + 1)` —
+`directionalwarp`'s are at 1, 3 and 7, `emboss`'s at 1, 3, 5 and 7, `blend`'s at 4, 6 and 9,
+`transformation`'s at 6, 25 and 28, `levels`' and `fxmaps`' at 0, 2, 4, 6 and 8, `text`'s at
+6, 8 and 10.
+
+**This section used to state an even grid `(2j, 2j + 1)` plus a per-filter SHIFT `s`, and
+both halves were the reader's, not the format's.** The shift existed because
+`directionalwarp` and `emboss` begin at bit 1, and a straddle table in `decompose` existed
+because `blend`'s relocated opacity begins at 9 and `transformation`'s offset at 25 — odd
+bits, which no shift of an even grid can reach, so each appeared as two phantom half-fields,
+"one that always looks like a value and one that always looks like a pointer". Reading each
+field at its own bit removes the shift, the straddle table and the phantoms together; the A/B
+that landed it moved **no** slot position or width anywhere in the corpus, on any of
+`inputs`, `cls_slots`, `param_slots`, `cls_params`, `end`, `hdr`, `prog` or `size_slot` over
+903,440 records.
+
+`emboss` is the case that first forced an odd offset, and its arbiter was not the fit.
+Read at bit 0 it was the only filter in the corpus that failed §6.3's program check, and it
+failed it completely — 450 slots whose state says `program` and not one of which decodes.
+Read at bits 1, 3, 5, 7, the header length is reproduced on **375 of its 375** covered
+records and the two words in question are the plain floats they look like (1.0 and 0.25 on
+`sci_fi_elements_02` record 3807). §6.3's program check reads **198,224 of 198,224**
+corpus-wide, where it read 198,581 of 199,031 — the whole residual was this one filter's
+offsets. The measurement is in FORMAT-NOTES.md, "Every filter, bit by bit", and the A/B
+appended after it. The two bits are a STATE, not a count:
 
     00  absent          the parameter is not present; it costs no slot
     01  baked           a constant, inline in the header, one word per component (§7.3)
@@ -420,55 +501,61 @@ takes no place in the parameter block, and the tell is its cost: one word in `01
 and none in `10` tracks a single bit, where a parameter costs a word for its value and a
 word for a pointer.
 
-**Placement is a cursor, not an index.** The walk visits fields in ascending `j`, and each
-present field advances the cursor by its own width. Nothing stores a slot number (§6.1), so a
-parameter's position is the sum of the widths of the fields before it and cannot be computed
-from `j` alone.
+**Placement is a cursor, not an index.** The walk visits fields in ascending bit order, and
+each present field advances the cursor by its own width. Nothing stores a slot number (§6.1),
+so a parameter's position is the sum of the widths of the fields before it and cannot be
+computed from its offset alone.
 
-**A parameter's presence mask is exactly `3 << (2j + s)`.** This is what makes the rule one
+**A parameter's presence mask is exactly `3 << b`.** This is what makes the rule one
 rule rather than a per-filter table: over the five filters that declare parameters, all
-fourteen masks resolve to exactly one field —
+fourteen masks resolve to exactly one field, by a single shift-and-compare —
 
-    blend            s=0    opacitymult 0x0030 -> field 2
-    dirmotionblur    s=0    intensity 0x0003 -> 0     mblurangle 0x000c -> 1
-    directionalwarp  s=1    intensity 0x0006 -> 0     warpangle  0x0018 -> 1
-    levels           s=0    levelinlow 0x0003 -> 0 ... levelouthigh 0x0300 -> 4
-    fxmaps           s=0    fx_param0 0x0003 -> 0 ... fx_param3 0x0300 -> 4
+    blend            opacitymult 0x0030 -> bit 4    opacitymult 0x0600 -> bit 9
+    dirmotionblur    intensity   0x0003 -> bit 0    mblurangle  0x000c -> bit 2
+    directionalwarp  intensity   0x0006 -> bit 1    warpangle   0x0018 -> bit 3
+    levels           levelinlow  0x0003 -> bit 0 ... levelouthigh 0x0300 -> bit 8
+    fxmaps           fx_param0   0x0003 -> bit 0 ... fx_param3   0x0300 -> bit 8
 
-**`s` IS DERIVED, NOT STATED, and a reader should know which half of this section is
-measured.** The field grid, the state codes and the cursor are all read from the file. The
-SHIFT is not: it comes from `derive_costs.W1_GRID_SHIFT`, a re-fit of the cost model on the
-odd grid. Three things support it, and they are not equal:
+**THE OFFSETS ARE DERIVED, NOT STATED, and a reader should know which half of this section
+is measured.** The fields, the state codes and the cursor are all read from the file. Where
+each field BEGINS is not: it is 32 numbers derived from the corpus by
+`archive/tools/derive_legend.py`. What supports them is not one argument:
 
-* **Structural, and independent of the fit.** `w1` bit 0 is set in **0 of 62,898**
+* **Structural, and independent of any solve.** `w1` bit 0 is set in **0 of 62,898**
   `directionalwarp` records, against a control of 247,561 of 431,890 across `blend`,
   `dirmotionblur` and `levels`. A zero that large with a live control is the file saying bit
-  0 carries nothing for this filter. Note precisely what it settles: the grid **cannot start
-  at bit 0**. It does not establish that the grid starts at bit 1 — that step is still the
-  fit.
-* **Independent of the cost model.** With the shift applied, the field rule and the retired
-  positional rule produce identical name lists on 78,783 of 78,783 records. The positional
-  rule never decomposes `w1` into fields at all, so this agreement does not rest on
-  `costs.json`. This is the support to lean on.
-* **Parsimony, and it should be discounted.** The odd-grid re-fit is exact at 100.000% with
-  24 columns against 26. So was the even grid — a misaligned decomposition can sum correctly,
-  which is why nothing caught the misalignment for as long as it stood. A fit reproducing a
-  total it does not understand is not evidence about the decomposition.
+  0 carries nothing for this filter. Note precisely what it settles: its first field
+  **cannot begin at bit 0**. It does not establish that it begins at bit 1.
+* **The values, on both arms.** `blend`'s relocated opacity at bit 9 is settled by what the
+  slots hold, over the whole corpus and with 0 exceptions: code `01` gives 963 records
+  holding a plain float in `[0, 1]`, none of which resolves a program, and code `10` gives
+  170 records of which not one is a plain float and every one resolves a program. Read on an
+  even grid the same two words are a pointer seen as the denormal 1.9e-39.
+  `transformation`'s offset at bit 25 is the same shape: read at bits (25, 26) it is the
+  ordinary alphabet — absent 144,245, baked 29,404, program 69,282, and `11` **never** —
+  while bits 24 and 27 are set in no record at all.
+* **`emboss`'s program check**, above: 450 non-resolving program slots at bit 0, 0 at bit 1.
+* **Independent of the width model.** The field rule and the retired positional rule produce
+  identical name lists on 78,783 of 78,783 records. The positional rule never decomposes
+  `w1` into fields at all, so this agreement does not rest on the legend.
+* **Parsimony, and it should be discounted.** An exact reproduction of the header length is
+  not evidence about the decomposition — a misaligned decomposition can sum correctly, which
+  is why nothing caught the even grid for as long as it stood.
 
-So the honest statement is that the file rules out one starting position and the remaining
-choice is inferred. Read alongside §7.3: the format states the width legend and forecloses
-some placements, and what it does not state is the KEY — which field carries which type, and
-where the grid begins. Two halves of one missing declaration.
+So the honest statement is that the file forecloses some starting positions and the rest are
+inferred from what the slots hold. Read alongside §7.3: the format states the width legend,
+and what it does not state is the KEY — which field carries which type, and where each field
+begins. Two halves of one missing declaration.
 
-`directionalwarp` is the reason the shift exists and the reason it must be read rather than
-assumed. Its `intensity` is bits 1 and 2, which STRADDLE the fields of an unshifted grid; a
-matcher that assumes `s = 0` finds no field for it, names neither of its parameters, and
-returns nothing on 62,146 records — silently, because an empty parameter list is
-indistinguishable from a filter that declares none.
+`directionalwarp` is the reason an offset must be read rather than assumed. Its `intensity`
+is bits 1 and 2, which STRADDLE the fields of an even grid; a matcher that assumes bit 0
+finds no field for it, names neither of its parameters, and returns nothing on 62,146
+records — silently, because an empty parameter list is indistinguishable from a filter that
+declares none.
 
 **The rule subsumes the positional fallback it was thought to need.** Because of that
 straddle, `directionalwarp` was placed by a separate positional rule — "the present
-parameters occupy the last `n` slots of the header". With the shift applied, the field rule
+parameters occupy the last `n` slots of the header". Read at its own offsets, the field rule
 and the positional rule produce identical name lists on **78,783 of 78,783** records across
 both filters that use it. The positional rule is not a second mechanism; it is this one seen
 from the far end of the header.
@@ -758,19 +845,23 @@ legitimately consume.
 
 ### 13.3 Reading a record's parameters
 
-Three questions, three answers, and only the third comes from a fitted table:
+Three questions, three answers, and only the third needs the header length:
 
 | question | answer | from |
 |---|---|---|
 | which parameters are present, baked or program? | the `w1` two-bit state | §7.4, the file |
 | how wide is each baked one? | Float1/2/4, per-channel by the colour bit | §7.3, the file |
-| where does the block start? | `header_end − Σ widths`, laid **forwards in ascending mask order** (except filter 17 `text` — §6.1, §13.4) | the cost model's header length only |
+| where does the block start? | `header_end − Σ widths`, laid **forwards in ascending mask order** (except filter 17 `text` — §6.1, §13.4) | the width legend's header length only |
 
-**Anchor at the end, not at the walk's forward cursor.** The cursor inherits any slot the
-cost model mis-charges *before* the parameters; the end anchor is wrong only if the header
-*length* is wrong, and the length is the one quantity `derive_costs` fits to observed
-boundaries and reproduces exactly. `normal` is the case that separates them: a five-word
-header whose intensity is word 4, where the cursor says 6.
+**Anchor at the end, not at the walk's forward cursor.** The cursor inherits any slot a
+model mis-charges *before* the parameters; the end anchor is wrong only if the header
+*length* is wrong, and the length is the one quantity a fit to observed boundaries
+reproduces exactly whatever it does to the attribution. `normal` is the case that separates
+them: a five-word header whose intensity is word 4, where the cursor said 6. Under §7.3's
+width legend the two agree by construction — the base is `n_hdr + n_base + n_fixed`, three
+counts the record states, and the forward cursor lands on the stated length in 903,301 of
+903,301 corpus records — so the distinction is a check rather than a repair. Keep it: the
+day it fires is the day a width is wrong.
 
 **Check it.** Two slots can never hold a parameter, and neither answer comes from the
 fitted per-field charge: an **input edge** (§6.3) and the two mask words. A block reaching
@@ -818,6 +909,17 @@ comes out at 1.0, which is what eight other filters charge it and what its slot 
 comes out at the structural 4, where the free fit gave the half 3.5 — a half being the model
 conceding it cannot express the rule.
 
+**Under §7.3's width legend the same three bits come out the same way, by a route worth
+stating because it needs no separate mechanism.** With the base pinned for every filter, bits
+16, 19 and 27 are set on all 375 records the gate admits, so the solve sees only their SUM,
+2. Bit 16 is 1 by the same format-wide agreement (every population whose records vary in it
+charges 1, 35 of them) and bit 19 is charged by nobody anywhere — it is set on 903,608 of
+903,616 corpus records and varies in no filter's population at all — so **the residual
+determines bit 27 at 1**, and the closure is the check. Resolving one blind column at a time
+and re-testing identifiability after each is what makes that work: pinning all three from
+outside instead, which a first attempt did, leaves a word for the free columns to absorb and
+`emboss` comes back at 0.008 exact with class bit 23 charged two words.
+
 The transfer is prediction-preserving by construction — the bit is set on every record of the
 population, so a word leaving the intercept and arriving on the bit cancels — and measured:
 `header_words` is identical on all 546 emboss records. What changes is that the walk now
@@ -835,15 +937,15 @@ derived from masks-plus-arity instead: `2 + arity` (`1 + arity` where the filter
 word) agrees with the intercept on 321,054 of 321,054 interaction records, so separating them
 changed nothing and made the transfer safe.
 
-**`fxmaps`** used to be in the same position and is not: filter 4 carries `base`/`clsbits`
-rather than a `cls` dictionary, every class bit below 16 costs zero words there, and walking
-that rule from the first slot after the inputs puts bit 16 there in 36,057 of 36,057 records
-— the walk's own answer, formerly not emitted. Its `end` is deliberately NOT advanced past
-the class block: for this filter `end` is the first-after-inputs slot (the role the general
-walk calls `size_pos`), and the fitted header length is longer than the class cursor by +1
-to +7 words, so a third number would agree with neither.
+**`fxmaps`** used to be in the same position and is not: walking the class block from the
+first slot after the inputs puts bit 16 there in 36,057 of 36,057 records — the walk's own
+answer, formerly not emitted. Its fixed prefix (the FX tree root, §8) sits BEFORE the arity
+run rather than after it, which is one of the two positions the legend has to state per
+filter; the other is `pixelprocessor`'s own program, which comes after the class block. Its
+`end` is the header length like every other filter's, and its `prog` is the
+first-after-inputs slot — two numbers, not one, which is what it used to return.
 
-**`vectorshape`** has no header cost model at all — the walk returns a stub with no size slot
+**`vectorshape`** has no legend entry at all — the walk returns a stub with no size slot
 and no class parameters. Nothing to place, and nothing to fall back to.
 
 **The inherited size slot.** Class bit 0 (word0 bit 16) set ⇒ the first slot after the
@@ -894,13 +996,15 @@ and declaring it shifts nothing. Its program arm (bit 13) is charged zero words 
 unobserved across 437 files; a reader that charges it one word would shift the whole block,
 so a file setting bit 13 is a thing to examine rather than to trust.
 
-Two of these **straddle** the two-bit grid — `transformation`'s offset at bits (25, 26)
-and `blend`'s relocated opacity at (9, 10) — so under a plain `j → (2j, 2j+1)` reading their
-two states swap meaning between adjacent fields. A reader working from raw `w1` must match
-the **mask**, never a field index. Both straddles are declared to the walk in
-`decompose.STRADDLED`, which relabels the pair as the one field it is with positions and
-widths untouched, so `param_slots` reports field 12 and field 4 carrying the ordinary
-states — a consumer reading the walk does not re-derive either.
+Two of these begin at an **odd** bit — `transformation`'s offset at (25, 26) and `blend`'s
+relocated opacity at (9, 10). Under a reader that imposes an even grid `j → (2j, 2j+1)` they
+STRADDLE it, their two states swap meaning between adjacent fields, and each appears as two
+phantom half-fields, one that can only ever read `10` and one that can only ever read `01`.
+That is the reader's frame and not the format's: a field begins at its own bit (§7.4), so
+both match `3 << b` like every other, and `param_slots` reports them under bits 25 and 9
+carrying the ordinary states. The `STRADDLED` relabelling table that used to put the halves
+back together is gone with the grid that split them. A reader working from raw `w1` should
+still match the **mask** rather than any index it has invented.
 
 **`blend` states its opacity at one of two masks.** Connect the node's `opacity` input and
 the field at (4, 5) goes to state 11 — the image-input code, §7.3 — and the slider moves to
@@ -911,11 +1015,13 @@ agrees five for five, program arm included. The two arms are exclusive by constr
 one two-bit code cannot read both 01 and 10 — so a reader may give them one name.
 
 What (4, 5) reads under a set (9, 10) depends on which arm it is, and an earlier revision of
-this paragraph had it as state 11 in all 1,133 cases. Corpus-wide it splits, because bit 9 is
-(4, 5)'s high bit and bit 10 is (6, 7)'s low bit: **963 baked-arm records read 11 at (4, 5)
-and the 170 program-arm records read 01.** The arms are told apart by their VALUES with no
-exceptions in 437 files — every one of the 963 holds a plain float in [0, 1] and resolves no
-program; not one of the 170 is a plain float and all 170 resolve a program.
+this paragraph had it as state 11 in all 1,133 cases. Corpus-wide it splits: **963 baked-arm
+records read 11 at (4, 5) and the 170 program-arm records read 01.** The arms are told apart
+by their VALUES with no exceptions in 437 files — every one of the 963 holds a plain float in
+[0, 1] and resolves no program; not one of the 170 is a plain float and all 170 resolve a
+program. That value split is also what pins the offset: read on an even grid the 170
+pointers are denormals, 1.9e-39, which is an opacity of zero and a blend that composites
+nothing.
 
 **The class block ends exactly where the header ends, and a reader whose block runs past it
 has mis-attributed a width, not found a longer header.** This was got wrong here, and the
@@ -935,8 +1041,12 @@ edge it is and once as a `w1` field.
 
 Pinning the base to what the record states and re-solving for the bit costs is exact on
 every record of all three filters, needs no negative or half-word coefficient, and leaves
-every header length unchanged. Three things confirm the new placement rather than merely
-being consistent with it: the size-expression slot resolves as a valid program in 3,640 of
+every header length unchanged. **That is now the whole model rather than a repair of four
+entries** (§7.3): the base is pinned for every filter, every cell is one kind from
+`0 1 2 4 C`, and 688 fitted numeric cells became 106 kinds over 107 cells with no intercept
+to shave. The two answer the identical header length on 903,301 of 903,301 records with the
+same 315 refusals, and the walks they drive agree slot for slot on 903,440 of 903,440.
+Three things confirm the new placement rather than merely being consistent with it: the size-expression slot resolves as a valid program in 3,640 of
 the 3,640 records where it moved, against 281 at the old position; `ChesterfieldSofa.sbs`'s
 declared `intensity` 10.0 lands on the `w1` field the legend names, where it used to land on
 the slot the walk called class bit 16; and the two independent placements — the forward
@@ -1031,7 +1141,7 @@ per-filter parameter list from bit 24 up, and four filters — `uniform`, `hsl`,
 | 24, 25 | the filter's **sampling class** | 0 words | 0 for the pixel-local filters, 3 for the ones that read a neighbourhood; redundant with the filter id on 96.8% of records. `uniform`, `hsl`, `shuffle` and `dyngradient` put their own parameters at these bits instead, and are the only filters that charge a word for them |
 | 26, 27 | `$pixelsize` | 2 words baked / 1 word program | an adjacent pair, lower baked and upper a pointer, **mutually exclusive on 124,388 of 124,388** records across `warp`, `blur`, `dirmotionblur`, `directionalwarp`, `distance`, `normal` and `sharpen`. The program arm reads a graph input the manifest identifies literally as `$pixelsize` (type 1, float2) on 7,000+ records and is otherwise a six-instruction `sysvar…exp2` computing a size ratio; the baked arm is a float2 — `blur` bakes an equal pair at a power of two on 5,150 of 5,159. `hsl` and `dyngradient` use the same two bits for their own parameters |
 
-Bits 19, 20, 21, 24 and 25 cost no word in any filter's cost model, so they gate no stored
+Bits 19, 20, 21, 24 and 25 have no cell in any filter's width legend, so they gate no stored
 value and a reader that ignores them places nothing wrongly. Bits 20, 21, 24 and 25 describe
 what the record PRODUCES rather than how its header is laid out, which is why probes against
 the record's own geometry came back negative. Bit 19 is still unnamed.
@@ -1200,7 +1310,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | uniform | `outputcolor`; else a program at a walk-named slot; else the engine default |
 | blend | `dst·(1−op) + f(dst, src)·op`, clamped; `op` = `opacitymult` (absent ⇒ 1, and read from EITHER mask — §13.4) × the mask edge if a third edge is present; `switch` selects on `op ≥ ½` instead |
 | transformation | `in = m·(pos − ½) + ½ + offset`; area-prefilter when minifying |
-| shuffle | colour bit clear ⇒ `Σ channelsweights·src` (grayscale conversion); set ⇒ four selector bytes in `w1`, `s` picks channel `s mod 4` of input `s div 4`. The cost model ALSO declares seven w1 fields for filter 3 (0, 4, 5, 8, 9, 12, 13) — every one charging zero words in every state, so it makes no claim about layout and cannot contradict the byte reading; nor can it confirm it. No shipped source contains a colour-arm shuffle node (44 are `grayscaleconversion`), so this one is read from the values alone: every byte holds 0–7, and a reader should refuse the record rather than guess when one does not |
+| shuffle | colour bit clear ⇒ `Σ channelsweights·src` (grayscale conversion); set ⇒ four selector bytes in `w1`, `s` picks channel `s mod 4` of input `s div 4`. The width legend declares NO w1 field for filter 3 at all — the fitted table it replaced offered seven (0, 4, 5, 8, 9, 12, 13), every one charging zero words in every state, which was an artefact of a fit admitting any column that varies rather than a statement about layout. Either way it makes no claim the byte reading could contradict; nor can it confirm it. No shipped source contains a colour-arm shuffle node (44 are `grayscaleconversion`), so this one is read from the values alone: every byte holds 0–7, and a reader should refuse the record rather than guess when one does not |
 | levels | `t = clip((src − lo)/(hi − lo))`; zero span ⇒ step at `lo`; `t ← t^(ln½/ln mid)`; `out = lo′ + t(hi′ − lo′)`, clamped. **Per channel**: on a colour record every field is a Float4 and its components genuinely differ — applying component 0 to all four remaps ALPHA by the red curve, which on one corpus record turns an opaque output almost transparent |
 | curve | a cubic-Bezier transfer curve, sampled to a lookup |
 | gradient / dyngradient | a ramp indexed by the input's channel 0; `dyngradient`'s ramp is a second input's long axis |

@@ -186,7 +186,7 @@ SPECS = {
                          read=lambda w1: w1 if 1 <= w1 <= 8 else (0 if w1 == 0 else w1 & 0xF))),
     4:  Spec(base=0, cls_widths={}, w1_fields=[],  # fxmaps -- arity integer after the root
              # ASKS THE COST LEGEND, does not restate it. This was `(w1 >> 10) & 0xF`, a
-             # hardcoded copy of a rule costs.json already holds -- and it went stale: the
+             # hardcoded copy of a rule the width legend already holds -- and it went stale: the
              # field is SIX bits, and a nibble truncates every count above 15 rather than
              # failing, so this arm disagreed with `decompose` on 10 records without either
              # side noticing (`ie_curve` #35 declares 34 inputs and the nibble read back 2).
@@ -202,19 +202,26 @@ SPECS = {
                         (0x18, 3, 'scalar')]),    # warpangle
 }
 
-# Popcount is the format's THIRD self-describing encoding: for `blur` (10) and `warp` (7)
-# the number of leading block slots that hold PROGRAMS (the rest baked) is
-# popcount(cls & mask), a count spelled by set bits in the class word. It decides ROLE --
-# which slots are programs -- and, through role, extent: when nprog == 0 the SIZE is two
+# Popcount was read as the format's THIRD self-describing encoding: for `blur` (10) and
+# `warp` (7) the number of leading block slots that hold PROGRAMS (the rest baked) is
+# popcount(cls & mask), a count spelled by set bits in the class word.
+#
+# IT IS ONE ROLE PER BIT AND THE COUNT IS A CONSEQUENCE. Scored against what each slot
+# holds, every class bit of both filters is all-or-nothing -- warp's pointers are
+# {16, 23, 27, 30} and blur's {16, 23, 27, 29} -- and the mask below is that set minus
+# warp's bit 30. `sbsasm.CLS_PROGRAM_BITS` states the bits and `program_slots` reads them;
+# this mask is kept only so `check_popcount` can measure the retired rule against the
+# current one. See `sbsasm.CLS_PROGRAM_BITS` for the A/B.
+#
+# The extent consequence stands and is unchanged: when no pointer bit is set the SIZE is two
 # baked words (w, h) rather than one program pointer, so a blur header is five words with a
 # baked size and four with a computed one. (An earlier comment here claimed popcount moved
-# no header word; blur's own headers, grouped by popcount, disprove it -- the baked size
-# pair is the extra word.) `check_popcount` validates the count against the model.
+# no header word; blur's own headers disprove it -- the baked size pair is the extra word.)
 #
 # blur's trailing intensity word is a separate class-word bit again, and fully stated: cls
 # bit 12 is set iff the last header slot is a baked value, 6,855 of 6,855. So the header is
 # (masks + edge) + nprog program slots + the bit-10 size pair + the bit-12 intensity, every
-# term a class-word bit -- which is why costs.json reproduces it and record_layout matches
+# term a class-word bit -- which is why the width legend reproduces it and record_layout matches
 # the model in every blur record. The apparent nprog==3 anomaly (a 5-word header where a
 # "size then intensity" model predicts 6) is just bit 12 clear: no baked intensity, and
 # independent of nprog. Not a residue.
@@ -222,7 +229,7 @@ POPCOUNT_MASK = {10: 0x2881, 7: 0x0881}
 
 
 # The rest of the memo (`layouts.json`): filters whose header is purely class-word driven
-# (their `w1` adds no header word -- see costs.json) and whose edges are a FIXED base shape.
+# (their `w1` declares no field -- see legend.json) and whose edges are a FIXED base shape.
 # The table memorised header sizes and edge lists that are computed by the costs legend
 # (header) and a constant base (edges); nothing here needs a per-record lookup. The value is
 # the dominant edge shape; the minority shapes are the honest residue reported alongside.
@@ -597,11 +604,21 @@ def validate_nodes(files):
 
 
 def check_popcount(files):
-    """popcount(cls & mask) predicts how many block slots are programs, for blur and warp.
+    """popcount(cls & mask) against the program-slot count `program_slots` now reports.
 
-    Ground truth is the model's `_block_programs()`, which reads each slot and asks whether
-    it resolves as a program. The claim is that the COUNT of those is stated by the class
-    word, not discovered by probing: popcount(cls & mask) == number of program slots."""
+    A RETIRED CLAIM, KEPT AS ITS OWN REFUTATION. The claim was that the COUNT of program
+    slots is stated by the class word: popcount(cls & mask) == number of program slots, and
+    that the count fills the block positionally from the front. Ground truth is what the
+    slot HOLDS, and taken bit by bit it says something stronger and simpler -- each class
+    bit is a POINTER or a VALUE and always the same one, all-or-nothing on every bit of both
+    filters (`sbsasm.CLS_PROGRAM_BITS`). `program_slots` reads the bit that placed the slot,
+    which is exact on 26,791 of 26,791 warp records against the count's 25,682 and identical
+    on blur's 15,371.
+
+    So this now measures the OLD rule against the NEW one, and warp is expected to come in
+    below 100%: its bit 30 is a pointer the mask omits, and it is emitted AFTER a value bit
+    (29), which no positional count can express. A run where warp reads 100% here would mean
+    `CLS_PROGRAM_BITS` had lost bit 30, not that the count was right after all."""
     from collections import Counter
     from sbsasm import Assembly
     stat = {f: Counter() for f in POPCOUNT_MASK}
@@ -615,12 +632,13 @@ def check_popcount(files):
             mask = POPCOUNT_MASK.get(f)
             if mask is None:
                 continue
-            block = r.program_slots
+            block = r.program_slots()
             if not block:
                 continue
             stat[f]['records'] += 1
             predicted = bin(r.cls & mask).count('1')
             actual = sum(1 for _s, isp in block if isp)
+            stat[f]['program slots'] += actual
             if predicted == actual:
                 stat[f]['exact'] += 1
     return stat

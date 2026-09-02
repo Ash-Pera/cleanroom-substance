@@ -105,11 +105,18 @@ def census(paths=None):
 def model_agreement(paths=None):
     """{filter: Counter} comparing the walk's `end` against `record_layout.header_words`.
 
-    Two INDEPENDENT readers of the same cost model. `decompose` walks the record appending
-    one slot per unit of cost; `header_words` sums the same costs arithmetically. They must
-    agree, and where they do not the model is being applied inconsistently -- which is a
-    defect locatable without any reference render, any containment pairing, or any judgement
-    about which reading "looks right".
+    CIRCULAR AS WRITTEN, AND SAID SO RATHER THAN LEFT TO LOOK LIKE A CHECK. `decompose`
+    takes its `end` FROM `header_words` (`_model_end`), so this compares that function
+    against itself and returns agreement by construction. It was already circular before the
+    width legend landed; the legend did not introduce it.
+
+    The non-circular version of the same question is the walk's own accumulated CURSOR
+    against the stated length, and the way to take it is to spy on `_model_end`'s two
+    arguments -- `cursor` is what the forward walk added up and the return value is what the
+    arithmetic model says. Taken that way the two agree on 903,301 of 903,301 records with a
+    non-None answer, and under the width legend they agree by construction: the walk lays one
+    slot per word of the same widths from the same base. Keep measuring it anyway; the day it
+    parts is the day a width is wrong.
 
     `header_words` is called AS DOCUMENTED: its two-shape gate needs the version, and warp
     and shuffle each have a record shape with no w1 word. Calling it with `words[1]`

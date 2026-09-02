@@ -133,9 +133,9 @@ def record_locations(asm, filter_id):
     Three kinds of location, because one kind was not enough:
 
       ('cls', bit)   a class parameter, where the walk places it.
-      ('w1', field)  a `w1` parameter, where the COST MODEL places it -- the fitted half,
-                     and it is empty for `normal` and short for `blend`, which is exactly
-                     why the third kind exists.
+      ('w1', bit)    a `w1` parameter, at the BIT its two-bit field begins on (SPEC 7.3's
+                     width legend). It is empty for `normal` and short for `blend`, which
+                     is exactly why the third kind exists.
       ('end', -k)    the k'th word back from the header end. The parameter block is
                      end-anchored (SPEC 13.4), so this frame is where a stated value can be
                      found without believing any width. It is the frame the four
@@ -166,12 +166,12 @@ def record_locations(asm, filter_id):
             n = max(1, int(width))
             if 0 <= slot and slot + n <= len(words):
                 here[('cls', bit)] = window(slot, n)
-        for (j, state, slot, width) in d.get('param_slots', ()):
+        for (sh, state, slot, width) in d.get('param_slots', ()):
             n = max(1, int(width))
             if not (0 <= slot and slot + n <= len(words)):
                 continue
-            here[('w1', j)] = (('program', words[slot] + 52) if state == 2
-                               else window(slot, n))
+            here[('w1', sh)] = (('program', words[slot] + 52) if state == 2
+                                else window(slot, n))
         end = d.get('end')
         floor = max([s for s in d.get('inputs', ()) if isinstance(s, int)] + [1]) + 1
         if isinstance(end, int):
@@ -305,18 +305,26 @@ EXPECTED = (
     ('ChesterfieldSofa', 'blend', 'opacitymult', ('end', -1), 11, 'CONFIRMED'),
     ('ChesterfieldSofa', 'hsl', 'saturation', ('cls', 26), 2, 'CONFIRMED'),
     ('ChesterfieldSofa', 'hsl', 'luminosity', ('cls', 28), 1, 'supported'),
-    ('ChesterfieldSofa', 'transformation', 'matrix22', ('w1', 3), 2, 'CONFIRMED'),
+    ('ChesterfieldSofa', 'transformation', 'matrix22', ('w1', 6), 2, 'CONFIRMED'),
     ('SandyStonePath', 'blend', 'opacitymult', ('end', -1), 6, 'CONFIRMED'),
     ('SandyStonePath', 'normal', 'intensity', ('end', -1), 2, 'CONFIRMED'),
-    # FIELD 1, NOT FIELD 0, AND THE SLOT DID NOT MOVE. The walk used to charge `distance`'s
-    # optional mask input twice -- once as the edge it is, once as w1 field 0 -- so the
-    # parameter block began one slot late and this pairing landed on the field before the
-    # real one. On these two records the two readings sit on the same WORD, which is why the
-    # value kept matching; they part wherever w1 bit 0 is clear. The witness is unchanged
-    # (56.2999992 and 64.2200012, records 3 and 180); only the field it is attributed to is.
-    ('SandyStonePath', 'distance', 'distance', ('w1', 1), 2, 'CONFIRMED'),
-    ('SandyStonePath', 'directionalwarp', 'intensity', ('w1', 0), 5, 'CONFIRMED'),
-    ('SandyStonePath', 'directionalwarp', 'warpangle', ('w1', 1), 5, 'CONFIRMED'),
+    # THE FIELD AT BIT 2, NOT THE ONE AT BIT 0, AND THE SLOT DID NOT MOVE. The walk used to
+    # charge `distance`'s optional mask input twice -- once as the edge it is, once as a w1
+    # field -- so the parameter block began one slot late and this pairing landed on the
+    # field before the real one. On these two records the two readings sit on the same WORD,
+    # which is why the value kept matching; they part wherever w1 bit 0 is clear. The
+    # witness is unchanged (56.2999992 and 64.2200012, records 3 and 180); only the field it
+    # is attributed to is.
+    #
+    # THE IDS ARE BIT OFFSETS SINCE THE WIDTH LEGEND LANDED, and the three rows below are
+    # the same three facts renumbered, not three new ones: `distance`'s radius was field 1
+    # on an even grid and is the field at bit 2; `directionalwarp`'s two were fields 0 and 1
+    # under a per-filter grid SHIFT of 1 and are the fields at bits 1 and 3;
+    # `transformation`'s matrix was field 3 and is the field at bit 6. Every slot is
+    # unchanged -- the corpus-wide A/B moved no `param_slots` position or width at all.
+    ('SandyStonePath', 'distance', 'distance', ('w1', 2), 2, 'CONFIRMED'),
+    ('SandyStonePath', 'directionalwarp', 'intensity', ('w1', 1), 5, 'CONFIRMED'),
+    ('SandyStonePath', 'directionalwarp', 'warpangle', ('w1', 3), 5, 'CONFIRMED'),
 )
 
 

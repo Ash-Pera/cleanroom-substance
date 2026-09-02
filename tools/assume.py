@@ -159,8 +159,10 @@ QUESTIONS = {
     #                         det>1 27.5% (n=40,047) against 0b11 at det<1 23.9% / det>1
     #                         55.0% (n=26,084). An association with zoom direction at about
     #                         3:1, which is not a partition and names nothing.
-    #   emboss.w1field0       w1 field 0 -- bits 1 and 2, on the SHIFTED grid (SPEC 7.4;
-    #                         `derive_costs.W1_GRID_SHIFT[8] = 1`). 9 program slots, every
+    #   emboss.w1field0       the w1 field at bit 1 -- bits 1 and 2 (SPEC 7.4: a field
+    #                         begins at its own bit, and this one is odd, which is why the
+    #                         reader that imposed an even grid needed a per-filter shift
+    #                         constant here). 9 program slots, every
     #                         one carrying an `inputref` on a `float1` input and returning
     #                         `f1`. The nine identifiers are `bricks_age`,
     #                         `bricks_bricks_age`, `grunge_age`,

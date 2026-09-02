@@ -1056,9 +1056,10 @@ WALKED_PARAMS = frozenset({1, 4, 11, 12, 15})
 PARAM_SPEC = {
     # `blend` states the SAME parameter at either of two masks, and which one is the port's
     # doing: connect the node's `opacity` input and the field at (4, 5) takes the
-    # image-input code while the slider moves to (9, 10). The second mask is a declared
-    # STRADDLE -- `3 << 9`, spanning fields 4 and 5 -- which `decompose.STRADDLED` relabels
-    # as the one field it is, so `_parameters_walked` resolves it against that reported id.
+    # image-input code while the slider moves to (9, 10). The second mask is `3 << 9` -- a
+    # field that begins at an ODD bit, which is why an even two-bit grid could not hold it
+    # and needed a straddle table. There is no grid: `decompose` reports each field at its
+    # own bit offset and `_parameters_walked` resolves this mask directly.
     # Corpus-wide the arms never collide: 963 records read code 01 there and 170 read 10,
     # and code 11 -- the only state this table's `x == mask` edge test would fire on --
     # occurs 0 times in 310,697 blend records.
@@ -1113,23 +1114,46 @@ BIT_EXACT_KINDS = frozenset({1, 12, 15})
 _kind_conflicts = []
 
 
-# The OTHER kind mechanism: a population count in the CLASS word.
+# The OTHER kind mechanism, AND IT IS NOT A COUNT.
 #
-# `blur` (10) and `warp` (7) keep no kind bits in slot 1 - the best correlation any of its
-# sixteen bits reaches is 0.225. They keep them in the class word, and they do not spend one
-# bit per parameter. `popcount(cls & mask)` is the NUMBER of leading block slots that hold
-# programs; the rest hold constants. Order is positional, filled from the front of the block.
+# `blur` (10) and `warp` (7) keep no kind bits in slot 1 -- the best correlation any of its
+# sixteen bits reaches is 0.225. They keep them in the class word, and this was read as a
+# POPULATION COUNT: `popcount(cls & mask)` is the number of LEADING block slots that hold
+# programs, the rest constants, filled positionally from the front of the block. That is
+# SPEC 6.4's fourth layout alphabet, `PARAM_POPCOUNT = {10: 0x2881, 7: 0x0881}`.
 #
-#     blur      bits 0, 7, 11, 13    100.000%   over 43,883 slot reads, every position exact
-#     warp      bits 0, 7, 11          99.889%   over 42,473
+# IT IS ONE ROLE PER BIT, and the count is a consequence of that rather than the statement.
+# Scored against what the slot HOLDS -- `valid_program(words[slot] + 52)`, never against any
+# reader's labels -- over the whole corpus, every class bit that places a slot in these two
+# filters is all-or-nothing, with no bit anywhere in between:
 #
-# The masks are nested, which is worth more than the earlier note allowed: `warp` uses three
-# bits and `blur` those same three plus one.
+#     warp  bit 16  26,559/26,559   bit 23    269/269     bit 27  19,388/19,388
+#           bit 30   1,109/1,109    bit 26      0/860     bit 29       0/24,815
+#     blur  bit 16   9,981/9,981    bit 23     51/51      bit 27   8,675/8,675
+#           bit 29     303/303      bit 26      0/10,318  bit 28       0/14,931
 #
-# Both must be read against the LAYOUT TABLE's block, not against fixed slot numbers. An
-# earlier measurement hardcoded `warp` to slots 3-5 and got 95.69%, because its block starts
-# at slot 3 in 13,623 records and slot 4 in 1,561. Using the block gives 99.889%.
-PARAM_POPCOUNT = {10: 0x2881, 7: 0x0881}
+# So the pointers are `warp` {16, 23, 27, 30} and `blur` {16, 23, 27, 29}, and the popcount
+# mask is the same set MINUS warp's bit 30 -- which is exactly the 0.111% the count could
+# never explain. The A/B, on the same slots and the same ground truth:
+#
+#     filter    records    popcount exact   per-bit exact      slots   popcount   per-bit
+#     warp       26,791            25,682          26,791     73,000     71,891    73,000
+#     blur       15,371            15,371          15,371     44,259     44,259    44,259
+#
+# A strict gain: nothing that agreed stops agreeing, and warp's 1,109 bit-30 records come
+# right. The count and the per-bit rule are not two readings of one fact -- the count is
+# POSITIONAL, so it is also wrong by construction whenever a VALUE bit is emitted before a
+# POINTER bit, which is warp's (29 before 30) and cannot happen to blur.
+#
+# NOTE WHAT THIS IS NOT. It is not the width legend: bits 27 and 29 are both one word wide
+# in `blur` and one is a pointer and one a value, so a KIND cannot say which. Role is a
+# NAME-legend fact -- what the word means -- and the legend states widths. That is why this
+# table is here beside `PARAM_SPEC` rather than in `legend.json`.
+#
+# Read against the WALK's block, not against fixed slot numbers. An earlier measurement
+# hardcoded `warp` to slots 3-5 and got 95.69%, because its block starts at slot 3 in 13,623
+# records and slot 4 in 1,561.
+CLS_PROGRAM_BITS = {10: frozenset({16, 23, 27, 29}), 7: frozenset({16, 23, 27, 30})}
 
 
 # FX-Map parameter table: the OTHER thing an fxmaps record's slot 2 can address.
@@ -2338,17 +2362,23 @@ class Record:
         if len(self.words) < 2:
             return None
         # The RULE first, the memo second. `record_layout.header_words` computes this
-        # from the two presence masks -- a constant plus the cost of each set bit -- and
-        # returns None for filters whose costs have not been derived. HEADER_WORDS is a
-        # memo of the same quantity, keyed by (filter, cls, w1 & LAYOUT_MASK), and that
-        # key is lossy: it masks w1, so it cannot even represent the arity fields. Where
-        # the rule answers it is exact by construction; see tools/derive_costs.py.
+        # from the two presence masks -- SPEC 7.3's width legend, three structural counts
+        # plus one type width per set bit -- and returns None for filters whose cells have
+        # not been established. HEADER_WORDS is a memo of the same quantity, keyed by
+        # (filter, cls, w1 & LAYOUT_MASK), and that key is lossy: it masks w1, so it cannot
+        # even represent the arity fields. See archive/tools/derive_legend.py.
         import record_layout
         w1 = self.words[1]
         # Two-shape filters. Warp's w1 word is a VERSION fact -- absent before 0x90000,
         # present from it -- and the old edge-start detector could not tell w1 == 0 from
         # "an edge to record 0", misreading 180 v9 records. Shuffle's shapes coexist
         # within versions, so it stays per-record: slot 1 is self-describing.
+        #
+        # REDUNDANT NOW AND KEPT AS A NO-OP: `record_layout.has_w1` is the one statement of
+        # this rule and `header_words` applies it to whatever `w1` it is handed, so passing
+        # None here changes nothing. Left because it costs nothing and because a caller that
+        # nulls `w1` for the shape that has none is never wrong; removing it is a separate
+        # tidy with its own diff.
         if self.filter_id == 7:
             ver = self.asm.header.get('version') if isinstance(self.asm.header, dict) else 0
             if ver < 0x90000:
@@ -2697,14 +2727,14 @@ class Record:
         memo returns nothing at all, and the two agree exactly on 153,230 slots.
 
         `dirmotionblur` AND `directionalwarp` ROUTE HERE TOO, and both now use the FIELD
-        MATCH. `directionalwarp` used to be unable to: a spec mask is matched to a cost-model
-        field by `pres == 3 << (2j + w1_shift)`, and with the shift fixed at 0 for every
-        filter its `intensity` (0x006, bits 1 and 2) and `warpangle` (0x018) matched no field
-        at all, so it fell through to `_parameters_positional`. That was read as a fact about
-        dirwarp and was a fact about the GRID -- `costs.json` fitted its w1 fields on an even
-        grid that splits both parameters. The grid is corrected (`derive_costs.W1_GRID_SHIFT`
-        gives filter 12 a shift of 1), so 0x006 = 3 << 1 is field 0 and 0x018 = 3 << 3 is
-        field 1, and the match names both.
+        MATCH. `directionalwarp` used to be unable to: a spec mask was matched to a
+        cost-model field by `pres == 3 << (2j + w1_shift)`, and with the shift fixed at 0 for
+        every filter its `intensity` (0x006, bits 1 and 2) and `warpangle` (0x018) matched no
+        field at all, so it fell through to `_parameters_positional`. That was read as a fact
+        about dirwarp and was a fact about the GRID that was being imposed on it. There is no
+        grid now: SPEC 7.3's width legend keys every w1 cell on the field's OWN bit -- 1 and
+        3 for these two -- so `3 << 1` and `3 << 3` match by construction and the match names
+        both. The per-filter shift constant that stood in for this is gone with the fit.
 
         Verified name-for-name against the positional rule it replaces, over the corpus plus
         the reference packs: the same names in the same order on 62,898 of 62,898 records,
@@ -3121,36 +3151,25 @@ class Record:
         if d is None:
             return []
         names = {}
-        # THE GRID THE FIELDS ARE ON COMES FROM THE WALK. A parameter's mask matches field
-        # j at bit `2j + w1_shift`, and the shift is 0 for every filter but
-        # `directionalwarp`, whose parameters begin at bit 1. Before that offset was fitted
-        # into `costs.json`, dirwarp's 0x006 and 0x018 matched no field at all and it had to
-        # fall through to `_parameters_positional`; with the grid corrected both match
-        # exactly (0x006 = 3 << 1 -> field 0, 0x018 = 3 << 3 -> field 1) and it routes here.
-        # Verified name-for-name against the positional rule it replaces: same names in the
-        # same order on 62,898 of 62,898 records.
-        gsh = int(d.get('w1_shift', 0) or 0)
-        # A DECLARED STRADDLE IS A FIELD, AND THE WALK SAYS WHICH ONE. `blend`'s relocated
-        # opacity is `3 << 9` and `transformation`'s offset `3 << 25` -- one bit off the
-        # grid, each spanning two tiling fields -- so neither can resolve by position.
-        # `decompose.STRADDLED` relabels each pair as the single field it is, positions and
-        # widths untouched, and the name binds to that reported id. Without this the mask
-        # is unresolvable and the record's parameter comes back unnamed, which is what left
-        # every masked `blend` reporting no opacity at all.
-        straddled = {3 << shift: fid for _lo, _hi, shift, fid
-                     in _decompose.STRADDLED.get(self.filter_id, ())}
+        # A FIELD BEGINS AT ITS OWN BIT, AND `param_slots` REPORTS THAT BIT. There is no
+        # grid and no shift: `decompose` walks SPEC 7.3's width legend, whose w1 keys are
+        # BIT OFFSETS, so a presence mask resolves by a single shift-and-compare.
+        #
+        # It used to be two rules stacked. A `w1_shift` per filter placed field j at bit
+        # `2j + shift` -- 0 everywhere but `directionalwarp` and `emboss` -- and a
+        # `decompose.STRADDLED` table then relabelled the pairs that no even grid could
+        # hold: `blend`'s relocated opacity at bit 9 and `transformation`'s offset at bit
+        # 25, each spanning two tiling fields, each appearing as one phantom field that
+        # always looks like a value and one that always looks like a pointer. Both were the
+        # same artefact of imposing a grid, and both are gone; the masks resolve directly.
         aligned = True
         for nm, pres, _prog in spec:
-            for j in range(16):
-                if pres == (3 << (2 * j + gsh)):
-                    names[j] = nm
+            for sh in range(32):
+                if pres == (3 << sh):
+                    names[sh] = nm
                     break
             else:
-                fid = straddled.get(pres)
-                if fid is None:
-                    aligned = False
-                else:
-                    names[fid] = nm
+                aligned = False
         if not aligned:
             # UNREACHABLE, AND LOUD RATHER THAN SILENT IF IT EVER IS NOT. Every mask in
             # every PARAM_SPEC entry resolves to exactly one field under the grid shift
@@ -3168,25 +3187,33 @@ class Record:
             # is not `3 << (2j + shift)` and SPEC 7.4 needs the counter-example, not a
             # workaround.
             raise ValueError(
-                'filter %d has a PARAM_SPEC mask off the w1 field grid (shift %d): %r. '
-                'See SPEC 7.4 -- a presence mask must be 3 << (2j + shift).'
-                % (self.filter_id, gsh,
+                'filter %d has a PARAM_SPEC mask that is not a two-bit field: %r. '
+                'See SPEC 7.4 -- a presence mask must be 3 << (the field\'s own bit).'
+                % (self.filter_id,
                    [hex(pres) for _n, pres, _p in spec
-                    if not any(pres == (3 << (2 * j + gsh)) for j in range(16))]))
+                    if not any(pres == (3 << sh) for sh in range(32))]))
         out = []
-        for j, _st, pos, _w in d['param_slots']:
-            nm = names.get(j)
+        for sh, _st, pos, _w in d['param_slots']:
+            nm = names.get(sh)
             if nm is None or not (0 <= pos < len(self.words)):
                 continue
             out.append(self._read_slot(nm, pos))
         return out
 
     def program_slots(self):
-        """Which block slots hold programs, for the filters that encode it as a count.
+        """Which block slots hold programs, for the filters that state it in the class word.
 
-        Returns a list of (slot, is_program) for filters in PARAM_POPCOUNT, or [] otherwise.
+        Returns a list of (slot, is_program) for filters in CLS_PROGRAM_BITS, or [] otherwise.
         This is the class-word mechanism, not the slot-1 bit pairs of PARAM_SPEC - a filter
         uses one or the other, never both.
+
+        ONE ROLE PER BIT, NOT A COUNT. This used to read `popcount(cls & PARAM_POPCOUNT[f])`
+        and mark the first that many slots of the block, positionally. The role is a law of
+        the BIT that placed the slot -- see `CLS_PROGRAM_BITS` for the corpus-wide split,
+        which is all-or-nothing on every bit of both filters -- and taking it from there is
+        exact on 26,791 of 26,791 warp records against the count's 25,682, and identical on
+        blur's 15,371. The count is positional and warp emits a VALUE bit (29) before a
+        POINTER bit (30), which no count can express.
 
         THE SLOT LIST COMES FROM THE WALK; only the program/baked SPLIT is the class
         word's. This used to take the slots from LAYOUTS and `return []` whenever the
@@ -3208,10 +3235,10 @@ class Record:
         before layouts.json can be removed; this is the first of the two. The table stays
         as the fallback for a record the walk cannot resolve.
         """
-        m = PARAM_POPCOUNT.get(self.filter_id)
-        if m is None or len(self.words) < 2:
+        bits = CLS_PROGRAM_BITS.get(self.filter_id)
+        if bits is None or len(self.words) < 2:
             return []
-        slots = None
+        slots, owner = None, {}
         try:
             import decompose as _decompose
             _d = _decompose.decompose(self)
@@ -3220,14 +3247,24 @@ class Record:
         if _d is not None and _d.get('end') is not None:
             slots = sorted(set(_d['cls_slots'])
                            | {t[2] for t in _d.get('param_slots', ()) if len(t) >= 3})
+            # WHICH BIT PLACED WHICH SLOT is the walk's own answer, and the only thing this
+            # needs from it beyond the block itself. `cls_params` carries (bit, first slot,
+            # width), so a multi-word cell owns every word of its own extent.
+            for (b, sl, n) in _d.get('cls_params', ()):
+                for i in range(n):
+                    owner[sl + i] = b
         if slots is None:
+            # The memo fallback states no bit per slot, so it keeps the positional reading of
+            # the count -- the same answer it has always given, for the records the walk
+            # cannot resolve. It is reached 0 times in 42,166 corpus blur/warp records.
             hit = LAYOUTS.get((self.filter_id, self.cls,
                                self.words[1] & LAYOUT_MASK.get(self.filter_id, 0)))
             if not hit:
                 return []
             slots = list(hit[1])
-        n = bin(self.cls & m).count('1')
-        return [(s, j < n) for j, s in enumerate(slots) if s < len(self.words)]
+            n = len(bits & {b for b in range(16, 32) if (self.cls >> (b - 16)) & 1})
+            return [(s, j < n) for j, s in enumerate(slots) if s < len(self.words)]
+        return [(s, owner.get(s) in bits) for s in slots if s < len(self.words)]
 
     def _read_slot(self, name, slot):
         """One parameter slot as (name, kind, value).
@@ -4766,8 +4803,8 @@ class Record:
             except Exception:
                 _d = None
             if _d:
-                # BY FIELD, NOT BY WIDTH. `matrix22` is the w1 pair at bits 6,7 -- field 3
-                # under the two-bit tiling `decompose` reports in `param_slots[0]`. Selecting
+                # BY FIELD, NOT BY WIDTH. `matrix22` is the w1 field at bit 6, which is the
+                # id `decompose` reports in `param_slots[0]`. Selecting
                 # "the sole width-4 entry" instead was ambiguous whenever w1 bit 28 (the
                 # background colour) is set on a COLOUR record, because that parameter is a
                 # Float4 too: two width-4 entries, no way to choose. Corpus-wide the field
@@ -4776,7 +4813,7 @@ class Record:
                 # NightSkyHDRISubstance001 record 1589 (slots 3 and 7) and pbr_render record
                 # 44 (slots 3 and 9), both w1 bit 28 set. 66,508 of 66,508.
                 _m = [t for t in _d.get('param_slots', ())
-                      if len(t) >= 4 and t[3] == 4 and t[0] == 3]
+                      if len(t) >= 4 and t[3] == 4 and t[0] == 6]
                 if len(_m) == 1:
                     base = 4 * _m[0][2]
         if base is None:
@@ -4877,14 +4914,15 @@ class Record:
             _d = None
         if _d:
             # BY ITS FIELD, not by "the sole two-word entry". The offset's two-bit code
-            # sits at bits 25,26, which the tiling's even-bit grid used to split across
-            # fields 12 and 13; `decompose.STRADDLED` reframes it as one field carrying the
-            # ordinary alphabet, so state 1 IS the baked Float2 and can be asked for. Over
+            # sits at bits 25,26 -- one field beginning at bit 25, which an even two-bit grid
+            # split across two phantom halves and a straddle table had to put back together.
+            # Read at its own bit it is the ordinary alphabet, so state 1 IS the baked Float2
+            # and can be asked for. Over
             # 242,931 filter-2 records the field read names the same slot the width rule
             # named, on every record where that rule answered, and it no longer depends on
             # no other parameter happening to be two words wide.
             _two = [t for t in _d.get('param_slots', ())
-                    if len(t) >= 4 and t[0] == 12 and t[1] == 1]
+                    if len(t) >= 4 and t[0] == 25 and t[1] == 1]
             if len(_two) == 1:
                 s = _two[0][2]
         if s is None:
