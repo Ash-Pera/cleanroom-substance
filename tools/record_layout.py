@@ -27,6 +27,8 @@ rather than a fit:
                  10 program -> 1        11 edge    -> 1
            + arity                (the two filters whose w1 holds an input count)
            + one conjunction      (bitmap 24+27)
+           + one integer field    (transformation's w1 bits 0-4: one reserved value of a
+                                   5-bit INTEGER emits a program pointer)
 
     width:  0 -> 0   1 -> 1   2 -> 2   4 -> 4   C -> 1 grey / 4 colour
     n_hdr = 1 + (this record carries a w1 word)
@@ -260,6 +262,17 @@ def header_words(filter_id, word0, w1, version=None):
             # from a two-bit code (SPEC 6.3). One field in one filter: `distance`'s
             # optional mask input, whose cost tracks bit 0 and not baked-versus-program.
             total += (w1 >> b) & 1
+        iv = sp.get('w1_int')
+        if iv:
+            # THE ONE w1 REGION THAT IS AN INTEGER AND NOT TWO-BIT FIELDS (SPEC 7.4).
+            # `transformation`'s bits 0-4 hold a 5-bit value; 0..13 are literal and cost
+            # nothing, 31 is the ordinary value on 230,639 of 234,859 records, and 30 is
+            # the one value that emits a program pointer. No partition of those bits into
+            # two-bit fields can express that -- cost is additive over a partition, and
+            # `0x3f`/`0x3e` and `0x23`/`0x22` differ in bit 0 alone and disagree about
+            # what it costs.
+            if (w1 >> iv[0]) & iv[1] == iv[2]:
+                total += 1
         for sh, k in sp['w1'].items():
             st = (w1 >> int(sh)) & 3
             if st == 1:

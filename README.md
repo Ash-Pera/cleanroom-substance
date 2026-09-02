@@ -186,10 +186,13 @@ SPEC §7.3's **width legend**: `header = n_hdr + n_base + n_fixed + Σ width(kin
 `w1` field read at its own bit, and every cell one KIND from `0 1 2 4 C`. **106 kinds over
 107 cells** replace the 688 floats, and nothing in the live path reads a fitted number: there
 is no intercept, no float, no negative coefficient, no per-state cell, no interaction mode
-and no fitted variant. The two models answer the identical header length on **903,301 of
+and no fitted variant. The two models answer the identical header length on **903,276 of
 903,301** corpus records with the same 315 refusals, and the walks they drive agree slot for
-slot on **903,440 of 903,440** — `inputs`, `cls_slots`, `param_slots`, `cls_params`, `end`,
-`hdr`, `prog`, `size_slot` and `root`, no exceptions. The fitted model is kept in
+slot on **903,440 of 903,440** — `inputs`, `cls_slots`, `cls_params`, `hdr`, `prog`,
+`size_slot` and `root`, no exceptions. `end` and `param_slots` part on **25** records, and
+that is the one place the legend deliberately went past the fit rather than a drift:
+`transformation`'s `w1` bits 0-4 are a 5-bit INTEGER and not two-bit fields, and one of its
+values emits a program pointer both models used to leave unplaced (SPEC §7.4). The fitted model is kept in
 `archive/tools/` as the independent second one, the role `render.py` plays for `render2`.
 Its two remaining halves went with it: `sharpen` was still pricing the record's CANVAS, at
 ±0.5 on word0's log2-size nibbles, latent only because the twelve resolutions in the corpus
@@ -256,9 +259,21 @@ What is left is 2,123,304 bytes, 0.746%, and 68.5% of that is the two-byte align
 residual is **624,822 bytes, 0.220% of record bytes**: `vectorshape` 171,836 (one real
 payload-extent bug, 13 records, fix written up as a patch and not applied), `fxmaps`
 169,086 of entry-table parameter words,
-219,002 in `transformation` and `blend` of which 131,068 are two constant-fill image blobs
+224,466 in `transformation` and `blend` of which 131,068 are two constant-fill image blobs
 in a single specimen, and 64,898 everywhere else. See FORMAT-NOTES.md, "The 7.5% of
 uninterpreted record bytes".
+
+**`transformation`'s share of that is now classified, and none of it is a decode gap.** Its
+342,244 uninterpreted record bytes are an exact three-way partition with no remainder:
+225,530 (65.9%) is the two-byte alignment pad, in 112,765 runs of exactly 2 zero bytes each
+with a decoded structure on both sides; 65,532 (19.2%) is one specimen's constant-fill blob,
+`Grid.sbsasm` record 4; and the remaining 51,182 (14.9%, 119 runs) each abut a byte the
+FX-Map reader has already labelled, belonging to a *neighbouring* `fxmaps` record whose tree
+lies inside a `transformation` extent because the record directory is a partition rather
+than an allocation. `blend` splits the same way — 318,110 as 210,358 pad, 65,536 blob and
+42,216 fx-adjacent, also exact — so the pair's 224,466 non-pad bytes are 131,068 of blob and
+93,398 of another filter's payload charged to these extents. See FORMAT-NOTES.md,
+"`transformation`'s 342,244 uninterpreted record bytes".
 
 Decoded: the container, the record directory as a sorted extent map, the tag's filter and
 resolution fields, 22 of 23 filter ids — 21 named from the format's own sources and

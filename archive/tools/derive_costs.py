@@ -5,9 +5,16 @@ RETIRED AS THE LIVE MODEL, KEPT AS THE INDEPENDENT ONE. `record_layout` and `dec
 read SPEC 7.3's WIDTH LEGEND now (`tools/legend.json`, derived by `derive_legend.py`):
 one KIND per header cell from the five-symbol alphabet `0 1 2 4 C`, 106 kinds over 107
 cells, against the 688 fitted numeric cells this script emits. The two agree on
-`header_words` for 903,301 of 903,301 corpus records with the same 315 refusals, and the
+`header_words` for 903,276 of 903,301 corpus records with the same 315 refusals, and the
 walk they drive agrees slot for slot on 903,440 of 903,440 -- `inputs`, `cls_slots`,
-`param_slots`, `cls_params`, `end`, `hdr`, `prog`, `size_slot` and `root`, no exceptions.
+`cls_params`, `hdr`, `prog`, `size_slot` and `root`, no exceptions.
+
+THE 25 THAT DIFFER ARE THE ONE PLACE THE LEGEND WENT PAST THIS MODEL, and they are a gap
+this one has too rather than a regression in it. `transformation`'s w1 bits 0-4 are a 5-bit
+INTEGER, not two-bit fields, and the value 30 emits a program pointer that both models used
+to leave unplaced -- this one because its even grid charges those bits nothing in every
+state. See `derive_legend.W1_INT` and SPEC 7.4. `end` and `param_slots` part on exactly
+those 25 records and on nothing else.
 
 That is why this stays. It is the second model, the role `render.py` plays for `render2`
 and `_compute_layout` plays for `decompose`: two implementations that are known to differ

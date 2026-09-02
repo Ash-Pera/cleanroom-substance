@@ -45907,3 +45907,236 @@ Harness after the change: `test_filters.py test_tables.py` (the REFERENCE_FLOOR 
 `./t`, `test_tables.py test_fx.py test_bitmap.py`, `render2/test_render2.py test_text.py
 test_sampler.py` -- results with the report that accompanies this section. No floor was
 lowered.
+
+# `transformation`'s low `w1` bits are one integer and one flag, and the 25 records were its dynamic arm
+
+The follow-up to the width legend's one disclosed miss. `2d4f34e` left `transformation`
+grey at 0.99989 — 2 keys, 25 records, `w1 = 0x3e`, observed header 5 where both the legend
+and the independent fit said 4 — and recorded that bits 1–5 had no field in either model.
+They still have no field. They were never fields.
+
+## The 25 records are real, and the probe that says so is not the header model
+
+All 25 have the identical shape: `[tag][w1 = 0x3e][one input edge][word 3][word 4]`, then an
+inline program at word 5. Word 3 resolves a program ending in `add.i2` — an int2, the size
+expression class bit 16 gates. Word 4 resolves a program ending in `select.i1` — an int1 —
+and points at word 5, the word immediately after itself, which is what a program-pointer slot
+at the end of a header looks like when its program is emitted inline.
+
+The non-circular test is to ask, for every `transformation` record, whether a valid program
+resolves at the word JUST PAST the header the model states. Nothing in that question reads
+the walk's labels:
+
+    w1 & 0x3f      records    program at the modelled header end
+    0b111110            25    25   100.00%
+    everything else 234,834     0     0.00%
+
+The single apparent exception — `Camouflage_02` record 271, `w1 = 0x200003f` — is not one.
+Record 272 is an `fxmaps` record whose tree root lands at word 6 of record 271's extent, so
+the word there is the neighbour's tree and not this record's slot; its value happens to
+resolve at `+52` because the record directory is a partition and not an allocation (§5).
+Excluding it the control is 0 of 234,834.
+
+Held at ONE class word the split is the same: `w0 = 0x03197704` with `w1 = 0x3f` is 9,975
+records over 285 files and 0 extra slots; the same `w0` with `w1 = 0x3e` is 9 records over 9
+files and 9 extra slots. So whatever charges the word is in `w1`, and `0x3e` and `0x3f`
+differ in bit 0 alone.
+
+## Why no field grid can hold it — the arithmetic, not an opinion
+
+A cost is additive over a partition of the bits, so the block holding bit 0 has to explain
+every observed pair that differs in bit 0 alone. Four such pairs exist and they contradict
+each other under every split finer than four bits. All four values occur under the same class
+word (`0x03197704` / `0x03195504`), so no class interaction is available to rescue them:
+
+    split               one pair says                          the other pair says
+    bit 0 alone         0x21 -> 0 / 0x20 -> 0   (322, 898)     0x3f -> 0 / 0x3e -> 1  (175110, 25)
+    a field at (0,1)    0x23 -> 0 / 0x22 -> 0   (304, 250)     0x3f / 0x3e
+    a field at (0,1,2)  0x27 -> 0 / 0x26 -> 0   (251, 250)     0x3f / 0x3e
+
+**So the seed hypothesis is half right and half wrong.** The pair framing — every other
+filter's `(state << 2k)` — is refuted here outright: the discriminating field would have to
+be at (0, 1), and there states `10` and `11` cost the same in 554 records and differ by a
+word in 175,135. But "independent flags" is refuted by the first line of the same table: bit
+0 read alone is free in one pair and a word in another. What survives is a block of at least
+four bits read as one value, which is what the corpus then confirms it is.
+
+## What the integer is — a halving count, measured against the record's own geometry
+
+Read bits 0–4 as a 5-bit integer `k` and the arbiter stops being header length and becomes
+the record's own size. Over the 4,192 records whose field reads 0..13 and whose single image
+input resolves to a record with a stated size:
+
+    own log2 size == max(input log2 size - k, 0)      3,525 / 4,192   84.1%
+      where the input is a `levels` record                            99.47%  (n=2,438)
+      where the record carries a size expression                      92.72%  (n=3,667)
+    control: the same law at k = 0                    1,060 / 4,192   25.3%
+    control: a uniform guess over 0..13                                7.1%
+
+Where exactly one `k` in 0..13 reproduces the size relation it is the STATED `k` on
+2,536 of 2,945 (86.11%). The pyramids are visible without any statistics —
+`RoadSubstance002` records 2566..2576 all read input 2565 (log2 6x6), and read
+`k` = 1..11 at their own sizes 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0. `SnowSubstance002` does the
+same from a log2 6x8 input and `ChewingGumSubstance001` from log2 6x6, and in all three the
+input is a single `levels` record every member of the chain reads. What breaks the law is the input
+being something whose own tag size is not the reference: source filter `levels` 99.47%,
+`pixelprocessor` 88.10%, `uniform` 77.46%, `blend` 75.41%, against `transformation` 11.02%,
+`fxmaps` 9.17% and `gradient` 0.00%. `k` = 12 and 13 (74 records) do not obey it at all and
+are not explained.
+
+The value space, over all 234,859 corpus records:
+
+    0 .. 13    literal, costs no header word            4,192
+    14 .. 28   never observed
+    29         3 records, costs no word, unexplained        3
+    30         ONE PROGRAM POINTER                          25
+    31         the ordinary value, costs no word       230,639
+
+And the two arms agree about what kind of thing they hold. All 25 programs on the `30` arm
+are byte-identical and compute an integer from `$sizelog2`:
+
+    |log2 w - log2 h| >= 2  ?  int(|log2 w - log2 h| - 1)  :  0
+
+which is a halving count computed from the canvas, the same quantity the literal arm states.
+That is the strongest single piece of evidence here: the dynamic arm's RETURN TYPE and
+meaning were not used to derive the literal arm's law, and they match it.
+
+## Bit 5 is separate, and bit 4 is what says so
+
+Read bits 4 and 5 as a two-bit field and its states `10` and `11` should mean different
+things. On the determinant of the record's own baked `matrix22` they behave alike and `01` is
+the one that parts:
+
+    w1 bit 5 set     det<1 23.7%   det=1 20.5%   det>1 55.8%   n = 26,459
+    w1 bit 5 clear   det<1 58.4%   det=1 14.0%   det>1 27.5%   n = 40,049
+
+Bit 4 moves neither: `0b100000` (bit 5 set, bit 4 clear) reads det>1 63.0% / det<1 1.0%,
+which is the bit-5-set population and not a third thing. The recorded figure this replaces
+framed the same measurement as "field 2 = 01 against 11"; read per bit it is bit 5 alone, at
+about 2.5:1. **An association with the direction of the scale, not a partition, and it names
+nothing.** Left in `assume.QUESTIONS['transformation.w1low']`.
+
+## The source arbiter is silent here, and its silence is now measured
+
+Pinning `transformation` nodes in permitted paired sources to compiled records by their
+stated `matrix22`/`offset` constants — 73 nodes uniquely matched across 16 packages, where
+the earlier pass reached 36 — **every one lands on `w1 & 0x3f = 0b111111`**: `tiling` 0 (19
+nodes, 9 packages), `tiling` 2 (2 nodes, 1 package), `tiling` unstated (52 nodes, 9
+packages). `tiling` stays refuted, and now on a second stated value; but the same run reaches
+no other code at all, so nothing source-side can say what the codes ARE. The earlier note's
+`tiling` 1 leg is not reproduced here — this pinning keys on both constants and drops nodes
+that match more than one record, which is a stricter rule than the one that found it.
+
+The manifest is silent for a structural reason: a field charged zero words in its ordinary
+states has no pointer slot, so there is no program to read an `inputref` out of. The one arm
+that does have a pointer is the 25, and their program opens on `sysvar 3`, not an `inputref`.
+
+`DLG-Tools__Camouflage` is the near miss worth recording: it states `mipmapmode 1` and
+`filtering 1` on five `transformation` nodes and has a compiled twin, but those five nodes
+state neither `matrix22` nor `offset`, so there is no constant to pin them by, and the twin
+holds 248 `transformation` records for 17 source nodes. No pinning was attempted on a
+frequency.
+
+## SO IT IS DESCRIBED AND NOT NAMED
+
+A halving count is what the field DOES. What the format calls it is a name, and the only
+route to it is a permitted source that states a value other than the default, which the
+corpus does not contain. `SPEC.md` 13.4 lists the row as "*(a halving count — an INTEGER,
+not a two-bit field)*" and gives it no name.
+
+## The change, and what it moved
+
+`derive_legend.W1_INT = {2: (0, 31, 30)}` — one stated structural entry of the same kind as
+`ARITY` and `EDGE_BITS`, written into `legend.json` as `w1_int`, honoured by
+`record_layout.header_words` and emitted as a parameter slot by `decompose`.
+`bit_census` learned it too, through the same `int_mask` shape it already had for
+`arity`, because a census that reports the truth is the point of having one:
+`transformation`'s w1 line read `0(unmodelled) 1(unmodelled) ... 5(unmodelled)` and now
+reads `0..4(integer), 5(unmodelled)`, which is exactly the finding.
+
+    derive_legend                 transformation grey 0.99989 -> 1.00000
+                                  EVERY filter now exact 1.00000 in both colours;
+                                  "KEYS THE LEGEND DOES NOT REPRODUCE" is empty
+                                  106 kinds over 107 cells, 214 (cell, colour) pairs,
+                                  evidence counts UNCHANGED -- this adds no kind and no
+                                  fitted cell
+    idempotence                   re-run before the change: md5 117a8ff4... twice
+                                  re-run after  the change: md5 4a70262a... twice
+
+    header_words, before vs after, 903,616 records
+      agree 903,276   both refuse 315   disagree 25   (transformation 4 -> 5)
+
+    decompose slot for slot, 903,440 records compared
+      inputs, cls_slots, cls_params, hdr, prog, size_slot, root   903,440 / 903,440
+      end            differs on 25 (transformation)
+      param_slots    differs on 25 (transformation)
+
+**`end` and `param_slots` are named invariants and they moved.** They moved on exactly the
+25 records this pass set out to close and on nothing else in the corpus, which is the
+deliberate difference the bar allows rather than a misplacement. `inputs` and `hdr` — the
+other two — did not move at all.
+
+Against the INDEPENDENT model, `derive_costs`' fit as of `2d4f34e^`, run over the whole
+corpus: agree 903,276, both refuse 315 (the same 315), **disagree 25**. That is a stated
+departure from 0-disagreement, and the justification is the probe above: the fit says 4 and
+the word at 4 holds a program on 25 of 25 against 0 of 234,834. The fit cannot say otherwise,
+because its even grid charges these bits nothing in every state.
+
+The three guards:
+
+    walk cursor == the stated header length      903,301 / 903,301   unchanged
+    edge slots holding a backward index        1,302,475 / 1,302,475  unchanged
+    state-2 slots resolving a program             198,249 / 198,249   WAS 198,224 / 198,224
+
+**The third one's denominator moved and it must not be read as a passing figure.** It gained
+exactly the 25 new slots and all 25 resolve; nothing that resolved stopped resolving. A
+reader comparing to the recorded 198,224 should expect 198,249 from here.
+
+Harness: `test_filters.py test_tables.py` 20 passed in 10m36s, no floor lowered and none
+moved; `./t` 19; `test_fx.py test_bitmap.py` 20; `render2/test_render2.py test_text.py
+test_sampler.py` 27. All at their recorded baselines.
+
+## What this does NOT establish
+
+The slot's place among the other `w1` fields. No corpus record sets the integer to 30 and a
+field at 6, 25 or 28 at the same time, so "at the head of the parameter block" is where the
+bit offset puts it and not something the file has shown. The specimen that would test it is a
+`transformation` record with `w1 & 0x1f == 30` and any of bits 6, 25, 28 nonzero.
+
+Nor does it explain `k` = 29 (3 records, no word), or `k` = 12 and 13 (74 records, which
+break the size law at 0 of 64 where it is uniquely determined). Values 14..28 are unobserved,
+and `header_words` does not refuse on them — it charges them nothing, the same as 0..13. That
+is a guess, and the honest alternative would be a refusal; it is left as a charge because the
+observed 0..13 and 31 all cost nothing and 30 is the only exception in 234,859 records.
+
+# `transformation`'s 342,244 uninterpreted record bytes are an exact three-way partition, and none of it is a gap
+
+Second-largest residual after `fxmaps`, and the `levels` template holds. Classifying every
+maximal uninterpreted run inside a `transformation` extent, over `audit_corpus`'s own
+file-wide canvas:
+
+    alignment pad, exactly 2 zero bytes            225,530   65.90%   112,765 runs
+    one constant-fill blob, Grid.sbsasm record 4    65,532   19.15%         1 run
+    abuts a neighbouring fxmaps node or entry       51,182   14.95%       119 runs
+                                                   -------
+                                                   342,244  100.00%
+
+It is a partition with no remainder: **0 bytes are left over.**
+
+* The pad is 112,765 runs of exactly 2 bytes, all zero, every one with a decoded structure on
+  both sides — 200,492 bytes between an inline program body and the extent end, 25,010
+  between two program bodies, 28 elsewhere. Not runs of 1 or 3: every one is 2.
+* The blob is one record. `Grid.sbsasm` record 4 carries 65,532 bytes of `ff` from word 4 to
+  its extent end — half of the "two constant-fill image blobs in a single specimen" the
+  README already discloses under `transformation` and `blend`.
+* The 119 remaining runs each sit immediately beside a byte the FX-Map reader has already
+  labelled as a node cell or an entry, belonging to a NEIGHBOURING `fxmaps` record whose tree
+  lies inside a `transformation` extent. That is the record directory being a sorted
+  partition rather than an allocation, and the bytes are charged here only because the
+  extent map says so. The same mechanism produced the one false positive in the program probe
+  above.
+
+So `transformation`'s residual is accounting, not decode: 65.9% format padding, 19.2% one
+specimen's image blob, 14.9% another filter's payload inside this filter's extent. The figure
+moved by 100 bytes with this pass (342,344 -> 342,244) and the whole of that is the 25 header
+words now placed.

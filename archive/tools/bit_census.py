@@ -225,6 +225,18 @@ def _arity_bits(spec):
     return (ar[1] << ar[0]) if ar else 0
 
 
+def _int_bits(spec):
+    """The w1 bits a plain INTEGER field occupies, as a mask, or 0.
+
+    One filter: `transformation`'s bits 0-4 (SPEC 7.4). It is not an arity -- the value
+    does not add slots -- and it is not two-bit fields, which is the point: the census
+    used to report all six low bits as `unmodelled` when five of them are one number the
+    legend reads and the sixth is a separate flag.
+    """
+    iv = spec.get('w1_int')
+    return (iv[1] << iv[0]) if iv else 0
+
+
 def _identified(spec, colour):
     """{label: bool} -- did the corpus MEASURE this cell in this colour, or predict it?
 
@@ -292,6 +304,7 @@ class FilterCensus(object):
         self.modelled_cls = set()
         self.modelled_fields = set()
         self.arity_mask = 0
+        self.int_mask = 0
         self.free_mask = 0                      # w1 bits whose field costs 0 in every state
         self.free_values = collections.Counter()  # the value those bits carry
 
@@ -312,6 +325,7 @@ class FilterCensus(object):
         fields = _spec_fields(spec)
         self.modelled_fields |= set(fields)
         self.arity_mask |= _arity_bits(spec)
+        self.int_mask |= _int_bits(spec)
         for b in range(16, 32):
             if (w0 >> b) & 1:
                 c = _cls_cost(spec, b, colour)
@@ -388,6 +402,9 @@ class FilterCensus(object):
                 continue
             if (self.arity_mask >> b) & 1:
                 st = 'arity'
+                j = None
+            elif (self.int_mask >> b) & 1:
+                st = 'integer'
                 j = None
             else:
                 j = next((sh for sh in sorted(self.modelled_fields)
@@ -552,7 +569,7 @@ def report(cens, out=sys.stdout):
                              for s in (1, 2, 3) if sc[s]),
                     costs, '/'.join(nm) if nm else '--'), file=out)
             loose = [b for b in sorted(c.w1_set)
-                     if not (c.arity_mask >> b) & 1
+                     if not (c.arity_mask >> b) & 1 and not (c.int_mask >> b) & 1
                      and not any(sh <= b <= sh + 1 for sh in c.modelled_fields)]
             if loose:
                 print('    bits in no modelled field: %s' % ' '.join(
@@ -561,6 +578,14 @@ def report(cens, out=sys.stdout):
                 ab = [b for b in sorted(c.w1_set) if (c.arity_mask >> b) & 1]
                 print('    arity count bits: %s' % (' '.join(
                     '%d:%d' % (b, c.w1_set[b]) for b in ab) or '(never set)'), file=out)
+            if c.int_mask:
+                spec0 = next(iter(c.specs.values()))
+                iv = spec0.get('w1_int')
+                ib = [b for b in sorted(c.w1_set) if (c.int_mask >> b) & 1]
+                print('    integer field bits (SPEC 7.4, one value emits a pointer): %s'
+                      '   value %d -> 1 word' % (' '.join(
+                          '%d:%d' % (b, c.w1_set[b]) for b in ib) or '(never set)', iv[2]),
+                      file=out)
             if c.free_mask:
                 vals = c.free_values.most_common(6)
                 print('    mask-valued fields (0 words in every state) mask 0x%x, values: %s'
@@ -612,6 +637,7 @@ def to_json(cens):
             'unaccounted_cls': c.unaccounted_cls(),
             'unaccounted_w1': c.unaccounted_w1(),
             'arity_mask': c.arity_mask,
+            'int_mask': c.int_mask,
         }
     return out
 

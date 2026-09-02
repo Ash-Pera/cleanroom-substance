@@ -403,6 +403,22 @@ def decompose(r):
     masks = _param_field_masks(f)
     ri = r.index
     if w1 is not None:
+        iv = sp.get('w1_int')
+        if iv and (w1 >> iv[0]) & iv[1] == iv[2]:
+            # THE ONE w1 REGION THAT IS AN INTEGER RATHER THAN TWO-BIT FIELDS (SPEC 7.4).
+            # `transformation`'s bits 0-4 hold a 5-bit value: 0..13 are literal and cost
+            # nothing (the record's own log2 size is its input's less that many, 99.47%
+            # where the input is a `levels` record against 25.3% for the same law at 0),
+            # 31 is the ordinary value, and 30 is the one value that emits a POINTER. At
+            # the word this places, a program resolves on 25 of 25 records reading 30 and
+            # 0 of 234,834 reading anything else; all 25 return an int1 computed from
+            # `$sizelog2`, the same quantity the literal arm holds.
+            #
+            # It is emitted here, at the head of the parameter block, because the field
+            # begins below every declared offset. No corpus record sets it TOGETHER with
+            # a field at 6, 25 or 28, so the corpus does not test that ordering.
+            param_slots.append((iv[0], 2, pos, 1))
+            pos += 1
         for sh in sorted(int(k) for k in sp['w1']):
             st = (w1 >> sh) & 3
             if st == 0:

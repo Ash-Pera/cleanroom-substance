@@ -384,6 +384,8 @@ header = n_hdr + n_base + n_fixed
              10 program -> 1        11 edge    -> 1
        + arity                (the two filters whose w1 holds an input count, §6.4)
        + one conjunction      (bitmap 24+27, §6.4)
+       + one integer field    (`transformation`'s w1 bits 0-4 — §7.4's last paragraph:
+                               a 5-bit value, one of whose codes emits a program pointer)
 
 width:  0 -> 0   1 -> 1   2 -> 2   4 -> 4   C -> 1 grey / 4 colour
 n_hdr = 1 + (this record carries a w1 word)
@@ -396,7 +398,9 @@ count or a width from the type legend above. **There is no intercept, no float, 
 coefficient, no per-state cell and no grid shift**, and the whole table is 106 kinds over
 107 cells — 32 of them the bit a `w1` field begins at. A model with 688 fitted numeric cells
 across five spec shapes stood here before it, and the two answer the identical header length
-on 903,301 of 903,301 corpus records with the same 315 refusals.
+on 903,276 of 903,301 corpus records with the same 315 refusals. **The 25 that differ are the
+one place the legend deliberately went past the fit** — `transformation`'s integer field
+(§7.4), where both models used to be one word short.
 
 **A kind is a pair of widths and the corpus does not always give both.** Only two of the
 five share a width — `Float1` is `(1, 1)` and per-channel is `(1, 4)` — so a cell exercised
@@ -566,6 +570,52 @@ rather than the record header. The masks above are still well-formed, they are s
 matched. A memo that attributed header parameters to it named **0 of 95,426** slots inside the
 header it claimed them from, against `levels` at 160,106 of 169,219 (94.61%): the two are not
 one rule at two severities but a working rule and a baseless attribution.
+
+**ONE REGION OF `w1` IS NOT FIELDS AT ALL, AND THE FILE PROVES IT RATHER THAN SUGGESTING
+IT.** `transformation`'s `w1` bits 0-4 are a 5-bit INTEGER. They are not `(state << 2k)`
+pairs, and no partition of them into two-bit fields — or into single-bit flags — can hold
+what the corpus states, because a cost is additive over a partition and four observed codes
+contradict every split finer than four bits. Each pair below differs in **bit 0 alone**, and
+all four occur under one class word (`0x03197704` / `0x03195504`), so no class interaction is
+available to rescue them:
+
+| split | one pair says | the other pair says |
+|---|---|---|
+| bit 0 alone | `0x21`→0 / `0x20`→0 (322, 898 records): bit 0 is free | `0x3f`→0 / `0x3e`→1 (175,110, 25): bit 0 costs a word |
+| a field at (0, 1) | `0x23`→0 / `0x22`→0 (304, 250): state 10 = state 11 | `0x3f` / `0x3e`: state 10 is one word higher |
+| a field at (0, 1, 2) | `0x27`→0 / `0x26`→0 (251, 250) | `0x3f` / `0x3e` |
+
+Read as an integer `k` it resolves, and the arbiter is the record's own geometry rather than
+its header length. **`k` is how many times the record halves its input.** Over the 4,192
+records whose field reads 0..13 and whose single image input resolves to a record with a
+stated size, `own log2 size = max(input log2 size − k, 0)` holds on 84.1% — **99.47%** where
+the input is a `levels` record, 92.72% where the record carries a size expression — against
+**25.3%** for the same law at `k = 0` and 7.1% for a uniform guess over 0..13. Where exactly
+one `k` in 0..13 reproduces the size relation it is the STATED `k` on 2,536 of 2,945
+(86.1%). The pyramids are visible directly: `RoadSubstance002` records 2566–2576 all read
+input 2565 (log2 6×6) and read `k` = 1…11, at their own sizes 5, 4, 3, 2, 1, 0, 0, 0, 0, 0,
+0.
+
+Two of the 32 values are reserved and the rest of the high half is unobserved:
+
+    0 .. 13    literal, and costs no header word           4,192 records
+    14 .. 28   never observed -- a reader meeting one should refuse
+    29         3 records, costs no word, unexplained
+    30         ONE PROGRAM POINTER, after the class block  25 records
+    31         the ordinary value, costs no word           230,639 records
+
+The `30` arm is what closed a 25-record hole in both header models. At the word just past
+the header they used to state, a program resolves on **25 of 25** records reading 30 and on
+**0 of 234,834** reading anything else — the single apparent exception is a neighbouring
+`fxmaps` record's tree lying inside this record's extent, the directory being a partition
+(§5). All 25 programs return an **int1** computed from `$sizelog2`, which is the same kind
+of quantity the literal arm holds: `|log2 w − log2 h| ≥ 2 ? int(|log2 w − log2 h| − 1) : 0`.
+So the field's dynamic arm computes a halving count and its static arm states one.
+
+What this does NOT establish is the slot's place among the other fields. No corpus record
+sets the integer to 30 and a field at 6, 25 or 28 at the same time, so "at the head of the
+parameter block" is where the bit offset puts it and not something the file has shown.
+**Bit 5 is separate and is not part of the integer** — see §13.4.
 ---
 
 ## 8. FX-Map trees
@@ -968,6 +1018,8 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 2 transformation | matrix22 | `0x000000C0` | 6 | Float4 |
 | 2 transformation | offset | `0x06000000` | 25 | Float2 |
 | 2 transformation | backgroundcolour | `0x10000000` | 28 | per-channel |
+| 2 transformation | *(a halving count — an INTEGER, not a two-bit field)* | `0x0000001F` | 0 | 0 words at 0-13 and 31, one pointer at 30 (§7.4) |
+| 2 transformation | *(unnamed)* | `0x00000020` | 5 | flag, 0 words in every state |
 | 11 dirmotionblur | intensity / mblurangle | `0x0003` / `0x000C` | 0 / 2 | scalar |
 | 12 directionalwarp | intensity / warpangle | `0x0006` / `0x0018` | 1 / 3 | scalar |
 | 15 levels | levelinlow, levelinhigh, levelinmid, leveloutlow, levelouthigh | `0x0003`, `0x000C`, `0x0030`, `0x00C0`, `0x0300` | 0,2,4,6,8 | per-channel |
@@ -1044,8 +1096,11 @@ every record of all three filters, needs no negative or half-word coefficient, a
 every header length unchanged. **That is now the whole model rather than a repair of four
 entries** (§7.3): the base is pinned for every filter, every cell is one kind from
 `0 1 2 4 C`, and 688 fitted numeric cells became 106 kinds over 107 cells with no intercept
-to shave. The two answer the identical header length on 903,301 of 903,301 records with the
-same 315 refusals, and the walks they drive agree slot for slot on 903,440 of 903,440.
+to shave. The two answer the identical header length on 903,276 of 903,301 records with the
+same 315 refusals, and the walks they drive agree slot for slot on 903,440 of 903,440 on
+`inputs`, `cls_slots`, `cls_params`, `hdr`, `prog`, `size_slot` and `root`. `end` and
+`param_slots` part on 25 records and nowhere else — `transformation`'s integer field (§7.4),
+the one gap the legend closed and the fit did not.
 Three things confirm the new placement rather than merely being consistent with it: the size-expression slot resolves as a valid program in 3,640 of
 the 3,640 records where it moved, against 281 at the old position; `ChesterfieldSofa.sbs`'s
 declared `intensity` 10.0 lands on the `w1` field the legend names, where it used to land on
@@ -1125,6 +1180,35 @@ marks membership of a complementary midpoint split pair — a signal cut into it
 halves — and marks nothing else. Its records are also fed by `pixelprocessor` in 45.7% of cases
 against 0.16% for that matched control, the one filter whose output has no reason to lie in
 [0, 1]. Naming it would change 0 of 85,820 readings, because it consumes no word.
+
+**`transformation`'s low `w1` bits are one integer and one flag, and neither is named.**
+§7.4 sets out why bits 0-4 cannot be two-bit fields and what the integer is: over the 4,192
+records reading 0..13 with a resolvable input, `own log2 = max(input log2 − k, 0)` on 84.1%
+(99.47% where the input is a `levels` record) against 25.3% for the same law at `k = 0`. It
+is described and not named: the value 31 is carried by 98.2% of the filter, no permitted
+source reaches any value but the default, and a name would have to come from knowing what
+the engine calls a halving count rather than from anything the file says.
+
+The source arbiter is silent here and its silence is measured, not assumed. Pinning
+`transformation` nodes in permitted paired sources to compiled records by their stated
+`matrix22`/`offset` constants — 73 nodes uniquely matched across 16 packages — every one
+lands on `w1 & 0x3f = 0b111111`, the modal code: `tiling` 0 (9 packages), `tiling` 2 (1) and
+`tiling` unstated (9) alike. Two different stated values cannot compile to identical bits if
+those bits are the value, so `tiling` is refuted; but the same run reaches no other code at
+all, so nothing source-side can name what the codes ARE. The manifest is silent for a
+structural reason rather than a lexical one: a field charged zero words in its ordinary
+states has no pointer slot, so there is no program to read an `inputref` out of. The one
+arm that does have a pointer is the 25 records at value 30, and their program opens on
+`sysvar 3` rather than on an `inputref`, so it names nothing either.
+
+**Bit 5 is not part of the integer**, and what separates them is that bit 4 does not behave
+like its partner. Read as a two-bit field at (4, 5) its states `10` and `11` should mean
+different things; on the determinant of the record's own baked `matrix22` they behave alike
+and state `01` is the one that differs — bit 5 set gives det > 1 on 55.8% and det < 1 on
+23.7% (n = 26,459), bit 5 clear gives det < 1 on 58.4% and det > 1 on 27.5% (n = 40,049),
+and bit 4 moves neither. So bit 5 is a one-bit flag associating with the direction of the
+scale at about 2.5:1 — an association, not a partition, and it names nothing.
+`assume.QUESTIONS['transformation.w1low']` carries this.
 
 **Inherited parameters (class word).** These class bits are shared rather than per-filter,
 and a reader handles them once. Only bits 16 and 23 are universal — the high half is a

@@ -19,6 +19,8 @@ width legend:
                  10 program -> 1        11 edge    -> 1
            + arity                (the two filters whose w1 holds an input count)
            + one conjunction      (bitmap 24+27)
+           + one integer field    (transformation's w1 bits 0-4, whose one reserved value
+                                   emits a program pointer -- see `W1_INT`)
 
     width:  0 -> 0   1 -> 1   2 -> 2   4 -> 4   C -> 1 grey / 4 colour
     n_hdr = 1 + (this record carries a w1 word)
@@ -40,6 +42,10 @@ WHAT IS STATED HERE AND WHAT IS DERIVED, because the difference is the whole cla
     `EDGE_BITS`     the w1 bits that declare an image INPUT from their low bit alone
                     (SPEC 6.3: `distance`'s field 0)
     `ARITY`         the two filters whose w1 holds an input COUNT, with its (shift, mask)
+    `W1_INT`        the one w1 region that is an INTEGER rather than two-bit fields
+                    (`transformation` bits 0-4), with the reserved value that emits a
+                    program pointer. Its arbiter is the record's own size against its
+                    input's, not this solve.
     `CONJ`          the one paired conjunction (SPEC 6.4: bitmap 24+27)
     `MIN_VERSION`   the version gate `emboss`'s modern layout is behind
     `W1_ORDER`      the one filter whose parameter block is not in ascending bit order
@@ -189,6 +195,38 @@ EDGE_BITS = {21: [0]}
 #: words". `fxmaps` reads (10, 63); a nibble truncates `ie_curve` record 35's 34 inputs to 2.
 ARITY = {4: (10, 63), 20: (0, 31)}
 
+#: THE ONE REGION OF `w1` THAT IS NOT TWO-BIT FIELDS. `(shift, mask, program value)`:
+#: `transformation`'s bits 0-4 hold a 5-bit INTEGER, and one reserved value of it emits a
+#: program pointer where every other value emits nothing.
+#:
+#: WHY IT CANNOT BE FIELDS. Cost is additive over a partition of the bits, so the block
+#: holding bit 0 has to explain `0x3f -> 0` against `0x3e -> 1` while also explaining
+#: `0x23 -> 0` against `0x22 -> 0`. Read bit 0 alone: `0x21`/`0x20` (322 and 898 records)
+#: say it costs the same either way, `0x3f`/`0x3e` (175,110 and 25) say it costs a word.
+#: Read (0,1) as a field: `0x23`/`0x22` (304 and 250) put state 10 at the same cost as
+#: state 11, `0x3f`/`0x3e` put it one word higher. Read (0,1,2): `0x27`/`0x26` (251 and
+#: 250) against the same pair. Every split finer than four bits is refuted by a pair of
+#: observed codes differing in bit 0 alone, and all four pairs occur under ONE class word
+#: (0x03197704 and 0x03195504), so no class interaction is available to rescue them.
+#:
+#: WHAT THE INTEGER IS. Over the 4,192 records whose field reads 0..13 and whose single
+#: image input resolves to a record with a stated size, the record's own log2 size is
+#: `max(input log2 - k, 0)` on 84.1% -- 99.47% where the input is a `levels` record,
+#: 92.72% where the record carries a size expression -- against 25.3% for the same law at
+#: k = 0 and 7.1% for a uniform guess over 0..13. Where exactly one k in 0..13 reproduces
+#: the size relation it is the STATED k on 2,536 of 2,945 (86.1%). The pyramids are
+#: visible directly: `RoadSubstance002` records 2566-2576 all read input 2565 (log2 6x6)
+#: and read k = 1..11 with own sizes 5,4,3,2,1,0,0,0,0,0,0.
+#:
+#: 31 is the ordinary value, on 230,639 of 234,859 records, and no size law holds there.
+#: 30 is the value that emits one program pointer: at the word just past the modelled
+#: header end a program resolves on 25 of 25 records reading 30 and on 0 of 234,834
+#: reading anything else (the single apparent exception is a neighbouring `fxmaps`
+#: record's tree lying inside this record's extent, the directory being a partition). All
+#: 25 programs return an INT1 and compute it from `$sizelog2` -- the same quantity the
+#: literal arm holds. Values 14..28 do not occur; a reader meeting one should refuse.
+W1_INT = {2: (0, 31, 30)}
+
 #: SPEC 6.4's paired conjunction: two class bits that, set together, name one field.
 CONJ = {16: [(24, 27)]}
 
@@ -260,6 +298,9 @@ def _row(f, w0, w1, clsbits):
             forced += (w1 >> ar[0]) & ar[1]
         for b in EDGE_BITS.get(f, ()):
             forced += (w1 >> b) & 1
+        iv = W1_INT.get(f)
+        if iv and (w1 >> iv[0]) & iv[1] == iv[2]:
+            forced += 1                            # the integer field's program arm
         for sh in W1_OFFSETS.get(f, ()):
             st = (w1 >> sh) & 3
             if st == 1:
@@ -554,6 +595,10 @@ def _spec(f, colours):
         spec['edge_bits'] = EDGE_BITS[f]
     if f in ARITY:
         spec['arity'] = list(ARITY[f])
+    if f in W1_INT:
+        # (shift, mask, program value): the one w1 region in the corpus that is an INTEGER
+        # rather than two-bit fields. See W1_INT for why no field partition can hold it.
+        spec['w1_int'] = list(W1_INT[f])
     if conj:
         spec['conj'] = sorted(conj)
     if shape4 is not None:
@@ -599,6 +644,8 @@ def main(argv=None):
             w1s.append('arity(%d,%d)' % tuple(sp['arity']))
         if 'edge_bits' in sp:
             w1s += ['edge bit %d' % b for b in sp['edge_bits']]
+        if 'w1_int' in sp:
+            w1s.append('int(%d,%d) prog@%d' % tuple(sp['w1_int']))
         free_labs = {'cls.%d' % b for b in sp.get('cls_free', ())}
         for lab, ev in sp['evidence'].items():
             for cn, src in ev.items():

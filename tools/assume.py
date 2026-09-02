@@ -135,30 +135,60 @@ QUESTIONS = {
     #                         and 50.8% for `copy`, the two that select rather than combine.
     #                         Both edges are present either way, so it is not "a background
     #                         is connected".
-    #   transformation.w1low  w1 bits 0-5, six bits charged nothing in any state, two values
-    #                         covering 98.2% of the filter (0b111111 on 175,110 records,
-    #                         0b011111 on 55,529) and a tail of 47 more. A packed enum whose
-    #                         value is its bits; naming it from a frequency is the inference
-    #                         `normal`'s field 1 had to retract.
+    #   transformation.w1low  w1 bits 0-5. NOT SIX BITS OF ONE THING, AND NOT TWO-BIT
+    #                         FIELDS: bits 0-4 are a 5-bit INTEGER and bit 5 is a separate
+    #                         one-bit flag. Both are still unnamed, and what changed is that
+    #                         the integer is now DESCRIBED rather than uninterpreted --
+    #                         SPEC 7.4 and 13.4 carry the measurement.
     #
-    #                         `tiling` IS THE ONE CANDIDATE WITH EVIDENCE AGAINST IT, and it
-    #                         is source-side rather than manifest-side: the manifest cannot
-    #                         speak here at all, because a field charged zero words in its
-    #                         PROGRAM state has no pointer slot and so no program to read an
-    #                         `inputref` out of. Pinning a permitted source's transformation
-    #                         node to one compiled record by its stated `matrix22`/`offset`
-    #                         constants and reading `w1 & 0x3f`: `tiling` 0 (11 nodes, 7
-    #                         packages), `tiling` 1 (3 nodes, 1 package) and `tiling` unstated
-    #                         (22 nodes, 7 packages) ALL give 0b111111. Two different stated
-    #                         values cannot compile to the same bits if those bits are the
-    #                         value. Not conclusive -- the `tiling` 1 leg is one package, and
-    #                         every uniquely matched node lands on the modal 0b111111, so the
-    #                         second population is unreached by any source we may read.
-    #                         What the corpus says about that second population, over the
-    #                         baked matrix determinant: field 2 = 0b01 is det<1 58.5% /
-    #                         det>1 27.5% (n=40,047) against 0b11 at det<1 23.9% / det>1
-    #                         55.0% (n=26,084). An association with zoom direction at about
-    #                         3:1, which is not a partition and names nothing.
+    #                         WHY NOT FIELDS. Cost is additive over a partition of the bits,
+    #                         and four observed codes contradict every split finer than four
+    #                         bits, each pair differing in bit 0 alone and all four occurring
+    #                         under one class word: 0x21/0x20 say bit 0 is free where
+    #                         0x3f/0x3e say it costs a word; 0x23/0x22 say a field at (0,1)
+    #                         reads 10 and 11 at the same cost where 0x3f/0x3e do not;
+    #                         0x27/0x26 say the same for a field at (0,1,2). The seed
+    #                         hypothesis that these were independent FLAGS is refuted by the
+    #                         first of those pairs just as the pair framing is by the rest.
+    #
+    #                         WHAT THE INTEGER IS. A halving count. Over the 4,192 records
+    #                         reading 0..13 whose single image input resolves, the record's
+    #                         own log2 size is max(input log2 - k, 0) on 84.1% -- 99.47%
+    #                         where the input is a `levels` record, 92.72% where the record
+    #                         carries a size expression -- against 25.3% for the same law at
+    #                         k = 0 and 7.1% for a uniform guess. Value 31 is the ordinary
+    #                         one (230,639 records), 30 emits a program pointer (25 records,
+    #                         all returning an int1 computed from $sizelog2), 29 occurs 3
+    #                         times and costs nothing, and 14..28 never occur.
+    #
+    #                         WHY IT IS STILL NOT NAMED. The name would have to come from
+    #                         knowing what the engine calls a halving count, and no source
+    #                         this project may read reaches any value but the default.
+    #                         `tiling` IS REFUTED, source-side rather than manifest-side:
+    #                         the manifest cannot speak here at all, because a field charged
+    #                         zero words in its ordinary states has no pointer slot and so no
+    #                         program to read an `inputref` out of, and the one arm that DOES
+    #                         have a pointer opens on `sysvar 3` rather than an `inputref`.
+    #                         Pinning permitted sources' transformation nodes to compiled
+    #                         records by their stated `matrix22`/`offset` constants -- 73
+    #                         nodes uniquely matched across 16 packages, where an earlier
+    #                         pass reached 36 -- `tiling` 0 (19 nodes, 9 packages), `tiling`
+    #                         2 (2 nodes, 1 package) and `tiling` unstated (52 nodes, 9
+    #                         packages) ALL give 0b111111. Two different stated values cannot
+    #                         compile to the same bits if those bits are the value. Still not
+    #                         conclusive in the other direction: EVERY uniquely matched node
+    #                         lands on the modal code, so no permitted source reaches any
+    #                         other value and nothing source-side can say what the codes are.
+    #
+    #                         BIT 5 IS THE REMAINING UNNAMED ONE, and it is a bit rather
+    #                         than half a field: read as a two-bit field at (4,5), states 10
+    #                         and 11 ought to differ and instead behave alike, while 01 is
+    #                         the one that parts. On the determinant of the record's own
+    #                         baked matrix22, bit 5 set gives det>1 55.8% / det<1 23.7%
+    #                         (n=26,459) and bit 5 clear det<1 58.4% / det>1 27.5%
+    #                         (n=40,049); bit 4 moves neither. An association with the
+    #                         direction of the scale at about 2.5:1, which is not a partition
+    #                         and names nothing.
     #   emboss.w1field0       the w1 field at bit 1 -- bits 1 and 2 (SPEC 7.4: a field
     #                         begins at its own bit, and this one is odd, which is why the
     #                         reader that imposed an even grid needed a per-filter shift
