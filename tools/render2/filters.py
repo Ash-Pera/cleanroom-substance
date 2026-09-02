@@ -268,12 +268,19 @@ def f_pixelprocessor(ctx, v):
                 ctx.low_confidence.add(v.index)
         # THE PIXEL PROGRAM IS THE LAST HEADER SLOT, which is the record layout model read
         # straight: [tag][arity][inputs][one slot per set class bit][the filter's own].
-        # `decompose` places it BEFORE the class slots for this filter, and the two
+        # `decompose` used to place it BEFORE the class slots for this filter, and the two
         # orderings give the same header length so no length check separates them -- but
         # the contents do. Rokviz record 24 has a 5-word header whose slot 3 is
         # `inputref($randomseed)`, an INHERITED parameter, and whose slot 4 is the pixel
         # program; taking slot 3 renders the record as a constant and blackens the mask
         # that carries the whole basecolor pattern.
+        #
+        # THE WALK AGREES NOW, so `v.prog_slot` and `v.header_end - 1` are the same word on
+        # every record whose arity the walk accepts, and this local workaround has stopped
+        # being one. It is kept as the primary read because it does not depend on the walk
+        # being right about which of two adjacent slots is which -- the same reason it was
+        # written -- and because `prog_slot` is None on the 807 records whose arity field
+        # the walk declines. See FORMAT-NOTES.md, "Every filter, bit by bit".
         progs = ctx.walk_programs(v, include_prog_slot=True)
         main = ctx.prog_at(v, (v.header_end - 1) if v.header_end else None)
         if main is None:

@@ -44973,3 +44973,202 @@ program is evaluated, only the manifest identifier of the graph input each slot'
 The count 46,118 is the `levels` section's own, reached from a different direction, and the
 first-slot column is exceptionless where the component-count measurement was 46,118 of 46,118
 on the same population. Two arbiters, one order.
+
+# Both patches applied, one A/B each — `pixelprocessor`'s class block and `emboss`'s grid
+
+*The two sections above end "written up and NOT applied", each for the same reason: both are
+render-affecting, and a fix that moves `Record.layout[1]` deserves its own measurement rather
+than a ride on someone else's. This is those two measurements. They were done one at a time,
+with a full-corpus A/B between each, so that a regression would name its own cause. Neither
+regressed. One of them moved an invariant the other did not, and that difference is the most
+useful thing here.*
+
+Method, for both: decompose every record of the 437-file corpus twice — once at the tree
+before the change, once after — and diff the seven fields `decompose` returns, by filter.
+903,440 covered records of 903,616. `end`, `inputs`, `hdr` and `param_slots` are the
+invariants a RELABEL must not touch; `prog`, `size_slot` and `cls_slots` are where a relabel
+is allowed to show up.
+
+## Fix 1 — `pixelprocessor`'s class block. A relabel, and the invariants held
+
+The arity arm now walks the class block from `2 + n_in` in `_class_emission_order` and places
+the filter's own program after it, and filter 20 is out of `_CLASS_ORDER_EXEMPT`.
+**`_CLASS_ORDER_EXEMPT` is gone rather than left empty** — with the arity arm corrected there
+is nothing to exempt, and a dead frozenset is an invitation to put something back in it. The
+swap table `_CLASS_ORDER_SWAPS` is the whole legend now, and it applies to every filter.
+
+    A/B over 903,440 covered records          records differing: pixelprocessor 57,818
+                                              every other filter: 0
+
+    end          UNCHANGED        inputs   UNCHANGED
+    hdr          UNCHANGED        param_slots  UNCHANGED
+    prog         moved 57,011     cls_slots moved 57,818     size_slot moved 87
+
+The four invariants are at zero, so this is a relabel exactly as predicted. The three
+populations account for all 57,965 records of the filter:
+
+    57,011   `prog` moves from `2 + n_in` to the last header slot
+       807   `prog` is None before AND after — the records whose arity field the walk
+             declines (a field of 0 under a nonzero `w1`), so there was never a label to move
+       147   nothing moves at all: no costing class bit is set, so the class block is empty
+             and the program sits right after the inputs under either reading
+
+**`size_slot` barely moves, and the reason is that two errors were cancelling.** Under the old
+arm the program took slot `2 + n_in` and the class block ran in ascending order from
+`3 + n_in`, so bit 16 — the lower bit — landed on `3 + n_in`. Under the new one the block
+starts at `2 + n_in` in emission order, so bit 23 takes `2 + n_in` and bit 16 lands on
+`3 + n_in` again. The size expression was on the right word for the wrong reason, and only the
+87 records that set bit 16 with bit 23 CLEAR expose it — those move 4 → 3. This is the same
+shape as SPEC 6.1's standing note that a plain ascending walk still gets the header LENGTH
+right: an error that cancels is not an error you can find by checking totals.
+
+**The arbiter, and it does not ask the walk about itself.** Slot positions computed from the
+arity field and `record_layout.header_words`, never from `decompose`'s labels; each slot's
+word resolved at `+52` and disassembled. Over all 57,965 `pixelprocessor` records:
+
+                                    slot 2 + n_in        slot end - 1
+        resolves as a program           57,965              57,964
+        reads `$pos` (sysvar 8)            105              55,678
+        calls samplelum/samplecol          115              55,179
+        0-9 instructions long           57,833               4,232
+        first instruction               inputref 57,818     sysvar 53,819
+                                        sysvar 105          const 2,130, get 1,376
+
+A per-pixel program reads `$pos`; a pointer to `$randomseed` does not. The two populations are
+not close, and the old slot is a bare `inputref` on 57,818 of 57,965. This reproduces the
+census's own numbers (55,595 and 105) from a probe that counts `$pos` anywhere in the program
+rather than only at the head, which is why it reads 55,678.
+
+**What did not need fixing.** `render2.f_pixelprocessor` already read `header_end - 1` and
+fell back to `prog_slot`, with a comment naming a Rokviz record. Those two are now the same
+word wherever the walk names one, so the render path does not move — which is the reason the
+reference numbers below are unchanged rather than improved. The workaround is kept: it does
+not depend on the walk being right about which of two adjacent slots is which.
+
+**One thing this fix introduced and then removed.** The advance past the program slot was
+guarded on `prog is not None`, which under the new ordering left the walk's cursor one word
+short of the fitted header length on the 807 declined-arity records — a disagreement the old
+ordering hid, because `max(pos, const)` happened to cover it when the program came first.
+Refusing to NAME a slot and refusing to CHARGE it are different things; the advance is
+unconditional now. It changes nothing observable — a full-corpus re-snapshot diffs to zero
+records — and it is recorded because the first attempt had it wrong.
+
+## Fix 2 — `emboss`'s grid. A MISPLACEMENT, and `param_slots` moved
+
+`derive_costs.W1_GRID_SHIFT[8] = 1`, plus the intercept pinned to the record's own base
+region. Re-run for filter 8; `costs.json` regenerated.
+
+    A/B over 903,440 covered records          records differing: emboss 375
+                                              every other filter: 0
+
+    end          UNCHANGED        inputs   UNCHANGED        hdr  UNCHANGED
+    prog         UNCHANGED        size_slot UNCHANGED
+    param_slots  moved 375        cls_slots moved 375
+
+**`param_slots` moved, and this is stated here rather than buried.** Three of the four
+invariants held; the fourth did not, and it was not supposed to. The section above says so in
+advance — "unlike the `pixelprocessor` one this is a genuine misplacement: `param_slots` move,
+and their widths change" — so the movement is the fix rather than a symptom of one, but it is
+the one result in this pair that a reader should not take on trust. What makes it safe is that
+`end` did not move with it: the header is the same length, the same 375 records, and only the
+attribution of words inside it changed. `sci_fi_elements_02` record 3807, the worked example:
+
+    before   cls_slots [4]      param_slots [(f0, state 2, slot 5, 2 words),
+                                             (f1, state 2, slot 7, 1 word)]
+    after    cls_slots [4, 5]   param_slots [(f0, state 1, slot 6, 1 word),
+                                             (f1, state 1, slot 7, 1 word)]
+
+and the words are `0x00096b90`, `0x00096b98`, `0x3f800000`, `0x3e800000` — two program
+pointers and then 1.0 and 0.25. The class block gains slot 5, which is bit 27's `$pixelsize`
+program; the two floats stop being called pointers.
+
+**The pin, and what it does and does not measure.** `PIN_BASE[8] = 5` and
+`PIN_CONST_BITS[8] = (27,)`: the intercept is fixed at the structural base (2 mask words + 2
+image inputs = 4) plus the one word `_transfer_constant` accounts for on bit 16, and bit 27 —
+constant across the whole fitted population, so invisible under a free intercept — is given a
+column of its own. The result:
+
+    const 4.0  (was the half 3.5)      cls16 1   cls23 1   cls27 1   cls20/24/25 0
+    field 0  baked 1                   field 1  baked 1
+    field 2  baked 2 + 2*colour        field 3  baked 1 + 3*colour
+    exact on 375 of 375 covered records, 30 keys
+
+**Two coefficients are on a blind direction and are NOT claimed.** `unident` reports 2. Field
+0's program arm comes out `0.5 + 0.5*colour` and field 2's baked arm `2 + 2*colour`; both are
+right for a COLOUR record (1 word and 4) and unobserved for a grayscale one, because in the
+fitted population field 0 is only ever a program in colour records (9 of them) and field 2 is
+only ever present in colour records (34). The width law says they should read `1 + 0*colour`
+and `1 + 3*colour`; the data does not say so, and they have been left as the fit returns them
+rather than hand-set to the answer. No covered record touches either — the 33 and 13 grayscale
+records that would are all below the `min_version` gate, where the spec refuses to answer at
+all. If a v5+ grayscale `emboss` with a field-0 program ever appears, `int(round(0.5))` is 0
+and the walk will place nothing; that is the failure to watch for, written down before it
+happens.
+
+**Nor is bit 27's 1.0 identified by the pin alone**, and the null space says so: over the 30
+keys, `cls27` is degenerate with `f0.1 + f0.2` — bit 27 is set on every key and field 0 is
+present on every key — so `(cls27 1, f0.1 1)` and `(cls27 0, f0.1 2, f0.2 1.5)` predict all
+375 records identically. Least squares returns the min-norm point of that line and it lands on
+the first. What settles it is not the fit: eight other filters charge bit 27 exactly 1.0, the
+slot holds the `sysvar…exp2` `$pixelsize` program the census identified across ten filters,
+and field 0 is a scalar whose baked arm is one word. The fit agreeing with all three is a
+check on the fit, not the evidence for the coefficient.
+
+**Three readers had to learn the shift.** The grid shift was emitted and honoured only on the
+plain-`cls`/`w1` path: `derive_costs.fit` returned from its two interaction branches before
+the `spec['w1_shift'] = gsh` line, `record_layout._interaction` read `(w1 >> 2j) & 3`, and
+`decompose._interaction_walk` did the same. All three were correct while every interaction
+filter had a shift of 0, and all three are now shift-aware. `decompose` reports `w1_shift` on
+this arm too, as the general arm already did. This is the `walk.SPECS[4]` lesson again — one
+rule, three implementations, and only the one that was exercised stayed right.
+
+## The two loud checks, and the arbiter that is not the walk
+
+SPEC 6.3's two checks, before both fixes and after both:
+
+    edge slots holding a backward index or the absent sentinel
+        1,302,475 / 1,302,475   ->   1,302,475 / 1,302,475      unmoved, 100.000%
+    state-2 (program) w1 slots resolving a program at value + 52
+        198,581 / 199,031       ->   198,224 / 198,224          99.774% -> 100.000%
+
+Fix 1 moved neither: `pixelprocessor` declares no `w1` states and its edges come from the
+arity field, which the fix does not touch. Fix 2 closed the second one entirely. **The
+denominator falls by 807 and that is the interesting half.** 450 of those were the slots that
+failed — the phantom "programs" the even grid invented. The other 357 were slots that DID
+resolve, and they have not been lost: they are `emboss` field 0's state-2 arm under the even
+grid, which is bit 27's `$pixelsize` program read at the right address under the wrong name.
+The census's own note that "8 of them name `$pixelsize`" was pointing straight at it. Under
+the odd grid those words are class slots, so they leave this check's population and are
+counted by the class walk instead. Nothing that resolved has stopped resolving.
+
+**A second arbiter, independent of both checks: the walk's forward cursor against the fitted
+header length.** Measured by spying on `_model_end`'s two arguments over every covered record.
+Before this pair, `emboss` ran SHORT by 1, 3, 4 and 6 words on 371, 3, 3 and 22 records — the
+$pixelsize word the walk never placed, plus the mis-widthed fields. After: **every covered
+record of every filter in the corpus has cursor == fitted length, with no exceptions.** That
+was not true before either fix and it is the strongest single statement available about the
+placement, because the cursor is accumulated forwards from a structural base and the length is
+a fit over 30 keys — two different computations that now agree everywhere.
+
+## What the harness says
+
+    fast lane `./t`                                      19 passed   (unchanged)
+    render2 test_render2 / test_text / test_sampler      27 passed   (unchanged)
+    test_tables / test_fx / test_bitmap                  24 passed   (unchanged)
+    reference height mean                                0.78587     (unchanged)
+    test_filters + test_tables, carrying REFERENCE_FLOOR  see below
+
+No floor was lowered and none was ratcheted up: nothing moved. That is the expected result for
+Fix 1 — `f_pixelprocessor` was already reading `header_end - 1`, so the render never saw the
+mislabel — and for Fix 2 it is the statement that a filter of 375 records with no entry in
+`REFERENCE_FLOOR`'s five packages does not reach the scored channels. A reader should take the
+harness here as evidence of NO REGRESSION and not as evidence for either fix; the evidence for
+the fixes is the two arbiters above, neither of which is a render.
+
+## What this pair did not settle
+
+`emboss`'s two blind coefficients, above. And `_class_emission_order` is called from three of
+`decompose`'s four class-block loops — the interaction walk, the fxmaps walk and the arity arm
+— but not from the additive-spec loop, which still iterates `sorted(spec['cls'])`. That is a
+separate defect with its own population and it wants its own A/B; it is not folded in here,
+for the same reason these two were not folded into each other.

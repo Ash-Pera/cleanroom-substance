@@ -46,27 +46,39 @@ dropping late ones cannot move it -- unless a record's first inline program sits
 own header end, which no record in this corpus does. A corpus that contained one would
 break the equivalence silently.
 
-RE-RUNNING THIS WOULD REVERT THREE ENTRIES, AND THIS IS THE ONLY WARNING OF IT. `const`
-here is a FREE intercept, and the equation says nothing about it being the size of
-anything -- so the solver is at liberty to shave words off it and charge them to a bit
-that is set in every record of a filter. The total is unaffected, which is the whole test
-applied above, and the DECOMPOSITION is wrong: `decompose` walks the same table forwards
-from a base it computes structurally (mask words + base image inputs), so it spends the
-difference as class slots past the header end. That happened on 7,119 records -- shuffle
-3,514, dyngradient 2,214, normal 1,391 -- and put `normal`'s size expression on the slot
-its `intensity` occupies.
+RE-RUNNING THIS STILL REVERTS FOUR ENTRIES, AND THIS IS THE ONLY WARNING OF IT. `const`
+here is a FREE intercept for every filter but the ones in `PIN_BASE`, and the equation says
+nothing about it being the size of anything -- so the solver is at liberty to shave words
+off it and charge them to a bit that is set in every record of a filter. The total is
+unaffected, which is the whole test applied above, and the DECOMPOSITION is wrong:
+`decompose` walks the same table forwards from a base it computes structurally (mask words
++ base image inputs), so it spends the difference as class slots past the header end. That
+happened on 7,119 records -- shuffle 3,514, dyngradient 2,214, normal 1,391 -- and put
+`normal`'s size expression on the slot its `intensity` occupies. `distance` had the same
+defect plus one of its own.
 
-The live `tools/costs.json` therefore carries those three entries RE-SOLVED with the
-intercept pinned to that structural base, `shuffle` split into two guarded variants because
-its class widths differ by record shape. The re-solve is exact on every record, every
-coefficient a non-negative integer, and every header length is identical to what this
-script emits -- only the attribution differs. See `record_layout`'s module docstring for
-the derivation and its arbiters. Nothing here implements it: this script has been archived
-out of `render2`'s import closure, its neighbouring `corpus.py` and `sbsasm.py` went with
-the live tools, and it cannot run in place as it stands. Whoever makes it runnable again
-should pin the base in the fit itself rather than re-attributing afterwards -- and until
-then, a re-run silently undoes the fix, which is why this paragraph is here rather than in
-a commit message.
+The live `tools/costs.json` therefore carries THOSE FOUR entries -- shuffle (3), normal
+(18), dyngradient (19), distance (21) -- re-solved outside this script with the intercept
+pinned to that structural base, `shuffle` split into two guarded variants because its class
+widths differ by record shape. The re-solve is exact on every record, every coefficient a
+non-negative integer, and every header length is identical to what this script emits -- only
+the attribution differs. See `record_layout`'s module docstring for the derivation and its
+arbiters. A re-run silently undoes those four, so a re-run's output must be merged rather
+than copied: diff it against `archive/tools/costs.json`, which is this script's own last
+output, and carry across only the entries that moved.
+
+THE MECHANISM IS IN THIS SCRIPT NOW, for the one filter that has needed it since --
+`PIN_BASE` / `PIN_CONST_BITS`, used for `emboss` (8). Whoever re-solves the other four
+should move them onto it rather than re-attributing afterwards. It also runs in place
+again: it was archived out of `render2`'s import closure while `corpus.py` and `sbsasm.py`
+went with the live tools, and its own directory insert then found neither; `_repo_root`
+puts `tools/` back on the path.
+
+THE CONTROL FOR ANY CHANGE HERE is that an unchanged run reproduces its own last output
+byte for byte. It does: with `W1_GRID_SHIFT[8]` and `PIN_BASE` reverted, a full run emits
+`archive/tools/costs.json` at the same md5, all 21 filters, the same 100.000% exact on each.
+So a diff after a change is attributable to the change and to nothing else -- which is how
+the emboss re-derivation was shown to move filter 8's entry and no other.
 """
 #
 # A CHANGE HERE PAIRS WITH ONE IN `decompose.py`, and the pair has to land in ONE commit.
@@ -86,6 +98,8 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _repo_root                                                     # noqa: E402
+_repo_root.add_tools_to_path()      # `corpus` and `sbsasm` went to tools/ at the archive cut
 import corpus                                                        # noqa: E402
 from sbsasm import Assembly, FILTERS                                  # noqa: E402
 
@@ -381,7 +395,46 @@ def observed():
 # is ZERO in all 62,898 records (corpus + reference packs), and its ten distinct w1 values
 # are all clean two-bit codes when read at 1 and 3. Bits 5 and 7 appear in 5 records
 # between them and get fields of their own under the same 2j+1 grid, costing 0 and 1 word.
-W1_GRID_SHIFT = {12: 1}
+#
+# `emboss` (8) SHOWS THE SAME SIGNATURE AND IS THE SECOND ENTRY. Read at shift 0 it is the
+# only filter in the corpus that fails SPEC 6.3's program check, and it fails it completely:
+# 450 slots whose w1 state says `program` and not one of which decodes at `value + 52`.
+# `sci_fi_elements_02` record 3807 is the case in one line -- `w1` 0x000a is 0b1010, whose
+# fields at bits (1,2) and (3,4) are `01` and `01`, two BAKED parameters, and what sits in
+# the two slots is 1.0 and 0.25. Read at shift 0 the same word makes field 0 a program of
+# width 2 and calls the baked 0.25 a pointer. See FORMAT-NOTES.md, "`emboss`: the state
+# legend is wrong, and its 450 non-resolving program slots say so".
+W1_GRID_SHIFT = {12: 1, 8: 1}
+
+#: FILTERS WHOSE INTERCEPT IS PINNED TO THE RECORD'S OWN BASE REGION rather than left free.
+#:
+#: The module docstring's warning is the reason this exists: `const` is a FREE intercept and
+#: the equation says nothing about it being the size of anything, so the solver is at liberty
+#: to shave words off it and charge them to a bit set in every record of the filter. The
+#: total is unaffected -- which is the only thing the exactness test looks at -- and the
+#: DECOMPOSITION is wrong, because `decompose` walks the same table FORWARDS from a base it
+#: computes structurally (`n_masks + BASE_INPUTS[f]`). `normal`, `dyngradient`, `shuffle` and
+#: `distance` were re-solved this way outside this script; this is the mechanism in it.
+#:
+#: `emboss`: the base region is 2 mask words + 2 image inputs = 4, plus one word for class
+#: bit 16, which is set on every record this fit can see and so cannot be told from the
+#: intercept HERE -- it is identified at 1.0 in the 171 records below emboss's version gate,
+#: and charged 1.0 by all 20 filters whose fit can see it. `_transfer_constant` takes that
+#: word back out of the intercept below, leaving `base[0]` at the structural 4.
+PIN_BASE = {8: 5}
+
+#: Constant-in-this-population class bits given a COLUMN OF THEIR OWN under a pinned
+#: intercept. With the intercept free such a column is the constant and the fit cannot
+#: separate them; with it pinned, the column is determined and the word it carries stops
+#: being invisible to a forward walk.
+#:
+#: `emboss` bit 27 is `$pixelsize` -- set on 375 of the 375 records the fit can see, which is
+#: why it lands in `constant_bits` and why `const` came out at the half 3.5. It is the slot
+#: holding the `sysvar..exp2` program at `sci_fi_elements_02` record 3807 slot 5, and eight
+#: other filters that CAN see the bit charge it 1.0. `_format_wide_cost` refuses to borrow it
+#: for that reason -- two filters charge 0.0, so it is a per-filter fact -- and a pinned
+#: intercept measures it here instead of borrowing it.
+PIN_CONST_BITS = {8: (27,)}
 
 
 def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
@@ -396,6 +449,10 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     """
     arity = W1_ARITY.get(f)
     gsh = W1_GRID_SHIFT.get(f, 0)          # w1 field j sits at bit 2j + gsh
+    pin = PIN_BASE.get(f)                  # a pinned intercept: solve on `header - pin`
+    pinbits = PIN_CONST_BITS.get(f, ())
+    if pin is not None:
+        keys = [(k, h - pin, n) for k, h, n in keys]
 
     # Which bits of word 0 may become features. 'wide' offers all 32 -- the tag's low
     # half carries layout (uniform's colour flag is tag bit 0, +3 words) -- but those
@@ -405,6 +462,10 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     # not vary never become features, so 'wide' is free where the tag is constant.
     def bits_of(keys, bitrange):
         clsbits = [b for b in bitrange if len({k[0] >> b & 1 for k, _, _ in keys}) > 1]
+        # A pinned intercept leaves room for the constant bits to be measured rather than
+        # folded away, so they are offered as columns here. Without the pin this column IS
+        # the constant and the fit is degenerate; `live[0]` below is what makes it not one.
+        clsbits = sorted(set(clsbits) | {b for b in pinbits if b in bitrange})
         aw = [k[1] for k, _, _ in keys if k[1] is not None]
         excl = set()
         if arity is not None:
@@ -473,7 +534,7 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     # state never observed.
     _Xall = np.array([row(k[0], k[1]) for k, _, _ in keys])
     live = np.any(_Xall != 0, axis=0)
-    live[0] = True                            # the constant stays
+    live[0] = pin is None                     # the constant stays -- unless it is PINNED
 
     # How many directions the data cannot see. A field that is present in every key
     # is indistinguishable from the constant, so only their SUM is identified: fxmaps
@@ -555,6 +616,8 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     for _sweep in range(6):
         moved = False
         for i in range(len(c)):
+            if pin is not None and i == 0:
+                continue                      # the intercept is pinned; it is not a knob
             for d in (-1.0, -0.5, 0.5, 1.0):
                 c2 = c.copy(); c2[i] += d
                 s2 = _score(c2)
@@ -563,6 +626,12 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
         if not moved:
             break
     ok = np.rint(X @ c) == y
+    if pin is not None:
+        # Scoring is done against the SHIFTED lengths, so the pinned base goes back into the
+        # intercept only now that `ok` is settled. The spec a caller reads is in the same
+        # units as an unpinned one; nothing downstream has to know which it got.
+        c = c.copy()
+        c[0] = pin
 
     # Label every column in the order row() builds them, so the width-law report can
     # name a coefficient AND say whether the data pins it. A violation on a blind
@@ -609,6 +678,12 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
                 'mode': ('absent' if f in W1_ABSENT else
                          'per_record' if f in W1_PER_RECORD else
                          'arity' if f in W1_ARITY else 'codes')}
+        # THE INTERACTION BRANCHES EMIT THE GRID SHIFT TOO. They used to return before the
+        # `if gsh` line below, so a shifted interaction filter fitted on the odd grid and was
+        # then READ on the even one by `record_layout._interaction` and `decompose`. It cost
+        # nothing while `emboss` was the only such filter and its shift was 0.
+        if gsh:
+            spec['w1_shift'] = gsh
         wt_ = np.array([n for _, _, n in keys], dtype=float)
         return spec, float(wt_[ok].sum() / wt_.sum())
     if colour == 'full':
@@ -625,6 +700,12 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
                 'mode': ('absent' if f in W1_ABSENT else
                          'per_record' if f in W1_PER_RECORD else
                          'arity' if f in W1_ARITY else 'codes')}
+        # THE INTERACTION BRANCHES EMIT THE GRID SHIFT TOO. They used to return before the
+        # `if gsh` line below, so a shifted interaction filter fitted on the odd grid and was
+        # then READ on the even one by `record_layout._interaction` and `decompose`. It cost
+        # nothing while `emboss` was the only such filter and its shift was 0.
+        if gsh:
+            spec['w1_shift'] = gsh
         wt_ = np.array([n for _, _, n in keys], dtype=float)
         return spec, float(wt_[ok].sum() / wt_.sum())
     names = ['const'] + ['cls%s' % b for b in clsbits]

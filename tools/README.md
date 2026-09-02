@@ -228,7 +228,13 @@ record's program wrote.
 ## Deriving the tables
 
     derive_layouts.py     derives layouts.json: (filter, class, layout bits) -> slot roles
-    derive_costs.py       derives costs.json: each filter's slot costs from the corpus
+    derive_costs.py       derives costs.json: each filter's slot costs from the corpus.
+                          It writes its OWN copy, `archive/tools/costs.json`; the live
+                          `tools/costs.json` carries four entries re-solved outside it, so a
+                          re-run is MERGED entry by entry and never copied over. Its
+                          docstring says which four and how to tell a real change from a
+                          reversion -- an unchanged run reproduces its last output byte for
+                          byte, which is the control every change here is diffed against.
     gen_layouts.py        why layouts.json CANNOT be regenerated from the slot rule
     node_census.py        harvests fx-tree node cells and derives the node size law
     fxparams.py           re-derives the FX-Map entry parameter names from sources
@@ -299,8 +305,12 @@ misplaces no word whatever it means. It reads all three name tables (`render2.mo
 `sbsasm.PARAM_SPEC`, and the `blendingmode` nibble that lives in `Record.slot1_flags`),
 because the first version of it read one and reported 310,697 `blend` records as unnamed.
 `--check` runs SPEC 6.3's loud checks corpus-wide: 1,302,475 of 1,302,475 edge slots hold a
-backward record index, and 198,581 of 199,031 state-2 slots resolve a program -- every one of
-the 450 failures being `emboss`, whose grid is off by one (SPEC 7.4).
+backward record index, and 198,224 of 198,224 state-2 slots resolve a program. The second
+check read 198,581 of 199,031 until `emboss`'s grid shift landed -- all 450 failures were that
+one filter (SPEC 7.4), and the denominator falls by 807 rather than 450 because the 357 that
+DID resolve were bit 27's `$pixelsize` program read under a `w1` field's name. They are class
+slots now, so they leave this check's population; nothing that resolved stopped resolving. See
+FORMAT-NOTES.md, "Both patches applied, one A/B each".
 
 `provenance.py` is the one to run against a new corpus before measuring anything with it.
 

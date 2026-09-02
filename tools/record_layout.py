@@ -278,9 +278,9 @@ def header_words(filter_id, word0, w1, version=None):
         if ar:
             total += ar['cost'] * ((w1 >> ar['shift']) & ar['mask'])
         # Field j sits at bit 2j + w1_shift. The shift is 0 for every filter but
-        # `directionalwarp`, whose declared parameters start at bit 1 -- see
-        # `derive_costs.W1_GRID_SHIFT` for why an even grid fitted it exactly and still
-        # attributed it wrongly.
+        # `directionalwarp` and `emboss`, whose declared parameters start at bit 1 -- see
+        # `derive_costs.W1_GRID_SHIFT` for why an even grid fitted both exactly and still
+        # attributed them wrongly.
         _gsh = int(spec.get('w1_shift', 0))
         for j, states in spec['w1'].items():
             st = (w1 >> (2 * int(j) + _gsh)) & 3
@@ -300,8 +300,11 @@ def _interaction(spec, word0, w1):
     ar = spec.get('arity_sm')
     if ar is not None:
         v.append(float((w1 >> ar[0]) & ar[1]) if w1 is not None else 0.0)
+    # Field j sits at bit 2j + w1_shift here too. This read the even grid unconditionally,
+    # which was right only while every interaction filter had a shift of 0; `emboss` is 1.
+    _gsh = int(spec.get('w1_shift', 0) or 0)
     for j in spec['pairs']:
-        st = ((w1 >> (2 * j)) & 3) if w1 is not None else 0
+        st = ((w1 >> (2 * j + _gsh)) & 3) if w1 is not None else 0
         v += [float(st == 1), float(st == 2), float(st == 3)]
     c0 = float(word0 & 1)
     total = sum(b * x for b, x in zip(spec['base'], v))

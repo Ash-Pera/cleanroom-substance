@@ -143,9 +143,18 @@ plausible numbers rather than a failure.**
    same manifest arbiter names the first class slot `$randomseed` on 57,731 of 57,731
    records that set bit 23 and the second `$outputsize` on 56,141 of 56,142 that set bit 16,
    with the block ending exactly one slot before the fitted header length on 57,965 of
-   57,965. What made it look exceptional is that `decompose`'s arity arm allocates the pixel
-   program's slot in FRONT of the class block, so both class labels sit one word late; the
-   patch is written up in FORMAT-NOTES.md, "Every filter, bit by bit", and is not applied.
+   57,965. What made it look exceptional is that `decompose`'s arity arm allocated the pixel
+   program's slot in FRONT of the class block, so both class labels sat one word late. **That
+   is fixed and there is no exception left**: the arity arm walks the class block from
+   `2 + n_in` in the same emission order every other filter uses, and puts the filter's own
+   program after it. The A/B over 903,616 records moved `prog` on 57,011 `pixelprocessor`
+   records and `size_slot` on 87, and moved `end`, `inputs`, `hdr` and `param_slots` on
+   **none** — a relabel, not a misplacement. The arbiter, taken by slot POSITION rather than
+   by the walk's labels: the last header slot reads `$pos` (sysvar 8) on 55,678 records and
+   calls `samplelum`/`samplecol` on 55,179, against 105 and 115 for the slot the walk used to
+   call the pixel program — which instead opens with a bare `inputref` on 57,818 and is 0–9
+   instructions long on 57,833. See FORMAT-NOTES.md, "Every filter, bit by bit", and the A/B
+   appended after it.
    The claim that `pixelprocessor` is "the only filter that sets class bit 22" was a bit
    number read one place low: it sets bit 22 on 0 records and bit 23 on 99.60% of them, and
    the only records in the corpus setting class bit 22 are three `fxmaps` records in
@@ -342,16 +351,18 @@ the second header word.
 
 **`w1` is a grid of two-bit FIELDS.** Field `j` occupies bits `(2j + s, 2j + 1 + s)`, where
 `s` is the filter's **grid shift** — `0` for every filter whose costs are derived, except
-`directionalwarp`, where it is `1`. **A second filter shows the same signature and its costs
-have not been re-derived: `emboss`.** Read at `s = 0` it is the only filter in the corpus that
-fails §6.3's program check, and it fails it completely — 450 slots whose state says `program`
-and not one of which decodes. Read at `s = 1`, with the intercept pinned to the record's own
-base region (2 mask words + 2 image inputs + one word each for class bits 23, 27 and 16) and
-fields 0/1 scalar, 2/3 per-channel, the fitted header length is reproduced on **375 of its 375**
-covered records and the two words in question are the plain floats they look like (1.0 and
-0.25 on `sci_fi_elements_02` record 3807). The measurement is in FORMAT-NOTES.md, "Every
-filter, bit by bit"; `derive_costs` has not been re-run for filter 8 and until it is, `emboss`
-parameter names read off the `s = 0` grid are wrong. The two bits are a STATE, not a count:
+`directionalwarp` and `emboss`, where it is `1`. `emboss` was the second filter found with
+this signature and its costs have since been re-derived on the odd grid. Read at `s = 0` it
+was the only filter in the corpus that failed §6.3's program check, and it failed it
+completely — 450 slots whose state says `program` and not one of which decodes. Read at
+`s = 1`, with the intercept pinned to the record's own base region (2 mask words + 2 image
+inputs + one word each for class bits 23, 27 and 16) and fields 0/1 scalar, 2/3 per-channel,
+the fitted header length is reproduced on **375 of its 375** covered records and the two words
+in question are the plain floats they look like (1.0 and 0.25 on `sci_fi_elements_02` record
+3807). With that re-derivation in `costs.json`, §6.3's program check reads **198,224 of
+198,224** corpus-wide, where it read 198,581 of 199,031 — the whole residual was this one
+grid. The measurement is in FORMAT-NOTES.md, "Every filter, bit by bit", and the A/B appended
+after it. The two bits are a STATE, not a count:
 
     00  absent          the parameter is not present; it costs no slot
     01  baked           a constant, inline in the header, one word per component (§7.3)
@@ -749,16 +760,27 @@ not.** The derivation now fits the excluded population too — not to ship its s
 exactness is below the bar, but to read coefficients off it — and transfers a constant bit's
 cost into the modern spec when, and only when, **every filter that can see that bit agrees on
 it**. Bit 16 is charged 1.0 by all 20 such filters, so it transfers; bit 27 is charged 1.0 by
-eight and 0.0 by two, so it is a per-filter fact and does not. Without that second test both
-moved, and the walk's cursor went from one word short of the fitted length to one word long.
+eight and 0.0 by two, so it is a per-filter fact and may not be borrowed. Without that second
+test both moved, and the walk's cursor went from one word short of the fitted length to one
+word long.
+
+**Bit 27 is now MEASURED here rather than borrowed**, by pinning the intercept instead of
+leaving it free. With `const` fixed at the record's own base region — 2 mask words + 2 image
+inputs, plus the one word bit 16's transfer accounts for — a constant class bit can be given a
+column of its own, where under a free intercept that column *is* the constant. `emboss` bit 27
+comes out at 1.0, which is what eight other filters charge it and what its slot holds: the
+`sysvar…exp2` `$pixelsize` program, at slot 5 of `sci_fi_elements_02` record 3807. `const`
+comes out at the structural 4, where the free fit gave the half 3.5 — a half being the model
+conceding it cannot express the rule.
 
 The transfer is prediction-preserving by construction — the bit is set on every record of the
 population, so a word leaving the intercept and arriving on the bit cancels — and measured:
 `header_words` is identical on all 546 emboss records. What changes is that the walk now
 PLACES the word: `size_slot` comes from the class walk on all 375 walkable records, the last
 caller-side guess is deleted, and the walk's own cursor matches the fitted header length on
-366 of them where it previously matched none. A further 171 records the walk still declines
-on the `min_version` gate.
+**375 of 375**, where before the pin it matched 366 and before the transfer none. A further
+171 records the walk still declines on the `min_version` gate. Corpus-wide the cursor now
+equals the fitted length on every covered record of every filter, with no exceptions.
 
 A second, independent thing had to be right for that to work. The fitted intercept was
 answering two questions at once — how many words the masks and edges take, and where the

@@ -307,21 +307,20 @@ def _restraddle(r, w1, param_slots):
 #: the class block is not in ascending bit order" for the measurement, and SPEC §6.1, which
 #: lists this as the second of two exceptions to ascending order.
 #:
-#: `pixelprocessor` (20) is exempted here, and the exemption is now known to be an artefact of
-#: THIS module rather than a fact about the format. It does not set class bit 22 at all -- that
-#: was a bit number read one place low, and the only records in the corpus setting bit 22 are
-#: three `fxmaps` records in `Texture_Randomizer`. Its header is
+#: THERE IS NO EXEMPTION. `pixelprocessor` (20) was exempted here, and the exemption was an
+#: artefact of THIS module rather than a fact about the format, so the set it lived in is gone
+#: rather than left empty. It does not set class bit 22 at all -- that was a bit number read
+#: one place low, and the only records in the corpus setting bit 22 are three `fxmaps` records
+#: in `Texture_Randomizer`. Its header is
 #: `[w0][w1 arity][inputs][bit 23][bit 16][the filter's own pixel program]`: the manifest names
 #: the first class slot `$randomseed` on 57,731 of 57,731 records that set bit 23 and the second
 #: `$outputsize` on 56,141 of 56,142 that set bit 16, and that block ends exactly one slot before
-#: the fitted header length on 57,965 of 57,965. The arity arm below allocates the pixel
-#: program's slot IN FRONT of the class block, which shifts both class labels by one and is what
-#: makes the filter look like it does not swap. The repair -- walk the class block from
-#: `2 + n_in` in emission order and put the filter's own program after it -- moves `prog` on
-#: 57,965 records, so it is written up and not applied. See FORMAT-NOTES.md, "Every filter, bit
-#: by bit".
+#: the fitted header length on 57,965 of 57,965. The arity arm below used to allocate the pixel
+#: program's slot IN FRONT of the class block, which shifted both class labels by one and is what
+#: made the filter look like it does not swap; it now walks the class block from `2 + n_in` in
+#: emission order and puts the filter's own program after it. See FORMAT-NOTES.md, "Every filter,
+#: bit by bit", and the note in the arity arm for the A/B this landed on.
 _CLASS_ORDER_SWAPS = ((23, 16),)
-_CLASS_ORDER_EXEMPT = frozenset({20})
 
 
 def _class_emission_order(filter_id, clsbits):
@@ -330,10 +329,12 @@ def _class_emission_order(filter_id, clsbits):
     The index is the bit's position in `clsbits` and never its emission position: every
     cost cell is keyed on the former, so reordering the walk must not reorder the lookup.
     That separation is the whole reason this returns pairs.
+
+    `filter_id` is kept in the signature although no filter is exempt: the swap is a format
+    constant that every filter obeys, and the argument is what a future per-filter finding
+    would key on rather than something the caller has to supply for its own sake.
     """
     order = list(enumerate(clsbits))
-    if filter_id in _CLASS_ORDER_EXEMPT:
-        return order
     for first, second in _CLASS_ORDER_SWAPS:
         by_bit = {b: k for k, (_i, b) in enumerate(order)}
         if first in by_bit and second in by_bit and by_bit[first] > by_bit[second]:
@@ -380,8 +381,8 @@ def _interaction_walk(r, s):
     # 46,075 that evaluate. The control is bit 16 set with bit 23 clear: the single class
     # slot returns two components in 74,262 of 74,262 `levels` records, so bit 16 is the
     # size and bit 23 inserts a slot in front of it. `pixelprocessor` takes the arity arm and
-    # not this one; it swaps like everything else, and the reason it looks as though it does
-    # not is stated at `_CLASS_ORDER_EXEMPT`.
+    # not this one; it swaps like everything else, and the arity arm walks the block in the
+    # same emission order -- no filter is exempt. See `_CLASS_ORDER_SWAPS`.
     #
     # NOTHING IS MISPLACED BY THIS -- both bits cost one word, so `end`, `inputs` and every
     # `param_slots` entry are unaffected and no header runs long. What is wrong is the
@@ -411,8 +412,14 @@ def _interaction_walk(r, s):
     param_slots = []
     masks = _param_field_masks(r.filter_id)
     ri = r.index
+    # THE GRID SHIFT APPLIES HERE TOO. This arm read the even grid unconditionally, which was
+    # right only while every interaction filter's shift was 0. `emboss` is 1: read at 0 it is
+    # the one filter in the corpus that fails SPEC 6.3's program check, and it fails it
+    # completely -- 450 slots whose state says `program` and not one of which decodes. See
+    # `derive_costs.W1_GRID_SHIFT` and FORMAT-NOTES.md, "`emboss`: the state legend is wrong".
+    gsh = int(s.get('w1_shift', 0) or 0)
     for k, pj in enumerate(pairs):
-        st = (w1 >> (2 * pj)) & 3
+        st = (w1 >> (2 * pj + gsh)) & 3
         if st == 0:
             continue
         idx = off + 3 * k + (st - 1)
@@ -458,7 +465,7 @@ def _interaction_walk(r, s):
     return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots,
                         'param_slots': param_slots, 'cls_params': cls_params,
                         'end': _model_end(r, pos), 'prog': prog, 'hdr': n_masks,
-                        'size_slot': _size_slot(cls_params)})
+                        'w1_shift': gsh, 'size_slot': _size_slot(cls_params)})
 
 
 # fxmaps' header opens the way every record does -- w0 (the class word) then w1 -- and
@@ -693,42 +700,63 @@ def decompose(r):
         n_in = ((r.words[1] >> ar.get('shift', 0)) & mask) if len(r.words) > 1 else 0
         pos = 2
         inputs = list(range(pos, pos + n_in)); pos += n_in
-        # pixelprocessor's program is the slot RIGHT AFTER the inputs (layout: 2 + edge count) --
-        # the pixel program, not a size expression pushed past the const region. layout names it
-        # only when the arity is clean: _pp_edges reads the 5-bit field and declines a field of 0
-        # whose word is nonzero (e.g. 0x10000 -> arity 0 with a stray high bit), leaving prog None;
-        # a nonzero field with high bits (0x10001 -> arity 1) is fine.
-        valid_arity = n_in >= 1 or (len(r.words) > 1 and r.words[1] == 0)
-        prog = pos if (valid_arity and pos < len(r.words)) else None
-        # ADVANCE PAST THE PROGRAM SLOT. This line was missing, and `const` hid it for
-        # exactly the records where it did not matter: const is 3, so at arity 0 the walk
-        # goes pos=2 -> prog=2 -> max(3, 3) = 3 and the class slots start correctly at 3.
-        # At any arity >= 1, pos is already 2+arity >= 3, `const` bumps nothing, and the
-        # first class slot is allocated ON TOP OF the program slot -- so every later slot,
-        # and `end` with them, sits one word too low.
+        # THE CLASS BLOCK COMES FIRST, AND THE FILTER'S OWN PROGRAM AFTER IT. This arm used
+        # to hand out the program slot at `2 + n_in`, in FRONT of the class block, which
+        # shifted every class label one word late and is the whole reason `pixelprocessor`
+        # looked like an exception to the class block's emission order (`_CLASS_ORDER_SWAPS`).
+        # The header is `[w0][w1 arity][inputs][bit 23][bit 16][the filter's own program]`,
+        # and the arbiter is the manifest identifier of the graph input each slot's program
+        # reads with its first `inputref`, taken by POSITION rather than by the walk's labels:
         #
-        # Corpus-wide: 55,255 of 57,965 pixelprocessor records (95.3%) had `prog` colliding
-        # with a class slot, and in 55,254 of those the slot at the too-low `end` holds a
-        # VALID PROGRAM -- the record's real pixel program, excluded from its own header.
-        # Confirmed against the cost model's own independent total: `decompose`'s end was
-        # -1 against `record_layout.header_words` on 5,259 of 5,490 records, and equal on
-        # the 231 (the arity-0 ones) where `const` happened to cover for it.
+        #     the bit-23 slot names `$randomseed`                      57,731 of 57,731
+        #     the bit-16 slot names `$outputsize` or holds a size program  56,141 of 56,142
+        #     the block ends exactly one slot before `end`             57,965 of 57,965
+        #     the LAST header slot reads `$pos` (sysvar 8)             55,595 of 57,965
         #
-        # This is what put UHL3D-Stylized_Sand record 2194's pixel program OUTSIDE its
-        # header, so `programs()` could only reach it through the word scan -- and left it
-        # looking like a record whose program samples an input its arity does not declare.
-        if prog is not None:
-            pos += 1
-        pos = max(pos, int(round(const)))
+        # against 105 records reading `$pos` at the slot this arm used to call the pixel
+        # program -- where instead 56,925 of 57,965 hold `inputref($randomseed)`, the seed
+        # pointer the class block's first slot is supposed to hold. `end` comes from the
+        # fitted `record_layout.header_words` and `inputs` from the arity field, so "the
+        # block ends one slot before `end`" is the fit corroborating the reading rather than
+        # the reading being fitted. See FORMAT-NOTES.md, "Every filter, bit by bit".
+        #
+        # NOTHING MOVES BUT THE LABELS: `const` is 3 = the two mask words plus the one
+        # program slot that always follows the block, so the cursor still lands on the same
+        # `end` -- 2 + n_in + (class costs) + 1 -- and `inputs`, `hdr` and `param_slots` are
+        # untouched. What changes is which word `prog`, `size_slot` and `size_or_baked` name.
         cls_slots = []
         cls_params = []
-        for b in sorted(int(k) for k in spec['cls']):
+        clsbits = sorted(int(k) for k in spec['cls'])
+        for _i, b in _class_emission_order(f, clsbits):
             if (w0 >> b) & 1:
                 n = int(round(spec['cls'][str(b)]))
                 if n > 0:
                     cls_params.append((b, pos, n))
                 for _ in range(n):
                     cls_slots.append(pos); pos += 1
+        # The filter's own pixel program is the slot right after the class block. layout
+        # names it only when the arity is clean: _pp_edges reads the 5-bit field and declines
+        # a field of 0 whose word is nonzero (e.g. 0x10000 -> arity 0 with a stray high bit),
+        # leaving prog None; a nonzero field with high bits (0x10001 -> arity 1) is fine.
+        valid_arity = n_in >= 1 or (len(r.words) > 1 and r.words[1] == 0)
+        prog = pos if (valid_arity and pos < len(r.words)) else None
+        # ADVANCE PAST THE PROGRAM SLOT, so the cursor reaches the fitted header length --
+        # 2 + n_in + (class costs) + 1, which is `const` (3) + n_in + (class costs) since
+        # `const` is the two mask words plus this program slot. The `max` below is therefore
+        # a no-op; it is kept because `const` is the model's own statement of the base and a
+        # cursor that could fall below it should say so rather than silently agree.
+        #
+        # UNCONDITIONAL, where the equivalent line used to be guarded on `prog is not None`.
+        # Refusing to NAME the slot and refusing to CHARGE it are two different things: the
+        # 807 records whose arity field this walk declines (a field of 0 under a nonzero w1)
+        # still have the word, and `record_layout.header_words` still counts it. Guarding the
+        # advance left the cursor one short of the fitted length on exactly those 807 -- a
+        # disagreement the old ordering hid, because `max(pos, 3)` happened to cover it when
+        # the program slot came first. Nothing observable moves either way (`end` comes from
+        # `_model_end`, and no slot list reaches this far), which is why the honest cursor is
+        # the one to keep.
+        pos += 1
+        pos = max(pos, int(round(const)))
         return _bounded(r, {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': [],
                             'cls_params': cls_params, 'end': _model_end(r, pos), 'hdr': 2,
                             'prog': prog, 'size_slot': _size_slot(cls_params)})

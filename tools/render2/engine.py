@@ -244,12 +244,14 @@ def record_sizes(asm, outputsize):
     the slot the walk calls bit 16 returns one component in 46,118 of 46,118 -- a size
     never can -- and the slot it calls bit 23 evaluates here to the record's own tag size
     in 46,023 of the 46,075 that evaluate, against a control of 74,262 of 74,262 `levels`
-    records that set bit 16 alone and return two. `pixelprocessor` does not swap and is
-    the one filter that also sets class bit 22. The fallback below therefore fires on a
-    misplacement rather than on a record with no expression, and it is silent because a
-    one-component result fails `len(ref) >= 2` and looks identical to an absent program.
-    See FORMAT-NOTES.md "A `levels` record, bit by bit"; the walk-side fix is written up
-    there and not applied.
+    records that set bit 16 alone and return two. `pixelprocessor` swaps like everything
+    else -- it sets class bit 22 on 0 records, and what looked like an exception was
+    `decompose`'s arity arm handing out the pixel program's slot in front of the class
+    block; both are fixed and no filter is exempt from the order. The fallback below
+    therefore fires on a misplacement rather than on a record with no expression, and it is
+    silent because a one-component result fails `len(ref) >= 2` and looks identical to an
+    absent program. See FORMAT-NOTES.md "A `levels` record, bit by bit" and "Every filter,
+    bit by bit"; the walk-side fix landed at `decompose._CLASS_ORDER_SWAPS`.
 
     Those fall back, and the fallback is
     the record's INPUTS rather than its tag: a node with no size expression of its own
