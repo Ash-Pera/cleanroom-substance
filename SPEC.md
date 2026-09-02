@@ -61,7 +61,7 @@ rule (image-input slot width, §7.2). It is independent of the manifest's `forma
 
 ```
 0x00            file header (0x38)
-0x38            embedded resource segment   ]  length == base   (image payloads; §9)
+0x38            embedded resource segment   ]  length == base   (image, string and font payloads; §9)
 base + 0x38     record directory            ]
                 records (code region)       ]
                 value table                 ]
@@ -118,6 +118,13 @@ A structured object is `[mask][fields…]`. The set bits of the mask, read in as
 order, enumerate which fields are present; **each field's width is a constant of its
 kind**. Nothing stores an offset — a reader advances position by the width of each present
 field; a writer emits in the same order.
+
+**One filter's `w1` parameter block is not in ascending mask order: filter 17 `text`, whose
+block is laid `matrix22`, `position`, `fontsize` (§13.4).** It is the only known exception,
+it applies to the parameter block alone — the class walk and the record header are ascending
+there as everywhere — and it is stated here rather than only at §13.4 because a reader who
+takes ascending order as universal will place `text`'s fields wrongly and get plausible
+numbers rather than a failure. See §13.4 for the evidence that fixes the order.
 
 ### 6.2 The two header words
 
@@ -434,7 +441,7 @@ patterns a record emits, and where each lands, is §13.7.
 
 ---
 
-## 9. Embedded images (resource table)
+## 9. Embedded resources (resource table)
 
 When `base != 0`, the resource segment `[0x38, base+0x38)` holds raw image payloads, and a
 **resource table** sits immediately before the interface block: one 8-byte record per
@@ -453,6 +460,32 @@ depending on the file, so the table is found by *scanning for valid tags*, not w
 fixed stride. Consecutive offsets give each image's size; the sizes sum to the segment
 length exactly (a strong integrity check). Dimensions resolve for 190/200 images, almost
 all 1024×1024.
+
+### 9.1 The segment is not images only — filter 17 stores a string and a font in it
+
+A `text` record's base region is five words, `[w0][w1][zero][string ptr][font ptr]`, and both
+pointers carry the format's universal `+52` skew, so they are ordinary offsets into this
+segment rather than a private encoding.
+
+**`words[3] + 52` — the string.** `[u32 count][u32 codepoint × count]`, one codepoint per
+word. When `w1` **bit 1** is set the same word is instead the `uid` of a **type-6 (string)
+graph input**, and the manifest's `default=` for that uid carries the text. The discriminator
+is the bit and never the value, because both arms hold an ordinary 32-bit word. Over the
+corpus all 59 text records resolve: 38 through the segment, 21 through a graph input.
+
+**`words[4] + 52` — a complete font.** `[u32 hash][u32 length][sfnt]`, where the payload is a
+whole TrueType file (`00 01 00 00` on 13 of 14 distinct payloads, `ttcf` on the 14th). The
+length field is structural rather than inferred: `off + length` lands exactly on an offset
+another record of the same file names as *its* string, on 8 of 14, with no record naming an
+offset one word to either side. It is **per record, not per file** — one package carries two
+faces and its signature record points at the second, which is the one place on it whose
+glyphs are a script face.
+
+The compiled record therefore names **no font family anywhere a reader can see**: the family
+exists only inside the payload and in the `.sbs`. Nothing inside the payload has been read
+here beyond those four magic bytes and the stated length. That restraint is a licence
+question about the type foundry, and is deliberately *not* the Adobe provenance rule of §12 —
+the two are separable and are kept separate.
 
 ---
 
@@ -636,7 +669,7 @@ Three questions, three answers, and only the third comes from a fitted table:
 |---|---|---|
 | which parameters are present, baked or program? | the `w1` two-bit state | §7.4, the file |
 | how wide is each baked one? | Float1/2/4, per-channel by the colour bit | §7.3, the file |
-| where does the block start? | `header_end − Σ widths`, laid **forwards in ascending mask order** | the cost model's header length only |
+| where does the block start? | `header_end − Σ widths`, laid **forwards in ascending mask order** (except filter 17 `text` — §6.1, §13.4) | the cost model's header length only |
 
 **Anchor at the end, not at the walk's forward cursor.** The cursor inherits any slot the
 cost model mis-charges *before* the parameters; the end anchor is wrong only if the header
@@ -728,6 +761,24 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 21 distance | distance | `0x000C` | 2 | scalar |
 | 18 normal | inversedy | `0x000C` | 2 | flag |
 | 18 normal | input2alpha | `0x0030` | 4 | flag |
+| 17 text | matrix22 | `0x0C00` | 10 | Float4 |
+| 17 text | position | `0x00C0` | 6 | Float2 |
+| 17 text | fontsize | `0x0300` | 8 | scalar |
+| 17 text | align_flag | `0x3000` | 12 | flag, 0 words in every state |
+
+**Filter 17's rows are written in block order, and that order is not ascending** — the one
+exception to §6.1. `matrix22` (bit 10) comes first, then `position` (bit 6), then `fontsize`
+(bit 8). The discriminator is not a preference: ascending order puts `fontsize` on the
+matrix's `c` component and is **unrenderable on 14 of 14** records, while this order yields
+diagonal matrices in five files, an exact rotation matrix in `Speed Limit`, and a layout that
+reads — SPEED at y −0.22 above LIMIT at −0.03. The off-diagonals are *not* uniformly zero: a
+first reading claimed they were and the test written to assert it failed at 3 of 14 (0.0033,
+0.0033, −0.627).
+
+`align_flag` is charged zero words in **every** state, so its mask state is its whole value
+and declaring it shifts nothing. Its program arm (bit 13) is charged zero words too and is
+unobserved across 437 files; a reader that charges it one word would shift the whole block,
+so a file setting bit 13 is a thing to examine rather than to trust.
 
 Two of these **straddle** the two-bit grid — `transformation`'s offset at bits (25, 26)
 and `blend`'s relocated opacity at (9, 10) — so under a plain `j → (2j, 2j+1)` reading their
