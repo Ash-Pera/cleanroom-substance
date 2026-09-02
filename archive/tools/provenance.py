@@ -64,6 +64,10 @@ import _repo_root                                                    # noqa: E40
 
 ROOT = _repo_root.ROOT
 
+#: What README.md and FORMAT-NOTES.md currently state, so a drift is a FAILING NUMBER here
+#: rather than prose nobody re-reads. Distinct-by-content population. Update both together.
+DOC_TOTAL, DOC_EXCLUDED, DOC_PERMITTED = 142, 42, 100
+
 EXCLUDED_AUTHORS = [
     'Allegorithmic',     # Adobe, pre-acquisition -- Adobe's own bundled library sources
 ]
@@ -231,16 +235,33 @@ if __name__ == '__main__':
     if new:
         print('  (of which %d are new_opengameart/, added after the figures below)' % len(new))
     print()
-    print('FORMAT-NOTES.md / README.md state: 140 paired sources, 38 excluded, 102 permitted.')
-    print('  paired sources, excluding new_opengameart/:  %d   (document says 140)'
-          % (total - len(new)))
-    print('  excluded by re-running the rule:             %d   (document says 38)'
-          % len(excluded))
-    if len(excluded) != 38:
+    # THE TWO DOCUMENTS WERE COUNTING TWO POPULATIONS, and this line used to quote one
+    # triple and attribute it to both, which is what made them look contradictory.
+    #
+    #   FORMAT-NOTES.md, 2026-08-23   140 paired / 38 excluded / 102 permitted
+    #                                 -- sources DISTINCT BY CONTENT
+    #   README.md,       2026-08-24   187 paired / 47 excluded / 140 permitted
+    #                                 -- the same rule BEFORE de-duplication
+    #
+    # Both were right for their own population and neither said which. The trap is that 140
+    # is FORMAT-NOTES' TOTAL and README's PERMITTED, so three self-consistent triples read
+    # as one contradiction. The pre-dedup exclusion count has not moved since: it is still
+    # exactly 47. Only its total grew, 187 -> 208.
+    #
+    # `paired_sources()` returns the distinct-by-content set and its docstring calls that
+    # the rule's population, so that is what this tool reports and what the documents now
+    # quote. Both are printed, because a count with no population named is how this started.
+    print('DISTINCT BY CONTENT is the rule\'s population -- paired_sources()\'s docstring.')
+    print('  documents state (2026-09-02): %d paired, %d excluded, %d permitted'
+          % (DOC_TOTAL, DOC_EXCLUDED, DOC_PERMITTED))
+    print('  re-running the rule now:      %d paired, %d excluded, %d permitted'
+          % (total, len(excluded), len(permitted) + len(flagged)))
+    if (total, len(excluded)) != (DOC_TOTAL, DOC_EXCLUDED):
         print()
-        print('  The published 38 is STALE by %d. The rule was applied once and never saved'
-              % (len(excluded) - 38))
-        print('  as code, so sources added since were never tested against it.')
+        print('  THE DOCUMENTS ARE STALE by %+d paired and %+d excluded. The rule is a'
+              % (total - DOC_TOTAL, len(excluded) - DOC_EXCLUDED))
+        print('  single string match and this is the tool that runs it: re-state the')
+        print('  documents from this output rather than the other way round.')
     print()
     if flagged:
         print('flagged, NOT excluded by the current rule (%d):' % len(flagged))

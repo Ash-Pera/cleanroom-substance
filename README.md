@@ -67,12 +67,21 @@ this project is built on. Two things were excluded throughout:
 * **Adobe's Substance engine, in any form** — no binary was run, disassembled or inspected.
 * **Adobe's bundled library `.sbs` sources.** Several material packs redistribute them.
   Enforced mechanically, before any measurement: a source file containing
-  `<author v="Allegorithmic"` was dropped entire. 47 of 187 paired sources were excluded
-  this way, over a pair set whose pairing is verified rather than assumed: each extracted
-  `.sbsasm` is checked byte-for-byte against what the `.sbsar` beside it actually holds. The rule is deliberately over-broad — dropping whole files rather than
-  individual graphs gave up 12 graphs that were the material author's own work.
+  `<author v="Allegorithmic"` was dropped entire. **42 of the 142 paired sources** were
+  excluded this way, counting sources distinct by content — the population
+  `provenance.py`'s `paired_sources()` calls the rule's own. Before de-duplication the same
+  rule drops **47 of 208**. The pairing is verified rather than assumed: each extracted
+  `.sbsasm` is checked byte-for-byte against what the `.sbsar` beside it actually holds. The
+  rule is deliberately over-broad — dropping whole files rather than individual graphs gave
+  up 12 graphs that were the material author's own work.
 
-That exclusion has a measured cost, and the notes record it rather than hiding it. The 140
+  Both populations are legitimate and this README used to quote one while FORMAT-NOTES.md
+  quoted the other, neither saying which. See FORMAT-NOTES.md, "The provenance counts were
+  two populations and a coincidence" — the short version is that 140 was this file's
+  *permitted* count and that file's *total*, which made three self-consistent triples look
+  like a contradiction.
+
+That exclusion has a measured cost, and the notes record it rather than hiding it. The 100
 permitted paired sources declare exactly 24 filter names and all 24 are already assigned, so
 the two remaining ids cannot be named from anything this project may read — filter 9 not at
 all, and filter 5 only descriptively, from what its payload draws. Three occasions where the

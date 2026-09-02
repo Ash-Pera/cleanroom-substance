@@ -44086,3 +44086,68 @@ a `normal` with no intensity.
   program are known" — can lose `text` from that count: its three `w1` fields, its two
   resource pointers and its zero-width flag are all placed, and three of the six are named
   by a source.
+
+## The provenance counts were two populations and a coincidence
+
+Three triples were in circulation for the project's central auditable claim, and they looked
+like a contradiction for a week:
+
+    FORMAT-NOTES.md, 2026-08-23    140 paired / 38 excluded / 102 permitted
+    README.md,       2026-08-24    187 paired / 47 excluded / 140 permitted
+    provenance.py re-run           142 paired / 42 excluded / 100 permitted
+
+Each is internally consistent -- 38 + 102 = 140, 187 - 47 = 140, 42 + 100 = 142 -- which is
+what made this worth measuring rather than picking one.
+
+### They are two populations, and neither document said which
+
+    paired, PRE-DEDUP              total  208   excluded  47   permitted  161
+    paired, distinct by content    total  142   excluded  42   permitted  100
+
+**README's 47 is exactly right and has never moved.** It is the pre-de-duplication exclusion
+count, and re-running the rule today still gives 47. Only its total grew, 187 -> 208, as the
+corpus did. FORMAT-NOTES' 140/38/102 is the same rule over sources distinct by CONTENT, taken
+one day earlier, and it is now 142/42/100.
+
+So neither document was wrong when written. Both were measuring the rule honestly. Neither
+said whether it was counting duplicate files once or twice, and that omission was the whole
+of it.
+
+### The coincidence that hid it
+
+**140 is FORMAT-NOTES' TOTAL and README's PERMITTED.** 187 - 47 = 140 pre-dedup permitted,
+and independently the distinct-by-content total was also 140. One number, two meanings, two
+documents, one day apart. That is what turned "two populations" into "three contradictory
+figures", and it is why `provenance.py`'s own expectation string -- which quoted FORMAT-NOTES'
+triple and attributed it to *both* documents -- reported README as disagreeing with a figure
+README never stated.
+
+The tool was also right about staleness and wrong about the cause. Its "the published 38 is
+STALE by 4" is true, but 38 was not stale from the rule going unrun: it is a correct 2026-08-23
+distinct-by-content number, and 4 sources matching the rule entered the corpus after it.
+
+### Settled
+
+`paired_sources()`'s docstring already named the canonical population -- "distinct-by-content
+.sbs files that have a sibling .sbsar -- the rule's population" -- so that is what both
+documents now state: **42 of 142 excluded, 100 permitted**, with the pre-dedup 47 of 208 given
+alongside so neither reading can be mistaken for the other again.
+
+Downstream claim re-checked rather than renumbered: the permitted sources declare exactly **24
+filter names**, unchanged, and all 24 are assigned. De-duplication cannot change a set of
+declared names -- identical files declare identical names -- so that claim was population-
+invariant all along, which is why it survived the confusion intact.
+
+    bitmap blend blur curve directionalwarp dirmotionblur distance dyngradient emboss
+    fxmaps gradient grayscaleconversion hsl levels normal passthrough pixelprocessor
+    sharpen shuffle text transformation uniform valueprocessor warp
+
+Also reconciled: the `normal` pass reported "96 permitted paired sources" where the `levels`
+pass reported 100. Both are right -- 96 is 100 with the four `GameTextures.com` files in
+FLAGGED_AUTHORS dropped as well, which is the conservative reading and the correct one for a
+naming argument.
+
+`DOC_TOTAL/DOC_EXCLUDED/DOC_PERMITTED` now sit at the top of `provenance.py` and the tool
+prints documented against measured, so the next drift is a number that disagrees with itself
+in the output rather than prose nobody re-reads. That is the same fix as `corpus.py`'s, for
+the same reason, applied to the one claim where being wrong matters most.
