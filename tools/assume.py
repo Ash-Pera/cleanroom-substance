@@ -140,6 +140,60 @@ QUESTIONS = {
     #                         0b011111 on 55,529) and a tail of 47 more. A packed enum whose
     #                         value is its bits; naming it from a frequency is the inference
     #                         `normal`'s field 1 had to retract.
+    #
+    #                         `tiling` IS THE ONE CANDIDATE WITH EVIDENCE AGAINST IT, and it
+    #                         is source-side rather than manifest-side: the manifest cannot
+    #                         speak here at all, because a field charged zero words in its
+    #                         PROGRAM state has no pointer slot and so no program to read an
+    #                         `inputref` out of. Pinning a permitted source's transformation
+    #                         node to one compiled record by its stated `matrix22`/`offset`
+    #                         constants and reading `w1 & 0x3f`: `tiling` 0 (11 nodes, 7
+    #                         packages), `tiling` 1 (3 nodes, 1 package) and `tiling` unstated
+    #                         (22 nodes, 7 packages) ALL give 0b111111. Two different stated
+    #                         values cannot compile to the same bits if those bits are the
+    #                         value. Not conclusive -- the `tiling` 1 leg is one package, and
+    #                         every uniquely matched node lands on the modal 0b111111, so the
+    #                         second population is unreached by any source we may read.
+    #                         What the corpus says about that second population, over the
+    #                         baked matrix determinant: field 2 = 0b01 is det<1 58.5% /
+    #                         det>1 27.5% (n=40,047) against 0b11 at det<1 23.9% / det>1
+    #                         55.0% (n=26,084). An association with zoom direction at about
+    #                         3:1, which is not a partition and names nothing.
+    #   emboss.w1field0       w1 field 0 -- bits 1 and 2, on the SHIFTED grid (SPEC 7.4;
+    #                         `derive_costs.W1_GRID_SHIFT[8] = 1`). 9 program slots, every
+    #                         one carrying an `inputref` on a `float1` input and returning
+    #                         `f1`. The nine identifiers are `bricks_age`,
+    #                         `bricks_bricks_age`, `grunge_age`,
+    #                         `concrete_damaged_grunge_age`, `concrete_intact_grunge_age`,
+    #                         `Grunge_Effect_age`, `degradation`, `dirtiness` -- eight
+    #                         distinct strings all naming an amount-of-wear slider, which is
+    #                         semantic convergence and not lexical.
+    #                         A LEAD, NOT A FINDING: the modal name has 2 packages and all
+    #                         nine are ambientCG's or undeclared, so this is one author's
+    #                         naming habit rather than independent packages agreeing. Type
+    #                         and position are consistent with `emboss`'s `intensity`, and
+    #                         that is exactly the plausible name that must not stand in for a
+    #                         measurement.
+    #                         READ IT ON THE SHIFTED GRID OR NOT AT ALL. Before the shift
+    #                         landed, this sweep reported these same 9 programs as field 1
+    #                         and reported field 0 as 366 programs of which 358 were the
+    #                         `sysvar..exp2` size ratio and 8 read an input the manifest
+    #                         identifies literally as `$pixelsize`. On the shifted grid those
+    #                         375 sit on class bit 27 where `bit_census.PENDING_CLS[8][27]`
+    #                         always said they belonged, and w1 fields 1, 2 and 3 are charged
+    #                         zero words in their program state -- no pointer, no program,
+    #                         nothing the manifest can be asked. The label moved by one and
+    #                         the population moved with it, which is the check that the shift
+    #                         was the right one and the reason a name read off the even grid
+    #                         would have been wrong.
+    #   fxmaps.cls22          class bit 22, costed one word, set on 3 records -- all in
+    #                         `Texture_Randomizer`, ONE package, one author. The slot's
+    #                         program returns `i2` and opens with an `inputref` on an input
+    #                         the manifest declares `$outputsize`, type 8 (int2): the same
+    #                         shape and the same type as class bit 16. What it means for one
+    #                         filter to carry a second size-expression slot is not something
+    #                         three records from one package can say. Listed so a reader can
+    #                         see the bit exists and see how thin it is.
     #   dyngradient.gradpos   class bits 25 (baked, 0.5 on 86 of 95) and 26 (a program), an
     #                         ordinary baked/program pair. The program arm's inputs are named
     #                         `Stone_colour_Gradient_Input_Position`, `Stone_Colour_Grad` and
@@ -148,6 +202,8 @@ QUESTIONS = {
     'blend.w1bit8':       ('ignore', 'alphablend', 'background_used'),
     'transformation.w1low': ('ignore', 'tiling', 'filtering', 'mipmap'),
     'dyngradient.gradpos': ('ignore', 'position', 'variation'),
+    'emboss.w1field0':    ('ignore', 'intensity', 'greyscale_amount'),
+    'fxmaps.cls22':       ('ignore', 'outputsize'),
     'levels.zerospan':    ('step', 'identity'),
     'levels.inversion':   ('flat', 'complete'),
     'levels.interclamp':  ('clamp', 'noclamp'),
