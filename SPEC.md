@@ -128,15 +128,25 @@ plausible numbers rather than a failure.**
 2. **The class block emits bit 23 before bit 16, in EVERY filter.** Class bit 16 gates
    `$outputsize` and bit 23 gates `$randomseed` (§13.4), and when both are set the
    `$randomseed` pointer takes the first class slot and the size expression the second.
-   Measured over the 46,118 corpus records that set both: the first class slot's
-   program returns **one** component in 46,118 of 46,118 — a size never can — and the second
-   returns two components equal to the record's own tag size in 46,023 of the 46,075 that
-   evaluate (99.89%; 99.79% of all 46,118). The control is records with bit 16 set and bit 23
-   clear, whose single class slot returns two components in 74,262 of 74,262 `levels` records.
-   An independent arbiter agrees without evaluating anything: the manifest identifier of the
-   graph input each slot's program reads with its first `inputref` is `$randomseed` in the
-   first slot on **46,118 of 46,118** and `$outputsize` in the second on 45,628, the other
-   490 holding a size program that does not open with a bare `inputref`.
+   Measured over **all 102,173 corpus records that set both**, across 19 filters, and taken
+   by slot POSITION rather than by any reader's labels: the first class slot's program
+   returns **one** component in 102,173 of 102,173 — a size never can — and the second
+   returns **two** in 102,173 of 102,173. An independent arbiter agrees without evaluating
+   anything: the manifest identifier of the graph input each slot's program reads with its
+   first `inputref` is `$randomseed` in the first slot on **102,173 of 102,173** and
+   `$outputsize` in the second on 98,113, the remainder either not opening with a bare
+   `inputref` (3,902) or naming the material author's own size input (158 records over seven
+   identifiers — `resolution` 136, `scale` 12, `cloud_size` 4 — which is the same fact in
+   that author's vocabulary).
+   Over the 46,118 of those records outside `pixelprocessor`, where it was first measured,
+   the second slot's two components equal the record's own tag size in 46,023 of the 46,075
+   that evaluate (99.89%).
+
+   The control is records with bit 16 set and bit 23 clear, where nothing can swap and the
+   single class slot must be the size: it resolves a two-component program in **639,944 of
+   640,074** corpus-wide, a one-component program in **0**, and `$randomseed` in **0**. The
+   130 that do not are `vectorshape` (127, no cost model and no placed slot) and three
+   `fxmaps` records in `Texture_Randomizer`. `levels` alone is 74,262 of 74,262.
 
    **`pixelprocessor` was listed here as the exception and is not one.** Its header is
    `[w0][w1 arity][image inputs][bit 23][bit 16][the filter's own pixel program]`, and the
@@ -165,6 +175,12 @@ right — both bits cost one word — so nothing runs past the end and no parame
 gets wrong is which of the two slots is the size, and the error is silent: the misread slot
 holds a one-component program, and a reader that requires two components to call something a
 size discards it as unevaluable rather than reporting a disagreement.
+
+That silence is measured rather than argued. This project's own decoder walked the block
+ascending in one of its four code paths for two commits after stating the rule here, and the
+A/B that fixed it moved `size_slot` on 4,280 records while moving the header end, the edge
+list, the mask-word count and every parameter slot on **none**. Nothing about the record's
+shape reports the error; only the name on one word changes.
 
 ### 6.2 The two header words
 
@@ -741,9 +757,10 @@ slot 6,905 times, `dyngradient` by one 399, `normal` by two 246.
 
 **And the class walk itself must not be run in plain ascending order (§6.1).** When class bits
 16 and 23 are both set the size expression is the SECOND class slot; the first holds
-`$randomseed`. 46,118 corpus records across 21 filters are affected, `fxmaps` 36,028 and
-`levels` 401. The tell that a reader has this wrong is that its size slot resolves a program
-returning one component, which no size expression does.
+`$randomseed`. 102,173 corpus records across 19 filters are affected — `pixelprocessor`
+56,055, `fxmaps` 36,028, `transformation` 5,324, `blend` 2,445, `levels` 401, and fourteen
+more down to `hsl` 3. The tell that a reader has this wrong is that its size slot resolves a
+program returning one component, which no size expression does.
 
 The walk reports it as `size_slot`, so a reader never reconstructs it. Two filters still
 have no placement to report, for different reasons, and one has nothing to place.

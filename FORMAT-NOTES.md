@@ -45172,3 +45172,162 @@ the fixes is the two arbiters above, neither of which is a render.
 — but not from the additive-spec loop, which still iterates `sorted(spec['cls'])`. That is a
 separate defect with its own population and it wants its own A/B; it is not folded in here,
 for the same reason these two were not folded into each other.
+
+## The fourth class-block walk, and one loop instead of four
+
+The open item the section above left: `decompose`'s additive-spec arm iterated
+`sorted(spec['cls'])` while the other three arms went through `_class_emission_order`. It is
+fixed, and the fix is two changes rather than one — the arm now uses the legend, and all four
+arms now share a single `_class_block` loop, so the legend has one call site instead of four.
+
+**The population is the code branch, which is what makes it a defect in the reader rather
+than a fact about the format.** 102,173 corpus records set class bits 16 and 23 together. The
+ones reaching the interaction, fxmaps and arity arms were labelled correctly; the 4,280
+reaching the additive arm were exchanged, and they are every both-bits record of those 13
+filters and nothing else:
+
+    blend 2,445   dirmotionblur 750   directionalwarp 528   warp 269   shuffle 70
+    gradient 54   blur 51   curve 50   dyngradient 20   normal 18   distance 18
+    sharpen 4   hsl 3                                            = 4,280 exactly
+
+### 550de51's explanation of these same 4,280 was wrong, and this retracts it
+
+That commit's message reconciled its own A/B like this: 102,173 both-bits records, minus
+56,055 `pixelprocessor` (then believed exempt), leaves 46,118 where the order is a question,
+of which 41,838 moved — and it accounted for the remaining **4,280 as "filters where bit 23
+costs 0 words, so no slot is emitted and order is moot"**.
+
+The arithmetic was right and the reason was invented. `costs.json` charges class bit 23
+**1.0 word in all thirteen** of those filters; the reason those records sat still is simply
+that the commit did not touch the loop they go through. That is the second time one A/B's
+residual got explained by reasoning about the tables instead of querying them — the first is
+disclosed in 550de51's own message, two paragraphs above the sentence retracted here. The
+lesson repeats with it: read the coefficient, do not derive it. Checking `cls['23']` for the
+thirteen filters takes one line and would have contradicted the sentence as it was written.
+
+### The A/B, over all 903,616 records, decomposed both ways
+
+    end, inputs, hdr, param_slots, prog, cls_slots, w1_shift, root    0 changes
+    size_slot     4,280    the 13 filters above, and no filter outside them
+    cls_params    4,280    the same records, the same list of slots, bits 16 and 23 swapped
+
+A relabel, not a misplacement: the class block allocates the same two words in either order
+because both bits cost one, so `cls_slots` — a list of POSITIONS — is byte-identical and only
+the bit each position is attributed to moves. `prog` is unmoved for the same reason; in this
+arm it is the first slot after the base region, which is where the block starts and not where
+bit 16 lands.
+
+### Three arbiters, none of them the walk
+
+Every one is taken by slot POSITION, so it cannot echo the labels under test. The two class
+slots are the same two words before and after; only the names on them moved.
+
+    the LOWER slot returns ONE component                  4,280 / 4,280
+    the LOWER slot's first `inputref` names `$randomseed` 4,280 / 4,280
+    the UPPER slot returns TWO components — a size        4,280 / 4,280
+    the UPPER slot's first `inputref` names `$outputsize` 4,162 / 4,280 (118 size programs
+                                                          that do not open with a bare
+                                                          `inputref`)
+    the UPPER slot, evaluated at the graph's own declared
+      `$outputsize`, returns the record's own TAG size    4,156 / 4,162 (6 raise; 118 of the
+                                                          4,280 are in graphs declaring no
+                                                          `$outputsize` at all, so they
+                                                          cannot be evaluated)
+      ... and the same evaluation of the LOWER slot
+      returns one component                               4,162 / 4,162
+
+A size expression never returns one component and a seed never returns two, so the two slots
+are not interchangeable and the walk had them the wrong way round on all 4,280.
+
+**The control, where nothing can swap.** Bit 16 set with bit 23 clear, corpus-wide, all
+filters: the single class slot resolves a two-component program in **639,944 of 640,074**, a
+one-component program in **0**, and names `$randomseed` in **0**. The 130 that resolve nothing
+are `vectorshape` (127, no cost model and no placed slot) and the three `Texture_Randomizer`
+`fxmaps` records. By manifest name rather than by component count the same control reads
+`$outputsize` on blend 264,670, transformation 146,292, levels 73,321, directionalwarp 60,295,
+warp 26,275 — the residue in each being programs that do not open with a bare `inputref`.
+
+**And `manifest_arbiter.py --controls`, the tool that found this, is now clean.** Every
+`cls23` row of the thirteen filters named `$outputsize` on 100% of its records before and
+names `$randomseed` on 100% after; every `size` row loses its `$randomseed` contamination
+exactly. Diffed whole, the report changes on 26 rows — 13 filters times 2 roles — and on
+nothing else in the corpus.
+
+### The three corpus-wide guards, before and after
+
+    edge slots holding a backward index      1,302,475 / 1,302,475   ->   unchanged
+    state-2 slots resolving a program          198,224 /   198,224   ->   unchanged
+    walk cursor == fitted header length        903,301 /   903,301   ->   unchanged
+
+The first two are `bit_census.py --check`, whose entire output is byte-identical before and
+after — it counts what each bit COSTS, and no cost moved. The third is measured by spying on
+`_model_end`'s two arguments, because `end` is taken FROM `header_words` and comparing the two
+directly is circular.
+
+### One loop, and why that is part of the fix rather than tidying
+
+`_class_block(r, clsbits, pos, cost)` is now the only place the class block is walked. The
+four arms differ in two things and neither is the order: where the block starts, and how the
+spec keys its costs. The cost callback takes `(index, bit)` and each arm names the key it
+means — an interaction spec's `base`/`cross` vectors are indexed by the bit's position in
+`clsbits`, an additive spec's `cls` dict by the bit itself, and confusing those is exactly the
+error retracted at the top of this section.
+
+Refactoring a walk is the kind of change that can quietly move a slot, so it got its own A/B
+against the fixed-but-unrefactored tree: **0 changes on every field of every one of the
+903,616 records**, including `cls_slots` and `cls_params`. The fix is measured as a fix and
+the refactor as a no-op, separately, which is the same discipline `c70269f` used for its two.
+
+### What it does to the render, which is not nothing
+
+`decompose`'s `size_slot` has exactly one consumer that decides a pixel: `render2.engine.
+record_sizes`, which evaluates the size expression and falls back to the record's inputs when
+the slot holds no two-component program. Under the old arm those 4,280 records always fell
+back. A/B over the 99 files carrying one:
+
+    at the graph's DECLARED output size     385,810 record sizes, 0 changed
+    two log2 steps below it                  34 changed — dyngradient 20, blend 10,
+                                             gradient 2, hsl 1, curve 1
+
+Zero at the declared size is the expected shape: there the fallback returns the tag, and a
+correct size expression returns the tag too — which is the arbiter above. The expression only
+earns its place off the default, and the records that move are the ones whose size does not
+track the output uniformly. `archive/tools/render.py`, which is what the reference harness
+renders with, reads `cls_params` by BIT for class bits 24, 26, 28 and 29 and never for 16 or
+23, so nothing there can see this.
+
+### What the harness says
+
+    test_filters + test_tables (carries REFERENCE_FLOOR)  20 passed, 11m14s
+    fast lane `./t`                                       19 passed   (unchanged)
+    render2 test_render2 / test_text / test_sampler       27 passed   (unchanged)
+    test_tables / test_fx / test_bitmap                   24 passed   (unchanged)
+
+No floor was lowered. None was ratcheted either, and the reason is worth stating rather than
+leaving as an absence: the reference packs render through `archive/tools/render.py` at
+`RENDER_DIM` 128, and that renderer does not read `size_slot` at all, so no scored channel can
+move under this change. Take the harness as evidence of no regression and not as evidence for
+the fix — the evidence for the fix is the three arbiters and the control, none of which is a
+render.
+
+### What is still open
+
+The 118 records whose graph declares no `$outputsize` are unevaluable by the tag arbiter, and
+the 6 that raise during evaluation are unexplained rather than accounted for — small, but they
+are the population a later change to the evaluator would move first.
+
+Nothing in this tree now walks the class block anywhere but `_class_block`. `walk.py`'s
+independent model still iterates ascending, and that is sound only because it emits positions
+and never a bit-to-slot mapping — both bits are one word wide, so the two orders allocate the
+identical list. Its comment now says so. If that walk ever gains a label, it inherits the
+exception.
+
+### Addendum, measured after the section above was written
+
+**No class bit but 16 and 23 moves at all.** `cls_params` restricted to every OTHER bit is
+identical between the two trees on **903,440 of 903,440** records that both walks decompose.
+That is what bounds the render exposure rather than an argument about it:
+`archive/tools/render.py` — the renderer the reference harness scores — reads `cls_params` by
+bit for 24, 26, 28 and 29 (`shuffle`'s weight vector, `hsl`'s three channels,
+`cls_pair_slot`), and every one of those slots is where it was. The only field that moved is
+`size_slot`, which that renderer never reads.

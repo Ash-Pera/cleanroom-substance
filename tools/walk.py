@@ -482,8 +482,16 @@ def walk(spec, word0, word1, n_words, legend=None):
         edges.append(pos)
         pos += 1
 
-    # inherited parameters: one field per set class-word bit, in ascending bit order,
-    # each as wide as the legend says. (Widths already resolved into cls_widths.)
+    # inherited parameters: one field per set class-word bit, each as wide as the legend
+    # says. (Widths already resolved into cls_widths.)
+    #
+    # ASCENDING BIT ORDER IS NOT THE FORMAT'S ORDER -- the class block emits bit 23 before
+    # bit 16 (SPEC 6.1, `decompose._CLASS_ORDER_SWAPS`). It is sound HERE, and only here,
+    # because this loop emits POSITIONS and never names which bit owns one: both bits are
+    # one word wide in `_CLS`, so the two orders allocate the identical list. A reader that
+    # adds a bit -> slot mapping to this walk inherits the exception and must apply it; that
+    # is what `decompose._class_block` is for, and it is one loop rather than four because
+    # this rule was already missed once by being written down in three places out of four.
     for bit in sorted(spec.cls_widths):
         if (cls >> bit) & 1:
             params.append(pos)

@@ -343,6 +343,46 @@ def _class_emission_order(filter_id, clsbits):
     return order
 
 
+def _class_block(r, clsbits, pos, cost):
+    """The class block, walked ONCE for all four of this module's walks.
+
+    Returns `(cls_slots, cls_params, pos)`: the slots it allocated, the `(bit, first slot,
+    width)` triples for the bits that cost something, and the cursor after the block.
+
+    THIS EXISTS BECAUSE FOUR COPIES OF ONE RULE IS HOW THE RULE GOT MISSED. The block's
+    emission order is a format constant (`_CLASS_ORDER_SWAPS`), and it was applied at three
+    of the four loops that walked the block: `550de51` routed the interaction and fxmaps
+    arms through it, `c70269f` the arity arm, and the additive-spec arm in `decompose` kept
+    iterating `sorted(spec['cls'])` for another two commits -- labelling bits 16 and 23
+    backwards on 4,280 records across 13 filters, a population partitioned exactly by which
+    branch of this module the record reached. Routing the fourth loop through the legend
+    fixes those records; putting the loop itself in one place is what stops the next rule
+    about the block from landing in three of four again. `walk.py`'s "implemented once" is
+    the repo's claim about the FORMAT, and it has to hold of the reader too.
+
+    THE COST CALLBACK TAKES BOTH KEYS, `(index, bit)`, because the two spec shapes key their
+    costs differently and getting that wrong is not hypothetical: an interaction spec's
+    `base`/`cross` vectors are indexed by the bit's POSITION in `clsbits` (offset by one for
+    the intercept), while an additive spec's `cls` dict is keyed by the BIT itself. 550de51's
+    commit message reconciled its own A/B by reading an additive `cls` dict as index-keyed,
+    concluded bit 23 costs zero words in every additive filter, and had to disclose the
+    retraction in the same message. Handing the callback both and letting each site name the
+    one it means removes the choice from the shared code, which has no way to know.
+    """
+    w0 = r.words[0]
+    cls_slots, cls_params = [], []
+    for i, b in _class_emission_order(r.filter_id, clsbits):
+        if not (w0 >> b) & 1:
+            continue
+        n = cost(i, b)
+        if n > 0:
+            cls_params.append((b, pos, n))
+        for _ in range(n):
+            cls_slots.append(pos)
+            pos += 1
+    return cls_slots, cls_params, pos
+
+
 def _interaction_walk(r, s):
     """Colour-interaction spec: per-feature slot count = base[i] + (tag bit 0)*cross[i]."""
     w0 = r.words[0]
@@ -368,21 +408,26 @@ def _interaction_walk(r, s):
     pos = n_masks + BASE_INPUTS[r.filter_id] if r.filter_id in BASE_INPUTS else cost(0, False)
     size_pos = pos                           # first slot after the base region = size-expr slot
     inputs = list(range(n_masks, pos))
-    cls_slots = []
-    cls_params = []
-    # THE CLASS BLOCK IS NOT EMITTED IN ASCENDING BIT ORDER, and this loop no longer assumes
-    # it is -- `_class_emission_order` applies the swap, since 550de51. The measurement is
+    # THE CLASS BLOCK IS NOT EMITTED IN ASCENDING BIT ORDER, and this walk no longer assumes
+    # it is -- `_class_block` applies the swap, since 550de51. The measurement is
     # kept here because it is what a reader has to check the order against.
     # Class bit 23 gates `$randomseed` and class bit 16 gates `$outputsize`, and bit 23's
-    # slot comes FIRST. On the 46,118 corpus records that set both bits, across 21 filters
-    # (`fxmaps` 36,028, `levels` 401), the slot this loop hands to bit 16 holds a program
-    # returning ONE component -- 46,118 of 46,118, and a size expression never does -- while
-    # the slot it hands to bit 23 evaluates to the record's own tag size in 46,023 of the
-    # 46,075 that evaluate. The control is bit 16 set with bit 23 clear: the single class
-    # slot returns two components in 74,262 of 74,262 `levels` records, so bit 16 is the
-    # size and bit 23 inserts a slot in front of it. `pixelprocessor` takes the arity arm and
-    # not this one; it swaps like everything else, and the arity arm walks the block in the
-    # same emission order -- no filter is exempt. See `_CLASS_ORDER_SWAPS`.
+    # slot comes FIRST. Corpus-wide, over ALL 102,173 records that set both bits across 19
+    # filters (`pixelprocessor` 56,055, `fxmaps` 36,028, `transformation` 5,324, `blend`
+    # 2,445, `levels` 401, and fourteen more), taken by slot POSITION so the check cannot
+    # echo the labels: the FIRST class slot holds a program returning ONE component in
+    # 102,173 of 102,173 -- a size expression never does -- and the manifest names its input
+    # `$randomseed` in 102,173 of 102,173, while the SECOND returns two components in 102,173
+    # of 102,173 and is named `$outputsize` in 98,113 (the rest not opening with a bare
+    # `inputref`, or naming the author's own size input: `resolution` 136, `scale` 12).
+    # Restricted to the population this arm covers, the second slot evaluates to the record's
+    # own tag size in 46,023 of the 46,075 that evaluate. The control is bit 16 set with bit
+    # 23 clear: the single class slot returns two components in 639,944 of 640,074 corpus-wide
+    # and one component in 0 (`levels` alone 74,262 of 74,262), so bit 16 is the size and bit
+    # 23 inserts a slot in front of it. `pixelprocessor` takes the arity arm and not this one;
+    # it swaps like everything else, and the arity arm walks the block in the same emission
+    # order -- no filter is exempt, and all four walks now share one loop.
+    # See `_CLASS_ORDER_SWAPS` and `_class_block`.
     #
     # NOTHING IS MISPLACED BY THIS -- both bits cost one word, so `end`, `inputs` and every
     # `param_slots` entry are unaffected and no header runs long. What is wrong is the
@@ -397,13 +442,11 @@ def _interaction_walk(r, s):
     # FORMAT-NOTES.md, "A `levels` record, bit by bit -- and the class block is not in
     # ascending bit order", and "Every filter, bit by bit" for the second measurement of the
     # same order, by manifest identifier rather than by component count.
-    for i, b in _class_emission_order(r.filter_id, clsbits):
-        if (w0 >> b) & 1:
-            n = cost(1 + i, False)
-            if n > 0:
-                cls_params.append((b, pos, n))
-            for _ in range(n):
-                cls_slots.append(pos); pos += 1
+    #
+    # The cost cell is keyed on the bit's INDEX in `clsbits`, offset by one for the fit's
+    # intercept -- which is why this callback takes `i` and ignores `b`.
+    cls_slots, cls_params, pos = _class_block(
+        r, clsbits, pos, lambda i, _b: cost(1 + i, False))
     off = 1 + len(clsbits)
     if s.get('has_absent'):
         off += 1
@@ -589,16 +632,9 @@ def _fxmaps_walk(r, spec):
     # gap in the field a reader would use to find it. `end` is never past the record (0 of
     # 41,164), and `prog` keeps the first-after-inputs slot the invariant above validates.
     pos = prog
-    cls_slots, cls_params = [], []
-    for i, b in _class_emission_order(r.filter_id, spec.get('clsbits', ())):
-        if not (r.words[0] >> b) & 1:
-            continue
-        n = _feature_cost(spec, 1 + i, r.words[0] & 1, False)
-        if n > 0:
-            cls_params.append((b, pos, n))
-        for _ in range(n):
-            cls_slots.append(pos)
-            pos += 1
+    cls_slots, cls_params, pos = _class_block(
+        r, spec.get('clsbits', ()), pos,
+        lambda i, _b: _feature_cost(spec, 1 + i, r.words[0] & 1, False))
     # THE SIX W1 PAIRS ARE THIS FILTER'S OWN PARAMETERS, and this arm used to return
     # `param_slots: []` while the cost model charged every one of them. `costs.json`'s
     # filter-4 spec is a `colour` interaction carrying `pairs: [0, 1, 2, 3, 4, 13]` -- w1
@@ -724,16 +760,10 @@ def decompose(r):
         # program slot that always follows the block, so the cursor still lands on the same
         # `end` -- 2 + n_in + (class costs) + 1 -- and `inputs`, `hdr` and `param_slots` are
         # untouched. What changes is which word `prog`, `size_slot` and `size_or_baked` name.
-        cls_slots = []
-        cls_params = []
-        clsbits = sorted(int(k) for k in spec['cls'])
-        for _i, b in _class_emission_order(f, clsbits):
-            if (w0 >> b) & 1:
-                n = int(round(spec['cls'][str(b)]))
-                if n > 0:
-                    cls_params.append((b, pos, n))
-                for _ in range(n):
-                    cls_slots.append(pos); pos += 1
+        # An additive spec's `cls` dict is keyed by BIT, not by index -- see `_class_block`.
+        cls_slots, cls_params, pos = _class_block(
+            r, sorted(int(k) for k in spec['cls']), pos,
+            lambda _i, b: int(round(spec['cls'][str(b)])))
         # The filter's own pixel program is the slot right after the class block. layout
         # names it only when the arity is clean: _pp_edges reads the 5-bit field and declines
         # a field of 0 whose word is nonzero (e.g. 0x10000 -> arity 0 with a stray high bit),
@@ -779,15 +809,40 @@ def decompose(r):
         inputs.append(pos); pos += 1
     pos = max(pos, int(round(const)))        # skip ramp/table base structure (gradient/curve)
     size_pos = pos                           # first slot after the base region = size-expr slot
-    cls_slots = []
-    cls_params = []
-    for b in sorted(int(k) for k in spec['cls']):
-        if (w0 >> b) & 1:
-            n = int(round(spec['cls'][str(b)]))
-            if n > 0:
-                cls_params.append((b, pos, n))
-            for _ in range(n):
-                cls_slots.append(pos); pos += 1
+    # EMISSION ORDER, NOT ASCENDING BIT ORDER -- the same legend, and now the same LOOP, as
+    # the other three walks. This arm iterated `sorted(spec['cls'])` until now: the fourth
+    # copy of a rule `_CLASS_ORDER_SWAPS` states once, and the copy that was missed when
+    # 550de51 routed the interaction and fxmaps arms through the legend and c70269f the arity
+    # arm. It labelled class bits 16 and 23 backwards on 4,280 records over 13 filters --
+    # blend 2,445, dirmotionblur 750, directionalwarp 528, warp 269, shuffle 70, gradient 54,
+    # blur 51, curve 50, dyngradient 20, normal 18, distance 18, sharpen 4, hsl 3 -- which is
+    # every record of those filters that sets both bits, and nothing else in the corpus.
+    #
+    # THE POPULATION IS THE CODE BRANCH, WHICH IS WHY IT IS THE WALK AND NOT THE FORMAT. The
+    # records reaching the interaction, fxmaps and arity arms were already right; the ones
+    # reaching this arm were exchanged. The arbiter is the bytes, taken by slot POSITION so
+    # it cannot echo the labels under test -- the two class slots are the same two words
+    # before and after, only the names on them moved:
+    #
+    #     lower slot   program returns ONE component      4,280 of 4,280
+    #                  manifest names `$randomseed`       4,280 of 4,280
+    #     upper slot   program returns TWO -- a size      4,280 of 4,280
+    #                  manifest names `$outputsize`       4,162 (118 size programs that do
+    #                                                     not open with a bare `inputref`)
+    #
+    # and the control where nothing can swap, bit 16 set with bit 23 clear: 639,944 of
+    # 640,074 records resolve a two-component program at the single class slot, ONE component
+    # on 0 and `$randomseed` on 0.
+    #
+    # 550de51's commit message explained these same 4,280 as "filters where bit 23 costs 0
+    # words, so no slot is emitted and order is moot". That is withdrawn: `costs.json` gives
+    # bit 23 a cost of 1.0 in all 13, the A/B moves every one of them, and the reason they
+    # sat still for that commit is simply that it did not touch this loop.
+    #
+    # An additive spec's `cls` dict is keyed by BIT, not by index -- see `_class_block`.
+    cls_slots, cls_params, pos = _class_block(
+        r, sorted(int(k) for k in spec['cls']), pos,
+        lambda _i, b: int(round(spec['cls'][str(b)])))
     for bx, by, cv in spec.get('conj', ()):
         if (w0 >> bx & 1) and (w0 >> by & 1):
             for _ in range(int(round(cv))):

@@ -232,26 +232,34 @@ def record_sizes(asm, outputsize):
 
     THE EXPRESSION IS ONLY TRUSTED WHERE IT REPRODUCES THE TAG. Evaluated at the file's
     own declared `$outputsize` a correct size program must return the tag's own nibbles;
-    where it does not -- 28 records here, 16 of them `fxmaps`, whose size slot names a
-    program returning `$randomseed` -- this reader has misidentified the slot and its
-    answer at any OTHER output size is worth nothing.
+    where it does not, this reader has misidentified the slot and its answer at any OTHER
+    output size is worth nothing.
 
-    THAT MISIDENTIFICATION IS ONE BIT AND IT IS NOT LOCAL. It is class bit 23, and the
-    class block does not emit its bits in ascending order: bit 23 gates `$randomseed` and
-    is emitted BEFORE bit 16, which gates `$outputsize`. So on every record setting both,
-    `decompose`'s `size_slot` names the seed and the size expression is the NEXT slot.
-    46,118 corpus records across 21 filters, `fxmaps` 36,028 and `levels` 401. Measured:
-    the slot the walk calls bit 16 returns one component in 46,118 of 46,118 -- a size
-    never can -- and the slot it calls bit 23 evaluates here to the record's own tag size
-    in 46,023 of the 46,075 that evaluate, against a control of 74,262 of 74,262 `levels`
-    records that set bit 16 alone and return two. `pixelprocessor` swaps like everything
-    else -- it sets class bit 22 on 0 records, and what looked like an exception was
-    `decompose`'s arity arm handing out the pixel program's slot in front of the class
-    block; both are fixed and no filter is exempt from the order. The fallback below
-    therefore fires on a misplacement rather than on a record with no expression, and it is
-    silent because a one-component result fails `len(ref) >= 2` and looks identical to an
-    absent program. See FORMAT-NOTES.md "A `levels` record, bit by bit" and "Every filter,
-    bit by bit"; the walk-side fix landed at `decompose._CLASS_ORDER_SWAPS`.
+    THE MISIDENTIFICATION THAT USED TO CAUSE THAT WAS ONE BIT, AND IT IS FIXED. Class bit
+    23 gates `$randomseed`, bit 16 gates `$outputsize`, and the class block emits bit 23
+    FIRST -- so a walk that reads the block in ascending bit order hands `size_slot` the
+    SEED pointer and leaves the size expression on the next word. 102,173 corpus records
+    across 19 filters set both bits. `decompose` now walks the block in emission order on
+    every one of its four arms (`_CLASS_ORDER_SWAPS`, `_class_block`), the last of them --
+    the additive-spec arm, 4,280 records over 13 filters, `blend` 2,445 the largest -- as of
+    the commit that rewrote this paragraph. The reading is verified by the bytes at those
+    slots rather than by the walk that placed them: the first returns ONE component and the
+    manifest names it `$randomseed` on 102,173 of 102,173, the second returns TWO on
+    102,173 of 102,173, and on the 4,162 of the additive 4,280 whose graph declares an
+    `$outputsize` the second evaluates HERE to the record's own tag size in 4,156, the other
+    6 raising. The control, where nothing can swap: bit 16 set with bit 23 clear resolves a
+    two-component program on 639,944 of 640,074 corpus-wide and a one-component program on
+    none.
+
+    What that cost this function, measured as an A/B over the 99 files carrying one of those
+    4,280 records: at the DECLARED output size, nothing -- 385,810 record sizes identical,
+    because the fallback below returns the tag there anyway. Two log2 steps down, 34 records
+    change size (`dyngradient` 20, `blend` 10, `gradient` 2, `hsl` 1, `curve` 1), which is
+    the whole point of the expression: it is the records whose size does NOT track the
+    output uniformly that the fallback gets wrong, and they only diverge off the default.
+    The failure was silent in both directions -- a one-component result fails `len(ref) >= 2`
+    and looks identical to an absent program. See FORMAT-NOTES.md "A `levels` record, bit by
+    bit", "Every filter, bit by bit", and "The fourth class-block walk".
 
     Those fall back, and the fallback is
     the record's INPUTS rather than its tag: a node with no size expression of its own
