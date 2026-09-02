@@ -44151,3 +44151,341 @@ naming argument.
 prints documented against measured, so the next drift is a number that disagrees with itself
 in the output rather than prose nobody re-reads. That is the same fix as `corpus.py`'s, for
 the same reason, applied to the one claim where being wrong matters most.
+
+# A `levels` record, bit by bit — and the class block is not in ascending bit order
+
+*The question was narrow: enumerate every bit of a `levels` record this project cannot put a
+structural meaning to, and interpret them. Two of the four answers were already in the
+notes in some form and needed a control; the third had never been looked at and is a
+corpus-wide placement error; the fourth turned out to be almost entirely somebody else's
+bytes.*
+
+Everything below is over the 437-file corpus, 85,820 `levels` records, 16,588,236 record
+bytes. `audit_corpus.py` reports the filter at **99.57% of record bytes interpreted, 71,820
+uninterpreted**, and the census here reproduces that residual byte for byte.
+
+## The enumeration
+
+Every bit position ever set on a `levels` record, and what names it.
+
+**`word0` low half — 64 distinct values, and no bit outside the legend**
+
+    bit 0        colour flag                     1,299 set   (1.51%)   SPEC 6.2
+    bits 1-4     filter id 15                   85,820 set  (100.0%)   SPEC 6.2
+    bits 5,6,7   the rest of the id field            0 set    (0.00%)
+    bits 8-11    log2 width       12,888 / 16,253 / 23,886 / 61,209    SPEC 6.2
+    bits 12-15   log2 height      12,842 / 15,391 / 23,103 / 62,128    SPEC 6.2
+
+**`word0` high half — the class word. Nine distinct values, five bits.**
+
+    value    bits            records      cost   what it names
+    0x0019   16,19,20         71,460             --
+    0x0018   19,20            11,025             --
+    0x0009   16,19             2,399             --
+    0x0039   16,19,20,21         399             --
+    0x0099   16,19,20,23         397             --
+    0x0008   19                  114             --
+    0x0038   19,20,21             18             --
+    0x0089   16,19,23              4             --
+    0x0029   16,19,21              4             --
+
+    bit 16   74,663  (87.00%)   1 word    the inherited size expression -- but see below,
+                                          it is NOT in the slot the walk puts it in when
+                                          bit 23 is also set
+    bit 19   85,820 (100.00%)   0 words   UNNAMED. Set on 903,608 of the corpus's 903,616
+                                          records, clear on 8 -- all `pixelprocessor`. It
+                                          is `costs.json`'s `constant_bits` for 21 of 22
+                                          filters, so its cost cannot be told from the
+                                          intercept anywhere except filter 20, where it
+                                          carries a coefficient and that coefficient is 0.
+    bit 20   83,299  (97.06%)   0 words   UNNAMED. Varies per record, not per file (249 of
+                                          370 files holding `levels` are mixed).
+    bit 21      421   (0.49%)   0 words   UNNAMED. Also per record.
+    bit 23      401   (0.47%)   1 word    a program pointer in 401 of 401 -- and it is
+                                          `$randomseed`. See below.
+    bits 17, 18, 22, 24-31        0                   never set on a `levels` record
+
+**`word1` — six two-bit fields, and nothing above bit 11**
+
+    field  mask    state 1 (baked)   state 2 (program)   state 3 (edge)
+      0    0x003        27,860               472               0
+      1    0x00c        28,012               526               0
+      2    0x030         7,548               158               0
+      3    0x0c0        47,069               505               0
+      4    0x300        55,238               689               0
+      5    0xc00           455                 0               0
+    bits 12-31                                                          never set, 0 of 85,820
+
+State 3 never occurs on any `levels` field, so no `w1` field of this filter is ever an image
+input. The accounting closes exactly: 168,077 set `w1` bits, 168,077 `param_slots` entries,
+163,992 + 1,735 baked and 2,350 program.
+
+**So the unnamed bits are: class 19, 20, 21, 23, and `w1` field 5.** Nothing else. Two of
+those five are now settled.
+
+## `w1` field 5: the split-pair claim now has a control, and two of the arguments for the name do not survive it
+
+"`levels` has a SIXTH w1 field, and it marks a midpoint SPLIT PAIR" characterised this field
+without ever running a control population, which the section itself half-admits — it compares
+455 field-5 records against all 85,365 others, and *any* property of a repeated authored idiom
+will look sharp against that. The control it needed is records of the **same shape** with the
+bit clear.
+
+**The control.** Take every `levels` record that bakes exactly one named parameter, that
+parameter being `leveloutlow` or `levelouthigh`, at the value 0.5. Ask whether some other
+record in the same file, reading the same input edge, bakes the complementary out-parameter at
+0.5:
+
+    field 5 SET      440 records     436 twinned    99.09%
+    field 5 CLEAR  4,916 records       0 twinned     0.00%      <- the control
+
+Zero of 4,916. Records identical in filter, class word, parameter, value and file, differing
+only in this bit, and not one of them is half of a pair. The partner is itself a field-5
+record in **436 of 436**, so the marking is symmetric, and the twin sits 4 records away 206
+times and 1 away 140 times. **The structural role is settled: within this corpus, `w1` field 5
+is set on exactly the members of complementary midpoint split pairs, and on nothing else.**
+
+The 15 field-5 records outside that group are 8 with a different single parameter, 4 with an
+out-parameter not at 0.5, and 3 with nothing named at all.
+
+**A second shape fact, which is new.** Fan-out — how many records name this one as an input:
+
+    field 5 SET (n=455)                  1: 48   2: 1   11: 220   44: 2   88: 128   176: 56
+    matched control (n=4,916)            0: 2    1: 4,905   2: 5   6: 4
+
+406 of 455 field-5 records feed eleven or more consumers, and every count above 2 is a
+multiple of 11. The control feeds one consumer in 4,905 of 4,916. Whatever the idiom is, it
+splits a signal at the midpoint and hands both halves to an eleven-way fan.
+
+### The "intermediary clamp" argument, re-run against the same control
+
+Two of its three supports change under a matched control — one gets much stronger and one
+falls over.
+
+**Support 3, the input-filter enrichment, gets stronger.** The section measured
+`pixelprocessor` at 42% of field-5 records against a 1.91% base rate over all `levels`
+records. Against the matched control instead:
+
+    input filter        all levels    field 5 SET (455)    MATCHED CONTROL (4,916)
+      pixelprocessor       1.9%          208   45.71%             8    0.16%
+      blend               51.4%          168   36.92%         1,200   24.41%
+      fxmaps               7.4%           11    2.42%         2,290   46.58%
+      transformation       9.8%           24    5.27%         1,329   27.03%
+
+45.71% against 0.16% is a ratio of 285, not 22, and the control is now records that look
+identical in the header. That is the strongest single number about this field.
+
+**Support 2, "the bit is INDEPENDENT of the rest of the record", does not survive and is
+retracted.** The section held the tag word, the named parameter and its value fixed, found the
+bit varying, and concluded "nothing else in the record predicts it, so it carries information
+of its own". Taking its own largest cell — `w0` = `0x0019881e`, `leveloutlow` 0.5 — and asking
+what feeds each side:
+
+    field 5 SET   (157)   pixelprocessor 67 (42.7%)   blend 67   levels 7   transformation 7
+    field 5 CLEAR (2,668) fxmaps 1,520   transformation 1,083   blend 57   pixelprocessor 3 (0.11%)
+
+Inside one cell, 42.7% against 0.11%. The bit is not independent of the record; it is
+independent of the record's own *header*, which is a different and much weaker statement. What
+predicts it is the record's INPUT and its twin, and neither is in the cell key. The conclusion
+"it carries information of its own" may still be true — it just does not follow from that test.
+
+**Where that leaves the name.** Unchanged, and for the reason already recorded: "intermediary
+clamp" is external knowledge at moderate confidence, the field consumes no word so naming it
+surfaces no value (0 of 85,820 readings change), and `assume.QUESTIONS['levels.interclamp']`
+with its honest null is the right home. What has changed is that the *structural* description
+no longer rests on an uncontrolled comparison. Two independent statements now stand on
+controls, and they are compatible rather than competing: the field's population is exactly the
+split-pair members, and that population is overwhelmingly fed by the one filter whose output
+has no reason to lie in [0, 1].
+
+## Class bit 23 is `$randomseed`, and the class block is NOT in ascending bit order
+
+This is the bit nothing had looked at, and it is not a `levels` fact.
+
+401 `levels` records set class bit 23. The walk gives it a word — `costs.json` charges bit 23
+1.0 for every filter that can see it — and the word holds a valid program in **401 of 401**.
+So the slot is placed and read. What is wrong is which bit the walk thinks owns it.
+
+**The programs say so on sight.** `fur_var_001.sbsasm` record 20, `w0` = `0x0099881e`, class
+bits 16, 19, 20, 23, two class slots at 3 and 4:
+
+    slot 3 -- the walk calls this bit 16, the size expression
+      %0    0A02  inputref.i1    uid=4057753226
+
+    slot 4 -- the walk calls this bit 23
+      %0    0A42  inputref.i2    uid=2796450008
+      %1    0D00  const.f1       1
+      %2    0532  rand.f1        %1
+      ...
+      %9    0A52  add.i2         %0, %8
+
+and the file's own manifest names both uids:
+
+    <input uid="4057753226" identifier="$randomseed"  type="4" default="0"/>
+    <input uid="2796450008" identifier="$outputsize"  type="8" default="8,8"/>
+
+The one-component integer in the FIRST class slot is `$randomseed`. The two-component integer
+in the SECOND is `$outputsize` — the size expression — perturbed by a seeded random.
+
+**Four measurements, three of them exceptionless.**
+
+1. *Component count, all 401.* The slot the walk calls bit 16 returns 1 component in 401 of
+   401. The slot it calls bit 23 returns 2 in 401 of 401.
+2. *The control.* 74,262 `levels` records set bit 16 with bit 23 clear. Their single class
+   slot returns 2 components in **74,262 of 74,262**. So bit 16 alone is the size; adding bit
+   23 does not change what bit 16 gates, it inserts a slot in front of it.
+3. *The arbiter, and it is not the walk.* Bind the bit-23 slot's program through `render2`'s
+   runtime, run it at the graph's declared `$outputsize`, and compare to the record's own tag
+   size (`word0` bits 8–15, which nothing in this chain reads): **401 of 401 match.** The
+   walk's `size_slot` cannot even be compared — it returns one component.
+4. *It is the whole format, not this filter.* Over every record in the corpus setting both
+   bits, 46,118 across 21 filters:
+
+       the walk's bit-16 slot   1 component                        46,118 of 46,118
+       the walk's bit-23 slot   2 components equal to the tag size  46,023
+                                2 components, differs                   52
+                                raised in the runtime                   43
+                                                       46,023 of 46,118 = 99.79%, and
+                                                       46,023 of the 46,075 that evaluate
+                                                       = 99.89%
+
+   and by manifest type of the first `inputref`: the bit-16 slot resolves a **type 4** (int1)
+   input on 46,124 records and the bit-23 slot a **type 8** (int2) on 45,632.
+
+**`pixelprocessor` is the exception and it is left open.** Filter 20 does not swap: its bit-16
+slot returns the tag size on 45,668 records and its bit-23 slot returns 1, 2, 3 or 4
+components. Filter 20 is also the only filter that sets class bit 22 (99.6% of its records)
+and the only one whose `costs.json` entry carries no coefficient for bit 22 — its cost is
+folded into the intercept, so a slot may be being placed there that the walk does not name.
+That is a filter-20 question and is not touched here.
+
+### Why nothing caught it
+
+Because the failure is silent by construction, three times over.
+
+* `Record.size_or_baked` reads `layout[1]`, which is `decompose`'s `prog` — **the class block's
+  first slot**, not `size_slot`. On a bit-23 record that is the `$randomseed` pointer.
+* `Record.output_size` then evaluates it and returns `vals[-1] if len(vals[-1]) == 2 else
+  None`. A one-component result returns **None**, and `audit_corpus` counts None as
+  "unevaluable", never as a disagreement. So all 46,118 records sit outside the 99.81%
+  tag-agreement row rather than failing it.
+* `render2.engine`'s resize pass guards on `len(ref) >= 2` and falls back to the record's
+  inputs. Its docstring already records the symptom — *"28 records here, 16 of them `fxmaps`,
+  whose size slot names a program returning `$randomseed`"* — and treats it as a local
+  misidentification. It is one bit, in every filter.
+
+The cost is not zero: `render2 --outputsize` re-derives every record's canvas from its size
+program, and on these 46,118 records it silently takes the parent's size instead of the
+record's own expression. For `levels` that is 401 records; for `fxmaps` 36,028.
+
+### The fix, written up and NOT applied
+
+`decompose._interaction_walk` and `_fxmaps_walk` both iterate `clsbits` in ascending order and
+hand out slots in that order. The measurement above says the emission order is not ascending:
+**class bit 23 is emitted before class bit 16.** That is not new information in this file —
+"Why bit 7's parameter comes first" derived the order `7, 0, 13` in class-bit numbering, which
+is `word0` 23, 16, 29, from slot-order widths alone. It was never carried into the walk.
+
+The patch is a class-block ORDER legend — a format constant of the same kind as the name
+legend, stating an emission order rather than a position — defaulting to ascending with bit 23
+ahead of bit 16, and `pixelprocessor` excluded until its bit 22 is understood. It is not
+applied here because it moves `prog` on 46,118 records across 21 filters, and `prog` is
+`Record.layout[1]`, which feeds `size_or_baked`, `programs()` and the whole render path. That
+is its own A/B with the reference harness, not a rider on a `levels` census. The precedent is
+`vector_shape`'s extent bug, written up in "The one real bug this found" and likewise left as
+a patch.
+
+What a reader should do meanwhile is what the arbiter above does: **when class bits 16 and 23
+are both set, the size expression is the SECOND class slot, not the first.**
+
+## The 71,820 bytes: 57 records hold 43% of it, and none of it is `levels`
+
+**None of the residual lies inside a walked header.** The walk names every byte of all 85,820
+`levels` headers; the header/tail split is 0 / 71,820, and 66,066 records (77.0%) carry no
+residual at all.
+
+    alignment pad -- 2 bytes at 2 mod 4, `00 00`      40,928   56.99%   20,464 runs
+    runs longer than 8 bytes                          30,782   42.86%   58 runs, 57 records
+    short runs that are not the pad                      110    0.15%   16 runs
+                                                      ------
+                                                      71,820
+
+**The pad is the pad.** 20,464 two-byte runs, `00 00` in 20,464 of 20,464, with a decoded
+program body immediately to the left in 20,460 of them (a decoded ramp table in the other
+four). This is the corpus-wide finding at
+filter scale and it is a metric definition, not a gap.
+
+**The 30,782 bytes are an FX-Map's, not a `levels`'.** 58 runs held by 57 records in 16 files —
+0.066% of the filter's records carry 43% of its residual. Every one of them begins at the first
+byte after a region this model has already decoded as an FX-Map **entry** (21,160 bytes) or
+FX-Map **node cell** (9,560 bytes), and ends at the first byte of a decoded program body.
+**54 of the 58 runs begin within 8 bytes of the last offset `fx_walk` reaches, 50 of them at
+exactly 8** — the 8-byte entry stub the corpus-wide audit identified as the accounting seam —
+and the remaining 4 END exactly at such an offset. 27,554 of the 30,782 bytes are bracketed on
+both sides by offsets `fx_walk` reaches. Their word content is
+what an FX entry parameter table looks like: 3,270 other, 2,545 small integers, 1,496 plausible
+floats, 222 zero, 103 body pointers, 60 program pointers.
+
+The record directory is a partition and not an allocation, so an FX entry table sitting
+physically between two records lands inside the earlier one's extent. Here the earlier one is
+a `levels`. These bytes are the `fxmaps` entry-parameter gap, charged to the wrong filter.
+
+**The 110 bytes are 16 short runs**: 9 of 8 bytes at 0 mod 4 between an FX node cell and a
+program body, 5 of 6 bytes at 2 mod 4 (a pad plus one word) before an FX entry, and 2 of 4.
+
+**Eight bytes are unattributed, and they are the only candidate for a `levels` gap.** Those two
+4-byte runs are the only residual bytes anywhere that touch a `levels` record's own parameter
+region: `concrete_049` record 337 and `sci_fi_003` record 216 each hold one plausible float
+(0.75 and −0.25) exactly one word past the walked header end, with a decoded FX entry
+immediately after. Two records of 85,820, 8 bytes of 16.6 MB. Not a sixth parameter on this
+evidence — a sixth parameter would not appear twice — but stated rather than absorbed.
+
+**So the three-way split for this filter is 71,812 bookkeeping and misattribution, 8 bytes
+unattributed, 0 bytes of unread `levels` structure.** Closing the FX entry extent and the pad
+definition would take `levels` from 99.57% to 99.9995% without decoding anything new, which is
+the same lesson the corpus-wide audit recorded.
+
+## Colour versus greyscale width: settled, with no case left over
+
+`_parameters_paired`'s retracted docstring claimed "baked levels are one word whether the
+record is colour or greyscale". Over every baked slot the walk places:
+
+    tag bit 0 clear (greyscale)   1 word    163,992 of 163,992
+    tag bit 0 set (colour)        4 words     1,735 of 1,735
+    program arm                   1 word      2,350
+
+No other combination occurs. Width is a function of the tag's colour bit alone, exactly as
+`walk._field_width` derives it, and the two counts are the ones SPEC 13.4 already prints. 1,299
+of the 85,820 records are colour and they carry 1,735 of the 165,727 baked slots. There is no
+remaining width case.
+
+## Corrections to existing text
+
+* **SPEC 6.1** said filter 17's parameter block is "the only known exception" to ascending
+  order and that "the class walk and the record header are ascending there as everywhere". The
+  class block is a second exception, in every filter but `pixelprocessor`, on 46,118 records.
+  Corrected in place, with SPEC 13.3 and 13.4.
+* **"`levels` has a SIXTH w1 field"**, support 2: retracted as stated. Holding the tag word,
+  parameter and value fixed does not show the bit is independent of the record — the record's
+  input predicts it at 42.7% against 0.11% inside that very cell.
+* **"`levels` has a SIXTH w1 field"**, the twinning finding: upheld, and now with the control
+  it never had — 436 of 440 against 0 of 4,916.
+* **`render2.engine.resized`'s docstring**: its "28 records here, 16 of them `fxmaps`, whose
+  size slot names a program returning `$randomseed`" is right about the symptom and wrong to
+  read it as a local misidentification. It is class bit 23, corpus-wide.
+
+## What is still open
+
+* **Class bits 19, 20 and 21.** All three cost zero words in every filter's cost model, so
+  they gate no stored value, and all three are structurally accounted for in that sense —
+  nothing is misplaced by them. What they *mean* is not known. Two probes came back negative
+  and are recorded so they are not repeated: bit 20 does not predict whether the record's tag
+  size equals its input's (99.75% same when set, 99.76% when clear), and it does not predict
+  the shape of the size program (a bare `inputref` on `$outputsize` in 31.5% of bit-20-set
+  records against 32.6% of bit-20-clear). Bit 19 is set on 903,608 of 903,616 corpus records
+  and the 8 exceptions are all `pixelprocessor`, so it is very nearly a constant marker and the
+  population that could identify it is those 8 records.
+* **The class-block order patch**, above — the measurement is done, the change is not made.
+* **`pixelprocessor`'s bits 22 and 23**, which is why the patch cannot simply be applied to
+  every filter.
+* **The name of `w1` field 5**, which is a provenance question and not an analysis one.

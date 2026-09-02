@@ -1395,12 +1395,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 #
                 # THE NAME IS EXTERNAL KNOWLEDGE, held at the same confidence as the blend mode
                 # dropdown order, which is why this is an arm and not a behaviour. What the file
-                # says without it, over 90,728 records: the field is set on 500 across 130 files,
-                # ALWAYS in state 1 -- a parameter with no word and one non-absent state is a flag
-                # carried by presence; it varies with the entire rest of the record held fixed (tag
-                # 0x18bb1e, single `levelouthigh` of 0.5: 6 set against 4 clear); and its input is
-                # a `pixelprocessor` 42.00% of the time against a base rate of 1.91%, a 22x
-                # enrichment on the ONE node whose output has no reason to lie in [0, 1]. READING
+                # says without it, over 90,728 records: the field is set on 500 across 130 files
+                # (455 over the 437-file corpus alone), ALWAYS in state 1 -- a parameter with no
+                # word and one non-absent state is a flag carried by presence.
+                #
+                # RE-TAKEN AGAINST A MATCHED CONTROL, because the base rates quoted here were
+                # against ALL `levels` records and any property of a repeated authored idiom looks
+                # sharp against that. The control is records of the same shape with the bit clear:
+                # exactly one named parameter, `leveloutlow` or `levelouthigh`, at 0.5.
+                #
+                #     input is a pixelprocessor    field 5 SET 45.71%   CONTROL 0.16%   (285x)
+                #     has a complementary twin     field 5 SET 99.09%   CONTROL 0.00%
+                #                                  (436 of 440)         (0 of 4,916)
+                #
+                # So the enrichment is 285x rather than 22x and survives the control, and the
+                # field's population is exactly the members of midpoint split pairs. WHAT DOES NOT
+                # SURVIVE is "it varies with the entire rest of the record held fixed": holding the
+                # tag word, parameter and value fixed leaves the record's INPUT free, and inside
+                # the largest such cell the input is a pixelprocessor on 42.7% of the set records
+                # against 0.11% of the clear ones. The bit is independent of the record's HEADER,
+                # not of the record. See FORMAT-NOTES.md "A `levels` record, bit by bit". READING
                 # PRESENCE AS "NOT THE DEFAULT" is a SECOND guess stacked on the first, and it is
                 # the one 'noclamp' encodes. THE ARM IS MEASURABLE ON ALMOST NONE OF ITS OWN
                 # POPULATION: 492 of the 500 set only an out-parameter, so `t` is `src` and

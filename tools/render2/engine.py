@@ -234,7 +234,24 @@ def record_sizes(asm, outputsize):
     own declared `$outputsize` a correct size program must return the tag's own nibbles;
     where it does not -- 28 records here, 16 of them `fxmaps`, whose size slot names a
     program returning `$randomseed` -- this reader has misidentified the slot and its
-    answer at any OTHER output size is worth nothing. Those fall back, and the fallback is
+    answer at any OTHER output size is worth nothing.
+
+    THAT MISIDENTIFICATION IS ONE BIT AND IT IS NOT LOCAL. It is class bit 23, and the
+    class block does not emit its bits in ascending order: bit 23 gates `$randomseed` and
+    is emitted BEFORE bit 16, which gates `$outputsize`. So on every record setting both,
+    `decompose`'s `size_slot` names the seed and the size expression is the NEXT slot.
+    46,118 corpus records across 21 filters, `fxmaps` 36,028 and `levels` 401. Measured:
+    the slot the walk calls bit 16 returns one component in 46,118 of 46,118 -- a size
+    never can -- and the slot it calls bit 23 evaluates here to the record's own tag size
+    in 46,023 of the 46,075 that evaluate, against a control of 74,262 of 74,262 `levels`
+    records that set bit 16 alone and return two. `pixelprocessor` does not swap and is
+    the one filter that also sets class bit 22. The fallback below therefore fires on a
+    misplacement rather than on a record with no expression, and it is silent because a
+    one-component result fails `len(ref) >= 2` and looks identical to an absent program.
+    See FORMAT-NOTES.md "A `levels` record, bit by bit"; the walk-side fix is written up
+    there and not applied.
+
+    Those fall back, and the fallback is
     the record's INPUTS rather than its tag: a node with no size expression of its own
     takes its parent's size, edges point strictly backwards, so the answer is already
     computed. A record with neither an expression nor an input -- a `bitmap`, a `uniform`

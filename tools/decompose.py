@@ -326,6 +326,30 @@ def _interaction_walk(r, s):
     inputs = list(range(n_masks, pos))
     cls_slots = []
     cls_params = []
+    # THE CLASS BLOCK IS NOT EMITTED IN ASCENDING BIT ORDER, and this loop assumes it is.
+    # Class bit 23 gates `$randomseed` and class bit 16 gates `$outputsize`, and bit 23's
+    # slot comes FIRST. On the 46,118 corpus records that set both bits, across 21 filters
+    # (`fxmaps` 36,028, `levels` 401), the slot this loop hands to bit 16 holds a program
+    # returning ONE component -- 46,118 of 46,118, and a size expression never does -- while
+    # the slot it hands to bit 23 evaluates to the record's own tag size in 46,023 of the
+    # 46,075 that evaluate. The control is bit 16 set with bit 23 clear: the single class
+    # slot returns two components in 74,262 of 74,262 `levels` records, so bit 16 is the
+    # size and bit 23 inserts a slot in front of it. `pixelprocessor` does NOT swap and is
+    # the only filter that also sets class bit 22, whose cost `costs.json` folds into the
+    # intercept.
+    #
+    # NOTHING IS MISPLACED BY THIS -- both bits cost one word, so `end`, `inputs` and every
+    # `param_slots` entry are unaffected and no header runs long. What is wrong is the
+    # LABEL: `size_slot` and `prog` name the seed pointer, `size_or_baked` returns it, and
+    # `output_size` discards a one-component result as unevaluable rather than reporting a
+    # disagreement. The failure is silent in all three places.
+    #
+    # The fix is a class-block ORDER legend (a format constant, like the name legend, that
+    # states an emission order and never a position), not a per-filter branch. It is not
+    # applied here because it moves `prog` on 46,118 records and `prog` is
+    # `Record.layout[1]`, which feeds `size_or_baked`, `programs()` and the render path --
+    # that is its own A/B against the reference harness. See FORMAT-NOTES.md,
+    # "A `levels` record, bit by bit -- and the class block is not in ascending bit order".
     for i, b in enumerate(clsbits):
         if (w0 >> b) & 1:
             n = cost(1 + i, False)

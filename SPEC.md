@@ -119,12 +119,28 @@ order, enumerate which fields are present; **each field's width is a constant of
 kind**. Nothing stores an offset — a reader advances position by the width of each present
 field; a writer emits in the same order.
 
-**One filter's `w1` parameter block is not in ascending mask order: filter 17 `text`, whose
-block is laid `matrix22`, `position`, `fontsize` (§13.4).** It is the only known exception,
-it applies to the parameter block alone — the class walk and the record header are ascending
-there as everywhere — and it is stated here rather than only at §13.4 because a reader who
-takes ascending order as universal will place `text`'s fields wrongly and get plausible
-numbers rather than a failure. See §13.4 for the evidence that fixes the order.
+**Ascending order has two known exceptions, and both are stated here rather than only at
+§13.4, because a reader who takes ascending order as universal places fields wrongly and gets
+plausible numbers rather than a failure.**
+
+1. **Filter 17 `text`'s `w1` parameter block** is laid `matrix22`, `position`, `fontsize`
+   (§13.4) — bits 10, 6, 8. This applies to the parameter block alone.
+2. **The class block emits bit 23 before bit 16, in every filter but `pixelprocessor`.**
+   Class bit 16 gates `$outputsize` and bit 23 gates `$randomseed` (§13.4), and when both are
+   set the `$randomseed` pointer takes the first class slot and the size expression the
+   second. Measured over the 46,118 corpus records that set both: the first class slot's
+   program returns **one** component in 46,118 of 46,118 — a size never can — and the second
+   returns two components equal to the record's own tag size in 46,023 of the 46,075 that
+   evaluate (99.89%; 99.79% of all 46,118). The control is records with bit 16 set and bit 23
+   clear, whose single class slot returns two components in 74,262 of 74,262 `levels` records. `pixelprocessor` is the
+   exception to the exception: it does not swap, and it is also the only filter that sets
+   class bit 22.
+
+A reader that walks the class block in plain ascending order still gets the header LENGTH
+right — both bits cost one word — so nothing runs past the end and no parameter moves. What it
+gets wrong is which of the two slots is the size, and the error is silent: the misread slot
+holds a one-component program, and a reader that requires two components to call something a
+size discards it as unevaluable rather than reporting a disagreement.
 
 ### 6.2 The two header words
 
@@ -688,6 +704,12 @@ Bit 16 is the lowest class bit but not always the first placed: a flag bit below
 word first. Over 120 files the two answers differ on 7,590 records — `pixelprocessor` by one
 slot 6,905 times, `dyngradient` by one 399, `normal` by two 246.
 
+**And the class walk itself must not be run in plain ascending order (§6.1).** When class bits
+16 and 23 are both set the size expression is the SECOND class slot; the first holds
+`$randomseed`. 46,118 corpus records across 21 filters are affected, `fxmaps` 36,028 and
+`levels` 401. The tell that a reader has this wrong is that its size slot resolves a program
+returning one component, which no size expression does.
+
 The walk reports it as `size_slot`, so a reader never reconstructs it. Two filters still
 have no placement to report, for different reasons, and one has nothing to place.
 
@@ -756,6 +778,7 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 11 dirmotionblur | intensity / mblurangle | `0x0003` / `0x000C` | 0 / 2 | scalar |
 | 12 directionalwarp | intensity / warpangle | `0x0006` / `0x0018` | 1 / 3 | scalar |
 | 15 levels | levelinlow, levelinhigh, levelinmid, leveloutlow, levelouthigh | `0x0003`, `0x000C`, `0x0030`, `0x00C0`, `0x0300` | 0,2,4,6,8 | per-channel |
+| 15 levels | *(unnamed)* | `0x0C00` | 10 | flag, 0 words in every state |
 | 18 normal | intensity | `0x0003` | 0 | scalar |
 | 21 distance | *(the mask input's declaration — not a parameter)* | `0x0003` | 0 | — |
 | 21 distance | distance | `0x000C` | 2 | scalar |
@@ -883,8 +906,46 @@ The `levels` order is `(low, high, mid)`, not the UI's `(low, mid, high)`: over 
 sample `in_low <= in_high` holds 3,684 of 3,703 under this order and 641 of 751 under the
 other.
 
-**Inherited parameters (class word)** — an adjacent bit pair, lower = baked, upper =
-program:
+**`levels` has a SIXTH field and it is left unnamed deliberately.** Field 5, mask `0x0C00`,
+costs zero words in every state, so its mask state is its whole value — the same shape as
+`text`'s `align_flag` and `normal`'s two booleans. It is set on 455 of 85,820 corpus records
+and always in state 1, never 2, so it never takes the program form. It is listed here because
+a reader that does not know it exists cannot report it, not because anything here can say what
+it means: no permitted source declares a sixth `levels` parameter. What the file does say about
+its population is structural and has a control. Among records baking exactly one named
+parameter, that parameter being `leveloutlow` or `levelouthigh` at 0.5, a record with field 5
+set has a partner in the same file reading the same input edge and baking the complementary
+out-parameter at 0.5 in **436 of 440**; a record of that identical shape with field 5 clear has
+one in **0 of 4,916**. The partner sets field 5 in 436 of 436. So within this corpus the field
+marks membership of a complementary midpoint split pair — a signal cut into its upper and lower
+halves — and marks nothing else. Its records are also fed by `pixelprocessor` in 45.7% of cases
+against 0.16% for that matched control, the one filter whose output has no reason to lie in
+[0, 1]. Naming it would change 0 of 85,820 readings, because it consumes no word.
+
+**Inherited parameters (class word).** Five class bits are shared by every filter rather
+than being per-filter, and a reader handles them once:
+
+| word0 bit | gates | cost | notes |
+|---|---|---|---|
+| 16 | `$outputsize` | 1 word | the size expression (§13.3). **Emitted after bit 23**, not before — §6.1 |
+| 19 | *(unnamed)* | 0 words | set on 903,608 of 903,616 corpus records; the 8 exceptions are all `pixelprocessor` |
+| 20 | *(unnamed)* | 0 words | varies per record; 97.1% of `levels` records |
+| 21 | *(unnamed)* | 0 words | varies per record; 0.5% of `levels` records |
+| 23 | `$randomseed` | 1 word | a program pointer returning a 1-component integer. **Emitted first** |
+
+Bits 19, 20 and 21 cost no word in any filter's cost model, so they gate no stored value and a
+reader that ignores them places nothing wrongly. What they mean is not known.
+
+**Bits 16 and 23 are named by the manifest, not inferred.** Both slots hold a program whose
+first instruction is an `inputref` on a graph input uid, and the `.sbsar` manifest declares each
+uid's `identifier` and `type`. Across every record setting both bits the bit-16 slot resolves a
+**type 4** (int1) input on 46,124 records and the bit-23 slot a **type 8** (int2) on 45,632 —
+`$randomseed` and `$outputsize` respectively, read off the manifest by uid. `fur_var_001`
+declares `uid="4057753226" identifier="$randomseed" type="4"` and
+`uid="2796450008" identifier="$outputsize" type="8" default="8,8"`, and its `levels` record 20
+puts the first in the earlier class slot and the second in the later one.
+
+The per-filter bits are an adjacent bit pair, lower = baked, upper = program:
 
 | filter | parameter | word0 bits | width |
 |---|---|---|---|
