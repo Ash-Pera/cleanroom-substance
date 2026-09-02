@@ -84,7 +84,13 @@ Two readings sit side by side, deliberately:
   filter parameter in the rest; the layout key states which, at 100.00%. It is not "the
   main parameter", which is what earlier notes called it. `Record.programs` returns every
   program the record's slots name; a record can carry up to five, and the two-scalar filters
-  routinely carry two. This is what a reader should bind to.
+  routinely carry two. This is what a reader should bind to. `normal` carries up to FIVE —
+  a size expression, an unnamed class-bit-27 program, and one per `w1` field — which is why
+  its `classified_programs` precision reads 91.5%: `LAYOUT_MASK` has no entry for filter 18, so `layouts.json`'s key
+  masks its `w1` to zero and memoises one modal slot list for four different layouts. All
+  227 of its "false positives" are `w1` parameter slots the table cannot name, and the
+  bytes agree with the walk on 1,302 of 1,302. See `Record.classified_programs` and
+  FORMAT-NOTES.md "`normal` in full".
 
   That claim used to be false for the 5.6% of records whose layout key `derive_layouts.py`
   dropped: those fall through to a hand-written default naming a single slot, so a second

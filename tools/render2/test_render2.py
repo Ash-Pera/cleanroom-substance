@@ -56,11 +56,27 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 #: THAT HYPOTHESIS HAS NOW BEEN TESTED AND IT IS WRONG FOR THIS SPECIMEN. `render` takes an
 #: `outputsize` (see `engine.record_sizes`), and rendering this file at 12,12 moves every
 #: channel here by less than 0.0001 and leaves normal Z at exactly 1.0000. The reason is
-#: measurable and is the same measurement that makes the parameter matter elsewhere: this
-#: graph contains ZERO `switch` blends and zero programs reading `$sizelog2`, against 98 of
-#: ChesterfieldSofa's 102 switches, so nothing in it is a function of the output size except
-#: the grid it is drawn on. Rokviz's flat normal is a defect in what we compute from a nearly
-#: flat height, not a parameterization mismatch, and it is still open.
+#: measurable: this graph contains ZERO mode-7 `switch` blends and zero of its 106 programs
+#: read `$sizelog2`, against 98 of ChesterfieldSofa's 102 switches, so no CONTENT in it
+#: branches on the output size. (Its record SIZES do move: 50 of 70 records have a size
+#: program reading the `$outputsize` graph input, record 19 among them, 256 -> 4096. The two
+#: are different sentences and an earlier version of this comment ran them together.)
+#:
+#: IT IS NO LONGER OPEN, AND IT IS NOT THIS FILTER. Our `height` for this specimen has no
+#: spatial agreement with the export at all: corr -0.0104 at native 256 (ours sd 0.00339,
+#: ref 0.00155), and -0.000 at `--dim` 1024 / `$outputsize` 12. The control is the same
+#: measurement on Chesterfield, same code path: +0.9501. The +0.9439 `height` row in
+#: `--score` is that score resampling to 64, where the channel has 9 unique values -- the
+#: row carries `DEGENERATE` and it was read as a pass. A normal map is a derivative, so a
+#: height with the right statistics and the wrong pixels differentiates to noise and
+#: averages to flat. The fault is Rokviz's height chain (records 1-18: fxmaps ->
+#: dirmotionblur -> directionalwarp -> transformation -> levels), not `normal`, whose
+#: formula is now verified against the engine's exports to 0.003% on Chesterfield.
+#:
+#: A separate bound, which no chain fix removes: the export is at 4096 and Rokviz's height
+#: is a near-Nyquist weave there -- exported per-pixel gradient sd 0.0457 at 4096 against
+#: 0.00093 box-averaged to 256, a factor of 49 where a scale-free field would give 16. This
+#: specimen has to be rendered at its export size to be compared at all.
 #:
 #: The mismatch is real and it is not this. See
 #: `test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it`: every
@@ -131,7 +147,10 @@ UNNAMED_BUT_DECLARED = {
         # the placement is right and the value is not read. Being here is the difference
         # between "we know it is there" and "it silently moves a named parameter".
         1:  (3,),        # blend -- two words, put `opacitymult` two slots late until 1241661
-        18: (2,),        # normal -- a flag beside `inversedy`
+        # `normal` field 2 WAS HERE and is now `input2alpha`. Its one program arm in the
+        # corpus is `inputref.b2` on a graph input the manifest names `Alpha_Channel_Content`
+        # -- see `model.W1_PARAMS`. Naming it changes no pixel: `f_normal` still writes a
+        # constant alpha and reads the field for nothing.
         # NOT DECLARED AT ALL. A program arm here moves whatever this legend does name.
         12: (3,),        # directionalwarp
         20: (2,),        # pixelprocessor -- one field, 16 words, 1 corpus record
@@ -1064,6 +1083,88 @@ def test_reference_agreement_does_not_regress():
 
 
 
+#: (pack directory, height map, normal map, the `normal` record's baked intensity, the pure
+#: linear gain of the `levels` chain between the normal node's INPUT and the height output).
+#: The last two are read out of the assembly by hand rather than re-derived here, because the
+#: point of this check is the ARITHMETIC of the reference scale and a chain walk would put a
+#: second decode inside the assertion.
+_NORMAL_SCALE_PACKS = (
+    ('minime453__Chesterfield_PBR_Material', 'ChesterfieldSofa_Height.png',
+     'ChesterfieldSofa_Normal.png', 10.0, 0.5),
+)
+
+
+def test_normal_intensity_is_a_slope_per_256_pixels_not_per_record_pixel():
+    """The reference grid `normal`'s intensity is expressed against, from the ENGINE's maps.
+
+    No render of ours is in this loop, which is the point: `f_normal` could be deleted and
+    this would still answer. Take a pack's exported HEIGHT and NORMAL at their native size R,
+    undo the linear gain `g` of the levels between the normal node's input and the height
+    output, and regress the map's own slope `nx/nz` on `-d(height)/d(pixel)`. The engine's
+    answer is `K = (I/g) * (R/256)`; reading the reference as the record's own size predicts
+    `K = I/g`, which is `R/256` times smaller -- 8x on Chesterfield, 16x on Rokviz.
+
+    Chesterfield measures 160.005 / 159.999 against 160.000 predicted, corr 0.982. This
+    asserts the ratio, so it fails if `_normal_reference_px` starts returning the record's
+    width again, and it cannot pass by accident: the two hypotheses are a factor of 8 apart.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return _skip('test_normal_intensity_is_a_slope_per_256_pixels: no PIL')
+    ran = 0
+    for pack, hname, nname, intensity, gain in _NORMAL_SCALE_PACKS:
+        hits = glob.glob(os.path.join(ROOT, '**', pack, '**', hname), recursive=True)
+        nits = glob.glob(os.path.join(ROOT, '**', pack, '**', nname), recursive=True)
+        if not hits or not nits:
+            continue
+        h = np.asarray(Image.open(hits[0])).astype(np.float64)
+        h = h / (65535.0 if h.max() > 255 else 255.0)
+        if h.ndim == 3:
+            h = h[:, :, 0]
+        n = np.asarray(Image.open(nits[0])).astype(np.float64) / 255.0
+        R = h.shape[0]
+        nz = (n[:, :, 2] - 0.5) * 2
+        gy, gx = np.gradient(h)
+        for axis, slope, grad in (('x', (n[:, :, 0] - 0.5) * 2 / nz, -gx),
+                                  ('y', (n[:, :, 1] - 0.5) * 2 / nz, -gy)):
+            k = float(np.sum(slope * grad) / np.sum(grad * grad))
+            corr = float(np.corrcoef(slope.ravel(), grad.ravel())[0, 1])
+            want = (intensity / gain) * (R / 256.0)
+            other = intensity / gain
+            assert corr > 0.9, ('%s %s: the exported height and normal do not describe one '
+                               'surface (corr %.3f); this check cannot arbitrate a scale on '
+                               'maps that disagree' % (pack, axis, corr))
+            assert abs(k - want) / want < 0.01, (
+                '%s %s: exported slope/gradient is %.3f. A 256-px reference predicts %.3f; '
+                'the record\'s own size predicts %.3f' % (pack, axis, k, want, other))
+            ran += 1
+    if not ran:
+        return _skip('test_normal_intensity_is_a_slope_per_256_pixels: no reference pack')
+    print('ok  test_normal_intensity_is_a_slope_per_256_pixels_not_per_record_pixel '
+          '(%d axes)' % (ran,))
+
+
+def test_normal_reference_px_is_not_the_records_size():
+    """The same statement as a unit, so a missing corpus still catches the regression.
+
+    `_normal_reference_px` must not track the View's size. The reference-map check above is
+    the evidence; this is the guard that runs with no specimen present.
+    """
+    class _V(object):
+        width = 2048
+
+    got = filters_mod._normal_reference_px(_V())
+    assert got == 256.0, ('_normal_reference_px returned %r for a 2048-px record; the '
+                          'engine\'s exports say the reference is a constant 256' % (got,))
+    import assume as _assume
+    with _assume.scope(**{'normal.reference_px': 'record'}):
+        back = filters_mod._normal_reference_px(_V())
+    assert back == 2048.0, ('the \'record\' arm no longer restores the old reading (%r)'
+                            % (back,))
+    print('ok  test_normal_reference_px_is_not_the_records_size')
+
+
 if __name__ == '__main__':
     for fn in (test_every_parameter_a_filter_asks_for_can_be_supplied,
                test_the_declared_fields_the_legend_ignores_are_the_known_ones,
@@ -1071,6 +1172,8 @@ if __name__ == '__main__':
                test_blend_reads_the_relocated_opacity,
                test_hsl_names_its_three_parameters,
                test_normal_declares_the_field_that_shifts_its_intensity,
+               test_normal_intensity_is_a_slope_per_256_pixels_not_per_record_pixel,
+               test_normal_reference_px_is_not_the_records_size,
                test_distance_reads_the_radius_its_source_states,
                test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
                test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it,

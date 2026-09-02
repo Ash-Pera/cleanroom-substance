@@ -727,7 +727,7 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 21 distance | *(the mask input's declaration — not a parameter)* | `0x0003` | 0 | — |
 | 21 distance | distance | `0x000C` | 2 | scalar |
 | 18 normal | inversedy | `0x000C` | 2 | flag |
-| 18 normal | *(unnamed)* | `0x0030` | 4 | flag |
+| 18 normal | input2alpha | `0x0030` | 4 | flag |
 
 Two of these **straddle** the two-bit grid — `transformation`'s offset at bits (25, 26)
 and `blend`'s relocated opacity at (9, 10) — so under a plain `j → (2j, 2j+1)` reading their
@@ -811,13 +811,22 @@ end-anchored reader charging one width instead of two reads field 1's pointer as
 `intensity`. Those 38 records ran the wrong program, and it evaluates to 0 on every one of
 them — a flat normal where the file says 5, 10, 15, 20.
 
-Field 1 is `inversedy` on an argument that is suggestive and not conclusive: of the three
-parameters the shipped sources write on a normal node — `intensity`, `inversedy`,
-`input2alpha` — the one seen driven by a program is `inversedy` (`normal_format == <int>`,
-the DirectX/OpenGL switch), and field 1 is the field that carries programs (38 against 67
-flags, where field 2 is 322 flags against 1). Field 2 is left unnamed on that asymmetry
-alone. Reading either as a single BIT rather than a two-bit code sees the baked arm and
-calls the program arm absent.
+All three of `normal`'s fields are named, and what names them is **the program arm's
+operand**, not a frequency asymmetry. A program arm here opens with `inputref` on a graph
+input, and the `.sbsar` manifest names graph inputs. Over the corpus, resolving every one:
+field 0's 275 programs return float1 in 275 of 275 and read inputs named `normal_intensity`
+(205), `Normal` (18), `normal_strength` (13), `intensity` (6) …; field 1's 38 return a
+BOOLEAN in 38 of 38, all of the shape `<input> == 1`, reading `normal_format` (34),
+`generated_normal_format`, `NormalFormat`, `Format` and `normal_inverseDirection`; field 2's
+one program returns a boolean read straight off an input named `Alpha_Channel_Content`. So
+field 0 is `intensity`, field 1 is `inversedy` and field 2 is `input2alpha`. The return types
+say the same thing without the names — float1 against boolean — and are why the two boolean
+fields cost zero words baked: the mask state IS the value. A second witness, source-side:
+`SBRustyTreadPlate.sbs` writes four normal nodes at intensity 6 / 15 / 3 / 10 and states
+`inversedy 1` on exactly the intensity-15 one; its compiled twin's five records hold 15.0,
+12.8, 3.0, 6.0 and 10.0, and the one carrying a field-1 flag is the 15.0 one. Reading any of
+these as a single BIT rather than a two-bit code sees the baked arm and calls the program arm
+absent.
 
 The `levels` order is `(low, high, mid)`, not the UI's `(low, mid, high)`: over a corpus
 sample `in_low <= in_high` holds 3,684 of 3,703 under this order and 641 of 751 under the
@@ -885,6 +894,16 @@ correlates +0.98 against a 4096 export) but anything measured in pixels is not: 
 graph's normal map is flat at 256 and has slopes of std 0.211 at 4096, and its mean Z —
 which is invariant under downsampling, so no resampling can reconcile it — is 1.0 against
 the export's 0.899.
+
+Resolution bounds that comparison but does not explain that particular render. Rokviz's
+height is a near-Nyquist weave at 4096: its exported per-pixel gradient sd is 0.0457 there
+and 0.00093 box-averaged to 256, a factor of 49 rather than the 16 a scale-free field would
+give, so no 256-px render can carry its relief. What actually flattens ours is one filter
+earlier — our `height` for this specimen correlates **−0.01** with the export at native 256
+(against **+0.95** for Chesterfield, same measurement, same code path) while its amplitude
+and mean are close. A normal map is a derivative; a derivative of the right statistics with
+the wrong pixels averages to nothing. Score a derivative channel at its own resolution or
+not at all: resampled to 64 the same pair reads `+0.94` and carries a `DEGENERATE` flag.
 
 ### 13.5 Running a program
 
@@ -971,7 +990,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | dirmotionblur | 17 taps over ±L/2 along `2π·mblurangle`, `L = clip(\|I\|,0,256)/ref · 10` |
 | directionalwarp | displace input 0 by `(2·h − 1)·I/ref` along `2π·warpangle`, `h` = input 1 |
 | warp | displace input 0 by the **gradient** of input 1, scaled `·W/ref·I` |
-| normal | `n = normalise(−gx·I, −gy·I, 1)`, `out = ½ + ½n`; the gradient is per render pixel, so scale it `·W/ref` or strength tracks the preview grid |
+| normal | `n = normalise(−gx·I·W/256, −gy·I·W/256, 1)`, `out = ½ + ½n`; `inversedy` negates `gy`. The reference is a **constant 256**, not the record's size: the engine's own exports give slope/gradient = 160.005 on a 2048-px Chesterfield export at `I` 10 and 9.397 on a 4096-px Rokviz export at `I` 0.25, against 160.000 and 9.405 predicted by a fixed 256 and 20.000 / 0.588 predicted by the record's width. Scale it by the record's own size instead and strength tracks the output resolution: at `$outputsize` 11 that takes Chesterfield's normal Z from 0.961 to 0.999 against the export's 0.966 |
 | emboss | `base + k·(g₁(pos) − g₁(pos + (δ, −δ)))`, `δ = 0.005859375` |
 | distance | a distance field grown from the mask input; the radius is `w1` field 1 (§13.4), baked or a program, and a fallback locator remains for the records that name neither — mark every record it answers for |
 | pixelprocessor | the program at the **last header slot**, evaluated per pixel; earlier slots are inherited parameters and setup |

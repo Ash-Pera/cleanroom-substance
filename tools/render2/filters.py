@@ -472,11 +472,38 @@ def f_normal(ctx, v):
         intensity = float(got[0])
 
     height = to_image(ctx.sample(v, 0, pos), N, H, W)[:, :, 0].astype(np.float32)
-    # `np.gradient` is per RENDER pixel, so an uncorrected normal halves in strength every
-    # time the grid doubles -- the engine differences adjacent pixels at the record's own
-    # resolution. Put it back on that scale, the same correction `warp` already makes.
-    # At full resolution the factor is exactly 1, so no uncapped render moves.
-    ref = _reference_px(v)
+    # `np.gradient` is per RENDER pixel and the engine's slope is per 256 pixels, FIXED.
+    # This used to read `_reference_px(v)`, i.e. the record's own width, on the reasoning
+    # that "the engine differences adjacent pixels at the record's own resolution". That is
+    # the half of it that is right; what it misses is that the engine then expresses the
+    # result against a CONSTANT 256-px grid, so the normal a record produces does not depend
+    # on the size the record is evaluated at. The engine's own exports say so directly, and
+    # the measurement needs no render of ours:
+    #
+    #   for each reference pack, take the exported HEIGHT and NORMAL maps at their native
+    #   size R, undo the levels between the normal node's input and the height output (a
+    #   pure linear gain g), and regress the map's own slope nx/nz on -d(height)/d(pixel):
+    #
+    #     Chesterfield  R=2048  I=10.0   g=0.5     K measured 160.005 / 159.999  corr 0.982
+    #     Rokviz        R=4096  I=0.25   g=0.4253  K measured   9.397 /   9.398  corr 0.725
+    #
+    #   predicted K = (I/g) * (R/256):  160.000 and 9.405   -- 0.003% and 0.09% out
+    #   predicted K = (I/g)          :   20.000 and 0.588   -- out by 8x and 16x, i.e. R/256
+    #
+    # So the rule is `slope = intensity * dH/du / 256` with u the normalised coordinate,
+    # which in render-pixel terms is `gradient * W / 256`. Two packs, two export sizes, two
+    # intensities three orders of magnitude apart, and the ratio between the two hypotheses
+    # is exactly R/256 in both.
+    #
+    # WHAT THIS DOES NOT SEPARATE, because both reference packs' normal records carry a
+    # 256x256 tag: a hard 256, the record's TAG width, and `1 << declared $outputsize` are
+    # all 256 there. A hard 256 is taken because it makes the filter resolution-independent,
+    # which is the only one of the three an engine could implement without consulting a
+    # graph input's DEFAULT; `blur`'s [0,256] clamp and `distance`'s exact-256 radii say the
+    # same constant is the format's. 320 of 1,379 corpus `normal` records have a tag that is
+    # not 256 and no reference pack covers one; `assume.QUESTIONS['normal.reference_px']`
+    # holds 'record' for anyone who wants to put the old reading back.
+    ref = _normal_reference_px(v)
     gy, gx = np.gradient(height)
     gx, gy = gx * (W / ref), gy * (H / ref)
     # FIELD 1 IS A TWO-BIT CODE, NOT A BIT. Reading `(w1 >> 2) & 1` sees state 01 and calls
@@ -552,6 +579,20 @@ def f_hsl(ctx, v):
 # ---------------------------------------------------------------------------
 # Spatial
 # ---------------------------------------------------------------------------
+
+def _normal_reference_px(v):
+    """The pixel grid `normal`'s intensity is expressed against: a CONSTANT 256.
+
+    Separate from `_reference_px` on purpose. That one answers "how many pixels is this
+    record" and is what `blur`, `warp`, `dirmotionblur` and `directionalwarp` read; nothing
+    measured here is evidence about those, and they are untouched. `f_normal`'s comment
+    carries the two-pack measurement that pins this one.
+    """
+    forced = assume.assumed('normal.reference_px', 256.0)
+    if forced == 'record':
+        return float(v.width) if v.width else 256.0
+    return float(forced)
+
 
 def _reference_px(v):
     """The pixel scale a pixel-valued intensity is expressed in -- from the RECORD.

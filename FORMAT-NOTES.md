@@ -43632,3 +43632,242 @@ next pass rather than folded in silently.
 
 Render unmoved: reference height mean 0.78587, byte-identical. Fast lane 19, tables+fx+bitmap
 24, render2 15, `test_filters -k reference_agreement` passed.
+
+## `normal` in full: three named fields, a per-256-pixel slope, and two causes for four threads
+
+`normal` is 1,379 records over 336 files. Four open threads named it at once — its 91.5%
+program-attribution precision, an sd collapse under `$outputsize`, Rokviz's flat normal, and
+a parameter history with three corrections in it. They are **two causes, not four**, and
+neither is where the threads pointed.
+
+### The record
+
+    word 0   tag: filter 18, cls; low half is the record's log2 size
+    word 1   three two-bit fields
+    then     one image input (the height)
+    then     one slot per set cls bit -- bit 16 is the size expression
+    then     one slot per w1 field in state 01 or 10
+
+    w1 field   name          type     baked (01)      program (10)     costs when baked
+    0          intensity     float1   988 records     275 records      1 word
+    1          inversedy     bool      67 records      38 records      0 words
+    2          input2alpha   bool     322 records       1 record       0 words
+
+A boolean's baked value IS the mask state, so it costs nothing; the float's does not. That
+single asymmetry is the root of half of what follows.
+
+### All three fields are named now, and what named them is the program arm's operand
+
+Field 1 was `inversedy` "on evidence that is suggestive, not conclusive" — a frequency
+asymmetry — and field 2 was left unnamed on the same asymmetry. The asymmetry was the wrong
+arbiter. Every program arm in these fields opens with `inputref` on a GRAPH INPUT, and the
+`.sbsar` manifest names graph inputs. Resolving all 314 program arms' operands:
+
+    field 0   275 programs, float1 in 275 of 275
+              normal_intensity x205, Normal x18, normal_strength x13, intensity x6,
+              Normal_Intensity x4, ... 30 distinct identifiers, all intensity-shaped
+    field 1    38 programs, BOOL in 38 of 38, all of the shape `<input> == 1`
+              normal_format x34, generated_normal_format, NormalFormat, Format,
+              normal_inverseDirection
+    field 2     1 program, BOOL, `inputref.b2` direct
+              Alpha_Channel_Content
+
+The return TYPES corroborate the split without the names: field 0 is float1 in 275 of 275,
+fields 1 and 2 are boolean in 39 of 39 — exactly the source-side shape (`intensity` Float1,
+`inversedy` and `input2alpha` Bool) and the reason the two boolean fields cost zero words.
+
+Second, independent witness for field 1, from a permitted paired source: `SBRustyTreadPlate`
+writes four normal nodes at intensity 6 / 15 / 3 / 10 and states `inversedy 1` on exactly
+one of them, the intensity-15 node. Its compiled twin holds five `normal` records with baked
+intensities 15.0, 12.8, 3.0, 6.0, 10.0, and the ONE record carrying a field-1 flag is the
+15.0 one.
+
+`sourcematch` independently CONFIRMS field 0: `intensity` at `w1 0`, 2 distinct stated
+values over 5 records on `SandyStonePath`, supported on `ChesterfieldSofa`.
+
+A provenance note, because the old argument had one. Over the 96 permitted paired sources
+there are 76 native `normal` nodes; the parameters they write are `intensity` (27, 5 of them
+dynamic), `input2alpha` (31, all constant 0), `inversedy` (1, constant 1) and the inherited
+`format` (3) and `outputsize` (1). **No permitted source ever drives `inversedy` with a
+function** — all five dynamic parameters on permitted normal nodes are `intensity`. So the
+old justification, "the one seen driven by a program is `inversedy`", could not have been
+read off a permitted native node. What IS readable there is that `normal_format` is a
+permitted graph INPUT (a DirectX/OpenGL dropdown) fed into a library sub-graph; the compiled
+records are where it lands on a `normal` field. The conclusion survives; its stated evidence
+did not, and the replacement above is compiled-side and manifest-side only.
+
+`input2alpha` is NAMED, not read. `f_normal` still writes a constant alpha, and nothing here
+establishes what the parameter does to it.
+
+### Thread 1: the "second scalar" is a real slot, and the layout table cannot see it
+
+`Record.classified_programs` scores 91.5% precision on `normal` — 227 false positives, 214 of
+them exactly one slot past the table's last program slot. Reproduced exactly: 1,300 keyed
+records, 2,435 true positives, 227 false positives, **0 false negatives**, precision 0.9147.
+
+They are not noise and they are not a mystery slot. They are the w1 parameter block:
+
+    fp slot, relative to the table's last program slot:  +1 x214   +2 x12   +3 x1
+    by w1 state:  w1=2 (field 0 program) 174   w1=10 (fields 0,1) 40
+                  w1=26 8    w1=6 2    w1=42 (all three) 3
+
+`LAYOUT_MASK` has **no entry for filter 18**, so the key is `(18, cls, words[1] & 0)` — w1 is
+masked out entire. `normal`'s slot count is a function of w1 and of nothing else: 0, 1, 2 or
+3 extra words. So one key covers four different layouts and `derive_layouts` memoised the
+modal one. Every record whose w1 declares more program arms than the modal member has slots
+the table structurally cannot name, and those are exactly the 227.
+
+The discriminating control, and it is not circular — the walk places the slot from the cost
+model, the BYTES decide what is in it:
+
+    field 0, state 01 (baked)     988 records    0 of 988 resolve as a program
+                                                 values 12.0 x277, 16.0 x159, 3.0, 4.0,
+                                                 8.0, 256.0, 6.0, 2.0 ... intensities
+    field 0, state 10 (program)   275 records    275 of 275 resolve as a program
+    field 1, state 10              38 records     38 of 38
+    field 2, state 10               1 record       1 of 1
+
+100% / 0% over 1,302 walk-named slots. The slots are real, the walk names them, and the
+reference table is the thing that is incomplete. `classified_programs`' precision floor is
+doing precisely the job its docstring claims — "it counts as wrong every slot the table does
+not name, which is the thing this method exists to find" — and `normal` is the filter where
+that is most visible, because `normal` is the filter whose key throws away the word that
+decides its layout.
+
+### Thread 4 is the same cause one level up
+
+Every earlier misreading of `normal`'s parameters is the same fact from a different angle: a
+boolean field's baked arm costs ZERO words, so a model fitted on header LENGTHS cannot see
+fields 1 and 2 at all, and a memo keyed on `(filter, cls, w1 & 0)` cannot see them either.
+The cost model priced the canvas because word0's size nibbles were the only feature left
+that co-varied; `intensity` read field 1's pointer because an end-anchored block charged one
+width where the record spent two; `layouts.json` names 3,4 for a record that spends 3,4,5,6.
+One structural fact, four symptoms.
+
+### Thread 2: `normal`'s intensity is a slope per 256 pixels, and the code read it per record pixel
+
+`f_normal` scaled its gradient by `W / _reference_px(v)`, and `_reference_px` returns the
+record's own width. That is right about half of it — the engine differences adjacent pixels —
+and wrong about the other half: the engine then expresses the result against a **constant
+256-pixel grid**, so the normal a record produces does not depend on the size it is evaluated
+at. The two readings agree exactly when the record is 256 wide, which is 1,059 of 1,379
+`normal` records and every `normal` record in every reference pack, and disagree by `R/256`
+otherwise.
+
+The engine's own exports settle it, with no render of ours in the loop. Take a pack's
+exported HEIGHT and NORMAL maps at their native size R, undo the pure linear gain `g` of the
+`levels` chain between the normal node's input and the height output, and regress the map's
+own slope `nx/nz` on `-d(height)/d(pixel)`:
+
+    pack           R      I      g        K measured        corr    K if /256   K if /R
+    Chesterfield   2048   10.0   0.5      160.005 / 159.999  0.982    160.000     20.000
+    Rokviz         4096    0.25  0.4253     9.397 /   9.398  0.725      9.405      0.588
+
+0.003% and 0.09% out on the `/256` hypothesis; out by exactly `R/256` — 8x and 16x — on the
+other. Two packs, two export sizes, two intensities three orders of magnitude apart. So:
+
+    n = normalise(-gx*I*W/256, -gy*I*W/256, 1),   out = 1/2 + n/2
+
+i.e. `slope = intensity * dH/du / 256` with `u` the normalised coordinate. It is the standard
+normal-from-height with a central-difference gradient (`corr` 0.982 against a plain
+`np.gradient` on Chesterfield) and a fixed 256-px reference — the same constant `blur`'s
+[0,256] clamp and `distance`'s exact-256 radii already use.
+
+The bisection asked for: the record is EVERY `normal` record, and the line is
+`ref = _reference_px(v)`. On Chesterfield at `--dim 256`:
+
+                              ours ch0 sd   ours ch1 sd   ours Z mean   ref Z mean
+    $outputsize 8, old/new       0.1356        0.1354        0.9612       0.9659
+    $outputsize 11, old          0.0192        0.0191        0.9993       0.9659
+    $outputsize 11, new          0.1364        0.1360        0.9607       0.9659
+
+That is the reported collapse, reproduced (0.1356 -> 0.0192 here, 0.126 -> 0.016 as scored at
+64; the ratio is 2048/256 either way) and removed. **Mean Z is the arbiter, not sd**: it is
+invariant under downsampling, so no resampling argument can move it, and the old reading puts
+it at 0.9993 — a flat surface — against the engine's 0.9659. Correlation improving while sd
+collapsed was the `$outputsize` fix working on the rest of the chain at the same time as the
+scale bug got 8x worse; the two are independent and the table above separates them.
+
+WHAT THIS DOES NOT SEPARATE. Both reference packs' `normal` records carry a 256x256 tag, so a
+hard 256, the record's TAG width, and `1 << declared $outputsize` are all 256 there and the
+measurement cannot tell them apart. A hard 256 is taken because it is the only one of the
+three an engine could implement without consulting a graph input's DEFAULT, and because it
+makes the filter resolution-independent. 320 of 1,379 corpus `normal` records have a tag that
+is not 256 (128 x146, 64 x77, 2048 x25, 32 x25, 512 x21, 64x256 x18, 1024 x7, 512x256 x1) and
+no reference pack covers one; those are where the three readings differ, and nothing here
+arbitrates them. `assume.QUESTIONS['normal.reference_px']` holds `'record'` for anyone who
+wants the old reading back.
+
+`archive/tools/render.py`'s normal branch applies NO reference scaling at all, so at its
+`max_dim` 128 it is 2x too strong on a 256-tag record. It is not changed here: it is the
+independent second model, and it is what `test_filters.REFERENCE_FLOOR` scores through
+`refcompare`, so this work cannot move a floor. That is a fact about the two renderers now
+measured rather than assumed.
+
+### Thread 3: Rokviz's normal is flat because its HEIGHT is not reproduced
+
+The `$outputsize` retraction above stands, and the scale fix in Thread 2 does not rescue this
+either: with it, Rokviz's normal sd goes 0.0001 -> 0.0010 at `$outputsize` 12 / `--dim` 256
+and 0.0004 -> 0.0061 at `--dim` 1024, against a reference of 0.0017 and 0.0120 — closer, and
+still nowhere. The correlation stays at +0.015.
+
+The cause is one line up the chain, and the measurement is a comparison the score could not
+make because it resamples to 64:
+
+    height output, ours vs the export box-averaged to our grid, at NATIVE resolution
+      Chesterfield  256 px   corr +0.9501   ours sd 0.12627   ref sd 0.10037
+      Rokviz        256 px   corr -0.0104   ours sd 0.00339   ref sd 0.00155
+
+Same code path, same measurement, one package agrees and the other has **no spatial agreement
+at all** while having roughly the right amplitude and an exact mean. Rokviz's `height` scores
++0.9439 in `--score` only because that score resamples to 64, where the channel has 9 unique
+values — the row carries the `DEGENERATE` flag and it was read as a pass. At `--dim` 1024 /
+`$outputsize` 12 it is corr -0.000 with ours sd 0.0078 against 0.0051.
+
+A normal map is a derivative. A derivative of a field with the right statistics and the wrong
+pixels is a field with the right statistics and the wrong pixels, and averaged to 64 it is
+flat. `normal` is exonerated: its formula is now verified to 0.003% on Chesterfield, and it is
+fed a height this renderer does not reproduce. The fault is in Rokviz's height chain —
+`fxmaps` -> `dirmotionblur` -> `directionalwarp` -> `transformation` -> `levels`, records 1-18
+— and that is an FX-Map question, not a `normal` one.
+
+There is a second, independent reason no 256-px render can ever match this export, and it is
+worth stating because it bounds what a chain fix could achieve. The export is at 4096, and
+Rokviz's height is a near-Nyquist weave there: the exported height's per-pixel gradient sd is
+0.0457 at 4096 and 0.00093 box-averaged to 256, a factor of 49 rather than the 16 a
+scale-free field would give. Combined with the 16x from the reference scale, a correct 256-px
+render can produce at most ~0.1% of the export's relief. Rokviz must be rendered at its
+export size to be compared at all.
+
+One precision fix to the retraction's own wording: "nothing in it is a function of the output
+size except the grid it is drawn on" is right about CONTENT — 0 mode-7 switch blends and 0 of
+106 programs read `$sizelog2`, confirmed — but 50 of Rokviz's 70 records have a size program
+that reads the `$outputsize` graph input, and `record_sizes(asm, (12,12))` moves 50 of them,
+record 19 included, 256 -> 4096. The sizes do move; no branch does.
+
+### Are they one cause?
+
+Two.
+
+* Threads 1 and 4 are the layout half: `normal`'s two boolean fields cost zero words when
+  baked and its layout key masks w1 to zero, so every length-fitted or key-memoised model is
+  blind to exactly the word that decides its shape.
+* Threads 2 and 3 are the render half, and only the first of them is `normal`'s: the
+  intensity is a slope per 256 pixels and was read per record pixel. Rokviz's flat normal is
+  NOT that bug — it survives the fix — and is not in this filter at all.
+
+### Code
+
+* `tools/render2/filters.py` -- `_normal_reference_px`, a constant 256, separate from
+  `_reference_px` so that `blur`, `warp`, `dirmotionblur` and `directionalwarp` are untouched;
+  nothing measured here is evidence about them.
+* `tools/assume.py` -- `normal.reference_px`, default 256.0, `'record'` restores the old
+  reading.
+* `tools/render2/model.py` -- `W1_PARAMS[18]` field 2 named `input2alpha`.
+* `tools/render2/test_render2.py` -- `UNNAMED_BUT_DECLARED['w1']` loses `18: (2,)`.
+* `SPEC.md` -- 13.4's legend row, 13.4's naming paragraph, and 13.6's `normal` formula.
+
+Fast lane 19 passed, `test_tables/test_fx/test_bitmap` 24 passed, `test_render2` 15 passed.
+`test_filters.REFERENCE_FLOOR` is scored through `render.py`, which is not touched, and the
+`render2` default path is bit-identical on Chesterfield at `$outputsize` 8 (all three channels
+to four decimals). No floor moved and none was lowered.

@@ -36,6 +36,14 @@ QUESTIONS = {
     # a baked flag and misses the 38 corpus records whose field 1 holds a program.
     # 'field1' reads the two-bit code the walk declares, both arms.
     'normal.inversedy':   ('ignore', 'word1bit2', 'field1'),
+    # THE GRID `normal`'s INTENSITY IS EXPRESSED AGAINST. Default 256.0 -- a constant, not
+    # the record's size. Measured against the engine's own exports, with no render of ours
+    # in the loop: regressing the exported normal map's slope on the exported height map's
+    # per-pixel gradient gives 160.005 on Chesterfield (2048 px, intensity 10) and 9.397 on
+    # Rokviz (4096 px, intensity 0.25), against 160.000 and 9.405 predicted by a fixed 256
+    # and 20.000 and 0.588 predicted by the record's own width. 'record' restores the older
+    # reading, which is what `_reference_px` still returns for blur/warp/dirmotionblur.
+    'normal.reference_px': (256.0, 'record', 64.0, 128.0, 512.0, 1024.0, 2048.0, 4096.0),
     'distance.param':     ('program', 'block1', 'slot5', 'wide', 'layout'),
     'distance.invert':    (False, True),
     'distance.mask_edge': (0, 1),

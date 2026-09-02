@@ -109,13 +109,34 @@ W1_PARAMS = {
     # also a program. Anchored at the end and charging one width, `intensity` was reading
     # field 1's pointer and running the wrong program.
     #
-    # Field 1 is `inversedy` on evidence that is suggestive, not conclusive, and the
-    # assumption gate says so: of the three parameters the shipped sources ever write on a
-    # normal node -- `intensity`, `inversedy`, `input2alpha` -- the one seen driven by a
-    # program is `inversedy` (`normal_format == <int>`, the DirectX/OpenGL switch), and
-    # field 1 is the field that carries a program: 38 programs against 67 flags, where
-    # field 2 is 322 flags against 1. Field 2 is left UNNAMED rather than called
-    # `input2alpha` on that asymmetry alone; it is declared here for its width.
+    # ALL THREE FIELDS ARE NAMED NOW, AND WHAT NAMED THEM IS THE PROGRAM ARM'S OPERAND.
+    # Field 1 used to be `inversedy` "on evidence that is suggestive, not conclusive" -- the
+    # frequency asymmetry, 38 programs against 67 flags where field 2 was 322 flags against
+    # 1 -- and field 2 was left unnamed on that asymmetry alone. The asymmetry was the wrong
+    # arbiter and the record says it plainly: every program arm in these fields opens with
+    # `inputref` on a GRAPH INPUT, and the manifest names graph inputs.
+    #
+    #   field 0  275 programs, all returning float1; inputs named `normal_intensity` x205,
+    #            `Normal` x18, `normal_strength` x13, `intensity` x6 ... -> intensity
+    #   field 1   38 programs, all returning BOOL, all of the shape `<input> == 1`; inputs
+    #            named `normal_format` x34, `generated_normal_format`, `NormalFormat`,
+    #            `Format`, `normal_inverseDirection`             -> inversedy
+    #   field 2    1 program, returning BOOL, `inputref.b2` direct; input named
+    #            `Alpha_Channel_Content`                          -> input2alpha
+    #
+    # The types corroborate the split independently of the names: field 0 is float1 in 275
+    # of 275 and fields 1 and 2 are boolean in 39 of 39, which is exactly the source-side
+    # shape (`intensity` Float1, `inversedy` and `input2alpha` Bool) and is why the two
+    # boolean fields cost zero words baked -- the mask state IS the value.
+    #
+    # A second, independent witness for field 1, from a permitted paired source:
+    # `SBRustyTreadPlate.sbs` writes four normal nodes, intensity 6 / 15 / 3 / 10, and
+    # states `inversedy 1` on exactly one of them, the intensity-15 node. Its compiled twin
+    # holds five normal records with baked intensities 15.0, 12.8, 3.0, 6.0 and 10.0, and
+    # the ONE record carrying a field-1 flag is the 15.0 one.
+    #
+    # `input2alpha` is NAMED here, not read: `f_normal` writes a constant alpha, and what
+    # the parameter does to the alpha channel is not established by any of the above.
     # `distance`'s radius, from SandyStonePath.sbs: it states 56.2999992 and 64.2200012 on
     # its two distance nodes, and records 3 and 180 of the compiled twin hold exactly those
     # at field 0. Field 1 is declared for its width only -- the source's other parameter is
@@ -131,7 +152,7 @@ W1_PARAMS = {
     21: [(0xc, 2, 'distance', 'scalar')],             # distance
     18: [(0x3, 0, 'intensity', 'scalar'),             # normal
          (0xc, 2, 'inversedy', 'flag'),
-         (0x30, 4, None, 'flag')],
+         (0x30, 4, 'input2alpha', 'flag')],
 }
 
 

@@ -3767,8 +3767,26 @@ class Record:
         not name, which is the thing this method exists to find. That is now measured
         rather than asserted: 13,354 of the 13,356 slots scored wrong name a program NO
         table slot in that record names, and in `normal` 214 of its 227 sit exactly one
-        slot past the table's last program slot - the second scalar `programs`' own
-        docstring lists.
+        slot past the table's last program slot.
+
+        `NORMAL`'S 227 ARE SETTLED AND THEY ARE NOT "THE SECOND SCALAR". This docstring
+        called them that; they are the record's w1 PARAMETER BLOCK, and there can be three
+        of them, not one. `LAYOUT_MASK` has no entry for filter 18, so the key is
+        `(18, cls, words[1] & 0)` -- w1 masked out entire -- and `normal`'s slot count is a
+        function of w1 and of nothing else (0, 1, 2 or 3 extra words, one per field in
+        state 01 or 10). One key therefore covers four layouts and `derive_layouts`
+        memoised the modal one. Distribution of the 227: +1 slot x214, +2 x12, +3 x1; by
+        w1, `w1=2` (intensity a program) 174, `w1=10` 40, `w1=26` 8, `w1=6` 2, `w1=42`
+        (all three fields programs) 3. Reproduced on the current tree: 1,300 keyed
+        records, 2,435 tp, 227 fp, 0 fn, precision 0.9147.
+
+        The control that says they are real, and it is not circular -- the walk places the
+        slot from the cost model, the BYTES decide what is in it: over the 1,302 w1 slots
+        the walk names on `normal`, field 0 state 01 resolves as a program in 0 of 988 (and
+        holds 12.0, 16.0, 3.0, 4.0, 8.0, 256.0 ... intensities), while state 10 resolves in
+        275 of 275, field 1 state 10 in 38 of 38 and field 2 state 10 in 1 of 1. 100%/0%.
+        So `normal` is not the filter where this predicate is worst; it is the filter where
+        the reference table is worst, and the precision floor is doing its stated job.
 
         `fxmaps` is excluded. Its records run to 331 slots and beyond, which is the
         condition under which any small value is a plausible pointer, and it contributes
