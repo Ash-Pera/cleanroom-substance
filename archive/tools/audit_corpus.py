@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 import disasm
 import decompose
 import sbsasm
+import walk_partition
 from sbsasm import _PAYLOAD_PROGRAM_FILTERS as PAYLOAD_PROGRAM_FILTERS
 from sbsasm import Assembly, FILTERS, UNNAMED, PARTIAL_EDGES
 
@@ -63,17 +64,49 @@ from sbsasm import Assembly, FILTERS, UNNAMED, PARTIAL_EDGES
 _TAG, _W1, _INP, _CLS, _PAR, _PRG, _BASE = 1, 2, 3, 4, 5, 6, 7
 _PROGBODY = 8
 _RAMP, _CURVE, _VEC, _FXNODE, _FXENTRY, _BMP = 9, 10, 11, 12, 13, 14
+_PAD = 15
 _REGION_NAMES = {_TAG: 'tag', _W1: 'w1', _INP: 'input edge', _CLS: 'class slot',
                  _PAR: 'w1 parameter', _PRG: 'size / program slot',
                  _BASE: 'header, no named slot', _PROGBODY: 'program body',
                  _RAMP: 'ramp table', _CURVE: 'curve table', _VEC: 'vector strip',
-                 _FXNODE: 'fx node cell', _FXENTRY: 'fx entry', _BMP: 'bitmap pixels'}
+                 _FXNODE: 'fx node cell', _FXENTRY: 'fx entry', _BMP: 'bitmap pixels',
+                 _PAD: 'alignment pad'}
 _TIER_HDR = frozenset((_TAG, _W1, _INP, _CLS, _PAR, _PRG, _BASE))
 _TIER_PROG = _TIER_HDR | frozenset((_PROGBODY,))
+# `+ every payload reader` KEEPS ITS OLD DEFINITION, and the pad is a FOURTH tier rather
+# than a widening of the third. Folding it in would have moved the README row by 0.5 points
+# without a single new byte being decoded, which is the accounting-as-decode error this
+# file's own header is about.
+_TIER_PAY_EXCLUDE = frozenset((_PAD,))
+
+# THE STRUCTURE'S OWN STATED EXTENT, for the FX cells the walk yields. `walk_partition`
+# already implements this rule -- a node's fields end at the successor slot its mask
+# locates, an entry's at the nearer of its layout span and the next-pointer it stores --
+# and it is the arbiter this repository already uses for FX attribution, so this asks it
+# rather than writing the rule a second time. Two guards, both conservative and both
+# needed because walk_partition is a CHECKER and over-stating an extent is its safe
+# direction while under-stating is ours:
+#
+#   * bounded by the next distinct structure the same walk yields, so a cell can never be
+#     credited a neighbour's bytes;
+#   * a hard 64-word ceiling, because the no-layout arm returns `(slot-1 pointer - q) / 4`
+#     uncapped and a last-in-chain cell points far forward -- credited literally that
+#     would mark most of a file as "one entry".
+#
+# It is a UNION with the extent already credited, never a replacement: measured on its own
+# the stated extent is WORSE (fxmaps 63,636 residual against 61,192 over 40 files), because
+# an entry's layout span covers its fields and stops before its own inline program.
+_STATED_MAX_WORDS = 64
 
 
-def _byte_canvas(a):
-    """Every byte of `a`, labelled with the reader that can say what it is."""
+def _byte_canvas(a, fx_cells=None, fx_tags=None):
+    """Every byte of `a`, labelled with the reader that can say what it is.
+
+    `fx_cells`, if given, is filled with the absolute offset of every FX node and entry
+    the walk reaches, so a caller can tell an FX cell nothing reaches from an ordinary
+    unread word without walking the file twice. `fx_tags`, likewise, collects the tag
+    word of each of those cells -- the specimen's own tag vocabulary.
+    """
     n = len(a.data)
     seen = bytearray(n)
 
@@ -159,16 +192,16 @@ def _byte_canvas(a):
                     if st is not None and sz:
                         mark(st, st + sz, _BMP)
             elif f == 4:
-                ent = []
+                ent, nodes = [], []
                 for kind, off, hdr, prog in r.fx_walk():
                     if kind == 'node':
-                        try:
-                            sz = sbsasm.chain_extent(a, off)
-                        except Exception:
-                            sz = None
-                        mark(off, off + (sz or 4), _FXNODE)
+                        nodes.append((off, hdr))
                     else:
-                        ent.append((off, prog))
+                        ent.append((off, hdr, prog))
+                    if fx_cells is not None:
+                        fx_cells.add(off)
+                    if fx_tags is not None and hdr is not None:
+                        fx_tags.add(hdr)
                     if prog:
                         try:
                             pe = a.program_end(prog)
@@ -176,10 +209,39 @@ def _byte_canvas(a):
                             pe = None
                         if pe:
                             mark(prog, pe, _PROGBODY)
+                # The bound on any stated extent: the next distinct structure this same
+                # walk yields. Two structures cannot own one word -- `walk_partition`'s
+                # invariant, used here as a ceiling rather than as a test.
+                starts = sorted({o for o, _h in nodes} | {o for o, _t, _p in ent})
+                after = {}
+                for i, sv in enumerate(starts):
+                    after[sv] = starts[i + 1] if i + 1 < len(starts) else None
+
+                def _stated(kind, off, tag):
+                    try:
+                        w = walk_partition.stated_extent(r, kind, off, tag)
+                    except Exception:
+                        return None
+                    if not w or w <= 0 or w > _STATED_MAX_WORDS:
+                        return None
+                    hi = off + 4 * w
+                    nx = after.get(off)
+                    return min(hi, nx) if nx else hi
+
+                for off, hdr in nodes:
+                    try:
+                        sz = sbsasm.chain_extent(a, off)
+                    except Exception:
+                        sz = None
+                    hi = off + (sz or 4)
+                    st = _stated('node', off, hdr)
+                    if st and st > hi:
+                        hi = st
+                    mark(off, hi, _FXNODE)
                 # An entry runs to the end of its own inline program, or to the next entry
                 # when it names none. Second pass, because the bound is the NEXT entry.
                 ent.sort()
-                for i, (off, prog) in enumerate(ent):
+                for i, (off, tag, prog) in enumerate(ent):
                     hi = None
                     if prog:
                         try:
@@ -189,15 +251,135 @@ def _byte_canvas(a):
                     if hi is None:
                         nx = ent[i + 1][0] if i + 1 < len(ent) else None
                         hi = nx if (nx and 0 < nx - off < 4096) else off + 8
+                    st = _stated('entry', off, tag)
+                    if st and st > hi:
+                        hi = st
                     mark(off, hi, _FXENTRY)
         except Exception:
             pass
+    # ---- THE 2-BYTE ALIGNMENT PAD, as its own class ----------------------------
+    #
+    # 68.5% of the residual has always been this, and it was being counted as
+    # uninterpreted because nothing labelled it. The test is deliberately the narrow one
+    # the corpus fact states -- README: "727,527 of 727,527 of them `00 00`, with a
+    # decoded structure on each side" -- and not "a short run of zeros":
+    #
+    #     exactly two bytes, both zero, ending on a 4-byte boundary, with a byte some
+    #     reader has already labelled on BOTH sides.
+    #
+    # Everything else stays uninterpreted, including a longer zero run and the leading
+    # zeros in FRONT of a longer residual run. Those look like pad and are not: a pad
+    # sits between two decoded structures, and a run that continues into undecoded bytes
+    # is the head of the undecoded thing. Over the corpus that distinction is 6,646 bytes
+    # in `fxmaps` alone, and crediting them would be crediting a byte because it is zero.
+    #
+    # This is NOT a decode. It is stated by the alignment rule the format already
+    # documents (SPEC 10 / OPCODES: an immediate stays 4-aligned, the longer opcode form
+    # emitting two pad bytes to keep it there), so where the next structure begins says
+    # where the pad ends. It gets its own tier line for exactly that reason.
+    i = 0
+    while True:
+        i = seen.find(0, i)
+        if i < 0:
+            break
+        j = i
+        while j < n and not seen[j]:
+            j += 1
+        if (j - i == 2 and j % 4 == 0 and i > 0 and seen[i - 1] and j < n and seen[j]
+                and a.data[i] == 0 and a.data[i + 1] == 0):
+            seen[i] = seen[i + 1] = _PAD
+        i = j + 1
     return seen
 
 
-def record_bytes(a, tot, byfilter_bytes):
+def _residual_class(a, seen, x, y, fx_cells, fx_tags=frozenset()):
+    """What an uninterpreted run is, when it is not the pad.
+
+    Four buckets, and the point of the split is that only the last is a decode gap:
+
+      fx cell not reached   the run's first aligned word is an FX node header, or an
+                            entry tag on either of two tests -- a structure the format's
+                            own rules recognise that no `fx_walk` in the file yields. The
+                            bytes are FX tree, charged to whichever record's extent they
+                            land in because the directory is a partition.
+
+                            NOT the `FX_TAG_LOW16` vocabulary, for the reason `fx_table`
+                            already records: the vocabulary admits `0x09130008`, which is
+                            2,322 u32s straddling two instructions. The two tests used
+                            instead are the ones the walk itself uses, and NEITHER
+                            subsumes the other:
+
+                              `entry_layout_holds` -- the tag names program slots and one
+                              of them resolves. Too NARROW on its own: `0x00420008` names
+                              slot 3, and over 120 files 33 unreached cells headed by that
+                              tag hold the program INLINE at slot 3 rather than a pointer
+                              to it -- 10 of them in `levels` -- so the test rejects a tag
+                              whose own table the walk reads elsewhere. The same tag is a
+                              pointer at slot 3 in 90 other unreached cells, so the tag
+                              itself does not discriminate the two forms.
+
+                              the tag is carried by a cell `fx_walk` DOES yield in THIS
+                              file. In-file and not corpus-wide, so it is the specimen's
+                              own vocabulary rather than a global list.
+      abuts an fx cell      the run does not open on a tag, but the byte on one side of
+                            it is one the FX reader labelled. This is the class
+                            `transformation`'s pass named: a neighbouring `fxmaps`
+                            record's tree lying inside this record's extent because the
+                            directory is a partition and not an allocation. It is a
+                            weaker statement than the row above -- adjacency, not a tag --
+                            and is kept separate for that reason.
+      constant fill         one non-zero byte value repeated over 16+ bytes -- the
+                            0xFFFFFFFF blobs, of which `Grid.sbsasm` holds three.
+      zeros, not the pad    a zero run that is not the 2-byte inter-structure pad: a
+                            longer one, or a short one with an undecoded byte beside it.
+      other                 everything else.
+    """
+    n = len(a.data)
+    seg = a.data[x:y]
+    if not any(seg):
+        return 'zeros, not the pad'
+    if len(seg) >= 16 and len(set(seg)) == 1:
+        return 'constant fill'
+    q = x + (-x) % 4
+    if q + 4 <= min(y, n):
+        w0 = struct.unpack_from('<I', a.data, q)[0]
+        if q not in fx_cells and (sbsasm.node_shape(w0) is not None
+                                  or ((w0 & 0xF) == 8
+                                      and (w0 in fx_tags or a.entry_layout_holds(q, w0)))):
+            return 'fx cell not reached'
+    if ((x > 0 and seen[x - 1] in (_FXNODE, _FXENTRY))
+            or (y < n and seen[y] in (_FXNODE, _FXENTRY))):
+        return 'abuts an fx cell'
+    return 'other'
+
+
+def record_bytes(a, tot, byfilter_bytes, resid=None):
     """Accumulate the record-byte accounting for one file."""
-    seen = _byte_canvas(a)
+    fx_cells, fx_tags = set(), set()
+    seen = _byte_canvas(a, fx_cells, fx_tags)
+    # Pad RUNS, not pad bytes, so the count is comparable with the corpus fact the rule
+    # is taken from: 727,527 of 727,527 occurrences are `00 00`.
+    i = 0
+    while True:
+        i = seen.find(_PAD, i)
+        if i < 0:
+            break
+        tot['pad_runs'] += 1
+        i += 2
+    if resid is not None:
+        n = len(a.data)
+        for r in a.records:
+            i = r.offset
+            while i < r.end:
+                if seen[i]:
+                    i += 1
+                    continue
+                j = i
+                while j < r.end and not seen[j]:
+                    j += 1
+                resid[(r.filter_id,
+                       _residual_class(a, seen, i, j, fx_cells, fx_tags))] += j - i
+                i = j
     for r in a.records:
         lo, hi = r.offset, r.end
         if hi <= lo:
@@ -214,6 +396,7 @@ def main(paths):
     tot = collections.Counter()
     byfilter = collections.defaultdict(lambda: [0, 0, 0])   # records, no prog, unresolved edges
     byfilter_bytes = collections.defaultdict(collections.Counter)
+    resid = collections.Counter()
     unexplained = []
     failed = []
     for p in paths:
@@ -222,7 +405,7 @@ def main(paths):
         except Exception as e:
             failed.append((p, str(e)[:60])); continue
         cov = a.coverage()
-        record_bytes(a, tot, byfilter_bytes)
+        record_bytes(a, tot, byfilter_bytes, resid)
         tot['files'] += 1
         tot['bytes'] += cov['total']
         tot['unexplained'] += cov['unexplained']
@@ -432,13 +615,17 @@ def main(paths):
     rbt = max(1, tot['rb_total'])
     hdr = sum(tot['rb_%d' % v] for v in _TIER_HDR)
     prg = hdr + tot['rb_%d' % _PROGBODY]
-    pay = rbt - tot['rb_0']
+    padb = sum(tot['rb_%d' % v] for v in _TIER_PAY_EXCLUDE)
+    pay = rbt - tot['rb_0'] - padb
     print('record bytes          : %d  (%.1f MB over %d records)'
           % (tot['rb_total'], tot['rb_total'] / 1e6, tot['records']))
     print('  interpreted, header slots only        : %.3f%%' % (100 * hdr / rbt))
     print('  interpreted, + program bodies         : %.3f%%   <- the README row'
           % (100 * prg / rbt))
     print('  interpreted, + every payload reader   : %.3f%%' % (100 * pay / rbt))
+    print('  accounted, + the 2-byte alignment pad : %.3f%%   (%d runs of 2, every one'
+          ' `00 00` with a decoded structure on both sides)' % (100 * (pay + padb) / rbt,
+                                                                tot['pad_runs']))
     print('  uninterpreted                         : %d bytes  (%.3f%%)'
           % (tot['rb_0'], 100 * tot['rb_0'] / rbt))
     for v in sorted(_REGION_NAMES):
@@ -447,11 +634,33 @@ def main(paths):
             print('      %-24s %12d %6.2f%%' % (_REGION_NAMES[v], c, 100 * c / rbt))
     print()
     print('  uninterpreted record bytes, by filter:')
-    print('    %-24s %12s %12s %9s' % ('filter', 'record bytes', 'uninterp', 'interp'))
+    print('    %-24s %12s %12s %12s %9s'
+          % ('filter', 'record bytes', 'align pad', 'uninterp', 'interp'))
     for f, c in sorted(byfilter_bytes.items(), key=lambda kv: -kv[1][0])[:10]:
         t = max(1, c['_total'])
-        print('    %-24s %12d %12d %8.2f%%'
-              % (FILTERS.get(f) or 'fid %d *' % f, c['_total'], c[0], 100 * (t - c[0]) / t))
+        print('    %-24s %12d %12d %12d %8.2f%%'
+              % (FILTERS.get(f) or 'fid %d *' % f, c['_total'], c[_PAD], c[0],
+                 100 * (t - c[0] - c[_PAD]) / t))
+    print()
+    # WHAT IS LEFT, CLASSIFIED. The residual after the pad is not one thing, and reporting
+    # it as one number is what let `fxmaps` sit at the top of the table for a week looking
+    # like an undecoded payload when four fifths of it was pad. `fx cell not reached` is
+    # the only column here that is a decode gap: a word the format's own tag vocabulary
+    # recognises as an FX node header or entry tag, that no `fx_walk` in the file yields.
+    if resid:
+        print('  uninterpreted (pad excluded), classified:')
+        kinds = sorted({k for _f, k in resid})
+        print('    %-24s %s' % ('filter', ' '.join('%16s' % k for k in kinds)))
+        rows = collections.Counter()
+        for (f, k), v in resid.items():
+            rows[f] += v
+        for f, _v in rows.most_common(10):
+            print('    %-24s %s'
+                  % (FILTERS.get(f) or 'fid %d *' % f,
+                     ' '.join('%16d' % resid[(f, k)] for k in kinds)))
+        print('    %-24s %s'
+              % ('TOTAL', ' '.join('%16d' % sum(resid[(f, k)] for f in rows)
+                                   for k in kinds)))
     print()
     print('per filter (records, no program, unresolved edge slots):')
     print('  %-28s %10s %10s %12s' % ('filter', 'records', 'unread', 'unres edges'))

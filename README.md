@@ -115,9 +115,11 @@ when the `valid_program` floor was retired, and the byte row, which moved 6.75 p
                                            records that HAVE no parameter slot. 95.6426%
                                            since the floor went; it was 95.6393%
     edge slots resolved          100.00%
-    record bytes interpreted       99.25%  was 92.5%, which was honest when taken: on its
+    record bytes interpreted       99.26%  was 92.5%, which was honest when taken: on its
                                            own definition today's tree gives 96.50%, and
-                                           99.25% crediting every payload reader - see below
+                                           99.26% crediting every payload reader - see below.
+                                           99.77% once the two-byte alignment pad is
+                                           labelled, which is a fourth tier and not a decode
     record layout by mask-walk     99.97%  (only vectorshape, provenance-walled, left)
 
 **The size-expression row does not mean what it looks like, and re-running it does not move
@@ -254,14 +256,28 @@ it has since been genuinely decoded — mostly by `Record.ramp` (`gradient` 43.3
 and by the walk migration reaching programs the layout table could not name — and most of
 the rest was never undecoded, only unmarked.
 
-What is left is 2,123,304 bytes, 0.746%, and 68.5% of that is the two-byte alignment pad —
-727,527 of 727,527 of them `00 00`, with a decoded structure on each side. The genuine
-residual is **624,822 bytes, 0.220% of record bytes**: `vectorshape` 171,836 (one real
-payload-extent bug, 13 records, fix written up as a patch and not applied), `fxmaps`
-169,086 of entry-table parameter words,
-224,466 in `transformation` and `blend` of which 131,068 are two constant-fill image blobs
-in a single specimen, and 64,898 everywhere else. See FORMAT-NOTES.md, "The 7.5% of
-uninterpreted record bytes".
+What is left is 2,123,232 bytes, 0.746%, and 68.5% of that is the two-byte alignment pad —
+727,441 runs of `00 00` inside a record extent, every one with a decoded structure on each
+side. **The pad is now labelled rather than counted as uninterpreted, and it is a FOURTH
+tier rather than a widening of the third**, because crediting it moves no byte from
+undecoded to decoded: `+ every payload reader` still reads 99.261% and the new line reads
+**99.773%**, leaving 646,476 bytes, 0.227%. The audit prints that split, per filter, with a
+classification of what remains.
+
+The residual after the pad is **646,476 bytes**, and it partitions: 332,766 of FX tree that
+no walk in the file reaches — 187,356 charged to `fxmaps`, 114,722 to `levels`,
+`transformation` and `blend` because the directory is a partition, 6,012 to `vectorshape` —
+166,332 of `vectorshape` payload past what its reader credits (one real payload-extent bug,
+13 records, fix written up as a patch and not applied), 131,068 in two constant-fill image
+blobs in a single specimen, and 16,310 everywhere else. By filter the top two are `fxmaps`
+191,098 and `vectorshape` 172,344. See FORMAT-NOTES.md, "`fxmaps`' 802,940 uninterpreted
+record bytes".
+
+**The 8-byte FX entry stub was already fixed, and this is what it was worth.** `bytes-audit`
+found FX entries credited a fixed 8 bytes rather than their stated extent and fixed it in the
+same commit; re-measured at HEAD both ways, the stub gives `fxmaps` a residual of 2,787,352
+and the stated extent 802,940 — 1.98 MB, already credited. A proposal to credit it again
+would have moved nothing.
 
 **`transformation`'s share of that is now classified, and none of it is a decode gap.** Its
 342,244 uninterpreted record bytes are an exact three-way partition with no remainder:

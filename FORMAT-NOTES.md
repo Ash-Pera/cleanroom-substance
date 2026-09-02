@@ -46322,3 +46322,239 @@ against a law that covers their neighbours; they are three records in the part o
 where nothing covers anything.
 
 SPEC 7.4 and 13.4 are corrected in place with all of the above.
+
+# `fxmaps`' 802,940 uninterpreted record bytes: three quarters pad, one fifth a tree nobody walks
+
+`fxmaps` was the largest residual of any filter — 802,940 bytes of 58,074,496, 98.62%
+interpreted — and it was the largest because the record directory is a partition: an FX
+structure that runs past what the model credits is charged to whichever record's extent it
+lands in, so `levels`, `transformation` and `blend` were carrying its overflow too. This
+section partitions all four exactly, with nothing left over.
+
+## First attempt, and it was wrong: the 8-byte entry stub was already credited
+
+The brief for this pass named a specific mechanism. `bytes-audit` (9ffe61a) found that FX
+entries were credited 8 bytes rather than their stated extent — 1,984,574 bytes corpus-wide
+— and classified it as accounting rather than decode; the proposal was that nobody had since
+gone back and credited the real extent, and that doing so would close a large fraction of
+four filters' residuals at once as pure bookkeeping.
+
+**It was credited, in that same commit.** `audit_corpus.py`'s `+payloads` tier has run an
+entry to the end of its own inline program since 9ffe61a landed; the diff says so and so does
+its comment. The first pass here was spent finding that out, which is worth recording,
+because the figure that motivated the proposal — 1,984,574 — is a *before* number quoted from
+a commit message and reads exactly like a live one.
+
+Measured both ways at HEAD over 437 files / 903,616 records / 284,490,036 record bytes:
+
+    entry credited a fixed 8-byte stub      fxmaps residual 2,787,352   `+payloads` 98.556%
+    entry credited its stated extent        fxmaps residual   802,940   `+payloads` 99.254%
+
+1,984,412 bytes between them, which is 9ffe61a's 1,984,574 to within 162 bytes — the
+reproduction here re-implements the tier outside the tool and differs from it only in the
+fallback arm for an entry that names no program. So the mechanism is real and it is worth
+1.98 MB, and re-crediting it gains nothing at all: **802,940 is what is left after it.**
+
+The same run says the stub explains nothing about the other three filters, which is the
+second half of the retraction. Under the stub, `levels` moves by 20 bytes and
+`transformation` by 34 — 0.03% and 0.01% of their residuals. Whatever their fx-adjacent
+bytes are, they were never the entry-extent question.
+
+## The partition of the 802,940, exact
+
+    the 2-byte alignment pad                       602,272   75.01%
+    a walked cell's own stated extent, uncredited    9,570    1.19%
+    an FX cell no walk in the file reaches         164,320   20.46%
+    abutting an FX cell, opening on no tag          23,036    2.87%
+    other                                            3,742    0.47%
+                                                   -------  -------
+                                                   802,940  100.00%
+
+Nothing is left over. The first two rows are now credited by `audit_corpus.py`; the third
+and fourth are one decode gap in two strengths of evidence; the fifth is 0.47%.
+
+## The pad is a FOURTH tier, not a widening of the third
+
+68.5% of the whole corpus residual has always been the two-byte alignment pad, and it was
+counted as uninterpreted because nothing labelled it. `audit_corpus.py` labels it now, on
+the narrow test the corpus fact states rather than on "a short run of zeros":
+
+    exactly two bytes, both zero, ending on a 4-byte boundary, with a byte some reader has
+    already labelled on BOTH sides.
+
+Corpus-wide that is **727,441 runs, 1,454,870 bytes**, every one `00 00` with a decoded
+structure on each side — against the 727,527 occurrences README.md quotes from the earlier
+whole-file count, the 86-run difference being pads outside any record extent.
+
+Everything else stays uninterpreted, including longer zero runs and the leading zeros in
+FRONT of a longer residual run. Those look like pad and are not: a pad sits between two
+decoded structures, and a run that continues into undecoded bytes is the head of the
+undecoded thing. In `fxmaps` alone that distinction is 6,646 bytes, and crediting them would
+be crediting a byte because it is zero.
+
+**It gets its own tier line and does not move the existing three.** `+ every payload reader`
+still excludes it and still reads 99.254% → 99.261%; the new line reads 99.773%. Folding the
+pad into the third tier would have moved the README row half a point with no byte decoded,
+which is the accounting-as-decode error the "unexplained bytes 0" retraction is about. The
+pad is not a decode: it is stated by the alignment rule the format already documents — the
+next structure begins 4-aligned, so where it begins says where the pad ends — and that is a
+different kind of statement from a length field.
+
+## Crediting a cell's own stated extent — and why the stated extent ALONE is worse
+
+`walk_partition.stated_extent` already implements "what does this structure say about its own
+width": a node's fields end at the successor slot its mask locates, an entry's at the nearer
+of its layout span and the next-pointer it stores. `audit_corpus.py` now asks it, as a UNION
+with the extent already credited and never as a replacement, bounded by the next distinct
+structure the same walk yields and by a 64-word ceiling (the no-layout arm returns
+`(slot-1 pointer − q) / 4` uncapped, because over-stating an extent is the safe direction for
+a checker and the unsafe one for an accountant).
+
+The union matters. Measured on its own over 40 files, the stated extent is **worse** —
+`fxmaps` residual 63,636 against the current 61,192 — because an entry's layout span covers
+its fields and stops *before* its own inline program, which the program-end rule covers and
+the span rule does not. Two partial rules whose union is right; either alone loses bytes.
+
+Corpus-wide the union credits 21,886 bytes the old rule did not: 9,570 in `fxmaps`, 4,284 in
+`blend`, 2,744 in `transformation`, 2,540 in `levels`, and the rest spread thin.
+
+## The four filters, before and after
+
+    filter            record bytes    residual before    align pad     stated ext    after
+    fxmaps              58,074,496            802,940      602,272          9,570   191,098
+    transformation      41,307,180            342,244      225,530          2,744   113,970
+    blend               63,657,476            318,110      210,330          4,284   103,496
+    levels              16,588,236             71,820       40,912          2,540    28,368
+
+and corpus-wide, the three tiers plus the new one:
+
+                                            8fcfedf      this pass
+    interpreted, header slots only            7.397%        7.397%
+    interpreted, + program bodies            96.499%       96.499%
+    interpreted, + every payload reader      99.254%       99.261%
+    accounted, + the 2-byte alignment pad          -       99.773%
+    uninterpreted                          2,123,232       646,476
+
+`end`, `inputs`, `hdr` and `param_slots` cannot have moved and did not: no decode module was
+touched. The standing checks were re-run anyway and are unchanged — `bit_census.py --check`
+gives 1,302,475 of 1,302,475 edge slots holding a backward record index and 198,249 of
+198,249 state-2 slots resolving a program, `./t` 19 passed, `test_fx`+`test_bitmap` 20
+passed, `test_render2`/`test_text`/`test_sampler` 27 passed, and `test_filters`+`test_tables` 20
+passed in 10m38s with `REFERENCE_FLOOR` and the 0.78587 reference height mean untouched. No
+floor was lowered, and no floor was even read: `git diff --stat` is
+`archive/tools/audit_corpus.py` plus this notebook, `SPEC.md` 8 and the README byte row.
+
+Two filters left the top-ten residual table entirely, which is the clearest statement of what
+the row was measuring: `pixelprocessor` 144,016 → 116 and `directionalwarp` 132,150 → 612,
+both of them 99.9% pad.
+
+## What is left in `fxmaps`, and it is a decode gap rather than an accounting one
+
+187,356 bytes — 164,320 opening on a tag, 23,036 abutting a cell without one — are **FX tree
+structure that no `fx_walk` in the file reaches**. They are not junk and they are not
+bytecode:
+
+* over 60 files, 721 such runs, **715 of them are the target of a 4-aligned word somewhere in
+  the body** — something in the file names them — and 6 are named by nothing;
+* **216 of the 721 are named by a word at slot ≤ 12 of a cell the walk DOES reach**, inside
+  the extent that cell is credited. The rest are named from further out: from deeper in a
+  cell, or from inside another unreached cell, i.e. two or more hops down a chain whose first
+  hop was already dropped.
+
+The naming slot is the finding. Grouped by the tag of the walked cell that names the
+unreached one:
+
+    tag         slot   n        tag         slot   n
+    0x9            1  70        0x14b          2  10
+    0x14420248     2  37        0x20008        1  10
+    0x410008       2  16        0x20018        6   7
+    0x49           1  12        0x1db          3   6
+    0x420008       2  12        0x99           3   6
+    0x89           2  10        0x1cb          2   5
+
+This is one shape across eight families: **the cell has two forward pointers and the walk
+follows one.** SPEC 8 already states exactly this for `0x1db` — "a reader following only the
+computed successor draws half of such a record", the mask spending word 3 on a baked
+`randomseed` that is really the first child — and the 6 rows at `0x1db` slot 3 here are that
+case, re-found from the byte side by a completely different instrument. The measurement says
+it is not confined to `0x1db`: the pointer-cell families `0x9`/`0x49` at slot 1, the node
+families `0x89`/`0x99`/`0x1cb`/`0x14b` at slots 2-3, and the entry tags `0x14420248`,
+`0x410008`, `0x420008` at slot 2 all lose a second target the same way.
+
+`fx_table`'s next-pointer search is where it bites for entries: it takes the pointer reaching
+furthest forward *within the slots the tag's layout declares*, and a tag whose
+`fx_entry_layout` is empty declares nothing, so the search covers slot 1 alone. On
+`flowingLava_v35_engine_4_5` record 112 that is visible byte for byte — `0x00020018` at +632
+is `[tag][→+644][→+648]`, the walk takes +644 (a one-word `0x0000000b`) and never visits
++648, which opens the rest of the chain. 12,220 bytes of record, 8 cells walked, and 26
+residual runs left, each opening on a cell header (`0x1a3`, `0x89`, `0x18b`, `0x19b`,
+`0x99`, `0x55300158`) or on that header's immediate continuation.
+
+**A second discriminator was needed and the obvious one is wrong in both directions.**
+Classifying these runs by whether the head word's low 16 bits are in `FX_TAG_LOW16` is too
+LOOSE — `fx_table`'s own stopping rule records `0x09130008` as 2,322 "entries" that are u32s
+straddling two instructions — and asking `entry_layout_holds` instead is too NARROW:
+`0x00420008` declares a program at slot 3, and over 120 files 33 unreached cells headed by
+that tag hold the program INLINE at slot 3 rather than a pointer to it — 10 of them in
+`levels` — so the test rejects a tag whose own table the walk reads elsewhere in the same
+file. The same tag is a pointer at slot 3 in 90 unreached cells inside `fxmaps` records, so
+the two forms coexist and the tag does not discriminate them. The classifier uses both, plus the specimen's own walked
+tag vocabulary, and the two classes it produces differ in evidence strength rather than in
+kind.
+
+## `transformation`, `blend` and `levels`: the same gap, seen from a neighbour
+
+Their non-pad residual is `fxmaps` structure lying inside their extents, and the earlier
+classification of `transformation` (65.9% pad / 19.2% one blob / 14.9% fx-adjacent, exact)
+survives with the fx-adjacent share now split by evidence:
+
+    filter            pad     stated ext   fx cell not reached   abuts an fx cell   blob   zeros
+    transformation  225,530        2,744                 2,194             46,244  65,532      0
+    blend           210,330        4,284                 3,900             34,032  65,536     28
+    levels           40,912        2,540                 5,458             22,894       0     16
+
+Each row sums to that filter's residual exactly. The two blobs are `Grid.sbsasm`'s constant
+`0xFFFFFFFF` fills, two of the three that specimen carries, the third being decoded in a
+`bitmap` record; they are unchanged by anything here.
+
+So of the 802,940 + 342,244 + 318,110 + 71,820 = 1,535,114 bytes these four filters held,
+**1,079,044 (70.3%) was the alignment pad, 19,138 (1.2%) was a structure's own stated extent
+going uncredited, 131,068 (8.5%) is two constant-fill blobs in one specimen, 302,078 (19.7%)
+is FX tree the walk does not reach, and 3,786 (0.2%) is everything else.** Only the FX tree
+is a decode gap. Of it, 187,356 bytes sit in `fxmaps` records and 114,722 in the other
+three's extents.
+
+## What would close the rest, and what was deliberately not done
+
+The remaining 302,078 bytes close when the walk follows a cell's *second* forward pointer.
+That is a change to `fx_tree`/`fx_table` — the live decode path that `render2` and
+`fxrender.py` read — and it is not a byte-accounting change, so it carries the full
+discipline: an A/B over the corpus both ways by filter, the three standing invariants, and
+the reference floors. It was not attempted here, and this section is written so that whoever
+does it has the population, the naming slots, and a specimen to work on.
+
+Two smaller things also left alone, both stated rather than fixed:
+
+* **`vectorshape` 172,344 bytes, 166,332 of it `other`** is untouched and is mostly not FX:
+  it is the payload-extent bug on 13 records that already has a patch written and not
+  applied. It is now second behind `fxmaps`' 191,098 rather than fourth, which is a change
+  in the ranking and not in the filter.
+* **`fxmaps`' last 3,742 bytes of `other`** open on words like `0x25300758` and `0x15140098`
+  — low nibble 8, so entry-shaped, but on tags neither test recognises and which no walked
+  cell in the same file carries. 0.47% of the filter's residual, and n is too small to say
+  whether they are unlisted entry tags or something else.
+
+**Nothing structural changed.** The diff is `archive/tools/audit_corpus.py` only: the pad
+class, the stated-extent union, the residual classifier, and a fourth tier line. No decode
+module, no `legend.json`, no table.
+
+## Every number here, and how to re-take it
+
+    python3 archive/tools/audit_corpus.py
+
+prints the three tiers, the fourth, the per-filter table with its new `align pad` column, and
+the `uninterpreted (pad excluded), classified` table that this section's partitions are read
+off. 437 files, ~2 minutes. The 8-byte-stub A/B and the unreached-cell naming census were
+one-off probes outside the tool; the stub arm is one line of `_byte_canvas` (`mark(off,
+off + 8, _FXENTRY)` in place of the extent block) and the census is a search of the body for
+each unreached cell's `offset − 52`.

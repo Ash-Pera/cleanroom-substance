@@ -743,6 +743,33 @@ discriminated by the tag word's **low nibble**:
   is the next-pointer 100% of the time. These are structural linked-list cells, not
   independent pattern draws, and are excluded from both node sizing and emission.
 
+**A cell with two forward pointers loses one, and this is general rather than `0x1db`'s
+special case.** The paragraph above states it for `0x1db`; measured from the byte side —
+every run of record bytes no reader can label, over the whole corpus — the same shape
+appears on a dozen tag families. Corpus-wide **332,766 bytes are FX cells no walk in the file
+reaches** — 183,804 of them opening on a tag, the rest abutting a cell that does — and
+114,722 of that total lies inside `levels`, `transformation` and `blend` extents rather than
+`fxmaps` ones, because the record directory is a partition and not an allocation. Over a
+60-file sample there are
+721 such cells; **715 are the target of a 4-aligned word somewhere in the body** and 216 are
+named by a word at slot ≤ 12 of a cell the walk *does* reach, i.e. exactly one hop out. By
+the naming cell's tag and slot: `0x9` w1 (70), `0x14420248` w2 (37), `0x410008` w2 (16),
+`0x49` w1 (12), `0x420008` w2 (12), `0x89` w2 (10), `0x14b` w2 (10), `0x20008` w1 (10),
+`0x20018` w6 (7), `0x1db` w3 (6), `0x99` w3 (6), `0x1cb` w2 (5).
+
+For an ENTRY the mechanism is the next-pointer search itself: "the slot reaching furthest
+forward" is searched only over the slots the tag's layout declares, so a tag whose layout is
+empty is searched at slot 1 alone. `0x00020018` is three words, `[tag][→leaf][→next cell]`;
+searched at slot 1 the walk takes the one-word `0x0000000b` leaf and the chain ends there.
+Searching every slot up to the cell's stated width instead of up to the count of parameters
+its tag declares is the obvious repair and is **not verified here**: what is established is
+that the bound is the declared parameter count and that the targets it drops are structure
+something in the file names. Neither the `FX_TAG_LOW16` vocabulary nor "the tag names a
+program and one of them resolves" identifies these cells on its own: the first admits
+`0x09130008`, which is 2,322 u32s straddling two instructions, and the second rejects
+`0x00420008`, which names a program at slot 3 and in 33 unreached cells over 120 files holds
+that program INLINE there rather than a pointer to it.
+
 Nodes carry the FX-Map parameters (pattern type, size, colour, etc.). The pattern
 *footprint* (`patternsize`) — how large each emitted pattern is on the canvas — is the one
 FX-Map field not yet decoded, and is the principal blocker to correct rendering. How many
