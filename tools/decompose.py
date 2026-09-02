@@ -404,6 +404,13 @@ def decompose(r):
     ri = r.index
     if w1 is not None:
         iv = sp.get('w1_int')
+        rf = sp.get('w1_int_refuse')
+        if iv and rf and rf[0] <= (w1 >> iv[0]) & iv[1] <= rf[1]:
+            # AN UNOBSERVED VALUE OF THAT INTEGER (SPEC 7.4's 14..28). `header_words`
+            # refuses it and so does the walk, because a walk that lays slots for a header
+            # length nobody can state is the silent wrong answer the refusal exists to
+            # prevent. No corpus record reaches here.
+            return None
         if iv and (w1 >> iv[0]) & iv[1] == iv[2]:
             # THE ONE w1 REGION THAT IS AN INTEGER RATHER THAN TWO-BIT FIELDS (SPEC 7.4).
             # `transformation`'s bits 0-4 hold a 5-bit value: 0..13 are literal and cost

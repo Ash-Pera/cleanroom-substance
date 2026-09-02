@@ -46140,3 +46140,185 @@ So `transformation`'s residual is accounting, not decode: 65.9% format padding, 
 specimen's image blob, 14.9% another filter's payload inside this filter's extent. The figure
 moved by 100 bytes with this pass (342,344 -> 342,244) and the whole of that is the 25 header
 words now placed.
+
+---
+
+## The two loose ends of `transformation`'s integer field: 14..28 refuses, and 29 is not a size rule
+
+`e3378db` established that `transformation`'s `w1` bits 0-4 are a 5-bit integer `k`, a
+halving count, and left two things open that this pass closes and one that it cannot. The
+code did not do what SPEC said for 14..28, and the three records at 29 had never been looked
+at.
+
+### The disclosed guess: `header_words` charged zero where SPEC said refuse
+
+SPEC 7.4 said "14..28 never observed -- a reader meeting one should refuse".
+`record_layout.header_words` charged those codes **zero** and said nothing. Reproduced
+before touching anything, with `w0 = 0x03197704` and `w1 = 0x20 | k` -- the same word with
+only the low five bits varied, which is how the `sharpen` canvas fix was demonstrated:
+
+    k      0..13    14..28     29     30     31
+    before   4         4        4      5      4
+    after    4        None      4      5      4
+
+That is the whole change. It is the same refusal `width()` already makes for a cell the
+corpus never bakes, and the same `None` `header_words` returns for `vectorshape`'s 139
+records, filter 9's 5 and `emboss`'s 171 below its version gate. `decompose` refuses with it,
+because a walk laid against a length nobody can state is exactly the silent wrong answer the
+refusal exists to prevent.
+
+**Why refusal and not zero, because zero is a defensible position and had to be argued
+against rather than assumed away.** The case for zero is that every observed code outside the
+pointer arm costs nothing, so zero is the better prior than refusal. The case against it is
+that the codes that support zero and the codes in question are not in the same population.
+Zero is measured on 4,192 records at 0..13 and on 230,639 at 31 -- the field's two ORDINARY
+arms, the ones any reader will actually meet. Above 13 the corpus holds exactly two exotic
+codes and **they split one-one on cost**: 29 costs nothing on 3 records, 30 costs one word on
+25. So the evidence local to the region in question is a coin, and a reader that charges zero
+and meets a code that emits a pointer is one word short with every later slot in that record
+displaced, silently. A reader that refuses reports one record it cannot lay out, on a file
+nobody in this project has ever seen. That trade is the repo's stated principle -- fail
+loudly rather than guess -- and it is not close.
+
+**A/B, both ways, full corpus.** Zero records change, which is what "no record reads 14..28"
+requires. Per record digest over `end`, `inputs`, `hdr`, `param_slots`, `cls_slots`, `prog`
+and `size_slot` plus `header_words`' own answer, 903,616 records, 437 files:
+
+    digest before   6b4889c8adaf43407d7a76126683ec71d633dd24
+    digest after    6b4889c8adaf43407d7a76126683ec71d633dd24
+    filters whose (counts, per-record digest) changed:   0 of 23
+    header_words:   903,301 answer / 315 refuse, before and after
+                    (vectorshape 139, emboss 171, filter9 5 -- unchanged)
+
+Guards, before and after:
+
+    walk cursor == stated header length     903,301 / 903,301   unchanged
+    edge slots holding a backward index   1,302,475 / 1,302,475 unchanged
+    state-2 slots resolving a program       198,249 / 198,249   unchanged
+    ./t 19 passed   test_filters+test_tables 20 passed
+    render2 + test_text + test_sampler 27 passed   test_fx+test_bitmap 20 passed
+
+`derive_legend.py` was re-run BEFORE the change and wrote `tools/legend.json` byte-identical,
+so the diff after it is attributable. That diff is four lines: one `w1_int_refuse: [14, 28]`
+key on filter 2 and nothing else.
+
+### 14..28 is unobserved, not unreachable -- and that is why the refusal is right
+
+The argument that would have justified charging zero is that the range cannot be emitted at
+all. A record halving 14 times wants a 16384-pixel input, and nothing in these 437 packages
+feeds a `transformation` one: the largest input to a `transformation` is log2 13, and the
+largest canvas anywhere in the corpus is log2 14 -- `Splatter.sbsasm` record 1366, a
+`transformation` at 16384x16384, three records at that size in the whole corpus.
+
+That argument fails, and the corpus refutes it directly: **`k` is not bounded by its input's
+size.** Over the 4,192 literal-arm records with one resolvable input, **818 state a `k` larger
+than their input's log2**:
+
+    excess (k - input log2)    1     2     3     4     5     6
+    records                  240   244   214    79    24    17
+
+The compiler states the count and `max(., 0)` absorbs the overhang -- 21 records read `k = 11`
+from a 64x64 input, 6 read `k = 12` from one, and 34 read `k = 13` from inputs of log2 9 and
+10. A `k` of 14 therefore needs only a log2-8 input and an excess of 6, which is already the
+observed maximum. So the range is unobserved in this corpus and not unreachable in this
+format, and you cannot refuse to handle a code the format can emit -- you refuse to GUESS at
+it, which is a different thing and the one implemented.
+
+### The three records at 29
+
+They are, in full:
+
+    US_Flag.sbsar.sbsasm           rec   45  w0 03088805  w1 0000003d  3 words  12 bytes
+    Embroidery_Legacy.sbsar.sbsasm rec    2  w0 03088805  w1 0000003d  3 words  12 bytes
+    TatamiSubstance001_COMPILED    rec  906  w0 03380004  w1 0000007d  7 words  28 bytes
+
+The first two are byte-identical headers: a colour 256x256 `transformation`, class bits 19,
+24, 25, no `$outputsize` and no `$randomseed`, one image input and nothing baked at all --
+`w1` fields 6, 25 and 28 are every one absent, so the record is a `transformation` with no
+matrix, no offset and no background colour. `US_Flag` record 45 reads a 256x256 `blend`
+(record 43); `Embroidery_Legacy` record 2 reads a 256x256 `bitmap` (record 0). Both sit in the
+same compiled idiom: the source feeds a `pixelprocessor` directly AND feeds this record, whose
+output feeds a second `pixelprocessor` whose `w1` is `0x00010001` against the first's
+`0x00000001`. The third is different in every way -- grayscale, 1x1, class bits 19, 20, 21,
+24, 25, and it bakes a `matrix22` of `1.0, -0.0002, 0.0002, 1.0`, a rotation by a very small
+angle -- reading a 16x16 `transformation` (record 905) which itself reads a 256x256 `shuffle`
+at code 31.
+
+**Not a hand edit and not corruption.** Three files, and their `.sbsar` manifests declare
+three different authors -- `JohnLogostini`, `Adobe` and `ambientCG`. (The manifest is
+distribution data inside a compiled `.sbsar`, which `provenance.py` states outright is
+analysable whoever authored it; no `.sbs` was read for any of the three, and the one paired
+source that exists, `DLG-Tools__US_Flag.sbs`, is permitted -- author `JohnLogostini`, no
+`<author v="Allegorithmic"` anywhere in it.) A value emitted under three different authors'
+names is the compiler's, not a typo.
+
+**It costs no word, and that is measured.** Each record's directory extent equals the header
+the legend states, exactly: 12, 12 and 28 bytes against 3, 3 and 7 words. There is no slack
+anywhere in the three.
+
+**It is not a second pointer arm, and the test that found the 25 cannot even be run.** Because
+the extent ends at the header on all three, there is no word past the header inside the record
+for a 29-arm pointer to occupy. Run at the same slot position anyway, as a control:
+
+    slot the model gives code 30 (hw-1 for k=30, hw otherwise), does a program resolve?
+      k=30    25 of     25
+      k=29     0 of      3     -- and the word is outside the record's extent
+      k=31     1 of 230,639    -- the neighbouring fxmaps tree SPEC 7.4 already names
+      k=0..13  0 of  4,192
+
+**It is not the halving law at 29.** Two of the three are 256x256 records reading a 256x256
+input. `max(input log2 - 29, 0)` demands 1x1. Nor is it the law at any other single `k`: those
+two need `k = 0`, and the Tatami record -- 1x1 from a 16x16 input -- needs `k >= 4`. No single
+`k` reproduces all three, so 29 is not a literal count of anything about size.
+
+**It is not a synonym for 31 either.** "No change" would fit the first two and is refuted by
+the third, which changes 16x16 to 1x1.
+
+**It is not an artefact of its class word.** SPEC 7.4 pins the 25 records at code 30 to class
+words `0x03197704` and `0x03195504`; the check asked for here is whether 29's class words are
+that population, and they are not. Grouped by the class half of `w0`:
+
+    class word   total   k distribution
+    0x0319     136,760   0:643 1:245 2:196 3:239 4:196 5:196 6:196 7:196 8:196 9:196
+                         10:196 11:166 30:25 31:133,874       <- carries every code 30
+    0x0308         463   0:2 4:65 7:1 12:1 13:24 29:2 31:368  <- carries 2 of the 3 code 29
+    0x0338          47   0:13 4:3 29:1 31:30                  <- carries the third
+
+So 29 and 30 have never been observed under a common class word and cannot be compared
+directly; and 29 is a distinction the compiler draws WITHIN a population that otherwise reads
+31 on 398 of 510 records, rather than a property of the class word.
+
+**Both arbiters are structurally silent, and that is measured rather than assumed.** The field
+costs no word in this state, so there is no pointer slot and no program for
+`manifest_arbiter.py` to read an `inputref` out of -- the same structural silence SPEC 13.4
+already records for `transformation.w1low`, confirmed here by the records themselves carrying
+0 programs each. And `sourcematch.py`'s route into `transformation` is pinning a node by its
+stated `matrix22`/`offset` constants; two of the three bake neither, so there is nothing to pin.
+The one that does bake a `matrix22` is in `TatamiSubstance001`, which has no paired source.
+
+**What n = 3 cannot settle, and the specimen that would.** With two of the three plausibly one
+library sub-graph compiled twice, this is about two independent observations. Two points
+cannot separate "a size rule this project has not found" from "a sampling, wrap or filtering
+mode that correlates with size in these two shapes". The specimen that would settle it is a
+file carrying several records at 29 whose INPUTS DIFFER IN SIZE -- a pyramid at 29 the way
+`RoadSubstance002` records 2566-2576 are a pyramid at 1..11 -- or any single record at 29
+whose own log2 is neither its input's nor zero. Neither exists here. Stated plainly: **29 is a
+third top-of-range code alongside 30 and 31, it costs nothing, it is not a halving count, and
+what it means is not settled by this corpus.**
+
+### What the 29 records did settle, about the law rather than about 29
+
+Chasing them turned up a condition on the 84.1% that SPEC 7.4 quoted without it. Over the same
+4,192 literal-arm records the halving law holds on **3,408 of 3,667 (92.9%)** where the record
+carries a `$outputsize` expression and on **222 of 525 (42.3%)** where it does not. Codes 12,
+13 and 29 are set on no record that carries one -- class bit 16 clear on 77 of 77 -- and their
+own canvas is a CONSTANT independent of their input: every one of the 40 records at `k = 12` is
+32x32, reading inputs of log2 6, 7 and 8; every one of the 34 at `k = 13` is 16x16, reading
+inputs of log2 9 and 10. The law holds on 0 of those 74. So a `transformation` with no size
+expression states a canvas the halving law does not predict, the 84.1% is a figure about the
+arm that has one, and code 29 lives entirely in the arm where the law is weakest. That does not
+rescue 29 -- 42.3% is not a reading -- but it does say the three records are not anomalous
+against a law that covers their neighbours; they are three records in the part of the field
+where nothing covers anything.
+
+SPEC 7.4 and 13.4 are corrected in place with all of the above.

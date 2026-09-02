@@ -385,7 +385,8 @@ header = n_hdr + n_base + n_fixed
        + arity                (the two filters whose w1 holds an input count, §6.4)
        + one conjunction      (bitmap 24+27, §6.4)
        + one integer field    (`transformation`'s w1 bits 0-4 — §7.4's last paragraph:
-                               a 5-bit value, one of whose codes emits a program pointer)
+                               a 5-bit value, one of whose codes emits a program
+                               pointer, and whose unobserved range 14-28 is REFUSED)
 
 width:  0 -> 0   1 -> 1   2 -> 2   4 -> 4   C -> 1 grey / 4 colour
 n_hdr = 1 + (this record carries a w1 word)
@@ -599,10 +600,10 @@ input 2565 (log2 6×6) and read `k` = 1…11, at their own sizes 5, 4, 3, 2, 1, 
 Two of the 32 values are reserved and the rest of the high half is unobserved:
 
     0 .. 13    literal, and costs no header word           4,192 records
-    14 .. 28   never observed -- a reader meeting one should refuse
-    29         3 records, costs no word, unexplained
-    30         ONE PROGRAM POINTER, after the class block  25 records
-    31         the ordinary value, costs no word           230,639 records
+    14 .. 28   never observed -- a reader REFUSES; see below
+    29         costs no word, and is not a size rule           3 records
+    30         ONE PROGRAM POINTER, after the class block     25 records
+    31         the ordinary value, costs no word          230,639 records
 
 The `30` arm is what closed a 25-record hole in both header models. At the word just past
 the header they used to state, a program resolves on **25 of 25** records reading 30 and on
@@ -616,6 +617,82 @@ What this does NOT establish is the slot's place among the other fields. No corp
 sets the integer to 30 and a field at 6, 25 or 28 at the same time, so "at the head of the
 parameter block" is where the bit offset puts it and not something the file has shown.
 **Bit 5 is separate and is not part of the integer** — see §13.4.
+
+**THE REFUSAL AT 14..28 IS IMPLEMENTED, AND IT USED TO BE A GUESS IN THE OTHER DIRECTION.**
+`record_layout.header_words` charged those codes zero and said nothing, while this section
+said refuse — the last place in the header model where a guess was still doing work. It now
+returns `None`, the same answer it already gives for `vectorshape`'s 139 records, filter 9's
+5, `emboss`'s 171 below its version gate and a baked cell the corpus never exercised, and
+`decompose` refuses with it, so a walk is never laid against a length nobody can state. No
+corpus record reads 14..28, so the change moves **0 of 903,616** records — per filter, on
+`end`, `inputs`, `hdr`, `param_slots`, `cls_slots`, `prog` and `size_slot` alike, with the 315
+refusals unchanged — and the demonstration is therefore synthetic. With `w0 = 0x03197704` and
+`w1 = 0x20 | k`, varying only the low five bits, `header_words` answered 4 at every `k` but 30
+before, and now answers
+
+    k = 0..13   4      k = 14..28   None      k = 29   4      k = 30   5      k = 31   4
+
+**Why refuse rather than charge zero, since every code outside the pointer arm does cost
+nothing.** Because that sentence is true of the codes a reader will actually meet and says
+nothing about the ones it will not. Zero is measured for 0..13 (4,192 records) and for 31
+(230,639 records), and those are the field's two ORDINARY arms. Above 13 the corpus holds
+exactly two exotic codes and they split one-one on cost: 29 costs nothing on 3 records, 30
+costs a word on 25. The local prior over 14..28 is a coin, not a zero. A reader that charges
+zero and meets a code that emits a pointer is one word short and every slot after it in that
+record moves — silently, which is the failure this specification exists to prevent — while a
+reader that refuses reports a record it cannot lay out, on a file nobody has seen. Between a
+wrong length nobody notices and a refusal somebody does, the model takes the refusal.
+
+**And 14..28 is NOT unreachable by construction, which is the one argument that would have
+justified charging zero.** Halving 14 times wants a 16384-pixel input, which is past anything
+these 437 packages feed a `transformation`: the largest such input is log2 13, and the largest
+canvas anywhere in the corpus is log2 14 — `Splatter.sbsasm` record 1366, a `transformation`
+at 16384×16384. But `k` is **not bounded by its input's size**. 818 of the 4,192 literal-arm
+records state a `k` LARGER than their input's log2 — by 1 on 240 records, by 2 on 244, by 3 on
+214, by 4 on 79, by 5 on 24 and by 6 on 17 — because the compiler states the count and
+`max(·, 0)` absorbs the overhang. A `k` of 14 needs only a log2-8 input and an excess of 6,
+which is already the observed maximum. So 14..28 is unobserved in this corpus, not unreachable
+in this format, and a reader may not decline to handle a code the format can emit.
+
+**WHAT THE THREE RECORDS AT 29 ARE, AND WHAT n = 3 CANNOT SETTLE.** They are `US_Flag` record
+45 and `Embroidery_Legacy` record 2 — byte-identical headers, `w0 = 0x03088805`,
+`w1 = 0x0000003d`, three words each, one image input and nothing baked — and
+`TatamiSubstance001_COMPILED` record 906, `w0 = 0x03380004`, `w1 = 0x0000007d`, seven words,
+baking a near-identity `matrix22`. Three files with three distinct declared manifest authors
+(JohnLogostini, Adobe, ambientCG), so 29 is something the compiler emits and not a hand edit
+or a corrupt word; but the first two sit in one compiled idiom — the input feeds a
+`pixelprocessor` directly and also through this record into a second `pixelprocessor` whose
+`w1` is `0x00010001` — so they are plausibly two instances of one library sub-graph and count
+as about two independent observations rather than three. What is settled:
+
+* **It costs no word, and that is measured rather than assumed.** Each record's directory
+  extent is exactly the header this specification states — 12, 12 and 28 bytes, i.e. 3, 3 and
+  7 words. Which is also why it needs no refusal: what a reader must know about a code is what
+  it costs, and for 29 that is read off the file.
+* **It is not a second pointer arm.** On 3 of 3 there is no word inside the extent past the
+  header for a pointer to occupy, so the test that found the 25 cannot even be run there. Run
+  at the same slot position, a program resolves on 25 of 25 at code 30 and on 0 of 3 here.
+* **It is not the halving law at 29.** Two of the three are 256×256 records reading a 256×256
+  input, where `max(input log2 − 29, 0)` demands 1×1. Nor is it the law at any other single
+  `k`: those two need `k = 0`, and the third — 1×1 from a 16×16 input — needs `k ≥ 4`.
+* **It is not "no change" either**, so it is not a synonym for 31: that third record does
+  change size.
+* **It is not an artefact of its class word.** All 25 records at code 30 sit under class word
+  `0x0319` and none of the three at 29 does. The two class words that carry 29 — `0x0308` and
+  `0x0338` — carry 510 `transformation` records between them, 398 of them reading 31, so 29 is
+  a distinction the compiler draws inside its own population. It also means 29 and 30 have
+  never been observed under a common class word and cannot be compared directly.
+
+What n = 3 cannot settle is what 29 MEANS, and both arbiters are silent for structural reasons
+rather than by accident. The field costs no word in this state, so there is no program slot for
+the manifest arbiter to read an `inputref` out of (§13.4); and two of the three bake no
+`matrix22` and no `offset`, so `sourcematch`'s constant-pinning has nothing to pin. All three
+also carry no `$outputsize` — class bit 16 clear on 3 of 3 — and that is the weak arm of the
+size law itself: over the literal arm it holds on **3,408 of 3,667 (92.9%)** where the record
+carries a size expression and on **222 of 525 (42.3%)** where it does not, so the law is
+weakest exactly where 29 lives. The specimen that would settle it is a file carrying several
+records at 29 whose inputs differ in size. Three points, two of them one idiom, cannot separate
+a size rule from a sampling or wrap mode that merely correlates with one.
 ---
 
 ## 8. FX-Map trees
@@ -1018,7 +1095,7 @@ The one table the file does not state (§7.3). `(mask, shift)` is §7.4's presen
 | 2 transformation | matrix22 | `0x000000C0` | 6 | Float4 |
 | 2 transformation | offset | `0x06000000` | 25 | Float2 |
 | 2 transformation | backgroundcolour | `0x10000000` | 28 | per-channel |
-| 2 transformation | *(a halving count — an INTEGER, not a two-bit field)* | `0x0000001F` | 0 | 0 words at 0-13 and 31, one pointer at 30 (§7.4) |
+| 2 transformation | *(a halving count — an INTEGER, not a two-bit field)* | `0x0000001F` | 0 | 0 words at 0-13, 29 and 31, one pointer at 30, REFUSED at 14-28 (§7.4) |
 | 2 transformation | *(unnamed)* | `0x00000020` | 5 | flag, 0 words in every state |
 | 11 dirmotionblur | intensity / mblurangle | `0x0003` / `0x000C` | 0 / 2 | scalar |
 | 12 directionalwarp | intensity / warpangle | `0x0006` / `0x0018` | 1 / 3 | scalar |
@@ -1188,6 +1265,15 @@ records reading 0..13 with a resolvable input, `own log2 = max(input log2 − k,
 is described and not named: the value 31 is carried by 98.2% of the filter, no permitted
 source reaches any value but the default, and a name would have to come from knowing what
 the engine calls a halving count rather than from anything the file says.
+
+The law has a condition worth stating with it, because it is where the unexplained codes
+live: over the same 4,192 records it holds on **3,408 of 3,667 (92.9%)** where the record
+carries a `$outputsize` expression (class bit 16) and on **222 of 525 (42.3%)** where it does
+not. Codes 12, 13 and 29 are set on no record that carries one — 77 records, class bit 16
+clear on 77 — and their own canvas is a constant independent of their input (32×32 at 12,
+16×16 at 13). So a `transformation` with no size expression states a canvas the halving law
+does not predict, and the 84.1% is a figure about the arm that has one. §7.4 states what
+follows for code 29, which lives entirely in that arm.
 
 The source arbiter is silent here and its silence is measured, not assumed. Pinning
 `transformation` nodes in permitted paired sources to compiled records by their stated

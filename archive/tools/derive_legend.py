@@ -20,7 +20,8 @@ width legend:
            + arity                (the two filters whose w1 holds an input count)
            + one conjunction      (bitmap 24+27)
            + one integer field    (transformation's w1 bits 0-4, whose one reserved value
-                                   emits a program pointer -- see `W1_INT`)
+                                   emits a program pointer, and whose unobserved range
+                                   14..28 is REFUSED -- see `W1_INT`, `W1_INT_REFUSE`)
 
     width:  0 -> 0   1 -> 1   2 -> 2   4 -> 4   C -> 1 grey / 4 colour
     n_hdr = 1 + (this record carries a w1 word)
@@ -46,6 +47,8 @@ WHAT IS STATED HERE AND WHAT IS DERIVED, because the difference is the whole cla
                     (`transformation` bits 0-4), with the reserved value that emits a
                     program pointer. Its arbiter is the record's own size against its
                     input's, not this solve.
+    `W1_INT_REFUSE` the unobserved range of that integer, which the readers refuse rather
+                    than price at zero
     `CONJ`          the one paired conjunction (SPEC 6.4: bitmap 24+27)
     `MIN_VERSION`   the version gate `emboss`'s modern layout is behind
     `W1_ORDER`      the one filter whose parameter block is not in ascending bit order
@@ -224,8 +227,37 @@ ARITY = {4: (10, 63), 20: (0, 31)}
 #: reading anything else (the single apparent exception is a neighbouring `fxmaps`
 #: record's tree lying inside this record's extent, the directory being a partition). All
 #: 25 programs return an INT1 and compute it from `$sizelog2` -- the same quantity the
-#: literal arm holds. Values 14..28 do not occur; a reader meeting one should refuse.
+#: literal arm holds.
+#:
+#: 29 IS OBSERVED AND COSTS NOTHING, AND ITS COST IS MEASURED RATHER THAN ASSUMED. Three
+#: records read it, in three files from two independent vendors, and each one's directory
+#: extent equals the header this legend states exactly -- 12, 12 and 28 bytes -- so there is
+#: no word past the header for a 29-arm pointer to occupy. It is NOT a literal count: two of
+#: the three are 256x256 reading a 256x256 input, which the halving law can only reproduce at
+#: k = 0, and no single k reproduces all three. What 29 MEANS is not settled here; what it
+#: costs is.
 W1_INT = {2: (0, 31, 30)}
+
+#: THE UNOBSERVED ARM OF THAT INTEGER, as an inclusive range the legend REFUSES rather than
+#: prices. `header_words` and `decompose` both return None for a value in it.
+#:
+#: WHY REFUSE RATHER THAN CHARGE ZERO, which is what the code did while SPEC said refuse.
+#: Zero is well supported for 0..13 (4,192 records) and for 31 (230,639), and those are the
+#: arms a reader will actually meet. It is not supported ANYWHERE ABOVE 13: the only two
+#: exotic high codes in the corpus split one-one on cost -- 29 costs nothing on 3 records, 30
+#: costs one word on 25 -- so the local prior in 14..28 is a coin, not a zero. A reader that
+#: charges zero and meets a value that emits a pointer is one word short and every slot after
+#: it in that record moves, silently; a reader that refuses says so. This is the same choice
+#: `width()` makes for a cell the corpus never bakes.
+#:
+#: AND THE RANGE IS NOT UNREACHABLE BY CONSTRUCTION, which is the argument that would have
+#: justified charging zero. `k` is not bounded by the input's size: 21 records read k = 11
+#: from a 64x64 input (log2 6), 6 read k = 12 from one, and 34 read k = 13 from inputs of
+#: log2 9 and 10 -- the compiler states counts the input cannot supply, and `max(., 0)` in
+#: the size law absorbs them. The largest canvas anywhere in the corpus is log2 14 and the
+#: largest input to a `transformation` is log2 13, so 14..28 sits just past what these 437
+#: packages ship and nothing forecloses it. Unobserved is a fact about the corpus.
+W1_INT_REFUSE = {2: (14, 28)}
 
 #: SPEC 6.4's paired conjunction: two class bits that, set together, name one field.
 CONJ = {16: [(24, 27)]}
@@ -599,6 +631,11 @@ def _spec(f, colours):
         # (shift, mask, program value): the one w1 region in the corpus that is an INTEGER
         # rather than two-bit fields. See W1_INT for why no field partition can hold it.
         spec['w1_int'] = list(W1_INT[f])
+    if f in W1_INT_REFUSE:
+        # (lo, hi) inclusive: values of that integer the corpus never states, whose cost is
+        # therefore undetermined. The readers refuse rather than price them -- see
+        # W1_INT_REFUSE for why zero is not the safe default here.
+        spec['w1_int_refuse'] = list(W1_INT_REFUSE[f])
     if conj:
         spec['conj'] = sorted(conj)
     if shape4 is not None:
@@ -646,6 +683,8 @@ def main(argv=None):
             w1s += ['edge bit %d' % b for b in sp['edge_bits']]
         if 'w1_int' in sp:
             w1s.append('int(%d,%d) prog@%d' % tuple(sp['w1_int']))
+        if 'w1_int_refuse' in sp:
+            w1s.append('refuse %d..%d' % tuple(sp['w1_int_refuse']))
         free_labs = {'cls.%d' % b for b in sp.get('cls_free', ())}
         for lab, ev in sp['evidence'].items():
             for cn, src in ev.items():

@@ -28,7 +28,8 @@ rather than a fit:
            + arity                (the two filters whose w1 holds an input count)
            + one conjunction      (bitmap 24+27)
            + one integer field    (transformation's w1 bits 0-4: one reserved value of a
-                                   5-bit INTEGER emits a program pointer)
+                                   5-bit INTEGER emits a program pointer, and its
+                                   unobserved range 14..28 is refused)
 
     width:  0 -> 0   1 -> 1   2 -> 2   4 -> 4   C -> 1 grey / 4 colour
     n_hdr = 1 + (this record carries a w1 word)
@@ -206,10 +207,13 @@ def header_words(filter_id, word0, w1, version=None):
     """Header length in words from the masks alone, or None if the legend cannot say.
 
     None means "this filter's cells were not established", never "zero" -- callers must
-    fall back rather than treat a missing rule as an answer. There are three ways to get
+    fall back rather than treat a missing rule as an answer. There are four ways to get
     it: a filter with no legend entry (`vectorshape`, filter 9), a record below the
-    version gate a filter's modern layout sits behind (`emboss`), and a w1 field in the
-    BAKED state whose kind the corpus never exercised.
+    version gate a filter's modern layout sits behind (`emboss`), a w1 field in the
+    BAKED state whose kind the corpus never exercised, and an unobserved value of
+    `transformation`'s 5-bit integer field (SPEC 7.4's 14..28). All four are the same
+    rule: a cell the corpus never stated has no width, and a width nobody measured is not
+    zero. The corpus meets none of the fourth kind, so it costs nothing to hold.
 
     `word0` is the record's ENTIRE first word, not the cls field alone. The tag's low
     bits carry layout too -- `shuffle`'s shape and every per-channel width are selected by
@@ -266,12 +270,24 @@ def header_words(filter_id, word0, w1, version=None):
         if iv:
             # THE ONE w1 REGION THAT IS AN INTEGER AND NOT TWO-BIT FIELDS (SPEC 7.4).
             # `transformation`'s bits 0-4 hold a 5-bit value; 0..13 are literal and cost
-            # nothing, 31 is the ordinary value on 230,639 of 234,859 records, and 30 is
-            # the one value that emits a program pointer. No partition of those bits into
-            # two-bit fields can express that -- cost is additive over a partition, and
-            # `0x3f`/`0x3e` and `0x23`/`0x22` differ in bit 0 alone and disagree about
-            # what it costs.
-            if (w1 >> iv[0]) & iv[1] == iv[2]:
+            # nothing, 29 is observed on 3 records and costs nothing, 31 is the ordinary
+            # value on 230,639 of 234,859 records, and 30 is the one value that emits a
+            # program pointer. No partition of those bits into two-bit fields can express
+            # that -- cost is additive over a partition, and `0x3f`/`0x3e` and
+            # `0x23`/`0x22` differ in bit 0 alone and disagree about what it costs.
+            v = (w1 >> iv[0]) & iv[1]
+            rf = sp.get('w1_int_refuse')
+            if rf and rf[0] <= v <= rf[1]:
+                # AN UNOBSERVED VALUE OF THE INTEGER, AND THE LEGEND HAS NO READING FOR IT.
+                # This used to charge zero, silently, while SPEC 7.4 said a reader should
+                # refuse -- the one place in the header model where a guess was still doing
+                # work. Zero is measured for 0..13 and for 31; above 13 the only two exotic
+                # codes in the corpus split one-one on cost (29 costs nothing on 3 records,
+                # 30 costs a word on 25), so nothing supports zero in between. Charging it
+                # and being wrong moves every slot after this one in the record, silently;
+                # refusing says so. Same rule as `width()`'s unexercised cell.
+                return None
+            if v == iv[2]:
                 total += 1
         for sh, k in sp['w1'].items():
             st = (w1 >> int(sh)) & 3
