@@ -45331,3 +45331,344 @@ That is what bounds the render exposure rather than an argument about it:
 bit for 24, 26, 28 and 29 (`shuffle`'s weight vector, `hsl`'s three channels,
 `cls_pair_slot`), and every one of those slots is where it was. The only field that moved is
 `size_slot`, which that renderer never reads.
+
+# The cost model is a width legend, the class order is not a swap, and `text` really is the exception
+
+A theory pass rather than a fix pass: four hypotheses about whether the splits in the current
+model are facts about the format or artefacts of our decomposition. Two survive and unify, two
+are refuted, and one refutation is worth more than the survivals because it settles a question
+that has been open since `text` was placed.
+
+Everything below is measured against the raw words, `Assembly.valid_program` /
+`program_result`, the `.sbsar` manifest and `record_layout.header_words` — never against
+`Record.layout`, `edge_slots` or `decompose`'s own labels, which all call each other.
+Nothing in the tree was changed: `git status` is clean at `f63fcf4` and the prototypes live in
+`/tmp/unify/`. The legend table is reproduced in full below so it survives the tmpdir.
+
+## The bar
+
+The three figures the replacement had to reproduce, re-measured here first so the A/B is
+against a number this session took rather than a quoted one:
+
+    current decompose   cursor == fitted header length    903,301 / 903,440 covered
+                        edge slots hold a backward index  1,302,475 / 1,302,475
+                        state-2 slots resolve a program     198,224 / 198,224
+                        bit-16 slot is a 2-component size   742,117 / 742,120
+
+All four reproduce. The fourth is not in the stated bar and is where the new model is ahead.
+
+## H4 survives, and it is the largest result: the five cost-model modes are ONE mechanism
+
+`costs.json` has five spec shapes — plain, `colour`, `colour_states`, `arity`, `variants` —
+plus `pairs`, `flags`, `constant_bits`, `has_absent`, `arity_sm`, `nullity`, `unident`, a
+`w1_shift`, a `conj` list and a `STRADDLED` table in `decompose`. Read as effective costs
+rather than as stored cells, the whole thing collapses onto SPEC §7.3's width legend:
+
+    header = n_hdr + n_base + n_fixed
+           + SUM over set class bits of        width(kind)
+           + SUM over w1 FIELDS -- a two-bit code AT ITS OWN BIT OFFSET -- of
+                 00 absent  -> 0        01 baked   -> width(kind)
+                 10 program -> 1        11 edge    -> 1
+           + arity                (the two filters whose w1 holds an input count)
+           + one conjunction      (bitmap 24+27)
+
+    width:  0 -> 0   1 -> 1   2 -> 2   4 -> 4   C -> 1 grey / 4 colour
+    n_hdr = 1 + (this record carries a w1 word)
+
+There is no intercept, no float, no negative coefficient, no per-state cell, no base/cross
+vector, no interaction mode, no grid shift, no straddle table and no fitted variant.
+
+**It reproduces the fitted length on 903,301 of 903,301 records, 0 disagreements**, and both
+models refuse the same 315 (`vectorshape` 139, `emboss` below `MIN_VERSION` 171, filter 9 5).
+Slot for slot against the current `decompose` over those same records:
+
+    inputs                    identical on 903,301 of 903,301
+    param_slots (pos, width)  identical on 903,301 of 903,301
+    end                       identical on 903,301 of 903,301
+    size_slot                 identical on 903,298; the 3 that differ are below
+
+and the three invariants come back at 1,302,475 / 1,302,475, 198,224 / 198,224 and
+903,301 / 903,301.
+
+**The parameter count.** `costs.json` holds **688** fitted numeric cost cells
+(`const`, `cls`, `w1`, `base`, `cross`, `conj`, `arity`, `w1_present`, `arity_sm`,
+`w1_shift`, excluding the bookkeeping keys). The legend holds **147** integers and symbols,
+of which 106 are one kind per cell drawn from a five-symbol alphabet and 32 are bit offsets;
+49 of the class cells are the three shared constants (bits 16, 23, 27 cost one word in every
+filter that has them), so only 25 class kinds are per-filter facts.
+
+**How the derivation was done, and why it is not the same fit.** Per filter, per colour, with
+the intercept PINNED to `n_hdr + n_base + n_fixed` and the fields read at their own bit
+offsets rather than on a global even grid, solving `observed - base = sum of set-bit costs`
+gives **exact = 1.00000 on every filter in both colours**, every coefficient a small
+non-negative integer. No halves, no negatives. The two colours' solutions then merge into one
+kind per cell with only three cells outside the legend, and all three are cells that are not
+a parameter:
+
+    shuffle class bit 24   (4 grey, 0 colour)  -- the two-shape fact SPEC 6.4 already states:
+                                                  the weights are baked at bit 24 in the shape
+                                                  with no w1 word and the selector is in w1 in
+                                                  the shape that has one. Both arms are
+                                                  MEASURED: bit 24 is set on 3,332 grey records
+                                                  and on all 3,748 colour ones.
+    text   w1 bits (0,1)   state 2 costs 0     -- bit 1 is the string-source flag of SPEC 9.1,
+                                                  a lone bit and not a two-bit field
+    distance w1 bits (0,1) state 2 costs 0     -- the mask input's declaration, low bit alone
+
+**What each of the five modes turned out to be.** None is a mechanism.
+
+    `colour` / `colour_states`   the per-channel kind C. `emboss`'s `colour_states` slice --
+                                 two implementations of one indexing rule, one of them off by
+                                 five -- has nothing left to index.
+    `absent` / `codes` / `per_record`   n_hdr = 1 + has_w1. `w1_present` is the w1 mask WORD,
+                                 which is why it fitted at exactly 1.0 for `warp` and 0.0 for
+                                 every filter that never carries one.
+    `variants`                   only `shuffle`, and only for the cell above, which is the
+                                 shape term the model already has.
+    `arity`                      the one genuinely different reading of w1, and it is 2 filters.
+                                 `pixelprocessor`'s "w1 field 2 bakes 16 words" cell is the
+                                 FIFTH BIT of its arity integer seen through the two-bit frame;
+                                 read as (shift 0, mask 31) the cell disappears and `decompose`'s
+                                 hand-widening `mask | (mask + 1)` has nothing left to widen.
+
+**And the fourth of SPEC §6.4's four layout alphabets is not needed either.** "The number of
+leading block slots that are programs is `popcount(class_word & mask)`" is subsumed: each class
+bit's kind decides its own role. Scored against what the slot holds — a pointer kind must name
+a decodable program, a width kind must hold that many plausible floats — over the filters the
+popcount rule was written for and the ones that share its adjacent-pair shape:
+
+    warp    bit16 26,559/26,559  bit23    269/269  bit26  430/430  bit27 19,388/19,388
+            bit29 24,815/24,815  bit30  1,109/1,109
+    blur    bit16  9,981/9,981   bit23     51/51   bit26 5,159/5,159 bit27 8,675/8,675
+            bit28 14,931/14,931  bit29    303/303
+    sharpen bit16  1,291/1,291   bit26      4/4    bit28 1,148/1,148 bit29     8/8
+    uniform bit24  9,059/9,059   bit25    653/653
+    hsl     bits 24-29           93/93 258/258 203/203 246/246 297/297 263/263
+    dyngradient bit25 95/95      bit26      5/5
+    shuffle bit24  3,332/3,332   bit26     10/10
+
+100% on every bit of every filter. Four alphabets go to two — two-bit codes and an arity
+integer — plus one conjunction on one filter.
+
+## H3 survives in a STRONGER form: the class block's order is not a swap, and the current rule is wrong on 3 records
+
+`decompose._CLASS_ORDER_SWAPS = ((23, 16),)` states a pair. The corpus states a rule:
+**`$outputsize` (class bit 16) is emitted LAST within the low class group (bits 16–23); the
+filter's own bits 24–31 follow in ascending order.**
+
+Scored on the 214,298 records where the candidate orders differ at all, by whether bit 16's
+slot holds a program returning a two-component integer — the thing a size expression is and
+`$randomseed` is not:
+
+    order                                    valid program        two-component
+    16 last in the low group (proposed)   214,298 / 214,298      214,298
+    swap 23 before 16 (current)           214,295 / 214,298      214,295
+    plain ascending                       214,295 / 214,298      112,122
+    bit 16 last overall / descending      169,944 / 214,298      100,440
+
+The three records the current rule misses are `Texture_Randomizer.sbsasm` records 0, 2 and 5 —
+the only records in the corpus that set class bit 22, which costs one word and is the only
+costing class bit strictly between 16 and 23. They set 16 and 22 and NOT 23, so a pairwise
+`(23, 16)` swap does not fire. Walked ascending, the bit-16 slot holds a constant `0x203` on
+3 of 3 and the bit-22 slot holds a program on 3 of 3 whose first instruction is
+`0x0A42 inputref` on uid 1786583393, which that file's manifest declares
+`identifier="$outputsize" type="8" default="8,8"`. The size expression is in the second class
+slot with bit 23 clear. Bit 22's own word is unnamed and is not a program.
+
+The two directions are separately pinned rather than assumed:
+
+* bit 16 comes AFTER 22 and 23 — the measurement above, plus the position-only control that
+  SPEC §6.1 already states and this session re-took independently: walked ascending, over
+  every record setting both 16 and 23, the first class slot returns **(int, 1) on 102,173 of
+  102,173** and the second **(int, 2) on 102,173 of 102,173**.
+* bit 16 comes BEFORE 24–31 — the `uniform`, `hsl`, `blur`, `warp`, `sharpen`, `dyngradient`
+  and `shuffle` rows above. Placing bit 16 after them costs 44,354 records their size slot.
+
+**Where H3 could NOT be separated, and what would separate it.** "16 last in the low group"
+and "system variables first, then the filter's own bits" are indistinguishable on this corpus,
+because bits 17–21 cost no word in any filter and 22/23 are the only observable members of the
+low group. **The specimen that would separate them is a record setting a COSTING class bit in
+17–21 together with bit 16** — none exists here. The economical statement is the one that
+predicts: a rule, not a growing list of pairs.
+
+## H1 is REFUTED, and its central premise was false
+
+H1: the `w1` block is emitted in descending field WIDTH, and `text` is the only filter where
+that differs from ascending mask order.
+
+**The premise is false.** Sorting the block by emitted width — the number of words the field
+actually occupies, so a program pointer counts 1 whatever its kind — changes the layout on
+**416 records across six filters**, not on `text` alone. Sorting by declared kind width
+changes it on 25,479. Where an independent arbiter exists, ascending wins every time:
+
+    filter            state-2 slots that resolve a program      baked words that are plausible floats
+                        ascending      descending width           ascending    descending width
+    transformation      14 / 14           0 / 14                   42 / 42        28 / 42
+    emboss               9 / 9            0 / 9                   301 / 301      292 / 301
+    levels               4 / 4            0 / 4                    16 / 16        12 / 16
+    blend                3 / 3            0 / 3                     9 / 16         8 / 16
+    fxmaps               0 / 0            0 / 0                 1,705 / 1,705  1,705 / 1,705
+    text                 0 / 0            0 / 0                    98 / 98        98 / 98
+
+Thirty program slots decide it, 30–0 for ascending. The 25,470-record version of the same
+test — sorting by declared kind rather than emitted width — is 50,159 / 50,159 against
+25,103 / 50,159 on `fxmaps` alone.
+
+**`text` is a real exception and its own bytes say so, without the render.** Two things had to
+be checked before conceding that, and both came back against the unification:
+
+* *Are the widths permutable?* If the fit could only see the SUM, then assigning the 4-word
+  kind to bit 6 instead of bit 10 would make plain ascending produce the same slots. It
+  cannot: the corpus contains records with proper subsets of the three fields, and they pin
+  each width separately. Bit 8 alone gives header 7 over a 6-word base, so bit 8 is 1 word;
+  bits 6+8 give 8 over a 5-word base, so bit 6 is 2; all three give 12 over 5, so bit 10 is 4.
+* *Do the bytes prefer the exception?* Over the 14 records baking all three fields, the FIRST
+  four words of the parameter block are a 2×2 matrix on 13 of 14 — diagonal on 11
+  (`0.9524, 0, 0, 1`; `0.9056, 0, 0, 1.052`) and an exact rotation on 2
+  (`1, -0.003283, 0.003283, 1`) — and the last four are a matrix on 0 of 14. The two-word
+  field that follows reads `(0, -0.22)` and `(0, -0.03)` on the two `Speed Limit` records,
+  which is the SPEED-above-LIMIT layout, and the one-word field after it is `0.2` on both. The
+  competing placement puts `0` in the font size on those records.
+
+So `text`'s block is `matrix22, position, fontsize` — bits 10, 6, 8 — and that IS descending
+width; it is simply not a rule any other filter obeys. The honest statement is that the block
+order is a per-filter emission order that coincides with ascending bit order on 20 of 21
+filters. **The specimen that would separate "descending width" from "a per-filter order" is a
+`text` record mixing states** — one with `matrix22` baked and `position` or `fontsize` as a
+program, where the program check would decide. The corpus has none: the six `w1` state
+combinations `text` shows are `(0,0,0) (0,1,0) (1,1,0) (1,1,1) (2,0,0) (2,2,0)`, never a mix
+of baked and program.
+
+## H2 is REFUTED in its strong form and survives in its weak one
+
+H2: `costs.json` should not exist; the header length should be derivable structurally.
+
+**The file never states a header LENGTH.** It states bounds. Over 903,616 records:
+
+    an in-record payload pointer (ramp, control points, fx root, inline pixels)   59,303
+    a slot naming a program that lies inside the record                          781,718
+    the record is nothing but header, so its directory extent is the length      109,877
+    at least one of these                                                        896,563   99.2%
+    none of them                                                                   7,053
+
+and where a bound exists it lands exactly on the modelled length on 693,467 — 76.7% of the
+corpus. Every one of those is an UPPER bound reached by structure that happens to follow the
+header, not a stated length: `pixelprocessor` is 0.25% exact because its own program pointer
+names code outside the record, and `fxmaps` 30.2% because the fx tree does not begin at the
+header end. So a purely structural rule is a CHECK, which the walk should keep, and not a
+decoder. SPEC §7.3 already says what is missing and it is right: the per-field type CODE.
+
+What H2 does establish is that **most of `costs.json` is not a measurement at all.** Counting
+which cells any corpus record exercises: of the 112 (cell, colour) pairs the legend needs, 36
+are exercised in one colour only — the legend PREDICTS the other and this corpus cannot
+separate `Float1` from per-channel there. In the fitted table the same absences are stored as
+zeros, indistinguishable from a measured zero. A representative list, each a specimen to look
+for: `text` in colour at all (all 59 records are grey), `normal` and `hsl` in grey (all
+records are colour), `blur` / `sharpen` / `distance` / `curve` / `dyngradient` class bit 23 in
+colour, `fxmaps` class bit 22 in colour, `emboss` w1 bit 5 in grey.
+
+## A live defect this pass found: `sharpen` is still pricing the canvas
+
+The notes record the canvas over-charge as fixed for `normal` and `dyngradient`. **Filter 13
+still has it**, and it is in the checked-in `costs.json`:
+
+    cls[10] = +0.5   cls[11] = +0.5   cls[14] = -0.5   cls[15] = -0.5   cls[26] = 1.5
+
+Bits 10, 11, 14 and 15 are bits 2 and 3 of word0's log2 WIDTH and log2 HEIGHT nibbles, and bit
+26 is the baked `$pixelsize`, a Float2 charged 2 words by every other filter that has it. The
+consequence is a header length that depends on the record's aspect ratio, for a header whose
+contents do not:
+
+    word0 0x1b19...1a   16x16       fitted 5   legend 5
+                        4096x4096   fitted 5   legend 5
+                        16x4096     fitted 4   legend 5     <-- differ
+                        4096x16     fitted 6   legend 5     <-- differ
+
+It is LATENT rather than live: the legend and the fitted table agree on all 1,323 corpus
+`sharpen` records, because the sizes present are `(2,2) (5,5) (5,6) (6,6) (6,7) (7,6) (7,7)
+(8,7) (8,8) (9,9) (11,11) (12,10)` and on every one of them the four halves and the rounding
+tie cancel. **The specimen that would break it is a `sharpen` record at a strongly
+non-square resolution** — a 4096x16 or 16x4096 canvas with class bit 26 set. Under the pinned
+per-colour solve the same population gives bits 10/11/14/15 no coefficient at all and bit 26
+exactly 2, with no half anywhere.
+
+The two other halves in the file go the same way. `emboss` w1 bit 1's program arm is 0.5 grey
+/ 1.0 colour under the interaction fit and 1 under the pinned solve; `emboss` w1 bit 5 is
+"2 grey / 4 colour", which is not a width in any legend, and is 4 under the pinned solve with
+the grey arm simply never exercised.
+
+## Which of the eight splits are ours
+
+    1  class block emits 23 before 16          OURS, and INCOMPLETE. The fact is that bit 16
+                                               is emitted last in the low group; the pair is
+                                               a special case of it and misses 3 records.
+    2  text's w1 block is not ascending        THE FORMAT'S. Refuted every attempt to remove
+                                               it; the widths are pinned and the bytes prefer
+                                               it 13-0 on the matrix test.
+    3  W1_GRID_SHIFT                           OURS. A field begins at its own bit; there is
+                                               no grid to shift. dirwarp's fields are at bits
+                                               1, 3, 7 and emboss's at 1, 3, 5, 7, and saying
+                                               so needs no per-filter shift constant.
+    4  five spec shapes + the bookkeeping keys OURS. One legend, 147 symbols against 688 floats.
+    5  straddling fields                       OURS, and the SAME artefact as 3. transformation's
+                                               offset is a field at bit 25 and blend's relocated
+                                               opacity a field at bit 9; `STRADDLED` relabels a
+                                               frame this model does not impose.
+    6  blend's opacity relocates               THE FORMAT'S. Two fields, bits 4 and 9, one name.
+                                               Nothing here touches it.
+    7  zero-cost w1 pairs are flags            MOSTLY OURS, and it splits three ways rather than
+                                               two. A declared field with kind 0 (`normal`'s
+                                               two booleans) costs nothing baked and one word
+                                               as a program. A bit that is not a field at all
+                                               (`text` bit 1, `distance` bit 0) costs nothing
+                                               in every state. Only the second is a "flag", and
+                                               the tell is structural: `distance` bit 0's cost
+                                               tracks ONE bit, not a two-bit code.
+    8  BASE_INPUTS, four alphabets, _compute_layout
+                                               MIXED. BASE_INPUTS is a format fact and the
+                                               legend needs it. The four alphabets are two.
+                                               `_compute_layout` is untouched by any of this.
+
+## What was NOT done
+
+No file in the tree was modified. The legend is a prototype in `/tmp/unify/` — `legend2.py`
+(the table and the length rule), `walk_legend.py` (the walk, with pluggable class and field
+orders), and the sweeps `ab2.py`, `sweep3.py`, `diff.py`, `clsorder2.py`, `sweep2.py`,
+`h2.py`, `sharpen.py`. Landing any of it is a separate job and owes the A/B and harness
+discipline the last four fixes used; in particular `derive_costs.py` would have to LEARN the
+legend rather than have it transcribed, or the next re-run reverts it the way it already
+reverts the four pinned entries.
+
+The one change that is small, self-contained and strictly better on its own terms is the class
+order: `_CLASS_ORDER_SWAPS` becomes a sort key, `size_slot` moves on 3 records and on nothing
+else, and the 214,298-record score above is the A/B.
+
+## The legend, in full
+
+`n_hdr = 1 + has_w1`. `n_base` is `decompose.BASE_INPUTS` (`n_hdr` for `shuffle`). `n_fixed`
+is the filter's fixed prefix: the ramp pair, the fx root, the bitmap word, `text`'s
+zero+string+font, `pixelprocessor`'s own program. Kinds are `1 2 4` words or `C` = per-channel.
+`w1` keys are BIT OFFSETS, not field indices.
+
+    f   filter            has_w1    base fixed  class bit -> kind            w1 bit -> kind
+    0   gradient          never      1    2     16:1 23:1                    --
+    1   blend             always     2    0     16:1 23:1                    4:1  6:2  9:1
+    2   transformation    always     1    0     16:1 23:1                    6:4  25:2 28:C
+    3   shuffle           tag bit 0  =hdr 0     16:1 23:1 24:4-if-no-w1 26:1 --
+    4   fxmaps            always     0    1     16:1 22:1 23:1               0:C 2:1 4:1 6:4 8:1   + arity(10,63)
+    6   uniform           never      0    0     16:1 23:1 24:C 25:1          --
+    7   warp              v9 only    2    0     16:1 23:1 26:2 27:1 29:1 30:1 --
+    8   emboss            always     2    0     16:1 23:1 27:1               1:1 3:1 5:4 7:C
+    10  blur              never      1    0     16:1 23:1 26:2 27:1 28:1 29:1 --
+    11  dirmotionblur     always     1    0     16:1 23:1 26:2 27:1          0:1 2:1
+    12  directionalwarp   always     2    0     16:1 23:1 26:2 27:1          1:1 3:1 7:1
+    13  sharpen           never      1    0     16:1 23:1 26:2 27:1 28:1 29:1 --
+    14  hsl               never      1    0     16:1 23:1 24:1 25:1 26:1 27:1 28:1 29:1  --
+    15  levels            always     1    0     16:1 23:1                    0:C 2:C 4:C 6:C 8:C
+    16  bitmap            never      0    1     16:1                         --   + conj(24,27)=1
+    17  text              always     0    3     16:1                         6:2 8:1 10:4   (block order 10,6,8)
+    18  normal            always     1    0     16:1 23:1 26:2 27:1          0:1 2:0 4:0
+    19  dyngradient       never      2    0     16:1 23:1 25:1 26:1          --
+    20  pixelprocessor    always     0    1     16:1 23:1                    --   + arity(0,31)
+    21  distance          always     1    0     16:1 23:1 26:2 27:1          2:1  + edge bit 0
+    22  curve             never      1    2     16:1 23:1                    --
