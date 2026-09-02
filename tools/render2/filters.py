@@ -20,6 +20,10 @@ import assume
 import manifest
 import sbsruntime
 
+# `text` (filter 17) is a module of its own: its string and its font are RESOURCES in the
+# file's head segment rather than record words, and its legend entry is not in mask order.
+import text                                                          # noqa: E402
+
 from ops import (Unsupported, blend, footprint_scale, pos_grid, prefilter, sampler,
                  to_image)
 
@@ -53,6 +57,9 @@ def filt(name):
         FILTERS[name] = fn
         return fn
     return wrap
+
+
+FILTERS['text'] = text.f_text
 
 
 def _scalar(ctx, v, name, default, W, H, pos):

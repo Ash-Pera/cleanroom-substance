@@ -242,7 +242,13 @@ and did not (`Assembly.outputs()`).
 
 Not decoded: one filter id — filter 9, 5 records, where it is the provenance rule and not
 the analysis that blocks the name — and what most filter parameters mean once their
-record and program are known, which is the gap that actually blocks a renderer. The
+record and program are known, which is the gap that actually blocks a renderer. `text`
+(filter 17) has come off that list: its three `w1` fields are placed and three of its six
+parameters are named by a permitted source, and its two base-region pointers turned out to
+name a string and a **complete embedded TrueType font**, one per record. The font's presence
+is established from its magic bytes and its stated length; nothing inside it has been read,
+and whether it may be is a licence question about the type foundry rather than a provenance
+question about Adobe — see FORMAT-NOTES.md, "Filter 17, `text`". The
 version-2 prologue is no longer on this list: it is a constant 72-byte preamble of
 programs, one of which binds the graph's random seed. Neither
 are FX-Map records as a whole. Entry boundaries, entry lengths and program positions are

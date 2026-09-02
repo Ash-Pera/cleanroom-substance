@@ -157,7 +157,14 @@ Counting nodes from either one wants **distinct offsets**: both yield once per p
 `0x1AB` node (two programs) is yielded twice at the same offset.
 
 `Assembly.strings()` reads the `text` filter's embedded strings from the head of the resource
-segment.
+segment. Right about the mechanism, wrong about the extent: it walks FORWARD from 0x38 and
+stops at the first word that is not a plausible count, so it recovers one string per file
+where there are up to six, and nothing at all in 4 of the 13 files — the ones whose first
+resource is not a string. A `text` record names its own string at `words[3] + 52`, and
+following that pointer instead recovers all 59. See `tools/render2/text.py`, and note the
+second arm: when `w1` bit 1 is set, `words[3]` is the uid of a type-6 graph input and the
+string is the manifest's `default=` for that uid. The discriminator is the bit, never the
+value, because both arms hold a 32-bit word.
 
 `Record.vector_shape()` decodes filter 5's payload: a triangle strip of 16-bit normalised
 (x, y) vertices, 140 of 140 records. `Record.vector_faces` drops the degenerate triples that

@@ -43871,3 +43871,218 @@ Fast lane 19 passed, `test_tables/test_fx/test_bitmap` 24 passed, `test_render2`
 `test_filters.REFERENCE_FLOOR` is scored through `render.py`, which is not touched, and the
 `render2` default path is bit-identical on Chesterfield at `$outputsize` 8 (all three channels
 to four decimals). No floor moved and none was lowered.
+
+# Filter 17, `text` — the string, the embedded font, and a layout
+
+*Draft for FORMAT-NOTES.md. Written 2026-09-02 against the 437-file corpus, 59 filter-17
+records in 13 files. `tools/render2/text.py` is the implementation and
+`tools/render2/test_text.py` the checks; the one-line registration in `filters.py` is
+delivered separately as `/tmp/text-filter-wiring.patch`.*
+
+## What a `text` record contains
+
+Five words of base region — `w0`, `w1`, a constant zero, a **string pointer** and a **font
+pointer** — then the class block and the `w1` value block. `costs.json` already said so
+(`const: 5.0`); nothing had read slots 3 and 4.
+
+    slot 3    w1 bit 1 CLEAR: `words[3] + 52` is the offset of a STRING RESOURCE
+              w1 bit 1 SET:   `words[3]` is the UID of a TYPE-6 (string) GRAPH INPUT
+    slot 4    `words[4] + 52` addresses `[u32 hash][u32 length][sfnt]` — an EMBEDDED FONT
+
+Both use the format's universal `+52` skew, so both are ordinary pointers and neither is
+new machinery. The discriminator at slot 3 is the `w1` bit, **not** the value: both arms
+hold a 32-bit word and no value test separates them.
+
+## Where the string is
+
+In the **resource segment** — the region between the 0x38 header and the first record that
+also holds the embedded images. A string resource is `[u32 count][u32 codepoint × count]`,
+one 32-bit word per character.
+
+`Assembly.strings()` already read this, and its docstring is right about the mechanism and
+wrong about the extent: it walks forward from 0x38 and stops at the first word that is not
+a plausible count, so it recovers **one** string per file where there are up to six, and
+returns **nothing** for four of the thirteen files whose first resource is not a string.
+Following the record's own pointer instead recovers all of them:
+
+    Do Not Enter          'DO NOT'  'ENTER'                     (4 records, 2 strings)
+    Speed Limit           'SPEED'  'LIMIT'  ''                   + one graph input
+    RoadLinesSubstance002 'SLOW\n12345\n67890'  'TURN\nLEFT\nRIGHT'  'ZONE\nKMH\nMPH'
+                          'NO\nENTRY\nONLY'  'AHEAD\nSCHOOL\nCLEAR\nPARKING'
+                          'BUS\nTAXI\nLANE'
+    MetalPlatesSubstance003  'CGLF'
+    PaymentCardSubstance001  'VALID THRU' + five graph inputs
+
+**The dynamic arm is fully recoverable too, and the manifest is what recovers it.** 21 of
+the 59 records set `w1` bit 1, and slot 3 is then a graph-input uid. `RuntimeExample`
+record 103 holds 3557603301; its manifest declares
+`<input uid="3557603301" identifier="text" type="6" default="Test"/>`, and its `.sbs`
+states the node's `text` parameter as `get_string("text")`. The package's own default is
+what the package would show, so that is what the renderer draws. The uids resolve on 21 of
+21 — `symbol_1_custom_text` = `TEXT`, `name` = `Maryanne Doe`, `number` =
+`3560 1875 2249 1876`, `MPH_text` = `` (empty, so that sign renders blank, correctly).
+
+`manifest.image_input_defaults` cannot serve this: its regex is anchored on `type="5"`.
+`text.py` parses the same file for `type="6"` rather than widening a function another
+reader depends on.
+
+## Where the font is — **the outlines are embedded**
+
+Slot 4 addresses `[u32 hash][u32 length][sfnt]`. The magic is `00 01 00 00` on 13 of the 14
+distinct payloads and `ttcf` — a TrueType Collection — on the 14th. This is a complete
+font file, not a family name.
+
+The length word is structural, and the arbiter is another record rather than a plausibility
+test: `off + length` lands on **exactly** the offset a different text record of the same
+file names at *its* slot 3, on 8 of 14 payloads, and no record names an offset one word
+either side. `Do Not Enter`: slot 4 → 0x54, +8 +0xCF14 = 0xCF70, which is record 738's
+string `ENTER`. The other six land on what looks like an offset table rather than a string,
+so the claim that holds for all fourteen is the weaker one — the payload lies wholly inside
+the resource segment.
+
+**It is per record, and a file can carry several.** `PaymentCardSubstance001` holds two:
+five of its six records share one payload and the *signature* record points at the other —
+and the signature is the one place on the card whose glyphs are visibly a different, script
+face. That is the corroboration that slot 4 is the font at all, and it is not available
+from the magic bytes alone.
+
+**Nothing here reads a glyph, a metric or a `name` table out of any payload, and no font is
+extracted, written to disk or committed.** A font is a separately licensed work that the
+compiler embedded and the licence question is the maintainer's, not a renderer's;
+`text.embedded_font()` returns the span and the four magic bytes so the finding is
+checkable, and `text._FONT_SOURCE` is the single switch that would change the decision.
+
+Consequence for fidelity: **the compiled record does not name the font family anywhere the
+walk reads.** The family lives in the payload's `name` table and in the source, whose
+`fontdata` parameter states `Arial|Regular`, `Arial Unicode MS|Regular`, `Arial|Bold` and
+plain `Arial` across the five permitted sources that declare a `text` node. So a renderer
+that will not touch the payload has no family to substitute *for*, and the divergence from
+the file's own glyphs is unmeasured — see "no ground truth" below.
+
+## The parameters, and the one place the walk's general rule does not hold
+
+The source vocabulary, from five permitted `.sbs` files that declare a `text` node
+(`substance-for-unity-extensions__{Timeline,Runtime,UnitTests}`, `SubstanceDesigner__hblend`
+and `ben-wilson-github__test_layout_graph_…` — all five checked against
+`<author v="Allegorithmic"` first; none is excluded): `fontdata`, `text`,
+`matrix22`, `position`, `fontsize`, `colorswitch`, `background`, plus `background` as a
+connected image input.
+
+Three of those are `w1` fields, and each is named by a stated value in a paired source, the
+`sourcematch.py` standard:
+
+| bits | name | width | what named it |
+|---|---|---|---|
+| (6,7) | `position` | 2 | `RuntimeExample` states it dynamic; the record sets bit 7 and the program there is one instruction, `inputref.f2 uid=3557602755`, which the manifest calls `textPosition` |
+| (8,9) | `fontsize` | 1 | `TimelineExample` states `fontsize 0.300000012` and nothing else numeric; its record sets bit 8 and its whole parameter block is one word, `0x3E99999A` = 0.30000001 |
+| (10,11) | `matrix22` | 4 | the only 4-wide field, and the vocabulary has exactly one Float4 that is not a colour |
+
+**The value block is laid out `matrix22`, `position`, `fontsize` — not in ascending mask
+order.** Every other filter's block is ascending and `model.View`'s docstring says so; this
+one is not. `decompose`'s widths are right and only the order differs, and because
+`W1_PARAMS` is a *list* that `View` walks in list order, stating the order in the legend is
+enough — no code change is needed anywhere.
+
+The discriminator, over the 14 records that set all three fields:
+
+* **Ascending** puts `fontsize` on the matrix's `c` component. It is exactly 0.0 on the
+  eleven records whose matrix is diagonal, and 0.0033, 0.0033 and −0.627 on the other
+  three. Fourteen of fourteen unrenderable — two invisible, one negative.
+  *(A first draft of this claimed "exactly 0.0 on all fourteen"; the test written to assert
+  it failed at 3 of 14 and the sentence was corrected. The tidier claim was about a smaller
+  fact.)* `position` under the same reading is (0.95, 0), (1.0, 0), (0.91, 0), (1.0, 0) —
+  an anchor a full canvas width off centre.
+* **This order** gives `matrix22` diagonal in five of the six files that set it, and in
+  `Speed Limit` (0.99999, −0.00328, 0.00328, 0.99999), which is a rotation matrix — not
+  something a wrong placement produces. `Lane Markings` gives (1, 0, 0, 0.5), a vertical
+  squash, which is what a road marking seen in perspective needs. `fontsize` comes back in
+  [0.1, 0.5], the same range as the records that carry no matrix at all.
+
+And it reads as a layout, which is the check no single record can supply. `Speed Limit`
+holds SPEED at y = −0.22 and LIMIT at y = −0.03; `Do Not Enter` holds DO NOT at −0.10 and
+ENTER at +0.23; `RoadLines` scales `fontsize` down from 0.33 to 0.23 for the one string that
+has four lines instead of three. Under the ascending reading every one of those pairs sits
+at the same y and differs in the fourth component of a matrix.
+
+### `w1` field 6 — a zero-width flag, and the weakest reading here
+
+Bits (12,13) are charged **zero words in every state** by `costs.json`, so the mask state is
+the value — the shape `normal`'s `inversedy` has. Set on 56 of 59 records; clear on exactly
+three, `PaymentCardSubstance001` 83, 99 and 168.
+
+Those three are also exactly the records whose `position` is inexplicable under a
+centre-of-block anchor: x = −0.49, −0.50, −0.50, which centred is half off the canvas. The
+package's own thumbnail shows all three left-aligned at the card's left margin, with the
+fine print ragged right. So *something* distinguishes them and bit 12 is the only thing the
+records offer.
+
+**It is one observation, not three.** They are three records of one file authored in one
+sitting. Inside that file the bit is also perfectly anti-correlated with "has a `position`
+field at all", which this corpus cannot separate from the alignment reading; across the
+corpus that competing explanation fails, since `Stop_Sign` and `Do Not Enter` both bake a
+position *and* set bit 12. The field is declared as `align_flag` — named for the one thing
+measured about it, not for a meaning — and `assume`'s `text.anchor` overrides it in either
+direction.
+
+## What renders, and what does not
+
+`f_text` produces the right string on the right canvas at the right channel count, with the
+position, scale, rotation and line structure the record states. It is **not** glyph-exact
+and does not claim to be. Two backends: a system sans-serif through PIL if one is found
+(imported lazily; `render2` gains no dependency), and filled cap-height boxes if not — the
+box path is checked to put its ink in the same place, within 5% of the canvas.
+
+Stated misses, each with its measurement:
+
+* **No ground truth exists.** Not one package containing a filter-17 record ships the
+  engine's own exported maps, so `refcompare` has nothing to score. Every fidelity claim
+  above rests on source containment, internal consistency and one 512-pixel thumbnail.
+  `test_no_reference_exists_for_any_text_record` asserts that absence so that the day a
+  reference pack with a `text` record arrives, the suite says so.
+* **Word wrap width is wrong.** `PaymentCardSubstance001`'s fine print is one unbroken
+  236-character string and the package's thumbnail shows it on five lines of about 47
+  characters, so the engine wraps. A canvas-width wrap with a substitute face fits about
+  100, so this renders that paragraph on **three** lines where the package shows five. Part
+  of the gap is the face (the card's own glyphs are visibly monospaced) and part is the box;
+  one specimen cannot separate them, and no other corpus string wraps at all.
+* **`fontsize` is the line advance, and the em box is a fit.** `_EM_PER_LINE` = 0.8.
+  RoadLines' three-line string at 0.33 and four-line string at 0.23 both fill the canvas
+  height almost exactly under advance == fontsize; under em == fontsize the widest road-sign
+  strings overflow by 15–23%. That is a fit to two records, not a reading.
+* **Polarity is assumed.** No corpus record sets `background` or `colorswitch`, so white-on-
+  black is in neither file. Every text record is marked `low_confidence` for that alone.
+* **A default `fontsize` is a guess.** Six records set no `fontsize`. The "the default is
+  the value nobody writes" argument that `uniform.fill` rests on is *not* available here —
+  0.5, 0.3 and 0.2 are all written somewhere. 0.2 is used and flagged.
+* **`background` as an image input, and `colorswitch`, are unexercised.** No corpus record
+  wires the input or sets the flag; no corpus `text` record is a colour record.
+
+## What it unblocks
+
+All 59 records are upstream of a declared output, in all 13 files. Over those 13 files at
+`--dim 64`:
+
+    declared outputs produced     47/102  ->  65/102     (+18)
+    record failures               16,905  ->  15,645     (-1,260)
+
+Per file, the ones that move: `Do Not Enter` 7/9 → **9/9**, `One Way` 8/12 → **12/12**,
+`UnitTests` 12/15 → 14/15, `Speed Limit` 6/9 → 8/9, `RuntimeExample` 0/4 → 3/4,
+`Lane Markings` 1/6 → 4/6 (948 → 50 failures), `Yield` 6/9 → 7/9,
+`Stop_Sign` 5/11 → 6/11.
+
+Three files still produce no output, and `text` is not why: after it, `RoadLines`' 74 root
+failures are 35 `vectorshape` (unimplemented), 29 unwired `pixelprocessor` inputs and 4
+`warp` records with no intensity; `MetalPlates`' 19 are `warp`/`blur` intensity, non-finite
+`pixelprocessor` and `fxmaps`; `TimelineExample`'s 2 are an unshipped graph image input and
+a `normal` with no intensity.
+
+## Corrections to existing text
+
+* `tools/README.md`: "`Assembly.strings()` reads the `text` filter's embedded strings from
+  the head of the resource segment." True of the mechanism; it recovers one string per file
+  of up to six and none at all in four of the thirteen files, because it walks forward from
+  0x38 instead of following the record's pointer.
+* `README.md`'s "Not decoded" list — "what most filter parameters mean once their record and
+  program are known" — can lose `text` from that count: its three `w1` fields, its two
+  resource pointers and its zero-width flag are all placed, and three of the six are named
+  by a source.

@@ -153,6 +153,22 @@ W1_PARAMS = {
     18: [(0x3, 0, 'intensity', 'scalar'),             # normal
          (0xc, 2, 'inversedy', 'flag'),
          (0x30, 4, 'input2alpha', 'flag')],
+    # `text` is THE ONE FILTER whose block is not in ascending mask order, and `View` walks
+    # this list rather than sorting it, so the order written here IS the placement. The
+    # widths are `decompose`'s and are right; only the order differs. Ascending order puts
+    # `fontsize` on the matrix's `c` component and is unrenderable on 14 of 14 records; this
+    # order gives diagonal matrices in five files, an exact rotation matrix in `Speed Limit`,
+    # and a layout that reads (SPEED at y -0.22 above LIMIT at -0.03).
+    #
+    # `align_flag` is charged ZERO words in every state by costs.json, so the mask state is
+    # the value and declaring it moves nothing. It is named for what was measured, not for a
+    # meaning; `text._anchor` is its only reader. Its PROGRAM arm (bit 13) is charged 0 words
+    # too and is unobserved in 437 files, and `View` would charge it one and shift the block
+    # -- so a file that sets bit 13 is a thing to look at rather than to trust.
+    17: [(0xC00, 10, 'matrix22', 4),                  # text
+         (0xC0, 6, 'position', 2),
+         (0x300, 8, 'fontsize', 'scalar'),
+         (0x3000, 12, 'align_flag', 'flag')],
 }
 
 
