@@ -3715,9 +3715,32 @@ class Record:
         slots held. `Normalize_RG`'s `pixelprocessor` names its output-size expression at
         slot 3 and the 19-instruction normalisation at slot 4, and only slot 3 came back.
 
-        41,244 records (4.62%) take that path. Probing just the slot after the fallback's
-        program slot finds a valid program in 19.54% of them, against 0.02% on known-key
-        records with one program slot - so these are real, not the small-integer artifact.
+        EVERY FIGURE BELOW WAS RE-TAKEN AFTER THE SLOT RULE LANDED (66b559a): this loop
+        began at a hardcoded `range(2, ...)` and asked about every word from there, and it
+        now starts at the walk's `hdr` and skips the walk's input-edge slots, under a
+        `valid_program` that no longer carries the `code_lo` floor. The old value is kept
+        beside each new one, and an attribution table at the bottom says how much of each
+        move the slot rule is actually responsible for. The answer is: one row of six.
+        Note also that "records with no layout key" is now a POPULATION and not a code
+        path - `Record.layout` comes from `decompose` for every record, table or no table
+        - which is why the closing paragraph is a retraction rather than a number.
+
+        47,413 of the 900,859 records that carry a key word take that path - 5.26% - plus
+        2,757 records too short to form a key at all, which take it for the same reason:
+        50,170 of 903,616, 5.55%. Was 41,244 (4.62%) of 892,793. That is CORPUS DRIFT and
+        not a decode change: `layouts.json` was last regenerated on 2026-08-24 and has not
+        been regenerated since, while the corpus grew by 7,942 records, 6,169 of which
+        carry keys the table never saw.
+
+        Probing just the slot after the fallback's program slot finds a valid program in
+        19.51% of them - 9,747 of the 49,958 where the hand-written fallback names a slot
+        at all - against 0.021% (52 of 246,568) on known-key records whose table entry
+        names exactly one program slot. So these are real, not the small-integer artifact.
+        Was 19.54% / 0.02%: unmoved, and not one of the 9,747 sits in a slot the walk
+        calls an input edge, so the new skip costs this contrast nothing. The control is
+        the table's ONE-SLOT STATEMENT and not a property of known-key records as such:
+        probe the slot after the walk's program slot on known-key records generally and
+        33.20% answer, because most of those records genuinely carry two.
 
         The predicate is the one already validated: `words[s] + 52` passing
         `valid_program`, whose operand-possibility check is violated by 0.00% of
@@ -3725,21 +3748,85 @@ class Record:
         bound is stated by the record - the header ends where its own bytecode begins,
         observable as the smallest inline program start.
 
-        Measured against the 851,549 records whose key IS in the table, so the answer is
-        known: slot set exactly right 99.02%, recall 100.00% (two misses corpus-wide),
-        precision 98.51% - and that precision is a floor, since it counts as wrong every
-        slot the table does not name, which is the thing this method exists to find.
+        Measured against the 853,446 records whose key IS in the table, so the answer is
+        known. That population is still well defined: `layouts.json` is drained for DECODE
+        - `LAYOUTS` and `LAYOUT_MASK` are read 0 times in the live path since fc8c5e0 -
+        but it is still loaded and keyed the same way, and its 809 keys were derived
+        without the walk, so it is an arbiter this predicate does not contain. Ground
+        truth per record is the table's program slots that RESOLVE for that record; both
+        sides call `valid_program`, so what is scored is slot PLACEMENT, not validity.
+
+            slot set exactly right    99.21%   was 99.02%
+            recall                   100.00%   1,167,666 of 1,167,667 - ONE miss
+                                               corpus-wide, was two. It is `roofing_007`
+                                               record 73, an `fxmaps` record whose table
+                                               slot 11 the inline bound cuts off.
+            precision                 98.87%   was 98.51%
+
+        and that precision is a floor, since it counts as wrong every slot the table does
+        not name, which is the thing this method exists to find. That is now measured
+        rather than asserted: 13,354 of the 13,356 slots scored wrong name a program NO
+        table slot in that record names, and in `normal` 214 of its 227 sit exactly one
+        slot past the table's last program slot - the second scalar `programs`' own
+        docstring lists.
 
         `fxmaps` is excluded. Its records run to 331 slots and beyond, which is the
         condition under which any small value is a plausible pointer, and it contributes
-        76% of every false positive this predicate makes (13,280 of 17,552) at 90.9%
-        precision. Outside `fxmaps` and `pixelprocessor` the predicate runs at 99.8% or
-        better. That carve-out costs 586 of the 10,400 programs this recovers; the way to
-        get them back is the `fxmaps` header size, not a wider scan.
+        87% of every false positive this predicate makes (11,633 of 13,356) at 92.1%
+        precision - was 76% (13,280 of 17,552) at 90.9%. The SHARE rose because everything
+        else fell faster: outside `fxmaps` the false positives went 4,272 -> 1,723, down
+        60%, while fxmaps' own went 13,280 -> 11,633, down 12%. See the attribution table
+        below for how little of either the slot rule owns. Outside `fxmaps` the predicate
+        runs at 99.83%, and outside `fxmaps` and `pixelprocessor` at 99.94%. NOT "99.8% or
+        better", which is what this
+        said and which was never true per FILTER - `normal` is at 91.5%, `emboss` 98.5%,
+        `shuffle` 99.1%; only the aggregate holds. That carve-out costs 1,082 programs
+        over 356 records, was 586; the way to get them back is the `fxmaps` header size,
+        not a wider scan.
 
-        Additive only. As a REPLACEMENT for the fallback it is a wash - it gains 10,400
-        and loses 10,298, because the header bound cuts off slots the fallback happens to
-        reach. Used as a union it gains 10,400 and loses none.
+        NOT ADDITIVE ANY MORE, BECAUSE IT IS REDUNDANT - the figure that moved furthest.
+        As a REPLACEMENT for the hand-written fallback it gains 11,557 programs over 9,799
+        records and loses 120, and all 120 of the 120 are `fxmaps` records losing the
+        carve-out above. Outside `fxmaps` the header bound takes away NOTHING the fallback
+        reached. This used to read "a wash - it gains 10,400 and loses 10,298, because the
+        header bound cuts off slots the fallback happens to reach", and the 10,298 is the
+        one figure here the slot rule owns outright. The stated mechanism was right and
+        the slot rule dissolved it: the inline bound is `min` over the candidates that
+        land inside the record, so a PHANTOM candidate at a low address - an edge word or
+        a header word plus 52 - pulled `stop` down and cut off real slots behind it. Take
+        the phantoms out and the bound stops firing. Run the old loop on today's tree and
+        the loss is 10,483, three digits from the figure it replaces.
+
+        WHICH HALF OF THE COMMIT MOVED WHAT. The old loop (`range(2, ...)`, no skip) run
+        on today's tree over today's corpus separates the slot rule from everything else
+        that has landed since these figures were first taken:
+
+                                     old loop, today   new loop, today   as first taken
+            slot set exactly right          99.1956%          99.2104%          99.02%
+            precision                       98.8586%          98.8691%          98.51%
+            false positives                   13,482            13,356          17,552
+              of those, outside fxmaps         1,849             1,723           4,272
+            replacement loses                 10,483               120          10,298
+            known-key records carrying a
+              program no table slot names      0.1346%           0.1199%           0.25%
+                                                                        (tools/README.md's
+                                                                         "control", not the
+                                                                         0.021% one above)
+
+        The slot rule owns the LOSS, completely, and a rounding error of everything else.
+        The other four rows had already moved before this commit, under changes this
+        docstring cannot separate - the walk bound arriving in this method, the
+        `decompose` migration, and 7,942 more records - so do not read "was 98.51%" as
+        "the slot rule bought 0.36 points". Restoring the floor as well (refuse
+        `p < code_lo`) is the one thing that touches recall: `fn` goes 1 -> 36.
+
+        Against the LIVE path the gain is zero. `programs()` runs its own slot scan after
+        this one with the same `hdr`/edge skip and the same walk bound and one bound
+        fewer, so this method's candidates are a subset of that scan's. Stub it to return
+        [] and over 903,616 records not one program SET changes; 4 orderings do. The
+        programs are still recovered - by that scan, not here. Keep this method as the
+        separately measurable statement of the predicate, and do not quote it as the thing
+        that supplies the programs.
         """
         if self.filter_id == 4:
             return []

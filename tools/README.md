@@ -86,13 +86,22 @@ Two readings sit side by side, deliberately:
   program the record's slots name; a record can carry up to five, and the two-scalar filters
   routinely carry two. This is what a reader should bind to.
 
-  That claim used to be false for the 4.6% of records whose layout key `derive_layouts.py`
+  That claim used to be false for the 5.6% of records whose layout key `derive_layouts.py`
   dropped: those fall through to a hand-written default naming a single slot, so a second
   program could not come back however plainly its slot named one. `Record.classified_programs`
   now reads those records directly — `words[s] + 52` passing `valid_program`, bounded by the
-  header end the record states — recovering 9,825 programs at 20.77% of dropped-key records
-  against a 0.25% control on records the table does know. `fxmaps` is excluded; see the
-  method's docstring for why.
+  header end the record states — recovering 11,557 programs at 19.5% of dropped-key records
+  against a 0.12% control on records the table does know. `fxmaps` is excluded; see the
+  method's docstring for why. **Re-taken after the slot rule; it read 4.6% / 9,825 / 20.77%
+  / 0.25% before.** The 4.6% moved on corpus drift alone — `layouts.json` has not been
+  regenerated since 2026-08-24 and the corpus has grown by 7,942 records since. The control
+  is NOT attributed to the slot rule: running the pre-slot-rule loop on today's tree gives
+  0.13%, so almost all of the fall from 0.25% happened earlier, under changes this note
+  cannot separate. What did NOT survive re-measurement is the framing: those
+  programs now come back either way, because `programs()`’ own slot scan got the same skip
+  and is a superset of this method. Stub `classified_programs` to `[]` and 0 program sets
+  change over 903,616 records (4 orderings do). It is the measured statement of the
+  predicate, not the thing that supplies the programs.
 
   **Only a slot can name a program, and the walk states which words are slots.** Both scans
   — `programs`' and `classified_programs`' — skip the record's own header words (`hdr` from
