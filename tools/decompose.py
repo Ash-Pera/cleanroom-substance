@@ -299,6 +299,39 @@ def _restraddle(r, w1, param_slots):
     return param_slots
 
 
+#: THE CLASS BLOCK'S EMISSION ORDER, as a format constant rather than a per-filter branch.
+#:
+#: `clsbits` is ascending and the block is not. Class bit 23 gates `$randomseed` and bit 16
+#: gates `$outputsize`, and bit 23's slot is emitted FIRST. This states that one fact once,
+#: for every walk of the block; see FORMAT-NOTES.md, "A `levels` record, bit by bit -- and
+#: the class block is not in ascending bit order" for the measurement, and SPEC §6.1, which
+#: lists this as the second of two exceptions to ascending order.
+#:
+#: `pixelprocessor` (20) does NOT swap, and it is the only filter that also sets class bit
+#: 22. Whether those two facts are one fact is open; until it is settled the exception is
+#: listed rather than explained.
+_CLASS_ORDER_SWAPS = ((23, 16),)
+_CLASS_ORDER_EXEMPT = frozenset({20})
+
+
+def _class_emission_order(filter_id, clsbits):
+    """`(original index, bit)` in EMISSION order.
+
+    The index is the bit's position in `clsbits` and never its emission position: every
+    cost cell is keyed on the former, so reordering the walk must not reorder the lookup.
+    That separation is the whole reason this returns pairs.
+    """
+    order = list(enumerate(clsbits))
+    if filter_id in _CLASS_ORDER_EXEMPT:
+        return order
+    for first, second in _CLASS_ORDER_SWAPS:
+        by_bit = {b: k for k, (_i, b) in enumerate(order)}
+        if first in by_bit and second in by_bit and by_bit[first] > by_bit[second]:
+            item = order.pop(by_bit[first])
+            order.insert(by_bit[second], item)
+    return order
+
+
 def _interaction_walk(r, s):
     """Colour-interaction spec: per-feature slot count = base[i] + (tag bit 0)*cross[i]."""
     w0 = r.words[0]
@@ -350,7 +383,7 @@ def _interaction_walk(r, s):
     # `Record.layout[1]`, which feeds `size_or_baked`, `programs()` and the render path --
     # that is its own A/B against the reference harness. See FORMAT-NOTES.md,
     # "A `levels` record, bit by bit -- and the class block is not in ascending bit order".
-    for i, b in enumerate(clsbits):
+    for i, b in _class_emission_order(r.filter_id, clsbits):
         if (w0 >> b) & 1:
             n = cost(1 + i, False)
             if n > 0:
@@ -537,7 +570,7 @@ def _fxmaps_walk(r, spec):
     # 41,164), and `prog` keeps the first-after-inputs slot the invariant above validates.
     pos = prog
     cls_slots, cls_params = [], []
-    for i, b in enumerate(spec.get('clsbits', ())):
+    for i, b in _class_emission_order(r.filter_id, spec.get('clsbits', ())):
         if not (r.words[0] >> b) & 1:
             continue
         n = _feature_cost(spec, 1 + i, r.words[0] & 1, False)
