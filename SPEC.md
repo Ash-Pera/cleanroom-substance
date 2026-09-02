@@ -125,16 +125,31 @@ plausible numbers rather than a failure.**
 
 1. **Filter 17 `text`'s `w1` parameter block** is laid `matrix22`, `position`, `fontsize`
    (§13.4) — bits 10, 6, 8. This applies to the parameter block alone.
-2. **The class block emits bit 23 before bit 16, in every filter but `pixelprocessor`.**
-   Class bit 16 gates `$outputsize` and bit 23 gates `$randomseed` (§13.4), and when both are
-   set the `$randomseed` pointer takes the first class slot and the size expression the
-   second. Measured over the 46,118 corpus records that set both: the first class slot's
+2. **The class block emits bit 23 before bit 16, in EVERY filter.** Class bit 16 gates
+   `$outputsize` and bit 23 gates `$randomseed` (§13.4), and when both are set the
+   `$randomseed` pointer takes the first class slot and the size expression the second.
+   Measured over the 46,118 corpus records that set both: the first class slot's
    program returns **one** component in 46,118 of 46,118 — a size never can — and the second
    returns two components equal to the record's own tag size in 46,023 of the 46,075 that
    evaluate (99.89%; 99.79% of all 46,118). The control is records with bit 16 set and bit 23
-   clear, whose single class slot returns two components in 74,262 of 74,262 `levels` records. `pixelprocessor` is the
-   exception to the exception: it does not swap, and it is also the only filter that sets
-   class bit 22.
+   clear, whose single class slot returns two components in 74,262 of 74,262 `levels` records.
+   An independent arbiter agrees without evaluating anything: the manifest identifier of the
+   graph input each slot's program reads with its first `inputref` is `$randomseed` in the
+   first slot on **46,118 of 46,118** and `$outputsize` in the second on 45,628, the other
+   490 holding a size program that does not open with a bare `inputref`.
+
+   **`pixelprocessor` was listed here as the exception and is not one.** Its header is
+   `[w0][w1 arity][image inputs][bit 23][bit 16][the filter's own pixel program]`, and the
+   same manifest arbiter names the first class slot `$randomseed` on 57,731 of 57,731
+   records that set bit 23 and the second `$outputsize` on 56,141 of 56,142 that set bit 16,
+   with the block ending exactly one slot before the fitted header length on 57,965 of
+   57,965. What made it look exceptional is that `decompose`'s arity arm allocates the pixel
+   program's slot in FRONT of the class block, so both class labels sit one word late; the
+   patch is written up in FORMAT-NOTES.md, "Every filter, bit by bit", and is not applied.
+   The claim that `pixelprocessor` is "the only filter that sets class bit 22" was a bit
+   number read one place low: it sets bit 22 on 0 records and bit 23 on 99.60% of them, and
+   the only records in the corpus setting class bit 22 are three `fxmaps` records in
+   `Texture_Randomizer`.
 
 A reader that walks the class block in plain ascending order still gets the header LENGTH
 right — both bits cost one word — so nothing runs past the end and no parameter moves. What it
@@ -326,8 +341,17 @@ One rule places every parameter this project reads, and it is the §6.1 mask-wal
 the second header word.
 
 **`w1` is a grid of two-bit FIELDS.** Field `j` occupies bits `(2j + s, 2j + 1 + s)`, where
-`s` is the filter's **grid shift** — `0` for every filter measured, except `directionalwarp`,
-where it is `1`. The two bits are a STATE, not a count:
+`s` is the filter's **grid shift** — `0` for every filter whose costs are derived, except
+`directionalwarp`, where it is `1`. **A second filter shows the same signature and its costs
+have not been re-derived: `emboss`.** Read at `s = 0` it is the only filter in the corpus that
+fails §6.3's program check, and it fails it completely — 450 slots whose state says `program`
+and not one of which decodes. Read at `s = 1`, with the intercept pinned to the record's own
+base region (2 mask words + 2 image inputs + one word each for class bits 23, 27 and 16) and
+fields 0/1 scalar, 2/3 per-channel, the fitted header length is reproduced on **375 of its 375**
+covered records and the two words in question are the plain floats they look like (1.0 and
+0.25 on `sci_fi_elements_02` record 3807). The measurement is in FORMAT-NOTES.md, "Every
+filter, bit by bit"; `derive_costs` has not been re-run for filter 8 and until it is, `emboss`
+parameter names read off the `s = 0` grid are wrong. The two bits are a STATE, not a count:
 
     00  absent          the parameter is not present; it costs no slot
     01  baked           a constant, inline in the header, one word per component (§7.3)
@@ -875,7 +899,10 @@ name resolves to a default, the default is the neutral value, and the record ren
 was an identity in 747 corpus records and `sharpen` in 1,156 on exactly that mechanism.
 Report per record the fields the walk placed and the legend does not name, as its own count
 rather than folded into the assumed-value one: the two mean opposite things, and 57,731
-`pixelprocessor` records carrying an unnamed class pointer would drown the other.
+`pixelprocessor` records carrying an unnamed class pointer would drown the other. Those
+57,731 are not unnamed any more — the pointer is `$randomseed`, and the pixel program is the
+LAST header word rather than the first slot after the inputs (§6.1) — but the accounting
+point stands.
 
 **A `flag` is zero words baked and one word as a program**, and both arms have to be
 declared or the placement shifts. `normal`'s fields 1 and 2 cost nothing when baked — the
@@ -922,19 +949,25 @@ halves — and marks nothing else. Its records are also fed by `pixelprocessor` 
 against 0.16% for that matched control, the one filter whose output has no reason to lie in
 [0, 1]. Naming it would change 0 of 85,820 readings, because it consumes no word.
 
-**Inherited parameters (class word).** Five class bits are shared by every filter rather
-than being per-filter, and a reader handles them once:
+**Inherited parameters (class word).** These class bits are shared rather than per-filter,
+and a reader handles them once. Only bits 16 and 23 are universal — the high half is a
+per-filter parameter list from bit 24 up, and four filters — `uniform`, `hsl`, `shuffle` and
+`dyngradient` — put their own parameters at 24–27 (below).
 
 | word0 bit | gates | cost | notes |
 |---|---|---|---|
 | 16 | `$outputsize` | 1 word | the size expression (§13.3). **Emitted after bit 23**, not before — §6.1 |
-| 19 | *(unnamed)* | 0 words | set on 903,608 of 903,616 corpus records; the 8 exceptions are all `pixelprocessor` |
-| 20 | *(unnamed)* | 0 words | varies per record; 97.1% of `levels` records |
-| 21 | *(unnamed)* | 0 words | varies per record; 0.5% of `levels` records |
+| 19 | *(unnamed)* | 0 words | set on 903,608 of 903,616 corpus records. Clear **iff the class word is exactly `0x0080`**, an exact partition; the 8 exceptions are `pixelprocessor` value nodes — 1×1, read by nothing, whose one class slot writes a scalar to the program cache. Not the OR of the other bits: a class word of `0x0008` (bit 19 alone) occurs on 114 records |
+| 20 | the output's **format bit 4** | 0 words | over the 2,455 records a graph output names, format bit 4 is set on 94.67% when bit 20 is set and 0.60% when it is clear; within the 156 files whose own outputs disagree on bit 20 the two agree on 1,185 of 1,222 (97.0%). Format bit 4 separates two encodings of the same content — a depth flag by inference, since no manifest attribute states an output's bit depth |
+| 21 | the output's **format bit 6** | 0 words | 98.46% when set (n=65) against 0.00% when clear (n=2,390). Format bit 6 is carried by formats 64 and 76 |
 | 23 | `$randomseed` | 1 word | a program pointer returning a 1-component integer. **Emitted first** |
+| 24, 25 | the filter's **sampling class** | 0 words | 0 for the pixel-local filters, 3 for the ones that read a neighbourhood; redundant with the filter id on 96.8% of records. `uniform`, `hsl`, `shuffle` and `dyngradient` put their own parameters at these bits instead, and are the only filters that charge a word for them |
+| 26, 27 | `$pixelsize` | 2 words baked / 1 word program | an adjacent pair, lower baked and upper a pointer, **mutually exclusive on 124,388 of 124,388** records across `warp`, `blur`, `dirmotionblur`, `directionalwarp`, `distance`, `normal` and `sharpen`. The program arm reads a graph input the manifest identifies literally as `$pixelsize` (type 1, float2) on 7,000+ records and is otherwise a six-instruction `sysvar…exp2` computing a size ratio; the baked arm is a float2 — `blur` bakes an equal pair at a power of two on 5,150 of 5,159. `hsl` and `dyngradient` use the same two bits for their own parameters |
 
-Bits 19, 20 and 21 cost no word in any filter's cost model, so they gate no stored value and a
-reader that ignores them places nothing wrongly. What they mean is not known.
+Bits 19, 20, 21, 24 and 25 cost no word in any filter's cost model, so they gate no stored
+value and a reader that ignores them places nothing wrongly. Bits 20, 21, 24 and 25 describe
+what the record PRODUCES rather than how its header is laid out, which is why probes against
+the record's own geometry came back negative. Bit 19 is still unnamed.
 
 **Bits 16 and 23 are named by the manifest, not inferred.** Both slots hold a program whose
 first instruction is an `inputref` on a graph input uid, and the `.sbsar` manifest declares each
@@ -950,13 +983,21 @@ The per-filter bits are an adjacent bit pair, lower = baked, upper = program:
 | filter | parameter | word0 bits | width |
 |---|---|---|---|
 | 3 shuffle | channelsweights | 24 | 4 (one-channel shape) / 0 (four-channel) |
-| 6 uniform | outputcolor | 24 | 4 (colour) / 1 |
+| 6 uniform | outputcolor | 24 baked, 25 program | 4 (colour) / 1 |
 | 7 warp | intensity | 29 baked, 30 program | 1 |
 | 10 blur | intensity | 28 baked, 29 program | 1 |
 | 13 sharpen | intensity | 28 baked, 29 program | 1 |
 | 14 hsl | hue | 24 baked, 25 program | 1 |
 | 14 hsl | saturation | 26 baked, 27 program | 1 |
 | 14 hsl | luminosity | 28 baked, 29 program | 1 |
+
+`uniform`'s bit 25 is named the same way bits 16 and 23 are: on all 653 records that set it
+the slot's program opens with an `inputref` on a graph input the manifest names `color`,
+`metallic`, `rough`, `metallic_strength` or `roughness_strength`. `render2.model.CLS_NAMES`
+carries bit 24 only, so the renderer finds this program with a value probe rather than by
+name. `dyngradient` carries an unnamed pair of the same shape at 25 baked / 26 program — the
+baked arm is 0.5 on 86 of 95 records and the program arm reads inputs named for a gradient
+position — described but not named, `assume.QUESTIONS['dyngradient.gradpos']`.
 
 `distance`'s radius is the source's own: `SandyStonePath.sbs` states 56.2999992 and
 64.2200012 on its two distance nodes and records 3 and 180 of the compiled twin hold exactly

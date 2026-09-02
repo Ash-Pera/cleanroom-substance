@@ -307,9 +307,19 @@ def _restraddle(r, w1, param_slots):
 #: the class block is not in ascending bit order" for the measurement, and SPEC §6.1, which
 #: lists this as the second of two exceptions to ascending order.
 #:
-#: `pixelprocessor` (20) does NOT swap, and it is the only filter that also sets class bit
-#: 22. Whether those two facts are one fact is open; until it is settled the exception is
-#: listed rather than explained.
+#: `pixelprocessor` (20) is exempted here, and the exemption is now known to be an artefact of
+#: THIS module rather than a fact about the format. It does not set class bit 22 at all -- that
+#: was a bit number read one place low, and the only records in the corpus setting bit 22 are
+#: three `fxmaps` records in `Texture_Randomizer`. Its header is
+#: `[w0][w1 arity][inputs][bit 23][bit 16][the filter's own pixel program]`: the manifest names
+#: the first class slot `$randomseed` on 57,731 of 57,731 records that set bit 23 and the second
+#: `$outputsize` on 56,141 of 56,142 that set bit 16, and that block ends exactly one slot before
+#: the fitted header length on 57,965 of 57,965. The arity arm below allocates the pixel
+#: program's slot IN FRONT of the class block, which shifts both class labels by one and is what
+#: makes the filter look like it does not swap. The repair -- walk the class block from
+#: `2 + n_in` in emission order and put the filter's own program after it -- moves `prog` on
+#: 57,965 records, so it is written up and not applied. See FORMAT-NOTES.md, "Every filter, bit
+#: by bit".
 _CLASS_ORDER_SWAPS = ((23, 16),)
 _CLASS_ORDER_EXEMPT = frozenset({20})
 
@@ -359,7 +369,9 @@ def _interaction_walk(r, s):
     inputs = list(range(n_masks, pos))
     cls_slots = []
     cls_params = []
-    # THE CLASS BLOCK IS NOT EMITTED IN ASCENDING BIT ORDER, and this loop assumes it is.
+    # THE CLASS BLOCK IS NOT EMITTED IN ASCENDING BIT ORDER, and this loop no longer assumes
+    # it is -- `_class_emission_order` applies the swap, since 550de51. The measurement is
+    # kept here because it is what a reader has to check the order against.
     # Class bit 23 gates `$randomseed` and class bit 16 gates `$outputsize`, and bit 23's
     # slot comes FIRST. On the 46,118 corpus records that set both bits, across 21 filters
     # (`fxmaps` 36,028, `levels` 401), the slot this loop hands to bit 16 holds a program
@@ -367,9 +379,9 @@ def _interaction_walk(r, s):
     # the slot it hands to bit 23 evaluates to the record's own tag size in 46,023 of the
     # 46,075 that evaluate. The control is bit 16 set with bit 23 clear: the single class
     # slot returns two components in 74,262 of 74,262 `levels` records, so bit 16 is the
-    # size and bit 23 inserts a slot in front of it. `pixelprocessor` does NOT swap and is
-    # the only filter that also sets class bit 22, whose cost `costs.json` folds into the
-    # intercept.
+    # size and bit 23 inserts a slot in front of it. `pixelprocessor` takes the arity arm and
+    # not this one; it swaps like everything else, and the reason it looks as though it does
+    # not is stated at `_CLASS_ORDER_EXEMPT`.
     #
     # NOTHING IS MISPLACED BY THIS -- both bits cost one word, so `end`, `inputs` and every
     # `param_slots` entry are unaffected and no header runs long. What is wrong is the
@@ -377,12 +389,13 @@ def _interaction_walk(r, s):
     # `output_size` discards a one-component result as unevaluable rather than reporting a
     # disagreement. The failure is silent in all three places.
     #
-    # The fix is a class-block ORDER legend (a format constant, like the name legend, that
-    # states an emission order and never a position), not a per-filter branch. It is not
-    # applied here because it moves `prog` on 46,118 records and `prog` is
-    # `Record.layout[1]`, which feeds `size_or_baked`, `programs()` and the render path --
-    # that is its own A/B against the reference harness. See FORMAT-NOTES.md,
-    # "A `levels` record, bit by bit -- and the class block is not in ascending bit order".
+    # The fix WAS a class-block ORDER legend (a format constant, like the name legend, that
+    # states an emission order and never a position), not a per-filter branch, and it landed
+    # at 550de51 -- `_CLASS_ORDER_SWAPS` above. The paragraph before this one describes what
+    # the walk did BEFORE that commit and is what the swap is there to prevent. See
+    # FORMAT-NOTES.md, "A `levels` record, bit by bit -- and the class block is not in
+    # ascending bit order", and "Every filter, bit by bit" for the second measurement of the
+    # same order, by manifest identifier rather than by component count.
     for i, b in _class_emission_order(r.filter_id, clsbits):
         if (w0 >> b) & 1:
             n = cost(1 + i, False)

@@ -124,6 +124,30 @@ QUESTIONS = {
     'fx.gatescan':        ('once', 'loop', 'filter'),
     'fx.combine':         ('max', 'add', 'over'),
     'fx.negopacity':      ('clip', 'signed', 'abs'),
+    # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
+    # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
+    # candidate below is a guess that would need something outside the file to settle.
+    # See FORMAT-NOTES.md, "Every filter, bit by bit", and `archive/tools/bit_census.py`.
+    #
+    #   blend.w1bit8          w1 bit 8, set on 232,581 of 310,697 blend records and charged
+    #                         nothing. It tracks the BLEND MODE: 98.5-100% set for every mode
+    #                         that combines the two images arithmetically, 46.7% for `switch`
+    #                         and 50.8% for `copy`, the two that select rather than combine.
+    #                         Both edges are present either way, so it is not "a background
+    #                         is connected".
+    #   transformation.w1low  w1 bits 0-5, six bits charged nothing in any state, two values
+    #                         covering 98.2% of the filter (0b111111 on 175,110 records,
+    #                         0b011111 on 55,529) and a tail of 47 more. A packed enum whose
+    #                         value is its bits; naming it from a frequency is the inference
+    #                         `normal`'s field 1 had to retract.
+    #   dyngradient.gradpos   class bits 25 (baked, 0.5 on 86 of 95) and 26 (a program), an
+    #                         ordinary baked/program pair. The program arm's inputs are named
+    #                         `Stone_colour_Gradient_Input_Position`, `Stone_Colour_Grad` and
+    #                         `Lichen_Colour_Variation` -- the material author's names for a
+    #                         position into a gradient, not the parameter's own.
+    'blend.w1bit8':       ('ignore', 'alphablend', 'background_used'),
+    'transformation.w1low': ('ignore', 'tiling', 'filtering', 'mipmap'),
+    'dyngradient.gradpos': ('ignore', 'position', 'variation'),
     'levels.zerospan':    ('step', 'identity'),
     'levels.inversion':   ('flat', 'complete'),
     'levels.interclamp':  ('clamp', 'noclamp'),

@@ -37,6 +37,7 @@ correction that produced those references.
       tools/provenance.py        the provenance exclusion predicate, as a re-runnable check
       tools/reverify.py          re-runs the notes' headline claims against the CURRENT corpus
       tools/audit_corpus.py      runs the model over a corpus and reports every gap
+      tools/bit_census.py        every header bit per filter: set, placed, named, left
       tools/validate_corpus.py   structural checks against the .sbsar manifests
       tools/render.py            the earlier renderer, superseded by render2/
       tools/fxdisasm.py          walks an FX-Map tree and disassembles each node's program

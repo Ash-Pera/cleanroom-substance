@@ -15,6 +15,7 @@ suite is the test suite.
     python3 archive/tools/extract_bitmaps.py <file.sbsasm>
     python3 archive/tools/extract_shapes.py <file.sbsasm> [outdir] [--size 512] [--svg]
     python3 archive/tools/audit_corpus.py
+    python3 archive/tools/bit_census.py [filter ...] [--check] [--json out.json]
     python3 archive/tools/validate_corpus.py
     python3 archive/tools/reverify.py
     python3 archive/tools/provenance.py
@@ -245,6 +246,9 @@ parameter bits the slot rule needs, so no rewriting of entries can express the r
                           the 0x1B branch, one-ISA, no loops, the node/table dataflow,
                           and the source-side check on `FX_LOWERING` -- see below
     audit_corpus.py       runs the model over a corpus and reports every gap
+    bit_census.py         every bit of every record header, per filter: which are SET,
+                          which the cost model places, which the legend names -- and
+                          SPEC 6.3's two loud checks over the whole corpus
     validate_corpus.py    structural checks against the .sbsar manifests
     attribute_outputs.py  cross-checks the output table against the manifest's alteroutputs
                           relation: 98.20% agreement over 39,855 (input, output) pairs
@@ -286,6 +290,17 @@ makes the engine's own exports look like blank white placeholders; and averaging
 map's channels flattens it by construction, since (0.5, 0.5, 1.0) is nearly constant under
 a channel mean. Today it reports a baseline, not a validation -- means agreeing to four
 decimals with spatial variation 5.4x too small.
+
+`bit_census.py` answers "what is left" per filter, and it exists because that question kept
+being answered in prose. Its four-way split -- named / costed / free / unmodelled -- is the
+distinction a single "unknown" column loses: a bit charged a word and not named is a reader
+placing the right slot and calling it nothing, and a bit charged NOTHING and not named
+misplaces no word whatever it means. It reads all three name tables (`render2.model`'s two,
+`sbsasm.PARAM_SPEC`, and the `blendingmode` nibble that lives in `Record.slot1_flags`),
+because the first version of it read one and reported 310,697 `blend` records as unnamed.
+`--check` runs SPEC 6.3's loud checks corpus-wide: 1,302,475 of 1,302,475 edge slots hold a
+backward record index, and 198,581 of 199,031 state-2 slots resolve a program -- every one of
+the 450 failures being `emboss`, whose grid is off by one (SPEC 7.4).
 
 `provenance.py` is the one to run against a new corpus before measuring anything with it.
 

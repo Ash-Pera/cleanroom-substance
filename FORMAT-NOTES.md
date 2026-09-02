@@ -44489,3 +44489,487 @@ remaining width case.
 * **`pixelprocessor`'s bits 22 and 23**, which is why the patch cannot simply be applied to
   every filter.
 * **The name of `w1` field 5**, which is a provenance question and not an analysis one.
+
+# Every filter, bit by bit — the census is a script now, and `pixelprocessor` is not an exception
+
+*The `levels` census above was done by hand and is the template. Doing the same for the other
+seventeen filters by hand would produce seventeen tables that go stale the first time a cost
+is re-attributed, which is this repository's recurring failure — the 92.5% byte row lived in
+prose for eight days because no script produced it. So the first deliverable here is
+`archive/tools/bit_census.py`, and the numbers below are its output rather than a
+transcription of one. Three of the questions the `levels` section left open are answered,
+one of them by retracting a claim it made, and two filters turn out to be mislabelled by the
+walk in ways that cost no header word and change what a reader is looking at.*
+
+Everything below is the 437-file corpus, 903,616 records.
+
+    python3 archive/tools/bit_census.py                  # all filters
+    python3 archive/tools/bit_census.py levels blend     # by name
+    python3 archive/tools/bit_census.py --check          # + the two loud checks, + a
+                                                         #   w1-presence audit against decompose
+    python3 archive/tools/bit_census.py --json out.json
+
+It takes about 20 seconds over the whole corpus.
+
+## What "accounted for" had to be split into, before any number meant anything
+
+A single "unknown" column blurs four different situations, and three of them are not gaps:
+
+    named        the name legend gives the bit a meaning. The only column about SEMANTICS.
+    costed       the cost model carries a nonzero coefficient: the bit gates a stored value,
+                 the walk places a slot, and no name covers it. Words placed, called nothing.
+    free         the model carries a coefficient and it is ZERO. The bit is declared to the
+                 walk and gates no stored value. Class bits 19, 20 and 21 are this.
+    constant     `constant_bits` — set on every record the fit could see, so its cost cannot
+                 be told from the intercept. NOT the same as free, and `emboss` is the case
+                 where the difference matters.
+    unmodelled   set in the corpus, and the spec carries no coefficient at all. The only
+                 column where a slot could be going unplaced.
+
+Getting that split needs per-filter mode logic, which is why the previous attempt at it
+failed: `costs.json` runs five shapes — the plain `cls`/`w1` dictionaries, the `colour` and
+`colour_states` interaction forms (which have no `cls` key at all, only `clsbits` and
+`pairs`), `mode: arity`, and `variants` behind a guard — and reading `spec['pairs']`
+unconditionally returns `None` for `blend`, `text` and `pixelprocessor`. The census selects
+the spec through `decompose._select_spec` per record, so variants and `min_version` guards
+are honoured by construction and the report describes the spec that actually answered.
+
+**The w1-presence rule is the walk's, not `len(words) > 1`.** `uniform` has no `w1` word and
+its slot 1 is an EDGE; `warp` and `shuffle` each have one shape with a `w1` word and one
+without. A starting-point script for this census read `words[1]` unconditionally and counted
+a record index as a field grid. `--check` re-runs the census's answer against `decompose`'s
+own `hdr` on every covered record: they agree on all of them.
+
+## The census
+
+Class bits and `w1` bits that are SET in the corpus and that no name covers. `(free)` and
+`(constant)` cost no word, so nothing is misplaced by them; `(costed)` and `(unmodelled)` are
+the column to read.
+
+    filter            records  class unnamed          w1 unnamed        not free/constant
+    blend              310697  19,20,21               6,8,11,12         --
+    transformation     234859  19,20,21,24,25         0,1,2,3,4,5       --
+    levels              85820  19,20,21               10                --
+    directionalwarp     62146  19,20,21,24,25         5,7               --
+    pixelprocessor      57965  19,20,21               16,17,18          --
+    fxmaps              41164  19,20,21,22,24,25      2,26              cls 22 (costed, 3)
+    warp                26795  19,20,21,24,25         0                 --
+    gradient            17939  19,20,21,24,25,26      --                --
+    uniform             16763  19,20,21               --                --
+    blur                15371  19,20,21,24,25         --                --
+    dirmotionblur       15097  19,20,21,24,25         --                --
+    shuffle              7682  19,20,21,26,28         1,8,9,10,17,18,   cls 26 (costed, 10)
+                                                      24,25,26
+    distance             2277  19,20,21,24,25         0,1,4             --
+    dyngradient          2225  19,20,21,25,26,27      --                cls 25 (95), 26 (5)
+    normal               1379  19,20,21,24,25         --                --
+    bitmap               1345  19,20,21,24,25,26,     --                --
+                                27,29
+    sharpen              1323  19,20,21,24,25         --                --
+    curve                1273  19,20,21,25            --                --
+    hsl                   747  19,20,21               --                --
+    emboss                546  19,20,24,25,26,27      1,2,3,5,7         cls 26 (unmodelled, 2)
+    vectorshape           139  19,20,25               --                all three unmodelled
+    text                   59  19,20,24,25            1                 --
+    filter9                 5  19,20,24,25            --                all four unmodelled
+
+`vectorshape` and `filter9` have no cost model at all, which is why every bit they set is
+unmodelled; both are out of scope here and neither is news. `pixelprocessor`'s `w1` bits 0–4
+are its arity count and are accounted; they are omitted from the table.
+
+**The two loud checks SPEC 6.3 prescribes, run over the whole census.**
+
+    edge slots holding a backward record index or the absent sentinel   1,302,475 / 1,302,475
+    state-2 (program) w1 slots resolving a program at value + 52          198,581 /   199,031
+
+100.000% and 99.774%, and **every one of the 450 failures is `emboss`**, in its `w1` fields
+1, 2 and 3. That is not a scattering of hard records; it is one filter's state legend being
+wrong, and the section on `emboss` below says what it is instead.
+
+## Class bit 22 is not `pixelprocessor`'s. The `levels` section had a bit number wrong.
+
+*Retraction.* "A `levels` record, bit by bit" states that filter 20 "is also the only filter
+that sets class bit 22 (99.6% of its records)", and `decompose._CLASS_ORDER_EXEMPT`, SPEC 6.1
+and SPEC 13.4 all repeat it. Counted directly over 903,616 records:
+
+    word0 bit 22 set    fxmaps 3 records.  pixelprocessor 0.  Every other filter 0.
+
+The 99.6% figure is bit **23**, which `pixelprocessor` sets on 57,731 of 57,965 records. The
+three bit-22 records are `Texture_Randomizer`'s `fxmaps` records 0, 2 and 5 — the same three
+this file already identified under class-bit numbering as "bit 6 is three records", eight
+thousand lines earlier. Their bit-22 slot holds a program whose first `inputref` names
+`$outputsize`, on 3 of 3.
+
+So the question "are `pixelprocessor`'s bits 22 and 23 one fact?" has no subject. It was one
+number read at the wrong offset, and it propagated into three files because it was quoted
+rather than re-measured.
+
+## `pixelprocessor` DOES emit class bit 23 first — the walk allocates a slot in front of the class block
+
+This is the substantive finding, and it is a mislabel of the same kind as the class-order one:
+no header changes length, no edge moves, and `end` is untouched. What moves is which word a
+reader calls the size expression.
+
+`decompose`'s arity arm places the pixel program at `2 + arity` and starts the class block
+after it. Asked what those words actually hold — by the arbiter that named bits 16 and 23,
+the manifest identifier of the graph input the slot's program reads with its first
+`inputref`, and with slot POSITION rather than the walk's labels:
+
+    the slot at 2 + arity, by which class bits are set
+        bit 16 set, bit 23 set    $randomseed   55,324        bit 16 clear, bit 23 set   $randomseed 1,601
+        bit 16 set, bit 23 clear  $outputsize        86        neither set          a program 127 of 147
+
+    56,925 of 57,965 pixelprocessor records hold `inputref($randomseed)` in the slot the walk
+    calls the pixel program.
+
+Read the header as `[w0][w1 arity][inputs][bit 23][bit 16][the filter's own program]` and
+everything closes at once:
+
+    the block ends exactly one slot before `end`                     57,965 of 57,965
+    the bit-23 slot names the manifest input `$randomseed`           57,731 of 57,731
+    the bit-16 slot names `$outputsize`, or holds a size program     56,141 of 56,142
+      ($outputsize 52,572; a program that is not a bare inputref 3,424; an input the
+       manifest names `resolution` / `scale` / `cloud_size` 145)
+    the LAST header slot reads `$pos` (sysvar 8)                     55,595 of 57,965
+      and calls samplelum/samplecol                                  54,979
+
+against the slot the walk calls the pixel program, which reads `$pos` on **105** records and
+is 0–9 instructions long on 57,016 of 57,138. The two populations are not close.
+
+`end` comes from `record_layout.header_words`, the fitted length, and `inputs` comes from the
+arity field, so "the block ends one slot before `end`" is the fit corroborating the reading
+rather than the reading being fitted. **`pixelprocessor` is not an exception to the class
+block's emission order.** It emits bit 23 then bit 16 like every other filter; the walk simply
+hands out one slot before the block starts and shifts both labels by one.
+
+`render2.f_pixelprocessor` already knows, and works around it by reading `header_end - 1`
+with a comment naming a Rokviz record whose slot 3 is `inputref($randomseed)`. That comment
+was right about one record and did not carry to the walk.
+
+**The patch, written up and NOT applied.** In `decompose`'s `mode == 'arity'` arm: allocate
+the class block from `2 + n_in` in emission order (`_class_emission_order`, which pixelprocessor
+should no longer be exempt from), then the filter's own program slot after it; report that slot
+rather than the first one as the filter's program, and let `size_slot` be bit 16's. Remove 20
+from `_CLASS_ORDER_EXEMPT`. It is not applied here for the reason the class-order patch was not
+applied when it was first measured: `prog` is `Record.layout[1]`, which feeds `size_or_baked`,
+`programs()` and the render path, and it moves on 57,965 records. That is its own A/B against
+the reference harness, not a rider on a census.
+
+What a reader should do meanwhile: for `pixelprocessor`, the size expression is the SECOND
+class slot when bit 23 is set, and the filter's own program is the last header word.
+
+## Class bits 26 and 27 are `$pixelsize`, and they are a baked/program pair
+
+The census reported 95,627 records charging a word for class bit 27 and 6,568 charging two
+for bit 26, across ten and twelve filters, with no name on either. Both are named by the
+manifest, exactly as bits 16 and 23 were.
+
+    bit 27's slot, first instruction and what it resolves
+      directionalwarp  51,941   sysvar..exp2 48,822   inputref `$pixelsize` (type 1) 3,119
+      warp             19,388   sysvar..exp2 17,676   `$pixelsize` 1,710
+      dirmotionblur    11,005   sysvar..exp2 10,082   `$pixelsize`   923
+      blur              8,675   sysvar..exp2  7,674   `$pixelsize` 1,001
+      distance          2,042   sysvar..exp2  1,925   `$pixelsize`   117
+      normal            1,086   sysvar..exp2  1,009   `$pixelsize`    58
+      sharpen             985   sysvar..exp2    924   `$pixelsize`    61
+      hsl                 246   inputref `saturation` 246   <- NOT $pixelsize; see below
+
+    bit 26 is TWO WORDS and is never a program: blur bakes an equal pair at a power of two
+    on 5,150 of 5,159 (16,16 / 32,32 / 64,64 / 2,2 / 4,4 / 8,8), dirwarp bakes (0.0625, 1)
+    and (0.25, 1), distance (0.5, 1), normal (2, 2).
+
+    the two bits are MUTUALLY EXCLUSIVE: over the seven filters that carry them, 124,388
+    records, bits 26 and 27 are never both set — 0 of 124,388.
+
+That is the adjacent-bit pair law SPEC 13.4 already states for `warp` 29/30, `blur` 28/29 and
+`hsl` 24/25/26/27/28/29: the lower bit bakes the value and the upper points at a program. The
+default program is the same six instructions everywhere — `sysvar.f2 3`, swizzle, sub,
+`const.f2 0,0`, min, `exp2.f2` — which is a size ratio computed from the log2 sizes, and the
+3,119 dirwarp records that instead read the graph input do so through an input the manifest
+identifies literally as `$pixelsize`, type 1 (float2). Two words baked and one word pointed
+at is a float2 either way.
+
+**The class word's high half is per-filter, not universal.** `hsl` puts `saturation` at the
+same 26/27 pair and `dyngradient` puts something else there, so a reader must key the name on
+(filter, bit) and not on the bit alone. Bits 16 and 23 are the two that are universal.
+
+**Two more names fall out of the same probe, and one of them is a live gap:**
+
+* **`uniform` class bit 25 is `outputcolor`'s program arm** — 653 records, the graph inputs
+  named `color` (t2 and t3), `metallic`, `rough`, `metallic_strength`, `roughness_strength`.
+  `render2.model.CLS_NAMES[6]` has bit 24 and not bit 25, so `f_uniform` finds this program
+  with `_fill_program`, a value probe that runs every program slot and keeps the first result
+  that lands in [0, 1]. The legend can replace the probe.
+* **`dyngradient` bits 25 and 26 are a pair of the same shape** — bit 25 bakes a scalar (0.5
+  on 86 of 95 records) and bit 26 points at a program reading inputs named
+  `Stone_colour_Gradient_Input_Position`, `Stone_Colour_Grad`, `Lichen_Colour_Variation`. The
+  identifiers are the material author's, not the parameter's, so this is described and not
+  named: it is a scalar position into the gradient. `assume.QUESTIONS['dyngradient.gradpos']`.
+
+## Class bits 19, 20 and 21: two of the three were answered eight thousand lines ago
+
+This is the part of the job that should have been a literature search before it was a
+measurement, and the census is what made that obvious — three bits set on nearly every record
+of every filter is not a per-filter question.
+
+**Bits 20 and 21 describe the record's OUTPUT FORMAT, not its structure.** "cls bit 5 is the
+output format's bit 6" measured this under class-bit numbering (cls bit 4 = word0 bit 20, cls
+bit 5 = word0 bit 21) and SPEC never absorbed it. Re-measured on the current corpus, over the
+2,455 records that a graph output names:
+
+    word0 bit 20   P(format bit 4 | set) = 94.67% (n=1,783)   P(| clear) = 0.60% (n=672)
+    word0 bit 21   P(format bit 6 | set) = 98.46% (n=   65)   P(| clear) = 0.00% (n=2,390)
+
+and with a within-file control the earlier measurement did not have — restricting to the 156
+files whose own output records DISAGREE on bit 20, so nothing about the package can carry the
+association:
+
+    (bit 20, format bit 4)   (1,1) 656   (0,0) 529   (1,0) 33   (0,1) 4
+                             1,185 of 1,222 = 97.0%
+
+So the two probes recorded as negative in the `levels` section were negative because they
+asked the wrong kind of question: bit 20 does not predict the record's own tag size or the
+shape of its size program because it is not about the record's geometry at all. It is about
+the pixel format the result is stored in — format bit 4 separates two encodings of the same
+content (the depth reading, still an inference: no manifest attribute states an output's bit
+depth) and format bit 6 is carried by formats 64 and 76.
+
+What the correspondence cannot establish is what bit 20 means on the other 866,000 records,
+which are not outputs and have no declared format. The reading that fits is that the class
+word states the format of what the node produces whether or not anything exports it.
+
+**Bit 19 is clear if and only if the class word is exactly `0x0080`, and here is what those
+eight records are.** The exact partition was already recorded here ("Bit 3 is clear if and
+only if the class word is 0x80"); the census reproduces it on today's corpus — 903,608 set, 8
+clear, all `pixelprocessor` — and the eight records are now characterised:
+
+    MarbleSubstance002              791, 988
+    UHL3D-Stylized_Sand_with_Rocks  417, 2251, 2260, 2261, 2262, 2263
+
+    all eight:  w0 = 0x00800028 — class word 0x80, so ONLY class bit 23, and the tag's two
+                size nibbles are ZERO, i.e. a 1x1 canvas
+                no record in the file reads them as an input (fan-out 0)
+                no graph output names them
+                their single class slot holds a program that computes a VALUE and writes it
+                to the shared program cache: `const.f1 0.5; cache_write.f1 %0, #0`, and the
+                same with #1 and #8; two of them `samplecol` an input and swizzle it; one
+                reads cache slots 4 and 5 and builds a float2
+
+**The control, which is what makes this more than an anecdote.** There are 32 `pixelprocessor`
+records in the corpus that are 1x1 AND read by nothing: the eight above, and 24 with class
+word `0x99` and `w1` 0x10001 in `GrassSubstance001/002` and `BricksSubstance003`. So "1x1
+value node with no consumers" is not the discriminator — the class word is. And the class word
+cannot be read as "bit 19 is the OR of the other class bits", because a record whose class word
+is exactly `0x0008` — bit 19 alone — occurs 114 times in `levels`.
+
+So bit 19 remains structurally free and semantically open, with a much sharper statement of
+what its complement is: a record that declares a random seed and nothing else, produces no
+raster, and hands a scalar to the program cache instead. That is not a name; it is what the
+eight records are.
+
+**Bits 24 and 25 are the sampling class**, per "cls bits 8 and 9 encode the filter's sampling
+class" — 0 for the pixel-local filters, 3 for the ones that read a neighbourhood, and the
+census shows exactly the predicted shape: cost 0 in every filter that consumes an image
+(`transformation` 229,200 / 228,922, `directionalwarp` 55,414 / 55,397, `blur` 15,279 /
+15,281 ...), and a nonzero cost only in `uniform`, `hsl`, `shuffle` and `dyngradient`, which
+are the filters that reuse the position for their own parameters. Those four are exactly the
+"genuinely mixed" set that section could not place. They are not mixed; they are a different
+parameter list at the same bits.
+
+## `emboss`: the state legend is wrong, and its 450 non-resolving program slots say so
+
+`emboss` is the only filter that fails SPEC 6.3's program check, and it fails it completely:
+239 + 34 + 177 = 450 slots the walk calls a program, and **not one of them decodes**. Its
+field 0 is the opposite — 366 of 366 resolve, and 8 of them name `$pixelsize`.
+
+Take `sci_fi_elements_02` record 3807, `w0` = 0x08198810, `w1` = 0x000a, 8-word header:
+
+    slot 0,1  masks            slot 2,3  the two image inputs (3806, 3802 — backward)
+    slot 4    0x00096b90       class bit 16, the size expression
+    slot 5    0x00096b98       a program — and it is the `sysvar..exp2` $pixelsize program
+    slot 6    0x3f800000       1.0
+    slot 7    0x3e800000       0.25
+
+The walk charges slots 5 and 6 to `w1` field 0 (state 2, width 2) and slot 7 to field 1
+(state 2, width 1), so it calls a baked 0.25 a program pointer. Read `w1` on a grid shifted
+by ONE — the `directionalwarp` shift — and the record says something coherent instead:
+`w1` 0x000a is `0b1010`, whose fields at bits (1,2) and (3,4) are `01` and `01`, two BAKED
+parameters, which is exactly the 1.0 and 0.25 sitting there.
+
+**The shifted grid reproduces the fitted header length on 371 of 375 covered records**, with
+
+    base = 2 mask words + 2 image inputs + class bit 27 ($pixelsize) + class bit 16
+    fields 0 and 1 are scalars; fields 2 and 3 are per-channel (4 words colour, 1 grayscale)
+
+        w1     colour  end   fields present            predicted
+        0x02      0     7    f0 baked                  4+1+1+1 = 7   45 records
+        0x0a      0     8    f0, f1 baked              +2      = 8   45
+        0x82      0     8    f0, f3 baked              +2      = 8   76
+        0x8a      0     9    f0, f1, f3 baked          +3      = 9   76
+        0x0a      1     8    f0, f1 baked (scalars)    +2      = 8   88
+        0x2a      1    12    + f2 (channel, 4 words)   +6      =12    3
+        0x8a      1    12    + f3 (channel, 4 words)   +6      =12    3
+        0xaa      1    16    + f2 and f3               +10     =16   22
+        0x2c      1    12    f0 program, f1, f2        +6      =12    9
+
+    4 records disagree by one word and are not explained here.
+
+Class bit 27 is in `emboss`'s `constant_bits` — set on 375 of the 375 records the fit could
+see — so its word went into the intercept, and `const` came out at **3.5**, a half. A
+fractional coefficient is the model saying it cannot express the rule, as `derive_costs`' own
+note says; here it is the $pixelsize word being split between the intercept and the `w1`
+state columns.
+
+**Written up, NOT applied**, and unlike the `pixelprocessor` one this is a genuine
+misplacement: `param_slots` move, and their widths change. It needs `derive_costs` re-run for
+filter 8 with `W1_GRID_SHIFT[8] = 1` and the intercept pinned to the record's own base region,
+which is the same repair `normal`, `dyngradient`, `shuffle` and `distance` already had. The
+arbiter to check it against is the one that already fails: 450 slots that must decode as
+programs and do not.
+
+`emboss` also has 171 records the cost model declines outright (`min_version` 0x50000), which
+is a refusal and not a gap.
+
+## The `w1` side: what is left, and it is filter-local
+
+The unnamed `w1` bits are at each filter's own positions. Bits 0–5 recur across filters only
+because every filter allocates fields from the low end.
+
+**The largest single unnamed bit in the corpus is `blend`'s `w1` bit 8**, set on 232,581 of
+310,697 records. It costs no word on its own (field 4 state 1 is charged 0; only state 3, the
+straddled opacity's baked arm, costs one), so nothing is misplaced by it. What it tracks is
+the blend mode:
+
+    mode        bit8=0    bit8=1   % set
+    0 copy       11,143   11,522   50.8%
+    1 add           431   27,418   98.5%
+    2 subtract      122   42,039   99.7%
+    3 multiply      829    7,903   90.5%
+    4 addsub        234   35,689   99.3%
+    5 max           192   36,381   99.5%
+    6 min            62   12,980   99.5%
+    7 switch     65,040   56,955   46.7%
+    8 divide          0      787  100.0%
+    9 overlay        63      360   85.1%
+   10 screen          0      507  100.0%
+   11 softlight       0       40  100.0%
+
+Every mode that combines the two images arithmetically sets it on 98.5–100% of records; the
+two that select rather than combine — `copy` and `switch` — set it about half the time. Both
+inputs are present either way (checked: every blend record's two edge slots hold backward
+indices), so it is not "the background is connected". Not named:
+`assume.QUESTIONS['blend.w1bit8']`.
+
+**`blend`'s `w1` bits 0–3 are `blendingmode` and have been decoded for a long time** — as
+`v & 0xF` in `Record.slot1_flags`, which is not one of the two tables `render2.model` calls
+the name legend. The first version of this census reported them as unnamed on 310,697 records,
+which is the census's own failure mode: a tool that asks one legend and calls everything else
+unknown overstates the gap exactly where the project has already done the work. `bit_census`
+now asks `W1_PARAMS`, `PARAM_SPEC` and a small `NAMED_ELSEWHERE_W1` table, and says which.
+
+**Zero-cost fields are mask-valued** — the two bits ARE the value, the shape of `levels`
+field 5, `text`'s `align_flag` and `normal`'s two booleans — and the census now prints their
+value distribution rather than three state counts, because "state 3" says nothing about a
+field that never allocates:
+
+    blend           mask 0x300f   blendingmode plus bits 12,13 (3 records)
+    transformation  mask 0x003f   0b111111 175,110   0b011111 55,529   then a tail of 47
+                                  values under 900 records each
+    pixelprocessor  mask 0xf0000  0 on 56,695; 0x10000 689, 0x20000 392, 0x40000 112
+    shuffle         mask 0xf0f0f03 — the four-channel shape's packed per-channel selector
+    levels          mask 0x0c00   field 5, the split-pair marker
+    text            mask 0x3003   field 0 (21 records) and align_flag
+    fxmaps          mask 0xc000000 (23 records)   directionalwarp mask 0x60 (4 records)
+    distance        mask 0x30 (20 records)
+
+`transformation`'s six bits are the biggest of these — 232,273 records set bit 0 — and two
+values cover 98.2% of the filter. They are not named here: what distinguishes 0b111111 from
+0b011111 is bit 5, and naming a packed enum from its frequency is exactly the inference the
+`normal` field-1 work retracted. `assume.QUESTIONS['transformation.w1low']`.
+
+`distance`'s `w1` bits 0–1 show as unnamed-costed and are not a gap: field 0 is the optional
+mask INPUT's declaration, which SPEC 13.4 states and deliberately does not name as a parameter.
+
+## What is fully accounted, per filter
+
+Taking "accounted" as: every set bit is either named, or costed with the slot it names
+verified by its own loud check, or free/constant and therefore placing nothing.
+
+    fully accounted, nothing costed-and-unnamed
+        blend, transformation, levels, directionalwarp, warp, gradient, uniform, blur,
+        dirmotionblur, distance, normal, bitmap, sharpen, curve, hsl, text, pixelprocessor
+        — 17 filters, 843,795 records — subject to the two mislabels above, which move no
+        word: pixelprocessor's class-block offset, and the names this section adds for
+        26/27 and uniform 25.
+
+    not fully accounted
+        emboss        450 program slots that hold no program; a grid shift and an unpinned
+                      intercept, written up above and not applied
+        shuffle       class bit 26, 10 records, one costed word with no name
+        dyngradient   class bits 25 (95 records) and 26 (5), a baked/program pair, described
+                      but not named
+        fxmaps        class bit 22, 3 records (out of scope here, and read: $outputsize)
+        vectorshape, filter9   no cost model at all; both out of scope
+
+The `levels` section proved its filter has no unread BYTES as well as no unread bits. That
+half is not repeated for seventeen filters here: `audit_corpus.py` already reports the byte
+side per filter, and on today's corpus it gives 99.25% of record bytes interpreted overall,
+with the per-filter residual dominated by the same two things the `levels` walk found — the
+two-byte alignment pad and `fxmaps` entry tables charged to whichever record's extent they
+physically fall inside.
+
+## What this section got wrong on the way
+
+* The first census asked `render2.model._covered_bits` alone and reported `blend`'s
+  `blendingmode` (310,697 records) and `fxmaps`' four `PARAM_SPEC` fields as unnamed. Three
+  name tables exist and it knew about one.
+* It also reported class bits 26 and 27 as unnamed on 102,195 records. Bit 27 was named in
+  this file, under class-bit numbering, as `$pixelsize` — the census found the manifest
+  confirmation independently and only then found the earlier section. Bits 20 and 21 went the
+  same way. A bit census over a project this size needs to read its own notes first; two of
+  the three "open" class bits were answered and the answers had simply never reached SPEC.
+* The probe that names a `w1` field from its program arm's operand keyed its "is this field
+  already named" test on `(filter, field)` where it meant `filter`, and reported every named
+  field in the corpus as unnamed on its first run. It was caught because `levels`' five level
+  parameters appeared in the output.
+* The starting-point script for the census read `words[1]` whenever `hdr >= 2`, using a key
+  `decompose` does not return, and would have counted `uniform`'s edge slot as a field grid.
+
+## Correction to the `emboss` reconstruction above, made before it landed
+
+The section above reports the shifted grid reproducing `emboss`'s fitted header length on
+371 of 375 records and leaves four "not explained here". They are explained: all four are
+`Hammered_Copper_01` records 1229, 1231, 1470 and 1472, whose class word is `0x0b99` rather
+than the filter's usual `0x0819` — they set class bit **23**, `$randomseed`, which the base
+term above did not include. `emboss` sets that bit on exactly 4 records and they are these.
+
+With bit 23 counted, the base is `2 mask words + 2 image inputs + bit 23 + bit 27 + bit 16`
+and the model is exact:
+
+    shift-1 grid, fields 0/1 scalar and 2/3 per-channel     375 of 375 covered emboss records
+
+which is the standard `derive_costs` keeps a filter at, and it is reached with the intercept
+pinned to the record's own base region and every coefficient a type width. The four records
+also read as the parameters they should: 3.36 and 10.0 at field 0, 0.25 at field 1.
+
+Left as two paragraphs rather than one because this file does not edit what it has written,
+and because the sequence is the useful part: a reconstruction that is exact on 99% of a
+population and misses four records is usually missing a term, not facing an exception, and
+the term here was a bit the census had already counted four records of.
+
+## The class-block order, measured a second time by a different arbiter
+
+Worth recording separately because it is a second, independent confirmation of the order the
+`levels` section derived from component counts, and it uses none of the same machinery: no
+program is evaluated, only the manifest identifier of the graph input each slot's first
+`inputref` names.
+
+    records setting BOTH class bits 16 and 23, excluding pixelprocessor      46,118
+      the FIRST class slot names `$randomseed`                    46,118 of 46,118  100.00%
+      the SECOND names `$outputsize`                              45,628            98.94%
+        the other 490 hold a size program that does not open with a bare `inputref`
+        (`const … add`, and three fxmaps records naming `pcloud_meta` / `pcloud_size`)
+
+The count 46,118 is the `levels` section's own, reached from a different direction, and the
+first-slot column is exceptionless where the component-count measurement was 46,118 of 46,118
+on the same population. Two arbiters, one order.
