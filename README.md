@@ -115,10 +115,10 @@ when the `valid_program` floor was retired, and the byte row, which moved 6.75 p
                                            records that HAVE no parameter slot. 95.6426%
                                            since the floor went; it was 95.6393%
     edge slots resolved          100.00%
-    record bytes interpreted       99.26%  was 92.5%, which was honest when taken: on its
+    record bytes interpreted       99.31%  was 92.5%, which was honest when taken: on its
                                            own definition today's tree gives 96.50%, and
-                                           99.26% crediting every payload reader - see below.
-                                           99.77% once the two-byte alignment pad is
+                                           99.31% crediting every payload reader - see below.
+                                           99.82% once the two-byte alignment pad is
                                            labelled, which is a fourth tier and not a decode
     record layout by mask-walk     99.97%  (only vectorshape, provenance-walled, left)
 
@@ -257,21 +257,43 @@ and by the walk migration reaching programs the layout table could not name — 
 the rest was never undecoded, only unmarked.
 
 What is left is 2,123,232 bytes, 0.746%, and 68.5% of that is the two-byte alignment pad —
-727,441 runs of `00 00` inside a record extent, every one with a decoded structure on each
+729,629 runs of `00 00` inside a record extent, every one with a decoded structure on each
 side. **The pad is now labelled rather than counted as uninterpreted, and it is a FOURTH
 tier rather than a widening of the third**, because crediting it moves no byte from
-undecoded to decoded: `+ every payload reader` still reads 99.261% and the new line reads
-**99.773%**, leaving 646,476 bytes, 0.227%. The audit prints that split, per filter, with a
+undecoded to decoded: `+ every payload reader` still reads 99.307% and the new line reads
+**99.820%**, leaving 511,036 bytes, 0.180%. The audit prints that split, per filter, with a
 classification of what remains.
 
-The residual after the pad is **646,476 bytes**, and it partitions: 332,766 of FX tree that
-no walk in the file reaches — 187,356 charged to `fxmaps`, 114,722 to `levels`,
+The residual after the pad is **511,036 bytes**, and it partitions: 197,326 of FX tree that
+no walk in the file reaches — 52,044 charged to `fxmaps`, 114,674 to `levels`,
 `transformation` and `blend` because the directory is a partition, 6,012 to `vectorshape` —
 166,332 of `vectorshape` payload past what its reader credits (one real payload-extent bug,
 13 records, fix written up as a patch and not applied), 131,068 in two constant-fill image
-blobs in a single specimen, and 16,310 everywhere else. By filter the top two are `fxmaps`
-191,098 and `vectorshape` 172,344. See FORMAT-NOTES.md, "`fxmaps`' 802,940 uninterpreted
-record bytes".
+blobs in a single specimen, and 16,310 everywhere else. By filter the top two are now
+`vectorshape` 172,344 and `transformation` 113,942; `fxmaps` is 55,786, down from 191,098.
+See FORMAT-NOTES.md, "`fxmaps`' 802,940 uninterpreted record bytes".
+
+**135,440 bytes of that came off the FX row — 40.7% of the whole FX gap — and the repair the
+notes proposed for it is withdrawn as stated.** SPEC §8 proposed widening `fx_table`'s
+next-pointer search to the cell's stated width. Measured, that makes the residual worse
+(18,856 → 31,030 unreached bytes over 60 files), because `0x00020008` is a two-word cell
+whose slot 2 is the *next* cell's tag word rather than a pointer; and fixing the off-by-one
+in the width reverses the direction but still costs 35 real entries, because moving the
+choice resolves `0x00020018` and `0x00010008` in opposite directions. What works is the same
+observation with no choice moved: **a cell that names two forward structures gets both
+followed.** Two more things were wrong beside it — the handoff between the node chain and the
+paramset table only ran one way, so a table run landing on a node header stopped the whole
+walk; and the chain's two-word links were traversed without ever being reported.
+
+The result is an extension and not a wider net. Over the corpus 39,839 of 41,164 `fxmaps`
+records walk identically, 1,322 gain items with the old list an exact ordered subsequence
+every time, and 3 are altered — three bit-7-clear leaves losing a program attribution that
+`walk_partition` reports as reading a neighbour's constant. `fx cell not reached` goes
+183,804 → 70,940; `walk_partition` holds at 32 FX violations on 73,964 → 75,557 attributions;
+and on the only ground-truth check in the repository, `Chesterfield`'s basecolor rises
++0.60/+0.65/−0.72 → +0.75/+0.77/−0.68 and its roughness +0.90 → +0.93, with four
+`REFERENCE_FLOOR` entries ratcheted up. See FORMAT-NOTES.md, "A cell with two forward
+pointers loses one, so follow both".
 
 **The 8-byte FX entry stub was already fixed, and this is what it was worth.** `bytes-audit`
 found FX entries credited a fixed 8 bytes rather than their stated extent and fixed it in the

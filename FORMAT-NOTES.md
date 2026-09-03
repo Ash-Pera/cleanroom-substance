@@ -46558,3 +46558,331 @@ off. 437 files, ~2 minutes. The 8-byte-stub A/B and the unreached-cell naming ce
 one-off probes outside the tool; the stub arm is one line of `_byte_canvas` (`mark(off,
 off + 8, _FXENTRY)` in place of the extent block) and the census is a search of the body for
 each unreached cell's `offset − 52`.
+
+# A cell with two forward pointers loses one, so follow both: 135,440 bytes of FX tree
+
+The brief was to verify SPEC 8's proposed repair for the 332,766 bytes of FX cells no walk
+reaches — "searching every slot up to the cell's stated width instead of up to the count of
+parameters its tag declares" — and to implement it if it held. **As written it does not hold:
+it makes the residual worse, twice, for two different reasons.** What holds is the same
+observation with the choice removed — a cell that names two forward structures gets BOTH
+followed, not a different one of the two. That, plus a handoff that only ran in one
+direction and a chain link the walk stepped over without reporting, takes the corpus
+residual from 646,476 to 511,036 bytes and the `fx cell not reached` class from 183,804 to
+70,940.
+
+## First: the diagnosis reproduced, and where the census pointed wrong
+
+`audit_corpus.py`'s classifier gives 721 unreached cells / 18,856 bytes over the first 60
+corpus files, matching SPEC 8 exactly, and the census SPEC quotes — "216 named by a word at
+slot <= 12 of a cell the walk does reach" — reproduces on every family the two share.
+
+**But slot <= 12 is not a bound, and one row of that census is an artefact of it.** A namer
+must lie inside the naming cell's own STATED width or it belongs to the next cell along.
+Under that bound `0x20018 w6` (7 in SPEC's list, 29 when the window is 12 words) drops out
+entirely. The rows that survive partition by the rule that DECLINED each slot:
+
+    named only from within another UNREACHED cell (a cascade tail)        512
+    PCELL: the chain's next-in-list slot 1                                 82   0x9 w1 (70), 0x49 w1 (12)
+    ENTRY: the search DID pick it -- the run stopped for another reason    47   0x14420248 w2 (37), 0x20008 w1 (10)
+    ENTRY: a nearer forward pointer, the search took the furthest          37   0x410008 w2 (16), 0x420008 w2 (12), …
+    NODE: a field slot the mask spends elsewhere                           27   0x89 w2 (10), 0x1db w3 (6), 0x99 w3 (6), 0x1cb w2 (5)
+    PCELL: the payload slot                                               14   0x14b w2 (10), 0x24b w2 (4)
+    ENTRY: a slot past the layout search bound                              2   0x10008 w3
+
+Read as a bound-widening, the proposed repair addresses the last row: **2 cells of 721.**
+
+## Two ways of widening the bound, and both are wrong
+
+**(1) `fx_entry_walk_end` as the width.** It is the tag's own mask walk and it counts the
+structural bits 4, 7, 16 and 17 that `fx_entry_layout` drops, so it is the natural reading of
+"the cell's stated width". Over 60 files it takes the unreached total **18,856 -> 31,030
+bytes** and changes 3,026 of 41,164 `fxmaps` records. Capping the new bound below at the old
+one gives byte-for-byte the identical worse result, which locates the damage in the widening.
+
+The tag that does it is `0x00020008`, the commonest entry at 50,965 occurrences, and this
+file already contains the sentence that explains it: bit 17 "is a pointer word, not a
+parameter", so the layout is empty and the cell is TWO words. Its slot 2 is therefore the
+**next cell's tag word**. Of 5,657 such entries the widened search changes the target on 411,
+onto `0x3F800000`, `0x00310910`, `0x00070004`, `0x00000D00` — floats, bytecode and small
+constants.
+
+**(2) The same thing with the off-by-one fixed.** `fx_entry_walk_end`'s docstring says "first
+slot the walk does not use" and it returns the LAST slot used, so the width in words is that
+number and the searchable slots are `1 .. width-1`. Applied that way, and only where it
+widens, the direction reverses: 60-file unreached goes **15,240 -> 10,162**. But it still
+MOVES the choice, and it moves it wrongly for `0x00010008`:
+
+    0x93898  00010008                       0x938ac  35000448   <- the real next entry,
+      +1  -> 0x938ac    (contiguous)                                contiguous, with its
+      +2  -> 0x938ac                                                own program
+      +3  -> 0x93968    (a 0x00020008 link whose own slot 1 points BACK to 0x938ac)
+      +4  0
+
+Furthest-forward picks +3, the walk lands on the link, the link's next-pointer is backward,
+and the run dies — with the real entry skipped. **313 records lose 315 entries; 280 of those
+are the one-word `0x0000000b` dead end this repair is FOR, and 35 are real entries carrying
+programs.** `0x00020018` and `0x00010008` are resolved in opposite directions by the same
+rule and nothing in the tag separates them. Recorded as a wrong turn rather than deleted,
+because the second version looks right on the byte count alone and only the item-level A/B
+shows the 35.
+
+## What holds: follow both, and change nothing about the step
+
+`fx_table` steps by the slot reaching furthest forward over the slots the tag's PARAMETER
+layout declares. Leave that exactly as it is. Where the layout is EMPTY, additionally enqueue
+the cell's other forward targets — within `fx_entry_walk_end(tag)` words, gated by
+`entry_layout_holds` — as further table starts. Nothing can be lost by construction:
+
+    unreached FX bytes, 60 files      15,240 -> 10,162   (the same cells the moved choice reached)
+    `abuts an fx cell`, 60 files       7,816 ->  6,272
+    records altered corpus-wide                     0
+
+`0x00020018` is the case SPEC describes and it now reads out whole:
+
+    0xcbf90  0x00020018  [tag][-> the 0x0b leaf][-> the next cell]
+    0xcbf9c  0x0000000b  one word
+    0xcbfa0  0x00020018      … three of these …
+    0xcbfd0  0x14540E48  the real entry, with its program
+
+The step still takes slot 1 and still reaches the leaf; slot 2 is followed as well instead of
+instead-of, so the leaf stays and the chain continues.
+
+## And the handoff runs both ways
+
+`fx_walk`'s own docstring states that a chain does not end on a null — it ends by pointing at
+the first table entry. The converse is also true and nothing implemented it. `fx_table`
+follows an entry's next-pointer, lands on a bit-7-set node header, and `break`s; the walk
+stopped with it, so every node past that point and every table THOSE nodes hand off to was
+read by nothing.
+
+`TravertineSubstance001` record 1128 is the shape. The chain is `0x18B` -> `0x89`, hands off
+to eight entries, and the last one's slot 2 addresses `0x74408` — a `0x89` node identical in
+kind to the one at `0x73DF0` that the same record walked twelve entries earlier. The record
+runs 0x73D14..0x74758 and the walk stopped at 0x74408.
+
+Over 60 files the run stops on such a word **40 times**. Four tests, each independent of the
+decision to follow it:
+
+    the tag is carried by a node THIS record's walk already yields   37 of 40
+    the cell's stated extent lands on a tag or a program             37 of 40
+    the program its mask declares resolves                           37 of 40
+    its successor is a cell of a known kind                          37 of 40
+
+Unanimous, and the same 37 every time. The other 3 are `0x3E999999` and `0x3F599999`:
+FLOATS, whose low byte ends in 0x99, which `node_shape`'s nibble rule therefore hands a shape
+to. Continuing from the 37 reaches **148 further cells, 148 of 148 of them bytes
+`audit_corpus` independently classified `fx cell not reached`, and 148 of 148 with their own
+stated extent landing exactly on a program start.** Zero land on a byte any reader had
+already credited.
+
+**The gate is frozen before the continuation fires.** `vocab` is taken from the first chain
+run and never grows, so a node reached by this rule cannot admit the next one. Letting it
+grow would be the rule licensing itself, which is the circularity the byte row already has a
+retraction about.
+
+## And one cell was traversed all along and never reported
+
+`fx_tree`'s pointer-cell loop walks the alternating list
+
+    [0x9][next][payload]  [0x00020008][next]  [0x9][next][payload]  …  [0x49][next][payload]
+
+by each element's slot 1, every pointer cell's slot 2 naming the same shared `0x?4B`. It
+yields the `0x9`/`0x49` cells and steps over the `0x00020008` links. Its comment says "only
+the pointer cells are yielded; the links carry nothing" — true about PAYLOAD, read as if it
+were true about existence. The link's two words are traversed, sized (slot 1 IS the step) and
+understood, and were the one structure in this walk that nothing named. 91 of the 721
+unreached cells over 60 files are these; yielding them is -2,832 bytes corpus-wide.
+
+**One guard was needed and the first attempt was wrong.** Yielding on `hi16 == 0x0002` alone
+made a link `last`, the cell `fx_walk` reads the handoff shape out of. `Splatter.sbsasm`
+record 242 lost its only entry: its root is `0x0002711B`, a `0x??1B` BRANCH whose high half
+happens to be 0x0002, reached by the 0x1B arm and not by this loop at all. A link ends in
+nibble 8 and a branch does not; both the yield and the `last` guard test the nibble.
+
+## The one thing that had to be BOUNDED rather than reached
+
+Reaching past a `0x0000000b` leaf exposed a defect in `fx_table`'s nibble-9/B disjoint-span
+scan that had been invisible because such a leaf was always the last thing the walk saw.
+The scan is bounded by "the element's own stated extent", read as its slot-1 step — and a
+one-word leaf has no step to read, because its slot 1 IS the next cell's tag. So the scan ran
+its full 14 words straight through the neighbour. The moment the chain continues past one,
+`walk_partition` sees it: **30 new violations, every one of the shape "a program at +7 or +11
+words of a 1-word structure".**
+
+`leaf_successor` and `pointer_cell_successor` are the same mask rule the rest of the file
+reads a width from, and capping `_lim` with them puts the check back to 32 of 32. It costs 91
+program attributions, **88 of which this continuation had just invented** and 3 that predate
+it. The 3 are worth naming, because they are what the trespass looks like:
+
+    Planks.sbsasm rec 939   a 0x0b leaf "names" a program at 0x2004C = 0x00020018 + 52
+    Planks.sbsasm rec 940   the same, the neighbouring chain link's TAG word read as a pointer
+    Fractal_Sum_Animated rec 0   a 0x3C10B leaf at 0xD34 = 0x00000D00 + 52, a constant
+
+This scan's own note already recorded that NOT ONE of the 59 programs it used to yield from
+these words lay inside the element it was attributed to. Removing them is the correction that
+note argues for.
+
+## The A/B, both ways, over the whole corpus
+
+`fx_walk` item lists keyed by full path and record index, 437 files / 41,164 `fxmaps`
+records, against a pinned copy of the previous `sbsasm.py`:
+
+    identical                                                        39,839
+    EXTENDED -- items appended, +1,148 node and +5,029 entry          1,322
+      of which the old list is NOT an exact ordered subsequence           0
+    ALTERED                                                               3
+      all three a bit-7-clear leaf losing a program attribution that
+      walk_partition reports as a trespass; the 3 listed above
+
+`audit_corpus.py`, whole corpus, before and after:
+
+                                            before        after
+    interpreted, header slots only          7.397%       7.397%
+    + program bodies                       96.499%      96.499%
+    + every payload reader                 99.261%      99.307%
+    accounted, + the 2-byte alignment pad  99.773%      99.820%
+    uninterpreted                          646,476      511,036  bytes  (0.227% -> 0.180%)
+
+    fx node cell                         1,061,724    1,076,724    +15,000
+    fx entry                             3,453,044    3,569,108   +116,064
+    alignment pad                        1,454,870    1,459,246     +4,376
+                                                                  --------
+                                                                   135,440
+
+    fxmaps  uninterpreted                  191,098       55,786   98.63% -> 98.86% interpreted
+
+    classified (pad excluded)               before        after
+      fx cell not reached                  183,804       70,940   -61.4%
+      abuts an fx cell                     148,962      126,386
+      other                                312,660      312,660   unchanged
+      zeros, not the pad                     1,050        1,050   unchanged
+
+Nothing moved out of `other` or `zeros`: every credited byte came from one of the two FX
+classes, which is the precision statement for a reach change.
+
+Additive by piece, over 60 files: the link yield alone -656, the node handoff alone -2,960,
+the two together -3,616 exactly, and the both-pointers rule a further -5,078 on top with
+another -1,544 out of `abuts an fx cell`. Corpus-wide the link yield alone is -2,832.
+
+**`levels`, `transformation` and `blend` barely moved, and that is not a failure of the
+repair.** The brief expected all four filters to move. `transformation` gives up 28 bytes and
+`blend` 20; `levels` gives up none. Both repairs act on structures that lie inside `fxmaps`
+extents, so 135,392 of the 135,440 came off the `fxmaps` row. What DID collapse is
+`fxmaps`' own `abuts an fx cell` share, 23,036 -> 540: the bytes that merely touched a
+reached cell are now inside one. The 114,674 bytes of FX tree charged to the other three by
+the directory partition are a NEIGHBOUR's structure and they close when that neighbour's
+cells are reached, not when these three are looked at.
+
+## The guards
+
+    walk cursor == stated header length          903,301 / 903,301   unchanged
+    edge slots holding a backward index        1,302,475 / 1,302,475 unchanged
+    state-2 slots resolving a program            198,249 / 198,249   unchanged
+    decompose end/inputs/hdr/param_slots/prog/cls_slots/root
+                                                 identical digest over all 437 files
+    walk_partition, 200 files                    32 FX violations before, 32 after,
+                                                 on 73,964 -> 75,557 attributions
+    reverify.py                                  0 of 9 exact-share claims no longer hold
+
+`walk_partition` is the load-bearing check for a reach change: 1,593 new attributions and not
+one new violation, so every program the new cells name lies inside the new cell's own stated
+extent. Its header, pointer-bound and overlap sections are byte-identical. It is also what
+caught the leaf-scan trespass above — the 30 it reported were real and are gone, not
+suppressed.
+
+    ./t                                                19 passed
+    pytest test_fx.py test_bitmap.py                   20 passed
+    pytest render2/test_render2 test_text test_sampler 27 passed
+    pytest test_filters.py test_tables.py              20 passed
+
+## The render, and four floors ratcheted up
+
+The corpus A/B cannot speak for the ground-truth check: `nonwalked.blind_spot` records that
+`corpus.paths()` and the reference packs are DISJOINT. The same `fx_walk` A/B over the 8 pack
+files gives **737 `fxmaps` records, 729 identical, 8 extended (+12 node, +25 entry), 0
+altered** — one in `ChesterfieldSofa`, two each in `RoofTiles`, `RoofTiles_1.1` and
+`StylizedCobblestoneStreet`, one in `Rusty_Metal`. `Auras` and `Bricks` are bit-identical, so
+their renders cannot have moved at all.
+
+On `Chesterfield`, measured same-moment against a pinned copy of the previous `sbsasm.py`
+with everything else in the tree held:
+
+    basecolor 0   +0.598532 -> +0.749719        roughness 0   +0.895610 -> +0.929901
+    basecolor 1   +0.654372 -> +0.766159        normal 0/1/2, metallic, height, AO
+    basecolor 2   -0.721604 -> -0.677258          identical to six decimals
+
+`REFERENCE_FLOOR` is ratcheted up accordingly: basecolor 0 to 0.72, basecolor 1 to 0.74,
+basecolor 2 to -0.70, roughness to 0.90. The roughness comment beside it read "now 0.854" and
+measured 0.8956 before this change, so that annotation had drifted and is re-taken.
+
+Chesterfield basecolor ch2 is STILL anti-correlated and this does not fix it — the fault is
+the nine mode-7 switch blends in its colour chain, which nothing here touches. It is less
+wrong, not right, and its floor still reads as "do not get more inverted than this".
+
+What is worth noticing about the size of that move: ONE record of 737 shifted four scored
+channels by 0.03 to 0.15. That is the blind spot working exactly as `nonwalked` describes it,
+and it is why the structural evidence — the stated extent landing on a program,
+`walk_partition`'s zero — is what carries this change rather than the render. A repair that
+had over-reached would have moved these numbers too.
+
+## What is left, and the two bounds that do not reach it
+
+316 cells / 10,162 bytes over the same 60 files, from 721 / 18,856. 228 are named only from
+within another unreached cell — the cascade tail. The rest, one hop out:
+
+    entry, a nearer forward pointer the max rule drops   37   0x410008 w2 (16), 0x420008 w2 (12),
+                                                              0x2520448 w2 (6), 0x2510448 w2 (2)
+    a node field slot the mask spends elsewhere          27   0x89 w2 (10), 0x1db w3 (6),
+                                                              0x99 w3 (6), 0x1cb w2 (5)
+    a pointer cell's payload, the cell reached as an
+      ENTRY rather than through the chain                14   0x14b w2 (10), 0x24b w2 (4)
+    0x20008 slot 1, the run stopped for another reason   10
+
+The `0x00020008` chain-link class is gone entirely, and so is the "slot past the layout bound"
+row.
+
+The 27 include `0x1db`'s first child. That one is diagnosed in `node_shape`'s docstring and
+deliberately not walked: correcting it changes what 23 records draw, no specimen carrying a
+`0x1db` ships an export, and "it would double the patterns in 23 records" is the argument this
+project refuses.
+
+The 37 are the SAME shape as the repair above — two forward pointers, one taken — but on tags
+whose layout is NOT empty, where the both-pointers rule does not apply because the search
+already covers the slots. Two candidate bounds were measured for them and **both fail**:
+
+* **Bit 16's four-word structural field as a `[start, end]` pair.** `0x00410008` holds its
+  slots 2 and 3 equal and its slots 4 and 5 equal, the second pair further forward, and the
+  max rule takes the second — exactly the shape of a range whose interior is skipped. But
+  only **42 of 359** bit-16 entries over 120 files have both pairs duplicated and ordered
+  (59 have the first pair equal, 77 the second). A shape that holds on 12% of its own
+  population is a coincidence with a story.
+* **"The successor is the pointer that abuts the entry's own program."** The entry's furthest
+  program end is among its own pointers in only **6,692 of 23,496** entries, and is a NEARER
+  pointer than the furthest in 2,826. Adopting it would move 2,826 successors to recover 37
+  cells.
+
+Extending the both-pointers rule to non-empty layouts is the obvious next thing and is NOT
+done here, because that rule's safety comes entirely from `entry_layout_holds` being applied
+to a population the search does not already cover, and a sweep over parameter slots is a
+different population — it includes the tag's own program pointers, which resolve by
+construction. That needs its own containment test before it is worth an A/B.
+
+A blanket closure was tried first and is refuted, which is why every rule above is narrow.
+Following every forward pointer every reached cell's tag declares, over 60 files, reaches
+12,244 new cells against 721 unreached ones; 68.8% of their stated extents fall short of the
+next structure and 5.0% overrun it. It is reading program words as tags. "Reach more" is not
+the thing to optimise.
+
+## How to re-take every number here
+
+    python3 archive/tools/audit_corpus.py                     # the tiers and the classified table
+    python3 archive/tools/bit_census.py --check               # two of the three invariants
+    python3 -c "import sys;sys.path.insert(0,'tools');sys.path.append('archive/tools');import walk_health;walk_health.main([])"
+    python3 -c "import sys;sys.path.insert(0,'tools');sys.path.append('archive/tools');import walk_partition;walk_partition.main(['200'])"
+
+The A/B is `fx_walk`'s item list per record dumped from two checkouts and diffed — keyed by
+FULL PATH, not basename: two corpus files share a basename 39 times, and a basename-keyed
+first run reported 40,623/502 where the truth was 40,661/503. The naming census is a search
+of the body for each unreached cell's `offset - 52`, bounded by the naming cell's own stated
+width, which is the correction this section opens with.

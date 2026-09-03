@@ -731,8 +731,9 @@ discriminated by the tag word's **low nibble**:
   masks (`0x55300158` dropped against `0x05300758` walked, constant across every file — they
   cook from one template). Whether the engine draws both children or selects one is **not
   established**: no specimen with a `0x1db` ships an export.
-- **nibble 8 → a paramset table entry**, *not* a node. The entries are a **linked list**:
-  each entry stores a pointer to the next one — the header slot reaching furthest forward,
+- **nibble 8 → a paramset table entry**, *not* a node, and **the run can end by handing back
+  to a node** — the mirror of the chain ending on an entry tag. The entries are a
+  **linked list**: each entry stores a pointer to the next one — the header slot reaching furthest forward,
   past the entry's own inline program. The entry ends at its inline program, whose length the
   program states itself (a `u16` instruction count in its first word), so the entry extent is
   the program's structural length, not a tabled stride. (An earlier `FX_ENTRY` stride table
@@ -741,34 +742,105 @@ discriminated by the tag word's **low nibble**:
   entries the strided walk stopped short of, with zero phantoms.)
 - **high half `0x0002` → a chain** — the commonest entry, `0x00020008`, whose slot-1 pointer
   is the next-pointer 100% of the time. These are structural linked-list cells, not
-  independent pattern draws, and are excluded from both node sizing and emission.
+  independent pattern draws, and are excluded from both node sizing and emission. The cell
+  is **two words**, and the list strictly alternates with the three-word pointer cell:
+  `[0x9][next][payload] [0x00020008][next] [0x9][next][payload] …`, every pointer cell's
+  payload naming the same shared `0x?4B`. The walk steps through the link by its slot 1 and
+  now reports it; it did not, so its two words were the one structure in the walk that
+  nothing named — 91 of the 721 unreached cells over 60 files, traversed all along, and
+  2,832 bytes corpus-wide. Guard on the LOW NIBBLE: `0x0002711B` is a `0x??1B` branch whose
+  high half happens to be 0x0002, and treating it as a link costs `Splatter.sbsasm` record
+  242 its only entry.
 
 **A cell with two forward pointers loses one, and this is general rather than `0x1db`'s
 special case.** The paragraph above states it for `0x1db`; measured from the byte side —
-every run of record bytes no reader can label, over the whole corpus — the same shape
-appears on a dozen tag families. Corpus-wide **332,766 bytes are FX cells no walk in the file
-reaches** — 183,804 of them opening on a tag, the rest abutting a cell that does — and
-114,722 of that total lies inside `levels`, `transformation` and `blend` extents rather than
-`fxmaps` ones, because the record directory is a partition and not an allocation. Over a
-60-file sample there are
-721 such cells; **715 are the target of a 4-aligned word somewhere in the body** and 216 are
-named by a word at slot ≤ 12 of a cell the walk *does* reach, i.e. exactly one hop out. By
-the naming cell's tag and slot: `0x9` w1 (70), `0x14420248` w2 (37), `0x410008` w2 (16),
-`0x49` w1 (12), `0x420008` w2 (12), `0x89` w2 (10), `0x14b` w2 (10), `0x20008` w1 (10),
-`0x20018` w6 (7), `0x1db` w3 (6), `0x99` w3 (6), `0x1cb` w2 (5).
+every run of record bytes no reader can label, over the whole corpus — the same shape appears
+on a dozen tag families. It was **332,766 bytes of FX cells no walk in the file reached**,
+183,804 of them opening on a tag and the rest abutting a cell that does; it is **197,326**
+now, 70,940 opening on a tag, after the repairs below.
 
-For an ENTRY the mechanism is the next-pointer search itself: "the slot reaching furthest
-forward" is searched only over the slots the tag's layout declares, so a tag whose layout is
-empty is searched at slot 1 alone. `0x00020018` is three words, `[tag][→leaf][→next cell]`;
-searched at slot 1 the walk takes the one-word `0x0000000b` leaf and the chain ends there.
-Searching every slot up to the cell's stated width instead of up to the count of parameters
-its tag declares is the obvious repair and is **not verified here**: what is established is
-that the bound is the declared parameter count and that the targets it drops are structure
-something in the file names. Neither the `FX_TAG_LOW16` vocabulary nor "the tag names a
-program and one of them resolves" identifies these cells on its own: the first admits
-`0x09130008`, which is 2,322 u32s straddling two instructions, and the second rejects
-`0x00420008`, which names a program at slot 3 and in 33 unreached cells over 120 files holds
-that program INLINE there rather than a pointer to it.
+**The fix is to follow BOTH, not to move the choice.** `fx_table` steps by "the slot reaching
+furthest forward" over the slots the tag's *parameter* layout declares, so a tag whose layout
+is empty is searched at slot 1 alone: `0x00020018` is `[tag][→leaf][→next cell]` and slot 1 is
+a one-word `0x0000000b` leaf, so the chain dies on a dead end with the real continuation
+unread at slot 2. Leave the step exactly as it is and enqueue the cell's *other* forward
+targets — within the tag's stated width, and only where the layout is empty — as further
+table starts. Nothing can be lost by construction.
+
+**Widening the search instead is wrong, and it is wrong twice.** Searching to
+`fx_entry_walk_end` sends `0x00020008` — 50,965 entries, a TWO-word cell whose slot 2 is the
+*next* cell's tag word — off the list on 411 of 5,657, onto floats and bytecode: unreached
+bytes 18,856 → 31,030 over 60 files. Correcting that off-by-one (`walk_end` is the last slot
+used, so the width is that number of words and the slots are `1 .. width-1`) reverses the
+direction, 15,240 → 10,162, but still moves the choice, and `0x00010008` then takes a far
+back-referencing link over the contiguous next entry: 313 records lose 315 entries, 35 of
+them real ones carrying programs. The furthest-forward rule resolves `0x00020018` and
+`0x00010008` in opposite directions and nothing in the tag separates them, which is why the
+choice must not be the thing that moves.
+
+**The handoff also runs both ways.** A chain ends by pointing at the first table entry, which
+this section states. Symmetrically a table run ends by pointing at a **node**: `fx_table`
+follows the entry's own next-pointer, lands on a bit-7-set header, and stops — and the whole
+walk stopped with it, so every node past that point, and every table *those* nodes hand off
+to, was read by nothing. Over 60 files the run stops on such a word 40 times; **37 of the 40
+carry a header the same record's own chain already yields**, and following those 37 reaches
+**148 further cells — 148 of 148 of them bytes the byte audit independently classified `fx
+cell not reached`, and 148 of 148 with the cell's own stated extent landing exactly on a
+program start.** The other 3 are `0x3E999999` and `0x3F599999`: floats whose low byte ends in
+`0x99`, which the node-header mask rule therefore hands a shape to. Four independent tests
+separate the two populations unanimously, 37 against 0 on each — the tag appears on a node
+this record's walk already reaches, the stated extent lands on a tag or a program, the
+declared program resolves, and the successor is a cell of a known kind. Only the first is
+used, because it is the one that is not a value probe, and it is frozen before the
+continuation fires so the rule cannot licence itself.
+
+One thing had to be **bounded** rather than reached. The nibble-9/B disjoint-span program
+scan is capped by "the element's own stated extent", read as its slot-1 step — and a one-word
+`0x0000000b` leaf has no step to read, because its slot 1 *is* the next cell's tag, so the
+scan ran its full 14 words through the neighbour. Invisible while such a leaf was always the
+last thing the walk saw; the moment the chain continues past one it is 30 violations of the
+shape "a program at +7 words of a 1-word structure". The mask states the width
+(`leaf_successor`, `pointer_cell_successor`) and capping with it removes 91 attributions, 88
+of them ones the continuation had just invented and 3 that read a neighbouring constant —
+`0x00020018 + 52`, `0x00000D00 + 52` — as a pointer.
+
+Over the whole corpus 39,839 of 41,164 `fxmaps` records walk identically, 1,322 gain items
+(+1,148 node, +5,029 entry) with the old list an exact ordered subsequence every time, and 3
+are altered — the three leaf attributions above. `walk_partition` holds at 32 FX violations
+while attributions rise 73,964 → 75,557, so all 1,593 new attributions stay inside their own
+structure's stated extent.
+
+**What is left.** 316 cells / 10,162 bytes over the same 60 files. 228 are named only from
+within another *unreached* cell — a cascade tail that moves when its head does. The rest are
+one hop out, by the naming cell's tag and slot:
+
+    entry, a nearer forward pointer the max rule drops   37   0x410008 w2 (16), 0x420008 w2
+                                                              (12), 0x2520448 w2 (6), …
+    a node field slot the mask spends elsewhere          27   0x89 w2 (10), 0x1db w3 (6),
+                                                              0x99 w3 (6), 0x1cb w2 (5)
+    a pointer cell's payload, the cell reached as an
+      ENTRY rather than through the chain                14   0x14b w2 (10), 0x24b w2 (4)
+    0x20008 slot 1, the run stopped for another reason   10
+
+The 27 include `0x1db`'s first child, diagnosed above and deliberately not walked: correcting
+it changes what 23 records draw and no specimen carrying one ships an export. The 37 are the
+same two-forward-pointers shape on tags whose layout is NOT empty, where the both-pointers
+rule does not apply because the search already covers those slots. Two candidate bounds were
+measured and both fail. Bit 16's four-word structural field looks like a `[start, end]` pair —
+`0x00410008` holds its slots 2 and 3 equal, its slots 4 and 5 equal, and the walk takes the
+second pair — but only **42 of 359** bit-16 entries have that shape. "The successor is the
+pointer that abuts the entry's own program" fails harder: the entry's program end is among
+its pointers in only 6,692 of 23,496 entries and is a *nearer* pointer than the furthest in
+2,826, so adopting it would move 2,826 successors to recover 37 cells. Nothing in the tag
+distinguishes the two, and that cannot be settled from the compiled side alone — it needs a
+source declaring two `paramset` continuations off one entry, and none of the 8 permitted
+files with an FX-Map does.
+
+Neither the `FX_TAG_LOW16` vocabulary nor "the tag names a program and one of them resolves"
+identifies these cells on its own: the first admits `0x09130008`, which is 2,322 u32s
+straddling two instructions, and the second rejects `0x00420008`, which names a program at
+slot 3 and in 33 unreached cells over 120 files holds that program INLINE there rather than a
+pointer to it.
 
 Nodes carry the FX-Map parameters (pattern type, size, colour, etc.). The pattern
 *footprint* (`patternsize`) — how large each emitted pattern is on the canvas — is the one

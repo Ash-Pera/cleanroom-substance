@@ -1267,7 +1267,7 @@ REFERENCE_FLOOR = {
     ('Kutejnikov__Bricks_and_tiles', 'emission', 0): 0.88,  # was 0.40, now 0.916-0.940
     ('Kutejnikov__Bricks_and_tiles', 'emission', 1): 0.95,  # was 0.42, now 0.978-0.986
     ('Kutejnikov__Bricks_and_tiles', 'emission', 2): 0.95,  # was 0.42, now 0.981-0.985
-    ('minime453__Chesterfield_PBR_Material', 'roughness', 0): 0.80,   # was 0.26, now 0.854
+    ('minime453__Chesterfield_PBR_Material', 'roughness', 0): 0.90,   # was 0.26 / 0.80, now 0.930
     ('minime453__Chesterfield_PBR_Material', 'metallic', 0): 0.90,    # was 0.29, now 0.952
     # NEW ENTRIES. These channels only became worth ratcheting once the lattice appeared --
     # before it they sat at or below 0.17 and two of them were NEGATIVE.
@@ -1293,9 +1293,24 @@ REFERENCE_FLOOR = {
     # ch2 IS NEW AND IS NEGATIVE, listed for the first assertion. It is the one thing the
     # routing genuinely costs on the pixels, and leaving it unwatched is the exposure the
     # Bricks entries below were added for.
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.55,   # was 0.60, now 0.5985
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.60,   # was 0.72, now 0.6544
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2): -0.78,  # new, now -0.7216
+    #
+    # RATCHETED UP AGAIN by the FX handoff -- see FORMAT-NOTES, "The FX handoff runs both
+    # ways". A table run that ends on a node header now hands back to the chain instead of
+    # stopping the walk, which changes ONE `fxmaps` record in this package (and two in
+    # `StylizedCobblestoneStreet`, which carries no floor). Measured same-moment against a
+    # pinned copy of the previous `sbsasm.py`, everything else in the tree held:
+    #
+    #     basecolor 0   +0.5985 -> +0.7497        roughness 0   +0.8956 -> +0.9299
+    #     basecolor 1   +0.6544 -> +0.7662        every other listed channel identical
+    #     basecolor 2   -0.7216 -> -0.6773
+    #
+    # ch2 is still anti-correlated and its floor still reads as a lower bound on a negative
+    # number: -0.70 says "do not get MORE inverted than this". The fault is the nine mode-7
+    # switch blends in its colour chain, which this does not touch; it is less wrong, not
+    # right.
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.72,   # was 0.60 / 0.55, now 0.7497
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.74,   # was 0.72 / 0.60, now 0.7662
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2): -0.70,  # was -0.78, now -0.6773
     # BRICKS BASECOLOR IS ANTI-CORRELATED AND LISTED ANYWAY. These three sit at -0.70,
     # -0.69 and -0.65: the render is not merely poor, it is inverted against the engine's
     # own export. They are here for the FIRST assertion, not the second. Nothing was

@@ -3979,35 +3979,28 @@ class Record:
                 out = out[1:]
         return out
 
-    def fx_walk(self):
-        """The whole FX-Map structure: the node chain, then the table it hands off to.
+    def _fx_chain_run(self, root):
+        """(node items, table starts) for ONE run of the node chain beginning at `root`.
 
-        Yields ('node', offset, header, program) then ('entry', offset, tag, program),
-        with every offset ABSOLUTE - a file position, not relative to anything.
-
-        The two halves used to disagree: `fx_tree` subtracted the record's start and
-        `fx_table` subtracted `body_lo`, so one interface returned two coordinate systems.
-        Over 2,776 records yielding both kinds, every node offset landed inside the record
-        and 2,753 of the entry offsets did not - a 792-byte record reporting a node at +32
-        beside entries at +2444, +14116 and +36020. Any caller treating them alike was
-        wrong, and `fxdisasm` printed both under the same `+%d`.
-
-        These were treated as two unrelated things, and as two failures: the chain
-        "stopped at an unrecognised header" and a third of records "had no readable
-        content". They are one structure. A chain does not end with a null next-pointer -
-        only 2 of 31,378 do - it ends by pointing at the first table entry, and
-        **97.2% of chains end on a word whose low nibble is 8**, which is what a table
-        entry is.
+        Split out of `fx_walk` and otherwise unchanged. It is a RUN and not the whole
+        walk because the handoff goes both ways: a chain ends by pointing at a table, and
+        a table run ends by pointing at a chain. `fx_walk` is the driver over both.
         """
         last = None
         cells = []
-        for off, hdr, prog in self.fx_tree():
-            last = off
+        items = []
+        for off, hdr, prog in self.fx_tree(root):
+            # A CHAIN LINK IS NOT A HANDOFF. `last` is the cell the handoff block below
+            # reads a shape out of, and a link states nothing but its own step. It was
+            # never `last` before because it was never yielded; this keeps it that way,
+            # so yielding it moves no handoff.
+            if hdr is None or (hdr >> 16) != 0x0002 or (hdr & 0xF) != 8:
+                last = off
             _s = (pointer_cell_payload(self.asm, off)
                   if hdr is not None and pointer_cell_successor(hdr) is not None else None)
             if _s is not None and off + _s + 4 <= self.asm.body_hi:
                 cells.append((off, hdr, _s))
-            yield ('node', off, hdr, prog)
+            items.append(('node', off, hdr, prog))
         start = None
         if last is not None:
             q = last                      # fx_tree yields absolute offsets
@@ -4130,13 +4123,152 @@ class Record:
             starts = [start]
         elif start is not None and start not in starts:
             starts.append(start)
+        return items, starts
+
+    def fx_walk(self):
+        """The whole FX-Map structure: the node chain, then the table it hands off to.
+
+        Yields ('node', offset, header, program) then ('entry', offset, tag, program),
+        with every offset ABSOLUTE - a file position, not relative to anything.
+
+        The two halves used to disagree: `fx_tree` subtracted the record's start and
+        `fx_table` subtracted `body_lo`, so one interface returned two coordinate systems.
+        Over 2,776 records yielding both kinds, every node offset landed inside the record
+        and 2,753 of the entry offsets did not - a 792-byte record reporting a node at +32
+        beside entries at +2444, +14116 and +36020. Any caller treating them alike was
+        wrong, and `fxdisasm` printed both under the same `+%d`.
+
+        These were treated as two unrelated things, and as two failures: the chain
+        "stopped at an unrecognised header" and a third of records "had no readable
+        content". They are one structure. A chain does not end with a null next-pointer -
+        only 2 of 31,378 do - it ends by pointing at the first table entry, and
+        **97.2% of chains end on a word whose low nibble is 8**, which is what a table
+        entry is.
+
+        AND THE HANDOFF GOES BOTH WAYS. A table run ends the same way a chain does, by
+        naming what follows it, and what follows can be a NODE: `fx_table`'s next-pointer
+        lands on a bit-7-set header and the run stops there. This used to stop the whole
+        walk, so everything past that point -- more nodes, and the tables THEY hand off
+        to -- was read by nothing. It is now a driver over both halves: chain runs and
+        table runs alternate until neither names anything new.
+
+        WHAT THAT IS WORTH, and what it is NOT. Over the whole corpus -- this, the chain
+        LINK now yielded by `fx_tree`, and the second forward pointer followed below --
+        39,839 of 41,164 `fxmaps` records walk identically, 1,322 gain items (+1,148
+        node, +5,029 entry) with the old item list an EXACT ORDERED SUBSEQUENCE of the
+        new one every time, and 3 are altered: three bit-7-clear leaves losing a program
+        attribution that `walk_partition` reports as reading a neighbour's constant
+        (`0x00020018 + 52`, `0x00000D00 + 52`). It is not a more permissive walk, it is
+        the same walk continued where the format says to continue it, and every cell it
+        adds is one `audit_corpus` independently classified `fx cell not reached` --
+        183,804 -> 70,940 bytes of that class, and the record-byte residual 646,476 ->
+        511,036.
+        """
+        items, starts = self._fx_chain_run(self.fx_root)
+        for it in items:
+            yield it
+        # THE RECORD'S OWN NODE VOCABULARY, taken from the walk as it already stood and
+        # FROZEN before anything new is reached. It is the gate on the handoff below, and
+        # freezing it is what keeps the rule from licensing itself: a header admitted
+        # here has to be one the established walk yields somewhere else in this same
+        # record, so the evidence does not come from the decision to follow it.
+        vocab = {it[2] for it in items if it[0] == 'node'}
+        node_offs = {it[1] for it in items}
         emitted = set()
-        for st in (starts or [None]):
-            for off, tag, prog in self.fx_table(st):
-                if off in emitted:
+        pending_tables = list(starts or [None])
+        pending_chains = []
+        guard = 64                       # runaway guard, as `fx_table`'s own loop has
+        while (pending_tables or pending_chains) and guard > 0:
+            guard -= 1
+            while pending_tables:
+                st = pending_tables.pop(0)
+                stop = []
+                for off, tag, prog in self.fx_table(st, node_stop=stop):
+                    if off in emitted:
+                        continue
+                    emitted.add(off)
+                    yield ('entry', off, tag, prog)
+                    # A CELL WITH TWO FORWARD POINTERS LOSES ONE, and the answer is to
+                    # follow both rather than to move the choice. `fx_table` steps by "the
+                    # slot reaching furthest forward" over the slots the tag's PARAMETER
+                    # layout declares, and a tag whose layout is empty is searched at slot
+                    # 1 alone: `0x00020018` is `[tag][->leaf][->next cell]` and slot 1 is
+                    # the one-word `0x0000000b` leaf, so the chain ends on a dead end with
+                    # the real continuation sitting unread at slot 2.
+                    #
+                    # WIDENING THE SEARCH INSTEAD IS WRONG, MEASURED TWICE. Searching to
+                    # `fx_entry_walk_end` sends `0x00020008` -- 50,965 entries, a TWO-word
+                    # cell whose slot 2 is the NEXT cell's tag word -- off the list on 411
+                    # of 5,657, onto floats and bytecode: unreached bytes 18,856 -> 31,030
+                    # over 60 files. Correcting that off-by-one (`walk_end - 1` is the
+                    # width in words, so the slots are 1..width-1) fixes the direction --
+                    # 15,240 -> 10,162 -- but still MOVES the choice, and `0x00010008`
+                    # then takes a far back-referencing link over the contiguous next
+                    # cell: 313 records lose 315 entries, 35 of them real ones carrying
+                    # programs. The furthest-forward rule resolves `0x00020018` and
+                    # `0x00010008` in opposite directions and nothing in the tag separates
+                    # them.
+                    #
+                    # So the step is left exactly as it was and the OTHER targets are
+                    # added as further table starts. Nothing can be lost by construction,
+                    # and the A/B says so: over the corpus 0 records altered, 821 extended,
+                    # +4,087 entries, the old item list an exact ordered subsequence every
+                    # time. It reaches the same cells the moved choice did -- unreached FX
+                    # bytes 15,240 -> 10,162 over 60 files -- and takes another 1,544 bytes
+                    # out of `abuts an fx cell` as well.
+                    #
+                    # GATED BY `entry_layout_holds`, the rule `fx_table`'s own run uses and
+                    # the one measured to separate entries from bytecode at 0.0% against
+                    # 82.1%. Only for a tag whose layout is EMPTY: where the layout
+                    # declares slots, the search already covers them.
+                    if not fx_entry_layout(tag):
+                        for sl in range(1, fx_entry_walk_end(tag)):
+                            at = off + 4 * sl
+                            if at + 4 > self.asm.body_hi:
+                                break
+                            pv = struct.unpack_from('<I', self.asm.data, at)[0] + 52
+                            if not (off < pv < self.asm.body_hi - 7) or pv in emitted:
+                                continue
+                            tw = struct.unpack_from('<I', self.asm.data, pv)[0]
+                            if ((tw & 0xF) == 8 and pv not in pending_tables
+                                    and self.asm.entry_layout_holds(pv, tw)):
+                                pending_tables.append(pv)
+                # A TABLE RUN HANDS BACK TO A CHAIN, which is this docstring's handoff
+                # read in the other direction. `fx_table` stops when the entry's own
+                # next-pointer lands on a node header, and the whole walk stopped with it:
+                # over 60 files the run stops on such a word 40 times, 37 of them a header
+                # the record's own chain already carries, and following those 37 reaches
+                # 148 further cells -- 148 of 148 bytes the audit classified `fx cell not
+                # reached`, and 148 of 148 with their own stated extent landing exactly on
+                # a program.
+                #
+                # THE OTHER 3 ARE WHY THE VOCABULARY GATE IS HERE. They are `0x3E999999`
+                # and `0x3F599999` -- floats, whose low byte ends in 0x99 and which
+                # `node_shape` therefore hands a shape to. Four independent tests separate
+                # the two populations unanimously, 37 against 0 on each: the tag appears
+                # on a node this record's walk already reaches, the stated extent lands on
+                # a tag or a program, the declared program resolves, and the successor is
+                # a cell of a known kind. Only the first is used, because it is the one
+                # that is not a value probe.
+                for h in stop:
+                    if h in node_offs:
+                        continue
+                    hw = struct.unpack_from('<I', self.asm.data, h)[0]
+                    if hw in vocab:
+                        pending_chains.append(h)
+            while pending_chains:
+                root = pending_chains.pop(0)
+                if root in node_offs:
                     continue
-                emitted.add(off)
-                yield ('entry', off, tag, prog)
+                items2, starts2 = self._fx_chain_run(root)
+                for it in items2:
+                    if it[1] in node_offs:
+                        continue
+                    yield it
+                node_offs |= {it[1] for it in items2}
+                for s2 in starts2:
+                    if s2 is not None and s2 not in emitted:
+                        pending_tables.append(s2)
 
     def fx_named_params(self):
         """Yield (entry offset, tag, slot, name, kind, value) for every table parameter.
@@ -4278,7 +4410,7 @@ class Record:
             return None
         return self.words[slot] + 52
 
-    def fx_table(self, start=None):
+    def fx_table(self, start=None, node_stop=None):
         """For filter 4: yield (entry offset, tag, program offset or None) per entry.
 
         The counterpart to `fx_tree`. A record's slot 2 addresses either a linked node
@@ -4345,6 +4477,13 @@ class Record:
             # re-derived: the census that motivated this counted waypoints as junk, and the
             # only instrument that told the difference was the corpus entry diff.
             if node_shape(tag) is not None:
+                # WHERE IT STOPPED, reported rather than discarded. The run arrives here
+                # by following the entry's OWN next-pointer, so this address is the
+                # table's statement about what follows it, not a guess -- and a bit-7-set
+                # node header is a structure this file's walk reads everywhere else.
+                # `fx_walk` decides whether to keep walking; the stop itself stays.
+                if node_stop is not None:
+                    node_stop.append(q)
                 break
             # THE LAYOUT IS A STOPPING RULE, and it is the only one that catches this walk
             # running into bytecode. The vocabulary test cannot: `0x09130008` is 2,322
@@ -4429,6 +4568,28 @@ class Record:
                 # scan is left at its full width rather than guessed at.
                 _step = struct.unpack_from('<I', d, q + 4)[0] + 52
                 _lim = min(14, (_step - q) // 4) if q < _step < e else 14
+                # AND BY THE MASK, where the element states a width that way instead. The
+                # bound above reads the element's slot-1 STEP, and the one-word `0x0000000b`
+                # leaf has no step to read -- its slot 1 is the next cell's tag -- so the
+                # scan ran its full 14 words straight through the neighbour. Harmless while
+                # such a leaf was always the LAST thing the walk reached (nothing followed
+                # it, so nothing could be trespassed on); the moment the chain continues
+                # past one, `walk_partition` sees it: 30 violations, all of the shape
+                # "a program at +7 or +11 words of a 1-word structure".
+                #
+                # `leaf_successor` and `pointer_cell_successor` are the same mask rule the
+                # rest of this file reads a width from, and applying it here puts the check
+                # back to 32 of 32 on 75,557 attributions. It costs 91 program
+                # attributions, 88 of them ones this continuation had just invented and 3
+                # that predate it -- and this scan's own note above already records that
+                # NOT ONE of the 59 programs it used to yield from these words lay inside
+                # the element it was attributed to. Removing them is the correction that
+                # note argues for, not a loss.
+                _mw = leaf_successor(tag)
+                if _mw is None:
+                    _mw = pointer_cell_successor(tag)
+                if _mw is not None:
+                    _lim = min(_lim, _mw // 4 + 1)
                 any_ = False
                 for sl in range(2, _lim):
                     if q + 4 * sl + 4 > e:
@@ -4501,8 +4662,12 @@ class Record:
                 return
             q = nxt
 
-    def fx_tree(self):
+    def fx_tree(self, start=None):
         """For filter 4: yield (offset, header, program offset) once PER PROGRAM SLOT.
+
+        `start` overrides `fx_root`. A chain is not always entered at the record's root:
+        a TABLE run can hand control back to one (see `fx_walk`), and the run that begins
+        there is walked by this same code rather than by a second copy of it.
 
         NOT once per node, which this said for a long time: a node with two program slots
         (`0x1AB`) is yielded twice at the same offset, so any census built on this
@@ -4531,7 +4696,7 @@ class Record:
         # 27, and it is the same misattribution that function exists to prevent, one level
         # further in.
         d, o, e = self.asm.data, self.asm.body_lo, self.asm.body_hi
-        q, seen = self.fx_root, set()
+        q, seen = (self.fx_root if start is None else start), set()
         if q is None:
             return
         pending = []
@@ -4636,6 +4801,27 @@ class Record:
                             yield q, hh, None
                         elif (hh >> 16) != 0x0002:
                             break
+                        elif (hh & 0xF) == 8:
+                            # THE LINK IS A CELL TOO, and the comment above -- "only the
+                            # pointer cells are yielded; the links carry nothing" -- was a
+                            # statement about PAYLOAD, read as one about existence. This
+                            # loop already steps THROUGH the link (its slot 1 is the step
+                            # this line below reads), so the two words are traversed,
+                            # sized and understood, and were the one structure in this
+                            # walk that nothing reported. 91 of the 721 cells the byte
+                            # audit classifies `fx cell not reached` over 60 files are
+                            # these -- reached all along, never named -- and yielding them
+                            # takes that class down by 656 bytes over the 60 and by 2,832
+                            # corpus-wide.
+                            #
+                            # GATED ON THE LOW NIBBLE, not on the high half alone. The
+                            # `break` above lets any `hi16 == 0x0002` word continue the
+                            # walk, and `0x0002711B` -- a `0x??1B` branch reached by the
+                            # 0x1B arm above, not by this loop -- is one. Yielding on the
+                            # high half alone made it `last`, and `Splatter.sbsasm` record
+                            # 242 lost the entry its handoff names. A link ends in nibble
+                            # 8; a branch does not.
+                            yield q, hh, None
                         if q + 8 > e:
                             break
                         nq = struct.unpack_from('<I', d, q + 4)[0] + 52
