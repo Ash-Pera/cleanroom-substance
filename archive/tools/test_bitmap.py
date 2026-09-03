@@ -1,21 +1,35 @@
 #!/usr/bin/env python3
 """Do the bitmap records point at their pixels?
 
-The pixel region sits at the FRONT of an .sbsasm, ahead of the assembly body, behind an
-eight-byte header -- a 'SBAM' magic and a version word. Every bitmap record declares an
-offset four bytes short of that, which is invisible wherever four bytes is a whole pixel
-and a channel rotation everywhere else. `Record.bitmap` corrects it.
+The pixel region is the RESOURCE SEGMENT, and SPEC 9 puts it at [0x38, resource_end).
+A bitmap record names its image at `words[1] + 52` -- the format's universal pointer
+skew -- so the first image's declared word of 4 lands on 0x38 exactly.
 
-The correction is the kind that can silently come undone, because the wrong answer still
-decodes, still has the right dimensions and still looks like an image -- it was found by
-noticing four contact-sheet tiles were an identical acid green, which is not a test. So
-this pins it three ways, each with its own control:
+**THE `+4` READING THIS FILE USED TO PIN IS WITHDRAWN, and three of the four checks below
+could not see the difference.** It said the segment sat behind an eight-byte
+magic-plus-version header so that pixels began at 8, and every declared offset was four
+bytes short of its data. The eight bytes are not a header in front of the pixels; they are
+the first two fields of the 0x38-byte FILE header of SPEC 2, whose remaining fields --
+per-file uid, total file size, the trailer pointer, the value-table end -- this module's
+own `Assembly` parses. Under `+4` the first image's leading 48 bytes were those fields.
 
-  * the header really is eight bytes ('SBAM' at 0, a version at 4);
+What survives is that the offset is right MOD 8: 52 == 4 (mod 8), so the alpha-channel
+test below gives the identical answer under both readings, as does the packing test, as
+does the magic-and-version test. A uniform 48-byte shift is invisible to all three, which
+is why the fourth check exists.
+
+  * the file header's first two words really are a magic and a version (they are -- that
+    was never the disputed part, only what it implied);
   * an RGBA image's flattest channel -- its alpha -- lands at index 3, with the depth-8
-    4-channel bitmaps as a null control that must answer the same either way;
+    4-channel bitmaps as a null control that must answer the same either way. This pins
+    the offset MOD 8 and nothing else;
   * the images pack back to back, which must STAY true, since a correction that broke the
-    packing would be a different offset rather than a uniform shift.
+    packing would be a different offset rather than a uniform shift. Invariant to a
+    uniform shift, so it cannot choose between +4 and +52 either;
+  * **THE SEGMENT'S FAR END, which is the one that discriminates.** The images tile
+    [0x38, resource_end), and `resource_end` is the record directory's offset out of the
+    file header -- it owes nothing to any bitmap record. `max(offset + size)` must equal
+    it exactly. At +52 it does, 111 of 111; at +4 it undershoots by 48, 111 of 111.
 
 SKIPS when the corpus is absent.
 """
@@ -73,7 +87,13 @@ def _jpeg_bitmaps(asm):
 
 
 def test_the_pixel_header_is_eight_bytes():
-    """'SBAM' at 0 and a version word at 4, in every file that carries pixels."""
+    """'SBAM' at 0 and a version word at 4, in every file that carries pixels.
+
+    KEPT, AND ITS CONCLUSION WITHDRAWN. These two words are real and this test still
+    passes; what was wrong was reading them as an eight-byte header with pixels behind it.
+    They are the first two fields of SPEC 2's 0x38-byte file header. Left in place because
+    a test whose premise moved should say so where the next reader will look.
+    """
     paths = _paths()
     if not paths:
         print('SKIP: no corpus')
@@ -264,10 +284,79 @@ def test_jpeg_bitmaps_decode_to_what_the_record_declares():
     assert matched == flagged, 'JPEG bitmaps that do not match their record: %r' % (bad,)
 
 
+def test_the_images_tile_the_resource_segment_exactly():
+    """max(offset + size) == resource_end, which is what a 48-byte shift CANNOT survive.
+
+    THE ONLY CHECK IN THIS FILE THAT CAN TELL +52 FROM +4. The other three are invariant
+    to a uniform shift or to a shift that is 0 mod 8, and 52 - 4 == 48 is both, which is
+    how the `+4` reading survived here for as long as it did. `resource_end` is
+    `header['dir_at']`, taken from the file header and not from any bitmap record, so a
+    bitmap offset landing on it is a closure and not a restatement.
+
+    Measured over the whole corpus, both columns exceptionless:
+
+        max(offset + size) - resource_end     at +52     0    111 of 111
+                                              at +4    -48    111 of 111
+
+    RAW PAYLOADS ONLY. A JPEG record's `size` is the UNCOMPRESSED size, so it does not
+    describe a byte extent and cannot be summed with the others.
+
+    **WHICH FILES ARE IN THE POPULATION IS CHOSEN SHIFT-INVARIANTLY, and the first draft
+    of this test got that wrong in the one way that matters.** It selected on
+    `min(offset) == 0x38` and then asserted the far end -- so under the `+4` skew it is
+    trying to catch, every file failed the selector, the population was empty and the test
+    SKIPPED. It reported success either way, which is the `c0d7774` failure in miniature.
+    The selector is now `max(offset + size) - min(offset) == resource_end - 0x38`: the
+    images span exactly the segment's LENGTH, which a uniform shift cannot change. Five
+    specimens fail it because they carry images no record points at -- the same gaps
+    `test_the_images_still_pack_back_to_back` records -- and there the last record's image
+    is not the last image, so the endpoints say nothing.
+
+    Both endpoints are then asserted, and 48 is called out by name because it is the one
+    wrong answer with a history.
+    """
+    paths = _paths()
+    if not paths:
+        print('SKIP: no corpus')
+        return
+    tiling = exact = shifted = 0
+    bad = []
+    for f in paths:
+        try:
+            asm = Assembly(f)
+        except Exception:
+            continue
+        if not asm.resource_end:
+            continue
+        spans = [(bm['offset'], bm['size']) for _r, bm in _pixel_bitmaps(asm)]
+        if not spans:
+            continue
+        lo = min(o for o, _s in spans)
+        hi = max(o + s for o, s in spans)
+        if hi - lo != asm.resource_end - 0x38:          # shift-invariant selector
+            continue
+        tiling += 1
+        if lo == 0x38 and hi == asm.resource_end:
+            exact += 1
+        else:
+            shifted += 1
+            bad.append('%s: images at [%d, %d), segment [%d, %d)'
+                       % (os.path.basename(f), lo, hi, 0x38, asm.resource_end))
+    if not tiling:
+        print('SKIP: no file whose images span the resource segment')
+        return
+    print('    %d of %d files whose images span the segment land on both of its ends'
+          % (exact, tiling))
+    assert shifted == 0, (
+        '%d files span the right LENGTH at the wrong PLACE -- if the offset is 0x38-48=8 '
+        'the bitmap pointer skew has gone back to +4: %r' % (shifted, bad[:6]))
+
+
 if __name__ == '__main__':
     for fn in (test_the_pixel_header_is_eight_bytes,
                test_rgba_alpha_lands_in_the_last_channel,
                test_the_images_still_pack_back_to_back,
+               test_the_images_tile_the_resource_segment_exactly,
                test_jpeg_bitmaps_decode_to_what_the_record_declares):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):

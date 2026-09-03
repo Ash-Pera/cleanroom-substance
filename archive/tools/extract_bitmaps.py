@@ -63,11 +63,14 @@ def bitmaps(path):
     306 of 306). Against this module, that cost 75 graph inputs over 60 specimens, 0
     gained.
 
-    It also lacked the offset correction the model carries. The pixel region begins at 8,
-    after an eight-byte magic-plus-version header, while every record declares an offset
-    four bytes short of its data -- invisible at depth 8 with 4 channels, where four bytes
-    is exactly one pixel, and a channel rotation everywhere else. Reading `b['offset']`
-    takes that fix rather than repeating the bug.
+    It also lacked the offset correction the model carries, and then carried a second one
+    of its own on top of it: `pos = b['offset'] + 52`, where `b['offset']` was already
+    `words[1] + 4`. `Record.bitmap` now returns the format's universal `+52` skew
+    directly -- the resource segment begins at 0x38 and `4 + 52 == 0x38` -- so the image
+    region starts AT `b['offset']`, a raw payload is pixels from there and a JPEG one is
+    `[u32 length][stream]`, whose stream `b['data_offset']` names. The old double
+    correction landed 4 bytes past the pixels, which is a channel rotation everywhere
+    four bytes is not a whole pixel.
     """
     asm = sbsasm.Assembly(path)
     d = asm.data
@@ -78,7 +81,7 @@ def bitmaps(path):
         if not b or b['kind'] != 'pixels':
             continue
         name = format_name(r.cls)
-        pos = b['offset'] + 52              # the model's offset, already +4 corrected
+        pos = b.get('data_offset') or b['offset']   # the model's offset, +52 corrected
         row = {'record': r.index, 'offset': pos, 'width': r.width, 'height': r.height,
                'channels': b.get('channels'), 'depth': b.get('depth'), 'format': name}
         if b.get('compressed') == 'jpeg':

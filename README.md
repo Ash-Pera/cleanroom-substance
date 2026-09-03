@@ -123,10 +123,12 @@ when the `valid_program` floor was retired, and the byte row, which moved 6.75 p
                                            records that HAVE no parameter slot. 95.6426%
                                            since the floor went; it was 95.6393%
     edge slots resolved          100.00%
-    record bytes interpreted       99.32%  was 92.5%, which was honest when taken: on its
+    record bytes interpreted       99.42%  was 92.5%, which was honest when taken: on its
                                            own definition today's tree gives 96.50%, and
-                                           99.32% crediting every payload reader - see below.
-                                           99.83% once the two-byte alignment pad is
+                                           99.42% crediting every payload reader - see below.
+                                           It read 99.32% until the vectorshape extent and
+                                           the bitmap pointer skew were settled.
+                                           99.94% once the two-byte alignment pad is
                                            labelled, which is a fourth tier and not a decode
     record layout by mask-walk     99.97%  (only vectorshape, provenance-walled, left)
 
@@ -268,18 +270,42 @@ What is left is 2,123,232 bytes, 0.746%, and 68.5% of that is the two-byte align
 730,360 runs of `00 00` inside a record extent, every one with a decoded structure on each
 side. **The pad is now labelled rather than counted as uninterpreted, and it is a FOURTH
 tier rather than a widening of the third**, because crediting it moves no byte from
-undecoded to decoded: `+ every payload reader` still reads 99.317% and the new line reads
-**99.831%**, leaving 480,950 bytes, 0.169%. The audit prints that split, per filter, with a
-classification of what remains.
+undecoded to decoded: `+ every payload reader` read 99.317% when that tier landed and the
+new line read **99.831%**, leaving 480,950 bytes, 0.169%. They now read **99.424%** and
+**99.937%**, leaving **178,122**, 0.063% — see below. The audit prints that split, per
+filter, with a classification of what remains.
 
-The residual after the pad is **480,950 bytes**, and it partitions: 167,240 of FX tree that
-no walk in the file reaches — 21,978 charged to `fxmaps`, 138,644 to `levels`,
-`transformation` and `blend` because the directory is a partition, 6,012 to `vectorshape` —
-166,332 of `vectorshape` payload past what its reader credits (one real payload-extent bug,
-13 records, fix written up as a patch and not applied), 131,068 in two constant-fill image
-blobs in a single specimen, and 16,310 everywhere else. By filter the top two are now
-`vectorshape` 172,344 and `transformation` 113,942; `fxmaps` is 25,720, down from 191,098.
-See FORMAT-NOTES.md, "`fxmaps`' 802,940 uninterpreted record bytes".
+The residual after the pad was **480,950 bytes** and is now **178,122**. Two thirds of it
+came off in one pass, and neither half was undecoded data — both were the model asking a
+question two different ways.
+
+**`vectorshape` had two definitions of where its payload stops, and one of them was a copy
+in the audit.** `audit_corpus.py`'s byte canvas re-derived the extent from the embedded
+length word instead of calling `Record.vector_shape`, so the slot-2 payload-end override
+`68377e1` added could report recovering 146,440 bytes while the audit's `vectorshape`
+residual did not move — the 90 bytes it did move were its `align pad` column, the same row
+taken with and without a tier that landed in the same pass. Both figures were right about
+their own instrument. There is one definition now, `Record.vector_extent`, and the audit
+asks for it. The slot-2 rule also turned out not to be fitted to the 13 records that
+motivated it: of the 57 records where both its containment bounds hold, **44 are a control
+in which slot 2 and the embedded length word agree to the byte.** And the "chain of
+`[kind][length]` sub-payloads" that commit recorded as refuted is real — it looked at
+`off + n` and the next header is at `off + n − 4`, because the length counts one trailing
+word that is not a vertex. Chains that lie inside their own record end exactly on a boundary
+the record states in **11 of 11**. `vectorshape` goes from the worst filter in the table,
+81.24% interpreted, to **99.93%**.
+
+**`Grid.sbsasm`'s two "constant-fill blobs" are images that say `2m` and `4m`.** Three
+65,536-byte 256×256 grayscale label images, each named at `words[1] + 52` by a *neighbouring*
+two-word `bitmap` record and each lying in the previous record's extent — §5's partition
+again. Reaching them needed two corrections in `Record.bitmap`: it decided a record's form
+from its **directory extent** rather than its own header length, and its pointer skew was
+`+4` where the format's universal skew is `+52`. The `+4` put every image in the corpus 48
+bytes early, reading 48 bytes of the file header as the first image's pixels; the check that
+sees it is the segment's far end, `max(offset + size) == resource_end` in **111 of 111**
+against 111 of 111 at −48. Three of the four checks in `test_bitmap.py` were blind to it —
+52 ≡ 4 (mod 8), and packing is invariant to a uniform shift — and there is now a fourth that
+is not. See FORMAT-NOTES.md, "`vectorshape`'s 172,344 bytes were a second definition".
 
 **135,440 bytes of that came off the FX row — 40.7% of the whole FX gap — and the repair the
 notes proposed for it is withdrawn as stated.** SPEC §8 proposed widening `fx_table`'s

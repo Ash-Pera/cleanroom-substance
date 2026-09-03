@@ -5644,6 +5644,57 @@ class Record:
         not enough to call that a colour flag, and it is recorded as an observation.
 
         Returns `(word0, [(x, y), ...])` with coordinates in 0..1, or None.
+
+        The EXTENT is `vector_extent` and is not computed here. It used to be, and
+        `archive/tools/audit_corpus.py` computed it a second time from the same two
+        words -- which is how a fix to this method could report recovering 146,440 bytes
+        while the audit's `vectorshape` residual did not move. See `vector_extent`.
+        """
+        got = self.vector_extent
+        if got is None:
+            return None
+        off, n = got
+        d = self.asm.data
+        kind = struct.unpack_from('<I', d, off)[0]
+        v = struct.unpack_from('<%dI' % ((n - 8) // 4), d, off + 8)
+        # Drop the TERMINATOR only, not every zero. `if x` looks equivalent -- a zero
+        # vertex is the terminator in 105 of 140 payloads and interior zeros are rare --
+        # but two payloads have a vertex at exactly (0, 0), which is a legal corner, and
+        # discarding one shifts the strip's parity for every face after it.
+        if v and v[-1] == 0:
+            v = v[:-1]
+        return kind, [((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0) for x in v]
+
+    @property
+    def vector_extent(self):
+        """Filter 5's payload as `(offset, byte length)`, or None.
+
+        THE ONE DEFINITION OF WHERE A VECTOR PAYLOAD STOPS. It exists because there were
+        two: this method's rule lived inline in `vector_shape`, and `audit_corpus.py`'s
+        byte canvas re-derived `(w + 23) // 2` from the same two words without the slot-2
+        override below. So the override could be measured on one instrument as recovering
+        146,440 bytes and on the other as recovering nothing, and both were right about
+        what they measured. Nothing may re-derive this; ask here.
+
+        `L = (w + 23) / 2` is the payload's own byte count, as it is for `ramp` and
+        `curve_points`; slot 2, where the class word provides one, bounds it rather than
+        stating it.
+
+        SLOT 2 OVERRIDES THE EMBEDDED LENGTH WORD WHERE IT STATES A LONGER PAYLOAD.
+        `n` is short of the payload in 13 of 139 records, and in all 13 slot 2 -- which
+        `vector_shape` already calls the payload end -- says where it really stops.
+        Exceptionless within that group: slot 2 is a body pointer 13 of 13, its span is
+        the record's span minus exactly 8 in 13 of 13, and that span less the 8-byte
+        payload header is a whole number of 4-byte vertices in 13 of 13.
+
+        WHAT THIS DOES NOT ESTABLISH. The recovered bytes are vertex data of the same
+        kind -- smoothly marching u16 pairs with the credited payload's value profile --
+        but they are not simply the same strip continued: the alternating-signed-area
+        test this decode rests on gives 62.24% over 25,998 faces against a 37.92%
+        shuffled control, where the credited payload gives 99.52%. A chain of
+        `[kind][length]` sub-payloads is refuted -- there is no header at `off + n` in
+        any of the 13. So this extends the located EXTENT, which is what the byte
+        accounting measures, and leaves the sub-strip structure of the tail open.
         """
         if self.filter_id != 5 or len(self.words) < 2:
             return None
@@ -5651,33 +5702,32 @@ class Record:
         d = self.asm.data
         if not (0 <= off <= len(d) - 8):
             return None
-        kind, w = struct.unpack_from('<2I', d, off)
-        n = (w + 23) // 2
-        # SLOT 2 OVERRIDES THE EMBEDDED LENGTH WORD WHERE IT STATES A LONGER PAYLOAD.
-        # `n` is short of the payload in 13 of 139 records, and in all 13 slot 2 -- which
-        # this docstring already calls the payload end -- says where it really stops.
-        # Exceptionless within that group: slot 2 is a body pointer 13 of 13, its span is
-        # the record's span minus exactly 8 in 13 of 13, and that span less the 8-byte
-        # payload header is a whole number of 4-byte vertices in 13 of 13. It recovers
-        # 146,440 bytes, 23% of the corpus's entire uninterpreted record-byte residual.
-        #
-        # WHAT THIS DOES NOT ESTABLISH. The recovered bytes are vertex data of the same
-        # kind -- smoothly marching u16 pairs with the credited payload's value profile --
-        # but they are not simply the same strip continued: the alternating-signed-area
-        # test this decode rests on gives 62.24% over 25,998 faces against a 37.92%
-        # shuffled control, where the credited payload gives 99.52%. A chain of
-        # `[kind][length]` sub-payloads is refuted -- there is no header at `off + n` in
-        # any of the 13. So this extends the located EXTENT, which is what the byte
-        # accounting measures, and leaves the sub-strip structure of the tail open.
-        #
-        # The 6 remaining short records are class 0x218, where slot 2 holds 0x3F800000 and
-        # is the float parameter this docstring's other arm describes. They are untouched.
+        n = (struct.unpack_from('<2I', d, off)[1] + 23) // 2
+        # The 12 records this leaves alone are class 0x218, where slot 2 holds 0x3F800000
+        # and is the float parameter `vector_shape`'s other arm describes.
         # BOUNDED BY THIS RECORD, and that bound is load-bearing. Without it, slot 2 is
         # accepted wherever it happens to be a body pointer, and on RoadSubstance002 --
-        # where the payload lies OUTSIDE its own record, the case two paragraphs down --
-        # it names an address megabytes away and 70 records grow to 3.6 million vertices.
-        # All 13 genuine cases have their payload inside their own extent with slot 2
-        # landing exactly 8 bytes short of the record end.
+        # where the payload lies OUTSIDE its own record, the case below -- it names an
+        # address megabytes away and 70 records grow to 3.6 million vertices.
+        # THE TWO ARITHMETIC CONDITIONS EXCLUDE NOTHING, and that was worth checking,
+        # because a condition fitted to the 13 records that motivated a rule is how a
+        # rule stops being a reading of the format. Over the corpus's 139 filter-5
+        # records the four conditions partition as:
+        #
+        #     payload and slot 2 both inside this record       57   all four hold
+        #     slot 2 inside, payload OUTSIDE                   70   `off` bound refuses
+        #     payload inside, slot 2 is the float 0x3F800000   6    `e2` bound refuses
+        #     neither                                          6    both refuse
+        #
+        # All 57 that reach `off + n <= e2` and the multiple-of-4 test pass both, so the
+        # only condition doing any selecting is the containment bound -- which the
+        # RoadSubstance002 failure below justifies on its own. And the 57 split 44 / 13:
+        # in 44 the override is a NO-OP because slot 2 and the embedded length word agree
+        # TO THE BYTE, which is the independent control that slot 2 is the payload end
+        # rather than a quantity fitted to the 13 where they disagree. In all 57, slot 2
+        # lands 8 bytes (42) or 28 bytes (15) short of the record's own end and the
+        # payload begins 12 or 16 bytes into it -- so the record's span brackets the
+        # payload on both sides.
         if len(self.words) > 2:
             e2 = self.words[2] + 52
             if (self.offset <= off < self.end and self.offset < e2 <= self.end
@@ -5688,14 +5738,72 @@ class Record:
         # extent -- 6 of them below the first record entirely. Same as `ramp`.
         if n < 12 or (n - 8) % 4 or off + n > len(d):
             return None
-        v = struct.unpack_from('<%dI' % ((n - 8) // 4), d, off + 8)
-        # Drop the TERMINATOR only, not every zero. `if x` looks equivalent -- a zero
-        # vertex is the terminator in 105 of 140 payloads and interior zeros are rare --
-        # but two payloads have a vertex at exactly (0, 0), which is a legal corner, and
-        # discarding one shifts the strip's parity for every face after it.
-        if v and v[-1] == 0:
-            v = v[:-1]
-        return kind, [((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0) for x in v]
+        return off, n
+
+    #: The three values filter 5's payload header takes in `word0`. Not a format
+    #: selector -- `vector_shape` measures all three decoding identically -- but a closed
+    #: vocabulary, which is what lets `vector_chain` tell a following sub-payload from
+    #: the terminator without guessing.
+    VECTOR_KINDS = frozenset((0x07FFFFFB, 0x00000003, 0x04040403))
+
+    @property
+    def vector_chain(self):
+        """Every `[kind][length]` sub-payload this record's payload chains to.
+
+        Returns `[(offset, kind, byte length), ...]` starting with `vector_extent`'s own,
+        or `[]`.
+
+        THE CHAIN `68377e1` RECORDED AS REFUTED IS REAL; that note looked one word too
+        far. It said "a chain of `[kind][length]` sub-payloads is refuted -- there is no
+        header at `off + n` in any of the 13", and there is not. The header is at
+        `off + n - 4`, because `L = (w + 23) / 2` counts ONE TRAILING WORD THAT IS NOT A
+        VERTEX. `vector_shape` already knew about that word from the other side -- it
+        drops "a trailing all-zero vertex" that "terminates the list in 97 of 118
+        payloads" -- and this is the same word when the list does not terminate: in all 6
+        `FootstepsSubstance001` records the word at `off + n - 4` is `0x00000003`, one of
+        the three values `VECTOR_KINDS` holds, and it is the next sub-payload's own
+        header. So a payload is `[kind][length][vertices...][next kind, or 0]`.
+
+        THE RULE IS THE VOCABULARY AND THE RECORD'S OWN SPAN, AND THE LANDING IS THE
+        CHECK. Stepping `off += L - 4` while the next word is a known kind and every part
+        lies inside this record's extent, over the corpus's 139 filter-5 records:
+
+            chain of one part                             112
+            chain of 2 or 3, entirely inside the record    11
+            chain of 2 or 3 whose parts fall outside       16   refused
+
+        and of the 11 the chain's last part ends EXACTLY on a boundary the record itself
+        states, 11 of 11 -- on the record's own end for the 6 `FootstepsSubstance001`
+        records, and on slot 2, the payload-end pointer, for the 5
+        `RoadLinesSubstance002` ones. Nothing in the walk arranges that; it is a test the
+        rule could have failed on either group and does not. The 16 refused are the
+        `RoadSubstance002` and `SnowSubstance002` records whose payload lies outside their
+        own extent, which is the same containment bound `vector_extent` already carries
+        and the same population it already excludes.
+
+        WHAT THIS DOES NOT EXPLAIN, and it is the same caveat one level down: splitting
+        the span into sub-payloads does NOT recover the triangle strip. Over the 11
+        records the alternating-signed-area test reads 64.99% when the span is read as one
+        strip and 65.59% when each sub-payload is read as its own, against 37.26% shuffled
+        and 99.52% for the credited single-payload records. So the sub-payload boundary is
+        real and is NOT what makes the tail fail the strip test. `vector_shape` is
+        deliberately left reading the first payload's span, so nothing rasterises this.
+        """
+        got = self.vector_extent
+        if got is None:
+            return []
+        d, n = self.asm.data, len(self.asm.data)
+        q, out = got[0], []
+        while q + 8 <= n and self.offset <= q < self.end:
+            kind, w = struct.unpack_from('<2I', d, q)
+            if kind not in self.VECTOR_KINDS:
+                break
+            m = (w + 23) // 2
+            if m < 12 or (m - 8) % 4 or q + m > n or q + m > self.end:
+                break
+            out.append((q, kind, m))
+            q += m - 4
+        return out
 
     @property
     def vector_faces(self):
@@ -5797,43 +5905,55 @@ class Record:
             # refuse on the undecodable channel code -- so this is both a correctness fix
             # and 45 images the renderer could not previously produce at all.
             if hi & 8:
-                return {'kind': 'pixels', 'offset': off + 4, 'compressed': 'jpeg',
-                        'data_offset': off + 4 + 52,
+                return {'kind': 'pixels', 'offset': off + 52, 'compressed': 'jpeg',
+                        'data_offset': off + 56,
                         'size': self.width * self.height * ch * bpc if ch else None,
                         'channels': ch, 'depth': bpc * 8 if ch else None}
-            # THE STORED OFFSET IS 4 LOW. The pixel region is at the FRONT of the file,
-            # ahead of the assembly body, and the header in front of it is eight bytes,
-            # not four:
+            # THE SKEW IS THE FORMAT'S UNIVERSAL +52, and this used to read +4.
             #
-            #     word@0  0x4d414253 = 'SBAM', the file magic       40 of 40 files
-            #     word@4  low 16 bits zero -- a version field       40 of 40 files
-            #             (0x20000, 0x50000, 0x60000, 0x90000)
+            # `off + 4` came from a story about an eight-byte magic-plus-version header
+            # with the pixel region behind it, so that the first bitmap's declared offset
+            # of 4 put pixels at 8. That story is refuted by SPEC 2: the first 0x38 bytes
+            # are the FILE HEADER -- magic, cooker version, per-file uid, total file size,
+            # the trailer pointer, the value-table end -- every field of which this module
+            # parses. Offset 8 is the uid. Pixels cannot start there.
             #
-            # yet the first bitmap in every one of those files declares offset 4, which
-            # is the version word. So pixels begin at 8 and every declared offset is four
-            # bytes short of its data.
+            # +52 puts the first image at 0x38, which is where SPEC 2 says the body
+            # begins and SPEC 9 says the resource segment does: the first image lands there
+            # in 122 of the 125 files that carry one, and 4 + 52 == 0x38 exactly. It is the
+            # same skew a record pointer, a ramp table, a vector strip and a `text`
+            # record's font pointer all carry, so the bitmap arm was the one exception
+            # and is no longer.
             #
-            # It went unnoticed because it is INVISIBLE in the commonest layout: four
-            # bytes is a whole pixel at depth 8 with 4 channels, so that decode is right
-            # either way (it merely starts one pixel late). Everywhere else it rotates
-            # the channels by 4/(depth/8) mod ch, and the rotation it predicts -- from
-            # the layout alone, before looking at any image -- is the one measured:
+            # THE CHECK THAT DISCRIMINATES IS THE SEGMENT'S FAR END, because a uniform
+            # 48-byte shift is invisible to every test that was watching this. The
+            # resource segment ends at `resource_end`, which is the record directory's
+            # offset out of the file header and owes nothing to any bitmap record. Over
+            # the 111 layout-A specimens whose images tile it:
             #
-            #     depth  8 ch 4   shift 0   measured 0   (pix_alley_oil, already correct)
-            #     depth  8 ch 3   shift 1   measured 1   (brown_mud_leaves_01)
-            #     depth 16 ch 4   shift 2   measured 2   (hiero_03, pix_concrete_02)
+            #     max(offset + size) - resource_end     at +4    -48   111 of 111
+            #                                           at +52     0   111 of 111
             #
-            # Corpus-wide the RGBA case is self-controlling, since an RGBA image's
-            # flattest channel is its alpha and belongs at index 3: at the declared
-            # offset it lands at index 1 in 13 of 16 depth-16 4-channel bitmaps, and at
-            # +4 it lands at index 3 in 13 of 16. The depth-8 4-channel bitmaps are the
-            # null control and give the same answer both ways.
+            # Both columns exceptionless. At +4 every image in the corpus was 48 bytes
+            # early: the first one read 48 bytes of the file header as its leading pixels
+            # and the last one stopped 48 bytes short of the segment's end.
             #
-            # Note what does NOT show this: the images pack back-to-back exactly (174 of
-            # 174 consecutive pairs, offset[k+1] - offset[k] == size[k]), which reads as
-            # a corroboration of the offsets but is invariant to a UNIFORM shift and so
-            # says nothing either way. It was briefly taken as a refutation.
-            return {'kind': 'pixels', 'offset': off + 4,
+            # WHAT SURVIVES FROM THE OLD NOTE, because it is a fact about the phase and
+            # not about the base. An RGBA image's flattest channel is its alpha and
+            # belongs at index 3: at the declared offset it lands at index 1 in 13 of 16
+            # depth-16 4-channel bitmaps and at +4 it lands at index 3 in 13 of 16. That
+            # measured a 4-byte rotation, and 52 == 4 (mod 8), so +52 gives the identical
+            # channel assignment. It settled the offset mod 8; it could not see 48.
+            # Likewise the back-to-back packing (174 of 174 consecutive pairs) is
+            # invariant to a uniform shift and says nothing either way -- it was briefly
+            # taken as a refutation, and it is equally not a confirmation.
+            #
+            # The JPEG arm above corroborates the base independently: `off + 52` is where
+            # that arm's own u32 compressed-length word sits, with the SOI at `off + 56`.
+            # Under +4 that word was "byte 48 of 48 unidentified bytes in front of the
+            # stream"; under +52 the payload simply opens `[u32 length][SOI]` at the image
+            # offset, and there are no unidentified bytes.
+            return {'kind': 'pixels', 'offset': off + 52,
                     'size': self.width * self.height * ch * bpc if ch else None,
                     'channels': ch, 'depth': bpc * 8 if ch else None}
 
@@ -5841,7 +5961,26 @@ class Record:
         # It never names a graph input: 0 of 241 bit-8 records hold a uid their manifest
         # declares, against 1,060 of 1,132 without it. The long-form ones were the last
         # 7 records reported as `graph_input` with a uid no manifest knew.
-        if (self.cls >> 8) & 1 and self.end - self.offset != 8:
+        #
+        # WHICH FORM A RECORD IS, IS ITS OWN HEADER LENGTH AND NOT ITS DIRECTORY EXTENT.
+        # This test was `self.end - self.offset != 8`, and `end` comes from the record
+        # DIRECTORY, which SPEC 5 says is a sorted partition of the body rather than an
+        # allocation -- a record's extent runs to wherever the next record starts, and
+        # payloads routinely lie inside a neighbour's. `header_words` is the record's own
+        # statement of where its slots stop. The two disagree on 3 records, all in
+        # `Grid.sbsasm`: two-word bitmaps whose extents are 65,544 / 52 / 52 bytes only
+        # because the NEXT bitmap's 256x256 image lies inside them. Read as long-form,
+        # one returned `inline_pixels` over its neighbour's image and two returned
+        # `computed` over a program that is not theirs; read as the two-word records they
+        # are, all three name their own image at `words[1] + 52` -- 176, 65,720 and
+        # 131,328, each exactly `width * height` bytes and each ending exactly on the
+        # next record's offset. That accounts for the file's other two 65 KB blobs, which
+        # the byte audit had been charging to a `transformation` and a `blend` that have
+        # no payload of their own. Every other filter-16 record in the corpus answers the
+        # two tests identically, so nothing else moves.
+        hw = self.header_words
+        long_form = hw > 2 if hw is not None else self.end - self.offset != 8
+        if (self.cls >> 8) & 1 and long_form:
             body = self.offset + 8
             if asm.program_span(body, self.end) is not None:
                 # The image is computed. Grid record 6 is
@@ -5853,7 +5992,7 @@ class Record:
             return {'kind': 'inline_pixels', 'offset': body,
                     'size': self.end - body}           # data stored in the record itself
 
-        if self.end - self.offset == 8 and v < len(asm.data):
+        if not long_form and v < len(asm.data):
             return pixels(v)
         return {'kind': 'graph_input', 'uid': v}
 

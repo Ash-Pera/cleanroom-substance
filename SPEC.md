@@ -943,6 +943,27 @@ fixed stride. Consecutive offsets give each image's size; the sizes sum to the s
 length exactly (a strong integrity check). Dimensions resolve for 190/200 images, almost
 all 1024×1024.
 
+**A `bitmap` record names its image at `words[1] + 52`** — the same universal `+52` skew a
+record pointer, a ramp table, a vector strip and a `text` record's font pointer all carry,
+and the same one this table's own `offset` field carries. The image runs
+`width × height × channels × depth/8` bytes from there; a JPEG-flagged one (class byte bit
+3) stores `[u32 compressed length][SOI …]` at that offset instead. The far end of the
+segment is the check that fixes the skew rather than merely being consistent with it: over
+the 111 layout-A specimens whose images tile the segment, `max(offset + size)` equals
+`resource_end` **exactly, 111 of 111**, and under the `+4` skew this project used until
+2026-09-03 it undershot by 48 bytes in 111 of 111. At the near end the first image lands on
+0x38 in **122 of the 125** files that carry one.
+
+**The image need not lie in the resource segment, and need not lie in the naming record.**
+Files with `base == 0` have no segment and store images in the record body; there, as
+everywhere, §5's directory is a sorted partition rather than an allocation, so the image
+falls inside whichever record's extent it lands in. `Grid.sbsasm` is the clean case: its
+records 5, 6 and 8 are two-word `[tag][pointer]` bitmaps naming three 256×256 grayscale
+images at 176, 65,720 and 131,328, each `256 × 256` bytes long, each ending exactly on the
+next record's offset — and each lying inside the *previous* record's extent, which belongs
+to a `transformation`, a `bitmap` and a `blend`. A reader must therefore decide the record's
+form from its own header length (§6.1), never from `offset[i+1] − offset[i]`.
+
 ### 9.1 The segment is not images only — filter 17 stores a string and a font in it
 
 A `text` record's base region is five words, `[w0][w1][zero][string ptr][font ptr]`, and both

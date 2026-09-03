@@ -47261,3 +47261,279 @@ rather than corrected, in favour of the count this document already establishes 
 permitted sources with FX-Map node data). No number in this section derives from an excluded
 file. Recorded here for the same reason the three brushes in the README's provenance section
 are: the rule is only auditable if the near-misses are written down too.
+
+# `vectorshape`'s 172,344 bytes were a second definition, and `Grid`'s two blobs say "2m" and "4m"
+
+Two independent targets from the same residual, taken in the order the byte table ranks
+them. The corpus residual after the alignment pad was **480,950 bytes**, and `other` — the
+class that is neither pad, nor an unreached FX cell, nor adjacent to one — was **312,660**,
+65% of it. Two causes accounted for 95% of that: `vectorshape` at 166,332 and two 65 KB
+blobs in `Grid.sbsasm` at 131,068. Neither turned out to be undecoded data.
+
+    audit_corpus.py             before      after
+    uninterpreted (pad excl)   480,950    178,122
+      of which `other`         312,660     15,832
+      `fx cell not reached`     41,034     35,034
+      `abuts an fx cell`       126,206    126,206   unmoved
+      `zeros, not the pad`       1,050      1,050   unmoved
+    + every payload reader      99.317%    99.424%
+    + the 2-byte pad            99.831%    99.937%
+    pad runs                   730,360    730,360   unmoved
+
+## The 146,440-versus-90 contradiction: two instruments, one of them a copy
+
+`68377e1` added a slot-2 payload-extent override to `Record.vector_shape` and recorded that
+it **recovers 146,440 bytes, 23% of the corpus residual**. The audit's `vectorshape`
+residual was **172,434 before that commit and 172,344 after**. Both figures are in the
+repository, both are correct, and they are not about the same thing.
+
+**`audit_corpus.py` never called `Record.vector_shape`.** Its byte canvas had its own arm
+for filter 5:
+
+    elif f == 5 and len(r.words) > 1:
+        off = r.words[1] + 52
+        _k, w = struct.unpack_from('<2I', a.data, off)
+        m = (w + 23) // 2                       # the embedded length word, and nothing else
+
+which is the *pre-override* rule, written out a second time. `68377e1` touched exactly one
+file, `tools/sbsasm.py`, so it could not move this number by construction. Re-measured
+here: with the override reverted and the audit otherwise at HEAD, the `vectorshape` row is
+**byte-for-byte identical**. The 146,440 was measured on `vector_shape`'s own extent — it
+re-measures at 146,388 today, the 52-byte difference being one filter-5 record the corpus
+has lost since (140 records then, 139 now) — and the audit simply never saw it.
+
+**And the 90 bytes are not a movement either.** `vectorshape`'s `align pad` column reads
+exactly **90**, and 172,434 − 172,344 = 90. The two figures are the same audit row with and
+without the pad tier folded in — the tier that landed in the *same* pass. Nothing moved at
+all.
+
+The fix is not to teach the audit the rule; it is to delete the second copy.
+`Record.vector_extent` is now the one definition of where a filter-5 payload stops,
+`vector_shape` reads it, and the audit asks for it. `vector_shape`'s output is unchanged on
+**139 of 139** records against a pinned copy of the pre-refactor function.
+
+## The slot-2 conditions were not fitted to the 13, and 44 records are the control
+
+The live question that outranks the arithmetic: **127 of 139 filter-5 records have slot 2
+inside their own extent and the override fires on 13.** If the two arithmetic conditions
+(`off + n <= e2`, `(e2 - off - 8) % 4 == 0`) were what excluded the other 114, they would be
+a filter fitted to the records that motivated the rule. Measured, they exclude nothing:
+
+    payload and slot 2 both inside this record       57    all four conditions hold
+    slot 2 inside, payload OUTSIDE the record        70    the `off` containment bound refuses
+    payload inside, slot 2 is the float 0x3F800000    6    the `e2` bound refuses
+    neither                                           6    both refuse
+
+All 57 that reach the two arithmetic tests pass both. The only condition doing any
+selecting is the containment bound, and the 70 it refuses are the `RoadSubstance002`
+records the commit message already names — the ones that grew to 3.6 million vertices when
+an earlier draft omitted it.
+
+**The 57 split 44 / 13, and the 44 are the control the rule needed.** In 44 of them slot 2
+and the embedded length word agree **to the byte**, so the override is a no-op; in 13 they
+disagree and slot 2 says longer. A quantity that reproduces an independently stated length
+44 times out of 57 is a payload-end pointer, not a fit. In all 57 the payload begins 12 or
+16 bytes into the record and slot 2 lands 8 bytes (42 records) or 28 bytes (15) short of its
+end — the record's own span brackets the payload on both sides.
+
+## The chain of sub-payloads is real; `68377e1` looked one word too far
+
+That commit recorded a refutation: *"A chain of `[kind][length]` sub-payloads is refuted —
+there is no header at `off + n` in any of the 13."* There is not. **The header is at
+`off + n − 4`**, because `L = (w + 23) / 2` counts one trailing word that is not a vertex.
+`vector_shape` already knew about that word from the other side — it drops "a trailing
+all-zero vertex" that "terminates the list in 97 of 118 payloads". When the list does not
+terminate, that same word is the next sub-payload's `kind`: in all 6 `FootstepsSubstance001`
+filter-5 records the word at `off + n − 4` is `0x00000003`, one of the three values
+`vector_shape`'s docstring already lists. A payload is
+`[kind][length][vertices…][next kind, or 0]`.
+
+`Record.vector_chain` steps `off += L − 4` while the next word is a known kind and every
+part lies inside the record's own extent. Over the 139 records:
+
+    chain of one part                              112
+    chain of 2 or 3, entirely inside the record     11
+    chain of 2 or 3 whose parts fall outside        16   refused, same containment bound
+
+**The landing is the check, and it could have failed.** Of the 11, the last part ends
+exactly on a boundary the record itself states in **11 of 11** — on the record's own end for
+the 6 `FootstepsSubstance001` records, and on **slot 2** for the 5 `RoadLinesSubstance002`
+ones, which are 5 of the 13 the override already covers. Nothing in the walk arranges that.
+It is also a second, independent confirmation of the slot-2 reading above: slot 2 is where
+the chain stops.
+
+**What it does not explain, stated with it.** Splitting the span into sub-payloads does
+*not* recover the triangle strip, and that was the hypothesis worth testing. Over the 11:
+
+    alternating signed area, span read as one strip     64.99%   (5,487 faces)
+    alternating signed area, per sub-payload            65.59%   (5,396 faces)
+    the same vertices shuffled                          37.26%
+    the credited single-payload records                 99.52%
+
+So the sub-payload boundary is real and is **not** what makes the tail fail the strip test.
+`vector_shape` is deliberately left reading only the first payload's span; nothing
+rasterises the chain, and `extract_shapes.py` draws exactly what it drew before.
+
+`vectorshape` goes **919,216 record bytes / 172,344 uninterpreted / 81.24% interpreted** to
+**584 / 99.93%** — the worst filter in the table to off the table. What is left is 572 bytes
+in 4- and 8-byte runs at record offset +8, which are the payload pointer and the float
+parameter in records whose width legend names neither, and 12 bytes the residual classifier
+calls an FX cell.
+
+## `Grid.sbsasm`'s two 65 KB blobs are images, and the naming record is next door
+
+Records 4, 5 and 7 of `Grid.sbsasm` are adjacent extents of 65,548 / 65,544 / 65,556 bytes —
+a `transformation`, a `bitmap` and a `blend`. The audit charged 65,532 and 65,536 of them to
+the `transformation` and the `blend` as `other`, and `Record.bitmap` read the middle one as
+`inline_pixels`. All three are 65,536-byte payloads, and **none of the three belongs to the
+record whose extent it lies in**:
+
+    blob at    176 .. 65,712     named by record 5 (bitmap), words[1] = 124      + 52
+    blob at 65,720 .. 131,256    named by record 6 (bitmap), words[1] = 65,668   + 52
+    blob at 131,328 .. 196,864   named by record 8 (bitmap), words[1] = 131,276  + 52
+
+Three of three, at word 1, at the format's universal `+52` skew, each exactly
+`256 × 256 × 1` bytes for a record declaring 256×256 grayscale, and each ending exactly on
+the next record's offset. A sweep of every aligned word in the file finds **exactly one**
+pointer to each blob under any of the skews `+0 / +4 / +8 / +52`, and it is that one.
+
+**They are images, and the evidence is not statistical.** Rendered as 256×256 8-bit
+grayscale they read **`2m`**, **`1m`** and **`4m`** — the scale labels of a grid generator
+called `Grid`. Mean |Δ| between horizontally adjacent pixels is 2.1 against 51–60 for a
+shuffle of the same bytes.
+
+This is §5's partition, not an anomaly: a `transformation` and a `blend` have no payload of
+their own, and the directory is a sorted extent map, so each image lands in whichever
+record's extent it physically falls in — here, always the *previous* one.
+
+### Two things in `Record.bitmap` were wrong, and only one of them was about `Grid`
+
+**(1) The long/short discriminator was reading the directory, not the record.** The test was
+`self.end - self.offset != 8`, and `end` comes from the record directory. `Grid`'s records
+5, 6 and 8 are two-word `[tag][pointer]` bitmaps — `header_words` says 2 for all three —
+whose *extents* are 65,544 / 52 / 52 because the next image lies inside them. Read as long
+form, record 5 returned `inline_pixels` over its neighbour's image and records 6 and 8
+returned `computed` over a program that is not theirs. The discriminator is now
+`header_words`, the record's own statement of where its slots stop. Over the corpus's 1,345
+filter-16 records the two tests disagree on **exactly these 3**:
+
+    layout  bit 8   header_words   extent == 8    records   long form?
+      A       1          2            yes           565     no,  unchanged
+      A       0          2            yes           310     no,  unchanged
+      A       0          3            no            457     yes, unchanged
+      A       1          3            no              9     yes, unchanged
+      B       0          3            no              1     yes, unchanged
+      B       1          2            NO              3     was yes, now NO   <- Grid
+
+**(2) The pointer skew was `+4` and is `+52`, corpus-wide.** The `+4` came from a story
+about "an eight-byte magic-plus-version header with the pixel region behind it, so pixels
+begin at 8". Those eight bytes are the first two fields of SPEC §2's **0x38-byte file
+header**, whose remaining fields — per-file uid, total file size, the trailer pointer, the
+value-table end — this same module parses. Offset 8 is the uid. Under `+4` every image in
+the corpus began 48 bytes early and the first one's leading 48 bytes were header fields.
+
+**The check that discriminates is the segment's far end**, because a uniform 48-byte shift
+is invisible to everything that was watching. `resource_end` is the record directory's
+offset out of the file header and owes nothing to any bitmap record:
+
+    max(image offset + size) - resource_end     at +52      0     111 of 111
+                                                at  +4    -48     111 of 111
+
+Both columns exceptionless. Raw payloads only -- a JPEG record's `size` is the
+UNCOMPRESSED size and does not describe a byte extent -- and restricted to the files whose
+images tile the segment; five specimens carry images no record points at, the same gaps
+`test_the_images_still_pack_back_to_back` already records, and there the last record's image
+is not the last image. And at the near end, `4 + 52 = 0x38`, which is where SPEC §2 puts the
+body and SPEC §9 the resource segment: the first image lands there in **122 of the 125**
+files that carry one.
+
+**What survives from the old note, and why it could not see this.** The alpha-channel test
+(`13 of 16` depth-16 RGBA bitmaps put their flattest channel last at `+4`, at index 1 at
+`+0`) settled the offset **mod 8** and nothing more, and `52 ≡ 4 (mod 8)`, so it gives the
+identical answer under both. The back-to-back packing test is invariant to a uniform shift
+by construction — its own docstring says so. The magic-and-version test passes either way.
+Three checks, all passing, none of them able to see a 48-byte error. `test_bitmap.py` now
+carries a fourth that can, and the three that cannot say so.
+
+**The first draft of that fourth check was wrong, in the one way that matters, and the
+mutation test caught it.** It selected its population on `min(offset) == 0x38` and then
+asserted the far end — so with the skew mutated back to `+4`, every file failed the
+selector, the population was empty and the test **skipped**. It reported success either
+way, which is the `c0d7774` failure in miniature: an exclusion that is never applied and
+announces nothing. The selector is now shift-invariant —
+`max(offset + size) − min(offset) == resource_end − 0x38`, the images spanning exactly the
+segment's *length*, which a uniform shift cannot change — and both endpoints are asserted.
+Re-mutated, it fails on **111 files** with the offending offset in the message. A check
+that cannot fail under the error it names is not a check, and this one could not.
+
+**The JPEG arm corroborates the base independently.** Its own note records "THE COMPRESSED
+LENGTH IS AT BYTE 48, a u32 immediately ahead of the SOI ... The other 48 bytes are not
+identified." Byte 48 of `off + 4` is `off + 52`. Under the corrected skew there are no
+unidentified bytes: the image region opens `[u32 compressed length][SOI …]` at the image
+offset, and `data_offset` is unchanged, so every JPEG still decodes to the shape its record
+declares.
+
+`archive/tools/extract_bitmaps.py` had a **third** reading — `pos = b['offset'] + 52` on top
+of the model's `+4`, landing 4 bytes past the pixels, which is a channel rotation everywhere
+four bytes is not a whole pixel. It now takes `b['offset']` for a raw payload and
+`b['data_offset']` for a JPEG one.
+
+## A/B, guards and the harness
+
+Corpus A/B over all 437 files, 903,616 records. The audit's four residual classes move only
+where claimed: `abuts an fx cell` 126,206 unmoved, `zeros, not the pad` 1,050 unmoved, the
+pad 730,360 runs unmoved, and the two header tiers (`header slots only` 7.397%,
+`+ program bodies` 96.499%) identical to six figures — so nothing moved between the decoded
+and undecoded sides of a header, only into the payload tier.
+
+    vector strip region      743,004 -> 914,764   (+146,388 slot 2, +25,372 chain)
+    bitmap pixels region     119,374 -> 250,442   (+131,068, the three Grid images)
+    vectorshape residual     172,344 ->     584
+    transformation `other`    65,532 ->       0
+    blend `other`             65,536 ->       0
+
+Guards, all at their stated values: cursor **903,301 / 903,301**; SPEC 6.3 edge slots
+**1,302,475 / 1,302,475**; state-2 slots **198,249 / 198,249**. `decompose`'s `end`,
+`inputs`, `hdr` and `param_slots` hash identically over 903,616 records — expected, since
+`decompose` never calls `Record.bitmap` or `Record.vector_shape`, and measured rather than
+assumed. `walk_partition` at 200 files: **32 FX violations on 76,013 attributions**,
+unmoved, with 0 record-header and 0 pointer-bound violations.
+
+**The render moves toward the engine's exports and nothing regresses.** Exactly one
+reference pack carries an embedded pixel bitmap (`Chesterfield`, one record), and exactly
+that pack's channels move:
+
+    AO          0.9193 -> 0.9195       basecolor 0   0.7497 -> 0.7501
+    height      0.9528 -> 0.9528       basecolor 1   0.7662 -> 0.7668
+    normal 2    0.6678 -> 0.6679       basecolor 2  -0.6773 -> -0.6764
+    metallic, roughness, normal 0/1 and every other pack: byte-identical
+
+**No `REFERENCE_FLOOR` entry is lowered and none is raised.** The moves are +0.0002 to
++0.0009 — one 1024-wide image shifted by 48 bytes, twelve pixels of one row — and the
+table's own note warns against ratcheting on a spread that small. Recorded here instead.
+
+## How to re-take every number in this section
+
+    python3 archive/tools/audit_corpus.py
+    python3 archive/tools/bit_census.py --check
+    PYTHONPATH=tools python3 archive/tools/walk_partition.py 200
+    cd archive/tools && ./t && python3 -m pytest -q test_fx.py test_bitmap.py \
+        && python3 -m pytest -q test_filters.py test_tables.py
+
+The 44/13 split, the four-way condition partition, the chain histogram and the
+alternating-signed-area columns are loops over `Record.vector_extent` and
+`Record.vector_chain`; the segment-closure table is `test_bitmap.py`'s new
+`test_the_images_tile_the_resource_segment_exactly`, which is the discriminating check and
+fails loudly if the skew goes back to `+4`.
+
+## Provenance
+
+Nothing here is a name and nothing here needed a source. Every quantity is one the compiled
+file states: a payload's own length word, a record's own slot 2, a record's own header
+length from the width legend, the resource segment's end out of the file header, and an
+image's size from the record's own declared width, height and channel code. Filter 5's
+provenance wall is untouched — this section extends its *extent* and says nothing about its
+name. `archive/tools/provenance.py` was run before any measurement in this pass; it reports
+the established populations (42 of 142 paired sources excluded, 4 flagged and not excluded),
+and its predicate was called rather than retyped, which is the `c0d7774` mistake this file
+already records.

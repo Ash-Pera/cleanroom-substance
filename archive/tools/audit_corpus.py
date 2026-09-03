@@ -178,13 +178,24 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
                 cp = r.curve_points
                 if cp:
                     mark(r.words[3] + 52, r.words[3] + 52 + 4 + 24 * len(cp), _CURVE)
-            elif f == 5 and len(r.words) > 1:
-                off = r.words[1] + 52
-                if 0 <= off <= n - 8:
-                    _k, w = struct.unpack_from('<2I', a.data, off)
-                    m = (w + 23) // 2
-                    if m >= 12 and off + m <= n:
-                        mark(off, off + m, _VEC)
+            elif f == 5:
+                # `Record.vector_extent`, NOT a second derivation of it. This arm used to
+                # recompute `(w + 23) // 2` from the same two words, which meant the
+                # slot-2 payload-end override `68377e1` added to `Record.vector_shape`
+                # was invisible here: that commit reported recovering 146,440 bytes and
+                # this audit's `vectorshape` residual did not move, and both figures were
+                # correct about their own instrument. One definition now.
+                got = r.vector_extent
+                if got:
+                    mark(got[0], got[0] + got[1], _VEC)
+                # And every sub-payload the first one chains to. `vector_chain` states
+                # the rule and the check it could have failed: 11 of 11 chains that lie
+                # inside their own record end exactly on a boundary the record itself
+                # states -- the record's end for 6, slot 2 for 5. It returns nothing for
+                # the 76 whose payload lies outside their extent, which the line above
+                # has already credited at its own stated length.
+                for _q, _k, _m in r.vector_chain:
+                    mark(_q, _q + _m, _VEC)
             elif f == 16:
                 bm = r.bitmap
                 if isinstance(bm, dict) and bm.get('kind') in ('pixels', 'inline_pixels'):
