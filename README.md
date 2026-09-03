@@ -87,11 +87,19 @@ this project is built on. Two things were excluded throughout:
 That exclusion has a measured cost, and the notes record it rather than hiding it. The 100
 permitted paired sources declare exactly 24 filter names and all 24 are already assigned, so
 the two remaining ids cannot be named from anything this project may read — filter 9 not at
-all, and filter 5 only descriptively, from what its payload draws. Three occasions where the
+all, and filter 5 only descriptively, from what its payload draws. **Four** occasions where the
 boundary was brushed are disclosed as well: aggregate counts read from two excluded files before
 it was noticed, eight archives extracted and scanned before the predicate was applied rather
-than after, and the declared filter names of three excluded sources printed alongside their
-own provenance flag. No such observation is used, and all are recorded in FORMAT-NOTES.md.
+than after, the declared filter names of three excluded sources printed alongside their
+own provenance flag, and — 2026-09-03 — a probe that opened all 142 paired `.sbs` files,
+the 42 excluded ones included, under a regex spelled `author="..."` which does not match the
+rule's `<author v="Allegorithmic"`, so the intended filter was a silent no-op. It read only
+whether a node kind was present; nothing was extracted, and its result was discarded in
+favour of the established count. That one is the most instructive of the four, because the
+exclusion did not fail — it was never applied, and it reported success either way. It is why
+`archive/tools/provenance.py` exists as the predicate rather than as a regex retyped per
+script, and re-typing it is the mistake to design out. No such observation is used, and all
+are recorded in FORMAT-NOTES.md.
 
 The **Provenance statement** at the top of `FORMAT-NOTES.md` is the auditable version of
 all of this in one place. The exclusion predicate is a single string match and can be
@@ -115,10 +123,10 @@ when the `valid_program` floor was retired, and the byte row, which moved 6.75 p
                                            records that HAVE no parameter slot. 95.6426%
                                            since the floor went; it was 95.6393%
     edge slots resolved          100.00%
-    record bytes interpreted       99.31%  was 92.5%, which was honest when taken: on its
+    record bytes interpreted       99.32%  was 92.5%, which was honest when taken: on its
                                            own definition today's tree gives 96.50%, and
-                                           99.31% crediting every payload reader - see below.
-                                           99.82% once the two-byte alignment pad is
+                                           99.32% crediting every payload reader - see below.
+                                           99.83% once the two-byte alignment pad is
                                            labelled, which is a fourth tier and not a decode
     record layout by mask-walk     99.97%  (only vectorshape, provenance-walled, left)
 
@@ -257,20 +265,20 @@ and by the walk migration reaching programs the layout table could not name — 
 the rest was never undecoded, only unmarked.
 
 What is left is 2,123,232 bytes, 0.746%, and 68.5% of that is the two-byte alignment pad —
-729,629 runs of `00 00` inside a record extent, every one with a decoded structure on each
+730,360 runs of `00 00` inside a record extent, every one with a decoded structure on each
 side. **The pad is now labelled rather than counted as uninterpreted, and it is a FOURTH
 tier rather than a widening of the third**, because crediting it moves no byte from
-undecoded to decoded: `+ every payload reader` still reads 99.307% and the new line reads
-**99.820%**, leaving 511,036 bytes, 0.180%. The audit prints that split, per filter, with a
+undecoded to decoded: `+ every payload reader` still reads 99.317% and the new line reads
+**99.831%**, leaving 480,950 bytes, 0.169%. The audit prints that split, per filter, with a
 classification of what remains.
 
-The residual after the pad is **511,036 bytes**, and it partitions: 197,326 of FX tree that
-no walk in the file reaches — 52,044 charged to `fxmaps`, 114,674 to `levels`,
+The residual after the pad is **480,950 bytes**, and it partitions: 167,240 of FX tree that
+no walk in the file reaches — 21,978 charged to `fxmaps`, 138,644 to `levels`,
 `transformation` and `blend` because the directory is a partition, 6,012 to `vectorshape` —
 166,332 of `vectorshape` payload past what its reader credits (one real payload-extent bug,
 13 records, fix written up as a patch and not applied), 131,068 in two constant-fill image
 blobs in a single specimen, and 16,310 everywhere else. By filter the top two are now
-`vectorshape` 172,344 and `transformation` 113,942; `fxmaps` is 55,786, down from 191,098.
+`vectorshape` 172,344 and `transformation` 113,942; `fxmaps` is 25,720, down from 191,098.
 See FORMAT-NOTES.md, "`fxmaps`' 802,940 uninterpreted record bytes".
 
 **135,440 bytes of that came off the FX row — 40.7% of the whole FX gap — and the repair the
@@ -294,6 +302,25 @@ and on the only ground-truth check in the repository, `Chesterfield`'s basecolor
 +0.60/+0.65/−0.72 → +0.75/+0.77/−0.68 and its roughness +0.90 → +0.93, with four
 `REFERENCE_FLOOR` entries ratcheted up. See FORMAT-NOTES.md, "A cell with two forward
 pointers loses one, so follow both".
+
+**And another 30,086 came off it, because the words the parameter layout DROPS are pointers
+too.** `fx_table` steps by the furthest-forward of "the slots the tag's *parameter* layout
+declares", and `fx_entry_layout` drops every structural bit — 4, 7, 16 and 17, the words
+`FX_STRUCTURAL_BITS` already records as pointer-shaped. Enqueuing each of those words as a
+further table start, gated on the record's own frozen entry-tag vocabulary, and reading a
+pointer cell's payload when the cell is met inside a table run rather than only through the
+chain, closes 122 of the 316 remaining cells over the 60-file sample and takes `fx cell not
+reached` 70,940 → 41,034. The gate is what makes it precise: ungated the same sweep admits
+91 cells that land on bytes another reader had already been credited, all of them bit 7.
+Corpus-wide 40,892 of 41,164 records are identical, 272 gain items with the old list an
+exact ordered **prefix** every time, and **0 are altered**. What the rule proposes is
+checkable where nothing is at stake: 10,895 of the 10,931 targets it offers — 99.67% — are
+cells the same record's walk already reaches by another path, against 1 of 34,258 for the
+same gate on the tag's own program slots. Two further groups were measured and refused, one
+of them after being fully implemented: a node's spare field slot closes another 102 cells
+with a 27-against-0-against-0 control, but it quadruples what the records it touches draw
+and the render is bit-identical either way, so it is the `0x1db` refusal covering three more
+families. See FORMAT-NOTES.md, "The words the parameter layout drops are pointers too".
 
 **The 8-byte FX entry stub was already fixed, and this is what it was worth.** `bytes-audit`
 found FX entries credited a fixed 8 bytes rather than their stated extent and fixed it in the

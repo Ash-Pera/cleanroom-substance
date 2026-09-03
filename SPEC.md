@@ -756,8 +756,8 @@ discriminated by the tag word's **low nibble**:
 special case.** The paragraph above states it for `0x1db`; measured from the byte side —
 every run of record bytes no reader can label, over the whole corpus — the same shape appears
 on a dozen tag families. It was **332,766 bytes of FX cells no walk in the file reached**,
-183,804 of them opening on a tag and the rest abutting a cell that does; it is **197,326**
-now, 70,940 opening on a tag, after the repairs below.
+183,804 of them opening on a tag and the rest abutting a cell that does; it is **167,240**
+now, 41,034 opening on a tag, after the repairs below.
 
 **The fix is to follow BOTH, not to move the choice.** `fx_table` steps by "the slot reaching
 furthest forward" over the slots the tag's *parameter* layout declares, so a tag whose layout
@@ -810,31 +810,105 @@ are altered — the three leaf attributions above. `walk_partition` holds at 32 
 while attributions rise 73,964 → 75,557, so all 1,593 new attributions stay inside their own
 structure's stated extent.
 
-**What is left.** 316 cells / 10,162 bytes over the same 60 files. 228 are named only from
-within another *unreached* cell — a cascade tail that moves when its head does. The rest are
-one hop out, by the naming cell's tag and slot:
+**And the words the parameter layout drops are pointers too.** `fx_entry_walk` marks bits
+4, 7, 16 and 17 `structural` — they occupy slots but are not parameters — and
+`fx_entry_layout` drops them, so `fx_table`'s step, which searches "the slots the tag's
+*parameter* layout declares", passes over them numerically and enqueues nothing they name.
+Bit 16 is a four-word field and the shape is the same two-forward-pointers one:
 
-    entry, a nearer forward pointer the max rule drops   37   0x410008 w2 (16), 0x420008 w2
-                                                              (12), 0x2520448 w2 (6), …
+    0x00410008   slots 2,3 -> one cell      slots 4,5 -> another, further forward
+                 the step takes the second and the first is read by nothing
+
+Enqueue each structural word as a further table start, leave the step alone. The gate is
+the record's own **frozen entry-tag vocabulary** — the word waiting at the target must be a
+tag some cell this record already yields — and it is load-bearing: ungated the sweep admits
+199 cells over 60 files of which **91 land on a byte already credited**, every one of them
+bit 7, whose word is a program pointer 4.3% of the time and whose target's low nibble is 8
+by coincidence. Gated, it admits **108 cells, 108 of 108 already classified `fx cell not
+reached`, 0 landing on a credited byte, and 108 of 108 with their own stated extent landing
+exactly on a program start.**
+
+The non-circular half is what the same slot does where nothing is at stake: the gate offers
+10,931 structural-slot targets over those 60 files and **10,895 of them — 99.67% — are
+cells the same record's walk already reaches by another path**. The control is the identical
+gate on the tag's own *parameter* slots: 1 of 34,258 program slots and 0 of 2 baked slots
+pass it, against 11,021 of 12,102 structural ones. The `[start, end]` reading of bit 16's
+pair stays refuted (42 of 359) and is not needed — nothing here says what the four words
+*mean*, only that each names a structure.
+
+**A pointer cell met inside a table run states a payload, and only the chain path asked.**
+`fx_table` calls these waypoints and steps through them; `_fx_chain_run` reads
+`pointer_cell_payload` — the cell's own last slot — for every pointer cell the *chain*
+reaches. One structure, two paths, one question asked. Over 60 files the whole population is
+15 such cells, 14 pass the guard, and **14 of 14 name a cell nothing reached**, all 14 bytes
+the audit classifies `fx cell not reached`, 0 on a credited byte.
+
+Corpus-wide these two take 40,892 of 41,164 records identical, 272 extended (+1,395 entry,
++0 node) with the old item list an exact ordered **prefix** every time, 0 altered;
+`walk_partition` 32 violations before and after on 75,557 → 76,013 attributions; `fx cell
+not reached` 70,940 → 41,034 bytes and the `fxmaps` residual 55,786 → 25,720.
+
+**What is left.** 194 cells / 7,362 bytes over the same 60 files, from 316 / 10,162. 156 are
+named only from within another *unreached* cell. The 38 that are one hop out:
+
     a node field slot the mask spends elsewhere          27   0x89 w2 (10), 0x1db w3 (6),
                                                               0x99 w3 (6), 0x1cb w2 (5)
-    a pointer cell's payload, the cell reached as an
-      ENTRY rather than through the chain                14   0x14b w2 (10), 0x24b w2 (4)
-    0x20008 slot 1, the run stopped for another reason   10
+    0x20008 slot 1, an entry holding its program INLINE  10
+    0x410008 slot 1, a BACKWARD pointer                   1
 
-The 27 include `0x1db`'s first child, diagnosed above and deliberately not walked: correcting
-it changes what 23 records draw and no specimen carrying one ships an export. The 37 are the
-same two-forward-pointers shape on tags whose layout is NOT empty, where the both-pointers
-rule does not apply because the search already covers those slots. Two candidate bounds were
-measured and both fail. Bit 16's four-word structural field looks like a `[start, end]` pair —
-`0x00410008` holds its slots 2 and 3 equal, its slots 4 and 5 equal, and the walk takes the
-second pair — but only **42 of 359** bit-16 entries have that shape. "The successor is the
-pointer that abuts the entry's own program" fails harder: the entry's program end is among
-its pointers in only 6,692 of 23,496 entries and is a *nearer* pointer than the furthest in
-2,826, so adopting it would move 2,826 successors to recover 37 cells. Nothing in the tag
-distinguishes the two, and that cannot be settled from the compiled side alone — it needs a
-source declaring two `paramset` continuations off one entry, and none of the 8 permitted
-files with an FX-Map does.
+**The cascade does follow, and it was measured rather than assumed.** Closing 50 of the 88
+one-hop cells took 72 of the 228 with them — 122 cells for 50, a ratio of 1.4 tail cells per
+head. The naming census is re-run after the change, not extrapolated.
+
+**The node field slot is the `0x1db` refusal, and it now covers three more families.** A
+node's spare slot — the word the mask spends on bit 6's baked `randomseed`, or the word
+between a nibble-9 header's program and its successor — points forward inside the body in
+only 31 of 3,019 cases over 60 files, and 27 of those 31 land on a header the record's own
+walk already carries, against **0 of 3,001** for the word one slot past the node's stated
+extent and **0 of 3,001** for its program slot. All 27 open a chain that reaches an entry
+table. Following them closes 102 of the 194 cells and `walk_partition` stays at 32. It is
+**not done**, for the reason `0x1db` was not: it QUADRUPLES what the records it touches
+draw — `fxrender.entries` goes 1 to 4 on both reference-pack records it reaches — and the
+arbiter is silent. `Bricks.sbsasm` renders bit-identically either way across all 8,907
+rendered records, and all 27 reference-scored channels are unchanged to six decimals.
+
+**This is where the provenance rule bites, and it bites on the structure rather than on a
+name.** Settling it needs a source that declares a branching FX-Map node beside an export
+that shows what the engine drew. Only **eight permitted sources carry FX-Map node data at
+all**, and two of those declare nothing but `paramset` and compile to *zero* chain nodes,
+so they cannot speak about a node's children. None of the 8 reference packages ships an
+export for an output the affected records feed. So what would settle it is an export for a
+record whose output actually differs — not a further reading of the compiled side, which
+states the slot's existence unambiguously and says nothing about whether it is drawn.
+
+**The `0x20008` row is not what its name says.** Those cells are reached as *entries*, not
+through the chain, and the run stops at them because `fx_table`'s layout rule refuses the
+tag: they are `0x00420008` holding their declared program INLINE at slot 3 rather than
+pointing to it. Accepting the inline form has a real containment split — of the words a run
+stops on, **333 of 342 lie inside a program's byte span where the inline arm fails and 0 of
+22 where it passes** — but the 22 cells it admits do not state where they end: 2 land on a
+credited byte, 8 come out of `abuts an fx cell` rather than `fx cell not reached`, and 13
+have their inline program end on no structure at all. Refuted on the extent evidence, not on
+the containment.
+
+The earlier reading of this residual, which this paragraph corrects: the 37 were called "a
+nearer forward pointer the max rule drops", which is the symptom rather than the mechanism —
+the dropped word is not a *pointer the step ranked lower* but a *structural word the
+parameter layout never showed the step at all*, and 18 of the 37 are named by a BACKWARD
+pointer that no furthest-forward rule could ever take. "The successor is the pointer that
+abuts the entry's own program" is refuted as before and is not needed: the entry's program
+end is among its pointers in only 6,692 of 23,496 entries and is a nearer pointer than the
+furthest in 2,826, so adopting it would have moved 2,826 successors to recover 37 cells.
+
+**An entry's stated width is one word short when its last field is wide.**
+`walk_partition.stated_extent` computes an entry's span as `max(slot) + 1` over
+`fx_entry_layout`, which ignores the width of the last field: a trailing `patternsize` at
+bit 25 is two words, so `0x02520448`'s extent stops on the *second* component of its own
+last parameter. Read with `max(slot + width - 1) + 1` instead, all 108 cells above land
+exactly on a program start; read as the code does, 54 of them land on a float. The checker
+is deliberately **left as it is** — it under-reports, which is the safe direction for a
+bound whose whole value is that a violation cannot be argued with, and widening it would
+credit bytes by moving the ruler rather than by reading a structure.
 
 Neither the `FX_TAG_LOW16` vocabulary nor "the tag names a program and one of them resolves"
 identifies these cells on its own: the first admits `0x09130008`, which is 2,322 u32s

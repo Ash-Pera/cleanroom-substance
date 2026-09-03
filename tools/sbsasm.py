@@ -4152,6 +4152,13 @@ class Record:
         to -- was read by nothing. It is now a driver over both halves: chain runs and
         table runs alternate until neither names anything new.
 
+        AND THERE IS A THIRD PHASE, `_fx_extend`, which fires once after both queues run
+        dry: the structural words an entry's PARAMETER layout drops, and the payload of a
+        pointer cell met inside a table run. Because it fires last, the item list the walk
+        produced before it is an exact ordered PREFIX of the new one -- 40,892 of 41,164
+        records identical, 272 extended, 0 altered, `fx cell not reached` 70,940 -> 41,034
+        bytes. Its evidence and the two rules refused beside it are in its own docstring.
+
         WHAT THAT IS WORTH, and what it is NOT. Over the whole corpus -- this, the chain
         LINK now yielded by `fx_tree`, and the second forward pointer followed below --
         39,839 of 41,164 `fxmaps` records walk identically, 1,322 gain items (+1,148
@@ -4165,6 +4172,7 @@ class Record:
         511,036.
         """
         items, starts = self._fx_chain_run(self.fx_root)
+        seen_items = list(items)
         for it in items:
             yield it
         # THE RECORD'S OWN NODE VOCABULARY, taken from the walk as it already stood and
@@ -4178,6 +4186,7 @@ class Record:
         pending_tables = list(starts or [None])
         pending_chains = []
         guard = 64                       # runaway guard, as `fx_table`'s own loop has
+        extended = False                 # `_fx_extend` fires once, after the rest drains
         while (pending_tables or pending_chains) and guard > 0:
             guard -= 1
             while pending_tables:
@@ -4187,6 +4196,7 @@ class Record:
                     if off in emitted:
                         continue
                     emitted.add(off)
+                    seen_items.append(('entry', off, tag, prog))
                     yield ('entry', off, tag, prog)
                     # A CELL WITH TWO FORWARD POINTERS LOSES ONE, and the answer is to
                     # follow both rather than to move the choice. `fx_table` steps by "the
@@ -4264,11 +4274,158 @@ class Record:
                 for it in items2:
                     if it[1] in node_offs:
                         continue
+                    seen_items.append(it)
                     yield it
                 node_offs |= {it[1] for it in items2}
                 for s2 in starts2:
                     if s2 is not None and s2 not in emitted:
                         pending_tables.append(s2)
+            if not pending_tables and not pending_chains and not extended:
+                # THE EXTENSION, FIRED ONCE AND ONLY WHEN THE ESTABLISHED WALK HAS
+                # NOTHING LEFT. Everything above is untouched, so the item list the old
+                # walk produced comes out first and in its old order -- an exact ordered
+                # PREFIX of the new one, which is stronger than the subsequence the
+                # previous pass could claim. Two additive rules, each re-reading a slot
+                # some structure already states, neither of them moving a choice:
+                #
+                #   1. an entry's STRUCTURAL slots -- the words bits 4, 7, 16 and 17
+                #      occupy, which `fx_entry_layout` drops -- gated on the record's own
+                #      frozen ENTRY-tag vocabulary;
+                #   2. a POINTER CELL met inside a table run, whose payload slot the
+                #      chain path already reads and the table path stepped over.
+                #
+                # THE VOCABULARY IS FROZEN HERE, after the established walk is exhausted
+                # and before either rule fires, so a cell one of them reaches can never
+                # widen the gate that admitted it. That is the same non-circularity
+                # argument the handoff above is built on, one phase later.
+                extended = True
+                for st in self._fx_extend(seen_items, emitted):
+                    if st not in emitted and st not in pending_tables:
+                        pending_tables.append(st)
+
+    def _fx_extend(self, seen_items, emitted):
+        """Extra table starts, as offsets, named by cells the walk has already reached.
+
+        Split out of `fx_walk` so the two rules can sit next to their evidence. It reads
+        only `seen_items` -- what the established walk has already yielded -- so it cannot
+        see, and cannot be widened by, anything it goes on to reach.
+
+        RULE 1: AN ENTRY'S STRUCTURAL SLOTS. `fx_entry_walk` marks bits 4, 7, 16 and 17
+        `structural`: "they occupy space, which is why their widths are needed to place the
+        program slots that follow, but calling them baked parameters was wrong", and the
+        measurement beside `FX_STRUCTURAL_BITS` reads those words as denormal in 85-99.5%
+        of cases -- which is what a POINTER looks like read as float32. `fx_entry_layout`
+        drops them, and `fx_table` steps by "the slot reaching furthest forward over the
+        slots the tag's PARAMETER layout declares", so the structural words are passed over
+        numerically and what they name is enqueued by nothing. Bit 16 is the four-word
+        field and the shape is plain:
+
+            0x00410008   slots 2,3 -> one cell      slots 4,5 -> another, further forward
+                         the step takes the second and the first is read by nothing
+
+        THE `[start, end]` READING OF THAT PAIR IS NOT USED AND STAYS REFUTED -- only 42 of
+        359 bit-16 entries hold both pairs duplicated and ordered. This rule needs no story
+        about what the four words MEAN: each is enqueued as a further table start and the
+        step is left alone, so a tag whose bit-16 field is not a range loses nothing.
+
+        GATED ON THE RECORD'S OWN FROZEN ENTRY-TAG VOCABULARY, and the gate is load-bearing
+        rather than decorative. Ungated, over 60 files, the sweep admits 199 cells of which
+        91 land on a byte already credited to another cell -- every one of them BIT 7,
+        whose word points at a program in 4.3% of entries and whose target's low nibble is
+        8 by coincidence (`0x0004fc98` is a pointer, `fx_entry_layout` of it names no
+        program, so `entry_layout_holds` passes it vacuously). With the gate, over 60 files:
+
+            new cells                                              108
+            already classified `fx cell not reached` by the audit  108   of 108
+            landing on a byte any reader had credited                0
+            own stated extent landing exactly on a program start   108   of 108
+
+        AND THE SLOT IS CONFIRMED WHERE IT IS NOT NEEDED, which is the non-circular half.
+        The gate offers 10,931 structural-slot targets over those 60 files and 10,895 of
+        them -- 99.67% -- are cells the SAME record's walk already reaches by another path.
+        So the rule is not proposing a new kind of target; it reads a slot demonstrably
+        naming table entries and closes the 0.33% residue. The control is the identical
+        gate on the tag's own PARAMETER slots: 1 of 34,258 program slots and 0 of 2 baked
+        slots pass it, against 11,021 of 12,102 structural ones.
+
+        RULE 2: A POINTER CELL MET INSIDE A TABLE RUN. `fx_table`'s own note calls these
+        WAYPOINTS -- "the run follows each word's furthest-forward pointer, and the pointer
+        goes THROUGH the cell to a real entry beyond it" -- and steps over them. But the
+        cell states a payload at its last slot, and `_fx_chain_run` already reads exactly
+        that slot (`pointer_cell_payload`) for every pointer cell the CHAIN reaches. Two
+        paths meet one structure and only one of them asked it the question. Same
+        derivation, same guard, applied to the other path: over 60 files the whole
+        population is 15 such cells, 14 pass the guard and 1 does not, and all 14 name a
+        cell nothing reached -- 14 of 14 bytes the audit classifies `fx cell not reached`,
+        0 landing on a credited byte.
+
+        No vocabulary gate on this one, and that is deliberate rather than an oversight:
+        the target tags (`0x15140098`, `0x05200148`) are entries the record reaches nowhere
+        else, so the gate would reject all 14. What stands in for it is that the SLOT is
+        not chosen -- `pointer_cell_payload` asks the cell for its own width and takes its
+        last slot, the reading 362 of 362 width-stating cells confirm.
+
+        WHAT IS NOT HERE, and why each was refused rather than forgotten:
+
+        * A NODE'S SPARE FIELD SLOTS -- `0x89` w2, `0x99` w3, `0x1cb` w2 and `0x01db` w3 --
+          name 27 further cells over 60 files and would close 102 with their cascade. The
+          population statement is strong (27 of 3,019 spare slots point forward in the body
+          at a header the record's own walk carries, against 0 of 3,001 for the word one
+          slot past the node's stated extent and 0 of 3,001 for its program slot) and
+          `walk_partition` stays at 32. It is refused anyway, because it QUADRUPLES what
+          the records it touches draw -- `fxrender.entries` goes 1 to 4 on both reference
+          records it reaches -- and the render is silent: Bricks renders bit-identically
+          either way and all 27 scored channels are unchanged. That is `node_shape`'s
+          `0x01db` refusal exactly, and it now covers three more families.
+
+        * A CHAIN LINK'S SLOT-1 STEP. Over 150 files all 176 chain-link items step to a
+          nibble-9 pointer cell the chain loop already walks, so there is no such handoff
+          to make; the `0x00020008` cells the census names are reached as ENTRIES, below.
+
+        * LETTING A TABLE RUN PAST AN ENTRY WHOSE PROGRAM IS INLINE. `fx_table` stops when
+          the next tag's declared program does not resolve, and 10 unreached cells are
+          `0x00420008` holding that program inline at slot 3 rather than pointing to it.
+          The containment split is real -- of the words a run stops on, 333 of 342 lie
+          inside a program's byte span where the inline arm fails and 0 of 22 where it
+          passes -- but the 22 cells it would admit do not state where they end: 2 land on
+          a credited byte, 8 come out of `abuts an fx cell` rather than `fx cell not
+          reached`, and 13 have their inline program end on no structure at all.
+        """
+        a = self.asm
+        d, lo, hi = a.data, a.body_lo, a.body_hi
+        vocab_entry = {it[2] for it in seen_items if it[0] == 'entry' and it[2] is not None}
+        out = []
+
+        def offer(pv):
+            if not (lo < pv < hi - 7) or pv in emitted:
+                return
+            tw = struct.unpack_from('<I', d, pv)[0]
+            if (tw & 0xF) == 8 and a.entry_layout_holds(pv, tw):
+                out.append(pv)
+
+        for kind, off, tag, _prog in seen_items:
+            if kind != 'entry' or tag is None:
+                continue
+            # RULE 2 -- the cell states its own payload slot.
+            if pointer_cell_successor(tag) is not None:
+                sl = pointer_cell_payload(a, off)
+                if off + sl + 4 <= hi:
+                    offer(struct.unpack_from('<I', d, off + sl)[0] + 52)
+                continue
+            # RULE 1 -- the structural words, forward only, in the frozen vocabulary.
+            for _b, sl0, _nm, k, w in fx_entry_walk(tag):
+                if k != 'structural':
+                    continue
+                for sl in range(sl0, sl0 + w):
+                    at = off + 4 * sl
+                    if at + 4 > hi:
+                        break
+                    pv = struct.unpack_from('<I', d, at)[0] + 52
+                    if pv <= off or not (lo < pv < hi - 7):
+                        continue
+                    if struct.unpack_from('<I', d, pv)[0] in vocab_entry:
+                        offer(pv)
+        return out
 
     def fx_named_params(self):
         """Yield (entry offset, tag, slot, name, kind, value) for every table parameter.

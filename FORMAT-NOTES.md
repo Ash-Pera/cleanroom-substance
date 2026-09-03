@@ -46886,3 +46886,378 @@ FULL PATH, not basename: two corpus files share a basename 39 times, and a basen
 first run reported 40,623/502 where the truth was 40,661/503. The naming census is a search
 of the body for each unreached cell's `offset - 52`, bounded by the naming cell's own stated
 width, which is the correction this section opens with.
+
+# The words the parameter layout drops are pointers too: 30,086 more bytes of FX tree
+
+The brief was the 316 cells / 10,162 bytes of FX tree left unreached over 60 files after
+"A cell with two forward pointers loses one, so follow both" — specifically the **88 that
+are one hop out**, in four groups, with the standing warning that every candidate rule for
+them was known to cost more than it gained ("successor abuts the entry's program" recovers
+all 37 and moves 2,826 successors; `bit-16-as-a-range` holds on 42 of 359; a blanket
+closure reaches 12,244 cells against 721 unreached with 68.8% short and 5.0% overrunning).
+
+Two of the four groups close, at zero measured cost. Two are refused, one of them after
+being fully implemented and measured. **316 cells → 194, 10,162 bytes → 7,362 over the 60
+files; corpus-wide `fx cell not reached` 70,940 → 41,034 and the record-byte residual
+511,036 → 480,950.** The cascade claim was checked rather than assumed and it holds at 1.4
+tail cells per head.
+
+## The baseline, and one census row that was named after its symptom
+
+`audit_corpus`'s classifier reproduces 316 / 10,162 exactly. Re-running the naming census —
+each unreached cell's `offset − 52` searched for in the body, bounded by the naming cell's
+own stated width — reproduces the previous section's split exactly too:
+
+    named from a cell the walk DOES reach (one hop out)     88
+    named only from within another UNREACHED cell          223
+    named by nothing at all                                  5
+
+and the 88 partition as recorded: 37 entry, 27 node field slot, 14 pointer-cell payload, 10
+`0x20008` slot 1. **One row of that table is named after its symptom rather than its
+mechanism.** The 37 were "a nearer forward pointer the max rule drops". They are not. Split
+by which slot names them:
+
+    bit 16's four-word structural field, FORWARD    18   0x410008 w2/w3 (16), 0x2510448 w2/w3 (2)
+    bit 17's one-word structural field, BACKWARD    18   0x420008 w2 (12), 0x2520448 w2 (6)
+    slot 1, BACKWARD                                 1   0x410008 w1
+
+Half of them are named by a pointer that points **backward**, which no furthest-forward
+rule could ever have taken, ranked lower or otherwise. And the forward half is not a
+pointer the step ranked below another — it is a word the step was never shown. `fx_table`
+searches "the slots the tag's *parameter* layout declares", `fx_entry_layout` drops every
+`FX_STRUCTURAL_BITS` row, and bits 4, 7, 16 and 17 are exactly those rows.
+
+## What holds, 1: an entry's structural words are enqueued, and the step is untouched
+
+`FX_STRUCTURAL_BITS`' own note already says what these words are — "4, 7, 16 and 17 are
+header or pointer words: they occupy space, which is why their widths are needed to place
+the program slots that follow, but calling them baked parameters was wrong" — with the
+measurement that reads them as denormal in 85.3% to 99.5% of entries, which is what a
+pointer looks like read as float32. So the rule is the previous section's, one population
+over: enqueue each structural word's target as a further table start, leave `fx_table`'s
+step exactly as it is.
+
+    0x00410008   slots 2,3 -> one cell      slots 4,5 -> another, further forward
+                 the step takes the second and the first is read by nothing
+
+**The `[start, end]` reading of that pair stays refuted and is not needed.** 42 of 359 was
+the reason to reject it as a *bound*; as an *enqueue* nothing has to be said about what the
+four words mean, only that each one names a structure. A tag whose bit-16 field is not a
+range loses nothing, because nothing is taken away.
+
+**THE GATE IS THE RECORD'S OWN FROZEN ENTRY-TAG VOCABULARY AND IT IS LOAD-BEARING.**
+Ungated — nibble 8 plus `entry_layout_holds`, the guard the previous section used — the
+sweep over 60 files admits 199 cells and **91 of them land on a byte another cell has
+already been credited**. Every one of the 91 is BIT 7:
+
+    PavingStones 0x4fcb0  0x84520088  w2 -> 0x4fcc0, whose word is 0x0004fc98
+                                      a POINTER, low nibble 8 by coincidence, and
+                                      `fx_entry_layout(0x4fc98)` names no program, so
+                                      `entry_layout_holds` passes it vacuously
+
+Bit 7's own row in the measurement above is the one that "points at a program 4.3%" of the
+time, so it is the one structural bit whose word is not a cell address. Naming the bit
+would have been a fit. The vocabulary gate refuses all 91 without mentioning it.
+
+With the gate, over 60 files:
+
+    new cells                                              108
+    already classified `fx cell not reached` by the audit  108   of 108
+    landing on a byte any reader had credited                0
+    own stated extent landing exactly on a program start   108   of 108
+
+**THE NON-CIRCULAR HALF IS WHAT THE SAME SLOT DOES WHERE NOTHING IS AT STAKE.** "Already
+classified `fx cell not reached`" shares a term with the rule's own guard — both ask
+`entry_layout_holds` — so on its own it is weaker here than the same line was for the
+node handoff, whose audit arm is `node_shape` and is independent. The statement that does
+not share anything is this: the gate offers **10,931** structural-slot targets over those
+60 files and **10,895 of them, 99.67%, are cells the SAME record's walk already reaches by
+another path.** The rule is not proposing a new kind of target. It reads a slot that
+demonstrably names table entries and closes the 0.33% residue.
+
+And the control is the identical gate on the tag's own PARAMETER slots:
+
+    slot kind      candidates   the gate offers
+    structural         12,102        11,021    91.1%
+    program            34,258             1     0.003%
+    baked                   2             0     0.0%
+
+## What holds, 2: a pointer cell in a table run states a payload, and only one path asked
+
+`fx_table`'s own note calls a pointer cell inside an entry run a WAYPOINT — "the run
+follows each word's furthest-forward pointer, and the pointer goes THROUGH the cell to a
+real entry beyond it" — and steps over it. Meanwhile `_fx_chain_run` reads
+`pointer_cell_payload`, the cell's own last slot, for every pointer cell the CHAIN reaches,
+and collects it as a table start. One structure, two paths, and only one of them asked it
+the question.
+
+Same derivation, same guard, applied to the other path. Over 60 files the entire population
+is 15 such cells; 14 pass the guard and 1 does not; **all 14 name a cell nothing reached**,
+14 of 14 bytes the audit classifies `fx cell not reached`, 0 on a credited byte.
+
+**No vocabulary gate on this one, deliberately.** The target tags — `0x15140098`,
+`0x05200148` — are entries the record reaches nowhere else, so the gate rejects all 14.
+What stands in for it is that the SLOT is not chosen: `pointer_cell_payload` asks the cell
+for its own width and takes its last slot, the reading 362 of 362 width-stating cells
+confirm. A rule that reads a structure's own statement about itself needs a different
+justification from one that picks among slots, and applying the vocabulary gate here would
+have been applying a discriminator to a population that does not need discriminating.
+
+## The extension fires once, after the old walk is exhausted
+
+Both rules live in `_fx_extend`, called from `fx_walk` only when `pending_tables` and
+`pending_chains` are both empty and only once per record. Two consequences, both wanted:
+
+* the old item list comes out first and in its old order, so it is an exact ordered
+  **PREFIX** of the new one rather than merely a subsequence — a stronger property than
+  the previous section could claim, and it is checked as such below;
+* the vocabulary is frozen at the moment the established walk runs out, so a cell either
+  rule reaches can never widen the gate that admitted it. Same non-circularity argument as
+  the node handoff, one phase later.
+
+## The cascade was measured, not assumed
+
+The brief asked for this explicitly, because "most of the 228 should follow" is a
+prediction and not a result. Re-running the naming census after the change:
+
+                                  before   after
+    one hop out                       88      38
+    cascade (named only from an
+      unreached cell)                223     151
+    named by nothing                   5       5
+                                  ------   -----
+                                     316     194
+
+**50 of the 88 closed and 72 of the 228 came with them** — 122 cells for 50, a ratio of
+1.44 tail cells per head. So the tail does follow, and the job is worth more than the 88;
+but it is not a free 228 either, and the 151 that remain hang off the 38 heads that did not
+close.
+
+## What is REFUSED, and the first one was implemented before it was refused
+
+### A node's spare field slot — 27 cells, 102 with their cascade, and the render is silent
+
+`node_shape` locates a node's successor at `base + popcount(header & 0xF0)` words and its
+program at `1 + bit4`. That leaves SLOTS IN THE MIDDLE with nothing spending them for
+`0x89` (w2), `0x99` (w3), `0x1cb` (w2, the word the mask gives bit 6's baked `randomseed`)
+and `0x01db` (w3, which `node_shape`'s docstring already establishes as the first child,
+23 of 23 by program abutment). Those four slots name all 27 cells in this group.
+
+The population statement is the strongest in this section:
+
+    spare field slots on nodes the walk reaches, 60 files      3,019
+      point forward inside the body                               31    1.0%
+        land on a header the record's own walk already carries    27
+        land on an entry tag                                       1
+        land on neither                                            3
+    CONTROL, the word one slot PAST the node's stated extent   3,001 -> 0 forward in body
+    CONTROL, the node's own program slot                       3,001 -> 0 land on a header
+
+27 against 0 against 0, and all 27 open a chain that yields 1 to 7 further nodes and reaches
+an entry table of 3 to 5 entries. Implemented, it takes the 60-file residual **194 cells →
+92 and 7,362 bytes → 5,236**, closes `0x1db`'s six, and `walk_partition` holds at 32
+violations on 76,236 attributions. Corpus-wide: 40,845 records identical, 319 extended
+(+502 node, +1,542 entry) with the old list an exact prefix every time, 0 altered, and the
+residual 480,950 → 471,518.
+
+**It is not landed.** `fxrender.entries` goes **1 to 4** on both reference-pack records it
+reaches, `Bricks.sbsasm` 10081 and `StylizedCobblestoneStreet.sbsasm` 2 — and one of those
+four is `0x55300158`, the exact tag `node_shape` records as the mask `0x1db` records DROP.
+So this quadruples what the affected records draw, and that is the decision `node_shape`
+refuses to make without an export: "nothing here can say whether the engine draws both
+children or picks one".
+
+**The arbiter was asked and it is silent, which is not the same as approving.**
+`Bricks.sbsasm` is a scored package. Rendered both ways at `refcompare.RENDER_DIM`, all
+8,907 of its rendered records are BIT-IDENTICAL, and all 27 reference-scored channels
+across the five packs are unchanged to six decimals. So the rule carries no measurable
+render risk on the only ground truth available — and no evidence either. Record 10081 is an
+ancestor of five of the file's 31 outputs and none of the five is one of the scored ones.
+
+Two smaller things argue the same way. 200 bytes of the 2,126 it gains come out of `other`
+rather than out of `fx cell not reached`, so they are bytes the audit could not
+independently name — and that is not the rule's fault but the classifier's: all four runs
+open on `0x00000049`, a POINTER CELL, which `_residual_class` tests with `node_shape` (bit
+7 clear, declines) and the nibble-8 entry test (nibble is 9) and therefore cannot label. And
+`0x89`'s w2 was already measured at "1 of 47" for reaching a table in `node_shape`'s
+docstring; conditioning on the slot pointing forward at a known header raises that to 27 of
+27, which is a refinement of that measurement and could equally be a selection of its
+successes.
+
+**What would settle it: an export for any record whose output actually differs.** Not for a
+`0x1db` file specifically — `Bricks` and `StylizedCobblestoneStreet` would do, if either
+package shipped a reference for one of the outputs record 10081 or record 2 feeds. The
+patch is four lines and is described exactly by the population table above.
+
+### Letting a table run past an entry that holds its program inline — refuted on extent
+
+The 10 `0x20008 slot 1` cells are not a chain problem, and the row's name is misleading in
+the same way the 37's was. They are reached as ENTRIES, and the run stops at them because
+`fx_table`'s layout rule refuses the tag: they are `0x00420008` holding the program its
+layout names INLINE at slot 3 rather than pointing to it — the form this file already
+records ("33 unreached cells over 120 files hold that program INLINE there").
+
+The containment split for accepting the inline form is genuinely good, and is the same
+shape as the one that justified the layout rule in the first place. Over 60 files, taking
+every word a table run stops on because `entry_layout_holds` failed:
+
+    the inline arm FAILS   342 words   333 lie inside a program's byte span   97.4%
+    the inline arm PASSES   22 words     0 lie inside a program's byte span    0.0%
+
+So the arm is not readmitting bytecode. **It is refused anyway, on the evidence that
+matters here, which is extent.** Of the 22 cells it would admit:
+
+    already classified `fx cell not reached`      10
+    the head of an `abuts an fx cell` run          8
+    not the head of any run                        4
+    landing on a byte already credited             2
+    inline program ending on a tag or a program    9   of 22
+    inline program ending on nothing               13   (several at unaligned addresses)
+
+Two cells landing on credited bytes and thirteen that cannot say where they end is not the
+108-of-108 standard the two landed rules meet. This also changes `fx_table`'s STOPPING
+rule rather than adding a start, so it is the kind of change the brief says to hold to a
+higher standard, and it does not clear the lower one.
+
+### A chain link's slot-1 step — there is no such handoff
+
+Written and measured before it was found to be empty, and recorded because the census row
+that motivated it reads as if it exists. `_fx_chain_run` refuses to make a chain LINK the
+cell it reads a handoff shape out of ("a link states nothing but its own step"), so the
+obvious symmetric rule is: when a link's step lands on an entry tag, that is the
+"a chain ends by pointing at the first table entry" handoff. Over 150 files **all 176 chain-
+link items step to a nibble-9 pointer cell**, which the chain loop already walks. The rule
+fires zero times and is deleted rather than left in as documentation.
+
+### Slot 1, and the one cell nothing reaches
+
+`0x410008 w1` names one unreached cell, backward. Slot 1 is the entry's own word — a
+self-pointer landing at `off + 8` in 2,737 of 2,870 cases — and sweeping it is catastrophic:
+over 60 files it admits **1,842 cells of which 1,841 land on a byte already credited.**
+Measured once, refuted, not repeated.
+
+## The A/B, the guards, the audit
+
+`fx_walk` item lists keyed by FULL PATH and record index (the basename-keying error the
+previous section discloses is not repeated), 437 files / 41,164 `fxmaps` records, against a
+pinned `git show e231131:tools/sbsasm.py`:
+
+    identical                                                        40,892
+    EXTENDED -- items appended, +1,395 entry, +0 node                    272
+      of which the old list is NOT an exact ordered subsequence            0
+      of which the old list is NOT an exact ordered PREFIX                 0
+    ALTERED                                                                0
+
+Zero altered is the point: the previous section had 3, and they were real corrections. This
+one takes nothing away from anything.
+
+`audit_corpus.py`, whole corpus, before and after:
+
+                                            before        after
+    interpreted, header slots only          7.397%       7.397%
+    + program bodies                       96.499%      96.499%
+    + every payload reader                 99.307%      99.317%
+    accounted, + the 2-byte alignment pad  99.820%      99.831%
+    uninterpreted                          511,036      480,950  bytes  (0.180% -> 0.169%)
+
+    fx entry                             3,569,108    3,597,732   +28,624
+    alignment pad                        1,459,246    1,460,708    +1,462
+    fx node cell                         1,076,724    1,076,724         0
+                                                                  --------
+                                                                    30,086
+
+    fxmaps  uninterpreted                   55,786       25,720   98.86% -> 98.91% interpreted
+    levels  uninterpreted                   28,368       28,348
+
+    classified (pad excluded)               before        after
+      fx cell not reached                   70,940       41,034   -42.2%
+      abuts an fx cell                     126,386      126,206
+      other                                312,660      312,660   unchanged
+      zeros, not the pad                     1,050        1,050   unchanged
+
+**`other` and `zeros` do not move by one byte**, so nothing was credited by widening what
+counts — and that is exactly what the refused node-slot rule could not say, since it moves
+`other` by 200.
+
+    walk cursor == stated header length          903,301 / 903,301   unchanged
+    edge slots holding a backward index        1,302,475 / 1,302,475 unchanged
+    state-2 slots resolving a program            198,249 / 198,249   unchanged
+    decompose end/inputs/hdr/param_slots/prog/cls_slots/root
+                                                 sha256 identical over all 437 files
+                                                 (2f78db8da1d979d7...)
+    walk_partition, 200 files                    32 FX violations before, 32 after,
+                                                 on 75,557 -> 76,013 attributions, and the
+                                                 report differs on that ONE LINE and no other
+    reverify.py                                  0 of 9 exact-share claims no longer hold
+
+456 new attributions and not one new violation, so every program the new cells name lies
+inside the new cell's own stated extent.
+
+## The render cannot speak for this one, and that is stated rather than worked around
+
+The same `fx_walk` A/B over the 8 reference-pack files gives **737 records, 737 identical.**
+Not one pack record changes, so no reference channel can move and `REFERENCE_FLOOR` is
+untouched — no floor is raised and, more importantly, none is lowered. That is
+`nonwalked.blind_spot` working as documented: `corpus.paths()` and the packs are disjoint
+populations. What carries this change is the structural evidence — 108 of 108 extents
+landing on a program start, 99.67% of the same slot's targets already reached by another
+path, 0 of 34,258 program slots passing the same gate, `walk_partition`'s zero.
+
+## A correction to `stated_extent`, which is NOT applied
+
+`walk_partition.stated_extent` reads an entry's span as `max(slot) + 1` over
+`fx_entry_layout`, and that ignores the WIDTH of the last field. `0x02520448`'s trailing
+`patternsize` (bit 25) is two words, so the computed extent stops on the second component of
+the entry's own last parameter — a float, `0x40A00000`. Under the corrected span,
+`max(slot + width − 1) + 1`, all 108 new cells land exactly on a program start; under the
+code as it stands, 54 of the 108 land on that float and the extent test looks half-failed.
+
+**The checker is left as it is.** It under-reports, which is the safe direction for a bound
+whose whole value is that a violation cannot be argued with, and `audit_corpus` uses the
+same function as a FLOOR on how many bytes an FX cell is credited — so widening it would add
+bytes to the interpreted total by moving the ruler rather than by reading a structure. The
+correction is recorded here so that the next reader of the 54 knows what they are looking at
+and does not re-derive it as a defect in the cells.
+
+## How to re-take every number here
+
+    python3 archive/tools/audit_corpus.py                     # the tiers and the classified table
+    python3 archive/tools/bit_census.py --check               # two of the three invariants
+    python3 -c "import sys;sys.path.insert(0,'tools');sys.path.append('archive/tools');import walk_health;walk_health.main([])"
+    python3 -c "import sys;sys.path.insert(0,'tools');sys.path.append('archive/tools');import walk_partition;walk_partition.main(['200'])"
+    cd archive/tools && ./t && python3 -m pytest -q test_fx.py test_bitmap.py \
+        && python3 -m pytest -q test_filters.py test_tables.py
+
+The naming census, the slot-kind control, the 3,019-spare-slot table and the inline-arm
+containment split are one-off probes outside the tool: each is a loop over
+`audit_corpus._byte_canvas`'s residual runs and `Record.fx_walk`'s items, with
+`fx_entry_walk`'s `kind` field doing the partitioning. The A/B is the item list dumped from
+two checkouts and diffed, keyed by full path.
+
+## Where the provenance rule bites here, and one brush against it, disclosed
+
+The compiled side states everything this section needed for the two rules that landed: the
+tag's structural bits, their widths, the cell's own stated extent, the pointer cell's own
+width. Nothing here is a name and nothing here needed a source.
+
+It bites on the ONE thing that stayed open. Whether a node's spare pointer slot is a second
+child the engine DRAWS cannot be read off the compiled file — the file states that the slot
+exists and names a header, and stops there. Settling it needs a source declaring a branching
+FX-Map node beside an export showing what was drawn. **Only eight permitted sources carry
+FX-Map node data at all**, and two of those (`Simulator__Grid`, `Clouds_3_Animated`) declare
+nothing but `paramset` and compile to ZERO chain nodes, so they cannot speak about a node's
+children. The other direction is equally shut: `Bricks.sbsasm` record 10081 is an ancestor
+of five of that file's 31 outputs and none of the five is one of the six the package ships a
+reference for.
+
+**DISCLOSED, a brush against the rule with no observation taken from it.** While trying to
+measure how many permitted sources sit beside an affected assembly, a loop read the bytes of
+all 142 paired `.sbs` files — including the 42 the rule excludes — to apply a regex for
+`author="..."`. That regex does not match the exclusion attribute's spelling
+(`<author v="Allegorithmic"`), so it was a no-op: the run reported all 142 as permitted,
+which is how the mistake was caught. No content from any file was extracted, read or used;
+the run's only outputs were a count and a list of filenames, and the result was discarded
+rather than corrected, in favour of the count this document already establishes (eight
+permitted sources with FX-Map node data). No number in this section derives from an excluded
+file. Recorded here for the same reason the three brushes in the README's provenance section
+are: the rule is only auditable if the near-misses are written down too.
