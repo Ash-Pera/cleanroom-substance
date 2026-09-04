@@ -867,3 +867,82 @@ def test_0x1B_owns_its_fields_and_does_not_borrow_its_neighbours():
           'visited; %d borrow-claims against the neighbour'
           % (checked, no_prog, child_visited, len(borrowed)))
     return
+
+
+def test_out_of_line_blocks_hold_the_programs_their_tag_declares():
+    """An entry whose slot 1 names its parameter block OUT OF LINE.
+
+    The cell is `[ ...fields... ][tag][slot 1 -> the fields][slot 2]`: the tag's own mask
+    gives the entry's width, so the block ends exactly on the tag word, and slot 1 names
+    the block. `Assembly.fx_out_of_line` is that identity; this asserts what it buys and
+    what it costs, and both halves are written to fail loudly rather than skip.
+
+    THE POPULATION IS ASSERTED FIRST, because the interesting assertions below are
+    vacuously true on an empty one -- which is how two of the three previous FX passes
+    caught a test that passed by not running.
+
+      * every program slot the tag declares resolves, on every cell;
+      * the identity read from the block agrees with the identity read from the tag, so
+        the two directions cannot drift;
+      * the CONTROL is the identity applied to entries whose block is inline, where it
+        must not fire: measured over the whole corpus before this rule existed it fired
+        on 95 of 137,552, 0.07%.
+    """
+    cells = slots = resolved = 0
+    both_ends = 0
+    ctl = ctl_tot = 0
+    for f in _files():
+        try:
+            a = Assembly(f)
+        except Exception:
+            continue
+        d = a.data
+        for r in a.records:
+            if r.filter_id != 4:
+                continue
+            seen = set()
+            try:
+                items = list(r.fx_walk())
+            except Exception:
+                continue
+            for kind, off, tag, _p in items:
+                if kind != 'entry' or tag is None or off in seen:
+                    continue
+                seen.add(off)
+                if off + 4 > a.body_hi:
+                    continue
+                inline = struct.unpack_from('<I', d, off)[0] == tag
+                if inline:
+                    # CONTROL: the block is at the offset, so the tag word IS there and the
+                    # out-of-line identity has no business holding.
+                    ctl_tot += 1
+                    if a.fx_out_of_line_at(off, tag) is not None:
+                        ctl += 1
+                    continue
+                got = a.fx_out_of_line_at(off, tag)
+                if got is None:
+                    continue
+                cells += 1
+                w = a.fx_out_of_line(got[0])
+                if w is not None and w[0] == off:
+                    both_ends += 1
+                    for p in w[3]:
+                        slots += 1
+                        resolved += 1 if p else 0
+    assert cells >= 100, (
+        'only %d out-of-line cells in %d files -- the assertions below say nothing about '
+        'a population this small, and the corpus this was written against has 846'
+        % (cells, LIMIT))
+    assert both_ends == cells, (
+        'the block-side and tag-side readings of the identity disagree on %d of %d cells'
+        % (cells - both_ends, cells))
+    assert resolved == slots, (
+        '%d of %d declared program slots do not resolve on cells the identity admits; '
+        'it admitted 1,749 of 1,749 when it was written' % (slots - resolved, slots))
+    assert ctl_tot > 1000 and ctl / ctl_tot < 0.01, (
+        'the identity fires on %d of %d entries whose block is INLINE (%.2f%%); it was '
+        '95 of 137,552 corpus-wide' % (ctl, ctl_tot, 100.0 * ctl / max(1, ctl_tot)))
+    print('out-of-line cells: %d, %d program slots all resolving; control %d of %d '
+          'inline-block entries (%.2f%%)'
+          % (cells, slots, ctl, ctl_tot, 100.0 * ctl / max(1, ctl_tot)))
+    return

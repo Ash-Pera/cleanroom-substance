@@ -47537,3 +47537,328 @@ name. `archive/tools/provenance.py` was run before any measurement in this pass;
 the established populations (42 of 142 paired sources excluded, 4 flagged and not excluded),
 and its predicate was called rather than retyped, which is the `c0d7774` mistake this file
 already records.
+
+# `abuts an fx cell` was an entry whose parameter block sits out of line: 131,506 bytes
+
+The brief was the **126,206 bytes** the byte audit classifies `abuts an fx cell` — 71% of
+the 178,122-byte residual, spread over `transformation` 46,216, `blend` 34,012, `levels`
+22,874, `blur` 7,848, `hsl` 7,476, `warp` 3,368, `emboss` 848 and `fxmaps` 380. Every one
+of those filters except `fxmaps` has no payload of its own, so the standing hypothesis was
+that the bytes are FX structure belonging to a neighbouring `fxmaps` record and landing in
+whichever extent the directory put them in. That is right about the *ownership* and wrong
+about the *shape*: the bytes are not a tree nobody walks. **They are one kind of table
+entry the walk meets, refuses, and stops at** — an entry whose parameter block is stored at
+the address its slot 1 names instead of inline behind the tag.
+
+Two changes, measured separately. The residual goes **178,122 → 46,616 bytes**, the class
+itself **126,206 → 10,628**, and `fx cell not reached` **35,034 → 22,644**.
+
+## The class is not one thing, and the census had to come first
+
+Every maximal uninterpreted run the audit puts in this class, corpus-wide — 367 runs — with
+the cause read off the run's own neighbourhood rather than assumed:
+
+    a run at a NODE's credited end, opening on a program header       30 runs   66,828
+    a run at an ENTRY's credited end, opening on a nibble-8 word     173 runs   38,428
+    the abutting entry's declared program, held INLINE and uncredited 36 runs   16,880
+    a run at an entry's credited end, opening on something else        8 runs    2,452
+    an `emboss` record `decompose` refuses to lay out                 18 runs      712
+    4 to 8 bytes just past a record's own walked header end           41 runs      380
+    2 bytes of pad plus one pointer word after a program body         29 runs      270
+    an 8-byte nibble-8 cell at a node's credited end                  32 runs      256
+                                                                    --------  --------
+                                                                     367       126,206
+
+The three big rows turned out to be **one** mechanism seen from three sides, which is why
+the census was worth doing before any repair: the 66,828 is the programs, the 38,428 is the
+cells that name them, and the 16,880 is the same cells met from the other end. The third row
+is worth one sentence on its own, because its name was a wrong attribution rather than a
+description. `concrete_049`'s entry at 0x2924 declares a program at slot 3 and there IS a
+program at `0x2924 + 4·3`, so "it holds its program inline" reads true — but the entry's own
+block, at 0x2920, names a program at 0x2904 instead, and the word at 0x2930 is named by the
+block of the NEXT cell, at 0x2950. Every cell's block names its own programs; reading the
+slot's address as an inline program hands one cell's program to its neighbour.
+
+## What the bytes are: `[fields][tag][slot 1 -> the fields][slot 2]`
+
+`roofing_007` record 56 is the whole thing in one screen. The record is 40 bytes at 0x2670;
+its slot 2 addresses a node at 0x1c7c, and the walk yields that node and stops. The 2,516
+bytes from 0x1c8c to 0x2660 are charged to the *previous* record's extent and read by
+nothing:
+
+    0x1c7c  0000019b 00000000 00001c28 00002624   the node: program at w2, successor at w3
+    0x1c8c  program, 382 bytes          <-- 0x263c's word + 52
+    0x1e0c  program, 1064 bytes         <-- 0x2640's
+    0x2234  program, 880 bytes          <-- 0x264c's
+    0x25a4  program, 116 bytes          <-- 0x2650's
+    0x2618  program, 36 bytes           <-- 0x2654's, ending exactly at 0x263c
+    0x263c  00001c58 00001dd8 00000000 00000000   the BLOCK: slots 3,4 and the two words
+    0x264c  00002200 00002570 000025e4            of the baked slot 5, then slots 7,8,9
+    0x2658  54d40088                              the TAG, one word past the last field
+    0x265c  00002608                              slot 1: 0x2608 + 52 = 0x263c, the block
+
+The node's successor is `0x2624 + 52 = 0x2658` — it points at the tag, and the walk refuses
+it because `entry_layout_holds` reads the tag's program slots *forward*, from `0x2658 + 4·3`
+on, which is inside the 8-byte program at 0x2660 that record 56 names as its own size
+expression. Read at the block instead, all five program slots the tag declares are programs,
+in address order, and they fill the region exactly: 0x1c8c to 0x2660 is five programs, a
+seven-word block, the tag and slot 1, with nothing left over.
+
+So the entry is the ordinary `[tag][slot 1][slot 2][fields…]` with its **parameter block
+placed out of line**. Slot 1 has the same meaning in both forms. Over the 137,552 entries
+the walk already reached before this pass whose tag declares a layout:
+
+    slot 1 == off + 4 * first parameter slot   117,945   85.75%   the block, inline
+    slot 1 == off + 8 where that is not it       4,456    3.24%
+    anything else                               15,151   11.01%   (12,046 have the block
+                                                                   inline anyway)
+
+The identity is two statements of one address that must agree: **slot 1 names the block**,
+and **the tag's own mask says how many words the entry holds, so the block ends on the tag
+word.** Nothing in it is a value probe, a vocabulary test or a plausibility threshold.
+
+## The discriminator, and its control
+
+Over every 4-aligned nibble-8 word inside a run the audit classified `abuts an fx cell`,
+before any change:
+
+                                     words   program slots   resolving   all   none
+    the pointer identity holds         846           1,749       1,749   846      0
+    it does not                        440             602           9     0    377
+
+100.0% against 1.5%, and the identity is not what selects on resolution — a candidate that
+passes the pointer test and then fails on its programs would be counted, and there are
+none. The landing check is independent of both: on 595 of 595 cells found under the
+narrower first anchor, **the last program the cell's own slots name ends exactly on the
+block's first byte.**
+
+The out-of-line population is where the walk was *already looking*: 273 of the 846 are the
+exact word a table run stopped on or a chain handoff was refused at, and the other 573
+follow from them down the cells' own next-pointers.
+
+**And the `stated_extent` correction SPEC 8 records is the mechanism, in the reading rather
+than in the ruler.** The width has to be `max(slot + width − 1) + 1`; read as `max(slot) + 1`
+the block ends one word short of the tag and **101 of the 595 cells stop matching**. It is
+confirmed from the data and not only from the mask: `0x03520248`'s block is
+`[→prog][→prog][→prog][1.0][1.0]`, and those last two floats are the two components of the
+trailing `patternsize` at bit 25 that the naive span cuts in half. `test_fx.py`'s new test
+fails on `resolved == slots` if the width is put back.
+
+## What was implemented, in two pieces, and what each is worth
+
+**1. The out-of-line reading.** `Assembly.fx_out_of_line` is the identity;
+`fx_table` takes it as a further arm behind the same `not entry_layout_holds` that used to
+`break`, so a run that continues today continues identically. The cell is yielded once, at
+its **block**, because that is where the structure starts. Its step is bounded to slots 1
+and 2, and only where the run is continuing past a stop it used to make — past the tag lie
+the *next* cell's programs, and searching the tag's full span there is the read-bytecode-as-
+pointers failure this file already records for widening the step. `_fx_chain_run`'s handoff
+gate gets the same arm.
+
+**2. An entry is yielded once per program slot, as a node is.** `fx_table` yields
+`(offset, tag, program)` per resolving program — its own convention, and `fx_tree`'s — and
+`fx_walk`'s skip keyed on the OFFSET alone, so an entry naming three programs arrived as
+three items and left as one. Corpus-wide that dropped **189,206 programs on 78,402
+entries**. It was invisible while every entry held its programs INLINE, because
+`audit_corpus` credits an entry from its offset to the end of the program it names and the
+inline programs sit in between — the extent covered what the dropped items would have
+named. It stops being invisible the moment a cell's programs lie BEHIND it, which is what
+an out-of-line block is.
+
+    audit_corpus.py, whole corpus       HEAD 4d2fd5c   + out-of-line   + per-slot items
+    interpreted, header slots only           7.397%        7.397%          7.397%
+    + program bodies                        96.499%       96.517%         96.545%
+    + every payload reader                  99.424%       99.444%         99.533%
+    accounted, + the 2-byte pad             99.937%       99.957%         99.984%
+    uninterpreted                           178,122       121,596          46,616
+      abuts an fx cell                      126,206        85,608          10,628
+      fx cell not reached                    35,034        22,644          22,644
+      other                                  15,832        12,294          12,294
+      zeros, not the pad                      1,050         1,050           1,050
+    pad runs                                730,360       730,701         641,006
+
+## `other` MOVES, which the standard says it must not, and here is every byte of it
+
+The previous two passes could say "`other` and `zeros` do not move by one byte, so nothing
+was credited by widening what counts". **This pass cannot: `other` falls 15,832 → 12,294.**
+`zeros` does not move. Byte for byte, over the whole corpus, the 3,538:
+
+    3,088   inside an out-of-line cell's own extent -- its parameter block, whose words are
+            individually read: each program pointer resolves and each baked slot is a float
+       58   a 2-byte `00 00` run that became the labelled alignment pad once a decoded
+            structure landed on the other side of it
+      392   still uninterpreted, reclassified into `abuts an fx cell` (292) or `fx cell not
+            reached` (100) because a newly credited cell is now beside them
+
+So no byte moves out of `other` by widening an existing structure's extent; 3,088 move
+because a structure that was not read before is read now, and 392 do not move at all. The
+figure is reported rather than the claim, because the claim as the previous passes state it
+is false here.
+
+**And the same accounting applied to the second change catches a tier shift that is NOT a
+decode.** Every byte label transition, corpus-wide, split between the two changes:
+
+    HEAD -> out-of-line only                  out-of-line only -> + per-slot items
+      uninterpreted -> program body  38,930     alignment pad -> fx entry     180,612
+      uninterpreted -> fx entry      22,352     uninterpreted -> program body  76,632
+      uninterpreted -> alignment pad    682     uninterpreted -> alignment pad  1,222
+      fx node cell  -> program body  10,942     fx entry      -> program body   5,036
+      fx entry      -> program body   5,550     fx node cell  -> program body   1,102
+                                                bitmap pixels -> fx entry          56
+
+The **180,612** is the caveat and it is stated here rather than buried: with every program
+slot yielded, an entry's credited extent runs to the end of the *furthest* program it names
+instead of the first, and the alignment pads between those programs fall inside it. Not one
+of those bytes moves from undecoded to decoded — they move from the fourth tier to the
+third — so `+ every payload reader` rises 0.109 points of which **0.063 is that shift and
+0.046 is real closure** (180,612 and 131,506 bytes over 284,490,036). The row that only moves on real closure is `accounted, + the
+2-byte alignment pad`: 99.937% → 99.984%, and the uninterpreted count, 178,122 → 46,616.
+
+The **56** is a contested reading and not a win: in `PavingStonesSubstance006` an entry's
+extent and `Record.bitmap`'s pixel span overlap on 56 bytes, and the entry now reaches them
+first. It is 56 bytes of 284 MB and it is disclosed because the audit's canvas is
+first-come-first-served over a partition, so an over-long extent can take a byte from a
+reader that had it right.
+
+## The A/B, over the whole corpus
+
+`fx_walk` item lists keyed by FULL PATH and record index, 437 files / 41,164 `fxmaps`
+records, against `git show 4d2fd5c:tools/sbsasm.py`:
+
+    identical                                                         9,954
+    EXTENDED -- items appended, +191,242 entry items                 31,134
+      of which the old list is an exact ordered PREFIX               12,147
+      of which it is an ordered SUBSEQUENCE but not a prefix         18,987
+      of which it is NOT an ordered subsequence                          0
+    ALTERED                                                              76
+
+The 76 lose exactly one item each and **none of the 76 lost items carried a program**:
+
+    an `entry` yielded at an offset the same walk yields as a NODE      34
+    the forward reading of an out-of-line cell at its TAG, now yielded
+      once at its block instead                                         42
+
+The first 34 are the `fx_table(None)` fallback re-entering at the record's own root when the
+chain found no table start; with the handoff now admitted, the root is not re-read as an
+entry. The second 42 are the duplicate this pass deliberately removed, and removing it is
+not tidiness: `audit_corpus` credits a program-less entry everything up to the next item, so
+a duplicate at the tag swallows the following programs by adjacency. Left in, it moved
+**2,862 bytes** out of `other` with nothing decoded — the accounting-as-decode error this
+repository has a retraction about, reproduced and then removed rather than argued away.
+
+## The guards
+
+    walk cursor == stated header length          903,301 / 903,301   unchanged
+    edge slots holding a backward index        1,302,475 / 1,302,475 unchanged
+    state-2 slots resolving a program            198,249 / 198,249   unchanged
+    decompose end/inputs/hdr/param_slots/prog/cls_slots/root/size_slot
+                                                 sha256 identical over all 437 files
+                                                 (4af1dfd0db72fe87...)
+    walk_partition, 200 files                    32 FX violations before, 32 after, on
+                                                 76,013 -> 148,903 attributions, and the
+                                                 report differs on that ONE LINE and no other
+    reverify.py                                  0 of 9 exact-share claims no longer hold
+    audit_corpus runtime                         2:18 -> 2:20
+
+72,890 new attributions and not one new violation, so every program the new cells name lies
+inside the new cell's own stated extent.
+
+    ./t                                                19 passed
+    pytest test_fx.py test_bitmap.py                   22 passed (one new)
+    pytest render2/test_render2 test_text test_sampler 27 passed
+    pytest test_filters.py test_tables.py              20 passed  (11m08s)
+
+## The render is silent, and this time the reason is countable
+
+`refcompare.py` run against a pinned pre-change `sbsasm.py` and against the working tree is
+**byte-identical output**: every correlation, slope, residual and MAE on all 27 scored
+channels of the 5 reference packages, unchanged. `REFERENCE_FLOOR` is untouched — no floor
+raised, and more importantly none lowered.
+
+The reason is not that the change is small. Over the 8 pack assemblies 591 of 737 `fxmaps`
+records gain items and 0 are altered — but `fxrender.entries` counts **1,694 entries before
+and 1,694 after, with 0 of 546 records changing**, because the added items are further
+programs of entries the table already had. And the out-of-line rule reaches **0 cells in all
+8 reference-pack assemblies**. That is `nonwalked.blind_spot` stated as a number rather than
+as a disclaimer: the packs simply do not contain the structure.
+
+**What it does change is what other records draw, and that is the `0x1db` question
+again.** Corpus-wide `fxrender.entries` goes 141,759 → 142,691 over 41,164 records, with
+**281 records (0.68%) changing, in 30 files**: 65 go from 0 entries to 1 — records that drew
+nothing at all — and the rest gain the further cells of a linked list they were stopping
+part-way down. It is recorded as a difference from the refused node-slot rule rather than as
+an exemption from it: that rule asked whether a node's second CHILD is drawn, which the
+format does not state; this one follows a table's stored next-pointer to the next entry,
+which is what `fx_table` does at every other cell in the corpus. No permitted source and no
+export can arbitrate either way, and the 8 sources carrying FX-Map node data cannot speak
+about a record none of them contains.
+
+## What is left: 46,616 bytes, and what would close it
+
+    fx cell not reached   22,644   `fxmaps` 20,976 -- the next pass's target
+    other                 12,294   `emboss` 5,396, `curve` 4,900, `fxmaps` 1,174
+    abuts an fx cell      10,628
+    zeros, not the pad     1,050   unmoved through all four of these passes
+
+`fx cell not reached` is now 1,099 runs, 7,710 bytes opening on a NODE header and 14,934 on
+an entry tag. Its largest tags are `0x25300758` (3,024), `0x00020008` (2,892), `0x0000018b`
+(2,678), `0x00000089` (2,174) and `0x55300158` (2,080) -- and `0x55300158` is the tag
+`node_shape`'s docstring names as the one the `0x1db` mask DROPS, so part of that row is the
+refusal this repository has held twice rather than a gap nobody has looked at.
+
+Of the 10,628 still in this class, **8,644 sit at an out-of-line cell's credited end** and
+641 of those runs are exactly 4 bytes: the cell's **slot 2**, deliberately left out of its
+span. The mask declares that word on 417 of the cells and it holds the pointer to the next
+cell on 372 of them — but on 14 the byte there is the first word of a program a *record*
+names, and nothing in the tag separates the two, so crediting it would be claiming a
+neighbour's word 14 times to gain 1,668 bytes. Under-reporting is the safe direction for an
+extent. What would settle it is a tag whose mask distinguishes the two, or a specimen where
+the same tag appears in both forms with an export to arbitrate.
+
+The other 1,984 are not FX at all: 712 bytes are `emboss` records `decompose` refuses to lay
+out (below its version gate), 380 are 4 to 8 bytes just past a record's own walked header
+end on 41 records, and the rest is small change. **83 out-of-line cells remain unreached**,
+71 of them inside `abuts an fx cell` runs, against 2,451 the walk now reaches.
+
+## How to re-take every number here
+
+    python3 archive/tools/audit_corpus.py                     # the tiers and the classified table
+    python3 archive/tools/bit_census.py --check               # two of the three invariants
+    python3 -c "import sys;sys.path.insert(0,'tools');sys.path.append('archive/tools');import walk_health;walk_health.main([])"
+    python3 -c "import sys;sys.path.insert(0,'tools');sys.path.append('archive/tools');import walk_partition;walk_partition.main(['200'])"
+    cd archive/tools && ./t && python3 -m pytest -q test_fx.py test_bitmap.py \
+        && python3 -m pytest -q test_filters.py test_tables.py
+
+The A/B is `fx_walk`'s item list dumped from two checkouts and diffed, keyed by full path.
+The cause census, the identity control and the byte-label transition tables are one-off
+probes: a loop over `audit_corpus._byte_canvas`'s residual runs with `Record.fx_walk`'s
+items, and a byte-for-byte diff of two `_byte_canvas` results. Running the audit with only
+one of the two changes in place is how the three-column table above was taken — a copy of
+`sbsasm.py` with the `(off, prog)` skip reverted, put ahead of `tools/` on the path.
+
+**The self-check that was run deliberately, because two of the last three passes caught
+their own test skipping vacuously.** `test_fx.py`'s new test asserts its population BEFORE
+it asserts anything about it (`cells >= 100`), and it was run against a deliberately broken
+build — `fx_out_of_line` with the naive `max(slot) + 1` width — where it fails on
+`resolved == slots` rather than passing on an empty set. Its control is 0 of 89,927 entries
+whose block is inline.
+
+## The SPEC 8 correction is applied, and the objection to applying it is measured
+
+SPEC 8 recorded `walk_partition.stated_extent`'s `max(slot) + 1` as wrong and deliberately
+left it, on the grounds that `audit_corpus` uses it as a byte floor and widening a ruler
+credits bytes rather than decoding them. **That objection is now a measurement: applied, the
+corpus residual is 46,616 bytes either way, and the audit's pad column moves by one run —
+2 bytes.** `walk_partition` reports 32 FX violations on 200 files with the correction and
+without it, so it hides nothing either. The correction is applied, and SPEC 8's paragraph is
+rewritten in place to say so.
+
+## Provenance
+
+Nothing in this section needed a source. The identity is read entirely from the compiled
+file: the pointer in slot 1, the width in the tag's own mask, the instruction count in each
+program's first word. No `.sbs` was opened and `provenance.py`'s predicate was not needed
+because no source-side population was counted; the one place the rule bites is the same one
+the previous section records — whether a record that now draws four patterns instead of one
+draws what the engine drew — and it bites through the eight permitted FX-Map sources and the
+reference packages, neither of which contains an out-of-line cell.

@@ -756,8 +756,9 @@ discriminated by the tag word's **low nibble**:
 special case.** The paragraph above states it for `0x1db`; measured from the byte side —
 every run of record bytes no reader can label, over the whole corpus — the same shape appears
 on a dozen tag families. It was **332,766 bytes of FX cells no walk in the file reached**,
-183,804 of them opening on a tag and the rest abutting a cell that does; it is **167,240**
-now, 41,034 opening on a tag, after the repairs below.
+183,804 of them opening on a tag and the rest abutting a cell that does; it is **33,272**
+now, 22,644 opening on a tag, after the repairs below and the out-of-line reading further
+down.
 
 **The fix is to follow BOTH, not to move the choice.** `fx_table` steps by "the slot reaching
 furthest forward" over the slots the tag's *parameter* layout declares, so a tag whose layout
@@ -900,15 +901,56 @@ abuts the entry's own program" is refuted as before and is not needed: the entry
 end is among its pointers in only 6,692 of 23,496 entries and is a nearer pointer than the
 furthest in 2,826, so adopting it would have moved 2,826 successors to recover 37 cells.
 
-**An entry's stated width is one word short when its last field is wide.**
-`walk_partition.stated_extent` computes an entry's span as `max(slot) + 1` over
-`fx_entry_layout`, which ignores the width of the last field: a trailing `patternsize` at
-bit 25 is two words, so `0x02520448`'s extent stops on the *second* component of its own
-last parameter. Read with `max(slot + width - 1) + 1` instead, all 108 cells above land
-exactly on a program start; read as the code does, 54 of them land on a float. The checker
-is deliberately **left as it is** — it under-reports, which is the safe direction for a
-bound whose whole value is that a violation cannot be argued with, and widening it would
-credit bytes by moving the ruler rather than by reading a structure.
+**An entry's stated width is `max(slot + width - 1) + 1`, and reading it as `max(slot) + 1`
+is one word short when the last field is wide.** A trailing `patternsize` at bit 25 is two
+words, so the naive span stops on the *second* component of the entry's own last parameter:
+read correctly, all 108 cells of the previous paragraph land exactly on a program start;
+read naively, 54 of them land on a float. **The correction is applied** — an earlier version
+of this paragraph recorded it and deliberately left `walk_partition.stated_extent` alone,
+because `audit_corpus` uses that function as a byte floor and widening a ruler credits bytes
+without decoding any. Measured rather than assumed, that objection does not hold: with the
+correction the corpus residual is 46,616 bytes either way and the audit's alignment-pad
+column moves by one run — 2 bytes — while `walk_partition` reports the same 32 FX violations
+on 200 files with it and without it.
+
+The correction is also confirmed from the data and not only from the mask, by the out-of-line
+cells below: such a cell's parameter block ends exactly on its own tag word only under the
+corrected width, and `0x03520248`'s block ends `[…][1.0][1.0]` — the two components of that
+trailing `patternsize`, which the naive span cuts in half. 101 of 595 cells stop being
+identifiable if the width is put back.
+
+**An entry's parameter block can sit OUT OF LINE, at the address its slot 1 names.** This is
+what `abuts an fx cell` was: 126,206 bytes, 71% of the residual before it was read, in
+records whose own filter has no payload. The cell is
+
+    [ ... the tag's own field words ... ][tag][slot 1 -> the block][slot 2]
+
+and its programs and its block lie *behind* the tag. Slot 1 has the same meaning in the
+ordinary form, where the block is inline: over the 137,552 entries the walk reached before
+this reading existed, slot 1 holds `off + 4 * first parameter slot` in 85.75% and `off + 8`
+in a further 3.24%. Two statements of one address must agree — slot 1 names the block, and
+the tag's mask says how many words the entry holds, so the block ends on the tag word. Where
+they agree, **1,749 of 1,749 program slots the tag declares resolve as programs**; at the
+nibble-8 words in the same byte runs where they do not, 9 of 602 (1.5%), 377 of 386 words
+resolving none. `entry_layout_holds` reads those slots forward and therefore refuses these
+cells, which is why a table run stops dead on one and a chain handoff is declined: 273 of
+the 846 cells in the residual are the exact word a run stopped on, and the other 573 follow
+from them down the cells' own next-pointers. `Assembly.fx_out_of_line` is the identity,
+`fx_table` takes it as a further arm behind the same test that used to stop, and the cell is
+yielded once, at its block. Its step is bounded to slots 1 and 2: past the tag lie the *next*
+cell's programs.
+
+The word at `tag + 8` — the cell's slot 2, which the mask declares on 417 of the cells — is
+left OUT of the credited extent. It holds the pointer to the next cell on 372 of them, but on
+14 the byte there is the first word of a program a *record* names, and nothing in the tag
+separates the two; under-reporting is the safe direction. That is 1,668 bytes of the
+remaining residual.
+
+**And an entry is yielded once per program slot, as a node is.** `fx_table` yields
+`(offset, tag, program)` per resolving program and `fx_walk`'s skip keyed on the offset
+alone, dropping 189,206 programs on 78,402 entries. It was invisible while every entry held
+its programs inline — the entry's credited extent covered them — and stops being invisible
+the moment a cell's programs lie behind it.
 
 Neither the `FX_TAG_LOW16` vocabulary nor "the tag names a program and one of them resolves"
 identifies these cells on its own: the first admits `0x09130008`, which is 2,322 u32s

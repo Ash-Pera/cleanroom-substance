@@ -107,9 +107,11 @@ def stated_extent(rec, kind, q, tag):
              `node_shape` returns that byte offset, `leaf_successor` the bit-7-clear arm,
              and `FX_NODES2` the one branch row still stated by hand. Width is the last
              field's slot plus one.
-      entry  the tag's layout declares its slots (`fx_entry_layout`), and the entry states
-             where the next one begins by the slot reaching furthest forward -- the linked
-             list `fx_table` walks. The nearer of the two bounds the entry's own fields.
+      entry  the tag's layout declares its slots (`fx_entry_walk`, at each field's own
+             WIDTH), and the entry states where the next one begins by the slot reaching
+             furthest forward -- the linked list `fx_table` walks. The nearer of the two
+             bounds the entry's own fields. An entry whose block is OUT OF LINE is yielded
+             at that block and states its extent from there instead; see below.
     """
     if kind == 'node':
         sh = sbsasm.node_shape(tag)
@@ -150,7 +152,36 @@ def stated_extent(rec, kind, q, tag):
             return None
         step = struct.unpack_from('<I', d, q + 4)[0] + 52
         return (step - q) // 4 if q < step < e else None
-    span = max(sl for sl, _n, _k in hdr) + 1
+    # AN ENTRY WHOSE FIELDS ARE OUT OF LINE IS YIELDED AT ITS BLOCK, and the span below
+    # would then be measured from the wrong end. `fx_out_of_line_span` asks the same
+    # identity the walk used to reach the cell -- the tag's mask gives the width, so the
+    # tag can only be at `block + 4*(width - slot)`, and slot 1 there must name the block.
+    # Guarded by the word at `q` not being the tag: a normal entry's own tag IS the word at
+    # its offset, so this arm cannot fire for one. A layout test does not separate the two --
+    # read forward from a block it passes by coincidence often enough to matter.
+    #
+    # This is the second definition of an extent to live in this module and not the first
+    # (see the pointer cell above), and the caution is the same: it is the STRUCTURE's own
+    # statement, not the neighbour's position, and it is one word SHORT of the cell where
+    # the mask puts a structural slot at 2. `audit_corpus` uses this as a byte floor, so
+    # short is the direction to be wrong in.
+    if struct.unpack_from('<I', rec.asm.data, q)[0] != tag:
+        _w = rec.asm.fx_out_of_line_span(q, tag)
+        if _w:
+            return _w
+    # THE LAST FIELD'S WIDTH COUNTS, and this read `max(slot) + 1`. SPEC 8 recorded the
+    # correction and deliberately did NOT apply it, on the grounds that `audit_corpus` uses
+    # this as a byte floor and widening a ruler credits bytes without decoding any. That
+    # objection is now measured rather than assumed: applied, the corpus residual is
+    # 46,616 bytes either way and the audit's pad column moves by one run -- 2 bytes -- so
+    # the ruler was not what was holding those bytes back. And the correction is confirmed
+    # from the data rather than from the mask alone: an out-of-line cell's block ends on
+    # its own tag word only under this width, and `0x03520248`'s last two block words are
+    # the two floats of the trailing `patternsize` the naive span cuts in half.
+    #
+    # `walk_partition` holds at 32 FX violations on 200 files with the correction and
+    # without it, so it does not hide one either.
+    span = max(sl + w - 1 for _b, sl, _n, _k, w in sbsasm.fx_entry_walk(tag)) + 1
     # The stored next-pointer, read exactly as `fx_table` reads it.
     d, e = rec.asm.data, rec.end
     nxt = None

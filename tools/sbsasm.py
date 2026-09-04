@@ -4107,10 +4107,17 @@ class Record:
                 # Gating them too is a separate change to an established path with its own
                 # risk, and 0.06% is as consistent with a layout-test false negative as
                 # with junk. Recorded here rather than acted on.
+                #
+                # AND THE OUT-OF-LINE FORM PASSES HERE TOO, for the same reason it does in
+                # `fx_table`: `entry_layout_holds` reads the tag's program slots forward
+                # and these cells hold their block at the address slot 1 names, so the
+                # test refuses a landing that is a real entry. Added as a further arm, so
+                # every landing admitted today is still admitted.
                 if self.asm.body_lo <= nxt < self.asm.body_hi - 7 and (
                         self.offset <= nxt < self.end - 7
                         or self.asm.entry_layout_holds(
-                            nxt, struct.unpack_from('<I', self.asm.data, nxt)[0])):
+                            nxt, struct.unpack_from('<I', self.asm.data, nxt)[0])
+                        or self.asm.fx_out_of_line(nxt) is not None):
                     start = nxt
         # EVERY POINTER CELL STATES A PAYLOAD, not just the last one. A chain list can
         # name more than one entry (see `fx_tree`), and `start` holds one handoff.
@@ -4183,6 +4190,21 @@ class Record:
         vocab = {it[2] for it in items if it[0] == 'node'}
         node_offs = {it[1] for it in items}
         emitted = set()
+        # AN ENTRY IS YIELDED ONCE PER PROGRAM SLOT, as a node is, and this dropped every
+        # slot but the first. `fx_table` yields `(offset, tag, program)` per resolving
+        # program -- its own docstring's convention, and `fx_tree`'s -- and the skip below
+        # keyed on the OFFSET alone, so an entry naming three programs arrived as three
+        # items and left as one. Corpus-wide that is 189,206 programs on 78,402 entries.
+        #
+        # It was invisible while every entry held its programs INLINE, because
+        # `audit_corpus` credits an entry from its offset to the end of the program it
+        # names and the inline programs sit between the two -- the extent covered what the
+        # dropped items would have named. It stops being invisible the moment a cell's
+        # programs lie BEHIND it, which is what an out-of-line block is.
+        #
+        # `emitted` stays a set of OFFSETS, because the four other places that read it ask
+        # "has this address been visited" and not "has this item been yielded".
+        emitted_items = set()
         pending_tables = list(starts or [None])
         pending_chains = []
         guard = 64                       # runaway guard, as `fx_table`'s own loop has
@@ -4193,8 +4215,9 @@ class Record:
                 st = pending_tables.pop(0)
                 stop = []
                 for off, tag, prog in self.fx_table(st, node_stop=stop):
-                    if off in emitted:
+                    if (off, prog) in emitted_items:
                         continue
+                    emitted_items.add((off, prog))
                     emitted.add(off)
                     seen_items.append(('entry', off, tag, prog))
                     yield ('entry', off, tag, prog)
@@ -4460,6 +4483,28 @@ class Record:
             if kind != 'entry' or off in seen:
                 continue
             seen.add(off)
+            # AN OUT-OF-LINE CELL IS YIELDED AT ITS BLOCK, so its slot numbering starts
+            # part-way in and `off + 4*sl` would read the wrong word for every field. The
+            # cell states where its slot 0 would be -- `fx_out_of_line_at` recovers it from
+            # the same identity the walk used to reach the cell -- and every read below is
+            # then the ordinary one against that base. Without this the parameters of these
+            # cells are read shifted, which is a plausible wrong picture rather than a
+            # failure, and `fxrender` consumes them.
+            #
+            # The yielded offset stays the BLOCK -- it is the cell's address as far as
+            # every other consumer is concerned, `fxrender.entries` keys its table on it,
+            # and only the reads move.
+            #
+            # The discriminator is the WORD AT `off`, not a layout test: a normal entry's
+            # own tag is the word at its offset and an out-of-line cell's is not, because
+            # the cell is yielded at its block. A layout test does not separate them -- read
+            # forward from a block, `entry_layout_holds` passes by coincidence often enough
+            # to matter, and it did, reading `0x03500248`'s three programs two slots out.
+            base = off
+            if off + 4 <= hi and struct.unpack_from('<I', d, off)[0] != tag:
+                _got = self.asm.fx_out_of_line_at(off, tag)
+                if _got is not None:
+                    base = _got[1]
             layout = fx_entry_layout(tag)
             # A BAKED PARAMETER IS AS WIDE AS THE LAYOUT SAYS. This used to yield the single
             # raw slot WORD, so a parameter declared at width 2 lost its second component --
@@ -4474,13 +4519,13 @@ class Record:
             # no way to know how many words the parameter actually occupied.
             widths = {sl: w for _b, sl, _n, k, w in fx_entry_walk(tag) if k == 'baked'}
             for sl, name, how in layout:
-                if off + 4 * sl + 4 > hi:
+                if base + 4 * sl + 4 > hi:
                     break
-                w = struct.unpack_from('<I', d, off + 4 * sl)[0]
+                w = struct.unpack_from('<I', d, base + 4 * sl)[0]
                 if how == 'baked':
                     n = widths.get(sl, 1)
-                    if off + 4 * (sl + n) <= hi:
-                        raw = d[off + 4 * sl:off + 4 * (sl + n)]
+                    if base + 4 * (sl + n) <= hi:
+                        raw = d[base + 4 * sl:base + 4 * (sl + n)]
                         yield off, tag, sl, name, how, struct.unpack('<%df' % n, raw)
                     else:
                         yield off, tag, sl, name, how, struct.unpack('<f',
@@ -4490,7 +4535,7 @@ class Record:
                     # The slot IS the program; its address is not read from the word. This
                     # kind is set STRUCTURALLY by `fx_entry_layout` (bits 25/27/29 with no
                     # program bit), not by probing whether the word decodes.
-                    at = off + 4 * sl
+                    at = base + 4 * sl
                     yield off, tag, sl, name, how, (at if self.asm.program_span(at, hi)
                                                     else None)
                     continue
@@ -4669,7 +4714,22 @@ class Record:
             # junk it removes has in-vocabulary tags. This is the opposite of the failure
             # mode tools/test_fx.py documents, where a walk that gives up early scores
             # better on purity; here the justification is the span test, not a rate.
-            if nth and not self.asm.entry_layout_holds(q, tag):
+            # AND AN ENTRY WHOSE FIELDS ARE OUT OF LINE FAILS THAT TEST FOR A REASON THE
+            # TEST CANNOT SEE. `entry_layout_holds` reads the tag's program slots at
+            # `q + 4*slot`; these cells keep their parameter block at the address SLOT 1
+            # names, ending on their own tag word, so read forward not one slot resolves
+            # and the run stops on a real entry. `fx_out_of_line` is the reading, its
+            # docstring the evidence: 846 cells, 1,749 of 1,749 program slots resolving,
+            # against 9 of 602 where the pointer identity fails.
+            #
+            # STRICTLY ADDITIVE. The arm is behind the same `not entry_layout_holds` that
+            # used to break, so a run that continues today continues identically; and the
+            # cell's own items are yielded BESIDE whatever the normal arms below yield,
+            # never instead of them.
+            _holds = self.asm.entry_layout_holds(q, tag)
+            _ool = None if _holds else self.asm.fx_out_of_line(q)
+            _broke = bool(nth) and not _holds
+            if _broke and _ool is None:
                 break
             nth += 1
             # Stop on what is not an entry, not on an entry whose payload is unusable.
@@ -4686,7 +4746,25 @@ class Record:
             # the run too. Neither signal subsumes the other.
             if (tag & 0xF) != 8 and not (o <= t < e - 3):
                 break
-            if (tag & 0xF) in (9, 0xB):
+            if _ool is not None:
+                # ONE ITEM PER CELL, AT THE CELL'S START. The forward arms below would
+                # yield the same cell a second time at its TAG, with no program -- a
+                # duplicate reading of a structure this arm has already placed, and one
+                # that costs bytes rather than just tidiness: `audit_corpus` credits a
+                # program-less entry everything up to the NEXT item, so a duplicate at
+                # the tag would swallow the following programs by adjacency. Measured,
+                # that is 2,862 bytes moving out of the audit's `other` column with
+                # nothing decoded, which is the accounting-as-decode error this
+                # repository has a retraction about.
+                _blk, _wd, _sl, _progs = _ool
+                _any = False
+                for _p in _progs:
+                    if _p:
+                        yield _blk, tag, _p
+                        _any = True
+                if not _any:
+                    yield _blk, tag, None
+            elif (tag & 0xF) in (9, 0xB):
                 # A NODE reached inside the entry run. A low nibble of 9 or B is a node
                 # header, not an entry tag -- the 0x??0B leaf family, whose successor and
                 # programs `fx_tree` reads by scanning. Its program slots are NOT a fixed
@@ -4796,6 +4874,11 @@ class Record:
                             if cand + 4 <= e and self.asm.program_span(cand, e):
                                 prog = cand
                     yield q, tag, prog
+            # THE OUT-OF-LINE BLOCK, YIELDED AT THE ADDRESS SLOT 1 NAMES. The item's offset
+            # is the block and not the tag, because the block is where the structure
+            # STARTS: it runs from there to the tag word, which is the whole content of
+            # the identity `fx_out_of_line` tests. The two arms above have already yielded
+            # whatever the forward reading of the same word gives -- nothing is replaced.
             # THE NEXT ENTRY IS THE POINTER THE ENTRY STORES, not a tabled stride. One header
             # slot holds a pointer to the following entry -- the one reaching FURTHEST forward,
             # past this entry's own inline program (slot 1 for 0x00020008, slot 2 for
@@ -4808,6 +4891,15 @@ class Record:
             # loop is the stop. `FX_ENTRY` is drained by this, kept only as a census.
             hdr = fx_entry_layout(tag)
             span = (max(sl for sl, _n, _k in hdr) + 1) if hdr else 1
+            # AND THE SEARCH IS BOUNDED WHERE THE FIELDS ARE NOT THERE TO SEARCH. When the
+            # block is out of line only the header words follow the tag -- slot 1, and the
+            # structural slot the mask puts at 2 -- and the words past them belong to the
+            # NEXT cell's programs. Searching `span` slots there reads bytecode as
+            # pointers, which is the failure mode this file already records for widening
+            # the step. Applied only where the run is continuing past a stop it used to
+            # make, so no established run's step moves.
+            if _broke and _ool is not None:
+                span = 2
             nxt = None
             for sl in range(1, span + 1):
                 if q + 4 * sl + 4 > e:
@@ -6203,6 +6295,126 @@ class Assembly:
             if lo < pv < hi and self.program_span(pv, hi):
                 return True
         return False
+
+    def fx_out_of_line(self, off):
+        """(block, width, slot, programs) when the entry at `off` keeps its FIELDS out of
+        line, else None. `off` is the entry's TAG word; `block` is where its fields sit.
+
+        AN ENTRY'S SLOT 1 NAMES ITS PARAMETER BLOCK, and usually the block is inline so
+        the pointer looks like a self-reference. Over the 137,552 entries the walk already
+        reaches whose tag declares a layout, slot 1 holds
+
+            off + 4 * first parameter slot   117,945   85.75%    the block, inline
+            off + 8, where that is not it      4,456    3.24%
+            anything else                     15,151   11.01%    (12,046 of them have the
+                                                                 block inline anyway)
+
+        These cells are the same structure with the block placed elsewhere:
+
+            [ ... the tag's own field words ... ][tag][slot 1 -> the block][slot 2]
+
+        Two independent statements of one address, and the test is that they agree:
+
+          * slot 1 points at the block;
+          * the tag's mask says how many words the entry holds, so the block ENDS on the
+            tag word -- `block + 4 * (width - slot) == off`.
+
+        THE LAST FIELD'S WIDTH COUNTS, and this is where SPEC 8's recorded correction to
+        `walk_partition.stated_extent` is load-bearing rather than cosmetic: read as
+        `max(slot) + 1` the width stops on the second component of a trailing two-word
+        `patternsize`, and 101 of these cells stop matching. `0x03520248` is the case --
+        its block's last two words are the two floats of that field.
+
+        WHAT MAKES THIS A READING AND NOT A SHAPE. Over the corpus, at every nibble-8 word
+        inside a run the byte audit classifies `abuts an fx cell`:
+
+            the pointer identity holds      846 cells   1,749 of 1,749 program slots
+                                                        resolve  (100.0%)
+            it does not                     440 words       9 of   602  (1.5%),
+                                                        and 377 of 386 resolve NONE
+
+        So the identity selects the positions where every program the tag declares is a
+        program. It is not a vocabulary test and not a value probe: the pointer is read
+        from the cell, the width from the tag's own mask.
+        """
+        d, lo, hi = self.data, self.body_lo, self.body_hi
+        if off < lo or off + 8 > hi:
+            return None
+        tag = struct.unpack_from('<I', d, off)[0]
+        if (tag & 0xF) != 8:
+            return None
+        walk = list(fx_entry_walk(tag))
+        lay = fx_entry_layout(tag)
+        if not walk or not lay:
+            return None
+        width = max(sl + w - 1 for _b, sl, _n, _k, w in walk) + 1
+        base = off - 4 * width
+        if base < lo:
+            return None
+        block = struct.unpack_from('<I', d, off + 4)[0] + 52
+        if (block - base) % 4:
+            return None
+        slot = (block - base) // 4
+        if not any(slot == sl for _b, sl, _n, _k, _w in walk):
+            return None
+        progs = []
+        for sl, _n, kind in lay:
+            if kind != 'program':
+                continue
+            at = base + 4 * sl
+            if at < lo or at + 4 > hi:
+                return None
+            pv = struct.unpack_from('<I', d, at)[0] + 52
+            # `lo <= pv`, NOT `lo < pv`, which is the bound the rest of this file writes
+            # out of habit. A program can begin at `body_lo` -- `concrete_049` record 0's
+            # `opacity` names one, 68 bytes at 0x38 -- and the strict form is the whole
+            # difference between 1,588 and 1,589 slots resolving here.
+            progs.append(pv if (lo <= pv < hi and self.program_span(pv, hi)) else None)
+        return block, width, slot, progs
+
+    def fx_out_of_line_at(self, block, tag):
+        """(tag offset, base, slot, width) for the out-of-line cell whose BLOCK is at
+        `block`, or None.
+
+        The same identity as `fx_out_of_line`, asked from the other end -- the block rather
+        than the tag -- because the block is the address the walk yields the cell at. The
+        tag's mask gives the entry's width and the slots the block can start at, so the tag
+        word can only be at `block + 4 * (width - slot)`; slot 1 there must name the block.
+
+        `base` is where the entry's slot 0 would be if the block were inline, so a caller
+        reads field `sl` at `base + 4 * sl` exactly as it does for any other entry.
+        """
+        lo, hi = self.body_lo, self.body_hi
+        walk = list(fx_entry_walk(tag))
+        if not walk:
+            return None
+        width = max(sl + w - 1 for _b, sl, _n, _k, w in walk) + 1
+        # THE IDENTITY IS `fx_out_of_line`'s, ASKED ONCE. Only the candidate tag positions
+        # are enumerated here; the test itself is the other function, so the two cannot
+        # answer with different anchor slots. They did, before this was written that way:
+        # a tag word can sit at the distance TWO of its own slots predict, and taking the
+        # first match read every field of `0x03500248` one slot out.
+        for _b, sl, _n, _k, _w in walk:
+            at = block + 4 * (width - sl)
+            if at < lo or at + 8 > hi or at <= block:
+                continue
+            got = self.fx_out_of_line(at)
+            if got is not None and got[0] == block:
+                return at, block - 4 * got[2], got[2], got[1]
+        return None
+
+    def fx_out_of_line_span(self, block, tag):
+        """The out-of-line cell's width in words, measured from its block, or None.
+
+        DELIBERATELY ONE WORD SHORT WHERE THE MASK PUTS A STRUCTURAL SLOT AT 2. That word
+        sits past slot 1 and holds the pointer to the next cell in 372 of the 417 cells
+        that have one -- but in 14 the byte there is the first word of a program another
+        record names, and nothing in the tag separates the two. Under-reporting is the
+        safe direction for an extent, so it is left out of the span and stays in the
+        residual: 4 bytes a cell.
+        """
+        got = self.fx_out_of_line_at(block, tag)
+        return None if got is None else (got[0] + 8 - block) // 4
 
     def program_span(self, p, hi=None, slack=0):
         """End offset of the program at p, or None. Bounded by `hi` when given.

@@ -123,12 +123,13 @@ when the `valid_program` floor was retired, and the byte row, which moved 6.75 p
                                            records that HAVE no parameter slot. 95.6426%
                                            since the floor went; it was 95.6393%
     edge slots resolved          100.00%
-    record bytes interpreted       99.42%  was 92.5%, which was honest when taken: on its
-                                           own definition today's tree gives 96.50%, and
-                                           99.42% crediting every payload reader - see below.
+    record bytes interpreted       99.53%  was 92.5%, which was honest when taken: on its
+                                           own definition today's tree gives 96.55%, and
+                                           99.53% crediting every payload reader - see below.
                                            It read 99.32% until the vectorshape extent and
-                                           the bitmap pointer skew were settled.
-                                           99.94% once the two-byte alignment pad is
+                                           the bitmap pointer skew were settled, and 99.42%
+                                           until the out-of-line entry block was read.
+                                           99.98% once the two-byte alignment pad is
                                            labelled, which is a fourth tier and not a decode
     record layout by mask-walk     99.97%  (only vectorshape, provenance-walled, left)
 
@@ -271,13 +272,35 @@ What is left is 2,123,232 bytes, 0.746%, and 68.5% of that is the two-byte align
 side. **The pad is now labelled rather than counted as uninterpreted, and it is a FOURTH
 tier rather than a widening of the third**, because crediting it moves no byte from
 undecoded to decoded: `+ every payload reader` read 99.317% when that tier landed and the
-new line read **99.831%**, leaving 480,950 bytes, 0.169%. They now read **99.424%** and
-**99.937%**, leaving **178,122**, 0.063% — see below. The audit prints that split, per
+new line read **99.831%**, leaving 480,950 bytes, 0.169%. They now read **99.533%** and
+**99.984%**, leaving **46,616**, 0.016% — see below. The audit prints that split, per
 filter, with a classification of what remains.
 
-The residual after the pad was **480,950 bytes** and is now **178,122**. Two thirds of it
-came off in one pass, and neither half was undecoded data — both were the model asking a
-question two different ways.
+The residual after the pad was **480,950 bytes** and is now **46,616**. Two thirds of the
+first drop was the model asking a question two different ways; the rest was one kind of
+table entry the walk met, refused and stopped at.
+
+**`abuts an fx cell` was an entry whose parameter block sits out of line.** 126,206 bytes,
+71% of the residual, in records whose own filter has no payload — and not, as the class's
+name suggests, a tree lying beside a cell by accident of the directory partition. The cell
+is `[fields][tag][slot 1 → the fields][slot 2]`: its parameter block is stored at the
+address slot 1 names and ends exactly on its own tag word, so `entry_layout_holds`, which
+reads the tag's program slots *forward*, refuses it and the table run stops dead. Slot 1
+means the same thing in the ordinary form, where the block is inline — it holds
+`off + 4 × first parameter slot` in 85.75% of the 137,552 entries the walk already reached.
+Where the pointer and the tag's own mask agree on where the block is, **1,749 of 1,749
+declared program slots resolve as programs**, against 9 of 602 at the nibble-8 words in the
+same byte runs where they do not. A second, older defect went with it: `fx_walk` skipped on
+an entry's OFFSET, so an entry naming three programs arrived as three items and left as
+one — 189,206 programs on 78,402 entries, invisible until a cell's programs lay *behind*
+it. The residual goes 178,122 → 46,616, the class 126,206 → 10,628, and `walk_partition`
+holds at 32 violations while attributions rise 76,013 → 148,903. `other` moves, which the
+two previous passes could say it did not, and every byte of the 3,538 is accounted for in
+the notes. SPEC §8's recorded-but-unapplied `stated_extent` correction is settled with it:
+it is load-bearing in the new reading — 101 of 595 cells stop matching without it — and
+applying it to the checker moves 2 bytes, so the objection that it would credit bytes by
+moving the ruler is measured and withdrawn. See FORMAT-NOTES.md, "`abuts an fx cell` was an
+entry whose parameter block sits out of line".
 
 **`vectorshape` had two definitions of where its payload stops, and one of them was a copy
 in the audit.** `audit_corpus.py`'s byte canvas re-derived the extent from the embedded
@@ -364,7 +387,9 @@ lies inside a `transformation` extent because the record directory is a partitio
 than an allocation. `blend` splits the same way — 318,110 as 210,358 pad, 65,536 blob and
 42,216 fx-adjacent, also exact — so the pair's 224,466 non-pad bytes are 131,068 of blob and
 93,398 of another filter's payload charged to these extents. See FORMAT-NOTES.md,
-"`transformation`'s 342,244 uninterpreted record bytes".
+"`transformation`'s 342,244 uninterpreted record bytes". **That fx-adjacent third has since
+been read** — it is the out-of-line entry block above, and `transformation`'s share of it is
+46,216 → 4,804 bytes.
 
 Decoded: the container, the record directory as a sorted extent map, the tag's filter and
 resolution fields, 22 of 23 filter ids — 21 named from the format's own sources and
