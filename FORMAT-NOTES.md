@@ -50025,3 +50025,70 @@ Same signature the numbers gave from the other direction: f2dd622 put the residu
 through `refcompare`'s 64-px resample, which is what hid this. A correlation of +0.8563 on
 basecolor ch0 is consistent with getting the buttons right and the entire surface wrong,
 because at 64 px the buttons are most of what survives.
+
+## AO's collapse is a `blend` of two 99%-correlated signals, and the mode table is a guess
+
+`ad493f2` put AO at 2.6% of the export's structure with correlation +0.9110 -- the largest
+collapse in the pack, invisible to every correlation guard. Traced.
+
+### Where it dies
+
+Walking back from AO (record 852) along the widest-variance input:
+
+    rec 453  transformation   sd 0.12633   range [0.5000, 1.0000]
+    rec 454  blend            sd 0.01575   range [0.4262, 0.5516]    12.5% survives
+    rec 455  levels           sd 0.00197   range [0.4908, 0.5064]    another 8x gone
+    ... 9 further blends, each shaving the remainder
+    rec 501  blend            sd 0.00118   -> the dyngradient index
+
+By the time record 502's `dyngradient` reads it, the index spans [0.4998, 0.5064] and the
+lookup returns THREE distinct values. The gradient is fine; it is being indexed by a constant.
+
+### The mechanism, and a detector that lied first
+
+Record 454 blends 453 against 369. They are not complementary -- **they are the same signal
+offset by 0.5**, correlation **+0.9922**, 369 being `levels` mapped to [0, 0.5] and 453 the
+same content at [0.5, 1.0]. `blendingmode 2` is read as SUBTRACT, and `A - B` on two
+99.2%-correlated inputs annihilates them: `(A-B).sd` is 0.01575 and the output's sd is
+0.01575, to the digit.
+
+RECORDED BECAUSE IT WAS A MEASUREMENT ERROR OF MINE: a first detector flagged eight
+`dyngradient` records as "killing 97% of their input's variation" -- input sd 0.4506, output
+0.0139, all eight identical. That was the RAMP's sd, not the data path's. `dyngradient`'s
+input 1 is a lookup table and is *supposed* to be discarded; taking `max(input sd)` reads the
+LUT. The eight were faithful. Any per-record "where did the variance go" sweep has to know
+which edge is data and which is a table.
+
+### The mode table is unverified above 0
+
+`ops.BLEND_MODES` assigns conventional names to 0-11, and `blend`'s own docstring says mode 0
+is "the one independently verified mode". 1 through 11 have never been arbitrated -- they are
+the obvious names in the obvious order.
+
+Swapping mode 2 globally and re-scoring AO against the export (256 px, $outputsize 11):
+
+    reading              AO sd    ratio to ref   correlation
+    subtract (current)   0.0155      0.21          +0.7299
+    add                  0.0667      0.88          -0.5814
+    average              0.3346      4.43          -0.8012
+    max                  0.1317      1.74          -0.7511
+    screen               0.0957      1.27          -0.7110
+
+EVERY ALTERNATIVE FIXES THE AMPLITUDE AND INVERTS THE SIGN. `add` lands the structure at 0.88
+of the export's and turns the correlation negative. The current reading is the only one of the
+five with the right sign and it carries a fifth of the amplitude.
+
+That is not a fix waiting to be applied. It says the defect is not "mode 2 is really add", and
+it is the shape `fxrender.py` warns about -- a metric improving while the model gets worse --
+appearing in the amplitude column while the sign column collapses.
+
+### What this does establish
+
+The blend mode table is **eleven unarbitrated assignments** sitting under every render this
+project scores, and AO is the channel where that shows. A global swap is refuted; what is
+needed is a per-mode arbiter, and `--bands` plus a sign check is one -- a right mode should
+move amplitude toward 1.0 WITHOUT flipping correlation, and none of the four candidates does.
+
+Open: whether record 454's inputs SHOULD be 99.2% correlated. If something upstream is
+duplicating a signal that ought to differ, mode 2 may be innocent and the cancellation
+correct. That is the next question and it is upstream of the mode table, not in it.
