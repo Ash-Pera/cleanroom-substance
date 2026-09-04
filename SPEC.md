@@ -1767,10 +1767,40 @@ not at all: resampled to 64 the same pair reads `+0.94` and carries a `DEGENERAT
 
 ### 13.5 Running a program
 
-`$size` is the **record's declared size**, always — it is a property of the file and a
-caller's preview resolution must not reach it. `$pos` is the grid actually being drawn on.
-Reset both on every call: a program evaluated with neither supplied must not inherit the
-last record's, which is an order-dependent cross-record leak.
+`$size` is the **record's declared size**, always — the size its own size expression
+(§7) gives at the `$outputsize` the graph is being evaluated at, and a caller's preview
+*cap* must not reach it. `$pos` is the grid actually being drawn on. Reset both on every
+call: a program evaluated with neither supplied must not inherit the last record's, which
+is an order-dependent cross-record leak.
+
+**`$outputsize` IS NOT A SYSTEM VARIABLE AND MUST BE OVERRIDDEN WHEREVER IT IS READ.** It
+is a graph INPUT, reached by `inputref` on the manifest uid (§13.2), so it arrives through
+the interface block's value table rather than through `sysvar`. A renderer that overrides
+it for size expressions and lets every other program read the interface block's *default*
+is evaluating one graph at two output sizes at once, and the failure is silent and
+selective: only a program that reads `$outputsize` for something other than a size can
+show it. One does — an HBAO gradient LUT whose scale is `height_depth × $outputsize` in
+pixels, compensating a horizon slope its own chain measures per pixel — and it came out
+short by exactly the ratio of the two sizes. Over the eight reference assemblies **no
+non-size program reads the uid directly**; this one reaches it through a slot its own size
+expression writes as a side effect (`exp2($outputsize)` into slot 0), which is why a census
+of direct readers reports nothing and the defect is still real. See FORMAT-NOTES.md, "The
+discriminator is not in `$size` at all".
+
+**A SIZE EXPRESSION AND A PARAMETER PROGRAM READ DIFFERENT VARIABLES**, which is what makes
+"does `$size` mean something else in a size expression?" the wrong question. Over the eight
+reference assemblies, **30,792 records resolve a size program and not one of them executes a
+`sysvar` instruction of any id**: a size expression is a function of the `$outputsize` graph
+input and of constants, never of `$size` or `$sizelog2`. So the two populations do not
+overlap and there is nothing for a per-attachment reading to discriminate.
+
+Two consequences worth stating because both readings have been tried. `$size` in a
+`transformation`'s `offset` is the RENDER's size and not the record's tag: the same graph's
+`switch` gates read `$sizelog2` to admit a mip rung `k` exactly when the render is at least
+`2^(k+1)` pixels, and the two only describe one pyramid — coarsest displacement 0.5 canvas
+at every output size — if they are the same quantity. And a `c / $size` offset is a PIXEL
+count under either reading, so its form does not separate a horizon tap from a half-texel
+alignment nudge; the two populations differ in opcode shape and not in semantics.
 
 Of 6,793 program-valued parameters across a corpus sample, 5,338 read `$sizelog2`, 69 read
 `$size` and **none** reads `$pos` — they are per-record constants. A `pixelprocessor`'s own

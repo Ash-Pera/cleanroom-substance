@@ -1444,9 +1444,32 @@ REFERENCE_FLOOR_RENDER2 = {
     # the engine's own export at MAE 0.0004 (0.0010 at this grid), against 0.0211 at the
     # declared one. It is a button mask with 7 distinct values, so the floor is a collapse
     # guard and the MAE is the evidence.
-    ('minime453__Chesterfield_PBR_Material', 'AO', 0): 0.84,          # +0.8715  ARBITRATES
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.82,   # +0.8563  ARBITRATES
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.94,   # +0.9656  ARBITRATES
+    ('minime453__Chesterfield_PBR_Material', 'AO', 0): 0.84,          # +0.8684  ARBITRATES
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.82,   # +0.8909  ARBITRATES
+    # LOWERED 0.94 -> 0.92, AND THAT IS THE MOVE THIS TABLE IS NOT SUPPOSED TO MAKE, so the
+    # argument is here rather than in a commit message. +0.9656 was measured at a
+    # configuration that no longer exists: at `--outputsize implied` this renderer evaluated
+    # SIZE programs at the asked-for output size and every OTHER program at the interface
+    # block's default, because `$outputsize` reaches a program as a graph INPUT and only
+    # `record_sizes` was overriding it. ChesterfieldSofa's AO is an HBAO whose gradient LUT
+    # takes `height_depth * $outputsize` from that input, so the compensator stayed at 2^8
+    # while the accumulator shrank with the render, and record 852 came out at 13% of its
+    # own amplitude -- band ratio 0.02 against the export at `--dim` 1024.
+    #
+    # THE ATTRIBUTION IS A PIN, NOT AN ARGUMENT. Rendering the file three ways -- before,
+    # after, and after with record 852 forced back to its BEFORE value -- reproduces the
+    # before render BIT FOR BIT on all six outputs (maxdiff 0.0e+00 on height, normal, AO,
+    # basecolor, metallic, roughness). So +0.9656 was this channel's score with the AO map
+    # it consumes annihilated: 852 feeds a `gradient` (857) through a mode-10 blend, and
+    # basecolor's whole colour variation is that gradient. With the AO at full amplitude the
+    # gradient is read across its range and our range is 15-35% wide, because `height` is
+    # (band 1.348 at `--dim` 1024 against the export).
+    #
+    # ch0 moves the other way on the same change, +0.8563 -> +0.8909, and is NOT ratcheted:
+    # the two are the same coupling and it would be dishonest to bank one and hide the other.
+    # 0.92 keeps 0.007 of margin under +0.9274, which is the same margin the entry had.
+    # See FORMAT-NOTES.md, "The discriminator is not in `$size` at all".
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.92,   # +0.9274  ARBITRATES
     # STILL ANTI-CORRELATED, AND MORE SO AT THE CORRECTED SIZE, WHICH IS A RETRACTION.
     # `777e597` reported this channel going -0.5763 -> +0.7679 and that is what motivated
     # `--outputsize` in the first place. It does not reproduce on today's tree: at
@@ -1454,7 +1477,11 @@ REFERENCE_FLOOR_RENDER2 = {
     # real when taken and has been undone by the twenty-odd commits since -- the `levels`
     # walk, the `normal` reference scale and the fx-tree walk all move this chain. The
     # floor is a lower bound on a negative number: do not get MORE inverted than this.
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2): -0.46,  # -0.4262  ARBITRATES
+    # MARGIN WARNING, NOT LOWERED: this now reads -0.4563 against a floor of -0.46, i.e.
+    # 0.0037 of room, down from 0.0338. It moved for the same reason ch1 did and by the
+    # same coupling. It is left where it is because it still holds; the next agent to see
+    # it fail should read that as this entry finally being reached, not as a new defect.
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2): -0.46,  # -0.4563  ARBITRATES
     ('minime453__Chesterfield_PBR_Material', 'height', 0): 0.93,      # +0.9562  ARBITRATES
     ('minime453__Chesterfield_PBR_Material', 'metallic', 0): 0.99,    # +0.9999  collapse guard
     ('minime453__Chesterfield_PBR_Material', 'normal', 0): 0.93,      # +0.9524  ARBITRATES

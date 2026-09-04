@@ -31,9 +31,24 @@ from ops import Unsupported, bind, conform, run_program, sampler       # noqa: F
 class Context(object):
     """Everything a filter needs that is not its own record."""
 
-    def __init__(self, asm, cap=None):
+    def __init__(self, asm, cap=None, outputsize=None):
         self.asm = asm
         self.cap = cap
+        # THE `$outputsize` THE GRAPH IS BEING EVALUATED AT, or None for the declared one.
+        # It is not a system variable: it reaches a program as a graph INPUT, by `inputref`
+        # on the manifest uid, so it arrives through `graph_inputs` and not through
+        # `sbsruntime.sysvar`. `record_sizes` has always overridden it for SIZE programs --
+        # that override is the whole reason a size expression answers differently at a
+        # different output size -- and this Context did not, so every other program in the
+        # file kept reading the interface block's default. See `graph_inputs`.
+        # THE CONDITION MIRRORS `record_sizes`' EXACTLY -- an override here that it does not
+        # make is the same inconsistency in mirror image. It refuses when the graph declares
+        # no `$outputsize` or the file states no default for it, and then every record keeps
+        # its tag; so must every program.
+        self.outputsize = outputsize
+        self._os_uid = (outputsize_uid(asm)
+                        if outputsize is not None and declared_outputsize(asm) is not None
+                        else None)
         self.outputs = {}
         self.low_confidence = set()
         self.synthetic = set()
@@ -77,6 +92,28 @@ class Context(object):
     # -- programs ----------------------------------------------------------------
 
     def graph_inputs(self, n):
+        """The graph's declared input defaults, broadcast to n rows, for `inputref`.
+
+        `$outputsize` IS OVERRIDDEN AND THE REST ARE NOT, because it is the one input this
+        render is choosing rather than reading. It is a graph input, not a system variable:
+        a program that wants the canvas size in a form `$size` cannot give it -- a
+        different record's size, or a size unrelated to any record -- reaches it by
+        `inputref` on the manifest uid, and `sbsruntime.sysvar` never sees it.
+
+        WHAT IT COST TO LEAVE IT ALONE. `ChesterfieldSofa`'s AO is an HBAO whose gradient
+        LUT (record 364, a `pixelprocessor` pinned to 2048 x 16 at every output size)
+        computes `0.5 * (1 + sin(atan(t * height_depth * $outputsize_px)))`, taking the
+        canvas size from its own size program's `exp2($outputsize)` through slot 0. The
+        accumulator it maps is a height difference per PIXEL -- `slope / (2 * $size)` --
+        and that `$outputsize_px` is what turns it back into a slope per CANVAS. With the
+        default reaching it instead, the compensator stayed at `2^8` while the accumulator
+        shrank with the render, and AO came out weak by exactly a factor of
+        `$outputsize / declared` -- 6.4x at implied 11, an octave per octave, on the one
+        channel of the one pack whose author exposed a resolution-dependent node.
+        `record_sizes` had this right for size programs since it was written; nothing
+        carried it to the others. See FORMAT-NOTES.md, "The discriminator is not in `$size`
+        at all".
+        """
         got = self._inputs.get(n)
         if got is None:
             got = self._inputs[n] = {}
@@ -84,6 +121,9 @@ class Context(object):
                 if val:
                     got[uid] = np.repeat(np.array(val, np.float32).reshape(1, -1),
                                          n, axis=0)
+            if self._os_uid is not None:
+                got[self._os_uid] = np.repeat(
+                    np.array(self.outputsize, np.float32).reshape(1, -1), n, axis=0)
         return got
 
     def run(self, v, ptr, n, slots=None, pos=None, W=None, H=None):
@@ -392,7 +432,7 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None,
     renders, so `hsl` was an identity in 747 records and `sharpen` in 1,156 without either
     ever appearing in a count.
     """
-    ctx = Context(asm, cap=max_dim)
+    ctx = Context(asm, cap=max_dim, outputsize=outputsize)
     ctx.outputs.update(precomputed or {})
     failures, cascaded, ignored = {}, set(), {}
     sizes = record_sizes(asm, outputsize) or {}

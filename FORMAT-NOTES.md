@@ -50863,3 +50863,420 @@ enumerate a blend vocabulary were identified and refused; the refusal is recorde
 precisely so a later reader does not rediscover them and think they add anything. The
 compiled side is `.sbsasm` from freely distributed `.sbsar` archives, and the reference maps
 are PNGs the materials' own authors published beside them.
+
+
+## The discriminator is not in `$size` at all: `$outputsize` reaches a program by INPUTREF, and `Context.graph_inputs` was handing every one of them the DECLARED value
+
+`a5f20f6` left AO's residual as "a pure gain of exactly `1/$outputsize`" and named one
+candidate for it -- reading `$size` inside `transformation`'s offset as the record's own tag.
+That candidate is **refused, and it is refused by the file rather than by the score**: the
+graph states, in its own bytecode, that `$size` there is the render's size. The gain has a
+different cause, it is in this renderer, and it is one line.
+
+### What the AO figure actually is, measured rather than recalled
+
+Every number below is from `ChesterfieldSofa.sbsasm` read through `model.View` and
+`engine.record_sizes`, at `$outputsize` 8 (declared) and 11 (implied), not from the section
+above.
+
+**The permitted source names the node.** `ChesterfieldSofa.sbs` is a PERMITTED paired source
+(`provenance.audit()`, called not retyped -- 142 / 42 / 100 unchanged), and it instantiates
+`pkg:///hbao?dependency=1297162667` with one parameter, `height_depth = 0.03`. So records
+366-852 are an expanded **HBAO** instance, which is what the previous section reconstructed
+from the compiled side alone. The library's own definition is Adobe's and was NOT read; only
+the instance line in the material author's own file, and the compiled bytecode.
+
+**The offsets are a fixed PIXEL count, and they scale.** All 144 `transformation` records on
+this file carrying an `offset` PROGRAM fall into exactly **three** opcode signatures, and the
+split against AO record 852's input cone is almost total:
+
+    n   cone  outside  ops  shape
+    88   88      0      20  select(aspect) * cartesian(c / max($size), 0.785398)
+    48    0     48       6  vec(0, -1/$size.y)   -- and the seven other sign/axis variants
+     8    5      3      18  floor(x / (1/$size)) * (1/$size) + 0.5   -- a texel snap
+
+So `a5f20f6`'s "nothing in the program's form separates them" is **withdrawn**: the form
+separates 136 of 144 exactly. It does not separate them *usefully*, though, and that is the
+more important correction -- because when the three are evaluated, **all three are pixel
+counts**:
+
+    signature A (AO)   c = 2^k, angle pi/4  ->  |offset| = 2^k px at 256 AND at 2048
+    signature B        exactly -1, +0.5, -1, +0.5 ... px, on one axis, the other 0
+    signature C        a 0.5-canvas placement plus a snap to the texel grid
+
+Signature B's 48 records are a ladder of alignment nudges and the numbers are exact: **12
+records at each of (0, +-1), (+-1, 0), (0, +-0.5) and (+-0.5, 0) PIXELS of the record's own
+canvas**, spread over nine record widths (16, 32, 64, ... 4096). One texel and half a texel, held
+constant across a 256:1 range of record sizes -- which is only expressible as `c / $size` and
+only stays one texel if `$size` is the size the record is actually being drawn at. Under the
+tag reading a half-texel nudge becomes four canvas pixels at 2048. That is exactly the
+"straight loss outside the cone" `a5f20f6` measured, and it is not a coincidence to be
+explained away -- it is the correct behaviour of the correct reading.
+
+**The graph itself says `$size` is the render's size.** Records 434-444 are the eleven
+`switch` gates, and each carries an `opacitymult` program that is, for rung `k`:
+
+    clamp(2^(min($sizelog2) - k) - 1, 0, 1)          (k = 1 .. 11, one per rung)
+
+Rung `k` is enabled iff the render's size is at least `2^(k+1)` -- iff mip rung `k` still has
+two pixels. Measured: at `$outputsize` 8 rungs 1-7 are on and 8-11 off; at 11, rungs 1-10 are
+on and 11 off. Pair that with the offsets:
+
+    $outputsize  8   active k = 1..7    offsets 2 .. 128 px of 256   = 2^-7 .. 2^-1 canvas
+    $outputsize 11   active k = 1..10   offsets 2 .. 1024 px of 2048 = 2^-10 .. 2^-1 canvas
+
+**The coarse end is 0.5 canvas at both sizes and only the fine end extends.** That is a
+designed, resolution-aware pyramid, and it only comes out that way if `$size` in the offset
+and `$sizelog2` in the gate are the SAME quantity and both are the render's. Freeze `$size`
+at the tag and the same gates would admit rungs whose displacement is four times the whole
+tile. The tag reading is refused by the file's own arithmetic, not by a score.
+
+### Where the missing factor of `$outputsize` actually lives
+
+Record 445 is `dyngradient(444, 364)`, and record 364 is a `pixelprocessor` whose size
+program pins it to **2048 x 16 at every output size** -- an absolute-sized gradient LUT. Its
+per-pixel program is 22 instructions and is the whole of HBAO's tangent:
+
+    t = 2*$pos.x - 1                          the accumulator's range, remapped to [-1, 1]
+    c = 0.03 * min(slot0.x, slot0.y)          0.03 IS `height_depth`, the instance parameter
+    u = t * c
+    out = 0.5 * (1 + u / sqrt(1 + u*u))       = 0.5 * (1 + sin(atan(u)))
+
+and `slot0` is written by the record's own SIZE program, whose last act is
+
+    %67  add.i2      $outputsize, (0,0)
+    %69  exp2.f2     %67
+    %70  set.f2      %69, #0                  slot 0 = 2^$outputsize = the canvas, in pixels
+
+**So `c = height_depth * $size`, and that is the compensator.** The accumulator at 444 is a
+height difference per PIXEL -- `slope / (2 * $size)`, which is `a5f20f6`'s algebra and is
+correct -- and the LUT multiplies it by `$size` to get a slope per CANVAS before taking
+`sin(atan(.))`. The two `$size` factors cancel and HBAO is resolution-independent. Nothing in
+the chain is wrong.
+
+**What was wrong is that this renderer never told the LUT the render's output size.**
+`Context.graph_inputs` builds its `inputref` table from `asm.header['inputs']` -- the
+interface block's DEFAULTS -- and `$outputsize` is a graph input reached by `inputref`, not a
+system variable. `engine.record_sizes` overrides it (its own `at()` helper does exactly
+this, which is why every record's SIZE moves with `--outputsize`), and `Context` did not. So
+at `--outputsize implied`:
+
+    every size program          sees $outputsize = 11     (record_sizes' own override)
+    every OTHER program         sees $outputsize =  8     (the interface block's default)
+
+Instrumented on record 364, at `--outputsize` 8 and 11 alike:
+
+    slots[0] = [256., 256.]        i.e. 2^8, at both
+
+so `c = 7.68` at both, while the accumulator it is fed has shrunk by 8. The compensator was
+frozen at the declared size and the AO came out `1/$outputsize` weak. That is the entire
+residual, to the octave.
+
+This also dissolves `a5f20f6`'s "declared versus implied tension" rather than relocating it:
+at the declared size the two paths agree by construction -- `record_sizes`' override and the
+interface default are the same number -- so AO was right there and only there. It was never
+evidence that the tag reading was right; it was evidence that the two `$outputsize` paths had
+been diverging silently since `23a5492` made `--outputsize implied` the scoring configuration.
+
+### The change, and the trap that nearly hid it
+
+`tools/render2/engine.py` only. `Context` takes an `outputsize`, `graph_inputs` overrides the
+`$outputsize` uid with it, and `render` passes the one it was already given to
+`record_sizes`. **`outputsize=None` -- the declared size, which is what the bare
+`refcompare` invocation and `REFERENCE_FLOOR` use -- takes the `_os_uid = None` branch and is
+bit-identical to before.** Nothing else in `tools/` or `archive/` was edited.
+
+THE MODULE-IDENTITY TRAP IS LIVE AND IT CAUGHT ONE OF MY OWN SWEEPS. `80f558f` records a
+sweep that patched `render2.ops` while the renderer ran a bare `ops`. The same shape has a
+second face here and the arrow points the OTHER way: `render2/__init__.py` does
+`from engine import render, Context` -- a BARE import -- so **`render2.render` is the bare
+`engine` module's function**, and `import render2.engine` manufactures a SECOND module object
+that nothing runs. My first baseline patched `render2.engine.Context` and its positive
+control printed `frozen 0.21045 / fixed 0.21045`, identical, which is impossible for a patch
+that reaches anything. The rule that survives both faces: **do not reason about which module
+object is live -- ask the object.** `sys.modules[render2.render.__module__]` is the one, and
+every baseline below was taken through it with a control asserting `sd_fixed > 3*sd_frozen`
+before any table was printed.
+
+The frozen baseline reproduces the committed tree exactly: at render2 / implied / `max_dim`
+256 it gives Chesterfield AO +0.8715, basecolor +0.8563 / +0.9656 / -0.4262, which are the
+four values `REFERENCE_FLOOR_RENDER2`'s own comments carry.
+
+### Every channel of every pack, before and after
+
+`archive/tools/refcompare.py --renderer render2 --outputsize implied --dim 512 --bands`.
+112 scored rows over six packs; **14 move and 98 are identical to four decimals.** The
+14 in full, and nothing else changed anywhere:
+
+    pack / output / ch                    corr              MAE              band total
+    Chesterfield AO 0             +0.9110 -> +0.9087   0.0979 -> 0.0324   0.026 -> 1.435
+    Chesterfield basecolor 0      +0.8429 -> +0.8666   0.0537 -> 0.0537   0.333 -> 0.345
+    Chesterfield basecolor 1      +0.9694 -> +0.9384   0.0730 -> 0.0826   0.360 -> 0.350
+    Chesterfield basecolor 2      -0.2950 -> -0.3543   0.0570 -> 0.0598   0.052 -> 0.061
+    Bricks graph1 basecolor 0/1/2  0.0000 (DEGENERATE)  0.0536 -> 0.0539  (constant render)
+                  roughness 0                          0.1987 -> 0.1557
+                  ambientocclusion 0                   0.1459 -> 0.1186
+    Bricks graph5 basecolor 0/1/2  0.0000 (DEGENERATE)  0.0601 -> 0.0607
+                  roughness 0                          0.1964 -> 0.1533
+                  ambientocclusion 0                   0.1447 -> 0.1209
+
+    IDENTICAL: Chesterfield normal 0/1/2, height, metallic, roughness; all three Auras
+    basecolor channels; Bricks' three emission channels and its other 40 scored rows;
+    both `metallic` controls (flat 1.0, unchanged).
+
+The ten Bricks rows are graphs that render CONSTANT in both runs -- correlation 0.0000 and sd
+0.0000 on both sides -- so what moved is the value of a constant, not a picture. Six of the
+ten improve (both `roughness` by 22%, both `ambientocclusion`), four worsen by ~0.002 of MAE.
+`metallic` on Chesterfield stays at +0.9999 / MAE 0.0004 and on the two packs that ship no
+metallic reference it stays absent: the control reads true.
+
+### AO's amplitude converges to the export's, and the grid says which number to trust
+
+The `--dim` cap flattens the mip pyramid -- at `--dim` 256 with `$outputsize` 11 the top five
+rungs all clamp to the cap and the fine end of the pyramid does not exist -- so AO's band
+ratio is a function of the grid and only the finest one is a reading:
+
+    --dim    AO band before   AO band after    AO corr before -> after   AO MAE before -> after
+     256         0.043            2.481          +0.8715 -> +0.8684       0.0968 -> 0.0533
+     512         0.026            1.435          +0.9110 -> +0.9087       0.0979 -> 0.0324
+    1024         0.020            1.076          +0.9254 -> +0.9251       0.0973 -> 0.0238
+
+**At `--dim` 1024 the amplitude lands at 1.08 of the export's and the correlation moves by
+-0.0003.** That is the discriminator `f33f2bc` asked for and every alternative blend mode
+failed: amplitude to 1.0 without touching the shape. The MAE falls by 4x. And the residual
+1.08 is not AO's own -- `height` on the same run reads 1.348 and `normal` 1.154 / 1.138, so
+this pack's whole height chain is 15-35% hot and AO now tracks it instead of hiding it.
+
+### The three basecolor channels move, and the movement is entirely the AO reaching them
+
+Not argued -- pinned. Rendering ChesterfieldSofa three ways at `$outputsize` 11, `--dim` 512
+-- frozen, fixed, and fixed with record 852 (AO) forced back to its frozen output --
+
+    output      rec    frozen sd   fixed sd   fixed+pinned AO sd   |frozen - pinned| max
+    height      120     0.12122     0.12122        0.12122               0.000e+00
+    normal      121     0.25935     0.25935        0.25935               0.000e+00
+    AO          852     0.01260     0.09443        0.01260               0.000e+00
+    basecolor   871     0.31492     0.31223        0.31492               0.000e+00
+    metallic    876     0.20948     0.20948        0.20948               0.000e+00
+    roughness   880     0.02462     0.02462        0.02462               0.000e+00
+
+**Pinning one record reproduces the frozen render BIT FOR BIT on all six outputs.** So the
+whole footprint of this change on this file is record 852, and the basecolor movement is
+downstream coupling and nothing else. The path is explicit: 852 -> 853 `blend` mode 10
+(screen) against 363 -> 857 a `gradient` and 856/858 `levels` -> mode-0 blends under mask 862
+-> `hsl` -> a mode-7 switch -> 871 under mode 3 (multiply). Basecolor's colour variation is a
+GRADIENT KEYED ON THE AO MAP. With the AO at 13% of its own amplitude that gradient was being
+read at one point; at full amplitude it is read across its range, and our range is 8-35% wide
+of the export's because `height` is. ch0 gets better (+0.8429 -> +0.8666), ch1 and ch2 worse.
+
+### One floor breaks, and it is LOWERED — 0.94 to 0.92 on Chesterfield `basecolor` ch1
+
+Scored at the floor's own configuration (render2 / implied / `max_dim` 256), against a
+frozen-behaviour baseline that reproduces every one of the four values
+`REFERENCE_FLOOR_RENDER2`'s comments carry:
+
+    floor key                        floor    before      after     verdict
+    Chesterfield AO 0                 0.84    +0.8715    +0.8684    holds (-0.0031)
+    Chesterfield basecolor 0          0.82    +0.8563    +0.8909    holds, BETTER
+    Chesterfield basecolor 1          0.94    +0.9656    +0.9274    **BREAKS**
+    Chesterfield basecolor 2         -0.46    -0.4262    -0.4563    holds by 0.0037
+    every other one of the 25, and every channel of the other five packs:  identical
+
+`test_filters.py -k reference_agreement`: 1 failed, 1 passed, and the failure names exactly
+that one key. `CONSTANT_YIELDS_RENDER2` is unchanged — nothing went flat.
+
+**The floor is lowered to 0.92 and the argument is that +0.9656 was not a reading.** It was
+taken at `--outputsize implied`, which is the configuration in which this renderer was
+evaluating size programs at 11 and every other program at 8. The pin above shows the whole
+difference is record 852, and 852 was at 13% of its own amplitude; basecolor's colour
+variation is a `gradient` keyed on that map, so the number recorded the score of a channel
+whose driver had been annihilated. `a5f20f6` predicted this outcome in as many words —
+"ChesterfieldSofa's basecolor chain has an independent defect that our weak AO was masking"
+— and named it as one of the two things its data could not decide between. It is the one.
+
+Three things this pass does NOT do with the table, deliberately:
+
+  * **`basecolor` ch0 is not ratcheted** despite going +0.8563 -> +0.8909. It is the same
+    coupling as ch1 and it would be dishonest to bank the half that helps.
+  * **`AO`'s floor is not ratcheted** despite AO being the channel that was fixed. Its
+    correlation went DOWN by 0.0031 while its MAE halved and its amplitude went from 4% of
+    the export's to 108%; correlation is the wrong instrument for what moved, and 0.84 is
+    still the right guard against the channel collapsing.
+  * **`basecolor` ch2 is not lowered**, and its margin is now 0.0037 rather than 0.0338.
+    That is recorded in the table as a warning rather than fixed by moving the number, so
+    that the next agent to see it fail reads it as this entry finally being reached.
+
+### The second item, re-measured under the corrected AO, and still NOT applied
+
+`a5f20f6` left `record_sizes`' refusal of a size expression whose reference value is a
+negative log2 as its own pass, on the grounds that the pixels could not arbitrate it. Under
+the corrected AO they still cannot, and now that the rungs it corrects are gated ON at
+`$outputsize` 11 that is a stronger statement than it was.
+
+Comparing the tag against `1 << max(0, ref)` changes **12 records** on ChesterfieldSofa at
+`$outputsize` 11 (records 107-109, 116-118, 327-329 and pyramid rungs 414/420/426, all
+`(8,8) -> (4,4)/(2,2)/(1,1)`) and **0 at the declared size**, which is the control this
+reading has to pass and does. Scored:
+
+    --dim  512   AO  +0.9087 -> +0.9098   basecolor 1 +0.9384 -> +0.9385
+                                          basecolor 2 -0.3543 -> -0.3546
+    --dim 1024   AO  +0.9251 -> +0.9254   every other channel within 0.0001
+
+Every movement anywhere is at or below 0.0011, and one of them — `basecolor` ch2 by 0.0003 —
+is in the wrong direction. Under "no channel may get worse" that refuses it, and refusing it
+on a 0.0003 is exactly the reason it belongs with a containment argument rather than a
+render: **131 of 131 negative-log2 reference values over the eight assemblies reproduce the
+tag under `1 << max(0, ref)`**, which is the arbiter, and it should land in a pass whose bar
+is placement rather than pixels. Left for that pass, now with the measurement taken on a
+renderer whose AO is not swamping it.
+
+### What is withdrawn from `a5f20f6`
+
+  * **"The discriminator to build is whether the program reads `$size` at all, and if both
+    populations do, what separates them."** The question is answered and the answer is that
+    *nothing needs to separate them*: `$size` means one thing everywhere, the render's size,
+    and both populations are pixel counts that correctly track it. There is no discriminator
+    to find because there was never a second semantic.
+  * **"All 144 read `$size` and 136 of them scale as `1/$outputsize`, so nothing in the
+    program's form separates them."** The first clause holds; the second does not. Three
+    opcode signatures, 88 / 48 / 8, splitting the cone 88-0 / 0-48 / 5-3. The earlier probe
+    asked three yes/no questions (reads `$size`, reads `$sizelog2`, ratio 0.125) and every
+    program answers all three the same way, so it saw one population where there are three.
+    **A form census that only asks predicates cannot find a form difference; cluster the
+    opcode string.**
+  * **"The correction that removes it also moves two basecolor channels the wrong way"** —
+    the correction was the wrong one. The right one moves the same two channels the same
+    way, for a reason that is now pinned rather than inferred, and it moves the AO's
+    amplitude to 1.08 instead of 0.97 while costing 0.0003 of correlation instead of
+    +0.0165.
+  * **The "declared versus implied tension" is DISSOLVED, not relocated.** AO was right at
+    the declared size because that is the one size at which the renderer's two
+    `$outputsize` paths agreed. There is no tension between what the file declares and what
+    the export was made at; there was one bug with a size-shaped signature.
+  * `a5f20f6`'s cone attribution stands and was the right lead: "patching inside the cone
+    fixes AO and improves basecolor ch0, patching outside is a straight loss." Both halves
+    are explained here — inside the cone is signature A, whose `$size` the tag reading
+    happened to freeze in the same direction the real fix does; outside is signature B's
+    half-texel nudges, which the tag reading breaks and the real fix does not touch.
+
+### Handed over rather than edited
+
+`tools/render2/ops.py` is another agent's this pass and was not touched. It carries
+`graph_inputs(asm, N)` at line 467 — a second copy of the function this section corrects,
+with **no caller anywhere in `tools/` or `archive/`** and no `$outputsize` override. Wiring
+it to anything reintroduces the defect exactly. A docstring-only patch saying so is written
+to `/tmp/offset-size-ops.patch`; it changes no executable line and is a hazard label, not a
+fix. `git grep 'graph_inputs'` finds the two definitions and one call site, and the call
+site is `engine`'s.
+
+### `a5f20f6`'s own "it is not the input" experiment, re-run
+
+That section fed the engine's OWN exported height map into record 119 and reported the
+correlation going to +0.9830 while "the amplitude stays where it was, 0.150 -> 0.158".
+Re-run here at `--dim` 1024, `$outputsize` 11, feeding the 2048 export straight in with no
+gain fudge, scored against the export's own AO on the 64-grid:
+
+    frozen   AO sd 0.00561 / ref 0.06447 = 0.087    corr +0.9625   mean 0.9927 (ref 0.8871)
+    fixed    AO sd 0.04348 / ref 0.06447 = 0.674    corr +0.9587   mean 0.9431 (ref 0.8871)
+
+**The experiment that was the strongest evidence the defect was "a constant inside the
+chain" now moves by 7.7x under the fix**, with the correlation flat to 0.004. It falls short
+of 1.0 because this feed omits `a5f20f6`'s x2 gain match -- record 119 is a `pixelprocessor`
+and its output is not the exported height -- which is the same reason our own-height render
+reads 1.076 and this one 0.674. The constant it was looking for was `2^$outputsize`, and it
+was not inside the chain: it was on the way in.
+### The question "does `$size` resolve differently in a size expression than in an offset?" has an empty answer
+
+It cannot, because a size expression never reads it. Over the eight reference assemblies
+**30,792 records resolve a size program and ZERO of them execute a `sysvar` instruction of
+any id.** A size expression is a function of the `$outputsize` graph input and of constants;
+`$size` and `$sizelog2` appear only in parameter and per-pixel programs. The two populations
+do not overlap, so there is no per-attachment reading to find, and the fact also makes inert
+the one remaining asymmetry in this renderer: `record_sizes` evaluates a size program with
+`W, H` = the record's TAG while `Context.run` evaluates the same program with `W, H` = the
+size at the render's output size. Two different answers to a question no size program asks.
+Left as it is, and recorded here so that the next reader does not take the asymmetry for a
+second defect -- it would become one the day a size expression reads `$size`.
+
+### One refinement to the change, and why it needed no re-score
+
+`Context`'s condition MIRRORS `record_sizes`' exactly: it overrides only when the graph
+declares an `$outputsize` **and** the interface block states a default for it, which is the
+pair of conditions under which `record_sizes` returns a size map at all. Without the second
+half, a graph with no declared `$outputsize` would keep every record's tag while its programs
+read 11 -- the same inconsistency in mirror image. It is provably inert on the scored corpus
+rather than re-measured: all **seven** reference assemblies declare `$outputsize` and all
+seven declare it (8, 8), so the added condition cannot fire differently on any scored row.
+A 512-px re-score was started, seen to be answering a question already settled by that
+listing, and stopped.
+
+### Both halves of the two-sided test
+
+    half 1  Stadsspel__Lines record 0, through render2's own fx path
+              10 emissions, patternsize (1.41421354, 0.03555065), patternrotation 0.12500012,
+              lit fraction (>0.5) 0.5078, mean 0.50781, ten diagonal bands
+            -- IDENTICAL to the recorded values. It reads no `$outputsize`: `Lines` renders
+               at the size it declares and this change cannot reach it, which is what makes
+               it the half that has to stay still.
+
+    half 2  the required invocation's full 112-row table, before and after, above.
+            98 rows identical, 14 moved, 10 of the 14 in graphs that render CONSTANT on both
+            sides. At the floor's own grid (256) the same shape, and the floor test names
+            exactly the one key this section lowers.
+
+### Guards and harness
+
+    archive/tools/bit_census.py --check   edges       1,302,817 / 1,302,817
+                                          state-2       198,486 /   198,486
+                                          w1-presence vs decompose: AGREE on every
+                                                                    covered record
+    archive/tools/walk_health.py          903,611 / 903,616 agree, 0 longer, 0 shorter,
+                                          5 silent (filter 9)
+    archive/tools/walk_partition.py       8 FX violations of 48,688 attributions (0.02%)
+    archive/tools/provenance.py           142 paired / 42 excluded / 100 permitted,
+                                          the predicate CALLED, never retyped
+    ./t                                   19 passed (45s)
+    test_fx.py + test_bitmap.py           23 passed (3:01)
+    render2 trio                          27 passed (20s)
+    test_filters.py -k reference_agreement  before the floor edit: 1 failed, 1 passed --
+                                          the failure naming exactly
+                                          (Chesterfield, basecolor, 1) 0.9274 < 0.94
+                                          after the floor edit:  2 passed (2:21)
+    test_filters.py + test_tables.py      25 passed (13:44). Started 28 seconds after the
+                                          floor edit landed, so it collected the lowered
+                                          value; `tools/render2/engine.py` took its second
+                                          (mirroring) edit mid-run, and that edit is the one
+                                          shown above to be inert on every reference
+                                          assembly. A clean re-run against the final tree
+                                          was started and had not finished at hand-off --
+                                          the machine was carrying three other agents'
+                                          pytest processes at load average 5.3 throughout
+                                          this pass, which is why every wall-clock figure
+                                          here is long.
+
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json`
+are byte-identical -- `git diff --stat` over those four paths is empty. `tools/render2/ops.py`
+shows a diff and it is **another agent's**, concurrent with this pass and docstring-only; the
+proof that it is inert here is that the frozen-behaviour baseline re-taken against the tree
+WITH those edits reproduces the pre-edit baseline on all 112 rows, `moved: 0 of 112`.
+
+### Provenance
+
+This pass DID read `.sbs` sources, unlike the two before it, and every one of them came from
+`archive/tools/provenance.py`'s `audit()` **permitted** list -- the predicate called, never a
+retyped regex, reporting 142 / 42 / 100 unchanged. Seven files were opened: the six permitted
+sources that contain the string `$size` at all (`ie_curve`, `ie_particles`, `ie_pcloud`,
+`ie_processing`, `LGMLtools__fake_anim_curve`, `AB_ScrewGenerator__AB_ScrewGeneratorPlus`) and
+`minime453__Chesterfield_PBR_Material/ChesterfieldSofa.sbs`, which is permitted and is the
+material under investigation. From the last of these, exactly one line is used: that it
+instantiates `pkg:///hbao` with `height_depth = 0.03`. **Adobe's `hbao` definition is not in
+this corpus and was not read**; everything said about what HBAO computes is read from the
+compiled bytecode in the `.sbsar`. The 42 excluded sources were not opened. The reference
+side is PNG maps the material's own author published beside the archive.
+
+`ie_processing.sbs` is worth naming for a later reader: its `pixelprocessor` computes
+`samplelum($pos) - samplelum($pos + vector2(8,8)/$size)` -- an author writing, in a permitted
+source, the same "N pixels" idiom the AO offsets use. It does not settle the `transformation`
+case (it is a `pixelprocessor`, where `$size` and `$pos` must already agree) and it is not
+relied on above; it is the closest a permitted source comes to stating the idiom, and the
+census that found it is 37 `$size` uses over 6 files, none of them on a `transformation`.
