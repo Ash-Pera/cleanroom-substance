@@ -49961,3 +49961,67 @@ The interquartile ratio, which is the load-bearing figure, is unaffected and cou
 than inferred: 0.2007 against 0.1608, **1.248**. The direction and the size of the claim
 stand; the one statistic that was inferred from a table instead of measured was wrong by two
 points, which is the whole reason this notebook prints the count beside the quantile.
+
+## Looking at the pictures: the buttons are right, the quilting is missing, and that is a two-sided target
+
+Every render check in this project has been a scalar -- correlation, MAE, fit slope, all taken
+after resampling both sides to 64 px. Nobody had opened the images. Rendered `ChesterfieldSofa`
+at `--outputsize 11 --dim 512` and put them beside the package's own exports.
+
+### Height: right lattice, wrong solid
+
+    tiling period      ref 254 px of 2048 = 8 tiles     ours 64 px of 512 = 8 tiles
+    range              ref [0.2500, 0.7500]             ours [0.2471, 0.7490]
+    median             ref 0.5153                       ours 0.5961      (+0.081)
+    IQR                ref 0.1608                       ours 0.2039      (1.27x)
+    at the ceiling     ref 0.00%                        ours 1.58%
+
+Same tiling, same span, and the distribution inside it is shifted up and splayed. What that
+looks like is the engine's smooth domes against our FLAT-TOPPED PLATEAUS with over-wide seams.
+
+RECORDED BECAUSE IT WAS AN EYEBALL ERROR: read as pictures these look like different tile
+counts -- 8 against 6 -- and they are not. The period measurement says 8 and 8. Counting tiles
+by eye across two images at different resolutions is not a measurement, and the first reading
+here was wrong.
+
+### Basecolor: the elements are right and the surface is not
+
+The engine's basecolor is a quilted surface -- diamond panels, diagonal seams, leather grain,
+gold buttons at the vertices. Ours is a flat red field with the buttons stuck on it.
+
+    gold button coverage   ref 4.9%       ours 4.8%      <- the buttons are RIGHT
+    field luminance sd     ref 0.0372     ours 0.0119    <- 32% of the structure
+    diagonal gradient sd   ref 0.01536    ours 0.02823   <- 184% of the edge energy
+
+(`field` excludes button pixels, selected as `G - B > 0.15`; `diagonal gradient` is the sd of
+`d/dy + d/dx`.) The buttons are placed, sized and coloured correctly. The quilting is not
+there. And our height map DOES carry the diamonds, so the structure exists in the pipeline and
+does not reach basecolor with the right profile.
+
+### Why this is an arbiter and flatness was not
+
+`fxrender.py`'s NEGATIVE RESULT 1 records that swapping the filled rectangle for a falloff
+profile takes "renders a picture" from 4.1% to 97.3% and MEANS NOTHING, because a profile with
+falloff cannot produce a flat image by construction -- the metric is defeated rather than
+passed. That is correct and it is why the profile question has sat open.
+
+The structure ratio is not defeatable that way, because it is TWO-SIDED AND THE SIDES OPPOSE:
+
+    low-frequency field variance   0.0119 -> 0.0372   must RISE   (x3.1)
+    high-frequency edge energy     0.02823 -> 0.01536 must FALL   (x0.54)
+
+We are too flat where the engine is smooth AND too sharp where it is soft. Any profile at all
+passes "renders a picture"; a profile has to be the right one to move both of these the right
+way at once. A falloff that is too soft raises field variance and keeps edge energy down but
+loses the seam; one that is too hard keeps the edges and never fills the panel.
+
+Same signature the numbers gave from the other direction: f2dd622 put the residual at record
+111 and above with our IQR 1.248x the export's and 8.54% of pixels pinned at the top bound,
+"two thirds gain and one third distribution shape". The shape third is what the picture shows.
+
+### Method note
+
+`--dim 512` and `--outputsize 11`; both maps read at native and compared as full images, NOT
+through `refcompare`'s 64-px resample, which is what hid this. A correlation of +0.8563 on
+basecolor ch0 is consistent with getting the buttons right and the entire surface wrong,
+because at 64 px the buttons are most of what survives.
