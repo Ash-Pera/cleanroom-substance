@@ -51925,3 +51925,575 @@ being imported and the run died with `module 'sweep' has no attribute 'score'`. 
 loudly, which is the only reason it is a footnote rather than a retraction; the same collision
 one directory down is what made `80f558f`'s first sweep measure nothing while reporting
 success.
+
+
+## The height chain's 10-14 cycle excess is a CLAMP, and the clamp is a phantom `imageindex` painting an `fxmaps` white
+
+`bc9bbd7` handed over `height` at band ratios 1.35 / 1.27 / 2.80 / 0.82 / 1.40 / 0.68, total
+1.387 -- a tilt, which by `band_power`'s own doctrine is a SHAPE error and not a gain, with
+`normal` inheriting it at 1.24 / 1.33 / 2.69 / 1.02 / 1.58 / 0.70 and `metallic` reading
+1.01 / 1.01 / 1.01 / 1.00 / 0.99 / 1.04 as the control. `7207e7b` had already looked at the
+picture and called it "flat-topped plateaus with over-wide seams" against the engine's smooth
+domes, with 1.58% of our pixels at the ceiling against the export's 0.00%.
+
+Both readings are of the same thing and it is one clamp on one record.
+
+### What is IN the 10-14 band, measured rather than described
+
+At `--dim` 512, `$outputsize` implied, on the 512-px comparison grid the two spectra put
+almost all of that band into ONE Fourier mode:
+
+    2-D mode (ky, kx)   radius   ours power     ref power     ratio
+       (+-8, 8)          11.3    9.05e5/7.34e5  1.65e5/1.62e5   5.5x
+       (+-4, 12) (12, 4) 12.6    below 2.4e5    1.00e5          ~1
+
+`(8, 8)` at radius 8*sqrt(2) = 11.31 is the DIAGONAL diamond lattice of the quilting -- the
+tile count is 8 in both renders (`7207e7b`'s period measurement) and the diamond seams run at
+45 degrees. So the 2.80 is not a broad excess: it is the quilt's own seam frequency at 2.3x
+amplitude. Band-passed to 10-14 the sd is 0.03175 against 0.01840; at 7-10 it is 0.00841
+against 0.00993 and above 32 it is 0.00651 against 0.00769, i.e. every band that is NOT the
+seam is short.
+
+### Where the lattice is born, and it is not a defect
+
+Walking the 121-record cone of `height` (record 120, a `levels` with a baked out-range of
+[0.25, 0.75] over record 119) and taking each record's own band FRACTIONS -- its band powers
+over its total variance -- the 10-14 share is flat along the whole chain and moves at exactly
+one record:
+
+    rec 101  transformation   0.909 0.069 0.009 0.008 0.003 0.002
+    rec 102  transformation   0.880 0.031 0.067 0.009 0.010 0.003   <- 7x, in one hop
+    rec 119  pixelprocessor   0.881 0.031 0.067 0.009 0.010 0.003
+    rec 120  levels           0.881 0.031 0.067 0.009 0.010 0.003
+    the EXPORT                0.902 0.034 0.033 0.015 0.010 0.006
+
+Record 102 carries a baked `matrix22` of **(1, -1, 1, 1)** -- a 45-degree rotation times
+sqrt(2) -- so it is the record that turns the axis-aligned tiling into the diamond quilt and
+moves an 8-cycle lattice to 11.3. The engine does the same thing (its export's 10-14 share is
+0.033, not 0.000). Nothing after 102 changes the mix: records 103-110 and 112-119 are two
+auto-level figures (a 512 -> 128 -> 32 -> 8 min/max reduction pyramid feeding a remap) and
+111 is a multiply by a near-constant 0.5, all of which are pointwise. So the excess is
+present BEFORE the diamond transform, in the axis-aligned frame, and 102 only relocates it.
+
+### The clamp: one record of 258 blend calls
+
+`ops.blend` clamps its composite to [0, 1] on every call. Wrapping the `blend` NAME inside
+every module object whose file is `render2/filters.py` -- which is the call site, because
+`filters.py` does `from ops import blend` and patching `ops.blend` reaches nothing -- and
+recording what the clamp actually moves on `ChesterfieldSofa` at implied / 512:
+
+    258 blend calls; 8 clamp any pixel at all; 2 of the 8 are in `height`'s cone
+
+    rec    mode              frac > 1    frac < 0    raw max    raw min
+     68    1  add             0.12652     0.00000     1.0682     0.2779   <- height's cone
+    111    3  multiply        0.00000     0.00001     0.7519    -0.0050   <- height's cone
+    157/163/170/249  4        0.00000     ~0.0003     -          -0.11
+    350    9  overlay         0.25000     0.00000     1.0000     0.1335
+    360    3  multiply        0.25000     0.00000     1.0000     0.2123
+
+**Record 68 alone.** It is `blend` mode 1 (`add`) at opacity 1.0, `dst` = record 67 (max
+0.9996) and `src` = record 56 -- and record 56 is a CONSTANT 0.0686. Adding a uniform 0.0686
+to a field whose maximum is 0.9996 puts 12.65% of the canvas over 1.0, the clamp flattens
+every one of those pixels to exactly 1.0, and 102's diamond transform then lays the resulting
+squared-off tops on the 11.3-cycle lattice. That is `7207e7b`'s "flat-topped plateaus" and
+this pass's 2.80 in one sentence.
+
+The attribution is measured three ways, each with its own control, and all three agree:
+
+    height band ratios                        1-7  7-10 10-14 14-20 20-32 32-128  total
+    BASELINE                                  1.35 1.27  2.80  0.82  1.40  0.68   1.387
+    `blend` does not clamp, anywhere          1.21 1.21  1.60  0.99  1.03  0.55   1.214
+    clamp kept, record 68's `src` forced to 0 1.13 1.36  1.53  1.37  1.37  0.94   1.153
+    neither clamp nor that `src`              1.12 1.35  1.52  1.36  1.36  0.94   1.144
+
+The last two differ by 0.009 of total, so **once record 68 stops adding a uniform 0.0686 the
+clamp is worth nothing at all** -- there is no other clipping in this chain. The clamp is not
+the defect; it is the messenger, and `pairs2/SubstanceDesigner__hblend.sbs` (permitted,
+`provenance.audit()` CALLED) is a permitted author reimplementing five blend modes
+specifically to keep the overflow the engine's own node clamps away, so removing it would
+contradict a source. What has to change is the 0.0686.
+
+CONTROLS FOR THAT TABLE, because a patch that reaches nothing prints a table too. The
+positive control is `blend` replaced by "keep `dst`", which moves record 120 by 0.1471 and
+takes the bands to 1.07 / 0.96 / 1.76 / 0.87 / 0.57 / 0.30; the frozen control is
+`ops.blend` re-installed through the same mechanism, which reproduces the cached render at
+maxdiff 2.98e-08 (float32 noise). Neither was skipped.
+
+### Why record 56 is a constant: two `fxmaps` records that paint the canvas white
+
+    43  fxmaps(42)      -> CONSTANT 1.0     (42 is a picture, sd 0.176)
+    48  = transformation(levels(levels(transformation(43))))
+    53  fxmaps(..., 48 at edge 8, ...) -> CONSTANT 1.0
+    54  levels(53)      -> CONSTANT 0.0686
+    56  blend mode 5 (max) of transformation(54) and 54 -> CONSTANT 0.0686
+    68  blend mode 1 (add) of 67 and 56
+
+Record 53 is flat because record 43 is. Record 43 has ONE image edge, ONE entry, tag
+`0x90140088`, and `fx_entry_layout` reads three program-valued fields off it: `opacity` at
+slot 3, `patternrotation` at slot 4, `imageindex` at slot 5. Its emission comes out
+
+    opacity 1.0   patternrotation 0.0   imageindex 1.0   patternsize absent   patterntype None
+
+`_image_for` takes the index literally, `images` is keyed by edge slot and holds only key 0,
+so `images.get(1)` is None, the pattern falls back to a generated profile, a typeless entry
+with no `patternsize` is a full-canvas `rect` at `fx.sizeless` = 'fill', and the record paints
+1.0 everywhere.
+
+**The 1.0 is not in the file.** `rec.fx_named_params()` reports `imageindex` at slot 5 with
+value **None** -- the word there is `0x9000004`, an instruction and not a pointer. The 1.0 is
+manufactured by `fxrender._recover_last_inline`, which reads an entry's last program slot as
+holding the program INLINE. For record 43 that address is `off + 4*5` = `0x82d9c`, and slot
+3's `opacity` pointer is `0x82d68 + 52` = **`0x82d9c`, the same address**. So the inline
+program is real and it is `opacity`'s; the recovery hands it to `imageindex` as well, and
+`imageindex` becomes a copy of `opacity`.
+
+That is the hazard `_recover_last_inline`'s own docstring names -- "deciding pointer-vs-inline
+from whether `word - 52` lands on decodable bytes invented an `imageindex` that duplicated an
+earlier pointer 2,056 times" -- surviving the narrowing that was supposed to kill it.
+
+### The recovery's duplicates, over the whole population
+
+RECORDED BECAUSE THE FIRST RUN OF THIS CENSUS HAD THE WRONG POPULATION AND ITS ANSWER LOOKED
+FINE. `corpus.paths()` is the 437-file root list and it does **not** contain the reference
+packs -- `grep -ci chesterfield DISTINCT.txt` is 0 -- so a census that calls it and then
+reasons about `ChesterfieldSofa` is answering about a file it never opened. The first run gave
+39 / 25 / 14 and a detail list of exactly 25 rows with no Chesterfield in it, which is
+consistent with the story and is not evidence for it. That is `corpus.py`'s own lesson at one
+remove: the list is canonical for the corpus and the reference packs are a second population.
+Both censuses below are over **437 corpus files + the 8 reference-pack assemblies = 445**.
+
+Wrapping `_recover_last_inline` over all 445 and recording every parameter it fills in, split
+by whether the address it hands over is one a SIBLING parameter of the same entry already
+names:
+
+    parameters RECOVERED               46
+      duplicate of a sibling           29      in 23 records, 14 files
+      a fresh address                  17
+    of the 29 duplicates:
+      the field recovered              `imageindex`, 29 of 29
+      the sibling it duplicates        `opacity`,    29 of 29
+
+29 of 29 on both columns, with no second field and no second sibling anywhere. `ie_curve` x4,
+`RoadSubstance002` x6, `RoadLinesSubstance002` x3, `UnitTests` x3,
+`PavingStonesSubstance001` x2, and one each in `TransformInputTest`, `fz_explosion`,
+`ChristmasOrnamentTest01`, `desert_sand_grass`, `OutputSizeExample`, `US_Flag`,
+`EngineInitialization` -- and **`ChesterfieldSofa` record 43**, which is the one this section
+is about and the one the first population could not see.
+
+The guard is the docstring's own rule made mechanical: **a recovery may not hand a parameter
+an address another parameter of the same entry already names.** It is not a new reading of
+the format -- the inline program IS there, and slot 3 already says whose it is.
+
+### What `imageindex` indexes, and when the file bothers to say
+
+With the phantom gone, record 43's `imageindex` is DECLARED BY THE TAG and UNSTATED. That is
+not an accident of this record. Over the same 445 files, every entry whose tag declares
+`imageindex`, split by how many of the record's edge slots hold a valid backward record index:
+
+    wired edges   imageindex stated   unstated
+        1                0             2,652    (2,627 unstated + 25 the recovery invented)
+        2                1                 0
+        3                6               382
+        4               24                 2
+        5                0                 2
+        6            1,157                 0
+        7               71                 0
+       10-35           150                 0
+
+    stated with MORE than one wired edge      1,409 of 1,409
+    one wired edge, index stated                  0 of 2,652
+
+**The file states the index exactly where there is a choice to make.** 1,409 of 1,409 stated
+entries sit on a record with at least two image edges; 2,652 of 2,652 entries on a ONE-edge
+record leave it unstated. Both directions are total, on 4,061 entries, with no exception on
+either side. That is not a fallback among candidates -- on a one-edge record there is one
+image and the arity is what says so. (The 382 three-edge unstated entries and the 4 on
+four- and five-edge records are NOT covered by this and are left alone; see the open item
+below.)
+
+So the second correction is: **when an entry's tag declares `imageindex`, the entry does not
+state one, and the record offers exactly one image, the pattern is that image.**
+
+### The two corrections are separable and only the second moves a pixel
+
+    variant                          height bands                          rec 43   rec 68 clipped
+    baseline                    1.35 1.27 2.80 0.82 1.40 0.68  t 1.387    sd 0.0000    12.65%
+    the recovery guard ALONE    1.35 1.27 2.80 0.82 1.40 0.68  t 1.387    sd 0.0000    12.65%
+    both                        1.12 1.29 1.33 1.11 1.05 1.07  t 1.128    sd 0.1757     0.00%
+
+The guard on its own is inert here and that is expected: with the phantom removed the entry
+has no `imageindex` value at all, `_image_for` still returns None, and the full-canvas fill
+still happens. It is a correctness fix that needs the arity rule to become a picture. Stated
+separately so that neither is credited with the other's effect.
+
+**BUT THE GUARD IS NOT INERT EVERYWHERE, AND THAT IS THE REASON THE TWO MUST LAND TOGETHER.**
+Of the eight reference-pack assemblies, two carry a duplicate recovery: `ChesterfieldSofa`
+(record 43) and `Auras_FX` (records 45, 252 and 334). Rendered with the guard alone against
+the baseline, record for record:
+
+    ChesterfieldSofa.sbsasm    881 records,  guard-only moves   0
+    Auras_FX.sbsasm            427 records,  guard-only moves 147
+
+All three `Auras_FX` records have ONE edge and a `0x91100088` entry whose `imageindex` and
+`opacity` are the SAME program address, and that program evaluates to ~0 (those records'
+outputs have mean 0.0002). So the phantom index is 0, `images.get(0)` is the record's only
+image, and **on Auras the invented value happens to be the right one** -- index 0 of a
+one-edge record. Removing the phantom on its own therefore takes a picture away and the arity
+rule puts it back. That is not a reason to keep the phantom: a value that is right when
+`opacity` is near zero and wrong when it is near one is not a reading. It is a reason not to
+land the guard alone.
+
+The scored rows do not see any of it -- `Auras` basecolor reads
++0.9277 / +0.7497 / +0.9398 under the baseline, under the guard alone AND under both, to four
+decimals -- so the 147 records are internal to a graph whose scored output does not depend on
+them. Recorded because "the guard is inert" was this pass's own claim and it is only true of
+the scored rows and of Chesterfield.
+
+### The candidate, measured: every channel of every pack, before and after
+
+`archive/tools/refcompare.py --renderer render2 --outputsize implied --dim 512 --bands`,
+112 scored rows over six packs. **103 rows are identical to four decimals and 9 move, all of
+them `ChesterfieldSofa`.** The rows by pack are Auras 3, `Bricks_and_tiles` 96 (ten graphs
+over two `.sbsar`), `Roof Tiles` 2, `Sandy_Stone_Path` 1 and Chesterfield 10; the first four
+packs' 102 rows do not move by one digit, and all 9 movers plus the one unmoved `metallic`
+control are Chesterfield's 10.
+
+    channel        corr              MAE               band total   bands after
+    basecolor 0  +0.8666 -> +0.9164  0.0537 -> 0.0980  0.345->0.612  0.16 0.70 0.76 0.56 0.51 0.56
+    basecolor 1  +0.9384 -> +0.9862  0.0826 -> 0.0176  0.350->0.547  0.81 0.45 0.56 0.49 0.52 0.48
+    basecolor 2  -0.3543 -> +0.8814  0.0598 -> 0.0133  0.061->0.199  0.02 0.02 0.21 0.14 0.21 0.25
+    normal 0     +0.9510 -> +0.9704  0.0312 -> 0.0206  1.227->1.182  1.09 1.50 1.33 1.33 0.95 1.32
+    normal 1     +0.9480 -> +0.9692  0.0314 -> 0.0209  1.220->1.162  1.09 1.34 1.23 1.26 1.03 1.28
+    normal 2     +0.8110 -> +0.8522  0.0115 -> 0.0098  0.573->0.953  0.87 1.04 0.74 0.92 0.67 0.98
+    height 0     +0.9561 -> +0.9620  0.0737 -> 0.0471  1.387->1.128  1.12 1.29 1.33 1.11 1.05 1.07
+    AO 0         +0.9087 -> +0.9072  0.0324 -> 0.0336  1.435->1.688  1.63 2.75 5.19 0.84 0.52 1.34
+    roughness 0  +0.9348 -> +0.9338  0.0638 -> 0.0639  0.678->0.671  0.52 0.76 0.73 0.81 0.61 0.73
+    metallic 0   +1.0000 -> +1.0000  0.0004 -> 0.0004  1.014->1.014  1.01 1.01 1.01 1.00 0.99 1.04
+
+`metallic` is the control and it does not move by one digit in any band.
+
+**`basecolor` ch2 flips sign, -0.3543 -> +0.8814.** That is the channel README calls "the last
+open defect in `Chesterfield`'s colour chain" and the entry `b3c74e9` left with a margin
+warning at 0.0037. It is not reached; it is resolved -- and NOT by the mode-4 chain `bc9bbd7`
+pointed at, but by the height map that chain multiplies.
+
+### `--dim` 1024, where the mip pyramid is fully resolved and the answer is cleanest
+
+`b3c74e9` established that the `--dim` cap flattens this file's size hierarchy and that only
+the finest grid is a reading. At 1024:
+
+    channel        corr                       MAE               band total
+    basecolor 0  +0.8614 -> +0.9184 (+0.0569)  0.0533 -> 0.0973  0.323 -> 0.588
+    basecolor 1  +0.9467 -> +0.9902 (+0.0434)  0.0837 -> 0.0180  0.342 -> 0.542
+    basecolor 2  -0.3257 -> +0.8755 (+1.2012)  0.0605 -> 0.0125  0.045 -> 0.201
+    normal 0     +0.9506 -> +0.9720 (+0.0214)  0.0305 -> 0.0195  1.154 -> 1.151
+    normal 1     +0.9478 -> +0.9710 (+0.0232)  0.0307 -> 0.0199  1.138 -> 1.122
+    normal 2     +0.8303 -> +0.8740 (+0.0437)  0.0113 -> 0.0104  0.538 -> 1.232
+    height 0     +0.9560 -> +0.9620 (+0.0060)  0.0756 -> 0.0497  1.348 -> 1.090
+    AO 0         +0.9251 -> +0.9303 (+0.0052)  0.0238 -> 0.0220  1.076 -> 1.336
+    metallic 0   +1.0000 -> +1.0000 ( 0.0000)  0.0004 -> 0.0004  1.013 -> 1.013
+    roughness 0  +0.9345 -> +0.9335 (-0.0010)  0.0639 -> 0.0639  0.675 -> 0.670
+
+**Nine of ten improve and one moves down by 0.0010.** And the win condition is the shape, not
+the totals:
+
+    height bands   before  1.32 1.23 2.72 0.80 1.36 0.64    spread 4.25x   total 1.348
+                   after   1.08 1.25 1.28 1.08 1.02 1.02    spread 1.25x   total 1.090
+    normal ch0     before  1.21 1.28 2.63 0.99 1.52 0.67    spread 3.93x   total 1.154
+                   after   1.06 1.40 1.32 1.24 0.90 1.08    spread 1.56x   total 1.151
+    normal ch1     before  1.22 1.22 2.50 0.94 1.60 0.67    spread 3.73x   total 1.138
+                   after   1.07 1.27 1.23 1.18 0.97 1.06    spread 1.31x   total 1.122
+
+The tilt FLATTENS. `height` goes from a 4.25x spread across the octaves -- a shape error by
+`band_power`'s own doctrine -- to a 1.25x spread at 1.09, which is what a residual GAIN of 9%
+looks like on this instrument. `normal` inherits the flattening, as it must. That is the win
+condition this pass was set, and it is met on the two channels it was set for.
+
+TWO COLUMNS GO THE OTHER WAY AND ARE NOT AVERAGED AWAY. **`AO`'s bands get worse** -- total
+1.076 -> 1.336, with its 10-14 band at 2.73 -- while its correlation and MAE both improve.
+That is consistent rather than contradictory: `b3c74e9` measured AO's amplitude at 1.08 of the
+export's and said in as many words that "the residual 1.08 is not AO's own -- `height` on the
+same run reads 1.348, so this pack's whole height chain is 15-35% hot and AO now tracks it
+instead of hiding it." AO is a directional difference of the height field; giving that field
+its tufting relief back gives AO more to differentiate, and 1.076 was AO's own overshoot
+CANCELLING part of height's. It is now 1.336 while height is 1.090, which is the pair
+disagreeing where before they agreed by accident. Whether the AO chain has its own residual is
+a question this section opens and does not answer.
+
+And **`basecolor` ch0's MAE nearly doubles, 0.0533 -> 0.0973, while its correlation rises
+0.057**. That is a mean shift, not a structure loss: the same coupling `b3c74e9` pinned --
+852 -> 853 (mode 10) -> a `gradient` -> the colour chain -- reads the gradient across a
+different part of its range once the height it is keyed on changes. The band total goes
+0.323 -> 0.588, i.e. toward 1.0. Recorded because "correlation up, MAE up" is exactly the
+shape a reader should stop at.
+
+### IT IS NOT APPLIED, AND A FLOOR IS REACHED — both halves of that, loudly
+
+**`roughness` gets worse, at every grid, and the bar is that no reference channel may.**
+
+    --dim              128        256        512       1024
+    roughness corr  -0.0005    -0.0009    -0.0010    -0.0010
+
+Monotone and reproducible, so it is not noise -- it is small. Its MAE is 0.0639 before and
+after to four decimals and its bands move 0.54 0.76 0.73 0.81 0.60 0.72 -> 0.52 0.76 0.73 0.81
+0.61 0.71, one band better and two worse in the second decimal. On every instrument except the
+fourth digit of one correlation it is a wash; the bar does not have a fourth-digit clause and
+this pass is not going to write one for itself.
+
+**And `REFERENCE_FLOOR_RENDER2` breaks on one entry at its OWN configuration.** Scored at
+render2 / implied / `max_dim` 256, all 25 entries:
+
+    floor key                              floor    before      after      verdict
+    Chesterfield normal 2                   0.72    +0.7499    +0.7042    **BREAKS** by 0.016
+    Chesterfield roughness 0                0.91    +0.9358    +0.9348    holds, -0.0010
+    Chesterfield AO 0                       0.84    +0.8684    +0.8735    holds, BETTER
+    Chesterfield basecolor 0                0.82    +0.8909    +0.9166    holds, BETTER
+    Chesterfield basecolor 1                0.92    +0.9274    +0.9776    holds, BETTER
+    Chesterfield basecolor 2               -0.46    -0.4563    +0.8344    holds, SIGN FLIP
+    Chesterfield height 0                   0.93    +0.9562    +0.9621    holds, BETTER
+    Chesterfield normal 0                   0.93    +0.9524    +0.9645    holds, BETTER
+    Chesterfield normal 1                   0.92    +0.9496    +0.9635    holds, BETTER
+    Chesterfield metallic 0                 0.99    +0.9999    +0.9999    identical
+    the 15 Auras / Bricks entries                              identical to four decimals
+
+    CONSTANT_YIELDS_RENDER2: unchanged in both runs -- nothing went flat.
+
+**NO FLOOR WAS MOVED IN EITHER DIRECTION AND THE TREE IS UNCHANGED.** `basecolor` ch2 is the
+entry `b3c74e9` marked as the next one likely to be reached; it was reached from the other
+side, and it is left at -0.46 rather than ratcheted to +0.83, because banking a floor for a
+change this pass is not applying would be the worst of both.
+
+**`normal` ch2's regression REVERSES SIGN WITH THE GRID, and that is stated rather than used
+as an excuse.**
+
+    --dim               128        256        512       1024
+    normal ch2       -0.1061    -0.0457    +0.0411    +0.0437
+    our Z sd after    0.0161     0.0174     0.0220     0.0251     (ref 0.0233)
+    our Z sd before   0.0215     0.0215     0.0219     0.0223
+
+The before-render's Z sd is flat at 0.0215-0.0223 across a 8x range of grid; the
+after-render's climbs 0.0161 -> 0.0251 and crosses the export's 0.0233 between 512 and 1024.
+Normal Z is `1/sqrt(1 + |grad|^2)`, dominated by the largest gradients, so a channel that
+gains fine relief loses at a grid that aliases it and gains at one that resolves it. Its band
+total goes 0.538 -> 1.232 at 1024 and its MAE improves at EVERY grid (0.0113 -> 0.0104 at
+1024, 0.0131 -> 0.0120 at 256), correlation being the only column that goes down and only
+below 512. `REFERENCE_FLOOR_RENDER2`'s own header says 256 is "what the suite can afford" and
+that "a floor taken at a grid that understates the reading is a floor set low, which is the
+safe direction" -- here the understatement bites the other way, and that is a property of the
+guard's grid rather than an argument that the guard is wrong.
+
+So: two things stop this, one of them at the fourth decimal and one of them a guard that
+would have to be lowered. **Neither is a reason to believe the reading is wrong** -- the
+reading rests on 29 of 29 duplicate recoveries and on 1,409 of 1,409 / 2,652 of 2,652
+containment, not on the render -- but the bar this project scores itself against is the
+render's, and it says no.
+
+WHAT WOULD SETTLE IT, in order of cheapness:
+
+  * **`roughness`.** ASKED AND ANSWERED BELOW, against this bullet: the cone walk says
+    roughness DOES see record 43 (237 of its 334 cone records move), so the -0.0010 is real
+    and this way out is closed. What is left is either a reading that makes the residual go
+    away or an explicit decision that a 0.0010 on one channel does not veto a 1.20 sign flip
+    on another. This pass will not make that decision for the owner of the bar.
+  * **`normal` ch2 at the floor's grid.** Either move `RENDER2_FLOOR_DIM` (which is a change
+    to the guard and belongs to whoever owns it) or accept that this channel cannot be scored
+    at 256 and mark it a collapse guard, which is what the same key is on `Bricks`.
+  * **The 382 three-edge unstated `imageindex` entries**, plus the 4 on four- and
+    five-edge records. They are the part of the census this
+    rule does NOT cover and the part that would make it general. A three-edge record has a
+    choice and does not state it, which either means those three edges are not all images or
+    that the index has a default. Neither is measured here.
+
+### The `roughness` question, asked and answered against my own bullet above
+
+The cheap check I listed first is done and it goes the OTHER way: `roughness` (record 880)
+does see the change. Rendering `ChesterfieldSofa` twice and diffing every record:
+
+    records whose output changes            742 of 881
+    basecolor  735 of its 868 cone records move
+    AO         504 of 609
+    roughness  237 of 334
+    normal      33 of 121
+    height      33 of 121
+    metallic     0 of  40      <- record 43 is NOT in metallic's cone
+
+So the -0.0010 is a real downstream consequence and not a resample artefact, and the first
+bullet above is withdrawn as a way out. **The bar is not met and the change is refused.**
+
+That last row is worth keeping for its own sake: `metallic` is this repository's sharpest
+number (MAE 0.0004, correlation +1.0000) and it is untouched here by CONTAINMENT rather than
+by coincidence -- 0 of the 40 records in its cone move, so its unchanged score is a structural
+fact about this change and not a measurement that happened to come out flat. The control reads
+true because it cannot read anything else.
+
+### The picture, which is where `7207e7b` started
+
+Rendered at `$outputsize` 11, `--dim` 512, normalised to [0.25, 0.75] and put beside the
+package's own 2048 export:
+
+                        median    IQR      >= 0.75 - 1e-3    >= 0.75 - 5e-3
+    the export          0.5152   0.1607        0.000%             0.021%
+    ours, before        0.5970   0.2035        1.675%            13.529%
+    ours, after         0.5626   0.1800        0.017%             0.722%
+
+`7207e7b` read the median at +0.081, the IQR at 1.27x and "1.58% of our pixels at the ceiling
+against the engine's 0.00%". All three reproduce: the median is +0.082 and the IQR 1.27x here,
+and the tightest ceiling threshold gives 1.675% against 0.000%, which is that number. After,
+they are +0.047, 1.12x and 0.017%. The 5e-3 column is the same statistic read one threshold
+looser and is the one that matches the 12.65% the clamp actually moves -- 13.5% of the canvas
+within half a percent of the ceiling, against the engine's 0.02%.
+
+And the pictures say the same thing without a statistic. The export is smooth domes separated
+by thin dark diagonal seams with a round dimple at each vertex. Ours BEFORE is blown-out white
+plateaus with over-wide seams and the dimples reduced to small squares -- the top of every
+dome clipped flat and the button relief gone with it. Ours AFTER has the dome shading back,
+the seams thin, and **the round button dimples back at the vertices**, because record 43's
+stamp IS that relief: a one-edge `fxmaps` stamping record 42 -- a `pixelprocessor` output that
+is zero on 96% of its pixels and carries the button/tuft pattern -- over the whole canvas,
+which our reader was painting as solid white.
+
+
+### What is withdrawn, and what is not
+
+  * **"The pinning at the ceiling is a clipping signature; something is saturating that
+    should not be."** Confirmed, and located: ONE record of 258 blend calls, record 68's
+    `add`, 12.65% of the canvas. `7207e7b`'s "1.58% of our pixels pin at the ceiling"
+    reproduces at 1.675% (>= 0.75 - 1e-3, against the export's 0.000%) and falls to 0.017%
+    after. EXACT equality with 0.75 is only 0.008%, because records 98 and 99 modulate the
+    plateau before it reaches the output -- so the statistic needs a tolerance and the
+    tolerance is what `7207e7b` must have used. The plateau is the finding; the percentage is
+    a way of seeing it.
+  * **"`blend`'s composite clamps to [0,1] on every call" is the defect.** NOT confirmed and
+    not proposed. With record 68's `src` at 0 the clamp is worth 0.009 of band total on this
+    channel, and a permitted source (`hblend`, five graphs with an "Out of Range Mask"
+    output) is an author reimplementing the engine's blends specifically to keep the overflow
+    the engine clamps. Do not remove that clip on the strength of this section.
+  * **`refcompare`'s docstring "the `fxmaps` generators emit patterns at full brightness
+    covering 0.4% to 11.8% of the canvas -- the right colour and far too small".** That is a
+    different family from this one and it stands. Record 43 is the OPPOSITE failure -- one
+    pattern at full brightness covering 100% -- and the two have the same cause only in the
+    sense that both are the drawing model. This section closes neither the footprint question
+    nor `fx.sizeless`.
+  * **`patternsize`, its coordinate space and its setup-chain ordering** are not touched, not
+    re-litigated, and not involved. Record 43's entry states no `patternsize` at all.
+  * **README's "the fault is in the nine mode-7 switch blends its colour chain runs
+    through"**, on `Chesterfield` basecolor ch2. `bc9bbd7` already moved that lead to the
+    mode-4 chain. It is neither: the channel flips to +0.88 with mode 4 and mode 7 untouched,
+    because its colour variation is a `gradient` keyed on a height/AO map whose top 12.65% was
+    a plateau. Both attributions were downstream of this.
+
+### Both halves of the two-sided test
+
+    half 1  Stadsspel__Lines record 0, through render2's own fx path, before and after
+              10 patterns, patternsize (1.41421354, 0.03555065), patternrotation 0.12500012,
+              lit fraction (>0.5) 0.5078, mean 0.50781, 10 bands on the centre scanline
+            -- and the two renders are BIT-IDENTICAL, `np.array_equal` True, maxdiff 0.0e+00.
+               `Lines` record 0 has no image edge at all, so neither correction can reach it,
+               which is what makes it the half that has to stay still.
+
+    half 2  render2 / implied / --dim 512 --bands, all 112 rows, above. 103 identical, 9
+            moved, all in one pack. At the floor's own grid (256) 24 of 25 entries hold and
+            one breaks; at --dim 1024 nine of Chesterfield's ten channels improve and one
+            falls 0.0010.
+
+### Guards and harness
+
+    archive/tools/provenance.py           142 paired / 42 excluded / 100 permitted, the
+                                          predicate CALLED and never retyped, equal to what
+                                          the documents state
+    archive/tools/walk_health.py          903,611 / 903,616 agree, 0 longer, 0 shorter,
+                                          5 silent (filter 9)
+    archive/tools/walk_partition.py       8 FX violations of 48,688 attributions (0.02%)
+    archive/tools/bit_census.py --check   edges     1,302,817 / 1,302,817
+                                          state-2     198,486 /   198,486
+                                          w1-presence vs decompose: AGREE on every record
+    ./t                                   19 passed (34.6s)
+    test_fx.py + test_bitmap.py           23 passed (2:44)
+    render2 trio                          27 passed (12.7s)
+    test_filters.py + test_tables.py      25 passed (12:26)
+
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json` are
+byte-identical -- `git diff --stat` over those four paths is empty. So is every other file in
+the tree: `git status --porcelain` is EMPTY and `git diff --stat` is empty, because this pass
+changed no code at all. Both corrections above are monkeypatches in a scratch directory, and
+FORMAT-NOTES.md is the only modified file. **No floor was raised and none was lowered.**
+
+### Provenance
+
+No `.sbs` source was opened in this pass and no source-side measurement was taken, so nothing
+here depends on the permitted list; `archive/tools/provenance.py` was RUN anyway as a guard,
+reporting 142 / 42 / 100, the predicate called and never retyped. Every measurement is
+compiled `.sbsasm` on one side and, on the other, PNG maps the material's own author published
+beside the `.sbsar`. No Adobe binary, no Adobe `.sbs`, in any form. The one source named in
+this section, `pairs2/SubstanceDesigner__hblend.sbs`, is cited from `bc9bbd7`'s reading of it
+and was not re-opened here.
+
+### The instruments, so they can be rebuilt
+
+Nothing in `tools/` or `archive/` was edited; every measurement is a scratch script under
+`/tmp/hb/`, and each is small enough to restate:
+
+* `harness.py` -- renders `ChesterfieldSofa` at `$outputsize` 11 and patches the `blend` NAME
+  in every module object whose `__file__` is `render2/filters.py`. THE MODULE-IDENTITY TRAP
+  IS LIVE AND IT IS TWO-FACED HERE: `filters.py` does `from ops import blend`, so patching
+  `ops.blend` -- which is what `bc9bbd7`'s sweep patched, correctly, for `BLEND_MODES` --
+  reaches NOTHING for the `blend` call itself. Every table in this section was taken with a
+  positive control (`blend -> keep dst`, which moves record 120 by 0.147) and a frozen control
+  (the real function reinstalled through the same mechanism, maxdiff 2.98e-08) printed first.
+* `trace.py` / `h4.py` -- the 121-record height cone with per-record sd, range, ceiling
+  fraction and band FRACTIONS. The band fractions are what located record 102; the sd column
+  on its own says nothing, because the auto-levels rescale it twice.
+* `clamp_where.py` -- wraps `blend` and records, per record index, what the clamp moves.
+  Getting the record index needs a second wrapper on `FILTERS['blend']`, because `blend` is
+  handed arrays and not a record.
+* `census4.py` -- both censuses in one pass over 437 corpus files PLUS the 8 reference-pack
+  assemblies: what `_recover_last_inline` fills in and whether a sibling already names that
+  address, and every entry whose tag declares `imageindex` by the record's WIRED edge count.
+  Two things it caught about itself. Counting edge SLOTS instead of wired edges gives the
+  identical table, so on this population every declared slot is wired. And its first two
+  versions called `corpus.paths()` alone, which does not include the reference packs -- see
+  the population note above; that run's numbers (39 / 25 / 14 and 1,397 / 2,609) are the
+  corpus-only ones and are superseded here.
+* `cand.py` -- the two corrections as one installable patch with an undo, over every module
+  object of `fxrender.py` and `render2/fx.py`.
+* `split.py` -- the two corrections applied separately, which is how the guard was shown to
+  be pixel-inert on Chesterfield on its own (and `guardpix.py`, below, is how it was shown NOT
+  to be on Auras_FX -- the second measurement exists because the first one's conclusion was
+  stated more widely than its scope).
+* `grids.py` / `grid1024.py` -- Chesterfield's ten channels at `--dim` 128 / 256 / 512 / 1024,
+  which is what turned `normal` ch2's regression into a grid-dependence rather than a loss.
+* `rough.py` -- the six outputs' cones and which records actually change, which refuted this
+  pass's own first explanation for the `roughness` residual and produced the `metallic`
+  containment.
+* `guardonly.py` / `guardpix.py` / `aurasq.py` -- the guard on its own over the reference
+  packs. RECORDED BECAUSE IT MEASURED NOTHING AND SAID SO CHEERFULLY: `guardonly.py`'s first
+  version built its sibling-address set as `{v for n2,(k2,v2) in b.items() if ...}` -- `v` is
+  not bound, so every call raised `NameError`, and the loop that called it was wrapped in
+  `try: ... except Exception: pass`. It printed "reference-pack assemblies with a duplicate
+  recovery: none", which is a clean, plausible, completely fabricated answer, and it agreed
+  with what I expected. It was caught by running the same probe WITHOUT `except Exception`
+  against one file and getting a hit. A bare `except` around the thing being measured is one
+  more way to produce a sweep that measures nothing and passes, alongside the three this
+  investigation has already recorded -- a lookup table read as a data path, a patched module
+  object the renderer was not using, and an empty population that passed. The shape they share
+  is that the null result is the expected result, so nothing about the output looks wrong.
+* `armcount.py` -- how many records take the new arm during the six reference renders: 12
+  records over 4 assemblies (Auras_FX 3, Bricks 5, Rusty_Metal 3, ChesterfieldSofa 1), 424
+  patterns. Eight of those twelve are in packs whose scored rows do not move at all, which is
+  why 103 of 112 rows are identical.
+
+### For whoever picks this up
+
+The change is two lines of intent and both are written above. It is NOT in the tree. The
+tempting order -- land the `_recover_last_inline` guard first on its 29-of-29 containment,
+then the arity rule -- is measured above and is WRONG: the guard alone moves 147 of
+`Auras_FX`'s 427 records in the losing direction, because there the invented index is
+accidentally the right one. They are one change or neither. What that costs is the thing this
+file usually asks for -- a placement fix landing on its own containment argument, separate
+from a render -- and the price of getting it is `Auras_FX` rendering worse in between. The
+honest way to have both is to land them in one commit and to state, as above, that the
+containment argument is the guard's and the pixels are the arity rule's.
+
+What still has to be settled before either lands is the floor: `roughness` -0.0010 at every
+grid, and `normal` ch2 at the guard's own 256. Neither is a reason to doubt the reading and
+both are reasons this pass is not the one to apply it.
