@@ -96,28 +96,59 @@ The means agree to four decimal places on `normal`: the map is correctly formed 
 centred on a flat normal. The spatial std is 5.4x too small, and metallic is short by the
 same ratio. Tracing the 121-record cone behind that output puts the loss at the `fxmaps`
 generators feeding it, which emit patterns at full brightness covering 0.4% to 11.8% of
-the canvas -- the right colour and far too small. That is the pattern FOOTPRINT, which
-`tools/fxrender.py` names as its largest open question. `blend`, `levels` and
-`dirmotionblur` in that chain are not losing anything; the two `blendingmode=3` records
-downstream are multiplying already-sparse maps together, which is what multiply does.
+the canvas -- the right colour and far too small. `blend`, `levels` and `dirmotionblur` in
+that chain are not losing anything; the two `blendingmode=3` records downstream are
+multiplying already-sparse maps together, which is what multiply does.
 
-So the honest reading of this table is a baseline, not a validation: nothing matches yet,
-and the single number to move is the footprint.
+THAT TABLE IS THE BARE INVOCATION'S, AND IT IS NOT WHERE THE RENDERER STANDS -- it is
+`render.py` at the declared `$outputsize` and `max_dim` 128, kept because
+`test_filters.REFERENCE_FLOOR` is scored from exactly that. Through the renderer of record
+at the corrected size, which is what `REFERENCE_FLOOR_RENDER2` guards
+(`--renderer render2 --outputsize implied --dim 256`), the same package reads
 
-WHERE THE RESIDUAL PROBABLY IS NOT. After the blend-opacity fix `normal` reads std 0.1018
-against the reference's 0.0968 while its MAE ROSE, 0.0783 -> 0.1039. Right variance and a
-worse error is a POSITION signature, not a size one: patterns of roughly the right extent
-landing in the wrong places score worse than no patterns at all, because a flat image whose
-mean is right is cheap on MAE. So an experiment that perturbs `patternsize` and rescores is
-likely to move nothing -- the size path is separately settled, resolving to values from 0.25
-to 2.92 including a non-square, none of them unset.
+    normal ch0   0.5002 / 0.1207   ref 0.5002 / 0.0968   MAE 0.0332   corr +0.9524
+    normal ch1   0.5001 / 0.1204   ref 0.4999 / 0.0967   MAE 0.0333   corr +0.9496
+    normal ch2   0.9607 / 0.0215   ref 0.9659 / 0.0233   MAE 0.0131   corr +0.7499
+    metallic     0.0486 / 0.1727   ref 0.0481 / 0.1733   MAE 0.0010   corr +0.9999
+    height       0.5815 / 0.1217   ref 0.5154 / 0.0970   MAE 0.0684   corr +0.9562
+    AO           0.9839 / 0.0139   ref 0.8871 / 0.0645   MAE 0.0968   corr +0.8715
+    roughness    0.1713 / 0.0207   ref 0.2352 / 0.0262   MAE 0.0639   corr +0.9358
 
-The candidate is the position path, `branchoffset` + `frameoffset`. Measured by the session
-that decoded the FX structure: their combined x-extent has a median of 0.835 -- about one
-cell, which is what tiling wants -- but a p90 of 7.8, so some records place patterns well
-outside the unit square. That is a hypothesis with a number attached and not a finding; it
-is recorded here because it is the second arm of the same experiment and would otherwise be
-spent on the lane it has already been ruled out of.
+`normal`'s std is now 25% HIGH rather than 5.4x low, `metallic` reproduces the export at
+MAE 0.0010, and "the single number to move is the footprint" -- which this paragraph used
+to end on -- is withdrawn: see the position/gain paragraph below and `fxrender.py`'s
+negative results 5 and 6.
+
+THE POSITION-SIGNATURE LEAD IS WITHDRAWN -- 2026-09-04, and the numbers it rested on are
+two renderers and one output size old. What it said: "after the blend-opacity fix `normal`
+reads std 0.1018 against the reference's 0.0968 while its MAE ROSE, 0.0783 -> 0.1039. Right
+variance and a worse error is a POSITION signature, not a size one", with
+`branchoffset + frameoffset` as the candidate on their combined x-extent having median 0.835
+and p90 7.8.
+
+Through the renderer of record at the configuration `test_filters.REFERENCE_FLOOR_RENDER2`
+is taken at -- render2, `$outputsize` implied, `max_dim` 256 -- the same channel reads
+
+    normal ch0   ours 0.5002 / 0.1207   ref 0.5002 / 0.0968   MAE 0.0332   corr +0.9524
+                 fit y = 0.764x + 0.118, resid 0.0229
+
+MAE 0.0332, not 0.1039, and a correlation of +0.9524. Patterns correlating at 0.95 are not
+landing in the wrong places. What is left is a GAIN error and the fit states it: our std is
+1/0.764 = 1.31x the reference's, an amplitude 31% high with the structure right.
+
+The p90 statistic itself reproduces -- 7.964 over 39,513 records at HEAD against the 7.8
+recorded -- but conditioning it on what the record draws reverses its sign:
+
+                 n        x-extent median   p90    records placing a centre outside the cell
+    flat     21,731            0.0444      0.573                15.0%
+    picture  17,774            0.4055     19.249                54.4%
+
+A wild offset is the signature of a record that DOES produce a picture, which is what a
+scatter generator's offsets have to look like; under unit-spacing tiling an offset of 8
+wraps. The records that render flat are the ones whose patterns barely move. So the two
+signals are a second thing rather than the same thing seen downstream, and the second thing
+is not the one this paragraph named. See FORMAT-NOTES.md, "`patternsize`'s setup chain was
+never out of order".
 
 PROVENANCE. The exported maps are distribution data published by the material's own
 author, on the same footing as the .sbsar beside them -- the standing exclusion is of

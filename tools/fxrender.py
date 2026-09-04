@@ -20,10 +20,29 @@ WHAT THIS PRODUCES, and where it stops. `Stadsspel__Lines` record 0 renders corr
 to end: one `0x18B` node over one entry, whose three programs give a per-iteration y step,
 a size of (1.414, 0.036) -- 1.414 being the unit square's diagonal -- and 0.125 turns. Ten
 bars, 45 degrees, spaced 1/10, from a file named `Lines` whose name the decode never used.
-Corpus-wide it does not: over 1,521 records that emit patterns at all, 96% render FLAT, and
-patternsize has median 2.82 in records that render flat against 0.50 in records that render
-a picture. A pattern 2.8 unit squares wide paints everything one colour, so the coordinate
-space `patternsize` is expressed in is the open question, upstream of everything else here.
+
+CORPUS-WIDE, RE-TAKEN 2026-09-04, AND THE FIGURE THIS DOCSTRING USED TO CARRY IS STALE BY
+26x. It said "over 1,521 records that emit patterns at all, 96% render FLAT, and patternsize
+has median 2.82 in flat records against 0.50 in ones that render a picture". Through the same
+instrument today -- `seed_slots` + `emissions` + `splat` at 64 px, flat = every channel's std
+below 1e-6:
+
+    fxmaps records yielding a drawable entry table   41,153
+      splat produces an image                        39,505
+      render FLAT                                    21,733   55.0%
+      render a PICTURE                               17,772   45.0%
+
+    patternsize.x median   flat 1.9217    picture 1.9217
+
+The denominator grew because the fx-walk reached entries it could not reach (`e231131` and
+the two structural-slot passes), not because anything about sizes changed -- and the
+statistic that motivated the whole question is GONE: the median patternsize is now identical
+to four decimals on both sides. It still correlates with flatness (12.4% flat below 0.5,
+73.2% in 1..2, 61.5% above 2) but 6,346 records draw a picture with a patternsize above 2,
+so "2.8 unit squares paints everything one colour" is a tendency and not a law. Flatness is
+WHITE, not black: 20,930 of the 21,733 are lit at every pixel with mean exactly 1.0.
+Caveat on the instrument: run standalone it wires no image inputs, so 719 of its 1,648
+refusals are `no sampler`. Fine for a before/after, not a statement of `render2`'s coverage.
 
 NEGATIVE RESULTS, recorded so they are not re-run.
 
@@ -57,19 +76,45 @@ NEGATIVE RESULTS, recorded so they are not re-run.
    file from 659 non-finite records to 0. Anything proposed for the frame question should
    be run against both halves before it is argued about.
 
-5. THE RECIPROCAL READING OF A BAKED patternsize IS UNDECIDABLE ON THIS CORPUS -- stronger
-   than "unproven". The reading: a BAKED patternsize is stored as 1/size, and it is not
-   idle: the words decode as clean float32 clustering on 5.0, 3.0, 1.5, 8.0, 2.0, 1.0 and
-   4.0, whose reciprocals land median exactly 0.500 with 88.7% in [0.02, 1.5] against 41.8%
-   as-is, and it explains an asymmetry no frame model did (62% of oversized records have a
-   baked patternsize against 27% of correctly-sized ones). WHY IT IS NOT IMPLEMENTED: both
-   records with independent ground truth take patternsize from a PROGRAM, so a rule
-   touching only baked values cannot break either -- the property that makes it safe is the
-   property that makes it unfalsifiable. WHAT WOULD DECIDE IT: a record whose geometry is
-   OVERDETERMINED, so the footprint is forced rather than chosen, AND whose patternsize is
-   baked. Record 86 is the precedent in the other currency -- six patterns at radius 0.433,
-   rotations stepping exactly 1/6 turn, size 0.866 = 2 x radius. Searched: 0 candidates
-   over 60 files.
+5. THE RECIPROCAL READING OF A BAKED patternsize IS REFUTED -- it was recorded here as
+   UNDECIDABLE, and it stopped being undecidable because the fx-walk grew. The reading: a
+   BAKED patternsize is stored as 1/size, motivated by float32 words clustering on 5.0,
+   3.0, 1.5, 8.0, 2.0, 1.0 and 4.0 whose reciprocals land median exactly 0.500. It was
+   parked because "both records with independent ground truth take patternsize from a
+   PROGRAM, so a rule touching only baked values cannot break either" -- and the search for
+   a decidable specimen returned "0 candidates over 60 files".
+
+   THAT SEARCH COMES OUT DIFFERENTLY NOW. Over the six reference packs, fxmaps records
+   whose entry table declares a patternsize, split baked / program: Auras 6/21, Bricks
+   150/202, RoofTiles 88/86, Rusty_Metal 12/23, Chesterfield 6/8, Sandy_Stone_Path 6/12 --
+   268 baked, not 0, and six of them are in ChesterfieldSofa, which is the arbitrating half
+   of the two-sided test below. So it was run. Half 1 is IDENTICAL by construction (Lines
+   record 0's patternsize is a program); half 2, at render2 / $outputsize implied /
+   max_dim 256:
+
+       basecolor 0  +0.8563 -> -0.3326      normal 2   +0.7499 -> -0.6375
+       basecolor 1  +0.9656 -> +0.0853      roughness  +0.9358 -> +0.2553
+       basecolor 2  -0.4262 -> -0.1135      metallic   +0.9999 -> +0.1319
+       normal 0     +0.9524 -> +0.2486      height     +0.9562 -> +0.5877
+       normal 1     +0.9496 -> +0.2489      AO         +0.8715 -> -0.2037
+
+   Nine of ten worse, four turned negative, and `metallic`'s MAE goes 0.0010 -> 0.8382, a
+   factor of 838 on the sharpest number in this repository. (AO's MAE IMPROVES, 0.0968 ->
+   0.0819, while its correlation collapses -- entry 3's warning shape, in the one channel
+   of ten where it could appear.) Chesterfield's baked values say why: records 0, 5, 10 and
+   69 hold 0.15, 0.39, 0.07 and (0.45, 1.0), already plausible footprints, and
+   reciprocating 0.07 asks for a pattern 14 canvases wide.
+
+   WHAT CLOSED AND WHAT DID NOT. A baked patternsize at or below 1 is a size, refuted at
+   838x. Whether a component ABOVE 1 is a reciprocal is still unarbitrated: the narrowed
+   arm is BYTE-IDENTICAL to the baseline on both packs carrying such records in quantity --
+   Chesterfield and Bricks (150 baked records), 96 channel rows, `diff` clean. The reason
+   is now better than "no candidate exists": the candidates exist and are not in the cone of
+   any scored output.
+
+   THE METHOD POINT IS THE DURABLE ONE. An unfalsifiable hypothesis became falsifiable
+   because a STRUCTURAL decode elsewhere moved. Re-run a parked question's search after the
+   walk changes; do not wait for the specimen the parked note asked for.
 
 WHY THIS MATTERS MORE THAN THE FILTER WORK. Perturbation over 140 files: of 112 declared
 outputs that render flat, the flat SOURCE records in their closure were replaced with
@@ -78,9 +123,10 @@ source -- so 89 of the 93 testable, 95.7%, are flat because their sources are co
 because the filter chain destroys variation. The constant sources are `fxmaps` (367) and
 `uniform` (300), and nothing else.
 
-A POSITIVE RESULT, source-confirmed: patternsize is a plain [0,1] canvas fraction, and the
-open question is a VARIABLE-RESOLUTION problem, not a coordinate-space scale. The permitted
-FX-Map sources have no Quadrant node -- their whole vocabulary is addnode (596), paramset
+A POSITIVE RESULT, source-confirmed: patternsize is a plain [0,1] canvas fraction. (This
+sentence used to continue "and the open question is a VARIABLE-RESOLUTION problem, not a
+coordinate-space scale". Half of that is right -- it is not a scale -- and the other half is
+negative result 6 below, which refutes it.) The permitted FX-Map sources have no Quadrant node -- their whole vocabulary is addnode (596), paramset
 (480), markov2 (80) -- so there is no spatial subdivision to scale a size against, and the
 linear-chain model is topologically right. And in 220 of 230 patternsize programs the value
 is simply READ from a cross-node variable set in a setup node, not computed at the draw
@@ -91,17 +137,44 @@ site. `ie_pcloud`'s own author comment states the chain:
     ... paramset patternsize = get_float2("size_out")
 
 With the default `cloud_size = (7, 7)`, `size_out = 1/128 = 0.0078` -- a point in a point
-cloud. So the median 2.82 is not a size in a mysterious space; it is what `size_out` reads
-when its setup chain has not resolved to its small value by the time the paramset reads it.
-This confirms negative-result 5's reciprocal reading as the format's real convention --
-size is written as `1/pow2(N)` for PROGRAM sizes, the majority -- and explains the
-asymmetry: the oversized records are the ones whose size variable defaulted.
+cloud.
 
-WHAT TO CHECK NEXT. For a cloud record, assert the walk holds `size_out ~= 1/2**cloud_size`
-in `slots` at the moment a paramset reads it. If it does not, the setup `set` program that
-computes it is either not run before the read or writes a different slot than the read -- a
-`seed_slots`/ordering bug -- and that, not a frame scale, is what paints the corpus flat.
-The two-sided test from negative-result 4 applies.
+6. AND THE EVALUATION-ORDER DIAGNOSIS IS REFUTED. This docstring used to end by reading the
+   chain above as an ordering problem -- "the median 2.82 is not a size in a mysterious
+   space; it is what `size_out` reads when its setup chain has not resolved to its small
+   value by the time the paramset reads it" -- and asked for a `seed_slots`/ordering fix.
+   That sentence landed in `cf6ec45` and was withdrawn in FORMAT-NOTES.md by `ab2a3e1`
+   FIFTY-FOUR MINUTES LATER; the withdrawal never reached this file, so the module a reader
+   is pointed at carried the retracted half of a pair whose surviving half is eight lines
+   above it. Re-measured corpus-wide 2026-09-04 rather than taken on trust. There are
+   exactly three places the order could be wrong here and all three are closed:
+
+     the record's own setup programs   41,153 records, 143,106 programs. Re-running them to
+                                       a FIXED POINT: 1,763 fail on pass 1, 0 succeed on a
+                                       later pass, 0 slot values move, 0 records change.
+     within one entry                  already ordered by PROGRAM ADDRESS -- `in_eval_order`,
+                                       629 dependent pairs, address 629 / table 619.
+     across entries                    22,855 multi-entry records, ZERO cross-entry
+                                       read-after-write pairs of any kind, so the table
+                                       order cannot move a value.
+
+   Nor is the value standing in for an undeclared graph INPUT, which is the same "has not
+   resolved" shape one table over and would be silent because `Perm.__missing__` returns 0.5
+   without raising -- note that `pow2(0.5) = 1.4142`, the number that recurs across this
+   whole question. Counted: 0 missing reads over 3,190 records in 40 files.
+
+   So the value a paramset reads is fully determined by the file. Whether it is the number
+   the ENGINE drew is a separate question and needs the reference arbiter, not a slot trace.
+
+WHERE THAT LEAVES patternsize. The FIELD is decoded: named by source containment, placed by
+the entry mask, and resolving deterministically with no unset slot, no unset input and no
+order the reader can get wrong. Its coordinate space is a [0,1] canvas fraction, source-
+confirmed. What is open is not the field but the DRAWING MODEL around it -- the pattern
+profile (`fx.profile`, `fx.typeless_profile`), the tile lattice, the cell-unit readings
+(`fx.patternsize`, `fx.branchoffset`, `fx.frameoffset`), and the `(5.0, 1.0)` two-entry baked
+family that appears in five of the six reference packs -- Bricks 180 entries, RoofTiles 42,
+Rusty_Metal 10, Cobblestone 6, Chesterfield 4, Auras none -- and is not a reciprocal. See
+SPEC 13.7.
 """
 import argparse
 import os

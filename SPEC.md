@@ -1017,10 +1017,14 @@ straddling two instructions, and the second rejects `0x00420008`, which names a 
 slot 3 and in 33 unreached cells over 120 files holds that program INLINE there rather than a
 pointer to it.
 
-Nodes carry the FX-Map parameters (pattern type, size, colour, etc.). The pattern
-*footprint* (`patternsize`) — how large each emitted pattern is on the canvas — is the one
-FX-Map field not yet decoded, and is the principal blocker to correct rendering. How many
-patterns a record emits, and where each lands, is §13.7.
+Nodes carry the FX-Map parameters (pattern type, size, colour, etc.). **`patternsize` is
+decoded**, and this paragraph used to say it was not. It is named by source containment,
+placed by the entry mask, expressed as a plain `[0,1]` canvas fraction (source-confirmed:
+the permitted FX-Map sources have no Quadrant node, so there is no subdivision to scale
+against), and it resolves deterministically — no unset slot, no unset graph input and no
+evaluation order the reader can get wrong, measured over all 41,153 `fxmaps` records that
+yield a drawable entry table. What is open is the **drawing model** around it, not the
+field: see §13.7. How many patterns a record emits, and where each lands, is §13.7 too.
 
 ---
 
@@ -1892,10 +1896,30 @@ already carries each pattern's position and re-driving the spiral adds a second 
 Square. `imageindex`, when present, makes the pattern an input image sampled over its own
 footprint.
 
-**Still open** (§8): `patternsize`'s coordinate space. A median footprint of 2.82 unit
-squares over-covers the canvas by orders of magnitude on most records, and no frame model
-tested reconciles it. This is the principal remaining blocker to rendering FX-Maps
-generally, and it is independent of the emission count above.
+**`patternsize`'s coordinate space is NOT open, and this paragraph used to say it was.** It
+is a plain `[0,1]` canvas fraction. The reading it replaces — "a median footprint of 2.82
+unit squares over-covers the canvas by orders of magnitude on most records" — rested on a
+population of 1,521 records taken before the fx-walk extensions; over the 41,153 records
+that yield a drawable entry table today the median `patternsize.x` is **1.9217 in records
+that render flat and 1.9217 in records that render a picture**, identical to four decimals,
+and 6,346 records draw a picture at a `patternsize` above 2. Size still correlates with
+flatness (12.4% flat below 0.5 against 61.5% above 2) and is no longer the discriminator.
+
+Three "has not resolved" mechanisms were measured and all three are refuted: the record's
+setup programs are already a fixed point (143,106 programs, 0 that succeed on a re-run, 0
+slot values that move), there are **zero** cross-entry read-after-write pairs in the corpus
+so the table order cannot matter, and no FX program reads an undeclared graph input. The
+reciprocal reading of a *baked* `patternsize` is refuted at the reference arbiter — nine of
+ChesterfieldSofa's ten channels worse, `metallic`'s MAE 0.0010 → 0.8382 — where it was
+previously recorded as undecidable; see `tools/fxrender.py`'s negative result 5.
+
+**What IS open** is the drawing model the size feeds, which is a different list: the pattern
+profile for a given `patterntype`, the tile lattice, whether the offsets and the size are in
+cell units rather than canvas units (`tools/assume.py`'s `fx.patternsize`, `fx.branchoffset`,
+`fx.frameoffset`, all defaulting to `canvas`), and the `(5.0, 1.0)` two-entry baked family
+that appears in five of the six reference packs. On the one output with a sharp arbiter the
+render is already right: `ChesterfieldSofa`'s `metallic` reproduces the engine's own export
+at MAE 0.0004.
 
 **Subdivision — not found.** A node whose children cover different parts of their parent's
 region would give each child a different `$pos` (§13.5). None is in evidence. Of 155 distinct

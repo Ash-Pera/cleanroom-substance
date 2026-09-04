@@ -49201,3 +49201,350 @@ where that point is per pack rather than only for the one pack the channels were
 The one behavioural change a caller can be surprised by is `--score`, and it announces
 itself on its own line every time it fires.
 
+
+## `patternsize`'s setup chain was never out of order, and the docstring that says it is one hour stale
+
+*(Written section by section as each measurement landed, per the notebook rule; the
+"what changed in the tree" and "what is open" sections at the end close it.)*
+
+The brief: `tools/fxrender.py`'s docstring closes with a positive result and a diagnosis.
+The positive result — `patternsize` is a plain `[0,1]` canvas fraction, and there is no
+Quadrant node in any permitted source to scale it against — stands and is not in question
+here. The diagnosis is the sentence after it:
+
+> the median 2.82 is not a size in a mysterious space; it is what `size_out` reads when its
+> setup chain has not resolved to its small value by the time the paramset reads it.
+
+That sentence entered the tree in `cf6ec45`, 2026-08-25 21:09. It was **corrected in
+`FORMAT-NOTES.md` fifty-four minutes later**, in `ab2a3e1` at 22:03, under the heading
+"RESOLVED — the frame IS connected, and the size is not unset", which withdrew both the
+"reads unset" inference and, in as many words, "the earlier `seed_slots` ordering defect
+guess". The correction landed in the notebook and never reached the docstring, so the file
+the next reader is pointed at as the state of the art carries the retracted half of a pair
+whose surviving half sits eight lines above it.
+
+This is the failure mode this notebook exists to catch, in its own currency: a correction
+recorded in prose that did not propagate to the code beside it. `corpus.py`'s docstring
+states the same lesson for the corpus list. The difference is that the corpus list was wrong
+in a third place; this one was wrong in the *first* place, the module docstring, which is
+the one a task brief will quote.
+
+### First measurement: the seeding is already a fixed point
+
+The ordering hypothesis makes a falsifiable prediction that costs nothing to check, and it
+does not need a renderer. `fxrender.seed_slots` runs the record's own non-FX programs once,
+in `rec.programs` order, swallowing exceptions — so if a setup chain `input → pow2 →
+reciprocal → slot` were being evaluated out of dependency order, then re-running the same
+program set to a **fixed point** would either (a) let a program that failed the first time
+succeed on a later pass, or (b) change a slot's value. Both are visible without touching
+any assumption about what the numbers mean.
+
+Over the first 30 corpus files — 2,596 `fxmaps` records that yield a drawable entry table,
+8,678 setup programs:
+
+    setup programs that failed on pass 1              50   all of them `slot N read but never set`
+    of those, ones that SUCCEED on a later pass        0
+    slots whose VALUE differs at the fixed point       0
+    records whose slot frame moves at all              0
+
+Zero and zero. The program set is order-independent as it stands: every setup program that
+can run, runs on the first pass, and the 50 that cannot are not blocked by an ordering they
+could be un-blocked from. (Corpus-wide figures below, when the sweep finishes.)
+
+### Corpus-wide, and the other two ordering channels with it
+
+Same probe over all 437 files:
+
+    fxmaps records yielding a drawable entry table   41,153
+    setup programs run                              143,106
+    failed on pass 1                                  1,763   1,706 `slot N read but never set`
+    of those, SUCCEED on a later pass                      0
+    slots whose VALUE differs at the fixed point           0
+    records whose slot frame moves at all                  0
+
+There are exactly three places an evaluation order could be wrong in this reader, and the
+other two are closed as flatly:
+
+* **Within one entry.** Already settled and already implemented — `fxrender.in_eval_order`
+  sorts an entry's parameters by PROGRAM ADDRESS rather than table order, on 629 dependent
+  pairs of which address order scores 629 and table order 619. Not re-derived here.
+* **Across entries.** `in_eval_order` sorts within an entry; the table loop runs entries in
+  table order, so a read-after-write between two *different* entries would be un-ordered.
+  Counting every such pair over the corpus — every entry parameter's read set against every
+  other entry's write set, through `run.flow`:
+
+        multi-entry records                     22,855
+        cross-entry read-after-write pairs           0
+        of those, in the wrong order                 0
+
+  Not "few": **zero**. No entry parameter anywhere in the corpus reads a slot another
+  entry's parameter writes, so the order the table is walked in cannot move a value.
+* **Chain node to entry.** Structural: `_walk` runs the chain's programs and then emits, so
+  a node's writes are in the frame before any entry reads it. `ab2a3e1` verified this from
+  the data side (slots 13/15/17/18 absent from the pre-pass and present after the walk on
+  `PavingStonesSubstance003` rec 2809/2811) and it is not re-derived either.
+
+**And the value is not standing in for an undeclared graph input either.** `fxrender.Perm`
+is a `dict` whose `__missing__` returns **0.5** for an input uid the header does not
+declare — a number from outside the file, and one that would be invisible because it never
+raises. Note what it would produce down `ie_pcloud`'s own chain: `pow2(0.5) = 1.4142`, and
+`1.4142` is exactly the value that recurs across this question. Instrumented and counted
+over 3,190 records in 40 files: **0 missing reads, 0 records affected.** Every graph input
+an FX program reads is declared. That reading is refuted before it can be argued, and it is
+recorded because it is the most plausible remaining "has not resolved" mechanism after the
+slot frame.
+
+**So the ordering diagnosis is refuted, and this is the second time.** The value the
+paramset reads is fully determined: no unresolved slot, no unresolved input, no order the
+reader could get wrong. `ab2a3e1` said this in prose in August; this section says it with
+the corpus-wide counts, across all three channels, and — the part `ab2a3e1` did not do —
+**by correcting the docstring that carries the retracted half.**
+
+### What the corpus actually looks like now, and the headline figures were stale by 26x
+
+The framing everything above rests on — "over 1,521 records that emit patterns at all, 96%
+render FLAT, and `patternsize` has median 2.82 in flat records against 0.50 in ones that
+render a picture" — was taken before `e231131`, `66b559a` and the two structural-slot
+passes that followed. Re-taken at HEAD with one instrument (`fxrender` standalone,
+`seed_slots` + `emissions` + `splat` at 64 px, flat = every channel's std below 1e-6):
+
+    fxmaps records yielding a drawable entry table   41,153
+      of which splat produces an image               39,505
+      of which render FLAT                           21,733   55.0%
+      of which render a PICTURE                      17,772   45.0%
+      refused                                         1,648
+
+    patternsize.x, median   flat 1.9217   picture 1.9217
+
+**The denominator is 26x larger and the flat rate has fallen from 96% to 55%** — none of
+which was a `patternsize` change; it is the fx-walk reaching entries it could not reach.
+And the discriminating statistic that motivated the whole question is **gone**: the median
+`patternsize.x` is now *identical* to four decimals in flat and picture records. The size
+still correlates with flatness — it is not nothing —
+
+        max(patternsize)   flat   picture   flat %
+              <= 0.5         473    3,332     12.4
+             0.5 - 1       1,595    1,941     45.1
+               1 - 2       6,653    2,431     73.2
+                 > 2      10,137    6,346     61.5
+
+— but **6,346 records draw a picture with a `patternsize` above 2**, so "a pattern 2.8 unit
+squares wide paints everything one colour" is not a law, and 61.5% is not 96%. Note also
+that flatness is white and not black: of the 21,733 flat records **20,930 are lit at every
+pixel with mean exactly 1.0**, and only 803 are dark.
+
+The instrument's own caveat, stated rather than buried: this harness supplies no image
+inputs, so 719 of the 1,648 refusals are `no sampler for input N` — an artifact of running
+`fxrender` standalone rather than through `render2`, which wires them. It is the same
+instrument on both sides of every comparison in this section, so it can carry a before/after;
+it must not be quoted as `render2`'s coverage.
+
+### Negative result 5 moves from UNDECIDABLE to REFUTED
+
+`fxrender.py` parks the reciprocal reading of a **baked** `patternsize` — "a baked
+patternsize is stored as 1/size" — with an unusually careful statement of why it cannot be
+argued: *both records with independent ground truth take patternsize from a PROGRAM, so a
+rule touching only baked values cannot break either — the property that makes it safe is
+the property that makes it unfalsifiable.* It records the search that would decide it:
+"0 candidates over 60 files".
+
+**That search comes out differently at HEAD.** Over the six reference packs, counting
+`fxmaps` records whose entry table declares a `patternsize` at all, split on whether it is
+baked or a program:
+
+    pack                                      baked   program
+    Kutejnikov__Auras                             6        21
+    Kutejnikov__Bricks_and_tiles                150       202
+    Kutejnikov__Stylized_Wooden_Roof_Tiles       88        86
+    OwlishMedia__Metal_rust_pattern              12        23
+    minime453__Chesterfield_PBR_Material          6         8
+    minime453__Stylized_Sandy_Stone_Path          6        12
+    TOTAL                                       268       352
+
+**268, not 0** — and six of them are in `ChesterfieldSofa`, which is the arbitrating half of
+the two-sided test. The reading is falsifiable now, so it was run.
+
+    experiment: every baked patternsize component replaced by its reciprocal
+    half 1  Lines record 0     patterns 10, size (1.41421, 0.03555), lit 0.5078, 10 bands
+                               -- IDENTICAL, as predicted: its patternsize is a program
+    half 2  ChesterfieldSofa   render2 / $outputsize implied / max_dim 256
+
+        channel        corr before    corr after     MAE before   MAE after
+        basecolor 0      +0.8563        -0.3326        0.0523      0.1918
+        basecolor 1      +0.9656        +0.0853        0.0742      0.3840
+        basecolor 2      -0.4262        -0.1135        0.0581      0.1352
+        normal 0         +0.9524        +0.2486        0.0332      0.0941
+        normal 1         +0.9496        +0.2489        0.0333      0.0940
+        normal 2         +0.7499        -0.6375        0.0131      0.0678
+        roughness        +0.9358        +0.2553        0.0639      0.1586
+        metallic         +0.9999        +0.1319        0.0010      0.8382
+        height           +0.9562        +0.5877        0.0684      0.2035
+        AO               +0.8715        -0.2037        0.0968      0.0819
+
+Ten channels, nine of them worse and four of those turned negative. `metallic` — the
+sharpest single number in this repository, an MAE of 0.0010 against the engine's own export —
+goes to **0.8382**, a factor of 838. AO's MAE improves while its correlation falls from
++0.8715 to −0.2037, which is the docstring's own warning shape (a metric improving while the
+model gets worse) appearing one more time, in the one channel out of ten it could have.
+
+**The reciprocal reading of a baked `patternsize` is refuted, not parked.** And the reason
+it became decidable is not that anyone found the overdetermined-geometry record the docstring
+asked for: it is that the fx-walk grew, so the reference packs now *contain* baked
+patternsizes where they contained none the walk could reach. That is worth stating on its
+own — **an unfalsifiable hypothesis was made falsifiable by a structural decode elsewhere,
+and the right response to a parked question is to re-run its search after the structure
+moves, not to wait for the specimen it asked for.**
+
+Chesterfield's baked values say why it fails, and they are not the cluster the reading was
+built on: records 0, 5, 10 and 69 hold 0.15, 0.39, 0.07 and (0.45, 1.0) — already small,
+already plausible footprints, and reciprocating 0.07 asks for a pattern 14 canvases wide.
+The 5.0 / 3.0 / 1.5 / 8.0 / 2.0 cluster that motivated the reading is real and lives mostly
+in the `(5.0, 1.0)` two-entry family that appears in **every** pack; what it is remains open,
+but it is not a reciprocal size.
+
+The narrow form of the same reading is **not** settled by this, and saying which half closed
+matters. Restricting the reciprocal to baked components **greater than 1** — the steel-man,
+since a baked 0.07 is plainly already a size — is **byte-identical to the baseline on both
+packs that carry such records in quantity**: Chesterfield (6 baked records, `(5.0, 1.0)` on
+two of them) and `Kutejnikov__Bricks_and_tiles` (150 baked records, `(3.0, 2.0)`,
+`(2.5, 1.5)`, `(5.0, 1.0)`), 96 channel rows, `diff` clean. So:
+
+* **a baked `patternsize` at or below 1 is a size and not a reciprocal** — refuted at a
+  factor of 838 on `metallic`;
+* **whether a baked component above 1 is a reciprocal is still unarbitrated**, and now for a
+  different and more useful reason than "no candidate exists": the candidates exist, they are
+  simply not in the cone of any scored output. What would close it is a reference pack whose
+  scored output has such a record in its cone — a narrower and checkable ask than the
+  overdetermined-geometry specimen the docstring wanted.
+
+### The offset signal is a SECOND thing, and conditioning on the outcome inverts it
+
+`archive/tools/refcompare.py` proposes `branchoffset + frameoffset` as the residual's real
+home, on the statistic that their combined x-extent has median 0.835 and **p90 7.8**. Taken
+over the corpus at HEAD, per record, across every pattern it emits:
+
+    combined x-extent of branchoffset + frameoffset, 39,513 records
+      median 0.052   p75 0.875   p90 7.964   p99 63.25   max 191.8
+
+The p90 reproduces — 7.96 against the reported 7.8 — so the observation is real and has not
+drifted. **Conditioning it on what the record draws reverses its sign:**
+
+                 n        x-extent median   p90     records placing any centre outside the unit cell
+    flat     21,731            0.0444      0.573                 15.0%
+    picture  17,774            0.4055     19.249                 54.4%
+
+A wild offset is the signature of a record that **does** produce a picture, which is what a
+scatter generator's offsets have to look like. The records that render flat are the ones
+whose patterns barely move. So "some records place patterns well outside the unit square" is
+true and is not a fault: under unit-spacing tiling an offset of 8 wraps.
+
+The two properties are also largely independent, which is the direct answer to "same problem
+or second":
+
+    big patternsize AND wild offset   6,770
+    wild offset only                  1,058
+    big patternsize only             18,797
+    neither                           6,284
+
+**And the specific residual the proposal was made to explain no longer has that shape.**
+`refcompare.py`'s argument is: after the blend-opacity fix, Chesterfield `normal` reached
+std 0.1018 against the reference's 0.0968 while MAE **rose** 0.0783 → 0.1039 — right
+variance, worse error, therefore a position error. At HEAD, through the renderer of record
+at the configuration `REFERENCE_FLOOR_RENDER2` is taken at:
+
+    normal ch0   ours 0.5002 / 0.1207   ref 0.5002 / 0.0968   MAE 0.0332   corr +0.9524
+                 fit y = 0.764x + 0.118, resid 0.0229
+
+MAE 0.0332, not 0.1039, and a correlation of **+0.9524**. Patterns correlating at 0.95 are
+not landing in the wrong places. What is left is a **gain** error and the fit states it: our
+std is 1/0.764 = 1.31x the reference's, an amplitude 31% high with the structure right. The
+position-signature argument was sound about the numbers it was made on and those numbers are
+two renderers and one output size ago; it does not survive to HEAD, and `refcompare.py`'s
+docstring is corrected in this pass to say so rather than left as a live lead.
+
+So: **two things, not one** — and the second is not the one that was named.
+
+### What changed in the tree, and what deliberately did not
+
+**Nothing on the render path.** This pass is a refutation, and a refutation that edits the
+renderer is a refutation that was not one. The diff is four files and every hunk is prose:
+
+    tools/fxrender.py           docstring: the stale corpus figures, negative result 5
+                                (UNDECIDABLE -> REFUTED), and a new negative result 6 for
+                                the evaluation-order diagnosis this pass came to test
+    SPEC.md                     8 and 13.7: `patternsize` is decoded; the open list is the
+                                DRAWING MODEL, and it is enumerated
+    archive/tools/refcompare.py docstring: the "WHAT IT SAYS TODAY" table gains the
+                                renderer-of-record row beside it, and the position-signature
+                                lead is withdrawn with the measurement that withdraws it
+    FORMAT-NOTES.md             this section
+
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json`
+are **byte-identical**, which is what a rendering question should leave them.
+
+**No floor was ratcheted and no floor was lowered.** `REFERENCE_FLOOR` and
+`REFERENCE_FLOOR_RENDER2` are unchanged, and they should be: nothing rendered differently,
+so a ratchet would be recording a re-measurement as an improvement. Both halves of the
+two-sided test are identical before and after, as a documentation-only diff requires and as
+was checked rather than assumed.
+
+    half 1  Lines record 0   patterns 10, size (1.41421, 0.03555), lit 0.5078, 10 bands
+                             -- unchanged
+    half 2  ChesterfieldSofa render2 / implied / 256, all ten channels unchanged to four
+                             decimals; the full 5-pack sweep `diff`s clean against the
+                             pre-change run
+
+**The fixed-point seeding was also run end to end, not only at the slot level.** The
+census re-run with `seed_slots` replaced by the fixed-point version, over 40 files /
+3,190 records: **3,060 emitting and 1,760 flat under both, 0 records differing in any
+field** — emission count, patternsize, lit fraction, mean, flat flag. So the refutation
+holds at the pixel as well as at the slot, which is the arm that would have shown a
+difference the slot probe could have missed. Corpus-wide the flat count is therefore
+**21,733 before and 21,733 after**, of 39,505 rendered and 41,153 with a drawable table.
+
+Guards and harness, all at the values the brief states:
+
+    archive/tools/bit_census.py --check   edges 1,302,817 / 1,302,817
+                                          state-2 198,486 / 198,486
+                                          w1-presence vs decompose: AGREE everywhere
+    archive/tools/walk_health.py          walk vs header_words 903,611 / 903,616 agree,
+                                          0 longer, 0 shorter, 5 silent (filter 9)
+    archive/tools/walk_partition.py       8 FX violations of 48,688 attributions
+    test_filters.py + test_tables.py      25 passed (12:50)
+    ./t                                   19 passed
+    test_fx.py + test_bitmap.py           23 passed
+    render2 trio                          27 passed
+
+### What is open, and what would close it
+
+`patternsize` is off the open list — the field is named, placed, resolved and in a stated
+coordinate space, and SPEC 8's "the one FX-Map field not yet decoded, and the principal
+blocker to correct rendering" is corrected in place. What replaces it is not one question
+but four, and none of them is a coordinate space:
+
+1. **The pattern profile.** `fx.profile` and `fx.typeless_profile` are registered and
+   default to `rect`. Negative result 1 says a flatness count cannot score them; the
+   reference arbiter can, and now that five packs render through `render2` at the corrected
+   size it should be run per profile against the two-sided test. This is the one with an
+   instrument waiting for it.
+2. **The cell-unit readings.** `fx.patternsize`, `fx.branchoffset` and `fx.frameoffset` all
+   offer `cell` against the default `canvas`, and `splat`'s own comment records that the two
+   are coupled and were once applied twice, multiplying. They were last scored through
+   `render.py` at 64 px (`normal` MAE 0.1039 -> 0.1055); that configuration is superseded and
+   the arms are worth re-scoring at render2 / implied / 256.
+3. **A baked `patternsize` above 1.** Half of negative result 5 is closed and half is not,
+   and the remaining half needs a reference pack whose SCORED output has such a record in
+   its cone. Chesterfield and Bricks both carry the records and neither scores them: the
+   narrowed arm is byte-identical on both.
+4. **The `(5.0, 1.0)` family.** A two-entry baked `patternsize` of exactly `(5.0, 1.0)`
+   appears in **five of the six reference packs** — Bricks (180 entries), RoofTiles (42),
+   Rusty_Metal (10), Cobblestone (6), Chesterfield (4), and NOT in Auras, whose six baked
+   records are all ordinary small sizes. Five independent packages by three authors
+   agreeing on a value to the bit is a template, not a choice. What it is is unread. It is not a reciprocal
+   (that arm is byte-identical, so it is not even scored) and 5.0 is the modal
+   `patternsize.x` in the whole corpus at 6,956 records.
+
+And the residual with a number on it: Chesterfield `normal` is a **gain** error, not a
+placement one — correlation +0.9524 with a fit slope of 0.764, so our amplitude is 31% high
+with the structure right. That is a different lane from anything in this section and is
+where the next reference-arbitrated point probably is.
