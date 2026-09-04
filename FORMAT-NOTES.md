@@ -48400,3 +48400,363 @@ reached was lost.
 No render arbitrates it. The reference packs contain 0 out-of-line cells, which `90a91ea`
 already measured, so the harness proves non-regression and nothing more. Whether the cells now
 reached draw what the engine drew is unanswerable from anything in this corpus.
+
+## The payload states its own end, and the 141,088 bytes were never a convention
+
+The brief was the largest **already-credited** assumption left in the byte model, not a
+residual class. `4d2fd5c` established that `Record.vector_extent`'s slot-2 override is not
+"slot 2 is the payload end" — slot 2 is the record's own `$outputsize` expression and the
+payload merely ABUTS it — and recorded what that cost in as many words: **141,088 of the
+146,388 bytes the override credits are bounded and stated by nothing.** Three outcomes were
+open: the file states the bound somewhere nobody looked; it does not and the credit should
+be withdrawn, raising the residual; or it cannot be settled.
+
+**The file states it.** The payload is a self-delimiting chain of primitives with an
+explicit terminator, and no reader had ever asked it where it stopped — both previous
+readings asked something *around* it.
+
+    residual                    27,590  ->  27,590        unchanged, and that is the point
+    `vectorshape` residual           0  ->       0
+    audit_corpus.py output      byte-for-byte identical
+
+Nothing closed. What changed is the **basis of a credit**: 141,088 bytes that were held on
+an abutment now rest on a length the payload itself carries and a terminator word it
+writes. A pass whose honest outcome might have been "stop crediting these" instead
+confirms them, on a test that could have failed 139 times and did not.
+
+### The format
+
+    [kind] [len] [len >> 3 vertices]      the first part, and any part a kind word restarts
+           [len] [len >> 3 vertices]      every other part
+           [0]                            the terminator, one word
+
+`len >> 3` is the part's **vertex count** and the low three bits are a flag. The old
+formula is the same statement seen through the first part only:
+
+    (w + 23) // 2  ==  12 + 4 * (w >> 3)      for every w the corpus holds
+
+— `[kind][len]`, the vertices, and **one trailing word**. That trailing word is the next
+part's length, or the terminator. `vector_shape` had known about it from the other side
+since the first draft, as "a trailing all-zero vertex" that "terminates the list in 97 of
+118 payloads": the other 21 are the payloads where the list does not terminate because
+another part follows, and the docstring had been describing the discriminator as an
+oddity of the data for months.
+
+A kind word may reappear mid-payload — `0x07FFFFFB` on the `RoadSubstance002`,
+`RoadLinesSubstance002` and `ChristmasTreeOrnament` records — and is skipped, the length
+being the word behind it. Read as a length it claims 16,777,215 vertices and the walk
+leaves the file, which is exactly how it was found: the first draft of this walk
+terminated on 123 of 139 records and the 16 it missed were all the ones under examination.
+
+### The landing is the check, and slot 2 is now the control
+
+The walk terminates on a zero word in **139 of 139** records. Where it lands was never
+shown to it:
+
+    over the 57 records where slot 2 is a usable bound -- `4d2fd5c`'s own population,
+    slot 2 inside the record and not the float 0x3F800000 -- the terminator lands
+    EXACTLY on slot 2 in                                                   57 of 57
+
+        of which the 44 where the embedded length word already agreed      44
+        of which the 13 the override had to be ASSERTED for                13
+
+The 13 are the whole of the disputed credit. A walk that reproduces an independently
+stated end 57 times out of 57, including all 13 where the old rule had no support, is
+reading the format rather than being fitted to it.
+
+The discriminating control is the 35 records whose walk end differs from the embedded
+length word's end — the ones where the two readings can disagree at all:
+
+    the walk end is slot 2, the record's own end, or another filter-5
+      payload's start                                                      34 of 35
+    CONTROL: the embedded length word's end is any of those three           0 of 35
+
+**And the 35th is stated too, by a different record.** `SnowSubstance002` record 11300 is
+the last payload in that file's chain, so no later payload starts where it ends; its end,
+19,164, is named by exactly **one** word in the whole 5.4 MB file — a two-word `bitmap`
+record's slot 1, at the format's universal `+52` skew, which is SPEC §9's rule for where
+an image begins. Under `+0` and `+4` nothing names it. So the vector payload ends exactly
+where the next resource begins, and **139 of 139 walk ends land on a boundary something in
+the file states.**
+
+The tiling is worth stating on its own, because it is the same partition §5 keeps
+producing. In `RoadSubstance002` all 72 filter-5 payloads lie *outside* the record body
+entirely and abut end-to-start with no gap — 4,227,128 → 4,228,532 → 4,231,048 → … →
+5,364,060 — and the walk reproduces every one of those boundaries from the payload bytes
+alone.
+
+### The mutation table, run deliberately
+
+Population asserted first: **139** filter-5 records carrying a payload. Zero words are
+0.052% of the words inside the walked spans (141 of 272,308), so a step lands on one by
+chance at that rate and "it terminates" is not free.
+
+    the rule                                   terminates 139/139   stated 123/139
+    start two words late                                    0/139            0/139
+    start one word early                                   74/139            0/139
+    vertex count = len >> 2                                 3/139            0/139
+    vertex count = len >> 4                                 0/139            0/139
+    no kind-word arm                                      123/139          117/139
+
+("stated" here is the narrow form — the record's own embedded length, slot 2 or record
+end — not the wider one above.) The last row is the one that matters: dropping the kind
+arm still terminates 123 times, and every one of the 16 it loses is a record where the
+credited extent was the thing in question. A rule that survives its own mutations by
+mostly still working is the failure this file keeps recording.
+
+### The flag is a primitive selector, and it closes `4d2fd5c`'s open caveat
+
+`4d2fd5c` left this stated with the credit: the recovered bytes "are not simply the same
+strip continued: the alternating-signed-area test this decode rests on gives 62.24% over
+25,998 faces against a 37.92% shuffled control, where the credited payload gives 99.52%."
+That was right, and the reason is that the tail is not all strips. The low three bits of a
+length word are 1 or 2, never anything else:
+
+                                          flag 1      flag 2
+    parts                                    187          38
+    alternating signed area               99.60%      47.98%
+    adjacent repeated vertices            16.71%       0.38%
+    first vertex == last vertex             8.0%       97.4%
+    median L1 step between vertices       12,451         242
+    ever the payload's FIRST part      139 of 139    0 of 139
+
+Flag 1 is the triangle strip `vector_shape` documents — 99.60% is that method's own 99.52%
+re-measured per part, and its 16.71% adjacent repeats are the strip joins the docstring's
+2/3/5 length histogram is about. Flag 2 carries no joins at all, closes on its own first
+vertex, and marches smoothly: it is a **closed contour**, and the strip test does not apply
+to it. All 38 flag-2 parts lie in the recovered tail — 38 contours and 16 strips — which is
+the whole of why the tail read 62%. Split by flag, the tail's strips read with the rest of
+the corpus and its contours are refuted as strips 38 times over.
+
+Shuffled controls, for both: per-part alternation over the same vertices shuffled is 36.75%
+on the override records and 38.33% on the rest.
+
+**What this does not establish.** Nothing renders filter 5 — `render2` has no arm for it —
+so no picture arbitrates the contour reading beyond those five columns. Whether a contour
+is a hole, an outline or a stroke path, and how a consumer combines it with the strips in
+the same payload, is not settled. The flag's *name* is not claimed either; only that the
+two values behave as two different primitives on every measure tried.
+
+### What changed in the tree
+
+`Record.vector_parts` is the walk and `Record.vector_extent` returns where its terminator
+ends. Three things went with it:
+
+* **The slot-2 override is retired**, not weakened. Nothing reads slot 2 for an extent any
+  more, so the containment bound the override needed — and the `RoadSubstance002` failure
+  that motivated it, 70 records growing to 3.6 million vertices — has no address left to be
+  wrong about.
+* **`Record.vector_chain` is deleted**, folded into `vector_parts`. It was the second
+  reader of the same chain, reaching 11 records where this reaches 139, and the audit
+  called both. Two readers with one answer between them is precisely the defect
+  `4d2fd5c`'s own section is about, and leaving a superseded one in place would have
+  recreated it.
+* **`vector_shape` and `vector_faces` are part-derived.** `vector_shape` used to unpack the
+  whole span as vertices, so every inner part's LENGTH WORD arrived as a spurious point —
+  which is a second reason the tail failed the strip test, one point of noise per part
+  boundary. `vector_faces` now builds faces per part and never across a boundary.
+
+A/B against `git archive HEAD` over all 139 records: extent identical on **117**, and
+`vector_shape` and `vector_faces` identical on **104** — every one-part record, byte for
+byte. Of the 35 that change, 13 keep their extent and lose exactly the header words they
+should never have had (one per inner boundary, two where a kind word restarts: rec 57's 7
+parts lose 7 points, rec 64's 30 parts lose 29), and 22 grow, by **+53,708** bytes of
+located extent.
+
+**None of the 53,708 moves the residual, and all of it is outside a record extent.** 25,372
+were already credited through `vector_chain`; the remaining 28,336 are in `SnowSubstance002`
+and `RoadSubstance002`, whose payloads lie in the resource region ahead of the record body,
+and the byte row counts only bytes inside a record's extent. `audit_corpus.py`'s output is
+byte-for-byte identical, which is the correct result for a change that alters what a credit
+RESTS ON and not which bytes are credited.
+
+### A/B, guards and the harness
+
+    audit_corpus.py                 output byte-for-byte identical, 27,590 residual
+    walk cursor == header length    903,611 / 903,611          unmoved
+    edge slots, backward index      1,302,817 / 1,302,817      unmoved
+    state-2 slots, program          198,486 / 198,486          unmoved
+    walk_partition                  8 of 48,688                unmoved
+    ./t                             19 passed
+    test_fx.py test_bitmap.py       23 passed
+    test_filters.py test_tables.py  23 passed (one new)
+    render2 trio                    27 passed
+    no REFERENCE_FLOOR entry violated, and none edited in either direction
+
+`decompose` cannot move and was not re-hashed on that reasoning alone — it never calls
+`Record.vector_shape`, `vector_extent` or `vector_parts`, and `bit_census.py --check`'s
+`w1`-presence check against `decompose hdr` agrees on every covered record, which is the
+same statement taken the long way. The render is silent for the reason `4d2fd5c` already
+measured, and it was re-measured here rather than inherited: the reference packs' 8 assembly
+paths (7 distinct files, `Bricks.sbsasm` twice) hold **0** filter-5 records between them, so
+`test_filters.py`'s floor check proves non-regression and nothing more. Whether the 22
+records whose extent grew draw what the engine drew is unanswerable from this corpus.
+
+### The new test, and it was run against a broken build
+
+`test_the_vector_payload_states_its_own_end_and_lands_on_slot_2` asserts its population in
+**three** parts before it asserts anything else — 139 records, 57 where slot 2 is a usable
+bound, and 35 whose walk end differs from the embedded length word's. The third is the one
+that matters and it is the one a careless version would omit: on the other 104 the walk and
+the reading it replaces *cannot* disagree, so agreement there is not evidence, and a test
+that counted all 139 would report a pass built mostly out of the old rule. Its mutation
+controls run through a stand-in object carrying the attributes `_vector_walk` reads, so a
+control cannot drift from the rule by being a second implementation of it.
+
+Run against two deliberately broken builds:
+
+    vertex count = len >> 2       FAILS -- multi-part population collapses 35 -> 3
+    the kind-word arm removed     FAILS -- multi-part population collapses 35 -> 1
+
+Both land on the population assertion rather than on the landing assertion, and that is the
+population assertion doing its job: a walk that cannot follow the chain returns None,
+`vector_extent` falls back to the embedded length word, and every record then "agrees" with
+slot 2 for the trivial reason. A test whose substantive assertion passes because its
+population emptied is the failure three recent passes here have already had, and this is
+what the guard against it looks like when it fires.
+
+The first draft of the population condition was also wrong and is recorded rather than
+quietly fixed: it counted the 127 records whose slot 2 lies inside their own extent, where
+the right population is `4d2fd5c`'s 57 — slot 2 inside **and the payload inside the same
+record**. 70 records point their payload outside their extent while slot 2 stays in, and
+slot 2 is not a bound on a payload that is somewhere else. The test failed loudly on 70 of
+127 rather than passing on a wrong population, which is the only reason that draft was
+caught in a minute.
+
+### How to re-take every number here
+
+    python3 archive/tools/audit_corpus.py                        # byte-identical to HEAD
+    python3 archive/tools/bit_census.py --check                  # the two SPEC 6.3 guards
+    python3 -c "import sys;sys.path.insert(0,'tools');sys.path.append('archive/tools');import walk_health;walk_health.main([])"
+    PYTHONPATH=$PWD/tools python3 archive/tools/walk_partition.py
+    cd archive/tools && ./t && python3 -m pytest -q test_fx.py test_bitmap.py \
+        && python3 -m pytest -q test_filters.py test_tables.py \
+        && python3 -m pytest -q ../../tools/render2/test_render2.py \
+             ../../tools/render2/test_text.py ../../tools/render2/test_sampler.py
+
+`walk_partition.py` does not add `tools/` to its own path; the `PYTHONPATH` above is why the
+invocation differs from the one two sections up. The 57-of-57 landing, the 34-of-35 control,
+the flag table and the mutation table are all in
+`test_filters.py::test_the_vector_payload_states_its_own_end_and_lands_on_slot_2` and in
+one-off loops over `Record.vector_parts`; the `vector_shape` A/B is that property hashed per
+record against `git archive HEAD`'s `tools/` unpacked to a directory placed first on
+`sys.path` — check `sbsasm.__file__` before trusting it.
+
+### Provenance
+
+Every quantity here is one the compiled file states: a part's own length word, the
+terminator word, the record's slot 2, the record's own extent, a `bitmap` record's slot 1
+under the format's universal `+52`. No source was opened and no name is claimed.
+`archive/tools/provenance.py`'s predicate was called rather than retyped. Filter 5's
+provenance wall is untouched — this extends its *structure*, which the compiled file
+states, and says nothing about its name.
+
+## The last 27,590 bytes, censused rather than attacked — and a recommendation to stop
+
+Priority 2 was the residual itself. Nothing here moved it, and this section is why: the
+census is the deliverable. Every run was re-taken over `audit_corpus._byte_canvas`'s
+uninterpreted runs at HEAD, with the classifier's own four classes and each run's decoded
+neighbour on either side.
+
+    abuts an fx cell       4,204   94 runs      bytecode nothing names
+    fx cell not reached   20,890                WALLED -- needs a specimen the corpus lacks
+    other                  1,306   20 runs      1,054 of it bytecode nothing names
+    zeros                  1,190   127 runs     1,060 curve filler, 118 a two-byte pad
+                                                variant, 12 an fx-adjacent run
+
+### `abuts an fx cell` — 4,204 bytes — is the FX wall wearing a different name
+
+The class's 94 runs are **bytecode**. Every long run opens on an opcode word and reads as
+instructions — `09000004 3f800000 00000532 00000d00 …` — and 76 of the 94 have an `fx entry`
+on their left. Three tests, all negative, and each one closes a route:
+
+    the run start is itself a program (`program_span`)      18 of 94
+      of those, the span covers the whole run                0 of 18   (all short)
+    CONTROL: start + 4 is a program                          6 of 94
+    the run lies inside a program the FX walk NAMES          0 of 94
+    the run START lies inside one                            0 of 94
+
+So these are not entries whose credited extent stops short of a program the walk already
+found — that would have been an accounting bug and free to fix. They are inline programs of
+entries **the walk never reaches**, which is `fx cell not reached` by another name: the same
+20,890-byte wall, seen from the byte after it instead of from the cell.
+
+Crediting them would mean crediting a program because a scan found bytecode there, which is
+the one thing `audit_corpus.py` refuses by construction — its own header says
+`referenced_programs()` is deliberately not credited, "the same circularity the '0
+unexplained bytes' retraction is about". **Refused, and the refusal costs 4,204 bytes.**
+
+### `other` — 1,306 bytes — is 1,054 of the same thing plus the provenance wall
+
+    fxmaps      1,054   9 runs of 176/50/46/18 bytes, program body on BOTH sides
+    pixelprocessor 116   1 run, between a size/program slot and a program body
+    filter 9      108   5 runs, tag -> program body, in the 5 unnamed records
+    gradient       28   1 run, ramp table -> program body
+
+The `fxmaps` 1,054 is the paragraph above again. The filter-9 108 is **the provenance rule
+and not the analysis**: those are the 5 records whose filter has no name this project may
+read, so no legend entry, so no header end, so the words between the tag and the first
+program are unplaced. It cannot be closed from anything permitted.
+
+### `zeros` — 1,190 bytes — is filler, and it stays in the residual
+
+    1,060   curve (filter 22)   16-byte and 8-byte runs of zeros between a curve
+                                table and the next program body or record tag --
+                                `027ab92`'s inter-table filler inside the slots 3/4
+                                bracket, re-confirmed here at 48 + 10 + 4 + 4 + 2 + 2 runs
+      118   8 filters           59 runs of exactly 2 zero bytes, each at a RECORD END
+                                (normal 31, blend 14, levels 8, dirmotionblur 2, and one
+                                each in gradient, shuffle, directionalwarp, pixelprocessor)
+       12   levels              one fx-adjacent run
+
+The 118 are the two-byte alignment pad in everything but the pad rule's own condition: the
+rule wants a decoded structure on **both** sides and these have a record boundary on one.
+The 1,060 is filler the file brackets and nothing reads.
+
+**Both stay where they are, and the reasoning is the same for both.** The pad is already a
+fourth tier precisely because "crediting it moves no byte from undecoded to decoded"; moving
+another 1,178 bytes into it would take the residual 27,590 → 26,412 and decode nothing. A
+tier shift is not a finding, and this file has had to retract one before.
+
+### The recommendation: stop
+
+The arithmetic, over the 903,616 records and 284,490,036 record bytes:
+
+    residual                                   27,590      0.0097% of record bytes
+      needs an arbiter no corpus file can be   25,094      90.9%   fx-not-reached 20,890
+        (the FX wall, both its names)                              + abuts 4,204
+      needs a name the provenance rule bars       108      0.4%    filter 9's 5 records
+      filler the file brackets and nothing
+        reads                                   1,178      4.3%    curve + the 2-byte tails
+      genuinely unclassified                    1,210      4.4%    fxmaps 1,054,
+                                                                   pixelprocessor 116,
+                                                                   gradient 28, and the 12
+                                                                   fx-adjacent zero bytes
+
+**90.9% of what is left needs one specimen that does not exist in 437 files**, and the
+requirement is already measured to the file: a package that both ships exported maps and
+contains one of the `0x89`/`0x99`/`0x1cb`/`0x1db` node families. Zero of 437 qualify — 0 of
+the 7 assemblies in the 5 export-bearing packages, against 282 of 437 corpus files carrying
+those families. Two evidenced rules are refused for want of that arbiter, and this pass adds
+a third route to the same wall and refuses it too. A further **0.4%** is the provenance rule
+rather than the analysis. **4.3%** is filler, and moving it is accounting.
+
+That leaves **1,210 bytes, 0.0004% of record bytes**, on which an honest pass could still be
+run — and every one of them is bytecode adjacent to bytecode, which is the same shape as the
+4,204 and would be closed, if at all, by the same arbiter.
+
+So the recommendation is to stop this line of work. Not because the residual is small — it
+was 2,123,232 eight passes ago and each pass had a reason — but because the remaining
+classes are **named, bounded and blocked by things that are not analysis**: a specimen the
+corpus does not contain, a name the provenance rule forbids, and padding with no reader. The
+value of the next pass would have to come from a new corpus, not a new rule, and a rule
+invented to close 4,204 bytes without the arbiter would be a guess of exactly the kind the
+last eight passes existed to retire.
+
+**What would restart it**, stated so it is checkable rather than rhetorical:
+
+* a `.sbsar` that ships exported maps AND carries a `0x89`, `0x99`, `0x1cb` or `0x1db` node
+  — one specimen arbitrates 25,094 bytes and three refused rules at once;
+* a permitted source naming filter 9 — 108 bytes, and the last unidentified filter id;
+* nothing else. The other 1,178 is filler and the honest place for it is where it is.
+

@@ -178,7 +178,8 @@ _pp_unvalidated = []
 UNNAMED = {}
 # Filter 5 was here as "generator, greyscale (svg?)" and is now `vectorshape` in FILTERS.
 # What it does is settled: it is a generator that rasterises an embedded triangle strip,
-# and `Record.vector_shape` decodes all 140 of its records. What is NOT settled is what
+# and `Record.vector_shape` decodes all 139 of its records (140 before the corpus lost
+# one). What is NOT settled is what
 # the format calls it. The 140 permitted paired sources declare exactly 24 filter names,
 # and all 24 are already accounted for by the 21 named ids (with `grayscaleconversion`
 # and `valueprocessor` as aliases of `shuffle` and `pixelprocessor`, and `passthrough`
@@ -5787,7 +5788,8 @@ class Record:
             slot 2   the class block: `$outputsize` where class bit 16 is set (127
                      records), the class-bit-25 float where it is not (12). The payload
                      ends where slot 2 points because it ABUTS that structure, not
-                     because slot 2 states a length -- see `vector_extent`.
+                     because slot 2 states a length -- and where it stops is stated by
+                     the payload itself, not by this slot. See `vector_parts`.
             ...      the payload, where it lies inside the record
 
         The payload is `[word0][length word][4-byte vertices...]`, and `word0` takes one
@@ -5796,9 +5798,10 @@ class Record:
         0x07FFFFFB a magic marker and counted the other 22 records as failures. It is not
         a marker, it is a variant field, and all 140 records decode.
 
-        `L = (w + 23) / 2` is the payload's own byte count, as it is for `ramp` and
-        `curve_points`; the end pointer, where the class word provides one, bounds it
-        rather than stating it. Over the corpus:
+        `L = (w + 23) / 2` is the FIRST PART's byte count -- it is `12 + 4 * (len >> 3)`,
+        that part plus one trailing word, and the trailing word is the next part's length
+        or the terminator. 35 payloads have more than one part; `vector_parts` walks them
+        all and `vector_extent` is where that walk stops. Over the corpus:
 
             header decodes, length sane, payload a multiple of 4    140 of 140
 
@@ -5882,21 +5885,175 @@ class Record:
         `archive/tools/audit_corpus.py` computed it a second time from the same two
         words -- which is how a fix to this method could report recovering 146,440 bytes
         while the audit's `vectorshape` residual did not move. See `vector_extent`.
+
+        THE VERTEX LIST COMES FROM `vector_parts` AND NOT FROM THE SPAN. This method used
+        to unpack `[off + 8, off + n)` wholesale and drop a trailing zero word, which is
+        exactly right for a one-part payload and wrong for the 35 with more: every inner
+        part's LENGTH WORD was unpacked as a vertex, one spurious point per part, and on
+        the 13 records the slot-2 override covered the spurious points were the reason
+        the strip test read 62.24% there against 99.52% here. Part-derived, the 104
+        one-part records are byte-identical to the old reading and the other 35 lose the
+        header words they should never have had.
+
+        The list is still flat, and a consumer that needs the seams must ask
+        `vector_parts` -- which also states, per part, whether it is a strip or a closed
+        contour. `vector_faces` does ask.
         """
-        got = self.vector_extent
-        if got is None:
+        got = self._vector_walk
+        if got is None or self.vector_extent is None:
             return None
-        off, n = got
         d = self.asm.data
-        kind = struct.unpack_from('<I', d, off)[0]
-        v = struct.unpack_from('<%dI' % ((n - 8) // 4), d, off + 8)
-        # Drop the TERMINATOR only, not every zero. `if x` looks equivalent -- a zero
-        # vertex is the terminator in 105 of 140 payloads and interior zeros are rare --
-        # but two payloads have a vertex at exactly (0, 0), which is a legal corner, and
-        # discarding one shifts the strip's parity for every face after it.
-        if v and v[-1] == 0:
-            v = v[:-1]
+        kind = struct.unpack_from('<I', d, self.words[1] + 52)[0]
+        v = []
+        for _hdr, vq, nv, _flag in got[1]:
+            if nv:
+                v.extend(struct.unpack_from('<%dI' % nv, d, vq))
         return kind, [((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0) for x in v]
+
+    #: The three values filter 5's payload header takes in `word0`. Not a format
+    #: selector -- `vector_shape` measures all three decoding identically -- but a closed
+    #: vocabulary, and `vector_parts` needs it: a kind word restarts the header form
+    #: part-way through a payload, and its low three bits alias a primitive flag.
+    VECTOR_KINDS = frozenset((0x07FFFFFB, 0x00000003, 0x04040403))
+
+    @property
+    def vector_parts(self):
+        """Filter 5's payload as the sequence of primitives it is, self-delimiting.
+
+        Returns `[(header offset, vertex offset, vertex count, primitive flag), ...]`
+        followed by nothing -- the end is `vector_extent`'s -- or `[]`.
+
+        THE PAYLOAD STATES ITS OWN END, AND UNTIL NOW NOTHING ASKED IT. Two readings
+        preceded this one and both were bounds rather than statements:
+
+          * `L = (w + 23) / 2` off the payload's own length word, which is right about
+            the FIRST part and silent about everything after it;
+          * slot 2, which `vector_extent` used as a payload-end override on 13 records.
+            `4d2fd5c` established that slot 2 is the record's `$outputsize` expression
+            and that the payload merely ABUTS it, and recorded plainly that this left
+            **141,088 of the 146,388 bytes the override credits bounded and stated by
+            nothing**. That is what this method answers.
+
+        THE FORMAT. A payload is a chain of parts and a terminator:
+
+            [kind] [len] [len >> 3 vertices]        the first part, and any part a kind
+                                                    word reintroduces
+                   [len] [len >> 3 vertices]        every other part
+                   [0]                              the terminator, one word
+
+        so `len >> 3` is the part's VERTEX COUNT and the low three bits are a flag. The
+        old length formula is the same statement seen through the first part only:
+        `(w + 23) // 2 == 12 + 4 * (w >> 3)` for every `w` the corpus holds, which is
+        `[kind][len]` plus the vertices plus ONE trailing word -- and that trailing word
+        is the next part's length word, or the terminator. `vector_shape` already knew
+        it from the other side, as "a trailing all-zero vertex" that "terminates the list
+        in 97 of 118 payloads"; the other 21 are where the list does not terminate
+        because another part follows.
+
+        A kind word may reappear mid-payload -- 0x07FFFFFB on the `RoadSubstance002`,
+        `RoadLinesSubstance002` and `ChristmasTreeOrnament` records -- and is skipped,
+        the length being the word behind it. Read as a length instead it says
+        16,777,215 vertices and the walk leaves the file, which is exactly how it was
+        found.
+
+        THE WALK TERMINATES ON A ZERO WORD IN 139 OF 139 RECORDS, and the landing is the
+        check rather than the rule. Over the 57 records where slot 2 is a usable bound --
+        `4d2fd5c`'s population, slot 2 inside the record and not the float 0x3F800000 --
+        the terminator lands EXACTLY on slot 2's target in **57 of 57**: the 44 where the
+        embedded length word already agreed, AND the 13 where it did not and the override
+        had to be asserted. So the 141,088 bytes are stated after all, by the payload
+        itself, and slot 2 corroborates the statement instead of substituting for it.
+        Corpus-wide the terminator lands on a boundary the record independently states in
+        123 of 139 -- 104 on the embedded length's own end, 57 on slot 2 (overlapping),
+        6 on the record's own end. The other 16 are the `SnowSubstance002` and
+        `RoadSubstance002` records whose payload lies outside their own extent, where the
+        record states no bound at all and the terminator is the only one there is.
+
+        MUTATION, RUN DELIBERATELY, because a walk that always terminates explains
+        nothing. Zero words are 0.052% of the words inside the walked spans (141 of
+        272,308), so a step lands on one by chance at that rate. Against the 139:
+
+            the rule                                terminates 139/139   stated 123/139
+            start two words late                              0/139              0/139
+            start one word early                             74/139              0/139
+            vertex count = len >> 2                           3/139              0/139
+            vertex count = len >> 4                           0/139              0/139
+            no kind-word arm                                123/139            117/139
+
+        The last is the one that matters: dropping the kind arm still terminates 123
+        times, and every one of the 16 it loses is a record where the credited extent was
+        the thing in question.
+
+        THE FLAG IS A PRIMITIVE SELECTOR, and it settles a caveat `4d2fd5c` left open.
+        The low three bits are 1 or 2, never anything else, and the two behave nothing
+        alike:
+
+                                        flag 1        flag 2
+            parts                          187            38
+            alternating signed area      99.60%        47.98%
+            adjacent repeated vertices   16.71%         0.38%
+            first vertex == last          8.0%          97.4%
+            median L1 step between
+              consecutive vertices        12,451           242
+            ever the payload's first
+              part                       139 of 139     0 of 139
+
+        Flag 1 is the triangle strip `vector_shape` documents -- 99.60% alternation is
+        that method's own 99.52% re-measured per part. Flag 2 is not a triangle primitive
+        at all: it carries no strip joins, it closes on its own first vertex, and it
+        marches smoothly. It is a CLOSED CONTOUR.
+
+        That is the whole of `4d2fd5c`'s open caveat, which read: the recovered bytes
+        "are not simply the same strip continued: the alternating-signed-area test this
+        decode rests on gives 62.24% ... where the credited payload gives 99.52%". They
+        are not the same strip continued because 38 of the 54 parts in the recovered tail
+        are contours and the strip test does not apply to them. Split by flag, the tail's
+        strips read with the rest and its contours are refuted as strips 38 times over.
+
+        WHAT THIS DOES NOT ESTABLISH. Nothing renders filter 5 -- `render2` has no arm
+        for it -- so no picture arbitrates the contour reading beyond the four columns
+        above. Whether a contour is a hole, an outline or a stroke path, and how a
+        consumer is meant to combine it with the strips in the same payload, is not
+        settled here. `vector_faces` therefore builds faces PER PART and never across a
+        part boundary, and draws a contour with the same triple rule as a strip, which
+        is what it did before this method existed.
+        """
+        got = self._vector_walk
+        return got[1] if got else []
+
+    @property
+    def _vector_walk(self):
+        """`(end offset, parts)` for filter 5's payload, or None. See `vector_parts`."""
+        if self.filter_id != 5 or len(self.words) < 2:
+            return None
+        off = self.words[1] + 52
+        d = self.asm.data
+        if not (0 <= off <= len(d) - 8):
+            return None
+        p, parts = off, []
+        while True:
+            if p + 4 > len(d):
+                # UNEXERCISED on this corpus -- all 139 records terminate -- and the
+                # caller falls back to the embedded length word rather than to nothing,
+                # so a payload this walk cannot follow still reports the extent the
+                # first part states.
+                return None
+            w = struct.unpack_from('<I', d, p)[0]
+            if w == 0:
+                return p + 4, parts
+            hdr = p
+            if w in self.VECTOR_KINDS:
+                p += 4
+                if p + 4 > len(d):
+                    return None
+                w = struct.unpack_from('<I', d, p)[0]
+            v = p + 4
+            if v + 4 * (w >> 3) > len(d):
+                return None
+            parts.append((hdr, v, w >> 3, w & 7))
+            p = v + 4 * (w >> 3)
+            if len(parts) > 5000:
+                return None
 
     @property
     def vector_extent(self):
@@ -5905,51 +6062,40 @@ class Record:
         THE ONE DEFINITION OF WHERE A VECTOR PAYLOAD STOPS. It exists because there were
         two: this method's rule lived inline in `vector_shape`, and `audit_corpus.py`'s
         byte canvas re-derived `(w + 23) // 2` from the same two words without the slot-2
-        override below. So the override could be measured on one instrument as recovering
-        146,440 bytes and on the other as recovering nothing, and both were right about
-        what they measured. Nothing may re-derive this; ask here.
+        override this method used to carry. So the override could be measured on one
+        instrument as recovering 146,440 bytes and on the other as recovering nothing,
+        and both were right about what they measured. Nothing may re-derive this; ask
+        here.
 
-        `L = (w + 23) / 2` is the payload's own byte count, as it is for `ramp` and
-        `curve_points`; slot 2, where the class word provides one, bounds it rather than
-        stating it.
+        IT IS NOW THE PAYLOAD'S OWN STATEMENT AND NOT A BOUND. `vector_parts` walks the
+        chain of `[len][len >> 3 vertices]` parts to its terminator word, 139 of 139
+        records, and this returns where that terminator ends. The two rules it replaces
+        were both bounds:
 
-        SLOT 2 OVERRIDES THE EMBEDDED LENGTH WORD WHERE IT STATES A LONGER PAYLOAD.
-        `n` is short of the payload in 13 of 139 records, and in all 13 slot 2 says where
-        it really stops. Exceptionless within that group: slot 2 is a body pointer 13 of
-        13, its span is the record's span minus exactly 8 in 13 of 13, and that span less
-        the 8-byte payload header is a whole number of 4-byte vertices in 13 of 13.
+          * `L = (w + 23) / 2`, the embedded length word, which describes the FIRST part
+            and is short of the payload on 35 records;
+          * SLOT 2, which this method used as a payload-end override on 13 of them.
+            `4d2fd5c` had already found that slot 2 is the record's `$outputsize`
+            expression -- 127 of 127 resolve a program there, every one two-component,
+            every one equal to the record's own tag size -- so the payload does not END
+            where slot 2 points, it ABUTS the size program the compiler emitted behind
+            it. That commit kept the bound and recorded what it cost: **141,088 of the
+            146,388 bytes the override credits, bounded and stated by nothing.**
 
-        **SLOT 2 IS NOT "THE PAYLOAD END", AND THIS METHOD AND `vector_shape` BOTH USED TO
-        SAY IT WAS.** It is the record's `$outputsize` expression -- the ordinary class
-        bit 16 slot, in the position SPEC 6.1's emission order puts it. Over the 127
-        filter-5 records that set bit 16 the word at slot 2 resolves a program on 127 of
-        127 (slot 1: 0 of 127, slot 3: 0 of 127), every one of the 127 evaluates to a
-        TWO-component value, and those two components equal the record's own tag size on
-        127 of 127. The 12 records whose slot 2 is the float `0x3F800000` are exactly the
-        12 that do NOT set bit 16, so the two arms `vector_shape` describes are one class
-        bit and not a mystery.
+        The override is retired, not weakened, and slot 2 is now the CONTROL rather than
+        the rule. Over the 57 records where slot 2 is a usable bound the walk's
+        terminator lands exactly on it in **57 of 57** -- including all 13 the override
+        was asserted for, and the 44 where the embedded length word already agreed. A
+        walk that reproduces an independently stated end 57 times out of 57, having never
+        been shown it, is reading the format. See `vector_parts` for the mutation table
+        and for what the recovered bytes turn out to be.
 
-        THE BOUND STILL HOLDS, and for a better reason than the one it had. The payload
-        ABUTS the record's own size expression: over the 57 records where both bounds are
-        inside the record, the embedded length lands exactly on slot 2's target in 44 --
-        which was read as "slot 2 is the payload end" and is really "the compiler emits
-        the strip immediately ahead of the size program". So slot 2 remains the correct
-        ceiling: the payload cannot run into a structure whose start the record states.
-        What the 13 add is real vertex data and not slack -- smoothly marching u16 pairs
-        with the credited payload's own profile, 132 zero bytes in 57,888 on the largest
-        of them -- and on 5 of the 13 `vector_chain` accounts for the whole gap as further
-        sub-payloads ending exactly on slot 2. On the other 8 the gap is bounded by slot 2
-        and stated by nothing, which is the honest description of 141,088 of the 146,388
-        bytes this override credits.
-
-        WHAT THIS DOES NOT ESTABLISH. The recovered bytes are vertex data of the same
-        kind -- smoothly marching u16 pairs with the credited payload's value profile --
-        but they are not simply the same strip continued: the alternating-signed-area
-        test this decode rests on gives 62.24% over 25,998 faces against a 37.92%
-        shuffled control, where the credited payload gives 99.52%. A chain of
-        `[kind][length]` sub-payloads is refuted -- there is no header at `off + n` in
-        any of the 13. So this extends the located EXTENT, which is what the byte
-        accounting measures, and leaves the sub-strip structure of the tail open.
+        The payload need not lie inside this record: the record directory is a sorted
+        PARTITION, not an allocation, and 76 of 139 of these point outside their own
+        extent -- 6 of them below the first record entirely. Same as `ramp`. The
+        containment bound the override needed is gone with it, and so is the
+        `RoadSubstance002` failure that motivated it: nothing here reads slot 2, so
+        there is no address for it to be wrong about.
         """
         if self.filter_id != 5 or len(self.words) < 2:
             return None
@@ -5957,109 +6103,16 @@ class Record:
         d = self.asm.data
         if not (0 <= off <= len(d) - 8):
             return None
-        n = (struct.unpack_from('<2I', d, off)[1] + 23) // 2
-        # The 12 records this leaves alone are class 0x218 -- the 12 with class bit 16
-        # CLEAR, where slot 2 is bit 25's baked float `0x3F800000` and there is no size
-        # program for the strip to abut.
-        # BOUNDED BY THIS RECORD, and that bound is load-bearing. Without it, slot 2 is
-        # accepted wherever it happens to be a body pointer, and on RoadSubstance002 --
-        # where the payload lies OUTSIDE its own record, the case below -- it names an
-        # address megabytes away and 70 records grow to 3.6 million vertices.
-        # THE TWO ARITHMETIC CONDITIONS EXCLUDE NOTHING, and that was worth checking,
-        # because a condition fitted to the 13 records that motivated a rule is how a
-        # rule stops being a reading of the format. Over the corpus's 139 filter-5
-        # records the four conditions partition as:
-        #
-        #     payload and slot 2 both inside this record       57   all four hold
-        #     slot 2 inside, payload OUTSIDE                   70   `off` bound refuses
-        #     payload inside, slot 2 is the float 0x3F800000   6    `e2` bound refuses
-        #     neither                                          6    both refuse
-        #
-        # All 57 that reach `off + n <= e2` and the multiple-of-4 test pass both, so the
-        # only condition doing any selecting is the containment bound -- which the
-        # RoadSubstance002 failure below justifies on its own. And the 57 split 44 / 13:
-        # in 44 the override is a NO-OP because slot 2 and the embedded length word agree
-        # TO THE BYTE, which is the independent control that slot 2 is the payload end
-        # rather than a quantity fitted to the 13 where they disagree. In all 57, slot 2
-        # lands 8 bytes (42) or 28 bytes (15) short of the record's own end and the
-        # payload begins 12 or 16 bytes into it -- so the record's span brackets the
-        # payload on both sides.
-        if len(self.words) > 2:
-            e2 = self.words[2] + 52
-            if (self.offset <= off < self.end and self.offset < e2 <= self.end
-                    and off + n <= e2 and (e2 - off - 8) % 4 == 0):
-                n = e2 - off
-        # The payload need not lie inside this record: the record directory is a sorted
-        # PARTITION, not an allocation, and 76 of 140 of these point outside their own
-        # extent -- 6 of them below the first record entirely. Same as `ramp`.
+        got = self._vector_walk
+        if got is not None:
+            n = got[0] - off
+        else:
+            # Unexercised on this corpus. The first part's own length word, which is
+            # what every reading before `vector_parts` used for the whole payload.
+            n = (struct.unpack_from('<2I', d, off)[1] + 23) // 2
         if n < 12 or (n - 8) % 4 or off + n > len(d):
             return None
         return off, n
-
-    #: The three values filter 5's payload header takes in `word0`. Not a format
-    #: selector -- `vector_shape` measures all three decoding identically -- but a closed
-    #: vocabulary, which is what lets `vector_chain` tell a following sub-payload from
-    #: the terminator without guessing.
-    VECTOR_KINDS = frozenset((0x07FFFFFB, 0x00000003, 0x04040403))
-
-    @property
-    def vector_chain(self):
-        """Every `[kind][length]` sub-payload this record's payload chains to.
-
-        Returns `[(offset, kind, byte length), ...]` starting with `vector_extent`'s own,
-        or `[]`.
-
-        THE CHAIN `68377e1` RECORDED AS REFUTED IS REAL; that note looked one word too
-        far. It said "a chain of `[kind][length]` sub-payloads is refuted -- there is no
-        header at `off + n` in any of the 13", and there is not. The header is at
-        `off + n - 4`, because `L = (w + 23) / 2` counts ONE TRAILING WORD THAT IS NOT A
-        VERTEX. `vector_shape` already knew about that word from the other side -- it
-        drops "a trailing all-zero vertex" that "terminates the list in 97 of 118
-        payloads" -- and this is the same word when the list does not terminate: in all 6
-        `FootstepsSubstance001` records the word at `off + n - 4` is `0x00000003`, one of
-        the three values `VECTOR_KINDS` holds, and it is the next sub-payload's own
-        header. So a payload is `[kind][length][vertices...][next kind, or 0]`.
-
-        THE RULE IS THE VOCABULARY AND THE RECORD'S OWN SPAN, AND THE LANDING IS THE
-        CHECK. Stepping `off += L - 4` while the next word is a known kind and every part
-        lies inside this record's extent, over the corpus's 139 filter-5 records:
-
-            chain of one part                             112
-            chain of 2 or 3, entirely inside the record    11
-            chain of 2 or 3 whose parts fall outside       16   refused
-
-        and of the 11 the chain's last part ends EXACTLY on a boundary the record itself
-        states, 11 of 11 -- on the record's own end for the 6 `FootstepsSubstance001`
-        records, and on slot 2, the payload-end pointer, for the 5
-        `RoadLinesSubstance002` ones. Nothing in the walk arranges that; it is a test the
-        rule could have failed on either group and does not. The 16 refused are the
-        `RoadSubstance002` and `SnowSubstance002` records whose payload lies outside their
-        own extent, which is the same containment bound `vector_extent` already carries
-        and the same population it already excludes.
-
-        WHAT THIS DOES NOT EXPLAIN, and it is the same caveat one level down: splitting
-        the span into sub-payloads does NOT recover the triangle strip. Over the 11
-        records the alternating-signed-area test reads 64.99% when the span is read as one
-        strip and 65.59% when each sub-payload is read as its own, against 37.26% shuffled
-        and 99.52% for the credited single-payload records. So the sub-payload boundary is
-        real and is NOT what makes the tail fail the strip test. `vector_shape` is
-        deliberately left reading the first payload's span, so nothing rasterises this.
-        """
-        got = self.vector_extent
-        if got is None:
-            return []
-        d, n = self.asm.data, len(self.asm.data)
-        q, out = got[0], []
-        while q + 8 <= n and self.offset <= q < self.end:
-            kind, w = struct.unpack_from('<2I', d, q)
-            if kind not in self.VECTOR_KINDS:
-                break
-            m = (w + 23) // 2
-            if m < 12 or (m - 8) % 4 or q + m > n or q + m > self.end:
-                break
-            out.append((q, kind, m))
-            q += m - 4
-        return out
 
     @property
     def vector_faces(self):
@@ -6068,17 +6121,26 @@ class Record:
         A strip join repeats a vertex, so the triple spanning it is degenerate and
         covers no area. Dropping those is what separates the shape from the stray
         slivers that a naive read of every consecutive triple draws across the joins.
+
+        PER PART, never across a part boundary. A payload holds up to 30 parts and the
+        triple that straddles two of them joins the end of one primitive to the start of
+        the next, which is a sliver across the whole image rather than a face. On the 104
+        one-part records this is the identical face list.
         """
-        got = self.vector_shape
+        got = self._vector_walk
         if got is None:
             return None
-        _, p = got
-        out = []
-        for i in range(len(p) - 2):
-            a, b, c = p[i], p[i + 1], p[i + 2]
-            if a == b or b == c or a == c:
+        d, out = self.asm.data, []
+        for _hdr, vq, nv, _flag in got[1]:
+            if nv < 3:
                 continue
-            out.append((a, b, c))
+            p = [((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0)
+                 for x in struct.unpack_from('<%dI' % nv, d, vq)]
+            for i in range(len(p) - 2):
+                a, b, c = p[i], p[i + 1], p[i + 2]
+                if a == b or b == c or a == c:
+                    continue
+                out.append((a, b, c))
         return out
 
     # ---- bitmap specialisation

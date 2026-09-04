@@ -196,14 +196,15 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
                 got = r.vector_extent
                 if got:
                     mark(got[0], got[0] + got[1], _VEC)
-                # And every sub-payload the first one chains to. `vector_chain` states
-                # the rule and the check it could have failed: 11 of 11 chains that lie
-                # inside their own record end exactly on a boundary the record itself
-                # states -- the record's end for 6, slot 2 for 5. It returns nothing for
-                # the 76 whose payload lies outside their extent, which the line above
-                # has already credited at its own stated length.
-                for _q, _k, _m in r.vector_chain:
-                    mark(_q, _q + _m, _VEC)
+                # ONE CALL, and there is no longer a second thing to ask. `vector_chain`
+                # used to be marked here as well, because `vector_extent` stopped at the
+                # first sub-payload and a separate walk found the rest. `vector_parts`
+                # follows the payload's own `[len][len >> 3 vertices]` chain to its
+                # terminator word on 139 of 139 records and `vector_extent` returns where
+                # that terminator ends, so the extent now covers every part -- and lands
+                # exactly on slot 2, which used to be the override, in 57 of 57 records
+                # where slot 2 is a usable bound. Two readers with one answer between
+                # them is the shape of the bug this arm already carries a note about.
             elif f == 16:
                 bm = r.bitmap
                 if isinstance(bm, dict) and bm.get('kind') in ('pixels', 'inline_pixels'):

@@ -339,9 +339,27 @@ motivated it: of the 57 records where both its containment bounds hold, **44 are
 in which slot 2 and the embedded length word agree to the byte.** And the "chain of
 `[kind][length]` sub-payloads" that commit recorded as refuted is real — it looked at
 `off + n` and the next header is at `off + n − 4`, because the length counts one trailing
-word that is not a vertex. Chains that lie inside their own record end exactly on a boundary
-the record states in **11 of 11**. `vectorshape` goes from the worst filter in the table,
+word that is not a vertex. `vectorshape` goes from the worst filter in the table,
 81.24% interpreted, to **99.93%**.
+
+**And the payload states its own end, so the 141,088 bytes were never a convention.** That
+same pass recorded what its bound cost: 141,088 of the 146,388 bytes the slot-2 override
+credits were "bounded and stated by nothing". They are not. A filter-5 payload is a chain of
+`[len][len >> 3 vertices]` parts closed by a **zero terminator word** — the old
+`(w + 23) / 2` is that formula seen through the first part only, `12 + 4 * (len >> 3)`, one
+part plus the *next* part's length word. The walk terminates in **139 of 139** records and
+lands exactly on slot 2 in **57 of 57** where slot 2 is a usable bound, including all 13 the
+override had to be asserted for; corpus-wide all 139 ends land on a boundary the file states
+elsewhere. The discriminating control is the 35 records where the two readings can disagree:
+the walk's end is stated by slot 2, the record end or the next payload's start in 34 of 35
+against **0 of 35** for the embedded length word's end, and the 35th is named by a `bitmap`
+record's image pointer — the only word in a 5.4 MB file that names it. **Nothing closed and
+the residual did not move**: `audit_corpus.py`'s output is byte-for-byte identical, because
+what changed is what a credit rests on and not which bytes are credited. `len & 7` turned out
+to be a primitive selector, which settles the caveat that pass left open — the tail read
+62.24% on the strip test because 38 of its 54 parts are **closed contours** (0.38% adjacent
+repeats against 16.71%, first vertex equals last in 37 of 38) and not strips. See
+FORMAT-NOTES.md, "The payload states its own end".
 
 **`Grid.sbsasm`'s two "constant-fill blobs" are images that say `2m` and `4m`.** Three
 65,536-byte 256×256 grayscale label images, each named at `words[1] + 52` by a *neighbouring*

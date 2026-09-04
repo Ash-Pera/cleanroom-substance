@@ -70,6 +70,7 @@ import decompose                                                     # noqa: E40
 import manifest                                                      # noqa: E402
 import provenance                                                    # noqa: E402
 import render as R                                                   # noqa: E402
+import sbsasm                                                        # noqa: E402
 from sbsasm import Assembly, FILTERS                                  # noqa: E402
 
 MAX_FILES = 400
@@ -1517,6 +1518,120 @@ def test_curve_chain_totals_the_count_the_record_states():
     print('curve chains: %d records, %d sub-tables, %d multi-table; controls %d early, '
           '%d late; %d of %d agree with curve_points'
           % (recs, tables, multi, early, late, first_is_curve_points, cp_total))
+    return
+
+
+class _VectorStub(object):
+    """What `Record._vector_walk` reads, so a control can shift the payload pointer."""
+
+    VECTOR_KINDS = sbsasm.Record.VECTOR_KINDS
+
+    def __init__(self, filter_id, words, asm):
+        self.filter_id, self.words, self.asm = filter_id, words, asm
+
+
+def test_the_vector_payload_states_its_own_end_and_lands_on_slot_2():
+    """Filter 5's payload is a self-delimiting chain, and slot 2 is the control for it.
+
+    `Record.vector_parts` walks `[kind][len][len >> 3 vertices]` parts to a zero terminator
+    word. Nothing shows it slot 2, so where it stops is a test it can fail: over the records
+    where slot 2 is a usable bound -- inside the record, and a pointer rather than the float
+    `0x3F800000` -- the terminator must land exactly on it.
+
+    THE POPULATION IS ASSERTED FIRST, in three parts, because each assertion below is
+    vacuous without one of them. Corpus-wide: 139 filter-5 records, 57 where slot 2 is a
+    usable bound, and 35 whose walk end differs from the embedded length word's end -- the
+    only ones on which the walk and the reading it replaced can disagree at all. Without
+    that third count "the walk lands on slot 2" is a restatement of `(w + 23) / 2`.
+
+    THE DISCRIMINATING CONTROL is that same 35: the walk's end is a boundary the file states
+    on 34 of them and the embedded length word's end on 0. The 35th ends where a `bitmap`
+    record names its image, which this test does not reach for and so allows for.
+
+    TWO MUTATIONS, run through a stand-in carrying the attributes the walk reads, so the
+    control cannot drift from the rule by being a second implementation of it: start two
+    words late and the walk terminates on none, start one word early and it terminates on
+    about half and lands on a stated boundary on none.
+    """
+    recs = bounded = on_slot2 = multi = 0
+    walk_stated = emb_stated = 0
+    late_term = early_term = early_stated = 0
+    for p in corpus.paths():
+        try:
+            a = Assembly(p)
+        except Exception:
+            continue
+        if not any(r.filter_id == 5 for r in a.records):
+            continue
+        starts = set()
+        for r in a.records:
+            if r.filter_id == 5 and r.vector_extent:
+                starts.add(r.vector_extent[0])
+        for r in a.records:
+            if r.filter_id != 5:
+                continue
+            got = r.vector_extent
+            assert got is not None, 'no extent for a filter-5 record in %s' % p
+            recs += 1
+            off, n = got
+            end = off + n
+            emb = off + (struct.unpack_from('<2I', a.data, off)[1] + 23) // 2
+            e2 = r.words[2] + 52 if len(r.words) > 2 else None
+
+            def stated(x):
+                return (e2 is not None and x == e2) or x == r.end or x in starts - {off}
+
+            # `4d2fd5c`'s own population: slot 2 can only bound a payload that lies in
+            # the same record it does. 70 records point their payload OUTSIDE their extent
+            # while slot 2 stays inside, and slot 2 is not a bound on those.
+            if (e2 is not None and r.offset < e2 <= r.end
+                    and r.offset <= off < r.end):
+                bounded += 1
+                on_slot2 += 1 if end == e2 else 0
+            if end != emb:
+                multi += 1
+                walk_stated += 1 if stated(end) else 0
+                emb_stated += 1 if stated(emb) else 0
+            for delta, box in ((2, 'late'), (-1, 'early')):
+                w = list(r.words)
+                w[1] = w[1] + 4 * delta
+                stub = _VectorStub(r.filter_id, w, r.asm)
+                mut = type(r)._vector_walk.fget(stub)
+                if mut is None:
+                    continue
+                if box == 'late':
+                    late_term += 1
+                else:
+                    early_term += 1
+                    early_stated += 1 if stated(mut[0]) else 0
+    assert recs >= 100, (
+        'only %d filter-5 records -- the assertions below say nothing about a population '
+        'this small; the corpus has 139' % recs)
+    assert bounded >= 40, (
+        'only %d records where slot 2 is a usable bound -- "the walk lands on slot 2" is '
+        'vacuous without them; the corpus has 57' % bounded)
+    assert multi >= 20, (
+        'only %d records whose walk end differs from the embedded length word -- on the '
+        'rest the walk and the reading it replaced CANNOT disagree, so agreement is not '
+        'evidence; the corpus has 35' % multi)
+    assert on_slot2 == bounded, (
+        'the terminator misses slot 2 on %d of %d records where slot 2 bounds the payload'
+        % (bounded - on_slot2, bounded))
+    assert walk_stated >= multi - 1, (
+        "%d of %d multi-part walk ends land on no boundary the file states" % (multi - walk_stated, multi))
+    assert emb_stated == 0, (
+        'the embedded length word already landed on a stated boundary %d times of %d, so '
+        'the walk is not what is being tested' % (emb_stated, multi))
+    assert late_term == 0, (
+        'the walk started two words late still terminates on %d records -- terminating is '
+        'not evidence' % late_term)
+    assert early_stated == 0, (
+        'the walk started one word early lands on a stated boundary %d times' % early_stated)
+    print('vector payloads: %d records, %d slot-2-bounded and %d land on it, %d multi-part '
+          '(%d walk ends stated, %d embedded-length ends stated); mutations %d late-terminate, '
+          '%d early-terminate and %d of those land stated'
+          % (recs, bounded, on_slot2, multi, walk_stated, emb_stated,
+             late_term, early_term, early_stated))
     return
 
 

@@ -170,9 +170,14 @@ second arm: when `w1` bit 1 is set, `words[3]` is the uid of a type-6 graph inpu
 string is the manifest's `default=` for that uid. The discriminator is the bit, never the
 value, because both arms hold a 32-bit word.
 
-`Record.vector_shape()` decodes filter 5's payload: a triangle strip of 16-bit normalised
-(x, y) vertices, 140 of 140 records. `Record.vector_faces` drops the degenerate triples that
-join one sub-strip to the next. This is what identifies the filter - rasterising the faces
+`Record.vector_shape()` decodes filter 5's payload: 16-bit normalised (x, y) vertices, 139
+of 139 records. `Record.vector_parts` is the structure underneath it — the payload is a chain
+of `[len][len >> 3 vertices]` parts closed by a zero terminator word, and that walk, not slot
+2 and not the first part's length, is where `Record.vector_extent` gets the extent from. It
+terminates on 139 of 139 records and lands exactly on slot 2 in the 57 where slot 2 is a
+usable bound. `len & 7` says whether a part is a triangle strip or a closed contour.
+`Record.vector_faces` drops the degenerate triples that join one sub-strip to the next, per
+part. This is what identifies the filter - rasterising the faces
 draws the road markings, filigree ornaments, snowflakes and lettering the materials carrying
 it are named for. The id is labelled `vectorshape` in `PROJECT_LABELS`, not `FILTERS`'
 usual sense of a name: the permitted sources' 24 filter names are all assigned already, so

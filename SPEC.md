@@ -1091,6 +1091,40 @@ here beyond those four magic bytes and the stated length. That restraint is a li
 question about the type foundry, and is deliberately *not* the Adobe provenance rule of §12 —
 the two are separable and are kept separate.
 
+### 9.2 Filter 5 stores vector artwork, and the payload states its own end
+
+A filter-5 record names its payload at `words[1] + 52` — the same universal skew again — and
+the payload is a **self-delimiting chain of primitives**:
+
+```
+u32 kind              0x07FFFFFB, 0x00000003 or 0x04040403
+u32 len               vertex count in `len >> 3`, primitive flag in `len & 7`
+u32 vertex × len>>3   x in the low half, y in the high half, 0..65535 normalised
+...                   further parts, each `[len][vertices]`; a kind word may restart
+                      the two-word form, and is then skipped
+u32 0                 terminator, one word
+```
+
+so the payload's extent is a walk and not an arithmetic bound. It terminates on the zero
+word in **139 of 139** corpus records. Nothing else states the end: the record's own slot 2
+is its `$outputsize` expression, which the payload merely *abuts*, and the first `len` word
+describes only the first part — `(len + 23) / 2` is the widely quoted formula and equals
+`12 + 4 * (len >> 3)`, that part plus one trailing word, which is the *next* part's `len` or
+the terminator.
+
+The landing is the check. Over the 57 records where slot 2 lies inside the record and is a
+pointer rather than the float `0x3F800000`, the terminator lands exactly on it in **57 of
+57**; corpus-wide, all 139 ends land on a boundary the file states elsewhere — slot 2, the
+record's own end, the next filter-5 payload's start, or (once) a `bitmap` record's image
+pointer at §9's `+52`.
+
+`len & 7` selects the primitive and takes two values: **1** is a triangle strip (99.60%
+alternating signed area over 187 parts, 16.71% adjacent repeated vertices — the strip joins)
+and **2** is a **closed contour** (47.98% alternation, 0.38% adjacent repeats, first vertex
+equals last in 37 of 38). A part is never flag 2 first. As everywhere in §5, the payload need
+not lie inside the naming record's extent: 76 of 139 point outside it, and in two specimens
+every payload lies in the resource region ahead of the record body, tiling it end-to-start.
+
 ---
 
 ## 10. Instruction stream (the ISA)
