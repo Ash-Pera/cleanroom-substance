@@ -4423,7 +4423,37 @@ class Record:
             if not (lo < pv < hi - 7) or pv in emitted:
                 return
             tw = struct.unpack_from('<I', d, pv)[0]
-            if (tw & 0xF) == 8 and a.entry_layout_holds(pv, tw):
+            # THE SAME TWO-ARMED TEST `fx_table`'s OWN LOOP MAKES, and this arm had only
+            # the first. `entry_layout_holds` reads the tag's program slots FORWARD, and
+            # an entry whose parameter block sits OUT OF LINE keeps them behind the tag,
+            # so the predicate refuses it -- which is the exact reason `fx_table` stopped
+            # dead on such a cell until `fx_out_of_line` was written. That reading was
+            # given to the run's stopping rule and not to this sweep, so a structural word
+            # naming an out-of-line cell was offered and then thrown away by a predicate
+            # that cannot see the cell's programs. Two paths meet one structure and only
+            # one of them asked it the question -- the same asymmetry RULE 2 below is
+            # about, one gate further in.
+            #
+            # It is the identity and not a widening: `fx_out_of_line` requires slot 1's
+            # pointer and the tag's own mask width to agree on where the block starts, the
+            # test whose docstring reports 1,749 of 1,749 declared program slots resolving
+            # where it holds against 9 of 602 where it does not.
+            #
+            # AND `pv in emitted` HAS TO ASK ABOUT THE ADDRESS THE WALK YIELDS, which for
+            # one of these cells is its BLOCK and not its tag. Without that the sweep
+            # re-enters an already-reached cell at its tag word, `fx_table` skips the
+            # duplicate item and steps on from a position no established run occupies --
+            # which on `Shutter_01` records 28/31/35 and `Amethyst` record 30 walked into
+            # bytecode and yielded a "cell" at `0x00000532`, an opcode word, sitting on
+            # bytes already credited to a program body. 4 of 70 cells landing on a
+            # credited byte, against the 0 of 108 and 0 of 14 the two established rules
+            # here report. Found by that check and not by a failure.
+            if (tw & 0xF) != 8:
+                return
+            _ool = a.fx_out_of_line(pv)
+            if _ool is not None and _ool[0] in emitted:
+                return
+            if a.entry_layout_holds(pv, tw) or _ool is not None:
                 out.append(pv)
 
         for kind, off, tag, _prog in seen_items:
@@ -4435,6 +4465,29 @@ class Record:
                 if off + sl + 4 <= hi:
                     offer(struct.unpack_from('<I', d, off + sl)[0] + 52)
                 continue
+            # RULE 1b -- AN OUT-OF-LINE CELL DOES NOT KEEP ITS STRUCTURAL WORD AT
+            # `off + 4 * slot`, and the sweep below reads it there. The cell is yielded at
+            # its BLOCK, so its slot numbering starts part-way in -- `fx_named_params`
+            # already records that and recovers the base -- and a structural field whose
+            # slot lies BEFORE the block's first slot is not in the block at all. It sits
+            # after the tag, at `tag + 8`, which is the word `fx_out_of_line_span` already
+            # credits to this cell when the tag sets bit 16 or 17 and which the previous
+            # pass measured as a pointer to a cell on 876 of 876 such cells against 0 of
+            # 316 where the tag sets neither.
+            #
+            # So this asks the cell for the ONE word its own stated extent already covers.
+            # It claims no new extent and no new width: the wider reading -- that all of
+            # bit 16's four words follow the tag -- is NOT taken, because it is not
+            # unanimous (12 of 23 bit-16 cells have all four resolve as cells, 9 have two)
+            # and the `[start, end]` reading of that pair is refuted elsewhere.
+            _oat = a.fx_out_of_line_at(off, tag) if (tag & 0xF) == 8 else None
+            if _oat is not None and (tag & Assembly.FX_TRAILING_POINTER_MASK):
+                at = _oat[0] + 8
+                if at + 4 <= hi:
+                    pv = struct.unpack_from('<I', d, at)[0] + 52
+                    if (off < pv < hi - 7 and lo < pv
+                            and struct.unpack_from('<I', d, pv)[0] in vocab_entry):
+                        offer(pv)
             # RULE 1 -- the structural words, forward only, in the frozen vocabulary.
             for _b, sl0, _nm, k, w in fx_entry_walk(tag):
                 if k != 'structural':

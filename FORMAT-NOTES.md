@@ -48335,3 +48335,68 @@ presence question — does this source carry `paramsGraphData`, and does its own
 sibling contain one of four node headers — and the answer, 8 of 96 and 1 of 8, is reported
 above. No Adobe binary in any form, and filter 5 is still labelled descriptively: what this pass adds
 is its SHAPE, which the compiled file states, and nothing about its name.
+
+## The sweep asked a predicate that cannot see an out-of-line cell, and read its structural word at the wrong address
+
+Two fixes to `Record`'s FX sweep, both the shape this file keeps recording: **two code paths meet
+one structure and only one of them asks it the question.** Residual 31,748 -> 27,590.
+
+Written by an agent that lost its connection mid-run, leaving the code in the tree with no
+notebook entry and none of its own validation performed. Everything below was measured here
+afterwards, against `git archive HEAD` in a separate tree, before the change was committed.
+
+### The gate
+
+The sweep's `offer` accepted a candidate on `(tw & 0xF) == 8 and entry_layout_holds(pv, tw)`.
+`entry_layout_holds` reads the tag's program slots FORWARD, and an entry whose parameter block
+sits out of line keeps them behind the tag -- so the predicate refuses it. That is the exact
+reason `fx_table` stopped dead on such a cell until `fx_out_of_line` was written in `90a91ea`,
+and the reading was given to the run's stopping rule and never to this sweep. A structural word
+naming an out-of-line cell was offered and then thrown away by a predicate that cannot see the
+cell's programs.
+
+The arm added is the identity and not a widening: `fx_out_of_line` requires slot 1's pointer and
+the tag's own mask width to agree on where the block starts -- the test whose 1,749 of 1,749
+declared program slots resolve where it holds, against 9 of 602 where it does not.
+
+### The address
+
+An out-of-line cell does not keep its structural word at `off + 4 * slot`, and the sweep read it
+there. The cell is yielded at its BLOCK, so its slot numbering starts part-way in --
+`fx_named_params` already records that and recovers the base -- and a structural field whose slot
+lies before the block's first slot is not in the block at all. It sits at `tag + 8`, the word
+`fx_out_of_line_span` already credits to the cell when the tag sets bit 16 or 17, measured in
+`027ab92` as a pointer to a cell on 876 of 876 such cells against 0 of 316 where it sets neither.
+
+The wider reading -- that all four of bit 16's words follow the tag -- is NOT taken: it is not
+unanimous (12 of 23 bit-16 cells have all four resolve as cells, 9 have two).
+
+### The bug it caught on itself
+
+`pv in emitted` has to ask about the address the walk YIELDS, which for one of these cells is its
+block and not its tag. Without that the sweep re-enters an already-reached cell at its tag word,
+`fx_table` skips the duplicate item and steps on from a position no established run occupies --
+which on `Shutter_01` records 28/31/35 and `Amethyst` record 30 walked into bytecode and yielded
+a "cell" at `0x00000532`, an opcode word, on bytes already credited to a program body. 4 of 70
+cells landing on a credited byte, against 0 of 108 and 0 of 14 for the two established rules.
+Found by the credited-byte check rather than by a failure.
+
+### Measured here, not inherited
+
+    decompose        894,310 records, 0 differing
+    fx_walk          894,303 identical, 12 extended, 0 NON-subsequence, items +96
+    guards           1,302,817/1,302,817 and 198,486/198,486, unchanged
+    walk_partition   8 of 48,663 -> 8 of 48,688 on the identical invocation
+    residual         31,748 -> 27,590; abuts 7,816 -> 4,204, fx-not-reached 21,316 -> 20,890,
+                     other 1,426 -> 1,306, zeros 1,190 unchanged
+    tests            fast lane 19, test_fx+test_bitmap 23, render2 trio 27,
+                     test_filters+test_tables 22 in 10m52s, no floor moved
+
+The additive property holds with no exceptions, which is what makes this safe: nothing already
+reached was lost.
+
+### What this does NOT establish
+
+No render arbitrates it. The reference packs contain 0 out-of-line cells, which `90a91ea`
+already measured, so the harness proves non-regression and nothing more. Whether the cells now
+reached draw what the engine drew is unanswerable from anything in this corpus.
