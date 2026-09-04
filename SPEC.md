@@ -1870,7 +1870,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | uniform | `outputcolor`; else a program at a walk-named slot; else the engine default |
 | blend | `dst·(1−op) + f(dst, src)·op`, clamped; `op` = `opacitymult` (absent ⇒ 1, and read from EITHER mask — §13.4) × the mask edge if a third edge is present; `switch` selects on `op ≥ ½` instead |
 | transformation | `in = m·(pos − ½) + ½ + offset`; area-prefilter when minifying |
-| shuffle | colour bit clear ⇒ `Σ channelsweights·src` (grayscale conversion); set ⇒ four selector bytes in `w1`, `s` picks channel `s mod 4` of input `s div 4`. The width legend declares NO w1 field for filter 3 at all — the fitted table it replaced offered seven (0, 4, 5, 8, 9, 12, 13), every one charging zero words in every state, which was an artefact of a fit admitting any column that varies rather than a statement about layout. Either way it makes no claim the byte reading could contradict; nor can it confirm it. No shipped source contains a colour-arm shuffle node (44 are `grayscaleconversion`), so this one is read from the values alone: every byte holds 0–7, and a reader should refuse the record rather than guess when one does not |
+| shuffle | colour bit clear ⇒ `Σ channelsweights·src` (grayscale conversion); set ⇒ four selector bytes in `w1`, `s` picks channel `s mod 4` of input `s div 4`. The width legend declares NO w1 field for filter 3 at all — the fitted table it replaced offered seven (0, 4, 5, 8, 9, 12, 13), every one charging zero words in every state, which was an artefact of a fit admitting any column that varies rather than a statement about layout. Either way it makes no claim the byte reading could contradict; nor can it confirm it. The convention now has SOURCE SUPPORT, where an earlier reading of this row said it had none: four permitted sources carry 21 colour-arm `shuffle` nodes, every one with an explicit `channelred`/`channelgreen`/`channelblue`/`channelalpha`, and one file's ten compile to `w1` = `0x00000400` and `0x03040100`, whose bytes 1 and 2 hold exactly the declared `channelgreen = 4` and `channelblue = 4`. (`grayscaleconversion` is 67 nodes in 25 files, not the 44 this row claimed.) One caveat, unstated anywhere yet: the UNSPECIFIED channels do not compile to a constant pass-through — `[0, 4, 0, 0]` where both inputs are grayscale against `[0, 1, 4, 3]` where input 1 is four-channel — so the default depends on the input's channel count. Every byte holds 0–7, and a reader should refuse the record rather than guess when one does not |
 | levels | `t = clip((src − lo)/(hi − lo))`; zero span ⇒ step at `lo`; `t ← t^(ln½/ln mid)`; `out = lo′ + t(hi′ − lo′)`, clamped. **Per channel**: on a colour record every field is a Float4 and its components genuinely differ — applying component 0 to all four remaps ALPHA by the red curve, which on one corpus record turns an opaque output almost transparent |
 | curve | a cubic-Bezier transfer curve, sampled to a lookup |
 | gradient / dyngradient | a ramp indexed by the input's channel 0; `dyngradient`'s ramp is a second input's long axis |
@@ -1920,14 +1920,43 @@ combined by mode 5, is `max(a−b, b−a)`, an absolute difference that only par
 subtract and 5 is max.
 
 **A NAME IS NOT AN ARITHMETIC.** Seven of the twelve are fixed by their name — copy `s`,
-add `d+s`, subtract `d−s`, multiply `d·s`, max, min, screen `1−(1−d)(1−s)`. Five are not,
-and a reader should treat these as this specification's convention rather than as stated by
-the file: `addsub` = `d + 2s − 1`; `switch` selects `src` on `op ≥ ½`; `divide` = `d/s`;
-`overlay` = `2ds` below `d = ½` and `1 − 2(1−d)(1−s)` above; `softlight` = `2ds + d²(1−2s)`
-below `s = ½` and `2d(1−s) + √d(2s−1)` above. Operand order for the three asymmetric modes
-is likewise a convention: input 0 is `dst`, input 1 is `src`. The source states that a blend
-node has exactly the connectors `destination`, `source` and `opacity`, which is the shape
-§13.6's formula reads, but not which compiled edge slot each takes.
+add `d+s`, subtract `d−s`, multiply `d·s`, max, min, screen `1−(1−d)(1−s)`. An eighth is
+fixed by a permitted source that implements it: `addsub` = `d + 2s − 1`. One `.sbs`
+reimplements five blend operations as pixel processors, to keep the overflow the engine's
+own node clamps away — its graphs are named `hadd`, `hsub`, `haddsub`, `hmin` and `hmax`,
+each carries an "Out of Range Mask" output, and each computes
+`lerp(bg, lerp(bg, f(bg, fg), opacity), mask)`, which is this section's own formula with
+`d` = Background and `s` = Foreground. Four of the five reproduce modes 1, 2, 5 and 6, whose
+arithmetic is already fixed by their names and by the `max(a−b, b−a)` argument above; the
+fifth is `bg + 2·fg − 1`. Asked of the compiled sibling rather than of the XML — the
+programs transpiled and run over a random field — they agree with `BLEND_MODES` to 1.1e-16,
+against 0.99 for the same records tested against a neighbouring mode or against exchanged
+operands.
+
+**Four are still this specification's convention** rather than something the file states:
+`switch`'s threshold (it selects `src` on `op ≥ ½`); `divide`'s operand order (`d/s`);
+`overlay`'s gate (`2ds` below `d = ½` and `1 − 2(1−d)(1−s)` above, i.e. the gate reads `d`
+and not `s`); and `softlight`'s member (`2ds + d²(1−2s)` below `s = ½` and
+`2d(1−s) + √d(2s−1)` above). Of these, softlight's is not merely undecided but **undecidable
+here**: over the 17.4 M mode-11 pixels a reference render composites, the W3C formula differs
+from the one above by at most 0.000455 and on no pixel by 10⁻³, so no score taken on this
+corpus can separate them. Overlay's gate is decidable in principle — reading it on `s`, which
+is `hardlight`, moves 53.9% of one pack's mode-9 pixels by more than 10⁻³ and up to 0.123 —
+and the reference packs do not decide it: 21 mode-9 records sit in a scored cone whose
+channels are live, and the render is 4 better / 2 worse on correlation with the bands going
+the wrong way.
+
+**Operand order is settled, and by the source rather than by the render**: input 0 is `dst`
+= `destination`, input 1 is `src` = `source`. A blend node's `opacitymult`, where it has five
+significant decimals and is unique in its `.sbs`, names one compiled record; the KINDS of
+that record's two input edges are then a property the pairing never used. Over the permitted
+paired sources, 28 records place the source's declared `destination` at slot 0 and **0** place
+it at slot 1, with two further records whose identified side also lands where slot 0 =
+`destination` predicts. The control — the same question asked of a random other blend record
+in the same file — reproduces the declared kind pair 2 times in 30. The modes covered include
+the asymmetric 9 and 11, so the order does not rest on the modes whose arithmetic is open.
+The source states that a blend node has exactly the connectors `destination`, `source` and
+`opacity`, which is the shape §13.6's formula reads.
 
 A second enumerated `blend` parameter is named by the same mechanism and its slot is **not
 located**: `colorblending`, `0 Use Source Alpha, 1 Ignore Alpha, 2 Straight Alpha Blending,

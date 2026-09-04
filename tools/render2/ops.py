@@ -279,15 +279,50 @@ def conform(arr, want):
 #: closed at 11: over 903,616 corpus records the nibble takes 0-11 and never 12-15, on
 #: 310,697 blend records with no unreadable mode.
 #:
-#: A NAME IS NOT AN ARITHMETIC, and five of these rows are still this file's convention:
-#: `addsub`'s `d + 2s - 1`, `switch`'s threshold, `divide`'s operand order, and the
-#: particular `overlay` and `softlight` formulae, each of which has several published
-#: forms. What IS measured is that they are in the right family -- swapping subtract's
-#: operands flips six reference channels negative and kills twelve, reading 3 as screen
-#: flips eight, reading 10 as multiply flips two, and `hardlight` in place of 11 kills a
-#: channel -- while the three published softlight formulae agree to 0.0026 on every
-#: channel and cannot be told apart at all. See FORMAT-NOTES.md, "`blendingmode`'s twelve
-#: names are declared by a permitted source".
+#: A NAME IS NOT AN ARITHMETIC, and four of these rows are still this file's convention:
+#: `switch`'s threshold, `divide`'s operand order, `overlay`'s GATE (whether the 1/2 test
+#: reads `d` or `s`) and `softlight`'s MEMBER. What IS measured is that they are in the
+#: right family -- swapping subtract's operands flips six reference channels negative and
+#: kills twelve, reading 3 as screen flips eight, reading 10 as multiply flips two, and
+#: `hardlight` in place of 11 kills a channel.
+#:
+#: `addsub` CAME OFF THAT LIST AND ITS FORMULA DID NOT MOVE. One permitted source
+#: reimplements five blend operations as pixel processors, to keep the overflow the
+#: engine's node clamps away: `pairs2/SubstanceDesigner__hblend.sbs`, graphs `hadd`,
+#: `hsub`, `haddsub`, `hmin`, `hmax`, each with an "Out of Range Mask" output and each
+#: computing `lerp(bg, lerp(bg, f(bg, fg), opacity), mask)` -- this function's own
+#: composite, with `d` = Background and `s` = Foreground. Four of the five reproduce modes
+#: 1, 2, 5 and 6, whose arithmetic is already fixed by their names and by SPEC 13.6's
+#: `max(a-b, b-a)` argument; the fifth computes `bg + 2*fg - 1`. Asked of the COMPILED
+#: sibling rather than of the XML -- records 7, 33, 59, 85 and 93 transpiled and run over a
+#: random field -- all FIVE agree with `BLEND_MODES` 4, 1, 2, 5 and 6 to 1.1e-16, against
+#: 0.99 for the same records tested against a neighbouring mode or against exchanged
+#: operands (`add`'s exchange control passes at 0, as a symmetric mode's must). It is one
+#: collection, one file and no declared author, so it is a LEAD by `be68569`'s bar, like
+#: the `dropdownlist` above -- and a DIFFERENT party from the one that supplied the names.
+#:
+#: What the render says about mode 4 is worth reading for its shape rather than its
+#: verdict: `d + s - 1/2`, `s + 2d - 1`, `d + s` and `d - 2s + 1` all make `Bricks`
+#: basecolor worse (-0.07 to -0.30 on three channels) and all four IMPROVE `Chesterfield`
+#: basecolor ch2, which is the one anti-correlated channel in `REFERENCE_FLOOR_RENDER2` --
+#: as far as +0.67, and FURTHEST when mode 4 is turned off entirely. Swept as
+#: `d + k(2s - 1)`, `Bricks` basecolor rises monotonically with k and `Chesterfield`
+#: basecolor 0 and 1 fall monotonically with it, so the two packs' optima are on opposite
+#: sides and k = 1 is the only value tried at which no channel gets worse. A channel that
+#: improves under every alternative is not discriminating between them; it is `m6_max`'s
+#: lesson in a new place.
+#:
+#: The three published softlight formulae cannot be told apart, and that is now a bound
+#: rather than an observation: over the 17.4 M mode-11 pixels a reference render
+#: composites, W3C's formula differs from this one by at most 0.000455 and on NO pixel by
+#: 1e-3. Pegtop and illusions.hu are marginal, 0.0102 and 0.0179 with 15% of pixels over
+#: 1e-3, and the sweep moves 0-3 channels by <= 0.003. `overlay`'s gate is a real fork by
+#: contrast -- reading it on `s` moves 53.9% of the mode-9 pixels in `Bricks` by more than
+#: 1e-3 and up to 0.123 -- and the packs do not decide it: 21 mode-9 records sit in a cone
+#: with a live channel, and `m9_hardlight` is 4 better / 2 worse with 13 bands toward 1.0
+#: and 23 away. See FORMAT-NOTES.md, "`blendingmode`'s twelve names are declared by a
+#: permitted source" and "`Add Sub` is `d + 2s - 1` because a permitted source implements
+#: it".
 BLEND_MODES = {
     0:  ('copy',       lambda d, s: s),
     1:  ('add',        lambda d, s: d + s),
@@ -313,19 +348,50 @@ def blend(mode, dst, src, opacity):
     Opacity mixes the blended result back toward the destination, so at opacity 0 every
     mode is a no-op. `switch` takes opacity as a selector instead.
 
-    `dst` IS INPUT 0 AND `src` IS INPUT 1, which matters for the three asymmetric modes and
-    is measured rather than assumed: exchanging them for every mode at once kills 17 of the
-    27 reference channels and takes `Bricks_and_tiles` emission ch0 from +0.9885 to +0.1413.
-    The source states that a blend node's connectors are exactly `destination`, `source` and
-    `opacity` -- the shape this signature reads -- but not which compiled edge slot each
-    takes, so the render is the arbiter for the ORDER and the source for the names.
+    `dst` IS INPUT 0 AND `src` IS INPUT 1, and this is now SOURCE containment rather than a
+    render refutation. A `.sbs` names a blend node's connectors -- `destination`, `source`,
+    `opacity` -- and an `opacitymult` with five significant decimals, unique in its source,
+    names one compiled record; the KINDS of that record's two input edges are then a
+    property the pairing never used. Over the permitted paired sources, 28 records place
+    the declared `destination` at slot 0 and 0 place it at slot 1, with 2 more whose
+    identified side also lands where slot 0 = `destination` predicts and whose other side
+    is a filter the compiler inserted or elided. The control -- the same question asked of
+    a random OTHER blend record in the same file -- reproduces the declared pair 2 times in
+    30. The modes covered include 9 and 11, so the order does not rest on the two modes
+    whose arithmetic is still open. Exchanging them for every mode at once still kills 17
+    of the 27 reference channels, and `hblend`'s three mode-7 records read
+    `[levels, shuffle]` where its source says `destination` <- `levels` in all three, with
+    the two `<connection>` elements in a DIFFERENT document order in one of them -- so the
+    compiled slot follows the connector's role and not the file's element order.
 
-    `switch`'s threshold is the convention and not the file's: reading it as `> 0` or as an
-    ordinary lerp moves nine `Bricks_and_tiles` channels by at most +0.0143 and leaves
-    `Chesterfield` identical to four decimals, which is below the bar to overturn a declared
-    name. Selecting `dst` instead of `src` is refused loudly -- it takes Chesterfield
-    `basecolor` ch1 from +0.9694 to -0.7575 and `metallic`, the sharpest number in this
-    repository, to unrenderable. See `BLEND_MODES` above for what the twelve names rest on.
+    `switch`'s threshold is still the convention and not the file's, and the reason
+    recorded at `80f558f` -- that no scored cone drives it with a fractional selector --
+    is WITHDRAWN. Wrapping this function during a reference render says `Bricks_and_tiles`
+    passes a selector strictly inside (0.01, 0.99) on 22.7% of its 250 M mode-7 pixels, and
+    that a threshold and a lerp disagree by more than 1e-3 on 3.17 M of them, by up to 0.5.
+    `Chesterfield` -- 10 of the 25 live channels -- disagrees on exactly 0 of 6.9 M, its
+    selectors being 0 or 1. So the population exists, sits in one pack, and does not
+    propagate: reading the threshold as `> 0` or as an ordinary lerp still moves nine
+    `Bricks` channels by at most +0.0143. The LERP reading is refused for a second reason
+    that does not depend on the size of that gain: the mix path below with `f = src` is
+    `dst*(1 - op) + src*op`, which is exactly what mode 0 `copy` computes (both operands
+    are in [0, 1], so the clamp is a no-op), so mode 7 as a lerp would duplicate mode 0 --
+    the same argument that refused `m6_max`, where 6 = max would have duplicated 5. What
+    stays open is the threshold's VALUE, and the render will not choose it either: swept as
+    `op >= t`, BOTH ends of the family beat the middle -- t -> 0 is 8 better / 1 worse and
+    t -> 1 is 9 better / 0 worse with five times the gain, while every fractional selector
+    a scored cone drives lands in [0.25, 0.75] so the sweep is really two-point. A
+    parameter that improves in both directions is not the parameter being measured, and
+    `t -> 1` -- which would take `src` only where the selector is exactly 1, on 121,995
+    corpus records -- passes the stated bar outright, all nine of its gains in the one pack
+    whose bands are uniformly below 1.0. What the source now settles is the DIRECTION:
+    `hblend`'s three mode-7 nodes are an Auto Level switch whose `opacitymult` program
+    returns `(autoLevel AND out-of-range) ? 0 : 1` with the auto-levelled image on
+    `destination` and the raw one on `source`, which only does what its own label says
+    under `op >= 1/2 ? src : dst`. Selecting `dst` instead is refused loudly by the render
+    too -- Chesterfield `basecolor` ch1 from +0.9694 to -0.7575, and `metallic`, the
+    sharpest number in this repository, to unrenderable. See `BLEND_MODES` above for what
+    the twelve names and the one measured arithmetic rest on.
     """
     entry = BLEND_MODES.get(mode)
     if entry is None:

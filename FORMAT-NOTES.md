@@ -51280,3 +51280,648 @@ source, the same "N pixels" idiom the AO offsets use. It does not settle the `tr
 case (it is a `pixelprocessor`, where `$size` and `$pos` must already agree) and it is not
 relied on above; it is the closest a permitted source comes to stating the idiom, and the
 census that found it is 37 `$size` uses over 6 files, none of them on a `transformation`.
+
+## `Add Sub` is `d + 2s - 1` because a permitted source implements it, and three of the four are still open
+
+`80f558f` settled the twelve blend modes' NAMES from a `dropdownlist` widget and said in as
+many words that a name is not an arithmetic. Four of the twelve were left as this project's
+convention -- 4 `Add Sub`, 7 `Switch`'s threshold, 9 `Overlay`'s gate and 11 `Soft Light`'s
+member -- along with a fifth question, which compiled edge slot is `destination`.
+
+This pass settles **two** of the five and measures the other three well enough to say what
+would settle each. **No executable line of `ops.py` changed**: mode 4's formula was already
+`d + 2s - 1` and the source agrees with it to floating-point epsilon; the operand order was
+already `input 0 = dst` and 28 node-exact source pairings agree with it. What changed is
+what those two rows REST on.
+
+| question | before | now |
+|---|---|---|
+| 4 `addsub` | convention, `d + 2s - 1` | **a permitted source implements it**, agreeing to 1.1e-16 |
+| operand order | one render refutation (`ALL_swap_ds`) | **28 node-exact source pairings, 0 against, 2 of 30 by chance** |
+| 7 `switch` threshold | open | still open; `80f558f`'s stated reason is WRONG, the lerp reading is refused structurally, and **both ends of the threshold family beat the middle** |
+| 9 `overlay` gate | open | still open, and now known to be TESTABLE -- 53.9% of the mode-9 pixels in one pack move by >1e-3, up to 0.123 -- on 21 records |
+| 11 `softlight` member | open | **w3c is unfalsifiable on this corpus and that is now proven**, 0 pixels of 17.4 M differ by 1e-3 |
+
+### The arbiter for mode 4 is an author who reimplemented the blend node without its clamp
+
+`pairs2/SubstanceDesigner__hblend.sbs` -- permitted, `provenance.audit()`'s list, called
+rather than retyped -- is a package of five graphs named
+
+    hadd      "H Add"        hsub   "H Sub"    haddsub  "H AddSub"
+    hmin      "H Min"        hmax   "H Max"
+
+each with the input set `fg` ("Foreground"), `bg` ("Background"), `mask`, `opacity`, an
+`autoLevel` toggle, and TWO outputs: `Output` and **`oorMask`, "Out of Range Mask"**. That
+second output is the whole reason the file exists: the engine's own `blend` clamps to
+[0, 1] (`ops.blend`'s `np.clip`), and a height-blending author needs the overflow rather
+than the clamp. So the graphs are the engine's blend modes with the clamp removed and a
+flag put in its place -- which is what makes them a statement about the engine's arithmetic
+rather than five arbitrary functions.
+
+Each graph is one `pixelprocessor` over a merged image built by two `shuffle` nodes:
+
+    shuffle(input1=fg, input2=bg,   channelgreen=4)   ->  R = fg, G = bg
+    shuffle(input1=that, input2=mask, channelblue=4)  ->  B = mask
+
+`channelgreen=4` is SPEC 13.6's shuffle selector, `s div 4` = input 1 and `s mod 4` =
+channel 0, so G is the Background's channel 0. The per-pixel function then reads
+`swizzle1(sample)` = R = fg, `swizzle1[1]` = G = bg, `swizzle1[2]` = B = mask, and every one
+of the five has the identical skeleton
+
+    out = lerp(bg, lerp(bg, f(bg, fg), opacity), mask)
+
+which is `blend`'s own `dst*(1-op) + f(dst, src)*op` with **dst = bg = Background** and
+**src = fg = Foreground**, opacity multiplied by a mask, exactly as SPEC 13.6 states it.
+The five `f`s, read off the source's function graph:
+
+    hadd      f = fg + bg                  oorMask: out > 1
+    hsub      f = bg - fg                  oorMask: out < 0
+    haddsub   f = (fg*2 - 1) + bg          oorMask: |out| > 1
+    hmin      f = fg < bg ? fg : bg
+    hmax      f = fg > bg ? fg : bg
+
+**Four of the five are modes this project had already established by other means**, and
+they all agree: `hadd` is mode 1 `d+s`, `hsub` is mode 2 `d-s` in the order `02351cc` and
+the render pinned, `hmin` is mode 6 and `hmax` is mode 5, the pair SPEC 13.6's
+`max(a-b, b-a)` argument fixes. The fifth is `haddsub` = `bg + 2*fg - 1` = **`d + 2s - 1`**,
+the row `ops.py` already had. A family in which four members are independently known and
+the fifth is the open question is the "composition that only parses one way" arbiter, in
+the cleanest form this corpus offers.
+
+The out-of-range flags corroborate the reading without being needed for it: `hadd`'s output
+can only leave [0, 1] upwards and its flag tests `> 1`; `hsub`'s only downwards and its flag
+tests `< 0`; `haddsub`'s can do both and its flag tests `|out| > 1`. An author who thought
+`Add Sub` were `d + s - 1/2` would have no reason to write a symmetric test. (Stated as
+corroboration and not as proof: `d + 2s - 1` runs to [-1, 2], so `|out| > 1` is not its
+exact range either.)
+
+### Asked of the BYTECODE, through this repository's own transpiler
+
+The XML is one instrument and it is the one the author typed. The compiled sibling
+`x_SubstanceDesigner__hblend/.../hblend.sbsar.sbsasm` is another: 96 records, 3 `blend` and
+53 `pixelprocessor`, and all five graphs' blend functions are compiled -- records 7, 33, 59,
+85 and 93. Transpiled by `tools/transpile.py` and run over a random 64x64 field through
+`sbsruntime`, with the author's unclamped result clamped for the comparison:
+
+    record  7   haddsub "H AddSub"   vs BLEND_MODES[4]   max |Δ| 1.110e-16  (opacity 1, .5, .25)
+    record 33   hadd    "H Add"      vs BLEND_MODES[1]   max |Δ| 0
+    record 59   hsub    "H Sub"      vs BLEND_MODES[2]   max |Δ| 0
+    record 85   hmax    "H Max"      vs BLEND_MODES[5]   max |Δ| 0
+    record 93   hmin    "H Min"      vs BLEND_MODES[6]   max |Δ| 0
+
+**Five of five reproduce a `BLEND_MODES` row exactly**, and each one fails against its
+nearest neighbour, which is the mutual-exclusion control the count needs:
+
+    record  7 against mode 1                     max |Δ| 0.9892
+    record  7 against mode 2                     max |Δ| 1.0000
+    record  7 against mode 4, operands exchanged max |Δ| 0.9923
+    record 59 against mode 2, operands exchanged max |Δ| 0.9949
+    record 85 against mode 6 (min instead of max) max |Δ| 0.9949
+    record 93 against mode 5 (max instead of min) max |Δ| 0.9949
+    record 33 against mode 1, operands exchanged max |Δ| 0.0000   <- `add` is symmetric, and
+                                                                     this control MUST pass
+
+`/tmp/ma/hblend_check.py` is that check. The three programs are read by the same disassembler
+and the same runtime the renderer uses, so this is not a second reading of the XML: it is the
+compiled form agreeing with the source form and with `BLEND_MODES` at once.
+
+### What the mode-4 finding is worth, by this project's own aggregation standard
+
+`be68569`'s bar is distinct packages and independent authors. This is **one collection, one
+file, no declared author** -- `SubstanceDesigner`, whose `.sbs` carries no `<author v="...">`
+at all and whose `.sbsar` manifest declares none either. By that bar it is a LEAD, exactly
+as the `dropdownlist` that named the modes is a lead. What it adds is that the two leads are
+DIFFERENT parties: `LGMLtools` named the twelve, `SubstanceDesigner` implemented one of them,
+and neither could have copied the other's evidence. And an author reimplementing a filter to
+remove its clamp has a motive to copy the arithmetic exactly that an author writing a fresh
+effect does not.
+
+It remains an author's reimplementation and not the engine's filter. What would make it a
+statement about the ENGINE is a permitted graph containing both a mode-4 `blend` node and an
+explicit `d + 2s - 1` on the same two inputs, or a reference pack whose export exercises a
+mode-4 blend on data where `d + s - 1/2` and `d + 2s - 1` differ -- see the render section,
+where the second of those is nearly available and lands short.
+
+### Which compiled edge slot is `destination`: 28 node-exact pairings, 0 against
+
+A `.sbs` states a blend node's connectors by NAME; the compiled record states two input
+edges in an ORDER; nothing in either says which is which. `80f558f` left this as convention
+supported by one render refutation. The source can answer it directly, by the pairing rule
+`test_filters.test_blendingmode_matches_the_source_that_declares_it` already uses -- an
+`opacitymult` with five significant decimals, unique in its source, landing in exactly one
+compiled `blend` record whose mode agrees -- because the KINDS of that record's two inputs
+are a property the pairing never looked at.
+
+Over the 96 permitted paired sources (`provenance.audit()`, called), taking blend nodes whose
+`destination` and `source` resolve to `compFilter` neighbours of different kinds, following
+`passthrough` (the Dot node, which has no compiled record) through to its own input:
+
+    input 0 = destination                       28
+    input 0 = source                             0
+    kinds do not match either order              2
+    same kind (uninformative)                    5
+    no unique compiled record                   11
+
+    CONTROL: a RANDOM other blend record in the same file
+      reproduces the declared kind pair             2 of 30   (dest-first)
+      reproduces it reversed                        0 of 30
+      matches neither                              28 of 30
+
+The two that "match neither" are not counter-evidence and are worth stating: in both, ONE
+side matches in the slot dest-first predicts and the other side is a kind the compiler
+inserted or elided -- `(blend, gradient)` declared against `(blend, transformation)`
+compiled, and `(uniform, blend)` against `(transformation, blend)`. So 30 of 30 records place
+every neighbour that can be identified in the slot `input 0 = destination` predicts, and 0
+place one where the swap predicts. The chance control says the fingerprint is not free: the
+same question asked of a random sibling record agrees 2 times in 30.
+
+The modes covered by those 28 include **9 and 11**, the two asymmetric ones whose ARITHMETIC
+is still open, so operand order is settled independently of them.
+
+`hblend` corroborates it a third way and by structure rather than by value. Its three
+compiled `blend` records are 27, 53 and 79, edges `[levels, shuffle]` in every case, and the
+source states `destination` <- the auto-levelled chain (`levels`) and `source` <- the raw
+`grayscaleconversion` (compiled `shuffle`) in every case. The document ORDER of the two
+`<connection>` elements differs between those three nodes and the compiled order does not,
+which is the control that the compiled slot follows the connector's ROLE and not the file's
+element order.
+
+Coarser and larger, and reported because it is where the outlier lives: the same question
+asked file-wide rather than node-exact -- does the file's compiled blends contain the ordered
+kind pair, or its reverse -- gives 106 for dest-first against 1 for source-first, with 53
+ambiguous. The one is `Wood_Planks.sbs`, a declared `(levels, blend)` against 73 compiled
+`(blend, levels)` and no `(levels, blend)`, i.e. a node that is not in the compiled file
+meeting a shape that is everywhere in it. It is an artefact of the coarse test and the
+node-exact test does not reproduce it.
+
+### Mode 7: the threshold is still open, and `80f558f`'s reason for that is wrong
+
+`80f558f` recorded that what would settle `switch`'s threshold is "a scored cone containing a
+mode-7 record whose selector is genuinely fractional", and that the permitted sources contain
+exactly one blend node declaring mode 7 with a fractional `opacitymult` (0.93). **Neither
+half of that reproduces.**
+
+*The source count.* Over `provenance.audit()`'s 96 permitted sources, read twice by
+independent instruments -- an ElementTree walk of `compNode`s and a regex over
+`<compNode>` bodies -- there are **6** blend nodes declaring a constant `blendingmode` of 7,
+in **3** files (`SubstanceDesigner__hblend` x3, `SubstanceDesigner__triDraw` x2,
+`substance-for-unity-extensions__RuntimeExample` x1), and **not one of them declares a
+constant `opacitymult` at all**: five drive it from a program and one omits it. No blend node
+anywhere in the permitted sources carries an `opacitymult` within 0.02 of 0.93, under any
+mode. Adding the four `FLAGGED_AUTHORS` files back (the 100-file population) changes none of
+those numbers. I cannot reconstruct what the 0.93 was; it is withdrawn.
+
+*The render.* The claim that no scored cone exercises a fractional selector is false, and the
+instrument that says so is a wrapper around `blend` itself -- `/tmp/ma/probe.py`, which
+replaces the `blend` name in every module object whose file is `render2/filters.py` and
+records what the renderer actually passes. At `max_dim` 256, `$outputsize` implied:
+
+    pack                       mode-7 calls   px          selector strictly between 0.01 and 0.99
+    Kutejnikov__Auras                    31   2,031,616   100.0%   (31 of 31 calls)
+    Kutejnikov__Bricks_and_tiles      3,520 250,347,520    22.7%   (800 of 3,520 calls)
+    Kutejnikov__Stylized_Wooden_...     270  17,694,720    77.8%   (210 of 270 calls)
+    minime453__Chesterfield_PBR_...     102   6,881,280     0.0%   (0 of 102 calls)
+    minime453__Stylized_Sandy_...        72   4,718,592    86.1%   (62 of 72 calls)
+
+A fractional selector is not the same thing as a DISCRIMINATING one -- if `dst` and `src`
+agree at that pixel, no threshold can tell. The same probe measures the disagreement itself,
+`|switch - lerp|` after opacity and the clamp:
+
+    Auras            max 1.6e-5      0 px over 1e-3 of 2.0 M
+    Bricks           max 0.500   3,170,924 px over 1e-3 of 250.3 M   (1.27%)
+    Roof Tiles       max 0.335     439,159 px over 1e-3 of 17.7 M
+    Chesterfield     max 0             0 px of 6.9 M
+    Sandy Stone      max 1e-6          0 px of 4.7 M
+
+So the discriminating population is real and it is **3.17 M pixels, all of them in
+`Bricks_and_tiles`**, where a threshold and a lerp differ by up to 0.5. `Chesterfield`,
+which carries 10 of the 25 live channels, cannot arbitrate this at all -- its mode-7
+selectors are exactly 0 or 1. That is why `m7_switch_lerp` moves nine Bricks channels by at
+most +0.0143 and leaves Chesterfield identical to four decimals: not because nothing is
+exercised, but because the 1.27% that is exercised does not propagate. The verdict is
+unchanged and its REASON is now measured rather than assumed.
+
+What the source does settle is the DIRECTION, which had rested on a render refutation.
+`hblend`'s three mode-7 nodes are its auto-level switch: `destination` <- the auto-levelled
+image, `source` <- the raw one, and `opacitymult` a program that reads the min/max of the
+raw image and returns
+
+    ifelse(autoLevel AND out-of-range, 0, 1)
+
+Under `op >= 1/2 ? src : dst` that is "use the raw image; if the user asked for auto-level
+and the result left [0, 1], use the auto-levelled one instead", which is what a control
+called Auto Level does. Under the swapped reading it auto-levels exactly when auto-levelling
+is not needed, i.e. the toggle would do the opposite of its own label in every one of its
+three graphs. That is a source-side refutation of the swap, independent of the render's
+(which kills `metallic`), and it is the first one.
+
+It cannot say anything about the THRESHOLD, because the selector it produces is 0 or 1 --
+which is the same wall the render hits, now met on both instruments.
+
+### Mode 9: the render can see it, and does not decide it
+
+`overlay` has one live alternative: which operand the 1/2 gate reads. Gating on `s` instead
+of `d` is `hardlight`, and it is a different function, not a different spelling. The probe
+measures how different, on the data the render actually feeds it:
+
+    Bricks         max |Δ| 0.123   5,647,706 px over 1e-3 of 10.5 M   (53.9%)
+    Chesterfield   max |Δ| 0.021      54,517 px over 1e-3 of 0.26 M   (20.8%)
+
+so this is NOT an unfalsifiable pair -- unlike softlight's members below, more than half the
+mode-9 pixels in Bricks disagree by more than a thousandth. The render is simply indecisive
+about which is better: `m9_hardlight` is 4 better / 2 worse on correlation with 13 bands
+toward 1.0 and 23 away and no sign flips. The size of the population is the whole reason.
+Walking each reference assembly's output cone and counting blend records by mode -- seven
+assemblies, of which `Bricks_and_tiles` ships two and `Roof Tiles` two:
+
+    mode      all seven cones    in a pack with a LIVE channel (Bricks 12, Chesterfield 10,
+                                 Auras 3; Roof Tiles and Sandy Stone score one degenerate
+                                 constant each and cannot arbitrate anything)
+      4            989                357   (Bricks 301, Chesterfield 56)
+      7          4,381              1,893   (Bricks 1,760, Chesterfield 102, Auras 31)
+      9             56                 21   (Bricks 20, Chesterfield 1)
+     11             81                 37   (Bricks 37, Chesterfield 0)
+
+21 records for mode 9 and 37 for mode 11, against 357 for the one this pass settled.
+
+The source offers one argument and it is not enough. `DLG-Tools__Obsidian_01.sbs` declares a
+mode-9 node whose `source` is a `uniform` of **(1, 1, 1, 1)**: under the `d` gate that is a
+brightener, `d < 1/2 ? 2d : 1`; under the `s` gate it is the constant 1 everywhere, i.e. the
+node would be `copy` of a white image and nothing upstream of it would survive. The node has
+a mask on its `opacity` connector, though, so under the `s` gate it becomes "paint white
+through a mask" -- redundant with mode 0 rather than absurd, and an author choosing 9 where 0
+would do is a weak inference, not a measurement. Recorded as a lead.
+
+WHAT WOULD SETTLE MODE 9. A reference pack that exercises it: 21 records in the packs whose
+channels are live is not enough, and they are all deep in a chain. The cheap version is
+a permitted source with a mode-9 blend whose `destination` is a uniform 0 or 1 -- there the
+two readings differ by a whole image rather than by 0.12 -- and this corpus has uniforms on
+the source side only.
+
+### Mode 11: the members are not merely undecided, they are indistinguishable, and that is measurable
+
+`80f558f` reported that the current formula, W3C's and Pegtop's "agree to four decimals on
+22-23 of 27 channels, with the largest disagreement anywhere being 0.0026", from the outputs.
+The probe says the same thing at the source of it, over every one of the 17.4 M mode-11
+pixels the Bricks render composites:
+
+    vs W3C            max |Δ| 0.000455         0 px over 1e-3 of 17,432,576
+    vs Pegtop         max |Δ| 0.010155 2,569,448 px over 1e-3
+    vs illusions.hu   max |Δ| 0.017901 2,789,788 px over 1e-3
+
+**W3C is unfalsifiable on this corpus and now provably so**: not one pixel of the seventeen
+million differs by a thousandth, so no reference channel can separate it from the current
+formula no matter how the score is taken. Pegtop and illusions.hu are marginal rather than
+unfalsifiable -- 15% of pixels differ by more than 1e-3, and up to 0.018 -- which is what a
+sweep can in principle see and does not (see the table below).
+
+WHAT WOULD SETTLE MODE 11. Only a specimen that drives a mode-11 blend hard: the three
+members differ most where `d` is near 0 and `s` near 1, and the 37 mode-11 records in a cone
+with a live channel sit behind opacities that keep them in the flat part. A permitted source
+implementing soft light in a pixel processor -- the shape `hblend` provides for `addsub` --
+would settle it outright, and there is none: the corpus's `sqrt` nodes are all distance
+fields and contour lines, and the only 0.5-gated `ifelse`s over two operands are `ie_curve`'s
+parameter ramps.
+
+### The source search, stated so it is not repeated
+
+Over the 96 permitted sources, 1,931 function graphs (`dynamicValue` blocks) were parsed
+into DAGs and searched three ways for an explicit blend arithmetic:
+
+* the `x +/- 2*y +/- 1` shape -- 11 hits, 10 in `ie_curve`'s sample-count arithmetic and 1
+  in `hblend`'s `haddsub`;
+* graphs with two or more `samplecol`/`samplelum` calls -- 106, all `ie_curve`'s curve
+  sampler and two tiling helpers; **this shape does NOT find `hblend`**, whose two operands
+  arrive as two CHANNELS of one merged image, and that is the search's own lesson;
+* graphs with one sample and two or more `swizzle1` components of it -- 6, of which 5 are
+  `hblend`'s and the sixth is `triDraw`'s barycentric setup.
+
+Plus every `dropdownlist` widget and every `<graph>` identifier, label and description,
+matched against the twelve names. Re-counting the widgets while there: **387** in the 96
+permitted sources, every one carrying a `parameters` option and every one with an ODD token
+count -- the property `80f558f`'s parse check rests on, which still holds on all of them. That
+pass counted 375; the load-bearing check is unaffected but the number has drifted and this one
+is what an ElementTree walk of `defaultWidget` reports today.
+
+`haddsub` / "H AddSub" is the only implementation of a blend mode in the permitted corpus. There is no `overlay`, no `softlight`, no `switch` and no `divide`.
+
+### Provenance
+
+Every source-side measurement here is over `provenance.audit()`'s permitted list, the
+predicate CALLED and never retyped. The 42 excluded sources were not opened. The four
+`FLAGGED_AUTHORS` files were opened for exactly one count -- whether the mode-7 population
+changes between the 96 and the 100 -- and it does not; nothing else in this section reads
+them. The two Allegorithmic-authored `.sbsar` manifests that enumerate a blend vocabulary
+were identified again while searching for descriptions and refused again; they are named in
+`80f558f` and are not used here for any purpose, including the two questions they would
+plainly answer.
+
+### The render sweep, with its positive control and its pack-by-pack attribution
+
+`/tmp/ma/sweep.py`. `refcompare`'s pairing, `render2`, `$outputsize` implied, `max_dim` 256,
+27 channels of which 25 are live (`Stylized_Wooden_Roof_Tiles` and `Sandy_Stone_Path` score
+one degenerate constant each). One variant at a time, patched into **every module object
+whose file is `render2/ops.py`** -- `sys.modules` holds `ops` and `render2.ops` separately
+and `filters.py` imports the bare one, which is what made `80f558f`'s first sweep measure
+nothing.
+
+THE POSITIVE CONTROL PRINTS FIRST AND THE RUN IS VOID WITHOUT IT. Mode 0 replaced by "keep
+`dst`" moves **22 of 27 channels** (21 worse, 1 the anti-correlated one), takes `Chesterfield`
+`metallic` from +0.9999 to unrenderable and `basecolor` ch1 from +0.9656 to −0.3389.
+
+    variant                  corr better/worse/same/dead   bands toward/away   sign flips
+    CONTROL m0_keep_dst           1 / 21 / 5 / 0                42 / 84             2
+    m4_d_plus_s_minus_half        2 /  5 / 20 / 0               23 / 19             2
+    m4_swap_2d_plus_s_1           1 /  6 / 20 / 0               20 / 22             1
+    m4_plain_add                  0 /  4 / 20 / 3                7 / 17             3
+    m4_d_minus_2s_plus_1          6 /  7 / 14 / 0               48 / 30             2
+    m9_hardlight                  4 /  2 / 21 / 0               13 / 23             0
+    m9_softlight_w3c              4 /  2 / 21 / 0               13 / 23             0
+    m9_multiply                   1 /  5 / 21 / 0               13 / 23             0
+    m11_w3c                       2 /  0 / 25 / 0               10 /  8             0
+    m11_pegtop                    0 /  3 / 24 / 0                6 / 12             0
+    m11_illusions_hu              0 /  3 / 24 / 0               12 /  6             0
+    m7_lerp                       9 /  0 / 18 / 0               29 / 25             0
+    ALL_swap_ds                   see below
+
+**Mode 4, and the most attractive number in this sweep is produced by a formula the source
+contradicts.** All four alternatives make `Bricks_and_tiles` basecolor worse -- ch0/1/2 by
+−0.07/−0.09/−0.08 under the operand swap, −0.18 each under `d + s − 1/2`, −0.30/−0.30/−0.27
+under plain add -- and every one of the four IMPROVES `Chesterfield` basecolor ch2:
+
+    baseline `d + 2s − 1`   −0.4262
+    s + 2d − 1              −0.2826   (+0.14)
+    d − 2s + 1              +0.4061   (+0.83)
+    d + s − 1/2             +0.6708   (+1.10)   <- a sign flip, on a floored channel
+    d + s                   channel does not render
+
+`REFERENCE_FLOOR_RENDER2` watches that channel at −0.4262 and README calls its
+anti-correlation the last open defect in `Chesterfield`'s colour chain. A channel that
+improves under **every** alternative is not choosing between them: it is
+`80f558f`'s `m6_max` in a new place, and the mechanism is the same -- `d + k(2s − 1)` for
+`k < 1` is a GAIN change on the addsub term, and an anti-correlated channel improves under
+anything that shrinks what is driving it the wrong way. The gain sweep below is that
+statement measured rather than asserted.
+
+Read as a two-sided test the verdict is unambiguous anyway: `d + s − 1/2` costs five
+channels including `Bricks` basecolor's three, and the bar is that no reference channel may
+get worse.
+
+**Mode 9 is a real fork the packs cannot resolve.** All three mode-9 variants touch exactly
+six channels -- `Bricks` basecolor 0/1/2 and `Chesterfield` basecolor 0/1/2 -- and no other.
+Every one of them improves the three `Bricks` channels, which sit at +0.04, +0.27 and +0.27,
+i.e. within noise of uncorrelated, and worsens `Chesterfield` basecolor ch0, which sits at
++0.86. `m9_hardlight` reads +0.0233/+0.0214/+0.0121 against −0.0183/+0.0005/−0.0045; the same
+row for `m9_softlight_w3c` -- a formula from an entirely different family -- is
++0.0027/+0.0146/+0.0114 against −0.0026/+0.0008/−0.0147. When a mode's own family and a
+foreign family score the same way on the same six channels, the instrument is not measuring
+the mode.
+
+**Mode 11's members are inside the noise, as the pixel bound says they must be.**
+`m11_w3c` moves two channels by +0.0002 and +0.0003 and nothing else; `m11_pegtop` and
+`m11_illusions_hu` move three each by at most 0.003. None flips a sign, none is worse than
+the fourth decimal. Compare the control's 22 channels and −1.30.
+
+**Mode 7's lerp reproduces `80f558f` exactly -- 9 Bricks channels, max +0.0143 on `height`,
+`Chesterfield` untouched -- and there is now a reason to refuse it that does not depend on
+the size of the gain.** `blend`'s mix path is `dst·(1−op) + f(dst, src)·op`; with `f = src`
+that is `dst·(1−op) + src·op`, which is EXACTLY what mode 0 `copy` computes, clamp included
+(both operands are in [0, 1], so the clamp is a no-op). Reading `switch` as a lerp would make
+modes 0 and 7 the same operation, and the enumeration is closed at twelve DISTINCT entries --
+the identical argument that refuted `m6_max`, where 6 = max would have duplicated 5. So the
+lerp is refused structurally, and what stays open is the THRESHOLD's value and nothing else.
+
+**`ALL_swap_ds` is re-run as a second known-wrong control and still is one.** Eleven mixes
+with their operands exchanged -- mode 7 is a selection and `blend` applies it by name, so it
+is left alone and this control covers the other eleven. It kills **18 of 27** channels, takes
+`Chesterfield` `metallic` to unrenderable and moves nothing in the right direction: 0 better,
+7 worse. `Auras` basecolor, the only pack that survives it, goes
++0.9277/+0.7497/+0.9398 -> +0.9096/+0.7412/+0.9214.
+
+### The threshold sweep: both ends of the family beat the middle, so the family is not the question
+
+The same diagnostic applied to `switch`. `blend` applies mode 7 by name, so the threshold
+cannot go in through `BLEND_MODES`; it goes in one level up, at the `blend` NAME inside every
+module object whose file is `render2/filters.py`, which is the call site the renderer uses.
+Own positive control, through that same call site (mode 0 -> keep dst, 1/21/5/0):
+
+    threshold `op >= t`      corr better/worse/same/dead   bands toward/away   largest gain
+    t -> 0   (0.001)              8 / 1 / 18 / 0               31 / 23         +0.0092 height
+    t = 0.25                      8 / 1 / 18 / 0               30 / 24         +0.0092 height
+    t = 0.50  BASELINE                --                            --              --
+    t = 0.75                      9 / 0 / 18 / 0               30 / 24         +0.0430 height
+    t -> 1   (0.999)              9 / 0 / 18 / 0               30 / 24         +0.0430 height
+
+`t -> 0` and `t = 0.25` are also identical on every channel to four decimals, and so are
+`t = 0.75` and `t -> 1` -- so every fractional mode-7 selector a scored cone drives lands in
+[0.25, 0.75], and the sweep is really a two-point one: "give the fractional pixels `src`" or
+"give them `dst`". And the shape is the finding:
+**both ends of the family beat the middle.** Admitting more `src` improves eight channels;
+admitting almost none improves nine, by five times as much. A threshold that were merely
+mis-set would improve in one direction and hurt in the other. One that improves in BOTH is
+not being measured -- the 3.17 M discriminating pixels are telling us something is wrong with
+what those blends are fed, not with where the cut is.
+
+And `t -> 1` is the sharpest available demonstration of `80f558f`'s `m6_max` warning, because
+it is a change that is certainly wrong and passes the stated bar outright: 9 better, 0 worse,
+no sign flips, and it would make `switch` take `src` only where the selector is exactly 1 --
+on 121,995 mode-7 records corpus-wide. Every one of its nine gains is in
+`Bricks_and_tiles`, whose bands are uniformly below 1.0, and `Chesterfield` is untouched to
+four decimals at every `t` because its selectors are 0 or 1 and no threshold in the open
+interval can move them. A win in one pack, on the pack whose amplitude is short, is what this
+discriminator produces when it is not discriminating.
+
+So mode 7 keeps `op >= 1/2`. It is a convention, it is now known to be exercised, and the
+render's preference within its family is a "do less of this mode" preference of the same kind
+the mode-4 gain sweep produced -- in a different mode, in a different pack, in the same shape.
+
+### Handed over rather than edited
+
+This pass's only edit anywhere is `tools/render2/ops.py`, and it is entirely comment and
+docstring: 88 lines added, 22 removed, and the two files' ASTs with docstrings stripped are
+identical, so **0 executable lines moved**. `BLEND_MODES` and `blend` compute byte-for-byte
+what they computed at `80f558f`. Seven things were found in files this pass may not touch.
+
+1. **`Chesterfield` basecolor ch2's anti-correlation is downstream of its mode-4 blends, and
+   README attributes it to mode 7.** README says "The fault is in the nine mode-7 switch
+   blends its colour chain runs through". Measured: turning mode 4 into a no-op --
+   `d + k(2s − 1)` at `k = 0` -- takes that channel from −0.4563 to **+0.7750**, the largest
+   single movement in either sweep, while `m7_lerp` leaves the whole of `Chesterfield`
+   identical to four decimals and the probe says its mode-7 selectors are exactly 0 or 1 on
+   all 6.9 M pixels. Whatever is wrong there is in the mode-4 chain or in what feeds it, not
+   in the switches. This is a LEAD about where to look and not a proposal to change mode 4 --
+   the same channel improves under every mode-4 alternative including ones a permitted source
+   contradicts, which is exactly why it cannot be used to choose one.
+
+2. **`SPEC.md` §13.6's shuffle row says no shipped source contains a colour-arm `shuffle`
+   node. Four permitted sources contain 21 of them**, every one carrying an explicit
+   `channelred`/`channelgreen`/`channelblue`/`channelalpha` selector:
+   `SubstanceDesigner__hblend` (10), `SubstanceDesigner__color`, `SubstanceDesigner__triDraw`
+   and `AB_ScrewGenerator__AB_ScrewGeneratorPlus`. And they check out against the compiled
+   side: `hblend`'s ten colour shuffles compile to `w1` = `0x00000400` and `0x03040100`,
+   whose byte 1 and byte 2 are the declared `channelgreen = 4` and `channelblue = 4`
+   exactly, in the positions the model assigns those names. The row's "read from the values
+   alone; no source can confirm it" is out of date and its selector convention now has source
+   support. One loose end for whoever takes it: the UNSPECIFIED channels compile differently
+   in the two nodes -- `[0, 4, 0, 0]` where both inputs are grayscale bridges against
+   `[0, 1, 4, 3]` where input 1 is the four-channel result of the first shuffle -- so the
+   default is not a constant pass-through and depends on the input's channel count.
+   (The same count puts `grayscaleconversion` at 67 nodes in 25 files against the row's 44.)
+
+3. **`80f558f`'s mode-7 source population does not reproduce.** It records "the permitted
+   sources contain one blend node declaring mode 7 with a fractional `opacitymult` (0.93),
+   against six that omit the parameter and five that drive it from a program". Two
+   independent readings of `provenance.audit()`'s 96 permitted sources -- an ElementTree walk
+   and a regex over `<compNode>` bodies -- both find **6** mode-7 nodes in **3** files, of
+   which 5 drive `opacitymult` from a program and 1 omits it, and **no blend node anywhere in
+   the permitted sources carries an `opacitymult` within 0.02 of 0.93 under any mode**. Adding
+   the four `FLAGGED_AUTHORS` files changes nothing. The sentence should be corrected; the
+   conclusion it supported (mode 7's threshold is not settled) survives on the render
+   measurement above.
+
+4. **The `dropdownlist` count has drifted, 375 -> 387**, over the same 96 sources. Every one
+   still carries a `parameters` option and every one still has an odd token count, so the
+   parse check `80f558f` rests on is unaffected.
+
+5. **`REFERENCE_FLOOR_RENDER2`'s Chesterfield entries moved under this session, and the
+   owner had already handled it.** Observed here independently, from two baselines eleven
+   minutes apart: `AO +0.8715 -> +0.8684` (std 0.0139 -> 0.1062), `basecolor
+   +0.8563/+0.9656/−0.4262 -> +0.8909/+0.9274/−0.4563`, caused by `offset-size`'s
+   `engine.py`. That agent's own `test_filters.py` diff lowers the `basecolor` ch1 floor
+   0.94 -> 0.92 with the argument written out, leaves ch0's alone though it improved, and
+   marks ch2 as a margin warning at 0.0037 of room. Nothing was edited here and no floor
+   was lowered here. The one thing this pass adds to their ch2 note: that channel is
+   driven by the mode-4 chain -- turning mode 4 off takes it to +0.7750 -- so if it does
+   fail, the place to look is what feeds those blends, and NOT mode 4's formula, which a
+   permitted source states.
+
+6. **The FX-Map namespace has its own `AddSub` and no arithmetic anywhere.** `ie_curve` and
+   `ie_pcloud` name FX `blendingmode` 0 as `AddSub` / `Add/Sub` and 1 as `Max` -- a DIFFERENT
+   enumeration from filter 1's, on nodes that carry a `patterntype`, and `80f558f` is
+   explicit that a sweep which does not separate them will pool them. `tools/fxrender.py`
+   implements no blend mode at all for those nodes. If anyone gives that table an arithmetic,
+   `hblend`'s `bg + 2*fg - 1` is the candidate to test first and the two tables still must not
+   be assumed equal.
+
+7. **`archive/tools/test_filters.py`'s `test_blendingmode...` docstring is still stale** in
+   the way `80f558f` handed over: it says modes 0, 2, 3 and 9 are pinned and the re-run pins
+   0, 1, 2, 3, 4, 5, 6, 9 and 11.
+
+### The gain sweep: mode 4 read as `d + k(2s − 1)`, and `k = 1` is where the render stops
+
+`d + s − 1/2` is not a different operation from `d + 2s − 1`; it is the same operation at half
+the gain, `k = 1/2` in `d + k(2s − 1)`. So the way to find out whether the render is choosing
+a FORMULA or merely a LEVEL is to sweep `k` and look for monotonicity. Six values, own
+positive control (mode 0 -> keep dst, 22 of 27 channels), taken after `offset-size`'s
+`engine.py` landed so the baseline differs from the table above -- `Chesterfield` AO
++0.8684, basecolor +0.8909/+0.9274/−0.4563:
+
+    k       Bricks basecolor 0/1/2        Chesterfield bc 0 / bc 1 / bc 2 / roughness
+    0.00   −0.28  −0.28  −0.26           −0.24  +0.03  **+1.23**  −0.015
+    0.25   −0.25  −0.25  −0.23           −0.22  +0.03  **+1.19**  −0.016
+    0.50   −0.18  −0.18  −0.17           −0.18  +0.03  **+1.05**  −0.014
+    1.00    baseline (the table's formula, and the source's)
+    1.50   +0.14  +0.10  +0.10           −0.42  −0.12  +0.16      −0.033
+    2.00   +0.17  +0.05  +0.04           −0.57  −0.13  +0.23      −0.061
+
+Two things fall out and they point opposite ways. `Bricks` basecolor -- three channels sitting
+at +0.04, +0.27, +0.27, i.e. within noise of uncorrelated -- rises monotonically with `k` and
+peaks past 1.5. `Chesterfield` basecolor ch0 and ch1 -- +0.89 and +0.93, two of the strongest
+numbers in the table -- fall monotonically with `k`, by 0.57 and 0.13 at `k = 2`. And ch2, the
+anti-correlated one, improves at EVERY `k` on both sides of 1, most at `k = 0` where mode 4
+does nothing at all: it is worst exactly where the source says the formula is, and it does not
+prefer any direction.
+
+So `k = 1` is the only value tried at which no channel gets worse, which is what the two-sided
+bar asks; every other `k` costs at least three, and which three depends on which pack you look
+at. A channel whose best value is "turn the mode off" is not evidence about the mode's gain,
+and two packs whose optima are on opposite sides of `k = 1` are not evidence either. The
+source is what decides this, and the render's failure to decide it is now a shape rather than
+a shrug.
+
+### The tree moved under this pass, and the sweep was re-run to say the conclusions did not
+
+`offset-size`'s `engine.py` landed at 15:10, between the variant sweep's baseline (taken
+15:07, in a process that had already imported the old module and so is internally consistent
+throughout) and the gain sweep (15:20). The same baseline is not the same afterwards:
+
+    Chesterfield AO         +0.8715 std 0.0139  ->  +0.8684 std 0.1062
+    Chesterfield basecolor  +0.8563 / +0.9656 / −0.4262  ->  +0.8909 / +0.9274 / −0.4563
+
+So the four decision-relevant variants were re-run on the new tree with a fresh baseline and
+its own control. Every summary column reproduces:
+
+    variant                  old tree                      new tree
+    CONTROL m0_keep_dst      1 / 21 / 5 / 0   42/84         1 / 21 / 5 / 0   40/86
+    m4_d_plus_s_minus_half   2 /  5 / 20 / 0  23/19         2 /  5 / 20 / 0  24/18
+    m9_hardlight             4 /  2 / 21 / 0  13/23         4 /  2 / 21 / 0  13/23
+    m11_w3c                  2 /  0 / 25 / 0  10/ 8         2 /  0 / 25 / 0  10/ 8
+    m7_lerp                  9 /  0 / 18 / 0  29/25         9 /  0 / 18 / 0  29/25
+
+None of this pass's conclusions depends on which of the two trees it is taken on, which is
+the only thing that had to be checked.
+
+### Guards and harness
+
+    archive/tools/provenance.py           142 paired / 42 excluded / 100 permitted, equal
+                                          to what the documents state. The predicate was
+                                          CALLED for every source-side measurement here;
+                                          the 96-file population is `audit()`'s `permitted`
+    archive/tools/walk_health.py          903,611 / 903,616, 0 longer, 0 shorter, 5 silent
+    archive/tools/walk_partition.py       8 FX violations of 48,688 attributions (0.02%)
+    archive/tools/bit_census.py --check   edges     1,302,817 / 1,302,817
+                                          state-2     198,486 /   198,486
+                                          w1-presence vs decompose: AGREE on every record
+    test_filters.py + test_tables.py      25 passed (14:29)
+    ./t                                   19 passed (43.8s)
+    test_fx.py + test_bitmap.py           23 passed (3:16)
+    render2 trio                          27 passed (18.2s)
+
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json`
+are byte-identical (`git diff --stat` over those four paths is empty).
+
+Two-sided test, both halves run rather than assumed:
+
+    half 1  Stadsspel__Lines record 0   10 patterns, patternsize (1.41421354, 0.03555065),
+                                        patternrotation 0.12500012, lit fraction 0.5078,
+                                        10 bands on the centre scanline
+    half 2  render2 / implied / max_dim 256 -- `test_filters.py` asserts both floor tables
+                                        and the suite passes, so all 25 `REFERENCE_FLOOR_
+                                        RENDER2` entries hold as they stand in the tree at
+                                        the time of the run (15:22, against `offset-size`'s
+                                        15:21 revision of that table). Read directly from
+                                        this pass's own baseline at the same configuration:
+                                        Chesterfield metallic +0.9999, AO +0.8684,
+                                        basecolor 2 −0.4563; Bricks AO +0.8866, roughness
+                                        +0.8047; Auras basecolor +0.9277 / +0.7497 / +0.9398
+
+No floor was edited and none was lowered. The Chesterfield readings this pass observed
+MOVING are `offset-size`'s, recorded under "handed over" above; the suite passed against
+whatever that agent had committed to `test_filters.py` at 15:21.
+
+### The instruments, so they can be rebuilt
+
+Nothing in `tools/` or `archive/` was edited except `ops.py`'s comments; every measurement
+above is a scratch script under `/tmp/ma/`, and each is small enough to restate:
+
+* `fngraph.py` -- parses a `.sbs`'s `<dynamicValue>` blocks into DAGs and prints them as SSA.
+  The one trap: expanding a shared DAG into a nested expression is exponential, and the first
+  version hung on `ie_curve`. Print a topological listing, not a tree.
+* `operand_order.py` / `operand_order_exact.py` -- the file-wide and node-exact
+  `destination`-slot tests, including the random-sibling chance control.
+* `hblend_check.py` -- transpiles `hblend.sbsasm` records 7/33/59 and compares them with
+  `ops.blend` over a random field, with the wrong-mode and exchanged-operand controls.
+* `sweep.py` -- the variant sweep. Patches every module object whose file is
+  `render2/ops.py` and refuses to print without the mode-0 control.
+* `probe.py` -- wraps `blend` at `filters.py`'s call site and reports, per mode, what the
+  renderer actually passes it and how far each published alternative would move it.
+* `thresh.py` -- the same for `switch`'s threshold, which `blend` applies by name and which
+  therefore has to be patched one level up.
+
+One of them fell into this pass's own subject matter and is worth recording: `thresh.py` did
+`sys.path.insert(0, '/tmp/ma')` and then `sys.path.insert(0, archive/tools)` -- so
+`archive/tools/sweep.py`, which exists and does something else entirely, shadowed the module
+being imported and the run died with `module 'sweep' has no attribute 'score'`. It failed
+loudly, which is the only reason it is a footnote rather than a retraction; the same collision
+one directory down is what made `80f558f`'s first sweep measure nothing while reporting
+success.
