@@ -11,6 +11,8 @@ them.
     python3 archive/tools/refcompare.py Chesterfield   # substring-matched to one pack
     python3 archive/tools/refcompare.py Chesterfield --renderer render2 \
             --outputsize implied --dim 512
+    python3 archive/tools/refcompare.py Chesterfield --renderer render2 \
+            --outputsize implied --dim 2048 --bands       # full-res structure + spectrum
 
 THE BARE INVOCATION IS A GUARD'S CONFIGURATION AND NOT THE RECOMMENDED READING. With no
 options this renders `archive/tools/render.py` at the `$outputsize` the FILE declares and
@@ -279,6 +281,97 @@ def resample(x, n=SIZE):
     return np.stack(chans, axis=-1)
 
 
+#: The low-pass grid `structure` reduces to. FIXED, so that "low frequency" means the same
+#: band whatever grid the pair is compared on: a fixed 8x8 block would be 1/64 of the canvas
+#: at 512 and 1/256 of it at 2048, and the number would then move with the grid rather than
+#: with the render.
+LOW_GRID = 64
+
+
+def structure(a, low_grid=LOW_GRID):
+    """(low-frequency field sd, high-frequency edge sd) of ONE channel, at ITS OWN grid.
+
+    THE TWO QUANTITIES OPPOSE, WHICH IS THE WHOLE POINT. Every score in this module is a
+    scalar taken after both sides are resampled to `SIZE` = 64, and a scalar cannot score a
+    pattern PROFILE: `fxrender.py`'s negative result 1 records that any falloff at all takes
+    "renders a picture" from 4.1% to 97.3% and means nothing, because a profile with falloff
+    cannot be flat by construction. A pair of quantities that must move in OPPOSITE
+    directions is not defeatable that way -- a falloff too soft fills the panel and loses the
+    seam, one too hard keeps the seam and never fills the panel, and only the right one moves
+    both toward 1 at once.
+
+      low   the sd of the image reduced to `low_grid` by block averaging -- panel-scale
+            variation, the "field" half. Ours too flat reads low < ref.
+      edge  the sd of `d/dy + d/dx` per pixel -- the seam/grain half. Ours too hard reads
+            edge > ref.
+
+    BOTH ARE GRID-DEPENDENT AND ONLY THEIR RATIO IS NOT, which is not a nicety: `edge` is a
+    PER-PIXEL difference, so a smooth image sampled twice as finely has half the gradient,
+    and comparing a 512-px render against a 2048-px export understates the export's edge
+    energy by about a factor of two. That is a property of the two rulers and not of either
+    picture. Callers must put both sides on ONE grid first -- `_structure_grid` does -- and
+    read the RATIO ours/ref, whose target is 1.0 on both halves.
+    """
+    a = np.asarray(a, dtype=np.float64)
+    h, w = a.shape[:2]
+    k = max(1, min(h, w) // low_grid)
+    lo = a[:h // k * k, :w // k * k].reshape(h // k, k, w // k, k).mean(axis=(1, 3))
+    d = np.diff(a, axis=0)[:, :-1] + np.diff(a, axis=1)[:-1, :]
+    return float(lo.std()), float(d.std())
+
+
+#: Radial band edges in CYCLES PER IMAGE -- canvas-relative, so a band means the same
+#: feature size whatever grid the pair is compared on.
+BANDS = (1, 7, 10, 14, 20, 32, 128)
+
+
+def band_power(a, edges=BANDS):
+    """Power per radial band, in VARIANCE units, so two images are directly comparable.
+
+    WHY A SPECTRUM AND NOT THE TWO SUMMARY NUMBERS ABOVE. `structure` returns one
+    low-frequency and one high-frequency scalar, and a pair of scalars cannot tell a SHAPE
+    error from an AMPLITUDE one. They have different signatures and the bands show it:
+
+      a wrong pattern profile REDISTRIBUTES energy between bands -- a hard edge pushes it
+        up, a soft one pulls it down -- so the ratio ours/ref is TILTED across the octaves
+      a wrong gain scales every band together, so the ratio is FLAT and equal to the gain
+
+    Read the ratios across bands before concluding anything from either summary scalar.
+
+    Hanning-windowed, because the maps tile and a rectangular window puts the wrap
+    discontinuity into every band. Parseval-scaled by `1 / (h*w)**2`, so the bands sum to
+    the variance of the windowed, mean-removed image and a band ratio is a variance ratio.
+    """
+    a = np.asarray(a, dtype=np.float64)
+    h, w = a.shape[:2]
+    x = (a - a.mean()) * (np.hanning(h)[:, None] * np.hanning(w)[None, :])
+    f = np.fft.rfft2(x)
+    p = (f.real ** 2 + f.imag ** 2) / float(h * w) ** 2
+    # `rfft2` keeps half the plane; every column but DC and Nyquist stands for two.
+    p[:, 1:w // 2 if w % 2 == 0 else None] *= 2.0
+    r = np.hypot((np.fft.fftfreq(h) * h)[:, None], (np.fft.rfftfreq(w) * w)[None, :])
+    out = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        out.append(float(p[(r >= lo) & (r < hi)].sum()))
+    return out, float(p[r >= 1].sum())
+
+
+def _structure_grid(ours, ref, grid=None):
+    """Both channels on one square grid -- the smaller native one unless told otherwise.
+
+    NATIVE IS LEFT NATIVE. `resample` is a uint16 round trip through PIL, and asking it for
+    the size an array already has is not free of it; a side that needs no resizing is passed
+    through so that "compared at 2048" means the export's own pixels.
+    """
+    n = grid or min(ours.shape[0], ours.shape[1], ref.shape[0], ref.shape[1])
+    out = []
+    for a in (ours, ref):
+        a = np.clip(np.asarray(a, dtype=np.float64), 0.0, 1.0)
+        out.append(a if a.shape[0] == n and a.shape[1] == n
+                   else resample(a[:, :, None], n)[:, :, 0])
+    return n, out[0], out[1]
+
+
 def _key(s):
     return re.sub(r'[^a-z]', '', (s or '').lower())
 
@@ -404,7 +497,8 @@ def _renderer(which):
     return go
 
 
-def compare_pack(pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer='render'):
+def compare_pack(pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer='render',
+                 grid=SIZE):
     """Yield (output name, channel, ours, reference) arrays for every paired output.
 
     `outputsize` is `(log2 w, log2 h)`, or the string `'implied'` for whatever this
@@ -412,6 +506,13 @@ def compare_pack(pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer='rend
     at its tag, which is the graph at the `$outputsize` the manifest declares.
 
     `renderer` is `'render'` (the default, `archive/tools/render.py`) or `'render2'`.
+
+    `grid` is the square both sides are resampled to before they are yielded; `None`
+    yields them NATIVE, which is what a full-resolution question needs. The default is
+    `SIZE` = 64 and is the guard's, so passing nothing changes nothing. A caller asking
+    for native arrays owns the comparison grid and must put both sides on ONE of them --
+    `_structure_grid` -- because half the quantities worth measuring at full resolution
+    are per-pixel and a 512-px render against a 2048-px export compares two rulers.
     THE DEFAULTS OF THIS FUNCTION ARE A GUARD'S CONFIGURATION AND NOT A RECOMMENDATION:
     they are what `test_filters.REFERENCE_FLOOR` was taken at and must keep being taken
     at. What a reader scoring a render today should pass is `renderer='render2'`,
@@ -423,7 +524,7 @@ def compare_pack(pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer='rend
     if not asms:
         return
     for _asm_path in sorted(asms):
-        for _row in _compare_one(_asm_path, refs, max_dim, outputsize, renderer):
+        for _row in _compare_one(_asm_path, refs, max_dim, outputsize, renderer, grid):
             yield _row
 
 
@@ -455,7 +556,8 @@ def _package_refs(asm_path, refs):
     return scoped if scoped else refs
 
 
-def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render'):
+def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render',
+                 grid=SIZE):
     asm = sbsasm.Assembly(asm_path)
     refs = _package_refs(asm_path, refs)
     names = manifest.output_names(asm)
@@ -563,8 +665,12 @@ def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render'):
             yield name, None, None, ('not rendered' if rec not in produced
                                      else 'no matching reference')
             continue
-        ours = resample(np.asarray(produced[rec], dtype=np.float64))
-        ref = resample(load_reference(paired[0]))
+        ours = np.asarray(produced[rec], dtype=np.float64)
+        ref = load_reference(paired[0])
+        if grid:
+            ours, ref = resample(ours, grid), resample(ref, grid)
+        elif ours.ndim == 2:
+            ours = ours[:, :, None]
         for c in range(min(ours.shape[2], ref.shape[2])):
             yield name, c, ours[:, :, c], ref[:, :, c]
 
@@ -574,6 +680,13 @@ def main(argv):
 
         python3 archive/tools/refcompare.py [pack] [--outputsize implied|declared|N]
                                             [--renderer render|render2] [--dim N]
+                                            [--structure [--bands] [--grid N]]
+
+    `--structure` adds the two-sided STRUCTURE RATIO -- see `structure()` -- computed at
+    full resolution on the smaller of the two native grids, beside the same scalar columns
+    the bare table prints. The scalars are unaffected by it: they are still taken at
+    `SIZE` = 64. Use it for a question a scalar cannot answer, the pattern profile being
+    the one it was written for.
 
     THE BARE INVOCATION IS THE GUARD'S CONFIGURATION, not the recommended one, so that
     `refcompare.py` with no arguments keeps printing the table `test_filters
@@ -599,6 +712,9 @@ def main(argv):
         osz = None
     renderer = opts.get('renderer') or 'render'
     dim = int(opts.get('dim') or RENDER_DIM)
+    want_bands = 'bands' in opts
+    want_structure = 'structure' in opts or want_bands
+    sgrid = int(opts['grid']) if opts.get('grid') else None
     packs = reference_packs(match)
     if not packs:
         print('no packages with reference maps found under %s' % PACKS)
@@ -612,10 +728,32 @@ def main(argv):
               % ('output', 'ch', 'ours mean/std', 'reference mean/std', 'MAE'))
         for name, chan, ours, ref in compare_pack(pack, refs, max_dim=dim,
                                                   outputsize=osz,
-                                                  renderer=renderer):
+                                                  renderer=renderer,
+                                                  grid=None if want_structure else SIZE):
             if chan is None:
                 print('   %-12s %s' % (name, ref))
                 continue
+            struct = ''
+            if want_structure:
+                # THE STRUCTURE RATIO AND THE SCALAR SCORES, ON ONE LINE, BECAUSE EITHER
+                # ALONE MISLEADS. A profile that fills the panel while wrecking the
+                # correlation is not a win, and neither is the reverse; this table is the
+                # only place both are visible at once. The scalars stay exactly what they
+                # were -- `resample` to SIZE, the same call the default path makes -- so a
+                # row here is comparable to a row of the table above and to the floors.
+                n, o_n, r_n = _structure_grid(ours, ref, sgrid)
+                (lo_o, ed_o), (lo_r, ed_r) = structure(o_n), structure(r_n)
+                struct = ('  |  n=%-5d low %.5f/%.5f=%5.2f  edge %.5f/%.5f=%5.2f'
+                          % (n, lo_o, lo_r, lo_o / max(lo_r, 1e-12),
+                             ed_o, ed_r, ed_o / max(ed_r, 1e-12)))
+                if want_bands:
+                    (bo, to), (br, tr) = band_power(o_n), band_power(r_n)
+                    struct += ('\n   %-16s bands %s  total %.3f'
+                               % ('', ' '.join('%d-%d %.2f' % (lo, hi, b / max(c, 1e-18))
+                                               for lo, hi, b, c
+                                               in zip(BANDS[:-1], BANDS[1:], bo, br)),
+                                  to / max(tr, 1e-18)))
+                ours, ref = resample(ours, SIZE)[:, :, 0], resample(ref, SIZE)[:, :, 0]
             # STRUCTURE AND GAIN ARE DIFFERENT FAILURES and MAE does not separate them.
             # The best affine fit of ours onto the reference, and the error that REMAINS
             # after it, says which one you have: a small residual under a slope far from 1
@@ -665,12 +803,12 @@ def main(argv):
             # today, 7 clear that bar.
             uniq = int(len(np.unique(np.round(ours.ravel(), 4))))
             print('   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f  corr=%+.4f'
-                  ' y=%.3fx%+.3f resid=%.4f uniq=%d%s'
+                  ' y=%.3fx%+.3f resid=%.4f uniq=%d%s%s'
                   % (name if chan == 0 else '', chan, ours.mean(), ours.std(),
                      ref.mean(), ref.std(), np.abs(ours - ref).mean(),
                      corr, fit[0], fit[1], resid, uniq,
                      '  DEGENERATE' if (uniq < 20 or ours.std() < 0.1 * ref.std())
-                     else ''))
+                     else '', struct))
     return 0
 
 
