@@ -1856,11 +1856,53 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | pixelprocessor | the program at the **last header slot**, evaluated per pixel; earlier slots are inherited parameters and setup |
 | fxmaps | §13.7 |
 
-Blend modes: `0 copy, 1 add, 2 subtract, 3 multiply, 4 addsub, 5 max, 6 min, 7 switch,
-8 divide, 9 overlay, 10 screen, 11 softlight`. Modes 2, 5 and 6 are corroborated
-structurally: two records taking the same pair in opposite order under mode 2, combined by
-mode 5, is `max(a−b, b−a)` — an absolute difference, which only parses if 2 is subtract and
-5 is max.
+**Blend modes.** The nibble's twelve values are `0 copy, 1 add, 2 subtract, 3 multiply,
+4 addsub, 5 max, 6 min, 7 switch, 8 divide, 9 overlay, 10 screen, 11 softlight`, and these
+are **declared names, not conventional ones**. A `.sbs` states `blendingmode` on a node as a
+bare integer, so the source's parameter VALUES can only pin the field, never name it; but
+where an author exposes the parameter as a graph input the file also carries the widget for
+it, and for an enumeration that is a `dropdownlist` whose option string is
+`default;value;label;value;label;…`. Two permitted sources expose it, over eight widgets,
+all carrying
+
+```
+0;Copy 1;Add (Linear Dodge) 2;Subtract 3;Multiply 4;Add Sub 5;Max (Lighten)
+6;Min (Darken) 7;Switch 8;Divide 9;Overlay 10;Screen 11;Soft Light
+```
+
+and in each the node's parameter is a one-node `get_integer1("<that input>")` — a literal
+pass-through, so the labelled integer *is* `blendingmode`. Read the option string's leading
+token as the widget's own default and not as the first key: all 375 dropdown widgets in the
+permitted sources have an odd token count, and the leading token equals the declared
+`<defaultValue>` in 357 of them.
+
+The support is **one collection, two files, no declared author** — a lead rather than
+convergence, and it is raised only by the surrounding `<description>` block being
+demonstrably tool-generated, appearing verbatim across eleven permitted files in two
+unrelated collections. So the item list is the filter's own metadata transcribed, which is an
+inference and is stated as one.
+
+The enumeration is **closed at 11**: over 903,616 corpus records the nibble takes 0–11 and
+never 12–15, on 310,697 blend records with no unreadable mode, so a twelve-entry vocabulary
+and the field's observed range agree on both sides. Modes 2, 5 and 6 also stand on the older
+structural argument — two records taking the same pair in opposite order under mode 2,
+combined by mode 5, is `max(a−b, b−a)`, an absolute difference that only parses if 2 is
+subtract and 5 is max.
+
+**A NAME IS NOT AN ARITHMETIC.** Seven of the twelve are fixed by their name — copy `s`,
+add `d+s`, subtract `d−s`, multiply `d·s`, max, min, screen `1−(1−d)(1−s)`. Five are not,
+and a reader should treat these as this specification's convention rather than as stated by
+the file: `addsub` = `d + 2s − 1`; `switch` selects `src` on `op ≥ ½`; `divide` = `d/s`;
+`overlay` = `2ds` below `d = ½` and `1 − 2(1−d)(1−s)` above; `softlight` = `2ds + d²(1−2s)`
+below `s = ½` and `2d(1−s) + √d(2s−1)` above. Operand order for the three asymmetric modes
+is likewise a convention: input 0 is `dst`, input 1 is `src`. The source states that a blend
+node has exactly the connectors `destination`, `source` and `opacity`, which is the shape
+§13.6's formula reads, but not which compiled edge slot each takes.
+
+A second enumerated `blend` parameter is named by the same mechanism and its slot is **not
+located**: `colorblending`, `0 Use Source Alpha, 1 Ignore Alpha, 2 Straight Alpha Blending,
+3 Premultiplied Alpha Blending`. It is recorded in FORMAT-NOTES.md rather than in §13.4's
+legend, because a name legend states where a field is and this one cannot.
 
 ### 13.7 FX-Map evaluation
 

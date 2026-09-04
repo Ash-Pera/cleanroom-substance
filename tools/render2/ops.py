@@ -263,6 +263,31 @@ def conform(arr, want):
 
 #: mode -> (name, f(dst, src)). `switch` is a selection rather than a mix and is applied
 #: by `blend` directly.
+#:
+#: THE NAMES ARE DECLARED, NOT CONVENTIONAL, AND THE ARITHMETIC IS NOT. A `.sbs` states
+#: `blendingmode` on a node as a bare integer, so a source's parameter VALUES can pin the
+#: field and can never name it. Where an author EXPOSES the parameter as a graph input the
+#: file also carries its widget, and for an enumeration that is a `dropdownlist` whose
+#: option string is `default;value;label;value;label;...`. Two permitted sources do, over
+#: eight widgets, all carrying
+#:
+#:   0;Copy 1;Add (Linear Dodge) 2;Subtract 3;Multiply 4;Add Sub 5;Max (Lighten)
+#:   6;Min (Darken) 7;Switch 8;Divide 9;Overlay 10;Screen 11;Soft Light
+#:
+#: and in each the node's own parameter is a one-node `get_integer1("<that input>")` -- a
+#: literal pass-through, so the labelled integer IS `blendingmode`. The enumeration is
+#: closed at 11: over 903,616 corpus records the nibble takes 0-11 and never 12-15, on
+#: 310,697 blend records with no unreadable mode.
+#:
+#: A NAME IS NOT AN ARITHMETIC, and five of these rows are still this file's convention:
+#: `addsub`'s `d + 2s - 1`, `switch`'s threshold, `divide`'s operand order, and the
+#: particular `overlay` and `softlight` formulae, each of which has several published
+#: forms. What IS measured is that they are in the right family -- swapping subtract's
+#: operands flips six reference channels negative and kills twelve, reading 3 as screen
+#: flips eight, reading 10 as multiply flips two, and `hardlight` in place of 11 kills a
+#: channel -- while the three published softlight formulae agree to 0.0026 on every
+#: channel and cannot be told apart at all. See FORMAT-NOTES.md, "`blendingmode`'s twelve
+#: names are declared by a permitted source".
 BLEND_MODES = {
     0:  ('copy',       lambda d, s: s),
     1:  ('add',        lambda d, s: d + s),
@@ -286,8 +311,21 @@ def blend(mode, dst, src, opacity):
     """Composite `src` over `dst` under `mode` at `opacity`, clamped to [0, 1].
 
     Opacity mixes the blended result back toward the destination, so at opacity 0 every
-    mode is a no-op -- the structure the one independently verified mode (0) was checked
-    under. `switch` takes opacity as a selector instead.
+    mode is a no-op. `switch` takes opacity as a selector instead.
+
+    `dst` IS INPUT 0 AND `src` IS INPUT 1, which matters for the three asymmetric modes and
+    is measured rather than assumed: exchanging them for every mode at once kills 17 of the
+    27 reference channels and takes `Bricks_and_tiles` emission ch0 from +0.9885 to +0.1413.
+    The source states that a blend node's connectors are exactly `destination`, `source` and
+    `opacity` -- the shape this signature reads -- but not which compiled edge slot each
+    takes, so the render is the arbiter for the ORDER and the source for the names.
+
+    `switch`'s threshold is the convention and not the file's: reading it as `> 0` or as an
+    ordinary lerp moves nine `Bricks_and_tiles` channels by at most +0.0143 and leaves
+    `Chesterfield` identical to four decimals, which is below the bar to overturn a declared
+    name. Selecting `dst` instead of `src` is refused loudly -- it takes Chesterfield
+    `basecolor` ch1 from +0.9694 to -0.7575 and `metallic`, the sharpest number in this
+    repository, to unrenderable. See `BLEND_MODES` above for what the twelve names rest on.
     """
     entry = BLEND_MODES.get(mode)
     if entry is None:

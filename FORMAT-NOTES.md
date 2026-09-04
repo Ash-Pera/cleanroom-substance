@@ -50468,3 +50468,398 @@ one side and, on the other, PNG maps the material's own author published beside 
 The exclusion predicate was RUN, not retyped: `archive/tools/provenance.py`, unchanged at
 142 / 42 / 100.
 
+
+## `blendingmode`'s twelve names are declared by a permitted source, and the table was right
+
+`f33f2bc` recorded `ops.BLEND_MODES` as "eleven unarbitrated assignments sitting under every
+render this project has ever scored", and `blend`'s docstring called mode 0 "the one
+independently verified mode". `02351cc` settled mode 2. This settles the other ten's NAMES,
+and it does it without a render, a score or a reference map: **a permitted `.sbs` states the
+whole 0-11 vocabulary as a literal string.**
+
+    0;Copy;1;Add (Linear Dodge);2;Subtract;3;Multiply;4;Add Sub;5;Max (Lighten);
+    6;Min (Darken);7;Switch;8;Divide;9;Overlay;10;Screen;11;Soft Light
+
+That is `ops.BLEND_MODES` exactly, in the order it already had. **No mode moved, and no
+executable line of the table did either** -- the only edit this pass makes anywhere is to
+`ops.py`'s comments. The value of the pass is that eleven of the twelve rows go from "the
+obvious name in the obvious order" to "the name the format's own authoring tool wrote down",
+and that what the string does NOT settle -- five of the twelve arithmetics -- is now labelled
+rather than implied.
+
+### The arbiter is a widget, not a parameter value
+
+The obvious place to look is the wrong one, and it is worth recording why. A `.sbs` states
+`blendingmode` on a blend node as **`<constantValueInt32 v="3"/>`** -- a number, the same
+number the compiled nibble holds. `test_filters.test_blendingmode_matches_the_source_that
+_declares_it` already pins that link, and it is a number-to-number identity: it can prove the
+nibble IS `blendingmode` and can never say what `3` means. Over the 96 permitted paired
+sources (100 less the four `FLAGGED_AUTHORS`, `provenance.audit()` run rather than retyped),
+826 blend nodes declare a `blendingmode` and 818 of them declare it as an integer constant.
+
+The name is in a different place. Where an author EXPOSES a filter parameter as a graph
+input, the `.sbs` carries a `<defaultWidget>` for it, and for an enumeration that widget is a
+`dropdownlist` whose `parameters` option is a semicolon string of `default;value;label;...`
+pairs. Two permitted sources expose `blendingmode` that way:
+
+    pairs2/LGMLtools__multi_blender.sbs      7 widgets (blendingmode1..7)
+    pairs2/LGMLtools__LGML_illustshop.sbs    1 widget  (blend_mode)
+
+and all 8 carry the identical twelve-entry string above.
+
+**The binding is a literal pass-through, which is what makes it a mapping rather than a
+resemblance.** The blend node's parameter is not merely influenced by the input; it IS the
+input:
+
+    <compFilter><filter v="blend"/>...<name v="blendingmode"/>
+      <paramValue><dynamicValue><rootnode .../>
+        <paramNode>...<function v="get_integer1"/>
+          <funcData><name v="get_integer1"/>
+            <constantValue><constantValueString v="blendingmode7"/></constantValue>
+
+One `paramNode`, one function, no arithmetic: the integer the dropdown labels is the integer
+`blendingmode` takes. Checked mechanically over all 96 permitted sources -- of the 826 blend
+nodes carrying the parameter, 818 are constants and **8 are exactly this shape**, all 8 in
+the two files above, all 8 resolving to a dropdown carrying the full twelve entries.
+
+### The parse was checked where nothing was at stake
+
+The `parameters` string's leading token is the widget's own default, not the first key --
+read it as a key and every mapping shifts by one, which is the single way this arbiter could
+be wrong while looking right. Two checks, neither of them about blend:
+
+* **every** one of the 375 `dropdownlist` widgets in the permitted sources has an ODD token
+  count, so the leading token cannot be half of a pair;
+* it equals the widget's own `<defaultValue><constantValueInt1>` in **357 of the 375**. The
+  18 that differ are defaults edited after the widget was written (`ie_pcloud`'s `3;Ignore`
+  against a default of 0), not a different string format.
+
+### Aggregation: this is one package, and it is a LEAD by that standard
+
+`be68569`'s bar for the manifest arbiter is distinct packages and independent authors, not a
+modal string, and against that bar this is **one collection, two files, zero declared
+authors** -- `LGMLtools`, whose `<author v="">` tags are blank and whose two `.sbsar`
+manifests declare none either. The two files are not copies of one another (0 shared `uid`s
+of 244 and 87), but they are one party. **No second permitted package exposes the parameter
+at all.** By the standard, a lead.
+
+What raises it above one author's opinion is that the string is almost certainly not authored
+at all. The same widget block carries a `<description>` -- "The &lt;b&gt;Blending Mode&lt;/b&gt;
+parameter defines the blending operation used to combine the foreground and background
+images" -- and that KIND of string is demonstrably tool-generated: "The &lt;b&gt;Color
+Output&lt;/b&gt; parameter creates a uniform color output image" appears **verbatim in 11
+permitted files across two unrelated collections** (`DLG-Tools`, 10 files, author
+JohnLogostini; and `SubstanceDesignerPractice`), and the blend one contains the ungrammatical
+"defines the how alpha channels", which two authors do not type independently. So when a
+parameter is exposed the tool copies the FILTER's own metadata -- label, description and item
+list -- into the file. The dropdown is that metadata, transcribed into a file this project
+may read. That is an inference about provenance of the string, not a proof, and it is stated
+as one.
+
+### What the aggregation DOES cover, per mode
+
+Two other populations are countable and both are large, and neither of them names anything --
+they establish that the numbering is in live use and that the compiled nibble carries it:
+
+| mode | name (declared) | compiled records | specimens | permitted .sbs nodes | files | collections | named authors |
+|---|---|---|---|---|---|---|---|
+| 0 | Copy | 22,665 | 360 | 413 | 52 | 18 | 14 |
+| 1 | Add (Linear Dodge) | 27,849 | 335 | 185 | 31 | 15 | 11 |
+| 2 | Subtract | 42,161 | 342 | 122 | 30 | 15 | 12 |
+| 3 | Multiply | 8,732 | 333 | 204 | 33 | 13 | 11 |
+| 4 | Add Sub | 35,923 | 323 | 31 | 13 | 6 | 5 |
+| 5 | Max (Lighten) | 36,573 | 316 | 85 | 29 | 12 | 10 |
+| 6 | Min (Darken) | 13,042 | 266 | 54 | 19 | 11 | 10 |
+| 7 | Switch | 121,995 | 352 | 12 | 6 | 4 | 4 |
+| 8 | Divide | 787 | 138 | 8 | 6 | 5 | 2 |
+| 9 | Overlay | 423 | 135 | 78 | 24 | 7 | 5 |
+| 10 | Screen | 507 | 97 | 7 | 6 | 2 | 0 |
+| 11 | Soft Light | 40 | 20 | 32 | 15 | 7 | 4 |
+
+310,697 blend records over the 437-specimen corpus, **0 with an unreadable mode**, and --
+the closure that matters -- **no record anywhere holds a value above 11.** The field is a
+nibble and could hold 0-15; 12, 13, 14 and 15 occur zero times in 903,616 records. The
+declared enumeration has exactly twelve entries. A vocabulary that is complete and a field
+whose observed range is exactly that vocabulary is a two-sided fit, and it is independent of
+the dropdown.
+
+The third population is the value-pinned one, and `test_filters`'s own docstring is now
+stale: it says "Modes 0, 2, 3 and 9 are pinned here; 1, 4, 5, 6, 7, 8, 10 and 11 are not".
+Re-run today over the same pairing rule it is **0 (as the absent-parameter default), 1, 2, 3,
+4, 5, 6, 9 and 11** -- 55 agreements, 0 disagreements, 6 default-zeros, 13 sources:
+
+    mode 0   6 default pairings   4 files   ChesterfieldSofa, DLG-Tools x2, SDPractice
+    mode 1  12 agreements         6 files   +Igor Elovikov
+    mode 2  12 agreements         7 files   +minime453 (SandyStonePath)
+    mode 3  18 agreements         7 files   +free-3dtextures.com, Peter Donald
+    mode 4   2 agreements         2 files   JohnLogostini, free-3dtextures.com
+    mode 5   2 agreements         2 files
+    mode 6   4 agreements         3 files
+    mode 9   3 agreements         3 files
+    mode 11  2 agreements         2 files
+    modes 7, 8, 10 -- no source declares them on a node with a distinctive opacity
+
+Only modes 7, 8 and 10 remain unpinned on the number channel. All three are named by the
+dropdown.
+
+### Two distinct `blendingmode` vocabularies, and mistaking them is easy
+
+`ie_curve.sbs` and `ie_pcloud.sbs` (Igor Elovikov) also expose a `blendingmode` through a
+dropdown, and it says something else entirely:
+
+    ie_curve   0;AddSub;1;Max      and   0;AddSub;1;Max;2;Alpha Blend
+    ie_pcloud  0;Add/Sub;1;Max
+
+These are **not** filter 1. Every node they bind to carries a `patterntype` beside the
+`blendingmode` -- it is an FX-Map paramset, the namespace `sbsasm.py` line 1622 already
+describes ("`patterntype` decides the pattern's SHAPE and `blendingmode` decides how it
+combines"). Over the permitted sources the split is exact: 826 blend-filter nodes and 60
+non-blend nodes with a `blendingmode`, and **all 60 declare a `patterntype`**. Their constants
+are only 1 (40 nodes) and 2 (10), which is what `archive/tools/fxjoin.py` reported and could
+not name -- **FX `blendingmode` 1 is `Max`**, from a permitted source, and 2 is `Alpha Blend`
+in the one file that enumerates three. That is a separate table from this one and
+`fxrender.py` is where it belongs; recorded here because the two fields share a name and a
+sweep that does not separate them will pool them.
+
+### And a refusal that had to be made explicitly
+
+Two compiled `.sbsar` manifests in the corpus DO enumerate a blend vocabulary in a
+`guicombobox` -- `Bitmap2Material_3`, in two packages, giving `1;Copy 2;Add 3;Subtract
+4;Multiply 5;Add Sub 6;Max 7;Min ...` up to 18 entries. It is one-based, it contains modes
+this nibble cannot hold, it is an author-implemented super-set rather than the filter's own
+enum -- and it is authored by **Allegorithmic**. It is not used, and the seven-entry prefix
+agreeing with a one-based shift of the table above is noted only so that a later reader does
+not "discover" it and think it added something.
+
+### What the source settles and what it does not
+
+The dropdown settles a NAME per number. It does not settle ARITHMETIC, and for six of the
+twelve those are different questions:
+
+* **Determined by the name**: 0 copy (`s`), 1 add (`d+s`), 2 subtract (`d-s`), 3 multiply
+  (`d*s`), 5 max, 6 min, 10 screen (`1-(1-d)(1-s)`).
+* **NOT determined by the name**, and left as they were: 4 `Add Sub`, whose `d + 2s - 1` is a
+  convention; 7 `Switch`, where the name gives neither the threshold nor which operand wins;
+  8 `Divide`, where it gives no operand order; 9 `Overlay` and 11 `Soft Light`, which have
+  several published formulae each.
+* Nor does it settle **which edge is `d`**. `subtract`, `divide` and `overlay` are all
+  asymmetric, so operand order is a live question the name cannot answer -- though the
+  source does state the connector vocabulary a blend node has, `destination`, `source` and
+  `opacity`, which is exactly the three-input shape `f_blend` reads.
+
+### The render arbiter, and the first attempt at it that measured nothing
+
+RECORDED BECAUSE IT WAS MINE AND IT REPORTED SUCCESS. The fallback arbiter is
+`refcompare --renderer render2 --outputsize implied --dim 512 --bands`, and a sweep needs to
+swap one mode's arithmetic without editing a file another agent owns, so the obvious move is
+to patch the table in memory. The first sweep did:
+
+    import render2.ops as ops
+    ops.BLEND_MODES[4] = ('m4_variant', lambda d, s: d + s - 0.5)
+
+Twenty variants came back **bit-identical to the baseline on all 27 channels** -- including
+`swap_ds`, which exchanges `dst` and `src` on *every* blend in the graph and cannot possibly
+leave a render unchanged. That impossibility is the only reason it was caught; a subtler
+variant would have been written up as "refuted, no movement".
+
+`tools/render2/filters.py` says `from ops import blend`, a BARE import, and `render2` is also
+a package. So `sys.modules` holds two distinct module objects for each of `ops` and
+`filters` -- different `id()`, same file -- and the renderer runs the bare pair while the
+patch landed on `render2.*`. It is `c0d7774`'s shape exactly, one layer down: an intervention
+that silently applies to nothing and whose output looks like a clean negative result. The
+same trap is live for any agent probing `render2` from outside it.
+
+The repair is not just to patch `sys.modules['ops']`; it is that **the sweep now carries a
+positive control and refuses to print without it.** Mode 0 is `copy`; replacing it with
+"keep `dst`" must wreck something. It moves **21 of 27 channels**, and until that line prints
+nothing else the script says is worth reading.
+
+### What the render arbiter says once it is wired up
+
+`refcompare --renderer render2 --outputsize implied --dim 512`, 27 channels, one variant at a
+time, 19 variants plus the control. Counting a channel as moved at 1e-4 of correlation, and
+"toward 1.0" on the band ratio as `|log(band)|` decreasing:
+
+    variant           corr better/worse/same/dead   bands toward/away   sign flips
+    m2_s_minus_d          1 / 9 / 3 / 12                6 / 4               6
+    ALL_swap_ds           0 / 8 / 0 / 17                2 / 6               0
+    m3_screen             1 /17 / 7 /  0                3 /15               8
+    m10_multiply          2 /10 /13 /  0                1 /11               2
+    m1_average            2 /15 / 2 /  6                8 /10               3
+    m4_plain_add          0 / 4 /18 /  3                0 / 4               3
+    m4_d_minus_s_h        1 / 6 /18 /  0                3 / 4               2
+    m4_d_plus_s_h         2 / 5 /18 /  0                3 / 4               1
+    m11_hardlight         0 / 3 /21 /  1                3 / 0               1
+    m9_multiply           1 / 5 /19 /  0                0 / 6               0
+    m9_hardlight          4 / 2 /19 /  0                0 / 6               0
+    m8_s_over_d           0 / 0 /16 /  9                0 / 0               0
+    m5_min                8 / 5 /12 /  0                4 / 9               0
+    m11_pegtop            0 / 3 /22 /  0                0 / 3               0
+    m11_w3c               2 / 0 /23 /  0                2 / 1               0
+    m6_max                6 / 3 /16 /  0                8 / 1               0
+    m7_switch_gt0         8 / 1 /16 /  0                6 / 3               0
+    m7_switch_lerp        9 / 0 /16 /  0                8 / 1               0
+    m7_switch_swap        8 / 9 / 7 /  1               10 / 8               1
+    CONTROL m0_keep_dst   1 /20 / 3 /  1                8 /13               1
+
+**Refuted outright, by sign and by death.** `m2_s_minus_d` -- swapping subtract's operands --
+takes six channels negative, kills twelve, and drags Bricks `normal` from +0.7775 to −0.1194.
+`ALL_swap_ds`, the same swap applied to every mode at once, kills seventeen of twenty-seven
+and takes Bricks `emission` ch0 from +0.9885 to +0.1413. So **`02351cc` stands and is
+corroborated, not contradicted**: mode 2 is `d − s` with `d` = input 0, and the operand order
+is right for the whole table. `m3_screen` (mode 3 as screen) flips eight signs and takes
+Bricks AO to −0.7569. `m10_multiply` flips two and moves eleven bands away from 1. `m1_average`
+kills six. Every one of these is a mode the source already names, and every one fails here
+too: two independent instruments, same answer.
+
+**Refuted by a mechanism the correlation column hides.** `m5_min` -- mode 5 read as `min`
+instead of `max` -- IMPROVES eight correlations and worsens five, and would read as a
+half-win on correlation alone. The band column says what it is doing: Bricks AO's amplitude
+goes 0.226 → **0.001**, its roughness 1.613 → **0.003**, Chesterfield's AO 0.026 → **0.000**.
+Three annihilations, two of them by three orders of magnitude, while the correlations go up.
+That is `fxrender.py`'s warned shape with the roles reversed from AO's own case, and the
+`--bands` column is the only thing in the toolchain that catches it.
+
+**`m8_s_over_d` cannot be scored and says something anyway.** Swapping divide's operands
+leaves sixteen channels bit-identical and takes nine to a hard failure -- Bricks stops
+rendering AO, basecolor, height, normal and roughness entirely. Only 11 mode-8 records sit in
+any scored cone; the reading `d/s` is supported by the fact that the other order does not
+produce an image, and by nothing else.
+
+**Mode 11 is in the softlight FAMILY and its member is not decidable here.** The three
+published softlight formulae -- the current one, W3C's, and Pegtop's -- agree with the
+baseline to four decimals on 22-23 of 27 channels, with the largest disagreement anywhere
+being 0.0026. `m11_hardlight`, which is a different operation, moves three channels and kills
+one. So the sweep can tell softlight from not-softlight and cannot tell one softlight from
+another. 81 mode-11 records in the scored cones is why.
+
+**Two variants pass the stated discriminator and neither is adopted, which is the result.**
+`m6_max` (6 better, 3 worse, 8 bands toward 1.0, no sign flips) and `m7_switch_lerp` (9
+better, 0 worse, 8 bands toward 1.0, no sign flips) both do exactly what f33f2bc asked a
+right mode to do: move amplitude toward 1.0 without flipping correlation. `m6_max` is
+**certainly wrong** -- the source declares mode 6 `Min (Darken)` and mode 5 `Max (Lighten)`,
+and SPEC §13.6's `max(a−b, b−a)` argument pins 5 to max, so 6 = max would make two values of
+the enumeration the same operation. A known-wrong change passing the discriminator is what
+the discriminator is worth here.
+
+The mechanism is visible in the numbers and generalises to both:
+
+    m6_max   Bricks AO      +0.8893 b=0.226 -> +0.8946 b=0.273
+             Bricks bc0/1/2 +0.0400/+0.2653/+0.2680       -> +0.0846/+0.3069/+0.3060
+             Bricks height  +0.5803 b=0.183 -> +0.5899 b=0.260
+             Bricks normal  +0.7775/+0.7855/+0.6956 -> +0.7758/+0.7833/+0.6888  (WORSE)
+             Bricks rough   +0.8053 b=1.613 -> +0.8191 b=1.964   (band AWAY from 1)
+             Chesterfield   every channel identical
+
+**Every movement is in one pack, and eight of that pack's nine bands are BELOW 1.0** -- our
+Bricks render is uniformly short of the export's amplitude. `max` ≥ `min` pointwise, so
+substituting it raises the level everywhere, and on an under-amplitude pack anything that
+raises the level moves the band ratio toward 1.0. The internal control is the one Bricks
+channel that is ABOVE 1, `roughness` at 1.613: under `m6_max` it goes to 1.964, the wrong
+way. So this is a GAIN change wearing a mode change's clothes, and "toward 1.0" is not
+discriminating on a pack that is uniformly low.
+
+`m7_switch_lerp` has the identical footprint -- AO +0.0025, height +0.0143, normal +0.005,
+basecolor +0.004 to +0.006, all in Bricks, Chesterfield untouched to four decimals, and
+roughness's band again moving AWAY, 1.613 → 1.642. `m7_switch_gt0` sits between the two,
+which is what a monotone family of "admit a bit more `src`" readings looks like. The largest
+correlation gain anywhere in the three is **+0.0143**, on channels
+`REFERENCE_FLOOR_RENDER2`'s own comments call collapse guards that "must not be ratcheted on
+a small gain". Against a declared name, that is not enough, and mode 7 stays
+`np.where(opacity >= 0.5, src, dst)`.
+
+WHAT WOULD SETTLE MODE 7's THRESHOLD. Not this. It needs a scored cone containing a mode-7
+record whose selector is genuinely fractional; the permitted sources contain **one** blend
+node declaring mode 7 with a fractional `opacitymult` (0.93, against six that omit the
+parameter and five that drive it from a program), so the population that could decide it is
+one node wide in the sources and unmeasured in the packs.
+
+### Per-mode verdict
+
+| mode | name | arithmetic | how settled | changed |
+|---|---|---|---|---|
+| 0 | copy | `s` | already independently verified; 6 default-zero source pairings; control breaks 21/27 channels | no |
+| 1 | add | `d+s` | name declared; `m1_average` kills 6 channels and flips 3 signs | no |
+| 2 | subtract | `d−s` | `02351cc`; name declared; operand swap flips 6 signs and kills 12 | no |
+| 3 | multiply | `d·s` | name declared; `m3_screen` flips 8 signs | no |
+| 4 | addsub | `d+2s−1` | **name declared, arithmetic NOT settled**; three alternatives all worse but none decisively (18 of 27 channels never move) | no |
+| 5 | max | `max(d,s)` | name declared; SPEC §13.6's abs-difference argument; `m5_min` annihilates three amplitudes | no |
+| 6 | min | `min(d,s)` | name declared; `m6_max` passes the render discriminator and is refuted by the name and by 5's | no |
+| 7 | switch | `op ≥ ½ ? s : d` | **name declared, threshold NOT settled**; swapping the operands kills `metallic`, the sharpest number here; lerp/`>0` gain ≤ +0.0143 on collapse guards | no |
+| 8 | divide | `d/s` | name declared; the other operand order does not render on 9 channels; 11 records in any scored cone | no |
+| 9 | overlay | `d<½ ? 2ds : 1−2(1−d)(1−s)` | **name declared, arithmetic NOT settled**; hardlight is +4/−2 on correlation with 6 bands moving away, which decides nothing | no |
+| 10 | screen | `1−(1−d)(1−s)` | name declared; `m10_multiply` flips 2 signs, 11 bands away | no |
+| 11 | softlight | current formula | **name declared, MEMBER not settled**: W3C and Pegtop agree with it to ≤0.0026 on every channel; hardlight is refused | no |
+
+**Nothing changed.** Ten modes gain a declared name where they had a plausible one; four of
+the twelve keep an arithmetic that is this specification's convention and not the file's, and
+those four are now labelled rather than implied.
+### Handed over rather than edited
+
+Three things this pass found in files it may not touch:
+
+1. **`archive/tools/test_filters.py`'s docstring is stale.**
+   `test_blendingmode_matches_the_source_that_declares_it` says "Modes 0, 2, 3 and 9 are
+   pinned here; 1, 4, 5, 6, 7, 8, 10 and 11 are not". Re-run over the same rule today it
+   pins **0, 1, 2, 3, 4, 5, 6, 9 and 11**; only 7, 8 and 10 are unpinned. The pass/fail
+   assertions are unaffected -- it is the sentence reporting coverage that has drifted.
+
+2. **`blend`'s docstring in `ops.py` said mode 0 was "the one independently verified mode".**
+   That sentence is gone, and it is the only thing this pass changed anywhere. The edit is
+   `tools/render2/ops.py` only, and it is entirely inside a docstring and a `#:` comment:
+   40 lines added, 2 removed, **0 executable lines touched** -- what `BLEND_MODES` maps and
+   what `blend` computes are byte-for-byte what they were at `02351cc`. The render2 trio
+   (27 passed) and half 1 of the two-sided test were both re-run after it.
+
+3. **`blend` has a second enumerated parameter with a declared vocabulary and no home.**
+   `colorblending`: `0 Use Source Alpha, 1 Ignore Alpha, 2 Straight Alpha Blending,
+   3 Premultiplied Alpha Blending (Copy only)`, from the same widget mechanism in the same
+   permitted file. Its compiled slot is NOT located; `slot1_flags` decodes bits 0-3 and 5 of
+   blend's slot 1 and leaves `unknown_bits = v & ~0x2F`, which is where it would sit.
+   Support on the value side is thin -- 8 constant declarations over 4 permitted files -- so
+   this is a lead for whoever next works `slot1_flags`, not a placement.
+
+### Guards and harness
+
+    archive/tools/provenance.py       142 paired / 42 excluded / 100 permitted, re-run and
+                                      equal to what the documents state (the predicate was
+                                      CALLED, never retyped; the 96-file population is
+                                      `audit()`'s `permitted`, i.e. less the 4 flagged)
+    archive/tools/bit_census.py --check   edges    1,302,817 / 1,302,817
+                                          state-2    198,486 /   198,486
+                                          w1-presence vs decompose: AGREE on every covered record
+    archive/tools/walk_health.py      903,611 / 903,616, 0 longer, 0 shorter, 5 silent (filter 9)
+    archive/tools/walk_partition.py   8 FX violations of 48,688 attributions (0.02%)
+    test_filters.py + test_tables.py  25 passed (19:45 -- slower than the recorded 12-13 min
+                                      because a 512-px sweep was running beside it)
+    ./t                               19 passed (44s)
+    test_fx.py + test_bitmap.py       23 passed (3:29)
+    render2 trio                      27 passed (19s)
+
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json` are
+byte-identical (`git diff --stat` over those four paths is empty).
+
+Two-sided test. Nothing on the render path moved, so both halves are unchanged and were run
+to say so rather than assumed:
+
+    half 1  Lines record 0    10 patterns, patternsize (1.41421, 0.03555),
+                              patternrotation 0.12500, lit 0.5078
+    half 2  render2 / implied / max_dim 256 -- all 25 `REFERENCE_FLOOR_RENDER2` entries hold
+                              and each reproduces the value its comment carries, to four
+                              decimals: Chesterfield metallic +0.9999, AO +0.8715,
+                              basecolor 2 −0.4262; Bricks AO +0.8866, roughness +0.8047;
+                              Auras basecolor +0.9277 / +0.7497 / +0.9398
+
+**No floor moved and none needed to.** Had one been touched it would have gone to the owner
+of `test_filters.py` rather than been edited here, and no floor may be lowered in any case.
+
+### Provenance
+
+Every source-side measurement in this section is over `provenance.audit()`'s **permitted**
+list -- the predicate called, never a retyped regex, which is `c0d7774`'s lesson and the
+reason the first sweep's failure above is written down instead of quietly fixed. The 42
+excluded sources were not opened. The two Allegorithmic-authored `.sbsar` manifests that DO
+enumerate a blend vocabulary were identified and refused; the refusal is recorded above
+precisely so a later reader does not rediscover them and think they add anything. The
+compiled side is `.sbsasm` from freely distributed `.sbsar` archives, and the reference maps
+are PNGs the materials' own authors published beside them.
