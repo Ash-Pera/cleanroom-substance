@@ -50092,3 +50092,60 @@ move amplitude toward 1.0 WITHOUT flipping correlation, and none of the four can
 Open: whether record 454's inputs SHOULD be 99.2% correlated. If something upstream is
 duplicating a signal that ought to differ, mode 2 may be innocent and the cancellation
 correct. That is the next question and it is upstream of the mode table, not in it.
+
+## Settled: AO is sharp minus blurred, the two inputs SHOULD differ, and mode 2 is probably right
+
+f33f2bc left one question ahead of the mode table: should record 454's two inputs be 99.2%
+correlated? They should not, and the reason names the mechanism.
+
+### They are the same signal reached two ways
+
+Both descend from record 119, a `pixelprocessor`, sharing 120 of ~124 ancestors:
+
+    369 -> 119 :  levels(119)                                             one hop
+    453 -> 119 :  transformation(transformation(transformation(levels(119))))
+
+So 454 subtracts a signal from a version of itself that has been through three
+`transformation` records. That is an EDGE DETECT, and the shift test says so: `453 - 369` has
+sd 0.01575 today, while the same subtraction against a spatially shifted copy gives 0.031 at
+1 px, **0.0718 at 4 px** and 0.119 at 8 px -- and the export's AO sd is **0.0755**. A ~4-5 px
+displacement at 256 lands on the engine's amplitude.
+
+**So `blendingmode 2` = subtract is very likely CORRECT.** It was the only one of five
+candidates with the right sign (f33f2bc), and this says why: the operation is right and the
+two operands are wrongly identical.
+
+### What makes them differ: the halving count, not an offset
+
+Records 378 and 379 are EXACT identities in our render -- `params: {}`, maxdiff 0.000000 --
+and only 453 carries a parameter (`offset`, a program). But the difference is not in the
+parameters. It is in `w1`'s low five bits, the halving count `k` decoded in e3378db:
+
+    rec 378   w1 0x00000023   k = 3     -> renders at 1/8 the canvas
+    rec 379   w1 0x0000003f   k = 31    -> the ordinary value
+    rec 453   w1 0x0400003f   k = 31, offset = program
+
+`k = 3` makes 378 a downscale, and its consumer samples it back up -- a BLUR. AO is
+sharp minus blurred. At `max_dim 256` both cap to 256, the size difference vanishes entirely,
+and the subtraction cancels.
+
+### But raising the cap does not fix it, and that is the open part
+
+Above 256 the halving IS applied -- 378 renders at 256 while its siblings render at the cap:
+
+    dim    AO sd   ratio to ref   corr      378 shape    379/453/369 shape   453-369 sd
+    256    0.0155     0.21      +0.7299     256x256      256x256             0.01575
+    512    0.0126     0.16      +0.7805     256x256      512x512             0.01515
+    1024   0.0115     0.14      +0.7993     256x256      1024x1024           0.01502
+
+Correlation IMPROVES with resolution and amplitude gets WORSE, and `453 - 369` barely moves.
+The blur is being applied and is not producing the difference it should. Something between
+365 and 453 is preserving content the downscale ought to have destroyed.
+
+### Where this leaves the mode table
+
+The arbiter for mode 2 is no longer "swap it and see" -- it is that subtract is the operation
+an edge detect needs and the only sign-correct candidate. The other ten assignments remain
+unarbitrated, and `blend`'s docstring still says mode 0 is the only verified one. That is the
+work; this section removes mode 2 from it and hands back a sharper question about
+`transformation`.
