@@ -1279,6 +1279,27 @@ exactly four times their declared area, against 0 false positives on ~570 bitmap
 bit clear, so `height` gains a factor of 4. Without it a decoder reads the top quarter of
 each.
 
+**And the tag is that size at ONE `$outputsize`, which is the graph input the manifest
+declares a default for.** The record's real size is the program at its size slot (§13.3),
+evaluated at whatever `$outputsize` the graph is being run at; the tag caches its value at
+the manifest's default. A reader rendering at that default may use the tag and will be
+right — over 437 files the size programs reproduce it — but a reader rendering at any other
+output size must evaluate the programs, and **must not scale the tag uniformly**. They do
+not move together: of `ChesterfieldSofa`'s 746 size expressions, 674 add the whole shift,
+45 ignore `$outputsize` entirely (an absolute-size pyramid stage), 5 add a third of it, 5
+two thirds, and one shifts width only. Trust an expression only where it reproduces the tag
+at the file's own declared `$outputsize` — 718 of 746 do, and where it does not the slot has
+been misidentified and its answer at any other size is worth nothing. A record with no size
+expression takes its parent's size **relatively**, scaling its tag by the factor the parent
+moved, not copying the parent's new size.
+
+This is not a resolution knob. `$outputsize` is read by ordinary programs, so changing it
+changes the graph: on `ChesterfieldSofa` 98 of 102 `switch` blends take their selector from
+a program comparing `$sizelog2` against a constant, a mip pyramid in which octave K switches
+in once the output is big enough. Comparing a render at one `$outputsize` against an export
+at another compares two different graphs, and every reference pack in this corpus ships maps
+at a size its own file does not declare.
+
 **Which records are outputs.** An 8-byte entry per declared output sits between the record
 directory (§5) and the first record — one entry per output on 591 of 591 layout-A
 specimens. Word 1 is the **record index** (a valid one in 3,249 of 3,249); word 0's low

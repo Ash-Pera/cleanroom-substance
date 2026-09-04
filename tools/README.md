@@ -211,6 +211,7 @@ The only table left is a NAME legend, (filter, field) -> name, which cannot go s
 neighbouring field appears or disappears because it never mentions a position.
 
     python3 tools/render2 <file.sbsasm> [--dim 256] [--out DIR] [--score DIR]
+                          [--outputsize N|declared]
 
 `--score DIR` pairs each declared output against the package's own exported maps by the
 manifest's usage name. On `Rokviz japanese fabric 8` -- the specimen with no exposed colour
@@ -222,6 +223,25 @@ something else used to: `levels` parameters taken from the field enumeration rat
 the memo, and an FX-Map emission count taken from the placement program on the 0.21% of
 records whose iterator contradicts it. FORMAT-NOTES.md has the measurements, the census
 behind the narrow trigger, and the one channel of one package where the memo still wins.
+
+**The `$outputsize` a render is evaluated at is per-tool, and the two tools differ on
+purpose.** A record's size slot holds a PROGRAM of the graph input `$outputsize`; the tag
+caches its value at the manifest's default. Rendering keeps the declared size, because the
+file is the only thing a consumer holds. `--score` uses the size the reference maps were
+exported at, because a score is a comparison and every reference pack here ships maps at a
+size its own file does not declare -- 512, 1024, 2048, 2048, 2048 and 4096 against 256. Both
+are printed; `--outputsize declared` forces the file's own. `archive/tools/render.py` takes
+the same thing as data (`render(..., sizes={index: (W, H)})`) and `refcompare.compare_pack`
+has `outputsize='implied'` and `renderer='render2'`, so one pairing implementation now
+serves both renderers at either size. Their FLOOR TABLES are separate and each states its
+configuration: `test_filters.REFERENCE_FLOOR` is render.py / declared / dim 128,
+`REFERENCE_FLOOR_RENDER2` is render2 / implied / dim 256. See FORMAT-NOTES.md, "The output
+size the reference was exported at is a property of the SCORE, not of the render".
+
+`--score`'s own pairing is the crude one -- glob, last underscore token, first hit per key --
+and it is right only on a pack that ships one graph. Use `refcompare` for anything that
+arbitrates: its graph-directory, graph-prefix and sibling-package narrowing are corrections
+each of which cost a session, and none of them is reimplemented in `--score`.
 
 `render.py` stays, as the independent model to check `render2` against -- the role
 `_compute_layout` plays for `decompose`. On `Chesterfield` at `max_dim` 256 the two agree

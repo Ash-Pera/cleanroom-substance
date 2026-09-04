@@ -7,8 +7,19 @@ is the one place a render can be scored against ground truth, because several pa
 the corpus ship the texture maps the engine exported alongside the .sbsar that produces
 them.
 
-    python3 tools/refcompare.py            # every package that ships reference maps
-    python3 tools/refcompare.py Chesterfield   # substring-matched to one package
+    python3 archive/tools/refcompare.py            # every pack that ships reference maps
+    python3 archive/tools/refcompare.py Chesterfield   # substring-matched to one pack
+    python3 archive/tools/refcompare.py Chesterfield --renderer render2 \
+            --outputsize implied --dim 512
+
+THE BARE INVOCATION IS A GUARD'S CONFIGURATION AND NOT THE RECOMMENDED READING. With no
+options this renders `archive/tools/render.py` at the `$outputsize` the FILE declares and
+`max_dim` 128, which is what `test_filters.REFERENCE_FLOOR` is scored from and must keep
+being scored from. It is not what a reader should use to see where the renderer stands:
+every reference pack here ships maps exported at an `$outputsize` its own file does not
+declare (512, 1024, 2048, 2048, 2048, 4096 against a declared 256), and the renderer of
+record is `render2`. Pass all three options for that. See FORMAT-NOTES.md, "The output size
+the reference was exported at is a property of the SCORE, not of the render".
 
 WHY IT WAS UNUSABLE UNTIL NOW, and what changed. `tools/assume.py` records the bind: the
 reference renders could not arbitrate our guesses because our refusals to guess were what
@@ -250,13 +261,110 @@ def graph_dir(asm, uid):
     return None
 
 
-def compare_pack(pack, refs, max_dim=RENDER_DIM):
-    """Yield (output name, channel, ours, reference) arrays for every paired output."""
+def implied_outputsize(refs):
+    """The `$outputsize` a set of exported maps implies -- `render2.engine`'s, not a copy.
+
+    ONE IMPLEMENTATION, and it lives next to `declared_outputsize` and `record_sizes`
+    because it is the same question asked of the other side of the pair. The rule started
+    life THREE times over -- inline in `render2/__main__._outputsize_warning`, again here,
+    and a third time in a probe -- and two of the three read only `size[0]` and took the
+    max on disagreement. `corpus.py`'s argument applies verbatim: a correction written
+    into one implementation does not propagate to a second.
+    """
+    import render2                                                   # noqa: F401
+    from engine import implied_outputsize as _impl
+    return _impl(refs)
+
+
+def _sizes_at(asm, outputsize):
+    """`{record: (W, H)}` at `outputsize`, or None -- `render2.engine.record_sizes`.
+
+    IMPORTED HERE AND NOT AT MODULE SCOPE so that the default path of this module imports
+    nothing it did not import before. `outputsize=None` is the whole of the old behaviour
+    and must stay measurably identical to it, which an import at the top would leave true
+    but no longer obvious.
+
+    NO SIZE MODEL IS DUPLICATED INTO THIS DIRECTORY. `render.py`'s independence from
+    `render2` is an independence of FILTER implementations -- which is what this module
+    scores -- and `record_sizes` is a decode: a slot the walk names, a program at it, and
+    the check that the program reproduces the tag at the declared size. Writing a second
+    one here would give two answers to a question the file has one answer to.
+    """
+    if outputsize is None:
+        return None
+    import render2                                                   # noqa: F401
+    from engine import record_sizes
+    return record_sizes(asm, outputsize)
+
+
+def _renderer(which):
+    """`render.py`'s pass or `render2`'s, as one callable `(asm, max_dim, sizes) -> dict`.
+
+    ONE PAIRING, TWO RENDERERS. Everything in this module apart from the single
+    `render.render` call is PAIRING -- `graph_dir`, `_package_refs`, the identifier-then-
+    channel fallback, the 16-bit load, the per-channel resample. All of it was written
+    against faults that cost sessions (a graph scored against its sibling's picture, a
+    package scored against another package's material, `convert('L')` saturating a 16-bit
+    map), and `render2`'s own `--score` reimplements NONE of it: it globs `*.png`, keys on
+    the last underscore-separated token, and keeps the first hit per key. On a
+    single-graph pack the two agree; on `Kutejnikov__Bricks_and_tiles`, which declares
+    five graphs and flattens their exports into one directory, `--score` reports 48 rows
+    against the 12 distinct channels this narrowing leaves, and its `basecolor` rows run
+    from -0.06 to +0.05 because glob order decides which graph's map each output meets.
+
+    So a `render2` floor cannot be taken from `--score` and must come through here. The
+    argument is the same one `corpus.py` makes about corpus lists: a correction written
+    into one implementation does not propagate to a second.
+    """
+    if which == 'render2':
+        # THROUGH THE PACKAGE, NOT BY PATH. A first attempt inserted `tools/render2` on
+        # `sys.path`, imported `engine`, and popped the path again to avoid shadowing
+        # `model`/`ops`/`filters` for everyone else. It imported fine and then rendered 60
+        # of ChesterfieldSofa's 881 records instead of 881, silently: the modules that
+        # `engine` imports lazily could no longer be found, and every record that reached
+        # one failed as an ordinary unsupported record. `render2/__init__.py` already does
+        # this properly -- it puts `tools` FIRST and its own directory LAST, and then
+        # asserts that each name resolved inside the package -- so importing the package
+        # is both the supported entry point and the one that fails loudly.
+        import render2 as _r2
+
+        # `render2` takes an `$outputsize` and derives the sizes itself, so handing it a
+        # `sizes` dict as well would run `record_sizes` twice and let the two answers
+        # drift. It takes the OUTPUT SIZE; `render.py` takes the sizes.
+        def go(asm, max_dim, sizes, _os=None):
+            outs, _f, _i = _r2.render(asm, verbose=False, max_dim=max_dim, outputsize=_os)
+            return outs
+        go.wants_outputsize = True
+        return go
+
+    def go(asm, max_dim, sizes, _os=None):
+        produced, _failures, _synth = render.render(asm, verbose=False, max_dim=max_dim,
+                                                    sizes=sizes)
+        return produced
+    go.wants_outputsize = False
+    return go
+
+
+def compare_pack(pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer='render'):
+    """Yield (output name, channel, ours, reference) arrays for every paired output.
+
+    `outputsize` is `(log2 w, log2 h)`, or the string `'implied'` for whatever this
+    pack's own exported maps were produced at. None -- the default -- renders every record
+    at its tag, which is the graph at the `$outputsize` the manifest declares.
+
+    `renderer` is `'render'` (the default, `archive/tools/render.py`) or `'render2'`.
+    THE DEFAULTS OF THIS FUNCTION ARE A GUARD'S CONFIGURATION AND NOT A RECOMMENDATION:
+    they are what `test_filters.REFERENCE_FLOOR` was taken at and must keep being taken
+    at. What a reader scoring a render today should pass is `renderer='render2'`,
+    `outputsize='implied'` and the largest `max_dim` they can afford -- see
+    `REFERENCE_FLOOR_RENDER2` and FORMAT-NOTES.md, "The output size the reference was
+    exported at is a property of the SCORE".
+    """
     asms = glob.glob(os.path.join(PACKS, pack, '**', '*.sbsasm'), recursive=True)
     if not asms:
         return
     for _asm_path in sorted(asms):
-        for _row in _compare_one(_asm_path, refs, max_dim):
+        for _row in _compare_one(_asm_path, refs, max_dim, outputsize, renderer):
             yield _row
 
 
@@ -288,11 +396,14 @@ def _package_refs(asm_path, refs):
     return scoped if scoped else refs
 
 
-def _compare_one(asm_path, refs, max_dim):
+def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render'):
     asm = sbsasm.Assembly(asm_path)
     refs = _package_refs(asm_path, refs)
     names = manifest.output_names(asm)
-    produced, _failures, _synth = render.render(asm, verbose=False, max_dim=max_dim)
+    want = implied_outputsize(refs) if outputsize == 'implied' else outputsize
+    run = _renderer(renderer)
+    produced = run(asm, max_dim, None if run.wants_outputsize else _sizes_at(asm, want),
+                   want if run.wants_outputsize else None)
     for uid, _fmt, _gray, rec in asm.outputs():
         name = names.get(uid) or '?'
         pool = refs
@@ -400,16 +511,49 @@ def _compare_one(asm_path, refs, max_dim):
 
 
 def main(argv):
-    match = argv[1] if len(argv) > 1 else None
+    """CLI.
+
+        python3 archive/tools/refcompare.py [pack] [--outputsize implied|declared|N]
+                                            [--renderer render|render2] [--dim N]
+
+    THE BARE INVOCATION IS THE GUARD'S CONFIGURATION, not the recommended one, so that
+    `refcompare.py` with no arguments keeps printing the table `test_filters
+    .REFERENCE_FLOOR` is scored from. For a reading of where the renderer actually stands,
+    pass `--renderer render2 --outputsize implied --dim 512` or larger.
+    """
+    args = [a for a in argv[1:] if not a.startswith('--')]
+    opts = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '')
+                for a in argv[1:] if a.startswith('--'))
+    # Also accept the space-separated spelling, which is what anyone types first.
+    rest = list(argv[1:])
+    while rest:
+        a = rest.pop(0)
+        if a.startswith('--') and '=' not in a and rest and not rest[0].startswith('--'):
+            opts[a[2:]] = rest.pop(0)
+            if opts[a[2:]] in args:
+                args.remove(opts[a[2:]])
+    match = args[0] if args else None
+    osz = opts.get('outputsize') or None
+    if osz not in (None, 'implied', 'declared'):
+        osz = (int(osz), int(osz))
+    elif osz == 'declared':
+        osz = None
+    renderer = opts.get('renderer') or 'render'
+    dim = int(opts.get('dim') or RENDER_DIM)
     packs = reference_packs(match)
     if not packs:
         print('no packages with reference maps found under %s' % PACKS)
         return 0
     for pack, refs in sorted(packs.items()):
-        print('\n=== %s   (%d exported maps)' % (pack, len(refs)))
+        print('\n=== %s   (%d exported maps)   renderer %s, $outputsize %s, max_dim %d'
+              % (pack, len(refs), renderer,
+                 (implied_outputsize(refs) if osz == 'implied' else osz) or 'declared',
+                 dim))
         print('   %-12s %-3s %-21s %-21s %s'
               % ('output', 'ch', 'ours mean/std', 'reference mean/std', 'MAE'))
-        for name, chan, ours, ref in compare_pack(pack, refs):
+        for name, chan, ours, ref in compare_pack(pack, refs, max_dim=dim,
+                                                  outputsize=osz,
+                                                  renderer=renderer):
             if chan is None:
                 print('   %-12s %s' % (name, ref))
                 continue

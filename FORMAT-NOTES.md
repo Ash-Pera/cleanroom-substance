@@ -48760,3 +48760,444 @@ last eight passes existed to retire.
 * a permitted source naming filter 9 — 108 bytes, and the last unidentified filter id;
 * nothing else. The other 1,178 is filler and the honest place for it is where it is.
 
+
+# The output size the reference was exported at is a property of the SCORE, not of the render
+
+*Started 2026-09-04, at `0c6f7dd`. Written as the work runs, not after it, because two
+sessions on this tree have lost their connection mid-run and one left code with no entry
+here. Sections below are appended in the order they were measured; where a first attempt was
+wrong it is left in place and marked.*
+
+## The question
+
+`777e597` established that all six reference packs ship exported maps at an `$outputsize`
+their own file does not declare, and added `--outputsize N` to `render2` as **opt-in** with
+the default path deliberately bit-identical. `02e45ab` added one correction to the
+retraction inside it. Neither revisited the default, and the standing position was:
+
+* `render2` renders at the file's declared `$outputsize` unless asked otherwise;
+* `--score` prints a NOTE when the references imply a different one, and it fires on all six;
+* `test_filters.REFERENCE_FLOOR` — the only regression guard this project has on a render —
+  is scored through `refcompare` -> `archive/tools/render.py`, **which cannot pass the flag
+  and has no `$outputsize` concept at all**.
+
+So the arbiter runs at a size we know is wrong, and the two renderers could diverge on it.
+
+## Provenance
+
+Nothing here reads a `.sbs` source. The measurements are compiled `.sbsasm`, the `.sbsar`
+manifests beside them, and the PNG maps the material authors published with their own
+packages. `archive/tools/provenance.py`'s predicate was called anyway rather than a string
+retyped — `provenance.matches(path, provenance.EXCLUDED_AUTHORS)` over the 219 `.sbs` files
+that sit beside the reference packs — and it drops the four Allegorithmic-authored
+dependency graphs under `pairs6/G_Dandelion_Tile_Floor/SBS/.../dependencies/`. None of them
+is a reference pack and none is read here; the call is the discipline, not a result.
+
+## What each path did BEFORE anything was changed
+
+Established by running each one, not by reading its docstring.
+
+| path | `$outputsize` it renders at | how |
+|---|---|---|
+| `render2` library `render(asm, ...)` | the record TAG, i.e. the declared size | `outputsize=None` makes `record_sizes` return `None` immediately, so `View` keeps `rec.width/height`. The docstring's "defaults to the one the file itself declares" is true of the RESULT and not of the mechanism: at the declared size the trusted size programs reproduce the tag by construction, so the two agree, but nothing is evaluated |
+| `python3 tools/render2 <f>` | same | `--outputsize` unset -> `os_log2 = None` |
+| `python3 tools/render2 <f> --outputsize N` | N | the only path that moves |
+| `python3 tools/render2 <f> --score DIR` | the declared size, plus a NOTE | `_outputsize_warning` prints and nothing else happens |
+| `archive/tools/refcompare.py` | the declared size, **and it cannot do otherwise** | `_compare_one` calls `render.render(asm, verbose=False, max_dim=max_dim)`. `render.py` has no `outputsize` parameter, no `record_sizes`, and reads `rec.width`/`rec.height` at 15 sites |
+| `test_filters.REFERENCE_FLOOR` (16 entries, 4 packs) | the declared size | via `refcompare.compare_pack`, `RENDER_DIM` 128 |
+| `test_render2.REFERENCE_FLOOR` (5 entries, Rokviz only) | the declared size | `render(asm, max_dim=256)` with no `outputsize` |
+
+Two floors, two renderers, one size — the size the exporter did not use. The inconsistency
+`777e597` left is therefore not yet a divergence: **both** guards are at the declared size
+today. It becomes one the moment anything that scores moves, which is the change this
+section is about.
+
+## A live regression found on the way in, and it is dated
+
+`render2` on `ChesterfieldSofa` fails 23 records and does not produce `basecolor` or
+`roughness` at all. `777e597` tabulated ten channels on this pack; six of them survive.
+
+    commit      records   failures   scored channels
+    777e597     881/881          0   10
+    02e45ab     881/881          0   10
+    f63fcf4     881/881          0   10
+    fcbb0a7     881/881          0   10
+    e231131     858/881         23    6     <- here
+    c0d7774     858/881         23    6
+    0c6f7dd     858/881         23    6
+
+The cause is `e231131`, "a cell with two forward pointers loses one, so follow both". That
+change is right — it recovers 135,440 bytes of FX tree — and on record 321 it takes the node
+chain from `[0x18b, 0x89]` to `[0x18b, 0x89, 0x89, 0x89]` and the entry table from 9 rows to
+11. One of the two new gates closes before the first pattern, so the walk records **zero
+frames**, and `fx._batch_emit` handed `_stack` an empty frame list and raised `IndexError`
+on `col[0]`.
+
+Zero frames is an answer, not a refusal. The scalar walk returns `[]` for exactly this
+record with `closed` true, and `emissions` accepts that — so the two paths disagreed, in a
+module whose own docstring says "the scalar path is unchanged and is still the arbiter".
+`_batch_emit` now returns `[]` when there are no frames, which is what the arbiter says, and
+Chesterfield is back to 881/881 with all ten channels scoring.
+
+**Why nothing caught it.** `test_filters.REFERENCE_FLOOR` scores `render.py`, which does not
+run this code; `test_render2.REFERENCE_FLOOR` scores `render2` on `Rokviz` alone. Between
+them nothing watched `render2` on the five `new_opengameart` packs, and the suite stayed
+green through six commits with four of ten reference channels silently gone. That gap is the
+same shape as the `b2f1d97` regression `test_reference_agreement_does_not_regress` was
+written for, one renderer over.
+
+## Per-pack implied `$outputsize`, derived two ways
+
+The pixel rule is what `--score`'s NOTE used, and on its own it is a guess: it is right only
+if the output record's size expression is the identity on `$outputsize`, and 72 of
+ChesterfieldSofa's 746 size programs are not (45 ignore `$outputsize` entirely, 5 add a
+third of the shift, 5 two thirds, 1 shifts width only). So it is checked against the file.
+
+**(a) `log2` of the exported map's pixel dimensions**, keeping the pair rather than the
+width, and dropping anything not a power of two.
+
+**(b) The falsifiable one.** For each candidate `k` in 6..14, evaluate every record's size
+program at `(k, k)` through `record_sizes` and count how many records the OUTPUT TABLE names
+land on exactly the pixel dimensions of the map each one pairs with. This can return no `k`,
+several, or one that disagrees with (a).
+
+    pack                                    declares   maps      (a)   (b) unique argmax
+    Kutejnikov__Auras                        (8, 8)     512 px     9    9   1 of 4 outputs
+    Kutejnikov__Bricks_and_tiles             (8, 8)    1024 px    10   10   5 of 26
+    Kutejnikov__Stylized_Wooden_Roof_Tiles   (8, 8)    2048 px    11   11   5 of 5
+    minime453__Chesterfield_PBR_Material     (8, 8)    2048 px    11   11   6 of 6
+    minime453__Stylized_Sandy_Stone_Path     (8, 8)    2048 px    11   11   5 of 5
+    Rokviz japanese fabric 8                 (8, 8)    4096 px    12   12   6 of 6
+
+(b) picks **one** `k` on all seven assemblies and it is always (a)'s. On the four packs whose
+outputs pair unambiguously it is total — RoofTiles 5/5 at 11 and **0/5 at every one of the
+eight other candidates**, Chesterfield 6/6, SandyStonePath 5/5, Rokviz 6/6. The negative
+control is built in: if `record_sizes` were a uniform scale of the tag, or the size slot
+misidentified, every `k` would score alike and the argmax would be the whole range.
+
+**No pack's maps are internally inconsistent.** Every one ships a single power-of-two size
+across every map it exports. The one file that is not that size is `pairs6/8/8.png` at
+2500 x 2500 — a pack thumbnail sitting beside the six real maps, not an export.
+
+**Where the residual ambiguity actually is: the PAIRING, not the size.** Auras matches 1 of
+4 and Bricks 5 of 26 not because their maps are unclear but because those packs declare
+several graphs into one export directory, so most (output, map) pairs formed by name alone
+are a graph scored against a sibling's picture — the fault `refcompare.graph_dir` and
+`_package_refs` exist for. Narrowed, the count is right; unnarrowed, it is the pairing that
+is wrong, and the size answer survives either way.
+
+**What `--score`'s NOTE computed, and the two places it was wrong.** It read `Image.size[0]`
+only, so a non-square export would have been reported as a square `$outputsize` — the format
+allows `(log2 w, log2 h)` to differ and `record_sizes` already handles it, so this was a
+narrowing with nothing behind it. And on disagreement it printed `implied[-1]`, the largest,
+which turns "these maps do not agree" into a confident recommendation. Neither ever fired on
+this corpus; both are fixed, and the rule now lives once, in `engine.implied_outputsize`,
+where it had been written three times (the NOTE, a probe, and a first draft of
+`refcompare.implied_outputsize`) with two of the three reading only the width.
+
+## The default is per-tool, and the argument is that they are different questions
+
+**RENDERING keeps the file's declared `$outputsize`.** Unchanged, deliberately. A consumer
+of a `.sbsar` holds the file and nothing else; the file states one `$outputsize` and a
+renderer that quietly substituted some other number would be inventing a parameter. The
+library entry point `render(asm, ...)` is untouched, `--out` is untouched, and every figure
+already recorded against the default path still reproduces.
+
+**SCORING moves to the size the references were exported at.** A score is a comparison, and
+a comparison between our render of G at 8 and the engine's export of G at 11 measures
+neither. Here the maps' pixel dimensions are not a claim about the file — they are the only
+evidence available about what the *other side of the comparison is*, and declining to read
+it does not make the score neutral. It makes it wrong in a fixed direction.
+
+So `render2 --score` now renders at the implied size and says so on its own line;
+`--outputsize declared` is the spelling that gets the old behaviour without the caller
+needing to know the number. `--outputsize N` still wins over both.
+
+### The one that did NOT move, and why that is not a dodge
+
+`refcompare` and `render.py` can now pass the size — `render.render(..., sizes={index:
+(W, H)})` through a `_Resized` record view, `refcompare.compare_pack(..., outputsize=
+'implied', renderer='render2'|'render')`. So the capability gap `777e597` recorded is
+closed and the question became a choice. It was measured before it was made.
+
+All 27 channels the paired references score, at both `$outputsize` values, through both
+renderers. `r.py` at `max_dim` 128 (its `RENDER_DIM`), `r2` at 256:
+
+    pack          channel           ch |   r.py 8 r.py imp |     r2 8   r2 imp
+    Auras         basecolor          0 |  +0.9353  +0.9353 |  +0.9277  +0.9277
+    Auras         basecolor          1 |  +0.8515  +0.8515 |  +0.7497  +0.7497
+    Auras         basecolor          2 |  +0.9476  +0.9476 |  +0.9398  +0.9398
+    Bricks        ambientocclusion   0 |  +0.8496  +0.8496 |  +0.8866  +0.8866
+    Bricks        basecolor          0 |  +0.4270  +0.4270 |  +0.0400  +0.0400
+    Bricks        basecolor          1 |  +0.5475  +0.5475 |  +0.2654  +0.2654
+    Bricks        basecolor          2 |  +0.5148  +0.5148 |  +0.2681  +0.2681
+    Bricks        emission           0 |  +0.9784  +0.9784 |  +0.9885  +0.9885
+    Bricks        emission           1 |  +0.9926  +0.9926 |  +0.9993  +0.9993
+    Bricks        emission           2 |  +0.9836  +0.9836 |  +0.9953  +0.9953
+    Bricks        height             0 |  +0.6662  +0.6662 |  +0.5803  +0.5803
+    Bricks        normal             0 |  +0.7149  +0.7149 |  +0.7775  +0.7775
+    Bricks        normal             1 |  +0.7234  +0.7234 |  +0.7855  +0.7855
+    Bricks        normal             2 |  +0.3848  +0.3848 |  +0.6956  +0.6956
+    Bricks        roughness          0 |  +0.8496  +0.8496 |  +0.8047  +0.8047
+    RoofTiles     metallic           0 |  +0.0000  +0.0000 |  +0.0000  +0.0000
+    Chesterfield  AO                 0 |  +0.9195  +0.7972 |  +0.9198  +0.8715
+    Chesterfield  basecolor          0 |  +0.7501  +0.8779 |  +0.8108  +0.8563
+    Chesterfield  basecolor          1 |  +0.7668  +0.9070 |  +0.9062  +0.9656
+    Chesterfield  basecolor          2 |  -0.6764  -0.8062 |  -0.3018  -0.4262
+    Chesterfield  height             0 |  +0.9528  +0.9566 |  +0.9523  +0.9562
+    Chesterfield  metallic           0 |  +0.9816  +0.9981 |  +0.9723  +0.9999
+    Chesterfield  normal             0 |  +0.9490  +0.9577 |  +0.9404  +0.9524
+    Chesterfield  normal             1 |  +0.9483  +0.9558 |  +0.9394  +0.9496
+    Chesterfield  normal             2 |  +0.6679  +0.5887 |  +0.7991  +0.7499
+    Chesterfield  roughness          0 |  +0.9299  +0.9414 |  +0.9141  +0.9358
+    SandyPath     metallic           0 |  +0.0000  +0.0000 |  +0.0000  +0.0000
+
+**Sixteen of the twenty-seven do not move at all, and that is a finding rather than a bug.**
+`$outputsize` changes Auras' record sizes on 105 of 445 records and Bricks' on 2,342 of
+12,585, but at these grids every moved record is already at the `max_dim` cap on both sides
+of the comparison, so the sizes that changed are all clipped to the same number. Auras' whole
+movement is a single doubling (256 -> 512) and every one of its 105 moved records is capped.
+The claim "all six packs are scored at the wrong size" is true and it costs nothing on two
+of them at the grid a suite can afford.
+
+**Through `render.py`, moving the baseline means LOWERING two floors.** Chesterfield is the
+only pack that moves, and it moves 7 up, 3 down. Two of the three down are floored:
+
+    ('minime453__Chesterfield_PBR_Material', 'AO', 0)          floor +0.82, would read +0.7972
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2)   floor -0.70, would read -0.8062
+
+A guard that has to be lowered in order to be moved is not an improvement, so
+`test_filters.REFERENCE_FLOOR` **stays exactly where it was**. Nothing in it is re-taken,
+nothing in it is lowered, and it is now LABELLED with the configuration it was taken at
+(render.py / declared / `max_dim` 128), which it never stated.
+
+### `$outputsize` and `max_dim` are not independent, and that is why the grid decides
+
+The corrected size only pays for itself on a grid that can carry it. Measured on
+ChesterfieldSofa through `render2`, declared -> implied, per grid:
+
+    --dim     channels better of 10     mean corr, declared -> implied
+      128            7                     +0.7582 -> +0.7525
+      256            7                     +0.7852 -> +0.7811
+      512            8                     +0.7874 -> +0.8029
+     1024           10                     +0.7873 -> +0.8095
+
+**At 1024 every one of the ten improves.** The mechanism is countable and is not the
+filters: at `$outputsize` 11 the graph has 15 distinct record sizes, of which a 128-px cap
+leaves **7**, against **9** at the declared size; 815 of 881 records sit *at* the cap at 11
+against 740 at 8. The cap flattens the size hierarchy the file states, and it flattens it
+harder at the corrected size, because that is where the spread is widest. Scoring at the
+implied `$outputsize` on a 128-px grid is a third configuration that is neither of the two
+being compared.
+
+`777e597` saw the tail of this — it recorded AO and normal ch2 "degrading at small `max_dim`
+and recovering monotonically" — and read it as a property of those two channels. It is a
+property of the cap, and it applies to every channel whose chain mixes sizes.
+
+### What the render2-side floor table is, and why it is a first assertion
+
+`REFERENCE_FLOOR_RENDER2` in `archive/tools/test_filters.py`: 24 channels, `render2`,
+`outputsize='implied'`, `max_dim` 256. **Every entry is new.** No row of any existing table
+is re-taken, moved or lowered by this work. The three tables now read:
+
+    table                                  renderer     $outputsize   max_dim   entries
+    test_filters.REFERENCE_FLOOR           render.py     declared        128      16
+    test_filters.REFERENCE_FLOOR_RENDER2   render2       IMPLIED         256      24
+    test_render2.REFERENCE_FLOOR           render2       declared        256       5
+
+and each one now states its own configuration in the table, which none of them did.
+
+The grid understates the reading — 256, where 10 of 10 channels improve only at 1024 — so
+these floors are set below what a full-grid render gives. A floor taken at a grid that
+understates is a floor set low, which is the safe direction for a guard.
+
+The Rokviz table is the one place the choice can be CHECKED rather than argued, and it is:
+`test_reference_agreement_does_not_regress` now renders that specimen at both 8 and 12 and
+asserts every listed channel's correlation is identical to four decimals. It is — which is
+`02e45ab`'s retraction turned into a check. One precision the check forced: the two renders
+are NOT bit-identical. 50 of 70 records move 256 -> 4096 and the largest per-pixel difference
+after the 64-px resample is 2.0e-4 on basecolor ch0. The SCORE is invariant; the pixels are
+not, and asserting the pixels fails on arithmetic the specimen's own decode says must happen.
+
+### Retracted: `777e597`'s headline swing does not reproduce
+
+That commit's motivating number was Chesterfield basecolor ch2 going **-0.5763 -> +0.7679**
+at `max_dim` 1024. On today's tree the same measurement is **-0.2849 -> -0.2599**. The
+channel is less anti-correlated at both sizes than it was, and the sign flip is gone. The
+twenty-odd commits since all move this chain — the `levels` walk, `normal`'s 256-px
+reference scale, and `e231131`'s fx-tree walk — and no single one of them is the cause; the
+number was true when taken and is not a current figure. `metallic` is the part that DOES
+reproduce exactly: +0.9723 -> **+1.0000 at MAE 0.0004**, the export reproduced rather than
+approached, and it is the reason to keep the corrected size in the score even where the
+correlations are mixed.
+
+Also retracted, from the same commit: "basecolor ch0 gets WORSE, +0.6342 to +0.5541, and
+does not recover with grid" is no longer the case. At 1024 it now reads +0.8141 -> +0.8394,
+i.e. it improves.
+
+### One check the plumbing needed, and it never fires
+
+`render.py` gets the size as DATA, through a `_Resized` record view rather than 41
+substitutions — the same device `_SwappedEdges` already uses, and for the same reason: the
+helpers this module hands a record to (`_reference_px`, `load_pixels_bitmap`,
+`walk_named_matrix`) read `rec.width` themselves, so threading a size through the loop body
+alone would move some reads and not others.
+
+The one record that must NOT move is a `bitmap`, whose tag is its payload's own dimensions
+and whose loader reshapes the resource by `width * height`. `record_sizes` already says it
+leaves them alone — no size expression, no input, so it keeps its tag — and that is now
+measured rather than trusted: over all six packs, 12,124 records move size between the
+declared and the implied `$outputsize`, across 19 filters, and **0 of them are `bitmap`**.
+
+    transformation 2938   blend 4696   levels 1896   warp 440   directionalwarp 390
+    pixelprocessor 355    fxmaps 304   dirmotionblur 288   gradient 156   uniform 95
+    shuffle 92   dyngradient 80   blur 64   distance 61   normal 34   hsl 14
+    emboss 14   sharpen 6   curve 1      bitmap 0
+
+The guard in `render.py` stays anyway, because it protects a caller supplying its own dict,
+and a `ValueError` in a reshape is not a good way to learn that.
+
+## Code
+
+* `tools/render2/fx.py` — `_batch_emit` returns `[]` on zero frames. The `e231131`
+  regression; see above.
+* `tools/render2/engine.py` — `implied_outputsize(paths)`, next to `declared_outputsize`.
+  The rule had been written three times and two of the three read only the width.
+* `tools/render2/__main__.py` — `_score_outputsize` replaces `_outputsize_warning`.
+  `--outputsize` takes `declared` as well as an integer; with `--score` the default is the
+  implied size and the choice is printed, with a second line when `--dim` is far below it.
+* `archive/tools/render.py` — `_Resized`, and `render(..., sizes=None)`.
+* `archive/tools/refcompare.py` — `implied_outputsize` (delegating), `_sizes_at`,
+  `_renderer`, and `compare_pack(..., outputsize=None, renderer='render')`. Both defaults
+  are the old behaviour and were re-measured identical to four decimals on all 27 channels.
+* `archive/tools/test_filters.py` — `REFERENCE_FLOOR_RENDER2` (24 entries, all new),
+  `CONSTANT_YIELDS_RENDER2`, `test_render2_reference_agreement_does_not_regress`, and
+  `test_the_implied_outputsize_is_the_one_the_files_own_size_programs_reproduce`.
+  `REFERENCE_FLOOR` gains a configuration header and loses nothing.
+* `tools/render2/test_render2.py` — `test_reference_agreement_does_not_regress` renders
+  Rokviz at both `$outputsize` 8 and 12 and asserts the correlations are equal.
+* `SPEC.md` §13.2 — the tag is the size at ONE `$outputsize`, and what a reader must do at
+  any other one.
+
+### A false start, recorded
+
+The first version of `refcompare._renderer('render2')` inserted `tools/render2` on
+`sys.path`, imported `engine`, and popped the path again — to avoid shadowing `model`,
+`ops`, `filters` and `fx` for everything else in the process, which is a real hazard those
+short names create. It imported cleanly and then rendered **60 of ChesterfieldSofa's 881
+records**, silently: the modules `engine` imports lazily could no longer be found, and every
+record that reached one failed as an ordinary unsupported record. `render2/__init__.py`
+already does this properly — `tools` first, its own directory last, and an assertion that
+each name resolved inside the package — so the fix was to import the package rather than
+route around it. A shadowing guard that is skipped is worse than one that is absent.
+
+## What remains open
+
+* **`REFERENCE_FLOOR` is still measured at the declared size.** That is now a stated choice
+  with a number behind it, not an absence, but it means the older table's 16 floors watch a
+  configuration nobody would choose today. The thing that would change it is a grid: at
+  `max_dim` 1024 the corrected size improves every Chesterfield channel through `render2`,
+  and if `render.py` behaves the same way there the two floors that would have to be
+  lowered at 128 might not have to be. That measurement was not taken — 1024 through
+  `render.py` on Bricks is not a suite-sized cost — and the honest statement is that the
+  declared-size floors are kept because moving them at an affordable grid means lowering
+  two, not because the declared size is right.
+* **Chesterfield basecolor ch2 is still anti-correlated**, -0.26 at the corrected size and
+  full grid. `777e597` believed the output size explained it; it does not, and the ten
+  `switch` selectors it also cleared do not either. It is the leading render residual.
+* **One of Bricks' five graphs renders entirely constant under `render2`** — nine channels,
+  twice over, frozen in `CONSTANT_YIELDS_RENDER2`. `render.py` does not render that graph
+  at all, so this is `render2` producing a picture where the other model refuses, and the
+  picture carries no information. Nothing here diagnoses it.
+* **`RoofTiles` and `SandyStonePath` contribute one flat `metallic` channel each** and
+  nothing else, through either renderer. Two of the six packs cannot arbitrate anything.
+* **The implied-size derivation is unique on this corpus and the disagreement arm has never
+  fired.** A pack shipping two power-of-two sizes, or a non-square export, would exercise
+  code that is written and untested against real data.
+
+## Guards and harness
+
+Run after the change, on the current tree.
+
+    cursor (walk vs header_words)   903,611 / 903,611   agree, 0 longer, 0 shorter, 5 silent
+    edge slots, backward index      1,302,817 / 1,302,817
+    state-2 slots resolving a prog    198,486 / 198,486
+    walk_partition                  8 of 48,688 FX attributions (0.02%)
+    reverify                        0 of 9 exact-share claims broken
+
+`decompose`'s `end` / `inputs` / `hdr` / `param_slots` cannot have moved and the strongest
+statement available is made rather than a digest: `tools/decompose.py`, `tools/sbsasm.py`,
+`tools/record_layout.py` and `tools/legend.json` are **byte-identical to `0c6f7dd`**. Nothing
+in this work is on the decode path; the changed files are `render2/{fx,engine,__main__,
+test_render2}.py`, `archive/tools/{render,refcompare,test_filters}.py` and documentation. For
+anyone who wants the number anyway, the sha256 over `(end, inputs, hdr, param_slots)` for all
+903,616 records in corpus order is `4a9bc3f85f57c66f421d0fad68df1fb2c16a8625067322ca50d82d4143e34f12`.
+
+    archive/tools ./t                              19 passed
+    archive/tools test_fx + test_bitmap            23 passed
+    tools/render2 test_render2 + test_sampler + test_text   27 passed
+    archive/tools test_filters + test_tables       25 passed in 12m33s (was 23; two added)
+
+Two default paths were re-measured identical rather than assumed:
+
+* `refcompare.py` with no options prints **byte-identical** output to the pre-change run
+  over all five packs (the header line gains its configuration; every data row is the same).
+* `render(asm, ...)` with no `outputsize` is untouched, and `--outputsize declared`
+  reproduces the pre-change `--score` numbers on Chesterfield to four decimals.
+
+## Correction to my own paragraph above: "every moved record is already at the cap" is too strong
+
+Written earlier in this section, about the sixteen channels that do not move: "at these grids
+every moved record is already at the `max_dim` cap on both sides of the comparison". That is
+right for two packs and wrong for the rest. Counted properly — records whose size differs
+between the declared and the implied `$outputsize` **after** the cap is applied:
+
+    pack                              moved   differ after cap 128 / 256 / 512
+    Kutejnikov__Auras                   105          0      0     105
+    Kutejnikov__Bricks_and_tiles      2,342        121    144   2,310
+    Kutejnikov__Stylized_Wooden_...   2,320        286    453   2,288
+    minime453__Chesterfield             815         97    107     783
+    minime453__Stylized_Sandy_...     1,623        256    287   1,527
+    Rokviz japanese fabric 8             55          0      0      55
+
+Auras and Rokviz are the clean case: **0 records differ after a 128 or a 256 cap**, so the
+grid the two renders are drawn on is the same grid, record for record. Bricks is not — 121
+records differ at 128 — and its scores are still identical to four decimals, which means the
+explanation there is that the 121 are not in the cone of any scored output, not that nothing
+moved. I did not verify that; it is an inference from the scores, and it is the weaker claim.
+
+**And a cap that leaves the grid identical does NOT leave the render identical**, which is
+the thing the first version of the paragraph missed and which the Rokviz measurement had
+already contradicted. `$size` and `$sizelog2` inside a program come from the RECORD's size,
+not from the capped grid — `run_program(..., W=rec.width, H=rec.height)` — and so do the
+pixel-relative references `blur`, `warp`, `dirmotionblur` and `directionalwarp` divide by.
+So on Rokviz, where 0 records change grid at `--dim` 256, the pixels still differ by up to
+2.0e-4 while the correlations are equal to four decimals. Grid invariance and render
+invariance are two claims and only the first is a size arithmetic.
+
+That also sharpens the recommendation in `_score_outputsize`: at 512 the number of records
+that genuinely differ jumps by an order of magnitude on every pack (105, 2,310, 2,288, 783,
+1,527, 55), which is the same threshold the Chesterfield channel counts cross. The grid has
+to be past the point where the cap stops erasing the size hierarchy, and these counts say
+where that point is per pack rather than only for the one pack the channels were counted on.
+
+## What each path does NOW
+
+| path | `$outputsize` | changed? |
+|---|---|---|
+| `render(asm, ...)` library call | the record TAG (declared) | no |
+| `python3 tools/render2 <f>` | declared | no |
+| `python3 tools/render2 <f> --out DIR` | declared | no |
+| `python3 tools/render2 <f> --outputsize N` | N | no |
+| `python3 tools/render2 <f> --outputsize declared` | declared | **new spelling** |
+| `python3 tools/render2 <f> --score DIR` | **the size the maps imply**, printed | **YES** |
+| `python3 archive/tools/refcompare.py` | declared | no, byte-identical output |
+| `refcompare.py --renderer render2 --outputsize implied --dim N` | as asked | **new** |
+| `render.render(asm, sizes={i: (W, H)})` | as supplied | **new parameter** |
+| `test_filters.REFERENCE_FLOOR` | declared, render.py, dim 128 | no |
+| `test_filters.REFERENCE_FLOOR_RENDER2` | **implied**, render2, dim 256 | **new table** |
+| `test_render2.REFERENCE_FLOOR` | declared, render2, dim 256 | no, plus an invariance check |
+
+The one behavioural change a caller can be surprised by is `--score`, and it announces
+itself on its own line every time it fires.
+

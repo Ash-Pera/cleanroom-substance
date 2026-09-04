@@ -220,6 +220,55 @@ def declared_outputsize(asm):
     return None
 
 
+def implied_outputsize(paths):
+    """The `$outputsize` a set of exported maps implies, or None if they do not agree.
+
+    THE MAPS ARE EVIDENCE ABOUT ONE EXPORT; THE FILE IS A STATEMENT. This returns the
+    first, `declared_outputsize` the second, and they differ on every reference pack in
+    this corpus -- 512, 1024, 2048, 2048, 2048 and 4096 against a declared 256.
+
+    THE RULE IS THE PIXEL DIMENSIONS AND NOTHING ELSE. A map of `w` x `h` where both are
+    powers of two is an export at `(log2 w, log2 h)`; the pair is kept rather than the
+    width, because `$outputsize` is a 2-vector and the format allows a non-square one (no
+    pack here exercises it, and reading `size[0]` alone would silently call a 512x256 map
+    an `$outputsize` 9). Anything not a power of two is not an export at a `$outputsize`
+    and is dropped -- `pairs6/8/8.png` is 2500 x 2500, a pack thumbnail sitting in the
+    same directory as the six real maps.
+
+    NONE ON DISAGREEMENT, DELIBERATELY, and this is the one behaviour that is a judgement
+    rather than arithmetic. Two different power-of-two sizes among one pack's maps mean
+    either two graphs exported at two settings or a file that is not an export, and
+    choosing the larger -- which the warning this replaced did, via `implied[-1]` --
+    presents a guess as a reading. Measured over the six packs: every one is internally
+    consistent, so the disagreement arm has never fired. It is here because the arm that
+    HAS fired is the thumbnail, and the next corpus will not be so tidy.
+
+    THE DERIVATION IS FALSIFIABLE AND IT WAS FALSIFIED-TESTED. `log2(px)` is only right if
+    the output record's own size expression is the identity on `$outputsize`; it need not
+    be. The independent check is to evaluate every output record's size program at
+    candidate `k` through `record_sizes` and ask which `k` lands them on the map's actual
+    pixel dimensions. Over seven assemblies it picks exactly ONE `k` on every one and it is
+    always the pixel answer. On the four packs whose outputs pair unambiguously it is
+    total: RoofTiles 5/5 at k = 11 and **0/5 at every one of the eight other candidates**,
+    ChesterfieldSofa 6/6 at 11, StylizedCobblestoneStreet 5/5 at 11, and `Rokviz japanese
+    fabric 8` 6/6 at 12. On the multi-graph packs -- Auras 1/4, Bricks 5/26 -- the residual
+    is the PAIRING and not the size (`refcompare.graph_dir`), and the argmax is still the
+    pixel answer. See `test_filters
+    .test_the_implied_outputsize_is_the_one_the_files_own_size_programs_reproduce`, which
+    covers the five packs under `new_opengameart`; Rokviz lives outside that tree.
+    """
+    from PIL import Image
+    seen = set()
+    for p in paths:
+        try:
+            w, h = Image.open(p).size
+        except Exception:
+            continue
+        if w and h and not (w & (w - 1)) and not (h & (h - 1)):
+            seen.add((w.bit_length() - 1, h.bit_length() - 1))
+    return seen.pop() if len(seen) == 1 else None
+
+
 def record_sizes(asm, outputsize):
     """Each record's (W, H) in pixels with the graph rendered at `$outputsize`.
 

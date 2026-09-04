@@ -81,7 +81,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 #: The mismatch is real and it is not this. See
 #: `test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it`: every
 #: reference pack in this corpus ships maps exported at an `$outputsize` its own file does
-#: not declare, and on Chesterfield saying so takes basecolor ch2 from -0.58 to +0.77.
+#: not declare, and on Chesterfield saying so moves ten channels.
+#:
+#: CONFIGURATION, stated rather than implied: `render2`, `max_dim` 256, and the
+#: `$outputsize` the file DECLARES. That last one no longer matches `render2 --score`,
+#: which now defaults to the size the references imply -- and on this specimen that costs
+#: nothing, which is checked rather than assumed. `test_reference_agreement_does_not_
+#: regress` renders at both sizes and asserts every listed channel's correlation is the
+#: same to four decimals. The pixels are NOT identical (largest per-pixel difference
+#: 2.0e-4, from the 50 of 70 records whose size moves 256 -> 4096); the score is.
+#:
+#: This is the ONE reference table in the repository that is invariant under the choice, so
+#: it is also the only one where the choice can be checked instead of argued.
+#: `archive/tools/test_filters.py` holds the other two -- `REFERENCE_FLOOR` at the declared
+#: size through `render.py`, `REFERENCE_FLOOR_RENDER2` at the implied size through this
+#: renderer -- and each states its own.
 REFERENCE_FLOOR = {
     ('basecolor', 0): 0.95,          # measured +0.9758
     ('basecolor', 1): 0.92,          # measured +0.9494
@@ -1060,12 +1074,28 @@ def test_the_fast_sampler_is_the_shared_one():
 
 
 def test_reference_agreement_does_not_regress():
+    """Rokviz's floors, AND that they do not depend on the `$outputsize` they are taken at.
+
+    THE SECOND HALF IS `02e45ab`'s CLAIM TURNED INTO A CHECK. That commit's retraction says
+    rendering this specimen at the `$outputsize` its maps were exported at (12, 4096 px)
+    moves every scored channel by less than 0.0001, because the graph contains zero mode-7
+    `switch` blends and none of its 106 programs reads `$sizelog2` -- no CONTENT branches on
+    the output size, even though 50 of its 70 records DO have a size program reading the
+    `$outputsize` graph input and `record_sizes` moves them 256 -> 4096.
+
+    That claim is load-bearing now rather than incidental: `render2 --score` renders at the
+    implied size by default, so if it were false these floors would silently be measured
+    against a different render than the one they were taken from. It is checked here at
+    both sizes, and the assertion is the DIFFERENCE, not a second floor -- a floor would
+    pass on two channels that had both collapsed the same way.
+    """
     path, refs = specimen(), references()
     if not path or not refs:
         return _skip('test_reference_agreement_does_not_regress: no specimen or maps')
     from PIL import Image
     asm = sbsasm.Assembly(path)
     outs, _fails, _info = render(asm, max_dim=256)
+    at12, _f12, _i12 = render(asm, max_dim=256, outputsize=(12, 12))
     names = manifest.output_names(asm)
 
     def load(p):
@@ -1080,7 +1110,7 @@ def test_reference_agreement_does_not_regress():
                                         .astype(np.uint16)).resize((n, n), Image.BILINEAR),
                         dtype=np.float64) / 65535.0 for c in range(x.shape[2])], axis=-1)
 
-    seen, flat, worse = [], [], []
+    seen, flat, worse, moved = [], [], [], []
     height_mean = None
     for uid, _fmt, _grey, ri in asm.outputs():
         nm = (names.get(uid) or '').lower()
@@ -1093,6 +1123,8 @@ def test_reference_agreement_does_not_regress():
         if nm == 'height':
             height_mean = float(o.mean())
         a, b = rs(o), rs(load(refs[key]))
+        o12 = np.asarray(at12[ri], dtype=np.float64) if ri in at12 else None
+        a12 = rs(o12[:, :, None] if o12.ndim == 2 else o12) if o12 is not None else None
         for c in range(min(a.shape[2], b.shape[2])):
             if (nm, c) not in REFERENCE_FLOOR:
                 continue
@@ -1104,6 +1136,25 @@ def test_reference_agreement_does_not_regress():
             corr = float(np.corrcoef(x, y)[0, 1])
             if corr < REFERENCE_FLOOR[(nm, c)]:
                 worse.append(((nm, c), round(corr, 4), REFERENCE_FLOOR[(nm, c)]))
+            if a12 is None or c >= a12.shape[2]:
+                moved.append(((nm, c), 'not produced at $outputsize 12'))
+                continue
+            # THE CLAIM IS ABOUT THE SCORE, NOT ABOUT THE PIXELS, and the two are not the
+            # same statement. The render is NOT bit-identical between the two output sizes
+            # -- 50 of 70 records do move 256 -> 4096 and the largest per-pixel difference
+            # after the 64-px resample is 2.0e-4 on basecolor ch0. What `02e45ab` measured,
+            # and what matters for a floor, is the CORRELATION against the export, which is
+            # identical to four decimals. Asserting the pixels would fail on arithmetic
+            # this specimen's own decode says should happen.
+            x12 = a12[:, :, c].ravel()
+            c12 = float(np.corrcoef(x12, y)[0, 1]) if x12.std() > 1e-9 else 0.0
+            if abs(c12 - corr) > 1e-4:
+                moved.append(((nm, c), round(corr, 6), round(c12, 6)))
+    assert not moved, (
+        "this specimen's render is supposed to be invariant under $outputsize -- 0 mode-7 "
+        'switch blends and 0 of 106 programs reading $sizelog2 -- and it is not: %r. '
+        'Either the graph changed or `record_sizes` now moves something that branches'
+        % (moved,))
     assert not flat, 'channels collapsed to a constant: %r' % (flat,)
     assert not worse, 'channels below their floor: %r' % (worse,)
     missing = sorted(set(REFERENCE_FLOOR) - set(seen))

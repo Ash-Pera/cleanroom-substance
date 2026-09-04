@@ -2,6 +2,7 @@
 """Render one .sbsasm, and score it against the package's own exported maps if it ships any.
 
     python3 tools/render2 <file.sbsasm> [--dim 256] [--out DIR] [--score DIR]
+                          [--outputsize N|declared]
 
 `--score DIR` pairs each declared output with `<DIR>/*<usage>.png` by the manifest's own
 usage name -- basecolor, normal, roughness, height, metallic, ambientocclusion -- which is
@@ -10,6 +11,22 @@ the vocabulary the exporter names its files in. Nothing is matched by position.
 Both arrays are resampled to 64 before scoring, per channel and at 16-bit precision. Read
 the `uniq` column before reading a correlation: a channel with three distinct values
 correlates with anything.
+
+**`--score` RENDERS AT THE SIZE THE REFERENCES WERE EXPORTED AT, and plain rendering does
+not.** Every reference pack in this corpus ships maps at an `$outputsize` its own file does
+not declare, and a record's size slot is a PROGRAM of `$outputsize`, so the two are
+different graphs and not one graph at two resolutions. The default is therefore per-tool:
+the file's declared size when rendering (that is all a consumer of the file has), the
+implied size when scoring (that is what the other side of the comparison is). Both are
+printed. `--outputsize declared` forces the file's own. See `_score_outputsize`.
+
+**THIS SCORER'S PAIRING IS THE CRUDE ONE.** It globs `*.png`, keys on the last
+underscore-separated token and keeps the first hit per key. On a single-graph pack that
+agrees with `archive/tools/refcompare.py`; on a pack that declares several graphs and
+flattens their exports into one directory it does not, and `Kutejnikov__Bricks_and_tiles`
+reports 48 rows here -- five graphs' outputs each scored against whichever map the glob
+returned first -- against the 12 distinct channels that survive `refcompare`'s graph
+narrowing. Use `refcompare` for anything that arbitrates.
 """
 import argparse
 import glob
@@ -56,8 +73,8 @@ def references(directory):
     return out
 
 
-def _outputsize_warning(asm, refs, used):
-    """Say so when the exported maps were not produced at the `$outputsize` being rendered.
+def _score_outputsize(asm, refs, asked, dim):
+    """The `$outputsize` to SCORE at, and the reason, printed.
 
     THE FILE DECLARES A DEFAULT AND THE EXPORTER DID NOT HAVE TO USE IT, and on a
     `dynamicsize` graph the two are a different render, not the same render at a different
@@ -67,27 +84,58 @@ def _outputsize_warning(asm, refs, used):
     colour chain read `$sizelog2`; scoring the two against each other without saying so is
     how that package's basecolor spent months being read as a filter defect.
 
-    A warning and not a default, because the reference's pixel dimensions are evidence
-    about the export and not a statement by the file.
+    THIS USED TO BE A WARNING AND IS NOW THE DEFAULT, and the argument for the change is
+    that the two are different questions:
+
+      * RENDERING has no reference in it. The only thing a consumer of a `.sbsar` holds is
+        the file, and the file states one `$outputsize`; a renderer that quietly picked
+        some other number would be inventing a parameter. So `render()` and `--out` keep
+        the declared size, and `render(asm)` with no `outputsize` is unchanged.
+      * SCORING is a comparison, and a comparison between a render of G at 8 and an export
+        of G at 11 measures neither. Here the reference's pixel dimensions are not a
+        statement by the file, they are the one piece of evidence available about what the
+        other side of the comparison IS -- and refusing to read it does not make the score
+        neutral, it makes it wrong in a fixed direction.
+
+    So the default is per-tool and not global: declared for the render, implied for the
+    score. `--outputsize` overrides either way, and `--outputsize declared` is the spelling
+    that gets the old behaviour back without the caller having to know the number.
+
+    IT IS NOT FREE AT A SMALL `--dim`, and that is printed too rather than left for
+    someone to rediscover. `$outputsize` and `--dim` are not independent: at
+    `$outputsize` 11 ChesterfieldSofa has 15 distinct record sizes of which a 128-px cap
+    leaves 7, against 9 at the declared size, so the cap flattens the size hierarchy
+    MORE at the corrected size than at the wrong one. Measured on that pack, declared ->
+    implied: 7 of 10 channels improve at `--dim` 128, 7 at 256, 8 at 512 and 10 of 10 at
+    1024. The corrected size wants a grid that can carry it.
     """
-    from engine import declared_outputsize
+    from engine import declared_outputsize, implied_outputsize
     decl = declared_outputsize(asm)
-    if decl is None:
-        return
-    now = used or decl
-    sizes = set()
-    for p in refs.values():
-        try:
-            from PIL import Image
-            sizes.add(Image.open(p).size[0])
-        except Exception:
-            pass
-    implied = sorted({int(round(np.log2(s))) for s in sizes if s and s & (s - 1) == 0})
-    if implied and implied != [now[0]]:
-        print('   NOTE: rendering at $outputsize %s (file declares %s); the reference '
-              'maps are %s px, i.e. $outputsize %s. Pass --outputsize %d to compare like '
-              'with like.' % (now[0], decl[0], sorted(sizes), implied,
-                              implied[-1]))
+    if asked == 'declared' or decl is None:
+        return None
+    implied = implied_outputsize(refs.values())
+    if asked is not None:
+        want = (asked, asked)
+    elif implied is None:
+        print('   NOTE: the reference maps do not agree on one power-of-two size, so '
+              'nothing is implied; scoring at the declared $outputsize %s.' % (decl[0],))
+        return None
+    else:
+        want = implied
+    if want == decl:
+        return None
+    print('   scoring at $outputsize %s, not the %s this file declares%s. Pass '
+          '--outputsize declared for the file\'s own size.'
+          % (want[0] if want[0] == want[1] else want,
+             decl[0] if decl[0] == decl[1] else decl,
+             '' if asked is not None else
+             ' -- the reference maps are %d px' % (1 << implied[0])))
+    if dim and dim < (1 << want[0]) // 4:
+        print('   NOTE: --dim %d is far below the %d px this graph is now being evaluated '
+              'at, and the cap flattens the size hierarchy the $outputsize creates. '
+              'Read small margins here as understated, not as arbitrations.'
+              % (dim, 1 << want[0]))
+    return want
 
 
 def main(argv=None):
@@ -96,14 +144,27 @@ def main(argv=None):
     ap.add_argument('--dim', type=int, default=256)
     ap.add_argument('--out')
     ap.add_argument('--score')
-    ap.add_argument('--outputsize', type=int, default=None,
-                    help='render the graph at $outputsize = this log2 size (8 = 256, '
-                         '11 = 2048). Defaults to what the file declares. NOT --dim: '
-                         '--dim caps the pixel grid, this is the size expressions read.')
+    ap.add_argument('--outputsize', default=None,
+                    help="render the graph at $outputsize = this log2 size (8 = 256, "
+                         "11 = 2048), or 'declared' for the file's own. Without --score "
+                         "the default IS the declared size; WITH --score it is the size "
+                         "the reference maps were exported at, because a score is a "
+                         "comparison. NOT --dim: --dim caps the pixel grid, this is what "
+                         "the size expressions read.")
     a = ap.parse_args(argv)
+    asked = a.outputsize
+    if asked not in (None, 'declared'):
+        asked = int(asked)
 
     asm = sbsasm.Assembly(a.path)
-    os_log2 = None if a.outputsize is None else (a.outputsize, a.outputsize)
+    names = manifest.output_names(asm)
+    refs = references(a.score) if a.score else {}
+    # THE REFERENCES ARE READ BEFORE THE RENDER, because with `--score` they decide what
+    # is rendered. Without them nothing here can imply a size and the declared one stands.
+    if refs:
+        os_log2 = _score_outputsize(asm, refs, asked, a.dim)
+    else:
+        os_log2 = None if asked in (None, 'declared') else (asked, asked)
     outs, fails, info = render(asm, max_dim=a.dim, outputsize=os_log2)
     print('%d/%d records, %d failures, %d low-confidence'
           % (len(outs), len(asm.records), len(fails), len(info['low_confidence'])))
@@ -124,10 +185,6 @@ def main(argv=None):
     if len(fails) > len(roots):
         print('   (+%d cascaded)' % (len(fails) - len(roots)))
 
-    names = manifest.output_names(asm)
-    refs = references(a.score) if a.score else {}
-    if refs:
-        _outputsize_warning(asm, refs, os_log2)
     scores = []
     for uid, fmt, _grey, ri in asm.outputs():
         nm = (names.get(uid) or '').lower()

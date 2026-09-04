@@ -404,8 +404,31 @@ def emissions(rec, run, slots, cache=None):
 
 
 def _batch_emit(run, table, frames, reads, cache=None):
-    """Every recorded frame's patterns, one evaluation per entry parameter, or None."""
+    """Every recorded frame's patterns, one evaluation per entry parameter, or None.
+
+    ZERO FRAMES IS AN ANSWER, NOT A REFUSAL, and the two paths disagreed about it. A gate
+    that closes before the first pattern leaves the walk with no frames at all; the scalar
+    path returns `[]` for that and `emissions` accepts it, because `closed` is true. The
+    batched path reached `_stack` with an empty column list and raised `IndexError` on
+    `col[0]` -- not a refusal that falls back, an exception that escaped `emissions`
+    entirely and failed the record.
+
+    It is a REGRESSION AND IT IS DATED. `e231131` made `fx_walk` follow both of a cell's
+    forward pointers; on `ChesterfieldSofa` record 321 that takes the chain from
+    `[0x18b, 0x89]` to `[0x18b, 0x89, 0x89, 0x89]` and the entry table from 9 rows to 11,
+    and one of the two new gates closes at pattern 0. Before `e231131`: 881/881 records,
+    0 failures. After: 858/881, 23 failures, and `basecolor` and `roughness` stop being
+    scored at all -- 4 of the 10 channels `777e597` tabulated. Nothing caught it because
+    `test_render2.REFERENCE_FLOOR` covers Rokviz only and `test_filters.REFERENCE_FLOOR`
+    is scored through `render.py`, which does not run this code.
+
+    The fix is the one that makes the two paths agree rather than the one that makes the
+    symptom go away: the batched path's own docstring says the scalar walk is the arbiter
+    and that anything the batch cannot do falls back to it. On m = 0 the arbiter says `[]`.
+    """
     m = len(frames)
+    if m == 0:
+        return []
     numbers = np.array([n for n, _f in frames], dtype=np.float64)
     stacked = _stack([f for _n, f in frames], sorted(reads), m)
     if stacked is None:

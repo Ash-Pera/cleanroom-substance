@@ -409,6 +409,16 @@ and on the only ground-truth check in the repository, `Chesterfield`'s basecolor
 `REFERENCE_FLOOR` entries ratcheted up. See FORMAT-NOTES.md, "A cell with two forward
 pointers loses one, so follow both".
 
+That change also broke `render2` on the same specimen and nothing noticed for six commits.
+On `ChesterfieldSofa` record 321 the wider walk finds two further `0x89` gates, one of which
+closes before the first pattern; the batched FX emission path then handed an empty frame
+list to a routine that indexed its first element, and 23 records failed — taking `basecolor`
+and `roughness` out of the score entirely, 4 of the 10 channels. The floors above are scored
+through `archive/tools/render.py`, which does not run that code, and `render2`'s own floor
+table covered one other specimen, so both guards were green. Fixed, and the gap is closed by
+a second floor table over the packs. See FORMAT-NOTES.md, "The output size the reference was
+exported at is a property of the SCORE, not of the render".
+
 **And another 30,086 came off it, because the words the parameter layout DROPS are pointers
 too.** `fx_table` steps by the furthest-forward of "the slots the tag's *parameter* layout
 declares", and `fx_entry_layout` drops every structural bit — 4, 7, 16 and 17, the words

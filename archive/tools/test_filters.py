@@ -1262,6 +1262,23 @@ def test_uniform_colour_sits_where_the_source_says_it_does():
 #: RATCHETED UP after `fx.gridcount` became the default -- see FORMAT-NOTES, "the tufting
 #: lattice". The old floors are kept in the comment beside each so the size of that move
 #: stays legible, and so nobody re-derives them downward by accident.
+#:
+#: THE CONFIGURATION THIS TABLE IS TAKEN AT, stated because it used to be implicit and an
+#: implicit baseline is how a guard gets replaced by accident:
+#:
+#:     renderer      archive/tools/render.py, through `refcompare.compare_pack`
+#:     $outputsize   the one the FILE declares -- every record on its tag
+#:     max_dim       `refcompare.RENDER_DIM`, 128
+#:
+#: **The exported maps this table scores against were NOT produced at that `$outputsize`.**
+#: All six reference packs ship maps at 512, 1024, 2048, 2048, 2048 and 4096 px against a
+#: declared 256 (`777e597`). That path can now pass the corrected size -- `render.render(
+#: ..., sizes=...)` and `compare_pack(..., outputsize='implied')` -- and it is deliberately
+#: NOT the default here: measured, it improves seven of Chesterfield's ten channels and
+#: would require LOWERING two of the floors below (AO 0.82 and basecolor ch2 -0.70). See
+#: `REFERENCE_FLOOR_RENDER2`, which is where the corrected size is guarded instead, and
+#: FORMAT-NOTES.md, "The output size the reference was exported at is a property of the
+#: SCORE, not of the render", for the full 27-channel table at both baselines.
 REFERENCE_FLOOR = {
     ('Kutejnikov__Auras', 'basecolor', 0): 0.90,            # unchanged, now 0.937
     ('Kutejnikov__Auras', 'basecolor', 1): 0.82,            # unchanged, now 0.865
@@ -1344,6 +1361,130 @@ REFERENCE_FLOOR = {
 }
 
 
+#: THE SECOND FLOOR TABLE, AND EVERY ENTRY IS A FIRST ASSERTION -- NOTHING HERE IS A
+#: RE-TAKEN `REFERENCE_FLOOR` ROW. Read the two together or neither makes sense:
+#:
+#:     table                     renderer                 $outputsize   max_dim
+#:     REFERENCE_FLOOR           archive/tools/render.py   declared        128
+#:     REFERENCE_FLOOR_RENDER2   tools/render2             IMPLIED         256
+#:
+#: WHY TWO AND NOT ONE MOVED. `777e597` established that all six reference packs ship maps
+#: exported at an `$outputsize` their own file does not declare, and left `REFERENCE_FLOOR`
+#: alone because `refcompare -> render.py` could not pass the flag. That path CAN now
+#: (`render.render(..., sizes=...)`, `refcompare.compare_pack(..., outputsize='implied')`),
+#: so the question became a choice rather than a limitation, and it was measured before it
+#: was made. Through `render.py` at `max_dim` 128, declared -> implied on Chesterfield:
+#:
+#:     basecolor 0  +0.7501 -> +0.8779     normal 0    +0.9490 -> +0.9577
+#:     basecolor 1  +0.7668 -> +0.9070     normal 1    +0.9483 -> +0.9558
+#:     basecolor 2  -0.6764 -> -0.8062     normal 2    +0.6679 -> +0.5887
+#:     height       +0.9528 -> +0.9566     roughness   +0.9299 -> +0.9414
+#:     metallic     +0.9816 -> +0.9981     AO          +0.9195 -> +0.7972
+#:
+#: Seven better, three worse, and TWO OF THE THREE WORSE ARE FLOORED -- AO would have to
+#: drop from 0.82 to about 0.79 and basecolor ch2 from -0.70 to about -0.81. Moving that
+#: table's baseline therefore means lowering two guards, and a guard that has to be lowered
+#: to be moved is not an improvement. `REFERENCE_FLOOR` stays exactly where it is, and it
+#: is now LABELLED with the configuration it was taken at instead of leaving that implicit.
+#:
+#: WHAT MOVES INSTEAD is the renderer of record, which had no reference floor on these
+#: packs at all -- and that gap is not hypothetical. `e231131` made `fx_walk` follow both
+#: of a cell's forward pointers, which is right; on ChesterfieldSofa it also took
+#: `render2` from 881/881 records to 858/881 and stopped `basecolor` and `roughness` being
+#: produced at all, 4 of the 10 channels `777e597` tabulated. Nothing failed, because
+#: `test_render2.REFERENCE_FLOOR` covers Rokviz only and this file's table runs through the
+#: other renderer. That is the exposure this table closes; see FORMAT-NOTES.md, "The output
+#: size the reference was exported at is a property of the SCORE".
+#:
+#: THE GRID UNDERSTATES THE SIZE, WHICH MAKES THESE FLOORS CONSERVATIVE. `$outputsize` and
+#: `max_dim` are not independent: at `$outputsize` 11 ChesterfieldSofa has 15 distinct
+#: record sizes of which a 128-px cap leaves 7, against 9 at the declared size, so the cap
+#: flattens the size hierarchy MORE at the corrected size. Declared -> implied through
+#: `render2` improves 7 of Chesterfield's 10 channels at `--dim` 128, 7 at 256, 8 at 512
+#: and **10 of 10 at 1024** (mean +0.7873 -> +0.8095). 256 is what the suite can afford;
+#: a floor taken at a grid that understates the reading is a floor set low, which is the
+#: safe direction.
+#:
+#: TWO KINDS OF ENTRY, marked. `ARBITRATES` channels clear refcompare's own bar -- `uniq`
+#: comfortably over 20 and our sd at least a tenth of the reference's. The others are
+#: COLLAPSE GUARDS only: `emission` and `metallic` have under a dozen distinct values, so
+#: their correlations are three plateaus landing near three levels and must not be read as
+#: agreement. They are listed because a channel that stops rendering, or goes flat, is
+#: exactly what this file exists to catch.
+REFERENCE_FLOOR_RENDER2 = {
+    # measured 2026-09-04 at 0c6f7dd + this change, render2 / implied / max_dim 256
+    ('Kutejnikov__Auras', 'basecolor', 0): 0.90,             # +0.9277  ARBITRATES
+    ('Kutejnikov__Auras', 'basecolor', 1): 0.72,             # +0.7497  ARBITRATES
+    ('Kutejnikov__Auras', 'basecolor', 2): 0.91,             # +0.9398  ARBITRATES
+    ('Kutejnikov__Bricks_and_tiles', 'ambientocclusion', 0): 0.85,   # +0.8866  ARBITRATES
+    # BRICKS BASECOLOR IS WEAK AND IS LISTED ANYWAY, for the same reason `REFERENCE_FLOOR`
+    # lists it: it is the output that moves most when anything in the `levels` or fx path
+    # changes, and an unwatched channel that can swing by 1.1 is the whole exposure. The
+    # NUMBER is partly a property of which of five graphs' maps the narrowing leaves, so
+    # these are collapse guards and must not be ratcheted on a small gain.
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 0): -0.05,  # +0.0400  ARBITRATES, weak
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 1): 0.20,   # +0.2654  ARBITRATES, weak
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 2): 0.20,   # +0.2681  ARBITRATES, weak
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 0): 0.96,    # +0.9885  collapse guard
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 1): 0.98,    # +0.9993  collapse guard
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 2): 0.97,    # +0.9953  collapse guard
+    ('Kutejnikov__Bricks_and_tiles', 'height', 0): 0.54,      # +0.5803  ARBITRATES
+    ('Kutejnikov__Bricks_and_tiles', 'normal', 0): 0.75,      # +0.7775  ARBITRATES
+    ('Kutejnikov__Bricks_and_tiles', 'normal', 1): 0.75,      # +0.7855  ARBITRATES
+    ('Kutejnikov__Bricks_and_tiles', 'roughness', 0): 0.77,   # +0.8047  ARBITRATES
+    # CHESTERFIELD. These ten are the ones `e231131` silently took to four, and `metallic`
+    # is the sharpest single number in this repository: at the implied size it reproduces
+    # the engine's own export at MAE 0.0004 (0.0010 at this grid), against 0.0211 at the
+    # declared one. It is a button mask with 7 distinct values, so the floor is a collapse
+    # guard and the MAE is the evidence.
+    ('minime453__Chesterfield_PBR_Material', 'AO', 0): 0.84,          # +0.8715  ARBITRATES
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.82,   # +0.8563  ARBITRATES
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.94,   # +0.9656  ARBITRATES
+    # STILL ANTI-CORRELATED, AND MORE SO AT THE CORRECTED SIZE, WHICH IS A RETRACTION.
+    # `777e597` reported this channel going -0.5763 -> +0.7679 and that is what motivated
+    # `--outputsize` in the first place. It does not reproduce on today's tree: at
+    # `--dim` 1024 it now reads -0.2849 declared and -0.2599 implied. The sign flip was
+    # real when taken and has been undone by the twenty-odd commits since -- the `levels`
+    # walk, the `normal` reference scale and the fx-tree walk all move this chain. The
+    # floor is a lower bound on a negative number: do not get MORE inverted than this.
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2): -0.46,  # -0.4262  ARBITRATES
+    ('minime453__Chesterfield_PBR_Material', 'height', 0): 0.93,      # +0.9562  ARBITRATES
+    ('minime453__Chesterfield_PBR_Material', 'metallic', 0): 0.99,    # +0.9999  collapse guard
+    ('minime453__Chesterfield_PBR_Material', 'normal', 0): 0.93,      # +0.9524  ARBITRATES
+    ('minime453__Chesterfield_PBR_Material', 'normal', 1): 0.92,      # +0.9496  ARBITRATES
+    ('minime453__Chesterfield_PBR_Material', 'normal', 2): 0.72,      # +0.7499  ARBITRATES
+    ('minime453__Chesterfield_PBR_Material', 'roughness', 0): 0.91,   # +0.9358  ARBITRATES
+}
+
+#: The grid `REFERENCE_FLOOR_RENDER2` was taken at. Not `refcompare.RENDER_DIM`: that one
+#: is the other table's, and the two are free to differ -- this one renders a graph whose
+#: records are up to 2048 px, that one a graph whose records are the tag's 256.
+RENDER2_FLOOR_DIM = 256
+
+#: HOW MANY OF A PACK'S YIELDS COME OUT CONSTANT TODAY, frozen so that a NEW collapse
+#: fails even though an old one is expected.
+#:
+#: `compare_pack` yields once per (assembly, output, channel), and a pack that declares
+#: several graphs yields the same channel several times -- `Kutejnikov__Bricks_and_tiles`
+#: ships two `.sbsar` of five graphs each. The floor comparison keeps the LAST row per key,
+#: which is deterministic at a given commit (sorted assemblies, fixed output order) and is
+#: the row every number in the table above was read from. That leaves the sharp assertion
+#: -- "this channel is not a constant" -- unable to see an EARLIER yield collapsing, which
+#: is exactly the `b2f1d97` shape one graph over.
+#:
+#: So the count is frozen instead. 18 of Bricks' yields are constant today: one of its five
+#: graphs renders every one of its nine scored channels flat, twice over (two `.sbsar`).
+#: That is a real weakness of `render2` on that pack and it is recorded rather than hidden
+#: -- `render.py` does not render that graph AT ALL, so under the other table those rows
+#: are "not rendered" and never reach a floor. A picture that is constant and a refusal are
+#: both zero information; the difference is that only one of them is silent.
+CONSTANT_YIELDS_RENDER2 = {
+    'Kutejnikov__Auras': 0,
+    'Kutejnikov__Bricks_and_tiles': 18,
+    'minime453__Chesterfield_PBR_Material': 0,
+}
+
+
 def test_reference_agreement_does_not_regress():
     """The exported maps as a RATCHET, because a sweep cannot see this.
 
@@ -1407,6 +1548,180 @@ def test_reference_agreement_does_not_regress():
     assert not worse, ('reference agreement fell below its recorded floor: %s' % (worse,))
     assert not missing, ('a channel that used to score no longer does: %s. Either an output '
                          'stopped rendering or its pairing broke' % (missing,))
+    return
+
+
+def test_render2_reference_agreement_does_not_regress():
+    """The same ratchet on the RENDERER OF RECORD, at the size the maps were exported at.
+
+    THE GAP THIS CLOSES IS DATED AND MEASURED. `test_reference_agreement_does_not_regress`
+    above scores `archive/tools/render.py`; `test_render2.REFERENCE_FLOOR` scores
+    `render2` on Rokviz alone. Between them, nothing watched `render2` on the five packs
+    under `new_opengameart`. `e231131` then made `fx_walk` follow both of a cell's forward
+    pointers -- a correct change, 135,440 bytes of FX tree -- and on ChesterfieldSofa it
+    took `render2` from 881/881 records to 858/881, with `basecolor` and `roughness` no
+    longer produced at all. Four of that pack's ten channels stopped being scoreable and
+    the suite stayed green for six commits. This is the check that would have said so.
+
+    IT SCORES THROUGH `refcompare`, NOT THROUGH `render2 --score`, and that is not a
+    convenience. Every pairing correction this project has made lives in `refcompare` --
+    the graph-directory and graph-prefix narrowing, the sibling-package scoping, the
+    identifier-then-declared-channel fallback, the 16-bit load. `--score` has none of them
+    and reports 48 rows on `Kutejnikov__Bricks_and_tiles` where the narrowed count is 12
+    distinct channels. A floor taken from the crude pairing would be a floor on glob
+    order.
+
+    Configuration, and it differs from the table above on TWO axes deliberately -- see
+    `REFERENCE_FLOOR_RENDER2` for why neither was chosen by preference.
+    """
+    try:
+        import refcompare
+    except Exception:
+        print('SKIP test_render2_reference_agreement_does_not_regress: no refcompare')
+        return
+    packs = refcompare.reference_packs()
+    if not packs:
+        print('SKIP test_render2_reference_agreement_does_not_regress: no reference packs')
+        return
+    seen, flat, worse, constant = {}, [], [], {}
+    for pack, refs in sorted(packs.items()):
+        if not any(k[0] == pack for k in REFERENCE_FLOOR_RENDER2):
+            continue
+        constant[pack] = 0
+        for name, chan, ours, ref in refcompare.compare_pack(
+                pack, refs, max_dim=RENDER2_FLOOR_DIM, outputsize='implied',
+                renderer='render2'):
+            if chan is None:
+                continue
+            o, r = ours.ravel(), ref.ravel()
+            sd = float(o.std())
+            if sd <= 1e-9:
+                # COUNTED OVER EVERY YIELD, not only the floored ones, so a channel that
+                # has no floor cannot go flat unnoticed. That is the wider half of the
+                # b2f1d97 exposure: the entry that regression took away was not in any
+                # table at the time.
+                constant[pack] += 1
+                continue
+            key = (pack, name, chan)
+            if key not in REFERENCE_FLOOR_RENDER2:
+                continue
+            corr = 0.0
+            if r.std() > 1e-9:
+                corr = float(np.corrcoef(o, r)[0, 1])
+            # LAST ROW WINS, like `seen` in the test above and like the numbers in the
+            # table: a multi-graph pack yields one key several times and only the last is
+            # what was measured. The earlier ones are covered by `constant` instead.
+            seen[key] = (sd, corr)
+    if not seen:
+        print('SKIP test_render2_reference_agreement_does_not_regress: nothing scored')
+        return
+    for key, (sd, corr) in sorted(seen.items()):
+        if corr < REFERENCE_FLOOR_RENDER2[key]:
+            worse.append((key, round(corr, 4), REFERENCE_FLOOR_RENDER2[key]))
+    for pack, n in sorted(constant.items()):
+        was = CONSTANT_YIELDS_RENDER2.get(pack)
+        if was is None or n > was:
+            flat.append((pack, n, was))
+    missing = sorted(set(REFERENCE_FLOOR_RENDER2) - set(seen))
+    assert not flat, ('more render2 yields render CONSTANT than the frozen census: '
+                      '(pack, now, recorded) %s -- this is the b2f1d97 shape' % (flat,))
+    assert not worse, ('render2 reference agreement fell below its floor: %s' % (worse,))
+    assert not missing, ('a channel render2 used to produce no longer scores: %s -- this '
+                         'is the e231131 shape: an output stopped rendering and nothing '
+                         'failed' % (missing,))
+    print('ok  test_render2_reference_agreement_does_not_regress (%d channels, %d constant '
+          'yields as recorded)' % (len(seen), sum(constant.values())))
+    return
+
+
+def test_the_implied_outputsize_is_the_one_the_files_own_size_programs_reproduce():
+    """`log2(exported px)` is a GUESS unless the file's own size expressions agree.
+
+    THE WEAK STEP IN THE WHOLE `$outputsize` STORY. Everything downstream rests on "the
+    maps are 2048 px, so the exporter set `$outputsize` to 11", and that inference is only
+    sound if the output record's size expression is the identity on `$outputsize`. It need
+    not be: `record_sizes` measures 674 of ChesterfieldSofa's 746 size programs adding the
+    whole shift, 45 ignoring `$outputsize` entirely, 5 adding a third of it and 5 two
+    thirds, and one shifting width only. An output hanging off one of those would export at
+    a size that is not `1 << k`, and reading `k` off the pixels would be wrong.
+
+    SO ASK THE FILE. For each candidate `k` in 6..14, evaluate every record's size program
+    at `(k, k)` and check whether the records the OUTPUT TABLE names come out at exactly
+    the pixel dimensions of the map each one pairs with. This is falsifiable in the strong
+    sense: it can return no `k`, or several, or one that is not the pixel answer.
+
+    It returns exactly one and it is the pixel answer, on every pack whose outputs pair
+    unambiguously -- RoofTiles 5/5 at k = 11 and 0/5 at all eight other candidates,
+    ChesterfieldSofa 6/6 at 11, `Rokviz japanese fabric 8` 6/6 at 12. Where a pack declares
+    several graphs into one export directory the residual ambiguity is in the PAIRING and
+    not in the size, and the best `k` is still the pixel one; those are asserted more
+    weakly, as "no other k does better".
+
+    A NEGATIVE CONTROL IS BUILT IN: if `record_sizes` were a uniform scale of the tag, or
+    if the size slot were misidentified, every `k` would score the same and `best` would be
+    the whole range. It is one value.
+    """
+    try:
+        import refcompare
+        import render2                                              # noqa: F401
+        from engine import record_sizes, implied_outputsize
+        from PIL import Image
+    except Exception as e:
+        print('SKIP test_the_implied_outputsize...: %s' % e)
+        return
+    packs = refcompare.reference_packs()
+    if not packs:
+        print('SKIP test_the_implied_outputsize...: no reference packs')
+        return
+    import glob as _glob
+    checked = []
+    for pack, refs in sorted(packs.items()):
+        implied = implied_outputsize(refs)
+        assert implied is not None, \
+            '%s: its own exported maps do not agree on one power-of-two size' % pack
+        for path in sorted(_glob.glob(os.path.join(refcompare.PACKS, pack, '**',
+                                                   '*.sbsasm'), recursive=True)):
+            asm = sbsasm.Assembly(path)
+            own = refcompare._package_refs(path, refs)
+            names = manifest.output_names(asm)
+            pairs = []
+            for uid, fmt, _g, ri in asm.outputs():
+                if isinstance(fmt, tuple):
+                    continue
+                nm = refcompare._key(names.get(uid))
+                hit = [p for p in own
+                       if nm and nm in refcompare._key(os.path.basename(p))]
+                if not hit:
+                    # THE IDENTIFIER FIRST, THEN THE DECLARED CHANNEL -- `refcompare`'s
+                    # own fallback, and without it `minime453__Stylized_Sandy_Stone_Path`
+                    # contributes nothing: it names all six outputs `output`, `output_1`
+                    # ... and declares them baseColor, normal, roughness and so on.
+                    ch = refcompare._key(manifest.output_channels(asm).get(uid))
+                    hit = [p for p in own
+                           if ch and ch in refcompare._key(os.path.basename(p))]
+                if hit:
+                    pairs.append((ri, Image.open(hit[0]).size))
+            if not pairs:
+                continue
+            score = {}
+            for k in range(6, 15):
+                sizes = record_sizes(asm, (k, k)) or {}
+                score[k] = sum(1 for ri, want in pairs
+                               if sizes.get(ri, (asm.records[ri].width,
+                                                 asm.records[ri].height)) == want)
+            best = max(score.values())
+            winners = sorted(k for k, v in score.items() if v == best)
+            assert best > 0, '%s: no $outputsize reproduces any output map size' % path
+            assert winners == [implied[0]], (
+                '%s: the size programs pick $outputsize %s, the exported pixels imply %s '
+                '-- %r' % (path, winners, implied[0], score))
+            checked.append((os.path.basename(path), implied[0], best, len(pairs)))
+    if not checked:
+        print('SKIP test_the_implied_outputsize...: no output paired with a map')
+        return
+    print('ok  test_the_implied_outputsize_is_the_one_the_files_own_size_programs_'
+          'reproduce (%s)'
+          % ', '.join('%s k=%d %d/%d' % c for c in checked))
     return
 
 

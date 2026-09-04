@@ -701,6 +701,43 @@ class _SwappedEdges(object):
         return getattr(self._rec, name)
 
 
+class _Resized(object):
+    """A record view whose `width`/`height` are the graph's size at some `$outputsize`.
+
+    THIS RENDERER HAD NO `$outputsize` AT ALL, and that was not a scope decision, it was
+    an absence nobody had priced. `Record.width` is `1 << ((tag >> 8) & 0xF)` -- the size
+    expression's value at the ONE output size the manifest declares as its default -- and
+    every one of this module's 41 reads of it takes that for the record's size, full stop.
+    So `refcompare`, and through it `test_filters.REFERENCE_FLOOR`, scored every render
+    this project has ever graded at the declared size while the maps it graded them
+    against were exported at 512, 1024, 2048, 2048, 2048 and 4096. See FORMAT-NOTES.md,
+    "the reference maps were exported at a size the file does not declare".
+
+    A PROXY AND NOT 41 SUBSTITUTIONS, for the reason `_SwappedEdges` above is one: the
+    helper functions this module hands a record to (`_reference_px`, `load_pixels_bitmap`,
+    `walk_named_matrix` ...) read `rec.width` themselves, so a size threaded through the
+    loop body alone would move some of the reads and not others. A view moves all of them
+    or none.
+
+    NO SIZE MODEL LIVES HERE. The caller supplies `{index: (W, H)}` as data --
+    `render2.engine.record_sizes` is the one implementation of it, and it is a DECODE (a
+    size slot, a program, and the check that the program reproduces the tag at the
+    declared size), not a filter semantics. This module's independence from `render2` is
+    an independence of FILTERS, which is what `refcompare` scores; sharing the size read
+    does not touch one of them. `sizes=None` leaves every record on its tag and this class
+    is never constructed.
+    """
+
+    __slots__ = ('_rec', 'width', 'height')
+
+    def __init__(self, rec, size):
+        self._rec = rec
+        self.width, self.height = size
+
+    def __getattr__(self, name):
+        return getattr(self._rec, name)
+
+
 def cls_pair_slot(rec, low_bit):
     """Where a class-word (baked, program) parameter pair lives, from the WALK.
 
@@ -856,7 +893,7 @@ def walk_named_matrix(asm, rec):
 
 
 def render(asm, precomputed=None, verbose=True, max_dim=None,
-           synth_missing_bitmaps=False, stop_after=None):
+           synth_missing_bitmaps=False, stop_after=None, sizes=None):
     """Evaluate every record 0..N-1 that a filter type here can handle.
 
     `precomputed` pre-seeds outputs for records the walker cannot compute itself
@@ -874,6 +911,12 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
     deterministic synthetic pattern instead of raising, so a sweep can see how much
     of a graph downstream of an external input still runs -- at the cost of that
     branch's output no longer reflecting the file's own content.
+
+    `sizes` is `{record index: (W, H)}` -- the graph evaluated at some `$outputsize` other
+    than the one the manifest defaults to. It is NOT `max_dim`: `max_dim` caps the grid
+    this sweep draws on, `sizes` is what the file says the records ARE. See `_Resized`.
+    Left None, every record keeps its tag and this function is byte-identical to what it
+    was before the parameter existed.
     """
     outputs = dict(precomputed or {})
     synthetic = set()
@@ -886,6 +929,15 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
     for i, rec in enumerate(asm.records):
         if i in outputs:
             continue
+        # BEFORE THE `try`, and before anything reads a size. A `bitmap`'s tag is its
+        # PAYLOAD's dimensions and `record_sizes` already leaves it alone (no size
+        # expression, no input, so it keeps its tag); the guard here is belt and braces
+        # for a caller supplying its own dict, because `load_pixels_bitmap` reshapes the
+        # resource by `rec.width * rec.height` and a moved size there is not a bigger
+        # picture, it is a `ValueError`.
+        if sizes and i in sizes and sizes[i] != (rec.width, rec.height) \
+                and rec.filter_name != "bitmap":
+            rec = _Resized(rec, sizes[i])
         try:
             if rec.filter_name == "bitmap":
                 b = rec.bitmap
