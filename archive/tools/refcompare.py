@@ -136,6 +136,34 @@ MAE 0.0332, not 0.1039, and a correlation of +0.9524. Patterns correlating at 0.
 landing in the wrong places. What is left is a GAIN error and the fit states it: our std is
 1/0.764 = 1.31x the reference's, an amplitude 31% high with the structure right.
 
+THAT GAIN IS `height`'s, NOT `normal`'s, and this paragraph used to leave the subject
+unstated -- which is the shape of defect the pass one commit earlier was written to catch.
+Scored in the same run, same configuration, the two channels' fits are the same fit:
+
+    max_dim   normal ch0                    height ch0
+     128      corr +0.9561  MAE 0.0352  y=0.741x    corr +0.9566  MAE 0.0610  y=0.718x
+     256      corr +0.9524  MAE 0.0332  y=0.764x    corr +0.9562  MAE 0.0684  y=0.762x
+     512      corr +0.9510  MAE 0.0312  y=0.786x    corr +0.9561  MAE 0.0737  y=0.794x
+    1024      corr +0.9506  MAE 0.0305  y=0.796x    corr +0.9560  MAE 0.0756  y=0.804x
+    2048      corr +0.9504  MAE 0.0297  y=0.807x    corr +0.9560  MAE 0.0774  y=0.814x
+
+Five rungs, agreeing to 3.2% / 0.3% / 1.0% / 1.0% / 0.9%. 2048 is the last one there is --
+it is both the record's own size at `$outputsize` 11 and the export's -- and the slope gets
+to 0.807, not to 1.0, at 92 seconds for the run. `ChesterfieldSofa`'s `normal` (record 121)
+and its `height` (record 120) both read record 119, and record 120 is a `levels` with a baked
+out-range of [0.25, 0.75] -- one linear gain of exactly 0.5 -- so a shared amplitude error in
+119 arrives at both outputs at the same size. On `Kutejnikov__Bricks_and_tiles` the SIGN
+flips and they still track: normal y=1.361x against height y=1.292x at max_dim 256. A fixed
+31% error in `f_normal` cannot be 31% high on one package and 29% low on another.
+
+The 0.764 is also not an artifact of scoring on a 64px grid, which was the obvious first
+guess given the export is 2048. `resample` puts BOTH sides on `SIZE`, so the comparison is
+symmetric; and crossing `max_dim` against `SIZE` shows `height`'s slope is INVARIANT to the
+scoring grid -- 0.758 at every grid from 128 to 2048 at max_dim 256 -- while `normal`'s moves
+the wrong way for that hypothesis, 0.764 at grid 64 down to 0.724 at grid 2048. Averaging the
+reference down was making our overshoot look smaller, not larger. See FORMAT-NOTES.md,
+"`normal`'s 31% gain error is `height`'s".
+
 The p90 statistic itself reproduces -- 7.964 over 39,513 records at HEAD against the 7.8
 recorded -- but conditioning it on what the record draws reverses its sign:
 

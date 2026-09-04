@@ -509,6 +509,15 @@ def f_normal(ctx, v):
     # intensities three orders of magnitude apart, and the ratio between the two hypotheses
     # is exactly R/256 in both.
     #
+    # CONFIRMED IN THE RENDER, at four sizes, and the ratio form needs neither I nor g. Run
+    # the same regression on OUR OWN two outputs -- no reference in the loop -- and K comes
+    # out at exactly (I/g)*(W/256) with correlation 1.000: 10.000 / 20.001 / 40.000 / 80.000
+    # at max_dim 128 / 256 / 512 / 1024 against 10 / 20 / 40 / 80 predicted. K is
+    # proportional to the size the map is drawn at, so `K_ref / K_ours == R_ref / R_ours`
+    # with the intensity and the levels gain cancelling, which travels to a pack whose I and
+    # g are unknown: Chesterfield 8.000 against 8.000, and Bricks graphs 004 and 005 3.987
+    # and 3.984 against 4.000. Three graphs, two packages, 0.4% or better.
+    #
     # WHAT THIS DOES NOT SEPARATE, because both reference packs' normal records carry a
     # 256x256 tag: a hard 256, the record's TAG width, and `1 << declared $outputsize` are
     # all 256 there. A hard 256 is taken because it makes the filter resolution-independent,
@@ -517,6 +526,16 @@ def f_normal(ctx, v):
     # same constant is the format's. 320 of 1,379 corpus `normal` records have a tag that is
     # not 256 and no reference pack covers one; `assume.QUESTIONS['normal.reference_px']`
     # holds 'record' for anyone who wants to put the old reading back.
+    #
+    # THE TAG AND THE DECLARED SIZE STAY TIED -- both are file properties and neither moves
+    # when a caller renders at another `$outputsize`. What DOES move is `v.width`, which is
+    # the record's size AT THE SIZE BEING RENDERED, so the 'record' arm is a fourth reading
+    # rather than one of those three, and scoring at the implied `$outputsize` separated it:
+    # record 121 of ChesterfieldSofa is a 256 tag that evaluates to 2048 at (11, 11). Scored
+    # there, `'record'` takes normal ch0 to MAE 0.0650 / sd 0.0169 / fit y=5.432x against
+    # 0.0332 / 0.1207 / y=0.764x, and mean Z back to the flat 0.9993 against the export's
+    # 0.9659. Its CORRELATION barely moves (+0.9524 -> +0.9488), so the fit slope is what
+    # sees this and a correlation floor alone would not.
     ref = _normal_reference_px(v)
     gy, gx = np.gradient(height)
     gx, gy = gx * (W / ref), gy * (H / ref)

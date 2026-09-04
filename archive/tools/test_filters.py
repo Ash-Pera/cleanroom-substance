@@ -1431,6 +1431,13 @@ REFERENCE_FLOOR_RENDER2 = {
     ('Kutejnikov__Bricks_and_tiles', 'height', 0): 0.54,      # +0.5803  ARBITRATES
     ('Kutejnikov__Bricks_and_tiles', 'normal', 0): 0.75,      # +0.7775  ARBITRATES
     ('Kutejnikov__Bricks_and_tiles', 'normal', 1): 0.75,      # +0.7855  ARBITRATES
+    # ADDED 2026-09-04, NOT RATCHETED: this key had no entry and the channel is the one on
+    # this pack most likely to collapse. Our Z is sd 0.0018 against the export's 0.0227 --
+    # 8% of it, under refcompare's own "a tenth" bar -- so it is a COLLAPSE GUARD and its
+    # +0.6956 must not be read as agreement. ch0 and ch1 beside it are 30% low; an order of
+    # magnitude flat in Z alone is the shape 02e45ab found on Rokviz. See FORMAT-NOTES.md,
+    # "`normal`'s 31% gain error is `height`'s".
+    ('Kutejnikov__Bricks_and_tiles', 'normal', 2): 0.66,      # +0.6956  collapse guard
     ('Kutejnikov__Bricks_and_tiles', 'roughness', 0): 0.77,   # +0.8047  ARBITRATES
     # CHESTERFIELD. These ten are the ones `e231131` silently took to four, and `metallic`
     # is the sharpest single number in this repository: at the implied size it reproduces

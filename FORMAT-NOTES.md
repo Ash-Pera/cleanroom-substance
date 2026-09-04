@@ -49548,3 +49548,416 @@ And the residual with a number on it: Chesterfield `normal` is a **gain** error,
 placement one — correlation +0.9524 with a fit slope of 0.764, so our amplitude is 31% high
 with the structure right. That is a different lane from anything in this section and is
 where the next reference-arbitrated point probably is.
+
+# `normal`'s 31% gain error is `height`'s, and `f_normal` reproduces the engine's own relation exactly
+
+*(Written section by section as each measurement landed, per the notebook rule. The brief:
+`ChesterfieldSofa`'s `normal` reads correlation +0.9524, MAE 0.0332, fit slope 0.764 at
+render2 / implied `$outputsize` / dim 256 — structure right, amplitude 31% high — with a
+seed hypothesis that the gain is an artifact of comparing a 2048-px export against a 256-px
+render, and a standing instruction to check `height` before concluding anything about
+`normal`.)*
+
+## First: exactly what `refcompare` does with mismatched resolutions
+
+The seed hypothesis needs this stated before anything is interpreted, and it is not what the
+hypothesis assumed. `archive/tools/refcompare.py` does **not** resample the reference down to
+the render's grid. `_compare_one` ends
+
+    ours = resample(np.asarray(produced[rec], dtype=np.float64))
+    ref  = resample(load_reference(paired[0]))
+
+and `resample(x, n=SIZE)` with `SIZE = 64` puts **both** sides on a 64×64 grid, per channel,
+through PIL `BILINEAR` at 16-bit precision. So the comparison is symmetric: our 256-px render
+is box-averaged 4× and the engine's 2048-px export 32×, and neither is ever compared at its
+own resolution.
+
+That leaves the hypothesis's mechanism intact in principle — the reference's normals were
+computed from gradients at 2048-px spacing and then averaged 32×, ours from gradients at
+256-px spacing and averaged 4×, and averaging normals flattens them — so it still predicts
+our render reading high. It is refuted by measurement rather than by the mechanism, below.
+
+`refcompare` has two resolutions and they are independent. `RENDER_DIM` is the `max_dim` the
+renderer evaluates at; `SIZE` is the grid both arrays are scored on. The module's own comment
+records that they were once one constant. Every sweep below crosses them deliberately.
+
+## The dim sweep, and it does not trend to 1.0
+
+`ChesterfieldSofa`, `render2`, `$outputsize` implied (11, 11), scoring grid 64 — the
+`REFERENCE_FLOOR_RENDER2` configuration with only `max_dim` varied. Correlation, MAE and fit
+slope together, as the bar requires, for `normal` and `height` side by side:
+
+    max_dim   normal ch0                    normal ch1                    height ch0
+     128      +0.9561  0.0352  y=0.741x     +0.9535  0.0353  y=0.740x     +0.9566  0.0610  y=0.718x
+     256      +0.9524  0.0332  y=0.764x     +0.9496  0.0333  y=0.762x     +0.9562  0.0684  y=0.762x
+     512      +0.9510  0.0312  y=0.786x     +0.9480  0.0314  y=0.784x     +0.9561  0.0737  y=0.794x
+    1024      +0.9506  0.0305  y=0.796x     +0.9478  0.0307  y=0.794x     +0.9560  0.0756  y=0.804x
+
+`normal` ch2, the Z channel, over the same sweep: +0.6017 / +0.7499 / +0.8110 / +0.8303 at
+slopes 0.651 / 0.814 / 0.865 / 0.867.
+
+The slope rises with `max_dim` and **flattens at about 0.80**, 0.010 between 512 and 1024. It
+does not trend to 1.0, and the 2048 rung cannot move it: `record_sizes(asm, (11, 11))` puts
+`ChesterfieldSofa`'s `normal` record 121 at 2048×2048, so a cap above 1024 is still resolving
+new detail, and the last two rungs have already stopped moving. **So the gain error is real,
+not an artifact of scoring at a reduced grid.**
+
+**And the second column is the whole answer.** `height`'s fit slope is `normal`'s at every
+rung — 0.741/0.718, 0.764/0.762, 0.786/0.794, 0.796/0.804, agreeing to 3.2%, 0.3%, 1.0% and
+1.0%. The two channels do not merely share a defect; they share it to within the precision
+the measurement has.
+
+## The comparison grid is not the cause, and for `height` it is not even a factor
+
+The sweep above varies the render grid at a fixed scoring grid. Crossing them separates the
+two: one render, scored at six grids, so the reference is box-averaged 32× at grid 64 and
+sits at its native 2048 at grid 2048.
+
+    max_dim 256                              max_dim 1024
+    grid    height slope   normal slope      grid    height slope   normal slope
+      64        0.762          0.764           64        0.804          0.796
+     128        0.758          0.743          128        0.800          0.765
+     256        0.754          0.703          256        0.799          0.730
+     512        0.758          0.724          512        0.798          0.709
+    1024        0.758          0.724         1024        0.798          0.685
+    2048        0.758          0.724         2048        0.798          0.695
+
+**`height`'s slope is invariant to the scoring grid** — 0.758 at every grid from 128 to 2048
+at `max_dim` 256, and 0.798 at every grid from 512 to 2048 at `max_dim` 1024. Its correlation
+is equally flat (+0.9562 at 64, +0.9497 at 2048). A resampling artifact cannot be invariant
+to the resampling. The reference height map simply has almost no content below the 32-px
+scale — its own sd is 0.1005 at grid 512 and 0.1006 at 2048 — so averaging it costs nothing
+and the 1.25× amplitude excess survives every grid the comparison can be taken on.
+
+`normal`'s slope *does* move with the scoring grid, and **it moves the wrong way for the seed
+hypothesis**: comparing at a finer grid makes our normal look *more* too strong, 0.764 → 0.724
+at `max_dim` 256 and 0.796 → 0.685 at 1024, with correlation falling +0.95 → +0.76 and
++0.95 → +0.75. Averaging the reference down to 64 was making our overshoot look *smaller*, not
+larger. That extra loss at fine grids is ordinary derivative undersampling — a normal map is a
+gradient, and the two fields' fine structure parts company before their coarse structure does
+— and it is a property of the score, not of the decode. It is also exactly what §13.4 already
+says about scoring a derivative channel.
+
+## `f_normal` reproduces the engine's own normal-from-height relation exactly
+
+`02e45ab` pinned the constant from the engine's exports alone: regress the exported normal's
+`nx/nz` on `−d(height)/d(px)` at native size R and `K = (I/g)·(R/256)`, giving 160.005 against
+160.000 on Chesterfield. That measurement never touched our render. **Run the identical
+regression on OUR OWN two outputs** and it says whether the filter carries that relation in
+the render, with no reference in the loop:
+
+    ChesterfieldSofa, render2 / implied, I = 10.0 (baked on record 121), g = 0.5
+
+    max_dim   R      K measured (x / y)     corr    K predicted = (I/g)·(R/256)
+     128     128     10.000 / 10.001       1.000            10.000
+     256     256     20.001 / 20.000       1.000            20.000
+     512     512     40.000 / 40.000       1.000            40.000
+    1024    1024     80.000 / 80.000       1.000            80.000
+    export  2048    160.005 / 159.999      0.982           160.000
+
+Four rungs, exact to five significant figures, at correlation **1.000**. Our `normal` output
+is the analytic derivative of our `height` output with the engine's own constant, and the
+`/256` scaling is confirmed in the render at four sizes rather than at one.
+
+**The `g` in that prediction is not an assumption here — it is read off the file.** Record 120,
+the `height` output, is `levels(119)` with `leveloutlow` 0.25 and `levelouthigh` 0.75, so
+`height = 0.5·h₁₁₉ + 0.25` and `g = 0.5` exactly. Record 121, the `normal`, is `normal(119)`
+with a baked `intensity` of 10.0. **Both read record 119**, so the field they share is
+`h₁₁₉` and the levels between it and the height output is one baked pair of floats.
+
+**The ratio form of this needs neither I nor g, and it travels to a second pack.** `K` is
+proportional to the size the map is drawn at, so if our filter carries the engine's relation
+then `K_ref / K_ours == R_ref / R_ours` and the intensity and the levels gain cancel:
+
+    pack / graph                     ours K    corr    R     ref K     corr    R      K ratio  R ratio
+    Chesterfield                     20.001   1.000   256   160.005   0.982   2048     8.000    8.000
+    Bricks_and_tiles  graph 004       3.000   1.000   256    11.962   0.986   1024     3.987    4.000
+    Bricks_and_tiles  graph 005       3.000   1.000   256    11.952   0.985   1024     3.984    4.000
+    Bricks_and_tiles  graph 002       2.747   0.998   256    11.978   0.984   1024     4.361    4.000
+    Bricks_and_tiles  graph 003       2.736   0.987   256    11.976   0.973   1024     4.378    4.000
+    Bricks_and_tiles  graph 001         n/a     n/a   256    11.988   0.990   1024       n/a    4.000
+
+Three graphs in two packages where our own normal/height pair is exactly affine-related
+(`corr` 1.000) agree with the size ratio to **0.4% or better**. The two that miss by 9% are
+the two whose own `corr` is below 1.000 — the ratio test assumes the levels between the
+normal's input and the height output is a pure linear gain, and where it is not the premise
+fails rather than the filter. Graph 001 renders flat and cannot speak; it is one of the 18
+constant yields `CONSTANT_YIELDS_RENDER2` already freezes.
+
+## The second pack settles it: the sign of the error flips and `normal` follows `height`
+
+`Kutejnikov__Bricks_and_tiles`, the graph whose rows `REFERENCE_FLOOR_RENDER2` keeps (the last
+yield per key, graph 005 of the second assembly). Same configuration, scoring grid 64:
+
+    max_dim   normal ch0                 normal ch1                 height ch0
+     128      +0.7174  0.0271  y=0.454x  +0.7260  0.0264  y=0.451x  +0.6662  0.1777  y=0.419x
+     256      +0.7775  0.0164  y=1.361x  +0.7855  0.0159  y=1.346x  +0.5803  0.2556  y=1.292x
+     512      identical to 256           identical                  identical
+    1024      identical to 256           identical                  identical
+
+Two things. **The sign flips**: on Bricks our amplitude is too LOW (slope > 1) where on
+Chesterfield it is too high, so 1.31 is not a constant of `f_normal`. And **`normal` still
+tracks `height`** — 0.454/0.419 at 128 and 1.361/1.292 at 256, within 8.4% and 5.3%. A filter
+with a fixed gain bug cannot be 31% high on one package and 29% low on another while matching
+its own input channel on both.
+
+The rows above 256 being *identical* is not a bug: graph 005's records evaluate to 256×256 at
+this pack's implied `$outputsize` of 10, so a `max_dim` above 256 caps nothing. It is worth
+recording because a sweep that reports four identical rows looks like a broken sweep.
+
+## Verdict
+
+**Real, not an artifact — and not `normal`'s.** The wrong number is the amplitude of the
+height field at record 119, and both output channels inherit it because both read that record.
+`f_normal` is exonerated a second time, on the same grounds as `02e45ab`'s Rokviz result and
+by a different instrument: its formula reproduces the engine's own normal-from-height relation
+to 0.4% on three graphs across two packages, and every residual it carries is its input's.
+
+**The excess is a distribution shape, not a linear gain, and record 119 is why.** Its
+per-pixel program (three programs at 577524 / 578040 / 577612) is an auto-levels:
+
+    %1 = samplelum(in0, $pos)                 ; in0 = record 111
+    %2 = samplecol(in1, $pos)                 ; in1 = record 118, an 8x8 four-channel map
+    %7 = 1 - max(%2.z, %2.w)                  ; lo
+    %13 = (%1 - %7) / (max(%2.x, %2.y) - %7)  ; (in - lo) / (hi - lo)
+
+so its output is stretched to fill [0, 1] whatever its input did, and the `levels` after it
+maps that to [0.25, 0.75]. Both maps therefore span the same range and the difference is
+inside it — our height's min and max are exactly 0.2500 and 0.7500 and so are the export's,
+with 0.00% of either at the bounds:
+
+    quantile     0.1     1      5     10     25     50     75     90     95     99
+    ours       0.3044 0.3455 0.3851 0.4056 0.4988 0.5992 0.6996 0.7487 0.7487 0.7492
+    export     0.2812 0.3121 0.3520 0.3805 0.4365 0.5153 0.5973 0.6495 0.6717 0.7112
+
+Our interquartile width is 0.2008 against the export's 0.1608 — a ratio of 1.25, which is the
+fit slope — and 10.5% of our pixels sit within 0.0013 of the top bound where the export's 90th
+percentile is 0.6495. So our height field puts far more mass at the top of its own range.
+The affine residual is `sd 0.0317` against a reference `sd 0.1005`, i.e. the error is
+about two thirds gain and one third shape; a single number does not describe it.
+
+That is an FX/blend question in the height chain and not a `normal` one. The brief called
+`normal` "a different lane" from the FX drawing model; the measurement says the lanes meet at
+record 119's inputs, and the residual is on the FX side of the junction.
+
+## The implied-size change and the three coincident `reference_px` readings
+
+`02e45ab`'s caveat named three readings that coincide because both reference packs' `normal`
+records carry a 256×256 tag: **a hard 256, the record's TAG width, and `1 << declared
+$outputsize`**. The brief's premise is that scoring at the implied `$outputsize` breaks that
+coincidence. It does not, and the distinction is worth being exact about:
+
+* the **tag** is a cached value baked at the manifest's declared `$outputsize` (§13.2). It is
+  a property of the file and reads 256 on record 121 whatever we render at.
+* `1 << **declared** `$outputsize`` is likewise a manifest property. Chesterfield declares 8;
+  it is 256 at the declared size and 256 at the implied one.
+
+So the three readings the caveat listed are **still coincident**, and only a reference pack
+with a non-256-tag `normal` record could separate them. There is none: 320 of the corpus's
+1,379 `normal` records carry a non-256 tag and no reference pack covers one, exactly as
+`02e45ab` recorded.
+
+**What the implied size does separate is a fourth reading the caveat did not list, and it is
+the one `assume` actually implements.** `_normal_reference_px`'s `'record'` arm returns
+`v.width`, and `model.View` takes `v.width` from `record_sizes(asm, outputsize)` when sizes
+are supplied — the record's size **at the size being rendered**, not its tag. At the declared
+`$outputsize` that was 256 and the arm was indistinguishable from the default; at the implied
+(11, 11) record 121 evaluates to **2048×2048**, so the arm is now a genuinely different
+number, 8× the constant. Scored:
+
+    ChesterfieldSofa, render2 / implied / max_dim 256
+
+    normal.reference_px      ch0 ours mean/sd     MAE      corr      fit
+    256.0  (default)         0.5002 / 0.1207    0.0332   +0.9524   y=0.764x+0.118
+    'record'  (= 2048)       0.5000 / 0.0169    0.0650   +0.9488   y=5.432x-2.216
+                             ch2 mean 0.9993 against the export's 0.9659
+
+Refuted at the reference arbiter — MAE doubles, the amplitude collapses by exactly 8× (0.1207
+→ 0.0169 is 7.14, with the clip and the normalise taking the rest), and mean Z returns to the
+0.9993 flat-surface reading `02e45ab` used as its arbiter. Note the correlation barely moves,
++0.9524 → +0.9488: **correlation cannot see this and the fit slope can**, which is the reason
+this pass reports all three numbers together.
+
+So: one of the four readings is newly separable and is refuted; the three the caveat named are
+still tied, and the thing that would untie them is unchanged — a reference pack with a
+non-256-tag `normal` record.
+
+## What changed in the tree
+
+**Nothing on the render path.** The finding is that `f_normal` is exact, so a change to it
+would be the opposite of what the measurement says. The diff is prose:
+
+    archive/tools/refcompare.py   docstring: the "what is left is a GAIN error ... an
+                                  amplitude 31% high" diagnosis is corrected to say whose
+                                  gain it is, with the height row beside it
+    tools/render2/filters.py      `f_normal`'s comment gains the in-render confirmation at
+                                  four sizes and the pack-agnostic ratio form
+    tools/assume.py               `normal.reference_px` records that the 'record' arm became
+                                  separable at the implied size, and its score
+    SPEC.md                       13.6's `normal` row
+    FORMAT-NOTES.md               this section
+
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json` are
+byte-identical.
+
+The `refcompare.py` correction is deliberate and is the same failure the previous pass caught
+one file over. That docstring's sentence — "What is left is a GAIN error and the fit states
+it: our std is 1/0.764 = 1.31x the reference's, an amplitude 31% high with the structure
+right" — is true about the number and wrong about the subject, and it sits in the module a
+task brief quotes. Correcting the notebook and leaving it would reproduce `ef79e5c`'s finding
+exactly.
+
+**No floor was ratcheted and none was lowered.** Nothing renders differently, so every entry
+of `REFERENCE_FLOOR_RENDER2` and `REFERENCE_FLOOR` is unchanged, which is what a
+documentation-only diff requires. Re-measured at the configuration the table is taken at
+(render2 / implied / `max_dim` 256), all ten Chesterfield channels reproduce the values the
+table's comments carry to four decimals: AO +0.8715, basecolor +0.8563 / +0.9656 / −0.4262,
+height +0.9562, metallic +0.9999, normal +0.9524 / +0.9496 / +0.7499, roughness +0.9358.
+Bricks' seven likewise, normal +0.7775 / +0.7855, height +0.5803, roughness +0.8047 among
+them. A ratchet here would be recording a re-measurement as an improvement.
+
+## Where in the height chain it is, and where this pass stops
+
+Record 119's auto-levels is faithful and its min/max input is correct, so the excess is
+already present in what it is handed. The `lo`/`hi` map, record 118, is an 8×8
+`pixelprocessor` over record 117 and comes out essentially constant in our render —
+`lo = 1 − max(z, w) = 0.0071` and `hi = max(x, y) = 0.7518` — while record 111, the field
+being stretched, has an actual range of `[0.0000, 0.7518]`. **`hi` reproduces its input's
+true maximum to four decimal places**, which is what a min/max reduction is supposed to do
+and is a check it could have failed. So the stretch this renderer applies is the stretch the
+record asks for.
+
+That puts the fault at record 111 (`blend`) and above it: `111 = blend(110, 100)`,
+`110 = pixelprocessor(102, 109)`, and from there the chain is
+`transformation → blend → blend → blend → fxmaps`, four generators deep, with
+`dirmotionblur` chains beside it. Our 111 reads mean 0.5009 / sd 0.1881 over `[0, 0.7518]`;
+the export implies a pre-levels field of mean 0.5308 / sd 0.2011 over `[0, 1]`. This pass
+does not go further, and going further is an FX drawing-model question — items 1, 2 and 4 of
+the previous section's open list — rather than a `normal` one.
+
+## What is open
+
+1. **The height field's distribution at record 111 and above.** Named, bounded and with a
+   number on it: our interquartile width is 1.25× the export's inside an identical range,
+   and 10.5% of our pixels sit at the top bound where the export's 90th percentile is 0.6495.
+   The instrument is the same two-sided test; the candidates are the FX profile
+   (`fx.profile`, `fx.typeless_profile`) and the cell-unit readings (`fx.patternsize`,
+   `fx.branchoffset`, `fx.frameoffset`), all of which the previous section left registered
+   and unscored at render2 / implied / 256.
+2. **Separating a hard 256 from the tag width and from `1 << declared $outputsize`.** Still
+   open and still needs the same specimen: a reference pack whose scored `normal` output has
+   a non-256-tag record in its cone. 320 of 1,379 corpus `normal` records qualify and none is
+   in a reference pack. The implied-size change did not help here, and this section says why.
+3. **`normal` ch2 on Bricks.** Fit slope 8.661 at correlation +0.6956 — our Z is
+   sd 0.0018 against the export's 0.0227, an order of magnitude flat, while ch0 and ch1 are
+   only 30% low. That is the same shape as `02e45ab`'s Rokviz finding (a Z that is
+   invariant under downsampling and reads 1.0) and it has no floor entry. It should get one.
+4. **`Kutejnikov__Bricks_and_tiles` graph 001** renders every scored channel flat, which
+   `CONSTANT_YIELDS_RENDER2` freezes at 18 yields. It is the one graph in the K table that
+   cannot answer, and it is unchanged by this pass.
+
+## A caution the sweep produced, worth keeping
+
+`max_dim` above the record's own evaluated size does nothing, and a sweep that does not check
+this reports four identical rows as if they were four measurements. Bricks graph 005's
+records are 256×256 at that pack's implied `$outputsize` of 10, so its `--dim` 256, 512 and
+1024 rows are byte-identical. Chesterfield's `normal` record 121 is 2048×2048 at (11, 11), so
+its rungs keep resolving. Print the rendered shape beside the score, which the probes for this
+section do.
+
+## Correction to my own paragraph above: the 2048 rung WAS affordable, and here it is
+
+The dim-sweep section says "the 2048 rung cannot move it" and argues from the last two rungs
+having stopped moving. That was a prediction stated as a fact, and the prediction was made
+because 2048 looked expensive. It is not: `ChesterfieldSofa` at `--dim` 2048 renders in
+**92 seconds** and 2.2 GB. Run:
+
+    max_dim   normal ch0                    height ch0
+     128      +0.9561  0.0352  y=0.741x     +0.9566  0.0610  y=0.718x
+     256      +0.9524  0.0332  y=0.764x     +0.9562  0.0684  y=0.762x
+     512      +0.9510  0.0312  y=0.786x     +0.9561  0.0737  y=0.794x
+    1024      +0.9506  0.0305  y=0.796x     +0.9560  0.0756  y=0.804x
+    2048      +0.9504  0.0297  y=0.807x     +0.9560  0.0774  y=0.814x
+
+2048 is the last rung there is — it is both the record's own size at `$outputsize` 11 and the
+export's size, so nothing above it exists to measure. The slope is still creeping, 0.011 per
+doubling from 1024, and it arrives at **0.807 against a hypothesis of 1.000**. `height` at
+0.814 is still `normal`'s to within 0.9%, and `normal` ch2 reaches +0.8353 at slope 0.875.
+
+**The conclusion does not move and the argument for it is now the right one.** It was: the
+slope has flattened, so extrapolate. It is: the sweep is exhausted, the slope is 0.81, and the
+remaining 19% is not resolution. Two channels' worth of the difference between an argument and
+a measurement, and the measurement cost 92 seconds — which is the reason to take the rung
+rather than reason about it. Every other channel at 2048 is within 0.01 of its 1024 reading
+except `basecolor` ch2, which continues its own drift, −0.2599 → −0.2307.
+
+## Addendum to "what changed in the tree": one floor ADDED, none moved
+
+`archive/tools/test_filters.py` gains a 25th `REFERENCE_FLOOR_RENDER2` entry —
+`('Kutejnikov__Bricks_and_tiles', 'normal', 2): 0.66`, measured +0.6956. **This is an
+addition and not a ratchet**, and the distinction matters: no existing entry's number moved
+in either direction, and the key had no entry at all, so nothing that was being watched is
+now watched less. It is a **collapse guard**, labelled as one — our Z on that pack is
+sd 0.0018 against the export's 0.0227, 8% of it and under `refcompare`'s own "at least a
+tenth" bar, so +0.6956 is three plateaus near three levels and must not be read as agreement.
+It is worth watching precisely because ch0 and ch1 beside it are only 30% low while it is an
+order of magnitude flat, which is the shape `02e45ab` found on Rokviz and the shape that goes
+unnoticed because a correlation stays respectable through it.
+
+Both floor tests pass with it in (`-k reference_agreement`, 2 passed, 1:54). The full
+`test_filters.py test_tables.py` run in the guards below predates the addition by one edit;
+the two floor tests were re-run after it and are the ones that could have seen it.
+
+## Guards and harness
+
+    archive/tools/bit_census.py --check   edges       1,302,817 / 1,302,817
+                                          state-2       198,486 /   198,486
+                                          w1-presence vs decompose: AGREE on every
+                                                                    covered record
+    archive/tools/walk_health.py          walk vs header_words 903,611 / 903,616 agree,
+                                          0 longer, 0 shorter, 5 silent (filter 9)
+    archive/tools/walk_partition.py       8 FX violations of 48,688 attributions (0.02%)
+    archive/tools/provenance.py           142 paired / 42 excluded / 100 permitted,
+                                          re-run against the current corpus and equal to
+                                          what the documents state
+    test_filters.py + test_tables.py      25 passed (12:43) before the doc edits,
+                                          25 passed (12:22) re-run after all of them
+    test_filters.py -k reference_agreement 2 passed (1:54), after the floor addition
+    ./t                                   19 passed (34s)
+    test_fx.py + test_bitmap.py           23 passed (2:44)
+    render2 trio                          27 passed (13s)
+
+Two-sided test, both halves, and both are unchanged because nothing on the render path moved:
+
+    half 1  Lines record 0      10 patterns, size (1.41421, 0.03555), lit 0.5078, 10 bands
+    half 2  ChesterfieldSofa    render2 / implied / max_dim 256, all ten channels, plus
+                                Auras' three and Bricks' seven -- every one of the 24
+                                existing floor entries reproduces the value its comment
+                                carries, to four decimals, and CONSTANT_YIELDS_RENDER2's
+                                0 / 18 / 0 reproduces exactly
+
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json` are
+byte-identical (`git diff --stat` over those four paths is empty), so no `decompose` invariant
+can have moved.
+
+**Provenance.** Nothing in this pass read a `.sbs` source. The measurements are compiled
+`.sbsasm` on one side and, on the other, PNG maps the material's own author published beside
+the `.sbsar` — the footing `refcompare.py`'s own provenance note already states. The
+exclusion predicate was run rather than retyped: `archive/tools/provenance.py`, which reports
+the rule's own population unchanged at 142 / 42 / 100.
+
+## Correction: the top-bound figure is 8.54%, not 10.5%
+
+Two paragraphs above — the Verdict and open item 1 — say "10.5% of our pixels sit within
+0.0013 of the top bound". That number was read off the quantile table rather than counted,
+and the table only bounds it: the 90th percentile is 0.74866 and the 95th is 0.74873, so the
+fraction above 0.7487 is somewhere between 5% and 10% and 10.5% is outside the bracket
+entirely. Counted at `--dim` 1024:
+
+    ours   fraction above 0.7487   8.54%
+    export fraction above 0.7487   0.00%
+
+The interquartile ratio, which is the load-bearing figure, is unaffected and counted rather
+than inferred: 0.2007 against 0.1608, **1.248**. The direction and the size of the claim
+stand; the one statistic that was inferred from a table instead of measured was wrong by two
+points, which is the whole reason this notebook prints the count beside the quantile.

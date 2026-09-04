@@ -43,6 +43,17 @@ QUESTIONS = {
     # Rokviz (4096 px, intensity 0.25), against 160.000 and 9.405 predicted by a fixed 256
     # and 20.000 and 0.588 predicted by the record's own width. 'record' restores the older
     # reading, which is what `_reference_px` still returns for blur/warp/dirmotionblur.
+    #
+    # THE 'record' ARM IS NOW SEPARABLE AND IS REFUTED. It returns `v.width`, which is the
+    # record's size AT THE `$outputsize` BEING RENDERED, not its tag -- so while scoring ran
+    # at the DECLARED size it was 256 on every reference record and indistinguishable from
+    # the default. Scoring at the implied `$outputsize` (23a5492) makes ChesterfieldSofa's
+    # 256-tag normal record evaluate to 2048, and the arm scores normal ch0 at MAE 0.0650,
+    # sd 0.0169, fit y=5.432x -- against 0.0332, 0.1207, y=0.764x for 256.0 -- with mean Z
+    # back at the flat 0.9993 against the export's 0.9659. The three readings the caveat
+    # above names (hard 256, the tag, `1 << DECLARED $outputsize`) are all file properties
+    # and are still tied; only a reference pack with a non-256-tag `normal` record separates
+    # them, and none exists. See FORMAT-NOTES.md, "`normal`'s 31% gain error is `height`'s".
     'normal.reference_px': (256.0, 'record', 64.0, 128.0, 512.0, 1024.0, 2048.0, 4096.0),
     'distance.param':     ('program', 'block1', 'slot5', 'wide', 'layout'),
     'distance.invert':    (False, True),
