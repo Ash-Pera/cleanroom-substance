@@ -50149,3 +50149,322 @@ an edge detect needs and the only sign-correct candidate. The other ten assignme
 unarbitrated, and `blend`'s docstring still says mode 0 is the only verified one. That is the
 work; this section removes mode 2 from it and hands back a sharper question about
 `transformation`.
+
+## The downscale is exact, AO is not a blur, and the missing 6x is `transformation`'s offset
+
+`02351cc` handed forward a hypothesis and a sharper question. The hypothesis was that a
+point-sampling downscale was preserving high frequencies as aliasing, so that `sharp - blurred`
+came out as `sharp - sharp`. **It is refuted, at machine precision.** The question -- what
+between records 365 and 453 preserves content the downscale ought to destroy -- has an answer
+that retracts the section above it: **nothing does, because the downscale is not what makes
+those two operands differ.**
+
+### The point-sample hypothesis is dead, and the measurement is a bit-for-bit identity
+
+`ops.prefilter` DOES run on this path. `f_transformation` calls `footprint_scale(m, W, H,
+src.shape)` and, on record 378 at `max_dim` 512, gets 512/256 = 2.0, which is `>= 2.0`, so one
+box halving runs. Measured against a box average computed independently of the renderer:
+
+    365 (the source)            sd 0.121223
+    box2(365), computed here    sd 0.121098
+    our record 378              sd 0.121098      maxdiff 2.22e-16
+
+Record 378 is `box2(365)` to the last bit. There is no aliasing and no point sampling. The
+same check at other reductions:
+
+    box4(365)  sd 0.120633     box8(365)  sd 0.118950     box16(365) sd 0.113467
+
+A 2x area reduction of this field costs 0.0001 of its sd, which is the fact the hypothesis was
+built to explain and is simply what a smooth field does under a box filter.
+
+`Context.sample` -- the path every OTHER filter takes -- genuinely does NOT prefilter, and that
+is a real gap. It is also nearly unexercised: instrumenting every `ctx.sample` call over all
+eight reference assemblies and counting the ones whose source is larger than the record's own
+canvas gives **1 call at `max_dim` 256** (`ChesterfieldSofa`, a `levels`, 2x) and **1 at
+`max_dim` 1024** (`RoofTiles`, a `warp`, 2x). Two calls across six packs is not a mechanism and
+is not enough evidence to change a sampler on, so it is recorded here rather than fixed.
+
+### What records 366-431 actually are: an eleven-octave horizon AO
+
+Walking the neighbourhood instead of the single edge the previous section walked:
+
+    366 k=2   372 k=1   378 k=3   384 k=4   390 k=5   396 k=6
+    402 k=7   408 k=8   414 k=9   420 k=10  426 k=11
+
+**Eleven `transformation` records all reading record 365, at every halving count from 1 to 11.**
+That is a mip pyramid, not a blur. Each level then runs the identical five-record figure:
+
+    mip_k -> identity transformation -> a transformation carrying an `offset` PROGRAM
+          -> blend mode 2 against 369 -> levels
+
+and the eleven results are combined by a chain of `blend` mode 5 (`max`, 377/383/.../431), then
+selected by eleven `blend` mode 7 (`switch`) gates on `$sizelog2` (434-444), then a
+`dyngradient` (445). The whole figure repeats for at least eight directions -- 446-501 is the
+same eleven levels with the offsets along +x, 504-... along +y, and so on to 849 -- and the
+directions are averaged by mode-0 blends at 0.5 and 0.125 (503, 851). Record 852 is
+`levels(levelinlow 0.5, out 1 -> 0)`, i.e. `AO = 1 - clip(2*(851 - 0.5))`.
+
+**The operands differ by a DISPLACEMENT, not by a blur, and we compute it correctly.** The
+`offset` programs evaluate to, at `$outputsize` 11:
+
+    374 (k=1)   2 px     380 (k=3)    8 px     404 (k=7)   128 px
+    368 (k=2)   4 px     386 (k=4)   16 px     428 (k=11) 2048 px
+
+Exactly `2^k` pixels -- which is exactly ONE TEXEL of mip level `k`. The bytecode is
+`cartesian(c / max($size), 0)` times an aspect-ratio correction, with `c` baked per record
+(8.0 on record 453). Record 453's offset comes out (0.003906, 0) = 8/2048, to six decimals.
+So `453 - 369` is `h(p + d) - h(p)`, a directional height difference; the mip is only the
+device that makes the far tap affordable. **"AO is sharp minus blurred" is withdrawn: it is
+sharp minus SHIFTED, and 02351cc's own displacement test was measuring the right thing for the
+wrong reason.**
+
+The per-level `levels` divides by `2^k` -- 376 is out (0.25, 0.75), 371 is (0.375, 0.625), 382
+is (0.4375, 0.5625) and so on to 430's (0.4998, 0.5002), half-width `2^-(k+1)` exactly. With
+the offset one mip texel and the divisor `2^-(k+1)`, the algebra closes:
+
+    level_k - 0.5  =  (h(p + d_k) - h(p)) * 2^-(k+1)
+                   =  slope * (2^k / $size) * 2^-(k+1)
+                   =  slope / (2 * $size)
+
+**k cancels.** Every level reports the same quantity -- the local slope of the height field --
+which is what a horizon AO is, and it is why the eleven measured level outputs sit within a
+factor of five of each other (+-0.0125 at k=1 down to +-0.0013 at k=8) while the raw
+differences they are made from span two orders of magnitude. That cancellation is a check the
+reading could have failed and did not, and it independently confirms `levels`' out-range
+semantics: read `leveloutlow`/`levelouthigh` as an IN range instead and the same algebra gives
+`slope * 2^(2k-12)`, dominated by the whole-image difference at k=11, which is not an AO.
+
+### The residual is a pure GAIN, and it is exactly `1 / $outputsize`
+
+`slope / (2 * $size)` says our AO's contrast is inversely proportional to the size the graph
+is rendered at. Measured, scoring record 852 against the pack's own 2048 export on a fixed
+256 comparison grid, `max_dim` 1024:
+
+    $outputsize   AO sd    ratio to ref   corr      mean (ref 0.8871)   MAE
+     8 (256 px)   0.07945     1.080      +0.8441        0.8899         0.0299
+     9 (512 px)   0.04082     0.555      +0.8769        0.9404         0.0533
+    10 (1024 px)  0.02092     0.284      +0.8799        0.9698         0.0827
+    11 (2048 px)  0.01103     0.150      +0.8719        0.9844         0.0973
+
+**Halves per octave, to two digits, exactly as the algebra predicts.** At the `$outputsize`
+the file itself declares, AO's amplitude is 1.08 of the export's and its MEAN lands on the
+export's to three decimals. The export is at `$outputsize` 11 -- `implied_outputsize`'s
+independent check puts ChesterfieldSofa 6/6 there -- so the engine does NOT lose that
+contrast when it renders bigger, and we do.
+
+Two things this kills on the way past:
+
+  * **It is not resolution.** Rendered uncapped at `max_dim` 2048 -- the export's own
+    resolution, no cap anywhere -- AO still reads ratio 0.143, corr +0.8755. The sequence
+    0.211 / 0.165 / 0.150 / 0.143 at `max_dim` 256 / 512 / 1024 / 2048 has converged.
+  * **It is not the input.** Feeding the engine's OWN exported height map into record 119, at
+    the gain that matches our record 119's one-pixel difference statistic (x2; ref 0.00403,
+    ours 0.00799), takes AO's **correlation to +0.9830** and leaves its amplitude where it was
+    (0.150 -> 0.158). The AO chain reproduces the engine's AO SHAPE almost exactly given the
+    engine's own height field, and still delivers a sixth of its contrast. Whatever is missing
+    is a constant inside the chain and is independent of what enters it.
+
+`--bands` says the same thing in the form the instrument was built to distinguish. At
+`max_dim` 2048 the six ratios are 0.023 / 0.027 / 0.017 / 0.011 / 0.012 / 0.011 -- **flat**,
+which by `band_power`'s own doctrine is a gain error and not a shape error. `metallic` reads
+1.01 / 1.01 / 1.01 / 1.00 / 0.99 / 1.04 in the same run, so the instrument is true.
+
+### The candidate, its measurement, and why it is NOT applied
+
+If `$size` inside a parameter program is a fixed reference rather than the record's size at
+the render's `$outputsize`, the `2^k / $size` offsets stop shrinking and the `1/$outputsize`
+factor goes. Reading it as the record's own TAG -- which is what SPEC 13.5's words "the
+record's declared size ... a property of the file" literally describe, and which is already
+what `record_sizes` hands a SIZE program -- and re-scoring the required invocation
+(`--renderer render2 --outputsize implied --dim 512 --bands`):
+
+    channel        MAE            corr             band total
+    AO           0.0979 -> 0.0227  +0.9110 -> +0.9275   0.026 -> 0.966
+    roughness    0.0638 -> 0.0637  +0.9348 -> +0.9434   0.678 -> 0.746
+    basecolor 0  0.0537 -> 0.0784  +0.8429 -> +0.8484   0.333 -> 0.600
+    basecolor 1  0.0730 -> 0.0724  +0.9694 -> +0.8456   0.360 -> 0.269
+    basecolor 2  0.0570 -> 0.0538  -0.2950 -> -0.4630   0.052 -> 0.269
+
+    normal 0/1/2, height, metallic, and every channel of the other five packs: IDENTICAL
+
+AO's fit slope goes 5.253 -> 0.820 and its mean 0.9850 -> 0.8811 against the export's 0.8871.
+The amplitude moves to 0.97 WITHOUT flipping the sign and with the correlation UP, which is
+the discriminator 02351cc asked for and the one every alternative blend mode failed.
+
+Narrowed to `transformation`'s `offset` alone -- leaving every other program's `$size` where
+it is -- the table is reproduced to three decimals on all five moved channels, so the whole
+effect is that one parameter and nothing else.
+
+**It is not applied, because basecolor gets worse and the bar is that nothing may.** The
+regression is attributed rather than accepted: applying the tag reading ONLY to records in
+AO record 852's input cone, and only to records OUTSIDE it:
+
+    patched records          AO MAE / corr        basecolor 0        basecolor 1        basecolor 2
+    inside 852's cone     0.0227 / +0.9274   0.0535 / +0.8626   0.0839 / +0.9456   0.0606 / -0.3432
+    outside 852's cone    unchanged          0.0803 / +0.8402   0.0609 / +0.8924   0.0506 / -0.4358
+    baseline              0.0979 / +0.9110   0.0537 / +0.8429   0.0730 / +0.9694   0.0570 / -0.2950
+
+Two separable effects. Inside the cone the change fixes AO and IMPROVES basecolor channel 0
+(+0.8429 -> +0.8626); the small losses on channels 1 and 2 are downstream coupling -- record
+853 is `blend(852, 363)` under mode 10, so basecolor consumes the AO map and now consumes one
+six times stronger. Outside the cone it is a straight loss on all three basecolor channels
+while AO does not move at all, which says those offsets are canvas-relative placements that
+the tag reading displaces by 8x. So the rule cannot be global, and "records feeding output N"
+is not a rule at all -- a semantic may not be gated on which output a record reaches.
+
+**What this leaves open, stated as the next increment.** A `transformation` offset program of
+the form `c / $size` is a PIXEL count being converted to a canvas fraction, and one that never
+reads `$size` is already a canvas fraction; the first should be measured against a fixed
+reference and the second should not be touched. That is the same shape as SPEC 13.6's
+already-established `normal` finding -- "the reference is a constant 256, not the record's
+size", settled by exactly this arbiter, two exports at two resolutions. The discriminator to
+build is whether the program reads `$size` at all, and if both populations do, what separates
+them. Until that is measured, the honest statement is the one above: **AO's collapse is a
+`1/$outputsize` factor introduced by reading `$size` in `transformation`'s offset as the
+render's size, it is worth 6.4x on this channel, and the correction that removes it also moves
+two basecolor channels the wrong way.**
+
+### What was wrong in the section above this one, and is now withdrawn
+
+  * "AO is sharp minus blurred, an edge detect" -- **withdrawn.** It is sharp minus shifted,
+    over eleven octaves and eight directions, and the mip is a sampling device rather than a
+    blur. The two operands are 99.2% correlated because a one-texel displacement of a smooth
+    field SHOULD be 99.2% correlated; that was never the defect.
+  * "Something between 365 and 453 is preserving content the downscale ought to have
+    destroyed" -- **withdrawn.** Nothing is. The downscale is a bit-exact box average and the
+    difference does not come from it.
+  * "record 378 carries k = 3, so it renders at 1/8 the canvas and its consumer samples it
+    back up" -- correct as far as it goes, but it is one of eleven and it is not privileged;
+    the previous section reached it by walking the widest-variance input, which on a
+    max-combined pyramid picks an arbitrary rung.
+  * `blendingmode 2` = subtract stands, and stands better: subtract is the operation the
+    figure needs, and its inputs are supposed to be nearly identical because the operation is
+    a numerical derivative.
+
+### The guards, and that the tree did not move
+
+Nothing in `tools/` or `archive/` was edited in this pass; the experiments above are all
+monkeypatches in a scratch directory. Both halves of the two-sided test re-run and both
+reproduce:
+
+    half 1  Lines record 0    10 patterns, size (1.41421, 0.03555), 0.125 turns,
+                              lit fraction 0.5078, 10 bands
+    half 2  the required invocation's full table, reproduced above as the baseline column
+
+### At the FLOOR's own configuration, the candidate breaks two of them
+
+`REFERENCE_FLOOR_RENDER2` is render2 / implied / `max_dim` 256, so the candidate was scored
+there too rather than being argued about at 512. Same narrow patch, `transformation`'s
+`offset` only:
+
+    floor key                              floor    now       under the candidate
+    Chesterfield AO 0                       0.84   +0.8715   +0.9264   would ratchet to 0.90
+    Chesterfield roughness 0                0.91   +0.9358   +0.9436   would ratchet to 0.93
+    Chesterfield basecolor 0                0.82   +0.8563   +0.8360   holds, 0.020 worse
+    Chesterfield basecolor 1                0.94   +0.9656   +0.8305   **BREAKS**
+    Chesterfield basecolor 2               -0.46   -0.4262   -0.4700   **BREAKS** (more inverted)
+
+    every other entry of the 25, and every channel of the other five packs: identical
+
+AO's MAE goes 0.0968 -> 0.0246 and its band total 0.043 -> 1.148 at this grid. Two floors
+break, so the change is refused by the guard as well as by the bar, and **no floor was moved
+in either direction in this pass** -- the tree is unchanged apart from this file.
+
+### The obvious discriminator does not discriminate, measured
+
+The narrowing that suggests itself -- "a program of the form `c / $size` is a pixel count and
+should use a fixed reference; one that never reads `$size` is already a canvas fraction and
+must not be touched" -- was tested before it was believed, over all 144 `transformation`
+records on `ChesterfieldSofa` carrying an `offset` PROGRAM, split by whether the record is in
+AO record 852's input cone:
+
+    cone        reads $size   reads $sizelog2   |offset| ratio os11/os8   records
+    AO cone         yes            no                   0.125               88
+    AO cone         yes            no                   1.0                  4
+    AO cone         yes            no                   0.0                  1
+    outside         yes            no                   0.125               48
+    outside         yes            no                   1.0                  1
+    outside         yes            no                   0.0                  1
+
+**All 144 read `$size` and 136 of them scale as `1/$outputsize`.** The AO offsets and the
+basecolor offsets are the same idiom, so nothing in the program's form separates them and the
+rule cannot be narrowed that way. Either the correction is global -- in which case
+`ChesterfieldSofa`'s basecolor chain has an independent defect that our weak AO was masking,
+which is not implausible given that channel 2 has been anti-correlated through nine mode-7
+switch blends since long before this -- or `$size` is not the quantity that is wrong. This
+pass does not decide between those, and says so rather than picking one.
+
+### A second, unrelated defect the pyramid exposed: a size expression refused for being CLAMPED
+
+Reading the eleven rungs turned up something that has nothing to do with AO. At
+`$outputsize` 11 the pyramid should end 16, 8, 4, 2, 1; `record_sizes` gives 16, 8, **8, 8,
+8**. The cause is not the expression:
+
+    rec   k    tag   prog @ declared os8   prog @ os11   record_sizes   the k-law wants
+    402   7      2         (1, 1)             (4, 4)       (16, 16)          16
+    408   8      1         (0, 0)             (3, 3)         (8, 8)           8
+    414   9      1        (-1, -1)            (2, 2)         (8, 8)           4
+    420  10      1        (-2, -2)            (1, 1)         (8, 8)           2
+    426  11      1        (-3, -3)            (0, 0)         (8, 8)           1
+
+`record_sizes` trusts a size expression only where it reproduces the TAG at the file's own
+declared `$outputsize`, which is right and is what makes the check able to fail. But the tag
+SATURATES at 1x1 and the expression does not, so on a record whose expression legitimately
+returns a negative log2 the reference value can never match, `all(0 <= int(x) <= 16 ...)`
+refuses it, and the parent-relative fallback then scales the CLAMPED tag -- 1 x the parent's
+factor 8 -- and hands back 8x8 for all three. The expression's answer at `$outputsize` 11 is
+in range and correct; only its check value is out of range, and only because the file clamped
+the thing it is being checked against.
+
+**The control is total.** Over the eight reference assemblies, 31,610 records resolve a size
+program; 131 of them return a negative log2 at the declared `$outputsize`, and on **131 of
+131** the clamped value `1 << max(0, log2)` reproduces the record's tag exactly:
+
+    Bricks 45 (x2 assemblies)   StylizedCobblestoneStreet 18   ChesterfieldSofa 12
+    RoofTiles 4 (x2)            Rusty_Metal 3                  Auras_FX 0
+
+131 of 131 with no exceptions is not a coincidence: the negative log2 IS the clamp, and every
+one of these is a mip pyramid running past 1x1.
+
+**Measured, and NOT applied in this pass.** Comparing the tag against `1 << max(0, ref)`
+instead, at the floor's own configuration (render2 / implied / `max_dim` 256), moves exactly
+one channel across all six packs:
+
+    Chesterfield AO    corr +0.8715 -> +0.8728    MAE 0.0968 -> 0.0969    bands 0.043 -> 0.043
+    everything else                                identical
+
+The correlation improves by 0.0013 and the MAE worsens by 0.0001, which is a wash on the
+pixels -- the three rungs it corrects are the ones the per-level `levels` divides by `2^-10`
+to `2^-12`, so they were always going to be invisible here. It is left for its own pass
+because the pixels cannot arbitrate it and the 131/131 containment can: it is a placement
+claim, it belongs with a placement argument, and smuggling it into a rendering investigation
+whose bar is "no channel may get worse" would land it on the one metric that says it did.
+
+### Guards and harness for this pass
+
+    archive/tools/bit_census.py --check   edges     1,302,817 / 1,302,817
+                                          state-2     198,486 /   198,486
+                                          w1-presence vs decompose: AGREE on every
+                                                                    covered record
+    archive/tools/walk_health.py          walk vs header_words 903,611 / 903,616 agree,
+                                          0 longer, 0 shorter, 5 silent (filter 9)
+    archive/tools/walk_partition.py       8 FX violations of 48,688 attributions (0.02%)
+    archive/tools/provenance.py           142 paired / 42 excluded / 100 permitted,
+                                          re-run rather than retyped, equal to what the
+                                          documents state
+    test_filters.py + test_tables.py      25 passed (13:35)
+    ./t                                   19 passed (46s)
+    test_fx.py + test_bitmap.py           23 passed (3:05)
+    render2 trio                          27 passed (13s)
+
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json` are
+byte-identical -- `git diff --stat` over those four paths is empty -- and so is every other
+file in the tree. This pass changed no code at all; all four experiments above are
+monkeypatches in a scratch directory, and FORMAT-NOTES.md is the only modified file. No floor
+was raised and none was lowered.
+
+**Provenance.** Nothing here read a `.sbs` source. Every measurement is compiled `.sbsasm` on
+one side and, on the other, PNG maps the material's own author published beside the `.sbsar`.
+The exclusion predicate was RUN, not retyped: `archive/tools/provenance.py`, unchanged at
+142 / 42 / 100.
+
