@@ -1276,6 +1276,47 @@
 "8": null
 }
 },
+"5": {
+"base": 0,
+"cls": {
+"16": 1,
+"25": 1
+},
+"cls_free": [
+19,
+20
+],
+"evidence": {
+"cls.16": {
+"colour": "format-wide",
+"grey": "measured"
+},
+"cls.19": {
+"colour": "residual",
+"grey": "format-wide"
+},
+"cls.20": {
+"colour": "unexercised",
+"grey": "residual"
+},
+"cls.25": {
+"colour": "unexercised",
+"grey": "measured"
+}
+},
+"exact": {
+"colour": 1.0,
+"grey": 1.0
+},
+"fixed": 1,
+"has_w1": "never",
+"name": "vectorshape",
+"records": {
+"colour": 12,
+"grey": 127
+},
+"w1": {}
+},
 "6": {
 "base": 0,
 "cls": {
@@ -1413,6 +1454,7 @@
 "cls": {
 "16": 1,
 "23": 1,
+"26": 2,
 "27": 1
 },
 "cls_free": [
@@ -1423,36 +1465,40 @@
 ],
 "evidence": {
 "cls.16": {
-"colour": "format-wide",
-"grey": "format-wide"
+"colour": "measured",
+"grey": "measured"
 },
 "cls.19": {
-"colour": "format-wide",
-"grey": "format-wide"
+"colour": "measured",
+"grey": "measured"
 },
 "cls.20": {
 "colour": "measured",
-"grey": "other-colour"
+"grey": "measured"
 },
 "cls.23": {
 "colour": "unexercised",
 "grey": "measured"
 },
 "cls.24": {
-"colour": "unmeasured",
-"grey": "unmeasured"
+"colour": "measured",
+"grey": "measured"
 },
 "cls.25": {
-"colour": "unmeasured",
-"grey": "residual"
+"colour": "measured",
+"grey": "measured"
+},
+"cls.26": {
+"colour": "measured",
+"grey": "unexercised"
 },
 "cls.27": {
-"colour": "residual",
-"grey": "residual"
+"colour": "measured",
+"grey": "measured"
 },
 "w1.1": {
 "colour": "measured",
-"grey": "other-colour"
+"grey": "measured"
 },
 "w1.3": {
 "colour": "measured",
@@ -1460,11 +1506,11 @@
 },
 "w1.5": {
 "colour": "measured",
-"grey": "unexercised"
+"grey": "measured"
 },
 "w1.7": {
 "colour": "measured",
-"grey": "residual"
+"grey": "measured"
 }
 },
 "exact": {
@@ -1473,16 +1519,15 @@
 },
 "fixed": 0,
 "has_w1": "always",
-"min_version": 327680,
 "name": "emboss",
 "records": {
-"colour": 129,
-"grey": 246
+"colour": 230,
+"grey": 316
 },
 "w1": {
 "1": 1,
 "3": 1,
-"5": 4,
+"5": "C",
 "7": "C"
 }
 }

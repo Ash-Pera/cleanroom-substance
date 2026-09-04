@@ -5,7 +5,8 @@ RETIRED AS THE LIVE MODEL, KEPT AS THE INDEPENDENT ONE. `record_layout` and `dec
 read SPEC 7.3's WIDTH LEGEND now (`tools/legend.json`, derived by `derive_legend.py`):
 one KIND per header cell from the five-symbol alphabet `0 1 2 4 C`, 106 kinds over 107
 cells, against the 688 fitted numeric cells this script emits. The two agree on
-`header_words` for 903,276 of 903,301 corpus records with the same 315 refusals, and the
+`header_words` for 903,276 of 903,301 corpus records -- the population THIS model can
+answer, since it declines 315 and the legend now declines 5 (SPEC 6.4) -- and the
 walk they drive agrees slot for slot on 903,440 of 903,440 -- `inputs`, `cls_slots`,
 `cls_params`, `hdr`, `prog`, `size_slot` and `root`, no exceptions.
 

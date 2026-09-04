@@ -116,6 +116,9 @@ OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), 'tools', 'legend.json')
 
 NAMES = {0: 'gradient', 1: 'blend', 2: 'transformation', 3: 'shuffle', 4: 'fxmaps',
+         # 5 is `PROJECT_LABELS`' descriptive label and not a name any permitted source
+         # states -- see SPEC 12. What is added here is its SHAPE, which the file states.
+         5: 'vectorshape',
          6: 'uniform', 7: 'warp', 8: 'emboss', 10: 'blur', 11: 'dirmotionblur',
          12: 'directionalwarp', 13: 'sharpen', 14: 'hsl', 15: 'levels', 16: 'bitmap',
          17: 'text', 18: 'normal', 19: 'dyngradient', 20: 'pixelprocessor',
@@ -123,7 +126,8 @@ NAMES = {0: 'gradient', 1: 'blend', 2: 'transformation', 3: 'shuffle', 4: 'fxmap
 
 #: How the record's shape decides whether it carries a w1 word. `tagbit0` and `v9` are
 #: `record_layout.two_shape_w1`'s two rules, restated as data rather than as a branch.
-HAS_W1 = {0: 'never', 1: 'always', 2: 'always', 3: 'tagbit0', 4: 'always', 6: 'never',
+HAS_W1 = {0: 'never', 1: 'always', 2: 'always', 3: 'tagbit0', 4: 'always', 5: 'never',
+          6: 'never',
           7: 'v9', 8: 'always', 10: 'never', 11: 'always', 12: 'always', 13: 'never',
           14: 'never', 15: 'always', 16: 'never', 17: 'always', 18: 'always',
           19: 'never', 20: 'always', 21: 'always', 22: 'never'}
@@ -131,8 +135,8 @@ HAS_W1 = {0: 'never', 1: 'always', 2: 'always', 3: 'tagbit0', 4: 'always', 6: 'n
 #: The filter's fixed image-input arity -- `decompose.BASE_INPUTS`, a format fact and not a
 #: fitted memo entry. `shuffle` is `n_hdr`: its no-w1 shape takes one image at slot 1 and
 #: its w1 shape two at slots 2-3, so its base arity IS the number of mask words.
-BASE = {0: 1, 1: 2, 2: 1, 3: None, 4: 0, 6: 0, 7: 2, 8: 2, 10: 1, 11: 1, 12: 2, 13: 1,
-        14: 1, 15: 1, 16: 0, 17: 0, 18: 1, 19: 2, 20: 0, 21: 1, 22: 1}
+BASE = {0: 1, 1: 2, 2: 1, 3: None, 4: 0, 5: 0, 6: 0, 7: 2, 8: 2, 10: 1, 11: 1, 12: 2,
+        13: 1, 14: 1, 15: 1, 16: 0, 17: 0, 18: 1, 19: 2, 20: 0, 21: 1, 22: 1}
 
 #: The filter's FIXED PREFIX: slots every record of the filter carries whatever its masks
 #: say. Each is a slot some reader already resolves, which is what makes it structural
@@ -142,7 +146,7 @@ BASE = {0: 1, 1: 2, 2: 1, 3: None, 4: 0, 6: 0, 7: 2, 8: 2, 10: 1, 11: 1, 12: 2, 
 #:     16     the pixel/offset word                  (`extract_bitmaps`)
 #:     17     the zero word, the string and the font (SPEC 9.1)
 #:     20     the filter's own pixel program         (`decompose`'s arity arm)
-FIXED = {0: 2, 4: 1, 16: 1, 17: 3, 20: 1, 22: 2}
+FIXED = {0: 2, 4: 1, 5: 1, 16: 1, 17: 3, 20: 1, 22: 2}
 
 #: Where the fixed prefix sits relative to the image inputs. Three positions, one filter
 #: each away from the default: fxmaps' root pointer comes BEFORE its inputs (slot 2, with
@@ -262,7 +266,37 @@ W1_INT_REFUSE = {2: (14, 28)}
 #: SPEC 6.4's paired conjunction: two class bits that, set together, name one field.
 CONJ = {16: [(24, 27)]}
 
-MIN_VERSION = {8: 0x50000}
+#: FILTERS WHOSE OLDER RECORDS THE LEGEND STILL REFUSES. **IT IS EMPTY, AND `emboss` IS
+#: WHY IT USED TO HAVE AN ENTRY.**
+#:
+#: `derive_costs` gates `emboss` at v5 and keeps its 171 older records out of the fit, on
+#: the finding that they "keep their within-key contradictions". That was a fact about the
+#: FIT, not about those records: with a FREE intercept a class bit set on every key is
+#: indistinguishable from the constant, so pooling two populations that differ in exactly
+#: those bits made the solve inconsistent. With the intercept PINNED to `n_hdr + n_base +
+#: n_fixed` the same records are not contradictory at all -- no key below the gate carries
+#: two different observed sizes -- and they are the only population that EXERCISES four
+#: cells the modern one holds constant:
+#:
+#:     cls 19, 24, 25, 27   constant above the gate (`_identified` calls them blind, and
+#:                          the loop had to pin 16 and 19 from outside to free 27)
+#:     cls 26               set on 0 records above the gate, on 2 below -> 2 words
+#:     w1 bit 5, GREY       never baked grey above the gate -> width 1, so the cell is
+#:                          per-channel `C` and not `4`
+#:
+#: Merged, the solve is EXACT on all 546 `emboss` records over 78 keys -- grey 316/38,
+#: colour 230/40 -- and not one width of the above-gate reading changed. Its (cell, colour)
+#: pairs that were NOT a measurement go 15 to 2: everything the fit had to borrow
+#: `format-wide`, take from the other colour, leave as a residual or mark `unmeasured` is
+#: read directly, and the two left are `cls 23` in colour and `cls 26` in grey, which this
+#: corpus does not exercise at all. The gate was costing 171 records a layout to protect a
+#: model that no longer runs.
+#:
+#: `derive_costs.MIN_VERSION` is deliberately NOT changed: it is the independent fitted
+#: model, whose value is that an unchanged run reproduces its last output byte for byte.
+#: This module takes `observed()`'s two tables and merges them itself, for every filter it
+#: does not gate.
+MIN_VERSION = {}
 
 #: `shuffle`'s class bit 24 is the one cell in the legend that is not a width: the weights
 #: are baked at bit 24 in the shape with NO w1 word and the selector lives in w1 in the shape
@@ -479,9 +513,21 @@ def _format_wide(measured, cell, minimum=5):
 
 
 def derive(obs=None):
-    """`{filter: {...}}` -- the legend, with every cell's provenance per colour."""
+    """`{filter: {...}}` -- the legend, with every cell's provenance per colour.
+
+    The observation table is `derive_costs.observed()`'s FIRST return merged with its
+    second for every filter this module does not gate -- see `MIN_VERSION`, which is now
+    empty. `below` is not a different kind of evidence; it is the same probe on the
+    records the fitted model excluded, and with the intercept pinned they are the only
+    population several cells vary in.
+    """
     if obs is None:
-        obs, _below = derive_costs.observed()
+        obs, below = derive_costs.observed()
+        for f, keys in below.items():
+            if f in MIN_VERSION:
+                continue
+            for k, ctr in keys.items():
+                obs[f][k].update(ctr)
     sysd, measured = {}, {}
     for f in sorted(HAS_W1):
         keys = _keys(obs, f)

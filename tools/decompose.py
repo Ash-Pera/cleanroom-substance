@@ -280,22 +280,32 @@ def decompose(r):
     f = r.filter_id
     if len(r.words) < 1:
         return None
-    if f == 5:                               # vectorshape: source geometry, no legend entry,
-        # `cls_params` and `size_slot` stated rather than omitted: a caller reading
-        # `d.get('cls_params', ())` cannot tell an empty walk from an absent key, and this
-        # record has no size slot to place -- not one this walk failed to find.
-        return {'inputs': [], 'cls_slots': [], 'param_slots': [], 'cls_params': [],
-                'end': None, 'prog': None, 'size_slot': None, 'hdr': 0}
+    # WITHDRAWN: `if f == 5: return an empty walk`. `vectorshape` had no legend entry, so
+    # this returned "no inputs, no slots, no size slot, no end" -- and the comment that
+    # stood here said the record "has no size slot to place, not one this walk failed to
+    # find". That was the second half of a guess. 127 of the 139 records set class bit 16,
+    # the slot the ordinary class block puts at position 2 resolves a program on 127 of
+    # 127 against 0 of 127 at slot 1 and 0 of 127 at slot 3, and every one of the 127
+    # evaluates to a TWO-COMPONENT value equal to the record's own tag size. It is the
+    # `$outputsize` expression, in the place SPEC 6.1's emission order puts it, and this
+    # branch was the reason SPEC 6.1's own control had to except "vectorshape (127, no
+    # cost model and no placed slot)". Filter 5 is in the legend now -- base 0, one fixed
+    # slot (the payload pointer), class bits 16 and 25 at one word each, exact on 139 of
+    # 139 -- so the ordinary walk below answers and there is nothing to special-case.
     sp = record_layout.legend().get(str(f))
     if sp is None:
         return None
     ver = r.asm.header.get('version') if isinstance(r.asm.header, dict) else 0
-    # A LEGEND ESTABLISHED ON MODERN VERSIONS DOES NOT ANSWER FOR OLDER ONES. `emboss`'s
-    # cells were established from 0x50000 up; its 51 older records sit in keys that
-    # contradict themselves, and applying the modern reading to them produced a header
-    # length nothing had validated. `record_layout.header_words` honours the same gate, and
-    # a refusal here is what its docstring says callers must treat as a refusal rather than
-    # an answer.
+    # A LEGEND ESTABLISHED ON MODERN VERSIONS DOES NOT ANSWER FOR OLDER ONES -- the
+    # mechanism, kept, with NO FILTER CURRENTLY USING IT. `emboss` was the only entry and
+    # the justification was "its older records sit in keys that contradict themselves".
+    # They do not: no key below the gate carries two different observed header sizes. The
+    # contradiction was the FIT's -- a class bit set on every key of a filter shares an
+    # all-ones column with a free intercept -- and with the intercept pinned to
+    # `n_hdr + n_base + n_fixed` the same records solve exactly. They are also the only
+    # records that exercise four of `emboss`'s cells, so the gate was hiding the evidence
+    # for the table it was protecting. `record_layout.header_words` honours the same key,
+    # and a refusal here is still what its docstring says callers must treat as a refusal.
     mv = sp.get('min_version')
     if mv is not None and (ver is None or ver < mv):
         return None

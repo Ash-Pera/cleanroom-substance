@@ -946,3 +946,95 @@ def test_out_of_line_blocks_hold_the_programs_their_tag_declares():
           'inline-block entries (%.2f%%)'
           % (cells, slots, ctl, ctl_tot, 100.0 * ctl / max(1, ctl_tot)))
     return
+
+
+def test_out_of_line_slot_2_is_split_by_the_tag_and_not_by_a_value():
+    """The word at `tag + 8` of an out-of-line cell, and the bit that decides what it is.
+
+    That word held the residual's last systematic 4-byte run: it is a pointer to the next
+    cell on most cells and the FIRST WORD OF A PROGRAM on the rest, and the previous pass
+    left it out of the credited extent because "nothing in the tag separates the two".
+    Something does -- `tag & 0x30000`, the two `FX_STRUCTURAL_BITS` whose word is a
+    pointer to a cell.
+
+    THE POPULATION IS ASSERTED FIRST, both arms of it, because every assertion below is
+    vacuously true on an empty split and three recent passes caught a test that passed by
+    selecting one. Then three tests that could each fail on their own:
+
+      * where the tag sets bit 16 or 17, `word + 52` is a cell the FX vocabulary
+        recognises and NO program resolves at `tag + 8`;
+      * where it does not, a program resolves at `tag + 8` and `word + 52` is not a cell;
+      * `fx_out_of_line_span` credits the word in the first case and not in the second.
+
+    Corpus-wide when this was written: 876 cells on the first arm (876 of 876 a cell,
+    0 of 876 a program) and 316 on the second (316 of 316 a program, 0 of 316 a cell).
+    """
+    decl = nodecl = 0
+    decl_cell = decl_prog = nodecl_cell = nodecl_prog = 0
+    span_ok = 0
+    for f in _files():
+        try:
+            a = Assembly(f)
+        except Exception:
+            continue
+        d, lo, hi = a.data, a.body_lo, a.body_hi
+        for r in a.records:
+            if r.filter_id != 4:
+                continue
+            seen = set()
+            try:
+                items = list(r.fx_walk())
+            except Exception:
+                continue
+            for kind, off, tag, _p in items:
+                if kind != 'entry' or tag is None or off in seen:
+                    continue
+                seen.add(off)
+                got = a.fx_out_of_line_at(off, tag)
+                if got is None:
+                    continue
+                q = got[0] + 8
+                if q + 4 > hi:
+                    continue
+                w = struct.unpack_from('<I', d, q)[0] + 52
+                nxt = struct.unpack_from('<I', d, w)[0] if lo <= w < hi - 3 else None
+                is_cell = nxt is not None and (
+                    (nxt & 0xF) == 8
+                    or sbsasm.node_shape(nxt) is not None
+                    or sbsasm.leaf_successor(nxt) is not None
+                    or sbsasm.pointer_cell_successor(nxt) is not None)
+                is_prog = bool(lo <= q < hi and a.program_span(q, hi))
+                # The span is measured from the BLOCK, which is the offset the walk
+                # yields the cell at -- `got[0]` is the tag, four words further on.
+                span = a.fx_out_of_line_span(off, tag)
+                covers = span is not None and off + 4 * span >= q + 4
+                if (tag >> 16) & 3:
+                    decl += 1
+                    decl_cell += 1 if is_cell else 0
+                    decl_prog += 1 if is_prog else 0
+                    span_ok += 1 if covers else 0
+                else:
+                    nodecl += 1
+                    nodecl_cell += 1 if is_cell else 0
+                    nodecl_prog += 1 if is_prog else 0
+                    span_ok += 0 if covers else 1
+    assert decl >= 100 and nodecl >= 30, (
+        'the split is %d / %d cells over %d files -- too small for the assertions below '
+        'to mean anything; corpus-wide it is 876 / 316' % (decl, nodecl, LIMIT))
+    assert decl_cell == decl, (
+        '%d of %d cells whose tag sets bit 16 or 17 do NOT point at a known cell'
+        % (decl - decl_cell, decl))
+    assert decl_prog == 0, (
+        '%d of %d cells whose tag sets bit 16 or 17 have a PROGRAM at tag + 8' % (decl_prog, decl))
+    assert nodecl_prog == nodecl, (
+        '%d of %d cells whose tag sets neither bit have no program at tag + 8'
+        % (nodecl - nodecl_prog, nodecl))
+    assert nodecl_cell == 0, (
+        '%d of %d cells whose tag sets neither bit DO point at a known cell'
+        % (nodecl_cell, nodecl))
+    assert span_ok == decl + nodecl, (
+        'the credited span disagrees with the tag on %d of %d cells'
+        % (decl + nodecl - span_ok, decl + nodecl))
+    print('out-of-line slot 2: %d cells declare it (all a cell, none a program), '
+          '%d do not (all a program, none a cell)' % (decl, nodecl))
+    return

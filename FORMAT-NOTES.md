@@ -47862,3 +47862,476 @@ because no source-side population was counted; the one place the rule bites is t
 the previous section records — whether a record that now draws four patterns instead of one
 draws what the engine drew — and it bites through the eight permitted FX-Map sources and the
 reference packages, neither of which contains an out-of-line cell.
+
+
+# The leftovers were four small things and a false credit: 46,616 bytes to 31,748
+
+The brief was the six named oddities left after the out-of-line entry block: `other`'s
+`emboss` 5,396 and `curve` 4,900, the 641 four-byte runs at out-of-line cells' credited
+ends, `fx cell not reached`'s 22,644, `vectorshape`'s 572, the contested 56 bytes, and
+`zeros`' 1,050. `emboss`, `curve`, the 4-byte runs and `vectorshape` closed; `fx cell not
+reached` is refused again, with the missing specimen now a measurement rather than a
+recollection; the contested 56 bytes turned out to be the wrong question, and answering the
+right one found a byte credit with nothing behind it. `zeros` fell out of the first as the
+brief predicted — and is 140 bytes LARGER, for a reason stated below.
+
+    audit_corpus.py, whole corpus     HEAD 90a91ea   +emboss    +slot 2   +bitmap  +filter 5
+                                                     +curve
+    interpreted, header slots only        7.397%     7.399%     7.399%    7.399%    7.400%
+    + program bodies                     96.545%    96.547%    96.547%   96.547%   96.547%
+    + every payload reader               99.533%    99.537%    99.538%   99.534%   99.534%
+    accounted, + the 2-byte pad          99.984%    99.987%    99.989%   99.989%   99.989%
+    uninterpreted                         46,616     35,800     32,332    32,332    31,748
+      fx cell not reached                 22,644     22,644     21,328    21,328    21,316
+      abuts an fx cell                    10,628      9,980      7,816     7,816     7,816
+      other                               12,294      1,998      1,998     1,998     1,426
+      zeros, not the pad                   1,050      1,178      1,190     1,190     1,190
+    pad runs                             641,007    641,007    641,007   647,247   647,247
+
+**`other` moves only where a filter closed, and it moves by exactly that filter's share.**
+Byte for byte, over the whole corpus:
+
+    filter          HEAD    now
+    emboss         5,396      0     the version gate came off
+    curve          4,900      0     the payload is a chain, not one table
+    vectorshape      572      0     filter 5 is in the legend
+    fxmaps         1,174  1,174     unmoved
+    pixelprocessor   116    116     unmoved
+    filter9          108    108     unmoved
+    gradient          28     28     unmoved
+
+`zeros` moves by **140**, and here is all of it: `curve` 932 -> 1,060 and `levels`
+16 -> 28. The 128 are the zero words BETWEEN a curve record's sub-tables, which were inside
+the big `other` runs before and are their own runs now that the tables around them are
+read — a class change, not a new byte. The 12 are three four-byte zero words in `levels`
+extents that were the tail of longer `abuts an fx cell` runs until the FX slot-2 credit
+split them off. Every other filter is unmoved to the byte in both classes.
+
+## 1. `emboss`: the version gate was the FIT's, and the records it hid are the evidence
+
+`emboss`'s residual is 6,268 bytes over 202 runs — 5,396 `other`, 840 `abuts an fx cell`,
+32 `fx cell not reached` — and **162 of those runs begin at `record offset + 4` and carry
+6,108 of the bytes, with only the tag word marked ahead of them.** That is `decompose`
+declining the record. `legend.json` carried `min_version: 0x50000` for filter 8, so its 171 pre-v5
+records had no layout at all and the audit could credit nothing but their first word.
+
+The gate came from `derive_costs`, and its stated reason is in this file already: "The
+older 51 records keep their within-key contradictions, so the spec carries
+`min_version: 0x50000` and answers None below it — a guard, not a guess." (51 was the
+count when that was written; the corpus has 171 now.) **The
+contradiction was the fit's, not the records'.** With a FREE intercept a class bit set on
+every key of a filter shares an all-ones column with the constant, so pooling two
+populations that differ in exactly those bits makes the solve inconsistent. The width
+legend pins the intercept to `n_hdr + n_base + n_fixed`. Asked again with the intercept
+pinned:
+
+  * **No key below the gate carries two different observed header sizes.** 50 keys over
+    171 records, one size each, from `derive_costs.observed()`'s second return — the same
+    probe, the same boundary rule, the records the fit set aside.
+  * The modern legend, with the gate simply bypassed, already reproduces **156 of the 171**
+    observed boundaries. The 15 misses are two cells and nothing else: 13 records where
+    grey `w1` bit 5 is baked and 2 where class bit 26 is set.
+  * Merged into the solve, `derive_legend` is **exact on all 546 `emboss` records over 78
+    keys** — grey 316 over 38, colour 230 over 40 — and **not one width of the above-gate
+    reading changes**. Its (cell, colour) pairs that are not a measurement go **15 to 2**:
+    everything the fit had to borrow `format-wide`, take from the other colour, leave as a
+    residual or mark `unmeasured` is read directly, and the two left — `cls 23` in colour,
+    `cls 26` in grey — are pairs this corpus does not exercise at all.
+
+The two cells the gate was hiding are the point:
+
+    cls 26          set on 0 records above the gate and 2 below   -> 2 words
+    w1 bit 5, GREY  never baked grey above the gate               -> 1 word, so the cell
+                                                                     is per-channel `C`
+                                                                     and not `Float4`
+
+**And the `C` reading is confirmed from the VALUES, not only from the header length.** A
+kind is a pair of widths, `(1, 4)`, so the two arms should hold one number and four. Over
+every `emboss` record that bakes `w1` bit 5:
+
+    colour   113 records   four floats, every one in [0, 1], alpha 1.0    113 of 113
+    grey      13 records   one float, and every distinct value is n/255 --
+                           35, 9, 14, 174, 32, 37, 23 and 0 over 255
+
+which is an RGBA colour and its grayscale counterpart, at the 8-bit quantisation an
+authoring colour picker produces. A `Float4` reading would have to explain a single word in
+grey; a `Float1` reading would have to explain four in colour. Neither of those numbers
+came from the solve.
+
+and four more — cls 19, 24, 25, 27 — go from `format-wide` / `residual` / `unmeasured` to
+**measured**, because they are constant above the gate and vary below it. `derive_legend`'s
+own `_identified` says so: its blind-column loop existed *because* `emboss`'s 16, 19 and 27
+are all-ones above the gate ("`emboss` is the whole argument for the loop"). Below the gate
+they are not. The gate was hiding the evidence for the table it was protecting.
+
+**The arbiters are two checks that were free to fail and were not used to derive
+anything.** `bit_census --check` runs SPEC 6.3's two loud checks corpus-wide; the 171
+records add 342 edge slots and 237 state-2 slots:
+
+    edge slots holding a backward record index   1,302,475 / 1,302,475  ->  1,302,817 / 1,302,817
+    state-2 slots resolving a program              198,249 /   198,249  ->    198,486 /   198,486
+
+Neither floor is lowered and neither gains a failure. An edge slot's value and a program
+slot's target are facts about the record's *contents*; the layout came from its header
+*boundary*. 342 of 342 and 237 of 237 is the independent half.
+
+`derive_costs.MIN_VERSION` is deliberately **not** changed. It is the independent fitted
+model, and its whole value is that an unchanged run reproduces its last output byte for
+byte. `derive_legend` merges `observed()`'s two tables itself, for every filter it does not
+gate, and its own `MIN_VERSION` is now empty.
+
+## 2. `curve`: slot 2 is the TOTAL over a chain of tables, not one table's size
+
+17 runs, 4,900 bytes, and 59 more runs / 932 bytes of `zeros` in the same records. Every
+run begins at the record's own header end and the first word is a plausible point count.
+Two causes, one structure:
+
+    6 records   532 bytes each   count 22, and `curve_points` clamps at `1 <= n <= 16`
+    11 records  116..284 bytes   the count word is not `words[2]`, because `words[2]` is
+                                 the total over SEVERAL tables
+
+`TactilePaving` record 1825 is the whole thing: `words[2]` is 6, and the payload region
+holds `[3][3 knots][0][0][3][3 knots][0]` — two tables of three, 6 points, ending exactly
+on `words[4] + 52`. There are 23 zero filler words between tables corpus-wide; the rest of
+the filler sits after the last table.
+
+**The rule is the record's own count, and the stop is a test it can fail.** Walk
+`[count][count x 6 floats]` from `words[3] + 52`, skipping zero words, until the counts
+total `words[2]`. Over the 1,272 `curve` records that declare a nonzero count:
+
+    the chain totals slot 2 exactly       1,272 of 1,272   100.00%
+    CONTROL: the same walk one word early     0 of 1,272     0.00%
+    CONTROL: the same walk one word late      5 of 1,272     0.39%
+
+1,261 records hold one sub-table, 10 hold two, 1 holds three; the chain's last table ends
+exactly on `words[4] + 52` in 1,141 of the 1,246 whose slot 4 is a forward pointer — the
+same "upper bound, not the exact end" `curve_points`' docstring already records for that
+slot, and the same one `ramp` has. Where `curve_points` answers at all, its knots are the
+chain's FIRST sub-table on **1,255 of 1,255**, so the two readers cannot drift.
+
+`Record.curve_chain` is the reader; `curve_points`' clamp is left alone deliberately, since
+it feeds the renderer and widening a render path to gain a byte count is the wrong order.
+The audit marks the union. `curve`'s residual goes 5,832 -> 1,060, `emboss`'s 6,268 -> 64, and the 1,060 that
+remain are the zero filler between and after the tables — inside a region the record
+brackets with two pointers, decoding to nothing, and left uncredited because under-reporting
+is the safe direction.
+
+## 3. The word at an out-of-line cell's `tag + 8`: the tag does separate the two cases
+
+The previous pass left 4 bytes a cell out of the credited extent and said why: the word
+holds a pointer to the next cell on most of them and the first word of a program a *record*
+names on the rest, "and nothing in the tag separates the two". Split every out-of-line cell
+the walk reaches, corpus-wide, on `tag & 0x30000` — `FX_STRUCTURAL_BITS`' two
+pointer-to-a-cell members, 16 (four words) and 17 (one):
+
+                          cells   `word + 52` is a cell   a program at `tag + 8`   uncredited
+    bit 16 or 17 set        876             876 of 876                 0 of 876    876 of 876
+    neither set             316               0 of 316               316 of 316      3 of 316
+
+Three tests and no cell on the fence in any of them, and the third is the byte audit
+answering from a side that knows nothing about the tag: **313 of the 316 are already
+credited as a program body reached from a record's own pointer**, and every one of the 876
+is a byte no reader holds. So crediting the first group takes nothing from anybody, and
+refusing the second is the audit agreeing with itself.
+
+The bit is not chosen by fitting. Bits 4 and 7 also declare a structural word, and both
+appear on cells of either kind — bit 4 declares slot 2 on 204 cells with bit 17 set and 49
+without — so a rule keyed on "the mask declares slot 2" — which is the question the previous pass
+asked, and the one it found exceptions to — is the mixed one. Keyed on 16 and 17 it is
+1,192 of 1,192 with no exception at all. Across 73 distinct tags, **not one tag
+appears in both forms.**
+
+`fx_out_of_line_span` runs to `tag + 12` where the tag sets one of those bits and to
+`tag + 8` where it does not. Residual 35,800 -> 32,332: `abuts an fx cell`
+9,980 -> 7,816 and `fx cell not reached` 22,644 -> 21,328 (the class boundary moves too,
+because a run that used to open on the slot-2 word now opens one word later), `other`
+**unmoved to the byte**, `zeros` +12. 876 cells x 4 bytes is 3,504; 24 of those bytes lie
+outside any record extent and so were never in this count, and 12 became `zeros`, which is
+the 3,468 the total falls by.
+
+**And the 83 out-of-line cells the last pass reported unreached are 0.** No residual run
+anywhere in the corpus opens on a word `fx_out_of_line` recognises.
+
+## 4. `vectorshape`: it was never a layout the file does not state — it was a missing entry
+
+139 runs, 584 bytes, every one beginning at `record offset + 8` and 7 of them two words
+long. Word 2, and sometimes word 3. `decompose` had a hardcoded early return for filter 5:
+an empty walk, `end` None, with a comment saying the record "has no size slot to place —
+not one this walk failed to find."
+
+**The second half of that was a guess, and the record says otherwise.** Class word by class
+word, over all 139:
+
+    cls 0x0019 / 0x0009 (bit 16 set, bit 25 clear)   120 records   header 3 words
+    cls 0x0218          (bit 16 clear, bit 25 set)    12 records   header 3 words
+    cls 0x0219          (both)                         7 records   header 4 words
+
+which is `n_hdr 1 + base 0 + fixed 1 + cls{16: 1, 25: 1}` and nothing else — exact on 139
+of 139, five keys, no contradictions. And what the bit-16 slot holds settles the role:
+
+    a program resolves at slot 2                 127 of 127
+      CONTROL: at slot 1 (the payload pointer)     0 of 127
+      CONTROL: at slot 3                           0 of 127
+    it evaluates to a TWO-component value         127 of 127
+    those two components == the record's tag size 127 of 127
+
+It is the `$outputsize` expression, in the position SPEC 6.1's emission order puts it. This
+is the exception SPEC 6.1's own control had to carve out — "the 130 that do not are
+`vectorshape` (127, no cost model and no placed slot)" — and it is gone. **The 12 records
+whose slot 2 is the float `0x3F800000` are exactly the 12 that do not set bit 16**, so the
+"payload end OR a float parameter, depending on the class word" two-arm description
+`Record.vector_shape` carried is one class bit.
+
+`derive_legend` gains filter 5 (`has_w1 never`, `base 0`, `fixed 1`) and `decompose`'s
+special case is deleted. The A/B moves 139 records, all filter 5, all from "no answer" to
+an answer, and **0 other records on any of `end`, `inputs`, `hdr`, `param_slots`,
+`cls_slots`, `prog`, `size_slot`, `root`**. Refusals go 315 -> 5, all filter 9.
+
+**What this corrects that is not a byte count.** `Record.vector_extent` overrides the
+embedded length word with slot 2 on 13 records, worth 146,388 bytes of `vector strip`
+credit, on the reading that "slot 2 is the payload end" — a reading whose control was that
+the two agree to the byte on 44 of the 57 records where both are inside the record. Slot 2
+is the size program's address. The 44 agreements are therefore not slot 2 stating a length;
+they are **the payload abutting the record's own size expression**, which is the same
+contiguity `0x1B`'s children and the out-of-line block already show. The bound survives —
+a payload cannot run into a structure whose start the record states — and the extent is
+unchanged, but the mechanism is renamed and the strength of the credit is now stateable:
+of the 146,388 bytes, 5,300 are further sub-payloads `vector_chain` ends exactly on slot 2
+for (5 records), and **141,088 on 8 records are bounded by slot 2 and stated by nothing**.
+The bytes are unmistakably vertex data — smoothly marching u16 pairs, 132 zero bytes in
+57,888 on the largest — so this is not a retraction; it is the reading with its own weakest
+link named.
+
+## 5. The contested 56 bytes were not 56, and the reader that lost was right
+
+The brief's item 4 was "56 bytes in one specimen where an entry extent and `Record.bitmap`'s
+pixel span contest the same bytes — a genuine ambiguity, and both readers cannot be right."
+Both readers cannot be right, and the one that was wrong is the bitmap.
+
+`Record.bitmap` states it in as many words: for a JPEG record "`size` stays the
+UNCOMPRESSED size, because that is what it is". `audit_corpus`'s canvas marked
+`[offset, offset + size)` anyway. `PavingStonesSubstance006` record 125 declares 0x400000
+bytes at 0x1324ac in a **2,687,372-byte file** whose record body starts at 0x143c98, so the
+span runs past the end of the resource segment, over **1,360,900 bytes of record body**,
+and `mark` painted every one of them that no earlier reader had claimed. Nine records
+corpus-wide do this, covering **3,051,412 bytes of record body** between them —
+`GravelSubstance002` has four, each spending a 13,134-byte JPEG's uncompressed size over
+422,044 bytes of body.
+
+The file states the compressed length: a u32 at `offset`, immediately ahead of the SOI at
+`data_offset`. Over all **54** compressed images in the corpus the SOI is there on 54 of 54
+and `data_offset + n` lands exactly on the stream's `FF D9` on **54 of 54**. Credited that
+way instead:
+
+    bitmap pixels   250,386 -> 196,604    -53,782
+    ramp table    2,389,978 -> 2,404,732  +14,754
+    fx entry      3,792,618 -> 3,816,564  +23,946
+    fx node cell  1,065,426 -> 1,067,878   +2,452
+    curve table      95,568 ->    95,748     +180
+    alignment pad 1,281,976 -> 1,294,426  +12,450   (641,007 -> 647,247 runs)
+    uninterpreted    32,332 ->    32,332        0
+
+The gains total 53,782 exactly. **Not one byte moves into the residual**: every byte the
+false span was holding is held by a reader that states it. It is a reclassification and it
+costs the `+ every payload reader` row 0.004 points, because 12,450 of the 53,782 land in
+the fourth tier. The 56 bytes the previous pass disclosed are a corner of this, and the
+entry that took them was correct.
+
+**THE FIRST ATTEMPT AT THIS WAS WRONG AND THE WAY IT WAS WRONG IS WORTH THE PARAGRAPH.**
+The fix bound the compressed length to a local named `n` — and `n` is `_byte_canvas`'s FILE
+LENGTH, which `mark` closes over. Every subsequent `mark` in a file with a compressed image
+was clamped to `min(13134, y)`. The audit came back with the residual up 86,812 bytes and
+`gradient`'s ramps, the curve tables, the FX cells and the pad all falling at once, which
+read exactly like a large honest retraction and was a one-character scoping bug. What
+caught it was that the story did not fit: removing a *bitmap* credit cannot take bytes away
+from the *ramp* reader, and `_RAMP` had gone DOWN. The variable is `_jn` now, with the
+reason in a comment.
+
+## 6. `fx cell not reached`: 21,316 bytes, refused again, and the arbiter search is a measurement now
+
+Unchanged in mechanism from the last pass, and the two rules it names — the node field slot
+(27 of 3,019 spare slots point forward at a known header against 0 of 3,001 controls) and
+the `0x20008` inline-program arm — are **not** re-landed. What is new is that "no arbiter
+exists" is a number rather than a recollection, taken three ways:
+
+  * **The render side.** 7 assemblies sit inside the 5 packages that ship exported maps.
+    **0 of the 7** contains any of `0x89`, `0x99`, `0x1cb` or `0x1db` — against **282 of the
+    corpus's 437 files** that do. So the arbiter is not merely unattached to the right
+    output; the affected node families are absent from the entire export-bearing
+    population. 12 files carry a `0x1db` and 0 of the 12 ships an export.
+  * **The source side, through `provenance.py`'s own predicate and never a retyped
+    string.** `audit()` splits the 142 paired sources 42 excluded / 4 flagged / **96
+    permitted**; of the 96, **8** carry
+    `paramsGraphData` at all, and of those exactly **one** — `ie_pcloud` — compiles to an
+    affected family, a `0x89`.
+  * **And that one does not exercise the rule.** `ie_pcloud`'s compiled sibling holds
+    **207** `0x89` nodes and the spare word points forward inside the body on **0 of 207**.
+    So even the single overlap is silent.
+
+What would close it, stated so it can be recognised: **a package that ships exported maps
+and contains a `0x89`/`0x99`/`0x1cb`/`0x1db` FX node**, or a permitted source declaring an
+FX-Map whose node has two children beside a compiled sibling that exercises the spare slot.
+Zero of 437 files satisfy the first; zero of the 96 permitted sources satisfy the
+second.
+
+The class itself, freshly split: 21,316 bytes over 903 runs, **13,606 / 398 runs** opening
+on an entry tag and **7,710 / 505 runs** on a node header. Largest tags by bytes:
+`0x25300758` 3,024, `0x00020008` 2,892, `0x0000018b` 2,678, `0x00000089` 2,174,
+`0x55300158` 2,080 — and `0x55300158` is still the tag `node_shape`'s docstring names as the
+one the `0x1db` mask drops.
+
+## 7. What is left: 31,748 bytes
+
+    fx cell not reached   21,316   903 runs; the refusal above
+    abuts an fx cell       7,816    97 runs; 88 bytes open on an entry tag, 116 on a
+                                    pointer cell, 7,612 on nothing the vocabulary names
+    other                  1,426    25 runs
+    zeros, not the pad     1,190   137 runs
+
+`other`'s 1,426, in full, because it is now small enough to enumerate:
+
+    704   `Texture_Randomizer` records 120/169/173/174, four runs of 176 bytes, each
+          `[0x9][ptr][ptr][0x00020008][ptr][0x9][ptr]` -- a bit-7-clear chain of pointer
+          cells and link cells nothing walks
+    250   five 50-byte runs in `TilesSubstance017` / `ChristmasTreeOrnamentSubstance005`,
+          same shape
+    116   `AB_ScrewGeneratorPlus` record 523, a `pixelprocessor`, and the run reads as
+          bytecode
+    108   five runs in filter 9's records, at `offset + 4` -- the one filter with no
+          legend entry
+    120   `concrete_049` record 456, five runs of 30/30/26/18/16, all `fxmaps`
+     54   `NetSubstance001` record 50, three runs of 18
+     46   `Bitmap2Material_2_RealTimeMobile` record 21
+     28   `NightSkyHDRISubstance001` record 262, a `gradient`, seven words of `1.0`
+    ----
+  1,426   of which 954 bytes are cells `leaf_successor` or `pointer_cell_successor`
+          recognises, 46 an entry tag, and 426 nothing the vocabulary names
+
+That last line is worth stating as a classification defect rather than fixing:
+`_residual_class`'s FX test admits nibble-8 tags and `node_shape`, which is bit-7-SET
+headers only, so 954 bytes of bit-7-clear chain cell land in `other` instead of `fx cell
+not reached`. Moving them would take `other` down by two thirds **with nothing decoded**,
+which is the accounting-as-decode error this file has a retraction about, so the classifier
+is left alone and the number is reported here instead.
+
+`zeros`' 1,190: **1,060 is `curve`'s inter-table filler**, inside the region the record
+brackets with slots 3 and 4, decoding to nothing; 62 is `normal`, 28 `blend`, 28 `levels`
+and 12 elsewhere, all of them two-byte runs that fail the pad rule because the byte on one
+side is undecoded. None of these is a decode gap and none is credited: a zero word between
+two structures is stated by the alignment rule only when it is two bytes with a decoded
+structure on each side, and widening that to "any zero run inside a stated region" would
+credit a byte for being zero.
+
+## The A/B, the guards and the harness
+
+`decompose` over 437 files, keyed by full path and record index, on `end`, `inputs`, `hdr`,
+`param_slots`, `cls_slots`, `prog`, `size_slot` and `root`:
+
+    HEAD 90a91ea                    sha256 ccd586d6ca750ac4...   176 refusals
+    + emboss gate off               sha256 eea3b169503e93c0...     5 refusals
+                                    171 lines differ, ALL of them NONE -> an answer
+    + filter 5 in the legend        sha256 34621bca65d31121...     5 refusals
+                                    139 lines differ, ALL of them NONE -> an answer
+
+310 records gain a layout and **not one record's existing answer changes**, on any of the
+eight fields.
+
+    walk cursor == stated header length        903,301 / 903,301  ->  903,611 / 903,611
+      (walk_health: 0 past, 5 no-walk, and walk vs `header_words` 903,611 agree,
+       0 longer, 0 shorter, 5 silent)
+    edge slots holding a backward index      1,302,475 / 1,302,475 -> 1,302,817 / 1,302,817
+    state-2 slots resolving a program          198,249 / 198,249   ->   198,486 / 198,486
+    walk_partition, 200 files                  32 FX violations of 148,903 attributions,
+                                               before and after; POINTER BOUND violations 0
+                                               before and after; HEADER OVERLAP none
+    reverify.py                                0 of 9 exact-share claims no longer hold
+    walk_partition, record-header section      41 -> 44: `emboss` 3 of 685 joins
+                                               transformation 20/98,151, blend 14/134,205,
+                                               levels 6/31,809 and blur 1/7,098. New by
+                                               construction -- those records had no header
+                                               end to be past -- and the other four rows
+                                               cannot have moved, because the A/B above
+                                               says their records did not.
+
+    ./t                                                19 passed
+    pytest test_fx.py test_bitmap.py                   23 passed (one new)
+    pytest render2/test_render2 test_text test_sampler 27 passed
+    pytest test_filters.py test_tables.py              22 passed (two new)
+
+`test_render2.py`'s `UNNAMED_BUT_DECLARED` inventory moved and the test caught it:
+`emboss` gains class bit 26, declared, charged two words, and named by nothing. The entry
+is updated rather than the test relaxed.
+
+## The render is silent, and the reason is a caveat rather than a comfort
+
+`refcompare.py` run against HEAD's model on `sys.path` and against the working tree is
+**byte-identical output** — every correlation, slope, residual and MAE on all scored
+channels of the 5 reference packages. `REFERENCE_FLOOR` is untouched; no floor raised and
+none lowered.
+
+The reason is countable and it is not "the change is small". Over the 7 pack assemblies:
+**0** filter-5 records, **0** multi-table `curve` records, **0** compressed bitmaps, **0**
+out-of-line FX cells — and **10** `emboss` records below v5, which do gain a layout, in
+`Kutejnikov__Stylized_Wooden_Roof_Tiles`. Those 10 are reachable from that package's
+outputs. It renders **none** of its five scoreable channels, before and after. So the
+emboss change is *unarbitrated* by the render rather than confirmed by it, and the pack
+that could arbitrate it is the one that does not render.
+
+## The self-checks, run deliberately
+
+Three recent passes had a test that passed by selecting an empty population, so each new
+test asserts its population first and each was then run against a deliberately broken build
+to watch it fail.
+
+  * `test_out_of_line_slot_2_is_split_by_the_tag_and_not_by_a_value` asserts
+    `decl >= 100 and nodecl >= 30` before anything else. Built with the discriminator
+    changed from `tag & 0x30000` to `tag & 0x10` it fails on the credited span, 305 of 770,
+    not on an empty set.
+  * `test_curve_chain_totals_the_count_the_record_states` asserts `recs >= 1000` **and**
+    `multi >= 5`, the second because "every chain totals slot 2" is nearly vacuous when
+    every chain has one table. Built with the chain truncated after its first table it
+    fails on `multi >= 5` -- 0. Its controls run the same code with slot 3 shifted a word,
+    through a stand-in object, so the control cannot drift from the rule by being a second
+    implementation of it.
+  * `test_emboss_below_the_version_gate_is_laid_out_and_its_slots_hold` asserts
+    `below >= 100` and that those records still exercise the two cells the gate was hiding
+    (`cls26 >= 2`, `w1_5_grey >= 1`). With `w1` bit 5 put back to `Float4` it fails.
+
+## What this pass did not open
+
+The two standing oddities outside the byte residual — `transformation`'s `k = 29` on three
+records, and `vector_chain`'s 11 multi-part payloads — were left alone, because the six
+named oddities took the whole pass. One thing did move next to the second: over the 13
+records where `vector_extent`'s slot-2 override fires with a non-zero gain, `vector_chain`
+accounts for the WHOLE gap on 5, ending exactly on slot 2, and for none of it on the other
+8. That splits the 146,388 bytes the override credits into 5,300 the chain states and
+141,088 it does not, which is a sharper statement of the same open question and not an
+answer to it.
+
+## How to re-take every number here
+
+    python3 archive/tools/audit_corpus.py
+    python3 archive/tools/bit_census.py --check
+    python3 -c "import sys;sys.path.insert(0,'tools');sys.path.append('archive/tools');import walk_health;walk_health.main([])"
+    python3 -c "import sys;sys.path.insert(0,'tools');sys.path.append('archive/tools');import walk_partition;walk_partition.main(['200'])"
+    python3 archive/tools/derive_legend.py --dry-run      # 22 filters, exact 1.0 on every one
+    cd archive/tools && ./t && python3 -m pytest -q test_fx.py test_bitmap.py \
+        && python3 -m pytest -q test_filters.py test_tables.py
+
+The render A/B is `refcompare.py` run twice with `git archive HEAD`'s `tools/` unpacked to
+a directory placed FIRST on `sys.path` — check `sbsasm.__file__` before trusting it, since
+`_repo_root` puts the working tree's `tools/` on the path too. The residual-run census, the
+slot-2 split and the arbiter searches are one-off probes over
+`audit_corpus._byte_canvas`'s uninterpreted runs and `Record.fx_walk`'s items.
+
+## Provenance
+
+One source-side population was counted and it went through `provenance.py`'s own predicate:
+`audit()` for the permitted/excluded split and `own_assembly()` for the pairing. No regex
+was retyped, which is the mistake the fourth disclosed brush exists to design out. Nothing
+was extracted from any excluded source and no excluded source was opened: the permitted
+list is the only thing iterated. What the permitted population was asked is a single
+presence question — does this source carry `paramsGraphData`, and does its own compiled
+sibling contain one of four node headers — and the answer, 8 of 96 and 1 of 8, is reported
+above. No Adobe binary in any form, and filter 5 is still labelled descriptively: what this pass adds
+is its SHAPE, which the compiled file states, and nothing about its name.

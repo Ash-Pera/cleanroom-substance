@@ -130,8 +130,16 @@ when the `valid_program` floor was retired, and the byte row, which moved 6.75 p
                                            the bitmap pointer skew were settled, and 99.42%
                                            until the out-of-line entry block was read.
                                            99.98% once the two-byte alignment pad is
-                                           labelled, which is a fourth tier and not a decode
-    record layout by mask-walk     99.97%  (only vectorshape, provenance-walled, left)
+                                           labelled, which is a fourth tier and not a decode.
+                                           99.534% and 99.989% now, on 31,748 uninterpreted
+                                           bytes - and the payload row FELL 0.004 points
+                                           when a compressed image stopped being credited
+                                           its uncompressed size, which is the one movement
+                                           here that is a correction rather than a decode
+    record layout by mask-walk    100.00%  (5 records of 903,616 - filter 9, and it is the
+                                           provenance rule that blocks its NAME, not its
+                                           shape. It was 99.97%; `vectorshape` and
+                                           `emboss`'s pre-v5 records are in the legend now)
 
 **The size-expression row does not mean what it looks like, and re-running it does not move
 it.** Measured again over the current 437 files and 903,616 records it is 95.64%, identical
@@ -180,9 +188,10 @@ address a pointer.
 bits of a mask enumerate which fields are present in canonical order, and each field's width
 is a constant of its kind — nothing stores an offset. The same primitive runs at three
 scales (record header, FX-Map tree node, baked value width), and `walk.py` implements it
-once. This replaced a memorised layout table: a walk reproduces record layout for 99.97% of
-the corpus with no per-record lookup and no fitted floats, and fails loudly rather than
-guessing when a spec is wrong. `SPEC.md` §6 states it.
+once. This replaced a memorised layout table: a walk reproduces record layout for all but
+**5** of the corpus's 903,616 records — it was 99.97%, and `vectorshape` and `emboss`'s
+pre-v5 records have since joined the legend — with no per-record lookup and no fitted
+floats, and fails loudly rather than guessing when a spec is wrong. `SPEC.md` §6 states it.
 
 That walk is now the **live decode path**, not just a check that could reproduce the table.
 `Record.layout` and `edge_slots` route through one structural pass (`tools/decompose.py`),
@@ -196,11 +205,12 @@ records, 925,701 agree, 0 disagree, 5 uncovered) and render-verified at 0 pixel 
 coefficients — 688 numeric cells over five spec shapes, plus a per-filter `w1` grid shift and
 a straddle table to put back together the two fields no even grid could hold. It is now
 SPEC §7.3's **width legend**: `header = n_hdr + n_base + n_fixed + Σ width(kind)`, with each
-`w1` field read at its own bit, and every cell one KIND from `0 1 2 4 C`. **106 kinds over
-107 cells** replace the 688 floats, and nothing in the live path reads a fitted number: there
+`w1` field read at its own bit, and every cell one KIND from `0 1 2 4 C`. **109 kinds over
+110 cells** replace the 688 floats, and nothing in the live path reads a fitted number: there
 is no intercept, no float, no negative coefficient, no per-state cell, no interaction mode
 and no fitted variant. The two models answer the identical header length on **903,276 of
-903,301** corpus records with the same 315 refusals, and the walks they drive agree slot for
+903,301** corpus records — the population the FIT can answer, since it declines 315 and the
+legend now declines 5 — and the walks they drive agree slot for
 slot on **903,440 of 903,440** — `inputs`, `cls_slots`, `cls_params`, `hdr`, `prog`,
 `size_slot` and `root`, no exceptions. `end` and `param_slots` part on **25** records, and
 that is the one place the legend deliberately went past the fit rather than a drift:
@@ -272,13 +282,28 @@ What is left is 2,123,232 bytes, 0.746%, and 68.5% of that is the two-byte align
 side. **The pad is now labelled rather than counted as uninterpreted, and it is a FOURTH
 tier rather than a widening of the third**, because crediting it moves no byte from
 undecoded to decoded: `+ every payload reader` read 99.317% when that tier landed and the
-new line read **99.831%**, leaving 480,950 bytes, 0.169%. They now read **99.533%** and
-**99.984%**, leaving **46,616**, 0.016% — see below. The audit prints that split, per
+new line read **99.831%**, leaving 480,950 bytes, 0.169%. They now read **99.534%** and
+**99.989%**, leaving **31,748**, 0.011% — see below. The audit prints that split, per
 filter, with a classification of what remains.
 
-The residual after the pad was **480,950 bytes** and is now **46,616**. Two thirds of the
+The residual after the pad was **480,950 bytes** and is now **31,748**. Two thirds of the
 first drop was the model asking a question two different ways; the rest was one kind of
 table entry the walk met, refused and stopped at.
+
+**The last 14,868 were four small things and none of them was FX.** `emboss`'s 6,268 bytes
+were its 171 pre-v5 records, which had no layout because the width legend inherited a
+version gate from the fitted model — a gate that exists because a free intercept cannot be
+told from a class bit set on every key, and which with the intercept pinned is not needed:
+those records are exact, and they are the only ones that exercise four of `emboss`'s cells.
+`curve`'s 5,832 were a chain: slot 2 is the TOTAL point count over several
+`[count][24n]` sub-tables, not one table's size, and the chain totals it on 1,272 of 1,272
+records against 0 of 1,272 for the same walk started one word early. `vectorshape`'s 584
+were its class block — filter 5 is in the legend now, and its bit-16 slot resolves the
+record's own `$outputsize` on 127 of 127, so the "record layout by mask-walk" row above is
+100.00%. And 3,504 were the word after an out-of-line FX cell's slot 1, which the previous
+pass left out because "nothing in the tag separates" a next-pointer from a program's first
+word: `tag & 0x30000` does, 876 of 876 against 316 of 316. One correction went the other
+way and is not a closure at all — see the bitmap paragraph below.
 
 **`abuts an fx cell` was an entry whose parameter block sits out of line.** 126,206 bytes,
 71% of the residual, in records whose own filter has no payload — and not, as the class's
@@ -329,6 +354,20 @@ sees it is the segment's far end, `max(offset + size) == resource_end` in **111 
 against 111 of 111 at −48. Three of the four checks in `test_bitmap.py` were blind to it —
 52 ≡ 4 (mod 8), and packing is invariant to a uniform shift — and there is now a fourth that
 is not. See FORMAT-NOTES.md, "`vectorshape`'s 172,344 bytes were a second definition".
+
+**And the audit was crediting a compressed image's UNCOMPRESSED size, which is 53,782 bytes
+it had no business holding.** `Record.bitmap` says in as many words that `size` "stays the
+UNCOMPRESSED size, because that is what it is" for a JPEG record, and the byte canvas
+marked `[offset, offset + size)` anyway: `PavingStonesSubstance006` record 125 declares
+0x400000 bytes at 0x1324ac in a 2.6 MB file, so the span ran past `body_lo` and over
+1,360,900 bytes of the record body, painting every one that no earlier reader had claimed.
+The file states the compressed length — a u32 at `offset`, ahead of the SOI at
+`data_offset` — and `data_offset + n` lands exactly on the stream's `FF D9` in **54 of
+54**. Corrected, the residual does not move by one byte and 53,782 re-attribute to the
+readers that state them: `ramp` +14,754, `fx entry` +23,946, `fx node` +2,452,
+`curve` +180 and the alignment pad +12,450. It is a reclassification and not a closure, and
+it costs the `+ every payload reader` row 0.004 points because a twelfth of it lands in the
+fourth tier.
 
 **135,440 bytes of that came off the FX row — 40.7% of the whole FX gap — and the repair the
 notes proposed for it is withdrawn as stated.** SPEC §8 proposed widening `fx_table`'s

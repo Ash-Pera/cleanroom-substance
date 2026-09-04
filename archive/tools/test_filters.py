@@ -66,6 +66,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus                                                        # noqa: E402
+import decompose                                                     # noqa: E402
 import manifest                                                      # noqa: E402
 import provenance                                                    # noqa: E402
 import render as R                                                   # noqa: E402
@@ -1434,3 +1435,163 @@ if __name__ == '__main__':
         out = buf.getvalue()
         sys.stdout.write(out)
         print('%-46s %s' % (fn.__name__, 'skipped' if 'SKIP' in out else 'ok'))
+
+
+class _CurveStub(object):
+    """The three attributes `Record.curve_chain` reads, so a control can shift one of them."""
+
+    CURVE_MAX_POINTS = 4096
+
+    def __init__(self, filter_id, words, asm):
+        self.filter_id, self.words, self.asm = filter_id, words, asm
+
+
+def test_curve_chain_totals_the_count_the_record_states():
+    """A `curve` record's slot 2 is the TOTAL over a chain of tables, not one table's size.
+
+    `curve_points` reads the first table; `Record.curve_chain` walks the chain and stops
+    when the counts it has read total the count the RECORD states. The stop is the file's
+    word, so the walk cannot run long, and the total is a test it can fail.
+
+    THE POPULATION IS ASSERTED FIRST, and so is the multi-table half of it, because "every
+    chain totals slot 2" is vacuously true of an empty corpus and nearly vacuous on one
+    where every chain has one table. Corpus-wide: 1,272 records, 1,261 with one table, 10
+    with two, 1 with three, and 23 zero filler words between tables in the whole corpus.
+
+    Two controls, both from `curve_points`' own docstring and both re-run here rather than
+    quoted: the same walk one word EARLIER resolves on 0 of 1,272 records, and one word
+    later on 5. And where `curve_points` answers at all, its knots are this walk's first
+    sub-table -- 1,255 of 1,255 -- so the two readers cannot drift apart.
+    """
+    recs = multi = tables = agree = 0
+    early = late = 0
+    first_is_curve_points = cp_total = 0
+    for p in corpus.paths():
+        try:
+            a = Assembly(p)
+        except Exception:
+            continue
+        if not any(r.filter_id == 22 for r in a.records):
+            continue
+        for r in a.records:
+            if r.filter_id != 22 or len(r.words) < 4 or r.words[2] <= 0:
+                continue
+            recs += 1
+            ch = r.curve_chain
+            if not ch:
+                continue
+            agree += 1
+            tables += len(ch)
+            multi += 1 if len(ch) > 1 else 0
+            cp = r.curve_points
+            if cp is not None:
+                cp_total += 1
+                if ch[0][0] == r.words[3] + 52 and ch[0][1] == len(cp):
+                    first_is_curve_points += 1
+            # CONTROLS: the SAME code, given a slot 3 shifted one word. A stand-in with
+            # the three attributes `curve_chain` reads, so the control cannot drift from
+            # the rule by being a second implementation of it.
+            for delta, box in ((-1, 'early'), (1, 'late')):
+                w = list(r.words)
+                w[3] = w[3] + 4 * delta
+                stub = _CurveStub(r.filter_id, w, r.asm)
+                if type(r).curve_chain.fget(stub):
+                    if box == 'early':
+                        early += 1
+                    else:
+                        late += 1
+    assert recs >= 1000, (
+        'only %d curve records declaring a count -- the assertions below say nothing '
+        'about a population this small; the corpus has 1,272' % recs)
+    assert multi >= 5, (
+        'only %d multi-table chains -- with one table each, "the chain totals slot 2" is '
+        'the same statement `curve_points` already makes; the corpus has 11' % multi)
+    assert agree == recs, (
+        '%d of %d curve records have no chain totalling the count they state' % (recs - agree, recs))
+    assert first_is_curve_points == cp_total, (
+        "`curve_points` and the chain's first sub-table disagree on %d of %d records"
+        % (cp_total - first_is_curve_points, cp_total))
+    assert early == 0 and late <= recs // 100, (
+        'the control walk resolves too often: %d one word early, %d one word late, of %d'
+        % (early, late, recs))
+    print('curve chains: %d records, %d sub-tables, %d multi-table; controls %d early, '
+          '%d late; %d of %d agree with curve_points'
+          % (recs, tables, multi, early, late, first_is_curve_points, cp_total))
+    return
+
+
+def test_emboss_below_the_version_gate_is_laid_out_and_its_slots_hold():
+    """`emboss`'s pre-v5 records used to have NO layout, and the gate was the fit's.
+
+    `derive_costs` keeps them out because a free intercept cannot separate a class bit set
+    on every key from the constant, and the legend inherited the exclusion as
+    `min_version`. With the intercept pinned they are not contradictory -- no key below
+    the gate carries two different observed sizes -- and they are the only records that
+    exercise `emboss`' class bits 19/24/25/26/27 and its `w1` bit 5 in grey.
+
+    THE POPULATION IS ASSERTED FIRST -- both that the old gate's records exist and that
+    they are the ones that vary -- because "every record lays out" is vacuous if none is
+    below the gate. Then the two SPEC 6.3 loud checks, on those records alone: an edge
+    slot must hold a BACKWARD record index and a `w1` state-2 slot must resolve a program.
+    Neither was used to derive the layout; both are free to fail.
+    """
+    GATE = 0x50000
+    below = laid = edges = edges_ok = state2 = state2_ok = 0
+    cls26 = w1_5_grey = 0
+    for p in corpus.paths():
+        try:
+            a = Assembly(p)
+        except Exception:
+            continue
+        if not any(r.filter_id == 8 for r in a.records):
+            continue
+        ver = a.header.get('version') if isinstance(a.header, dict) else 0
+        if ver is None or ver >= GATE:
+            continue
+        for r in a.records:
+            if r.filter_id != 8:
+                continue
+            below += 1
+            d = decompose.decompose(r)
+            if d is None or d.get('end') is None:
+                continue
+            laid += 1
+            assert d['end'] <= len(r.words), (
+                '%s record %d: header %d words, record only %d'
+                % (os.path.basename(p), r.index, d['end'], len(r.words)))
+            if (r.words[0] >> 26) & 1:
+                cls26 += 1
+            w1 = r.words[1] if len(r.words) > 1 else 0
+            if not (r.words[0] & 1) and ((w1 >> 5) & 3) == 1:
+                w1_5_grey += 1
+            for s in d.get('inputs') or ():
+                if s < len(r.words):
+                    edges += 1
+                    edges_ok += 1 if r.words[s] < r.index else 0
+            for sh in (1, 3, 5, 7):
+                if ((w1 >> sh) & 3) != 2:
+                    continue
+                pos = None
+                for t in (d.get('param_slots') or ()):
+                    if t[0] == sh:
+                        pos = t[2]
+                if pos is None or pos >= len(r.words):
+                    continue
+                state2 += 1
+                q = r.words[pos] + 52
+                state2_ok += 1 if (a.body_lo <= q < a.body_hi and a.valid_program(q)) else 0
+    assert below >= 100, (
+        'only %d emboss records below v5 -- the corpus had 171 when the gate came off' % below)
+    assert laid == below, '%d of %d have no layout' % (below - laid, below)
+    assert cls26 >= 2 and w1_5_grey >= 1, (
+        'the below-gate records no longer exercise the cells the gate was hiding: class '
+        'bit 26 on %d records, grey w1 bit 5 baked on %d -- 2 and 13 when this landed'
+        % (cls26, w1_5_grey))
+    assert edges_ok == edges, (
+        '%d of %d edge slots do not hold a backward record index' % (edges - edges_ok, edges))
+    assert state2_ok == state2, (
+        '%d of %d state-2 slots do not resolve a program' % (state2 - state2_ok, state2))
+    print('emboss below v5: %d records, all laid out; %d edges and %d state-2 slots, all '
+          'holding; class bit 26 on %d, grey w1 bit 5 baked on %d'
+          % (below, edges, state2, cls26, w1_5_grey))
+    return

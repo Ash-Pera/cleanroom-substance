@@ -175,6 +175,14 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
                     w = len(tab[0]) * (4 if 'float' in form else 2)
                     mark(r.words[3] + 52, r.words[3] + 52 + w * len(tab), _RAMP)
             elif f == 22:
+                # `curve_chain`, not `curve_points`. Slot 2 is the total point count over
+                # a CHAIN of `[count][24n]` sub-tables, and `curve_points` reads the first
+                # one -- which is every point on 1,261 records and part of them on 11. The
+                # chain also covers the six 22-point records `curve_points`' `n <= 16`
+                # clamp refuses. Union, not replacement: where `curve_points` answers, its
+                # points are the chain's first sub-table on 1,255 of 1,255.
+                for _q, _n in r.curve_chain:
+                    mark(_q, _q + 4 + 24 * _n, _CURVE)
                 cp = r.curve_points
                 if cp:
                     mark(r.words[3] + 52, r.words[3] + 52 + 4 + 24 * len(cp), _CURVE)
@@ -200,7 +208,43 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
                 bm = r.bitmap
                 if isinstance(bm, dict) and bm.get('kind') in ('pixels', 'inline_pixels'):
                     st, sz = bm.get('offset'), bm.get('size')
-                    if st is not None and sz:
+                    if st is not None and bm.get('compressed'):
+                        # A COMPRESSED IMAGE'S `size` IS ITS UNCOMPRESSED SIZE, and
+                        # `Record.bitmap`'s docstring says so in as many words -- "`size`
+                        # stays the UNCOMPRESSED size, because that is what it is".
+                        # Marking `[offset, offset + size)` therefore credited up to 4 MB
+                        # of a 2.6 MB file per record: `PavingStonesSubstance006` record
+                        # 125 declares 0x400000 bytes at 0x1324ac, which runs past
+                        # `body_lo` and over 1,360,900 bytes of the record body, and
+                        # `mark` quietly painted every one of them that no earlier reader
+                        # had taken. Nine records do this, 3,051,412 bytes of body between
+                        # them. That is a byte credited by pointing a reader at it, which
+                        # is the one thing this file exists to stop.
+                        #
+                        # The file states the compressed length: a u32 at `offset`,
+                        # immediately ahead of the SOI at `data_offset`. Over all 54
+                        # compressed images in the corpus the SOI is there on 54 of 54 and
+                        # `data_offset + n` lands exactly on the stream's `FF D9` EOI on
+                        # 54 of 54. So the credited extent is the length word plus the
+                        # stream it measures, and it covers the 45 records whose channel
+                        # code leaves `size` None and which were credited nothing at all.
+                        # Corrected, the residual does not move by one byte and 53,782
+                        # re-attribute to the readers that state them.
+                        #
+                        # `_jn`, NOT `n`: `n` is this function's FILE LENGTH and `mark`
+                        # closes over it. Binding it here clamped every subsequent mark in
+                        # the file to the first JPEG's 13,134 bytes -- which showed up as
+                        # `gradient`'s ramps going uncredited, three readers falling at
+                        # once and the residual rising 86,812 bytes for a reason that had
+                        # nothing to do with bitmaps. Recorded rather than quietly fixed:
+                        # a byte count that moves a long way for a change this local is a
+                        # reason to look at the change, not to believe the count.
+                        _jn = (struct.unpack_from('<I', a.data, st)[0]
+                               if st + 4 <= len(a.data) else 0)
+                        dof = bm.get('data_offset')
+                        if dof and 0 < _jn and dof + _jn <= len(a.data):
+                            mark(st, dof + _jn, _BMP)
+                    elif st is not None and sz:
                         mark(st, st + sz, _BMP)
             elif f == 4:
                 ent, nodes = [], []

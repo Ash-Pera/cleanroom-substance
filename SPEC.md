@@ -173,8 +173,18 @@ plausible numbers rather than a failure.**
    The control is records with bit 16 set and bit 23 clear, where nothing can swap and the
    single class slot must be the size: it resolves a two-component program in **639,944 of
    640,074** corpus-wide, a one-component program in **0**, and `$randomseed` in **0**. The
-   130 that do not are `vectorshape` (127, no cost model and no placed slot) and three
-   `fxmaps` records in `Texture_Randomizer`. `levels` alone is 74,262 of 74,262.
+   130 that did not were `vectorshape` (127) and three `fxmaps` records in
+   `Texture_Randomizer`. `levels` alone is 74,262 of 74,262.
+
+   **The 127 were "no cost model and no placed slot", and both halves are gone.** Filter 5
+   is in the width legend (§7.3) — base 0, one fixed slot for the payload pointer, class
+   bits 16 and 25 at one word each, exact on 139 of 139 records — so its class block is
+   walked like anyone else's and bit 16's slot lands at position 2. Measured there: a
+   program resolves on **127 of 127**, against **0 of 127** at slot 1 and **0 of 127** at
+   slot 3; all 127 evaluate to a **two-component** value; and those two components equal
+   the record's own tag size on **127 of 127**. So the row above reads 640,071 of 640,074
+   and the remaining 3 are the `fxmaps` records. What the walk no longer does anywhere is
+   decline to place a class slot: 5 records in the corpus have none, all filter 9.
 
    **`pixelprocessor` was listed here as the exception and is not one.** Its header is
    `[w0][w1 arity][image inputs][bit 23][bit 16][the filter's own pixel program]`, and the
@@ -309,13 +319,23 @@ still holds: when no pointer bit is set the size is two baked words `(w, h)` rat
 program pointer, so a blur header is five words with a baked size and four with a computed
 one.
 
-A walk mechanism reproduces record layout for **99.97%** of the manifest-bearing corpus.
-Two-shape filters state which shape a record takes with a single stated term — e.g.
+A walk mechanism reproduces record layout for **all but 5** of the corpus's 903,616
+records. Two-shape filters state which shape a record takes with a single stated term — e.g.
 `shuffle` uses tag bit 0 (the colour flag) to split its two authoring nodes,
 `grayscaleconversion` (one input + a `channelsweights` vector, no w1 word) and Channel
-Shuffle (two inputs + a packed channel selector in w1). The only residue is `vectorshape`,
-whose layout the file does not state in any readable term and which is additionally behind
-the provenance wall (§12).
+Shuffle (two inputs + a packed channel selector in w1).
+
+**The residue was `vectorshape` and `emboss`'s older records, and neither is one now.**
+This section used to read 99.97% and say `vectorshape`'s "layout the file does not state in
+any readable term". It states it in the ordinary terms: base arity 0, one fixed slot holding
+the payload pointer, and a class block at slot 2 whose bit 16 is the record's own
+`$outputsize` (§6.1) and whose bit 25 is a baked float. What is behind the provenance wall
+(§12) is filter 5's NAME, not its shape — a distinction this sentence used to blur.
+`emboss`'s 171 pre-v5 records were refused by a `min_version` gate the width legend
+inherited from the fitted model, where a free intercept could not separate a class bit set
+on every key from the constant; with the intercept pinned they are exact, and they are the
+only records that exercise four of `emboss`'s cells. **The 5 that remain are filter 9**,
+which no permitted source names and which has no legend entry.
 
 ---
 
@@ -396,21 +416,34 @@ n_hdr = 1 + (this record carries a w1 word)
 `n_fixed` its fixed prefix — the ramp pair, the FX tree root, the bitmap pixel word,
 `text`'s zero + string + font, `pixelprocessor`'s own program. Every term is a structural
 count or a width from the type legend above. **There is no intercept, no float, no negative
-coefficient, no per-state cell and no grid shift**, and the whole table is 106 kinds over
-107 cells — 32 of them the bit a `w1` field begins at. A model with 688 fitted numeric cells
+coefficient, no per-state cell and no grid shift**, and the whole table is 109 kinds over
+110 cells — 32 of them the bit a `w1` field begins at. A model with 688 fitted numeric cells
 across five spec shapes stood here before it, and the two answer the identical header length
-on 903,276 of 903,301 corpus records with the same 315 refusals. **The 25 that differ are the
+on 903,276 of 903,301 corpus records. **The 25 that differ are the
 one place the legend deliberately went past the fit** — `transformation`'s integer field
 (§7.4), where both models used to be one word short.
 
+**They no longer share their refusals, and that is the second place the legend went past
+the fit.** 903,301 is the population the FIT can answer: it declines 315 records —
+`vectorshape`'s 139, `emboss`'s 171 below a `min_version` gate, and filter 9's 5. The
+legend declines **5**, filter 9's, and its answer on all 903,301 shared records is
+unchanged (§6.4). Three cells arrived with those 310 records: `emboss` class bit 26 at two
+words, `vectorshape` class bits 16 and 25 at one each — which is why the table is 110 cells
+and not 107 — and `emboss`'s `w1` bit 5 turned out to be per-channel `C` rather than
+`Float4`, because its grey arm is exercised only below the gate.
+
 **A kind is a pair of widths and the corpus does not always give both.** Only two of the
 five share a width — `Float1` is `(1, 1)` and per-channel is `(1, 4)` — so a cell exercised
-in one colour only is a reading in that colour and a *prediction* in the other. **36 of the
-214 (cell, colour) pairs are in that state**: 19 because the filter has no record of the
-other colour at all (`text` is grey on all 59, `normal` and `hsl` colour on every one), 17
-because it has records and none set the cell (`blur` / `sharpen` / `distance` / `curve` /
-`dyngradient` class bit 23 in colour, `emboss` w1 bit 5 in grey, `fxmaps` class bit 22 in
-colour). An implementation must mark those, not store them as zeros — the fitted table
+in one colour only is a reading in that colour and a *prediction* in the other. **37 of the
+220 (cell, colour) pairs are in that state**: 19 because the filter has no record of the
+other colour at all (`text` is grey on all 59, `normal` and `hsl` colour on every one), 18
+because it has records and none set the cell — including `blur` / `sharpen` / `distance` /
+`curve` / `dyngradient` / `emboss` class bit 23 in colour, `emboss` and `sharpen` class bit
+26 in grey, `vectorshape` class bit 25 in colour and `fxmaps` class bit 22 in colour;
+`legend.json`'s `evidence` map is the full list.
+`emboss`'s `w1` bit 5 in grey WAS on that list and is not any more — dropping the version
+gate put the records that bake it into the solve, and its width there is 1, which makes the
+cell per-channel and not `Float4`. An implementation must mark those, not store them as zeros — the fitted table
 stored them as zeros and they were indistinguishable from measured ones.
 
 The legend reaches the parameter slots as well: over 437 specimens every one of the
@@ -428,6 +461,12 @@ The legend reaches the parameter slots as well: over 437 specimens every one of 
 | 17 `text` | 43 | 39 | 14 |
 | 18 `normal` | 988 | — | — |
 | 21 `distance` | 2,089 | — | — |
+
+**`emboss` has no row and now should have one**, and it is left out rather than filled in
+from a different instrument. Its 171 pre-v5 records joined the legend after this table was
+taken (§6.4), so it bakes `w1` fields 1, 3, 5 and 7 — widths 1, 1, `C` and `C`, i.e. 1 or 4
+words. The claim the table supports is unaffected: no width outside 1, 2, 4 appears, and
+`C` cannot produce one. Re-take the whole table with one instrument before quoting it.
 
 So the legend is not the gap. **What the file does not state is the per-field type CODE**,
 and that is the whole of what the table derives — a *kind assignment* per (filter, cell),
@@ -621,12 +660,13 @@ parameter block" is where the bit offset puts it and not something the file has 
 **THE REFUSAL AT 14..28 IS IMPLEMENTED, AND IT USED TO BE A GUESS IN THE OTHER DIRECTION.**
 `record_layout.header_words` charged those codes zero and said nothing, while this section
 said refuse — the last place in the header model where a guess was still doing work. It now
-returns `None`, the same answer it already gives for `vectorshape`'s 139 records, filter 9's
-5, `emboss`'s 171 below its version gate and a baked cell the corpus never exercised, and
-`decompose` refuses with it, so a walk is never laid against a length nobody can state. No
+returns `None`, the same answer it already gives for filter 9's 5 records and for a baked
+cell the corpus never exercised, and `decompose` refuses with it, so a walk is never laid
+against a length nobody can state. (`vectorshape`'s 139 and `emboss`'s 171 were on that
+list and are not any more — see §6.4. The refusal count is **5**, not 315.) No
 corpus record reads 14..28, so the change moves **0 of 903,616** records — per filter, on
-`end`, `inputs`, `hdr`, `param_slots`, `cls_slots`, `prog` and `size_slot` alike, with the 315
-refusals unchanged — and the demonstration is therefore synthetic. With `w0 = 0x03197704` and
+`end`, `inputs`, `hdr`, `param_slots`, `cls_slots`, `prog` and `size_slot` alike — and the
+demonstration is therefore synthetic. With `w0 = 0x03197704` and
 `w1 = 0x20 | k`, varying only the low five bits, `header_words` answered 4 at every `k` but 30
 before, and now answers
 
@@ -756,9 +796,9 @@ discriminated by the tag word's **low nibble**:
 special case.** The paragraph above states it for `0x1db`; measured from the byte side —
 every run of record bytes no reader can label, over the whole corpus — the same shape appears
 on a dozen tag families. It was **332,766 bytes of FX cells no walk in the file reached**,
-183,804 of them opening on a tag and the rest abutting a cell that does; it is **33,272**
-now, 22,644 opening on a tag, after the repairs below and the out-of-line reading further
-down.
+183,804 of them opening on a tag and the rest abutting a cell that does; it is **29,132**
+now, 21,316 opening on a tag, after the repairs below, the out-of-line reading further down
+and its trailing pointer word.
 
 **The fix is to follow BOTH, not to move the choice.** `fx_table` steps by "the slot reaching
 furthest forward" over the slots the tag's *parameter* layout declares, so a tag whose layout
@@ -940,11 +980,30 @@ from them down the cells' own next-pointers. `Assembly.fx_out_of_line` is the id
 yielded once, at its block. Its step is bounded to slots 1 and 2: past the tag lie the *next*
 cell's programs.
 
-The word at `tag + 8` — the cell's slot 2, which the mask declares on 417 of the cells — is
-left OUT of the credited extent. It holds the pointer to the next cell on 372 of them, but on
-14 the byte there is the first word of a program a *record* names, and nothing in the tag
-separates the two; under-reporting is the safe direction. That is 1,668 bytes of the
-remaining residual.
+**The word at `tag + 8` is decided by the tag, and the bit is 16 or 17.** This paragraph
+used to leave that word out of the credited extent and say why: it holds the pointer to the
+next cell on most of these cells, but on the rest it is the first word of a program a
+*record* names, "and nothing in the tag separates the two". Something does. Split every
+out-of-line cell the walk reaches on `tag & 0x30000` — the two `FX_STRUCTURAL_BITS` whose
+word is a pointer to a cell, bit 16 four words wide and bit 17 one:
+
+                          cells   the word at `tag + 8`, read as
+                                  a pointer to a cell     a program
+    bit 16 or 17 set              876       876 of 876     0 of 876
+    neither set                   316         0 of 316   316 of 316
+
+Three tests and no cell on the fence in any of them. "A pointer to a cell" is the FX
+vocabulary at `word + 52` — 874 land on an entry tag and 2 on a pointer cell; "a program"
+is `program_span`, the same predicate a record's own slot uses; and the byte audit agrees
+from a third side, with all 876 of the first group uncredited and **313 of the 316** of the
+second already credited as a program body reached from a record's own pointer. So the
+split is not the extent rule's to make — the rest of the file has already made it.
+
+The bit is not chosen by fitting. Bits 4 and 7 also declare a structural word and both
+appear on cells of either kind (bit 4: 204 cells with bit 17 set, 49 without); what tracks
+the trailing word is 16 and 17 alone, on 1,192 of 1,192 cells. The span therefore runs to
+`tag + 12` where the tag sets one of them and to `tag + 8` where it does not, and it is
+still short rather than long wherever the tag says nothing.
 
 **And an entry is yielded once per program slot, as a node is.** `fx_table` yields
 `(offset, tag, program)` per resolving program and `fx_walk`'s skip keyed on the offset
@@ -1144,7 +1203,8 @@ interesting population, so a negative measured over the permitted sources means 
 what may be examined" and never "absent from the format". The format's *structure* is fully recovered — a reader can locate
 and walk every region above from the file alone. What remains open is *semantics*: the
 meaning of some filter parameters, the FX-Map pattern footprint (§8), and a handful of
-provenance-walled specifics (e.g. `vectorshape` layout, inline FX parameter names).
+provenance-walled specifics (e.g. filter 5's NAME — its layout is in the legend and its
+payload decodes — and inline FX parameter names).
 
 Rendering is no longer wholly open. §13 states a renderer completely enough to rebuild
 one, and on the corpus specimen whose two graph inputs are `$outputsize` and `$randomseed`
@@ -1308,8 +1368,12 @@ filter; the other is `pixelprocessor`'s own program, which comes after the class
 `end` is the header length like every other filter's, and its `prog` is the
 first-after-inputs slot — two numbers, not one, which is what it used to return.
 
-**`vectorshape`** has no legend entry at all — the walk returns a stub with no size slot
-and no class parameters. Nothing to place, and nothing to fall back to.
+**`vectorshape`** used to have no legend entry at all, and `decompose` returned a stub
+"with no size slot and no class parameters — nothing to place, and nothing to fall back
+to". The second half of that was a guess: 127 of its 139 records set class bit 16, and the
+slot the ordinary class walk puts at position 2 holds the record's `$outputsize`
+expression on 127 of 127 (§6.1). It is an ordinary legend entry now — `base 0`, `fixed 1`,
+`cls {16: 1, 25: 1}` — and the stub is gone.
 
 **The inherited size slot.** Class bit 0 (word0 bit 16) set ⇒ the first slot after the
 base region is the record's output-size expression, not a parameter. Clear ⇒ there is no
@@ -1408,9 +1472,10 @@ Pinning the base to what the record states and re-solving for the bit costs is e
 every record of all three filters, needs no negative or half-word coefficient, and leaves
 every header length unchanged. **That is now the whole model rather than a repair of four
 entries** (§7.3): the base is pinned for every filter, every cell is one kind from
-`0 1 2 4 C`, and 688 fitted numeric cells became 106 kinds over 107 cells with no intercept
-to shave. The two answer the identical header length on 903,276 of 903,301 records with the
-same 315 refusals, and the walks they drive agree slot for slot on 903,440 of 903,440 on
+`0 1 2 4 C`, and 688 fitted numeric cells became 109 kinds over 110 cells with no intercept
+to shave. The two answer the identical header length on 903,276 of 903,301 records — the
+population the FIT can answer, since the legend declines 5 records and the fit 315 (§6.4) —
+and the walks they drive agree slot for slot on 903,440 of 903,440 on
 `inputs`, `cls_slots`, `cls_params`, `hdr`, `prog`, `size_slot` and `root`. `end` and
 `param_slots` part on 25 records and nowhere else — `transformation`'s integer field (§7.4),
 the one gap the legend closed and the fit did not.

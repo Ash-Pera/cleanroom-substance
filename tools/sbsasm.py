@@ -5634,6 +5634,91 @@ class Record:
         v = struct.unpack_from('<%df' % (6 * n), self.asm.data, off + 4)
         return [tuple(v[i * 6:i * 6 + 6]) for i in range(n)]
 
+    #: The largest sub-table count the chain walk will accept. It is a containment bound
+    #: and not a fitted one -- the walk already requires each table to fit inside the
+    #: record's stated span -- and exists only so a garbage word cannot ask for a
+    #: gigabyte-long unpack before that test runs. The corpus's largest is 22.
+    CURVE_MAX_POINTS = 4096
+
+    @property
+    def curve_chain(self):
+        """Every `[count][count x 6 floats]` sub-table this record's curve payload holds.
+
+        Returns `[(offset, n), ...]` in address order, or `[]`.
+
+        A `curve` RECORD'S SLOT 2 IS THE TOTAL POINT COUNT OVER A CHAIN OF TABLES, not the
+        length of one table, and `curve_points` reads the first table only. Where the two
+        agree -- one table holding every point -- nothing is missing; where they do not,
+        the record's payload is several tables and slot 2 is their sum.
+
+            slot 2   total control points, over every sub-table
+            slot 3   the first sub-table, at the universal +52 skew
+            slot 4   where the payload stops (an UPPER bound, as it is for `ramp`)
+
+        Each sub-table states its own end -- a `u32` count followed by exactly that many
+        24-byte knots -- so the walk needs no stride and no length table: it steps by the
+        count it just read and stops when the running total reaches the count the RECORD
+        stated. Zero words between tables are skipped; there are 23 of them corpus-wide,
+        and the rest of the filler sits AFTER the last table, inside the region slot 4
+        brackets and credited to nothing.
+
+        WHAT MAKES THIS A READING RATHER THAN A SCAN. The stop is the record's own word,
+        so the walk cannot run long, and the sum is a test it can fail. Over the corpus's
+        1,272 `curve` records that declare a nonzero count:
+
+            the chain totals slot 2 exactly       1,272 of 1,272   100.00%
+            CONTROL: the same walk one word early     0 of 1,272     0.00%
+            CONTROL: the same walk one word late      5 of 1,272     0.39%
+
+        1,261 records hold one sub-table, 10 hold two and 1 holds three, and the chain's
+        last table ends exactly on slot 4 in 1,141 of the 1,246 records whose slot 4 is a
+        forward pointer -- the same "upper bound, not the exact end" `curve_points`'
+        docstring already records for that slot, and the same one `ramp` has.
+
+        `curve_points`' `1 <= n <= 16` clamp is why six 22-point records reach this method
+        and not that one. The clamp is left where it is deliberately: `curve_points` feeds
+        the renderer, this feeds the byte audit, and widening a render path to gain a byte
+        count is the wrong order. Where `curve_points` answers, its points are this walk's
+        FIRST sub-table on 1,255 of 1,255.
+        """
+        if self.filter_id != 22 or len(self.words) < 4:
+            return []
+        want = self.words[2]
+        if want <= 0:
+            return []
+        d, lo, hi = self.asm.data, self.asm.body_lo, self.asm.body_hi
+        q = self.words[3] + 52
+        if not (lo <= q < hi):
+            return []
+        end = self.words[4] + 52 if len(self.words) > 4 else None
+        if not (end and q < end <= hi):
+            # Slot 4 is not a forward pointer on 26 records -- their class word spends it
+            # on something else -- so the walk is bounded by what it can still state: the
+            # declared count, at the widest a knot can be.
+            end = min(hi, q + 4 + want * 24 + 4 * 8)
+        out, tot, zeros = [], 0, 0
+        while tot < want:
+            if q + 4 > end:
+                return []
+            n = struct.unpack_from('<I', d, q)[0]
+            if n == 0:                       # filler between tables
+                zeros += 1
+                if zeros > 8:
+                    return []
+                q += 4
+                continue
+            if not (1 <= n <= self.CURVE_MAX_POINTS):
+                return []
+            if tot + n > want or q + 4 + 24 * n > end:
+                return []
+            v = struct.unpack_from('<%df' % (6 * n), d, q + 4)
+            if not all(-1e3 <= x <= 1e3 for x in v):
+                return []
+            out.append((q, n))
+            tot += n
+            q += 4 + 24 * n
+        return out
+
     # ---- vector-shape specialisation
 
     @property
@@ -5646,7 +5731,10 @@ class Record:
 
             slot 0   tag
             slot 1   payload start, at the universal +52 skew
-            slot 2   payload end, OR a float parameter, depending on the class word
+            slot 2   the class block: `$outputsize` where class bit 16 is set (127
+                     records), the class-bit-25 float where it is not (12). The payload
+                     ends where slot 2 points because it ABUTS that structure, not
+                     because slot 2 states a length -- see `vector_extent`.
             ...      the payload, where it lies inside the record
 
         The payload is `[word0][length word][4-byte vertices...]`, and `word0` takes one
@@ -5773,11 +5861,33 @@ class Record:
         stating it.
 
         SLOT 2 OVERRIDES THE EMBEDDED LENGTH WORD WHERE IT STATES A LONGER PAYLOAD.
-        `n` is short of the payload in 13 of 139 records, and in all 13 slot 2 -- which
-        `vector_shape` already calls the payload end -- says where it really stops.
-        Exceptionless within that group: slot 2 is a body pointer 13 of 13, its span is
-        the record's span minus exactly 8 in 13 of 13, and that span less the 8-byte
-        payload header is a whole number of 4-byte vertices in 13 of 13.
+        `n` is short of the payload in 13 of 139 records, and in all 13 slot 2 says where
+        it really stops. Exceptionless within that group: slot 2 is a body pointer 13 of
+        13, its span is the record's span minus exactly 8 in 13 of 13, and that span less
+        the 8-byte payload header is a whole number of 4-byte vertices in 13 of 13.
+
+        **SLOT 2 IS NOT "THE PAYLOAD END", AND THIS METHOD AND `vector_shape` BOTH USED TO
+        SAY IT WAS.** It is the record's `$outputsize` expression -- the ordinary class
+        bit 16 slot, in the position SPEC 6.1's emission order puts it. Over the 127
+        filter-5 records that set bit 16 the word at slot 2 resolves a program on 127 of
+        127 (slot 1: 0 of 127, slot 3: 0 of 127), every one of the 127 evaluates to a
+        TWO-component value, and those two components equal the record's own tag size on
+        127 of 127. The 12 records whose slot 2 is the float `0x3F800000` are exactly the
+        12 that do NOT set bit 16, so the two arms `vector_shape` describes are one class
+        bit and not a mystery.
+
+        THE BOUND STILL HOLDS, and for a better reason than the one it had. The payload
+        ABUTS the record's own size expression: over the 57 records where both bounds are
+        inside the record, the embedded length lands exactly on slot 2's target in 44 --
+        which was read as "slot 2 is the payload end" and is really "the compiler emits
+        the strip immediately ahead of the size program". So slot 2 remains the correct
+        ceiling: the payload cannot run into a structure whose start the record states.
+        What the 13 add is real vertex data and not slack -- smoothly marching u16 pairs
+        with the credited payload's own profile, 132 zero bytes in 57,888 on the largest
+        of them -- and on 5 of the 13 `vector_chain` accounts for the whole gap as further
+        sub-payloads ending exactly on slot 2. On the other 8 the gap is bounded by slot 2
+        and stated by nothing, which is the honest description of 141,088 of the 146,388
+        bytes this override credits.
 
         WHAT THIS DOES NOT ESTABLISH. The recovered bytes are vertex data of the same
         kind -- smoothly marching u16 pairs with the credited payload's value profile --
@@ -5795,8 +5905,9 @@ class Record:
         if not (0 <= off <= len(d) - 8):
             return None
         n = (struct.unpack_from('<2I', d, off)[1] + 23) // 2
-        # The 12 records this leaves alone are class 0x218, where slot 2 holds 0x3F800000
-        # and is the float parameter `vector_shape`'s other arm describes.
+        # The 12 records this leaves alone are class 0x218 -- the 12 with class bit 16
+        # CLEAR, where slot 2 is bit 25's baked float `0x3F800000` and there is no size
+        # program for the strip to abut.
         # BOUNDED BY THIS RECORD, and that bound is load-bearing. Without it, slot 2 is
         # accepted wherever it happens to be a body pointer, and on RoadSubstance002 --
         # where the payload lies OUTSIDE its own record, the case below -- it names an
@@ -6403,18 +6514,52 @@ class Assembly:
                 return at, block - 4 * got[2], got[2], got[1]
         return None
 
+    #: The two structural bits whose word, in an OUT-OF-LINE cell, sits after slot 1 rather
+    #: than in the cell's parameter block: `FX_STRUCTURAL_BITS`' two pointer-to-a-cell
+    #: members. See `fx_out_of_line_span` for the measurement. Read as a MASK below, so
+    #: this is the one place the pair is written down rather than a name beside a literal.
+    FX_TRAILING_POINTER_BITS = frozenset({16, 17})
+    FX_TRAILING_POINTER_MASK = 1 << 16 | 1 << 17
+
     def fx_out_of_line_span(self, block, tag):
         """The out-of-line cell's width in words, measured from its block, or None.
 
-        DELIBERATELY ONE WORD SHORT WHERE THE MASK PUTS A STRUCTURAL SLOT AT 2. That word
-        sits past slot 1 and holds the pointer to the next cell in 372 of the 417 cells
-        that have one -- but in 14 the byte there is the first word of a program another
-        record names, and nothing in the tag separates the two. Under-reporting is the
-        safe direction for an extent, so it is left out of the span and stays in the
-        residual: 4 bytes a cell.
+        THE WORD AT `tag + 8` IS THE CELL'S, AND THE TAG SAYS SO. This method used to stop
+        at `tag + 8`, deliberately: that word holds a pointer to the next cell on most of
+        these cells, but on the rest it is the first word of a program a RECORD names, and
+        "nothing in the tag separates the two" was the reason given for leaving 4 bytes a
+        cell in the residual rather than claiming a neighbour's word.
+
+        The tag does separate them, and it is a bit the layout already reads. Over every
+        out-of-line cell the walk reaches, corpus-wide, split on `tag & 0x30000` -- the two
+        `FX_STRUCTURAL_BITS` whose word is a pointer to a cell (16, four words; 17, one):
+
+                                        cells   the word at `tag + 8`, read as:
+                                                a pointer to a cell    a program
+            bit 16 or 17 set              876             876 of 876     0 of 876
+            neither set                   316               0 of 316   316 of 316
+
+        Three tests, and no cell is on the fence in any of them. `a pointer to a cell` is
+        the FX vocabulary at `word + 52` -- 874 land on an entry tag and 2 on a pointer
+        cell; `a program` is `program_span`, the same predicate a record's own slot uses.
+        The byte-audit canvas agrees from the third side: all 876 of the first group are
+        uncredited bytes, and 313 of the 316 of the second are ALREADY credited as a
+        program body reached from a record's own pointer -- so the split is not this
+        method's to make, it is one the rest of the file has already made.
+
+        The bit is not chosen for fitting either. Bits 4 and 7 also declare a structural
+        word, and both appear on cells of both kinds (bit 4: 204 with 17, 49 without);
+        what tracks the trailing word is 16 and 17 alone, on 1,192 of 1,192 cells.
+
+        So the span runs to `tag + 12` where the tag sets one of those bits and to
+        `tag + 8` where it does not. It is still SHORT rather than long wherever the tag
+        says nothing: `audit_corpus` uses this as a byte floor.
         """
         got = self.fx_out_of_line_at(block, tag)
-        return None if got is None else (got[0] + 8 - block) // 4
+        if got is None:
+            return None
+        trailing = 4 if tag & self.FX_TRAILING_POINTER_MASK else 0
+        return (got[0] + 8 + trailing - block) // 4
 
     def program_span(self, p, hi=None, slack=0):
         """End offset of the program at p, or None. Bounded by `hi` when given.

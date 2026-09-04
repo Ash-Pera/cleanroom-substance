@@ -194,7 +194,12 @@ UNNAMED_BUT_DECLARED = {
         # bits at all. Every entry below is a bit those filters have always set and always
         # charged a word for. `fxmaps` 22 is the bit only three corpus records set;
         # `uniform` 25 is its `outputcolor` program arm; `emboss` 27 is its `$pixelsize`.
-        2: (23,), 4: (22, 23), 6: (23, 25), 8: (23, 27), 15: (23,),
+        # `emboss` gains 26 with no name and no change of behaviour: dropping its version
+        # gate put its 171 pre-v5 records into the solve, and they are the only records in
+        # the corpus that set class bit 26 on this filter -- two of them, at two words. A
+        # cell the legend now measures and no name covers is exactly what this inventory
+        # is for.
+        2: (23,), 4: (22, 23), 6: (23, 25), 8: (23, 26, 27), 15: (23,),
         # (26, 27) is a per-filter parameter pair, baked then program: blur holds
         # (16.0, 16.0), warp (0.9801, 0.9801), directionalwarp (0.99, 1.0). NOT `$outputsize`
         # -- those are floats, not log2 integers.

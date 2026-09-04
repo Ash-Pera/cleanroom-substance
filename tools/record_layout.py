@@ -42,8 +42,8 @@ intercept, no float, no negative coefficient, no per-state cell, no base/cross v
 interaction mode, no grid shift, no straddle table and no fitted variant.
 
 THE TABLE THIS READS IS `tools/legend.json`, derived by `archive/tools/derive_legend.py`:
-one KIND per header cell, drawn from the five-symbol alphabet `0 1 2 4 C`. 106 kinds over
-107 cells, 32 of them a bit offset. It replaced `costs.json`'s 688 fitted numeric cells
+one KIND per header cell, drawn from the five-symbol alphabet `0 1 2 4 C`. 109 kinds over
+110 cells, 32 of them a bit offset. It replaced `costs.json`'s 688 fitted numeric cells
 across five spec shapes (`plain`, `colour`, `colour_states`, `arity`, `variants`) plus
 `pairs`, `flags`, `constant_bits`, `has_absent`, `arity_sm`, `nullity`, `unident`, a
 `w1_shift`, a `conj` list and a `STRADDLED` relabelling table in `decompose`.
@@ -84,11 +84,14 @@ per-field type CODE -- and it is unchanged by any of this.
 WHAT THE CORPUS DOES NOT SEPARATE, marked in the table rather than smoothed away. A kind is
 a pair of widths, `(grey, colour)`, and only two of the five share a width: `Float1` is
 `(1, 1)` and per-channel is `(1, 4)`. So a cell exercised in ONE colour only is a reading in
-that colour and the legend's PREDICTION in the other, and 36 of the 214 (cell, colour) pairs
+that colour and the legend's PREDICTION in the other, and 37 of the 220 (cell, colour) pairs
 are in that state -- 19 because the filter has no record of the other colour at all (`text`
-is grey on all 59, `normal` and `hsl` colour on every one), 17 because it has records and
-none set the cell (`blur` / `sharpen` / `distance` / `curve` / `dyngradient` class bit 23 in
-colour, `emboss` w1 bit 5 in grey, `fxmaps` class bit 22 in colour). `legend.json`'s
+is grey on all 59, `normal` and `hsl` colour on every one), 18 because it has records and
+none set the cell (`blur` / `sharpen` / `distance` / `curve` / `dyngradient` / `emboss`
+class bit 23 in colour, `emboss` and `sharpen` class bit 26 in grey, `vectorshape` class
+bit 25 in colour, `fxmaps` class bit 22 in colour). `emboss` w1 bit 5 in grey was on that
+list until its version gate came off: the records that bake it are all below v5, and they
+say the width is 1, so the cell is per-channel `C` and not `Float4`. `legend.json`'s
 `evidence` map names the source of every one, per colour, so an absence can never be read as
 a measured zero -- which is exactly what the fitted table stored, and indistinguishably.
 """
@@ -207,13 +210,20 @@ def header_words(filter_id, word0, w1, version=None):
     """Header length in words from the masks alone, or None if the legend cannot say.
 
     None means "this filter's cells were not established", never "zero" -- callers must
-    fall back rather than treat a missing rule as an answer. There are four ways to get
-    it: a filter with no legend entry (`vectorshape`, filter 9), a record below the
-    version gate a filter's modern layout sits behind (`emboss`), a w1 field in the
-    BAKED state whose kind the corpus never exercised, and an unobserved value of
-    `transformation`'s 5-bit integer field (SPEC 7.4's 14..28). All four are the same
+    fall back rather than treat a missing rule as an answer. There are three ways to get
+    it: a filter with no legend entry (filter 9, five records), a w1 field in the BAKED
+    state whose kind the corpus never exercised, and an unobserved value of
+    `transformation`'s 5-bit integer field (SPEC 7.4's 14..28). All three are the same
     rule: a cell the corpus never stated has no width, and a width nobody measured is not
-    zero. The corpus meets none of the fourth kind, so it costs nothing to hold.
+    zero. The corpus meets none of the third kind, so it costs nothing to hold.
+
+    THERE WAS A FOURTH AND IT WAS NOT THE SAME RULE: "a record below the version gate a
+    filter's modern layout sits behind (`emboss`)". That gate came from the FITTED model,
+    where a class bit set on every key of a filter is indistinguishable from a free
+    intercept, and the legend inherited it. With the intercept pinned the pre-v5 records
+    are exact -- and they are the only records that exercise `emboss` class bits 19, 24,
+    25, 26 and 27 and its grey `w1` bit 5. `vectorshape` left the list at the same time,
+    with a legend entry of its own. 315 refusals became 5.
 
     `word0` is the record's ENTIRE first word, not the cls field alone. The tag's low
     bits carry layout too -- `shuffle`'s shape and every per-channel width are selected by
