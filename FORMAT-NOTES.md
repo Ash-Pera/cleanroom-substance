@@ -54022,3 +54022,64 @@ measured), `fx.typeless_profile` (`rect`, decisive on the picture), `fx.combine`
 decisive on both), `fx.gridcount` (`divisor`, decisive on both), `fx.patternsize` (`canvas`,
 weak). `fx.negopacity`, `fx.markers`, `fx.gatescan` and `fx.scanner` move this file by exactly
 0.00000 and cannot be arbitrated from it at all.
+
+## Moving to `Bricks`: `distance.invert` = False confirmed, and the band ratio is PROVABLY sign-blind
+
+Chesterfield is exhausted for arbitration -- `fx.negopacity`, `fx.markers`, `fx.gatescan` and
+`fx.scanner` move it by exactly 0.00000. Scanning the other four reference packs for which
+questions each EXERCISES (one probe arm per question, dim 128, delta on the declared outputs):
+
+    Bricks      31 outputs, 12,585 records -- 18 arbitrations, including distance.invert
+                (0.614), distance.mask_edge (0.453), fx.pos (0.375), warp.reference_px
+                (0.286), levels.zerospan (0.246), normal.reference_px (0.084),
+                normal.inversedy (0.023), emboss.intensity (0.021), dirwarp.edges (0.125)
+    Auras        3 outputs -- distance.invert (0.321), dirwarp.edges (0.234),
+                 levels.zerospan (0.041), and little else
+    RoofTiles    1 output  -- EXERCISES NOTHING
+    SandyPath    1 output  -- EXERCISES NOTHING
+
+`Bricks` is the specimen to work now: it reaches five filter families Chesterfield never
+touches. RoofTiles and SandyPath cannot arbitrate anything and are dead ends for this purpose.
+
+**`distance.invert` = False, decisively, and the pictures are unambiguous.** Bricks `height`:
+the export is square tiles with circular discs, dark grout lines and fine mottled texture inside
+each tile. `False` reproduces that layout and texture faithfully but WEAKLY -- right structure,
+low amplitude, which is exactly its band of 0.184. `True` is a HARD BINARISED MASK: thick black
+bands on the grout and rings, pure white elsewhere, no internal texture at all. On `emission`
+the arms are even starker -- the export is a black field with soft glowing dots, `False`
+reproduces it, and `True` is the literal photographic negative, white ground with hard black
+dots.
+
+**The scalars would have argued for `True` and they would have been wrong.** Correlation is
+better on 3 channels and worse on 9, and on emission it flips clean sign (+0.9885 -> -0.9767,
++0.9993 -> -0.9801, +0.9953 -> -0.9739). But the BAND RATIO strongly prefers `True`:
+
+    channel        band False   band True
+    emission/0       121.143      3.309
+    normal/0           0.135      1.191
+    normal/1           0.130      1.173
+    ambientocclusion   0.230      0.828
+    height/0           0.184      4.908
+
+Four of those five move dramatically TOWARD 1.0 under the arm that renders a negative.
+
+**WHY, AND IT IS NOT A TUNING PROBLEM: `band_power` IS EXACTLY INVARIANT UNDER NEGATION.** It is
+built from squared Fourier magnitudes, and |FFT(-x)|^2 = |FFT(x)|^2. Verified numerically rather
+than asserted: `band_power(x)` and `band_power(-x)` agree to **0.000e+00** on every band, both
+raw and mean-removed. So the band ratio CANNOT penalise a polarity error at all -- an image and
+its negative score identically. It is not that band is a weak witness on sign; it is blind to
+sign by construction.
+
+**The three quantities' blind spots, now stated exactly:**
+
+    corr   sees placement AND polarity.  Blind to amplitude and to level.
+    band   sees amplitude.               BLIND TO POLARITY (proven above) and to placement.
+    dc     sees level.                   Blind to everything else.
+
+This is the third case where band voted for a visibly wrong render -- `disc`/`paraboloid` on
+`fx.typeless_profile` (which erased 41 of 41 buttons), and now `True` here. Each time `corr` was
+right. The guard's three quantities are complementary rather than redundant, and a majority vote
+across them is NOT a valid reading: on a polarity question the band ratio contributes no
+information whatsoever, and on a feature-deletion question it contributes misleading
+information. `refguard`'s ratchet is per-quantity and therefore unaffected -- but a reader
+comparing arms must weight `corr` on any question that could change sign or delete a feature.
