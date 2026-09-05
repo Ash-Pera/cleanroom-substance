@@ -53735,3 +53735,53 @@ level is wrong.
 of the level error and not all of it. The proxy says which record and in which direction, not by
 how much. The fix is to make 321 emit its patterns, which requires deciding how a markov2 gate
 drives emission in chain mode, and that is not settled here.
+
+## NEGATIVE RESULT: the gate does not bound the continuation, and "make record 321 emit" is not sufficient
+
+Following `fa2afd1`, the obvious move was to stop record 321's gate vetoing its only emission.
+Tried, measured, REFUTED, reverted. No code changed.
+
+**The population first, because it rules out the loose fix.** Over the 8 pack assemblies at
+dim 128 there are 737 `splat` calls and a gate closes in 115 of them -- but 113 of those
+STILL EMIT (Bricks 12354 emits 1024, Rusty_Metal 1088 emits 196, StylizedCobblestoneStreet 933
+emits 324). Only 2 emit nothing. So "do not consult gate predicates in chain mode", the rule
+`fx.py` already applies in `placement` mode, would change 113 records that are working and is
+not available.
+
+**The two are the same authored sub-graph, in two unrelated files.** ChesterfieldSofa record
+321 and StylizedCobblestoneStreet record 607 both have 11 entries and a 4-node chain, headers
+`395, 137, 137, 137`, and node address gaps of **[172, 1560, 200]** -- identical to the byte.
+Both run `numberadded -> 1.0`, `gate 1 -> 1.0`, `gate 2 -> 0.0`. The 1560 between nodes 2 and 3
+is wildly out of scale with the 172 and 200 either side, which is what `_batch_emit`'s docstring
+is describing when it says `e231131` took this chain from `[0x18b, 0x89]` to
+`[0x18b, 0x89, 0x89, 0x89]` and "one of the two new gates closes at pattern 0".
+
+**THE HYPOTHESIS.** All 113 productive closures close AFTER at least one emission; the 2 close
+BEFORE any. So the gate might bound the CONTINUATION and not the first step -- do-while rather
+than while. That distinguishes the two populations by a property of the file rather than by
+special-casing a record, which is why it was worth testing. Implemented as `if open_ or
+number == 0`, it takes zero-pattern records from 2 to 0 and leaves the other 735 `splat` calls
+untouched.
+
+**WHAT THE REFERENCE SAYS.** Exactly 4 of 25 scored entries move, all of them reached by 321 or
+607 -- the isolation is perfect and the instrument is working:
+
+    entry                grid   corr                band            dc
+    basecolor 0          512    +0.9164 -> +0.9351  0.612 -> 0.519  -0.0980 -> -0.0378
+    basecolor 1          512    +0.9862 -> +0.9811  0.547 -> 0.499  +0.0086 -> +0.0295
+    basecolor 2          512    +0.8814 -> +0.6894  0.199 -> 0.194  -0.0049 -> +0.0168
+    basecolor 2          128    +0.7768 -> +0.4419
+    roughness            512    +0.9338 -> +0.9419  0.671 -> 0.836  -0.0639 -> -0.0439
+
+`roughness` improves on ALL THREE quantities and `basecolor` ch0's level recovers most of its
+deficit. And `basecolor` ch2's correlation COLLAPSES -- 0.3149 below its bound at 128, adverse
+at every grid and past `CORR_HARD` = 0.13, a hard ratchet failure on the channel that had just
+flipped from -0.46 to +0.88. Refused.
+
+**WHAT THIS BUYS EVEN THOUGH IT FAILED.** Forcing record 321 to a CONSTANT (`fa2afd1`) improves
+`basecolor` ch0 without touching ch2; making it emit its own patterns improves ch0 by about as
+much and destroys ch2. So the record being non-zero is right and THE CONTENT WE WOULD EMIT IS
+WRONG. The defect is not only "the gate closes" -- the 11 entries behind that gate, driven this
+way, produce something whose structure fights the channel. Whoever takes this next should read
+the gap of 1560 as the lead: the question is whether nodes 3 and 4 belong in this chain AT ALL,
+not whether the gate they carry should veto.
