@@ -54414,3 +54414,57 @@ thing that would move it -- "a SUBDIVIDED FX-Map ... `chain` is a FLAT walk, so 
 one node position and it is the root's" -- and `3441350`'s second-child pointer is a mechanism
 for exactly such branching. Against it: both motivating records have a NULL second child, so
 neither is branching, and their over-coverage needs another explanation.
+
+## `patternsize` in canvas units is CORRECT, the bell is correct, and the differencing idiom is correct — so the defect is that two records the file differences render nearly the same
+
+Two of my own framings from `791e7ff` are refuted here. Recording both.
+
+**REFUTED 1: "the question is `patternsize`'s UNIT."** It is not. Canvas-relative `patternsize`
+reproduces the one case this repository holds as verified. `Lines` record 0 emits 10 patterns at
+size (1.41421354, 0.03555065) and the test records its lit fraction as 0.5078. One strip covers
+`1.41421354 * 0.03555065 = 0.050276` of the canvas; ten cover **0.5028** against the recorded
+0.5078. Canvas units reproduce a verified render to within 1%. The two candidate divisors
+proposed last entry -- emission count per axis, and a subdivided tree box -- are not needed and
+would break this case.
+
+**REFUTED 2: "2.82-wide stamps saturate the canvas."** They do not. All four records
+(Chesterfield 92/93, Auras 427/428) emit `patterntype` 5 = **bell** at opacity 1.0, and `bell`
+is `t^2` with `t = clip(1 - r^2, 0, 1)`, `r = 2*sqrt(lx^2 + ly^2)` -- bounded, not flat. A 2.82
+stamp centred near the origin gives about **0.37 at the canvas corner against 1.0 at the
+centre**. Max-combining 144 of them scattered within +-0.125 gives a smooth DOME, and that is
+exactly what is measured: range **0.6895 .. 1.0000**, sd 0.0676. The FX-Maps are rendering a
+plausible dome, not a saturated field, and "over-coverage" was the wrong word for it.
+
+**AND THE DIFFERENCING IDIOM IS CORRECT TOO.** `levels` 429 maps A into [0.5, 1] -- exactly
+`0.5x + 0.5` -- and `blend` mode 2 subtract at `opacitymult` 0.5 computes `dst - 0.5*src`, which
+is `0.5 + 0.5*(A - B)`: a SIGNED DIFFERENCE CENTRED ON 0.5, which is the standard construction
+for a warp displacement map. The opacity is stated on the record, not defaulted, and record 430
+has only two edges so no mask multiplies it. Nothing here is misread.
+
+**The two files use the SAME PRESET, byte for byte.** `slot1_flags` on both pairs:
+
+    levels   raw = 64                                            Auras 429  Chesterfield 94
+    blend    raw = 274, blendingmode 2, unknown_bits = 272        Auras 430  Chesterfield 95
+
+Identical in two unrelated packages by two different authors, which is what an FX-Map preset
+pulled from a shared library looks like. It also means one defect explains both, and that a fix
+verified on one can be checked on the other.
+
+**SO THE QUESTION NARROWS TO EXACTLY THIS: why do two records the file deliberately differences
+render to within 3e-03 of each other?** Everything around it now checks out -- the units, the
+profile, the levels, the blend, the opacity. What is left is the inputs. Measured facts about
+the pair:
+
+  * They differ in the file: Auras 427's third chain node is `0x1CB` with a NULL bit-6 field,
+    428's is `0x18B`, and `3441350` established a null-field `0x1CB` is behaviourally identical.
+  * Their `frameoffset` programs differ by half a turn, and the renderer applies it -- emitted
+    offsets are exactly antipodal, (+0.1102, -0.0591) against (-0.1102, +0.0591).
+  * A broad dome barely moves under a +-0.11 offset, so the antipodal placement produces
+    `max|427 - 428| = 2.971e-03` and the signed difference lands at 0.5 +- 6.0e-04.
+
+So the construction is right, the difference is real, and it is far too small to survive. Either
+the two FX-Maps are supposed to differ by more than a half-turn offset, or the domes are
+supposed to be narrower than a 2.82 bell makes them -- and `Lines` record 0 says the size is not
+being misconverted. `blend` 430's `unknown_bits = 272` sets bit 8, which has an open arbitration
+(`blend.w1bit8`: ignore / alphablend / background_used) that does not move Auras today. Noted as
+the one unexplained field left standing in this chain.
