@@ -848,10 +848,37 @@ def _profile_for(p):
 
 
 def _image_for(p, images):
+    """The image a pattern stamps, or None to draw a generated profile instead.
+
+    WHERE THERE IS EXACTLY ONE CANDIDATE, AN ABSENT INDEX IS NOT AN ABSENT IMAGE. `splat`'s
+    docstring refuses to fall back to "the first available image" when `imageindex` is
+    missing, and that refusal is right for the records it was written about: 133 records
+    index 0 while carrying SIX edges and 27 index 1 while carrying THREE, so the index runs
+    over some narrower subset of the edges and picking the first would sample the wrong
+    input. That is a real ambiguity and it is still declined below.
+
+    It is not an ambiguity when the record supplies ONE image. There is no wrong input to
+    choose, and the corpus says the file itself reasons this way: over 437 corpus files plus
+    the 8 pack assemblies, 1,409 of 1,409 entries with a STATED `imageindex` sit on a record
+    with two or more wired edges, and 0 of 2,652 one-edge entries state one. THE FILE STATES
+    THE INDEX EXACTLY WHERE THERE IS A CHOICE. An entry that omits it on a one-edge record
+    is not incomplete; it is naming the only input it has.
+
+    This is the other half of the `imageindex` correction, and without it the first half
+    changes no pixel. `ce5897e` traced Chesterfield's 10-14 cycle excess to record 43
+    resolving `imageindex` to `opacity`'s own address, giving 1.0 -- out of range for a
+    one-edge record -- so the pattern fell back to a full-canvas fill and the record rendered
+    SOLID WHITE. Suppressing that bogus value in `fxrender._recover_last_inline` leaves
+    `imageindex` absent, and an absent index took the SAME fallback: the render came back
+    bit-identical on all six channels. The value had to be suppressed AND the one-edge case
+    read for the white to go away.
+    """
     if not images:
         return None
     v = p.get('imageindex')
     if v is None:
+        if len(images) == 1:
+            return next(iter(images.values()))
         return None
     try:
         idx = int(round(float(np.asarray(v, dtype=float).ravel()[0])))

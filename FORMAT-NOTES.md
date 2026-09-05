@@ -53469,3 +53469,159 @@ and not a gain error -- a uniform amplitude fault cannot move band 2 up while ba
 at half.
 
 Recorded as the open item the guard's `ao band is adverse` failure points at.
+
+## The `imageindex` correction is applied, the clamp is gone, and it needed TWO halves -- the first alone moved no pixel
+
+`ce5897e` traced Chesterfield's 10-14 cycle excess to the bottom and REFUSED the correction
+because of the bar. The bar is replaced (`0320265`), so the correction is taken up here.
+
+**The corpus rule, re-counted here rather than taken on trust.** Over 437 corpus files plus
+the 8 pack assemblies -- the packs added back explicitly, since `corpus.paths()` excludes them
+and that population trap is recorded in `ce5897e`:
+
+    STATED imageindex:    1409 total -- one-edge 0,  multi-edge 1409
+    RECOVERED imageindex:   29 total -- one-edge 25, multi-edge 4
+      ...duplicating a sibling's address: 29 OF 29
+
+`1409/0` reproduces exactly. The new number is the last line: EVERY recovery duplicates a
+sibling, which is a sharper test than the edge count and catches all 29 rather than 25. An
+address another parameter already names cannot also be this parameter's own inline program --
+reading slot `last` has not found an inline program, it has re-read the sibling's pointer.
+After the guard, recoveries go 46 -> 17, and the survivors are `patternrotation` (15) and
+`patternsuppl` (2) -- the genuine cases `_recover_last_inline` exists to serve, none of which
+duplicate anything.
+
+**THE FIRST HALF ALONE CHANGED NOTHING, AND THIS IS THE PART WORTH REMEMBERING.** With the
+bogus value suppressed, record 43's `imageindex` becomes `('program', None)` -- confirmed
+directly, its old value 535964 being exactly `opacity`'s address. The render then came back
+BIT-IDENTICAL ON ALL SIX CHANNELS, because `_image_for` returns None for an absent index and
+the pattern took the same full-canvas fallback the out-of-range 1.0 took. A fix that removes a
+wrong value and lands on the same wrong behaviour scores identically to no fix at all. Had the
+corpus counts been trusted and the render not re-measured, this would have been reported as a
+correction.
+
+The second half is in `render2/fx.py`'s `_image_for`: where the record supplies EXACTLY ONE
+image, an absent index names it. `splat`'s refusal to fall back to "the first available image"
+is kept for the ambiguous records it was written about -- 133 index 0 while carrying six edges,
+27 index 1 while carrying three -- because there the wrong input can be sampled. On a one-edge
+record there is no wrong input, which is the same fact that makes the file omit the index there.
+
+**THE CHAIN, confirmed end to end at dim 256.** `ce5897e` predicted each step; each is measured
+here after the fix:
+
+    record 43   was SOLID WHITE      now mean 0.0353 sd 0.1760
+    record 53   was SOLID WHITE      now mean 0.0242 sd 0.1349
+    record 56   was constant 0.0686  now mean 0.0033
+    record 68   raw max was 1.0682, 12.65% of canvas over 1.0
+                NOW max 0.9974 -- THE CLAMP IS GONE
+    record 102  no longer lays flat-topped plateaus on the 11.31-cycle lattice
+
+**What it buys, both states rendered at three grids.** Band spreads at 512: `basecolor`
+50.51x -> 4.81x, `normal` 3.84x -> 1.58x, `height` 4.19x -> 1.26x. `metallic` unmoved to every
+digit at every grid -- the control holding. Correlation at 512: `basecolor` +0.8663 -> +0.9164,
+`normal` ch0 +0.9510 -> +0.9704, `height` +0.9558 -> +0.9620. Seam depth in `basecolor`, one
+consistent ruler, 0.031 -> 0.060 against the export's 0.124.
+
+**The guard's verdict, and one masked failure found by not trusting its summary.** `check`
+reported five failures, all HEALTH BARS; a base-against-itself control returns the SAME five,
+so all five are pre-existing and none is caused by the fix. But health bars are reported ahead
+of the ratchet and can hide it, so adversity was computed directly for every quantity at every
+grid. One ratchet failure exists and `check`'s output did not show it:
+
+    basecolor dc  +0.0412 +0.0444 +0.0456   ADVERSE AT EVERY GRID
+
+`basecolor`'s level goes -0.0493 -> -0.0999. **A reader should not take `check`'s failure list
+as the whole story while health bars preempt ratchet reporting on the same quantity.**
+
+**That regression has a cause, and it is one this repository already tracks.** Record 43's
+LIT FRACTION is 0.0391 with mean WHERE LIT 0.9031. The values are right and the coverage is
+not -- `splat`'s own recorded finding, "the sampling, the opacity and the profile amplitude all
+work ... the stamps do not tile". The white fill covered 100% of the canvas at 1.0 and was
+over-supplying level, masking a coverage deficit that the correction now exposes. `height`'s
+DC improves in the same move, 0.0709 -> 0.0445.
+
+**AO's band is adverse at 512 ONLY** -- 1.445 -> 1.701 -- and passes the ratchet, which fails
+only where a movement is adverse at every scored grid. At 128 it is 8.871 -> 8.912 and at 256
+2.483 -> 2.544, both inside the margin. The single-grid reading recorded in `0320265` was an
+artefact of scoring at one grid, and the multi-grid design caught it. AO's band health bar at
+128 (8.91, outside the factor-of-4 bar) is pre-existing and unrelated.
+
+**THE OLD SUITE FAILS, ON EXACTLY THE NUMBER THE GUARD WAS BUILT AROUND.** 93 passed, 1 failed:
+`test_render2_reference_agreement_does_not_regress`, `Chesterfield normal 2` at 0.7042 against
+a floor of 0.72. `RENDER2_FLOOR_DIM` is 256. Measured here per channel across three grids:
+
+    grid   normal ch0    normal ch1    normal ch2
+    128    +0.0085       +0.0112       -0.1069
+    256    +0.0122       +0.0139       -0.0458      <- the floor's only grid
+    512    +0.0194       +0.0212       +0.0413
+
+`ce5897e` recorded -0.106 / -0.046 / +0.041 / +0.044 at 128/256/512/1024 and this reproduces it
+exactly. The same change is a REGRESSION at 256 and an IMPROVEMENT at 512, on a channel whose
+absolute correlation is itself strongly grid-dependent (0.60 / 0.75 / 0.81 before). This is
+failure 3 in `refguard`'s header, and `Chesterfield normal 2` is the worked example that set
+`CORR_HARD` -- the guard exists because of this exact number.
+
+**NO FLOOR WAS MOVED, RAISED OR LOWERED, and the renderer patch is NOT COMMITTED.** Three
+resolutions exist and the choice between them is the owner's: adopt `refguard` in the suite so
+the bar becomes the multi-grid ratchet; keep the floor and revert the correction; or re-take
+the `normal 2` floor deliberately and say so. The first is what `0320265` was built for and it
+is still a change to the bar the suite enforces, which is why it is not made here.
+
+## The suite adopts the guard: a multi-grid ratchet, an old floor that still outranks its own re-take, and a health census frozen rather than faked
+
+The owner chose adoption over reverting the correction or moving the `normal 2` floor.
+`test_filters.py` now scores `GUARD_GRIDS = (128, 256, 512)` through `refguard`.
+
+**Every entry was re-taken at its current measured value and NO FLOOR MOVED.** The two are
+compatible because `Entry.was` carries the old floor and the grid it was taken at, and
+`bound('corr', that grid)` may not return anything below it. `Chesterfield normal 2` is the
+case that proves this is not decorative: its re-taken value at 256 is +0.7042, BELOW its old
+floor of 0.72, and the bound stays 0.72 rather than following the measurement down to 0.6842.
+`test_the_new_guard_does_not_weaken_the_old_floors` asserts that for all 25 entries and
+reports how many sit above today's reading -- it prints 1, and that 1 is `normal 2`. The suite
+is green not because the floor moved but because the movement is not adverse at 128 as well.
+
+**`Chesterfield basecolor 2` flips, exactly as `ce5897e` predicted.** Old floor -0.46;
+re-taken at +0.7768 / +0.8344 / +0.8814. The commit said "basecolor ch2 flips -0.33 -> +0.88"
+and that is what the table now holds. The channel this repository has listed as anti-correlated
+since it was first scored is no longer anti-correlated.
+
+**THE RATCHET IS NOT VACUOUS, and this was measured rather than assumed.** With the renderer
+fix reverted underneath the new table, the test fails on NINE quantities across four channels,
+every one "adverse at every grid":
+
+    basecolor 0  band                      0.4545 0.3548 0.3451
+    basecolor 1  corr, band, dc
+    basecolor 2  corr  -0.5505 -0.4563 -0.3543,  band, dc
+    height       band  1.7436 1.5138 1.3866,     dc
+
+Three of the nine are quantities the old guard could not express at all. `basecolor 0` fails on
+BAND ALONE -- its correlation stays inside the margin -- so the single-correlation-floor guard
+would have passed that reversion silently. That is `ad493f2`'s failure class caught
+prospectively instead of retrospectively.
+
+**THE HEALTH BARS ARE FROZEN, NOT FATAL, AND THAT IS A NARROWING OF `refguard`'s DESIGN.**
+19 of the 25 entries fail a health bar today -- `|dc| <= 0.02` or `band` within a factor of 4
+of 1.0 -- which is a true statement about this renderer and not an artefact. The module's
+design is that each such entry carries a `Cause` naming the record or mechanism responsible.
+Two do: `chesterfield-basecolor-level` names records 43 and 53 and the coverage deficit, and
+`chesterfield-roughness-level` names 321 and 334 and `ba3a1f6`. The other seventeen have no
+traced mechanism -- nobody knows why `Auras basecolor 1` carries 17x the export's variance or
+`Bricks emission 0` 121x. Seventeen `Cause` objects whose mechanism strings restated the
+symptom would satisfy `names_something()`, because that check is a LENGTH, while defeating
+precisely what it exists for. A register of invented causes is worse than an honest backlog.
+
+So `HEALTH_CENSUS` freezes the 26 (key, quantity) pairs outside a bar, in the shape
+`CONSTANT_YIELDS_RENDER2` already uses for flat yields: a quantity that goes outside a bar it
+was inside fails as new breakage, and one that comes back INSIDE fails too and owes a re-take.
+This is strictly more than the correlation floor it replaces, which had no notion of amplitude
+or level, and strictly less than the guard as designed. Both halves are stated so that neither
+is read as the other.
+
+**A REPORTING DEFECT IN `refguard.check`, found by not trusting its output.** Health-bar
+failures are reported ahead of ratchet failures on the same quantity, and the ratchet failure
+is then not reported at all: `check` returned five failures on the `imageindex` correction and
+`basecolor dc`'s ratchet breach -- adverse at all three grids -- was not among them. The suite
+therefore computes adversity directly from `Entry.bound` and `refguard._adverse` rather than
+parsing `check`'s list, and takes no threshold of its own. A reader using `check` interactively
+should know its failure list is not exhaustive while a health bar is also failing.

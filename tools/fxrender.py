@@ -573,6 +573,36 @@ def _recover_last_inline(rec, tbl, order):
                 elsewhere |= g[0]
         if not ((f[0] & need) - elsewhere):
             continue
+        # A RECOVERY THAT DUPLICATES A SIBLING IS NOT A RECOVERY. If `at` is already the
+        # address some OTHER parameter of this entry points at, then reading slot `last` has
+        # not found an inline program -- it has re-read the sibling's pointer, and the two
+        # parameters become the same program by construction. `ce5897e` traced Chesterfield's
+        # whole 10-14 cycle band to exactly this: record 43's `imageindex` resolved to
+        # `off + 4*5`, the address slot 3's `opacity` already names, so `imageindex` became a
+        # copy of `opacity` = 1.0, out of range for a one-edge record, and the pattern fell
+        # back to a full-canvas fill. Records 43 and 53 rendered SOLID WHITE, record 56 went
+        # constant 0.0686, record 68's `add` blend then clipped 12.65% of the canvas to
+        # exactly 1.0, and record 102 laid the squared-off tops on the 11.31-cycle quilting
+        # lattice.
+        #
+        # Over 437 corpus files plus the 8 pack assemblies -- the packs added back
+        # explicitly, because `corpus.paths()` excludes them and that population trap is
+        # recorded in `ce5897e` -- there are 29 `imageindex` recoveries and 29 OF 29
+        # duplicate a sibling. The 17 recoveries of OTHER parameters, which are the 7 genuine
+        # cases this function exists to serve plus their kin, duplicate nothing and are
+        # untouched by this test.
+        #
+        # The corpus states the same rule structurally, and it is the reason to trust the
+        # suppression rather than merely to observe it: 1,409 of 1,409 entries with a STATED
+        # `imageindex` sit on a record with two or more wired edges, and 0 of 2,652 one-edge
+        # entries state one. THE FILE STATES THE INDEX EXACTLY WHERE THERE IS A CHOICE, so on
+        # a one-edge record there is nothing for the parameter to select and no value is owed.
+        # Counted here rather than taken on trust: 25 of the 29 suppressed sit on one-edge
+        # records, and the remaining 4 are suppressed by the duplication test alone.
+        sibling_addrs = {v for n, (k, v) in tbl[off][1].items()
+                         if k == 'program' and v and slot_of.get(n) != last}
+        if at in sibling_addrs:
+            continue
         for name in missing:
             if slot_of.get(name) == last:
                 tbl[off][1][name] = ('program', at)

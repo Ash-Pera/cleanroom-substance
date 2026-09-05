@@ -72,6 +72,8 @@ import provenance                                                    # noqa: E40
 import render as R                                                   # noqa: E402
 import sbsasm                                                        # noqa: E402
 from sbsasm import Assembly, FILTERS                                  # noqa: E402
+import refguard                                                      # noqa: E402
+from refguard import Cause, Entry                                    # noqa: E402
 
 MAX_FILES = 400
 
@@ -1495,6 +1497,164 @@ REFERENCE_FLOOR_RENDER2 = {
 #: records are up to 2048 px, that one a graph whose records are the tag's 256.
 RENDER2_FLOOR_DIM = 256
 
+#: The grids the guard scores at. THE POINT OF SCORING AT SEVERAL is that one grid lies:
+#: `Chesterfield normal 2` moves -0.1069 / -0.0458 / +0.0413 at 128 / 256 / 512 under the
+#: `imageindex` correction -- the SAME change reading as a regression at two grids and an
+#: improvement at the third -- and `RENDER2_FLOOR_DIM` alone would refuse a correction that
+#: takes `basecolor 2` from -0.46 to +0.88. See `refguard`'s header, failure 3.
+GUARD_GRIDS = (128, 256, 512)
+
+#: Every entry RE-TAKEN at its current measured value, 2026-09-05, render2 / implied, and
+#: `was` carrying the floor it used to have. Nothing here is a bound: `Entry.bound` derives
+#: every bound from these numbers plus `refguard`'s margins, so no bound in this file can be
+#: typed in by hand and none can be typed in low. Where `was` is set, the derived correlation
+#: bound is not allowed BELOW it -- re-taking can raise a floor and can never lower one, which
+#: `test_the_new_guard_does_not_weaken_the_old_floors` checks directly.
+GUARD_TABLE = {
+    ('Kutejnikov__Auras', 'basecolor', 0):
+        Entry(at={128: (+0.9276, 4.2881, +0.1372), 256: (+0.9277, 4.1348, +0.1332), 512: (+0.9277, 4.1348, +0.1332)},
+              was=(0.90, 256)),
+    ('Kutejnikov__Auras', 'basecolor', 1):
+        Entry(at={128: (+0.7450, 18.7731, +0.2232), 256: (+0.7497, 17.3662, +0.2190), 512: (+0.7497, 17.3662, +0.2190)},
+              was=(0.72, 256)),
+    ('Kutejnikov__Auras', 'basecolor', 2):
+        Entry(at={128: (+0.9467, 0.5174, -0.0583), 256: (+0.9398, 0.4733, -0.0653), 512: (+0.9398, 0.4733, -0.0653)},
+              was=(0.91, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'ambientocclusion', 0):
+        Entry(at={128: (+0.8496, 1.1254, -0.0469), 256: (+0.8837, 0.2304, +0.0719), 512: (+0.8869, 0.2270, +0.0717)},
+              was=(0.85, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 0):
+        Entry(at={128: (+0.3850, 2.1545, -0.0240), 256: (+0.0430, 0.6208, -0.0150), 512: (+0.0430, 0.6208, -0.0150)},
+              was=(-0.05, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 1):
+        Entry(at={128: (+0.5298, 2.4593, -0.0501), 256: (+0.2698, 0.6718, -0.0477), 512: (+0.2697, 0.6719, -0.0476)},
+              was=(0.20, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 2):
+        Entry(at={128: (+0.4943, 1.8731, -0.0571), 256: (+0.2721, 0.5335, -0.0610), 512: (+0.2719, 0.5336, -0.0609)},
+              was=(0.20, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 0):
+        Entry(at={128: (+0.9779, 140.6836, +0.0206), 256: (+0.9885, 121.1425, +0.0183), 512: (+0.9885, 121.1425, +0.0183)},
+              was=(0.96, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 1):
+        Entry(at={128: (+0.9939, 0.5634, -0.0013), 256: (+0.9993, 0.4853, -0.0018), 512: (+0.9993, 0.4853, -0.0018)},
+              was=(0.98, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'emission', 2):
+        Entry(at={128: (+0.9865, 0.0577, -0.0131), 256: (+0.9953, 0.0499, -0.0135), 512: (+0.9953, 0.0499, -0.0135)},
+              was=(0.97, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'height', 0):
+        Entry(at={128: (+0.6662, 2.5438, +0.1090), 256: (+0.5936, 0.1844, +0.2552), 512: (+0.5936, 0.1844, +0.2552)},
+              was=(0.54, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'normal', 0):
+        Entry(at={128: (+0.7174, 1.3477, +0.0001), 256: (+0.7718, 0.1350, +0.0002), 512: (+0.7718, 0.1350, +0.0002)},
+              was=(0.75, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'normal', 1):
+        Entry(at={128: (+0.7260, 1.3708, +0.0002), 256: (+0.7883, 0.1298, +0.0002), 512: (+0.7883, 0.1298, +0.0002)},
+              was=(0.75, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'normal', 2):
+        Entry(at={128: (+0.3800, 0.1006, +0.0048), 256: (+0.6961, 0.0041, +0.0114), 512: (+0.6961, 0.0041, +0.0114)},
+              was=(0.66, 256)),
+    ('Kutejnikov__Bricks_and_tiles', 'roughness', 0):
+        Entry(at={128: (+0.8496, 6.9422, -0.2282), 256: (+0.8024, 1.6329, -0.3964), 512: (+0.8034, 1.6190, -0.3968)},
+              was=(0.77, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'AO', 0):
+        Entry(at={128: (+0.8603, 8.8639, -0.1127), 256: (+0.8735, 2.5382, -0.0141), 512: (+0.9072, 1.6885, -0.0003)},
+              was=(0.84, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0):
+        Entry(at={128: (+0.9353, 0.7713, -0.1044), 256: (+0.9166, 0.6307, -0.0968), 512: (+0.9164, 0.6115, -0.0980)},
+              was=(0.82, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1):
+        Entry(at={128: (+0.9542, 0.5459, +0.0145), 256: (+0.9776, 0.5510, +0.0095), 512: (+0.9862, 0.5472, +0.0086)},
+              was=(0.92, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2):
+        Entry(at={128: (+0.7768, 0.1203, -0.0040), 256: (+0.8344, 0.1944, -0.0042), 512: (+0.8814, 0.1994, -0.0049)},
+              was=(-0.46, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'height', 0):
+        Entry(at={128: (+0.9621, 1.4770, +0.0236), 256: (+0.9621, 1.2283, +0.0401), 512: (+0.9620, 1.1284, +0.0465)},
+              was=(0.93, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'metallic', 0):
+        Entry(at={128: (+0.9981, 1.0733, +0.0017), 256: (+0.9999, 1.0241, +0.0005), 512: (+1.0000, 1.0142, +0.0003)},
+              was=(0.99, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'normal', 0):
+        Entry(at={128: (+0.9647, 1.4047, +0.0000), 256: (+0.9645, 1.2189, -0.0001), 512: (+0.9704, 1.1820, -0.0004)},
+              was=(0.93, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'normal', 1):
+        Entry(at={128: (+0.9647, 1.3942, +0.0001), 256: (+0.9635, 1.2091, +0.0002), 512: (+0.9692, 1.1623, +0.0000)},
+              was=(0.92, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'normal', 2):
+        Entry(at={128: (+0.4956, 0.5263, +0.0001), 256: (+0.7042, 0.5988, +0.0001), 512: (+0.8522, 0.9535, -0.0038)},
+              was=(0.72, 256)),
+    ('minime453__Chesterfield_PBR_Material', 'roughness', 0):
+        Entry(at={128: (+0.9374, 0.7133, -0.0640), 256: (+0.9348, 0.6797, -0.0639), 512: (+0.9338, 0.6713, -0.0639)},
+              was=(0.91, 256)),
+}
+
+#: WHAT IS OUTSIDE A HEALTH BAR TODAY, frozen exactly like `CONSTANT_YIELDS_RENDER2` above.
+#:
+#: `refguard`'s health bars -- `|dc| <= 0.02`, `band` within a factor of 4 of 1.0 -- are
+#: absolute statements about what a CORRECT channel looks like, and 19 of these 25 entries
+#: fail one today. That is a true statement about this renderer and not a scoring artefact.
+#:
+#: THEY ARE FROZEN RATHER THAN FATAL, AND THAT IS A DELIBERATE NARROWING OF `refguard.check`.
+#: The module's design is that an entry outside a health bar carries a `Cause` naming the
+#: record or mechanism responsible. Two of these have one and are declared below. The other
+#: seventeen do not: nobody has yet traced why `Auras basecolor 1` carries 17x the export's
+#: variance or why `Bricks emission 0` carries 121x. Writing seventeen `Cause` objects whose
+#: mechanism strings restate the symptom would satisfy `names_something()` -- the check is a
+#: length -- while defeating exactly what it is for, and a register of invented causes is
+#: worse than an honest backlog. So this suite enforces the RATCHET (nothing gets worse than
+#: it measurably is, at every grid at once) and freezes the health census (nothing NEW goes
+#: outside a bar). Both are strictly more than the single correlation floor this replaces,
+#: which had no notion of amplitude or level at all.
+HEALTH_CENSUS = {
+    (('Kutejnikov__Auras', 'basecolor', 0), 'dc'),
+    (('Kutejnikov__Auras', 'basecolor', 0), 'band'),
+    (('Kutejnikov__Auras', 'basecolor', 1), 'dc'),
+    (('Kutejnikov__Auras', 'basecolor', 1), 'band'),
+    (('Kutejnikov__Auras', 'basecolor', 2), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', 'ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', 'ambientocclusion', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', 'basecolor', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', 'basecolor', 1), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', 'basecolor', 2), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', 'emission', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', 'emission', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', 'emission', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', 'height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', 'height', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', 'normal', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', 'normal', 1), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', 'normal', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', 'roughness', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', 'roughness', 0), 'band'),
+    (('minime453__Chesterfield_PBR_Material', 'AO', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'AO', 0), 'band'),
+    (('minime453__Chesterfield_PBR_Material', 'basecolor', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'basecolor', 2), 'band'),
+    (('minime453__Chesterfield_PBR_Material', 'height', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'roughness', 0), 'dc'),
+}
+
+#: Causes for the two health-bar failures whose mechanism IS traced. A `Cause` pins its
+#: quantity two-sided, so an improvement here fails the suite as loudly as a regression and
+#: forces the entry to be re-taken deliberately.
+GUARD_CAUSES = {
+    'chesterfield-basecolor-level': Cause(
+        'chesterfield-basecolor-level',
+        mechanism='record 43 stamps the right image at the wrong coverage: lit fraction '
+                  '0.0391 at mean-where-lit 0.9031, so the canvas is short of level while '
+                  'the values on it are correct. Before the imageindex correction the record '
+                  'painted SOLID WHITE over the whole canvas, which over-supplied level and '
+                  'masked the coverage deficit. See splat(): "the stamps do not tile".',
+        records=(43, 53),
+        source='FORMAT-NOTES.md, "The imageindex correction is applied"'),
+    'chesterfield-roughness-level': Cause(
+        'chesterfield-roughness-level',
+        mechanism='two multiply-blends whose noise source renders an exactly constant 0, so '
+                  '99.9% of this channel error is one level shift and not a shape error',
+        records=(321, 334),
+        source='ba3a1f6'),
+}
+
 #: HOW MANY OF A PACK'S YIELDS COME OUT CONSTANT TODAY, frozen so that a NEW collapse
 #: fails even though an old one is expected.
 #:
@@ -1617,54 +1777,139 @@ def test_render2_reference_agreement_does_not_regress():
     if not packs:
         print('SKIP test_render2_reference_agreement_does_not_regress: no reference packs')
         return
-    seen, flat, worse, constant = {}, [], [], {}
-    for pack, refs in sorted(packs.items()):
-        if not any(k[0] == pack for k in REFERENCE_FLOOR_RENDER2):
-            continue
-        constant[pack] = 0
-        for name, chan, ours, ref in refcompare.compare_pack(
-                pack, refs, max_dim=RENDER2_FLOOR_DIM, outputsize='implied',
-                renderer='render2'):
-            if chan is None:
+    readings, flat, constant, missing_grid = {}, [], {}, []
+    for grid in GUARD_GRIDS:
+        counted = {}
+        for pack, refs in sorted(packs.items()):
+            if not any(k[0] == pack for k in GUARD_TABLE):
                 continue
-            o, r = ours.ravel(), ref.ravel()
-            sd = float(o.std())
-            if sd <= 1e-9:
-                # COUNTED OVER EVERY YIELD, not only the floored ones, so a channel that
-                # has no floor cannot go flat unnoticed. That is the wider half of the
-                # b2f1d97 exposure: the entry that regression took away was not in any
-                # table at the time.
-                constant[pack] += 1
-                continue
-            key = (pack, name, chan)
-            if key not in REFERENCE_FLOOR_RENDER2:
-                continue
-            corr = 0.0
-            if r.std() > 1e-9:
-                corr = float(np.corrcoef(o, r)[0, 1])
-            # LAST ROW WINS, like `seen` in the test above and like the numbers in the
-            # table: a multi-graph pack yields one key several times and only the last is
-            # what was measured. The earlier ones are covered by `constant` instead.
-            seen[key] = (sd, corr)
-    if not seen:
+            counted[pack] = 0
+            # `grid=None` yields NATIVE arrays. `refguard.measure` owns both grids -- the
+            # 64-px score grid for corr/dc and the pair's own for the band ratio -- and a
+            # caller that pre-resampled to 64 would have thrown away every octave above 32
+            # cycles, which is the half of the instrument that sees an amplitude collapse.
+            for name, chan, ours, ref in refcompare.compare_pack(
+                    pack, refs, max_dim=grid, outputsize='implied',
+                    renderer='render2', grid=None):
+                if chan is None:
+                    continue
+                r = refguard.measure(ours, ref)
+                if r.flat:
+                    # COUNTED OVER EVERY YIELD, not only the floored ones, so a channel that
+                    # has no entry cannot go flat unnoticed. That is the wider half of the
+                    # b2f1d97 exposure: the entry that regression took away was not in any
+                    # table at the time.
+                    counted[pack] += 1
+                    continue
+                key = (pack, name, chan)
+                if key not in GUARD_TABLE:
+                    continue
+                # LAST ROW WINS, like the numbers in the table: a multi-graph pack yields one
+                # key several times and only the last is what was measured.
+                readings.setdefault(key, {})[grid] = r
+        if grid == RENDER2_FLOOR_DIM:
+            constant = counted
+    if not readings:
         print('SKIP test_render2_reference_agreement_does_not_regress: nothing scored')
         return
-    for key, (sd, corr) in sorted(seen.items()):
-        if corr < REFERENCE_FLOOR_RENDER2[key]:
-            worse.append((key, round(corr, 4), REFERENCE_FLOOR_RENDER2[key]))
+
+    # THE RATCHET. Derived from `Entry.bound` and `refguard._adverse`, which is where the
+    # policy lives -- this loop chooses no threshold of its own. A movement fails only where
+    # it is adverse AT EVERY SCORED GRID, or past a hard margin at any one of them, because a
+    # single grid reverses sign on real improvements (`refguard`, failure 3).
+    worse = []
+    for key, entry in sorted(GUARD_TABLE.items()):
+        got = readings.get(key, {})
+        for g in entry.grids():
+            if g not in got:
+                missing_grid.append((key, g))
+        if any(g not in got for g in entry.grids()):
+            continue
+        for q in refguard.QUANTITIES:
+            adv = [(g, refguard._adverse(q, refguard._value(got[g], q), entry.bound(q, g)))
+                   for g in entry.grids()]
+            hard = [(g, a) for g, a in adv if a > refguard._hard(q)]
+            if all(a > 0 for _g, a in adv):
+                worse.append((key, q, 'adverse at every grid',
+                              [(g, round(refguard._value(got[g], q), 4)) for g in entry.grids()]))
+            elif hard:
+                worse.append((key, q, 'hard-adverse at %s' % [g for g, _a in hard],
+                              [(g, round(refguard._value(got[g], q), 4)) for g in entry.grids()]))
+
+    # THE FROZEN HEALTH CENSUS -- see `HEALTH_CENSUS`. A quantity that goes outside a bar it
+    # was inside is new breakage and fails; the ones already outside are a recorded backlog.
+    # A quantity that comes back INSIDE its bar also fails, because the census is a
+    # measurement and an improvement owes it a re-take.
+    sick = set()
+    for key, got in readings.items():
+        for q in ('dc', 'band'):
+            if any(not refguard._health(q, refguard._value(r, q)) for r in got.values()):
+                sick.add((key, q))
+    newly_sick = sorted(sick - HEALTH_CENSUS)
+    recovered = sorted(HEALTH_CENSUS - sick)
+
     for pack, n in sorted(constant.items()):
         was = CONSTANT_YIELDS_RENDER2.get(pack)
         if was is None or n > was:
             flat.append((pack, n, was))
-    missing = sorted(set(REFERENCE_FLOOR_RENDER2) - set(seen))
+    missing = sorted(set(GUARD_TABLE) - set(readings))
     assert not flat, ('more render2 yields render CONSTANT than the frozen census: '
                       '(pack, now, recorded) %s -- this is the b2f1d97 shape' % (flat,))
-    assert not worse, ('render2 reference agreement fell below its floor: %s' % (worse,))
     assert not missing, ('a channel render2 used to produce no longer scores: %s -- this '
                          'is the e231131 shape: an output stopped rendering and nothing '
                          'failed' % (missing,))
-    print('ok  test_render2_reference_agreement_does_not_regress (%d channels, %d constant '
-          'yields as recorded)' % (len(seen), sum(constant.values())))
+    assert not missing_grid, ('an entry did not score at a grid its table records: %s'
+                              % (missing_grid,))
+    assert not worse, ('render2 reference agreement regressed against the ratchet -- '
+                       '(key, quantity, why, per-grid values) %s' % (worse,))
+    assert not newly_sick, ('a quantity went OUTSIDE a health bar it was inside: %s -- this '
+                            'is new breakage, not a recorded one' % (newly_sick,))
+    assert not recovered, ('a quantity came back INSIDE its health bar: %s -- this is an '
+                           'improvement and it is failing on purpose. Re-take HEALTH_CENSUS '
+                           'and GUARD_TABLE and say what fixed it' % (recovered,))
+    print('ok  test_render2_reference_agreement_does_not_regress (%d entries x %d grids, '
+          '%d constant yields as recorded, %d quantities outside a health bar as recorded)'
+          % (len(readings), len(GUARD_GRIDS), sum(constant.values()), len(HEALTH_CENSUS)))
+    return
+
+
+def test_the_new_guard_does_not_weaken_the_old_floors():
+    """RE-TAKING A TABLE MUST NOT BE A WAY TO LOWER A FLOOR, and this is what checks it.
+
+    `GUARD_TABLE` replaced `REFERENCE_FLOOR_RENDER2` by measuring every entry again, and a
+    re-take is exactly how a floor gets quietly relaxed: run the suite, copy what it prints,
+    call the new number the bound. `refguard.Entry.was` exists to stop that -- it carries the
+    old floor and the grid it was taken at, and `bound('corr', that grid)` is not allowed to
+    return anything below it. So at `RENDER2_FLOOR_DIM` every old floor is still enforced AT
+    ITS ORIGINAL VALUE no matter what today's measurement says.
+
+    `Chesterfield normal 2` is the case that proves it is not vacuous: its re-taken value at
+    256 is +0.7042, BELOW its old floor of 0.72, and the bound stays 0.72 rather than
+    following the measurement down to 0.6842. The suite still passes because that movement is
+    not adverse at 128 as well -- the multi-grid rule -- and NOT because the floor moved.
+    """
+    assert set(GUARD_TABLE) == set(REFERENCE_FLOOR_RENDER2), (
+        'the two tables name different channels: only in GUARD_TABLE %s, only in the old '
+        'table %s' % (sorted(set(GUARD_TABLE) - set(REFERENCE_FLOOR_RENDER2)),
+                      sorted(set(REFERENCE_FLOOR_RENDER2) - set(GUARD_TABLE))))
+    weakened, unpinned = [], []
+    for key, entry in sorted(GUARD_TABLE.items()):
+        old = REFERENCE_FLOOR_RENDER2[key]
+        if entry.was != (old, RENDER2_FLOOR_DIM):
+            unpinned.append((key, entry.was, (old, RENDER2_FLOOR_DIM)))
+            continue
+        bound = entry.bound('corr', RENDER2_FLOOR_DIM)
+        if bound < old:
+            weakened.append((key, round(bound, 4), old))
+    assert not unpinned, ('an entry does not carry its old floor: (key, was, expected) %s'
+                          % (unpinned,))
+    assert not weakened, ('the derived bound fell BELOW the old floor: (key, bound, floor) '
+                          '%s -- re-taking may raise a floor and may never lower one'
+                          % (weakened,))
+    pinned = [k for k, e in GUARD_TABLE.items()
+              if e.at[RENDER2_FLOOR_DIM][0] < REFERENCE_FLOOR_RENDER2[k]]
+    print('ok  test_the_new_guard_does_not_weaken_the_old_floors (%d floors still enforced, '
+          '%d of them above today\'s measurement)' % (len(GUARD_TABLE), len(pinned)))
     return
 
 
