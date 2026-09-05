@@ -219,6 +219,9 @@ import sbsasm                                                        # noqa: E40
 
 ROOT = _repo_root.ROOT
 PACKS = os.path.join(_repo_root.SPECIMENS, 'new_opengameart')
+#: The score grid. `refguard.SCORE_GRID` is the same constant under the guard's own name and
+#: the two are asserted equal below, because `resample`'s default moved with the function
+#: and a reader changing one of them would silently leave the other behind.
 SIZE = 64
 
 # THE GRID WE RENDER ON IS NOT THE GRID WE COMPARE ON, and conflating them was costing more
@@ -286,108 +289,25 @@ def load_reference(path):
     return a[:, :, :3] if a.ndim == 3 else a[:, :, None]
 
 
-def resample(x, n=SIZE):
-    """Per channel, at 16-bit precision -- an 8-bit round trip here would quantise the
-    very differences being measured."""
-    from PIL import Image
-    x = np.clip(x, 0.0, 1.0)
-    if x.ndim == 2:
-        x = x[:, :, None]
-    chans = [np.asarray(Image.fromarray((x[:, :, c] * 65535).astype(np.uint16))
-                        .resize((n, n), Image.BILINEAR), dtype=np.float64) / 65535.0
-             for c in range(x.shape[2])]
-    return np.stack(chans, axis=-1)
-
-
-#: The low-pass grid `structure` reduces to. FIXED, so that "low frequency" means the same
-#: band whatever grid the pair is compared on: a fixed 8x8 block would be 1/64 of the canvas
-#: at 512 and 1/256 of it at 2048, and the number would then move with the grid rather than
-#: with the render.
-LOW_GRID = 64
-
-
-def structure(a, low_grid=LOW_GRID):
-    """(low-frequency field sd, high-frequency edge sd) of ONE channel, at ITS OWN grid.
-
-    THE TWO QUANTITIES OPPOSE, WHICH IS THE WHOLE POINT. Every score in this module is a
-    scalar taken after both sides are resampled to `SIZE` = 64, and a scalar cannot score a
-    pattern PROFILE: `fxrender.py`'s negative result 1 records that any falloff at all takes
-    "renders a picture" from 4.1% to 97.3% and means nothing, because a profile with falloff
-    cannot be flat by construction. A pair of quantities that must move in OPPOSITE
-    directions is not defeatable that way -- a falloff too soft fills the panel and loses the
-    seam, one too hard keeps the seam and never fills the panel, and only the right one moves
-    both toward 1 at once.
-
-      low   the sd of the image reduced to `low_grid` by block averaging -- panel-scale
-            variation, the "field" half. Ours too flat reads low < ref.
-      edge  the sd of `d/dy + d/dx` per pixel -- the seam/grain half. Ours too hard reads
-            edge > ref.
-
-    BOTH ARE GRID-DEPENDENT AND ONLY THEIR RATIO IS NOT, which is not a nicety: `edge` is a
-    PER-PIXEL difference, so a smooth image sampled twice as finely has half the gradient,
-    and comparing a 512-px render against a 2048-px export understates the export's edge
-    energy by about a factor of two. That is a property of the two rulers and not of either
-    picture. Callers must put both sides on ONE grid first -- `_structure_grid` does -- and
-    read the RATIO ours/ref, whose target is 1.0 on both halves.
-    """
-    a = np.asarray(a, dtype=np.float64)
-    h, w = a.shape[:2]
-    k = max(1, min(h, w) // low_grid)
-    lo = a[:h // k * k, :w // k * k].reshape(h // k, k, w // k, k).mean(axis=(1, 3))
-    d = np.diff(a, axis=0)[:, :-1] + np.diff(a, axis=1)[:-1, :]
-    return float(lo.std()), float(d.std())
-
-
-#: Radial band edges in CYCLES PER IMAGE -- canvas-relative, so a band means the same
-#: feature size whatever grid the pair is compared on.
-BANDS = (1, 7, 10, 14, 20, 32, 128)
-
-
-def band_power(a, edges=BANDS):
-    """Power per radial band, in VARIANCE units, so two images are directly comparable.
-
-    WHY A SPECTRUM AND NOT THE TWO SUMMARY NUMBERS ABOVE. `structure` returns one
-    low-frequency and one high-frequency scalar, and a pair of scalars cannot tell a SHAPE
-    error from an AMPLITUDE one. They have different signatures and the bands show it:
-
-      a wrong pattern profile REDISTRIBUTES energy between bands -- a hard edge pushes it
-        up, a soft one pulls it down -- so the ratio ours/ref is TILTED across the octaves
-      a wrong gain scales every band together, so the ratio is FLAT and equal to the gain
-
-    Read the ratios across bands before concluding anything from either summary scalar.
-
-    Hanning-windowed, because the maps tile and a rectangular window puts the wrap
-    discontinuity into every band. Parseval-scaled by `1 / (h*w)**2`, so the bands sum to
-    the variance of the windowed, mean-removed image and a band ratio is a variance ratio.
-    """
-    a = np.asarray(a, dtype=np.float64)
-    h, w = a.shape[:2]
-    x = (a - a.mean()) * (np.hanning(h)[:, None] * np.hanning(w)[None, :])
-    f = np.fft.rfft2(x)
-    p = (f.real ** 2 + f.imag ** 2) / float(h * w) ** 2
-    # `rfft2` keeps half the plane; every column but DC and Nyquist stands for two.
-    p[:, 1:w // 2 if w % 2 == 0 else None] *= 2.0
-    r = np.hypot((np.fft.fftfreq(h) * h)[:, None], (np.fft.rfftfreq(w) * w)[None, :])
-    out = []
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        out.append(float(p[(r >= lo) & (r < hi)].sum()))
-    return out, float(p[r >= 1].sum())
-
-
-def _structure_grid(ours, ref, grid=None):
-    """Both channels on one square grid -- the smaller native one unless told otherwise.
-
-    NATIVE IS LEFT NATIVE. `resample` is a uint16 round trip through PIL, and asking it for
-    the size an array already has is not free of it; a side that needs no resizing is passed
-    through so that "compared at 2048" means the export's own pixels.
-    """
-    n = grid or min(ours.shape[0], ours.shape[1], ref.shape[0], ref.shape[1])
-    out = []
-    for a in (ours, ref):
-        a = np.clip(np.asarray(a, dtype=np.float64), 0.0, 1.0)
-        out.append(a if a.shape[0] == n and a.shape[1] == n
-                   else resample(a[:, :, None], n)[:, :, 0])
-    return n, out[0], out[1]
+# THE MEASUREMENT SCALES MOVED TO `refguard.py` AND ARE IMPORTED BACK, so that there is
+# exactly one implementation of each and every existing caller keeps the name it used.
+# `resample`, `structure`, `band_power`, `_structure_grid`, `LOW_GRID` and `BANDS` were
+# defined here and are now defined there, verbatim and with their docstrings. The reason is
+# `tools/render2/test_render2.py`: the reference guard is shared by three tables in two
+# files, one of which is inside `tools/render2/` and must not import a renderer to score
+# itself. `refguard` imports numpy and PIL and nothing else in this tree.
+#
+# `corpus.py`'s argument, one level up: a correction written into one implementation does
+# not propagate to a second, and this module and that guard were about to have two copies
+# of the same spectrum.
+from refguard import (BANDS, LOW_GRID, band_power,           # noqa: F401  (re-exported)
+                      resample, structure)
+from refguard import structure_grid as _structure_grid       # noqa: F401
+import refguard                                              # noqa: E402
+assert refguard.SCORE_GRID == SIZE, (
+    'the score grid has two names and they have parted: refcompare.SIZE=%r, '
+    'refguard.SCORE_GRID=%r -- `resample`\'s default follows the second'
+    % (SIZE, refguard.SCORE_GRID))
 
 
 def _key(s):

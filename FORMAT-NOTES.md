@@ -53355,3 +53355,117 @@ And the bar's known-unsatisfiable shape appears here in a second place: two of t
 rows improve substantially (`roughness` MAE 0.0639 -> 0.0071, `basecolor` ch1 +0.9274 ->
 +0.9620) while one breaks a floor. That is the same trade `f825c9f` recorded for `AO` at
 `--dim` 512 and it is reported rather than accepted or refused.
+
+## The reference guard becomes three quantities and a register of causes, and a 16-bit loader trap nearly made it measure nothing
+
+`archive/tools/refguard.py` lands, and `structure`, `band_power`, `resample`, `structure_grid`,
+`LOW_GRID` and `BANDS` MOVE there from `refcompare.py`, which imports them back under their old
+names. There is one implementation and every existing caller keeps working; `refcompare.py`'s
+CLI still prints the same `DC=`/`corr=`/`resid=` columns. An assertion ties
+`refguard.SCORE_GRID` to `refcompare.SIZE` so that `resample`'s default cannot drift away from
+the grid every recorded floor was taken on.
+
+**The agent that wrote it died mid-response** (connection loss, the third time in this
+project). It left the refactor complete but untested, unwired and uncommitted, and its last
+words were "Now I have the picture. Let me build the guard module." The work below is
+validation done here rather than trust extended there, which is this project's standing
+practice for orphaned output.
+
+**The three quantities, one per defect class this repository has actually measured.** `corr`
+is the old floor kept whole -- is the structure in the right PLACES. `band` is
+`band_power`'s total, ours over reference -- is there the right AMOUNT, the quantity that saw
+`ad493f2`'s AO at 0.026 while it correlated +0.9110 against a 0.84 floor. `dc` is
+`ours.mean() - ref.mean()` -- is the LEVEL right, the quantity that was invisible to every
+column `refcompare` printed because `corr`, `band_power`, `structure` and `resid` are all
+mean-removed by construction, which is how `ba3a1f6`'s roughness hid 99.9% of its error.
+
+**A bound cannot be typed in, so it cannot be typed in low.** Every bound is DERIVED from a
+measured value plus a stated margin. `Entry.was` carries the old floor and the grid it was
+taken at, and `bound()` refuses to let the derived correlation bound fall below it -- so
+re-taking an entry can RAISE a floor and can never lower one. That is the standing "never
+lower a floor without saying so loudly" constraint made structural rather than procedural.
+
+**"No reference channel may get worse" is replaced, not loosened.** The bar was proven
+unsatisfiable twice (`ce5897e`, `ba3a1f6`) and the replacement asks a different question: not
+"did anything get worse" but "is every adverse movement ACCOUNTED FOR". A `Cause` must name a
+record index or a mechanism of at least eight characters; `check` rejects one that names
+neither, so a bypass cannot be written by leaving the reason blank. Verified here directly --
+a `Cause('empty', mechanism='', records=())` produces `declares band under cause 'empty',
+which names neither a record nor a mechanism -- a bypass with no cause must fail`. A
+declaration also PINS the quantity two-sided, so an IMPROVEMENT against a declared cause fails
+too and owes a re-take.
+
+**Both blocked fixes, measured through the new instrument at `--dim` 512.** `base` is the
+plain render; `fix2` forces record 43 to record 42's array (`ce5897e`'s `imageindex` proxy)
+and records 321/334 to 0.35/0.62 (`ba3a1f6`'s levels):
+
+    channel     base                              fix2
+    basecolor   corr +0.8663 band 0.345 dc -0.0493  corr +0.9372 band 0.537 dc -0.0450
+    normal      corr +0.9510 band 1.227 dc -0.0021  corr +0.9704 band 1.182 dc -0.0023
+    roughness   corr +0.9342 band 0.675 dc -0.0658  corr +0.9419 band 0.932 dc -0.0036
+    metallic    corr +1.0000 band 1.014 dc +0.0003  corr +1.0000 band 1.014 dc +0.0003
+    height      corr +0.9558 band 1.382 dc +0.0709  corr +0.9620 band 1.128 dc +0.0445
+    ao          corr +0.9081 band 1.445 dc -0.0029  corr +0.9069 band 1.701 dc -0.0021
+
+Five channels improve on correlation and four move their band total toward 1.0. `roughness`'s
+DC goes -0.0658 to -0.0036, which is `ba3a1f6`'s diagnosis confirmed by an instrument that was
+not available when it was written. `metallic` does not move at all, which is the control
+holding.
+
+**And the guard immediately caught something the old one could not.** `AO`'s band total moves
+1.445 -> 1.701, AWAY from 1.0 by 0.163 in log units against a `BAND_MARGIN` of 0.10, while its
+correlation moves only -0.0012 -- comfortably inside `CORR_MARGIN`, so every correlation floor
+this repository has ever had would have passed it silently. `check` reports `ao band is adverse
+at EVERY scored grid [512]: recorded [1.445], now [1.701]`. This is an open item, not a reason
+to withhold the fixes.
+
+**THE LOADER TRAP, recorded because it is the same failure class as six previous sweeps that
+measured nothing.** Four of the six Chesterfield exports are `I;16` -- 16-bit single-channel
+PNGs. `PIL.Image.open(p).convert('RGB')` on an `I;16` image returns an array whose standard
+deviation is EXACTLY ZERO: `Height` reads sd 0.10056 from the raw `uint16` array and 0.00000
+after the conversion, and `Roughness` and `AO` do the same. A first pass here used that
+conversion and got `corr +0.0000 band inf` on exactly those three channels. `BaseColor` and
+`Normal` are 8-bit RGBA and are unaffected, which is precisely what makes the trap dangerous --
+the two channels a reader is most likely to eyeball are the two that survive it. Use
+`refcompare.load_reference`, which handles the 16-bit path.
+
+The guard's own reporting had one instance of the same disease and it is fixed here: every
+message rendered its key with `list(key)`, which on a bare string silently yields one entry per
+CHARACTER, so a misuse reached the reader as `['a', 'o']` rather than `ao` instead of failing.
+`_fmt_key` handles both shapes. A guard whose reporting degrades quietly is the thing this
+module exists to stop.
+
+**Not done here:** `test_filters.py` is UNCHANGED and still carries `REFERENCE_FLOOR` and
+`REFERENCE_FLOOR_RENDER2`. Nothing is wired to `refguard` yet, and the test the header names,
+`test_the_new_guard_does_not_weaken_the_old_floors`, does not exist. The module is landed and
+validated; adopting it is a separate change that moves the bar the suite enforces.
+
+### Addendum: the AO regression is the 10-14 cycle band, the same band the fix REPAIRS on height and normal
+
+Per-band ratios (ours/ref, 1.0 correct) at the `BANDS` edges `(1, 7, 10, 14, 20, 32, 128)`
+cycles per image:
+
+    AO      base   1.663  2.488  3.929  0.783  0.364  0.719   total 1.445
+            fix2   1.643  2.765  5.259  0.852  0.523  1.340   total 1.701
+    Height  base   1.347  1.258  2.834  0.818  1.389  0.676   total 1.382
+            fix2   1.116  1.292  1.326  1.112  1.055  1.065   total 1.128
+    Normal  base   1.240  1.327  2.692  1.020  1.577  0.701   total 1.227
+            fix2   1.088  1.504  1.326  1.330  0.949  1.316   total 1.182
+
+**Height's profile goes flat.** Every one of its six bands lands between 1.055 and 1.326,
+from a spread of 0.676 to 2.834. The 10-14 cycle spike that `ce5897e` identified as a clamp
+is gone, and it is gone on `normal` too (2.692 -> 1.326). That is the strongest single piece
+of evidence yet that the `imageindex` reading is right: a correction aimed at one artefact
+flattened the whole profile of two channels rather than trading one band against another.
+
+**AO moves the opposite way in the same band** -- 3.929 -> 5.259 -- while its two mid-high
+bands stay deficient (0.783 -> 0.852 and 0.364 -> 0.523) and its finest band overshoots
+(0.719 -> 1.340). AO's band-2 excess was ALREADY the largest of the three before the fix.
+So the three channels share one artefact at 10-14 cycles, the correction removes it from two
+of them, and on the third it makes it half again worse. That is a lead with a shape: `AO`
+reaches the same `fxmaps` record by a path that combines it with the opposite sense, or it
+is downstream of a second clamp that the first correction now exposes. It is a shape error
+and not a gain error -- a uniform amplitude fault cannot move band 2 up while band 4 stays
+at half.
+
+Recorded as the open item the guard's `ao band is adverse` failure points at.
