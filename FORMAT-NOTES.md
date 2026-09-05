@@ -54734,3 +54734,61 @@ figure much on its own -- it is the largest single NAMED cause, but the sweep's 
 `edge -> record N has no output yet` entries (357/311/300/294) are cascades from single upstream
 records and together dwarf it. "Biggest lever" was my phrasing in `c9d0376` and it overstated
 this; the biggest lever is whatever those four upstream records are.
+
+## Ranked by CASCADE rather than count: `warp` is the biggest lever after all, and "stores no intensity" blocks 1,798 records across three filters
+
+`c9d0376` ranked failures by raw count. `0174c07` then argued that was the wrong ranking and
+that four cascade entries dwarfed `warp`. Both readings were wrong in different ways, and
+attributing each cascade to its ROOT settles it.
+
+**Method.** A root failure is one whose message is not `edge -> record N has no output yet`.
+Every cascade is attributed to the record it names, where that record is itself a root. Over 437
+corpus files plus the 8 pack assemblies at `max_dim` 64:
+
+    total downstream records blocked by an identified root:  3,791 across 2,015 roots
+
+    blocked, by the ROOT's filter type
+      warp             1,347
+      pixelprocessor   1,181
+      fxmaps             444
+      bitmap             301      <- NOT A DEFECT, package ships no image
+      blur               251
+      normal             200
+      vectorshape         49
+      curve                7
+
+**CORRECTION 1, to `0174c07`.** That entry said "`warp` is the largest single NAMED cause but the
+four cascade entries dwarf it; those four records are the real lever". Wrong. `warp` roots block
+**1,347** downstream records, more than any other filter type. Ranking by cascade does not demote
+warp -- it promotes it.
+
+**CORRECTION 2, to `c9d0376`.** The sweep's `edge -> record 3070 has no output yet` at 357 is not
+one record blocking 357 others. Record indices are per FILE, and that count aggregates
+same-numbered records across many files. The largest single root in the whole corpus blocks
+**64** (`Camouflage` record 1436, and `17_Painter_Brush` record 9). There is no dominant record
+and there never was; 2,015 roots share 3,791 blocked records, a mean of 1.9 each.
+
+**THE ACTIONABLE SHAPE: THREE FILTERS FAIL THE SAME WAY.** `warp`, `blur` and `normal` all refuse
+when their intensity is absent, with the same reasoning in each -- an invented default renders
+something wrong rather than nothing:
+
+    warp   stores no intensity, class bits 29/30      1,347 blocked
+    blur   stores no intensity, class bits 12/13        251 blocked
+    normal stores no intensity, its w1 field absent      200 blocked
+                                                      -----
+                                                      1,798 blocked, plus the roots themselves
+
+That is 47% of everything blocked by an identified root, and it is ONE POLICY QUESTION asked
+three times. `normal` already has the arbitration (`normal.default_intensity`, arms `refuse` plus
+six values, defaulting to `refuse`); `warp` and `blur` have none at all, so they cannot even be
+tested against an alternative today.
+
+**`pixelprocessor` at 1,181 is second and is a different kind of problem** -- almost all of it is
+`produced non-finite values (100.0% of samples)`, a record emitting NaN or Inf everywhere. That
+is a defect under any reading rather than a policy choice, and `nonfinite.fill` (0.0 / 0.5 / 1.0)
+currently decides only what happens downstream of it, not why it happens.
+
+**What this does NOT say.** Rendering those 1,798 would not make them CORRECT -- it would make
+them render with a number the file does not state, which is exactly what `f_normal`'s comment
+warns against. The completion figure would rise and the correctness figure might not. Both are
+worth having and they are not the same measurement.
