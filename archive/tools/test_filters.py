@@ -1634,19 +1634,29 @@ HEALTH_CENSUS = {
     (('minime453__Chesterfield_PBR_Material', 'roughness', 0), 'dc'),
 }
 
-#: Causes for the two health-bar failures whose mechanism IS traced. A `Cause` pins its
-#: quantity two-sided, so an improvement here fails the suite as loudly as a regression and
-#: forces the entry to be re-taken deliberately.
+#: Causes for health-bar failures whose mechanism IS traced. A `Cause` pins its quantity
+#: two-sided, so an improvement fails as loudly as a regression and forces a deliberate
+#: re-take.
+#:
+#: NOT CONSULTED BY THE TEST BELOW, and saying so rather than leaving it to be discovered.
+#: This register is what `refguard.check` reads, and the test computes adversity from
+#: `Entry.bound` and `_adverse` directly (see `HEALTH_CENSUS` for why the health bars are
+#: frozen instead of declared). It is here for a reader running `check` interactively.
+#:
+#: ONE CAUSE WAS WITHDRAWN AFTER BEING WRITTEN. `chesterfield-basecolor-level` claimed
+#: `basecolor`'s level error was record 43 "stamping the right image at the wrong coverage",
+#: on the strength of its lit fraction of 0.0391 at mean-where-lit 0.9031. Tracing the cone
+#: refuted it: records 39, 40, 42 and 43 ALL read lit 0.0391 / mean 0.0353 / meanWhereLit
+#: 0.9031 to four decimals, and record 39 -- a `pixelprocessor` with NO edges, where the
+#: chain bottoms out -- is a SINGLE VERTICAL STRIPE about ten pixels wide on a 256 canvas,
+#: which is what 0.0391 is. Record 43 emits one pattern with no `patternsize`, which `splat`
+#: draws at `_ONE2`, so it stamps the full canvas and reproduces its input exactly. The lit
+#: fraction is a property of the CONTENT and not of the stamping, and record 43 is a faithful
+#: pass-through. `basecolor`'s remaining -0.0999 is UNATTRIBUTED: removing the spurious white
+#: fill removed a positive bias that had been partly compensating a level deficit elsewhere.
+#: It is in `HEALTH_CENSUS` as an honest backlog entry and has no cause here, which is the
+#: correct state for something nobody has traced.
 GUARD_CAUSES = {
-    'chesterfield-basecolor-level': Cause(
-        'chesterfield-basecolor-level',
-        mechanism='record 43 stamps the right image at the wrong coverage: lit fraction '
-                  '0.0391 at mean-where-lit 0.9031, so the canvas is short of level while '
-                  'the values on it are correct. Before the imageindex correction the record '
-                  'painted SOLID WHITE over the whole canvas, which over-supplied level and '
-                  'masked the coverage deficit. See splat(): "the stamps do not tile".',
-        records=(43, 53),
-        source='FORMAT-NOTES.md, "The imageindex correction is applied"'),
     'chesterfield-roughness-level': Cause(
         'chesterfield-roughness-level',
         mechanism='two multiply-blends whose noise source renders an exactly constant 0, so '

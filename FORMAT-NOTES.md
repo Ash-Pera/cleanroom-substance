@@ -53641,3 +53641,47 @@ The two claims are different -- "this channel is broken today" and "this change 
 can never be reported as REGRESSING, which is exactly the population most likely to. Nothing in
 the tree calls `check` (`test_filters.py` computes adversity from `Entry.bound` and `_adverse`
 directly), so this changes no test result; it changes what a reader gets interactively.
+
+## RETRACTION: record 43 does not under-cover anything, and `basecolor`'s level error is unattributed
+
+`0e2591f` declared `basecolor`'s DC regression under a cause naming record 43 -- "stamps the
+right image at the wrong coverage: lit fraction 0.0391 at mean-where-lit 0.9031". That is
+withdrawn. The lit fraction is a property of the CONTENT and says nothing about the stamping.
+
+**The cone reads the same at every hop.** Walking edges up from 43 at dim 256:
+
+    43  fxmaps           lit 0.0391  mean 0.0353  meanWhereLit 0.9031   edges [42]
+    42  pixelprocessor   lit 0.0391  mean 0.0353  meanWhereLit 0.9031   edges [41, 40]
+    40  transformation   lit 0.0391  mean 0.0353  meanWhereLit 0.9031   edges [39]
+    39  pixelprocessor   lit 0.0391  mean 0.0353  meanWhereLit 0.9031   edges []
+    41  pixelprocessor   lit 0.0000                                     edges [38]
+
+Four records agreeing to four decimals is a pass-through, not an attenuation. The chain bottoms
+out at record 39, a `pixelprocessor` with NO EDGES, and **record 39 is a single vertical white
+stripe about ten pixels wide on a 256 canvas** -- which is what 0.0391 IS. Record 42 combines it
+with record 41, which renders an exact 0, so 42 is 40 unchanged.
+
+**And record 43 already stamps the whole canvas.** Its FX table holds ONE entry emitting ONE
+pattern, carrying `patternrotation`, `opacity` and `patterntype` and NO `patternsize` and NO
+`frameoffset`. `splat` defaults a missing `patternsize` to `_ONE2`, and the sizeless branch that
+would substitute 0.5 or 0.25 does not fire because it requires `patterntype` to be absent and
+this pattern HAS one (nan). So the stamp is full-frame and reproduces its input exactly, which is
+what the four identical rows say.
+
+The contrast with its siblings is the point: records 34, 53 and 65 each emit SIXTEEN patterns on
+a clean 4x4 lattice, `frameoffset` stepping -0.375 / -0.125 / +0.125 / +0.375 and `patternsize`
+0.25, which tiles exactly. `splat`'s recorded "the stamps do not tile" finding was measured on
+34 and 65 -- Chesterfield's metallic and height cones -- and carrying it across to 43 was an
+inference from a shared symptom, not a measurement of 43.
+
+**So `basecolor`'s -0.0999 has no named cause and now says so.** Removing the spurious white
+fill removed a positive bias that had been partly compensating a level deficit elsewhere in the
+cone; where that deficit is has not been traced. The entry stays in `HEALTH_CENSUS` as an honest
+backlog row and `GUARD_CAUSES` no longer claims otherwise. A register whose entries are inferred
+rather than measured is exactly what the cause mechanism was built to prevent, and it took two
+commits for this file to catch itself doing it.
+
+**A method note.** The probe that found this first returned NOTHING, because it patched
+`render2.fx.splat` while `render2/filters.py` binds the module with a bare `import fx` -- two
+`sys.modules` entries for one file, the trap already recorded in this notebook for `ops.blend`.
+An instrument that silently observes nothing looks identical to a clean result.
