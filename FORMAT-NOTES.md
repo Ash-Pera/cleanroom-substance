@@ -53785,3 +53785,60 @@ WRONG. The defect is not only "the gate closes" -- the 11 entries behind that ga
 way, produce something whose structure fights the channel. Whoever takes this next should read
 the gap of 1560 as the lead: the question is whether nodes 3 and 4 belong in this chain AT ALL,
 not whether the gate they carry should veto.
+
+## RETRACTION 2: record 321's empty output is CORRECT -- its gates are `$sizelog2` resolution guards, and 2048 is below both
+
+`fa2afd1` claimed `basecolor`'s level error IS record 321, on the strength of a forcing
+experiment that improved `basecolor` and `roughness` and moved nothing else. Withdrawn. The
+isolation was real; the causation was not.
+
+**The gates are six instructions and they are not scanners.** Disassembled:
+
+    gate 2 @626140          gate 3 @626340
+      sysvar.f2   3           sysvar.f2   3
+      swizzle.f1  #0          swizzle.f1  #0
+      swizzle.f1  #1          swizzle.f1  #1
+      min.f1                  min.f1
+      const.f1    12          const.f1    13
+      gteq.b2                 gteq.b2
+
+`sysvar 3` is `$sizelog2` -- `(log2 width, log2 height)` of the record's OWN resolution
+(`sbsruntime.SYSVARS`). So the two predicates are `min(log2 W, log2 H) >= 12` and `>= 13`:
+LEVEL-OF-DETAIL GUARDS that add octaves only at 4096 and 8192 px. **Record 321 is declared at
+2048x2048**, log2 11, so both are FALSE at the true export size and the engine takes the same
+branch we do. Gate 1, by contrast, is a 60-instruction scanner advancing a counter in slot 17
+against a bound in slot 16 -- a different kind of node entirely, which is why it opens.
+
+So record 321 rendering an exact 0 is CORRECT, `e231131` was right to find these gates, and
+`0ce9b99`'s do-while experiment was forcing a RESOLUTION GUARD open. It was refused on the
+score, and it deserved to be refused on the reading: `basecolor` ch2's collapse was the file
+objecting to being rendered as if it were 4096 px.
+
+**Which means the forcing experiment in `fa2afd1` measured compensation, not causation.**
+Adding brightness to a record that is correctly dark improved two channels because it offset a
+deficit that lives somewhere else. That is the SECOND false attribution this session with the
+same shape -- record 43 in `cd202ad`, record 321 here -- both reached by inferring a cause from
+a symptom that moved, and both caught by reading the file instead. A forcing experiment shows
+that a record is REACHED by a channel. It cannot show that the record is WRONG.
+
+**A concern raised and cleared.** `$sizelog2` reads the grid actually rendered, so a gate whose
+threshold falls between our `max_dim` cap and the declared size would flip and our renders would
+silently lose emission. Measured over 546 fxmaps records scored at both cap 256 and cap 1024:
+**0 change their pattern count.** The thresholds in these packs are 12 and 13, far above any grid
+we can afford, so no gate sits in the danger band. Recorded because the absence is the useful
+result and because the next person will have the same worry.
+
+**WHERE THE ROUGHNESS LEVEL ACTUALLY SITS, as far as this tick got.** `334 = blend mode 2
+(subtract)` of records 332 and 333, and BOTH render an exactly saturated 1.0 at sd 0.000000, so
+the subtraction is exactly 0. Records 331 and 333 emit 4 and 6 patterns and still come out
+uniformly white; among those patterns is `patternsize (5.0, 1.0)` at `opacity -1.0` -- a stamp
+five times the canvas width, which is the `(5.0, 1.0)` family already on this notebook's open
+list. `322 = blend mode 3 (multiply)` of 320 with the correctly-empty 321 is a separate arm and
+is not obviously wrong. THE SATURATION IS THE LEAD, not the empty FX-Map.
+
+**A method note, because it nearly became a third false attribution.** Printing a pattern dict
+through `np.asarray(v, dtype=float)` renders `None` as `nan`, and on that basis `patterntype`
+looked like it was always NaN -- which would have made `splat`'s sizeless guard
+(`p.get('patterntype') is None`) dead code that could never fire. Counted instead of believed:
+of 87,746 patterns drawn, 1,907 carry no `patternsize`, and `patterntype` is None on 1,629 of
+them and NaN on **ZERO**. The guard fires. The NaN was in the printf.

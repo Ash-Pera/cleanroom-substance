@@ -1659,10 +1659,17 @@ HEALTH_CENSUS = {
 GUARD_CAUSES = {
     'chesterfield-roughness-level': Cause(
         'chesterfield-roughness-level',
-        mechanism='two multiply-blends whose noise source renders an exactly constant 0, so '
-                  '99.9% of this channel error is one level shift and not a shape error',
-        records=(321, 334),
-        source='ba3a1f6'),
+        mechanism='99.9% of this channel error is one level shift and not a shape error. '
+                  'RESTATED: ba3a1f6 read the cause as a noise source rendering an exactly '
+                  'constant 0, and record 321 does render 0 -- but CORRECTLY, its chain '
+                  'gated behind min($sizelog2) >= 12 on a record declared at 2048 (log2 11). '
+                  'What is measured instead is record 334 = subtract(332, 333) where 332 and '
+                  '333 BOTH render an exactly saturated 1.0 at sd 0.000000, so their '
+                  'difference is exactly 0. The saturation is the open question, and records '
+                  '331 and 333 emit patterns carrying patternsize (5.0, 1.0) -- five times '
+                  'the canvas width -- at opacity -1.0.',
+        records=(332, 333, 334),
+        source='ba3a1f6, restated by the sizelog2 reading'),
 }
 
 #: HOW MANY OF A PACK'S YIELDS COME OUT CONSTANT TODAY, frozen so that a NEW collapse
