@@ -53978,3 +53978,47 @@ generally outvoted by its own instruments -- it failed specifically where an arm
 RENDERING A FEATURE, and it is reliable where all arms render the same thing at different
 qualities. That is the boundary of what the three quantities can be trusted for, and it is now
 observed on both sides rather than asserted.
+
+## `fx.gridcount` confirmed decisively; `fx.patternsize` RETAINED WEAKLY and stays open
+
+Two questions, two different strengths of answer, and the difference is worth keeping separate.
+
+**`fx.gridcount` = `divisor`, decisively, on both instruments.** At dim 512:
+
+    arm            buttons  coverage  median   height corr   band    dc        bc0 corr
+    divisor         41       4.79%     392px   +0.9620      1.128  +0.0465    +0.9164
+    numberadded     10       0.27%      90px   -0.0076      0.201  -0.2315    +0.0410
+
+`numberadded` finds 10 of the 41 buttons at a fifteenth of the coverage and takes height's
+correlation to ZERO. This corroborates `emission_count`'s own docstring -- "dropping it costs
+`normal` 0.95 -> -0.01 there" -- from an independent direction, and the categorical button test
+and the scalars agree for once on a catastrophic arm rather than a marginal one.
+
+**`fx.patternsize` = `canvas` is retained on a 2-1 split and the picture CANNOT arbitrate it.**
+
+    arm       buttons  height corr   band    dc         bc0 corr
+    canvas     41      +0.9620      1.128  +0.0465     +0.9164
+    cell       41      +0.9419      0.688  -0.0214     +0.8772
+
+`canvas` wins correlation (both channels) and band (|log 1.128| = 0.120 against |log 0.688| =
+0.374). `cell` wins LEVEL, and by enough to matter given that an unattributed level error is the
+standing open problem on both these channels: -0.0214 against +0.0465, inside the health bar
+where `canvas` is outside it.
+
+The button count is silent -- 41 under both. And the render is very nearly the same picture
+twice: both give the diamond panels, the thin seams and the dimples, differing only in that
+`cell`'s seams are marginally thinner and its panels marginally flatter. Held side by side
+against the export, neither is obviously closer.
+
+**So this one is NOT settled, and is recorded as retained rather than arbitrated.** `canvas`
+stays because it wins two quantities of three and because changing a default requires beating
+it, not tying it. But a 2-1 split where the losing arm wins the quantity we have an open problem
+in, on a picture nobody can tell apart, is not the same kind of answer as `rect` reproducing 41
+of 41 buttons against zero. Whoever revisits the level error should try `cell` again there --
+its DC is better by a factor of two and that is the direction the deficit lies.
+
+With this, every arbitration that moves this specimen has been examined: `fx.sizeless` (`fill`,
+measured), `fx.typeless_profile` (`rect`, decisive on the picture), `fx.combine` (`max`,
+decisive on both), `fx.gridcount` (`divisor`, decisive on both), `fx.patternsize` (`canvas`,
+weak). `fx.negopacity`, `fx.markers`, `fx.gatescan` and `fx.scanner` move this file by exactly
+0.00000 and cannot be arbitrated from it at all.
