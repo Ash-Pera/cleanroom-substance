@@ -54187,3 +54187,51 @@ The refined statement, which supersedes the tally rather than adding to it:
 **The guard did its job.** Adopting `corner` would have taken the suite red on two entries, and
 those two entries were pointing at 86 dead records. Had the ratchet not been wired in `0e2591f`
 this would have been adopted on a correlation count.
+
+## Investigating `levels.zerospan`: Auras basecolor ch0/ch1 are ALREADY 2.3x and 5.9x too bright, and `identity` amplifies a defect it did not cause
+
+Investigated before adopting, at the owner's direction. The asymmetry is explained and
+`identity` is not at fault. **No code changed yet.**
+
+**What the arm is.** `filters.py`: when a `levels` filter's span is degenerate (`in_lo ==
+in_hi`) the ramp is 0/0 and something must be chosen. `step` -- today's default -- evaluates
+`(src >= lo)`, a hard binary threshold. `identity` evaluates `clip(src, 0, 1)`, passing the
+input through. A threshold applied where every pixel sits on one side of `lo` yields a CONSTANT,
+which is why the default flattens so much: corpus-wide, constant records go **10,270 -> 6,800**
+under `identity`, 3,470 records that stop being flat. Zero-emitting fxmaps records are unchanged
+at 2, so nothing is being killed to buy that.
+
+**The arm fires rarely and precisely.** In Auras exactly 11 records hit a degenerate span
+(39, 51, 55, 199, 246, 260, 323, 340, 362, 371, 400), spread over four output cones. Two of the
+four outputs move by 0.00001 and 0.00000. This is a narrow change, not a broad re-rendering.
+
+**Why one channel of `basecolor` is fixed and two are made worse.** Against the export:
+
+    channel   reference          step               identity
+    ch0       0.1044 / 0.1920    0.2378 / 0.3901    0.2868 / 0.4181
+    ch1       0.0447 / 0.1191    0.2639 / 0.4149    0.3135 / 0.4382
+    ch2       0.2045 / 0.3618    0.1392 / 0.2742    0.2175 / 0.3730
+
+ch0 and ch1 are ALREADY 2.3x and 5.9x the export's mean under the CURRENT default, before
+`identity` is applied at all. ch2 undershoots, and `identity` brings it to within 6% on mean and
+3% on sd -- band 0.473 -> 1.030 and dc -0.0653 -> +0.0130, INSIDE the health bar. `identity`
+raises output uniformly; that is correct for the channel that was too dark and harmful to two
+that were already far too bright for an unrelated reason.
+
+**The picture names the unrelated reason.** Auras is a glow-ring texture. The export's rings are
+THIN AND WISPY, carrying fine filament structure. Ours are THICK SMOOTH BRIGHT RINGS under both
+arms, with the filaments entirely absent on ch0 and ch1. `identity` makes an already-too-fat
+ring marginally fatter. The defect is that the ring is drawn far too thick and has lost its
+filament texture, and that is a separate open problem -- both channels are already in
+`HEALTH_CENSUS` on band AND dc, recorded at 4.1x and 17.4x the export's variance.
+
+**So the ratchet failures are real but they are not evidence against this arm.** Six failures,
+all on those two channels, all of them amplification of a pre-existing over-brightness that
+`identity` neither introduces nor explains. Against that: 3,470 fewer collapsed records
+corpus-wide, five of five Bricks strong channels improved, and Auras ch2 brought from broken to
+essentially exact on all three quantities.
+
+This is the opposite of the `fx.pos` case (`807b518`), and the contrast is why the degeneracy
+check was added: there, a correlation gain concealed 86 records losing emission. Here the
+degeneracy count moves the RIGHT way by 3,470 and the improvement is on channels that are
+actually rendering. The check that caught the first case clears this one.
