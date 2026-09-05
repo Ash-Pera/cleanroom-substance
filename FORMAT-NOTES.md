@@ -53943,3 +53943,38 @@ used to occupy gets redistributed. `corr` did pick `rect`, so the guard is not b
 it was outvoted 2 to 1 by its own instruments, and a majority reading of the three would have
 chosen an arm that deletes the tufting. Scores rank arms that are ALL rendering the same
 picture; they do not notice when one stops rendering it.
+
+## `fx.combine` arbitrated: `max` wins on the scalars AND the picture, and the two agree this time
+
+Third untested default measured, after `fx.sizeless` = `fill` and `fx.typeless_profile` = `rect`.
+
+**The button count does NOT discriminate here.** All three arms produce 41 blobs at 4.79%
+coverage with a 392 px median -- identical to the export and to each other. The categorical test
+that settled `fx.typeless_profile` is silent on this question, which is worth stating: it is a
+test for a feature VANISHING, and no arm here deletes the tufting.
+
+**Correlation separates them by half a point.** Chesterfield at dim 512:
+
+    arm     height corr   band     dc          basecolor 0 corr   band     dc
+    max     +0.9620       1.128   +0.0465      +0.9164            0.612   -0.0980
+    add     +0.4475       1.108   +0.1617      +0.6207            0.497   -0.0968
+    over    +0.8851       1.103   +0.1486*     +0.8769            0.578   -0.0969
+    (*over's height dc is +0.0486)
+
+`max` wins correlation on both channels and level on height. `band` is nearly flat across the
+three (1.128 / 1.108 / 1.103) and cannot choose -- the same insensitivity the profile question
+exposed, here harmless because `corr` is decisive.
+
+**And the picture says the same thing.** `max` reproduces the reference's diamond panels, thin
+seams and subtle button dimples. `add` turns the panels into SATURATED OVERLAPPING CIRCLES with
+black buttons -- and is incidentally informative, because the overlap makes the underlying stamp
+geometry visible as discs. `over` flattens the panels, washes out the seams and drives the
+buttons far too dark.
+
+**THE CONTRAST WITH THE PREVIOUS ENTRY IS THE POINT.** On `fx.typeless_profile` the scalars split
+three ways and two of them chose an arm that erased 41 of 41 buttons; the picture was the only
+arbiter. Here the scalars are decisive and the picture merely confirms them. So the guard is not
+generally outvoted by its own instruments -- it failed specifically where an arm STOPPED
+RENDERING A FEATURE, and it is reliable where all arms render the same thing at different
+qualities. That is the boundary of what the three quantities can be trusted for, and it is now
+observed on both sides rather than asserted.
