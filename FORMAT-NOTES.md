@@ -53892,3 +53892,54 @@ session have been withdrawn under test -- basecolor's twice. Both channels' leve
 unattributed and sit in `HEALTH_CENSUS` as backlog, which is the honest place for them. The rule
 that cost two retractions is recorded in the register itself: a forcing experiment shows a record
 is REACHED by a channel, never that it is WRONG.
+
+## `fx.typeless_profile` arbitrated BY THE PICTURE: `rect` reproduces 41 of 41 buttons and every falloff arm produces ZERO
+
+`fxrender.py`'s negative result 1 recorded that this question could not be scored: "any falloff
+at all takes 'renders a picture' from 4.1% to 97.3% and means nothing, because a profile with
+falloff cannot be flat by construction". That is still true of the flatness statistic. It is not
+true of the render.
+
+**The scalars split three ways and cannot decide.** Chesterfield `height` at dim 512:
+
+    arm          corr      band     dc
+    rect        +0.9620    1.128   +0.0465     <- best correlation
+    disc        +0.9408    1.070   +0.0639     <- best band
+    cone        +0.9401    1.199   -0.0664
+    paraboloid  +0.9533    1.434   +0.0077     <- best level
+    bell        +0.9498    1.670   -0.0396
+    gaussian    +0.9228    1.656   -0.0930
+
+Three quantities, three different winners. On this evidence the question stays open.
+
+**The picture decides it in one look.** The reference `height` tile has three features: thin
+crisp seams, flat panel plateaus, and a SMALL ROUND BUTTON DIMPLE at every seam crossing. `rect`
+has all three. Every falloff arm blurs the seams into wide soft valleys and loses the dimples
+entirely. On `basecolor` the same comparison is starker still -- the reference's bright round
+buttons are present under `rect` and absent under all five others.
+
+**Counted, so it is not an impression.** Gold blobs (`G - B > 0.15`, components over 20 px) on
+`basecolor` at dim 512:
+
+    REFERENCE    41 blobs   4.79% coverage   median 392 px
+    rect         41 blobs   4.79% coverage   median 392 px      <- exact to every digit
+    disc          0 blobs   0.00%
+    cone          0 blobs   0.00%
+    paraboloid    0 blobs   0.00%
+    bell          0 blobs   0.00%
+    gaussian      0 blobs   0.00%
+
+`rect` reproduces the export's button count, coverage AND median blob size exactly. The other
+five erase 41 of 41. This is categorical rather than marginal, and it settles the question.
+`fx.typeless_profile` = `rect` is now a MEASURED default rather than an untested one, which is
+the second such default closed after `fx.sizeless` = `fill`.
+
+**A CAVEAT ON THE GUARD ITSELF, and it is the important part.** `band` preferred `disc` and `dc`
+preferred `paraboloid`, and both of those arms produce NO BUTTONS AT ALL. Two of the guard's
+three quantities voted for a render missing 41 discrete features that the eye finds instantly.
+A radial band ratio is an average over a ring of frequencies and a DC offset is one number for
+the whole frame; neither can see that a categorical feature has vanished when the amplitude it
+used to occupy gets redistributed. `corr` did pick `rect`, so the guard is not blind here -- but
+it was outvoted 2 to 1 by its own instruments, and a majority reading of the three would have
+chosen an arm that deletes the tufting. Scores rank arms that are ALL rendering the same
+picture; they do not notice when one stops rendering it.
