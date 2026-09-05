@@ -54626,3 +54626,62 @@ The honest statement is now:
   * Where the FILE can answer a question directly, it outranks every score. A 0.5-centred map
     on edge 1 in 30 of 30 unambiguous records across five files is not a measurement of our
     renderer at all, which is exactly what makes it usable.
+
+## A corpus-wide render-completion figure, which this notebook has been missing
+
+Measured over 437 corpus files plus the 8 pack assemblies -- the packs added explicitly, since
+`corpus.paths()` excludes them -- at `max_dim` 128, `$outputsize` 11. **445 files, 0 unreadable.**
+
+    records rendered        643,807 of 938,291   =  68.61%
+    declared outputs          2,575
+      produced                1,189               =  46.17%
+      of those, CONSTANT        324               =  27.25% of produced
+
+So **33.6% of declared outputs render as something that is not a constant**, which is the number
+that matters and the one to quote. "68.61% of records render" is the flattering framing and it
+counts a record that produces a flat grey as a success.
+
+**The distribution is BIMODAL and the aggregate hides it:**
+
+    per-file records rendered   median 0.825   p10 0.302   files at 100%: 117
+    per-file outputs produced   median 0.200   p10 0.000   files at 100%: 130
+
+130 of 445 files produce every declared output; the median file produces ONE FIFTH of them, and
+at least a tenth produce none at all. Reporting only the 46% would suggest a renderer that is
+uniformly half-working, and it is not -- it is a renderer that fully handles about a third of
+the corpus and largely fails the rest.
+
+**Top failure reasons, with the ones that are NOT defects marked:**
+
+    880   warp stores no intensity
+    603   produced non-finite values (100% of sample)
+    557   fxmaps ...
+    486   bitmap is a graph image input and the package ...      <- NOT A DEFECT
+    357   edge -> record 3070 has no output yet                  <- CASCADE
+    311   edge -> record 1314 has no output yet                  <- CASCADE
+    300   edge -> record 1251 has no output yet                  <- CASCADE
+    294   edge -> record 3006 has no output yet                  <- CASCADE
+
+The `bitmap` count is a package that references an image input it does not embed -- nothing to
+fix in the reader. The `edge -> record N has no output yet` entries are CONSEQUENCES of an
+earlier failure in the same file, not independent causes, and they cluster on single records
+(3070, 1314, 1251, 3006 each account for ~300), so a handful of upstream failures are
+responsible for well over a thousand downstream ones. Counting them as separate failures
+overstates the number of distinct problems by a large factor.
+
+**The single largest genuine cause is `warp stores no intensity`, at 880 records.** That is the
+same shape as `normal.default_intensity`, which this repository answers with `refuse` on the
+grounds that an invented default renders something wrong rather than nothing -- see `f_normal`,
+which raises rather than guessing. Whether `warp` should refuse identically, or whether the
+engine has a documented default the file omits, is not settled here and is now the biggest
+single lever on the completion figure.
+
+`produced non-finite values` at 603 is second and is unambiguously a defect: a record that
+emits NaN or Inf across an entire sample is wrong under any reading, and `nonfinite.fill`
+(0.0 / 0.5 / 1.0) currently decides what happens to them.
+
+**Why this number is worth having.** Every measurement in this notebook for many entries has
+been per-specimen -- Chesterfield's six channels, Bricks' nine, Auras' three. Those say how
+close a rendered channel is; they say nothing about how much of the corpus renders at all, and
+the two can move in opposite directions. A change that improved every scored channel while
+dropping the completion figure would look like progress under the guard and be a regression.
