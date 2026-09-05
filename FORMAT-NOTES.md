@@ -54083,3 +54083,52 @@ across them is NOT a valid reading: on a polarity question the band ratio contri
 information whatsoever, and on a feature-deletion question it contributes misleading
 information. `refguard`'s ratchet is per-quantity and therefore unaffected -- but a reader
 comparing arms must weight `corr` on any question that could change sign or delete a feature.
+
+## `distance.mask_edge` = 0 confirmed, and `dc` joins `band` on the list of quantities that voted wrong
+
+Second Bricks arbitration, same shape as the first and one new lesson.
+
+**Correlation is unanimous: arm 1 is worse on ALL NINE scored channels and better on none.**
+
+    channel            corr 0 -> 1        band 0 -> 1        dc 0 -> 1
+    ambientocclusion  +0.8837 -> +0.5474  0.230 -> 0.185   +0.0719 -> +0.0331
+    basecolor 0       +0.0430 -> -0.0433  0.621 -> 0.724   -0.0150 -> -0.0493
+    basecolor 1       +0.2698 -> +0.1292  0.672 -> 0.914   -0.0477 -> -0.0647
+    basecolor 2       +0.2721 -> +0.1516  0.533 -> 0.823   -0.0610 -> -0.0588
+    height            +0.5936 -> +0.2373  0.184 -> 0.871   +0.2552 -> -0.0044
+    normal 0          +0.7718 -> +0.3851  0.135 -> 0.149   +0.0002 -> +0.0001
+    normal 1          +0.7883 -> +0.3103  0.130 -> 0.212   +0.0002 -> +0.0002
+    normal 2          +0.6961 -> +0.4968  0.004 -> 0.004   +0.0114 -> +0.0110
+    roughness         +0.8024 -> +0.4944  1.633 -> 1.166   -0.3964 -> -0.3458
+
+**The picture says the same.** Bricks `height`: the export has flat tiles with grout lines,
+circular discs and fine mottled texture. `edge=0` reproduces that faithfully but weakly.
+`edge=1` lays a strong DIAGONAL light-to-dark RAMP across every tile and a directional shading
+on each disc -- a one-sided distance field where the export has none. Unambiguous.
+
+**AND BAND AND DC BOTH PREFERRED ARM 1.** `band` moves toward 1.0 on six of nine channels, most
+dramatically `height` 0.184 -> 0.871 and `roughness` 1.633 -> 1.166. `dc` improves on `height`
+from +0.2552 to -0.0044 -- a twentyfold reduction that would look like a triumph in isolation --
+and on `roughness` and `ambientocclusion` too.
+
+That is new. `band` has been fooled before; this is the first case where **`dc` votes for a
+visibly wrong render**, and the mechanism is obvious once seen: a spurious diagonal ramp adds
+variance (so the band ratio rises toward 1.0) and happens to recentre the mean (so the DC offset
+falls toward 0). Neither quantity can tell a ramp that belongs from a ramp that does not. `dc`
+is one number for the whole frame and ANY change that recentres the mean scores better,
+regardless of what it did to the picture.
+
+**The running tally over the six arm comparisons resolved so far** -- `fx.typeless_profile`,
+`fx.combine`, `fx.gridcount`, `distance.invert`, `distance.mask_edge`, plus the unresolved
+`fx.patternsize`:
+
+    corr   right in 5 of 5 resolved cases.  Never yet wrong.
+    band   wrong in 3, right in 1 (gridcount), uninformative in 1 (combine, near-flat).
+    dc     wrong in 2, right in 1, mixed in 1.
+
+This is not an argument for deleting `band` and `dc` from the guard -- they exist because
+correlation is blind to amplitude (`ad493f2`'s AO at 0.026 correlating +0.9110) and to level
+(`ba3a1f6`'s roughness hiding 99.9% of its error). They catch what `corr` cannot. It IS an
+argument that they are RATCHET quantities and not ARBITRATION quantities: good at "this channel
+got worse than it was", bad at "this arm is the right reading". Choosing between candidate
+readings is `corr`'s job, with the render as the final word.
