@@ -54353,3 +54353,64 @@ would move a guard channel (no, one non-null instance, `sd = 0` both ways); and 
 source's compiled sibling contains a `0x1CB`" (false as stated -- `Camouflage.sbsar.sbsasm` has
 2; the conclusion survives because that source declares zero FX-Map nodes, but the stated reason
 does not, and a census keyed on the compiled side would trip over it).
+
+## The 2.82 over-coverage is ONE defect in TWO files, and `921c775`'s premise is refuted: a null-field `0x1CB` is behaviourally identical to `0x18B`
+
+`921c775` found Chesterfield 92/93 subtracting to a constant and concluded "the graph is built
+to difference two FX-Maps the format distinguishes and this walker does not", leaving "what does
+`0x1CB` do differently" as the open question. It has an answer and it is: **nothing, here.**
+
+**The two nodes, read word for word.** Chesterfield record 92's `0x1CB` third node against
+record 93's `0x18B` third node:
+
+    0x1CB   0x000001CB  0x00088228  0x00000000  0x00088258  0x09000007  0x3F800000
+    0x18B   0x0000018B  0x00088734  0x00088764  0x09000007  0x3F800000  0x00000532
+
+The `0x1CB` carries one extra word at w2 and **it is NULL**, shifting the successor from w2 to
+w3. Otherwise the two are the same shape: program, [field], successor, `0x09000007`,
+`0x3F800000`. Bit 6's field is the nullable second-child pointer identified in `3441350`, and
+here there is no second child. **A `0x1CB` whose bit-6 field is null does exactly what a `0x18B`
+does.** Auras 427's is null too. So the structural distinction `921c775` was reaching for is not
+present in either motivating record, and the word-count difference it noted (324 against 326) is
+that one inserted null plus its knock-on, not a difference in behaviour.
+
+**The same idiom appears in both files and so does the same defect.** Chesterfield 92/93 ->
+record 95 and Auras 427/428 -> record 430 are the same construction: two edgeless `fxmaps`,
+`levels` mapping one arm into [0.5, 1], `blend` mode 2 subtract. Both cancel:
+
+    Chesterfield  max|92 - 93|  = 6.458e-03   rec 95  mean 0.500000  sd 5.748e-04
+    Auras         max|427- 428| = 2.971e-03   rec 430 mean 0.500000  sd 6.027e-04
+
+**AND THE CAUSE IS A SCALE MISMATCH THAT IS THE SAME LITERAL IN BOTH FILES.** Measured:
+
+    patternsize   2.8199999332   -- the float32 of 2.82, IDENTICAL in both files
+                                 -- NOT 2*sqrt(2) = 2.8284271, which was the obvious guess
+    Chesterfield 92   25 patterns,  frameoffset x in [-0.1249, 0.1248], 24 distinct values
+    Auras 427/428    144 patterns,  frameoffset x in [-0.1250, 0.1249], 137 distinct values
+
+The placements are SCATTERED, not a lattice -- 137 distinct x for 144 patterns, spacings of
+0.0001..0.0002 -- and they span **+-0.125**. Every stamp is **2.82 wide**. So each pattern is
+about 22x the total spread of all the placements, and roughly 2.8x the whole canvas. Under that
+every stamp covers everything, the scatter is invisible, and two records that genuinely differ
+collapse to within 3e-03 of each other.
+
+The offsets are rendered FAITHFULLY -- Auras 427 and 428 emit exactly antipodal ones
+(+0.1102, -0.0591 against -0.1102, +0.0591), which is a half-turn `frameoffset` difference the
+walk applies correctly. The information is there and the saturation destroys it.
+
+**So the question is `patternsize`'s UNIT, and it is now sharply posed.** A stamp 22x the spread
+of its own placements is not a reading anyone authored. `fx.patternsize`'s two arms are `canvas`
+and `cell`, and `cell` is byte-identical on exactly these records because `_cell_divisor`
+declines them -- there is no inferable lattice, the placements being scattered rather than
+gridded. So the divisor these records need is not one the current code can derive from the
+emissions, and that is the gap.
+
+Two candidate framings, neither tested here: the divisor is the emission count per axis
+(sqrt(25) = 5, sqrt(144) = 12, giving 0.564 and 0.235 against a 0.25 placement spread -- the
+right order for Auras); or FX-Maps are TREES whose children subdivide their parent's region, so
+a pattern's size is relative to its own box rather than the canvas, and a flat `chain` walk hands
+every pattern the root's box. `assume.QUESTIONS['fx.pos']` already names that second one as the
+thing that would move it -- "a SUBDIVIDED FX-Map ... `chain` is a FLAT walk, so today there is
+one node position and it is the root's" -- and `3441350`'s second-child pointer is a mechanism
+for exactly such branching. Against it: both motivating records have a NULL second child, so
+neither is branching, and their over-coverage needs another explanation.
