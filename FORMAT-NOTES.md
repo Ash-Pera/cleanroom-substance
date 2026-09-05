@@ -52497,3 +52497,360 @@ containment argument is the guard's and the pixels are the arity rule's.
 What still has to be settled before either lands is the floor: `roughness` -0.0010 at every
 grid, and `normal` ch2 at the guard's own 256. Neither is a reason to doubt the reading and
 both are reasons this pass is not the one to apply it.
+
+## The `roughness` 0.0010 is one octave getting 1.4% dimmer inside a 27% deficit, and the channel it is measured on never reaches the export's 5th percentile
+
+`ce5897e` handed over a correction it had measured and refused: `_recover_last_inline`'s
+guard plus the one-edge `imageindex` arity rule, blocked on `roughness` losing 0.0010 of
+correlation at every grid and on `Chesterfield normal 2` breaking its floor at the floor's
+own 256. This section answers only the first of those, and only the question "what is the
+0.0010" -- **not** whether to apply. THE CHANGE IS STILL NOT IN THE TREE.
+
+The short answer: it is a **1.4% dimming of the 0.5-7 cycle octave**, on a channel that is
+already 27% short in that octave, whose entire rendered value range lies below the export's
+5th percentile, and whose scored correlation cannot tell a solid white record 43 from a
+solid black one to better than 0.0007. It is movement inside an existing defect. There is
+no correct state to regress from: seven records of `roughness`'s own 334-record cone were
+rendering as an **exactly constant** sheet before the change and none is constant after.
+
+### The harness, and what it is checked against before anything is read from it
+
+`/tmp/rq/`, nothing in `tools/` or `archive/` edited. `patch.py` installs the two
+corrections over every module object whose file is `fxrender.py` or `render2/fx.py` -- the
+module-identity trap `ce5897e` recorded is live and was respected. `metrics.py` does not
+reimplement a single score: it calls `refcompare.compare_pack(..., grid=None)`,
+`refcompare._structure_grid`, `refcompare.structure`, `refcompare.band_power` and
+`refcompare.resample`, and reproduces `main()`'s arithmetic line for line, with the renderer
+swapped for a cached one.
+
+FOUR CONTROLS, ALL PRINTED BEFORE ANY CONCLUSION, because this investigation has already
+produced four sweeps that measured nothing.
+
+  * **The instrument reproduces the published table.** `normal` ch0 at `--dim` 128 reads
+    `corr +0.9561  MAE 0.0352  y=0.741x`, which is `refcompare.py`'s own docstring to four
+    decimals, and every one of `ce5897e`'s 40 before/after cells at 128 / 256 / 512 / 1024
+    reproduces exactly -- `roughness` -0.0005 / -0.0009 / -0.0010 / -0.0010, `normal` ch2
+    -0.1061 / -0.0457 / +0.0411 / +0.0437, `basecolor` ch2 -0.3257 -> +0.8755 at 1024.
+  * **The patch fires and is separable.** Over `ChesterfieldSofa`: guard alone blocks 1
+    recovery and moves **0** records; arity alone fires **0** times (the phantom is still
+    there, so `_image_for` never reaches the new arm); both together block 1, use the new
+    arm once, and move **742 of 881** records. Record 43 goes sd 0.0000 -> 0.1799. Over all
+    six reference packs the guard blocks 4 (Chesterfield 1, Auras 3) and the arity arm draws
+    415 patterns. Every one of those is `ce5897e`'s number.
+  * **A frozen control on the forcing mechanism.** `force43.py` replaces record 43's output
+    with a stated constant by wrapping `FILTERS['fxmaps']` per module object. Forced to 1.0
+    -- which is what the phantom already produces -- the render is identical to the baseline
+    on **all 881 records**, `np.array_equal` on every one.
+  * **A frozen control on the patch.** The "picture" arm of the sweep and the ordinary
+    `both` render agree on all 881 records, bit for bit.
+
+### `roughness`'s full numbers, before and after, at four grids
+
+`render2`, `$outputsize` implied, `ChesterfieldSofa`. `corr`, `MAE`, `y=` and `resid` are
+`refcompare`'s -- taken at its `SIZE` = 64 resample. `bands` and `total` are `band_power`'s,
+taken at the render's own native grid against the export box-averaged onto it.
+
+    --dim 128    corr +0.93794 -> +0.93740   MAE 0.06400 -> 0.06400   y=1.1914x -> 1.1974x
+      before  bands 0.589 0.801 0.765 0.846 0.619 0.988  total 0.7203  low 0.819 edge 0.895
+      after   bands 0.575 0.796 0.764 0.840 0.616 0.983  total 0.7133  low 0.815 edge 0.893
+    --dim 256    corr +0.93577 -> +0.93482   MAE 0.06387 -> 0.06387   y=1.1834x -> 1.1895x
+      before  bands 0.551 0.765 0.734 0.820 0.610 0.785  total 0.6868  low 0.803 edge 0.849
+      after   bands 0.535 0.761 0.734 0.815 0.609 0.781  total 0.6797  low 0.798 edge 0.847
+    --dim 512    corr +0.93476 -> +0.93377   MAE 0.06385 -> 0.06385   y=1.1801x -> 1.1854x
+      before  bands 0.540 0.760 0.730 0.814 0.605 0.730  total 0.6775  low 0.798 edge 0.824
+      after   bands 0.524 0.756 0.730 0.811 0.606 0.726  total 0.6713  low 0.794 edge 0.822
+    --dim 1024   corr +0.93446 -> +0.93349   MAE 0.06385 -> 0.06385   y=1.1782x -> 1.1832x
+      before  bands 0.537 0.761 0.730 0.814 0.602 0.716  total 0.6753  low 0.797 edge 0.801
+      after   bands 0.522 0.757 0.731 0.812 0.604 0.714  total 0.6696  low 0.793 edge 0.798
+
+    ours 64px mean/sd 0.1713 / 0.0207     reference 0.2352 / 0.0262     uniq 110 -> 87
+    resid after the affine fit  0.00735 -> 0.00741       floor 0.91, margin 0.0248
+
+The bands move the SAME WAY as the correlation -- away from 1.0, by 0.006 of a total that
+is 0.325 short. **So the AO precedent does not apply here and is not claimed.** `f2dd622` /
+`ad493f2` had a correlation floor blind to a collapse the bands caught; here both
+instruments agree, in the same direction, at the same trivial size. That was the cheapest
+way this trade could have dissolved and it does not.
+
+### The measurement that decides it: `roughness` cannot resolve record 43 at all
+
+Record 43 forced to a stated constant, `--dim` 256, everything else identical. Six renders,
+one control (`= 1.0`, which reproduces the baseline exactly) and one live arm (the picture
+the arity rule recovers, mean 0.035, sd 0.176):
+
+    record 43 =        roughness   height     normal 0   basecolor 2   AO
+      1.0 (BASELINE)    +0.9358    +0.9562    +0.9524     -0.4563     +0.8684
+      0.9               +0.9354    +0.9608    +0.9618     +0.5346     +0.8702
+      0.5               +0.9351    +0.9615    +0.9620     +0.8486     +0.8730
+      0.2               +0.9351    +0.9615    +0.9620     +0.8486     +0.8730
+      0.0               +0.9351    +0.9615    +0.9620     +0.8486     +0.8730
+      THE PICTURE       +0.9348    +0.9621    +0.9645     +0.8344     +0.8735
+
+    roughness's whole white-to-black range   0.0007
+    basecolor 2's, on the same six renders   1.3049
+
+**The sweep is a live instrument** -- `basecolor` ch2 swings by 1.30, `normal` by 0.0096,
+`height` by 0.0053 -- and `roughness` moves 0.0007 across the entire interval, from a
+solid white sheet to a solid black one. Its band total moves 0.6868 -> 0.6806 over the same
+range. The picture then sits 0.0003 past the black end.
+
+So the 0.0010 is not a reading that the recovered picture is worse for `roughness` than the
+phantom white. It is the residual sensitivity of a statistic that has **no resolving power
+over this record**, being asked a question one digit finer than it can answer. THREE OF THE
+SIX ROWS ARE IDENTICAL TO FOUR DECIMALS -- 0.5, 0.2 and 0.0 -- because record 46, a `levels`,
+saturates: of `roughness`'s 334 cone records, exactly **3** (43, 44, 45) differ between
+record 43 = 0.5 and record 43 = 0.0, and record 46 is the first that does not.
+
+### There is no correct state to regress from: seven constant records stop being constant
+
+Exactly-constant records per output cone, `--dim` 256, before -> after:
+
+    roughness  cone 334   constant  39 -> 32      metallic  cone  40   constant 6 -> 6
+    height     cone 121   constant  32 -> 25      basecolor cone 868   constant 71 -> 61
+    AO         cone 609   constant  48 -> 41
+
+    roughness's cone: records that STOP being constant   43 44 45 46 47 48 53
+                      records that START being constant  none
+
+Seven records of `roughness`'s own cone were rendering a uniform sheet. Six of them --
+45, 46, 48, 53, 54, 56 -- have **no correlation against the export at all before the change**,
+because a constant has no variance; the probe returns NaN. Their before-values are 1.0, 1.0,
+1.0, 1.0, 0.0686 and 0.0686, and none of those numbers is in the file: the first four are
+`_recover_last_inline`'s phantom `imageindex` painting record 43 white and propagating, and
+the last two are what a `levels` and a `max` make of that white.
+
+    rec  42 pixelprocessor  mean 0.0353 sd 0.1760  ->  unchanged (the picture the file states)
+    rec  43 fxmaps          mean 1.0000 sd 0.0000  ->  0.0353 / 0.1760
+    rec  44 transformation  mean 1.0000 sd 0.0000  ->  0.0353 / 0.1760
+    rec  45 levels          mean 1.0000 sd 0.0000  ->  0.0315 / 0.1607
+    rec  46 levels          mean 1.0000 sd 0.0000  ->  0.0221 / 0.1318
+    rec  47 transformation  mean 1.0000 sd 0.0000  ->  0.0221 / 0.1318
+    rec  48 transformation  mean 1.0000 sd 0.0000  ->  0.0221 / 0.1318
+    rec  53 fxmaps          mean 1.0000 sd 0.0000  ->  0.0242 / 0.1349
+    rec  54 levels          mean 0.0686 sd 0.0000  ->  0.0017 / 0.0093
+    rec  56 blend           mean 0.0686 sd 0.0000  ->  0.0033 / 0.0128
+    rec  68 blend           mean 0.7974 sd 0.1602  ->  0.7361 / 0.1615   (the 12.65% clip)
+
+**And the shared records are exactly the ones the fix un-whitens.** `roughness`'s cone
+contains 120 of `height`'s 121 records -- everything but record 120, `height`'s own output
+`levels`. The frontier of the change inside `roughness`'s cone is a single record: taking
+every moved record whose own inputs are all unmoved gives **[43]**, and nothing else. 237 of
+334 move, and 205 of those 237 are outside `height`'s cone, so `roughness`'s exposure to the
+white fill is wider than `height`'s rather than inherited through it.
+
+So `roughness` was reading a wrong input, on the same record, for the same reason. The
+0.0010 is a wrong answer moving to a differently-wrong one.
+
+### Where the 0.0010 comes from, band by band
+
+Correlation is exactly decomposable over a disjoint Fourier partition:
+`corr = Σ_b cov_b / (sqrt(Σ_b var_b) · sd_ref)`. At native 1024 the reconstruction agrees
+with the direct correlation to five decimals (0.91576 / 0.91523), so the attribution below
+is arithmetic and not an estimate:
+
+    band       cov ours-ref      our variance      contribution to Δcorr
+    0.5-7    2.173e-4 -> 2.143e-4   1.584e-4 -> 1.539e-4    -0.00070
+    7-10     9.233e-5 -> 9.216e-5   8.689e-5 -> 8.655e-5    +0.00003
+    10-14    1.836e-4 -> 1.835e-4   1.657e-4 -> 1.658e-4    -0.00020
+    14-20    9.619e-5 -> 9.605e-5   9.303e-5 -> 9.279e-5    +0.00000
+    20-32    3.393e-5 -> 3.396e-5   3.322e-5 -> 3.335e-5    -0.00006
+    32-64    5.208e-5 -> 5.206e-5   5.194e-5 -> 5.182e-5    +0.00006
+    64-128   1.708e-5 -> 1.720e-5   1.747e-5 -> 1.735e-5    +0.00024
+    128-512  5.661e-6 -> 5.695e-6   6.261e-6 -> 6.200e-6    +0.00009
+                                                    total   -0.00054
+
+**The entire loss is the 0.5-7 cycle octave and the rest nets +0.00016.** In that octave our
+covariance with the export falls 1.4% and our variance falls 2.8% -- the band gets dimmer at
+the same shape -- and it was already at a variance ratio of 0.537, i.e. **73% of the
+export's amplitude**. The change costs 1.4% of a quantity that is 27% wrong. The two FINEST
+bands, where we are 23% and 38% short, both improve, and their band-limited correlations
+rise +0.0077 and +0.0074.
+
+Band-limited correlation, ours against the export, native 1024, before -> after:
+
+    0.5-7  +0.9407 -> +0.9407    32-64    +0.8514 -> +0.8520
+    7-10   +0.9465 -> +0.9466    64-128   +0.7392 -> +0.7469
+    10-14  +0.9638 -> +0.9630    128-512  +0.6766 -> +0.6840
+    14-20  +0.9283 -> +0.9282
+    20-32  +0.8032 -> +0.8023
+
+No band's correlation falls by as much as 0.001. The scalar falls because the octave that
+correlates BEST loses 1.4% of its weight in the mix.
+
+### The 64px scoring grid nearly doubles the loss, and the "monotone" reading was its artefact
+
+`ce5897e` read -0.0005 / -0.0009 / -0.0010 / -0.0010 across the four render grids and
+concluded "monotone and reproducible, so it is not noise". Scored at the RENDER'S OWN grid
+instead -- our native array against the export box-averaged 2048 -> that grid, which is an
+exact integer reduction and not a resample --
+
+    --dim        64px resample (the score)      the render's native grid
+     128     +0.93794 -> +0.93740  (-0.00054)   +0.92657 -> +0.92600  (-0.00057)
+     256     +0.93577 -> +0.93482  (-0.00095)   +0.92109 -> +0.92037  (-0.00072)
+     512     +0.93476 -> +0.93377  (-0.00099)   +0.91749 -> +0.91695  (-0.00055)
+    1024     +0.93446 -> +0.93349  (-0.00098)   +0.91576 -> +0.91523  (-0.00053)
+
+**Flat at -0.00055 at every grid.** The growth from 0.0005 to 0.0010 is the `SIZE` = 64
+resample's, not the render's -- the same resample this section's brief warns "hid the
+missing quilting for weeks", here inflating the veto quantity by 1.8x. It does not reverse
+sign the way `normal` ch2's does; it does not move with the grid at all.
+
+For scale, the SAME statistic on the SAME render moves 0.0034 between `--dim` 128 and 1024
+(+0.93794 to +0.93446). The disputed quantity is **a sixth of the score's own sensitivity to
+a configuration choice this project makes freely.**
+
+### `roughness` is already wrong, and this is the size of it
+
+    percentile        0      1      5     25     50     75     95     99    100
+      export        0.074  0.105  0.182  0.231  0.241  0.250  0.263  0.272  0.300
+      ours          0.060  0.060  0.128  0.175  0.177  0.179  0.181  0.181  0.181
+
+**Our brightest pixel, 0.1812, is the export's 5th percentile.** 95% of the engine's own
+roughness map is brighter than anything we produce. Our p25-p99 spans 0.006 where the
+export's spans 0.041. MAE 0.0639 against a DC offset of 0.0638 -- **99.9% of this channel's
+whole error is a constant level shift**, which correlation, `band_power` and the affine
+residual are all blind to by construction. On top of it a flat ~0.82 amplitude ratio across
+every octave, which is `band_power`'s own gain signature.
+
+A 0.0010 on that is not a regression from a correct state. It is a 0.79%-of-one-sd nudge
+(mean |Δ| 0.000193, max 0.00103, on a channel whose sd is 0.0243) inside an error 331 times
+larger.
+
+### The picture, and a first reading of it that the measurement corrected
+
+`7207e7b`'s rule -- look, but put a measurement behind what you see -- earned its keep here.
+
+Three panels at native resolution, no `refcompare` resample: the export box-averaged 2048 ->
+1024, and our 1024 renders before and after, each normalised to its own range. The export is
+mottled leather grain everywhere, thin diagonal seams, dark buttons. Ours, both before and
+after, is smooth vignetted domes and buttons with **no grain at all**. My first reading was
+"the high frequencies are missing".
+
+**That reading is wrong and the bands say so**: our variance above 32 cycles is 12.3% of our
+total against the export's 12.0% of its own, and the ratio ours/ref runs 0.75 / 0.59 / 0.60 /
+0.39 across 32-64, 64-128, 128-256, 256-512 -- short, like everything else, not absent. The
+grain looked missing only because the per-image normalisation is set by the buttons, which
+are extreme in our render and not in the export.
+
+Filtering both to >= 32 cycles and displaying them at ONE common scale settles it, and the
+answer is neither of the first two: the energy is there (sd 0.0087 against 0.0107) and it is
+**a different picture**. The export's is stochastic mottle plus seam lines; ours is
+concentric ringing around each button plus a faint square lattice. Band-limited correlation
+still reads +0.74 and +0.68 there, because the button RIMS are common to both and dominate
+it. So the high bands hold roughly the right energy, in roughly the right places, with the
+grain replaced by ringing -- a third description, and the only one all three instruments
+agree with.
+
+The difference image, after minus before, is the tuft relief itself: bright seams, dark
+buttons, round dimples at the vertices, grain visible inside the buttons. It is the correct
+structure, at a range of -0.0007 to +0.0018.
+
+**And its polarity is wrong, which is stated rather than buried.** `corr(after - before,
+export)` is -0.39 at native, and against the export's residual after fitting our before
+render it is -0.096 at a best scale of **-4.0x**. Read plainly: our `roughness` chain applies
+the recovered relief with the opposite sign and a quarter of the amplitude the export needs.
+That is a defect of the chain and not of the recovery -- it cannot be created by feeding a
+record its correct input, only revealed -- but it does mean the 0.0010 is a small movement in
+a genuinely wrong direction and not a wash. It is recorded that way.
+
+### What this does and does not change
+
+  * The `roughness` bullet `ce5897e` opened -- "either a reading that makes the residual go
+    away or an explicit decision" -- is answered in neither of those two ways. The residual
+    does not go away. What goes away is the premise that it measures a regression: there was
+    no correct state, the statistic cannot resolve the record in question to better than
+    0.0007, and the loss is 1.4% of one octave that is 27% short.
+  * `ce5897e`'s "monotone and reproducible" is CORRECTED. At the render's own grid the loss
+    is flat at 0.00055 and the monotone rise to 0.0010 is the 64px resample.
+  * `ce5897e`'s cone walk -- 237 of 334 -- is CONFIRMED, and so is its conclusion that the
+    coupling is real. What it did not measure is that the coupling's whole dynamic range is
+    0.0007.
+  * **The bar as literally stated is broken at more than one place, at more than one grid.**
+    `AO` falls 0.9087 -> 0.9072 at `--dim` 512, which is LARGER than `roughness`'s 0.0010,
+    while improving at 128, 256 and 1024. A rule reading "no reference channel may get worse"
+    with no grid and no tolerance is already not the rule being applied.
+  * Nothing about `Chesterfield normal 2` is settled here and nothing is proposed about it.
+    Its floor still breaks at 256. **No floor was moved in either direction.**
+
+### The recommendation, which is a recommendation and not a decision
+
+**Apply the two corrections together, and do not treat the `roughness` 0.0010 as a veto.**
+The reasons, in the order they should be weighed:
+
+  1. The placement argument is independent of every number above -- 29 of 29 duplicate
+     recoveries are `imageindex` duplicating `opacity`, and 1,409 of 1,409 / 2,652 of 2,652
+     on the arity containment. Nothing in this section touches or needs it.
+  2. `roughness` has no correct state to regress from. Seven of its cone records were an
+     exactly constant sheet; after the change none is, and none becomes one.
+  3. The statistic cannot see the record. White to black is 0.0007 on it, against 1.30 on
+     `basecolor` ch2 in the same six renders.
+  4. The loss is a sixth of the score's own grid sensitivity and 3.9% of the floor's margin
+     (0.91 against +0.9348).
+  5. It buys `basecolor` ch2 from -0.33 to +0.88, `height`'s band spread from 4.25x to 1.25x,
+     and 7 of 9 moved rows better with `metallic` unmoved to every digit by containment.
+
+What that recommendation does NOT cover, and what the owner still has to decide, is
+`Chesterfield normal 2` at the floor's own 256. That is a guard that has to be moved or
+re-labelled, not a fourth-decimal judgement, and it belongs to whoever owns
+`RENDER2_FLOOR_DIM`. **This pass did not apply the change and did not move a floor.**
+
+### What is open
+
+  * **`roughness`'s real defect is untouched and is three defects.** A DC offset of -0.0638
+    that is 99.9% of its MAE; a flat ~0.82 amplitude ratio; and, at >= 32 cycles, ringing
+    where the export has grain. The first of the three is the largest single unexplained
+    number on any Chesterfield channel and no instrument in `refcompare` scores it, because
+    `corr`, `band_power` and `resid` all remove the mean.
+  * **The relief arrives with the wrong sign.** `corr(Δ, export) = -0.39`, best scale -4.0x.
+    Something between record 56 and record 880 inverts and attenuates it. That is a lead
+    with a number on it and it is not chased here.
+  * The 382 three-edge unstated `imageindex` entries, unchanged from `ce5897e`.
+
+### Guards and harness
+
+    archive/tools/provenance.py     142 paired / 42 excluded / 100 permitted, the predicate
+                                    CALLED and never retyped, equal to what the documents state
+    archive/tools/walk_health.py    903,611 / 903,616 agree, 0 longer, 0 shorter, 5 silent
+    archive/tools/walk_partition.py 8 FX violations of 48,688 attributions (0.02%)
+    archive/tools/bit_census.py --check   edges    1,302,817 / 1,302,817
+                                          state-2    198,486 /   198,486
+                                          w1-presence vs decompose: AGREE on every record
+    ./t                             19 passed (35.3s)
+    test_fx.py + test_bitmap.py     23 passed (2:47)
+    render2 trio                    27 passed (13.3s)
+    test_filters.py + test_tables.py  25 passed (12:34)
+
+`git status --porcelain` names FORMAT-NOTES.md and nothing else; `git diff --stat` over
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json` is
+empty, as it is over every other path. **This pass changed no code.** Both corrections are
+monkeypatches under `/tmp/rq/`.
+
+### Provenance
+
+No `.sbs` source was opened and no source-side measurement was taken.
+`archive/tools/provenance.py` was RUN as a guard and reports 142 / 42 / 100, the predicate
+called and never retyped. Every measurement is compiled `.sbsasm` on one side and, on the
+other, PNG maps the material's own author published beside the `.sbsar`. No Adobe binary and
+no Adobe `.sbs`, in any form.
+
+### The instruments, so they can be rebuilt
+
+  * `patch.py` -- the guard and the arity rule, installed over every module object of
+    `fxrender.py` and `render2/fx.py`, with an undo and a fire counter. The arity arm hangs
+    off `render2/fx._image_for` and reads the entry's own `_tag` through
+    `fxrender.fx_entry_layout`, so "the tag declares `imageindex`" is the file's statement
+    and not a guess; `len(images) == 1` is "the record offers exactly one image".
+  * `metrics.py` -- `refcompare`'s own columns from a cached render, by swapping
+    `refcompare._renderer`. Reimplements no score. Checked against `refcompare.py`'s own
+    docstring (`normal` ch0 at 128) and against all 40 of `ce5897e`'s before/after cells.
+  * `force43.py` / `sweep43.py` -- record 43 replaced by a stated constant, by wrapping
+    `FILTERS['fxmaps']` per module object and gating on `v.index`. The `= 1.0` arm is the
+    frozen control and reproduces the baseline on all 881 records.
+  * `cone.py` -- the six output cones from `decompose`'s `inputs` slots resolved through the
+    record words, which is what `render2/model.py` does. `Record.edge_slots` is a LIST and
+    calling it raises; a first version did, and would have reported cones of 2 to 4 records
+    if the `TypeError` had been swallowed. It was not swallowed, and the cone sizes it
+    produces -- 868 / 121 / 334 / 40 / 121 / 609 -- are `ce5897e`'s to the record.
+  * `allpacks.py` -- all six reference packs, before and after, at `--dim` 256: 18 of 27
+    scored rows identical to four decimals, 9 move, all `ChesterfieldSofa`, 7 better and 2
+    worse. `ce5897e`'s table exactly.
