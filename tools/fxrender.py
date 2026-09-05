@@ -210,7 +210,18 @@ _SCAN_TRACE = None
 # that misled me is worth keeping: salting `rand` per record moves every near-zero
 # Chesterfield channel slightly the right way, which I read as support for the collapse
 # when it is equally consistent with jittering an over-covered field.
-ADDNODE = frozenset({0x18B, 0x1AB, 0x20B, 0x1CB})
+# 0x20B IS NOT A MEMBER OF THIS FAMILY, and the arithmetic that put it here was wrong.
+# `0x18B | 0x80` is `0x18B` -- bit 7 is ALREADY SET -- so 0x20B is not "0x18B plus a bit".
+# Its low byte is 0x0B with bit 7 CLEAR, which is the leaf/branch family: `node_shape`
+# returns None for it and `leaf_successor` places its successor at word 1. Its baked
+# `numberadded` sits in the header's HIGH HALF -- settled on permitted source evidence,
+# `triDraw` declaring `constantValueInt32 v="2"` against a compiled header of 0x20B.
+#
+# Membership was unreachable in any case: `chain` comes from `fx_node_params`, which skips a
+# node carrying no program, so a 0x20B never reaches the `hdr in ADDNODE` test. Measured:
+# 0 occurrences across 437 corpus files plus the 8 pack assemblies, and removing it moves
+# 0 records.
+ADDNODE = frozenset({0x18B, 0x1AB, 0x1CB})
 GATE = 0x89
 
 #: `$pos` for an FX-Map node, per `assume.QUESTIONS['fx.pos']`.

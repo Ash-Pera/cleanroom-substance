@@ -54291,3 +54291,65 @@ Every one is `0x18B` with a single extra bit: `0x1CB = |0x40`, `0x1AB = |0x20`,
 Not fixed here. The lead is bit 0x40: if it selects a different emission, reading it would give
 427 and 428 the difference their subtract needs, un-flatten the displacement map, and let eight
 warps do the work the export's filaments show.
+
+## The ADDNODE bits ARE the mask-walk — and the walk was already reading them. Two corrections to `d8322f0`
+
+Investigated by a subagent on the owner's hypothesis that "it's probably not a single bit
+field, it'll be the walk again". Right about the mechanism, and the mechanism was already
+implemented. Findings validated here independently before being recorded.
+
+**IT IS THE MASK-WALK, AND `sbsasm.node_shape` ALREADY SAYS SO.** Its docstring: "The FX node
+is the same `[tag/mask][fields]` walk as the record header and the FX entry, one scale between
+them. The low byte's HIGH nibble (bits 4-7) is a presence mask; each set bit inserts one field
+ahead of the successor" -- successor at `base + popcount(header & 0xF0)`. So the headers are
+field-presence bits, exactly as predicted.
+
+**AND `0x1CB` IS NOT WALKED SHORT.** Its successor sits at word 3 and the record's own walk
+reaches it **1,910 of 1,910**. Reading it as a `0x18B` -- successor at word 2 -- reaches a
+structure in **0 of 1,910**. The concern that 1,910 nodes across 198 files were being walked at
+the wrong offset is unfounded.
+
+**CORRECTION 1 TO `d8322f0`: the bit arithmetic was wrong.** That entry said "Each is `0x18B`
+plus one bit: `0x1CB = |0x40`, `0x1AB = |0x20`, `0x20B = |0x80`". The first two hold. The third
+does not: **`0x18B` ALREADY CARRIES BIT 7**, so `0x18B | 0x80` is `0x18B`. `0x20B` has bit 7
+CLEAR (`0x20B & 0xF0` popcount 0), which is the leaf/branch family -- `node_shape` returns None
+for it and `leaf_successor` puts its successor at word 1. It was never a member of this family.
+
+`0x20B` is removed from `ADDNODE` here. Measured effect exactly zero: 0 occurrences across the
+445-file population, and the branch is unreachable regardless because `chain` comes from
+`fx_node_params`, which skips a node carrying no program. 95 passed. Its baked `numberadded`
+lives in the header's HIGH HALF, settled on permitted source evidence -- `triDraw` declares
+`constantValueInt32 v="2"` against a compiled header of `0x20B`.
+
+**BIT 6 IS A NULLABLE SECOND-CHILD POINTER, NOT A BAKED `randomseed`.** `node_shape` and
+`FX_NODE_PARAMS` both currently read bit 6's word as "randomseed baked -- a value word". Over
+1,910 `0x1CB` nodes that word is **null on 1,849 and a valid forward pointer on 61**, with
+nothing in between. All 61 targets land on FX vocabulary, 61 of 61 are unreached by the record's
+own walk, and **60 of 61 abut the node's own program end** -- against 0 of 400 for the null
+population and 0 of 61 for a control slot. That is the same evidence shape `node_shape` already
+uses to call its own bit-6 reading "KNOWN WRONG FOR 0x01DB" on 23 nodes. It is now wrong for
+1,910 more. Not followed here: it needs a tree walk `chain` does not have, the
+draw-both/select-one question is open, and the only guard-scored record it reaches renders
+`sd = 0` under both readings.
+
+**CORRECTION 2 TO `d8322f0`: "flat by exact algebra" was overstated, and the Auras motivation is
+refuted.** Record 427's bit-6 word is `0x00000000` -- there was nothing there to read. And 427
+and 428 are NOT "identical but for the third node": their `frameoffset` programs differ by half
+a turn and the renderer applies it faithfully, emitting exactly antipodal offsets
+(+0.1102, -0.0591 against -0.1102, +0.0591). Record 431 is `0.500000` at **sd 6.027e-04**, range
+0.49703 .. 0.50297 -- not a constant, and that residual IS the half turn being rendered.
+
+The real cause is coverage. Both records emit **144 patterns at `patternsize` 2.82**, every one
+covering ~2.8x a unit canvas. Under that saturation an antipodal offset is invisible, the two
+outputs differ by only 2.971e-03, the subtract cannot survive it, and the eight warps displace by
+nothing. **`patternsize` / over-coverage is the next question, and it is the same 2.82 the
+withdrawn `921c775` Chesterfield claim already blamed.**
+
+**Hypotheses refuted in this pass, recorded because they were checked rather than assumed:**
+`0x1CB` walked short (no, 1,910/1,910); `0x20B = 0x18B|0x80` (no, bit 7 already set); Auras
+427/428 identical but for the header (no, half-turn `frameoffset`); 431 constant by construction
+(no, sd 6.0e-04); bit 6 a baked `randomseed` of 0 (no, bimodal null-or-pointer); reading bit 6
+would move a guard channel (no, one non-null instance, `sd = 0` both ways); and "no permitted
+source's compiled sibling contains a `0x1CB`" (false as stated -- `Camouflage.sbsar.sbsasm` has
+2; the conclusion survives because that source declares zero FX-Map nodes, but the stated reason
+does not, and a census keyed on the compiled side would trip over it).
