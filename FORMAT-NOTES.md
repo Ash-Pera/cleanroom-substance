@@ -54235,3 +54235,59 @@ This is the opposite of the `fx.pos` case (`807b518`), and the contrast is why t
 check was added: there, a correlation gain concealed 86 records losing emission. Here the
 degeneracy count moves the RIGHT way by 3,470 and the improvement is on channels that are
 actually rendering. The check that caught the first case clears this one.
+
+## Auras' rings are smooth because EIGHT directional warps are no-ops, and the displacement map is flat by exact algebra
+
+Chasing the defect the `levels.zerospan` investigation exposed: Auras `basecolor` ch0/ch1 render
+as thick smooth rings where the export is thin and wispy with fine filaments.
+
+**The filaments are a warp chain, and the chain does nothing.** Records 432 through 439 are
+EIGHT `directionalwarp` records in series, and all eight report identical statistics -- mean
+0.2341, sd 0.345407, lit fraction 0.2305, to every digit. Their shared displacement input is
+record 431: **mean 0.5000, sd 0.000603**. A warp map of constant 0.5 is zero displacement, so
+each of the eight is an identity and the ring is never distorted.
+
+**The map is flat by exact arithmetic, not by accident.** Measured rather than inferred:
+
+    427, 428   two fxmaps            mean 0.9158  sd 0.067611  range 0.6895 .. 1.0000
+    429        levels(427)           FITTED as output = 0.500000 * input + 0.500000,
+                                     residual sd 5.48e-17 -- an exact affine
+    430        blend mode 2 subtract, dst=429 src=428, OPACITY 0.5  (instrumented, not guessed)
+
+`dst*(1-op) + (dst - src)*op` at `op = 0.5` is `dst - 0.5*src`, and with `dst = 0.5x + 0.5` and
+`src = x` that is `0.5` identically. The cancellation is algebraic. The same call signature
+appears six times in the file, so it is an idiom rather than one record.
+
+**A HYPOTHESIS RAISED AND REFUTED IN THE SAME TICK.** The obvious reading was that 427 and 428
+render identically -- two noise sources that should differ, the `rand`-salting question
+`fxrender.py` already flags. They do NOT: `max|427 - 428| = 2.971e-03`. They differ, just far
+too little for the subtract to survive. Recorded because it was checked rather than assumed, and
+because "two fxmaps look the same" would have been an attractive and wrong place to stop.
+
+**WHAT THE CHECK FOUND INSTEAD: `ADDNODE` CONFLATES FOUR HEADERS.** 427 and 428 have chains
+`[395, 137, 459]` and `[395, 137, 395]` -- identical but for the third node, `0x1CB` against
+`0x18B`. Both sit in `fxrender.ADDNODE = frozenset({0x18B, 0x1AB, 0x20B, 0x1CB})`, which the
+walk treats as ONE kind. Censused over 437 corpus files plus the 8 pack assemblies:
+
+    0x18B   33,726 occurrences   305 files   carries `numberadded`
+    0x1CB    1,910 occurrences   198 files   carries `numberadded`
+    0x1AB       30 occurrences    10 files   carries `numberadded`, `randomseed`
+    0x20B        0 occurrences     0 files
+
+Every one is `0x18B` with a single extra bit: `0x1CB = |0x40`, `0x1AB = |0x20`,
+`0x20B = |0x80`. Two things follow that the frozenset hides:
+
+  * **BIT 0x20 GOES WITH `randomseed`.** All 30 occurrences of `0x1AB` carry a `randomseed`
+    parameter and neither other observed variant ever does. That is a placed bit with a
+    consistent meaning, currently unread.
+  * **BIT 0x40 IS WIDESPREAD AND UNEXPLAINED.** 1,910 occurrences across 198 files, carrying
+    exactly the same parameter set as the base header. Whatever it selects is not in the
+    parameter table, and Auras is a case where the file's own arithmetic expects the two to
+    DIFFER -- a subtract that cancels to zero is not a thing an author builds eight warps on top
+    of. So the bit plausibly changes what the node emits.
+  * **`0x20B` HAS ZERO OCCURRENCES.** It is a member of the set with no supporting evidence in
+    anything that may be read -- the shape this notebook has retracted before.
+
+Not fixed here. The lead is bit 0x40: if it selects a different emission, reading it would give
+427 and 428 the difference their subtract needs, un-flatten the displacement map, and let eight
+warps do the work the export's filaments show.
