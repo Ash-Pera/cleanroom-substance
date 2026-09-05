@@ -54468,3 +54468,57 @@ supposed to be narrower than a 2.82 bell makes them -- and `Lines` record 0 says
 being misconverted. `blend` 430's `unknown_bits = 272` sets bit 8, which has an open arbitration
 (`blend.w1bit8`: ignore / alphablend / background_used) that does not move Auras today. Noted as
 the one unexplained field left standing in this chain.
+
+## Why the two differenced FX-Maps agree: the SAME random draw, point-reflected — and reseeding alone is measurably NOT enough
+
+The narrow question from `e4f6491`, answered.
+
+**The two records draw the SAME random sequence and one is negated.** Auras 427's 144 emitted
+`frameoffset`s against 428's: `max|A + B| = 1.093e-08`, float noise. Exactly antipodal, every
+pattern. `max|A - B| = 2.5e-01`, so they are not identical either -- they are one draw and its
+point reflection. A max-of-bells dome is near-symmetric about its own centroid, so reflecting it
+changes almost nothing, and that is the whole of `max|427 - 428| = 2.971e-03`.
+
+The mechanism is `sbsruntime.rand`: a pure hash of `(limit, $number)` with no seed state, so two
+records running the same program at the same `$number` get identical draws. The half-turn
+`frameoffset` difference then negates one of them.
+
+**AND RESEEDING ALONE IS NOT ENOUGH, WHICH IS NOW A NUMBER RATHER THAN AN IMPRESSION.** Replacing
+428's offsets with an independent uniform draw over the same +-0.125 box, everything else
+untouched:
+
+    offsets exactly negated (as rendered)   max|427-428| 2.971e-03   rec431 sd 6.027e-04  range 0.0059
+    428 given an INDEPENDENT draw           max|427-428| 2.447e-02   rec431 sd 6.758e-03  range 0.0334
+
+An independent draw buys 8x on the record difference and 11x on the displacement map -- and the
+map is STILL only 0.033 across. `f_directionalwarp` computes `disp = (2*height - 1) * intensity
+/ _reference_px`, so a usable warp wants a map spanning order 0.1 to 1.0. Reseeding closes about
+one order of magnitude of the two that are missing.
+
+This settles what `921c775` left open. That entry salted `rand` with the record index, saw every
+near-zero Chesterfield channel move the right way but only by about +0.03, and refused it as "an
+arbitrary hash change bought for a marginal score". The refusal was right and the reason is now
+mechanical rather than aesthetic: **a per-record seed cannot fix this because the domes are too
+broad for the scatter to matter.** Any reseeding produces another broad dome.
+
+**The remaining factor, stated as a ratio against the one verified case.** `Stadsspel__Lines`
+record 0 is the render this repository holds as verified, and it reproduces exactly here -- 10
+patterns, `patternsize` (1.414214, 0.035551), lit fraction **0.5078**, matching the recorded
+figure to four decimals.
+
+    record                      patternsize   placement spread   size / spread
+    Lines 0   (VERIFIED)          1.4142           0.900             1.57
+    Auras 427                     2.8200           0.250            11.3
+
+In the verified case a stamp is about the size of the region its placements are scattered over.
+In Auras it is eleven times that region. Two further facts about `Lines` record 0 worth keeping:
+its `frameoffset` spans 0.45 .. 1.35, so offsets are NOT confined to the canvas and are not
+clamped; and it carries NO `patterntype`, so it draws through the typeless profile (`rect`,
+arbitrated in `0ae78bd`) rather than a bell.
+
+**Not concluded: that `patternsize` is misread.** It is not -- `e4f6491` verified canvas units
+against this same case, and the 1-instruction `patternsize` program returns a genuine constant
+2.82 for all 144 patterns. A ratio of 11.3 may simply be what this material's author wrote. What
+is established is that the two effects COMPOUND: identical draws remove the scatter's
+contribution entirely, and broad stamps would suppress most of it even if the draws differed.
+Fixing either alone leaves the warp chain dead.
