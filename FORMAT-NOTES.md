@@ -54685,3 +54685,52 @@ been per-specimen -- Chesterfield's six channels, Bricks' nine, Auras' three. Th
 close a rendered channel is; they say nothing about how much of the corpus renders at all, and
 the two can move in opposite directions. A change that improved every scored channel while
 dropping the completion figure would look like progress under the guard and be a regression.
+
+## `warp stores no intensity` is 880 records genuinely omitting the field — and the error message named the WRONG BITS for the whole investigation
+
+Chasing the largest single cause in `c9d0376`'s completion figure. The answer is small and the
+route to it was mostly my own errors, recorded because each was a plausible wrong turn.
+
+**THE MESSAGE WAS WRONG.** `f_warp` raised `neither class bit 13 (baked) nor 14 (program) is
+set`. The actual mapping is `CLS_NAMES[7] = {29: ('intensity','baked'), 30: ('intensity',
+'program')}`, which is what `View._add` uses. `archive/tools/render.py` carried the same stale
+text directly beneath a call to `cls_pair_slot(rec, 29)` -- its own code naming bit 29 two lines
+above a message saying 13. Both corrected here. This cost most of an investigation: two censuses
+were run against bits 13/14 and produced a striking but meaningless complementary pattern
+(bits 11/15 set on 98.7% and 100% of a population defined by the wrong criterion).
+
+**THE CENSUS, ON THE RIGHT BITS.** Over 437 corpus files plus the 8 pack assemblies, 28,100
+`warp` records:
+
+    bit 29 baked only     26,108   92.91%
+    bit 30 program only    1,112    3.96%
+    NEITHER                  880    3.13%   across 161 files
+
+**880 is EXACTLY the `warp stores no intensity` failure count** in the completion sweep, reached
+by an independent measurement -- the sweep counted render failures, this counts class-word bits.
+So the records genuinely omit the field and are not being misread. 96.87% of warps state an
+intensity and render.
+
+**Two hypotheses raised and refuted along the way:**
+
+  1. *"`PARAM_SPEC` has no entry for warp, so its intensity can never be read."* True about
+     `PARAM_SPEC` -- it covers only `blend`, `fxmaps`, `dirmotionblur`, `directionalwarp` and
+     `levels` -- and irrelevant: `v.params` is built from `CLS_NAMES` via `decompose`'s
+     `cls_params`, not from `PARAM_SPEC`. Refuted by measurement: 2,507 of 3,578 warp records
+     in a sample RENDER.
+  2. *"The intensity is misaligned into another field."* No. The 880 set neither bit, and the
+     92.91% that set bit 29 read it correctly.
+
+**So this is not a bug and closing it is a policy question.** `f_warp` refuses, exactly as
+`f_normal` does, on the stated reasoning that an invented default renders something WRONG rather
+than nothing. `normal` has an arbitration for it -- `normal.default_intensity`, arms `refuse`
+and six values, defaulting to `refuse`. `warp` has no such arm at all. Adding
+`warp.default_intensity` would let 880 records and their cascades render, at the cost of
+rendering them with a number the file does not state. That is the owner's call and is not taken
+here.
+
+**Scale, stated honestly:** 880 records is 3.13% of warps and would not move the completion
+figure much on its own -- it is the largest single NAMED cause, but the sweep's four
+`edge -> record N has no output yet` entries (357/311/300/294) are cascades from single upstream
+records and together dwarf it. "Biggest lever" was my phrasing in `c9d0376` and it overstated
+this; the biggest lever is whatever those four upstream records are.

@@ -2024,7 +2024,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # constant this format does not contain.
                 _pair = cls_pair_slot(rec, 29)
                 if _pair is None:
-                    raise Unsupported("warp intensity: neither class bit 13 (baked) nor 14 "
+                    # Bits 29/30, not 13/14 -- see `render2/filters.py:f_warp`.
+                    raise Unsupported("warp intensity: neither class bit 29 (baked) nor 30 "
                                       "(program) is set, so the source omitted it and the "
                                       "engine's default applies")
                 sl = _pair[1]

@@ -834,7 +834,23 @@ def f_warp(ctx, v):
         raise Unsupported('warp has fewer than 2 edges')
     p = v.params.get('intensity')
     if p is None:
-        raise Unsupported('warp stores no intensity: neither class bit 13 (baked) nor 14 '
+        # THE BITS ARE 29 AND 30, NOT 13 AND 14. `CLS_NAMES[7]` maps bit 29 to
+        # `('intensity', 'baked')` and bit 30 to `('intensity', 'program')`, and that is the
+        # mapping `View._add` actually uses. The old message named 13/14, which sent a reader
+        # censusing the wrong bits for most of an investigation before the legend was checked.
+        #
+        # THE OMISSION IS GENUINE AND IT IS SMALL. Over 437 corpus files plus the 8 pack
+        # assemblies there are 28,100 `warp` records: 26,108 (92.91%) state a baked intensity,
+        # 1,112 (3.96%) a program, and 880 (3.13%) state NEITHER, spread across 161 files.
+        # That 880 is exactly the `warp stores no intensity` failure count in the corpus-wide
+        # completion sweep, from an independent measurement -- so these records really do omit
+        # the field and are not being misread.
+        #
+        # Refusing follows `f_normal`, which raises rather than substituting a default on the
+        # same reasoning: an invented intensity renders something WRONG instead of nothing.
+        # Whether `warp` should gain a `warp.default_intensity` arm the way `normal` has
+        # `normal.default_intensity` is a policy question and the owner's to decide.
+        raise Unsupported('warp stores no intensity: neither class bit 29 (baked) nor 30 '
                           '(program) is set, so the source omitted it')
     W, H = v.size(ctx.cap)
     N = W * H
