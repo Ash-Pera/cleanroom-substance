@@ -54570,3 +54570,59 @@ retracted before.
 
 **The Auras thread rests here.** It is characterised rather than solved, and the characterisation
 is the deliverable.
+
+## `dirwarp.edges` = `declared`, decided AGAINST a unanimous correlation improvement — and `corr` was the misleading quantity this time
+
+The scores favour `swapped` cleanly. The structure says `declared`, 30 to 0, and the structure
+is right.
+
+**What the scores say.** Bricks at dim 256, `swapped` against the default:
+
+    STRONG channels, all five better        ambientocclusion +0.8837 -> +0.9057  (+0.0220)
+                                            normal 0         +0.7718 -> +0.8014  (+0.0296)
+                                            normal 1         +0.7883 -> +0.8134  (+0.0251)
+                                            normal 2         +0.6961 -> +0.6974  (+0.0013)
+                                            roughness        +0.8024 -> +0.8318  (+0.0294)
+
+and the amplitude looks better too -- against the export's sd, `ambientocclusion` 0.1015 ->
+0.1285 (ref 0.2132), `height` 0.0783 -> 0.1037 (ref 0.1823), `normal` 0.0255 -> 0.0326 (ref
+0.0771). Every scored signal points one way.
+
+**What the degeneracy check says.** Constant records **3,940 -> 5,252, an increase of 1,312**,
+with zero-emitting fxmaps unchanged at 0. The check added after `fx.pos` fires again.
+
+**What the FILE says, and this is the arbiter.** A displacement map is centred on 0.5 by
+construction -- that is what `f_directionalwarp` reads, `disp = (2*height - 1) * intensity /
+reference_px`, so 0.5 means zero displacement. Restricting to records where the question is
+UNAMBIGUOUS -- one edge with `|mean - 0.5| < 0.01`, the other with `> 0.10`:
+
+    edge1 tightly 0.5-centred, edge0 not   ->  DECLARED     30
+    edge0 tightly 0.5-centred, edge1 not   ->  SWAPPED       0
+
+**30 of 30**, across FIVE files by three authors: `Auras_FX`, `Bricks`, `RoofTiles`,
+`RoofTiles_1.1`, `StylizedCobblestoneStreet`. The mechanism for the score is then plain:
+swapping makes the warp emit the DISPLACEMENT MAP warped by the image, and a 0.5-centred map is
+nearly flat, so 1,312 records collapse to constants -- and a flatter render scores better on
+channels our renderer is over-texturing.
+
+Stated as a caveat on the test itself: it uses our own renders to decide which edge is the map,
+so it is circular wherever our render of that edge is wrong. It is only safe on records where
+one edge is a levels-centred 0.5 map BY CONSTRUCTION, which is why the population is narrowed to
+30 from 705 rather than reported as a majority over all of them. The unrestricted count is
+298/211/196 and decides nothing.
+
+**AND THIS CORRECTS THE TALLY IN `a1f61b5` AGAIN, IN THE OTHER DIRECTION.** That entry recorded
+`corr` as right in 5 of 5 resolved arbitrations and never yet wrong, with `band` and `dc` as the
+unreliable pair. `807b518` already qualified it -- a `corr` gain on channels that do not
+correlate is not evidence. This case is stronger than that qualification: the five channels
+`corr` improved here are all STRONG, correlating 0.70 to 0.88, and it still chose the wrong arm.
+
+The honest statement is now:
+
+  * No single quantity arbitrates. `corr` is the best of the three and it is not sufficient.
+  * A change that increases DEGENERACY -- sources emitting nothing, records going constant --
+    is a collapse whatever the scores do, and the scores will often reward it, because a
+    renderer that over-textures is flattered by anything that flattens.
+  * Where the FILE can answer a question directly, it outranks every score. A 0.5-centred map
+    on edge 1 in 30 of 30 unambiguous records across five files is not a measurement of our
+    renderer at all, which is exactly what makes it usable.
