@@ -53625,3 +53625,19 @@ is then not reported at all: `check` returned five failures on the `imageindex` 
 therefore computes adversity directly from `Entry.bound` and `refguard._adverse` rather than
 parsing `check`'s list, and takes no threshold of its own. A reader using `check` interactively
 should know its failure list is not exhaustive while a health bar is also failing.
+
+### Addendum: `refguard.check`'s truncated reporting is fixed
+
+The entry above records that `check` reports a health-bar failure and then does not report a
+ratchet failure on the SAME quantity, and advises a reader that its failure list is not
+exhaustive. That advice is now stale: the `continue` after the health-bar branch is removed and
+the two checks both run. On the `imageindex` correction the same call now returns 6 failures
+where it returned 5, the new one being `basecolor` dc's regression -- reported through the
+hard-margin branch, since DC's adversity of 0.0456 exceeds `DC_HARD` = 0.02, which is the more
+severe of the two classifications rather than the "adverse at every grid" one.
+
+The two claims are different -- "this channel is broken today" and "this change made it worse"
+-- and suppressing the second whenever the first holds means a channel already outside a bar
+can never be reported as REGRESSING, which is exactly the population most likely to. Nothing in
+the tree calls `check` (`test_filters.py` computes adversity from `Entry.bound` and `_adverse`
+directly), so this changes no test result; it changes what a reader gets interactively.

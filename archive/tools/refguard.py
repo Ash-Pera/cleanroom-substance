@@ -506,7 +506,16 @@ def check(table, readings, causes, label=''):
                     'cause. Either the channel regressed, or it is broken today and the '
                     'entry owes a Cause naming the record or mechanism responsible'
                     % (pre, _fmt_key(key), q, sick))
-                continue
+                # AND FALL THROUGH TO THE RATCHET. This used to `continue`, so a quantity
+                # that was BOTH outside its health bar and adverse against its recorded
+                # value reported only the first and the regression went unlisted. That is
+                # not hypothetical: on the `imageindex` correction, `Chesterfield basecolor`
+                # dc was adverse at ALL THREE grids (-0.0493 -> -0.0999) and `check`
+                # returned five failures with that one absent, because the same quantity was
+                # already failing its health bar. A guard that truncates its own findings is
+                # the disease this module was written to cure. The two are different claims
+                # -- "this channel is broken today" and "this change made it worse" -- and a
+                # reader needs both, so both are appended.
             over = {g: _adverse(q, vals[g], e.bound(q, g)) for g in want}
             worst = max(over, key=lambda g: over[g])
             if over[worst] > _hard(q):
