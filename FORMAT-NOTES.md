@@ -54132,3 +54132,58 @@ correlation is blind to amplitude (`ad493f2`'s AO at 0.026 correlating +0.9110) 
 argument that they are RATCHET quantities and not ARBITRATION quantities: good at "this channel
 got worse than it was", bad at "this arm is the right reading". Choosing between candidate
 readings is `corr`'s job, with the render as the final word.
+
+## `fx.pos` = `origin` confirmed: `corner` KILLS EMISSION ON 86 RECORDS, and the "13 entries better" reading was mine and wrong
+
+Investigated before adopting, at the owner's direction, and the investigation reversed the
+recommendation. **No code changed and the default stands.**
+
+**First, a correction to how this was framed.** `fx.pos` is NOT a half-pixel sampling
+convention -- `fxrender._FX_POS` is `origin -> (0, 0)` against `corner -> (-0.5, -0.5)`, and
+FX-Map canvas space runs -0.5..+0.5, so the question is whether a node's `$pos` is the canvas
+CENTRE or its CORNER. A half-CANVAS displacement, which is why its delta (0.375) is large rather
+than marginal.
+
+**What `corner` actually does.** Over Bricks' 12,585 records, 8,006 MOVE. The sources go
+degenerate:
+
+    rec 5   fxmaps, no edges   mean 0.4958 -> 0.0000      emits 32 patterns -> 0
+    rec 11  fxmaps, no edges   mean 0.5000 -> 0.0000      emits 32 patterns -> 0
+    rec 20  fxmaps, no edges   mean 0.2188 -> 0.0000      emits  8 patterns -> 0
+
+and the `levels` records below them inverting an exact 0 into an exact 1.0. Counted over the
+whole file: **fxmaps records emitting ZERO patterns go from 0 under `origin` to 86 under
+`corner`.** Displacing `$pos` to the canvas corner moves the emission out of every one of them.
+That is a collapse, not a reading.
+
+**AND THE SCORE SAID `corner` WAS BETTER ON 13 OF 25 ENTRIES.** It did, and the reading was
+wrong, and the error was mine rather than the instrument's. The improvements are concentrated on
+channels that are not rendering in the first place: `Bricks basecolor` 0/1/2 gain +0.0712 /
++0.0662 / +0.0618 -- from +0.0430, +0.2698 and +0.2721. A channel at correlation 0.04 is
+uncorrelated with its reference, and moving it to 0.11 is not agreement appearing, it is noise
+moving. Flattening content to a constant can raise a near-zero correlation by accident. Counting
+those equally with the real channels produced a tally of "13 better" that meant nothing.
+
+**THE RATCHET WAS RIGHT AND THIS PARTLY WALKS BACK THE PREVIOUS ENTRY.** `a1f61b5` recorded that
+`band` and `dc` are ratchet quantities and not arbitration quantities, on a tally of `corr` right
+in 5 of 5 and `band`/`dc` wrong in 3 and 2. Here the two ratchet failures -- `Bricks height` dc
+and `Bricks roughness` band -- were the ONLY signals that objected, and they were objecting to 86
+records losing their emission. They were correct and the aggregate `corr` count was not.
+
+The refined statement, which supersedes the tally rather than adding to it:
+
+  * `corr` is still the quantity that arbitrates BETWEEN READINGS THAT BOTH RENDER. That has not
+    changed and the profile and combine results stand.
+  * A `corr` IMPROVEMENT ON A CHANNEL THAT DOES NOT CORRELATE IS NOT EVIDENCE. Below roughly
+    |0.4| the channel is not rendering and its correlation is not measuring agreement. Those
+    entries are in the guard table as COLLAPSE GUARDS -- `REFERENCE_FLOOR_RENDER2` says so in
+    its own header -- and reading them as quality scores was a category error.
+  * COUNTING ENTRIES IS NOT WEIGHING THEM. "13 better / 2 worse" gave equal weight to
+    +0.0712 on a channel at 0.04 and -0.0252 on a channel at 0.83. The second is the real one.
+  * `band` and `dc` catch DEGENERACY -- a source going flat, an amplitude collapsing -- which is
+    exactly what they were added for (`ad493f2`, `ba3a1f6`). That is not the same as arbitrating,
+    and both statements can hold at once.
+
+**The guard did its job.** Adopting `corner` would have taken the suite red on two entries, and
+those two entries were pointing at 86 dead records. Had the ratchet not been wired in `0e2591f`
+this would have been adopted on a correlation count.
