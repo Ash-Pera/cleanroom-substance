@@ -53685,3 +53685,53 @@ commits for this file to catch itself doing it.
 `render2.fx.splat` while `render2/filters.py` binds the module with a bare `import fx` -- two
 `sys.modules` entries for one file, the trap already recorded in this notebook for `ops.blend`.
 An instrument that silently observes nothing looks identical to a clean result.
+
+## `basecolor`'s level error is record 321, the same noise source `roughness` hangs on, and it emits ZERO patterns because its second gate closes
+
+The retraction above left `basecolor`'s -0.0999 unattributed. It has a record, and it is one
+this notebook already names for a different channel.
+
+**Record 321 is an `fxmaps` with no edges that renders an exactly constant 0**, and it sits in
+`basecolor`'s cone as well as `roughness`'s: `322 = blend(320, 321)` takes the mean from 0.4986
+to 0.1745, and 322 feeds `869` (a `gradient`) which feeds the output `871`.
+
+**Why it is constant.** `splat` receives ZERO patterns. The structure is not the problem --
+`fxrender.entries` returns 11 entries and `chain` returns 4 nodes, one `addnode` and three
+type-137 gates. Tracing every program the walk runs:
+
+    prog @624404  numberadded   -> 1.0     one emission
+    prog @624580  gate 1 switch -> 1.0     open, walk deeper
+    prog @626140  gate 2 switch -> 0.0     CLOSED -- sets `closed` and returns
+
+`emissions` treats a gate in chain mode as a predicate: true walks on, false sets `closed[0]`
+and returns without emitting. Gate 2 answers 0 on the first call, so the single emission
+`numberadded` asked for is never made and the record renders black. A NOISE SOURCE THAT EMITS
+NOTHING is not a plausible reading of the file, so the defect is in how this walk drives a
+markov2 gate rather than in the record.
+
+Note what the code already says about the same node in the other mode: under a stated count the
+gate's predicate "is not consulted either: it bounds a spiral, and under a stated count there is
+no spiral". That reasoning is applied in `placement` mode and not in `chain` mode, and record 321
+is the case where the difference decides whether anything is drawn at all.
+
+**The linkage, measured with a control.** Forcing record 321 to a constant, at dim 256, with an
+empty `precomputed` first verified to reproduce the plain render exactly:
+
+    forced to 0.35        corr                 dc
+      basecolor    +0.9166 -> +0.9323    -0.0968 -> -0.0696
+      roughness    +0.9348 -> +0.9400    -0.0639 -> -0.0569
+      height, metallic, normal, AO       UNMOVED TO EVERY DIGIT
+
+    forced to 0.50
+      basecolor    +0.9166 -> +0.9322    -0.0968 -> -0.0580
+      roughness    +0.9348 -> +0.9412    -0.0639 -> -0.0539
+
+Two channels improve on both correlation and level; the other four do not move at all. That is
+the isolation an attribution needs -- the record is reached by exactly the two channels whose
+level is wrong.
+
+**WHAT IS NOT CLAIMED.** The forced value is arbitrary and the magnitude means nothing: 0.35 and
+0.50 recover 28% and 40% of `basecolor`'s deficit and neither closes it, so record 321 is PART
+of the level error and not all of it. The proxy says which record and in which direction, not by
+how much. The fix is to make 321 emit its patterns, which requires deciding how a markov2 gate
+drives emission in chain mode, and that is not settled here.
