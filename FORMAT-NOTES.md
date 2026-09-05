@@ -52854,3 +52854,504 @@ no Adobe `.sbs`, in any form.
   * `allpacks.py` -- all six reference packs, before and after, at `--dim` 256: 18 of 27
     scored rows identical to four decimals, 9 move, all `ChesterfieldSofa`, 7 better and 2
     worse. `ce5897e`'s table exactly.
+
+## `roughness` is one level shift, and it is two multiply-blends whose noise source renders an exactly constant 0
+
+`f825c9f` closed with three open items on this channel: "a DC offset of -0.0638 that is
+99.9% of its MAE; a flat ~0.82 amplitude ratio; and, at >= 32 cycles, ringing where the
+export has grain", and called the first "the largest single unexplained number on any
+Chesterfield channel". The first two are answered here and they are **one defect, at two
+sites, and predominantly at one of them**. The third is untouched.
+
+The answer, in one line: `ChesterfieldSofa`'s roughness chain passes through two `blend`
+records in `multiply` mode whose SOURCE operand renders as an exactly constant **0** where
+the file states a noise generator. A multiply blend is `dst*(1 - op + op*src)`, so a source
+of 0 turns each into a pure gain of `1 - op` -- **0.35** at one and **0.53** at the other,
+0.186 together. That gain is the whole level shift AND the whole amplitude deficit, and it
+is not separable into a gain and an offset: the chain has no free parameter that moves one
+without the other.
+
+### The chain, and the source that names every node of it
+
+`archive/tools/provenance.py`'s predicate was CALLED (never retyped) on
+`ChesterfieldSofa.sbs`: it is one of the 142 paired sources and `matches()` returns None
+against both `EXCLUDED_AUTHORS` and `FLAGGED_AUTHORS`, so it is permitted. `fc8c5e0`
+already arbitrated this file's `levels` out-ranges at 12/12 and 11/12; this section reads
+it again for the same reason and gets the same kind of answer.
+
+The rendered chain, `render2` / `$outputsize` implied / `--dim` 512, record means:
+
+    880 blend switch(877, 879)         0.1713   <- the roughness output
+    879 blend copy(877, 878, mask 862) 0.1713
+    877 levels(855)  in [0.147556, 0.405075]  out [0.166353, 0.312970]   0.1768
+    878 levels(855)  in [0.147556, 0.397556]  out [0.055451, 0.168233]   0.0637
+    855 blend MULTIPLY(854, 334) opacitymult 0.47                        0.1659
+    854 levels(322)                            out [0.277256, 0.482143]  0.3130
+    334 blend subtract(332, 333)                                         0.0000  CONSTANT
+    322 blend MULTIPLY(320, 321) opacitymult 0.65                        0.1745
+    321 fxmaps, no input edges                                           0.0000  CONSTANT
+    320 blend switch(309, 319)                                           0.4986
+
+and the `.sbs`, walked from the `roughness_input` connector of the `pbr_base_material`
+instance, states the same graph node for node:
+
+    switch_grayscale(input_1 = blend, input_2 = levels)
+      blend .destination = levels  out 0.16635339 / 0.312969923  in 0.147556394 / 0.405075192
+            .source      = levels  out 0.0554511286 / 0.168233082
+            .opacity     = safe_transform_grayscale(histogram_scan(tile_sampler(...)))
+        both levels .input1 = blend  blendingmode 3  opacitymult 0.469999999
+              .destination = levels  out 0.277255625 / 0.482142866
+                .input1    = blend  blendingmode 3  opacitymult 0.649999976
+                    .destination = curvature_smooth(normal intensity 10)
+                    .source      = bnw_spots_1        <-- our record 321
+              .source      = clouds_1                 <-- our record 334
+
+**Every `levels` out-range and both `opacitymult` values reproduce the source**, and the
+check was done as float32 equality rather than by eye: of the eleven values -- 0.16635339,
+0.312969923, 0.147556394, 0.405075192, 0.0554511286, 0.168233082, 0.397556394, 0.277255625,
+0.482142866, 0.469999999, 0.649999976 -- **ten are bit-identical to our decode when the
+source's decimal is rounded to float32**, and the eleventh (record 854's `levelouthigh`)
+differs by 3.0e-8, which is one float32 ULP at 0.48 and is a compile rounding, not a decode
+error. STATED RATHER THAN CALLED "to the bit", which is what an earlier draft of this
+paragraph said before the comparison was actually run. So the level is NOT lost in a misread
+out-range, a `uniform` fill or a wrong opacity, which were the three candidates named. All
+three are read correctly. What is missing is the two NOISE GENERATORS the multiplies
+consume: `bnw_spots_1` renders black and `clouds_1` renders black, and both sit on the
+`source` arm of a multiply.
+
+### The forcing measurement, its frozen control, and how much each record is worth
+
+The forcing mechanism is `render2.engine.render`'s own `precomputed` argument -- no module
+is patched and no filter is wrapped, so the module-identity trap `ce5897e` recorded cannot
+apply. THE FROZEN CONTROL: `precomputed` set to each record's OWN baseline array reproduces
+the baseline on **881 of 881** records, `np.array_equal` on every one.
+
+`--dim` 256, `$outputsize` implied, scored through `refcompare`'s own functions:
+
+    forced                     DC       MAE      corr     slope  band total  bands
+    none (BASELINE)       -0.0639    0.0639  +0.93577   1.1834     0.6868   0.55 0.77 0.73 0.82 0.61 0.79
+    334 = 0.25            -0.0431    0.0431  +0.93760   1.1289     0.7530   0.64 0.83 0.79 0.88 0.65 0.84
+    334 = 0.50            -0.0224    0.0225  +0.93900   1.0786     0.8226   0.73 0.89 0.84 0.94 0.70 0.90
+    334 = 0.75            -0.0016    0.0072  +0.94006   1.0321     0.8956   0.83 0.95 0.90 1.01 0.75 0.97
+    334 = 0.7724          +0.0002    0.0070  +0.94014   1.0282     0.9023   0.84 0.96 0.91 1.02 0.75 0.97
+    321 = 0.50            -0.0539    0.0539  +0.94184   1.1024     0.7775   0.79 0.80 0.75 0.84 0.61 0.80
+    321 = 1.00            -0.0439    0.0439  +0.94149   1.0195     0.8835   1.08 0.83 0.76 0.85 0.62 0.81
+    321 = 0.5  334 = 0.5  -0.0080    0.0099  +0.94207   0.9743     0.9756   1.14 0.94 0.86 0.97 0.70 0.92
+    321 = 0.35 334 = 0.62 -0.0016    0.0071  +0.94231   0.9798     0.9724   1.08 0.96 0.89 0.99 0.72 0.95
+
+**One record carries it.** Record 334 alone, at a mid-grey, moves the DC from -0.0639 to
+-0.0016 (97.5% of it), the MAE from 0.0639 to 0.0072 (89%), the fit slope from 1.1834 to
+1.0321 and the band total from 0.6868 to 0.8956 -- and the correlation RISES, +0.93577 to
++0.94006. Adding 321 finishes the amplitude: band total 0.9724 at slope 0.9798.
+
+The 0.7724 row is not a fit. It is the value the chain's own arithmetic predicts from the
+export's mean before the render is run -- `855 = 854*(0.53 + 0.47c)` inverted through
+`877`'s stated in/out ranges -- and it lands at DC +0.0002. The arithmetic and the render
+agree to the fourth decimal, which is what says the chain model above is the right one.
+
+### Gain and offset are ONE defect, and the proof is that they cannot be separated
+
+Across the whole forcing plane, DC and slope move together and **no setting reaches DC = 0
+at a slope near 1.18**:
+
+    DC       -0.0639  -0.0539  -0.0431  -0.0224  -0.0080  -0.0016  +0.0191  +0.0557
+    slope     1.1834   1.1024   1.1289   1.0786   0.9743   1.0321   0.9891   0.7827
+
+Every arrangement that removes the offset also removes the gain error, because both are the
+same two scalars `1 - op`. The amplitude ratio per octave says the same thing from the other
+side -- it is FLAT before and stays flat after, which is `band_power`'s own gain signature:
+
+    baseline              0.742 0.875 0.857 0.906 0.781 0.886   overall 0.829
+    334 = 0.75            0.909 0.977 0.950 1.005 0.863 0.983   overall 0.946
+    321 = 0.35 334 = 0.62 1.041 0.980 0.941 0.997 0.851 0.973   overall 0.986
+
+So the answer to "is the gain upstream and the offset downstream" is **neither**: they are
+one multiplication, applied twice, both upstream of the output's own `levels`.
+
+And the percentile table, which is where `f825c9f` left the channel ("our brightest pixel,
+0.1812, is the export's 5th percentile"):
+
+    percentile              0     1     5    25    50    75    95    99   100
+    export              0.077 0.105 0.182 0.231 0.241 0.250 0.263 0.271 0.297
+    ours BASELINE       0.060 0.060 0.137 0.175 0.177 0.179 0.181 0.181 0.181
+    ours 334 = 0.75     0.107 0.108 0.192 0.236 0.240 0.243 0.246 0.247 0.247
+    ours 321/334 forced 0.103 0.105 0.188 0.235 0.240 0.245 0.250 0.250 0.251
+
+p5 through p75 line up to within 0.01. The remaining disagreement is in the tails, which is
+where the >= 32-cycle ringing lives and is the one open item of the three that this section
+does not touch.
+
+### The inverted quarter-amplitude relief IS the same defect, and the control says so
+
+`f825c9f` recorded, against its own interest, that the `imageindex` recovery arrives with
+the wrong sign: `corr(after - before, export) = -0.39` at native, and against the export's
+residual after fitting our before render, `-0.096 at a best scale of -4.0x`. It called that
+"a defect of the chain" and left it as a lead.
+
+THE CHANGE IS STILL NOT APPLIED. The relief is reproduced here WITHOUT it, by the same
+forcing mechanism: record 43 set to record 42's own array, which is what the arity rule
+recovers. That moves **742 of 881** records -- `ce5897e`'s and `f825c9f`'s number exactly,
+which is the control that says the reproduction is the same event.
+
+Tracing the delta down the chain shows where it goes, and it goes through both multiplies:
+
+    rec   before sd   after sd    delta sd
+     43    0.000000   0.175689    0.175689
+     68    0.160210   0.161751    0.016877
+    320    0.117921   0.108698    0.014056
+    322    0.041272   0.038044    0.004919      <- multiply by 0.35 (321 = 0)
+    855    0.004482   0.004131    0.000534      <- multiply by 0.53 (334 = 0)
+    880    0.024624   0.024512    0.000295
+
+Now the measurement, `--dim` 512, native grid:
+
+    forcing on 321/334      base sd   delta sd  corr(d,exp)  corr(d,resid)  best scale
+    none (as the tree is)   0.02462   0.000295     -0.3626       -0.0643       -3.459
+    321=0.5  334=0.5        0.02918   0.000822     -0.3626       +0.0569       +1.048
+    321=0.0  334=0.75       0.02807   0.000492     -0.3626       -0.0214       -0.675
+    321=0.5  334=0.75       0.03073   0.000948     -0.3626       +0.0745       +1.192
+    321=1.0  334=1.0        0.03514   0.001451     -0.3636       +0.1448       +1.417
+
+**`corr(delta, export)` is INVARIANT at -0.3626 under every forcing, and `corr(delta,
+residual)` flips sign.** That pair is the whole argument, and the invariance is the control:
+for a constant source a multiply blend is a pure gain, so the delta's SHAPE cannot change
+and any correlation taken against a fixed picture must not move. It does not, to four
+decimals. What moves is the RESIDUAL -- `export - (slope*ours + c)` -- and it moves because
+the slope in it falls from 1.14 to 0.97.
+
+So the "wrong sign at a quarter amplitude" is not a property of the relief. It is a property
+of the yardstick: a residual taken against a render that is 15% too flat carries a component
+anticorrelated with anything shaped like our own picture, and the recovered relief is shaped
+like our own picture. Restore the level and the same delta reads **+1.05 to +1.19 times the
+residual it should be**, which is what "the recovered relief is the right thing at roughly
+the right amplitude" looks like. The -4.0x and the 1.18 slope and the 0.82 amplitude ratio
+that sat next to each other in `f825c9f` are one number seen three ways.
+
+This is stated with its limit: with 321 and 334 held CONSTANT the multiplies are pure gains,
+so the delta's shape is unchanged by construction. Under the real noise the shape would move
+too, and how far is not measured here.
+
+### Why the two records are constant, which is a different lane and is NOT fixed here
+
+Both are `fxmaps` records with no input edges -- pure generators, so neither is the phantom
+`imageindex` (record 43's shape, which has one edge). They fail differently:
+
+  * **321 (`bnw_spots_1`)** emits **0 patterns**. Its chain is ADD -> GATE -> GATE -> GATE,
+    `numberadded` evaluates to **1**, and the gate closes on that one emission. Zero patterns
+    with a gate closed is a modelled answer rather than a refusal, so the record renders a
+    black sheet and nothing reports it.
+  * **331 and 333 (inside `clouds_1`)** each emit one emission's worth of entries, of which
+    the first two (331) and first four (333) carry NEITHER `patternsize` NOR `patterntype`.
+    `fx.sizeless` defaults to `fill`, so each of those covers the whole canvas and the record
+    comes out an exactly white sheet. `334 = subtract(332, 333) = 1 - 1 = 0`.
+
+`numberadded = 1` on a spot scatterer and on a cloud noise is the visible symptom, and it
+belongs to the FX-Map walk, not here.
+
+**A RECORDED CLAIM IS CORRECTED IN PASSING, AND A SECOND ONE IS CONFIRMED FOR A NEW REASON.**
+`49414` says of the reciprocal reading of a baked `patternsize` above 1: "the candidates
+exist, they are simply not in the cone of any scored output", and asks for "a reference pack
+whose scored output has such a record in its cone". **That pack is Chesterfield and it has
+been all along.** Censused through `model.View`'s own `inputs` -- on the assembly itself, not
+through `corpus.paths()`, which excludes the eight reference-pack assemblies and is how two
+earlier censuses in this investigation missed the record they were about:
+
+    rec    0  patternsize (0.15, 0.15)   in cones: basecolor normal roughness metallic height AO
+    rec    5             (0.39, 0.39)    in cones: all six
+    rec   10             (0.07, 0.07)    in cones: all six
+    rec   69             (0.45, 1.0)     in cones: basecolor normal roughness height AO
+    rec  331             (5.0, 1.0)      in cones: basecolor roughness
+    rec  333             (5.0, 1.0)      in cones: basecolor roughness
+
+Records 331 and 333 are the two that hold the `(5.0, 1.0)` family, they ARE in two scored
+cones, and they are the pair of RECORDS that paints `roughness` white -- though not, as the
+next paragraph measures, by way of those particular entries. The `not in the cone` half of
+that entry is withdrawn; what the entry asked for ("a reference pack whose scored output has
+such a record in its cone") exists and has been scored for as long as Chesterfield has.
+
+The `byte-identical` half is CONFIRMED, and now for a reason worth having. The narrowed arm
+was implemented over every module object of `render2/fx.py` (one found, and the install
+asserts it found at least one), with a baseline arm as the frozen control -- identical to the
+unpatched render on 881 of 881 -- and it FIRES: `seen` 8 baked patternsizes, `narrowed` 4, on
+records 331 and 333, exactly the candidates. The render is still byte-identical on 881 of
+881, and so is the `skip` arm that deletes those patterns outright. **The reason is that the
+`(5.0, 1.0)` entries are not what makes those records white** -- the SIZELESS entries beside
+them are, and they cover the canvas whatever the sized ones do. So "byte-identical" was true
+and was being read as "the candidate does not reach a scored output", which is a different
+statement and is false.
+
+### The instrument: `refcompare.py` gains a `DC=` column, because nothing could see this
+
+This is the only code change in the tree and it is print-only. Every other column
+`refcompare` prints is mean-removed BY CONSTRUCTION -- `corr` is a correlation, `band_power`
+subtracts the mean before the transform and returns variance ratios, `structure` returns two
+standard deviations, and `resid` is what survives an affine fit that is free to absorb any
+constant. The two mean columns were printed side by side and the reader had to subtract them
+by eye.
+
+BEFORE AND AFTER, EVERY CHANNEL OF EVERY PACK: `render2` / `$outputsize` implied /
+`--dim 512 --bands`, 112 scored rows over the FIVE packs `reference_packs()` returns (Auras
+780 maps, Bricks 52, RoofTiles 10, Chesterfield 6, Sandy_Stone_Path 12 --
+`OwlishMedia__Metal_rust_pattern` ships none and is not a scored pack, so "all six reference
+packs" in earlier sections means the six DIRECTORIES and not six scored tables), run twice --
+once at `HEAD`'s
+`refcompare.py` and once at this one. `diff` over the two outputs with the `DC=` field
+stripped is **five header lines and nothing else**. Every mean, sd, MAE, `corr`, fit slope,
+intercept, `resid`, `uniq`, `low`, `edge`, every band and every total is byte-identical.
+There is no render change here to have a before and an after.
+
+What the new column says, over those 112 rows (78 non-degenerate), as `|DC| / MAE`:
+
+    roughness        n= 9   median 100%
+    height           n= 9   median 100%
+    ambientocclusion n= 8   median  90%
+    basecolor        n=30   median  63%
+    normal           n=21   median   1%
+
+**27 of the 78 live rows are 90% or more pure level error**, and the split is by channel, not
+by pack: `normal` is 1% and `roughness` is 100%. Chesterfield's own six:
+
+    basecolor 0  MAE 0.0537  DC -0.0473   88%   corr +0.8666
+    normal    0  MAE 0.0312  DC -0.0001    0%   corr +0.9510
+    roughness 0  MAE 0.0638  DC -0.0638  100%   corr +0.9348
+    metallic  0  MAE 0.0004  DC +0.0003   75%   corr +1.0000   (DEGENERATE, uniq 7)
+    height    0  MAE 0.0737  DC +0.0730   99%   corr +0.9561
+    AO        0  MAE 0.0324  DC -0.0013    4%   corr +0.9087
+
+At the 64px scoring grid `roughness` reads MAE 0.063866 and DC -0.063866 -- **100.00%**, and
+the MAE after the constant is removed is 0.0079. Counting rows at >= 99.5%,
+`Kutejnikov__Bricks_and_tiles` carries **six roughness rows and five height rows**, up to MAE
+0.5242 on one, and `Kutejnikov__Auras` one `basecolor` row -- 14 of the 78 live rows are a
+level shift and nothing else. This is not a Chesterfield curiosity; it is the largest
+quantity in the table and it had no column.
+
+`metallic` is the control and it is unmoved: MAE 0.0004, DC +0.0003, bands flat at 1.014 /
+1.013 / 1.010 / 1.003 / 0.992 / 1.041, total 1.0142. Its 40-record cone contains neither 321
+nor 334.
+
+### What is NOT proposed, and the floors
+
+**No fix is proposed and nothing is applied.** A constant substituted for a noise generator
+is a diagnostic, not a decode: the file states an FX-Map at both sites and a fitted mid-grey
+is exactly the kind of number this project refuses. What is delivered is the location, the
+mechanism, the arithmetic and the size.
+
+**No floor was moved, raised or lowered, and this pass reaches none** -- the only code change
+is a print statement and no render moved. The FIX this section locates does reach one, and
+that is measured and reported in its own section below rather than left to be discovered.
+`roughness`'s floor (0.91) is a CORRELATION floor and the whole of this finding is invisible
+to it -- the channel scores +0.9348 against it while carrying an error that is 100% level,
+which is the same shape of blindness `f825c9f` warned about and is now measured. `Chesterfield
+normal 2` (0.72) and `basecolor 1` (0.92) are untouched, `basecolor 2`'s margin warning is
+untouched, and the decision pending on `RENDER2_FLOOR_DIM` is untouched.
+
+**The blocked `imageindex` correction was NOT applied.** Every number in the relief section
+is taken with it out of the tree, by forcing record 43 to the array the recovery would give
+it. Its own veto question is unaffected by anything here except in one direction: the
+`-4.0x` that `f825c9f` recorded as "a small movement in a genuinely wrong direction" is shown
+above to be an artefact of the level, and reads `+1.05` once the level is restored.
+
+### Both halves of the two-sided test
+
+    half 1  Stadsspel__Lines record 0, through render2's own fx path
+              10 patterns, patternsize (1.41421354, 0.03555065), patternrotation 0.12500012,
+              lit fraction (>0.5) 0.5078, mean 0.50781, 10 bands on the centre scanline
+            -- unchanged, and unchangeable: the only edit in the tree is a print statement in
+               `archive/tools/refcompare.py`, which nothing on this path imports.
+
+    half 2  render2 / implied / --dim 512 --bands, all five scoring packs, all 112 rows, run
+            at HEAD's refcompare.py and at this tree. 112 of 112 IDENTICAL, `diff` clean once
+            the new `DC=` field is stripped -- the only differing lines are five column
+            headers. No reference channel gets better and none gets worse, because no render
+            moved.
+
+            The bar's known-unsatisfiable shape does not arise for THIS change, because this
+            change moves nothing. It arises twice for the fix this section locates and both
+            are reported rather than accepted or refused: `basecolor` ch2 breaks its -0.46
+            floor while `roughness` and `basecolor` ch1 improve (above), and separately, for
+            the still-blocked `imageindex` change, `AO` falls 0.9087 -> 0.9072 at `--dim` 512
+            while improving at 128, 256 and 1024, which `f825c9f` recorded and which no rule
+            reading "no reference channel may get worse" can accommodate.
+
+### Guards and harness
+
+    archive/tools/provenance.py           142 paired / 42 excluded / 100 permitted, the
+                                          predicate CALLED and never retyped, equal to what
+                                          the documents state; `matches()` called directly on
+                                          ChesterfieldSofa.sbs returns None for both lists
+    archive/tools/walk_health.py          903,611 / 903,616 agree, 0 longer, 0 shorter,
+                                          5 silent
+    archive/tools/walk_partition.py       8 FX violations of 48,688 attributions (0.02%)
+    archive/tools/bit_census.py --check   edges     1,302,817 / 1,302,817
+                                          state-2     198,486 /   198,486
+                                          w1-presence vs decompose: AGREE on every record
+    ./t                                   19 passed (33.1s)
+    render2 trio                          27 passed (12.5s)
+    test_fx.py + test_bitmap.py           23 passed (2:45)
+    test_filters.py + test_tables.py      25 passed (12:36)
+
+`tools/decompose.py`, `tools/sbsasm.py`, `tools/record_layout.py` and `tools/legend.json` are
+byte-identical -- `git diff --stat` over those four paths is empty. `git status --porcelain`
+names `archive/tools/refcompare.py` and FORMAT-NOTES.md and nothing else.
+
+### The controls, stated because five sweeps in this investigation measured nothing
+
+  * **The instrument reproduces the published table.** `normal` ch0 at `--dim` 128 reads
+    `corr +0.9561  MAE 0.0352  y=0.741x`, which is `refcompare.py`'s own docstring to four
+    decimals, and `roughness` at 512 reads `corr +0.9348  MAE 0.0638  y=1.1801x  bands 0.540
+    0.760 0.730 0.814 0.605 0.730  total 0.6775`, which is `f825c9f`'s `--dim` 512 before-row
+    to every digit.
+  * **The cone walk reproduces.** 868 / 121 / 334 / 40 / 121 / 609, `ce5897e`'s sizes to the
+    record. The first version of the walker called `asm.records()` and raised `TypeError`
+    rather than returning an empty answer; it was not swallowed.
+  * **The forcing mechanism has a frozen control.** `precomputed` set to each record's own
+    baseline array reproduces the baseline on 881 of 881 records.
+  * **The relief reproduction has a frozen control.** Forcing record 43 to record 42's array
+    moves 742 of 881 records, which is `ce5897e`'s count for the whole correction.
+  * **The `patternsize` patch asserts it found a module to patch** and counts its own fires:
+    8 seen, 4 narrowed, on records 331 and 333, with a baseline arm identical on 881 of 881.
+    Without that assertion it would have patched nothing -- `render2/fx` is imported lazily
+    and does not exist as a module object until an `fxmaps` record has been rendered.
+  * **The census that corrects `49414` was taken on the assembly itself**, not through
+    `corpus.paths()`, which excludes the eight reference-pack assemblies.
+  * **No scale is reimplemented.** `corr`, `MAE`, the fit, `resid`, `uniq`, `bands`, `total`,
+    `low` and `edge` all come from `refcompare`'s own functions through
+    `refcompare._compare_one` with `grid=None`; the only arithmetic written here is
+    `ours.mean() - ref.mean()`.
+
+### Provenance
+
+`ChesterfieldSofa.sbs` was opened and read, and it is permitted: the predicate in
+`archive/tools/provenance.py` was CALLED on it and the string was never retyped. It is one of
+the 142 paired sources and matches neither the excluded nor the flagged author list. The
+`pbr_base_material`, `clouds_1`, `bnw_spots_1`, `curvature_smooth`, `switch_grayscale` and
+`safe_transform_grayscale` nodes are read only as INSTANCE REFERENCES inside that permitted
+file -- their own definitions are Adobe library `.sbs` and were not opened, sought or
+inferred from. Every other measurement is compiled `.sbsasm` on one side and, on the other,
+PNG maps the material's own author published beside the `.sbsar`. No Adobe binary and no
+Adobe `.sbs`, in any form.
+
+### What is open
+
+  * **The FX-Map walk, at both sites.** `numberadded = 1` on a spot scatterer (321) whose
+    gate then closes, and sizeless entries filling the canvas white (331, 333). Both are
+    the walk's, not this chain's, and both are now attached to a scored channel with a
+    number on them: fixing either is worth 0.06 of MAE on `roughness`.
+  * **The registered `fx` arms do not reach it, and every setting of all three was run.** `fx.sizeless`
+    (`fill` / `skip` / `half` / `quarter`), `fx.rootentry` (`draw` / `skip`) and `fx.markers`
+    (`draw` / `skip`) are all in `assume.QUESTIONS` -- an earlier draft of this section said
+    `fx.sizeless` and `fx.rootentry` were not, and that was read off a truncated view of the
+    dict and is WRONG; the registry was then queried directly and all seven `fx.*` keys the
+    `splat` path consults are registered. Scored at `--dim` 256:
+
+        {'fx.markers': 'skip'}     331 -> 0.0000   333 -> 0.7008   334 -> 0.0000   880 unmoved
+        {'fx.sizeless': 'skip'}    331 -> 0.0000   333 -> 0.7008   334 -> 0.0000   880 unmoved
+        {'fx.sizeless': 'half'}    331 -> 0.2911   333 -> 0.7852   334 -> 0.0003   880 unmoved
+        {'fx.sizeless': 'quarter'} 331 -> 0.0821   333 -> 0.7183   334 -> 0.0001   880 unmoved
+        {'fx.rootentry': 'skip'}   331 -> 1.0000   333 -> 1.0000   334 -> 0.0000   880 unmoved
+
+    Every arm leaves `334` at 0 and `880` unmoved, because `334 = subtract(332, 333)` with
+    `332 = transformation(331)`: whatever un-whitens 333 without un-whitening 331 by the same
+    amount drives the subtract negative and the clamp puts it back at 0. So the level is not
+    reachable by any registered arm, which is a useful negative -- the fix is in the walk, at
+    `numberadded = 1`, and not in a rendering convention.
+  * **The >= 32-cycle ringing.** Untouched, and the one of `f825c9f`'s three that this
+    section does not answer.
+  * **The `(5.0, 1.0)` family** is still unread. What is settled is only that it is not what
+    whitens 331 and 333.
+
+### Addendum: the relief measurement at the render's own 1024, and one number that does not quite reproduce
+
+Same measurement as above at `--dim` 1024, the grid `f825c9f` quoted:
+
+    forcing on 321/334      base sd  delta sd  corr(d,exp)  corr(d,resid)  best scale   slope       DC
+    none (as the tree is)   0.02476  0.000299     -0.3352       -0.0631       -3.544   1.1373   -0.0638
+    334 = 0.75              0.02820  0.000497     -0.3352       -0.0194       -0.637   1.0031   -0.0016
+    321 = 0.5  334 = 0.5    0.02928  0.000831     -0.3352       +0.0620       +1.193   0.9700   -0.0080
+    321 = 0.35 334 = 0.62   0.02926  0.000763     -0.3352       +0.0454       +0.953   0.9702   -0.0016
+
+The invariance and the sign flip both reproduce at 1024, so the conclusion does not depend on
+the grid. The magnitudes do not match `f825c9f` exactly: it recorded `corr(delta, export) =
+-0.39` and `-0.096 at a best scale of -4.0x`, against `-0.335`, `-0.063` and `-3.544` here.
+STATED RATHER THAN ROUNDED TOWARDS AGREEMENT. The likely cause is that `f825c9f` measured the
+`both`-corrections render while this forces record 43 to record 42's array; that section says
+the two agree bit for bit on all 881 records, so if they do the residue is somewhere in the
+scoring configuration and is not resolved here. What the two runs agree on to the digit is
+the SIGN and the order of magnitude of the deficit, which is all the argument above uses.
+
+### Addendum: the DC offset is grid-invariant, and a second renderer reproduces it
+
+`roughness`, `render2` / `$outputsize` implied, four render grids. Every `corr`, band and
+total below is `f825c9f`'s own before-row to every digit, which is this instrument's control:
+
+    dim          DC      MAE       corr    slope  bandtot  bands
+    128     -0.0640   0.0640   +0.93794   1.1914   0.7203  0.589 0.801 0.765 0.846 0.619 0.988
+    256     -0.0639   0.0639   +0.93577   1.1834   0.6868  0.551 0.765 0.734 0.820 0.610 0.785
+    512     -0.0638   0.0638   +0.93476   1.1801   0.6775  0.540 0.760 0.730 0.814 0.605 0.730
+    1024    -0.0639   0.0639   +0.93446   1.1782   0.6753  0.537 0.761 0.730 0.814 0.602 0.716
+
+**The DC offset does not move with the grid**: it is -0.0638 to -0.0640 at every rung, while
+the correlation this channel is floored on moves 0.0035 over the same four and the band total
+moves 0.045. `f825c9f` measured the disputed `imageindex` quantity at "a sixth of the score's
+own sensitivity to a configuration choice this project makes freely" -- the level offset is
+**eighteen times** that sensitivity and does not respond to it at all.
+
+AND IT IS NOT A `render2` ARTEFACT. The guard's bare invocation -- `archive/tools/render.py`,
+the declared `$outputsize`, `max_dim` 128, the configuration `test_filters.REFERENCE_FLOOR`
+is scored from and a renderer written independently of `render2`'s filters -- reads
+
+    roughness 0   ours 0.1737 / 0.0158   ref 0.2352 / 0.0262   MAE 0.0615  DC -0.0615
+                  corr +0.9299  y=1.542x-0.033  resid 0.0076  uniq 218
+
+MAE 0.0615 against DC -0.0615: 100% level, through the other renderer, at the other output
+size. Two independent filter implementations reproducing the same offset is what says this
+is the graph and not a filter.
+
+### A FLOOR IS REACHED BY ANY FIX HERE, AND IT IS REPORTED, NOT MOVED
+
+Nothing in this pass touches a floor, because nothing in this pass changes a render. But the
+fix this section locates would, and the number is owed to whoever owns it rather than left
+for them to discover.
+
+Containment first, and it holds exactly. Records 321 and 334 sit in the cones of
+**`basecolor` and `roughness` only** -- not `normal`, not `height`, not `AO`, and not
+`metallic`, whose 40-record cone contains neither. Forcing them moves those four channels by
+**zero to every digit printed**, which is the containment control:
+
+    --dim 256                BASELINE          334 = 0.75        321=0.35 334=0.62
+    normal    0  corr      +0.95238           +0.95238            +0.95238
+    normal    1  corr      +0.94957           +0.94957            +0.94957
+    normal    2  corr      +0.74991           +0.74991            +0.74991
+    metallic  0  corr      +0.99986           +0.99986            +0.99986   MAE 0.0010 all three
+    height    0  corr      +0.95618           +0.95618            +0.95618
+    AO        0  corr      +0.86843           +0.86843            +0.86843
+
+The two channels that DO move:
+
+    roughness 0  corr  +0.93577 -> +0.94006 -> +0.94231   floor 0.91   HOLDS, improves
+                 DC    -0.0639  -> -0.0016  -> -0.0016
+                 MAE    0.0639  ->  0.0072  ->  0.0071
+    basecolor 0  corr  +0.89091 -> +0.85669 -> +0.91891   floor 0.82   HOLDS both arms
+                 MAE    0.0530  ->  0.0467  ->  0.0371
+    basecolor 1  corr  +0.92737 -> +0.96201 -> +0.95947   floor 0.92   HOLDS, improves
+    basecolor 2  corr  -0.45631 -> -0.56628 -> -0.71282   floor -0.46  ** BREAKS BOTH ARMS **
+
+**`Chesterfield basecolor 2` breaks.** Its floor is -0.46 against a live -0.4563, a margin of
+0.0037 -- the margin warning the brief names -- and the test is `corr < floor`, so -0.5663
+and -0.7128 both fail it. This is reported and **NO FLOOR WAS MOVED, RAISED OR LOWERED**. A
+floor decision is the owner's, and one is already pending on `RENDER2_FLOOR_DIM`.
+
+What the number appears to be, stated as an observation and not as an argument for moving
+anything: `basecolor` ch2 is ALREADY anti-correlated and this makes it more so without
+changing its amplitude -- band total 0.0653 -> 0.0660, essentially flat, while the fit slope
+goes -1.70 -> -2.91. So the level restoration is not adding energy to that channel; it is
+adding correlation to a channel whose polarity is already wrong, which is the same shape
+`f825c9f` found on the relief and resolved the same way. `basecolor` ch2's own sign is a
+separate open question with its own retraction already recorded in `test_filters.py`
+("STILL ANTI-CORRELATED, AND MORE SO AT THE CORRECTED SIZE, WHICH IS A RETRACTION"), and
+this measurement is evidence about it rather than a cost of the roughness fix.
+
+And the bar's known-unsatisfiable shape appears here in a second place: two of the four moved
+rows improve substantially (`roughness` MAE 0.0639 -> 0.0071, `basecolor` ch1 +0.9274 ->
++0.9620) while one breaks a floor. That is the same trade `f825c9f` recorded for `AO` at
+`--dim` 512 and it is reported rather than accepted or refused.

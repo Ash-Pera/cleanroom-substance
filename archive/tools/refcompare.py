@@ -121,6 +121,24 @@ MAE 0.0010, and "the single number to move is the footprint" -- which this parag
 to end on -- is withdrawn: see the position/gain paragraph below and `fxrender.py`'s
 negative results 5 and 6.
 
+AND `roughness`'s 0.0639 IS ONE CONSTANT, WHICH NO COLUMN OF THIS TABLE COULD SEE UNTIL
+THE `DC=` COLUMN WAS ADDED. Its MAE is 0.0639 and its DC offset -- `ours.mean() -
+ref.mean()` -- is -0.0639: the two agree to four decimals (100.00% at this grid, and the
+MAE that survives removing the constant is 0.0079), so essentially the whole of that
+channel's error is a level shift and almost none of it is shape. Every other column
+here is mean-removed by construction (`corr`, `band_power`, `structure`, and `resid`,
+whose affine fit absorbs any constant), which is how a channel correlating at +0.93
+against a 0.91 CORRELATION floor stayed the worst-offset channel in the table without
+anyone reading it that way. The cause is located and it is upstream of the output's own
+`levels`, whose four stated values this package's permitted `.sbs` reproduces bit for bit
+as float32:
+two `blend` records in the cone multiply by a source that renders an exactly constant 0
+where the file states a noise generator, so the chain reaches the output scaled by
+0.35 x 0.53 = 0.186. Substituting a mid-grey for those two sources takes the DC from
+-0.0639 to -0.0016 and the fit slope from 1.183 to 1.032 TOGETHER -- the offset and the
+gain are one defect and cannot be separated. See FORMAT-NOTES.md, "`roughness` is one
+level shift, and it is two multiply-blends whose noise source renders constant".
+
 THE POSITION-SIGNATURE LEAD IS WITHDRAWN -- 2026-09-04, and the numbers it rested on are
 two renderers and one output size old. What it said: "after the blend-opacity fix `normal`
 reads std 0.1018 against the reference's 0.0968 while its MAE ROSE, 0.0783 -> 0.1039. Right
@@ -724,8 +742,9 @@ def main(argv):
               % (pack, len(refs), renderer,
                  (implied_outputsize(refs) if osz == 'implied' else osz) or 'declared',
                  dim))
-        print('   %-12s %-3s %-21s %-21s %s'
-              % ('output', 'ch', 'ours mean/std', 'reference mean/std', 'MAE'))
+        print('   %-12s %-3s %-21s %-21s %-7s %s'
+              % ('output', 'ch', 'ours mean/std', 'reference mean/std', 'MAE',
+                 'DC = ours mean - ref mean'))
         for name, chan, ours, ref in compare_pack(pack, refs, max_dim=dim,
                                                   outputsize=osz,
                                                   renderer=renderer,
@@ -802,10 +821,33 @@ def main(argv):
             # about a tenth of the reference's. Of the 15 channels this table scores
             # today, 7 clear that bar.
             uniq = int(len(np.unique(np.round(ours.ravel(), 4))))
-            print('   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f  corr=%+.4f'
+            # THE DC OFFSET, `ours.mean() - ref.mean()`, AND NOTHING ELSE IN THIS MODULE
+            # COULD SEE IT. Every other column here removes the mean by construction:
+            # `corr` is a correlation, `band_power` subtracts the mean before the
+            # transform and its bands are variance ratios, `structure` returns two
+            # standard deviations, and `resid` is what is left after an affine fit that
+            # is free to absorb any constant. The two mean columns were printed side by
+            # side and a reader had to subtract them by eye, so a channel whose whole
+            # error is a level shift read as a channel in good health.
+            #
+            # WHAT IT SAYS TODAY, and it is why the column exists. Chesterfield
+            # `roughness` scores corr +0.9358 and MAE 0.0639 at render2 / implied / 256 --
+            # and its DC offset is -0.0639. The two agree to four decimals, so 99.9% of
+            # that channel's entire error is one constant, on a channel whose correlation
+            # has read above +0.93 for the whole investigation and whose floor (0.91) is a
+            # CORRELATION floor and cannot see it. The located cause is upstream: two
+            # `blend` records in its cone multiply by a source that renders as an exactly
+            # constant 0 instead of a mid-grey noise, so the chain arrives scaled by
+            # 0.35 x 0.53. See FORMAT-NOTES.md, "roughness is one level shift, and it is
+            # two multiply-blends whose noise source renders constant".
+            #
+            # It is signed and it is ours-minus-reference, the same order as the two mean
+            # columns it is derived from, so a negative DC means our render is DARKER.
+            dc = float(ours.mean() - ref.mean())
+            print('   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f  DC=%+.4f  corr=%+.4f'
                   ' y=%.3fx%+.3f resid=%.4f uniq=%d%s%s'
                   % (name if chan == 0 else '', chan, ours.mean(), ours.std(),
-                     ref.mean(), ref.std(), np.abs(ours - ref).mean(),
+                     ref.mean(), ref.std(), np.abs(ours - ref).mean(), dc,
                      corr, fit[0], fit[1], resid, uniq,
                      '  DEGENERATE' if (uniq < 20 or ours.std() < 0.1 * ref.std())
                      else '', struct))
