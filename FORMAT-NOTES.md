@@ -54522,3 +54522,51 @@ against this same case, and the 1-instruction `patternsize` program returns a ge
 is established is that the two effects COMPOUND: identical draws remove the scatter's
 contribution entirely, and broad stamps would suppress most of it even if the draws differed.
 Fixing either alone leaves the warp chain dead.
+
+## The eight Auras warps are one warp at eight evenly-spaced angles, and the deficit is 30x — quantified, and the thread rests here
+
+Completing the characterisation. Measured on records 432-439 at dim 256:
+
+    intensity   17.1100 on all eight, constant across the canvas
+    warpangle   0.8750  0.3750  0.6250  0.1250  0.7500  0.2500  0.5000  0.0000  turns
+                -> sorted: 0.000 0.125 0.250 0.375 0.500 0.625 0.750 0.875
+
+**EIGHT EVENLY SPACED ANGLES COVERING A FULL TURN, 45 degrees apart.** That is not eight
+redundant warps; it is one warp applied in every direction in sequence, which is exactly how a
+wispy filamented edge is built. The construction's INTENT is now established from the file
+rather than inferred from the export.
+
+**And `_reference_px` is not the culprit.** It returns the record's DECLARED width, 256 for
+these records, stable at `max_dim` 128 and 256 alike -- so there is no capping artefact here of
+the kind ruled out for `$sizelog2` in `4d8480d`. The arithmetic is
+`disp = (2*height - 1) * intensity / reference_px`:
+
+    map range 0.0059  ->  disp 3.943e-04 canvas  =  0.101 PIXELS at 256
+
+A tenth of a pixel, eight times, in eight directions. Invisible, which is what the render shows.
+
+**The deficit is about 30x and reseeding covers about 6x of it.** For filaments of a few pixels
+the map needs to span roughly 0.18 rather than 0.0059. The independent-draw experiment in
+`8fb3f99` reached 0.0334, which is `0.0334 * 17.11 / 256 = 2.2e-03` canvas, **0.57 pixels** --
+better by six times and still under one pixel. So a per-record seed is worth about a sixth of
+what is missing, confirming from a second direction that it cannot be the whole answer.
+
+**What is now established about this chain, end to end:**
+
+  * The FX-Maps render a plausible smooth dome (range 0.6895 .. 1.0000) -- `e4f6491`.
+  * `patternsize` in canvas units is correct, verified against `Lines` record 0 -- `e4f6491`.
+  * The `bell` profile is bounded and correctly evaluated -- `e4f6491`.
+  * The differencing idiom `0.5 + 0.5*(A - B)` is correct and its opacity is stated -- `e4f6491`.
+  * The two inputs share one random draw, point-reflected -- `8fb3f99`.
+  * The eight warps are deliberate, at 45-degree increments, intensity 17.11 -- here.
+  * `reference_px` is the declared width and introduces no cap dependence -- here.
+
+Every step checks out and the result is still 30x too flat. **That is the useful state to leave
+this in**: the next person does not need to re-verify any of the above, and the remaining
+question is specific -- what makes two FX-Maps built from the same preset differ by enough that
+their signed difference spans ~0.18. Nothing measured so far produces that, and inventing a
+mechanism to close a 30x gap on one specimen is exactly the kind of thing this notebook has
+retracted before.
+
+**The Auras thread rests here.** It is characterised rather than solved, and the characterisation
+is the deliverable.
