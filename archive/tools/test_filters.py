@@ -1657,19 +1657,25 @@ HEALTH_CENSUS = {
 #: It is in `HEALTH_CENSUS` as an honest backlog entry and has no cause here, which is the
 #: correct state for something nobody has traced.
 GUARD_CAUSES = {
-    'chesterfield-roughness-level': Cause(
-        'chesterfield-roughness-level',
-        mechanism='99.9% of this channel error is one level shift and not a shape error. '
-                  'RESTATED: ba3a1f6 read the cause as a noise source rendering an exactly '
-                  'constant 0, and record 321 does render 0 -- but CORRECTLY, its chain '
-                  'gated behind min($sizelog2) >= 12 on a record declared at 2048 (log2 11). '
-                  'What is measured instead is record 334 = subtract(332, 333) where 332 and '
-                  '333 BOTH render an exactly saturated 1.0 at sd 0.000000, so their '
-                  'difference is exactly 0. The saturation is the open question, and records '
-                  '331 and 333 emit patterns carrying patternsize (5.0, 1.0) -- five times '
-                  'the canvas width -- at opacity -1.0.',
-        records=(332, 333, 334),
-        source='ba3a1f6, restated by the sizelog2 reading'),
+    # EMPTY, AND THAT IS THE MEASURED STATE RATHER THAN AN OVERSIGHT. Two causes were
+    # written here and both were withdrawn after being tested:
+    #
+    #   `chesterfield-basecolor-level` named record 43, then record 321. Record 43 is a
+    #   faithful full-canvas pass-through (39, 40, 42 and 43 all read lit 0.0391 /
+    #   meanWhereLit 0.9031). Record 321 renders an exact 0 CORRECTLY -- its chain is gated
+    #   behind `min($sizelog2) >= 12` on a record declared at 2048, log2 11 -- so forcing it
+    #   non-zero measured compensation, not causation.
+    #
+    #   `chesterfield-roughness-level` named records 321/334, after ba3a1f6. Record 334 is
+    #   `subtract(332, 333)` and renders EXACTLY 0 under every arm of `fx.sizeless`: `fill`
+    #   gives 1.0 - 1.0, `skip` gives 0.0 - 0.7008 clamped up from negative. Roughness's
+    #   output is bit-identical across all three arms at mean 0.1713 / sd 0.0242, so nothing
+    #   in the 331 -> 334 lane propagates to the channel and the lane cannot be its cause.
+    #
+    # Both channels' level errors are UNATTRIBUTED and sit in `HEALTH_CENSUS` as backlog.
+    # A forcing experiment shows a record is REACHED by a channel; it cannot show the record
+    # is wrong. That distinction cost two retractions to learn and is written here so the
+    # next cause added to this register has to clear it.
 }
 
 #: HOW MANY OF A PACK'S YIELDS COME OUT CONSTANT TODAY, frozen so that a NEW collapse

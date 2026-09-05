@@ -53842,3 +53842,53 @@ looked like it was always NaN -- which would have made `splat`'s sizeless guard
 (`p.get('patterntype') is None`) dead code that could never fire. Counted instead of believed:
 of 87,746 patterns drawn, 1,907 carry no `patternsize`, and `patterntype` is None on 1,629 of
 them and NaN on **ZERO**. The guard fires. The NaN was in the printf.
+
+## `fx.sizeless` arbitrated: `fill` survives, and the 331 -> 334 lane is EXONERATED for roughness
+
+The saturation lead from the last tick is closed. Both halves of it turned out to be measurable
+and both answers are negative.
+
+**Where the white actually comes from.** Records 331 and 333 emit patterns carrying a
+`branchoffset` and NO `patternsize` and NO `opacity` -- tree-navigation nodes. `splat` resolves
+those through `assume.assumed('fx.sizeless', 'fill')`, and `fill` means a missing size becomes
+`_ONE2`, the WHOLE CANVAS, at a defaulted opacity of 1.0. Record 333 has four such patterns and
+`skip_root` defaults to False, so even the root one is drawn. Under `max` combine one
+full-canvas stamp at opacity 1 pins every pixel, which is the `sd 0.000000` measured. The
+`(5.0, 1.0)` pyramid flagged last tick is NOT needed to explain the white -- the sizeless fill
+does it alone, and pointing at the strip first was wrong.
+
+**The four arms, scored over all 25 guard entries at dim 256:**
+
+    fill (current)   0 entries move -- the baseline
+    skip            18 move, corr better 9 / worse 9, every movement under 0.02
+    half            18 move, corr better 4 / worse 14
+    quarter         17 move, corr better 4 / worse 13
+
+`half` and `quarter` are clearly worse. `skip` is a dead wash. **`fill` is not beaten and stays**,
+which is worth recording precisely because it was the untested default: it is now a default that
+has been measured against its alternatives rather than one nobody had checked.
+
+Every one of the 18 moved entries is `Kutejnikov__Bricks_and_tiles`. No Chesterfield entry moves
+under any arm.
+
+**AND THE LANE DOES NOT PROPAGATE.** The arm visibly changes the records it was traced through --
+
+    arm     rec 331        rec 332        rec 333          rec 334    roughness (880)
+    fill    1.0000 sd 0    1.0000 sd 0    1.0000 sd 0      0.0000     0.1713 sd 0.0242
+    skip    0.0000 sd 0    0.0000 sd 0    0.7008 sd 0.107  0.0000     0.1713 sd 0.0242
+    half    0.2911         0.2911         0.7852 sd 0.166  0.0003     0.1713 sd 0.0242
+
+-- and `roughness` is BIT-IDENTICAL across all three. Record 334 is `subtract(332, 333)` and
+renders exactly 0 under every arm: `fill` gives 1.0 - 1.0 = 0, `skip` gives 0.0 - 0.7008, which
+is negative and clamps to 0. For 334 to carry anything, 332 must EXCEED 333, and no arm arranges
+that.
+
+So the 331 -> 334 lane cannot be the cause of `roughness`'s level error, and `ba3a1f6`'s naming
+of record 334 is not supported by measurement. Record 321 does reach roughness (forcing it moved
+dc -0.0639 -> -0.0569) but is correctly zero; record 334 does not reach it at all.
+
+**`GUARD_CAUSES` is now EMPTY, and that is the measured state.** Both causes written into it this
+session have been withdrawn under test -- basecolor's twice. Both channels' level errors are
+unattributed and sit in `HEALTH_CENSUS` as backlog, which is the honest place for them. The rule
+that cost two retractions is recorded in the register itself: a forcing experiment shows a record
+is REACHED by a channel, never that it is WRONG.
