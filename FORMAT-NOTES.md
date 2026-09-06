@@ -55151,3 +55151,48 @@ A render can stop being constant and still not match. Both facts hold: `fill` de
 almost everywhere, and `half` scored worse on the only channels where correctness is checkable.
 
 Still not changed. The trade is sharper than it was, and it is still the owner's.
+
+## The picture breaks the `fx.sizeless` tie, and it says NEITHER arm is correct — the question is ill-posed
+
+The three populations disagreed (`fcf3963`), so the tie-breaker used on `fx.typeless_profile`
+was applied: render the arms and look. Bricks at dim 256, against the export:
+
+    channel              fill                  half                  export sd
+    ambientocclusion   corr +0.8837 sd 0.1015  corr +0.8421 sd 0.0901   0.2132
+    height             corr +0.5936 sd 0.0783  corr +0.3930 sd 0.0992   0.1823
+    normal 0           corr +0.7718 sd 0.0255  corr +0.7296 sd 0.0237   0.0771
+
+**`half` raises `height`'s sd toward the export (0.0783 -> 0.0992 against 0.1823) and DROPS its
+correlation from +0.5936 to +0.3930.** More structure, less agreement. The render says why: under
+`half` the height channel grows DARK IRREGULAR BLOTCHES that the export does not have. The
+structure `half` creates is not the export's structure -- it is noise of roughly the right
+amplitude.
+
+**So both arms are wrong, in opposite directions.** `fill` draws a sizeless pattern at full
+canvas and saturates the frame -- 51.80% of all `fxmaps` render constant, 574 of 574 flat origins
+stay flat. `half` draws it at an invented size and manufactures structure that does not match.
+Neither is a reading of the file; both are guesses about a value the pattern does not state, and
+the corpus-scale improvement in `fcf3963` measured only that the guesses differ, not that either
+is right.
+
+**THE QUESTION IS THEREFORE ILL-POSED AS AN ARBITRATION.** `fx.sizeless`'s four arms are `fill`,
+`skip`, `half` and `quarter` -- three of them substitute a size and one declines to draw. There is
+no arm that says "the size comes from somewhere else", and the evidence now points there: 4,995
+of 11,401 patterns on the flat-origin records carry no `patternsize`, which is far too many to be
+authored omissions of a value the engine then invents.
+
+**What replaces it, and it is a different kind of question.** Where does a pattern with no stated
+`patternsize` get its size? Candidates, none tested: it inherits its parent node's box in a
+SUBDIVIDED tree, which `assume.QUESTIONS['fx.pos']` already names as the thing that would move
+several of these questions and which `chain`'s flat walk cannot express; or the entry's `0x1CB`
+bit-6 SECOND CHILD (`3441350`) carries it, currently read as a nullable pointer and followed by
+nothing; or it is genuinely absent and the pattern is a tree-navigation node that should not be
+drawn at all, which is `skip` -- and `skip` still leaves 34.3% of flat origins flat, so it cannot
+be the whole answer either.
+
+**Not changed. `fill` stays**, not because it is right -- it is measurably destructive -- but
+because the alternative on offer is a different wrong answer, and switching between two guesses
+on a question the file can answer is the move this notebook has retracted before.
+
+**A method note.** The scoring run that would have added `skip`'s correlations timed out at two
+minutes, so those numbers are absent and are not guessed at here.
