@@ -55390,3 +55390,60 @@ remaining flat records turned out to carry fully-specified patterns. What would 
 method that validated `warp`'s intensity in `5473f88`: a permitted `.sbs` stating a pattern's
 opacity explicitly, paired against its compiled sibling, to see whether the value we read from
 bit 19 is the value the source declares.
+
+## THE MISSING FIELD: FX-Map patterns declare a per-pattern `blendingmode`, and we read none — we substitute one global `fx.combine`
+
+Chasing bit 19 via source pairing (`5473f88`'s method) found something larger on the way.
+Gated through `provenance.audit()`; only permitted sources read.
+
+**FIRST, THE BIT-19 ROUTE IS CLOSED.** Across every permitted source, FX-Map pattern parameters
+are declared as PROGRAMS, not constants: `opacity` 62 program / **0 baked**, `patternsize` 60
+program, `frameoffset` 60, `patternrotation` 51, `numberadded` 76. There is no baked opacity
+anywhere in what may be read, so bit 19 -- the BAKED form -- cannot be validated against a
+source. `8aa62de`'s conclusion stands on the value distributions alone and cannot be
+strengthened this way.
+
+**AND THE SOURCES NAME A PARAMETER WE HAVE NO BIT FOR.** The same scan found:
+
+    FX-Map pattern `blendingmode`, declared in permitted sources
+        value 1     38 occurrences
+        value 2     10
+        program     10
+        across ie_curve (35), ie_pcloud (9), ie_particles (2), triDraw (2)
+
+    our `FX_PARAM_BITS` names
+        branchoffset, frameoffset, imageindex, opacity, patternrotation,
+        patternsize, patternsuppl
+
+**`blendingmode` IS NOT AMONG THEM.** An FX-Map pattern states HOW IT COMBINES with the canvas,
+per pattern, and the reader has no field for it. `splat` instead calls `_combine`, which reads
+`assume.assumed('fx.combine', 'max')` -- ONE GLOBAL CHOICE for every pattern in every record in
+the corpus.
+
+**AND THE DECLARED VALUES ARE NOT `max`.** Taking the enumeration SPEC 13.6 establishes for the
+`blend` filter -- `0 copy, 1 add, 2 subtract, 3 multiply, 4 addsub, 5 max, ...` -- the sources
+declare **1 (add)** and **2 (subtract)**. `max` is 5 and appears nowhere. That the FX-Map field
+shares the filter's enumeration is an INFERENCE, not established; but it is the natural reading,
+the values are small integers in the right range, and no other enumeration is on offer.
+
+**WHY THIS EXPLAINS WHAT NOTHING ELSE DID.** Under `add` or `subtract`:
+
+  * A NEGATIVE opacity is meaningful -- it subtracts. Under `max` a negative never wins against
+    0, which is exactly why `signed` and `clip` came out IDENTICAL in `e13171e` and why `abs`
+    moved no scored channel. The 19.4% negative opacities stop being anomalous.
+  * IDENTICAL OVERLAPPING STAMPS stop being flat. `643cf65` found record 27 emitting 32 identical
+    stamps 0.24 wide on a 0.125 pitch; under `max` their maximum is a constant, under `add` they
+    accumulate into a modulated field. The flatness that reaches 58% of corpus warps as a dead
+    displacement map is a consequence of the wrong combine, not of the emission.
+  * `fx.combine = max` being ARBITRATED CORRECTLY in `1970778` is not contradicted. That test
+    applied each arm GLOBALLY, and `add` applied globally to records whose patterns want `max`
+    is catastrophic -- which is what it measured. A per-pattern field is a different proposition
+    from a better global default.
+
+**WHAT IS ESTABLISHED AND WHAT IS NOT.** Established: permitted sources declare `blendingmode`
+on FX-Map patterns, 58 baked and 10 program across 4 files; our entry layout has no such
+parameter; `fx.combine` is one global assumption. Inferred: that the values follow the `blend`
+filter's enumeration, and that reading the field would resolve the flatness. NOT ATTEMPTED: the
+field's location. `FX_PARAM_BITS` carries four unnamed entries -- bits 4, 7, 16 and 17, "which
+parameters they are is not established" -- and bits 21 and 23 are set in no observed tag. One of
+those is the candidate, and finding it is the next piece of work.
