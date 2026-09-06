@@ -54949,3 +54949,62 @@ nothing today; a substituted intensity marks the record `low_confidence` and cal
 mirroring `f_normal`, so a render leaning on it stays distinguishable. NOT decided: whether to
 switch the default. The evidence for 1.0 is the absence argument in `5473f88` -- strong, not
 proof -- and the correctness of the 50,204 records it would add is UNMEASURED, not verified.
+
+## The `warp` default's VALUE is irrelevant: every arm scores identically to four decimals, because the affected warps are no-ops
+
+Measured, and it closes the question the last five entries were circling.
+
+**SCORED ON THE ONLY PACK THAT CAN SEE IT.** `RoofTiles` is a scored pack (10 reference maps)
+with 6 warp records lacking intensity and no `GUARD_TABLE` entries. Scoring it directly -- an
+investigation, not a change to the bar -- under `refuse` and under 1.0:
+
+    channel        refuse            1.0
+    height/0       (not produced)    corr +0.0403  band 1.408  dc +0.0818
+    normal/0       (not produced)    corr +0.0420  band 0.930  dc +0.0001
+    normal/1       (not produced)    corr +0.0142  band 0.881  dc +0.0142
+    normal/2       (not produced)    corr -0.0127  band 0.246  dc +0.0240
+    roughness/0    (not produced)    corr -0.0076  band 1.382  dc -0.0194
+    metallic/0     corr +0.0000      corr +0.0000  -- unchanged, and flat in both
+
+Five channels become scoreable and **every one correlates at essentially zero**, -0.013 to
++0.042. The amplitudes are not absurd -- `normal` at 0.930 and 0.881 -- but the structure bears
+no relation to the export. So the completion gain in `dfe0078` buys output that does not resemble
+the target, exactly as `c9d0376` warned and now measured rather than asserted.
+
+**AND THE VALUE MAKES NO DIFFERENCE AT ALL.** Every candidate arm, same five channels, dim 256:
+
+    arm     height/0   normal/0   normal/1   normal/2   roughness/0
+    0.0     +0.0403    +0.0420    +0.0142    -0.0127    -0.0076
+    0.25    +0.0403    +0.0420    +0.0142    -0.0127    -0.0076
+    0.5     +0.0403    +0.0420    +0.0142    -0.0127    -0.0076
+    1.0     +0.0403    +0.0420    +0.0142    -0.0127    -0.0076
+    2.0     +0.0403    +0.0420    +0.0142    -0.0127    -0.0076
+
+Identical to four decimals, **including 0.0 against 2.0**. Whatever the engine's default is, it
+cannot be recovered from these channels, and choosing it cannot improve them.
+
+**WHY: THE AFFECTED WARPS ARE NO-OPS, AND IT IS THE AURAS DEFECT AGAIN.** The three RoofTiles
+warps lacking intensity, rendered under 1.0:
+
+    rec 79   input0 mean 0.4180 sd 0.2005 | input1 (map) mean 1.0000 sd 0.000000 | out == input0
+    rec 537  input0 mean 0.1660 sd 0.2844 | input1 (map) mean 0.0000 sd 0.000000 | out == input0
+    rec 960  input0 mean 0.0000 sd 0.000000 (the IMAGE is flat)                  | out constant
+
+`f_directionalwarp`/`f_warp` compute `disp = (2*height - 1) * intensity / reference_px`. With
+`height` CONSTANT the displacement is constant, so the intensity scales a uniform offset and
+changes no structure; where the image itself is flat nothing can change at all. This is the same
+shape as `d1cddf9`'s Auras finding -- eight warps fed a displacement map of constant 0.5 -- and
+it now has a second specimen. **A flat displacement map reaching a warp is a recurring defect and
+is the thing worth chasing; the intensity is not.**
+
+**WHAT THIS MEANS FOR THE POLICY QUESTION.** It is settled in the only way that matters: the
+default's VALUE cannot be chosen on correctness evidence, because no arm moves any scored
+channel. The remaining choice is binary -- refuse, or render a record whose warp is a no-op --
+and rendering yields channels at corr ~0. `refuse` stays.
+
+**WHAT SURVIVES FROM THE INVESTIGATION, AND IT IS NOT NOTHING.** The decode was validated against
+a permitted source for the first time (`5473f88`, `Damaged_Iron_01`'s eight intensities matching
+as a set). The absence argument for 1.0 stands as the best available reading of the DEFAULT
+ITSELF even though it cannot be tested here. And the guard's blind spot is now documented with a
+worked case. But the five ticks spent hunting the default's value were spent on a lever that
+moves nothing measurable, and that is worth recording plainly.
