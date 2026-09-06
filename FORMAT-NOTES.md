@@ -55447,3 +55447,47 @@ filter's enumeration, and that reading the field would resolve the flatness. NOT
 field's location. `FX_PARAM_BITS` carries four unnamed entries -- bits 4, 7, 16 and 17, "which
 parameters they are is not established" -- and bits 21 and 23 are set in no observed tag. One of
 those is the candidate, and finding it is the next piece of work.
+
+## Locating `blendingmode`: a minimal pair puts it at entry-tag bits 6/7 — but it is probably NOT a bit, and that is not resolved
+
+Asked to find which bit carries it, with the owner's caveat: "or indeed, if it is a bit at all."
+The caveat is well taken and the evidence now supports it.
+
+**THE MINIMAL PAIR.** `ie_particles.sbs` (permitted) declares exactly two FX-Map pattern nodes
+with a `blendingmode`, one at 1 and one at 2, and its compiled sibling holds exactly two entries
+-- a true 1:1 with no dependency inflation:
+
+    record 21   tag = 0x15140088   bits [3, 7, 18, 20, 24, 26, 28]
+    record 22   tag = 0x15140048   bits [3, 6, 18, 20, 24, 26, 28]
+
+**The tags are identical but for bit 7 against bit 6.** Bit 7 is one of `FX_PARAM_BITS`' four
+unnamed rows; bit 6 is not in that table at all. Their sixth words also differ by exactly one --
+`0x05010007` against `0x05010006`.
+
+**BUT THE BITS ARE NOT A MODE VALUE, AND PROBABLY NOT THE FIELD.** Over 27,886 FX entries, bits
+6-7 read as a 2-bit field take every value: 0 on 37.1%, 1 on 58.4%, 2 on 4.0% and **3 on 0.5%**.
+Both bits set together, 134 times. So they are INDEPENDENT, not a one-hot or an exclusive pair,
+which is what bits 4-7 being a PRESENCE NIBBLE predicts -- the same shape `node_shape` documents
+for node headers, where each set bit inserts a field. On that reading a bit marks that a
+`blendingmode` IS PRESENT and the value 1 or 2 lives in a SLOT, which is exactly the owner's
+caveat. The tag's low byte distribution fits: 0x48 (51.7%), 0x08 (34.4%), 0x58 (6.4%), 0x88
+(3.5%), 0x18 (2.5%) -- bit 6 common at 59%, bit 7 rare at 4.5%.
+
+**WHAT COUNTING CANNOT DO, and it was tried.** Correlating declared modes against tag bits across
+the larger sources fails on dependency inflation: `ie_curve` declares 43 modes and compiles to 74
+entries; `ie_pcloud` declares 11 and compiles to 110, of which 109 set bit 6. Two coincidences
+looked promising in `ie_curve` -- b7 = 43 = its total declarations, b6 = 31 = its mode-1 count --
+and `ie_pcloud` refutes both. **Counts cannot settle this; only per-entry pairing can, and
+`ie_particles` is the only clean pair available.**
+
+**SO, STATED EXACTLY.** Established: the field is reachable from the entry tag's low nibble, and
+a 1:1 pair differing only in blending mode differs only at bits 6/7. Not established: which bit,
+whether either is the field or merely its presence flag, where the VALUE is stored, and which
+tag value maps to which mode -- `ie_particles` cannot say which of its two entries is the mode-1
+node, since both declare the same five other parameters and only the mode-2 node's extra
+`imagefiltering` distinguishes them in the source.
+
+**The next step is not another census.** It is to read the slot that bits 6/7 govern: take the
+entries setting each, walk `fx_entry_layout` to the slot the presence mask inserts, and see
+whether it holds a small integer in the blend enumeration's range. If it does, the field is
+located and `blendingmode` becomes readable per pattern.
