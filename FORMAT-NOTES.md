@@ -55057,3 +55057,63 @@ while `decompose.named_params` special-cases `filter_id == 15` to read them FORW
 with the widths trailing, its docstring calling the memo wrong on "levels' baked widths". Both
 cannot be right. Record 36 does not separate them -- it states 2 of 5 parameters and is greyscale.
 A record stating all five, in COLOUR so the widths are 4 rather than 1, would.
+
+## An FX bench, and what it found in 13 seconds: `fx.sizeless = fill` leaves 100% of flat-origin records flat
+
+The owner observed that arbitration sweeps were too slow to iterate on. They were: a 150-file
+sweep evaluates ~300,000 records to learn about a few dozen `fxmaps` ones and returns one scalar.
+
+**`archive/tools/fxbench.py`.** Emissions are extracted ONCE per record and reused; `splat` is
+pure numpy over a fixed pattern list, so every DRAW-side question -- `fx.sizeless`, `fx.combine`,
+`fx.profile`, `fx.typeless_profile`, `fx.patternsize`, `fx.branchoffset`, `fx.frameoffset`,
+`fx.rootentry`, `fx.markers`, `fx.negopacity` -- is a redraw rather than a re-render. It reports
+a DIAGNOSIS (pattern count, how many carry a size, lit fraction, sd, flat-or-not) instead of a
+score, so "flat" and "why flat" arrive together. It CANNOT answer `fx.gridcount`, `fx.gatescan`
+or `fx.scanner`, which change the emission itself.
+
+It caught an error of mine on its first run: records 331 and 333 are CHESTERFIELD's, not Auras',
+and the bench printed `(no emissions)` immediately where a sweep would have averaged over a
+record that never rendered.
+
+**FIRST, A HYPOTHESIS OF MINE REFUTED TWICE.** I proposed that the 59.58% flat-map rate was an
+artefact of rendering records a real invocation would never evaluate. Two independent samples:
+
+    10,698 warps inside an output cone, 58.34% flat, 0 outside any cone
+    19,085 warps inside an output cone, 58.89% flat, 0 outside any cone
+
+**0.0% of warps are unreachable.** Every one sits in a declared output's cone. The rate is a real
+property of what we render.
+
+**THE POPULATION THAT CAN SEE THE QUESTION.** 2,720 `fxmaps` records that ORIGINATE flatness --
+flat output, no flat input -- all inside cones, 94% of them constant 1.0. Re-arbitrated on 574 of
+them across 12 files:
+
+    arm                      still flat / 574
+    fill (TODAY'S DEFAULT)     574 = 100.0%
+    sizeless=skip              197 =  34.3%
+    sizeless=half               59 =  10.3%
+    sizeless=quarter            59 =  10.3%
+    rootentry=skip             448 =  78.0%
+    markers=skip               218 =  38.0%
+    rootentry+markers=skip     250 =  43.6%
+
+4,995 of 11,401 patterns on these records carry NO `patternsize`. `fill` draws every one of them
+at full canvas at opacity 1.0, and under `max` combine one such stamp pins the frame -- which is
+why 574 of 574 stay flat. `half` and `quarter` fix 90% and give IDENTICAL counts, so the value
+does not matter, only that it is BOUNDED rather than full-canvas.
+
+**AND THIS CONTRADICTS `7a3f4c9`, WHICH IS THE POINT.** That entry arbitrated `fx.sizeless` on
+the guard's 25 channels, found `half` 4-better/14-worse and `skip` a 9/9 wash, and kept `fill` as
+"not beaten". Both measurements are correct and they disagree because they are different
+populations: 25 channels in 3 packs, against 2,720 records across the corpus. `fill` is not
+beaten where the guard looks and is catastrophic where the defect lives.
+
+**NOT CHANGED HERE.** Switching the default would fix 90% of flat origins and degrade scored
+channels, and that trade is the owner's. What is established: `fill` is implicated beyond
+argument -- 100% of 574 -- and the earlier "not beaten" verdict rested on a population with
+almost no exposure to the question, which is the same blind spot `dfe0078` documented for the
+warp intensity.
+
+**A caveat on the bench's own control.** `Lines` record 0 reads lit 0.5156 at the bench's cap of
+128 against the 0.5078 recorded at 256. Same render, different resample -- but the control must
+be pinned to its original cap before it can serve as a tripwire.
