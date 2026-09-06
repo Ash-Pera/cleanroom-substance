@@ -54792,3 +54792,59 @@ currently decides only what happens downstream of it, not why it happens.
 them render with a number the file does not state, which is exactly what `f_normal`'s comment
 warns against. The completion figure would rise and the correctness figure might not. Both are
 worth having and they are not the same measurement.
+
+## Why `warp`'s intensity is absent: the field is OPTIONAL PER RECORD, and the omitted value is plausibly 1.0 — suggestive, not settled
+
+Investigated before deciding, at the owner's direction. The structural explanations are all
+refuted and a candidate value emerges from the compiled side alone.
+
+**THE FIELD IS OPTIONAL PER RECORD, NOT PER FILE OR PER VERSION.** Comparing the 880 warp
+records that state neither intensity bit against the 27,220 that state one:
+
+  * **Edge counts are IDENTICAL** -- both populations are exactly 2 edges, all of them. No third
+    edge is supplying the intensity.
+  * **Only ONE class bit differs by more than 20 points, and it is bit 29 itself** (95.9% against
+    0.0%). There is no variant flag, no alternative encoding, no second bit that marks them.
+  * **FILES MIX.** Only 1 of 296 files containing a warp has all of them lacking intensity.
+    `WoodSubstance008` states it on 45 of 82, `WoodFloor` on 53 of 90, `Rusty_Metal` on 3 of 6,
+    `Tapestry` on 1 of 3. The same compiler, in the same file, emits both.
+
+So it is not a format revision, not a package convention, not a compiler version. The parameter
+is simply optional, which is what "the author left it at the default" looks like. That makes a
+default the right frame and its VALUE the question.
+
+**A TEST AVAILABLE ON THE COMPILED SIDE ALONE.** If a compiler omits a parameter equal to its
+default, the default is the value that never appears among stated ones. Over 26,108 baked warp
+intensities, range -3.6 to 38.0:
+
+    round values PRESENT   0.125(498) 0.25(1233) 0.5(590) 0.75(37) 1.5(11) 2.0(851)
+                           3.0(136) 4.0(209) 5.0(101) 8.0(155) 10.0(6) 16.0(104)
+    round values ABSENT    0.0 and 1.0 -- and nothing else in the observed range
+
+**A tight gap at exactly 1.0, with BOTH immediate neighbours present** -- 0.75 thirty-seven
+times, 1.5 eleven times, 2.0 eight hundred and fifty-one. Zero of 26,108 at 1.0. That is not
+what an unpopular value looks like.
+
+`0.0` is absent too and is the other candidate, but it has an INDEPENDENT explanation that 1.0
+does not: an author does not write a warp whose intensity is zero, because that record would do
+nothing. There is no such reason to avoid writing 1.0. So 1.0 is the better candidate.
+
+**AND THE RULE DOES NOT GENERALISE, WHICH IS WHY THIS IS SUGGESTIVE RATHER THAN SETTLED.** The
+same test on the other two filters carrying a baked `intensity` class bit:
+
+    blur      15,189 stated, 469 absent.  NO round value is absent at all, and 1.0 is its MOST
+                                          COMMON value at 10,357. If blur omits its default, the
+                                          default is not a round number.
+    sharpen    1,162 stated, 175 absent.  1.0, 1.5, 4.0, 5.0, 8.0 and 10.0 all absent -- but at
+                                          1,162 samples that is what sparsity looks like, and
+                                          0.0 IS present (6). Too thin to carry anything.
+
+If "the compiler omits a parameter equal to its default" held generally, blur's default would
+show as a gap and it does not. So either blur's default is a non-round value, or omission means
+something else and warp's 1.0 gap has another cause. **Recorded as the best available candidate
+with its counter-evidence attached, not as an answer.**
+
+**What would settle it:** a permitted `.sbs` source containing a warp node that states no
+intensity, paired with its compiled sibling -- the source's own default would name the value.
+`provenance.py`'s predicate must gate any such search, and the pairing population is the 142
+paired sources, of which 100 are permitted.
