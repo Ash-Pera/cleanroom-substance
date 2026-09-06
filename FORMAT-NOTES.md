@@ -55491,3 +55491,54 @@ node, since both declare the same five other parameters and only the mode-2 node
 entries setting each, walk `fx_entry_layout` to the slot the presence mask inserts, and see
 whether it holds a small integer in the blend enumeration's range. If it does, the field is
 located and `blendingmode` becomes readable per pattern.
+
+## Reading the slot: bit-7 entries lose a parameter 61% of the time — a real misread, and the obvious fix is REFUTED
+
+Following the owner's instruction to read the slot bits 6/7 govern. The `blendingmode` question
+is not settled, but a distinct and quantified defect fell out of it.
+
+**THE MINIMAL PAIR, READ THROUGH `fx_entry_layout`.** Both `ie_particles` entries carry FIVE
+pointer-like words at slots 1-5 while we name only FOUR parameters, and the layout starts them
+in different places:
+
+    record 22 (bit 6)   layout uses slots 2..5   -> 12176, 12212, 12256, 12264, all plausible
+                                                   addresses, all four parameters resolve
+    record 21 (bit 7)   layout uses slots 3..6   -> 6264, 6308, 6316, then 0x05010007
+                                                   = 83,951,623, NOT an address in a 1,449-word
+                                                   record. `patternrotation` resolves to None.
+
+`FX_PARAM_BITS` charges a slot for bit 7 -- its unnamed `(7, None, 1)` row -- and has no row for
+bit 6 at all, so a bit-7 entry's whole parameter block starts one slot late.
+
+**AND IT IS NOT ONE FILE.** Over 27,886 FX entries:
+
+    group     entries   params    unresolved      entries losing a parameter
+    neither   10,349    10,161    0    = 0.0%     0   = 0.0%
+    bit6      16,294    57,121    33   = 0.1%     17  = 0.1%
+    bit7       1,109     4,401    690  = 15.7%    676 = 61.0%
+    both         134         7    0    = 0.0%     0   = 0.0%
+
+**61% of bit-7 entries lose a parameter**, against 0.1% and 0.0% for every other group. That is
+a misread, not a curiosity.
+
+**THE OBVIOUS FIX IS WRONG.** Dropping bit 7's slot charge takes unresolved parameters on those
+entries from 15.7% to **19.3%** -- worse, not better. So bit 7 does earn a slot and the defect is
+elsewhere.
+
+**AND THE EXPERIMENT IS CONFOUNDED, WHICH IS THE METHOD NOTE.** The entry counts MOVED between
+the two runs: bit7 1,109 -> 1,105, both 134 -> 141. `FX_PARAM_BITS` feeds `fx_entry_layout`,
+which feeds the WALK, so changing it changes which entries are discovered at all. The before and
+after populations are not the same entries, and any comparison of rates between them is
+unreliable in both directions. A layout change cannot be evaluated by re-running the walk it
+alters; it needs a fixed entry set established once and then re-read.
+
+**THE `both` GROUP IS UNEXPLAINED AND MAY BE THE KEY.** 134 entries set both bits and carry SEVEN
+parameters between them -- against 4,401 for 1,109 bit-7 entries. Two orders of magnitude too
+few. Whatever makes an entry with both bits carry almost no parameters is likely the same thing
+that makes a bit-7 entry lose its last one.
+
+**`blendingmode` remains unlocated.** Slot 1 -- unnamed in both entries of the pair -- points at
+material that decodes to the same instruction sequence with ONE differing constant, `const.i1 0`
+against `const.i1 1`, mirroring the source's declared 1 and 2. But `valid_program` is False for
+both addresses, so that is a mid-stream decode and the pattern could be coincidence. Recorded as
+a lead, not a finding, and the pair still cannot say which of its two entries is the mode-1 node.
