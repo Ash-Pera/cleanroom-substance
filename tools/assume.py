@@ -29,6 +29,15 @@ QUESTIONS = {
     # is available here as for warp -- 1.0 is absent from the baked values -- and it is
     # refuted the same way: in `blur`, 1.0 is the MODAL baked value at 10,200 of 14,931, so
     # this compiler plainly does not omit parameters merely because they equal a default.
+    # ARMS TO TEST A CANDIDATE, NOT A CHANGE: the first arm is `refuse`, so adding this
+    # question changes no render. `warp` refuses when its intensity is absent (880 records,
+    # 3.13% of warps, blocking 1,347 downstream) and had no arm at all, so the alternative
+    # could not be measured. 1.0 is first among the values because it is the candidate the
+    # evidence points at: absent from all 26,108 compiled stated intensities and from all 15
+    # stated in permitted sources, while 0.75, 1.5 and 2.0 are present, and `blur` -- the
+    # control -- states 1.0 10,357 times, so the test discriminates. See FORMAT-NOTES,
+    # "Permitted sources corroborate `warp` default = 1.0".
+    'warp.default_intensity': ('refuse', 1.0, 0.0, 0.25, 0.5, 2.0),
     'normal.default_intensity': ('refuse', 0.5, 1.0, 2.0, 4.0, 8.0, 16.0),
     'blur.kernel':        ('box', 'gaussian'),
     'emboss.probe':       ('passthrough',),

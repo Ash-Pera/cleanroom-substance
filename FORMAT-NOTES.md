@@ -54900,3 +54900,52 @@ independent reason that nobody authors a no-op warp.
 to test rather than an open range. Testing it costs a `refuse`-defaulted arm and a measurement:
 what does 1.0 do to the completion figure AND to the guard's scores. Both numbers, then the
 owner decides.
+
+## `warp.default_intensity` = 1.0 renders 50,204 more records — and the guard CANNOT SEE IT AT ALL
+
+The arm is added with `refuse` first, so no render changes. It exists so the alternative can be
+measured, which it could not be before.
+
+**COMPLETION, over 437 corpus files plus the 8 pack assemblies at dim 128:**
+
+    arm        records rendered        outputs produced      outputs NON-CONSTANT
+    refuse     643,807 / 938,291       1,189 / 2,575         865  = 33.59%
+                      = 68.61%              = 46.17%
+    1.0        694,011 / 938,291       1,361 / 2,575         1,024 = 39.77%
+                      = 73.97%              = 52.85%
+
+**+50,204 records, +172 outputs, +159 of them non-constant.** That is far more than the 880 roots
+plus their 1,347 direct dependants, because unblocking a root cascades recursively -- each
+newly-rendered record can unblock its own dependants in turn.
+
+**AND THE GUARD REGISTERS NOTHING. 0 of 25 entries move; 0 ratchet failures.** That is not the
+guard approving the change. Checked directly:
+
+    GUARD_TABLE covers   Auras (36 warp records, 0 lacking intensity)
+                         Bricks (1,030 warp records, 0 lacking intensity)
+                         Chesterfield (0 warp records)
+    scored, not in table RoofTiles (102 warp records, 6 LACKING INTENSITY)
+                         SandyPath (131 warp records, 0 lacking)
+
+**All 1,066 warp records in the three guarded packs state their intensity.** The change cannot
+reach a scored channel, so the instrument has no exposure to it. A reader seeing "0 ratchet
+failures" next to "+50,204 records" would conclude the change is free. It is not measured.
+
+**This is a REAL GAP IN THE GUARD, and it generalises past this question.** The guard scores 25
+channels across 3 packs. Any defect living outside those cones is invisible to it, and the
+corpus is 445 files. The completion figure in `c9d0376` and the guard measure different
+populations, and this is the first case where a change moves one by 5.4 points and the other by
+exactly zero. Neither number is wrong; they are answering different questions, and only together
+do they say anything.
+
+**A path to measuring it exists.** RoofTiles is a SCORED pack -- 10 reference maps -- with 6
+affected warp records, and it has no `GUARD_TABLE` entries. Adding it would put this change
+inside the instrument. Noted rather than done: extending the guard table is a change to the bar
+the suite enforces, which is the owner's, and `247f656` already recorded that RoofTiles exercises
+no arbitration and produces 1 output, so what it can score is limited.
+
+**What is decided and what is not.** Decided: the arm exists, defaults to `refuse`, and changes
+nothing today; a substituted intensity marks the record `low_confidence` and calls `assume.note`,
+mirroring `f_normal`, so a render leaning on it stays distinguishable. NOT decided: whether to
+switch the default. The evidence for 1.0 is the absence argument in `5473f88` -- strong, not
+proof -- and the correctness of the 50,204 records it would add is UNMEASURED, not verified.

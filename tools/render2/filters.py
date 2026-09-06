@@ -834,6 +834,7 @@ def f_warp(ctx, v):
         raise Unsupported('warp has fewer than 2 edges')
     p = v.params.get('intensity')
     if p is None:
+        d = assume.assumed('warp.default_intensity', 'refuse')
         # THE BITS ARE 29 AND 30, NOT 13 AND 14. `CLS_NAMES[7]` maps bit 29 to
         # `('intensity', 'baked')` and bit 30 to `('intensity', 'program')`, and that is the
         # mapping `View._add` actually uses. The old message named 13/14, which sent a reader
@@ -850,12 +851,20 @@ def f_warp(ctx, v):
         # same reasoning: an invented intensity renders something WRONG instead of nothing.
         # Whether `warp` should gain a `warp.default_intensity` arm the way `normal` has
         # `normal.default_intensity` is a policy question and the owner's to decide.
-        raise Unsupported('warp stores no intensity: neither class bit 29 (baked) nor 30 '
-                          '(program) is set, so the source omitted it')
+        if d == 'refuse':
+            raise Unsupported('warp stores no intensity: neither class bit 29 (baked) nor 30 '
+                              '(program) is set, so the source omitted it')
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
-    if p.kind == 'baked':
+    if p is None:
+        # SUBSTITUTED, AND MARKED AS SUCH. `f_normal` does the same: a render leaning on a
+        # value the file does not state is low-confidence, so it stays distinguishable from
+        # one that read the field.
+        intensity = float(d)
+        ctx.low_confidence.add(v.index)
+        assume.note(v.index)
+    elif p.kind == 'baked':
         intensity = float(p.value)
         if not (intensity == intensity and -1e3 < intensity < 1e3):
             raise Unsupported('warp intensity is not a plausible float (%r)' % intensity)
