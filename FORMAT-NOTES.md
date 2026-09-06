@@ -55251,3 +55251,48 @@ for it.
 the whole defect -- the `patterntype`-only patterns (29) and the `0x08`-less remainder (187 of
 815) need their own account. And `height` loses 0.0103 at 256; the ratchet accepts it and it is
 the one strong channel that moves the wrong way, so it is the thing to watch if this is revisited.
+
+## The 38% `markers=skip` leaves flat is an EMISSION-side problem, not a drawing one
+
+Characterising the remainder rather than testing arms against it, which is the method that
+found `4540b08`.
+
+**They are not markers, and `splat`'s exact test is right.** The still-flat records' dominant
+pattern set is `branchoffset, opacity, patternrotation, patternsize, patterntype` -- 276 of them,
+fully specified, carrying a size. Their `_tag` low bytes are 0x48 (406), 0x58 (125), 0x08 (88)
+and 0x18 (66). Every FX entry has low nibble 8, so the HIGH nibble is a presence mask and `0x08`
+means NO FIELDS PRESENT -- a bare navigation node, exactly what is now skipped. The remainder
+have fields. **Widening `splat`'s `== 0x08` to a nibble match would be wrong**, and it was the
+first thing that suggested itself.
+
+**What they actually are.** Sample record 27, 32 patterns:
+
+    patternsize (0.24, 0.125), opacity 1.0, patternrotation 0.0, patterntype ABSENT
+    branchoffset stepping -0.375, -0.25, -0.125 ... a regular 0.125-pitch lattice
+
+Stamps 0.24 wide on a 0.125 pitch OVERLAP BY ROUGHLY TWO, all identical, all at opacity 1.0,
+all with an absent `patterntype` so they draw through the typeless profile -- `rect`, arbitrated
+in `0ae78bd`, which is FLAT-TOPPED. The maximum of identical overlapping flat-topped stamps is a
+constant. **The flatness is correct given the emission.** Nothing on the drawing side is wrong
+here, and no `fx.sizeless`, `fx.markers` or profile arm can change it.
+
+**And the values say the emission is where to look.** Over the still-flat records:
+
+    patternsize   n=463   median 0.2907   47.5% GREATER THAN 1.0 (wider than the canvas)
+    opacity       n=529   median 0.0000   28.0% EXACTLY ZERO     min -1.0000
+    |offset|      n=691   median 0.1875   24.0% beyond +-0.5 (off-canvas)
+
+**Median opacity is exactly 0.** Nearly a third of these patterns are invisible before anything
+draws them, and the minimum of -1.0 means NEGATIVE opacities are present -- which
+`fx.negopacity` currently resolves as `clip`, sending them to 0. That question moves Chesterfield
+by 0.00000 and so has never been arbitrated on anything; this is the population that could
+decide it, and `abs` or `signed` would make a third of these patterns visible again.
+
+**So the FX DRAWING side is largely exonerated.** `4540b08` fixed what was a drawing defect --
+patterns the file marked and we drew anyway. What is left divides into emissions that are
+faithfully rendered flat (overlapping identical stamps) and emissions carrying values that
+suppress themselves (zero and negative opacity, sizes past the canvas, offsets off it). Neither
+is answered by how a pattern is drawn; both are answered by what the programs computed.
+
+**Next, and it is a different question from any asked so far:** `fx.negopacity`, on the
+still-flat population rather than on Chesterfield where it does nothing.
