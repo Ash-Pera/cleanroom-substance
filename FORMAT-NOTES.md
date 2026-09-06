@@ -55117,3 +55117,37 @@ warp intensity.
 **A caveat on the bench's own control.** `Lines` record 0 reads lit 0.5156 at the bench's cap of
 128 against the 0.5078 recorded at 256. Same render, different resample -- but the control must
 be pinned to its original cap before it can serve as a tripwire.
+
+### Corroboration at corpus scale: `fill` makes 51.80% of ALL fxmaps render constant; `half` makes 4.45%
+
+A sweep started before the bench existed, finishing after it, over the same 150-file sample but
+counting EVERY `fxmaps` record rather than the 574 flat origins:
+
+    arm        warps with a flat map        fxmaps rendering CONSTANT
+    fill       11,239 / 19,085 = 58.89%     5,787 / 11,172 = 51.80%
+    skip       10,269 / 19,107 = 53.74%     2,267 / 11,182 = 20.27%
+    half        8,626 / 19,107 = 45.15%       499 / 11,202 =  4.45%
+    quarter     8,679 / 19,107 = 45.42%       487 / 11,202 =  4.35%
+
+**Over half of every `fxmaps` record in the corpus renders a constant under today's default, and
+one twentieth does under `half`** -- an 11.6x reduction over 11,172 records. Warps receiving a
+flat map fall 58.89% -> 45.15% in the same move.
+
+This is an INDEPENDENT population from `de66a17`'s 574 flat origins and it agrees: `fill` is
+badly wrong wherever sizeless patterns occur. `half` and `quarter` again land within 0.1 points
+of each other, so the substituted VALUE carries no information -- what matters is that a pattern
+with no stated size is not drawn at full canvas.
+
+The two measurements now on record:
+
+    guard's 25 channels (7a3f4c9)   `half` 4 better / 14 worse   -> keep `fill`
+    574 flat origins   (de66a17)    `fill` 574/574 flat, `half` 10.3%
+    11,172 fxmaps      (here)       `fill` 51.80% constant, `half` 4.45%
+
+The first disagrees with the other two and is the smallest population by three orders of
+magnitude. That does not make it wrong -- those 25 channels are the only ones with a REFERENCE to
+score against, and the other two measure self-consistency rather than agreement with an export.
+A render can stop being constant and still not match. Both facts hold: `fill` destroys structure
+almost everywhere, and `half` scored worse on the only channels where correctness is checkable.
+
+Still not changed. The trade is sharper than it was, and it is still the owner's.
