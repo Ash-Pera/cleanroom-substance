@@ -54848,3 +54848,55 @@ with its counter-evidence attached, not as an answer.**
 intensity, paired with its compiled sibling -- the source's own default would name the value.
 `provenance.py`'s predicate must gate any such search, and the pairing population is the 142
 paired sources, of which 100 are permitted.
+
+## Permitted sources corroborate `warp` default = 1.0, and supply the MECHANISM: a value equal to the default is never typed
+
+Following `69345b7`, gated through `provenance.audit()` -- 42 excluded, 4 flagged, **96
+permitted** -- and reading only the permitted set. The author string is never retyped; the
+predicate is called.
+
+**THE DECODE IS VALIDATED, INDEPENDENTLY.** `DLG-Tools__Damaged_Iron_01.sbs` declares 8 `warp`
+nodes, all stating an intensity, and its compiled sibling holds exactly 8 `warp` records:
+
+    source   0.015  0.02  0.11  0.13  0.15  0.16  0.17  0.76
+    compiled 0.15   0.16  0.13  0.17  0.02  0.76  0.015 0.11
+
+The same eight values, permuted. So class bit 29's slot IS the intensity and `decompose`'s
+`cls_params` reads it correctly -- confirmed against a source rather than against itself.
+
+**A STEP FROM THE LAST ENTRY REFUTED.** Permitted sources omit `intensity` on 48 of 63 warp
+nodes (76%) while compiled records omit it on only 3.13%, and I read that as "the compiler
+writes the default when the source omits one". It does not. On the four files with a CLEAN 1:1
+node/record match, a source that omits intensity compiles to a **program** (`Bruno_Caustics_
+Generator`, twice) or to **nothing at all** (`16_Painter_Brush`) -- never to a baked default.
+The 76%-against-3% gap is dependency inflation: a compiled assembly bundles its dependencies, so
+`Cliff`'s 4 source nodes sit beside 233 compiled warp records. The compiler omits faithfully.
+
+**AND 1.0 IS ABSENT FROM THE SOURCES TOO.** Of the 15 intensities stated across permitted
+sources -- 0.015, 0.02, 0.03, 0.11 x2, 0.12, 0.13, 0.15, 0.16 x2, 0.17, 0.76 and others -- **not
+one is 1.0**, matching its absence from all 26,108 compiled values.
+
+**THE MECHANISM, WHICH IS WHAT THE SOURCES ADD.** An author who wants the default does not type
+it; they leave the parameter alone. So the default is precisely the value that never appears as
+a STATED value, on either side of the compile. That explains the gap at 1.0 without needing the
+compiler to do anything clever, and it survives the objection that killed the first version of
+this inference:
+
+    warp   1.0 stated 0 times of 26,108 compiled, 0 of 15 source   -> default 1.0
+    blur   1.0 stated 10,357 times, its MOST COMMON value          -> default is NOT 1.0
+
+`blur` is the control and it discriminates. If 1.0 were merely an unfashionable number, blur
+would not type it ten thousand times. Authors type 1.0 for blur because blur's default is
+something else; they never type it for warp because typing it would be redundant.
+
+**Still not proof, and the gap is stated.** The engine's actual default is not readable from
+anything permitted -- neither side of the compile names it, which is the whole point of a
+default. What exists is: a value absent from 26,108 compiled and 15 source statements, with both
+neighbours present; a mechanism that explains the absence; and a control filter where the same
+test gives a different answer. `0.0` remains a bare-possibility second candidate, absent for the
+independent reason that nobody authors a no-op warp.
+
+**What this changes for the policy question.** `warp.default_intensity` now has a CANDIDATE VALUE
+to test rather than an open range. Testing it costs a `refuse`-defaulted arm and a measurement:
+what does 1.0 do to the completion figure AND to the guard's scores. Both numbers, then the
+owner decides.
