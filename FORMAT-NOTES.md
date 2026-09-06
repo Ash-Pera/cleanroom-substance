@@ -55340,3 +55340,53 @@ records and some emissions subtract. Both are open and neither is answered by th
 **Chesterfield 331 is the specimen to carry forward**: `patternsize (5.0, 1.0)` at `opacity -1.0`
 (`de66a17`), a 5:1 strip with a negative weight, which under `max` draws nothing and under `abs`
 draws a full-strength bar.
+
+## What is being misinterpreted: FX entry bit 19, named `opacity`, is the weakest row in the layout — and the numbers agree
+
+Asked directly by the owner. The best answer the evidence supports, with its limits.
+
+**THE CODE ALREADY SUSPECTS IT.** `sbsasm.FX_PARAM_BITS` carries, in its own comment:
+
+    (19, 'opacity', 1),   # baked forms. bit 19 is the WEAKEST ROW
+    (20, 'opacity', 1),
+
+    "BIT 19 IS THE WEAK ROW. Its values run to +-1e13 with a median of -1, which is not what
+     an `opacity` looks like, so either its slot is misassigned for some tags or the pairing
+     does not extend to it."
+
+Bits 21 and 23 are set in no observed tag at all, so their roles are unfitted; bits 27 and 29
+appear in 2 and 3 tags. This region of the entry layout is the least-evidenced part of the
+FX-Map reading, and bit 19 is the weakest row in it.
+
+**AND THE VALUES AGREE.** Over the flat-origin records, where a pattern's `opacity` comes from:
+460 from bit 20 (a program), 129 from bit 19 (baked). Splitting the emitted values by whether
+the record's entries set bit 19:
+
+    entries SET bit 19        n=155   min -1.000   median 0.000   max 3.000   47.7% NEGATIVE
+    entries do not            n=655   min -0.886   median 0.886   max 1.922   12.7% negative
+
+**Bit 19 is 3.8x more likely to produce a negative, and its median is 0.000 against 0.886.** A
+median opacity of zero is not a plausible authored value -- it means half those patterns draw
+nothing -- and it is exactly the signature of a slot holding something that is not an opacity.
+
+**WHY THIS EXPLAINS THE WHOLE CHAIN.** A misread opacity sends a fifth of the emissions to zero
+under `clip`; the survivors on a record are then identical overlapping stamps, whose `max` is a
+constant; the record renders flat; it feeds a `directionalwarp` as a displacement map; the warp
+becomes a no-op; and 58% of warps in the corpus receive a flat map. It also explains why no
+arbitration could settle `fx.negopacity` -- every arm was arguing about how to INTERPRET a
+number that may be the wrong number, which is why `signed` and `clip` came out identical and
+`abs` moved no scored channel.
+
+**WHAT IT DOES NOT ESTABLISH, STATED PLAINLY.** Bit 19 is not the sole cause. 12.7% of the
+PROGRAM-derived opacities (bit 20) are also negative, and those come from evaluating a program
+rather than reading a slot -- so either the file's own arithmetic produces negatives, or the
+misassignment reaches which program address is read, and this measurement cannot separate those.
+Both populations also carry values above 1.0 (3.000 and 1.922), which is equally un-opacity-like,
+though harmless because `splat` clamps.
+
+**So the answer is: probably bit 19, certainly the opacity family, and the question is a LAYOUT
+question rather than a drawing one** -- which is where `643cf65` already pointed when the
+remaining flat records turned out to carry fully-specified patterns. What would settle it is the
+method that validated `warp`'s intensity in `5473f88`: a permitted `.sbs` stating a pattern's
+opacity explicitly, paired against its compiled sibling, to see whether the value we read from
+bit 19 is the value the source declares.
