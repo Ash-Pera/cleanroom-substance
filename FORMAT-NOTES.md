@@ -55296,3 +55296,47 @@ is answered by how a pattern is drawn; both are answered by what the programs co
 
 **Next, and it is a different question from any asked so far:** `fx.negopacity`, on the
 still-flat population rather than on Chesterfield where it does nothing.
+
+## `fx.negopacity`: `abs` un-flattens 43% of the remainder and NO scored channel can see it — REFUSED, and the sign points at the combine
+
+First arbitration of a question that had never been tested anywhere: `fx.negopacity` moves
+Chesterfield by exactly 0.00000, so every sweep this session was blind to it. The still-flat
+records are the first population found that exercises it.
+
+**The question is live.** 157 of 810 patterns on those records carry a NEGATIVE opacity, 19.4%,
+minimum -1.0. This is not a rounding artefact; the file writes negative opacities deliberately
+and often.
+
+**Two behaviours, not three.**
+
+    clip      119 / 316 still flat = 37.7%
+    signed    119 / 316 still flat = 37.7%   IDENTICAL to clip
+    abs        68 / 316 still flat = 21.5%   fixes 43% of the remainder
+
+`signed` and `clip` agree to the record because under `max` combine a negative value never wins
+against 0 -- keeping the sign and clipping it away are indistinguishable outcomes. So the only
+arm that changes anything is `abs`, and what it does is draw a value the file states as NEGATIVE
+as though it were POSITIVE.
+
+**AND NO SCORED CHANNEL MOVES.** All twelve Bricks channels are bit-identical between `clip` and
+`abs` -- ambientocclusion +0.8855 both, height +0.5833 both, roughness +0.8043 both, strong
+channels 0 better / 0 worse. The references have NO EXPOSURE. This is `dfe0078`'s situation
+again: a change that un-flattens records while correctness stays unmeasured rather than verified.
+
+**REFUSED, on two grounds.** The measurement cannot distinguish it from a guess -- un-flattening
+is not evidence, as `sizeless=half` demonstrated by fixing 90% of flat origins while damaging
+every reference channel it touched. And `abs` makes a STRONGER claim about the format than
+`4540b08` did: `fx.markers = skip` honoured a flag the file SETS, while `abs` overrides a sign
+the file WROTE. A reading may believe what the file says; it may not silently negate it.
+
+**WHAT THE SIGN PROBABLY MEANS, and it is not a sign-handling question.** A file that writes
+opacity -1.0 on 157 patterns means something by it, and `max` combine cannot express any of it --
+which is exactly why `signed` and `clip` coincide. A negative contribution is a SUBTRACTIVE one,
+and subtraction needs a combine that can go down as well as up. `fx.combine` was arbitrated to
+`max` in `1970778`, decisively, on both the scalars and the picture -- so either that arbitration
+is right and negative opacity means something else entirely, or the combine is not uniform across
+records and some emissions subtract. Both are open and neither is answered by this question.
+
+**Chesterfield 331 is the specimen to carry forward**: `patternsize (5.0, 1.0)` at `opacity -1.0`
+(`de66a17`), a 5:1 strip with a negative weight, which under `max` draws nothing and under `abs`
+draws a full-strength bar.
