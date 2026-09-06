@@ -55542,3 +55542,47 @@ material that decodes to the same instruction sequence with ONE differing consta
 against `const.i1 1`, mirroring the source's declared 1 and 2. But `valid_program` is False for
 both addresses, so that is a mid-stream decode and the pattern could be coincidence. Recorded as
 a lead, not a finding, and the pair still cannot say which of its two entries is the mode-1 node.
+
+## `pixelprocessor` non-finite is NOT a second defect: 92.5% of it is division by zero on entirely-constant inputs
+
+Taken up as an independent lane while the entry-layout question was delegated. It turns out not
+to be independent.
+
+**ALL 53 non-finite failures are `pixelprocessor`, all at "100.0% of samples", all with both
+edges rendered** -- so the inputs arrive fine and the record's own program produces the NaN.
+
+**The program, traced.** `PavingStonesSubstance003` record 159 ends in a division:
+
+    %7  = 1 - max(colour.z, colour.w)
+    %8  = luminance - %7
+    %12 = max(colour.x, colour.y) - %7
+    %13 = %8 / %12                        <- div.f1
+
+Its two inputs are record 151, a constant 1.0, and record 158, a constant (1, 1, 0, 0). So the
+divisor is `max(1,1) - (1 - max(0,0))` = **0.000000 on 100% of pixels**. It is 0/0 everywhere,
+and the record is refused.
+
+**Generalised over all 53, and the split is clean:**
+
+    ALL inputs constant   49 = 92.5%
+    none constant          4 =  7.5%
+
+**So the 1,181 records this lane blocks in `bc6d7a4`'s cascade ranking are not a second problem.**
+They are the flat-record problem reaching a divide. Three of the ranking's largest causes now
+reduce toward one root: flat displacement maps starving warps (58% of 77,145), non-finite
+divisions starving `pixelprocessor` (92.5% of 53), and the records that go constant in the first
+place. `nonfinite.fill` (0.0 / 0.5 / 1.0) decides what happens DOWNSTREAM of a NaN and can never
+address why the divisor is zero.
+
+**The 4 with no constant input are a genuinely separate arithmetic problem** and are the only
+part of this lane that is its own defect. Recorded so they are not lost in the unification.
+
+**A MEASUREMENT ERROR OF MINE, CAUGHT ON A SPECIMEN I HAD ALREADY TRACED BY HAND.** The first
+pass reported 92.5% "SOME inputs constant" and 0% "all". Record 159 contradicted it directly --
+both its inputs are constant -- and the cause was that flatness was tested with `std()` OVER THE
+WHOLE ARRAY. Record 158 is constant WITHIN each channel at (1, 1, 0, 0), so its cross-channel
+spread is about 0.5 and it read as live. **A flatness test must be PER CHANNEL**: "every channel
+is a different constant" is still a constant image to a divisor. This is the same shape as the
+luminance-weighting error recorded earlier this session, where a 72%-green weighting meant a
+"uniform deficit" was really ch1 alone. The corrected figures are the ones above; the first pass
+understated the unification rather than overstating it.
