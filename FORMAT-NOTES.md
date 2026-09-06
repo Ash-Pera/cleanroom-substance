@@ -55008,3 +55008,52 @@ as a set). The absence argument for 1.0 stands as the best available reading of 
 ITSELF even though it cannot be tested here. And the guard's blind spot is now documented with a
 worked case. But the five ticks spent hunting the default's value were spent on a lever that
 moves nothing measurable, and that is worth recording plainly.
+
+## Are we misreading `levels`? NO — validated against a permitted source, and it is a MESSENGER for flat maps, not their source
+
+Asked directly by the owner after `levels` topped the flat-displacement-map census at 26,400.
+Three separate checks, and the answer is no on all three.
+
+**1. THE READING IS CORRECT, VALIDATED AGAINST A PERMITTED SOURCE.** `ChesterfieldSofa.sbs` is
+permitted and its levels node declares two parameters. Against `model.View` on the compiled
+record 36:
+
+    source declares       leveloutlow  0.38439849      levelouthigh 0.602443635
+    our reader gives      slot 4 = 0.384398            slot 5 = 0.602444
+    ignored fields        []
+
+Exact, both, with nothing in the record going unread.
+
+**A PROBE THAT LIED, AND IT NEARLY BECAME A FINDING.** The first version of this test called
+`ctx.view(rec)`. `Context` HAS NO `view` METHOD -- the call raised, the result was None, and the
+output read as "our reader maps neither slot to any parameter", which is precisely the shape of a
+real defect. Caught by checking the constructor before believing it. That is the third
+silently-failing probe this session (after `render2.fx` vs `fx`, and `PIL`'s `I;16` conversion),
+and the pattern is always the same: an API that returns nothing looks identical to a measurement
+that found nothing.
+
+**2. THE DEFAULTS ARE NOT DEGENERATE.** `DEFAULTS['levels.in'] = (0.0, 0.5, 1.0)`, span 1.0. A
+record omitting the in-levels -- as record 36 does, stating only 2 of 5 -- gets an IDENTITY RAMP,
+not a binarisation. The `zerospan` branch fires only where a record explicitly states
+`levelinlow == levelinhigh`, so it cannot be responsible for flat outputs in general.
+
+**3. AND `levels` IS NOT THE SOURCE OF THE FLAT MAPS.** Over a 150-file sample, 6,375 levels
+records render a flat output and 8,876 render a live one. Of the flat ones:
+
+    input was ALSO FLAT -- inherited, levels is faithful      5,758   90.3%
+    input was LIVE -- levels flattened it                       617    9.7%
+    no input rendered                                             0
+
+**90.3% are inherited.** `levels` heads the flat-map census because it is the commonest filter
+sitting between a generator and a warp, and it passes flatness through correctly. Reading
+"levels produced 26,400 flat maps" as "levels is the defect" was my framing and it was wrong --
+the same error as ranking failures by raw count instead of by root, which this notebook already
+made once in `c9d0376`.
+
+**WHAT REMAINS OPEN.** The 617 that flatten a LIVE input are the only ones levels is answerable
+for, and they are the population where the `zerospan` question could still bite. And a real
+conflict is untested: `model.View` reads levels' parameters END-ANCHORED (`pos = end - sum(widths)`)
+while `decompose.named_params` special-cases `filter_id == 15` to read them FORWARD from a start
+with the widths trailing, its docstring calling the memo wrong on "levels' baked widths". Both
+cannot be right. Record 36 does not separate them -- it states 2 of 5 parameters and is greyscale.
+A record stating all five, in COLOUR so the widths are 4 rather than 1, would.
