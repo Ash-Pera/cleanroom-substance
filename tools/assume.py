@@ -265,7 +265,13 @@ QUESTIONS = {
     'fx.branchoffset':    ('canvas', 'cell'),
     'fx.patternsize':     ('canvas', 'cell'),
     'fx.frameoffset':     ('canvas', 'cell'),
-    'fx.markers':         ('draw', 'skip'),
+    # SKIP FIRST, i.e. the default, and it is a READING rather than a guess. `splat` has
+    # always carried `if skip_markers and (tag & 0xFF) == 0x08: continue`; the file tags these
+    # patterns and we drew them anyway. Of the sizeless patterns on flat-origin fxmaps records,
+    # 628 of 815 (77%) carry tag byte 0x08, and 85% carry ONLY `branchoffset` + `patterntype`
+    # -- no opacity, no rotation, nothing about drawing. Drawing them at `fx.sizeless`'s full
+    # canvas is what pins 574 of 574 flat-origin records to a constant.
+    'fx.markers':         ('skip', 'draw'),
     'fx.typeless_profile': ('rect', 'disc', 'cone', 'paraboloid', 'bell', 'gaussian'),
 }
 

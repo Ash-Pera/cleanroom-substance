@@ -726,7 +726,7 @@ def splat(rec, patterns, W, H, images=None):
     frame_scale = cell if assume.assumed('fx.frameoffset') == 'cell' else None
     sizeless = assume.assumed('fx.sizeless', 'fill')
     skip_root = assume.assumed('fx.rootentry') == 'skip'
-    skip_markers = assume.assumed('fx.markers') == 'skip'
+    skip_markers = assume.assumed('fx.markers', 'skip') == 'skip'
     neg = assume.assumed('fx.negopacity', 'clip')
 
     def val(pat, name, default):

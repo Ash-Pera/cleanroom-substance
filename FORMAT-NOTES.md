@@ -55196,3 +55196,58 @@ on a question the file can answer is the move this notebook has retracted before
 
 **A method note.** The scoring run that would have added `skip`'s correlations timed out at two
 minutes, so those numbers are absent and are not guessed at here.
+
+## `fx.markers` = `skip` ADOPTED: the file tags these patterns 0x08 and we were drawing them anyway
+
+The first FX default changed this session, and the first candidate whose evidence runs the same
+way on both populations.
+
+**HOW IT WAS FOUND: by characterising, not by testing more arms.** `3d6531b` closed
+`fx.sizeless` as ill-posed -- every arm invents a size the file does not state, `fill` saturates
+and `half` manufactures structure that does not match. So the sizeless patterns themselves were
+examined. Over the flat-origin records, 815 sizeless patterns against 878 sized:
+
+    SIZELESS carry     branchoffset,patterntype                        692  = 85%
+                       branchoffset,frameoffset,opacity,patterntype     70
+                       patterntype alone                                29
+    SIZED carry        branchoffset,opacity,patternrotation,patternsize,patterntype  373
+                       ... every one of them a `patternsize`
+
+    low byte of `_tag` on SIZELESS patterns:  0x08 on 628 of 815 = 77%
+
+85% carry ONLY a `branchoffset` and a type -- no opacity, no rotation, nothing about drawing --
+and 77% carry tag byte `0x08`. **`splat` has always had `if skip_markers and (int(tag) & 0xFF)
+== 0x08: continue`.** The file marks these patterns, the reader has the code to honour the mark,
+and `fx.markers` defaulted to `draw`. Drawing them at `fill`'s full canvas is what pins 574 of
+574 flat-origin records to a constant.
+
+**THE EVIDENCE, BOTH SIDES.** On the defect population, flat-origin records still flat:
+`fill` 574/574 = 100%, `markers=skip` 218/574 = 38% -- **62% un-flattened**. On the reference
+channels, Bricks at 256:
+
+    channel            default    markers=skip   sizeless=half (the invented size, for contrast)
+    ambientocclusion   +0.8837    +0.8855        +0.8421
+    normal 0           +0.7718    +0.7769        +0.7296
+    normal 1           +0.7883    +0.7892        +0.7285
+    roughness          +0.8024    +0.8043        +0.7637
+    height             +0.5936    +0.5833        +0.3930
+    basecolor 0/1/2    +0.0430/+0.2698/+0.2721   all better    all worse under half
+
+`markers=skip` beats `sizeless=half` on EVERY ONE of the twelve scored Bricks channels, and
+beats the default on nine of twelve.
+
+**Full guard, all 25 entries at 128/256/512: STRONG better 3 / worse 1, weak better 2 / worse 1,
+RATCHET FAILURES 0.** Seven entries moved, so unlike `dfe0078`'s warp intensity -- where 0 of 25
+moved and the guard had no exposure at all -- the instrument genuinely sees this one. 95 passed.
+
+**WHY THIS ONE WAS ADOPTED WHEN THE OTHERS WERE NOT.** `fx.pos = corner` scored well and was
+killing emission on 86 records. `warp.default_intensity = 1.0` rendered 50,204 more records that
+the guard could not see and that correlated at ~0 where they could be scored. `fx.sizeless =
+half` un-flattened and damaged every reference channel. Each substituted a value the file does
+not state. This one reads a tag the file DOES state, with the reader's own code already written
+for it.
+
+**TWO LIMITS, STATED.** 38% of flat-origin records are still flat under `skip`, so this is not
+the whole defect -- the `patterntype`-only patterns (29) and the `0x08`-less remainder (187 of
+815) need their own account. And `height` loses 0.0103 at 256; the ratchet accepts it and it is
+the one strong channel that moves the wrong way, so it is the thing to watch if this is revisited.
