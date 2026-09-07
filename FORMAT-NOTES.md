@@ -55867,3 +55867,53 @@ ONE REGULARITY RECORDED, NOT FITTED, true in all three cells: the word before th
 `tag - 52`, and slot 2 holds `slot3 - 52`, so slot 2 points at the start of the pointer array.
 Slot 1 is a small integer -- 8, 4, 2 against 1, 3, 6 pointers respectively. Written down as an
 observation for whoever has more than three tags to test it on; it is NOT a rule here.
+
+### It is not a single bit: the entry is SELF-DELIMITING
+
+The previous section left "which rule decides whether bit 31's slot is present" open and
+implied the answer was another bit. Challenged on that, and the challenge was right: nothing
+had established that the axis was bit 31 rather than something co-varying with it across the
+three tags that carry it. Bits present in `0xD5140088` and absent from BOTH overshooting tags:
+18, 26 and 30 -- three candidates, perfectly co-extensive over three tags. The same trap as
+bit 7 / bit 31, one level down, and it would have produced the same kind of false confidence.
+
+EXACT AGREEMENT, ALL TAGS, against the observed extent (previous test caught only overshoot):
+
+    entries with a tight bound            32,180
+      tag-derived width exact             31,840   98.94%
+      OVER                                    93    0.3%   only 0x83000088, 0x91100088
+      under                                  247    0.8%   deltas -1, -4, -13, -95, -123
+
+The 247 are NOT width errors: a delta of -95 means the nearest forward program is not adjacent,
+so the bound is loose there. The overshoot population is exactly the two bit-31 tags. But bit 31
+is NECESSARY AND NOT SUFFICIENT -- `0xD5140088` carries it and is exact -- so no single bit
+tested here decides it, and the candidates cannot be separated at n=3.
+
+THE RULE IS NOT A BIT. The slot run ends where a program the entry NAMES begins: walk the
+tag's slots in order, resolving each program slot, and stop at the first slot whose address
+lands inside a program already named. The entry states its own extent.
+
+    rule                     exact              over   under
+    tag-derived width        31,840  98.94%       93     247
+    SELF-DELIMITED           31,933  99.23%        0     247
+
+    tag          tag says   self says   observed
+    0x83000088       7          6           6      x86
+    0x91100088       7          6           6      x7
+    0xD5140088       9          9           9      x9
+
+One rule, all three tags, no bit consulted. It gains exactly the 93 disputed entries, breaks
+none of the 31,840 already exact, and drives overshoot to zero.
+
+THE GUARD THAT WAS DISCARDED IS THIS RULE. It was written, measured inert, and removed -- and
+the reasoning for removing it was sound for what it was tested on and wrong in scope. It is
+inert for PROGRAM READING, because `program_span` already rejects a body word, which is what
+was measured. It is NOT inert for WIDTH, which was never measured. "This changes no programs"
+was read as "this changes nothing"; the correct conclusion was "this changes no programs, and
+width was not tested". A no-op on one consumer is not a no-op.
+
+NOT WIRED. Every width consumer already clamps -- `walk_partition` takes
+`min(span, (nxt - q) // 4)` and lands on 6 for the overshooting tags by a different route, and
+`fx_out_of_line` holds at 3 cells either way. So this is the correct MODEL of entry extent and
+changes no output today. It is recorded rather than applied, because applying it would be a
+change with no measurable effect, and this file already carries two of those from this session.
