@@ -56495,3 +56495,48 @@ This is the third survivorship-shaped error of the session, after the 1e-9 thres
 read float32 dither as signal and the `fxbench` null that measured an arm against a bench
 containing none of its population. The pattern is one instrument silently changing what it
 counts.
+
+### fx.negopacity=abs: real revival, no ground-truth support -- and the guard's view is optimistic
+
+THE CASE FOR `abs`, over 14 permitted files:
+
+    fxmaps records carrying a NEGATIVE opacity      115
+      render FLAT under clip (the default)          100
+      REVIVED by abs                                 95
+      still flat under abs                            5
+      LIVE under clip that go FLAT under abs           0
+    all flat records                          5,407 -> 4,934
+
+It revives 95 of 100 dead records, breaks none, and un-flattens 473 records once downstream
+cascades are counted. Plus the sibling evidence: 10279 comes back at mean 0.7008 against its
+two siblings' 0.7055 and 0.7243.
+
+THE CASE AGAINST ADOPTING IT ANYWAY. Scored against exported references across EVERY graph --
+109 rows, not the 25 the guard keeps:
+
+    rows 109 both arms     corr 0.4077 -> 0.4076  (-0.0001)
+    better 0   worse 1     FLAT rows 18 -> 18
+
+Nothing moves. None of the 95 revived records feeds a scored output, and the single movement
+is Chesterfield roughness at -0.0117. So the revival is real and UNVERIFIABLE with the
+references this project holds: "fewer flat records" measures a change's REACH, not its
+correctness, because any change that adds signal reduces flatness. `abs` stays unadopted, and
+the reason is recorded so it is not re-argued from the flatness number alone.
+
+THE INSTRUMENT IS OPTIMISTIC, and this is the larger finding. `refcompare.compare_pack` yields
+one row per graph per channel, and the guard keeps LAST ROW WINS -- 25 of 109. Scoring all of
+them:
+
+    the guard's 25 channels     mean corr 0.7943
+    ALL 109 rows                mean corr 0.4077
+
+The packs hold five graphs each and the guard scores one. Its 25 channels are not a random
+sample of the render's quality; the unscored four fifths are far worse, and 18 scored rows are
+FLAT under both arms. So `GUARD_TABLE`'s floors describe the best-covered corner of the
+corpus, and a defect that flattens an entire output -- like graph 1's height, traced earlier
+to a constant 0.5 -- can sit outside every floor in it.
+
+That is a coverage question for the owner, not a floor change to make quietly: the references
+are already loaded and already yielded, so widening the guard costs rendering time and a
+decision about what the new floors should be, and it would make the suite's headline number
+substantially worse before it gets better.
