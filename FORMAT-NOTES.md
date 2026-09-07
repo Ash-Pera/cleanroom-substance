@@ -56394,3 +56394,61 @@ CORROBORATION, from a run that stalled earlier and finished late: the pattern dr
 25 files -- 733,556 patterns, 612 dropped, 0.1% -- matches the 0.09% measured over 12 files.
 Two samples, one conclusion, and the larger one was measured by the quadratic harness before
 that was diagnosed.
+
+### A whole output rendered as constant 0.5, and the cause is opacity -1 clipped to zero
+
+TRACED END TO END on `Kutejnikov__Bricks_and_tiles`, graph 1's height (record 10478):
+
+    fxmaps         10277  std 0.106738  mean 0.7055    LIVE
+    fxmaps         10278  std 0.106241  mean 0.7243    LIVE
+    fxmaps         10279  std 0.000000  mean 0.0000    DEAD
+    transformation 10280  std 0.000000  mean 0.0000    carries the dead one
+    blend          10281  std 0.000000  mean 0.0000    LIVE + DEAD -> 0
+    ... levels, 4 dirmotionblur, 11 warps, 27 blends, all 0
+    blend          10478  std 0.000000  mean 0.5000    THE HEIGHT OUTPUT
+
+The three sibling fxmaps differ in ONE field:
+
+    10277   6 patterns   no opacity        live, mean 0.7055
+    10278   5 patterns   no opacity        live, mean 0.7243
+    10279   3 patterns   opacity {-1.0}    BLACK
+
+`splat` clips opacity to [0,1] by default, `np.clip(-1.0, 0.0, 1.0)` is 0.0, the patterns
+draw fully transparent, and the record renders black. The downstream blend then annihilates
+its live sibling -- the signature of a multiply against an empty mask -- and the black
+propagates 40-odd records to a constant output.
+
+    arm                fxmaps 10279          blend 10281      height 10478
+    clip (default)     0.0      / 0.0        0.0              flat 0.5
+    abs                0.106795 / 0.7008     0.041718         flat 0.5
+    signed             0.0      / 0.0        0.0              flat 0.5
+
+`abs` revives 10279 to mean 0.7008 against its siblings' 0.7055 and 0.7243. Three siblings
+converging on one value is the strongest evidence available here that `abs` is the correct
+reading. `signed` changes nothing, because a -1 pattern under `max` combine still contributes
+nothing.
+
+TWO CORRECTIONS TO MY OWN EARLIER CLAIMS.
+
+`fx.negopacity` WAS REPORTED AS A DEAD ARM. It produced bit-identical output on all eight
+`fxbench` records, and that was reported as the arm being inert. It is inert ON THAT BENCH,
+because none of those eight records carries a negative opacity -- the bench excludes the very
+population the arm governs. A null measured on a sample that cannot exhibit the effect is not
+a null result about the effect. The same caveat applies to `fx.pos`, dismissed on identical
+evidence and still untested against a population that exercises it.
+
+THE GUARD DOES NOT SCORE THIS GRAPH. `fx.negopacity=signed` is bit-identical across all 25
+guarded channels and `abs` is 0 better / 1 worse, so no guarded channel depends on a
+negative-opacity pattern. This pack holds FIVE graphs, each declaring
+basecolor/normal/roughness/metallic/height/AO; `refcompare` pairs by declared usage and LAST
+ROW WINS, which is why an earlier survey yielded 109 rows for 25 channels. So the guard's
+Bricks height is a later graph's height, NOT 10478. The chain above was traced on a graph the
+guard never scores, and it does NOT explain the band 0.13-0.23 deficit, which remains open.
+
+That is worth stating as a limitation of the instrument and not only of this investigation:
+**the guard silently discards four of every five graphs in this pack.** A defect that kills an
+entire output can therefore sit outside every floor in `GUARD_TABLE`.
+
+STILL BLOCKED. Even under `abs` the height output stays flat, because a SECOND blockage sits
+at blend 10283, which returns exactly 0.0 while holding a live input. One dead fxmaps was not
+the whole chain.
