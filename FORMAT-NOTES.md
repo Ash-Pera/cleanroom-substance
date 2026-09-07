@@ -56763,3 +56763,41 @@ field pins at 0.9958 with std 0.0039. Whether 5.0 is the program's correct outpu
 unit we are not applying, or the program is being read wrongly, is the open question -- and
 it is now attached to a specific bit (26) and a specific tag population rather than to a
 global arm.
+
+### The counts and sizes are as DECLARED; the unit is per-record and `_cell` already knows it
+
+Reading the emission count rather than arbitrating it (`fx.gridcount=divisor` is bit-identical
+across all 109 rows, so that arm does not reach these records at all):
+
+    rec 711     numberadded 1089  ->  emitted 1089   mode 'chain'
+    rec 10073   numberadded   81  ->  emitted   81   mode 'chain', then 64 leaf calls
+
+`mode 'chain'` means neither the grid nor the linear rule of SPEC 13.7 fired: the count IS the
+file's `numberadded`. (Earlier notes in this session said 1024 for rec 711; it is 1089. 1089
+is 33 squared.) So the count is as declared and `patternsize` 5.0 is as declared, and 1089
+stripes five units wide on a unit canvas saturate to 0.9958 at std 0.0039.
+
+THE ARITHMETIC THAT MAKES SENSE OF IT: on a 33x33 lattice a cell is 1/33 of the canvas, so
+`patternsize` 5.0 read in CELL units is 5/33 = 0.152 of the canvas -- ordinary coverage. The
+declared numbers are consistent; the UNIT is what is wrong, and only for some records.
+
+WHY THE GLOBAL ARM CANNOT EXPRESS THAT. `fx.patternsize=cell` scales by `_cell(patterns)`,
+which derives the lattice from the branchoffset span -- "a cell-unit offset walks WHOLE cells,
+so its values are integers and its span is one less than the cell count". That derivation is
+per-record and already returns None when it cannot tell. But the ARM is global, so it forces
+the scaling on records whose offsets are not a lattice, which is why `cell` un-flattened all
+18 flat rows and simultaneously cost Auras up to 0.19: Auras is not on a lattice and should
+never have been scaled.
+
+    canvas (default)  Auras healthy      Bricks g0/g5 SATURATED -> flat
+    cell (global)     Auras -0.19        Bricks g0/g5 un-flattened but corr only 0.035-0.055
+
+PROPOSAL, and it is a design change rather than an arm setting: apply cell scaling WHERE THE
+EMISSIONS THEMSELVES SAY SO -- when `_cell` finds a genuine integer lattice -- and leave
+canvas units where it does not. That is a per-record fact read off the emissions, in the same
+spirit as `fx_entry_width` asking the entry instead of the tag. It predicts Auras stays
+untouched (no lattice) and the Bricks saturating records scale by 1/33.
+
+It is NOT yet established that the lattice test is sound on the packs where `cell` currently
+damages agreement; that is the measurement to run before any code changes. If `_cell` returns
+a value for Auras, this proposal collapses into the arm that was already refuted.
