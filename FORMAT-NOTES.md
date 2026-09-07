@@ -56540,3 +56540,41 @@ That is a coverage question for the owner, not a floor change to make quietly: t
 are already loaded and already yielded, so widening the guard costs rendering time and a
 decision about what the new floors should be, and it would make the suite's headline number
 substantially worse before it gets better.
+
+### A DEFECT LIST WITH GROUND TRUTH: two whole graphs render constant, 18 of 109 rows
+
+The check that separates a faithful constant from a broken one is our std against the
+REFERENCE's std, and it had not been run all session. Of 109 reference-scored rows, 18 have a
+constant output, and every one of them has a TEXTURED reference:
+
+    pack / channel / graph        our std    REF std   our mean  ref mean
+    Bricks height        g0       0.000000  0.176710    0.5000    0.4399
+    Bricks height        g5       0.000000  0.167295    0.5000    0.4490
+    Bricks ambientocc    g0/g5    0.000000  0.155/0.166 0.8039    0.830/0.832
+    Bricks basecolor 0/1/2 g0/g5  0.000000  0.063-0.083 0.21-0.28 0.26-0.32
+    Bricks normal 0/1/2  g0/g5    0.000000  0.008-0.054 0.5/1.0   0.5/0.995
+    Bricks roughness     g0/g5    0.000000  0.050/0.053 0.5826    0.671/0.669
+
+    WRONGLY FLAT: 18 of 18.
+
+TWO ENTIRE GRAPHS RENDER CONSTANT -- every channel of graph 0 and graph 5, which are almost
+certainly the same graph in the pack's two assemblies (`x_Bricks_Textures_1` and `_2`); their
+reference stds differ only slightly. Every other pack's rows are live.
+
+This is the first defect list in this file with GROUND TRUTH attached: not "this looks flat"
+but "this is flat and the engine's own exported map is not". And height's constant is exactly
+0.5000 -- the signature traced earlier to `fxmaps` 10279 dying on `opacity -1`, so that trace
+was of a REAL and REFERENCE-CONFIRMED failure, even though the guard's 25 channels cannot see
+it.
+
+WHY THE GUARD MISSES ALL 18: it keeps LAST ROW WINS, and its `Bricks` rows come from the
+graphs that are NOT flat. So the pack contributes 9 healthy-ish channels to `GUARD_TABLE`
+(corr 0.58-0.89, band 0.13-0.23) while two of its graphs produce nothing at all, and the
+floors cannot regress when the failure gets worse or better.
+
+WHAT IS NOT YET EXPLAINED. `fx.negopacity=abs` revives fxmaps 10279 but the height output
+stays constant, because blend 10283 is `blendingmode 2` (subtract) and
+`0.0238 - 0.7055` clamps to zero -- arithmetic that is correct in isolation. So either a
+second parameter in that chain is misread, or the subtract's inputs are wrong, or mode 2 is
+not subtract for these records. The reference says the engine produces structure there, so
+something in the chain IS wrong; the arithmetic alone does not say which link.
