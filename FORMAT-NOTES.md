@@ -56140,3 +56140,166 @@ eight-record bench, which is what it was built for, and QUADRATIC when swept acr
 whole record set -- a file with 371 fxmaps records pays 371 full renders. Both earlier
 attempts at this measurement were read as "slow" when they were closer to non-terminating.
 Sweeping wants ONE render per file with a spy that keeps every `splat` call.
+
+### fx.sizeless is not the amplitude defect either, and no draw-side arm is
+
+Arbitrated against the 25 guarded channels at grid 256, scoring corr, band AND dc rather than
+corr alone -- scoring on corr alone is part of why `patternsize=cell` looked promising:
+
+    arm                 corr better/worse   mean corr        mean |log band|
+    fill (default)            --            0.7943           1.333
+    skip                     3 / 0          0.7979 (+0.0036) 1.345 (+0.012)
+    half                     2 / 3          0.7933 (-0.0010) 1.370 (+0.037)
+    quarter                  3 / 8          0.7905 (-0.0037) 1.314 (-0.019)
+
+`skip` is a clean small win on placement -- three channels better, none worse -- and is worth
+adopting on its own merits. It is NOT an amplitude fix: mean |log band| stays at 1.33 under
+every arm, an average amplitude error of about 3.8x that the sizeless question does not move.
+
+THE DRAW-SIDE ARMS ARE EXHAUSTED as explanations for the amplitude deficit:
+
+    fx.patternsize=cell   REFUTED by the guard, 1 better 7 worse
+    fx.negopacity         bit-identical output on all eight bench records
+    fx.pos                bit-identical output on all eight bench records
+    fx.sizeless           no material band movement, any arm
+    dropped patterns      0.09% corpus, 0.02% on the packs that show the deficit
+
+AND IT IS NOT UNIFORM, which is the useful part. Chesterfield sits near unity -- metallic
+1.024, normal 1.209/1.219, height 1.228 -- while Bricks_and_tiles is 5-8x too quiet on normal
+(0.13), height (0.185) and AO (0.231) while drawing 39,539 of its 39,547 sized patterns. A
+pack-specific deficit with the patterns present and drawn points at per-pattern amplitude
+(profile, opacity, the combine rule) or downstream of the FX-Map, not at the emission.
+
+### The amplitude deficit is NOT in the FX-Map draw: every draw-side arm measured
+
+    arm                corr better/worse   mean corr          mean |log band|
+    default                  --            0.7943             1.333
+    fx.combine=add          1 / 7          0.6695 (-0.1248)   1.398 (+0.065)
+    fx.combine=over         1 / 4          0.7754 (-0.0189)   1.336 (+0.002)
+    fx.profile=disc         3 / 16         0.4320 (-0.3623)   1.994 (+0.661)
+    fx.rootentry=skip       3 / 0          0.7979 (+0.0036)   1.345 (+0.012)
+
+TWO CONFIRMATIONS. `max` is the right combine rule -- both alternatives are worse on corr,
+band and dc together. And `profile=disc` collapsing corr by 0.36 is a CONTROL: it shows the
+profile machinery is load-bearing, so a null result from another arm is a real null and not
+an arm that fails to reach the draw.
+
+`fx.rootentry=skip` AND `fx.sizeless=skip` ARE ONE FINDING, NOT TWO. Their deltas are
+numerically identical (+0.0036 corr, +0.012 band, 3 better 0 worse) because `fx.py`'s draw
+loop gates both on the same population -- patterns carrying neither `patternsize` nor
+`patterntype` -- with `skip_root` taking the subset at the origin and `sizeless == 'skip'`
+taking all of them. That they agree exactly means the sizeless patterns which affect the
+guard are precisely the root-origin ones. Counting them as two arms agreeing would have been
+double-counting one measurement.
+
+THE NULL RESULT IS THE RESULT. Mean |log band| runs 1.314 (best) to 1.994 (worst) against a
+default of 1.333: no draw-side arm moves the amplitude error, which stands at about 3.8x. The
+FX-Map draw is not where the amplitude is lost. Combined with the emission being intact
+(39,539 of 39,547 patterns drawn on Bricks) and the baked parameter path being clean, the
+search belongs downstream -- levels, blend, the warp chain -- which is where the earlier
+"58% of warps get flat displacement maps" measurement already pointed before this session
+went into entry layout.
+
+### LOCALIZED: 66.2% of the too-quiet pack's warps get a FLAT displacement map
+
+`f_warp` displaces input 0 by the GRADIENT of input 1. A flat input 1 has zero gradient, so
+the warp becomes a SILENT PASS-THROUGH -- it neither fails nor warns, it simply adds nothing.
+Structure that should be introduced is absent, which reads as too little amplitude.
+
+The filter composition of the two packs says where to look, and it is categorical rather than
+proportional:
+
+    filter 7 = warp        Bricks 515 records    Chesterfield 0
+    filter 21 = distance   Bricks 126            Chesterfield 0
+
+The pack that is 5-8x too quiet is full of warps; the pack that renders at band ~1.0-1.2 has
+none. Spying on the gradient input of every warp call:
+
+    Bricks         warp called 515   FLAT 341   live 174    66.2% FLAT
+    Chesterfield   warp called   0                          no warps to fail
+
+Consistent with the corpus-wide 58% measured earlier from a different direction. Two thirds
+of this pack's warps do nothing, and that is a pack-specific mechanism which fits a
+pack-specific deficit -- unlike every draw-side arm, all of which were null.
+
+METHOD, and it is the fifth silent-zero of this session. The first run of this measurement
+reported `{}` for both packs, because `engine` does `import filters` (BARE) while the probe
+patched `render2.filters`: two entries in `sys.modules`, two module objects, and the spy was
+installed on the one nothing calls. Verified rather than assumed the second time --
+`engine.filters is bare` True, `is pkg` False. The probe now patches through
+`engine.filters`, so the object cannot diverge. This is the hazard `fx_entry_walk`'s note and
+the `render2.fx` note both describe; it is not specific to `fx`.
+
+The assertion added to catch that then FIRED ON CHESTERFIELD, which is correct behaviour
+misread as a bug: a pack with no warps legitimately produces no observations. "Absent" and
+"not measured" need different signals, and an assertion that cannot tell them apart is the
+wrong instrument.
+
+### The flat cascade, traced to its roots -- and it is NOT the fxmaps
+
+Following the warp localisation, with two of my own instruments audited on the way because
+both could have produced the answer artefactually.
+
+WHERE THE FLAT DISPLACEMENT MAPS COME FROM, by the filter that produced the warp's input 1:
+
+    FLAT   blend 320   blur 11   levels 10          (341)
+    LIVE   fxmaps 165  levels 5  blur 4             (174)
+
+**Every fxmaps-fed warp is LIVE. Not one flat map on this pack comes from an fxmaps record.**
+That CONTRADICTS the standing "74.6% of flat maps originate at fxmaps saturating to 1.0",
+which is why this session opened on the saturating records at all. Either that figure does
+not generalise from the corpus to this pack or it was measuring something else; it is flagged
+here and NOT quietly dropped. On the pack that actually shows the amplitude deficit, the
+saturating-fxmaps story is refuted.
+
+BLEND IS A PROPAGATOR, NOT A CAUSE:
+
+    flat blend outputs                    1,558
+      inherited, ALL inputs flat          1,479   94.9%
+      partial                                63
+      CREATED from live inputs               16    1.0%
+
+RANKING FLAT OUTPUTS BY FILTER RANKS PROPAGATORS, NOT CAUSES, and that is the trap this
+whole thread nearly fell into. The by-filter table -- blend 1,558, transformation 1,313,
+levels 529 -- names the records that CARRY the flatness. One flat root propagates through
+many records and inflates every filter downstream of it. The question that separates them is
+whether a flat record's own inputs were already flat.
+
+    12,585 records   4,633 flat (36.8%)
+      inherited        3,807   82%
+      no inputs          335
+      partial            301
+      CREATED            190
+
+    ROOTS -- flat WITHOUT inheriting it
+      uniform (no inputs)         257    LEGITIMATE: uniform IS a constant
+      transformation (live in)    109    a geometric transform should not flatten
+      pixelprocessor (no inputs)   55
+      levels (live in)             28
+      blur (live in)               25
+      fxmaps (no inputs)           23
+      blend (live in)              16
+
+TWO INSTRUMENT AUDITS, both of which could have invalidated the above:
+
+  * IS "FLAT" JUST A ONE-PIXEL OUTPUT? A single-pixel array has zero std trivially. No:
+    98.7% of flat outputs are larger than 4 px and 4,055 of them are full 128x128. Only 48
+    are 1 px.
+  * IS IT AN ARTEFACT OF THE 128 px RENDER CAP? A small cap forces large minification, which
+    drives `footprint_scale` over 2 and invokes `prefilter` hard -- conditions the guard's
+    256-512 renders would not share. No:
+
+        cap 128   flat 36.8%   warp gmap flat 341/515  66.2%
+        cap 256   flat 35.6%   warp gmap flat 341/515  66.2%
+        cap 512   flat 35.6%   warp gmap flat 340/515  66.0%
+
+    Stable. The measurements describe the renderer, not the probe.
+
+REFUTED ON THE WAY: mis-decoded `matrix22` driving `prefilter` to flatten. The flattening
+transformations carry ORDINARY matrices -- the commonest is the IDENTITY (49), then a 180
+degree rotation (25) -- and their median footprint scale is 1, with 61% never reaching
+`prefilter` at all.
+
+STILL OPEN, and it is the sharp question: **how does an identity `transformation` with a
+live input produce a constant 128x128 output?** It is stable across three caps, so it is real.
+That is 109 records and it is the largest non-legitimate root.
