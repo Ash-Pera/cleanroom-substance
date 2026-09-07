@@ -56578,3 +56578,62 @@ stays constant, because blend 10283 is `blendingmode 2` (subtract) and
 second parameter in that chain is misread, or the subtract's inputs are wrong, or mode 2 is
 not subtract for these records. The reference says the engine produces structure there, so
 something in the chain IS wrong; the arithmetic alone does not say which link.
+
+## THE MISUNDERSTANDING: `rand` ignores the seed, so sibling FX-Maps render identically
+
+The whole-graph flatness of `Bricks_and_tiles` graphs 0 and 5 has one cause, and the chain is
+arithmetic all the way down. All four records are single-channel at 256x256:
+
+    10073 fxmaps  mean 0.9158  std 0.067611
+    10074 levels  mean 0.9579  std 0.033806     EXACTLY half of 0.067611
+    10075 fxmaps  mean 0.9158  std 0.067611     IDENTICAL to 10073, to six figures
+    10076 blend   mean 0.5000  std 0.000301     mode 2 subtract, edges [10074, 10075]
+
+`blend` computes `dst*(1-op) + fn(dst,src)*op`. At opacity 0.5 with `fn = d - s` that is
+**`d - 0.5*s`**. Write `d = levels(10073) = a*(s - m) + m'` with `a = 0.5`, and if `s` is the
+same field as `10073`:
+
+    d - 0.5*s  =  0.5*s - 0.5*m + m' - 0.5*s  =  m' - 0.5*m      A CONSTANT
+
+The varying part cancels EXACTLY. That is why the output is 0.5000 and not the 0.042 a naive
+`d - s` of the means predicts, and why the std is 3e-4 rather than 3e-2. The construct is a
+difference-of-amplitudes edge detector, and it degenerates to a constant precisely when its
+two operands are the same image.
+
+THEY ARE NOT THE SAME RECORD. `10073` has 324 words and `10075` has 326, with different
+program offsets and different bytecode lengths; they share `w0=0x03998808` and `w1=0x00000294`.
+Two distinct programs, one output, identical to six significant figures.
+
+WHY: opcode `0x32` is named `rand (SEEDED)` in OPCODES.md, 161,480 occurrences, and
+`sbsruntime.rand` is a pure function of `(limit, $number)`:
+
+    h = np.modf(np.sin(x * 12.9898 + n * 78.233) * 43758.5453)[0] % 1.0
+
+Nothing identifying the record, the node or the seed enters it. And `fx.py:531` COMPUTES the
+seed and throws it away:
+
+    if 'randomseed' in progs and progs['randomseed'] is not None:
+        run(progs['randomseed'], slots, number)      # result never stored
+
+So two FX-Maps of the same shape draw the same numbers, and any construct that differences
+them collapses. The same signature is visible elsewhere and was recorded as a curiosity
+rather than a defect: Chesterfield 92/93 both read 0.9154/0.067604, and Auras 427/428 both
+read 0.9158/0.067602 while the bench labels them "the same draw point-reflected".
+`sbsruntime.rand`'s own docstring reaches the edge of this -- "two calls with the same
+argument in the same emission still collide, which the engine would not do" -- without
+noticing that the collision also spans RECORDS, which is what turns it from cosmetic into a
+dead output.
+
+MY FIRST TEST OF THIS WAS TOO WEAK TO SETTLE IT, and is reported as inconclusive rather than
+as a refutation. Salting the hash with the record index moved the siblings only 0.1%
+(0.067611 -> 0.06752 / 0.067534) and the collapse survived (0.000301 -> 0.000325). That says
+the salt failed to change the spatial pattern, not that the seed is irrelevant: pattern
+POSITIONS come from `$number`-driven placement, so perturbing `rand`'s value alone leaves the
+draw in the same places. A real test has to seed the draw the way the file does -- from the
+`randomseed` program whose result is currently discarded.
+
+WHAT WOULD CONFIRM IT: honour `randomseed`. Store what that program returns, mix it into
+`CONTEXT`, and have `rand` consume it. If `10073` and `10075` then differ structurally, the
+cancellation stops being exact and the 18 wrongly-flat rows should come alive. That is a real
+code change to the runtime and wants the full suite plus the 109-row comparison, not the
+25-channel guard, since the guard cannot see any of the 18.
