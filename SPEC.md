@@ -337,6 +337,36 @@ on every key from the constant; with the intercept pinned they are exact, and th
 only records that exercise four of `emboss`'s cells. **The 5 that remain are filter 9**,
 which no permitted source names and which has no legend entry.
 
+### 6.5 Which bits the corpus can actually separate
+
+A per-bit claim is normally argued by scoring a model with the bit against one without it.
+That argument is void when another bit is set on exactly the same masks: the two are one
+column, every score is identical, and the tie reads as a confirmation. Two relations matter,
+and they are not equally bad:
+
+- **identical** — set on exactly the same masks. Fatal; no measurement over that population
+  can name one rather than the other.
+- **implies** — this bit's masks are a strict subset of the partner's. A real confound, since
+  every piece of evidence for the bit is also evidence for the partner, but *arguable*: the
+  partner's extra masks are the control.
+
+`archive/tools/separability.py` reports both, and **no `identical` pair exists anywhere in
+the corpus** — so every bit named in this document is in principle still arguable. The subset
+confounds:
+
+| population | not separable | separable |
+|---|---|---|
+| FX entry tags (158 masks) | bit 31 implies 7, 24 | the other 16 |
+| class word, bits 16–31 (1,923 masks) | 16, 20, 21, 24–29 imply 19; 22 (n=3); 30 | only 19, 23 |
+| w1, filter 1 (285,398 records) | 6, 11, 12 imply 8; 9, 10 imply 4, 5, 8 | 0–5, 8 |
+| w1, filter 2 (215,444 records) | 4 (n=211,786) implies 2, 3; 28 (n=33) | 0–3, 5–7, 25, 26 |
+| w1, filter 15 (76,879 records) | — | all of 0–10 |
+
+**The population is part of the claim.** Bits 7 and 31 were once called co-extensive "4/4
+both ways" and a reading was retracted on it; they are co-extensive over `FX_ENTRY_PROGS`'
+57-tag key set and *not* over the corpus, where bit 31 is a strict subset of bit 7 and 474
+entries across 11 tags separate them. Enumerate from the corpus, and say so when narrowing.
+
 ---
 
 ## 7. Parameters
@@ -959,6 +989,30 @@ corrected width, and `0x03520248`'s block ends `[…][1.0][1.0]` — the two com
 trailing `patternsize`, which the naive span cuts in half. 101 of 595 cells stop being
 identifiable if the width is put back.
 
+**But the mask does not state the extent exactly, and no bit says where it differs — the
+ENTRY does.** `max(slot + width - 1) + 1` is right for 98.94% of entries and one word too
+long for 93 of them. Measured against the extent the file itself shows, an entry's fields
+ending where the program it names begins:
+
+| width rule | exact | too long | too short |
+|---|---|---|---|
+| the tag's mask | 31,840 (98.94%) | 93 | 247 |
+| self-delimited | **31,933 (99.23%)** | **0** | 247 |
+
+The 93 are not identified by any bit. Bit 31 is *necessary and not sufficient* — `0xD5140088`
+carries it and is exact at width 9, while `0x83000088` and `0x91100088` carry it and are one
+long — and the bits distinguishing them (18, 26, 30) are co-extensive across the only three
+tags that carry bit 31. **The rule is not a bit: resolve each program slot in order and stop
+at the first slot whose own address lands inside a program already named.** That is the same
+"two statements of one address must agree" discipline the out-of-line cells use, applied to
+the entry's own end, and it is `sbsasm.fx_entry_width`. The 247 short readings are *not*
+width errors: their deltas run to −95 and −123, meaning the nearest forward program is simply
+not adjacent, so the bound is loose rather than the model wrong.
+
+This changes no output today — every consumer of the width already clamps, `walk_partition`
+via `min(span, (nxt - q) // 4)` — so it is the correct model of the extent rather than a
+correction to a reading.
+
 **An entry's parameter block can sit OUT OF LINE, at the address its slot 1 names.** This is
 what `abuts an fx cell` was: 126,206 bytes, 71% of the residual before it was read, in
 records whose own filter has no payload. The cell is
@@ -1238,7 +1292,18 @@ one, and every tool that reads a source goes through them. It was enforced by no
 a reading of FX-Map `$pos` was taken from an excluded file and had to be withdrawn; **131 of
 the 491 sources here bear the tag**, and for FX-Maps specifically they are the whole of the
 interesting population, so a negative measured over the permitted sources means "absent from
-what may be examined" and never "absent from the format". The format's *structure* is fully recovered — a reader can locate
+what may be examined" and never "absent from the format".
+
+**A permitted source is not ground truth unless its DEPENDENCY CLOSURE is also permitted.**
+The predicate classifies the file it is handed; a `.sbs` declares `<dependency>` entries, and
+`sbs://…` names a graph from the shipped library, which is excluded and whose nodes are
+nevertheless compiled into the package. `Simulator__Grid.sbs` is permitted, declares three
+dependencies of which two are `sbs://`, and holds 3 `fxmaps` filter nodes against its
+compiled sibling's 6 — so half the compiled records have no declaration that may be read. A
+declared-vs-decoded comparison over such a pair cannot separate "we decoded it wrong" from
+"that node came from a dependency", and one was withdrawn on exactly that ground. Pair only
+against a source whose dependencies are all permitted, or compare per-node rather than as
+multisets. The format's *structure* is fully recovered — a reader can locate
 and walk every region above from the file alone. What remains open is *semantics*: the
 meaning of some filter parameters, the FX-Map pattern footprint (§8), and a handful of
 provenance-walled specifics (e.g. filter 5's NAME — its layout is in the legend and its
@@ -1996,6 +2061,29 @@ already carries each pattern's position and re-driving the spiral adds a second 
 13 ridged bell, 14 crescent, 15 capsule, 16 cone`; nibble 0 is a catch-all that includes
 Square. `imageindex`, when present, makes the pattern an input image sampled over its own
 footprint.
+
+**A pattern's parameters reach the draw two ways, and only one of them is sound.** Each entry
+parameter is either `baked` — read from the entry's own slots by the §8 walk — or a
+**program** evaluated per emission. Over 60 permitted specimens, of 8,210 `patternsize`
+parameters:
+
+| source | n | zero, non-finite or absurd |
+|---|---|---|
+| baked | 3,732 | **none** |
+| program | 4,478 | the whole of them |
+
+The commonest baked values are `(5.0, 1.0)`, `(1.5, 1.5)`, `(3.0, 2.0)`, `(8.0, 1.25)` — all
+plausible, and note that **`patternsize` is not bounded by 1**; components of 5 and 8 are
+routine, so a size above 1 is not evidence of a units error. The baked path is clean, which
+means the entry layout of §8 — bit 7, bit 31, the extent — cannot produce a bad size. Bad
+sizes come from **program evaluation**.
+
+This is subtractive, not corruptive. A renderer must skip a pattern whose size is
+non-positive, non-finite, or absurd (`> 64`, or `< 1e-6`; the corpus leaves a clean gap here,
+nothing between 1e-30 and 1e-06), so each failed evaluation silently *removes* a pattern
+rather than drawing it wrong — consistent with reference channels that show correct structure
+at too little amplitude. Whether this accounts for the observed amplitude deficit is not yet
+measured.
 
 **`patternsize`'s coordinate space is NOT open, and this paragraph used to say it was.** It
 is a plain `[0,1]` canvas fraction. The reading it replaces — "a median footprint of 2.82

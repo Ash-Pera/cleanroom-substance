@@ -33,6 +33,16 @@ which needs the `Rokviz japanese fabric 8` specimen and its exported maps.
                     new_opengameart/ sbsarx/ and the two loose .sbsar archives.
                     None appear in the canonical corpus list.
 
+## Analysis tools that gate future claims
+
+`tools/separability.py` is new and is not exploration: it answers whether the corpus can
+tell a named bit from its neighbours before a per-bit claim is argued. Two bits set on
+exactly the same masks are one column, so scoring a model with and without one measures the
+PAIR, and the tie reads as a confirmation — which is how one FX entry-layout change was
+staged and retracted. `test_fx.py` asserts no named bit is `identical` to another; SPEC 6.5
+tabulates the subset confounds that remain. It enumerates from `corpus.paths()` on purpose,
+because the population is part of the claim.
+
 ## Three things to know before you delete any of this
 
 `derive_costs.py`, `derive_layouts.py` and `gen_layouts.py` are the only things that

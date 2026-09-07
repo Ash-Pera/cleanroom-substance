@@ -56002,3 +56002,105 @@ Before naming a bit, run `separability.py` and check the bit is not `identical` 
 and that any `implies` partner has a non-empty control population. A model scored with and
 without a bit measures the PAIR when the pair is confounded, and a tie then reads as a
 confirmation. That is how bit 31 was staged, and it is how bits 18/26/30 nearly were.
+
+### REFUTED: fx.patternsize=cell, and two dead arms beside it
+
+The bench found a candidate with the right SHAPE -- it moved the records that saturate to 1.0
+and left the verified control alone -- and the guard refuted it. Recorded so it is not tried
+again, and because the shape being right is exactly what made it worth arbitrating.
+
+    fxbench, patternsize=cell vs default
+      Auras 427/428        mean 0.9158 lit 1.0  ->  mean 0.067 lit 0.152
+      Chesterfield 92/93   mean 0.9154 lit 1.0  ->  mean 0.216 lit 0.473
+      Lines 0 (VERIFIED)   lit 0.5156           ->  lit 0.5156   unchanged
+
+    guard, 25 channels at grid 256
+      corr better 1   WORSE 7   unchanged 17   newly flat 0
+
+      Auras/basecolor/2         corr 0.9398 -> 0.7530
+      Auras/basecolor/0         corr 0.9277 -> 0.8284
+      Auras/basecolor/1         corr 0.7497 -> 0.6760
+      Chesterfield/normal/2     corr 0.7042 -> 0.6544
+
+The saturation is real and shrinking the patterns is not its cause: de-saturating moved
+agreement the wrong way on every record it touched. A bench result is a candidate, never a
+finding -- "it changes the broken records and not the verified one" is necessary and nowhere
+near sufficient.
+
+TWO DEAD ARMS, worth recording as measured-inert rather than untried: `fx.negopacity`
+(signed, abs) and `fx.pos` (corner) produce BIT-IDENTICAL output to default on all eight
+bench records. Whatever the negative-opacity and origin questions are about, they are not
+about these records, and arbitrating them on this bench cannot answer anything.
+
+WHAT THE RUN ACTUALLY SURFACED is an amplitude defect, not a placement one. `band` is
+`ours / reference` band power and is provably sign-blind, so it reads amplitude alone:
+
+    Kutejnikov__Auras/basecolor/1   corr 0.7497   band 17.366
+    Kutejnikov__Auras/basecolor/0   corr 0.9277   band  4.135
+    Chesterfield/AO/0               corr 0.8735   band  2.538
+
+Seventeen times the reference's structural power with correlation still at 0.75 means the
+placement is broadly right and the CONTRAST is wrong -- our render is far too loud in those
+channels. That is a different defect from the saturation and a much larger number than
+anything the `fx.*` draw arms move.
+
+### WITHDRAWN: the Grid declared-vs-decoded comparison is confounded by library dependencies
+
+Chasing the saturation, `Simulator__Grid.sbs` (permitted, author empty) was read for ground
+truth and compared against its compiled sibling:
+
+    DECLARED patternsize   0.95 0.95   0.13 0.31   0.975 0.975   1 0.0255
+    DECODED  patternsize   (1.9217, 1.0) x7   (0.0, 0.0397) x2   (0.0, 6.3e25) x1
+    DECLARED patterntype   2 x3
+    DECODED  patterntype   4 x7   None x12
+
+"Not one decoded value matches any declared pair" does NOT follow, and is withdrawn. The
+source declares two dependencies -- `sbs://bnw_spots_1.sbs` and `sbs://normal_mapper.sbs`,
+both SHIPPED LIBRARY graphs, Allegorithmic-authored and off limits -- whose fxmap nodes are
+compiled into the package. The source has 3 fxmaps filter nodes; the compiled file has 6. So
+half the compiled records have no declaration this project may read, and a multiset
+comparison cannot tell "we decoded it wrong" from "that node came from a dependency".
+
+The `patterntype` half was wrong for a second, independent reason: `fx_patterntype` returns
+None for nibble 0, and its docstring says declared types 1 and 2 BOTH land there. So declared
+`2` is EXPECTED to decode as None, and the 12 None readings are consistent with the source
+rather than evidence against it. The mismatch I reported was between a declared value and a
+decode that never claimed to reproduce it.
+
+A PAIRED SOURCE IS NOT GROUND TRUTH UNLESS ITS DEPENDENCY CLOSURE IS ALSO PERMITTED. That is
+a new rule and it applies to every source pairing in this file: `paired_sources()` returns
+pairs, not permissions, and `audit()` classifies the TOP-LEVEL file only. Three of the six
+sources matched while looking for a bricks pairing were Allegorithmic-authored and were not
+opened.
+
+WHAT SURVIVES WITHOUT ANY SOURCE. Two decoded values are wrong on their own terms, and no
+declaration is needed to say so: a `patternsize` of 6.3e25, and first components of exactly
+0.0 (a zero-width pattern draws nothing). Those are internal-consistency defects and can be
+measured provenance-free.
+
+### Where the zero-size patterns come from: the PROGRAM path, not the baked decode
+
+`splat` discards a pattern whose size is not usable --
+`if sx <= 0 or sy <= 0 or max(sx, sy) > 64.0 or min(sx, sy) < MIN_SIZE: continue` -- so a
+zero-size or absurd-size pattern does not corrupt the image, it SUBTRACTS from it. That makes
+it a candidate mechanism for the too-quiet bands (Bricks normal 0.13, height 0.185, AO 0.231):
+patterns that should contribute are being dropped before they draw.
+
+A pattern's `patternsize` arrives one of two ways (`fx._walk`'s `emit`, and the batched
+`cols` path): `kind == 'baked'`, read from the entry's own slots, or a PROGRAM evaluated by
+`run(value, slots, number)`. Splitting them over 60 permitted files:
+
+    patternsize parameters      8,210
+      baked                     3,732     anomalies: NONE
+      program                   4,478
+
+    commonest baked values  (5.0,1.0) x1466   (1.5,1.5) x329   (3.0,2.0) x290
+                            (8.0,1.25) x208   (2.5,1.5) x201   (2.0,2.0) x195
+
+Not one baked value is zero, non-finite, or absurd. THE BAKED DECODE IS CLEAN, and the whole
+entry-layout question this session spent itself on -- bit 7, bit 31, entry width -- cannot be
+the cause of a dropped pattern. The zeros are produced by PROGRAM EVALUATION.
+
+INCIDENTALLY, patternsize IS NOT BOUNDED BY 1. Baked values of 5.0 and 8.0 are among the
+commonest, so reading `Simulator__Grid`'s declared `0.95` as evidence for a units error was
+unfounded on a second count, beyond the dependency confound already recorded.

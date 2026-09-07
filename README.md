@@ -101,6 +101,17 @@ exclusion did not fail — it was never applied, and it reported success either 
 script, and re-typing it is the mistake to design out. No such observation is used, and all
 are recorded in FORMAT-NOTES.md.
 
+**A limit of the predicate, distinct from those four because nothing excluded was read.** The
+rule classifies the file it is handed, and a `.sbs` declares dependencies: `sbs://…` names a
+shipped-library graph, which is excluded, and whose nodes are nevertheless compiled into the
+package beside it. `Simulator__Grid.sbs` is permitted, declares two such dependencies, and
+holds 3 `fxmaps` nodes against its compiled sibling's 6 — so half the compiled records have
+no declaration this project may read. A declared-vs-decoded comparison across that pair
+cannot separate "we decoded it wrong" from "that node came from a dependency", and one such
+finding was withdrawn on that ground rather than published. The permitted/excluded counts
+above are unaffected; what is affected is what a *pairing* can prove. Pair only against a
+source whose dependency closure is permitted, or compare per node rather than as multisets.
+
 The **Provenance statement** at the top of `FORMAT-NOTES.md` is the auditable version of
 all of this in one place. The exclusion predicate is a single string match and can be
 re-run against any corpus: `archive/tools/provenance.py` is that check as code rather than a

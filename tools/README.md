@@ -296,6 +296,15 @@ parameter bits the slot rule needs, so no rewriting of entries can express the r
                           the only ground-truth check in the repository
     test_tables.py        knocks out each table in turn -- a table that changes no
                           reading when emptied is not carrying the decode it documents
+    separability.py       BEFORE naming a bit: can the corpus tell it from its neighbours?
+                          Two bits set on exactly the same masks are one column, so a model
+                          scored with and without one measures the PAIR and the tie reads as
+                          a confirmation. Reports `identical` (fatal) and `implies` (a subset
+                          -- confounded, but the partner's extra masks are the control). No
+                          `identical` pair exists in the corpus today; the subset confounds
+                          are tabulated in SPEC 6.5. Enumerates from `corpus.paths()`,
+                          because the POPULATION is part of the claim -- bits 7 and 31 are
+                          co-extensive over a 57-tag census subset and not over the corpus
     test_corpus_discovery.py
                           corpus discovery must not depend on where the command was typed
     reverify.py           re-runs FORMAT-NOTES.md's headline claims against the CURRENT
@@ -374,6 +383,15 @@ not a per-tag constant. `FX_ENTRY` was a fit of that pointer's distance and is d
 of an entry's words hold programs comes from `fx_entry_layout`'s bit-walk (nibble 8) or the
 disjoint-span scan (nibble 9/B nodes), and `FX_ENTRY_PROGS` is likewise drained to a census.
 Do not step 8 bytes and do not read the length from a table -- both were wrong.
+
+Nor is the extent a pure function of the tag. `fx_entry_walk`'s `max(slot + width - 1) + 1`
+is exact for 98.94% of entries and ONE WORD TOO LONG for 93, and no bit says which: bit 31 is
+necessary and not sufficient (`0xD5140088` carries it and is exact), and the bits separating
+it from the two long tags -- 18, 26, 30 -- are co-extensive over the only three tags that
+carry bit 31. `Assembly.fx_entry_width` asks the ENTRY instead: resolve each program slot in
+order and stop at the first slot landing inside a program already named. 99.23% exact, zero
+overshoot. It changes no output -- every width consumer already clamps -- so use it as the
+model of the extent, not as a fix.
 
 Where a tag names no program slots the program is stored INLINE, and its position is a
 layout fact rather than a table lookup: `fx_entry_layout` puts it after the parameters, at
