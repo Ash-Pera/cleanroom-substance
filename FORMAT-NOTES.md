@@ -56683,3 +56683,48 @@ NEXT: find where that structural difference is lost. Two candidates, both checka
 pattern. The emission comparison above localises it: everything except `frameoffset` comes out
 identical, so whatever consumes the 2 pi angular program is producing the same numbers as the
 constant-0.5 one.
+
+### The flatness IS saturation, and `patternsize` is not one global convention
+
+The 180-degree question is settled and it is NOT a decode error. The two sibling records'
+`frameoffset` programs differ by exactly one term:
+
+    10073   cartesian(slot15,  slot29        * 6.28319)
+    10075   cartesian(slot15, (slot29 + 0.5) * 6.28319)
+
+`+0.5` turns is 180 degrees, so 10075 is deliberately the point reflection of 10073, and the
+renderer reproduces that exactly -- the emitted `frameoffset` is precisely negated and every
+other emitted field is identical. Nothing in that chain is misread.
+
+WHY `s - s'` IS THEN ~6e-4: `patternsize` is 2.82 with 64 patterns and `frameoffset` std
+0.089. The patterns overlap so heavily that the field saturates near 0.92, and rotating an
+offset worth ~3% of a pattern by 180 degrees barely perturbs a saturated field. The
+asymmetry detector `0.5 + 0.5*(s - s')` has nothing to detect, and two whole graphs go flat
+behind it. **The flatness is the saturation this session opened on, reached from the other
+end.**
+
+RE-TESTED `fx.patternsize=cell` ON ALL 109 ROWS, because the refutation that killed it earlier
+was measured on the guard's 25 channels -- which are drawn from the graphs that are NOT flat,
+so the 18 wrongly-flat rows were structurally invisible to it. The same population error as
+the `fxbench` null on `negopacity`.
+
+    FLAT rows 18 -> 0            cell eliminates the flatness ENTIRELY
+    corr 0.4077 -> 0.4030        better 11   worse 21
+
+      revived   Bricks ambientocclusion/0  0.0000 -> 0.0552
+                Bricks roughness/0 g5      0.0000 -> 0.0474
+                Bricks height/0 g5         0.0000 -> -0.0786   (NEGATIVE)
+      damaged   Auras basecolor/2          0.9398 -> 0.7530
+                Auras basecolor/0          0.9277 -> 0.8284
+
+So `cell` un-flattens every flat row -- which confirms saturation as the mechanism -- and does
+NOT make them correct: the revived channels reach only 0.035-0.055 and one goes negative,
+while Auras loses up to 0.19. **`patternsize` is not a single global convention.** `canvas`
+is right where the guard can see, `cell` is closer where it cannot, and neither is right
+everywhere. Whatever selects between them is a per-record or per-node fact the reader is not
+yet reading -- which also explains why both arms looked wrong on the bench from the start
+(lit 1.0 under one, 0.15 under the other).
+
+THE ARM IS STILL REFUSED. Adopting `cell` would trade 21 channels for 11 and turn a flat row
+negative. What has changed is the question: not "which arm is right" but "what does the file
+say about which arm applies to THIS record".
