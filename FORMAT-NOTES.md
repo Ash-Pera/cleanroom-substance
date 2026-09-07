@@ -56637,3 +56637,49 @@ WHAT WOULD CONFIRM IT: honour `randomseed`. Store what that program returns, mix
 cancellation stops being exact and the 18 wrongly-flat rows should come alive. That is a real
 code change to the runtime and wants the full suite plus the 109-row comparison, not the
 25-channel guard, since the guard cannot see any of the 18.
+
+### CORRECTED: not the seed. The construct is `0.5 + 0.5*(s - s')` and our two siblings barely differ
+
+The previous section blamed `rand` ignoring the seed. That is still a real gap in the runtime
+-- opcode 0x32 is `rand (seeded)` and `fx.py:531` discards the `randomseed` program's result
+-- but it is NOT the cause here, and the section overstated it. Two checks refute it:
+
+  * ONLY ONE fxmaps record in this whole graph HAS a `randomseed` program at all, and it
+    raises `Unmodelled`. There is no seed material for the proposed fix to consume.
+  * The two colliding records DO differ in our render, just barely. Their 64 emitted patterns
+    have identical `branchoffset`, `patternsize` and `patternrotation`, and `frameoffset`
+    EXACTLY NEGATED: (-0.01044, 0.00951) against (+0.01044, -0.00951). 10075 is the
+    POINT REFLECTION of 10073, which is what the `fxbench` label on Auras 427/428 says too.
+
+WHAT THE GRAPH ACTUALLY COMPUTES, with every parameter read correctly:
+
+    10074  levels  leveloutlow = 0.5   ->  d  = 0.5 + 0.5*s     (amplitude halved, AS READ)
+    10076  blend   opacitymult = 0.5   ->  out = d*(1-op) + (d - s')*op  =  d - 0.5*s'
+    substituting                       ->  out = 0.5 + 0.5*(s - s')
+    10077  levels  levelin 0.25/0.75   ->  gain 2 on that difference
+    10078  levels  levelin 0.211/0.715 ->  gain again
+
+So the construct is **the difference between an FX-Map and its point-reflected sibling,
+centred on 0.5** -- an asymmetry detector, built to be near zero where the two agree. Nothing
+about `levels`, `blend`, `opacitymult` or the clamp is misread; the arithmetic is right and
+the parameters are right.
+
+THE DEFECT IS THAT OUR TWO SIBLINGS BARELY DIFFER. `s - s'` carries std ~6e-4 where the
+reference implies something far larger, so the detector outputs a constant and 27 blends, 11
+warps and every channel of two graphs go flat behind it. And the file says they SHOULD differ
+structurally -- the disassembly is not subtle:
+
+    node at +672        10073: 0x1CB              10075: 0x18B
+    table entry prog    10073: const 6.28319 (2 pi), mul, cartesian   -- a polar/angular draw
+                        10075: const 0.5, 7 instructions
+
+`0x1CB` sets bit 6 where `0x18B` does not, and SPEC 8 says bit 6 is a BAKED `randomseed`. So
+one sibling carries a baked seed field and a full-turn angular placement, the other does not,
+and we emit near-identical patterns from both.
+
+NEXT: find where that structural difference is lost. Two candidates, both checkable --
+(a) the walk treats `0x1CB` and `0x18B` alike, ignoring bit 6's baked randomseed field; or
+(b) the differing table-entry programs are evaluated but their results are not reaching the
+pattern. The emission comparison above localises it: everything except `frameoffset` comes out
+identical, so whatever consumes the 2 pi angular program is producing the same numbers as the
+constant-0.5 one.
