@@ -56452,3 +56452,46 @@ entire output can therefore sit outside every floor in `GUARD_TABLE`.
 STILL BLOCKED. Even under `abs` the height output stays flat, because a SECOND blockage sits
 at blend 10283, which returns exactly 0.0 while holding a live input. One dead fxmaps was not
 the whole chain.
+
+### REFUTED: per-blend [0,1] clamping is not premature -- and the +0.125 was survivorship
+
+The height chain dies in arithmetic, not in a misread parameter. Records 10281 and 10283 are
+`blendingmode 2` = subtract, and the numbers are exact:
+
+    10281 = 10280 - 10278 = 0.7008 - 0.7243 = -0.024   clamped to 0
+    10283 = 10282 - 10277 = 0.0238 - 0.7055 = -0.68    clamped to 0
+
+Subtracting two similarly bright images gives a small negative, `ops.py:403` clamps every
+blend to [0,1], and a few such stages in series drive a subgraph to black. The operand order
+is not the suspect: source containment puts `destination` at slot 0 in 28 records against 0
+at slot 1, with a control reproducing the pair 2 times in 30.
+
+So the hypothesis was that the clamp belongs only at output, not at every intermediate. First
+measurement:
+
+    default            mean corr 0.7943   mean |log band| 1.333
+    blend unclamped    mean corr 0.9195 (+0.1252)   |log band| 1.176 (-0.157)   better 1 worse 2
+
+A +0.1252 mean over 25 channels needs ~3.1 of total movement, which ONE improving channel
+cannot supply. The counts and the mean contradicted each other, so the channel sets could not
+be the same -- and they were not:
+
+    default     25 channels
+    unclamped   16 channels     ALL NINE Bricks_and_tiles channels missing
+    ON COMMON ONLY   corr 0.9207 -> 0.9195   (-0.0012)
+
+The mean rose because the WORST pack stopped producing comparable channels, not because
+anything improved. Unclamped blends leave [0,1], Bricks fails to yield channels at all, and
+the 16 survivors are all Chesterfield, which was already near unity. On the common set the
+change is slightly negative. THE CLAMP IS LOAD-BEARING AND STAYS.
+
+THE GUARD RAIL THAT CAUGHT IT was arithmetic, not suspicion: a mean and a per-channel count
+that cannot both be true. `score()` divides by `len(rs)`, so any comparison whose two runs
+yield different channel sets is measuring attrition. Every arm comparison in this file should
+report its channel COUNT beside its mean, and compare on the INTERSECTION -- the same defect
+as the earlier survey that scored 109 rows against 25 keys.
+
+This is the third survivorship-shaped error of the session, after the 1e-9 threshold that
+read float32 dither as signal and the `fxbench` null that measured an arm against a bench
+containing none of its population. The pattern is one instrument silently changing what it
+counts.
