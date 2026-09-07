@@ -56360,3 +56360,37 @@ population is small and specific: 40 transformations and 18 levels that flatten 
 live input, plus the 385 records whose inputs did not resolve -- that last group is worth
 checking for edge-resolution failures, since a blend fed one input instead of two would
 produce exactly this pattern.
+
+### Correction: the 385 "no resolved inputs" are GENERATORS, not edge-resolution failures
+
+The previous section closed by proposing the 385 records whose inputs did not resolve as the
+next thing to chase, on the theory that a blend handed one input instead of two would look
+like this. That is wrong, and the arithmetic says so immediately:
+
+    uniform (no inputs)          298
+    pixelprocessor (no inputs)    55
+    fxmaps (no inputs)            32
+                                 ---
+                                 385
+
+The "no resolved inputs" bucket and the no-input ROOTS are the same records counted twice in
+two tables. They are generators -- uniform, pixelprocessor and fxmaps produce an image from
+parameters rather than from an input edge -- so having no input edges is their normal shape,
+not a failure to resolve one. There is no edge-resolution population hiding here.
+
+THE GENUINELY SUSPICIOUS SET IS 64 + 32, and it is small:
+
+    transformation flattens a live input      40
+    levels flattens a live input              18
+    pixelprocessor flattens a live input       5
+    distance flattens a live input             1
+                                              --
+    CREATED from live inputs                  64
+
+    fxmaps that render CONSTANT with no input 32   (may be legitimate; an FX-Map is
+                                                    entitled to produce a constant)
+
+CORROBORATION, from a run that stalled earlier and finished late: the pattern drop rate over
+25 files -- 733,556 patterns, 612 dropped, 0.1% -- matches the 0.09% measured over 12 files.
+Two samples, one conclusion, and the larger one was measured by the quadratic harness before
+that was diagnosed.
