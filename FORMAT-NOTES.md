@@ -56801,3 +56801,44 @@ untouched (no lattice) and the Bricks saturating records scale by 1/33.
 It is NOT yet established that the lattice test is sound on the packs where `cell` currently
 damages agreement; that is the measurement to run before any code changes. If `_cell` returns
 a value for Auras, this proposal collapses into the arm that was already refuted.
+
+### FALSIFIED, and it was already the code: the lattice test cannot separate the two saturations
+
+The proposal in the previous section -- apply cell scaling where `_cell` finds a genuine
+integer lattice, rather than by global arm -- is dead on both counts it could have died on.
+
+FIRST, `_cell` FINDS A LATTICE ON AURAS. Over the three reference packs, tabulating whether
+`_cell` returns a lattice against whether the record saturates:
+
+    pack           lattice   saturated   count
+    Auras          True      True          12      <- e.g. rec 391, 729 patterns, cell 1/27
+    Auras          False     False         36
+    Bricks         True      True          38
+    Bricks         False     True          31
+    Chesterfield   True      True           2
+    Chesterfield   False     False         13
+
+There is NO row with a lattice and no saturation: `_cell` finding a lattice implies the record
+saturates, 52 of 52. But Auras' saturated records look exactly like Bricks' -- mean 0.9158,
+std 0.0676 -- and AURAS RENDERS CORRECTLY at corr 0.93 while Bricks goes flat. So a per-record
+lattice rule scales Auras too, and reproduces the -0.19 the global arm already cost it. The
+test cannot tell a saturation that is CORRECT from one that is not.
+
+SECOND, AND THIS SHOULD HAVE BEEN READ BEFORE PROPOSING IT: the arm already does this.
+
+    size_scale = cell if assume.assumed('fx.patternsize') == 'cell' else None   # cell = _cell(patterns)
+    ...
+    if size_scale is not None: size = size * size_scale
+
+`fx.patternsize=cell` applies scaling ONLY where `_cell` returns a lattice. The "design change"
+was a restatement of the existing behaviour, and its predicted benefit -- "Auras untouched" --
+is contradicted by the same function it was built on. Reading the arm's implementation would
+have cost one grep and saved the proposal.
+
+WHAT THE MEASUREMENT DOES ESTABLISH, and it is worth keeping: **saturation is not itself the
+defect.** Auras carries 12 saturated fxmaps records and renders at 0.93; Bricks carries 38 and
+goes flat. The difference is what CONSUMES them -- Bricks feeds an asymmetry detector
+(`0.5 + 0.5*(s - s')`) that needs structure the saturated field cannot supply, while Auras
+feeds something that tolerates a near-uniform input. So the question is not "why do these
+records saturate" but "why does the engine's `s - s'` have structure where ours does not",
+and patternsize scaling is not the answer to it.
