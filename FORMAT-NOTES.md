@@ -56728,3 +56728,38 @@ yet reading -- which also explains why both arms looked wrong on the bench from 
 THE ARM IS STILL REFUSED. Adopting `cell` would trade 21 channels for 11 and turn a flat row
 negative. What has changed is the question: not "which arm is right" but "what does the file
 say about which arm applies to THIS record".
+
+### The entry tag predicts saturation, and it points at the patternsize PROGRAM path
+
+Asking the file which records saturate, over the three reference packs -- 216 fxmaps records
+with patterns, 73 saturated (output mean > 0.85 and std < 0.09, the signature that flattened
+graphs 0 and 5):
+
+    entry tags among SATURATED       0x15400348 x52   0x02400448 x10   0x00420008 x1
+    entry tags among NOT saturated   0x00420008 x72   0x55140148 x9    0x02000248 x6
+
+`0x15400348` is 52 of 52 saturated. `0x00420008` is 72 of 73 unsaturated. That is close to a
+clean separation from the tag alone.
+
+WHAT SEPARATES THEM, read off `FX_PARAM_BITS`:
+
+    0x15400348   bits {3, 6, 8, 9, 22, 24, 26, 28}   bit 26 = patternsize AS A PROGRAM
+    0x00420008   bits {3, 17, 22}                    NEITHER bit 25 nor 26: no patternsize
+
+So the saturating entries take their `patternsize` from a PROGRAM, and the healthy ones carry
+no `patternsize` field at all. That agrees with the earlier baked-versus-program split, where
+all 3,732 BAKED patternsize values were sane and every bad value came from the program path.
+
+CAVEAT, stated because it is the same shape as errors already in this file: a record holds
+SEVERAL entries with different tags, and this took the MODAL tag per record. So the
+association is between "the record's commonest entry tag" and "the record saturates", not yet
+between an entry and its own patterns. Tightening that is a per-entry measurement and is the
+next step, not a conclusion to draw now.
+
+NEXT: read what the `patternsize` programs actually return against what the entries around
+them declare. The average size on the saturating records is 5.000 with 64 to 1024 patterns on
+a unit canvas -- a pattern five times the canvas, drawn a thousand times, which is why the
+field pins at 0.9958 with std 0.0039. Whether 5.0 is the program's correct output in some
+unit we are not applying, or the program is being read wrongly, is the open question -- and
+it is now attached to a specific bit (26) and a specific tag population rather than to a
+global arm.
