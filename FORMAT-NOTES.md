@@ -56303,3 +56303,60 @@ degree rotation (25) -- and their median footprint scale is 1, with 61% never re
 STILL OPEN, and it is the sharp question: **how does an identity `transformation` with a
 live input produce a constant 128x128 output?** It is stable across three caps, so it is real.
 That is 109 records and it is the largest non-legitimate root.
+
+### ANSWERED, and it was my threshold: float32 dither read as live input
+
+"How does an identity `transformation` with a live input produce a constant output?" It does
+not. The inputs were already constant and the liveness test was wrong.
+
+The flattening records' input standard deviations are `1.7881393e-07` and `5.9604645e-08`.
+Those are float32 ULP noise -- 2^-23 is 1.19e-7 -- so they are CONSTANTS carrying rounding
+dither, and a `std > 1e-9` liveness test calls that live. The transform resamples, the dither
+averages to exactly zero, and the record books as "created flatness from a live input".
+
+    transformations whose output is EXACTLY flat
+      input std < 1e-6      803   95.5%   dither only, not live
+      input std < 1e-2        6
+      input std >= 1e-2      32           genuinely live
+
+    transformations that stayed live
+      input std < 1e-6        2
+      input std >= 1e-2     752
+
+CORRECTED CASCADE, one threshold above the noise floor for both flat and live (EPS = 1e-6):
+
+                                        1e-9 (wrong)   1e-6 (correct)
+      FLAT total                        4,633 36.8%    4,607 36.6%
+      inherited: ALL inputs flat        3,807          3,874
+      no resolved inputs                  335            385
+      partial                             301            284
+      CREATED: inputs live, out flat      190             64
+
+    ROOTS                               1e-9           1e-6
+      uniform (no inputs)                 257            298   LEGITIMATE
+      pixelprocessor (no inputs)           55             55
+      transformation (live inputs)        109             40
+      fxmaps (no inputs)                   23             32
+      levels (live inputs)                 28             18
+      blend (live inputs)                  16              0
+      blur (live inputs)                   25              0
+
+The flat TOTAL is robust -- it moves by 26 records -- but the CREATED category loses two
+thirds, and `blend` and `blur` vanish as roots entirely. So `83f9d95`'s root table is
+superseded by this one; its warp measurement, its blend-is-a-propagator result and its fxmaps
+exoneration are unaffected, because those quantities sit orders of magnitude above the dither.
+
+THE ERROR RAN BOTH WAYS, which is why the fix is a re-derivation and not a patch: an output
+with std 1e-7 was called LIVE by the same test, so the flat count was understated at the same
+time the created count was overstated. A single threshold, chosen against the float32 noise
+floor rather than against zero, is the only consistent instrument.
+
+WHAT THIS LEAVES. 82% of flatness is inherited and the dominant root is `uniform` with no
+inputs -- 298 records, and a uniform IS a constant, so that is CORRECT behaviour. The cascade
+is largely rooted in legitimately constant sources: uniform constants feed blends of
+constants, which feed warps that correctly do nothing. **That flatness may not be a defect at
+all**, and the amplitude deficit may lie elsewhere entirely. The remaining suspicious
+population is small and specific: 40 transformations and 18 levels that flatten a genuinely
+live input, plus the 385 records whose inputs did not resolve -- that last group is worth
+checking for edge-resolution failures, since a blend fed one input instead of two would
+produce exactly this pattern.
