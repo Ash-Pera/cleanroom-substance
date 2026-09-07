@@ -55917,3 +55917,88 @@ NOT WIRED. Every width consumer already clamps -- `walk_partition` takes
 `fx_out_of_line` holds at 3 cells either way. So this is the correct MODEL of entry extent and
 changes no output today. It is recorded rather than applied, because applying it would be a
 change with no measurable effect, and this file already carries two of those from this session.
+
+## SPEC: where the format is read as individual bits, and which of those are arguable
+
+Two changes land with this section: `Assembly.fx_entry_width` (the self-delimiting extent,
+now coded and wired into `walk_partition.stated_extent`) and `archive/tools/separability.py`,
+which answers "where do we still think things are individual bits?" by asking, for every bit
+the reader names, whether the corpus can tell it from its neighbours at all.
+
+### First, a correction: the co-extensivity that started this was a SUBSET ARTIFACT
+
+The retraction earlier in this session said bits 7 and 31 were "perfectly co-extensive, 4/4
+both ways", and concluded the leading-word fit could not tell them apart. That was measured
+over `FX_ENTRY_PROGS`' KEY SET -- 57 tags -- and not over the corpus:
+
+    population        bit7 & bit31        bit7 & ~bit31
+    corpus            161 entries, 3 tags  474 entries, 11 tags
+    census key set      4 tags               0 tags
+
+Over the corpus bit 31 is a STRICT SUBSET of bit 7, and 11 tags separate them. So the fit
+could have discriminated, and "the fit was blind" was a claim measured on the wrong
+population -- the same class of error it was written to describe. THE RETRACTION STANDS
+ANYWAY, on the measurement that actually settled it: committed reads 58,922 programs against
+no31's 58,913, the difference being the nine genuine `0xD5140088` programs. The conclusion
+was right and the argument for it was not.
+
+### The audit, and what "not separable" means
+
+Two relations are reported, and they are not equally bad:
+
+  * IDENTICAL -- two bits set on exactly the same masks. Fatal: they are one column, every
+    score is identical, and no measurement over that population can name one rather than
+    the other.
+  * IMPLIES -- this bit's masks are a strict SUBSET of the partner's. A real confound, since
+    every piece of evidence for this bit is also evidence for the partner, but ARGUABLE: the
+    partner is set on masks this bit is not, and those members are the control.
+
+NO `identical` PAIR EXISTS ANYWHERE IN THE CORPUS. Every warning below is a subset relation,
+which means every named bit here is in principle still arguable from the data we hold.
+
+    FX ENTRY TAGS (FX_PARAM_BITS)          158 distinct masks
+      bit 31 imageindex   n=161   implies 7, 24
+      all 16 others                        SEPARABLE
+
+    RECORD WORD 0, class word bits 16..31  1,923 distinct masks
+      bits 16,20,21,24,25,26,27,28,29      imply 19
+      bit 22   n=3                         implies 16,19,20,24,25
+      bit 30   n=1,023                     implies 16,19,20
+      SEPARABLE: 19, 23        never set: 17, 18, 31
+
+    RECORD WORD 1, filter 1 (285,398 records, 100 distinct)
+      bit 6   n=25     implies 8
+      bit 9   n=906    implies 4,5,8
+      bit 10  n=163    implies 4,5,8
+      bit 11  n=84     implies 8
+      bit 12  n=3      implies 8
+      SEPARABLE: 0,1,2,3,4,5,8
+
+    RECORD WORD 1, filter 2 (215,444 records, 50 distinct)
+      bit 4   n=211,786  implies 2,3
+      bit 28  n=33       implies 0,1,2,3,4,5
+      SEPARABLE: 0,1,2,3,5,6,7,25,26
+
+    RECORD WORD 1, filter 15 (76,879 records)   ALL SEPARABLE, 0..10
+    RECORD WORD 1, filter 12 (58,588 records)
+      bit 4   n=2,390  implies 2        bit 7  n=1  implies 1,3
+      SEPARABLE: 1,2,3,5
+
+### What this says about the claims still queued from the fan-out
+
+  * `colorblending` on w1 bits 11-12 of filter 1 is the weakest of them. BOTH bits imply
+    bit 8 -- which is the separate `alphablend` claim on the same word -- so the two are
+    entangled, and bit 12 rests on THREE records. Any evidence offered for bit 12 is also
+    evidence for bit 8 until a mask with 12-and-not-8 turns up, and none exists.
+  * `blend.w1bit8` = alphablend is on the separable list, so it is arguable on its own terms.
+  * filter 2's bit 4 covers 211,786 records and implies bits 2 and 3; a claim about it needs
+    the bit-2/3-without-4 population as its control rather than a corpus-wide score.
+  * `bit 22` of the class word (n=3) and filter 12's `bit 7` (n=1) are too small to carry any
+    claim at all and should be named only from a source that states them.
+
+### The standing rule
+
+Before naming a bit, run `separability.py` and check the bit is not `identical` to another,
+and that any `implies` partner has a non-empty control population. A model scored with and
+without a bit measures the PAIR when the pair is confounded, and a tie then reads as a
+confirmation. That is how bit 31 was staged, and it is how bits 18/26/30 nearly were.

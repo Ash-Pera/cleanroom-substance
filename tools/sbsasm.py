@@ -6522,6 +6522,60 @@ class Assembly:
                 return True
         return False
 
+    def fx_entry_width(self, off, tag, lo=None, hi=None):
+        """Words the entry at `off` occupies, ASKED OF THE ENTRY rather than of the tag.
+
+        `fx_entry_walk` states a width from the tag's mask alone. That is right for 98.94%
+        of entries and one word too long for 93, and the 93 are not identified by any bit:
+        bit 31 is NECESSARY AND NOT SUFFICIENT for the overshoot (`0xD5140088` carries it
+        and is exact), and the bits separating the exact tag from the two long ones -- 18,
+        26 and 30 -- are perfectly co-extensive across the three tags that carry bit 31.
+        Three candidates, three tags, no separation. Naming one of them would have repeated
+        the bit-7/bit-31 error a level down.
+
+        THE RULE IS NOT A BIT. The slot run ends where a program the entry NAMES begins:
+        resolve each program slot in order, and stop at the first slot whose own address
+        lands inside a program already named. The entry states its own extent, which is the
+        same "two statements of one address must agree" discipline `fx_out_of_line` uses.
+
+            over 32,180 entries with a tight observed bound
+              tag-derived width exact   31,840   98.94%   over 93   under 247
+              SELF-DELIMITED            31,933   99.23%   over  0   under 247
+
+              tag          tag says   self says   observed
+              0x83000088       7          6           6     x86
+              0x91100088       7          6           6     x7
+              0xD5140088       9          9           9     x9
+
+        One rule, all three tags, no bit consulted; it gains exactly the disputed 93 and
+        breaks none of the 31,840 already exact. The 247 undershoots are untouched and are
+        not width errors -- their deltas run to -95 and -123, meaning the nearest forward
+        program is simply not adjacent, so the bound is loose rather than the model wrong.
+
+        INLINE FIELDS ONLY. `off` must be the entry's own tag word. An out-of-line cell
+        keeps its fields at `base + 4*sl`, and `base` is derived FROM the width, so asking
+        this there would be circular; `fx_out_of_line` continues to use the tag's mask.
+        """
+        lo = self.body_lo if lo is None else lo
+        hi = self.body_hi if hi is None else hi
+        walk = sorted(fx_entry_walk(tag), key=lambda r: r[1])
+        if not walk:
+            return None
+        spans = []
+        for _b, sl, _n, kind, _w in walk:
+            at = off + 4 * sl
+            if at + 4 > hi:
+                break
+            if any(a <= at < b for a, b in spans):
+                return sl            # this slot is program body: the entry ended here
+            if kind == 'program':
+                pv = struct.unpack_from('<I', self.data, at)[0] + 52
+                if lo <= pv < hi:
+                    end = self.program_span(pv, hi)
+                    if end:
+                        spans.append((pv, end))
+        return max(sl + w - 1 for _b, sl, _n, _k, w in walk) + 1
+
     def fx_out_of_line(self, off):
         """(block, width, slot, programs) when the entry at `off` keeps its FIELDS out of
         line, else None. `off` is the entry's TAG word; `block` is where its fields sit.

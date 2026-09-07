@@ -181,7 +181,15 @@ def stated_extent(rec, kind, q, tag):
     #
     # `walk_partition` holds at 32 FX violations on 200 files with the correction and
     # without it, so it does not hide one either.
-    span = max(sl + w - 1 for _b, sl, _n, _k, w in sbsasm.fx_entry_walk(tag)) + 1
+    # ASKED OF THE ENTRY, NOT OF THE TAG. `fx_entry_width` walks the same slots but stops
+    # where a program the entry names begins, which is one word shorter than the mask says
+    # for 93 entries and identical for the other 31,840. The clamp below already reached
+    # the same number for those 93 by a different route -- the furthest stored pointer --
+    # so this changes no output; it makes the extent the STRUCTURE's statement rather than
+    # a mask width that happens to be corrected downstream. See `sbsasm.fx_entry_width`.
+    span = rec.asm.fx_entry_width(q, tag)
+    if span is None:
+        span = max(sl + w - 1 for _b, sl, _n, _k, w in sbsasm.fx_entry_walk(tag)) + 1
     # The stored next-pointer, read exactly as `fx_table` reads it.
     d, e = rec.asm.data, rec.end
     nxt = None

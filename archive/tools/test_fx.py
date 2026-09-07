@@ -1038,3 +1038,72 @@ def test_out_of_line_slot_2_is_split_by_the_tag_and_not_by_a_value():
     print('out-of-line slot 2: %d cells declare it (all a cell, none a program), '
           '%d do not (all a program, none a cell)' % (decl, nodecl))
     return
+
+
+def test_entry_width_is_self_delimiting_not_bit_decided():
+    """`fx_entry_width` reads the extent off the ENTRY; the tag's mask is one word long
+    for 93 of them and no bit identifies which.
+
+    The three tags carrying bit 31 are the whole disputed population, and they do not
+    agree with each other: `0xD5140088` is exact under the mask width while the other two
+    overshoot by one. Bit 31 is necessary and not sufficient, and the bits separating them
+    (18, 26, 30) are co-extensive across three tags, so this asserts the RULE rather than
+    a bit -- the slot run ends where a program the entry names begins.
+    """
+    from separability import permitted_files
+    want = {0x83000088: 6, 0x91100088: 6, 0xD5140088: 9}
+    files = permitted_files()
+    assert files, 'no permitted specimens -- corpus absent or gate misconfigured'
+    seen, checked = {}, 0
+    for f in files:
+        asm = Assembly(f)
+        for rec in asm.records:
+            if getattr(rec, 'filter_id', None) != 4:
+                continue
+            try:
+                tbl = list(rec.fx_table())
+            except Exception:
+                continue
+            for off, tag, _p in tbl:
+                if tag not in want:
+                    continue
+                w = asm.fx_entry_width(off, tag)
+                seen.setdefault(tag, set()).add(w)
+                checked += 1
+        if checked and len(seen) == len(want):
+            break
+    assert seen, 'no bit-31 entries reached'
+    for tag, widths in seen.items():
+        assert widths == {want[tag]}, (hex(tag), widths, want[tag])
+
+
+def test_no_named_bit_is_identical_to_another():
+    """Every bit the reader NAMES must be separable from its neighbours in the corpus.
+
+    `identical` -- two bits set on exactly the same masks -- is fatal: no measurement over
+    that population can name one rather than the other, and a model scored with and without
+    the bit measures the PAIR. Staging the FX entry layout change on such a tie is what this
+    guards against. Subset (`implies`) relations are permitted here: they are a confound but
+    have a control population, and they are inventoried in FORMAT-NOTES.md instead.
+    """
+    from separability import permitted_files, separability
+    tags = collections.Counter()
+    files = permitted_files()
+    assert files, 'no permitted specimens -- corpus absent or gate misconfigured'
+    for f in files:
+        asm = Assembly(f)
+        for rec in asm.records:
+            if getattr(rec, 'filter_id', None) != 4:
+                continue
+            try:
+                for _o, t, _p in rec.fx_table():
+                    if (t & 0xF) == 8:
+                        tags[t] += 1
+            except Exception:
+                pass
+    assert tags, 'no entry tags reached'
+    from sbsasm import FX_PARAM_BITS
+    sep = separability(list(set(tags)), [b for b, _n, _w in FX_PARAM_BITS])
+    ident = {b: [o for o, k in r if k == 'identical'] for b, (_n, r) in sep.items()}
+    ident = {b: v for b, v in ident.items() if v}
+    assert not ident, ident
