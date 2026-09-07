@@ -56104,3 +56104,39 @@ the cause of a dropped pattern. The zeros are produced by PROGRAM EVALUATION.
 INCIDENTALLY, patternsize IS NOT BOUNDED BY 1. Baked values of 5.0 and 8.0 are among the
 commonest, so reading `Simulator__Grid`'s declared `0.95` as evidence for a units error was
 unfounded on a second count, beyond the dependency confound already recorded.
+
+### REFUTED as the amplitude defect: dropped patterns are 0.09%, and 0.02% where it matters
+
+The zero-size patterns are real, they come from PROGRAM evaluation (the baked path has none
+in 3,732), and `splat` drops them rather than drawing them wrong -- so the mechanism is
+subtractive and had the right shape to explain reference channels that show correct structure
+at too little amplitude. Measured, it is nowhere near large enough.
+
+    12 specimens, 351,135 patterns
+      drawn     344,072
+      DROPPED       319   0.09%    <=0 294   <MIN_SIZE 19   non-finite 6
+
+    on the packs that actually show the deficit
+      pack                patterns   drawn    sizeless   dropped
+      Bricks_and_tiles      39,818   39,539       271     8  (0.02%)
+      Auras                  4,317    3,529       788     0
+      Chesterfield             131      123         8     0
+
+Bricks draws 39,539 of 39,547 sized patterns and is still 5-8x too quiet (normal band 0.13,
+height 0.185, AO 0.231). A mechanism that removes 0.02% of patterns cannot cost 80% of the
+amplitude. THE DEFICIT IS NOT IN THE EMISSION AND NOT IN DRAW ELIGIBILITY: the patterns are
+emitted, and they are drawn. It is in per-pattern amplitude -- profile, opacity, the combine
+rule -- or downstream of the FX-Map entirely.
+
+WHAT THE SAME RUN PUTS IN VIEW. `sizeless` patterns, carrying no `patternsize` at all, are
+TWENTY TIMES the dropped population: 6,744 of 351,135 corpus-wide, and 788 of 4,317 on Auras
+-- 18.3%. `fx.sizeless` is the arm that decides them, and it moves the flat-map rate from
+58.89% (fill) to 45.15% (half), which is the largest movement any draw-side arm has shown.
+That is the population worth arbitrating next, and it is NOT the one this section refutes.
+
+METHOD NOTE, because it cost two stalled runs. `fxbench.emissions_for` renders the WHOLE FILE
+once per record index in order to spy on one record's patterns. That is right for a fixed
+eight-record bench, which is what it was built for, and QUADRATIC when swept across a file's
+whole record set -- a file with 371 fxmaps records pays 371 full renders. Both earlier
+attempts at this measurement were read as "slow" when they were closer to non-terminating.
+Sweeping wants ONE render per file with a spy that keeps every `splat` call.

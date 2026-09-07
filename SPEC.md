@@ -2081,9 +2081,29 @@ sizes come from **program evaluation**.
 This is subtractive, not corruptive. A renderer must skip a pattern whose size is
 non-positive, non-finite, or absurd (`> 64`, or `< 1e-6`; the corpus leaves a clean gap here,
 nothing between 1e-30 and 1e-06), so each failed evaluation silently *removes* a pattern
-rather than drawing it wrong — consistent with reference channels that show correct structure
-at too little amplitude. Whether this accounts for the observed amplitude deficit is not yet
-measured.
+rather than drawing it wrong.
+
+**Measured, it is negligible, and it is NOT the amplitude defect.** Over 12 specimens,
+351,135 patterns: 344,072 drawn, 319 dropped — 0.09%, of which 294 are `<= 0`, 19 below
+`MIN_SIZE`, 6 non-finite. On the three packs that actually show the deficit it is smaller
+still:
+
+| pack | patterns | drawn | sizeless | dropped |
+|---|---|---|---|---|
+| Bricks_and_tiles | 39,818 | 39,539 | 271 | 8 (0.02%) |
+| Auras | 4,317 | 3,529 | 788 | 0 |
+| Chesterfield | 131 | 123 | 8 | 0 |
+
+Bricks draws 39,539 of 39,547 sized patterns and its reference channels are still 5–8× too
+quiet (normal 0.13, height 0.185, AO 0.231 band). **So the deficit is not in the emission or
+in draw eligibility** — the patterns are emitted and they are drawn. It lies in per-pattern
+amplitude (profile, opacity, the combine rule) or downstream of the FX-Map entirely. A
+`patternsize` that fails to evaluate is a real defect and a small one; it should not be cited
+as an amplitude explanation.
+
+The **sizeless** population is twenty times larger than the dropped one — patterns carrying
+no `patternsize` at all, 1.9% corpus-wide but **18.3% on Auras** — and what a renderer should
+do with them is unsettled (§13.8).
 
 **`patternsize`'s coordinate space is NOT open, and this paragraph used to say it was.** It
 is a plain `[0,1]` canvas fraction. The reading it replaces — "a median footprint of 2.82
