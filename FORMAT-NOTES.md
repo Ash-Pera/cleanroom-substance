@@ -55586,3 +55586,284 @@ is a different constant" is still a constant image to a divisor. This is the sam
 luminance-weighting error recorded earlier this session, where a 72%-green weighting meant a
 "uniform deficit" was really ch1 alone. The corrected figures are the ones above; the first pass
 understated the unification rather than overstating it.
+
+## The FX entry layout: bit 31's word is LEADING, bits 6 and 7 cost no slot, and 690 unresolved parameters go to 0
+
+Delegated after `863b937` left the 61% parameter loss on bit-7 entries unexplained and the
+obvious fix refuted. Validated here before landing.
+
+**WHAT THE BITS ARE.** Bits 6 and 7 cost no slot; both are pure flags. The leading word the
+layout charged to bit 7 belongs to **bit 31 (`imageindex`)**, which sits BETWEEN THE TAG AND THE
+BLOCK POINTER rather than in the trailing program slot the layout gave it. Derived rather than
+fitted: every entry states its own block start (its block-pointer word) and its own end (the
+adjacent program its first parameter names), and solving per-bit word costs against those two
+observables gives
+
+    leading words = 1 (block pointer) + 4*bit16 + bit17 + bit31        bits 4 and 7 contribute ZERO
+
+exact on 137/137 stable tags and 25,521/25,521 entries.
+
+**WHY MY EARLIER FIX MADE IT WORSE.** `bit 31 occurs ONLY with bit 7 -- 832 of 832, verified
+independently here.` Deleting bit 7's charge alone removed a leading word that was accidentally
+correct on 75% of that group, which is exactly the 15.7% -> 19.3% regression `863b937` recorded.
+**The two changes are one change**, and neither half works alone.
+
+**THE RESULT, measured before and after on the same corpus sample:**
+
+    group     BEFORE                              AFTER
+    bit7      1,109 entries, 4,401 params         1,105 entries, 3,572 params
+              690 unresolved = 15.7%              0 unresolved = 0.0%
+              676 entries losing a param = 61.0%  0 = 0.0%
+    neither   0 unresolved                        unchanged
+    bit6      33 unresolved = 0.1%                unchanged
+
+690 unresolved parameters to zero, and 829 fewer parameters -- the difference being PHANTOMS. And
+that ties off an older thread: `ce5897e` found "29 of 29 `imageindex` recoveries duplicate a
+sibling's address" and treated the duplication as the defect. Those recoveries were phantoms OF
+THIS MISPLACEMENT -- bit 31's word was being read in the wrong position, so the recovery
+machinery reconstructed an index that was never missing.
+
+**AND `blendingmode` IS NOT AT BITS 6/7.** Bits 6 and 7 are the low two bits of **`patterntype`**,
+which closes a soft spot SPEC 8 admits to: within nibble 0, bit 6 means patterntype 2 and bit 7
+means patterntype 1 or a function graph. `ie_particles` was CONFOUNDED -- its two paramsets differ
+in blendingmode AND patterntype -- and three other sources vary them independently and separate
+cleanly. My slot-1 lead from `863b937` is **refuted**: slot 1 is the block pointer, and the
+"same program with const.i1 0 vs 1" was a runaway decode reading the next pointer word as an
+instruction count (6,224 instructions in a 12,612-byte body). `blendingmode` remains unlocated;
+the untested places are the `fxmaps` record header and the node chain's field words.
+
+**AND THE `both` GROUP IS NOTHING.** I called it "possibly the key" in `863b937`. It is 134
+entries over 132 distinct tags -- 1.02 per tag against 73.6 and 259 for the two commonest real
+families -- with 112 carrying an empty layout. Decode tail, not a variant.
+
+## `levels`: the renderer is right, `named_params` is wrong, and a COLOUR record settles it
+
+The conflict `6e8d507` left open -- `model.View` reads levels end-anchored, `decompose.named_params`
+special-cases filter 15 to read forward at stride 1 -- is settled, and its docstring's claim that
+"every disagreement is the MEMO being wrong (... levels' baked widths)" is refuted. **The widths
+are precisely what the special case got wrong.**
+
+**THE DISCRIMINATING RECORD, which `6e8d507` asked for by name.**
+`substance-designer-materials__RockWall.sbs` (permitted) states all five levels on one COLOUR
+node; its compiled twin holds them as five contiguous Float4s. Verified here:
+
+    source declares      levelinlow  [0.2361 x3, 0.0]   levelinhigh [0.7518 x3, 1.0]
+                         levelinmid  [0.4648 x3, 0.48]  leveloutlow [0.2772 x3, 0.0]
+                         levelouthigh[0.9068 x3, 0.6]
+
+    View                 all five EXACT, width 4 each, slots 4/8/12/16/20, `ignored` empty
+    named_params         levelinlow 0.2361, levelinhigh 0.2361, levelinmid 0.2361,
+                         leveloutlow 0.0, levelouthigh 0.7518
+
+`named_params` returns the four COMPONENTS of `levelinlow` under four different names, then
+`levelinhigh`'s red as `levelouthigh` -- 0 of 5. **The alphas are what make this record
+discriminating**: 0.0 / 1.0 / 0.48 / 0.0 / 0.6. A colour levels' RGB components are near-always
+equal, which is exactly why the wrong reading looks plausible on every greyscale specimen.
+
+**Scale.** Over 29 uniquely value-matched source-record pairs: View 29/29, `named_params` 26/29,
+and the three it loses are exactly the three COLOUR pairs -- colour-only, 3/3 against 0/3.
+Corpus-wide over 445 files and 90,874 levels records the two readings disagree on **5,780
+records, 6.36%**, from two independent defects: a stride-1 layout wrong on 717 colour records, and
+a start rule one slot low on 5,176 even-`cls` records whose reads land below the input-edge floor
+and return denormals. `View` places 177,718 levels parameters with 0 below the floor and 0 past
+`end`.
+
+**Nothing is being spuriously binarised by the deployed reader.** Under `View`, 1,016 records
+genuinely state `levelinlow == levelinhigh`, and 775 of those repeat a non-round float (0.002,
+-0.03, -0.1175, 0.0625) in two distinct slots, which no misalignment can manufacture. Under
+`named_params`, **31 colour records stating a plain ramp would be binarised** -- e.g.
+`FacadeSubstance003` 2356, a 0.175->0.825 ramp read as span 0 -- and **60 real binarisations
+would be lost**.
+
+**So the fix is to the TOOL, not the renderer, and changes no pixel.** The special case is
+deleted and each parameter takes its own width from the walk's `param_slots`. Verified after
+patching: `named_params` on record 941 now returns 0.2361 / 0.7518 / 0.4648 / 0.2772 / 0.9068,
+matching `View`'s first components.
+
+## RETRACTED: bit 31 is not a leading word, and bit 7 was never redundant
+
+The FX entry layout change staged earlier -- moving bit 31 out of `FX_PROGRAM_BITS` to sit
+as a LEADING `imageindex` word between the tag and the block pointer, and deleting bit 7's
+charge entirely -- is withdrawn. It was wrong, and the argument for it did not hold.
+
+THE FIT COULD NOT SEE THE DIFFERENCE. The claim rested on `leading = 1 + 4*bit16 + bit17 +
+bit31` being exact on 137/137 stable tags. It is. But bits 7 and 31 are perfectly
+co-extensive across that population:
+
+    tags with bit 31: 4      of those, also bit 7: 4
+    tags with bit  7: 4      of those, also bit 31: 4
+    tags with bit 7 set and bit 31 clear: none
+
+They are the SAME COLUMN in that fit. `1 + 4*bit16 + bit17 + bit7` is exact on the same
+137/137 tags, and so is any mixture. The fit was equally true of the committed reading and
+was never evidence for the change. I read a tie as a confirmation.
+
+THE CENSUS CAN SEE THE DIFFERENCE, AND IT SAYS TRAILING. `FX_ENTRY_PROGS` recorded where
+programs were SEEN, tag by tag -- an observation, not a fit -- and the two readings differ
+in exactly one place: whether a program pointer sits at the END of the entry. Four tags
+disagree, all of them bit-31 tags, all in the same direction:
+
+    tag=0x95140088   census=[3,4,5,6,7]     layout=[3,4,5,6]
+    tag=0xD4500088   census=[3,4,5,6,7,8]   layout=[3,4,5,6,7]
+    tag=0xD4540088   census=[3,4,5,6,7,8]   layout=[3,4,5,6,7]
+    tag=0xD5140088   census=[3,4,5,6,7,8]   layout=[3,4,5,6,7]
+
+Both readings start the run at the same slot -- which is the co-extensivity again -- and the
+change simply DELETED the top program slot from every entry that had one. 51/57 against a
+0.90 floor, where the committed reading is 55/57.
+
+`690 -> 0 unresolved bit-7 parameters` WAS A TAUTOLOGY. Bit 7 stopped naming a parameter, so
+the count of its unresolved parameters went to zero by construction. It measured the edit,
+not the format. A count that can only fall when a name is deleted is not evidence that the
+name was wrong.
+
+The record 68 improvement (max 1.0682 -> 0.9974, clamp gone) was real but points the other
+way once read correctly: the change removed a program slot, so a parameter stopped being
+read at all, and the value fell below 1.0 because a term went missing. Removing an input is
+not the same as computing the output correctly, and a clamp disappearing because the sum got
+smaller is the cheapest possible way to lose one.
+
+WHAT SURVIVES. Nothing of the layout change. Bit 31 remains a program bit and keeps the
+`imageindex` name it already had; bit 7 keeps its leading word. The one durable result is
+the discriminator: bits that co-occur perfectly cannot be separated by a word-count fit, and
+only the program census distinguishes them. Any future claim about bit 7 or bit 31 has to be
+argued against `FX_ENTRY_PROGS`, not against a leading-word total.
+
+## The walk: bit 31's trailing program is real for one tag and program BODY for two
+
+Read by dumping cells rather than scoring a width table, which is what should have happened
+before either side of the bit-7/bit-31 argument was staged. Three proxy observables were
+tried first and all three were null for harness reasons, not format reasons -- recorded at
+the end because each failed in a way worth not repeating.
+
+WHAT THE BYTES SAY. Tag `0x83000088`, bits {3,7,24,25,31}, 86 entries, identical in all:
+
+    slot +3  w=0x011456D8  -> PROGRAM at 0x114570C     a pointer, resolves
+    slot +4  w=0x3F800000  = 1.0                       baked patternsize, component 1
+    slot +5  w=0x41800000  = 16.0                                          component 2
+    slot +6  w=0x05010005                              0x114570C -- the program BODY
+
+Slot 6 IS the address slot 3 points at. The entry's fields end at slot 5 and the program
+begins immediately after, exactly as `fx_entry_layout`'s docstring says ("the program simply
+sits after the parameters"). The committed layout predicts a program POINTER at slot 6, so
+for this tag it reads the program's first instruction word as an address -- the error that
+docstring warns about, landing 52 bytes past an instruction.
+
+IT IS NOT UNIFORM, AND THAT IS THE RESULT. Over 386 permitted specimens, classifying every
+predicted program slot as pointer / body-of-an-earlier-program / neither:
+
+    tag          trailing slot            n
+    0xD5140088   a real program pointer   54 of 54     BODY 0
+    0x83000088   program BODY             86 of 86     pointer 0
+    0x91100088   program BODY             21 of 21     pointer 0
+
+    bit 31 set     161 entries   107 last slots fail   107 of 107 are BODY
+    bit 31 clear 40,769 entries   496 last slots fail     0 of 496 are BODY
+
+The failure mode is absent from 40,769 non-bit-31 entries and total within two bit-31 tags.
+So bit 31 sometimes costs a trailing program pointer and sometimes costs nothing, and which
+one is not decided by bit 31. The reading is INCOMPLETE, not merely wrong, and no bit-count
+fit can close it -- that is the same instrument that produced the retracted change.
+
+THE CENSUS IS NOT CONTAMINATED. It was suspected here, on the theory that it had counted
+body as program and so could not arbitrate. It had not: `0xD5140088`'s six census slots are
+pointers 54/54 with zero body reads. The two over-reading tags are simply not in the census,
+which is why it never contradicted them. `test_entry_layout_agrees_with_the_census` is a
+sound check and the earlier deference to it was correct.
+
+WHAT IS ACTIONABLE WITHOUT NAMING BIT 31. A predicted program slot whose ADDRESS lies inside
+the span of a program named by an EARLIER slot of the same entry cannot be a pointer. That is
+a containment test the file answers per entry -- the same two-statements-of-one-address
+discipline `fx_out_of_line` already uses -- and it separates the measured populations exactly:
+it drops 107 body reads and touches none of `0xD5140088`'s 54 pointers.
+
+THREE NULL HARNESSES, and why each was null:
+  * `fx_out_of_line` over `fx_table` entries: returns None for INLINE cells, which is most of
+    them. "None" was counted as "identity fails". The 846-cell figure in its docstring comes
+    from the byte audit, a different enumeration.
+  * stride between consecutive `fx_table` offsets: `fx_table` steps by the furthest-forward
+    stored pointer, as its own docstring says, so consecutive offsets are not adjacent cells.
+  * the first run of both: `body_lo` and `fx_out_of_line` are ASSEMBLY members, not Record
+    members, and an `except Exception` swallowed the AttributeError into "0 identity holds"
+    for every cell in the corpus. A measurement that returns exactly zero everywhere is a
+    broken harness until proven otherwise.
+
+### Correction to the above: the phantom slot is INERT in `fx_table`, and the guard was a no-op
+
+The section above called bit 31's spurious trailing slot "a live rendering defect" and
+proposed a containment guard to drop it. Both halves were wrong, and the check that shows it
+takes one run:
+
+    fx_table over 386 permitted specimens, nibble-8 rows
+      without the guard   78,461 rows   58,922 programs   19,539 none
+      with the guard      78,461 rows   58,922 programs   19,539 none
+      0x83000088  86 / 0     0x91100088  21 / 0     0xD5140088  54 / 0      -- identical
+
+Byte-identical, because the two facts already recorded above are the same fact read twice:
+the slot holds program BODY, so `body word + 52` does not land on a valid program, so
+`program_span` REJECTS it and the slot is skipped. "Last slot does not resolve: 107" and
+"last slot is BODY: 107" are one population, not two. `fx_table` was already correct here and
+the guard could only ever re-reject what was rejected. It has been removed rather than left
+in as dead code with a long comment justifying it.
+
+WHAT THE PHANTOM SLOT ACTUALLY TOUCHES is WIDTH, not program reading. `fx_entry_walk` counts
+bit 31's slot toward the entry's extent, and that width feeds `fx_out_of_line`'s identity
+(`base = off - 4 * width`) and the stated-extent arithmetic. For the 107 entries where the
+slot is not there, every width derived from the tag is one word too long. That is the open
+consequence and it is unmeasured; it is not a program-reading bug and should not be described
+as one again.
+
+THE RULE THIS BREAKS, worth stating plainly because it produced two wrong claims in one
+session: a slot that FAILS to resolve costs nothing downstream, because failing to resolve is
+how the reader already declines it. Only a slot that resolves WRONGLY is a defect. "The
+layout predicts something that is not there" is only a bug if something consumes the
+prediction without checking -- and here the check was already in place.
+
+### Measured: the width overshoot is inert too, and the committed reading is strictly best
+
+True entry widths read off the file -- an entry's fields end where the program it names
+begins, so a forward program start is the entry's extent, no table involved:
+
+    tag          committed width   no31 width   TRUE width (observed)   n
+    0x83000088          7               6             6                 86
+    0x91100088          7               6             6                  7
+    0xD5140088          9               8             9                  9
+
+    committed:  93 of 102 bit-31 entries overshoot, every one by EXACTLY 1 word
+                 0 of 32,078 non-bit-31 entries overshoot
+    no31:        0 overshoot -- but a bound is an UPPER bound, so this metric is
+                 one-sided and HIDES that no31 undershoots 0xD5140088 by exactly 1.
+
+So bit 31 names a real trailing program for one tag and nothing for two, and the tag alone
+does not decide it. The reading is incomplete. `0xD5140088` slots 3-8 are six DISTINCT
+resolving pointers with slot 9 the body of slot 3's program; `0x83000088` and `0x91100088`
+have their bit-31 slot land on that body directly.
+
+WHAT THE OVERSHOOT COSTS: NOTHING. Every consumer of the width already guards it.
+
+    consumer                 guard                                        effect
+    fx_table                 `program_span` rejects a body word           none
+    walk_partition           `min(span, (nxt - q) // 4)` clamps to the    none
+                             furthest stored forward pointer -- 7 -> 6
+    fx_out_of_line           unchanged at 3 cells either way              none
+    baked-width readers      bit 31 is a program bit, never baked         none
+
+Measured end to end over 386 permitted specimens:
+
+    committed   78,461 rows   58,922 programs   3 out-of-line
+    no31        78,452 rows   58,913 programs   3 out-of-line
+
+The difference is EXACTLY 9 -- the nine genuine `0xD5140088` programs that dropping bit 31
+loses. Committed loses none. THE CORRECT ACTION IS TO CHANGE NOTHING: the committed reading
+reads every real program and its 93 phantom slots cost nothing at any consumer. The staged
+edit would have lost those 9 AND removed bit 7's word, which is strictly worse on both counts.
+
+WHAT IS LEFT is a MODEL error, not a reading error: `fx_entry_walk` states a width one word
+too long for 93 entries. Nothing consumes it unclamped today, so fixing it is not urgent, and
+fixing it by deleting bit 31's slot is wrong -- that breaks the 9. A correct fix needs the
+rule that decides whether bit 31's slot is present, which three tags cannot supply.
+
+ONE REGULARITY RECORDED, NOT FITTED, true in all three cells: the word before the tag holds
+`tag - 52`, and slot 2 holds `slot3 - 52`, so slot 2 points at the start of the pointer array.
+Slot 1 is a small integer -- 8, 4, 2 against 1, 3, 6 pointers respectively. Written down as an
+observation for whoever has more than three tags to test it on; it is NOT a rule here.

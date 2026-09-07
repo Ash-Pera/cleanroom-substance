@@ -627,16 +627,26 @@ def named_params(r):
     where n_present is the count of PARAM_SPEC fields the w1 word marks present and NOT as an image
     input (state 11). The boundary is decompose's `end` (= header_words). This is POSITIONAL: it
     never consults the w1 field decomposition, so it is immune to any (filter, field)
-    misalignment, and it reads the level VALUES rather than the baked WIDTHS that precede them.
+    misalignment. Each present parameter takes ITS OWN WIDTH from the walk's `param_slots`, so a
+    colour `levels` -- five Float4s, twenty words -- is laid out at stride 4 and not at stride 1.
 
     Returns [(name, kind, value), ...] with kind 'baked'|'program' from the slot itself; [] for
     filters without a PARAM_SPEC, and None where decompose does not cover the record.
 
-    Validated vs the current named_parameters, where the memo has a real answer: directionalwarp
-    100.00%, dirmotionblur 99.92%, blend 99.43%, levels 96.26% -- and every disagreement is the
-    MEMO being wrong (blend's 1,004 size-expr misattributions, dirwarp's misalignment, levels'
-    baked widths), plus ~28k parameters the memo has no key for that this recovers. Better-than-memo,
-    so NOT 0-diff; wire only behind a render validation.
+    THE `filter_id == 15` FORWARD-START SPECIAL CASE THAT USED TO SIT HERE IS DELETED, AND THE
+    PERMITTED SOURCES ARE WHAT DELETED IT. It read levels' parameters forward from a fitted
+    `start` at a one-word stride, and its docstring blamed the disagreement with
+    `render2.model.View` on "levels' baked widths". The sources say the opposite.
+    `substance-designer-materials__RockWall.sbs` states all five levels on one COLOUR node and
+    its compiled twin (record 941) holds them as five contiguous Float4s at slots 4/8/12/16/20 --
+    alphas 0.0, 1.0, 0.48, 0.0, 0.6 -- all five exact under the end anchor and not one of them
+    recovered by the forward stride. Over the three uniquely-matched COLOUR source<->record pairs
+    the end anchor is right 3/3 and the special case 0/3; over 29 uniquely-matched pairs of
+    either colour, 29/29 against 26/29, and the three it loses are exactly the three colour ones.
+    Corpus-wide (445 files, 90,874 levels records) the special case put 5,176 parameter reads
+    BELOW the input-edge floor, manufactured a degenerate `levelinhigh - levelinlow` span -- which
+    `f_levels` BINARISES -- on 31 colour records that state a plain ramp, and missed 60 real
+    stated binarisations.
     """
     import sbsasm
     if r.filter_id == 4:
@@ -648,26 +658,21 @@ def named_params(r):
     if d is None or d.get('end') is None:
         return None
     w1 = r.words[1] if len(r.words) > 1 else 0
-    present = [nm for _lb, nm in sorted(
-        (p & -p, nm) for nm, p, _pg in spec if (w1 & p) and (w1 & p) != p)]
+    present = sorted(((p & -p).bit_length() - 1, nm)
+                     for nm, p, _pg in spec if (w1 & p) and (w1 & p) != p)
     if not present:
         return []
     end = d['end']
-    prog = d['prog']
-    if r.filter_id == 15 and prog is not None:
-        # levels' values are read FORWARD from a start, with the baked WIDTHS trailing. When
-        # the tag is ODD the values sit right after the cls-slot region (start = last cls slot
-        # + 1; a set cls bit 7 adds a slot and pushes it); when EVEN they sit at/before the
-        # size slot (prog, shifted back one when leveloutlow is present, which occupies
-        # prog-1). 99.83% vs the memo. The residual 0.17% is per-record: the SAME present set
-        # lands at different starts in different records, i.e. the memo's own fitting, not a
-        # structural rule -- and render-neutral (all-packs refcompare, 0 worse).
-        cls_slots = d['cls_slots']
-        if r.cls & 1:
-            start = (max(cls_slots) + 1) if cls_slots else prog + 1
-        else:
-            start = prog - 1 if 'leveloutlow' in present else prog
-        slots = range(start, start + len(present))
-    else:
-        slots = range(end - len(present), end)
-    return [r._read_slot(nm, s) for nm, s in zip(present, slots) if 2 <= s < len(r.words)]
+    # ONE WIDTH PER PRESENT FIELD, from the walk, keyed by the field's OWN BIT. `param_slots`
+    # already carries it (SPEC 7.3's width legend) and it is the only term the stride-1 layout
+    # dropped. `_read_slot` still returns the FIRST word of a multi-word parameter, so a colour
+    # record's Float4 comes back as its red component -- `render2.model.View` is the width-aware
+    # reader and is the one the renderer uses.
+    widths = {sh: w for (sh, _st, _pos, w) in d.get('param_slots', ()) if w}
+    ws = [max(1, widths.get(b, 1)) for b, _nm in present]
+    pos, out = end - sum(ws), []
+    for (_b, nm), w in zip(present, ws):
+        if 2 <= pos < len(r.words):
+            out.append(r._read_slot(nm, pos))
+        pos += w
+    return out
