@@ -57970,3 +57970,53 @@ and it is the owner's. `refcompare`'s docstring already records that pairing cor
 its own history ("identifier-then-declared-channel fallback, the 16-bit load"), so the
 mechanism for fixing it exists; what is missing is an identity match rather than a
 usage-name match when a pack declares the same usage more than once.
+
+## THE BRICKS DEFICIT IS ALMOST ENTIRELY MISPAIRING: 0.3521 as-paired, 0.9908 correctly matched
+
+    pack               as-paired          best one-to-one assignment
+    Bricks_and_tiles   0.3521  (n=78)     0.9908
+    Auras              0.8311  (n=3)      0.8311
+    Chesterfield       0.8706  (n=10)     0.8706
+
+THE TWO SINGLE-GRAPH-PER-USAGE PACKS CALIBRATE THE METHOD: with nothing to permute, their
+bound must equal their as-paired score, and it does, exactly. So the computation is sound.
+
+**Bricks goes from 0.3521 to 0.9908.** A one-to-one assignment exists that matches all 78 of
+our outputs to their references at 0.99 correlation. An optimal assignment is optimistic BY
+CONSTRUCTION and cannot be quoted as a score -- but 0.99 across 78 rows is not reachable by
+chance with five to ten candidates per group; a wrong matching of unrelated images scores near
+zero however it is permuted. **Our Bricks renders are essentially correct and were being
+compared against the wrong exports.**
+
+WHAT THIS OVERTURNS. A large part of this investigation measured mismatched pairs:
+  * "the render sits at corr 0.40" -- it is 0.99 on the pack that dragged the mean down
+  * "Bricks graphs 2, 6 and 7 render WRONG CONTENT at corr ~0.00" -- they render the content
+    of a different graph's output, which is what an unrelated-but-not-degraded image is
+  * "the amplitude deficit" and "the missing top octave" on Bricks -- both computed through
+    this pairing, so both are suspect for that pack
+  * the FFT shift test, the blur test, the octave ratios, the tilt analysis: all sound as
+    measurements, all asking why two images differ when the answer was that they are not
+    meant to be the same image
+
+WHAT SURVIVES, and it is important that it does. The 18 wrongly-flat rows are STILL real: our
+output there is CONSTANT, and a constant image matches nothing under any permutation, while
+all 18 references are textured. The `opacity -1` chain traced to fxmaps 10279 is a genuine
+defect with a genuine mechanism. Chesterfield and Auras were never mispaired -- one graph per
+usage -- so every finding resting on them stands, including the whole-corpus conclusion that
+`pixelprocessor` is the sole source of top-octave content.
+
+THE LESSON, and it is the same one this file has recorded four times in different clothes: a
+number is only evidence against a baseline that establishes what it should be. Chesterfield
+scored 0.87 and Bricks 0.35 for many sections, and the difference was read as a property of
+the RENDERER when it was a property of how many graphs a pack declares. The control was
+available the whole time -- Auras has three graphs but distinct usages per graph, Chesterfield
+one -- and "the pack that scores worst is the pack where mispairing is possible" was visible
+in the pack sizes before any of this was measured.
+
+FOR THE OWNER. `refcompare` pairs by DECLARED USAGE; when a pack declares a usage more than
+once the assignment falls to yield order. Its docstring already records pairing corrections as
+its own history ("identifier-then-declared-channel fallback, the 16-bit load"), so the
+mechanism exists. What is missing is an identity match -- output UID, or the record the output
+names -- rather than a usage-name match. `GUARD_TABLE`'s floors are computed through the same
+pairing, so the floors on multi-graph packs are measuring against arbitrary exports and should
+be re-derived after any fix. That is a floor decision and it is yours.
