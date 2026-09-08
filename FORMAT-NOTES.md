@@ -57385,3 +57385,78 @@ IDENTICAL within that filter while separable corpus-wide).
 
 `named_params` returns [] for all four, so whatever distinguishes them is not a named
 parameter -- it is the w1 code itself and the edge shape it selects.
+
+### `distance` is not the source either: `field` is right and its HF loss is legitimate
+
+    arm                          top-oct all   Bricks    toward/away   corr
+    DEFAULT                      0.1953        0.0434       --         0.8043
+    distance.propagate=nearest   0.1476        0.0242      0 / 9       0.7721
+    distance.invert=True         0.3163        0.0437      8 / 6       0.4482
+
+`nearest` is worse on BOTH quantities, so `field` is the correct propagate mode and the 99%
+high-frequency loss at record 5628 is legitimate: a distance field is smooth by construction,
+and outputting one from a textured mask is what the filter is for. `invert` shows the same
+signature `rect` did -- top octave up, correlation collapsing from 0.80 to 0.45 -- which is
+noise, not detail.
+
+AND THE DUPLICATED EDGE WAS ALREADY EXPLAINED IN THE TREE. `decompose` states it: `distance`'s
+optional mask is declared by w1 BIT 0 alone, and "bit 0 set (5, 7, 9) gives two edges and
+clear (6, 10) gives one, 2,277 of 2,277". So `w1 = 5` is source plus mask and `w1 = 6` is
+source alone, a record wired to its own input on both slots is legitimate, and the edge walk
+is correct. Reading the existing note would have been cheaper than inferring it from four
+records -- the answer was written down before the question was asked.
+
+ELIMINATED SO FAR AS SOURCES OF THE MISSING TOP OCTAVE:
+
+    FX-Map draw       every profile, size and combine arm; CEILING 0.347 against a target
+                      of 1.0, and every arm that raises it collapses `corr`
+    distance          both arms refuted; its smoothing is correct behaviour
+    dirmotionblur     over-blurs (K should be ~1 not 10) but that is an amplitude fault,
+                      and correcting it does not add top-octave content
+    warp              inert -- disabling all 1,066 changes no scored row
+
+STILL UNTESTED, and now the largest: `pixelprocessor`. 515 records in Bricks against 29 in
+Chesterfield, all stating the unnamed `cls` bit 23, and a per-pixel bytecode program is the
+one mechanism in the format that can manufacture arbitrary fine detail. Its census knockout
+was never measured because a pass-through needs input 0 and a pixelprocessor is a GENERATOR
+with none. The knockout that works for a generator is substitution by a constant.
+
+## `pixelprocessor` IS THE SOLE SOURCE OF HIGH-FREQUENCY CONTENT, and it supplies ~18% of it
+
+The knockout the census could not perform -- a pixelprocessor is a GENERATOR, so forcing a
+pass-through needs an input it does not have. Substituting a CONSTANT works, and the result
+is unambiguous. Replacing 1,084 `pixelprocessor` calls with flat 0.5, scored at grid 512:
+
+    mean corr                 0.7875 -> 0.3770   (-0.4105)   13 of 22 rows moved
+    top-octave geometric mean 0.1765 -> 0.0000
+
+**Remove `pixelprocessor` and the top octave goes to EXACTLY ZERO.** Nothing else in the
+render generates content above 32 cycles. Every other candidate eliminated in the sections
+above -- the FX-Map draw, `distance`, `warp`, `dirmotionblur` -- was eliminated correctly, and
+this is where the remaining deficit lives: we produce 18% of the engine's top-octave power
+(4.3% on Bricks) from the one filter that produces any at all.
+
+That also explains the pack split without any further hypothesis. Bricks holds 515
+pixelprocessor records against Chesterfield's 29, so a shortfall in this filter shows up
+overwhelmingly in Bricks, which is the pack whose 78 rows carry the entire corpus deficit.
+
+A CANDIDATE MECHANISM, TESTED AND NOT SUPPORTED. `sbsruntime.rand` hashes `(limit, $number)`
+and its docstring notes `$number` is 0 in a pixelprocessor -- so `rand` returns ONE VALUE FOR
+THE WHOLE IMAGE inside a per-pixel program, while `CONTEXT` already carries `"pos"` and
+`ops.py:474` sets it. Patching `rand` to hash position instead:
+
+    rand calls: per-pixel path 169,964    fallback 0
+    mean corr 0.8043 -> 0.8057 (+0.0014)   better 4 worse 3
+    top-octave 0.1953 -> 0.1717            slightly WORSE
+
+INCONCLUSIVE, AND THE TEST IS THE REASON. `fallback 0` says EVERY rand call took the
+per-pixel path, so `CONTEXT['pos']` is always populated -- stale from a previous call -- and
+the condition never discriminated a pixelprocessor from an FX-Map. The patch changed `rand`
+everywhere, including where `$number` legitimately drives it, so a gain in one population and
+a loss in the other cannot be separated. A sound test has to key on the CALLER being a
+pixelprocessor, not on `pos` being non-None.
+
+This is the third time `rand` has been suspected here and the first with a mechanism visible
+in the code rather than inferred: the earlier two were wrong about the vehicle (a node-level
+`randomseed` program that mostly does not exist, then an inherited class bit whose value is
+always 0.0). This one is about the ARGUMENT the hash is taken over. It remains open.
