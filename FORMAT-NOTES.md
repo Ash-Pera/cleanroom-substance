@@ -57542,3 +57542,43 @@ and the instruction tuple is `(index, address, opcode_token, operands)` -- the o
 TWO, and reading field one gave a clean-looking census of ascending ADDRESSES. Every one of
 those failed loudly except the last, which produced a plausible table of nonsense. Inspecting
 one tuple before aggregating would have cost one command.
+
+## CONFIRMED: the sampler is lossless on-grid and destroys the top octave off-grid
+
+A unit test of `ops.sampler` alone -- no rendering, no corpus. Feed it images with known
+high-frequency content, sample at IDENTITY coordinates and at a HALF-PIXEL offset, and measure
+absolute HF power in and out:
+
+    image                  HF in      identity   half-pixel   identity / half
+    white noise            0.061764   0.061764   0.009043     1.0000 / 0.1464
+    checker (Nyquist)      0.248051   0.248051   0.000000     1.0000 / 0.0000
+    stripes period 4       0.123535   0.123535   0.062012     1.0000 / 0.5020
+    gradient (control)     0.000000   0.000000   0.000242     1.0000 / --
+
+**On-grid the sampler is exactly lossless -- 1.0000 on every test. Off-grid it removes 85% of
+white-noise high-frequency energy and 100% of Nyquist.** The checkerboard comes back
+completely flat. That is textbook bilinear behaviour and it is worst precisely at the octave
+the render is missing.
+
+The gradient control confirms the metric rather than the sampler: a smooth image has no HF to
+lose, and the tiny 0.000242 it gains is interpolation ringing at negligible absolute level.
+The ratio column is meaningless there because the denominator is zero.
+
+WHY THIS MATTERS FOR THE DEFICIT. `pixelprocessor` is the sole source of top-octave content
+(removing it takes the top octave to exactly 0.0000) and its programs call `samplecol` 1,767
+times in Bricks alone. `$pos` is continuous, so those samples land off-grid essentially always,
+and every one of them is low-passed by this much. We produce 18% of the engine's top-octave
+power, and a sampler that removes 85% of high-frequency energy at a half-pixel offset is the
+right order of magnitude to explain it.
+
+WHAT THIS DOES NOT ESTABLISH. That bilinear is the WRONG choice. The engine also interpolates,
+and if it uses bilinear too then this loss is shared and not a defect. What makes it suspect
+is the interaction with grid already measured: we sample a CAPPED-resolution intermediate while
+the engine samples its own full-resolution buffer, so the same normalised position is further
+from a real pixel in our buffer than in theirs. That predicts the measured grid dependence --
+band 1.388 at 128 falling to 0.637 at 512 -- which no arm explains and this does.
+
+NEXT: sample with a higher-order kernel and re-measure the top octave. If a bicubic or Lanczos
+tap raises it toward 1.0 without costing `corr`, the sampler is the defect; if it raises the
+octave and drops `corr`, it is manufacturing detail rather than recovering it -- the same test
+that exposed `fx.profile=rect` as noise.
