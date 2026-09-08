@@ -56983,3 +56983,50 @@ prevalence, and there is ground truth to check against -- the 27 zero-correlatio
 the guarded warp channels. `separability.py` must run on it first: bit 27's population needs a
 control before any claim, and the class word is this file's WORST separability case (only bits
 19 and 23 are separable, and nine bits imply 19).
+
+### The ignored fields are all ZERO, so the count overstates them -- and separability is population-dependent
+
+Reading each ignored `cls` field at the slot the model itself reports, over 40 permitted files:
+
+    (filter, bit)              records   slots seen        VALUE
+    pixelprocessor 23            4,823   3 / 4 / 5         0.0  (all)
+    directionalwarp 27           4,417   5 / 6             0.0  (all)
+    fxmaps 23                    3,711   3 / 9 / 4         0.0  (all)
+    dirmotionblur 27             1,851   4 / 5             0.0  (all)
+    warp 27                        971   4 / 5 / 6         0.0  (all)
+    warp 26                         20   4 / 5             0.8689, 0.4967, 0.99
+
+**Every bit-23 and bit-27 field in 15,773 records holds exactly 0.0.** The slot varies per
+record, so the walk is placing them correctly and the value really is zero. `$randomseed = 0`
+is an ordinary default and fits bit 23 exactly.
+
+SO THE `ignored` COUNT OVERSTATES THE PROBLEM. 1,977 ignored records in `Bricks_1` sounded
+like 1,977 records rendering from wrong values; almost all of them state a field whose value
+is ZERO. Whether ignoring it matters depends entirely on the field's semantics, which are not
+established: if the field is additive or a seed, ignoring a zero is exactly right and costs
+nothing; if it is a MULTIPLIER stated as 0.0 -- "this effect is off" -- then ignoring it
+applies the effect at full strength, which would matter enormously on 971 warps. Nothing here
+decides between those, and the previous section's framing ("live output, wrong content")
+should not be read as established for this population.
+
+THE ONE IGNORED FIELD CARRYING REAL DATA is `warp` bit 26: 20 records holding 0.8689, 0.4967
+and 0.99. That is a small, concrete population with real values and it is worth naming before
+the zero-valued ones.
+
+SEPARABILITY IS POPULATION-DEPENDENT, and this is a refinement of SPEC 6.5 rather than a
+contradiction. Over ALL class words the corpus has NO `identical` pair. Within a SINGLE
+FILTER's class words it does:
+
+    warp             18 masks   IDENTICAL: bits 8 and 9
+    directionalwarp   9 masks   IDENTICAL: bits 5 and 10
+    dirmotionblur    10 masks   none
+    fxmaps           12 masks   none        (bit 11 does not vary here)
+    pixelprocessor    8 masks   none        (bit 11 does not vary here)
+
+So a claim argued over one filter's records can be fatally confounded even though the same
+bits are separable corpus-wide. `separability.py` must be run on the POPULATION THE CLAIM IS
+MADE OVER, which is the same lesson as the bit-7/bit-31 census subset, arriving from the other
+direction: there, narrowing invented a confound; here, narrowing reveals a real one.
+
+CORRECTED: bit 27 is NOT set on 100% of warps corpus-wide. It is 971 set against 847 clear
+over 40 files -- the earlier "515/515, 100%" was `Bricks_1` alone. A control population exists.
