@@ -56842,3 +56842,50 @@ goes flat. The difference is what CONSUMES them -- Bricks feeds an asymmetry det
 feeds something that tolerates a near-uniform input. So the question is not "why do these
 records saturate" but "why does the engine's `s - s'` have structure where ours does not",
 and patternsize scaling is not the answer to it.
+
+### The arm space is exhausted; the flat graphs are not an arm question
+
+`fx.combine=over` re-tested on all 109 rows, because its earlier refutation used the guard's
+25 channels which exclude the flat graphs:
+
+    corr 0.4077 -> 0.4025 (-0.0052)   better 13   worse 14
+    FLAT rows 18 -> 18                UNCHANGED
+    Chesterfield normal/1  0.9635 -> 0.7419   normal/0  0.9645 -> 0.7640
+
+Unlike `cell`, which took the flat rows 18 -> 0, `over` leaves every one flat while damaging
+Chesterfield's normals by 0.20-0.22. The saturation is not a combine-rule artefact, and `max`
+remains the best reading on both populations.
+
+EVERY DRAW-SIDE ARM IS NOW MEASURED, most of them on the 109-row set rather than the 25:
+
+    arm                   verdict on the flat graphs / overall
+    fx.patternsize=cell   flat 18 -> 0 but corr only 0.035-0.055, Auras -0.19   REFUSED
+    fx.combine=add        1 better 7 worse                                       REFUSED
+    fx.combine=over       flat unchanged, Chesterfield -0.22                     REFUSED
+    fx.gridcount=divisor  BIT-IDENTICAL on all 109 rows                          INERT
+    fx.negopacity=abs     revives 95 dead records, 0 scored rows move            UNARBITRABLE
+    fx.negopacity=signed  bit-identical on all 25                                INERT
+    fx.pos=corner         bit-identical on 8 bench records                       UNTESTED at scale
+    fx.sizeless           no band movement, any arm                              IMMATERIAL
+    fx.rootentry=skip     identical to sizeless=skip (same gated population)      ONE finding
+    fx.profile=disc       corr -0.36                                             CONTROL: load-bearing
+
+Two of those are CONTROLS rather than candidates and are worth keeping as such: `profile=disc`
+collapsing corr by 0.36 proves the profile machinery reaches the draw, so the null results
+from other arms are real nulls and not arms that fail to fire; and `combine=add`/`over` both
+losing confirms `max`.
+
+SO THE FLAT GRAPHS ARE NOT AN ARM QUESTION. The one arm that removes the flatness does so by
+shrinking every pattern, which is a compensation and not a correction -- it un-flattens
+without producing agreement, and costs a healthy pack 0.19. Nothing in the arbitration space
+makes the engine's `s - s'` structure appear in ours.
+
+WHAT IS LEFT, and none of it is arm-shaped:
+  * The 91 non-flat rows sit at mean corr 0.40. That is the larger and better-conditioned
+    problem, and it is untouched by everything above.
+  * `fx.pos` has never been tested against a population that exercises it -- the only evidence
+    is eight bench records where it is bit-identical, which is the same non-measurement that
+    made `negopacity` look inert.
+  * The guard scores 25 of 109 rows and cannot see any of the 18 flat ones. Widening it is a
+    coverage decision for the owner (see the earlier note); until then every arm result on the
+    flat population has to be measured out-of-band, as these were.
