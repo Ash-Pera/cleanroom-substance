@@ -57656,3 +57656,32 @@ sampler's own docstring says 62.4% of samples are exact texel hits. If so the at
 in the ARITHMETIC of these programs rather than in how they read pixels, and the next probe is
 which opcode sequence loses it -- `cvt`, `seq` and `exp2` are 12.4% of the instruction stream
 between them and none has been examined.
+
+### RESOLVED: 99.7% of samples are ON-GRID, so the kernel cannot matter and the loss is arithmetic
+
+Two measurements in this file could not both be read as I was reading them: bilinear destroys
+85% of high-frequency energy at a half-pixel offset, yet Catmull-Rom at every call site moved
+the top octave by 0.0001. Measuring the sample positions settles it:
+
+    samples 1,444,876,432    on-grid 1,440,039,936    99.7%
+
+**The sampler is exactly lossless on-grid, and 99.7% of samples are on-grid.** The Catmull-Rom
+null was sound, and the off-grid loss -- real, and large where it applies -- reaches 0.3% of
+calls. The sampler is fully eliminated as a source of the missing top octave, and the two
+results are consistent rather than in tension.
+
+INSTRUMENTATION FAILURE, REPORTED AS ONE. The probe also tried to split samples by whether the
+CALLER was a `pixelprocessor`, and that bucket came back EMPTY -- the `IN_PP` flag never
+coincided with a sampler call, so no per-filter figure was obtained. Either those programs
+reach their samplers by a path that does not go through the wrapped constructor, or the flag's
+scope does not cover program execution. The corpus-wide 99.7% stands on its own because it
+needs no split; the per-filter claim is simply absent rather than inferred from the whole.
+
+SO THE 4x PER-STAGE ATTENUATION IS IN THE ARITHMETIC. `pixelprocessor` reduces median
+high-frequency power from 1.484e-04 to 3.642e-05 while being the sole source of top-octave
+content, its inputs are 570-of-450 other pixelprocessors so the loss compounds, and neither
+its opcodes (all named) nor its pixel reads (on-grid, lossless) explain it. What is left is
+what those programs COMPUTE: `cvt` 4.3%, `seq` 4.3% and `exp2` 3.8% of the instruction stream,
+12.4% between them, none yet examined. `cvt` in particular is a CONVERSION -- a float-to-int
+or precision narrowing there would quantise exactly the fine variation that constitutes the
+top octave, and it would do so per stage, which is the compounding shape observed.
