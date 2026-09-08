@@ -56927,3 +56927,59 @@ record by record and find the stage where our content stops matching. That found
 `0.5 + 0.5*(s - s')` detector and the `opacity -1` death without any arbitration. The
 difference here is that there IS live output to compare at each stage, so the divergence point
 should be visible as a drop in agreement rather than a drop to constant.
+
+## `ignored`: every warp states a bit-27 field we do not name, and $randomseed is bit 23
+
+`engine.render` reports `ignored` -- "records that STATE a field this renderer's legend does
+not name" -- and an unnamed field reads as its DEFAULT, which renders. That is the exact
+signature of the 27 zero-correlation rows: live output, wrong content, no failure, and no
+spatial shift that improves agreement.
+
+    pack           records   failures   low_confidence   IGNORED
+    Bricks_1        12,585      0        157  (1.2%)     1,977  (15.7%)
+    Chesterfield       881      0         12  (1.4%)        54   (6.1%)
+
+Failures are zero and the low-confidence rates match, so neither is the story. The ignored
+rate differs 2.6x, and by filter it is total:
+
+    filter            ignored / total     commonest unnamed field
+    pixelprocessor      515 / 515  100%   ('cls', 23, 3, 1)  x235
+    warp                515 / 515  100%   ('cls', 27, 4, 1)  x515
+    dirmotionblur       264 / 264  100%   ('cls', 27, 4, 1)  x264
+    directionalwarp     194 / 194  100%   ('cls', 27, 5, 1)  x194
+    fxmaps              191 / 191  100%   ('cls', 23, 3, 1)  x163
+    distance            126 / 126  100%
+    blur                 93 /  93  100%
+    normal               56 /  56  100%
+
+EVERY RECORD OF THOSE FILTERS, IN BOTH PACKS. Chesterfield shows the same field KINDS -- `cls`
+23 on pixelprocessor and fxmaps, `cls` 27 on dirmotionblur -- at 54 records instead of 1,977,
+because it simply has fewer of those filters. This is not a Bricks-specific bug; it is a
+corpus-wide gap that Bricks is more exposed to.
+
+TWO NAMED THINGS FALL OUT.
+
+**Class bit 23 is `$randomseed`** -- `engine.py`'s own note says "23 gates `$randomseed`, bit
+16 gates `$outputsize`" -- and it is UNNAMED on all 191 fxmaps and all 515 pixelprocessor
+records here. So the seed IS in the file and we do ignore it, but as an INHERITED PARAMETER
+gated by a class bit, NOT as the node-level `randomseed` program this session went looking for
+and found almost none of. The earlier seed section was right about the consequence and wrong
+about the vehicle.
+
+**Class bit 27 is unnamed on 100% of `warp`, `dirmotionblur` and `directionalwarp` records.**
+`f_warp`'s own comment names bit 29 as baked `intensity` and bit 30 as `intensity` as a
+program; 27 is neither, and every warp in the corpus states it. Warp is also the filter that
+separates the two packs categorically -- Bricks 515, Chesterfield 0 -- which is why the
+amplitude deficit tracked warps from the beginning.
+
+WHY NO ARM COULD REACH THIS. Arms arbitrate between readings of fields the legend NAMES. These
+fields have no reading at all: they are read as a default, silently, and the default renders.
+That is why the entire draw-side arm space was inert on this population, and why the FFT shift
+test found no offset -- we are computing a real image from default parameters instead of the
+stated ones.
+
+NEXT: name `cls` bit 27 for the warp family. It is 973 records across three filters, 100%
+prevalence, and there is ground truth to check against -- the 27 zero-correlation rows plus
+the guarded warp channels. `separability.py` must run on it first: bit 27's population needs a
+control before any claim, and the class word is this file's WORST separability case (only bits
+19 and 23 are separable, and nine bits imply 19).
