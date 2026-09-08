@@ -57714,3 +57714,42 @@ wrong and the corpus settled it.
 Neither is the top-octave defect. Both are worth a measurement before anything is claimed
 about them, and the truncate-versus-round question has a clean test: it changes 22,536 scalar
 values, so a sweep should move something visible or nothing at all.
+
+### RETRACTED: the 4x "attenuation" is normal -- the healthy pack does exactly the same
+
+The control that should have been run before the claim was recorded:
+
+    pack           median input HF   median output HF   ratio   gain/lose of n
+    Bricks         1.484e-04         3.642e-05          0.245   69 / 135  of 450
+    Chesterfield   9.340e-07         2.382e-07          0.255    3 /   9  of  26
+
+**Chesterfield attenuates identically -- 0.255 against Bricks' 0.245 -- and Chesterfield
+renders CORRECTLY, at mean corr 0.91 with top-octave content the guard accepts.** The
+gain/lose proportions match too: 15%/30% against 12%/35%. So a `pixelprocessor` reducing its
+input's high-frequency power by ~4x is what the filter DOES, not what this renderer does
+wrong, and the section claiming "the 4x per-stage attenuation is in the ARITHMETIC" is
+withdrawn. So is the reasoning that followed from it -- `cvt`, `seq` and `exp2` were examined
+to explain a number that needed no explaining.
+
+THE STATISTIC HAD NO CONTROL. Comparing a filter's output spectrum against its input's assumes
+the filter should preserve it, and a filter that transforms an image has no such obligation.
+Nothing established what the ratio looks like when things are RIGHT until this run. It is the
+same omission as the `fxbench` null measured against a bench containing none of the arm's
+population, the survivorship mean when nine channels dropped out of the average, and the
+normalised HF metric that inverted the two packs: the number was real every time and the
+inference was not, because no control said what the number should be.
+
+A SECOND CAUTION FROM THE SAME TABLE. Chesterfield's pixelprocessors work on data whose
+absolute high-frequency power is ~150x LOWER than Bricks' (9.34e-07 against 1.484e-04), and
+Chesterfield is the pack that renders correctly. So absolute HF power at intermediate stages
+does not predict output correctness either, and chain-tracing by HF magnitude -- which this
+file has been doing for several sections -- is weaker evidence than it appeared.
+
+WHAT SURVIVES, and it is the one measurement in this arc with a clean signal: removing
+`pixelprocessor` takes the top octave from 0.1765 to EXACTLY 0.0000 and drops mean corr from
+0.7875 to 0.3770. It is the sole source of top-octave content. That knockout compared a state
+against its own baseline rather than against an assumed norm, which is why it stands while the
+attenuation reading does not.
+
+THE QUESTION IS THEREFORE "why does it produce 18% of the engine's top octave", NOT "where does
+it lose 82%". Those are different questions and only the first is supported.
