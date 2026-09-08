@@ -58070,3 +58070,44 @@ measurement written to quantify how much of the deficit was measurement error, a
 because I printed the count for one side and not the other. **Print n for BOTH sides of every
 comparison.** The per-usage best-match table in the following run contradicted the bound
 plainly -- matches of 0.5, 0.02, 0.53, nothing near 0.99 -- and that was what exposed it.
+
+## The two Bricks "assemblies" are the SAME FILE, and that explains the pairing -- but not the deficit
+
+    x_Bricks_Textures_1/.../Bricks.sbsasm   sha256 d82a2b6910349a5d   5,135,088 bytes
+    x_Bricks_Textures_2/.../Bricks.sbsasm   sha256 d82a2b6910349a5d   5,135,088 bytes
+
+**Byte-identical.** The pack ships one material twice, and its 62 reference PNGs are 31
+exports duplicated. So our renderer producing IDENTICAL output for graph pairs five apart is
+CORRECT, not a defect -- the full correlation matrix shows our g1 and g6 rows agreeing to
+three decimals across all ten reference columns, and likewise g2/g7, g3/g8, g4/g9.
+
+THE PAIRING MISALIGNMENT IS AN ORDERING MISMATCH. Our outputs come out as
+`[A1g0..A1g4, A2g0..A2g4]` -- duplicates FIVE APART -- while the references are yielded in an
+order where the duplicate copies are adjacent. `refcompare` pairs by position within a usage
+group, so position 6 on our side meets a reference that is a copy of a different graph's
+export. That is why "our g6 matches ref g1 at 0.583 and its own at 0.007": g6 IS g1, and ref
+g1 is the copy that belongs to it.
+
+So the earlier framing was right that a mispairing exists and wrong about its nature: nothing
+renders another graph's content. The fix is the same -- pair by the `NNN_usage.png` prefix
+rather than by yield position -- and it is now understood rather than inferred.
+
+BUT IT DOES NOT RESCUE THE DEFICIT, which the corrected bound already said: optimally assigned,
+Bricks reaches 0.3921 against 0.3521 as-paired. The matrix shows why, and it is worth reading
+directly:
+
+    roughness/0   our g4 -> ref g4 0.789   (its best, and the diagonal)
+    height/0      our g4 -> ref g4 0.609   our g9 -> ref g9 0.608
+    normal/0      our g4 -> ref g4 0.532
+    height/0      our g2 -> BEST OF ALL TEN REFERENCES 0.026
+    roughness/0   our g2 -> best 0.027
+    normal/0      our g2 -> best 0.037
+
+**Our graph 2 matches NO reference at all** -- its best correlation against any of the ten is
+0.037. That is not a pairing problem and not a degraded render; it is a graph whose output has
+no counterpart in the engine's exports. Graph 4 by contrast reaches 0.79 on its own diagonal.
+
+So the Bricks population splits three ways: graphs that pair correctly and correlate 0.5-0.79
+(g4, g9), graphs whose pairing is off by the ordering above, and graph 2/7 which matches
+nothing. Only the last is a candidate for the kind of rendering defect this investigation has
+been chasing, and it is 2 graphs of 10 rather than a pack-wide failure.
