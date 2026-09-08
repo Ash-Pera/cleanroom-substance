@@ -57312,3 +57312,30 @@ in these records. What remains, in order of suspicion:
   * emission COUNT: more, smaller patterns would raise the top octave without a profile change
     -- but `numberadded` is read straight from the file and `mode 'chain'` means no rule
     intervened, so this is the weakest of the three.
+
+### INCONCLUSIVE: a normalised high-frequency metric cannot answer an absolute question
+
+Trying to find which filter should be generating the missing top octave, by measuring each
+record output's high-frequency share -- `std(a - boxblur(a)) / std(a)` -- at grid 256:
+
+    Bricks         pixelprocessor 0.3251   warp 0.2875   dyngradient 0.2507   distance 0.2493
+                   directionalwarp 0.2340  blend 0.1943  dirmotionblur 0.1644
+    Chesterfield   hsl 0.2796  dyngradient 0.2711  blend 0.2278  transformation 0.1691
+                   pixelprocessor 0.1155   levels 0.0909   fxmaps 0.0469
+
+Read naively this says Bricks has MORE high-frequency content per record than Chesterfield,
+which contradicts everything measured against the references. It does not say that. The
+metric divides by each record's own standard deviation, so it reports RELATIVE texture: a
+near-flat record carrying faint noise scores high, and a strongly structured record scores
+low. Bricks is the pack whose intermediates are flat or low-amplitude -- 36.6% of its records
+render constant -- so its surviving variance is disproportionately fine-grained noise.
+
+THE QUESTION WAS ABSOLUTE AND THE INSTRUMENT WAS RELATIVE. Nothing here separates "this filter
+generates detail" from "this filter's output is faint and what remains is noisy", which are
+opposite conclusions. The `.bands` reading two sections up is absolute (power in variance
+units) and that is the form the follow-up needs: high-frequency POWER per record, not share,
+traced along one output's chain to find where the engine's detail should enter and does not.
+
+Recorded rather than discarded because the confound is the same shape as the `1e-9` threshold
+that read float32 dither as signal: an instrument that answers a nearby question convincingly
+is more dangerous than one that fails outright.
