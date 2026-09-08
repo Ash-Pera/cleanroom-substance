@@ -57753,3 +57753,45 @@ attenuation reading does not.
 
 THE QUESTION IS THEREFORE "why does it produce 18% of the engine's top octave", NOT "where does
 it lose 82%". Those are different questions and only the first is supported.
+
+### The differential: six operations the HEALTHY pack never exercises
+
+Chesterfield renders correctly at mean corr 0.91 WITH `pixelprocessor` records, so this
+renderer's pixelprocessor is largely right and the fault must be something Bricks' programs use
+that Chesterfield's do not. Comparing the two packs' pixelprocessor instruction streams --
+75,850 instructions against 3,336:
+
+    ops ONLY in Bricks         and, atan2, cartesian, gteq, not, rand
+    ops ONLY in Chesterfield   cache_write
+    over-represented in Bricks lt 7.6x, div 4.0x, exp2 2.4x, cvt 2.3x, swizzle 2.0x
+    under-represented          max 0.1x, samplecol 0.3x, samplelum 0.2x
+
+**Chesterfield's correctness validates none of those six.** That is the controlled version of
+the question and it is a real narrowing: whatever is wrong is exercised by Bricks and not by
+the pack that works.
+
+CHECKING THEM ONE BY ONE, and none is a smoking gun:
+
+  * `rand` -- already eliminated: 110 of 169,996 calls inside a pixelprocessor, and making
+    every one vary per pixel gives bit-identical scores.
+  * `atan2` -- carries a documented derivation (`directionalwarp`'s baked angles come out as
+    clean fractions of a turn under `atan2(c[1], c[0])` and not under the other order), and
+    the implementation matches it.
+  * `cartesian` -- `cartesian(r, theta) = vec(r cos t, r sin t)`. Its docstring is a bare
+    "Polar to xy" with NO evidence cited, which is unusual in this file, but the disassembly
+    confirms the operand order: `cartesian(%0, %3)` where `%3` is explicitly
+    `slot29 * 6.28319`, an angle in radians, and `%0` a radius.
+  * `and`, `not` -- `np.logical_and`, `np.logical_not`.
+  * `gteq`, `lt` -- Python `>=` and `<` through `binop`.
+
+WHY THE BOOLEANS WERE THE BEST CANDIDATE, and remain the one worth a measurement rather than a
+reading: a wrong comparison sends a program down the wrong branch, which produces WRONG CONTENT
+rather than misplaced content -- and Bricks graphs 2, 6 and 7 sit at corr ~0.00 with live
+output, which is exactly that signature and not a scaling or placement one. Reading the
+implementations does not settle it, because the mapping to numpy is only wrong if the format's
+booleans are not 0/1, or if a comparison's operands are the wrong way round. Both are
+measurable -- count the distinct values reaching a comparison, and check whether any program's
+branch selection differs from what the declared source implies -- and neither has been done.
+
+`cache_write` appearing ONLY in Chesterfield is the mirror-image gap and is recorded for
+completeness: whatever it does, the pack that exercises it renders correctly.
