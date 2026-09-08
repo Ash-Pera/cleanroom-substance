@@ -57173,3 +57173,55 @@ SO THE DECISION IS A TRADE, and it is the owner's:
 `roughness/0` remains adverse at every grid (9.70 / 4.13 / 4.12) rather than at 128 alone, so
 that entry is not explained by aliasing and wants its own investigation whichever way the
 trade goes.
+
+## BAND IS GRID-DEPENDENT AND CORR IS NOT: the amplitude deficit is missing DETAIL, not scale
+
+Measured on shipped code, no patches, over the guard's 25 channels at its three grids:
+
+    geometric mean band    128: 1.388     256: 0.641     512: 0.637
+    mean corr              128: 0.8008    256: 0.7943    512: 0.8043
+
+    channels with band(128) > 1.5x max(band(256), band(512)):  10 of 25
+
+Correlation is flat across grids to within 0.01. Band moves by a factor of 2.2. Whatever band
+is measuring, it is not a property of the decode alone -- it is a property of the decode AND
+the grid it was rendered at.
+
+THE PER-CHANNEL SHAPE IS THE FINDING:
+
+    channel                    band 128    256      512      corr 128   256    512
+    Bricks height/0              2.544     0.185    0.185     0.666    0.583  0.583
+    Bricks normal/0              1.348     0.135    0.135     0.717    0.777  0.777
+    Bricks normal/1              1.371     0.130    0.130     0.726    0.789  0.789
+    Bricks basecolor/0           2.154     0.626    0.626     0.384    0.050  0.050
+    Bricks ambientocclusion/0    1.125     0.231    0.227     0.850    0.885  0.888
+    Chesterfield AO/0            8.864     2.538    1.688     0.860    0.874  0.907
+
+**The Bricks amplitude deficit this file has chased for many sections -- band 0.13 to 0.23 --
+IS A HIGH-GRID PHENOMENON.** At grid 128 those same channels read 1.1 to 2.5, which is fine or
+too loud. The deficit appears only as the grid grows.
+
+That inverts the reading. A uniform scale error would move band at every grid equally. What
+actually happens is that OUR OUTPUT IS ROUGHLY RESOLUTION-INDEPENDENT: as the grid grows the
+reference gains high-frequency detail and we do not, so the ratio falls. We are not rendering
+a correct image at the wrong amplitude; we are rendering a SMOOTHER image than the engine, and
+the gap widens with resolution.
+
+CONSEQUENCES.
+
+  * The section "the deficit is per-pattern amplitude or downstream of the FX-Map" was reading
+    a single grid. The quantity it reasoned about changes by 2.2x across the grids the guard
+    itself uses.
+  * `GUARD_TABLE`'s band floors at 128 and at 512 constrain DIFFERENT regimes -- too loud at
+    128, too quiet at 256/512 -- and the ratchet demands no regression at any of them. A
+    change that removes blur satisfies the high grids and violates 128, which is exactly what
+    the `dirmotionblur` correction did. That is a property of the instrument, not of that fix.
+  * `corr` is the grid-stable quantity here and is the safer one to optimise against, with
+    band read per grid rather than pooled.
+
+WHAT TO CHASE NEXT is the missing detail itself: something in the pipeline is producing an
+image whose spectrum does not grow with the render size the way the engine's does. The
+FX-Map's patterns are placed in canvas units and drawn from a fixed profile, so a pattern
+covers more pixels at 512 without gaining structure -- a plausible mechanism, and one that
+predicts exactly this signature. It is testable by rendering ONE fxmaps record at several
+grids and asking whether its own band against the reference falls the same way.
