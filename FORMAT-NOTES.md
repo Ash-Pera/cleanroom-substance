@@ -58020,3 +58020,53 @@ mechanism exists. What is missing is an identity match -- output UID, or the rec
 names -- rather than a usage-name match. `GUARD_TABLE`'s floors are computed through the same
 pairing, so the floors on multi-graph packs are measuring against arbitrary exports and should
 be re-derived after any fix. That is a floor decision and it is yours.
+
+## RETRACTED: "the Bricks deficit is almost entirely mispairing" -- it is worth +0.04, not +0.64
+
+The previous section claimed an upper bound of 0.9908 against an as-paired 0.3521 and concluded
+our Bricks renders were "essentially correct". **That is wrong. The bound was computed over
+six rows, not 78.**
+
+    for perm in itertools.permutations(common):
+        if len(common) > 7: break            # <-- fires on the FIRST iteration
+        ...
+    if best: bound.extend(...)               # <-- never runs for those groups
+
+Every group with more than seven graphs -- basecolor, normal, height, roughness,
+ambientocclusion, which are the bulk of the 78 -- broke immediately, left `best` as None, and
+contributed NOTHING. Only `emission` survived, two graphs correlating 1.00, and that produced
+the 0.9908. The printed `n=78` came from the AS-PAIRED list beside a bound over a different
+and far smaller set. One count was printed and the other was not.
+
+RECOMPUTED with `scipy.optimize.linear_sum_assignment` and both counts reported:
+
+    pack           as-paired          optimal assignment
+    Bricks         0.3521  (n=78)     0.3921  (n=78)
+    Auras          0.8311  (n=3)      0.8311  (n=3)
+    Chesterfield   0.8706  (n=10)     0.8706  (n=10)
+
+**Mispairing is worth +0.04.** The calibration still holds -- the single-graph packs are
+unchanged, with matched counts -- so the method is right and only the earlier arithmetic was
+wrong.
+
+SO THE OVERTURNING IS ITSELF OVERTURNED. Everything the previous section listed as invalidated
+STANDS: the amplitude deficit, the missing top octave, the wrong content in graphs 2 and 7,
+the shift and blur refutations, the octave tilt. They were measured through a pairing that is
+imperfect but only slightly, and a 0.04 shift does not touch a 0.001-0.008 top-octave ratio or
+a corr of 0.00.
+
+WHAT SURVIVES FROM THE MISPAIRING WORK, because it was measured directly rather than through
+the bound: **graph 6 IS mispaired** -- its outputs correlate 0.44-0.61 with graph 1's exports
+and ~0.01 with the ones they are scored against. And the structural cause is now visible: our
+graphs pair 5 apart with IDENTICAL correlations (`1->1(0.51)` and `6->1(0.51)`, `3->8(0.53)`
+and `8->8(0.53)`), which is the pack's two assemblies rendering the same content, so ten
+outputs compete for five references per usage. That is a real defect in `refcompare` worth
+fixing -- the exports carry `NNN_usage.png` prefixes that identify their graph -- but it is a
+tidiness fix, not an explanation of the deficit.
+
+THE ERROR IS THE ONE THIS FILE HAS NOW RECORDED FIVE TIMES: two numbers from different
+populations compared as though they were the same population. It happened here in the very
+measurement written to quantify how much of the deficit was measurement error, and it survived
+because I printed the count for one side and not the other. **Print n for BOTH sides of every
+comparison.** The per-usage best-match table in the following run contradicted the bound
+plainly -- matches of 0.5, 0.02, 0.53, nothing near 0.99 -- and that was what exposed it.
