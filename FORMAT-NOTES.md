@@ -57225,3 +57225,47 @@ FX-Map's patterns are placed in canvas units and drawn from a fixed profile, so 
 covers more pixels at 512 without gaining structure -- a plausible mechanism, and one that
 predicts exactly this signature. It is testable by rendering ONE fxmaps record at several
 grids and asking whether its own band against the reference falls the same way.
+
+## The spectrum says SHAPE, not gain: we have ~0.1% of the engine's top-octave power
+
+`band_power`'s docstring states the diagnostic and warns against the scalar this file has been
+quoting all session: "a wrong pattern profile REDISTRIBUTES energy between bands -- the ratio
+ours/ref is TILTED across the octaves; a wrong gain scales every band together, so the ratio
+is FLAT and equal to the gain. Read the ratios across bands before concluding anything from
+either summary scalar." `measure()` already returns them in `.bands`; every arm comparison in
+this file used the pooled `.band` instead.
+
+Read at last, over the guard's channels, band edges (1, 7, 10, 14, 20, 32, 128):
+
+    channel                 grid   total     low octaves ------------------> high
+    Bricks height/0          128   2.544     2.049  5.324  3.890  3.064  0.492  0.002
+    Bricks height/0          512   0.185     0.115  0.327  0.348  0.356  0.156  0.008
+    Bricks normal/0          128   1.348     4.100  7.991  5.329  3.563  0.439  0.001
+    Bricks normal/0          512   0.135     0.209  0.488  0.582  0.567  0.226  0.006
+    Bricks basecolor/0       128   2.154     2.558  7.284  4.020  2.415  0.279  0.079
+    Bricks basecolor/0       512   0.626     1.496  1.444  0.615  0.614  0.326  0.011
+    Bricks ambientocclusion  512   0.227     0.296  0.413  0.361  0.321  0.130  0.007
+
+THE RATIOS ARE TILTED, NOT FLAT, so by the instrument's own rule this is a SHAPE error and not
+an amplitude one. Every conclusion in this file that reasoned from the pooled scalar -- "the
+deficit is per-pattern amplitude", "band 0.13 means 7x too quiet" -- was reading a number that
+averages a 3,000-fold spread across octaves.
+
+**THE TOP OCTAVE IS 0.001 TO 0.008.** We produce roughly one part in a thousand of the
+engine's power above 32 cycles, at BOTH grids. That is not a subtle deficit; it is the near
+total absence of fine detail. At grid 128 the LOW octaves are simultaneously 2 to 8 times too
+STRONG, so the picture is coarse blobs where the engine has fine structure -- too much energy
+where we do have it, almost none where the detail lives.
+
+The signature differs by pack, which is why pooled numbers hid it:
+
+    Auras basecolor/1  @512   25.501  8.021  11.090  1.107  0.582  0.647
+      -- 25x excess at the LOWEST octave and roughly right at the top: the opposite fault.
+
+THIS SUPPORTS THE PATTERN-SIZE READING FROM THE OTHER DIRECTION. Patterns 5.0 wide on a unit
+canvas, 1,089 of them combined by `max`, produce exactly this spectrum: large overlapping
+blobs put all their energy in the low octaves and none above them. The earlier `cell` test
+shrank every pattern globally and did not produce agreement -- but that test optimised the
+POOLED band, which cannot see the tilt it was meant to fix. Re-testing `fx.patternsize` and
+the profile arms against the TOP-OCTAVE ratio rather than the pooled scalar is the obvious
+next measurement, and it is a different question from the one those arms already lost.
