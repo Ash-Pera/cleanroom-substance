@@ -57924,3 +57924,49 @@ CONTENT is still wrong, which is what corr ~0.00 with live output has said all a
 
 So the open question sharpens once more: at the right feature scale, our content still does
 not match. That is not a units error and not a filter arm; it is what those programs compute.
+
+## THE PAIRING IS WRONG: 50 of 78 outputs match a DIFFERENT graph's reference better
+
+Three tests had agreed the failing Bricks content was UNRELATED to its reference rather than
+degraded: no spatial shift improved agreement past 0.15, no blur factor improved it at all,
+native correlation ~0.00. Unrelated rather than degraded raises a different question -- whether
+the two images being compared are the right pair at all.
+
+Correlating each of our outputs against EVERY reference sharing its usage and channel:
+
+    paired IS the best match              28
+    a DIFFERENT graph matches better      50
+
+    ours height/0    g6   paired 0.0071   but g1 matches 0.5667
+    ours roughness/0 g6   paired 0.0284   but g1 matches 0.6074
+    ours normal/0    g6   paired 0.0106   but g1 matches 0.4489
+    ours normal/1    g6   paired 0.0206   but g1 matches 0.4400
+    ours height/0    g4   paired 0.5974   but g9 matches 0.6003
+    ours roughness/0 g3   paired 0.5305   but g8 matches 0.5515
+
+**Graph 6's outputs correlate 0.44 to 0.61 with GRAPH 1's exported maps and ~0.01 with the
+ones they are scored against.** That is a mispairing, not a rendering fault, and it is not
+marginal: the alternative is twenty to eighty times better.
+
+WHY THIS PACK AND NOT THE OTHERS. `Kutejnikov__Bricks_and_tiles` holds five graphs per
+assembly and two assemblies, each declaring the same six usages -- basecolor, normal,
+roughness, metallic, height, ambientocclusion. `refcompare` pairs by DECLARED USAGE, so ten
+outputs compete for the same six names and the assignment is by yield order, not identity.
+Chesterfield has one graph and scores 0.91; Auras three and scores 0.87; Bricks five and
+scores 0.42. **The pack that scores worst is the pack where mispairing is possible**, and this
+file has been reading that as "Bricks is harder" for many sections.
+
+WHAT IT DOES AND DOES NOT EXPLAIN. Graph 6 is definitively mispaired. Graphs 2 and 7 are NOT:
+no alternative reference matched either of them above 0.3, so their content is genuinely
+wrong and the earlier conclusion stands for them. Many of the other 50 are marginal -- 0.5974
+against 0.6003 is not evidence of anything. So this removes one of the three
+zero-correlation graphs from the defect list and casts doubt on an unknown fraction of the
+rest.
+
+IT ALSO TOUCHES THE INSTRUMENT ITSELF. `GUARD_TABLE`'s floors are computed through the same
+pairing, so any floor on a multi-graph pack may be measuring our output against another
+graph's export. That is not a floor to change -- it is a question about what the floors mean,
+and it is the owner's. `refcompare`'s docstring already records that pairing corrections are
+its own history ("identifier-then-declared-channel fallback, the 16-bit load"), so the
+mechanism for fixing it exists; what is missing is an identity match rather than a
+usage-name match when a pack declares the same usage more than once.
