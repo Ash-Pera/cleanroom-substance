@@ -57128,3 +57128,48 @@ The first suite run therefore tested my change PLUS theirs; isolating -- reverti
 exonerated. The hazard: isolating by swapping a shared file in place and restoring a snapshot
 taken minutes earlier will clobber anything the other process writes meanwhile. Use a separate
 worktree for isolation in a shared tree, and stage by explicit path -- never `git add -A`.
+
+### The grid-128 band inflation is PRE-EXISTING; `dirmotionblur` was masking it
+
+Testing the fix the floor failure pointed at -- `K = 1` plus a blur never shorter than one
+output pixel, the Nyquist floor a resampling filter needs. Measured on the GUARD's own three
+grids and its own channels, by monkeypatching the filter (no file touched, because the tree
+has concurrent work):
+
+    arm                guarded mean corr      band entries worse by >0.10 in |log|
+    K=1                0.7998 -> 0.8306       10
+    K=1 + 1px floor    0.7998 -> 0.8300       10
+    K=1 + 2px floor    0.7998 -> 0.8259        9
+
+    the worst, at grid 128 only:
+      channel                      SHIPPED   K=1     +1px    +2px
+      ambientocclusion/0             1.125   2.219   1.735   1.341
+      basecolor/0                    2.154   4.029   3.680   3.395
+      basecolor/1                    2.459   4.937   4.434   4.054
+      height/0                       2.544   4.329   3.523   2.845
+
+THE PIXEL FLOOR HELPS MONOTONICALLY AND CANNOT CLOSE THE GAP. More telling is the SHIPPED
+column: at grid 128 the render already sits at band 2.15-2.54 on basecolor and height, with
+`K = 10` in place. **The excess high-frequency energy at the smallest grid is PRE-EXISTING**,
+and over-blurring was concealing part of it. Shortening the blur does not create the problem,
+it uncovers it.
+
+That is a pipeline property, not a `dirmotionblur` property: our render computes AT the capped
+grid, while the reference is produced large and downsampled, so the reference carries area
+averaging that we never perform. Any change that removes blur anywhere will inflate band at
+128 for the same reason.
+
+SO THE DECISION IS A TRADE, and it is the owner's:
+  * `K = 1` improves guarded mean correlation 0.7998 -> 0.8306 and the 109-row mean 0.4077 ->
+    0.5353, and it is what the expression states on its own terms.
+  * It inflates `band` at grid 128 on ten guarded entries, which the ratchet treats as a
+    regression regardless of what `corr` does.
+  * A 2px antialias floor recovers `ambientocclusion` almost to baseline (1.341 against 1.125)
+    but leaves `basecolor` far out (3.395 against 2.154), so a blur floor is not the answer.
+  * The real fix is area-filtering on downscale so the capped render matches a downsampled
+    reference -- a pipeline change well beyond this filter, and one that would move many
+    floors at once.
+
+`roughness/0` remains adverse at every grid (9.70 / 4.13 / 4.12) rather than at 128 alone, so
+that entry is not explained by aliasing and wants its own investigation whichever way the
+trade goes.
