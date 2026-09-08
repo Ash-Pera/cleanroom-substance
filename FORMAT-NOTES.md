@@ -57825,3 +57825,64 @@ the direction cannot be an artefact of which rows dropped.)
 So the boolean path is confirmed sound end to end: `and`/`not` are numpy logical ops, `gteq`
 and `lt` are Python comparisons, and the `select` they feed takes the branches in the right
 order. The wrong-content signature in Bricks graphs 2, 6 and 7 is NOT a mis-taken branch.
+
+## STATUS: what the top-octave investigation established, and what it did not
+
+`div` is eliminated with the rest: 0 records produce a non-finite value in either pack, 12,585
+and 881 respectively. Division is unguarded (`0x15: "/"`, no `errstate`, no `nan_to_num`
+anywhere) but no zero denominator arises in these specimens, so the documented "92.5% division
+by zero" finding belongs to other files.
+
+WHAT IS ESTABLISHED, each by a measurement that compared a state against its own baseline
+rather than against an assumed norm:
+
+  * The deficit is ONE PACK. Chesterfield 0.91, Auras 0.87, Bricks 0.42 over 78 of the 91
+    non-flat reference rows. "The render sits at 0.40" was never a property of the renderer.
+  * `band` is GRID-DEPENDENT and `corr` is not -- geometric mean band 1.388 at grid 128,
+    0.641 at 256, 0.637 at 512, while corr moves less than 0.01. Any conclusion drawn from a
+    pooled band at one grid is drawn from a number that varies 2.2x across the guard's own
+    grids.
+  * The error is SHAPE, not gain. Per-octave ratios are tilted, not flat: Bricks height reads
+    0.115 / 0.327 / 0.348 / 0.356 / 0.156 / 0.008 from low to high. **The top octave is
+    0.001-0.008** -- one part in a thousand of the engine's power above 32 cycles.
+  * `pixelprocessor` is the SOLE source of top-octave content. Substituting a constant takes
+    the octave to EXACTLY 0.0000 and corr from 0.7875 to 0.3770.
+  * `select`'s branch order is correct, now by measurement rather than assertion.
+  * The FX-Map draw CANNOT supply the missing octave: forcing the hardest-edged profile reaches
+    0.347 against a target of 1.0 while collapsing corr from 0.80 to 0.53.
+
+WHAT IS ELIMINATED, with the measurement that did it:
+
+    every draw-side arm         patternsize, combine, sizeless, gridcount, rootentry, pos,
+                                negopacity, profile -- none moves the octave without
+                                destroying corr
+    the sampler KERNEL          Catmull-Rom at all 11 call sites: 0.1953 -> 0.1954
+    the sampler POSITION        99.7% of 1.44 billion samples are on-grid, where it is exactly
+                                lossless
+    `rand`, three mechanisms    node randomseed program (one record, Unmodelled); inherited
+                                $randomseed on class bit 23 (exactly 0.0 in all 15,773); rand
+                                hashing $number in a per-pixel program (110 of 169,996 calls,
+                                bit-identical result)
+    `cvt`                       acts on SCALARS -- 1.06 elements per call
+    `seq`, `exp2`               sequencing and np.exp2
+    the booleans and `select`   swapping select's branches collapses every pack to ~0.00
+    `div` / non-finite          zero non-finite outputs in either pack
+    `warp`                      disabling all 1,066 changes no scored row
+    `distance`                  both arms refuted; its smoothing is correct
+    `blend`, the [0,1] clamp    load-bearing and correct
+    the 4x "attenuation"        RETRACTED -- the healthy pack attenuates identically (0.255
+                                against 0.245)
+
+WHAT REMAINS UNEXPLAINED, stated as questions rather than leads:
+  * Why does `pixelprocessor` produce 18% of the engine's top-octave power (4.3% on Bricks)
+    when every operation it uses is named and individually checked?
+  * Why do Bricks graphs 2, 6 and 7 render live output at corr ~0.00 -- wrong CONTENT, with no
+    spatial offset improving agreement beyond 0.15?
+  * Why do graphs 0 and 5 render every channel constant, when the one chain traced to its root
+    (`opacity -1` killing fxmaps 10279) is arithmetically correct at every step?
+
+THE METHOD THAT WORKED, and it is worth more than any single result here: knockouts and
+mutations that compare a state to ITS OWN baseline. Every one of those stood. The readings
+that had to be retracted were all comparisons against an assumed norm -- a pooled scalar, a
+normalised share, a filter's own input spectrum, a subset of tags -- where nothing established
+what the number should be when the renderer is right.
