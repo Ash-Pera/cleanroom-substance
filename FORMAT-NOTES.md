@@ -57685,3 +57685,32 @@ what those programs COMPUTE: `cvt` 4.3%, `seq` 4.3% and `exp2` 3.8% of the instr
 12.4% between them, none yet examined. `cvt` in particular is a CONVERSION -- a float-to-int
 or precision narrowing there would quantise exactly the fine variation that constitutes the
 top octave, and it would do so per stage, which is the compounding shape observed.
+
+### `cvt` is not the attenuation -- it operates on SCALARS -- but its rounding rule is a live question
+
+    cvt calls        to_float 51,742    to_int 26,572    int elements 28,043
+    int inputs       within [0,1] 22,536   wider 3,789   negatives 448
+
+**26,572 int conversions over 28,043 elements is 1.06 elements per call: `cvt` to int acts on
+SCALARS, not on per-pixel fields.** The variance-before/after line never printed because every
+input had zero variance. So it cannot be the 4x per-stage high-frequency attenuation, and it
+joins the eliminated list. That leaves `seq` (4.3%) and `exp2` (3.8%) of the instruction
+stream unexamined, down from 12.4%.
+
+A SEPARATE QUESTION IT RAISES, recorded because it is cheap to state and not cheap to
+rediscover: 22,536 of 26,572 int conversions -- 84.8% -- take an input inside [0, 1], and
+`astype(np.int32)` TRUNCATES, so every one of them becomes 0 (or 1 only at exactly 1.0). If
+the engine ROUNDS instead, those all become 0 or 1 by nearest, and 0.7 changes meaning. These
+are scalars, so the effect is on indices, counts and selectors rather than on pixels -- which
+image a program samples, how many times a loop runs -- and `rand`'s own docstring records
+exactly that failure shape on CarpetSubstance001, where `int(rand(6.0)) + 8` never made its
+choice because the argument never left [0, 1).
+
+448 calls also carry NEGATIVE inputs, where `astype(int32)` truncates toward zero (-0.5 -> 0)
+while a floor convention gives -1. Same class of question as `atan2`'s operand order two
+functions below it in `sbsruntime`, where the docstring records that the obvious reading was
+wrong and the corpus settled it.
+
+Neither is the top-octave defect. Both are worth a measurement before anything is claimed
+about them, and the truncate-versus-round question has a clean test: it changes 22,536 scalar
+values, so a sweep should move something visible or nothing at all.
