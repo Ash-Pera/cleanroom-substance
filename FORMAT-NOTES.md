@@ -57030,3 +57030,36 @@ direction: there, narrowing invented a confound; here, narrowing reveals a real 
 
 CORRECTED: bit 27 is NOT set on 100% of warps corpus-wide. It is 971 set against 847 clear
 over 40 files -- the earlier "515/515, 100%" was `Bricks_1` alone. A control population exists.
+
+### The warps contribute NOTHING: disabling all 1,066 changes no scored row
+
+Testing the one reading of `cls` bit 27 that would make ignoring it expensive -- that it is a
+MULTIPLIER, so its value of 0.0 means "this warp is off" and ignoring it applies warps that
+should not run. Forcing every bit-27 warp to a pass-through, scored on all 109 rows:
+
+    warp records: bit27 set (forced pass-through) 1,066    bit27 clear 0
+    corr 0.4077 -> 0.4077 (-0.0000)   better 0   worse 0   FLAT 18 -> 18
+    largest movement on any row: -0.0002
+
+NOTHING MOVES. The multiplier hypothesis is not refuted so much as UNTESTABLE here, because
+the warps are already inert: turning all of them off is invisible in every scored output. That
+is consistent with the earlier measurement that 66% of Bricks' warps receive a flat
+displacement map and are silent pass-throughs already -- and it now extends to the other 34%,
+which contribute nothing measurable either.
+
+SO THE WARP THREAD IS CLOSED, and a lead this file has been treating as central is retired.
+"Filter 7 = warp, 515 records in Bricks and 0 in Chesterfield" was the categorical difference
+between the packs and it is a CORRELATION, not a cause: Bricks has warps and Bricks is wrong,
+but the warps are not doing anything. Whatever produces the wrong content in graphs 2, 6 and 7
+is upstream of them or beside them.
+
+Also recorded: in the three reference packs every warp has bit 27 SET (1,066 of 1,066), even
+though corpus-wide the bit varies 971/847 over 40 files. So these packs cannot supply the
+control that the wider corpus can, which is the same population trap as before -- a claim
+about bit 27 argued on the reference packs alone would have no control at all.
+
+WHAT THIS LEAVES. The wrong content in g2/g6/g7 is not: a draw-side arm, a placement offset, a
+warp, a failure, or an ignored zero-valued field. The remaining candidates are the filters
+that actually carry those chains -- and `pixelprocessor` is the one with 515 records in Bricks
+against 29 in Chesterfield, all of them stating an unnamed bit-23 field, and it is a filter
+whose parameters run through a bytecode program rather than a legend row.
