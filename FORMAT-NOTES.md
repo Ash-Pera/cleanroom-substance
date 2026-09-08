@@ -58111,3 +58111,37 @@ So the Bricks population splits three ways: graphs that pair correctly and corre
 (g4, g9), graphs whose pairing is off by the ordering above, and graph 2/7 which matches
 nothing. Only the last is a candidate for the kind of rendering defect this investigation has
 been chasing, and it is 2 graphs of 10 rather than a pack-wide failure.
+
+### `fx.patternsize=cell` re-tested under correct pairing: still refuted, now on a valid comparison
+
+The `cell` refutation had been measured on Bricks rows now known to be misaligned, so it was
+re-run under the optimal assignment as well as as-paired. The first attempt reproduced the
+population error THIS FILE HAD JUST FINISHED RETRACTING:
+
+    Bricks   as-paired 0.3521 (n=78) -> 0.2912 (n=96)   optimal 0.3921 (n=78) -> 0.3268 (n=96)
+
+n=78 against n=96. `cell` UN-FLATTENS 18 previously dead rows, which is a genuine improvement,
+and those rows then enter the average at low correlation and drag the mean down -- so the raw
+comparison penalises the arm for fixing something. Printing n for both sides caught it
+immediately, one iteration after the rule was written.
+
+ON IDENTICAL ROWS, with the revived rows reported separately:
+
+    pack           common rows   as-paired          optimal            
+    Bricks         n=78          0.3521 -> 0.3529   0.3921 -> 0.3937
+    Chesterfield   n=10          0.8706 -> 0.8651   0.8706 -> 0.8651
+    Auras          n=3           0.8311 -> 0.7114   0.8311 -> 0.7114
+
+    rows only scoreable under cell:  n=18, mean corr 0.0238
+
+**Neutral on Bricks (+0.0008 as-paired, +0.0016 optimal), -0.12 on Auras, -0.006 on
+Chesterfield.** And the 18 rows it revives correlate at 0.024 -- un-flattened but not correct.
+The arm is refuted, and this time on a comparison that is actually valid under both pairings.
+
+WHAT THAT SETTLES. The chain "patterns too large -> fxmaps saturate -> siblings become
+indistinguishable -> subtract yields zero -> flat output" is coherent and the feature-scale
+measurement supports its first step (171 px against the reference's 64 px; `cell` would give
+78 px). But making the patterns smaller does NOT make the output right: the revived rows reach
+0.024. So saturation is a real property of our render and is NOT the cause of the content
+being wrong. Two things were conflated -- the flatness and the mismatch -- and only the
+flatness responds to scale.
