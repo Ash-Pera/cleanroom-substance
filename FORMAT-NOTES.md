@@ -57339,3 +57339,49 @@ traced along one output's chain to find where the engine's detail should enter a
 Recorded rather than discarded because the confound is the same shape as the `1e-9` threshold
 that read float32 dither as signal: an instrument that answers a nearby question convincingly
 is more dangerous than one that fails outright.
+
+### Absolute HF power along a chain: `distance` loses 99% of it in one step
+
+Measured as variance above ~1 cycle/2px, NOT normalised -- the form the previous section said
+was needed. Bricks height at grid 512:
+
+    distance        5624   HFpow 7.704e-03   std 0.44413    detail present
+    levels          5625   HFpow 7.704e-03   std 0.44413    preserved
+    levels          5626   HFpow 7.704e-03   std 0.44413
+    levels          5627   HFpow 7.704e-03   std 0.44413
+    distance        5628   HFpow 7.381e-05   std 0.09000    <- 100x HF LOSS, 5x std loss
+    levels          5629   HFpow 7.381e-05   std 0.09000
+    blend           5631   HFpow 1.004e-04
+    ...
+    dirmotionblur   5636   HFpow 2.162e-03
+    dirmotionblur   5637   HFpow 7.702e-04
+    dirmotionblur   5638   HFpow 5.137e-04
+    dirmotionblur   5639   HFpow 4.387e-04   <- 5x loss over four chained stages
+
+TWO LOSS POINTS, and the first is the large one. `distance` at 5628 destroys 99% of the
+high-frequency power and 80% of the standard deviation in a single record. The four chained
+`dirmotionblur` records shed a further 5x between them, which is the over-blur already
+measured -- four in series compounds it.
+
+WHAT SEPARATES THE `distance` RECORDS THAT PRESERVE DETAIL FROM THE ONE THAT DESTROYS IT is
+one bit of w1 and, with it, the edge count:
+
+    rec 5621  distance  w0=0x0B19882A  w1=0x00000005  edges [5620, 5620]   HF 3.204e-03
+    rec 5622  distance  w0=0x0B19882A  w1=0x00000005  edges [5621, 5621]   HF 8.292e-03
+    rec 5624  distance  w0=0x0B19882A  w1=0x00000005  edges [5623, 5623]   HF 7.704e-03
+    rec 5628  distance  w0=0x0B19882A  w1=0x00000006  edges [5627]         HF 7.381e-05
+
+`w1 = 5` is bits 0 and 2; `w1 = 6` is bits 1 and 2. Same filter, same class word, one low bit
+different, and the high-frequency behaviour differs by two orders of magnitude.
+
+AND THE TWO-EDGE FORM READS THE SAME RECORD TWICE -- `[5620, 5620]`, `[5621, 5621]`,
+`[5623, 5623]`. A filter with two genuinely distinct inputs would not normally be wired to one
+source on both; either the source really does feed both slots, or the edge walk is duplicating
+a single edge for this w1 code. That is checkable against `decompose`'s edge list and against
+the w1 field primitive (SPEC 6.4: a two-bit code per field, `11` = image input), and it wants
+checking BEFORE any claim about what bit 0 versus bit 1 means -- `separability.py` on the
+`distance` population first, since filter-local confounds are real (warp bits 8/9 are
+IDENTICAL within that filter while separable corpus-wide).
+
+`named_params` returns [] for all four, so whatever distinguishes them is not a named
+parameter -- it is the w1 code itself and the edge shape it selects.
