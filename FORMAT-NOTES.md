@@ -57582,3 +57582,41 @@ NEXT: sample with a higher-order kernel and re-measure the top octave. If a bicu
 tap raises it toward 1.0 without costing `corr`, the sampler is the defect; if it raises the
 octave and drops `corr`, it is manufacturing detail rather than recovering it -- the same test
 that exposed `fx.profile=rect` as noise.
+
+### REFUTED: the sampler KERNEL is not the defect -- Catmull-Rom recovers nothing
+
+    catmull-rom sampler constructed 4,735 times
+    mean corr        0.8043 -> 0.8043  (-0.0000)   better 0  worse 0
+    top-octave gmean 0.1953 -> 0.1954  (+0.0001)
+
+Replacing bilinear with Catmull-Rom at EVERY call site recovers none of the missing top
+octave. The off-grid loss measured in the previous section is real -- 85% of white-noise HF
+energy, 100% of Nyquist at a half-pixel offset -- but it is evidently SHARED with the engine,
+so bilinear is the right reading and the loss is not the source of the deficit.
+
+THE FIRST ATTEMPT AT THIS TEST WAS VOID AND SAID SO ONLY BECAUSE OF A COUNTER. Patching
+`ops.sampler` produced a bit-identical result, which is impossible for a real kernel change.
+`engine.py`, `filters.py` and `fx.py` all do `from ops import sampler`, binding the function at
+import, so the module attribute is not what any of the eleven call sites reach. This is the
+THIRD occurrence of the same hazard here -- `engine` importing bare `filters` while a probe
+patched `render2.filters`; `test_fx` never binding the name `sbsasm`; and now this -- and it is
+worth stating as a rule: IN THIS CODEBASE PATCH THE BINDING SITE, NOT THE DEFINING MODULE, AND
+ALWAYS INSTRUMENT WHETHER THE PATCH FIRED. Without the construction counter this would have
+been recorded as "bicubic changes nothing", which is true of the run and false of the question.
+
+SO OF THE TWO WAYS SAMPLING COULD LOSE DETAIL, ONE IS LEFT: the sampled SOURCE is smooth. No
+kernel can invent structure that is not in the buffer. That is consistent with everything
+measured -- 36.6% of Bricks' records render constant, and the chain walk found HF power of
+7.7e-03 entering `distance` and 7.4e-05 leaving it -- but it is close to circular as an
+explanation, because the question then becomes why OUR intermediates are smooth when the
+engine's are not, which is where this investigation started.
+
+WHAT IS ACTUALLY ESTABLISHED, and it is a lot:
+  * `pixelprocessor` is the SOLE source of top-octave content; removing it takes the octave
+    to exactly 0.0000. It supplies 18% of the engine's (4.3% on Bricks).
+  * Every opcode those programs use is NAMED; `transpile.UNNAMED` is empty.
+  * `rand` is not it -- 110 of 169,996 calls, no effect.
+  * The sampler kernel is not it -- Catmull-Rom recovers nothing.
+  * The FX-Map draw cannot supply it -- ceiling 0.347 against a target of 1.0 with every arm
+    that raises the octave collapsing `corr`.
+  * `distance`, `warp`, `dirmotionblur`, `blend` and the clamp are all eliminated or correct.
