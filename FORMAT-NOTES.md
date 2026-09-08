@@ -57620,3 +57620,39 @@ WHAT IS ACTUALLY ESTABLISHED, and it is a lot:
   * The FX-Map draw cannot supply it -- ceiling 0.347 against a target of 1.0 with every arm
     that raises the octave collapsing `corr`.
   * `distance`, `warp`, `dirmotionblur`, `blend` and the clamp are all eliminated or correct.
+
+### `pixelprocessor` ATTENUATES high frequency ~4x per stage, and it chains
+
+    515 records    edge counts {0: 65, 1: 235, 2: 165, 3: 50}
+    450 with resolvable inputs
+      output HF > 1.5x best input     69   generating
+      output HF < 0.67x best input   135   losing
+    median input HF 1.484e-04   median output HF 3.642e-05     4x ATTENUATION
+    input filters   pixelprocessor 570   blend 70   normal 45   distance 21
+
+CORRECTION FIRST. This file called `pixelprocessor` "a GENERATOR with none" when explaining
+why its pass-through knockout collapsed the row set. That is wrong for 87% of them: only 65 of
+515 have no edges, and 450 have inputs whose detail can be compared against their own output.
+The constant-substitution result stands -- it measured the filter's CONTRIBUTION, which needs
+no input -- but the reason given for the first knockout's failure was not the whole story, and
+the 65 edgeless records are the minority rather than the rule.
+
+THE MEASUREMENT. Median output high-frequency power is ONE QUARTER of median input, and 135
+records lose more than a third of it against 69 that gain more than half. So in our render
+this filter is a net detail DESTROYER -- while also being the SOLE source of top-octave content
+(removing it takes the octave to exactly 0.0000). Both are true: it passes some detail through
+while attenuating, and nothing else contributes any.
+
+AND IT COMPOUNDS. 570 of the resolvable input edges come from OTHER pixelprocessors, so these
+records chain. A 4x attenuation per stage over a chain of three or four is a 60-250x loss,
+which is the right order for producing 18% of the engine's top octave overall and 4.3% on
+Bricks -- the pack with 515 of these records against Chesterfield's 29.
+
+WHAT DOES NOT YET FIT. Bilinear sampling at fractional offsets loses 85% of high-frequency
+energy, which would explain a 4x per-stage attenuation neatly -- but Catmull-Rom at every call
+site changed nothing (0.1953 -> 0.1954). Those two are reconcilable only if the samples are
+mostly ON-GRID, where the sampler is exactly lossless and the kernel is irrelevant; the
+sampler's own docstring says 62.4% of samples are exact texel hits. If so the attenuation is
+in the ARITHMETIC of these programs rather than in how they read pixels, and the next probe is
+which opcode sequence loses it -- `cvt`, `seq` and `exp2` are 12.4% of the instruction stream
+between them and none has been examined.
