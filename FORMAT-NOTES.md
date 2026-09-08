@@ -57460,3 +57460,39 @@ This is the third time `rand` has been suspected here and the first with a mecha
 in the code rather than inferred: the earlier two were wrong about the vehicle (a node-level
 `randomseed` program that mostly does not exist, then an inherited class bit whose value is
 always 0.0). This one is about the ARGUMENT the hash is taken over. It remains open.
+
+### REFUTED, cleanly: `rand` is not the pixelprocessor shortfall -- 110 calls of 169,996
+
+Re-testing with the confound removed. The previous test keyed on `CONTEXT['pos']` being
+non-None; `fallback 0` showed that is ALWAYS true (the value is stale from a prior call), so
+the patch applied everywhere. This version sets a flag around the `pixelprocessor` filter
+itself and keys on the CALLER:
+
+    rand call scoping   outside pixelprocessor 169,886    inside 110
+    mean corr           0.8043 -> 0.8043  (+0.0000)   better 0  worse 0
+    top-octave          0.1953 -> 0.1953
+
+**0.065% of `rand` calls happen inside a pixelprocessor, and changing every one of them to
+vary per pixel produces BIT-IDENTICAL scores.** `rand` is not what these programs use to make
+detail, and the "$number is 0 so rand is constant per image" mechanism -- correct as a
+description of the code -- has no measurable consequence because the population is negligible.
+
+IT ALSO EXPLAINS THE PREVIOUS RESULT. That run's +0.0014 corr and -0.024 top octave came
+entirely from the 169,886 calls OUTSIDE pixelprocessors, i.e. from FX-Maps. I measured a
+change to FX-Map `rand` and read it as a pixelprocessor result. The counter is what caught
+both mistakes; without the scoping split this would have looked like a second weak refutation
+of the right hypothesis rather than a strong refutation of the wrong one.
+
+THE `rand` THREAD IS CLOSED. Three suspicions, three mechanisms, all refuted:
+  * a node-level `randomseed` PROGRAM -- only one record in the graph has one, and it raises
+    `Unmodelled`;
+  * an inherited `$randomseed` on class bit 23 -- present on every fxmaps and pixelprocessor
+    record and holding exactly 0.0 in all 15,773 of them;
+  * `rand` hashing `$number` inside a per-pixel program -- true of the code, 110 calls, no
+    measurable effect.
+
+WHAT REMAINS. `pixelprocessor` is still the sole source of top-octave content and still
+supplies only ~18% of the engine's (4.3% on Bricks). The shortfall is somewhere else in the
+per-pixel bytecode: an opcode evaluated approximately, a sampler read, or a `$pos`-driven
+expression we compute differently. That is opcode-level work on a 515-record population in one
+filter, which is a far smaller search than the pipeline this started as.
