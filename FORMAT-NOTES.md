@@ -57886,3 +57886,41 @@ mutations that compare a state to ITS OWN baseline. Every one of those stood. Th
 that had to be retracted were all comparisons against an assumed norm -- a pooled scalar, a
 normalised share, a filter's own input spectrum, a subset of tags -- where nothing established
 what the number should be when the renderer is right.
+
+### Characterising the ERROR: our features are 2.7x too large, and it is not one field leaking
+
+Every measurement in this investigation had probed the PIPELINE -- which filter, which opcode,
+which arm. Describing the two images side by side instead, on Bricks graph 2 at grid 512:
+
+    channel        ours                              reference
+    basecolor/0    3 cyc / 171 px  std 0.0194        1 cyc / 512 px  std 0.0855
+    basecolor/1    3 cyc / 171 px  std 0.0203        8 cyc /  64 px  std 0.0853
+    basecolor/2    3 cyc / 171 px  std 0.0151        8 cyc /  64 px  std 0.0699
+    height/0       3 cyc / 171 px  std 0.0391        8 cyc /  64 px  std 0.1302
+
+**Our dominant feature is 171 px where the reference's is 64 px -- 2.7x too large** -- with
+contrast 4-5x too low and half the distinct values. The dominant scale is IDENTICAL across all
+four of our channels while the reference's varies.
+
+THAT LAST POINT LOOKED LIKE ONE FIELD DOMINATING EVERY OUTPUT. It is not. Cross-correlating
+each pack's channels against each other:
+
+    BRICKS        ours mean |cross-corr| 0.4286   reference 0.4462
+    CHESTERFIELD  ours mean |cross-corr| 0.2949   reference 0.3067
+
+Ours are no more inter-correlated than the reference's, in both packs, and the reference
+itself reaches 0.99 between some channels. High inter-channel correlation is NORMAL -- these
+maps share a common source by construction -- so the identical peak is a consequence of scale,
+not of a leak. Hypothesis refuted.
+
+WHAT THE 2.7x IS WORTH. It is the first quantitative statement of the error in the image's own
+terms rather than in a ratio against the reference, and it bears on a question already closed
+once: `fx.patternsize` reads 5.0 on a 33x33 lattice, so `cell` units would put a pattern at
+5/33 of the canvas = 78 px at grid 512, against the reference's 64 px -- FAR closer than the
+171 px the canvas reading produces. That is evidence for `cell` that the pooled-band
+arbitration could not see, and it does not overturn the refutation: `cell` still cost Auras
+0.19 and left Bricks at corr 0.035-0.058. Both can be true if the scale is right and the
+CONTENT is still wrong, which is what corr ~0.00 with live output has said all along.
+
+So the open question sharpens once more: at the right feature scale, our content still does
+not match. That is not a units error and not a filter arm; it is what those programs compute.
