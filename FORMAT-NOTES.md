@@ -57795,3 +57795,33 @@ branch selection differs from what the declared source implies -- and neither ha
 
 `cache_write` appearing ONLY in Chesterfield is the mirror-image gap and is recorded for
 completeness: whatever it does, the pack that exercises it renders correctly.
+
+### `select`'s branch order is now EVIDENCED, not assumed
+
+`sbsruntime.select`'s docstring proves its WIDTH handling in detail -- 89,080 corpus selects,
+a table of condition-versus-branch widths, the `IndexError` the previous version raised -- and
+then simply asserts `c ? a : b` for which operand is the true branch. That is the same class
+of unevidenced convention `ops.py` flags for `blend`'s `switch` threshold ("still the
+convention and not the file's"), and it feeds the Bricks-only booleans (`and`, `not`, `gteq`,
+with `lt` at 7.6x), so Chesterfield's correctness would not necessarily catch it.
+
+Swapping the two branches, 424,936 calls:
+
+    rows 100    mean corr 0.3630 -> 0.0029   better 16  worse 73
+      Bricks         0.3405 -> 0.0030
+      Chesterfield   0.9999 -> 0.0000
+      Auras          0.8724 -> 0.0000
+
+Every pack collapses to zero correlation. **The current order is right**, and the convention
+now rests on a measurement instead of an assumption. That is worth having independently of the
+bug hunt: it was one of the readings that could have been silently wrong for a long time,
+because nothing exercised it against ground truth.
+
+(The comparison lost 9 rows to the swap -- 100 of 109 -- because outputs became unscoreable.
+That is survivorship, and it would matter if the result were marginal. It is not: Chesterfield
+falls from 0.9999 to 0.0000 on its surviving row and Auras from 0.8724 to 0.0000 on three, so
+the direction cannot be an artefact of which rows dropped.)
+
+So the boolean path is confirmed sound end to end: `and`/`not` are numpy logical ops, `gteq`
+and `lt` are Python comparisons, and the `select` they feed takes the branches in the right
+order. The wrong-content signature in Bricks graphs 2, 6 and 7 is NOT a mis-taken branch.
