@@ -57269,3 +57269,46 @@ shrank every pattern globally and did not produce agreement -- but that test opt
 POOLED band, which cannot see the tilt it was meant to fix. Re-testing `fx.patternsize` and
 the profile arms against the TOP-OCTAVE ratio rather than the pooled scalar is the obvious
 next measurement, and it is a different question from the one those arms already lost.
+
+### The missing top octave CANNOT come from the FX-Map draw: every arm fails on the right quantity
+
+Re-scoring the arms against the TOP-OCTAVE ratio (32-128 cycles) rather than the pooled band,
+at grid 512, with `corr` reported alongside to separate detail from noise:
+
+    arm                     top-octave all   Bricks    toward 1.0 / away   corr
+    DEFAULT                 0.1953           0.0434         --             0.8043
+    fx.patternsize=cell     0.1948           0.0420          4 /  8        0.7861
+    fx.profile=gaussian     0.0261           0.0358          2 / 17        0.3462
+    fx.profile=rect         0.3473           0.0583         12 /  8        0.5316
+    fx.typeless_profile=rect 0.1953          0.0434          0 /  0        0.8043
+    fx.combine=add          0.2495           0.0444          1 /  8        0.6700
+
+THE `corr` COLUMN IS THE POINT. `rect` is the hardest-edged profile the format names, and it
+does raise the top octave -- 0.195 to 0.347 -- while collapsing correlation from 0.80 to 0.53.
+It is adding high-frequency energy IN THE WRONG PLACES: noise, not detail. `combine=add` does
+the same, smaller. An arm that improves the octave ratio and destroys `corr` has not found the
+missing structure; it has manufactured different structure.
+
+AND THE CEILING IS THE RESULT. Even forcing every pattern to a hard rectangle -- the maximum
+high-frequency energy the draw can produce -- reaches only 0.347 against a target of 1.0, and
+0.058 on Bricks against 0.043. **The FX-Map draw cannot supply the missing top octave at all.**
+Not by profile, not by size, not by combine rule. That closes the pattern-shape hypothesis
+that the spectral reading had just reopened, on the quantity that reading identified.
+
+`fx.patternsize=cell` is now refuted on the RIGHT quantity as well as the pooled one: 4 channels
+toward 1.0 against 8 away, top octave unchanged at 0.195, and corr down. The re-test was worth
+running -- the previous refutation could not have seen a tilt -- and it lands the same way.
+
+SO THE DETAIL COMES FROM SOMEWHERE ELSE. The engine's fine structure is not made of patterns
+in these records. What remains, in order of suspicion:
+
+  * `pixelprocessor` -- 515 records in Bricks against 29 in Chesterfield, ALL of them stating
+    the unnamed `cls` bit 23, and a per-pixel bytecode program is precisely the machinery that
+    manufactures fine detail. Its knockout in the census was NOT MEASURED: forcing it to a
+    pass-through collapsed the comparable row set, which is itself a sign it carries a great
+    deal. It needs a knockout that survives, not the one that was attempted.
+  * per-pattern IMAGE inputs (`imageindex`): a pattern that stamps a sampled bitmap carries
+    that bitmap's spectrum, and a pattern drawn from an analytic profile cannot.
+  * emission COUNT: more, smaller patterns would raise the top octave without a profile change
+    -- but `numberadded` is read straight from the file and `mode 'chain'` means no rule
+    intervened, so this is the weakest of the three.
