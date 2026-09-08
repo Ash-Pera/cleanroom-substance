@@ -58145,3 +58145,46 @@ measurement supports its first step (171 px against the reference's 64 px; `cell
 0.024. So saturation is a real property of our render and is NOT the cause of the content
 being wrong. Two things were conflated -- the flatness and the mismatch -- and only the
 flatness responds to scale.
+
+## THE BRICKS DEFICIT EXPLAINED: half its references cannot be reproduced from the file
+
+    x_Bricks_Textures_1/.../Bricks.sbsasm   sha256 d82a2b6910349a5d   5,135,088 bytes
+    x_Bricks_Textures_2/.../Bricks.sbsasm   sha256 d82a2b6910349a5d   5,135,088 bytes
+    both manifests: 5 graphs, $randomseed declared type="4" default="0" on every one
+
+**The two packages are byte-identical in both the assembly and the manifest.** Their exported
+images are not:
+
+    001_basecolor  T1 1dbd24728a32  5,061,316 B    T2 57f33c8a8430  4,975,908 B   DIFFERENT
+    002_basecolor  T1 e0b766f12a9c  5,669,079 B    T2 67d5be3c3ccc  5,448,734 B   DIFFERENT
+    003_height     T1 9d2cd1fe1404  1,473,907 B    T2 16da25251547  1,440,505 B   DIFFERENT
+    005_normal     T1 812e35a6f4fb  3,858,382 B    T2 1e31111ba072  3,991,110 B   DIFFERENT
+
+Same graph, same declared inputs, different output. The author exported the second set with a
+`$randomseed` set at export time, and that value is in NEITHER the assembly nor the manifest --
+both record `default="0"`. **So the Textures_2 exports cannot be reproduced from anything this
+project can read.**
+
+`refcompare` loads BOTH directories -- 26 references each, the same 26 filenames -- and pairs
+our ten outputs (five graphs, twice, from identical files) against all 52. Our renderer
+produces one result per graph, necessarily at seed 0, so it can match the Textures_1 half and
+CANNOT match the Textures_2 half by construction.
+
+THAT IS THE DEFICIT. The correlation matrix shows exactly this shape: our g1 reads 0.583
+against ref g1 and 0.007 against ref g6, and our g1 and g6 rows are identical because the two
+assemblies are the same file. Roughly half the rows near zero and half near 0.5-0.6 averages
+to the 0.35 that has been quoted as Bricks' score for this entire investigation. Chesterfield
+and Auras ship one export set each and score 0.87 and 0.83.
+
+WHAT THIS DOES AND DOES NOT ABSOLVE. It explains the pack-level deficit and it explains why
+graph 2 "matched nothing" -- half its candidates are a different seeding. It does NOT explain
+the matchable half only reaching 0.5-0.79, and it does not touch the 18 flat rows: a constant
+output matches no seeding. Those remain real, and the flat chain traced to `opacity -1` at
+fxmaps 10279 remains a genuine defect.
+
+FOR THE OWNER, and this one bears on the instrument rather than the format. `GUARD_TABLE`
+holds nine `Bricks_and_tiles` channels whose floors were computed through this pairing, so an
+unknown number of them are floors on agreement with an unreproducible image. The corpus
+question is whether the Textures_2 export set belongs in the reference population at all --
+it is a legitimate export of a legitimate package, but it is evidence about a seed value the
+package does not carry, and no renderer reading only the file can match it.
