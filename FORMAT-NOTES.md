@@ -57063,3 +57063,68 @@ warp, a failure, or an ignored zero-valued field. The remaining candidates are t
 that actually carry those chains -- and `pixelprocessor` is the one with 515 records in Bricks
 against 29 in Chesterfield, all of them stating an unnamed bit-23 field, and it is a filter
 whose parameters run through a bytecode program rather than a legend row.
+
+## `dirmotionblur` blurs 10x too far, and correcting it exposes ALIASING at grid 128
+
+A knockout census -- forcing each filter to pass its input through and rescoring Bricks' 96
+reference rows -- found one filter that is ACTIVELY HARMFUL rather than inert or load-bearing:
+
+    knocked out        mean corr   delta      better/worse
+    dirmotionblur      0.4832      +0.1428    57 / 8      <- disabling it IMPROVES the render
+    blend              0.0650      -0.2755     7 / 61     <- load-bearing and correct
+    normal             0.2144      -0.1260     7 / 37     <- load-bearing
+    levels             0.2330      -0.0562    37 / 39
+    distance           0.3498      +0.0093    25 / 47
+    blur, curve, directionalwarp  ~0
+    pixelprocessor, transformation   NOT MEASURED -- their knockouts collapsed the
+                                     comparable row set; reported here as unmeasured
+
+`f_dirmotionblur` computes `length = clip(|intensity|, 0, 256) / _reference_px(v) * 10.0`.
+That `* 10.0` is a fitted constant with no derivation recorded. Sweeping it over all 109
+reference-scored rows:
+
+    K       mean corr   delta      better/worse
+    0.0     0.5334      +0.1257    57 / 8       (blur off entirely)
+    0.5     0.5353      +0.1276    57 / 7
+    1.0     0.5353      +0.1276    57 / 7
+    2.0     0.5346      +0.1270    57 / 7
+    5.0     0.4499      +0.0422    45 / 2
+    10.0    0.4077       --                     the shipped value
+    20.0    0.2968      -0.1109     2 / 49
+
+1.0 is also what the expression says on its own terms -- `intensity / reference_px` is a
+length in reference pixels, and 10 makes it "units of ten pixels", which nothing states.
+
+BUT IT TRIPS FLOORS, AND THE REASON IS INSTRUCTIVE. `test_render2_reference_agreement_does_not
+_regress` fails on nine Bricks entries, and the per-grid values show what is happening:
+
+    ambientocclusion/0  band   128: 2.219   256: 1.075   512: 1.073
+    basecolor/1         band   128: 4.937   256: 1.248   512: 1.249
+    normal/0            band   128: 2.962   256: 1.057   512: 1.057
+    roughness/0         band   128: 9.701   256: 4.127   512: 4.116
+
+At 256 and 512 the band sits at ~1.0, which is CORRECT amplitude. At 128 it is 2-10x. That is
+ALIASING: a shorter blur leaves high-frequency content in a 128-px render that the reference,
+produced large and downsampled, does not carry. **The shipped `* 10.0` was suppressing
+aliasing at low grids by over-blurring, and paying for it at 256 and 512.** So the constant is
+wrong AND the filter is missing grid-aware antialiasing; fixing only the constant trades one
+error for another, which is why the ratchet catches it.
+
+REVERTED, NOT LANDED. The change improves 57 of 109 rows and regresses nine guarded entries,
+and a floor decision is the owner's. What the owner needs in order to decide:
+  * the fix is probably `K = 1` PLUS a tap count or kernel width that scales with the render
+    grid, so the low-grid band stops inflating;
+  * `roughness/0` is adverse at EVERY grid (9.70 / 4.13 / 4.12), so that one is not purely an
+    aliasing artefact and wants its own look;
+  * the guard scores 25 of 109 rows and its channels are the best-covered corner of the corpus
+    (mean corr 0.79 against 0.41), so "improves the wide population, regresses a floor" is a
+    shape that will recur.
+
+CONCURRENT WORK IN THE TREE, and a hazard I created. `tools/assume.py`, `tools/fxrender.py`,
+`tools/render2/fx.py`, `tools/render2/test_render2.py`, `tools/README.md` and a new untracked
+`tools/fxnodes.py` (already imported by `fx.py`) changed during this session and are not mine.
+The first suite run therefore tested my change PLUS theirs; isolating -- reverting only
+`filters.py`, leaving theirs -- passed in 181s, so the failure is MINE and their work is
+exonerated. The hazard: isolating by swapping a shared file in place and restoring a snapshot
+taken minutes earlier will clobber anything the other process writes meanwhile. Use a separate
+worktree for isolation in a shared tree, and stage by explicit path -- never `git add -A`.
