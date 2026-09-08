@@ -56889,3 +56889,41 @@ WHAT IS LEFT, and none of it is arm-shaped:
   * The guard scores 25 of 109 rows and cannot see any of the 18 flat ones. Widening it is a
     coverage decision for the owner (see the earlier note); until then every arm result on the
     flat population has to be measured out-of-band, as these were.
+
+### The 91 non-flat rows: the badness is ONE pack, and three of its graphs are wrong CONTENT
+
+Breaking the 109 reference-scored rows down by pack and by graph, non-flat rows only:
+
+    pack                        rows   mean corr
+    Bricks_and_tiles              78     0.4191
+    Chesterfield_PBR_Material     10     0.9131
+    Auras                          3     0.8724
+
+    Bricks by graph   g7 -0.0019   g2 +0.0065   g6 +0.0163      <- 27 rows at ZERO
+                      g3 +0.4852   g8 +0.5561   g9 +0.5695
+                      g4 +0.6410   g1 +0.7711   g0 +0.9928
+
+"The render sits at corr 0.40" was never a property of the renderer. Chesterfield and Auras
+are healthy; the deficit is one pack, and inside it a handful of graphs. Bricks holds about
+ten: two render flat (g0's other rows, g5), THREE sit at essentially zero correlation with
+LIVE output (g2, g6, g7), several are mediocre, and g0's non-flat rows reach 0.9928.
+
+ZERO CORRELATION WITH LIVE OUTPUT IS NOT MISREGISTRATION. FFT cross-correlation over those 27
+rows, both sides resampled to a common grid, finds the shift that maximises agreement:
+
+    mean corr at zero shift  -0.0190      mean best corr  0.0729
+    basecolor g2   3 channels agree on (-11,+118)   best corr ~0.14
+    basecolor g7   3 channels agree on (~-94,-24)   best corr ~0.10
+    height g2 (+21,+87)   height g7 (-58,+19)   AO g7 (+93,-101)
+
+Channels WITHIN one output agree on a shift, as they must -- they share spatial content -- but
+different outputs disagree completely, and even at the best shift agreement only reaches ~0.15.
+So we are not drawing the right image in the wrong place. **The content itself is different.**
+That rules out a placement or origin bug for this population, which is also why no draw-side
+arm touched it: arms change what is drawn, and a shift would not have needed one.
+
+NEXT, and it is the technique that worked on g0's height: walk g2/g6/g7's output chains
+record by record and find the stage where our content stops matching. That found the
+`0.5 + 0.5*(s - s')` detector and the `opacity -1` death without any arbitration. The
+difference here is that there IS live output to compare at each stage, so the divergence point
+should be visible as a drop in agreement rather than a drop to constant.
