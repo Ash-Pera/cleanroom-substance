@@ -57496,3 +57496,49 @@ supplies only ~18% of the engine's (4.3% on Bricks). The shortfall is somewhere 
 per-pixel bytecode: an opcode evaluated approximately, a sampler read, or a `$pos`-driven
 expression we compute differently. That is opcode-level work on a 515-record population in one
 filter, which is a far smaller search than the pipeline this started as.
+
+### What the pixelprocessor programs actually compute -- and `samplecol` is 1,767 of them
+
+Opcode census over Bricks' `pixelprocessor` records: 1,884 programs, 75,850 instructions,
+decoded with no errors.
+
+    token    op          count    share
+    0x900    const       7,663    10.1%       (three const tokens total ~19.2%)
+    0x954    mul         3,745     4.9%
+    0x947    set         3,421     4.5%
+    0xa52    add         3,301     4.4%
+    0x551    cvt         3,276     4.3%
+    0xa4c    seq         3,266     4.3%
+    0x56b    exp2        2,845     3.8%
+    0x955    div         2,840     3.7%
+    0x910/0x950 swizzle  4,542     6.0%
+    0x9cd    vec         2,173     2.9%
+    0x9f4    samplecol   1,767     2.3%
+
+EVERY OPCODE IS NAMED. `transpile.UNNAMED` is EMPTY, so the shortfall is not an unmodelled
+operation -- it is a named one evaluated differently, or the data an operation reads.
+
+`samplecol` IS THE ONE THAT READS DATA. 1,767 per-pixel image samples in the filter that is
+the sole source of top-octave content. Two ways that loses detail, and they are separable:
+
+  * THE SOURCE IS SMOOTH. If what these programs sample is itself a low-detail intermediate,
+    no sampler can invent structure. Testable by measuring the HF power of the records they
+    sample against the HF power of the pixelprocessor output.
+  * THE SAMPLER SMOOTHS. Bilinear interpolation on a capped-resolution intermediate is a
+    low-pass filter; the engine samples its own full-resolution buffer. That predicts the
+    GRID DEPENDENCE already measured -- band ~1.4 at 128 falling to ~0.64 at 512 -- because
+    the gap between our capped intermediate and the reference's native one widens with the
+    render size.
+
+The second is the better fit for everything measured so far, and it is the same pipeline
+property that made the `dirmotionblur` correction trip the 128-grid floors: we compute at the
+capped grid while every reference is produced large and downsampled. It would also explain why
+no arm helps -- an arm changes what a filter computes, not the resolution of the buffer it
+reads.
+
+METHOD NOTE. This census took four attempts: `disasm.walk` does not exist, `decode` needs
+three arguments, it returns a GENERATOR (so `if not prog` is always False and `len()` raises),
+and the instruction tuple is `(index, address, opcode_token, operands)` -- the opcode is field
+TWO, and reading field one gave a clean-looking census of ascending ADDRESSES. Every one of
+those failed loudly except the last, which produced a plausible table of nonsense. Inspecting
+one tuple before aggregating would have cost one command.
