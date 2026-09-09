@@ -58330,3 +58330,82 @@ Textures_1's and its maps were exported with a seed the package does not record.
 it would move the Bricks pack mean from 0.3406 to 0.4050 without any renderer change, which
 is exactly why it is not a change to make quietly. `GUARD_TABLE`'s nine Bricks channels are
 unaffected by a pairing fix because there is none to make.
+
+## The records are not the misunderstanding. The five graphs read identically and one evaluates to constants.
+
+Asked why graph 001 is 88.6% flat when the other four are 20-24%, the natural suspicion was a
+record-level decode error, because the flat records are the TAIL of the file. They are: the
+five graphs partition the 12,585 records EXACTLY -- union 12,585, zero overlap -- into
+near-contiguous bands in reverse manifest order, 003 first and 001 last (001 occupies roughly
+9,500-12,000). So "the flat tail" and "graph 001" are one set, and anything that degrades with
+record position would produce exactly this picture.
+
+FOUR RECORD-LEVEL EXPLANATIONS WERE TESTED AND ALL FOUR ARE DEAD.
+
+  FORWARD EDGES. `model.View` drops an edge whose word is not a backward index
+  (`0 <= v < rec.index`), so a graph relying on forward references would lose inputs
+  silently. Of 19,142 edge slots in this file, 19,142 are backward and 0 are forward or
+  out of range. The record graph is perfectly topologically ordered.
+
+  THE CROSS-RECORD VALUE CACHE. `cache_functions`' docstring reasons about ownership per
+  FILE -- "a caller that evaluates a whole file in record order owns its dict" -- and this
+  file holds five independent graphs sharing one bare-integer index space, so a later graph
+  reading an earlier one's index 3 was a real possibility. Instrumented: 0 reads and 0
+  writes in the entire render. No program in this file uses opcodes 0x03/0x06 at all.
+
+  SIZES. Per graph the rendered array sizes are the same to within a few records
+  (001: 2,214 at 256x256, 109 at 16x16, 12 at 1x1; 002: 2,246 / 112 / 12). Graph 001 is not
+  being evaluated on a degenerate grid.
+
+  GRAPH ATTRIBUTION. Not a permutation error either: an earlier note established that
+  graph 003 correlates with NO reference, its own or any other, which a mis-assignment
+  could not produce.
+
+WHAT SETTLES IT IS THAT THE TOPOLOGY IS IDENTICAL ACROSS ALL FIVE GRAPHS AND ONLY THE VALUES
+DIFFER. Every graph contains exactly 24 `dyngradient` records, each fed on input[0] by a
+`blend`:
+
+    producer of dyngradient input[0], by graph
+    001   {(blend, FLAT): 24}
+    002   {(blend, live): 24}      003, 004, 005 likewise
+
+Same for `warp`: every graph has exactly 32 records with a constant image and a live field
+(so that configuration is the author's, not a fault -- it appears identically five times),
+and the graphs differ only in whether the OTHER 65 have a live image. 001 has 4 of 65 live,
+003 has 33, the three working graphs have 65. `pixelprocessor` contributes exactly 11 flat
+sources in all five. Graph 001 even has healthy generators: 26 of its 33 `fxmaps` are live,
+against 31 of 37 in graph 002.
+
+A record-layout error is a per-SHAPE error. It would misread the same slot in all five
+graphs, because all five contain the same shapes in the same counts. Instead the same 24
+blends feed the same 24 dyngradients in every graph and are constant in exactly one. THE
+FAULT IS IN A VALUE WE COMPUTE, NOT IN HOW WE READ THE RECORD. That is a negative result
+and it is worth the measurements, because it retires the whole family of hypotheses this
+session kept returning to -- edge order, slot order, entry width, cache ownership -- for
+this failure. It also explains why the annihilation hunt kept exonerating filters: `warp`,
+`dyngradient` and 47 blends were each correct given their inputs, and they were correct
+because the wiring handed to them is correct.
+
+The five graphs are NOT one template with five parameter sets, which was the other thing
+worth knowing before using 002 as a control for 001. A lockstep walk from 001's height
+output against 002's diverges at depth 1 with a filter-name mismatch. Their filter censuses
+are near-identical (blend 1,110-1,128, transformation 525-534, warp exactly 103 in all five,
+pixelprocessor exactly 103 in all five) because they share a library of sub-graphs, not
+because they are the same graph rewired.
+
+CORRECTION TO THIS SESSION'S OWN READING OF THE CONTACT SHEET. Seeing graph 004's basecolor
+red in Textures_1 and blue in Textures_2 with matching geometry, I said the two export sets
+differ only in colour and that this overturned the seed explanation. That was right about 004
+and wrong as a generalisation, and the error was reading thumbnails instead of measuring.
+Per channel -- pooled channels are the documented normal-map trap and I fell into it once
+here too, getting a spurious +0.97 on `normal` from the flat-blue background:
+
+    T1 vs T2, per-channel correlation
+    001, 002, 003    +0.02 .. +0.14 on every channel of every usage
+    004              +0.79 .. +0.90
+    005              +0.53 .. +0.97
+
+A seed changes the randomised graphs and barely touches the deterministic tile motifs, which
+is what a seed should do. The two packages are byte-identical in EVERY file -- .sbsasm, .xml
+manifest and all five icons, compared by hash -- so the export-time difference is recorded
+nowhere in the package, and the Textures_2 half remains unreproducible.
