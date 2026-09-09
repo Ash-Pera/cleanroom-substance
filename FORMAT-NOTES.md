@@ -58619,3 +58619,64 @@ instead of announcing it. It invalidates nothing: both sides are resampled to a 
 before scoring, so the band ratios and the K sweep stand as measured. What it does invalidate
 is the assumption that we could FIX it by asking for a bigger render, and it means the
 residual line-width error is not reachable by any change to a filter.
+
+## The K=1 suite result, and what the Bricks guard is actually measuring
+
+`python3 -m pytest archive/tools/test_filters.py tools/render2/test_render2.py` with K=1:
+39 passed, 1 failed -- `test_render2_reference_agreement_does_not_regress`, nine rows. The
+earlier note predicted this failure and it arrived.
+
+WHAT THE RATCHET SAYS, against the recorded `Entry(at={grid: (corr, band, dc)})`:
+
+    AO ch0        band  256/512   0.2304 / 0.2270  ->  1.0752 / 1.0730
+    normal ch0    band  256/512   0.1350 / 0.1350  ->  1.0571 / 1.0571
+    normal ch1    band  256/512        --          ->  1.0190
+    AO ch0        band  128       1.1254           ->  2.2190
+    normal ch0    band  128       1.3477           ->  2.9621
+    basecolor ch1 band  128       2.4593           ->  4.9367
+    roughness ch0 band  all       --               ->  9.70 / 4.13 / 4.12
+    basecolor ch0 corr  256/512   +0.4270 recorded ->  +0.0120
+    basecolor ch0 dc    all                        ->  0.0402 / 0.0406 / 0.0406
+
+The band ratios at 256 and 512 land ON UNITY from a fifth to an eighth of it, which is the
+top-octave fix doing exactly what the spectrum predicted. The grid-128 rows go the other way
+and are real over-sharpening at the coarse grid. `roughness` at 4.13 everywhere is the
+overshoot this was warned about, since roughness' fault is its field level and not its blur.
+
+THE `basecolor` corr ROW IS NOT A REGRESSION, AND FINDING OUT WHY IS THE USEFUL PART. Scored
+by identity against Textures_1 -- the reproducible half -- K=1 improves EVERY basecolor row
+and every graph:
+
+    002 ch0  +0.5878 -> +0.6184     004 ch0  +0.4247 -> +0.6618
+    003 ch0  +0.0270 -> +0.7452     005 ch0  +0.3856 -> +0.7968
+    mean corr over 48 identity-matched Textures_1 rows   +0.4050 -> +0.6458
+
+Graph 003 -- one of the two graphs this investigation called broken, uncorrelated with every
+reference at +0.027 -- comes to +0.745 on basecolor from this one constant. Its failure was
+never a separate fault; it was the same over-blur, and it was invisible because graph 003 has
+more of whatever the blur was destroying.
+
+SO WHY DOES THE GUARD SEE +0.012. `test_filters` says it in its own comment -- "LAST ROW WINS
+... a multi-graph pack yields one key several times and only the last is what was measured" --
+and Bricks yields each key TEN times, five graphs in two packages. Resolving which row
+survives:
+
+    ambientocclusion <- Textures_2 / graph 005      height    <- Textures_2 / graph 005
+    basecolor        <- Textures_2 / graph 005      normal    <- Textures_2 / graph 005
+    roughness        <- Textures_2 / graph 005      emission  <- Textures_2 / graph 004
+
+EVERY BRICKS FLOOR IN `GUARD_TABLE` IS MEASURED ON TEXTURES_2, and all but one on graph 005
+alone. Textures_2 is the export set whose seed the package records nowhere -- byte-identical
+assembly, byte-identical manifest, byte-identical icons, per-channel correlation against
+Textures_1 of +0.02..+0.14 on the randomised graphs. So nine floors, and the ratchet built on
+them, are floors on agreement with an image no correct renderer can produce, taken from one
+graph out of five.
+
+A band RATIO still carries information against a differently-seeded texture, because the two
+seeds give statistically similar spectra -- so the grid-128 over-sharpening is a real signal.
+A `corr` against a differently-seeded image is close to meaningless, and it gets WORSE as the
+render gets sharper, because a sharp wrong-phase texture disagrees more precisely than a
+blurred one. That is the mechanism by which this improvement had to look like a regression.
+
+NOT ACTIONED. The floors are the owner's and so is the reference population; this note only
+establishes what they are currently computed from.
