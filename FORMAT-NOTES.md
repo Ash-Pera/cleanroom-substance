@@ -58188,3 +58188,96 @@ unknown number of them are floors on agreement with an unreproducible image. The
 question is whether the Textures_2 export set belongs in the reference population at all --
 it is a legitimate export of a legitimate package, but it is evidence about a seed value the
 package does not carry, and no renderer reading only the file can match it.
+
+## Looking at the images: the Bricks deficit is two graphs, not twenty-six maps
+
+Every Bricks number quoted in this investigation came from `refcompare.compare_pack`, which
+pairs our renders to references BY DECLARED USAGE. The reference filenames are
+`NNN_usage.png` -- `003_basecolor.png` -- so the graph number is right there in the name and
+the pairing throws it away. Pairing by usage puts graph 001's basecolor against graph 005's
+and calls the disagreement a rendering error.
+
+PAIRED BY IDENTITY INSTEAD, against Textures_1 only (the reproducible half; see the previous
+note on the byte-identical assemblies and the unrecorded export seed), 26 pairs at max_dim
+512, `refguard.measure`:
+
+    graph 001   all five outputs      corr 0.0000   our sd 0.0000 -- CONSTANT
+    graph 003   all six outputs       corr -0.017 .. 0.027        -- live but uncorrelated
+    graph 002   0.5691 .. 0.9266
+    graph 004   0.4236 .. 0.9992
+    graph 005   0.3856 .. 0.9044
+    mean over 26 identity-matched pairs                  0.4078
+
+The deficit is not spread over the maps. THREE OF FIVE GRAPHS LARGELY WORK and two fail
+completely, in two different ways. Eleven of the 26 rows sit at zero and all eleven are in
+graphs 001 and 003.
+
+THE FIVE PERMANENTLY FLAT OUTPUTS ARE CORRECT. One output per graph resolves to a `uniform`
+record at file position 0..4 and renders as a constant, which read as five wrong rows. They
+are the five `metallic` channels, and `fmt=12` in the output table is what distinguishes
+them -- every other greyscale output is `fmt=28`. Metallic is constant for a brick material
+and the exporter wrote no metallic PNG at all, so there is nothing to score. That is part of
+the "wrongly flat" set explained rather than a fault.
+
+GRAPH 001 IS 88.6% FLAT AND THE OTHER FOUR ARE 20-24%, with the SAME flat generators in each
+(`uniform` 41-67, `fxmaps` 6-7, `pixelprocessor` 11 -- the last identical in all five). So
+001 does not have deader sources; it propagates flatness where 002 does not. Its subtree is
+2,466 records, 2,185 flat, and the live->flat boundary is only ~86 edges wide:
+
+    warp            input[1]  32     dyngradient input[1]  24
+    directionalwarp input[1]   9     blend       input[1]   8, input[0] 4
+    shuffle         input[0]   4     pixelprocessor input[0] 2
+    distance        input[1]   2     levels      input[0]   1
+
+Most of that is benign and three separate suspects died on inspection. Every flat `warp` and
+`directionalwarp` output has a flat IMAGE input -- a live edge at input[1] is the warp FIELD,
+which cannot force a live output. Zero of 205 are genuine annihilations, which is the third
+time warp has been exonerated. All 24 flat `dyngradient` records have a healthy ramp on
+input[1] (sd 0.48, all 16 rows live) and a CONSTANT 0.5 on input[0]: they map a constant
+index to a constant colour, correctly. The 47 flat blends are arithmetically right given
+their operands -- mode 2 against a 0.0 background gives 0.0, mode 1 against a 1.0 foreground
+gives 1.0, at opacity 1.0 and 0.74 respectively.
+
+So the annihilation hunt keeps finding correct filters fed constants, and the constant runs
+back through an eleven-blend chain to `uniform` 0.5 at record 10708. Graph 001's height
+output, record 10478, IS one of those blends and is 0.5 everywhere.
+
+GRAPH 003 IS A DIFFERENT FAILURE and must not be pooled with 001. It is 24.4% flat -- the
+same as the three working graphs -- and produces plenty of live content that simply does not
+match: its basecolor renders as a crackle/vein field where the reference is a brick wall.
+Flatness is not its problem; being wrong is.
+
+WHAT THE SILHOUETTES SAY. Graph 001's reference height is a lattice of OCTAGONS with small
+DIAMONDS in the interstices; where we render anything, we render soft radial discs with
+round dots, on the same lattice at the same spacing and count. Over one Bricks render
+`_profile_for` fires 79,130 times and hands back `bell` 35,738, `paraboloid` 21,578,
+`gaussian` 20,500 -- 98% radial blobs -- while `_image_for` resolves an actual image on 38
+of 79,146. 6,778 of the misses have images WIRED to the record (6,250 with 6 candidates, 528
+with 14) and decline to guess because `imageindex` is absent, which is the documented and
+deliberate refusal in that function. `PATTERN_SHAPES` has no polygon at all, so no value of
+`patterntype` we can name would produce an octagon.
+
+MEASUREMENT HAZARDS FOUND WHILE DOING THIS, both mine, both caught by instrumenting:
+
+`tools/render2/fx.py` IS LOADED TWICE, as `fx` and as `render2.fx`, and so are `engine`,
+`filters`, `model` and `ops` -- five modules, two module objects each, separate globals.
+`filters.f_fxmaps` does a bare `import fx`, which resolves through `tools/render2` on the
+path; a probe that patches `render2.fx._profile_for` patches the copy the engine never
+calls and reports zero draws on a render that drew 79,130. The engine is self-consistent
+(its imports are bare throughout) so no pixel is known to be wrong, but any registration or
+patch arriving via the `render2.` path is silently invisible, and `filters.FILTERS` exists
+twice. This is the "patch the binding site, not the defining module" rule again, one level
+further out: the binding site was in a module I did not know was duplicated. The counter is
+what caught it.
+
+The greyscale references are 16-bit (`mode="I;16"`, 1024x1024): AO, height and roughness.
+`Image.open(p).convert('L')` does not rescale those and returns a near-constant image, so a
+throwaway harness scored every greyscale reference as flat and produced a tidy, entirely
+false table. `refcompare.load_reference` divides by 65535 by MODE and is correct; its
+docstring at line 76 names this exact trap. The lesson is not about Pillow -- it is that a
+hand-rolled comparison harness reproduced a bug the project had already fixed and documented,
+because it did not call the project's loader.
+
+FOR THE OWNER. Fixing the pairing is not mine to do: `GUARD_TABLE` holds nine Bricks channels
+whose floors were computed through usage-pairing, and re-pairing moves every one of them.
+The filenames make identity pairing available whenever that call is made.
