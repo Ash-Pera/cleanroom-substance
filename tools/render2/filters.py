@@ -703,7 +703,30 @@ def f_dirmotionblur(ctx, v):
     pos = pos_grid(W, H)
     intensity = np.asarray(_scalar(ctx, v, 'intensity', 0.0, W, H, pos), np.float32)
     angle = np.asarray(_scalar(ctx, v, 'mblurangle', 0.0, W, H, pos), np.float32)
-    length = np.clip(np.abs(intensity), 0.0, 256.0) / _reference_px(v) * 10.0
+    # LENGTH IS THE INTENSITY IN THE RECORD'S OWN PIXEL SCALE, WITH NO EXTRA FACTOR. This
+    # read `* 10.0`, and that multiplier is where graph 004's top two octaves went: four
+    # chained `dirmotionblur` records take band-5 power from 1.288e-03 to 4.114e-06 -- 313x
+    # -- in the last four steps before the height output, while the thirty `warp` records
+    # feeding them pass it through unchanged. Replacing the filter with a pass-through
+    # restores the top band from 0.005 to 1.302 on height and RAISES every correlation.
+    #
+    # THE LOSS IS HERE AND THE GENERATOR IS ELSEWHERE, and those are different questions.
+    # `pixelprocessor` remains the only filter that GENERATES top-octave content -- that
+    # knockout still takes the top octave to exactly zero -- and an earlier note struck this
+    # filter off the list of suspects by observing that correcting it "does not add
+    # top-octave content", which is true and does not answer where the octaves are LOST.
+    # See FORMAT-NOTES.md, "Where graph 004 loses the top two octaves".
+    #
+    # WHY 1 AND NOT A FIT TO `corr`: at this value the top two BANDS return to 0.880 / 1.004
+    # on height and 0.807 / 1.265 on normal -- the spectrum agreeing, rather than a scalar
+    # improving. `f_directionalwarp` below computes the same quantity as
+    # `intensity / _reference_px(v)` with no factor at all, and this now matches it.
+    #
+    # `roughness` DOES NOT FOLLOW and must not be corrected with this knob: its top band
+    # overshoots to 7.976 here and its coarse bands are already 2.7-5x high at every value.
+    # That is the field-level fault measured separately -- 0.161 against 0.513 -- and it is
+    # a different fault in the same graph.
+    length = np.clip(np.abs(intensity), 0.0, 256.0) / _reference_px(v)
     turn = 2.0 * np.pi * angle
     smp = sampler(ctx.src(v, 0))
     TAPS = 17

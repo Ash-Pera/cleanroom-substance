@@ -58574,3 +58574,48 @@ NOT COMMITTED. The earlier note records that this correction trips the grid-128 
 floor is the owner's call. The measurement above is at 256 and 512 and says nothing about what
 `REFERENCE_FLOOR` sees at 128; the grid dependence it describes -- our capped intermediate
 against a natively-large reference -- is exactly the regime where the two disagree.
+
+## The wheel's cross lines are too wide because we render 256 against a 1024 export
+
+`f_dirmotionblur`'s length multiplier is now 1 rather than 10 (owner's call, on the evidence
+of the previous section). With the over-blur gone the wheel geometry is legible for the first
+time, and one difference dominates: the engine divides the wheel's annulus into six segments
+with THIN radial grooves, and we draw thick wedges, so our light segments are small islands
+where the engine's are broad. The four straight tile-grid lines crossing each wheel show the
+same thing. Column-mean dip width on `height` puts ours at 2.84x the reference's.
+
+IT IS A RESOLUTION FLOOR, NOT A DECODE ERROR. Measuring the reference's own line widths:
+
+    reference 004_height, 1024x1024, dark-line widths across a column-mean profile
+    pixels     5    9    9   22    7   13    4
+    fraction  0.0049 0.0088 0.0088 0.0215 0.0068 0.0127 0.0039
+    in our 256 grid, px:  1.25 2.25 2.25 5.50 1.75 3.25 1.00
+
+The engine's thinnest grooves are 4 and 5 px at 1024. On our grid those are ONE pixel and
+1.25 pixels. A one-pixel feature cannot be drawn narrower than 1/256 = 0.0039, and any
+filtering at all -- a bilinear sample, an antialiased edge, what remains of the motion blur --
+spreads it to two or three, which is the 2-3x that was measured and seen. The groove is at our
+Nyquist limit and the engine's is nowhere near its own.
+
+`outputsize` DOES NOT LIFT THE GRID FOR THIS FILE, and that is the part worth acting on. The
+graph declares `$outputsize` (8,8) = 256 and the exports are (10,10) = 1024, which is the
+mismatch `refcompare`'s own docstring says makes a comparison compare two different graphs. So
+the obvious move is to render at the implied size -- and it changes nothing:
+
+    engine.render(asm, max_dim=512, outputsize=(10,10))  ->  output array (256, 256, 1)
+    band ratios identical to four decimals against outputsize=None
+
+Because `record_sizes(asm, (10,10))` returns 12,585 entries and EVERY ONE of them is
+(256, 256). The same call with (9,9) also returns all-256, and with None returns nothing at
+all. Whatever the size nibbles mean for this file, they are not a function of the
+`$outputsize` this argument sets, so the `--outputsize implied` path -- the one the module
+recommends and `REFERENCE_FLOOR_RENDER2` is scored through -- is INERT here. Every Bricks
+number in this investigation, mine and the earlier ones, is a 256 render scored against a 1024
+export, and `max_dim` above 256 has never done anything on this pack either.
+
+THE SELF-CORRECTION IS THE POINT. I raised this as an invalidation of the whole graph-004
+analysis -- 256 against 1024 is exactly the trap the module documents -- and then tested it
+instead of announcing it. It invalidates nothing: both sides are resampled to a common grid
+before scoring, so the band ratios and the K sweep stand as measured. What it does invalidate
+is the assumption that we could FIX it by asking for a bigger render, and it means the
+residual line-width error is not reachable by any change to a filter.
