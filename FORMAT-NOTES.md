@@ -58281,3 +58281,52 @@ because it did not call the project's loader.
 FOR THE OWNER. Fixing the pairing is not mine to do: `GUARD_TABLE` holds nine Bricks channels
 whose floors were computed through usage-pairing, and re-pairing moves every one of them.
 The filenames make identity pairing available whenever that call is made.
+
+## RETRACTED: refcompare does not pair by usage. It already pairs by identity.
+
+The previous note claimed `refcompare.compare_pack` "pairs our renders to references BY
+DECLARED USAGE" and "throws the graph number away", and asked the owner to decide about
+fixing it. That is wrong and the request was answered by reading the code it was about.
+
+Pairing is identity on BOTH axes and has been since `0320265`. `_package_refs` scopes each
+assembly to its own export directory -- `x_Bricks_Textures_1` to `reference_renders/
+Textures_1/` -- by the documented suffix rule. `graph_dir` then narrows to that graph's own
+`NNN_` filename prefix, which the comment above it introduces as "a second spelling of one
+convention", the nested `reference_renders/001/` form being the first. Logging every pairing
+for Bricks: 52 outputs across the two assemblies, every one paired to its own graph's map in
+its own package directory, and the only five unpaired per assembly are the `metallic`
+outputs, for which no PNG was exported. Nothing is cross-paired.
+
+WHAT ACTUALLY PRODUCES THE 0.35. Scored per assembly, `render2`, `outputsize='implied'`,
+dim 512, grid 512:
+
+    Bricks_Textures_1   48 rows, 5 unpaired   mean corr 0.4050   (ch0 only 0.4076)
+    Bricks_Textures_2   48 rows, 5 unpaired   mean corr 0.2761   (ch0 only 0.2698)
+    pooled                                            0.3406
+
+The pack mean is the average of a reproducible half and an unreproducible one. Textures_1's
+0.4076 reproduces the independent identity-paired figure in the previous note, 0.4078, to
+three decimals from a separate harness -- which is the only reason that harness's arithmetic
+can be trusted at all, and is the check that should have been run BEFORE claiming a defect
+in the module it disagreed with.
+
+HOW THE CLAIM SURVIVED LONG ENOUGH TO BE WRITTEN DOWN. A hand-rolled harness scored 0.4078
+where the module scored 0.35, and the gap was attributed to the module without opening it.
+The gap is entirely the Textures_2 half, which the module includes and the harness did not.
+Two configurations were compared as if they were two pairings. This is the same error as the
+withdrawn 0.9908 mispairing bound and the `cell` population slip: a difference between two
+numbers was explained before it was established that they measured the same thing.
+
+WHAT STANDS from the previous note, all of it independent of the pairing question: the
+per-graph decomposition (001 constant, 003 uncorrelated, 002/004/005 at 0.38-0.99, and the
+eleven zero rows all inside two graphs); the five flat `metallic` outputs being correct and
+unexported; graph 001 at 88.6% flat against 20-24% with identical flat generators; the
+exoneration of `warp`, `dyngradient` and the 47 blends; the radial-blob profile census; the
+five doubly-imported `render2` modules; and the 16-bit `convert('L')` trap.
+
+THE OWNER DECISION IS THEREFORE NOT ABOUT PAIRING. It is only whether the Textures_2 export
+set belongs in the reference population, given that its assembly is byte-identical to
+Textures_1's and its maps were exported with a seed the package does not record. Excluding
+it would move the Bricks pack mean from 0.3406 to 0.4050 without any renderer change, which
+is exactly why it is not a change to make quietly. `GUARD_TABLE`'s nine Bricks channels are
+unaffected by a pairing fix because there is none to make.
