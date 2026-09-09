@@ -58409,3 +58409,95 @@ A seed changes the randomised graphs and barely touches the deterministic tile m
 is what a seed should do. The two packages are byte-identical in EVERY file -- .sbsasm, .xml
 manifest and all five icons, compared by hash -- so the export-time difference is recorded
 nowhere in the package, and the Textures_2 half remains unreproducible.
+
+## Graph 004, Textures_1, feature by feature -- what is actually wrong with the picture
+
+Graph 004 is the best-scoring Bricks graph and the right place to ask what remains, because
+nothing here is a cascade failure: every feature is present and most are in the right place.
+Rendered `render2` at max_dim 512 against the 1024x1024 Textures_1 exports. Correlation is
+deliberately not used below.
+
+WHAT IS RIGHT. The 2x2 wheel lattice, its spacing and phase; six spokes per wheel; the
+central boss; the corner discs; the tile grid; and `emission`, which reproduces at mean
+0.0200 against 0.0189 with sd 0.1101 against 0.1074.
+
+1. THE TOP TWO OCTAVES ARE ESSENTIALLY ABSENT. Per-octave band ratio ours/ref, bands
+`refguard.BANDS` = (1,7,10,14,20,32,128), low to high:
+
+    basecolor   1.591  2.175  1.428  1.033  0.372  0.014
+    normal      1.131  1.369  1.808  0.990  0.252  0.004
+    roughness   3.042  3.519  3.663  2.222  0.933  0.137
+    height      1.456  0.670  1.037  0.648  0.171  0.005
+    AO          0.971  0.451  0.519  0.342  0.098  0.006
+
+Above 1/32 we carry 0.4% to 14% of the reference's energy. This is the whole visual
+difference in one row: every reference map is covered in fine stone speckle and veining, and
+ours has none of it. It is a spectral TILT and not a gain error -- the coarse bands are at or
+ABOVE 1.0, roughness by a factor of 3.0 to 3.7 -- so any single multiplier makes one end
+worse. That is the "shape not gain" result, now with a per-map spectrum on the graph that
+renders best.
+
+2. ROUGHNESS' FIELD LEVEL IS WRONG BY ~0.35, AND IT IS THE ONLY MAP WHERE THE FIELD IS WRONG.
+Splitting each map by the REFERENCE's own deviation from its median -- "field" the quietest
+50%, "feature" the top 15% -- gives ours/ref:
+
+    basecolor   field 0.3110 / 0.2917     feature 0.2074 / 0.1670
+    roughness   field 0.1610 / 0.5126     feature 0.4247 / 0.7598
+    height      field 0.7727 / 0.6039     feature 0.5559 / 0.2351
+    AO          field 0.9250 / 0.9428     feature 0.7171 / 0.3172
+
+Our tile faces render near-black at 0.16 where the engine's are mid-grey at 0.51. basecolor
+and AO have the field essentially right. This is the standing "roughness' level is two
+multiply blends whose source renders 0" thread, and the split says it is a LEVEL fault and
+not a detail fault: the feature/field DIFFERENCE is 0.264 for us against 0.247 for the
+reference, so the contrast is nearly right and sits at the wrong offset.
+
+3. GROOVE VALUES ARE ROUGHLY TWICE TOO HIGH ON HEIGHT AND AO -- 0.5559 against 0.2351, and
+0.7171 against 0.3172 -- WHILE THEIR FIELD LEVELS ARE RIGHT. This is not an independent
+fault: a groove one or two pixels wide in the reference, reproduced without its top two
+octaves, has its minimum pulled toward the surrounding field. It should be expected to
+resolve when (1) does, and it should NOT be attacked with a levels adjustment, which would
+fix the number and darken the tile faces with it.
+
+4. RANGE COMPRESSION, the same thing seen as extremes: basecolor spans 0.098..0.460 against
+0.024..0.651, AO bottoms at 0.361 against 0.043, height at 0.060 against 0.000.
+
+5. NORMAL AMPLITUDE IS 2.2x LOW, sd 0.0423 against 0.0920, with the same missing-fine-detail
+signature (top band 0.004) rather than a uniform scale error.
+
+6. OUR FOUR TILE INSTANCES AGREE WITH EACH OTHER LESS THAN THE ENGINE'S DO. Quadrant-to-
+quadrant correlation, mean and min over the six pairs:
+
+    normal      ours 0.4700 / 0.1544     ref 0.7843 / 0.7684
+    AO          ours 0.7496 / 0.5440     ref 0.8573 / 0.8368
+    roughness   ours 0.7396 / 0.5272     ref 0.8370 / 0.8172
+    basecolor   ours 0.8082 / 0.6796     ref 0.7260 / 0.6815
+    height      ours 0.7060 / 0.4832     ref 0.6205 / 0.5161
+
+The engine draws four nearly interchangeable instances on normal, AO and roughness; ours
+differ, and on `normal` two of the four correlate at 0.15. Something in our draw is not
+repeating identically across the lattice where the engine's does.
+
+THREE READINGS OF THE PICTURES DID NOT SURVIVE MEASUREMENT, recorded because each was
+convincing on the thumbnails:
+
+  "Our wheels are all identically oriented and the reference's are individually rotated."
+  Backwards. The quadrant test above says the REFERENCE is the more self-consistent of the
+  two on every map where it matters.
+
+  "Our render is anisotropically blurred" -- from tile-repeat self-similarity being 0.86 in x
+  against 0.67 in y while the reference is 0.84/0.85. Mean absolute gradient says otherwise:
+  |dy|/|dx| is 0.983-0.989 for ours and 0.994-1.014 for the reference, both isotropic, with
+  `normal` at 0.52 in BOTH because channel 0 is the x-derivative. The roll asymmetry is about
+  instance placement, not blur.
+
+  A wheel-centre angular-harmonic analysis, intended to count spokes and measure per-instance
+  rotation, located its centres by argmax of the blurred map and locked onto the bright tile
+  field instead of the bosses -- centres at (4,7) and (134,5), i.e. the image edge. Discarded
+  rather than reported; the spoke count in this note is counted by eye off the 460px crops.
+
+HIGH-FREQUENCY ENERGY FRACTION IS NOT THE INSTRUMENT FOR (1) and was tried first: it reads
+2.13 for roughness and 1.72 for AO, i.e. MORE high-frequency energy than the reference, which
+is true and misleading. Our roughness is black field plus white rings, so its hard edges
+carry a large share of a small total. The band ratio compares like with like at each scale;
+the fraction-of-own-power does not.
