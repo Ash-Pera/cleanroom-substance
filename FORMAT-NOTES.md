@@ -58501,3 +58501,76 @@ HIGH-FREQUENCY ENERGY FRACTION IS NOT THE INSTRUMENT FOR (1) and was tried first
 is true and misleading. Our roughness is black field plus white rings, so its hard edges
 carry a large share of a small total. The band ratio compares like with like at each scale;
 the fraction-of-own-power does not.
+
+## Where graph 004 loses the top two octaves: `dirmotionblur`, and the elimination that said otherwise was wrong
+
+THE DETAIL IS GENERATED AND THEN DESTROYED, which is the first fork and it settles quickly.
+Measuring band-5 power (32..128 cycles, `refguard.band_power` on a common 256 grid) for all
+2,558 records in graph 004's cone: the cone contains records carrying up to 8.759e-03, while
+the roughness OUTPUT carries 5.073e-05 and the reference 3.702e-04. The top octave exists
+inside the graph at twenty times the level it needs to leave it with.
+
+FOLLOWING THE DETAIL-CARRYING INPUT BACKWARDS FROM `height` finds one loss point and it is
+not subtle. Thirty chained `warp` records pass 1.674e-03 through UNCHANGED (their field input
+5529 is flat, so each is a pure translation), three `blend` records take it to 1.288e-03, and
+then:
+
+    5636  dirmotionblur  top=4.905e-04   <- from 1.288e-03
+    5637  dirmotionblur  top=1.078e-04
+    5638  dirmotionblur  top=1.758e-05
+    5639  dirmotionblur  top=4.114e-06
+
+Four in series, each shedding 4-6x, 313x between them. That chain is the last thing that
+happens before the output.
+
+THE KNOCKOUT CONFIRMS IT. Replacing `dirmotionblur` with a pass-through (264 calls
+intercepted, counted) at max_dim 512, band ratio ours/ref for the top band:
+
+    height   0.005 -> 1.302      AO   0.006 -> 1.679
+    normal   0.004 -> 1.135      roughness 0.137 -> 8.853
+
+and every correlation RISES: height +0.4444 -> +0.4707, AO +0.6399 -> +0.7292, normal
++0.4236 -> +0.5864, roughness +0.5572 -> +0.5896. The band immediately below behaves the same
+way, 0.171 -> 1.135 on height.
+
+THE CONSTANT IS THE `* 10.0` IN `f_dirmotionblur`'s length, and it is the only multiplier of
+its kind in the file -- `f_directionalwarp` two functions below computes
+`intensity / _reference_px(v)` with no factor at all. Sweeping K at max_dim 256, top band and
+`corr`:
+
+    K       height        AO           normal       roughness
+    10.0    0.005 .4444   0.011 .6409  0.004 .4236  0.188 .5578
+     4.0    0.277 .4589   0.400 .7172  0.265 .5381  3.982 .6249
+     2.0    0.593 .4636   0.885 .7243  0.561 .5653  6.273 .6120
+     1.0    0.880 .4667   1.331 .7232  0.807 .5768  7.976 .5942
+     0.5    1.074 .4685   1.539 .7240  0.962 .5818  8.654 .5885
+
+K = 1 puts height at 0.880, normal at 0.807 and the 20-32 band at 1.004 / 0.902 / 1.265 --
+both of the missing octaves back at unity on the three maps whose spectrum was tilted. That is
+the K the earlier note predicted from the arithmetic, now confirmed against the spectrum
+rather than against `corr`.
+
+THIS CONTRADICTS A RECORDED ELIMINATION and the retraction matters more than the fix. The
+elimination list says:
+
+    dirmotionblur   over-blurs (K should be ~1 not 10) but that is an amplitude fault,
+                    and correcting it does not add top-octave content
+
+The second clause is false as a description of what correcting it does. It is TRUE that
+`dirmotionblur` generates nothing -- the pixelprocessor knockout stands, and substituting a
+constant there still takes the top octave to exactly zero. But "generates none" was read as
+"is not where the octaves are lost", and those are different questions. The generator and the
+destroyer are different records, and this investigation spent a long time looking for a
+missing GENERATOR because the destroyer had been struck off the list. An elimination has to
+name which question it settles.
+
+ROUGHNESS DOES NOT FOLLOW and should not be corrected with the same knob. Its top band
+overshoots to 7.976 at K=1 and its coarse bands are already 2.7-5.0x too high at every K, so
+its spectrum gets worse as K falls and its `corr` peaks at K=4 and then declines. Roughness'
+fault is the field-level error measured in the previous note -- 0.161 against 0.513 -- and it
+is a different fault in the same graph.
+
+NOT COMMITTED. The earlier note records that this correction trips the grid-128 floors, and a
+floor is the owner's call. The measurement above is at 256 and 512 and says nothing about what
+`REFERENCE_FLOOR` sees at 128; the grid dependence it describes -- our capped intermediate
+against a natively-large reference -- is exactly the regime where the two disagree.
