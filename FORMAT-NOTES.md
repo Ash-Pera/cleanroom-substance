@@ -58680,3 +58680,58 @@ blurred one. That is the mechanism by which this improvement had to look like a 
 
 NOT ACTIONED. The floors are the owner's and so is the reference population; this note only
 establishes what they are currently computed from.
+
+## The reference guard was measuring one graph of an unreproducible export set
+
+`test_render2_reference_agreement_does_not_regress` keys its table on
+`(pack, output name, channel)`, and `compare_pack` yields that key once PER GRAPH. The test
+says what happens next in its own comment -- "LAST ROW WINS ... a multi-graph pack yields one
+key several times and only the last is what was measured". For Bricks, resolving which row
+survived: every key came from `x_Bricks_Textures_2`, and all but `emission` from graph 005
+alone. Twelve floors, four graphs' worth of rendering behind them, one graph actually guarded,
+and that graph scored against the export set whose seed the package records nowhere.
+
+TWO CHANGES, and they are separate arguments.
+
+  QUALIFY THE KEY BY GRAPH. `compare_pack(..., qualify_graph=True)` yields `004/basecolor`
+  where it used to yield `basecolor`, so each graph is its own row and none can hide another.
+  Default OFF, because `REFERENCE_FLOOR` -- the older `render.py` guard -- keys on the
+  unqualified name and is not part of this question.
+
+  EXCLUDE THE EXPORT SET THAT CANNOT BE REPRODUCED. `refcompare.UNSCORED_EXPORTS` names
+  `(Kutejnikov__Bricks_and_tiles, Textures_2)` with the evidence in the comment: the two
+  packages are byte-identical in EVERY file -- .sbsasm, .xml manifest, all five icons,
+  compared by hash -- and their exports still differ, correlating +0.02..+0.14 per channel
+  on the three randomised graphs while reaching +0.79..+0.97 on the two deterministic ones.
+  That is a seed chosen at export time. It is a SCORING exclusion and not a provenance one:
+  the maps stay in the corpus and `reference_packs` still returns them.
+
+WHAT THE TABLE BECOMES: 25 keys -> 52. Bricks goes 12 -> 39, four graphs guarded separately
+where one was before. Auras and Chesterfield are RENAMED and not expanded -- only
+`004/basecolor` and `PaddedWalls/*` ever produced scoring rows, so the collapse was hiding
+nothing there, and an earlier claim in this session that three of Auras' four graphs were
+unguarded was wrong.
+
+`CONSTANT_YIELDS_RENDER2` for Bricks goes 18 -> 9, which settles what those 18 were: graph
+001's nine flat rows, counted once per identical package. Graph 001 still contributes no
+guarded row, which is honest -- it renders constants and should not be floored until it does
+not.
+
+NO FLOOR WAS LOWERED, and the mapping is the reason to trust that. Each old floor was
+reassigned to the QUALIFIED KEY IT WAS ACTUALLY MEASURED ON, computed by replaying the
+last-row-wins order rather than guessed -- so Bricks' twelve go to `005/*` and `004/emission`,
+Auras' to `004/basecolor`, Chesterfield's to `PaddedWalls/*`. Every one of the 25 clears its
+old floor on today's measurement except `PaddedWalls/normal` channel 2, which reads 0.6995
+against a floor of 0.72 -- the case `test_the_new_guard_does_not_weaken_the_old_floors`
+already documents as the proof that the pin is not vacuous. Its `was` stays 0.72 and its bound
+stays 0.72. The 27 new keys have no history to lower and take measurement less `CORR_MARGIN`.
+
+A MISTAKE WORTH RECORDING, because it cost someone else's work. Mid-edit I ran
+`git checkout-index -f -- archive/tools/test_filters.py` to undo a bad splice, and that
+restored the INDEX over the working tree, discarding a concurrent session's unstaged `black`
+reformatting of that file -- 965 insertions, 488 deletions, never staged, not recoverable from
+git. It looked cosmetic on inspection and is reproducible with `python -m black`, but I had
+not verified that exhaustively and it was not mine to discard. The whole reason the earlier
+commits in this session staged single hunks through `git apply --cached` was to avoid exactly
+this. `checkout-index -f` on a shared tree reverts everything uncommitted in that file, not
+the last edit; there is no "undo my change" in it.
