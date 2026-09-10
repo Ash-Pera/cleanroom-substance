@@ -58735,3 +58735,61 @@ not verified that exhaustively and it was not mine to discard. The whole reason 
 commits in this session staged single hunks through `git apply --cached` was to avoid exactly
 this. `checkout-index -f` on a shared tree reverts everything uncommitted in that file, not
 the last edit; there is no "undo my change" in it.
+
+## Why graph 001 renders constant: `opacity = -1` starts it, saturation finishes it
+
+THE FIRST CAUSE IS ONE RECORD AND IT IS NAMED. Graph 001's cone is 2,466 records, 2,185 of
+them constant, and 19 points in it take a live input and emit a constant. Ranking those by how
+much of the cone lies behind them and walking the earliest one back through its FLAT input
+reaches a single root: `fxmaps` record 9806, which renders 0.0 everywhere.
+
+9806 sits in a size chain with two siblings that work, and the three differ in one nibble:
+
+    9804  256x256  mean 0.705   drawn tags 0x12410648  0x12400648
+    9805  128x128  mean 0.724   drawn tags 0x12420648  0x12400648
+    9806   64x64   mean 0.000   drawn tags 0x124a0648  0x12480648
+
+All three emit the same two `patterntype` 8 patterns with the same `patternsize` [5, 1] and
+the same `patternrotation` 0.9217; the rest of each record's emissions are tag `0x420008`
+markers that `fx.markers` skips. The nibble that differs is bit 19, and `FX_PARAM_BITS` names
+bit 19 `opacity`. Only 9806's two patterns carry one, and its baked value is:
+
+    tag=0x124a0648  branchoffset=[0.09083 0.0795]  opacity=[-1]  patternsize=[5 1]
+    tag=0x12480648  branchoffset=[0.09083 0.0795]  opacity=[-1]  patternsize=[5 1]
+
+`fx.negopacity` defaults to `clip`, so -1 becomes 0, both patterns draw nothing, the canvas
+stays at its initialised zero, and `blend` 9808 -- mode 2, SUBTRACT -- takes a live 0.1062
+foreground away from that zero and clamps to 0. Everything downstream inherits it. This is the
+"opacity -1 -> fxmaps -> blend annihilation" thread that has been open all session, now with
+the record, the bit and the value.
+
+IT IS NECESSARY AND NOT SUFFICIENT, which is the part worth recording. Under
+`fx.negopacity='abs'` record 9806 comes alive at sd 0.1068 and 60 records with it -- and
+graph 001's five outputs are still constant, all five at corr +0.000, with the cone still
+88.1% flat. Sixteen annihilation points remain and they are a DIFFERENT failure:
+
+    9810   blend mode 2  subtract   both inputs live (0.041, 0.107)  -> 0.0000
+    9882   blend mode 3  multiply                                    -> 0.0000
+    10055  levels                   live in (sd 0.064, mean 0.643)   -> 1.0000
+    10079  blend mode 1  add                                         -> 1.0000
+    10088  blend mode 1  add        live in sd 0.096                 -> 1.0000
+    10276  blend mode 10                                             -> 1.0000
+    10326  pixelprocessor           live in sd 0.143                 -> 1.0000
+
+`BLEND_MODES` 1 is `d + s` and 2 is `d - s`, and `blend` clamps to [0, 1]. So every one of
+these is arithmetically correct given its operands and destroys the signal anyway: the adds
+reach 1.0 and clamp flat, the subtracts reach 0.0 and clamp flat. A blend with TWO live inputs
+returning an exact constant -- 9810 -- is the signature: it is not that an operand is dead, it
+is that `d - s <= 0` at every pixel.
+
+SO GRAPH 001'S FAULT IS A LEVEL FAULT, not a missing generator and not a dead filter. Our
+intermediates sit high enough that additive modes saturate and subtractive modes underflow,
+and the clamp -- which is load-bearing and correct -- turns each saturation into a constant.
+That is the same species as graph 004's roughness field reading 0.161 against 0.513, which is
+also a level error; graph 001 differs only in that its levels are wrong by enough to clip.
+
+NOT ACTIONED. `fx.negopacity` is an arbitration arm and `abs` does not fix the graph, so
+flipping it on this evidence would be trading a default for one record's benefit without
+settling what -1 means. What the next question is, though, is now specific: find where the
+level goes wrong upstream of record 10055, whose `levels` takes a live input at mean 0.643 and
+returns a constant 1.0.
