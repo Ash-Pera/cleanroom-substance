@@ -1415,39 +1415,74 @@ REFERENCE_FLOOR = {
 #: exactly what this file exists to catch.
 REFERENCE_FLOOR_RENDER2 = {
     # measured 2026-09-04 at 0c6f7dd + this change, render2 / implied / max_dim 256
-    ('Kutejnikov__Auras', 'basecolor', 0): 0.90,             # +0.9277  ARBITRATES
-    ('Kutejnikov__Auras', 'basecolor', 1): 0.72,             # +0.7497  ARBITRATES
-    ('Kutejnikov__Auras', 'basecolor', 2): 0.91,             # +0.9398  ARBITRATES
-    ('Kutejnikov__Bricks_and_tiles', 'ambientocclusion', 0): 0.85,   # +0.8866  ARBITRATES
+    ('Kutejnikov__Auras', '004/basecolor', 0): 0.9,
+    ('Kutejnikov__Auras', '004/basecolor', 1): 0.72,
+    ('Kutejnikov__Auras', '004/basecolor', 2): 0.91,
+    ('Kutejnikov__Bricks_and_tiles', '002/ambientocclusion', 0): 0.9,
+    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0): 0.59,
+    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1): 0.64,
+    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2): 0.63,
+    ('Kutejnikov__Bricks_and_tiles', '002/height', 0): 0.57,
+    ('Kutejnikov__Bricks_and_tiles', '002/normal', 0): 0.85,
+    ('Kutejnikov__Bricks_and_tiles', '002/normal', 1): 0.85,
+    ('Kutejnikov__Bricks_and_tiles', '002/normal', 2): 0.89,
+    ('Kutejnikov__Bricks_and_tiles', '002/roughness', 0): 0.85,
+    ('Kutejnikov__Bricks_and_tiles', '003/ambientocclusion', 0): 0.91,
+    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0): 0.72,
+    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 1): 0.8,
+    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 2): 0.76,
+    ('Kutejnikov__Bricks_and_tiles', '003/height', 0): 0.71,
+    ('Kutejnikov__Bricks_and_tiles', '003/normal', 0): 0.81,
+    ('Kutejnikov__Bricks_and_tiles', '003/normal', 1): 0.86,
+    ('Kutejnikov__Bricks_and_tiles', '003/normal', 2): 0.78,
+    ('Kutejnikov__Bricks_and_tiles', '003/roughness', 0): 0.9,
+    ('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0): 0.7,
+    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0): 0.64,
+    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 1): 0.71,
+    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 2): 0.72,
+    ('Kutejnikov__Bricks_and_tiles', '004/emission', 0): 0.96,
+    ('Kutejnikov__Bricks_and_tiles', '004/emission', 1): 0.98,
+    ('Kutejnikov__Bricks_and_tiles', '004/emission', 2): 0.97,
+    ('Kutejnikov__Bricks_and_tiles', '004/height', 0): 0.44,
+    ('Kutejnikov__Bricks_and_tiles', '004/normal', 0): 0.55,
+    ('Kutejnikov__Bricks_and_tiles', '004/normal', 1): 0.55,
+    ('Kutejnikov__Bricks_and_tiles', '004/normal', 2): 0.76,
+    ('Kutejnikov__Bricks_and_tiles', '004/roughness', 0): 0.57,
+    ('Kutejnikov__Bricks_and_tiles', '005/ambientocclusion', 0): 0.85,
+    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0): -0.05,
+    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 1): 0.2,
+    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 2): 0.2,
+    ('Kutejnikov__Bricks_and_tiles', '005/height', 0): 0.54,
+    ('Kutejnikov__Bricks_and_tiles', '005/normal', 0): 0.75,
+    ('Kutejnikov__Bricks_and_tiles', '005/normal', 1): 0.75,
+    ('Kutejnikov__Bricks_and_tiles', '005/normal', 2): 0.66,
+    ('Kutejnikov__Bricks_and_tiles', '005/roughness', 0): 0.77,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0): 0.84,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0): 0.82,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 1): 0.92,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2): -0.46,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0): 0.93,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/metallic', 0): 0.99,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 0): 0.93,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 1): 0.92,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 2): 0.72,
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0): 0.91,
     # BRICKS BASECOLOR IS WEAK AND IS LISTED ANYWAY, for the same reason `REFERENCE_FLOOR`
     # lists it: it is the output that moves most when anything in the `levels` or fx path
     # changes, and an unwatched channel that can swing by 1.1 is the whole exposure. The
     # NUMBER is partly a property of which of five graphs' maps the narrowing leaves, so
     # these are collapse guards and must not be ratcheted on a small gain.
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 0): -0.05,  # +0.0400  ARBITRATES, weak
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 1): 0.20,   # +0.2654  ARBITRATES, weak
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 2): 0.20,   # +0.2681  ARBITRATES, weak
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 0): 0.96,    # +0.9885  collapse guard
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 1): 0.98,    # +0.9993  collapse guard
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 2): 0.97,    # +0.9953  collapse guard
-    ('Kutejnikov__Bricks_and_tiles', 'height', 0): 0.54,      # +0.5803  ARBITRATES
-    ('Kutejnikov__Bricks_and_tiles', 'normal', 0): 0.75,      # +0.7775  ARBITRATES
-    ('Kutejnikov__Bricks_and_tiles', 'normal', 1): 0.75,      # +0.7855  ARBITRATES
     # ADDED 2026-09-04, NOT RATCHETED: this key had no entry and the channel is the one on
     # this pack most likely to collapse. Our Z is sd 0.0018 against the export's 0.0227 --
     # 8% of it, under refcompare's own "a tenth" bar -- so it is a COLLAPSE GUARD and its
     # +0.6956 must not be read as agreement. ch0 and ch1 beside it are 30% low; an order of
     # magnitude flat in Z alone is the shape 02e45ab found on Rokviz. See FORMAT-NOTES.md,
     # "`normal`'s 31% gain error is `height`'s".
-    ('Kutejnikov__Bricks_and_tiles', 'normal', 2): 0.66,      # +0.6956  collapse guard
-    ('Kutejnikov__Bricks_and_tiles', 'roughness', 0): 0.77,   # +0.8047  ARBITRATES
     # CHESTERFIELD. These ten are the ones `e231131` silently took to four, and `metallic`
     # is the sharpest single number in this repository: at the implied size it reproduces
     # the engine's own export at MAE 0.0004 (0.0010 at this grid), against 0.0211 at the
     # declared one. It is a button mask with 7 distinct values, so the floor is a collapse
     # guard and the MAE is the evidence.
-    ('minime453__Chesterfield_PBR_Material', 'AO', 0): 0.84,          # +0.8684  ARBITRATES
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.82,   # +0.8909  ARBITRATES
     # LOWERED 0.94 -> 0.92, AND THAT IS THE MOVE THIS TABLE IS NOT SUPPOSED TO MAKE, so the
     # argument is here rather than in a commit message. +0.9656 was measured at a
     # configuration that no longer exists: at `--outputsize implied` this renderer evaluated
@@ -1471,7 +1506,6 @@ REFERENCE_FLOOR_RENDER2 = {
     # the two are the same coupling and it would be dishonest to bank one and hide the other.
     # 0.92 keeps 0.007 of margin under +0.9274, which is the same margin the entry had.
     # See FORMAT-NOTES.md, "The discriminator is not in `$size` at all".
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.92,   # +0.9274  ARBITRATES
     # STILL ANTI-CORRELATED, AND MORE SO AT THE CORRECTED SIZE, WHICH IS A RETRACTION.
     # `777e597` reported this channel going -0.5763 -> +0.7679 and that is what motivated
     # `--outputsize` in the first place. It does not reproduce on today's tree: at
@@ -1483,13 +1517,6 @@ REFERENCE_FLOOR_RENDER2 = {
     # 0.0037 of room, down from 0.0338. It moved for the same reason ch1 did and by the
     # same coupling. It is left where it is because it still holds; the next agent to see
     # it fail should read that as this entry finally being reached, not as a new defect.
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2): -0.46,  # -0.4563  ARBITRATES
-    ('minime453__Chesterfield_PBR_Material', 'height', 0): 0.93,      # +0.9562  ARBITRATES
-    ('minime453__Chesterfield_PBR_Material', 'metallic', 0): 0.99,    # +0.9999  collapse guard
-    ('minime453__Chesterfield_PBR_Material', 'normal', 0): 0.93,      # +0.9524  ARBITRATES
-    ('minime453__Chesterfield_PBR_Material', 'normal', 1): 0.92,      # +0.9496  ARBITRATES
-    ('minime453__Chesterfield_PBR_Material', 'normal', 2): 0.72,      # +0.7499  ARBITRATES
-    ('minime453__Chesterfield_PBR_Material', 'roughness', 0): 0.91,   # +0.9358  ARBITRATES
 }
 
 #: The grid `REFERENCE_FLOOR_RENDER2` was taken at. Not `refcompare.RENDER_DIM`: that one
@@ -1511,81 +1538,422 @@ GUARD_GRIDS = (128, 256, 512)
 #: bound is not allowed BELOW it -- re-taking can raise a floor and can never lower one, which
 #: `test_the_new_guard_does_not_weaken_the_old_floors` checks directly.
 GUARD_TABLE = {
-    ('Kutejnikov__Auras', 'basecolor', 0):
-        Entry(at={128: (+0.9276, 4.2881, +0.1372), 256: (+0.9277, 4.1348, +0.1332), 512: (+0.9277, 4.1348, +0.1332)},
-              was=(0.90, 256)),
-    ('Kutejnikov__Auras', 'basecolor', 1):
-        Entry(at={128: (+0.7450, 18.7731, +0.2232), 256: (+0.7497, 17.3662, +0.2190), 512: (+0.7497, 17.3662, +0.2190)},
-              was=(0.72, 256)),
-    ('Kutejnikov__Auras', 'basecolor', 2):
-        Entry(at={128: (+0.9467, 0.5174, -0.0583), 256: (+0.9398, 0.4733, -0.0653), 512: (+0.9398, 0.4733, -0.0653)},
-              was=(0.91, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'ambientocclusion', 0):
-        Entry(at={128: (+0.8496, 1.1254, -0.0469), 256: (+0.8837, 0.2304, +0.0719), 512: (+0.8869, 0.2270, +0.0717)},
-              was=(0.85, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 0):
-        Entry(at={128: (+0.3850, 2.1545, -0.0240), 256: (+0.0430, 0.6208, -0.0150), 512: (+0.0430, 0.6208, -0.0150)},
-              was=(-0.05, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 1):
-        Entry(at={128: (+0.5298, 2.4593, -0.0501), 256: (+0.2698, 0.6718, -0.0477), 512: (+0.2697, 0.6719, -0.0476)},
-              was=(0.20, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 2):
-        Entry(at={128: (+0.4943, 1.8731, -0.0571), 256: (+0.2721, 0.5335, -0.0610), 512: (+0.2719, 0.5336, -0.0609)},
-              was=(0.20, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 0):
-        Entry(at={128: (+0.9779, 140.6836, +0.0206), 256: (+0.9885, 121.1425, +0.0183), 512: (+0.9885, 121.1425, +0.0183)},
-              was=(0.96, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 1):
-        Entry(at={128: (+0.9939, 0.5634, -0.0013), 256: (+0.9993, 0.4853, -0.0018), 512: (+0.9993, 0.4853, -0.0018)},
-              was=(0.98, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 2):
-        Entry(at={128: (+0.9865, 0.0577, -0.0131), 256: (+0.9953, 0.0499, -0.0135), 512: (+0.9953, 0.0499, -0.0135)},
-              was=(0.97, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'height', 0):
-        Entry(at={128: (+0.6662, 2.5438, +0.1090), 256: (+0.5936, 0.1844, +0.2552), 512: (+0.5936, 0.1844, +0.2552)},
-              was=(0.54, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'normal', 0):
-        Entry(at={128: (+0.7174, 1.3477, +0.0001), 256: (+0.7718, 0.1350, +0.0002), 512: (+0.7718, 0.1350, +0.0002)},
-              was=(0.75, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'normal', 1):
-        Entry(at={128: (+0.7260, 1.3708, +0.0002), 256: (+0.7883, 0.1298, +0.0002), 512: (+0.7883, 0.1298, +0.0002)},
-              was=(0.75, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'normal', 2):
-        Entry(at={128: (+0.3800, 0.1006, +0.0048), 256: (+0.6961, 0.0041, +0.0114), 512: (+0.6961, 0.0041, +0.0114)},
-              was=(0.66, 256)),
-    ('Kutejnikov__Bricks_and_tiles', 'roughness', 0):
-        Entry(at={128: (+0.8496, 6.9422, -0.2282), 256: (+0.8024, 1.6329, -0.3964), 512: (+0.8034, 1.6190, -0.3968)},
-              was=(0.77, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'AO', 0):
-        Entry(at={128: (+0.8603, 8.8639, -0.1127), 256: (+0.8735, 2.5382, -0.0141), 512: (+0.9072, 1.6885, -0.0003)},
-              was=(0.84, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0):
-        Entry(at={128: (+0.9353, 0.7713, -0.1044), 256: (+0.9166, 0.6307, -0.0968), 512: (+0.9164, 0.6115, -0.0980)},
-              was=(0.82, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1):
-        Entry(at={128: (+0.9542, 0.5459, +0.0145), 256: (+0.9776, 0.5510, +0.0095), 512: (+0.9862, 0.5472, +0.0086)},
-              was=(0.92, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2):
-        Entry(at={128: (+0.7768, 0.1203, -0.0040), 256: (+0.8344, 0.1944, -0.0042), 512: (+0.8814, 0.1994, -0.0049)},
-              was=(-0.46, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'height', 0):
-        Entry(at={128: (+0.9621, 1.4770, +0.0236), 256: (+0.9621, 1.2283, +0.0401), 512: (+0.9620, 1.1284, +0.0465)},
-              was=(0.93, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'metallic', 0):
-        Entry(at={128: (+0.9981, 1.0733, +0.0017), 256: (+0.9999, 1.0241, +0.0005), 512: (+1.0000, 1.0142, +0.0003)},
-              was=(0.99, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'normal', 0):
-        Entry(at={128: (+0.9647, 1.4047, +0.0000), 256: (+0.9645, 1.2189, -0.0001), 512: (+0.9704, 1.1820, -0.0004)},
-              was=(0.93, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'normal', 1):
-        Entry(at={128: (+0.9647, 1.3942, +0.0001), 256: (+0.9635, 1.2091, +0.0002), 512: (+0.9692, 1.1623, +0.0000)},
-              was=(0.92, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'normal', 2):
-        Entry(at={128: (+0.4956, 0.5263, +0.0001), 256: (+0.7042, 0.5988, +0.0001), 512: (+0.8522, 0.9535, -0.0038)},
-              was=(0.72, 256)),
-    ('minime453__Chesterfield_PBR_Material', 'roughness', 0):
-        Entry(at={128: (+0.9374, 0.7133, -0.0640), 256: (+0.9348, 0.6797, -0.0639), 512: (+0.9338, 0.6713, -0.0639)},
-              was=(0.91, 256)),
+    ('Kutejnikov__Auras', '004/basecolor', 0): Entry(
+        at={
+            128: (+0.9276, 4.2881, +0.1372),
+            256: (+0.9277, 4.1348, +0.1332),
+            512: (+0.9277, 4.1348, +0.1332),
+        },
+        was=(0.9, 256),
+    ),
+    ('Kutejnikov__Auras', '004/basecolor', 1): Entry(
+        at={
+            128: (+0.7450, 18.7731, +0.2232),
+            256: (+0.7497, 17.3662, +0.2190),
+            512: (+0.7497, 17.3662, +0.2190),
+        },
+        was=(0.72, 256),
+    ),
+    ('Kutejnikov__Auras', '004/basecolor', 2): Entry(
+        at={
+            128: (+0.9467, 0.5174, -0.0583),
+            256: (+0.9398, 0.4733, -0.0653),
+            512: (+0.9398, 0.4733, -0.0653),
+        },
+        was=(0.91, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '002/ambientocclusion', 0): Entry(
+        at={
+            128: (+0.9484, 2.1699, -0.0862),
+            256: (+0.9270, 1.1009, +0.0736),
+            512: (+0.9290, 1.0984, +0.0731),
+        },
+        was=(0.9, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0): Entry(
+        at={
+            128: (+0.6425, 5.0332, +0.0054),
+            256: (+0.6184, 0.8924, +0.0270),
+            512: (+0.6184, 0.8924, +0.0270),
+        },
+        was=(0.59, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1): Entry(
+        at={
+            128: (+0.6975, 4.7562, -0.0012),
+            256: (+0.6681, 0.8751, +0.0141),
+            512: (+0.6684, 0.8752, +0.0142),
+        },
+        was=(0.64, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2): Entry(
+        at={
+            128: (+0.6841, 4.2466, +0.0000),
+            256: (+0.6520, 0.7390, +0.0036),
+            512: (+0.6524, 0.7391, +0.0036),
+        },
+        was=(0.63, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '002/height', 0): Entry(
+        at={
+            128: (+0.6732, 6.8677, -0.0284),
+            256: (+0.5907, 0.6650, +0.2162),
+            512: (+0.5907, 0.6650, +0.2162),
+        },
+        was=(0.57, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '002/normal', 0): Entry(
+        at={
+            128: (+0.7607, 3.1273, +0.0005),
+            256: (+0.8754, 0.8876, +0.0005),
+            512: (+0.8754, 0.8876, +0.0005),
+        },
+        was=(0.85, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '002/normal', 1): Entry(
+        at={
+            128: (+0.7609, 3.1522, +0.0007),
+            256: (+0.8776, 0.8811, +0.0007),
+            512: (+0.8776, 0.8811, +0.0007),
+        },
+        was=(0.85, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '002/normal', 2): Entry(
+        at={
+            128: (+0.5099, 0.8610, -0.0071),
+            256: (+0.9170, 0.4375, +0.0069),
+            512: (+0.9170, 0.4375, +0.0069),
+        },
+        was=(0.89, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '002/roughness', 0): Entry(
+        at={
+            128: (+0.8960, 10.4656, -0.2032),
+            256: (+0.8732, 4.8969, -0.4345),
+            512: (+0.8732, 4.8981, -0.4346),
+        },
+        was=(0.85, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '003/ambientocclusion', 0): Entry(
+        at={
+            128: (+0.6362, 0.7661, +0.0619),
+            256: (+0.9306, 2.7255, -0.0392),
+            512: (+0.9299, 2.6799, -0.0433),
+        },
+        was=(0.91, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0): Entry(
+        at={
+            128: (+0.5008, 0.7199, +0.0674),
+            256: (+0.7453, 1.6308, +0.0555),
+            512: (+0.7452, 1.6301, +0.0555),
+        },
+        was=(0.72, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 1): Entry(
+        at={
+            128: (+0.5553, 0.7584, +0.0374),
+            256: (+0.8245, 1.7123, +0.0329),
+            512: (+0.8242, 1.7095, +0.0326),
+        },
+        was=(0.8, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 2): Entry(
+        at={
+            128: (+0.5317, 0.5547, -0.0107),
+            256: (+0.7876, 1.2529, -0.0059),
+            512: (+0.7871, 1.2508, -0.0061),
+        },
+        was=(0.76, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '003/height', 0): Entry(
+        at={
+            128: (+0.5243, 0.7069, +0.2840),
+            256: (+0.7373, 2.8838, +0.1303),
+            512: (+0.7373, 2.8838, +0.1303),
+        },
+        was=(0.71, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '003/normal', 0): Entry(
+        at={
+            128: (+0.7170, 0.9967, -0.0001),
+            256: (+0.8398, 2.9980, -0.0001),
+            512: (+0.8398, 2.9980, -0.0001),
+        },
+        was=(0.81, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '003/normal', 1): Entry(
+        at={
+            128: (+0.4118, 0.1238, -0.0001),
+            256: (+0.8846, 3.5443, -0.0001),
+            512: (+0.8846, 3.5443, -0.0001),
+        },
+        was=(0.86, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '003/normal', 2): Entry(
+        at={
+            128: (+0.3456, 0.0787, +0.0020),
+            256: (+0.8016, 5.3166, -0.0093),
+            512: (+0.8016, 5.3166, -0.0093),
+        },
+        was=(0.78, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '003/roughness', 0): Entry(
+        at={
+            128: (+0.6413, 2.4857, -0.1560),
+            256: (+0.9257, 6.6217, -0.1118),
+            512: (+0.9257, 6.4715, -0.1095),
+        },
+        was=(0.9, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0): Entry(
+        at={
+            128: (+0.7673, 1.8084, -0.0680),
+            256: (+0.7232, 1.0699, +0.0245),
+            512: (+0.7252, 1.0668, +0.0238),
+        },
+        was=(0.7, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0): Entry(
+        at={
+            128: (+0.5593, 4.5760, +0.0628),
+            256: (+0.6618, 1.3726, +0.0725),
+            512: (+0.6618, 1.3726, +0.0725),
+        },
+        was=(0.64, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 1): Entry(
+        at={
+            128: (+0.6010, 3.8578, +0.0270),
+            256: (+0.7365, 1.1966, +0.0277),
+            512: (+0.7366, 1.1966, +0.0278),
+        },
+        was=(0.71, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 2): Entry(
+        at={
+            128: (+0.6060, 2.8954, +0.0082),
+            256: (+0.7478, 0.8925, +0.0026),
+            512: (+0.7479, 0.8925, +0.0026),
+        },
+        was=(0.72, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/emission', 0): Entry(
+        at={
+            128: (+0.9939, 1.2332, +0.0033),
+            256: (+0.9992, 1.0616, +0.0010),
+            512: (+0.9992, 1.0616, +0.0010),
+        },
+        was=(0.96, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/emission', 1): Entry(
+        at={
+            128: (+0.9795, 0.7642, -0.0002),
+            256: (+0.9898, 0.6587, -0.0006),
+            512: (+0.9898, 0.6587, -0.0006),
+        },
+        was=(0.98, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/emission', 2): Entry(
+        at={
+            128: (+0.9786, 0.7948, -0.0001),
+            256: (+0.9895, 0.6870, -0.0005),
+            512: (+0.9895, 0.6870, -0.0005),
+        },
+        was=(0.97, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/height', 0): Entry(
+        at={
+            128: (+0.5305, 5.0080, +0.0010),
+            256: (+0.4667, 1.2717, +0.1725),
+            512: (+0.4667, 1.2717, +0.1725),
+        },
+        was=(0.44, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/normal', 0): Entry(
+        at={
+            128: (+0.5977, 2.6248, -0.0001),
+            256: (+0.5768, 1.0317, -0.0001),
+            512: (+0.5768, 1.0317, -0.0001),
+        },
+        was=(0.55, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/normal', 1): Entry(
+        at={
+            128: (+0.5925, 2.6114, +0.0001),
+            256: (+0.5728, 0.9885, +0.0001),
+            512: (+0.5728, 0.9885, +0.0001),
+        },
+        was=(0.55, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/normal', 2): Entry(
+        at={
+            128: (+0.3767, 0.7390, -0.0007),
+            256: (+0.7870, 0.4754, +0.0044),
+            512: (+0.7870, 0.4754, +0.0044),
+        },
+        was=(0.76, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '004/roughness', 0): Entry(
+        at={
+            128: (+0.7337, 8.7103, -0.1879),
+            256: (+0.5942, 4.3923, -0.3283),
+            512: (+0.5972, 4.3722, -0.3276),
+        },
+        was=(0.57, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '005/ambientocclusion', 0): Entry(
+        at={
+            128: (+0.8812, 2.1654, -0.0622),
+            256: (+0.9543, 1.0180, +0.0366),
+            512: (+0.9567, 1.0159, +0.0370),
+        },
+        was=(0.85, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0): Entry(
+        at={
+            128: (+0.5150, 4.0208, +0.0784),
+            256: (+0.7967, 1.0672, +0.0788),
+            512: (+0.7968, 1.0673, +0.0789),
+        },
+        was=(-0.05, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 1): Entry(
+        at={
+            128: (+0.5549, 3.4857, +0.0388),
+            256: (+0.8169, 0.9303, +0.0303),
+            512: (+0.8171, 0.9305, +0.0304),
+        },
+        was=(0.2, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 2): Entry(
+        at={
+            128: (+0.5672, 2.5690, +0.0155),
+            256: (+0.8296, 0.6970, +0.0032),
+            512: (+0.8298, 0.6971, +0.0032),
+        },
+        was=(0.2, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '005/height', 0): Entry(
+        at={
+            128: (+0.5831, 5.1629, +0.0729),
+            256: (+0.6345, 0.6355, +0.2196),
+            512: (+0.6345, 0.6355, +0.2196),
+        },
+        was=(0.54, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '005/normal', 0): Entry(
+        at={
+            128: (+0.7256, 2.9432, +0.0004),
+            256: (+0.8941, 0.9900, +0.0005),
+            512: (+0.8941, 0.9900, +0.0005),
+        },
+        was=(0.75, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '005/normal', 1): Entry(
+        at={
+            128: (+0.7328, 2.9209, +0.0003),
+            256: (+0.9061, 0.9470, +0.0003),
+            512: (+0.9061, 0.9470, +0.0003),
+        },
+        was=(0.75, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '005/normal', 2): Entry(
+        at={
+            128: (+0.4847, 0.8259, -0.0032),
+            256: (+0.9416, 0.4477, +0.0042),
+            512: (+0.9416, 0.4477, +0.0042),
+        },
+        was=(0.66, 256),
+    ),
+    ('Kutejnikov__Bricks_and_tiles', '005/roughness', 0): Entry(
+        at={
+            128: (+0.8583, 10.5119, -0.2394),
+            256: (+0.8895, 4.3310, -0.3724),
+            512: (+0.8930, 4.3197, -0.3733),
+        },
+        was=(0.77, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0): Entry(
+        at={
+            128: (+0.8604, 8.8715, -0.1126),
+            256: (+0.8725, 2.5524, -0.0143),
+            512: (+0.9056, 1.6993, -0.0004),
+        },
+        was=(0.84, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0): Entry(
+        at={
+            128: (+0.9338, 0.7747, -0.1042),
+            256: (+0.9149, 0.6321, -0.0967),
+            512: (+0.9147, 0.6129, -0.0978),
+        },
+        was=(0.82, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 1): Entry(
+        at={
+            128: (+0.9541, 0.5522, +0.0148),
+            256: (+0.9775, 0.5549, +0.0097),
+            512: (+0.9860, 0.5508, +0.0088),
+        },
+        was=(0.92, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2): Entry(
+        at={
+            128: (+0.7855, 0.1217, -0.0038),
+            256: (+0.8389, 0.1953, -0.0041),
+            512: (+0.8847, 0.2001, -0.0048),
+        },
+        was=(-0.46, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0): Entry(
+        at={
+            128: (+0.9620, 1.4562, +0.0250),
+            256: (+0.9620, 1.2120, +0.0414),
+            512: (+0.9619, 1.1165, +0.0474),
+        },
+        was=(0.93, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/metallic', 0): Entry(
+        at={
+            128: (+0.9979, 1.0840, +0.0021),
+            256: (+0.9998, 1.0306, +0.0008),
+            512: (+0.9999, 1.0201, +0.0006),
+        },
+        was=(0.99, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 0): Entry(
+        at={
+            128: (+0.9642, 1.3880, +0.0001),
+            256: (+0.9642, 1.2059, -0.0001),
+            512: (+0.9701, 1.1717, -0.0003),
+        },
+        was=(0.93, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 1): Entry(
+        at={
+            128: (+0.9640, 1.3826, +0.0002),
+            256: (+0.9628, 1.2020, +0.0003),
+            512: (+0.9687, 1.1590, +0.0001),
+        },
+        was=(0.92, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 2): Entry(
+        at={
+            128: (+0.4911, 0.5299, +0.0005),
+            256: (+0.6995, 0.6057, +0.0004),
+            512: (+0.8486, 0.9558, -0.0035),
+        },
+        was=(0.72, 256),
+    ),
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0): Entry(
+        at={
+            128: (+0.9373, 0.7196, -0.0640),
+            256: (+0.9349, 0.6836, -0.0639),
+            512: (+0.9339, 0.6750, -0.0639),
+        },
+        was=(0.91, 256),
+    ),
 }
 
 #: WHAT IS OUTSIDE A HEALTH BAR TODAY, frozen exactly like `CONSTANT_YIELDS_RENDER2` above.
@@ -1606,32 +1974,50 @@ GUARD_TABLE = {
 #: outside a bar). Both are strictly more than the single correlation floor this replaces,
 #: which had no notion of amplitude or level at all.
 HEALTH_CENSUS = {
-    (('Kutejnikov__Auras', 'basecolor', 0), 'dc'),
-    (('Kutejnikov__Auras', 'basecolor', 0), 'band'),
-    (('Kutejnikov__Auras', 'basecolor', 1), 'dc'),
-    (('Kutejnikov__Auras', 'basecolor', 1), 'band'),
-    (('Kutejnikov__Auras', 'basecolor', 2), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', 'ambientocclusion', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', 'ambientocclusion', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', 'basecolor', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', 'basecolor', 1), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', 'basecolor', 2), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', 'emission', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', 'emission', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', 'emission', 2), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', 'height', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', 'height', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', 'normal', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', 'normal', 1), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', 'normal', 2), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', 'roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', 'roughness', 0), 'band'),
-    (('minime453__Chesterfield_PBR_Material', 'AO', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'AO', 0), 'band'),
-    (('minime453__Chesterfield_PBR_Material', 'basecolor', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'basecolor', 2), 'band'),
-    (('minime453__Chesterfield_PBR_Material', 'height', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'roughness', 0), 'dc'),
+    (('Kutejnikov__Auras', '004/basecolor', 0), 'band'),
+    (('Kutejnikov__Auras', '004/basecolor', 0), 'dc'),
+    (('Kutejnikov__Auras', '004/basecolor', 1), 'band'),
+    (('Kutejnikov__Auras', '004/basecolor', 1), 'dc'),
+    (('Kutejnikov__Auras', '004/basecolor', 2), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '002/height', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '002/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '003/ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '003/basecolor', 1), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '003/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '003/normal', 1), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/normal', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 1), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/height', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '004/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 1), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/height', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '005/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0), 'band'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2), 'band'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0), 'dc'),
 }
 
 #: Causes for health-bar failures whose mechanism IS traced. A `Cause` pins its quantity
@@ -1697,7 +2083,7 @@ GUARD_CAUSES = {
 #: both zero information; the difference is that only one of them is silent.
 CONSTANT_YIELDS_RENDER2 = {
     'Kutejnikov__Auras': 0,
-    'Kutejnikov__Bricks_and_tiles': 18,
+    'Kutejnikov__Bricks_and_tiles': 9,
     'minime453__Chesterfield_PBR_Material': 0,
 }
 
@@ -1813,7 +2199,7 @@ def test_render2_reference_agreement_does_not_regress():
             # cycles, which is the half of the instrument that sees an amplitude collapse.
             for name, chan, ours, ref in refcompare.compare_pack(
                     pack, refs, max_dim=grid, outputsize='implied',
-                    renderer='render2', grid=None):
+                    renderer='render2', grid=None, qualify_graph=True):
                 if chan is None:
                     continue
                 r = refguard.measure(ours, ref)

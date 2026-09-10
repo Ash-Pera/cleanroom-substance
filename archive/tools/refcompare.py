@@ -436,7 +436,7 @@ def _renderer(which):
 
 
 def compare_pack(pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer='render',
-                 grid=SIZE):
+                 grid=SIZE, qualify_graph=False):
     """Yield (output name, channel, ours, reference) arrays for every paired output.
 
     `outputsize` is `(log2 w, log2 h)`, or the string `'implied'` for whatever this
@@ -462,8 +462,44 @@ def compare_pack(pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer='rend
     if not asms:
         return
     for _asm_path in sorted(asms):
-        for _row in _compare_one(_asm_path, refs, max_dim, outputsize, renderer, grid):
+        if _excluded_export(pack, _asm_path):
+            continue
+        for _row in _compare_one(_asm_path, refs, max_dim, outputsize, renderer,
+                                 grid, qualify_graph):
             yield _row
+
+
+#: Export sets that CANNOT be scored, and why -- checked, not assumed. An entry here is a
+#: directory whose maps were produced from inputs the package does not record, so no correct
+#: renderer can reproduce them and agreement with them is not evidence about a renderer.
+#:
+#: `Kutejnikov__Bricks_and_tiles` ships x_Bricks_Textures_1 and x_Bricks_Textures_2. Their
+#: .sbsasm, their .xml manifest and all five icons are BYTE-IDENTICAL -- compared by hash,
+#: every file in both packages matches -- and the manifest declares `$randomseed` type="4"
+#: default="0" on all five graphs. The exports differ anyway, and per channel Textures_1
+#: against Textures_2 correlates +0.02..+0.14 on the three randomised graphs while reaching
+#: +0.79..+0.97 on the two deterministic ones, which is the signature of a seed chosen at
+#: export time and written down nowhere. Scoring our render against it measures the seed.
+#:
+#: THIS IS A SCORING EXCLUSION AND NOT A PROVENANCE ONE. The maps are legitimate and stay in
+#: the corpus; `reference_packs` still returns them and a reader may still look at them.
+UNSCORED_EXPORTS = frozenset({
+    ("Kutejnikov__Bricks_and_tiles", "Textures_2"),
+})
+
+
+def _excluded_export(pack, asm_path):
+    """True where `asm_path`'s own export set is in `UNSCORED_EXPORTS`.
+
+    Matched on the assembly's `x_<package>_<name>` directory, the same correspondence
+    `_package_refs` reads, so the two cannot disagree about which set an assembly belongs to.
+    """
+    parts = os.path.normpath(asm_path).split(os.sep)
+    own = next((c for c in parts if c.startswith("x_")), None)
+    if not own:
+        return False
+    return any(p == pack and own.lower().endswith(n.lower())
+               for p, n in UNSCORED_EXPORTS)
 
 
 def _package_refs(asm_path, refs):
@@ -495,7 +531,7 @@ def _package_refs(asm_path, refs):
 
 
 def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render',
-                 grid=SIZE):
+                 grid=SIZE, qualify_graph=False):
     asm = sbsasm.Assembly(asm_path)
     refs = _package_refs(asm_path, refs)
     names = manifest.output_names(asm)
@@ -599,6 +635,12 @@ def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render',
                           if _key(_ch) and _key(_ch) in _key(os.path.basename(r))]
                 if paired:
                     name = _ch
+        # ONE KEY PER GRAPH, when the caller asks. A multi-graph pack yields the same
+        # (name, channel) once per graph, and a caller keyed on that alone keeps whichever
+        # arrives last -- which for Bricks was graph 005 of one package, so five graphs were
+        # guarded by one. Qualified, each graph is its own row and none can hide another.
+        if qualify_graph and gdir:
+            name = "%s/%s" % (gdir, name)
         if rec not in produced or not paired:
             yield name, None, None, ('not rendered' if rec not in produced
                                      else 'no matching reference')
