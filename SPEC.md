@@ -634,12 +634,18 @@ and the positional rule produce identical name lists on **78,783 of 78,783** rec
 both filters that use it. The positional rule is not a second mechanism; it is this one seen
 from the far end of the header.
 
-**Where it is vacuous, and that is not a gap.** `fxmaps` has no parameter fields at all — the
-walk reports zero on all 41,901 records — and its parameters live in the FX entry table (§8)
-rather than the record header. The masks above are still well-formed, they are simply never
-matched. A memo that attributed header parameters to it named **0 of 95,426** slots inside the
-header it claimed them from, against `levels` at 160,106 of 169,219 (94.61%): the two are not
-one rule at two severities but a working rule and a baseless attribution.
+**Where it was called vacuous, and is not.** This section used to say `fxmaps` "has no
+parameter fields at all" and that its parameters live only in the FX entry table (§8). The
+PATTERNS' parameters do; the NODE's own sit in these five fields, and three are named by
+paired sources: field 0 is `background` (`channel` width — one word grey, four colour;
+`ie_particles`' colour node states `0 0 0 1` and its record bakes (0, 0, 0, 1)), field 1
+`hurst` and field 2 `opacitymult` (`Clouds_3_Animated` states 0.42 and 10.7 on its one node and
+record 50 bakes them there). Field 3's baked arm is four words and its program arm returns a
+4-vector from the FX-Map's slot 0, field 4's from slot 4; both are unnamed. Over 41,164
+records, 61,501 placements agree with the walk. The earlier memo that attributed header
+parameters to this filter named **0 of 95,426** slots, and that count stands: it was placing
+them in the wrong words, not naming fields that do not exist. See FORMAT-NOTES.md, "Graph
+001's first annihilation point is a white canvas the file states".
 
 **ONE REGION OF `w1` IS NOT FIELDS AT ALL, AND THE FILE PROVES IT RATHER THAN SUGGESTING
 IT.** `transformation`'s `w1` bits 0-4 are a 5-bit INTEGER. They are not `(state << 2k)`
