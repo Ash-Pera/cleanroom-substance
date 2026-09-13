@@ -58793,3 +58793,118 @@ flipping it on this evidence would be trading a default for one record's benefit
 settling what -1 means. What the next question is, though, is now specific: find where the
 level goes wrong upstream of record 10055, whose `levels` takes a live input at mean 0.643 and
 returns a constant 1.0.
+
+## The level fault upstream of 10055 is a white-noise FX-Map emitting ONE pattern, and the cons chain is quadrant subdivision
+
+THE TRACE, first, because it is short once the right question is asked. 10055 is a
+threshold: `levelinlow 0.2784, levelinhigh 0.3016`. Its input 10054 is an identity `levels`
+on 10053 = `max(10052, 9873)` (mode 5), and 10052 is a CONSTANT 0.611 = 0.170 + 0.52 x 0.849,
+two `add` blends of two more constants. So the engine's 10054 must straddle 0.29 and ours
+sits at 0.611 everywhere; the whole question is why those constants are constants. Both
+reach back to 10002, the sum of eight `levels`-weighted octaves -- `levelouthigh` 0.2507,
+0.2507, 0.1229, 0.0602, 0.0295, 0.0145, 0.0071, 0.0035, one halving per octave -- and every
+octave saturates: 9994 reads 0.922 against `levelinhigh` 0.819 and emits its full 0.2507.
+The cone of 10002 is 79 records -- 21 blend, 12 levels, 11 gradient, 25 transformation,
+8 blur, one `uniform` at 0.0 and ONE `fxmaps`, record 9924 -- and each octave is
+`gradient(0.5 * tile2(prev) + 0.5 * rot180(prev))` of the one before, so every octave is a
+function of 9924 alone. 9924 renders a constant 0.9217, which is `rand(1.0)` at `$number`
+0 -- the number `sbsruntime.rand`'s own docstring names as the old flat-render signature.
+A constant base makes eight constant octaves, the octave `levels` clip them to their
+ceilings, and 10055 sees 0.611 where the engine sees a field around 0.29. THE LEVEL FAULT
+IS NOT AN ARITHMETIC STEP; IT IS A NOISE GENERATOR THAT EMITS ONE PATTERN.
+
+WHY 9924 EMITS ONE PATTERN. Its chain is `0x18B` + `0x89` with `numberadded` =
+`(n + (n-1) % 2)^2`, n = 2^|log2 w - log2 h| = 1 on a square output; its size program is
+`$outputsize + max(4 - $outputsize)`, so it is 16 x 16 whatever the output size; and its
+entry run is
+
+    0x420008 {branchoffset = slot 12}  ->  0x20008  ->  0x20008  ->  0x20008  ->  0x20008
+        ->  0x100048 {opacity = rand(1.0)}
+
+`fxrender.entries` reads the four `0x20008` as structural links and `_walk` emits the leaf
+once, full-canvas, so the record is one square at one random opacity. Record 9893 is the
+same construct and renders the same 0.9217.
+
+WHAT THE FOUR CELLS ARE, from a permitted source. `SubstanceDesigner__Clouds_3_Animated.sbs`
+(`pairs5/`, author "", formatVersion 1.1.0.11829) declares an FX-Map of SIX `paramset` nodes
+in a chain, and in every one of the five that have children, **`output0`, `output1`,
+`output2` and `output3` all name the same child**. The first four carry no parameters at
+all; the fifth carries `patterntype 8, patternsize (3, 2), randomseed 42` and a
+`branchoffset`; the sixth `patterntype 8, patternsize (3, 2), randomseed 16`. Its compiled
+record 50 walks four bare `0x20008` cells and then `0x13520658` holding 42 and (3.0, 2.0)
+and `0x13100658` holding 16 and (3.0, 2.0) -- the order and count of the source, node for
+node. SPEC 13.7's "no node has more than one child, every node being ... a leaf `paramset`"
+counted DISTINCT children, and a paramset's four outputs are four quadrants of its region.
+The bare cell is a Quadrant with nothing to draw, and k of them in a row are k nestings of
+four. That is the subdivision 13.7 said was "not found": it was in the chain-family count
+the whole time.
+
+THE POINTERS SAY THE SAME THING WITHOUT THE SOURCE, and they say more. On `Bricks.sbsasm`
+(the current layout; Clouds_3's older format puts the parameter block out of line, so the
+slot reading below is for the layout the reference packs use):
+
+  * Header word 2 of an `fxmaps` record names the tree root: the first chain node where
+    there is a chain (171 of 171), the first entry cell where there is none (20 of 20).
+  * A cell is `[tag][params ptr][child ptrs][bit-4 word][params...]`, and a bare cell is
+    `[tag][next]`. `FX_STRUCTURAL_BITS` already records bit 17 as ONE pointer word and bit 16
+    as FOUR; read back, bit 17 is one child on all four outputs and bit 16 is one pointer
+    per output with 0 for an unconnected one. 9804's leaf `0x12410648` holds
+    `[->leaf2, 0, ->leaf2, 0]`: its second pattern is drawn in outputs 0 and 2 only.
+  * 9804's four `0x420008` levels carry `branchoffset = cartesian(rand(r), rand(6.28))`
+    with r = 0.25, 0.125, 0.0625, 0.03125 at depths 3..6, and its two leaves r = 0.015625
+    and 0.0078 at depths 7 and 8. r = 2 x 2^-depth at every level. An author writing a
+    constant that halves with each nesting is stating that the offset's unit does NOT
+    shrink with the region -- a canvas-unit jitter scaled by hand -- and is also stating,
+    from the compiled side alone, that the cells nest.
+
+HOW MUCH OF THE CORPUS THIS TOUCHES. Maximum leaf depth per record, reading the pointers:
+
+    Bricks_Textures_1    191 fxmaps   depth 0: 96   3: 5   4: 15   5: 15   6: 20   7: 15   8: 20   9: 5
+    RoofTiles            113          depth 0: 33   2-9: 80
+    RustyMetal            39          depth 0: 15   1-9: 24
+    ChesterfieldSofa      16          depth 0: 13   6: 1   8: 2
+    Auras_FX              48          depth 0: 47   5: 1
+    SandyStonePath        26          depth 0: 22   4-8: 4
+
+Half of Bricks' FX-Maps subdivide, 15 of them with per-output children. Chesterfield's
+`metallic`, the one MAE-0.0004 arbiter, sits on records of depth 0.
+
+THE PROBE, `archive/tools/fx_subdiv_probe.py`: a monkeypatch of `render2.fx.emissions` that
+walks the tree by its own pointers, gives each cell its own region (the root the canvas,
+each output a quarter of its parent's), evaluates each cell's programs once per region with
+a fresh `rand` draw, and draws a cell's pattern at region centre + branchoffset with
+`patternsize` and `frameoffset` in region units; knobs for the root, the offset units and
+the output-to-quadrant order. Whole file, `--dim 256`, `$outputsize` 10, scored by graph
+identity against Textures_1 on a 128 grid:
+
+    variant                                 001     002     003     004     005
+    baseline (HEAD, K=1)                    0.000   0.825   0.801   0.745   0.869
+    subdivide, offsets in region units      0.000     --    0.708     --      --
+    subdivide, offsets in canvas units      0.000   0.599   0.724   0.663   0.706
+      + fx.negopacity = abs                 0.001   0.611   0.754   0.669   0.735
+
+9924 comes alive -- 1024 cells, mean 0.80, sd 0.16 -- and so do 9804/9805/9806 as a
+hierarchical scatter of (5, 1) strokes, which is what six levels of halving jitter draw.
+Graph 001 stays constant and the four deterministic graphs LOSE 0.05-0.20. So the
+STRUCTURE is established and the DRAWING MODEL is not, and the two must not be confused:
+the probe's first picture already says where the model is off. A 16 x 16 record whose leaf
+sits under five Quadrants draws 32 x 32 cells, four per pixel, and `max`-combining four
+uniform draws gives mean 0.80 where a white noise reads 0.50 -- either the root does not
+subdivide, or the leaf's region is its parent's, or the combine is not `max`. Deep leaves
+are 4^8 and 4^9 patterns (65,536 and 262,144, against `MAX_PATTERNS` 300,000), so the
+per-pattern raster is also the wrong shape for this: a subdivided leaf is a grid and should
+be drawn as one.
+
+WHAT GRAPH 001 STILL NEEDS, measured under the probe with `abs`: the first annihilation
+point moves from 10055 to 9816 -- `levels` in [0.66, 0.82] on an input at 0.001, the tail
+of `9806 - 9805 - 9804` (mode 2 twice), which under the scatter draw is ~0 -- and the next
+is 10253, a `pixelprocessor` fed by a chain holding -7.499, -3.499, -512 and -1024 with
+`distance` 10173 saturated at 1.0: a data-passing construct, not an image. Graph 001's
+constants have at least three independent causes; this note settles the first
+structurally and leaves the other two named.
+
+NOT ACTIONED in `render2`. What lands here is the reading of the cells and the pointers,
+the source that corroborates it, and a probe whose knobs are the open questions. The draw
+model is to be arbitrated on graphs 002, 004 and 005, which are deterministic and already
+at 0.75-0.87, before anything is defaulted -- a change that makes a noise generator live
+and costs 0.1 on every scored graph is not one to switch on.
