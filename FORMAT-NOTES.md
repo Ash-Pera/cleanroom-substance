@@ -59020,3 +59020,202 @@ channel moves less than the renderer's own seed floor. 003's subdivided records 
 detail, not layout, so this graph cannot arbitrate them; a graph whose layout is a
 subdivided record -- 001 once it renders, or RoofTiles, 80 of 113 records subdividing --
 is where those two questions go.
+
+## Quadrant subdivision lands in render2: the tree arm draws 90 of 95 Bricks trees exactly as the probe did, and the five it draws differently are the probe's fault
+
+WHAT LANDED. `tools/render2/fxtree.py`, behind `assume.QUESTIONS['fx.subdivide']` with arms
+`flat` (the renderer as it stood) and `tree`, default `flat`. The tree arm reads every
+entry cell as a Quadrant from the cell's own pointer words, gives the root the canvas and
+its children the canvas too (`ROOT=0`), each deeper cell a quarter of its parent's region,
+evaluates each cell's programs once per region with a fresh `rand` draw, and draws each
+cell's m patterns as ONE `Batch` through a vectorised raster. `fx.emissions` dispatches to
+it after the shared preamble (chain, table, seeding, `batch_reads`); `fx.splat` draws a
+`Batch` through `fxtree.draw` and a dict through the loop as before. Two further arms hold
+the open questions: `fx.tree.branchoffset` (`canvas` | `region`, default canvas) and
+`fx.tree.order` (`rowmajor` | `clockwise` | `colmajor`, default rowmajor). The per-region
+draw is a third input to `sbsruntime.rand`'s hash, `CONTEXT['salt']`, which the tree
+runner sets to a per-region column beside the `$number` column and clears; at zero it is
+`+ 0.0` on every draw and the flat arm is bit for bit what it was (asserted by
+`test_fxtree`). `archive/tools/structstats.py --records` takes `--assume k=v,...` and no
+longer imports the probe. SPEC.md's §8 "structural linked-list cells ... excluded from
+emission" and §13.7 "Subdivision -- not found" are rewritten to the Quadrant reading, and
+`fxrender.entries`' "structural, not draws" comment says what half of it still stands.
+All measurements below are at commit `f095619` (this change on `536219d`; the working tree
+also carried another session's uncommitted reformat and `fxnodes` work, which changes no
+render), `--dim 256`, unless stated.
+
+THE CELL LAYOUT, MEASURED, AND ONE PLACE `fx_entry_walk` HAS IT WRONG. The probe read the
+child pointer at word 2 of a parameterised cell and word 1 of a bare one, and nothing
+checked that against the bits the walk marks structural. Over the six reference packs and
+the 437-file corpus, for every bit-7-clear cell that has parameters or a bit-4 word, word 1
+addresses the cell's first parameter word at exactly `base + 4 * (2 + n)`, n the number of
+child-pointer words -- 136,089 of 136,089 -- so the pointers are at word 2 and the layout is
+
+    [tag] [params ptr] [bit-7 word]? [child ptrs: 4 under bit 16, 1 under bit 17] [bit-4 word]? [params ...]
+
+with a bare cell (no parameter bits, no bit 4) `[tag][child]`, 52,178 of them. The bit-4
+word sits AFTER the pointers: 27,519 corpus cells carry bit 4 with a bit-17 pointer,
+27,500 resolve at word 2, 0 at word 3, 19 nowhere (old-format files, below), and in all
+27,500 word 3 holds an integer below 256 -- 42 and 16 on the Clouds_3 cells whose source
+declares `randomseed 42` and `16`, 11, 3, 80 and 10 elsewhere. `sbsasm.fx_entry_walk`
+lays the structural bits out in ascending order, 4 before 16 and 17, which places the
+pointer one word late on every bit-4 cell. Nothing rendered differently because both
+words are one slot wide and no PROGRAM slot moves; only a pointer reader sees it, and
+this is the first one. Bit 7's word sits BEFORE the pointers: 5,100 of 5,100 bit-7 cells
+with a bit-17 pointer resolve at word 3 and 0 at word 2. The probe read word 2
+for those too, so on Bricks' ten `0x84520088` cells it read the bit-7 word as the child
+and lost the subtree under it. `fxtree.pointer_slot` states the slot with this measurement
+and does not take it from the walk; `fx_entry_walk`'s order is left as it is, because
+reordering FX_PARAM_BITS touches every table the walk feeds and the correction here is to
+a reader that did not exist.
+
+TWO MORE THINGS THE PACKS' POINTERS DO. A pointer can land on a CHAIN NODE:
+ChesterfieldSofa record 321 and StylizedCobblestoneStreet 607 each have a Quadrant whose
+pointer lands on a `0x89` gate whose run hands off to the next entry cells -- the
+"handoff goes both ways" of `fx_walk`. The tree reads through it to the first entry its
+run names (`rec._fx_chain_run`); the gate itself is driven by the chain walk per emission
+as it already was. And a walk offset can sit one word before the tag (`fxrender.entries`:
+"the run begins one word later"), which the reader re-bases on the tag word. Over the
+whole corpus 40,869 of 41,164 fxmaps records read as a tree; 178 refuse because the tag
+word is not at the offset -- the older out-of-line layout, `concrete_049`, `roofing_007`,
+`Road_01` -- and 106 on a pointer that resolves to nothing, all in the same twelve
+old-format files. 0 of the 737 pack records refuse. Depth over the corpus:
+
+    max depth     0       1     2      3      4      5      6      7      8     9
+    records   17,484    533  1,637  1,555  4,384  4,404  2,367  4,119  3,974   412
+
+THE PORT IS EXACT WHERE THE PROBE IS RIGHT. With the probe's own salt scheme spliced into
+a scratch copy (root salt `number * 7919 + 1`), every Bricks fxmaps record at native size
+capped at 256, tree arm against `SUBDIV=1 ROOT=0 BO=canvas SZ=region QORDER=rowmajor`:
+90 of 95 subdivided records bit-identical (max |diff| < 1e-6), 5 differ by 1.0, and the
+five are 441, 2859, 5326, 7758, 9838 -- the records holding the ten bit-7 cells, where
+the probe draws 5,464 patterns and the tree arm 87,382. The tree reading, the region
+geometry, the units and the raster are therefore the probe's, and the difference is the
+probe's pointer slot.
+
+THE SALT IS NOT THE PROBE'S, DELIBERATELY. The probe salted the root by `$number`, so
+every depth-0 record it touched -- the majority, and Chesterfield's `metallic` among them
+-- was reseeded relative to the flat arm. The tree arm gives the root salt 0, the flat
+hash exactly, so a record whose tree is one cell draws what the flat arm draws:
+`test_fxtree` holds 12 depth-0 Bricks records bit-identical under both arms, and the
+whole-file diff below says the same for every pack. Children take `salt * 4 + q + 1`, as
+the probe did, so the subdivided draws are a reseed of the probe's and every comparison
+against the probe below is read against the renderer-side seed floor the previous entry
+measured (height: mean 0.674 -> 0.653, line_jitter 1.24 -> 1.25, blob_d 44.8 -> 44.4,
+tone_between 0.033 -> 0.037).
+
+THE GRID DRAW. `fxtree.draw` is `fx.splat`'s per-pattern arithmetic written over arrays:
+every (pattern, tile-wrap) copy gets a (ky, kx) block sized to the largest in its chunk,
+local coordinates and coverage are computed on the (n, ky, kx) block, and the covered
+samples are scattered with `np.maximum.at`, which IS the `max` combine because a maximum
+is order-free (`add` is `np.add.at`; `over` is order-dependent and falls back to the
+per-pattern loop under the flat budget). Copies whose block is 4,096 px or more take a
+slice path that is the loop's own tile code, because gathering a canvas-sized block by
+fancy index costs three passes a slice does not: Bricks record 711 -- 1,024 patterns of
+size (5, 5), each wrapping 36 times over 256 x 256 -- drew in 3.0 s batched against the
+loop's 0.43 s, and 0.58 s with the slice path. The casts are the loop's own (float32
+parameters, float32 sum of `branchoffset` and `frameoffset`, `(image * opacity) *
+coverage`), so under `max` the equality is EXACT: `test_fxtree` draws 16 synthetic batches
+-- four tags, rotations, wraps, grey and colour, image-sampled -- through both and asserts
+zero difference. Record 430, 87,382 patterns at depth 8: emit 0.02 s, draw 0.06 s. The
+budget is `MAX_ROWS` = 4^10 rows per cell evaluation (regions x chain emissions) and
+`MAX_DEPTH` 12, refused with `Unsupported` -- no record of any pack reaches either.
+
+THE SUITE, before and after. `python3 -m pytest tools/render2/test_render2.py
+archive/tools/test_filters.py -q` on the working tree (which carries another session's
+uncommitted `black` reformat and `fxnodes` work on top of 536219d):
+
+    before    40 passed in 663.60s
+    after     40 passed in 680.12s
+    new       tools/render2/test_fxtree.py   7 passed in 1.35s
+    fast lane archive/tools/t               19 passed in 35.77s
+
+The task brief expected `test_render2_reference_agreement_does_not_regress` to fail on
+HEAD; on this working tree it passes both before and after, so there was nothing to hold
+unchanged but the whole set, which is unchanged.
+
+THE RECORD INSTRUMENTS, `structstats.py --records 9924,343,9804,9805,9806 --assume
+fx.subdivide=tree`, native size, no reference:
+
+    record   size      pats    mean     sd     p5    p95  lag-1  pitch_x  blob_d
+    9924     16x16      342   0.490  0.287  0.051  0.951  +0.020    5.0    3.19
+    343      16x16      342   0.490  0.287  0.051  0.951  +0.020    5.0    3.19
+    9804     256x256  13654   0.517  0.318  0.000  0.916  +0.879   67.0   18.4
+    9805     128x128   1366   0.631  0.241  0.121  0.928  +0.872     --    8.4
+    9806     64x64       86   0.000  0.000  0.000  0.000      --     --     --
+    flat: 9924/343 draw 2 patterns, a constant 0.922; 9804 6, 9805 5, 9806 3
+
+9924 and 343 are uniform white noise (0.500 / 0.289 / 0) to the seed floor; the probe's
+own salt reproduces the notebook's 0.513 / 0.292 / -0.012 to the digit. 9806 is the
+`opacity = -1` record of the graph-001 entry and is zero under every arm. Under
+`fx.tree.branchoffset=region` 9804 goes to mean 0.663, sd 0.207, blob_d 161 -- the
+halving-per-level jitter collapses to a cluster -- so a per-record instrument CAN separate
+the units where graph 003's cannot; what it lacks is a reference for the record.
+
+GRAPH 003, `structstats.py --render`, height, 256-px grid, `$outputsize` 10:
+
+                     mean    p5     p50    p95   line_w  jitter  blob_d  tone_betw  tone_within
+    Textures_1       0.520  0.298  0.526  0.728   6.0    1.98    34.5    0.039      0.054
+    flat             0.650  0.158  0.726  0.875   4.0    1.17    46.1    0.022      0.113
+    tree             0.681  0.158  0.750  0.985   4.0    1.19    45.7    0.035      0.122
+    probe ROOT=0     0.681  0.158  0.746  0.987   4.0    1.22    45.3    0.028      0.126
+
+Tree against probe: within the seed floor on every column. The four discrepancies the
+previous entry named as not the subdivision's stand at the same values under the tree
+arm -- mortar 4 px against 6, jitter 1.2 against 2.0, texture inside a brick 0.12 against
+0.054, mortar floor 0.16 against 0.30 -- and the tone per brick is the one thing the tree
+adds (0.035 against 0.039, flat 0.022).
+
+CORR, the regression guard, whole file at `$outputsize` 10 scored by graph identity on a
+128 grid (the probe's own scoring path, without its `rand` patch):
+
+    arm                          001     002     003     004     005
+    flat (HEAD)                0.000   0.825   0.801   0.745   0.869
+    probe ROOT=0 BO=canvas     0.000   0.791   0.785   0.738   0.812
+    tree                       0.000   0.790   0.784   0.733   0.819
+
+004 moves -0.005 and 005 +0.007 against the probe, inside the 0.03 guard; against flat
+they move -0.012 and -0.050, which is the cost the first entry of this thread measured
+and the reason the default stays `flat`. ChesterfieldSofa through `refcompare`
+(render2, implied, 256): every channel identical to five decimals under both arms,
+`metallic` MAE 0.00123 at the 64 grid, corr +0.9998; its three subdivided records change
+one non-declared output and no declared one.
+
+WHOLE-FILE DIFFS, flat against tree at `--dim 256`, implied `$outputsize`: Bricks 8,686
+of 12,585 outputs change, 20 declared; Auras 8 of 427, 1 declared; RoofTiles 1,139 of
+1,639, 0 declared (its declared outputs are among the 991 records both arms already
+fail); StylizedCobblestoneStreet 224 of 625, 0 declared; RustyMetal 147 of 1,115;
+Chesterfield 1 of 881. No pack gains or loses a failure under the tree arm, and no record
+refuses on budget.
+
+TIMINGS, Bricks at `--dim 256`, `$outputsize` 10, one process, each record's time
+credited to every graph whose declared outputs' cone holds it:
+
+    graph      cone     flat            tree
+    001       2466    4.4s (fx 1.9)   5.5s (fx 2.9)
+    002       2502    4.8s (fx 2.1)   5.6s (fx 2.9)
+    003       2533    4.9s (fx 2.0)   5.6s (fx 2.9)
+    004       2558    4.5s (fx 2.0)   5.3s (fx 2.8)
+    005       2526    4.5s (fx 2.0)   5.3s (fx 2.8)
+    whole file          29.7s           34.0s
+
+Every graph holds the same 19 subdivided FX-Maps, so the tree arm costs each about a
+second, of which the fxmaps records themselves are 0.9 s; the rest is downstream records
+whose inputs are no longer constant. Per fxmaps record the tree arm is 3.3 s emit + 13.1 s
+draw over the 191 records against 3.0 + 8.0 flat, and the whole-file figures move within
+run-to-run noise (33 s and 29 s flat, 37 s and 34 s tree in four runs).
+
+WHAT THIS DOES NOT SETTLE. `branchoffset`'s unit and the quadrant order are arms with
+defaults and no arbiter -- 003 cannot see them, and the record instrument above says
+where an arbiter would come from. `$pos` per region is untouched: `make_runner` still
+sets it from `fx.pos` once per record. Under both paths of the tree arm an entry
+parameter's slot writes stay in the per-emission snapshot and do not reach the chain's
+later emissions -- the batched flat path has the same property, the scalar walk does not,
+and no pack record was seen to depend on it (Bricks record 553's `opacity` writes slot 27
+for its own `branchoffset` to read, which the shared per-cell frame honours). A bit-16
+root -- one in RustyMetal, 235 in the corpus -- gets each distinct child at the full
+region, which is what "the root's region is its children's" says and nothing has tested.
+The 178 + 106 old-format corpus records refuse under the tree arm and render under flat.
+And the default is still `flat`: the instrument table says the tree arm adds the tone per
+brick and moves nothing else outside the floor, the corr guard says it costs 0.01-0.05 on
+the deterministic graphs, and which of those decides is the next question, not this one.
