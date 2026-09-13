@@ -59219,3 +59219,229 @@ The 178 + 106 old-format corpus records refuse under the tree arm and render und
 And the default is still `flat`: the instrument table says the tree arm adds the tone per
 brick and moves nothing else outside the floor, the corr guard says it costs 0.01-0.05 on
 the deterministic graphs, and which of those decides is the next question, not this one.
+
+## Graph 001's first annihilation point is a white canvas the file states: every `opacity = -1` record bakes `background = 1.0`, the FX-Map header names `hurst` and `opacitymult` beside it, and reading them un-flattens 9815 without deciding the level
+
+THE BRIEF'S FACTS, CHECKED FIRST, because two of them are the probe's and not the
+renderer's. "9804 / 9805 / 9806 are a 256 / 128 / 64-px size chain of the same FX-Map" is
+not what the cells say: 9804 puts its two (5, 1) leaves at depths 6 and 7 under four
+`0x420008` jitter cells and three bare ones; 9805 puts them at depths 4 and 5 with a
+`cartesian(rand(r), 2 pi (rand(2) - 1))` jitter and a ROOT `branchoffset = slots[12]` the
+chain feeds; 9806 at depths 2 and 3 with the same chain-fed root. Three constructs at
+three scales -- 4-, 8- and 16-px cells on their own canvases -- not one at three sizes.
+And "its first annihilation point ... is record 9816" was measured through
+`/tmp/subdiv_trace.py`, which `exec`s the probe's preamble and so PATCHES `fx.emissions`
+with the probe's walk unless `SUBDIV=0` is set -- every number it printed for the tree
+arm was the probe's (`ROOT=1`: 9924 at 0.80). Under render2's own tree arm, `--dim 256`
+at `$outputsize` 10, 9816 is not on the annihilation list at all: its input 9815 is
+mean 0.007, 0.57% of pixels above 0.333 and 0.03% above 0.66, and 9816 comes out mean
+0.000 with sd 0.003 -- dead in every sense but the `sd < 1e-9` test. The scripts below
+import render2 directly (`/tmp/cone_trace.py`, no probe).
+
+THE RECORD HEADER, NOT THE ENTRY, IS WHERE THE ANSWER WAS. 9806 differs from its
+siblings in one more place than the entry nibble the graph-001 entry named: its `w1` is
+`0x295` against `0x294`, field 0 baked, and the slot holds `0x3f800000` = 1.0. Fields 1
+and 2 hold 0.66 and 0.44 on all three. SPEC 7.4 called these `fx_param0..3` and said the
+filter "has no parameter fields at all"; what the permitted sources declare on an
+`fxmaps` `compFilter` -- 64 nodes in 8 files -- is `colorswitch` 62, `outputsize` 39,
+`format` 36, `culling` 23, `background` (Float4) 20, `pixelsize` 13, `tiling` 2,
+`randomseed` 2, `hurst` (Float1) 1 and `opacitymult` (Float1) 1. Two pairings name three
+fields:
+
+    `SubstanceDesigner__Clouds_3_Animated.sbs`  ONE fxmaps node, `hurst 0.42`,
+        `opacitymult 10.7`; compiled record 50 (the one whose cells the source's six
+        paramsets already matched) bakes 0.42 at field 1 and 10.7 at field 2
+    `ie_particles.sbs`  two fxmaps nodes, two records; the colour node states
+        `background 0 0 0 1` and record 22 bakes (0, 0, 0, 1) at field 0 in FOUR words;
+        the grey node states none and record 21 bakes no field 0
+
+Corpus-wide the field is one word on grey records and four on colour ones -- the
+`channel` width `levels`' fields have -- and its colour values are (0,0,0,1) on 119 of
+167 baked, (0.784, 0.784, 0.784, 1) on 26, (0.498, 0.498, 1, 1) -- a flat normal -- on 15.
+So field 0 is `background`, field 1 `hurst` (the UI's Roughness) and field 2
+`opacitymult` (Global Opacity). `model.W1_PARAMS[4]` names them; fields 3 and 4 are
+listed for width only -- field 3's baked arm is FOUR words (the legend's `w1.6 = 4`;
+Auras_FX 314 holds (0.5, 0.5, 0, 1)) and its program returns `slots[0]` 4-wide, field 4's
+`slots[4]`. Placed against `decompose` over 41,164 fxmaps records: 61,501 of 61,501 field
+placements agree, 0 `Shifted`. The inventory in `test_render2` retires `4: (0, 2, 4)`.
+
+THE CENSUS THAT SETTLES WHAT THE -1 IS FOR (437 files, 41,164 fxmaps records):
+
+    baked opacity values     -1.0 x 4,068   0.3922 x 1,558   0.0 x 1,360   0.85 x 626
+                             1.0 x 150   (nine others, 30 in all)
+    the -1 sits on           0x12480648 x 2,064   0x124a0648 x 1,996   four other tags x 8
+    records with a negative baked opacity          2,071   field 0 = 1.0 on 2,071
+    records with baked opacity, none negative      2,874   field 0 = 1.0 on 0
+        (0.5 x 1,167, 0.498 x 34, 0.0 x 40, 0.4941 x 1, absent x 1,632)
+
+Perfect separation, 2,071 against 0, on the six reference packs too (42 against 0). The
+-1 is one library construct -- two tags, a (5, 1) pyramid stroke under two to seven
+Quadrants, header (1.0, 0.66, 0.44) or (1.0, 0.75, 1.1) -- compiled into 2,071 records
+across the corpus, and it always comes with a white canvas. A negative luminosity on a
+white canvas is a subtraction, and `max` cannot express it: under `max` the record is a
+constant 1.0 whatever the sign arm does. Hypothesis 4 of the brief -- that the -1 is
+something other than an opacity -- is REFUTED by the company it keeps; hypothesis 1 --
+that the FX-Map's own composite is signed -- is what the pair says. The operand order of
+`blend` mode 2 (hypothesis 2) is not in question: `d - s` with `d` = input 0 is source
+containment (28 of 28), and the transforms 9807 / 9809 carry `w1 = 0x3f` -- `k` = 31, bit
+5, no matrix, no offset -- an identity resample; only 9815 states a matrix, (2, 0, 0, 2).
+Scatter density (hypothesis 3): `fx.tree.branchoffset=region` clusters the strokes and
+makes the chain WORSE (9815 above 0.333: 4.3% against 14.7%, above 0.66: 0.0%).
+
+BIT 18 OF THE ENTRY TAG IS "A `blendingmode` IS DECLARED". Over the permitted paired
+sources, per file: paramsets declaring `blendingmode` / compiled pattern entries with
+bit 18 set:
+
+    ie_curve        43 of 43 declare (31 x 1, 4 x 2, 8 program)   51 of 74 entries set
+                    = the 43 own entries (0x95140088 x 39, 0x95140188 x 4) + 8 from a
+                    dependency (0x15140848)
+    ie_particles     2 of 2 (1, 2)                                  2 of 2
+    ie_pcloud       11 of 11 (6 x 1, 3 x 2, 2 program)            110 of 110
+    Bruno_Caustics   1 of 1 (1)                                     1 of 3 (two are deps)
+    triDraw          2 of 2 (2)                                     2 of 3
+    Simulator__Grid  0 of 4 declare                                 0 of 19
+    Clouds_3         0 of 6                                         0 of 4
+
+The bit does not say WHICH mode -- 1 and 2 both set it, and a program does -- and no
+permitted source states the default. Corpus-wide: 89,041 pattern entries clear, 6,443
+set; all 4,068 negative opacities on clear entries; subdivided records 22,495 clear-only,
+348 set-only, 542 mixed; flat records 12,244 / 5,215 / 25. Chesterfield's tufting
+records -- the ones `fx.combine = max` was arbitrated on -- set it (0xd5140088); Bricks'
+subdivided scatters, the -1 construct included, clear it. And Clouds_3's two leaves,
+declaring no mode, compute `opacity = rand(1) * 2 - 1` (the source, permitted): a signed
+luminosity under the undeclared default. Three facts point the same way, so `fx.combine`
+gains a per-cell arm, `bit18`: clear draws by signed `add`, set by `max`.
+
+WHAT LANDED, at `33007d4` (defaults unchanged; the working tree also carries another
+session's `black` reformat and `fxnodes` work, staged around): `fx.header` (`ignore` |
+`read`) initialises the canvas to `background` and multiplies every pattern's opacity by
+`opacitymult`; `fx.hurst` (`off` | `exp` = 2^(-hurst x depth) | `exp2` = 2^(-2 hurst x
+depth) | `pow` = hurst^depth) is a per-depth gain in the tree arm's grid draw, with
+`fx.hurst.absent` (`zero` | `one`) for a record that bakes no field 1; `fx.combine=bit18`
+as above. `fx.header_fields` reads the three by name, program arms through
+`Context.run`; `fxtree._gain` applies them per pattern; `fx._mode_for` resolves the
+cell's mode. `structstats --records` passes the header through. `test_fxtree` gains a
+test that 9806 / 9804 read as stated, that the default reads nothing, and that 9806 is
+the white canvas minus its strokes under the arms. Suite: fast lane 19 passed, 37.6 s;
+`test_render2` + `test_fxtree` 25 passed; the flat arm is bit-identical by construction
+(`header=None`, `_mode_for` returns the global mode).
+
+THE RECORD INSTRUMENTS, `structstats.py --records 9924,343,9804,9805,9806 --assume
+fx.subdivide=tree,...`, native size, no reference, at `33007d4`:
+
+    arm                                          9924         9804         9805         9806
+    negopacity=abs                          0.490/0.287  0.517/0.318  0.631/0.241  0.716/0.149
+    signed, combine=bit18, header=read      0.490/0.287  0.609/0.416  0.779/0.330  0.048/0.129
+      + hurst=exp                           0.490/0.287  0.062/0.063  0.192/0.141  0.520/0.162
+      + hurst=pow                           0.000/0.000  0.081/0.083  0.231/0.170  0.470/0.179
+    (9806 under the default `clip` is 0.000 on every arm; 343 reads as 9924 throughout)
+
+`pow` is REFUTED by the noise records: 343 and 9924 bake `hurst = 0.0` and put their
+`rand(1)` leaves at depth 4, and 0^4 draws nothing where the graph needs white noise.
+Under `exp` a baked 0 is "no attenuation", which is what an fBm exponent of 0 means and
+what those records want. Without `hurst` at all (`off`) the strokes subtract 0.44 each at
+every depth, 9806 goes to 0.048 and the chain is dead from the other side.
+
+THE CHAIN, graph 001 at `$outputsize` 10, `--dim 256`:
+
+                             tree, abs (baseline)      + signed, bit18, header, hurst=exp
+    9806  fxmaps                0.716 / 0.149               0.520 / 0.162
+    9805  fxmaps                0.632 / 0.241               0.192 / 0.141
+    9804  fxmaps                0.517 / 0.318               0.062 / 0.063
+    9808  blend 2  = 9807-9805  0.141 / 0.185               0.344 / 0.234
+    9810  blend 2  = 9809-9804  0.035 / 0.103   83% at 0    0.292 / 0.223   17% at 0
+    9811  levels in-low 0.333   0.007 / 0.048               0.115 / 0.176
+    9815  transform x2          0.007 / 0.044               0.115 / 0.175
+          fraction > 0.333          0.0057                      0.1469
+          fraction > 0.66           0.0003                      0.0081
+    9816  levels [0.66, 0.82]   0.000 / 0.003               0.002 / 0.025
+
+So 9815 becomes a field -- 14.7% of it above the first threshold where 0.6% was -- and
+the second threshold still catches 0.8% of it: 9816 is no longer flat and is still not a
+mask. Cone flatness does not move the right way: 1,920 of 2,466 flat (77.9%) before,
+1,939 (78.6%) after, the extra 19 being depth-0 records whose chain stamps overlap
+(0x15400348, 64 bells of size 2.82 at INTEGER centres, 0.92 under `max`, 1.0 under
+`add`). Annihilation points 13 -> 11; the first is now 10253, the `pixelprocessor` fed
+by -7.5 / -3.5 / -512 / -1024 the subdivision entry named, then 10400 / 10401 -- mode-2
+blends of 10056 and 10399 in both orders, whose two inputs are the SAME field (mean
+0.614, sd 0.486 on both) so `x - x` is 0 either way: two branches that should differ do
+not, a lead of its own -- then 10336 (add, 1.0) and 10276 (screen, 1.0). Graph 001's
+outputs: roughness sd 0.000 (flat) -> 0.009 (tree) -> 0.034 (these arms); height, AO,
+metallic constant under all three; basecolor and normal constant per channel.
+
+THE LEVEL IS THE OPEN QUESTION, AND IT IS SHARP. The authored thresholds want 9810 at or
+above 0.77 on a substantial fraction of the canvas -- the levels at 9816 is a RAMP from
+0.66 to 0.82 on 9811's output, i.e. 1 where 9810 > 0.88 and 0 below 0.77, a "no stroke
+at any scale" mask, not a band. How much of the canvas passes is set entirely by the
+per-depth gain, measured by swapping `fxtree._gain` in a scratch script (not arms):
+
+    gain                        9806    9805    9804    9810   9815 > 0.333  > 0.66   9816 white
+    2^(-h d)         (`exp`)    0.520   0.192   0.062   0.292      0.147     0.008     0.05%
+    2^(-h (d+1))                0.696   0.122   0.039   0.536      0.476     0.066     2.4%
+    2^(-2 h d)       (`exp2`)   0.835   0.026   0.004   0.805      1.000     0.679    39%
+    2^(-h d / 2)                0.220   0.493   0.257   0.040      0.005     0.000     0
+    2^(-h d), no opacitymult    0.108   0.426   0.141   0.029      0.003     0.000     0
+
+An engine that lands the mask anywhere useful attenuates by at least 2^(-h) per level
+and probably more; the chain alone cannot say which, because "substantial" is not a
+number. `exp2` is kept as an arm for that reason and for no better one.
+
+WHERE A NUMBER DOES DECIDE: graphs 004 and 005 roughness LEVEL, a seed-invariant
+instrument (the previous entries' 1% floor), the "roughness field level off by 0.35"
+that graph 004's feature audit left open. Whole-graph renders at `$outputsize` 10, 128
+grid, channel 0, mean against Textures_1:
+
+    arm                                        004 rough   corr    005 rough   corr
+    Textures_1                                   0.558      --       0.555      --
+    flat                                         0.230   +0.641      0.183   +0.904
+    tree, abs                                    0.264   +0.630      0.226   +0.858
+    header=read, bit18, signed, hurst=off        0.256   +0.633      0.216   +0.867
+    header=read, bit18, signed, hurst=exp        0.303   +0.601      0.265   +0.773
+    header=read, bit18, signed, hurst=exp2       0.274   +0.624      0.227   +0.836
+    header=read, MAX, signed, hurst=exp          0.571   +0.733      0.562   +0.828
+      same, hurst=off                            0.354   +0.585      0.321   +0.706
+      same, header without background           0.250   +0.639      0.204   +0.880
+      same, header without opacitymult          0.564   +0.701      0.557   +0.773
+      same, hurst=exp2                           0.564   +0.743      0.553   +0.856
+
+and forcing ONLY the nine -1-construct records of each graph (three 64/128/256 chains)
+to their `max`+`exp` renders inside an otherwise `bit18`+`exp` render puts roughness at
+0.579 (004) and 0.574 (005); forcing the ten depth-0 stamp records instead leaves it at
+0.304. So the roughness level of two graphs is decided by this one construct, and the
+reference level is reached when its three records come out as `max` draws them: the
+64-px record a constant 1.0 and the two scatters near black (0.040 / 0.014 at 9805 /
+9804). The `background` is what does it -- without it 0.250 -- and `hurst` is needed but
+its form is not seen (`exp` 0.571, `exp2` 0.564). Under signed `add` the same records
+give 0.30 (`exp`) and 0.29 (`exp2`), and the 39% mask of `exp2` does not help the level
+at all, so the relation between the mask's white fraction and the roughness level is not
+the monotone one a "clean patches" mask would give; what the downstream does with 9816
+is not traced here. Established: the header is real and reading `background` moves a
+declared output's level onto the reference on two graphs. NOT established: the combine
+for bit-18-clear cells. The -1 construct is a contradiction in the file's own terms
+under `max` (a white canvas nobody can subtract from, thresholded twice) and the level
+instrument prefers `max`'s output for it; the reconciliation -- a gain small enough that
+signed subtraction leaves the canvas near 1.0 and the scatters near 0 -- is a candidate
+this entry measures the shape of and does not have. The corr guard on 004 / 005: the
+`max` reading is +0.10 / -0.03 against `tree`, the `bit18` reading -0.03 / -0.09; 002
+and 003 cone flatness 243 -> 267 (`exp`), 426 (`exp2`), 252 (`max`).
+
+DEFAULTS STAY: `fx.header=ignore`, `fx.hurst=off`, `fx.combine=max`, `fx.negopacity=clip`.
+The arbiter this entry was set -- 9816 stops annihilating AND the cone's flat count drops
+-- is half met by the `bit18` reading (9816 alive at 0.8%, flatness up 19) and not at all
+by `max` (9816 saturates to 1.0 from above, flatness 1,936). The roughness level says
+`fx.header=read` is right and says nothing about the combine, so flipping `fx.header`
+alone would change no default draw of any record (every depth-0 record's `background`
+enters only through the canvas and its `opacitymult` through a multiplier `max` keeps)
+-- it is left to the next entry to flip with the combine decided, because a default
+that reads the header under `max` makes every -1 record a constant 1.0, which is a
+different wrong picture from the constant 0.0 it draws now.
+
+WHAT STAYS OPEN, in order: (1) the combine on bit-18-clear cells, and with it the
+per-depth gain -- one arbiter would be a permitted pair whose fxmaps node declares
+`hurst` and subdivides, rendered against its own export; none of the 100 permitted
+sources' packages ships one; (2) `tiling` on the record -- the 0x15400348 stamps put 64
+copies at integer centres, which a non-tiling FX-Map would draw once, and that is the
+population `add` saturates; (3) 10400 / 10401's identical inputs; (4) fields 3 and 4 of
+the header, 4-vectors from `slots[0]` and `slots[4]`; (5) `fx.hurst.absent` --
+subdivided records with no baked `hurst` exist (Bricks' `background 0.5, opacitymult
+0.9, depth 8` family) and nothing here exercises the arm.
