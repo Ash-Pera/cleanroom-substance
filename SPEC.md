@@ -795,8 +795,13 @@ discriminated by the tag word's **low nibble**:
   dereference: **the program at word 2 ends exactly where word 3's target begins, 23 of 23**,
   so the child abuts its own node's program, the same contiguity `0x1B`'s sentinel form uses.
   Following it reaches an entry table in 20 of 23 against 0 of 23 for the neighbouring word
-  as a control, and the same test over every other family stays at the noise floor (`0x89`
-  w2 1 of 47, `0x1cb` w2 2 of 30, `0x99` w3 0 of 44). Both children are `0x1a3` and open
+  as a control, and the same test over every other family read as the noise floor on the
+  60-file sample (`0x89` w2 1 of 47, `0x1cb` w2 2 of 30, `0x99` w3 0 of 44). **That floor
+  was the population, not the rule**: corpus-wide the spare word is wired on 205 of 27,093
+  `0x89`, 88 of 238 `0x99` and 65 of 1,865 `0x1CB`, and every wired one is a child — the
+  FALSE child of a two-way Switch for `0x89`/`0x99`, a run-once-after-the-loop child for
+  `0x1CB` (§13.7). A sample in which the false output is almost never connected cannot
+  see a slot whose usual value is "unconnected". Both `0x1db` children are `0x1a3` and open
   identical chains. The node's program is not a selector: one distinct source across all 23,
   reading nothing, writing constants to slots 1–6 and returning a literal `1` — a state
   initialiser, which is the role `0x1B`'s program also plays. So `0x1db` is the `0x1B`
@@ -805,8 +810,11 @@ discriminated by the tag word's **low nibble**:
   **A reader following only the computed successor draws half of such a record.** 23 records
   across 12 files walk one table entry and drop one, and the two carry different parameter
   masks (`0x55300158` dropped against `0x05300758` walked, constant across every file — they
-  cook from one template). Whether the engine draws both children or selects one is **not
-  established**: no specimen with a `0x1db` ships an export.
+  cook from one template). For `0x1db` whether the engine draws both children or selects
+  one is **not established**: no specimen with a `0x1db` ships an export. For the three
+  families above it is: Bricks record 10081's Switch program writes a column count into
+  slot 45 on its false branch and a row count into slot 46 on its true branch, and the
+  false word addresses the node whose program reads slot 45 (§13.7).
 - **nibble 8 → a paramset table entry**, *not* a node, and **the run can end by handing back
   to a node** — the mirror of the chain ending on an entry tag. The entries are a
   **linked list**: each entry stores a pointer to the next one — the header slot reaching furthest forward,
@@ -1943,6 +1951,31 @@ the one thing the assembly cannot supply. Expect this to resolve few images and 
 honestly for the rest — of 120 graphs with image inputs, 107 have no manifest default on any
 of them and ship no image either.
 
+**Three semantics a library construct decides, because it cannot run without them.** Bricks
+records 10175–10253 are a Flood Fill compiled to pixel processors: a seed pass that offsets
+each pixel toward its cell's corner, then jump-flood passes that read their own channels
+0–1 as a texel offset, sample at `$pos + offset` and `$pos + 2·offset`, and DOUBLE the
+offset each pass (the −512 and −1024 such a chain carries are those offsets in texels, not
+integers passed between stages), gated by `switch` blends on `ceil(0.7·$sizelog2) ≥ k`,
+then a reduction to a per-cell size and flag, and a recolour to one grey per cell. Three
+things make it collapse and each is a statement about programs in general:
+
+- **`select` is demand-driven.** The tiling FX-Map's gate writes its row height and edge
+  into slots INSIDE the branch that starts a row; evaluating both arms and picking one
+  afterwards clobbers those slots on every emission. Under the lazy reading the record
+  draws the tiling; under the eager one it draws eight black patterns. `program.select`.
+- **`rand` in a per-pixel program draws PER PIXEL.** One draw for the whole image gave every
+  cell the same grey — `rand(1.0)` at `$number` 0 is 0.2115, and that was the constant the
+  whole graph carried. `pixelprocessor.rand`. Inside an FX-Map the draw is per emission and
+  per region (§13.7); the hash itself is arbitrary and no export can be matched pixel for
+  pixel, only in its statistics (§13.9).
+- **An encoded field is sampled NEAREST.** A texel offset or a cell id in a float channel
+  does not survive bilinear interpolation across a cell edge. `pixelprocessor.sample`.
+
+Under the three, with the tiling's own chain read (§13.7), graph 001's cone goes from 1,939
+flat records of 2,466 to 116 and its outputs carry stone-shaped blobs at the reference's
+count (48 against 40). All three stay behind arms: they were arbitrated on one record.
+
 The `0x03`/`0x06` value cache is cross-record common-subexpression elimination: the writer
 is one record and the reader another, so it needs one dict threaded through a whole file in
 record order — which the §13.2 pass is. Its indices name no file, so it must not outlive
@@ -1965,7 +1998,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | curve | a cubic-Bezier transfer curve, sampled to a lookup |
 | gradient / dyngradient | a ramp indexed by the input's channel 0; `dyngradient`'s ramp is a second input's long axis |
 | hsl | RGB → HSL, then `hue += h − ½` (mod 1), `sat ← clip(sat·2s)`, `lum ← clip(lum + lu − ½)`, back to RGB; each of the three defaults to ½, which is the neutral value — so an unnamed parameter here is silently an identity |
-| blur | separable box, radius `clip(\|I\|,0,256)/ref · max(W,H)` px; sub-pixel ⇒ identity |
+| blur | separable box, radius `clip(\|I\|,0,256)/ref · max(W,H)` px. **Sub-pixel is NOT an identity where the record is an edge detector**: a `256/min($size)` blur whose consumer computes `\|blur − x\|` has its whole signal in the fractional radius (`blur.subpixel`). Likewise the `brick` pattern profile's 85% inset swallows a 2-px mortar at 256 (`fx.brick`) |
 | sharpen | `src + amount·(src − box₁)`; `amount` = `intensity`, absent ⇒ 1. Read the baked arm only and a stated 0 (6 corpus records) is indistinguishable from an absent one |
 | dirmotionblur | 17 taps over ±L/2 along `2π·mblurangle`, `L = clip(\|I\|,0,256)/ref · 10` |
 | directionalwarp | displace input 0 by `(2·h − 1)·I/ref` along `2π·warpangle`, `h` = input 1 |
@@ -2060,9 +2093,10 @@ are themselves a tree of Quadrants, each drawing in its own region (**Subdivisio
 
 | node | role |
 |---|---|
-| `0x18B` `0x1AB` `0x1CB` `0x20B` | **iterate** — run the subtree `numberadded` times, `$number` = 0…n−1 |
-| `0x89` | **gate** — its program returns a predicate; walk on while true |
-| `0x99` `0x??9B` | **stepper** — a per-iteration state update (a raster/spiral position); run it, then continue |
+| `0x18B` `0x1AB` `0x19B` `0x20B` | **iterate** — run the subtree `numberadded` times, `$number` = 0…n−1. `0x19B` is `0x18B` under bit 4 and its program returns an integer count on 245 of 245 corpus nodes; an earlier row here called it a stepper |
+| `0x1CB` | **iterate with an after-child** — the loop child is the successor (word 3); the spare word (2) names a child run ONCE after the loop, where the record puts the draw pass that reads the loop's accumulated slots |
+| `0x89` | **switch** — its program returns a predicate; the successor is the TRUE child and the spare word (2) the FALSE child, 0 for none. "Walk on while true" is the false-child = 0 case |
+| `0x99` `0x??9B` | **stepper / switch** — a per-iteration state update (a raster/spiral position); `0x99`'s spare word (3) is likewise a FALSE child when wired |
 | `0x??1B` `0x1DB` | **branch** — a state-initialiser program and TWO children (§8). `0x??1B` walks both; for `0x1DB` whether the engine draws both or selects one is unestablished, and a reader following only the computed successor draws half the record |
 | `0x??0B` | leaf — the entry table draws |
 
@@ -2097,7 +2131,27 @@ already carries each pattern's position and re-driving the spiral adds a second 
 
 **Drawing.** Each entry emits a pattern at `branchoffset + frameoffset`, of size
 `patternsize`, rotated `patternrotation` turns, tiled at unit spacing; overlaps combine by
-`max`. The shape is the entry tag's `patterntype` nibble (§8): `3 disc, 4 paraboloid,
+`max` where that has been arbitrated (ChesterfieldSofa's tufts, `metallic` at MAE 0.0004)
+— and **the record's header states the canvas the patterns land on and a global gain**.
+§7.4's fxmaps fields, named by two permitted pairings, are field 0 `background` (one word
+grey, four colour), field 1 `hurst` (the node's Roughness) and field 2 `opacitymult` (its
+Global Opacity). They are not vacuous: over 41,164 records, **all 2,071 whose entries bake a
+NEGATIVE `opacity` bake `background = 1.0`, and 0 of the 2,874 with only non-negative
+opacities do.** A baked `opacity = −1` (4,068 entries on two tags) is one library construct
+— a (5,1) stroke SUBTRACTED from a white canvas — and it can do nothing under `max`. Entry
+tag **bit 18 says a `blendingmode` is declared** (ie_curve 43 of 43 own entries,
+ie_particles 2 of 2, ie_pcloud 110 of 110 set it; Simulator__Grid 0 of 19 and Clouds_3 0 of
+4 declare none): the `max`-arbitrated tufts set it and the −1 construct clears it, so the
+composite is per cell and a reader should read the bit (`fx.header`, `fx.combine = bit18`,
+`fx.negopacity`, `fx.hurst` in `assume`). **What the composite is where bit 18 is clear is
+open**: the authored thresholds downstream of Bricks' −1 construct (`levels` at 0.333 and
+[0.66, 0.82]) only cut something under signed subtraction, while the seed-invariant LEVEL
+of graphs 004/005's roughness (reference 0.558 / 0.555) is met by the construct drawn as
+`max` (0.571 / 0.562) and missed by signed add (0.30) — reconciling them needs a
+subtraction gain that leaves the canvas near white, and the `hurst` gain's form
+(`2^(−h·d)`, `d+1`, `exp2`: mask fractions 0.05%, 2.4%, 39%) is not decidable from the
+chain. FORMAT-NOTES.md, "Graph 001's first annihilation point is a white canvas the file
+states". The shape is the entry tag's `patterntype` nibble (§8): `3 disc, 4 paraboloid,
 5 bell, 6 gaussian, 7 thorn, 8 pyramid, 9 brick, 10 gradation, 11 waves, 12 half bell,
 13 ridged bell, 14 crescent, 15 capsule, 16 cone`; nibble 0 is a catch-all that includes
 Square. `imageindex`, when present, makes the pattern an input image sampled over its own
@@ -2164,10 +2218,13 @@ ChesterfieldSofa's ten channels worse, `metallic`'s MAE 0.0010 → 0.8382 — wh
 previously recorded as undecidable; see `tools/fxrender.py`'s negative result 5.
 
 **What IS open** is the drawing model the size feeds, which is a different list: the pattern
-profile for a given `patterntype`, the tile lattice, whether the offsets and the size are in
-cell units rather than canvas units (`tools/assume.py`'s `fx.patternsize`, `fx.branchoffset`,
-`fx.frameoffset`, all defaulting to `canvas`), and the `(5.0, 1.0)` two-entry baked family
-that appears in five of the six reference packs. On the one output with a sharp arbiter the
+profile for a given `patterntype`, the tile lattice, and — under the flat reading only —
+whether the offsets and the size are in cell units rather than canvas units
+(`tools/assume.py`'s `fx.patternsize`, `fx.branchoffset`, `fx.frameoffset`, all defaulting
+to `canvas`). Under the tree reading below the size and `frameoffset` are in REGION units
+and only `branchoffset`'s unit stays open. The `(5.0, 1.0)` two-entry baked family that
+appears in five of the six reference packs is the −1 construct above: a stroke five regions
+long, subtracted from a white canvas. On the one output with a sharp arbiter the
 render is already right: `ChesterfieldSofa`'s `metallic` reproduces the engine's own export
 at MAE 0.0004.
 
@@ -2231,3 +2288,51 @@ indistinguishable from a read.
 Three filters have no located parameters at all and run at defaults everywhere — `sharpen`
 (41 records sampled, 0 located), `hsl` (25, 0) and `text`. Naming their fields is the
 obvious next increment and needs only §13.4 rows, not new machinery.
+
+**The seed.** `$randomseed` is a graph input with a manifest default, and an export may be
+taken at any other value that is written down nowhere: `Kutejnikov__Bricks_and_tiles` ships
+two export sets from byte-identical packages whose randomised graphs correlate +0.02..+0.10
+with each other. And the compiled `rand` is a sequence the engine draws; this document's
+hash of `$number` and a per-region salt reproduces its statistics and can never reproduce
+its values. So for any record downstream of a `rand` — every subdivided FX-Map in Bricks
+calls one — pixel agreement with an export measures the seed, not the reader. §13.9 is the
+consequence.
+
+### 13.9 Arbitrating without the seed
+
+What survives a reseed is the STRUCTURE each node adds, so the arbiter for a rand-driven
+graph is a set of seed-free instruments (`archive/tools/structstats.py`), each one number per
+channel with its own measured floor:
+
+| instrument | extracts | renderer-side reseed floor (Bricks 003 height, 256 px) |
+|---|---|---|
+| `mean`, `p5`, `p50`, `p95`, `sd` | level | mean ±0.02 |
+| `pitch_x/y`, `pitch_peak` | first autocorrelation peak — row/brick period and its regularity | — |
+| `line_width` | 25th-percentile dark-run length (dark = below Otsu) along rows and columns — a mortar width | ±1 px |
+| `line_jitter` | sd of the per-column centroid of darkness around each horizontal dark line — how far a brick edge wanders | ±0.02 px |
+| `blob_d`, `blob_n` | median diameter and count of bright components (Otsu, ≥ 4 px) — a stone or brick | ±0.4 px |
+| `tone_between` / `tone_within` | sd of per-blob means / mean per-blob sd — the tone per brick and the texture inside one | ±0.004 |
+| `grain`, `noise_lag1` | power above half Nyquist; lag-1 autocorrelation (0 for white noise) | — |
+
+Three uses, in the order they decide things:
+
+1. **The file against itself, no export.** A `rand(1.0)` leaf at one cell per pixel must
+   read mean 0.50 / sd 0.29 / lag-1 0; a record's own canvas states the cell size its author
+   expected (§13.7's 879 of 1,146). These settled the root convention and cost nothing.
+2. **Level and structure against an export, with the floor as resolution.** Over Bricks'
+   three randomised graphs, an export taken at a second seed moves mean by 1.0% (median),
+   p50 1.3%, p95 0.3%, sd 4.9% — and octave band shares by 18–58%, so spectral shape is a
+   discriminator only for moves larger than an octave. The same numbers on 003's height
+   name the next four faults outright: mortar 4 px against the reference's 6, edge jitter
+   1.2 against 2.0, brick texture 0.12 against 0.054, mortar floor p5 0.16 against 0.30 —
+   none of them the subdivision's, since they stand in every variant.
+3. **Pixel correlation only where structure survives a reseed** (Bricks 004 and 005, +0.80
+   to +0.99 between the two export sets), and only as a regression guard: a variant may
+   not cost more than 0.03 there. The graphs' subdivided records supply detail, not layout,
+   so they cannot arbitrate offset units or quadrant order; that needs a graph whose layout
+   IS a subdivided record.
+
+One caution the instruments themselves supplied: Bricks' second export set is not a pure
+reseed — 002's and 003's row pitch is 32 px in one and 42–43 in the other — so that pair
+bounds a reference-side seed floor from above; the renderer-side floor in the table is
+measured directly by reseeding every draw.
