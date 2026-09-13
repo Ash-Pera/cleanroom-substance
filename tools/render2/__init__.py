@@ -12,6 +12,8 @@ this one asks `decompose` once, per record, and reads the answer by NAME.
     ops.py       image primitives and the bytecode runner
     filters.py   one function per filter, reading parameters by name
     fx.py        FX-Map emission and drawing
+    fxtree.py    the same for a subdivided FX-Map -- the entry cells as a tree of
+                 Quadrants, drawn as grids -- behind `assume` key `fx.subdivide`
     engine.py    the forward pass
 
 See `model.View` and `fx.number_grid` for the two readings this changes, and

@@ -340,7 +340,15 @@ def rand(limit):
         n = num.astype(np.float64, copy=False).reshape(-1, 1)
     else:
         n = float(num)
-    h = np.modf(np.sin(x * 12.9898 + n * 78.233) * 43758.5453)[0] % 1.0
+    # THE SALT IS A THIRD INPUT TO THE HASH, AND ZERO LEAVES IT UNTOUCHED. A subdivided
+    # FX-Map evaluates one cell's program once per REGION with a fresh draw, and `$number`
+    # cannot carry that -- it is the emission index, which placement programs read. The
+    # tree runner (`render2.fxtree`) sets `CONTEXT['salt']` to a per-region column beside
+    # the `$number` column and clears it after; nothing else sets it, and `+ 0.0` is an
+    # identity on every finite float, so every draw outside that runner is bit-for-bit
+    # what it was.
+    s = CONTEXT.get("salt", 0.0)
+    h = np.modf(np.sin(x * 12.9898 + n * 78.233 + s * 37.719) * 43758.5453)[0] % 1.0
     return x * h
 
 

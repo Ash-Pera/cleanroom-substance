@@ -285,6 +285,11 @@ parameter bits the slot rule needs, so no rewriting of entries can express the r
     test_fx.py            the FX-Map decode: coverage, tag vocabulary, slot roles,
                           the 0x1B branch, one-ISA, no loops, the node/table dataflow,
                           and the source-side check on `FX_LOWERING` -- see below
+    render2/test_fxtree.py
+                          the FX-Map subdivision arm: the cell layout read back from
+                          Bricks, the grid drawer against the per-pattern loop (an
+                          equality), depth-0 records identical under both arms, the
+                          white-noise instrument on record 9924, the budget refusal
     audit_corpus.py       runs the model over a corpus and reports every gap
     bit_census.py         every bit of every record header, per filter: which are SET,
                           which the width legend places, which the name legend names -- and
@@ -382,6 +387,22 @@ program states in its own first word (a `u16` instruction count), so the extent 
 not a per-tag constant. `FX_ENTRY` was a fit of that pointer's distance and is drained: which
 of an entry's words hold programs comes from `fx_entry_layout`'s bit-walk (nibble 8) or the
 disjoint-span scan (nibble 9/B nodes), and `FX_ENTRY_PROGS` is likewise drained to a census.
+
+**And the list is a NESTING.** Each entry cell is a Quadrant whose four outputs are the
+quarters of its region; bit 17 names one child for all four, bit 16 one per output. The
+"chain family" `0x0002xxxx` is bare Quadrants -- nothing to draw, four nestings each -- so a
+leaf under five of them is 4^4 patterns, not one. `render2/fxtree.py` reads the tree from
+the cells' own pointers and draws it as grids behind `assume.QUESTIONS['fx.subdivide']`
+(default `flat`, the reading above; `tree` is the nesting), with the root convention the
+notebook settled -- the first cell does not subdivide -- and two arms for what it did not:
+`fx.tree.branchoffset` (canvas or region units) and `fx.tree.order` (which output is which
+quadrant). The layout it reads, `[tag][params ptr][bit-7 word]?[child ptrs][bit-4 word]?
+[params ...]`, is measured in its `pointer_slot` docstring and differs from `fx_entry_walk`'s
+ascending order in one place that moves no program slot: the bit-4 word sits after the
+pointers. `test_fxtree.py` holds the grid drawer equal to `fx.splat`'s loop and the tree arm
+equal to the flat arm on every depth-0 record. See FORMAT-NOTES.md, "The level fault
+upstream of 10055 is a white-noise FX-Map emitting ONE pattern, and the cons chain is
+quadrant subdivision" and "Quadrant subdivision lands in render2".
 Do not step 8 bytes and do not read the length from a table -- both were wrong.
 
 Nor is the extent a pure function of the tag. `fx_entry_walk`'s `max(slot + width - 1) + 1`

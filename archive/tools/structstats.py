@@ -29,6 +29,7 @@ sentence, is measured on the Textures_1 / Textures_2 pair to state its own seed 
 
     python3 archive/tools/structstats.py --floor            # T1 vs T2 per instrument
     python3 archive/tools/structstats.py --render a.npz [b.npz ...] --graph 003
+    python3 archive/tools/structstats.py --records 9924,343 --assume fx.subdivide=tree
 """
 import argparse
 import glob
@@ -318,9 +319,14 @@ def main():
     ap.add_argument("--outputs", default=None)
     ap.add_argument("--grid", type=int, default=GRID)
     ap.add_argument("--records", default=None, help="fxmaps record indices, comma-separated")
+    ap.add_argument(
+        "--assume",
+        default="",
+        help="assume.scope choices for --records, e.g. fx.subdivide=tree,fx.tree.order=clockwise",
+    )
     a = ap.parse_args()
     if a.records:
-        record_report([int(x) for x in a.records.split(",")])
+        record_report([int(x) for x in a.records.split(",")], choices=a.assume)
     if a.floor:
         floor_report(grid=a.grid)
     if a.render:
@@ -333,12 +339,16 @@ def main():
 # ---------------------------------------------------------------------------
 
 
-def record_report(indices, asm_path=None):
-    """Render each fxmaps record under the probe's current knobs (environment) and print
-    its instruments at native size. A `rand(1.0)` leaf at one cell per pixel must read
-    mean 0.50, sd 0.29, noise_lag1 ~0; anything else is the combine rule or the depth."""
-    import fx_subdiv_probe as probe  # patches fx.emissions per SUBDIV/ROOT/BO/SZ/SEED
+def record_report(indices, asm_path=None, choices=""):
+    """Render each fxmaps record under `assume.scope(**choices)` and print its instruments
+    at native size. A `rand(1.0)` leaf at one cell per pixel must read mean 0.50, sd 0.29,
+    noise_lag1 ~0; anything else is the combine rule or the depth.
 
+    `choices` is `k=v,...` -- `fx.subdivide=tree` is the renderer's own subdivision arm
+    (`render2.fxtree`), which replaced the probe import this used to make; the probe's
+    knobs map onto `fx.tree.branchoffset` and `fx.tree.order`. `pats` counts PATTERNS:
+    a `fxtree.Batch` is one cell's m patterns and counts m.
+    """
     import fxrender
     import sbsasm
     from render2 import engine, fx, model
@@ -348,17 +358,23 @@ def record_report(indices, asm_path=None):
         asm_path or glob.glob(BRICKS + "/x_Bricks_Textures_1/assemblies/content/0000/*.sbsasm")[0]
     )
     ctx = engine.Context(asm, cap=256)
-    extra = {k.split("=")[0]: k.split("=")[1] for k in os.environ.get("ASSUME", "").split(",") if "=" in k}
+    extra = {k.split("=")[0]: k.split("=")[1] for k in (choices or os.environ.get("ASSUME", "")).split(",") if "=" in k}
+    print("assume:", extra or "(defaults)")
     print("%-8s %-9s %6s" % ("record", "size", "pats") + "".join("%8s" % k[:7] for k in ("mean", "sd", "p5", "p95", "noise_lag1", "pitch_x", "blob_d", "line_width")))
     with assume.scope(**extra):
         for ri in indices:
             rec = asm.records[ri]
             v = model.View(asm, rec)
             run = fxrender.make_runner(asm, rec, programs=ctx.fx_funcs, cache_funcs=ctx.cache_funcs)
-            pats = fx.emissions(rec, run, fxrender.seed_slots(rec, run), cache=ctx.cache)
-            img = fx.splat(rec, pats, v.width, v.height)[..., 0]
+            try:
+                pats = fx.emissions(rec, run, fxrender.seed_slots(rec, run), cache=ctx.cache)
+                img = fx.splat(rec, pats, v.width, v.height)[..., 0]
+            except Exception as e:
+                print("%-8d %-9s REFUSED: %s" % (ri, "%dx%d" % (v.width, v.height), e))
+                continue
+            n = sum(getattr(p, "count", 1) for p in pats)
             r = instruments(img)
-            print("%-8d %-9s %6d" % (ri, "%dx%d" % (v.width, v.height), len(pats)) + "".join("%8s" % fmt(r.get(k)) for k in ("mean", "sd", "p5", "p95", "noise_lag1", "pitch_x", "blob_d", "line_width")))
+            print("%-8d %-9s %6d" % (ri, "%dx%d" % (v.width, v.height), n) + "".join("%8s" % fmt(r.get(k)) for k in ("mean", "sd", "p5", "p95", "noise_lag1", "pitch_x", "blob_d", "line_width")))
 
 
 if __name__ == "__main__":

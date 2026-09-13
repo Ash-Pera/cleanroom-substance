@@ -50,6 +50,7 @@ import numpy as np
 import assume
 import disasm
 import fxrender
+import fxtree
 import sbsruntime
 from sbsasm import fx_patterntype
 
@@ -383,6 +384,13 @@ def emissions(rec, run, slots, cache=None):
             pass
 
     reads = batch_reads(rec.asm, run, nodes, table)
+    # QUADRANT SUBDIVISION, behind `fx.subdivide`. The `tree` arm reads the entry cells
+    # as a nesting and returns `fxtree.Batch` objects -- one per cell, m patterns each --
+    # which `splat` draws as grids. Everything above this line is shared: the same chain,
+    # the same table, the same seeding, the same answer about whether the table batches.
+    # See `fxtree` for what is established and what the arm leaves open.
+    if assume.assumed("fx.subdivide", "flat") == "tree":
+        return fxtree.emissions(rec, run, slots, nodes, table, reads, cache)
     if reads is not None:
         seed = dict(slots)
         frames, closed = _walk(rec, run, slots, nodes, table, reads)
@@ -734,7 +742,24 @@ def splat(rec, patterns, W, H, images=None):
         return np.asarray(default, np.float32) if v is None \
             else np.asarray(v, np.float32).ravel()
 
+    # A SUBDIVIDED CELL ARRIVES AS ONE `fxtree.Batch` OF m PATTERNS and is drawn as one
+    # pass. `over` is the one combine that pass cannot express -- it is order-dependent --
+    # so under that arm a batch is expanded to the per-pattern dicts the loop below
+    # draws, within the flat budget.
+    if mode == "over" and any(isinstance(p, fxtree.Batch) for p in patterns):
+        expanded = []
+        for p in patterns:
+            expanded.extend(p.as_dicts() if isinstance(p, fxtree.Batch) else [p])
+            if len(expanded) > MAX_PATTERNS:
+                raise Unsupported(
+                    "fxmaps: fx.combine=over draws per pattern, over %d" % MAX_PATTERNS
+                )
+        patterns = expanded
+
     for p in patterns:
+        if isinstance(p, fxtree.Batch):
+            fxtree.draw(canvas, p, W, H, images=images)
+            continue
         tag = p.get('_tag')
         if skip_markers and tag is not None and (int(tag) & 0xFF) == 0x08:
             continue

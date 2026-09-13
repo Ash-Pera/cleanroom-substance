@@ -665,10 +665,16 @@ def entries(rec, baked_pairs=True):
     #
     # ...WITH ONE EXCEPTION. For the CHAIN FAMILY -- high 16 bits 0x0002 -- "the patterntype
     # rides in nibble 2" is empty: nibble 2 is zero and `fx_patterntype` returns None for every
-    # one. They are structural, not draws -- 98.5% of 6,918 chain-family typeless entries point
-    # at the entry that follows against 15.9% of 5,439 other typeless ones, a linked list
-    # rather than a table of independent patterns, and emitting one full-cell fill each is what
-    # paints a record white. "SKIP ENTRIES WHOSE PATTERNTYPE IS None" IS NOT EQUIVALENT, and
+    # one. They draw nothing THEMSELVES -- 98.5% of 6,918 chain-family typeless entries point
+    # at the entry that follows against 15.9% of 5,439 other typeless ones, and emitting one
+    # full-cell fill each is what paints a record white. This comment used to call them
+    # "structural, not draws -- a linked list rather than a table of independent patterns".
+    # The first half stands and the second was the count of DISTINCT children: each is a
+    # QUADRANT whose pointer is its child on all four outputs, so k of them in a row nest the
+    # cells below them k levels deep, and the table this function returns is that tree's cells
+    # rather than a list of independent draws. `render2.fxtree.cells_of` reads the nesting
+    # from the same words (FORMAT-NOTES.md, "the cons chain is quadrant subdivision"); the
+    # flat reading here is kept as `fx.subdivide=flat`. "SKIP ENTRIES WHOSE PATTERNTYPE IS None" IS NOT EQUIVALENT, and
     # that second row is why: it would drop 5,439 entries that mostly do not chain, among them
     # 3,332 of tag 0x00420008, which `FX_ENTRY_PROGS` gives a program slot. Those are real draws.
     #

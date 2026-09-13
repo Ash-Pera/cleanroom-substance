@@ -273,6 +273,24 @@ QUESTIONS = {
     # canvas is what pins 574 of 574 flat-origin records to a constant.
     'fx.markers':         ('skip', 'draw'),
     'fx.typeless_profile': ('rect', 'disc', 'cone', 'paraboloid', 'bell', 'gaussian'),
+    # QUADRANT SUBDIVISION. `flat` is `fx.emissions` as it stood: every table entry drawn
+    # once at full canvas, the chain-family cells read as links. `tree` reads the entry
+    # cells as a nesting -- each cell a Quadrant whose four outputs are the quarters of its
+    # region, the root's region the canvas AND its children's -- and draws what the tree
+    # states: `render2.fxtree`. The structure is established (FORMAT-NOTES.md, "The level
+    # fault upstream of 10055 is a white-noise FX-Map emitting ONE pattern, and the cons
+    # chain is quadrant subdivision") and so is the root convention (879 of 1,146 sizeless
+    # leaves; record 9924 at 0.513 / 0.292 / -0.012). DEFAULT `flat` UNTIL THE ARBITER SAYS
+    # OTHERWISE: the reference guards are floored on flat, and a default flips when the
+    # seed-free instruments on the deterministic graphs say the tree arm is not worse.
+    'fx.subdivide':       ('flat', 'tree'),
+    # The two draw-model questions the tree arm leaves open. `branchoffset` offsets a cell's
+    # own pattern and its children; whether its unit is the canvas or the cell's region is
+    # not settled (Bricks 9804's author halves it per level by hand, which argues canvas).
+    # Which output is which quadrant is not settled either. Graph 003 cannot tell any of
+    # these apart -- every instrument moves less than the renderer's own seed floor.
+    'fx.tree.branchoffset': ('canvas', 'region'),
+    'fx.tree.order':      ('rowmajor', 'clockwise', 'colmajor'),
 }
 
 _ACTIVE = {}

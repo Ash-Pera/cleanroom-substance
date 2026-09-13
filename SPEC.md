@@ -810,10 +810,27 @@ discriminated by the tag word's **low nibble**:
   was a per-tag *fit* of this pointer's distance, and lossy because the distance is the inline
   program's length, which the tag does not encode; following the stored pointer reaches ~78k
   entries the strided walk stopped short of, with zero phantoms.)
-- **high half `0x0002` → a chain** — the commonest entry, `0x00020008`, whose slot-1 pointer
-  is the next-pointer 100% of the time. These are structural linked-list cells, not
-  independent pattern draws, and are excluded from both node sizing and emission. The cell
-  is **two words**, and the list strictly alternates with the three-word pointer cell:
+- **high half `0x0002` → a Quadrant cell, and the "chain" is a NESTING.** The commonest
+  entry, `0x00020008`, is a bare cell whose slot-1 pointer names its child 100% of the time.
+  This paragraph used to call these structural linked-list cells excluded from emission;
+  that was the count of DISTINCT children. Every entry cell is a `paramset` — a Quadrant
+  that draws its own pattern in its region and hands each of its FOUR outputs a quarter of
+  that region — and a bare cell is a Quadrant with nothing to draw, so k of them in a row
+  are k nestings of four. Bit 17 is ONE child pointer shared by all four outputs; bit 16 is
+  FOUR pointers, one per output, 0 for an unconnected one. A parameterised cell is
+  `[tag][params ptr][bit-7 word]?[child ptrs][bit-4 word]?[params …]` — the params ptr
+  addresses the first parameter word, `base + 4·(2 + n)` for every bit-7-clear cell in the
+  corpus (136,089 of 136,089), so the pointers sit at word 2; a bare cell has no params ptr
+  and is `[tag][child]`. The bit-4 word (a small integer; Clouds_3's declared `randomseed`
+  values 42 and 16 among them) sits AFTER the pointers, not before them as `fx_entry_walk`'s
+  ascending order would place it — 27,500 of 27,519 such cells resolve at word 2 and 0 at
+  word 3, 5,100 of 5,100 bit-7 cells at word 3 — and the two words are one slot each, so no
+  program slot moves. Permitted source and compiled record agree node for node
+  (`SubstanceDesigner__Clouds_3_Animated`, six `paramset`s whose `output0..3` all name the
+  same child; its record 50 walks four bare cells and two draws). See §13.7 and
+  FORMAT-NOTES.md, "The level fault upstream of 10055 is a white-noise FX-Map emitting ONE
+  pattern, and the cons chain is quadrant subdivision". The cell
+  is **two words** when bare, and the list strictly alternates with the three-word pointer cell:
   `[0x9][next][payload] [0x00020008][next] [0x9][next][payload] …`, every pointer cell's
   payload naming the same shared `0x?4B`. The walk steps through the link by its slot 1 and
   now reports it; it did not, so its two words were the one structure in the walk that
@@ -904,8 +921,10 @@ The non-circular half is what the same slot does where nothing is at stake: the 
 cells the same record's walk already reaches by another path**. The control is the identical
 gate on the tag's own *parameter* slots: 1 of 34,258 program slots and 0 of 2 baked slots
 pass it, against 11,021 of 12,102 structural ones. The `[start, end]` reading of bit 16's
-pair stays refuted (42 of 359) and is not needed — nothing here says what the four words
-*mean*, only that each names a structure.
+pair stays refuted (42 of 359) and is not needed. What the four words MEAN is now stated
+above: one child pointer per Quadrant output, 0 where the output is unconnected (Bricks
+9804's leaf holds `[->leaf2, 0, ->leaf2, 0]`: its second pattern is drawn in outputs 0 and 2
+only), and bit 17's single word is the same child on all four.
 
 **A pointer cell met inside a table run states a payload, and only the chain path asked.**
 `fx_table` calls these waypoints and steps through them; `_fx_chain_run` reads
@@ -2030,7 +2049,8 @@ legend, because a name legend states where a field is and this one cannot.
 
 ### 13.7 FX-Map evaluation
 
-Walk the chain of §8 nodes; the table entries at its end are the draws.
+Walk the chain of §8 nodes; the table entries at its end are the draws — and the entries
+are themselves a tree of Quadrants, each drawing in its own region (**Subdivision** below).
 
 | node | role |
 |---|---|
@@ -2130,21 +2150,46 @@ that appears in five of the six reference packs. On the one output with a sharp 
 render is already right: `ChesterfieldSofa`'s `metallic` reproduces the engine's own export
 at MAE 0.0004.
 
-**Subdivision — not found.** A node whose children cover different parts of their parent's
-region would give each child a different `$pos` (§13.5). None is in evidence. Of 155 distinct
-node headers reached across the compiled corpus, `0x1db` is the ONLY one whose word 1 equals
-its number of trailing node pointers, and it is two-way at every instance — no three- or
-four-way variant exists. The shipped sources agree as far as they can be read: over 266
-FX-Map graphs in the 34 third-party sources that contain one, **no node has more than one
-child**, every node being an `addnode` with one successor, a one-child `markov2`, or a leaf
-`paramset`. A two-way branch's arms cover the same region and share a position, so nothing
-here subdivides.
+**Subdivision — found, in the entry table and not in the nodes.** The two paragraphs this
+replaces reported it "not found": no node header has more than two children, and over 266
+FX-Map graphs in the permitted sources no node has more than one DISTINCT child. Both counts
+are right and both asked the wrong structure. A `paramset`'s four outputs are the four
+quadrants of its region, and in the permitted `SubstanceDesigner__Clouds_3_Animated` every
+one of the five chained `paramset`s that has children names the SAME child on `output0`,
+`output1`, `output2` and `output3` — one distinct child, four nestings. Its compiled record 50
+walks four bare `0x20008` cells and then the two draws, node for node. So the entry run of
+§8 is a nesting: each cell is a Quadrant, its bit-17 pointer is its child on all four
+outputs and its bit-16 pointers are one child per output. Half of Bricks' 191 FX-Maps nest
+(depths 3–9), 15 of them with per-output children; Chesterfield's `metallic`, the MAE-0.0004
+arbiter, sits on records of depth 0 and is unaffected.
 
-This is a NEGATIVE BOUNDED BY THE CLEAN-ROOM RULE (§12), not a claim about the format. The
-`.sbs` sources that do branch are Allegorithmic-authored and therefore excluded from
-analysis, so the honest statement is that subdivision is absent from what may be examined —
-not that Substance lacks it. Until a compiled subdividing node is found, an FX-Map has one
-node position and it is the root's.
+The draw model, as far as it is settled (FORMAT-NOTES.md, the three entries beginning "The
+level fault upstream of 10055", and "Quadrant subdivision lands in render2"):
+
+- **The root does not subdivide.** The first cell's region is the canvas and so is its
+  children's; a cell at depth d ≥ 1 has region size 2^-(d-1). Two seed-free instruments:
+  879 of 1,146 sizeless leaves sit one level deeper than their record's size
+  (log2 size − depth = −1), and Bricks 9924 — `rand(1.0)` opacity under five Quadrants on a
+  16-px canvas — reads mean 0.513 / sd 0.292 / lag-1 −0.012 under this convention, which is
+  uniform white noise, against 0.80 / 0.16 under "the root subdivides" (four draws
+  max-combined per pixel).
+- `patternsize` and `frameoffset` are in REGION units; a sizeless, non-marker cell fills its
+  region. A cell's programs are evaluated once PER REGION with a fresh `rand` draw;
+  `$number` stays the emission index.
+- **Open:** `branchoffset`'s unit (it offsets the cell's pattern and its children; the author
+  of Bricks 9804 halves it by hand per level, `rand(0.25), rand(0.125), …`, which argues
+  canvas units), which output is which quadrant, and `$pos` per region (§13.5's per-region
+  position is exactly what this implies and it is not yet threaded through). Graph 003 of
+  Bricks cannot separate any of these: every structural instrument moves less than the
+  renderer's own seed floor.
+
+`tools/render2/fxtree.py` draws the tree behind `assume.QUESTIONS['fx.subdivide']`, arms
+`flat` (the reading above this paragraph, still the default: the reference guards are
+floored on it) and `tree`, with `fx.tree.branchoffset` and `fx.tree.order` for the two open
+questions. Under `tree`, Bricks 003's `height` reaches the per-brick tone the reference has
+(`tone_between` 0.035 against 0.039; `flat` 0.022) and the deterministic graphs 004 and 005
+move −0.012 and −0.050 in pixel correlation — the arbiter that decides the default is the
+instrument table, not the correlation, and it has not yet said.
 
 ### 13.8 What the file does not state
 
