@@ -319,6 +319,51 @@ QUESTIONS = {
     # these apart -- every instrument moves less than the renderer's own seed floor.
     'fx.tree.branchoffset': ('canvas', 'region'),
     'fx.tree.order':      ('rowmajor', 'clockwise', 'colmajor'),
+    # HOW A `set` UNDER A `select` BRANCH EXECUTES. `eager` is the transpiler as it stood:
+    # straight-line code, every `set` applied whichever branch the condition picks.
+    # `lazy` applies a `set` only on the lanes whose `select` demands that branch, and not
+    # at all when nothing demands it -- the demand-driven reading `while` already has
+    # (its operand trees are re-evaluated per iteration, OPCODES.md). Bricks record 10081
+    # is the specimen that separates them: its tile generator writes a row's height into
+    # slot 44 inside the row-start branch and, under `eager`, overwrites it on every other
+    # cell of the row with the difference of two fresh jitters, so the tiling's own
+    # consistency (cell widths summing to the canvas, monotone edges) is the arbiter. See
+    # `transpile.select_guards` and FORMAT-NOTES.md, "Record 10253 is not the fault".
+    "program.select": ("eager", "lazy"),
+    # HOW AN FX-MAP'S CHAIN NODES ARE WALKED. `list` follows one successor per node --
+    # `fxrender.chain` -- and reads 0x89's spare word as "0", 0x1CB's as "0", and 0x19B
+    # by its low byte as a stepper. `tree` reads the words the file fills: a 0x89 / 0x99
+    # is a two-way Switch (the spare word its FALSE child, the successor its TRUE child),
+    # a 0x1CB an Iterate whose spare word is a child run once AFTER the loop, and 0x19B
+    # an Iterate (0x18B under bit 4; its program returns an int count, 245 of 245 corpus
+    # nodes). Corpus census (437 files): 205 of 27,093 0x89 nodes carry a false child,
+    # 88 of 238 0x99, 65 of 1,865 0x1CB -- about 150 records. A record whose chain has
+    # none of these renders identically under both arms by construction (`fxchain.needed`).
+    "fx.chain": ("list", "tree"),
+    # `rand` INSIDE A PIXEL PROCESSOR. `image` is one draw per record -- `$number` is 0
+    # and nothing else salts the hash -- so a program that is only `rand(1)` renders a
+    # constant. `pixel` salts the hash per pixel, so the same program is a white noise.
+    # Bricks 10080 (`0.001 + rand(0.999)`, no inputs) feeds a flood-fill-to-random-grey
+    # that samples it once per cell at the cell's centre, and the reference height shows
+    # one grey per stone; under `image` every cell reads the same 0.2115.
+    "pixelprocessor.rand": ("image", "pixel"),
+    # A `blur` WHOSE RADIUS IS UNDER A PIXEL ON THE RENDER GRID. `identity` returns the
+    # input; `fractional` mixes the one-pixel box in by the radius. Not a question about
+    # the format -- the radius is read the same way under both -- but about a render
+    # drawn below the record's own size: Bricks 10164 states one pixel at `$size` and
+    # gets 0.25 px at `--dim 256`, and its `|blur - x|` edge detector reads zero under
+    # `identity`. See `render2.filters.f_blur`.
+    "blur.subpixel": ("identity", "fractional"),
+    # HOW A PIXEL PROGRAM SAMPLES ITS IMAGE INPUTS. `bilinear` is the shared sampler;
+    # `nearest` the texel whose centre is nearest. An image that ENCODES values -- an
+    # offset in texels, a cell's size, an id -- survives only the second: interpolating
+    # two encoded offsets names no pixel. The file states no filtering mode per input
+    # that this reader has found. See `ops.nearest_sampler`.
+    "pixelprocessor.sample": ("bilinear", "nearest"),
+    # THE `brick` PATTERN'S FOOTPRINT (patterntype 9, `SHAPE_MODELLED`). `inset` is the
+    # hard fill at 85% of the box the profile has always drawn; `fill` is the whole box.
+    # See `fxrender.profile_value`.
+    "fx.brick": ("inset", "fill"),
 }
 
 _ACTIVE = {}

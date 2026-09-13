@@ -2066,6 +2066,21 @@ are themselves a tree of Quadrants, each drawing in its own region (**Subdivisio
 | `0x??1B` `0x1DB` | **branch** — a state-initialiser program and TWO children (§8). `0x??1B` walks both; for `0x1DB` whether the engine draws both or selects one is unestablished, and a reader following only the computed successor draws half the record |
 | `0x??0B` | leaf — the entry table draws |
 
+**The spare word of `0x89`, `0x99` and `0x1CB` is a second child, and the table above
+reads it as nothing.** `0x89` / `0x99` are two-way Switches: the word before the
+successor (word 2 / word 3) is the FALSE child and the successor the TRUE child — on
+Bricks record 10081 the Switch program writes a column count into slot 45 when it
+returns false and a row count into slot 46 when true, and the false word addresses the
+`0x19B` whose program returns slot 45. `0x1CB` is an iterate whose spare word (2) is a
+child run ONCE AFTER the loop child (3) — the same record puts a statistics pass under
+the loop and the draw pass that reads its slots under the after-child. `0x19B` is an
+iterate (`0x18B` under bit 4; its program returns an int count, 245 of 245 corpus nodes)
+and not a stepper. Corpus census, 437 files: the false child is wired on 205 of 27,093
+`0x89` and 88 of 238 `0x99`, the after-child on 65 of 1,865 `0x1CB` — about 150 records,
+every one of which the one-successor walk truncates. The reading is `fx.chain=tree`
+(`render2/fxchain.py`); the "gate: walk on while true" row is exactly the false-child =
+0 case. FORMAT-NOTES.md, "Record 10253 is not the fault".
+
 **The emission count**, in this order:
 
 1. If a placement program lays a `$number` **grid** — `floor($number / N)` — the bound is

@@ -16,6 +16,7 @@ algorithm is known, evaluate it, and compare against the closed form.
 """
 import struct
 
+import assume
 import disasm
 import isa
 
@@ -199,6 +200,64 @@ class Unsupported(Exception):
     pass
 
 
+def _value_operands(oid, toks):
+    """The operand positions of an instruction that name VALUES rather than immediates."""
+    imm = disasm.IMM.get(oid, ())
+    if imm == "all":
+        return ()
+    return tuple(i for i in range(len(toks)) if i not in imm and toks[i] != 0xFFFF)
+
+
+def select_guards(ins, root):
+    """{value number: guard} under the lazy reading of `select`, or None where dead.
+
+    THE READING. `0x09` is `c ? a : b`, and the evaluator is demand-driven: `while`
+    re-evaluates its operand trees per iteration (OPCODES.md), so an instruction runs
+    when something demands its value, and a `select` demands its condition and then ONE
+    branch. A `set` sitting only under one branch therefore executes only where that
+    branch is taken. The transpiler's straight-line emission executes every `set`
+    unconditionally -- the `eager` arm -- which is a different program wherever an author
+    put a slot write inside an if/else. Bricks record 10081 is the specimen: its per-cell
+    gate writes the row's height and edge into slots 44 and 38 inside the row-start
+    branch, and eager evaluation clobbers them on every other cell of the row with the
+    difference of two fresh jitters (-0.0185 at cell 1). See `assume.QUESTIONS`,
+    `program.select`.
+
+    A guard is a frozenset of `(select value number, branch)` pairs, `branch` True for
+    operand 1 and False for operand 2: the value is demanded only when every pair holds.
+    It is the INTERSECTION over the instruction's users of what each user's demand
+    implies, computed from the root downwards -- a value with two users, one guarded and
+    one not, is unguarded, because the unguarded user demands it regardless. A value no
+    user reaches from the root is dead and maps to None: the evaluator never demands it,
+    so under the lazy reading a `set` there does not happen.
+
+    Only the SIDE EFFECT is gated. Both branches' values are still computed on every
+    lane -- they are pure, and the runtime is vectorised over samples that take different
+    branches -- so nothing but `set` reads this table.
+    """
+    byk = {i[0]: i for i in ins}
+    users = {}
+    for k, _addr, op, toks in ins:
+        _n, _ty, _nc, oid = disasm.fields(op)
+        for pos in _value_operands(oid, toks):
+            users.setdefault(toks[pos], []).append((k, pos))
+    guard = {root: frozenset()}
+    for k in sorted(byk, reverse=True):
+        if k == root:
+            continue
+        got = None
+        for j, pos in users.get(k, ()):
+            gj = guard.get(j)
+            if gj is None:
+                continue
+            _n, _ty, _nc, oid = disasm.fields(byk[j][2])
+            if oid == 0x09 and pos in (1, 2):
+                gj = gj | {(j, pos == 1)}
+            got = gj if got is None else (got & gj)
+        guard[k] = got
+    return guard
+
+
 def transpile(data, start, end, backend="python", name="program", result=None):
     """Return target source for the program at `start`.
 
@@ -210,6 +269,24 @@ def transpile(data, start, end, backend="python", name="program", result=None):
     if not ins:
         raise Unsupported("empty program")
     byk = {i[0]: i for i in ins}
+    lazy = backend == "python" and assume.assumed("program.select", "eager") == "lazy"
+    guards = (
+        select_guards(ins, ins[-1][0] if result is None else result) if lazy else {}
+    )
+
+    def guard_expr(k):
+        """The per-lane boolean under which value `k` is demanded, or None/False."""
+        g = guards.get(k, frozenset())
+        if g is None:
+            return "False"
+        if not g:
+            return None
+        parts = []
+        for j, branch in sorted(g):
+            c = "np.asarray(%s, dtype=bool)" % be.var(byk[j][3][0])
+            parts.append(c if branch else "~%s" % c)
+        return "(%s)" % " & ".join(parts)
+
 
     def emit(k, active=None):
         """The lines one instruction emits, unindented.
@@ -270,10 +347,33 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             # the only one that can still be unset on its first iteration, checked first
             # so the ternary short-circuits before `expr` (which may combine `own` with
             # an outer loop's mask, for nested loops) ever has to evaluate `None & array`.
-            if active is not None:
+            gexpr = guard_expr(k) if lazy else None
+            if gexpr == "False":
+                pass
+            elif gexpr is not None:
+                prev = "(slots[%d] if %d in slots else 0 * %s)" % (
+                    toks[1],
+                    toks[1],
+                    arg(0),
+                )
+                if active is not None:
+                    own, expr = active
+                    cond = "%s if %s is None else (%s & %s)" % (gexpr, own, expr, gexpr)
+                    out.append(
+                        "slots[%d] = select(%s, %s, %s)"
+                        % (toks[1], cond, arg(0), prev)
+                    )
+                else:
+                    out.append(
+                        "slots[%d] = select(%s, %s, %s)"
+                        % (toks[1], gexpr, arg(0), prev)
+                    )
+            elif active is not None:
                 own, expr = active
-                out.append("slots[%d] = %s if %s is None else select(%s, %s, slots[%d])"
-                            % (toks[1], arg(0), own, expr, arg(0), toks[1]))
+                out.append(
+                    "slots[%d] = %s if %s is None else select(%s, %s, slots[%d])"
+                    % (toks[1], arg(0), own, expr, arg(0), toks[1])
+                )
             else:
                 out.append("slots[%d] = %s" % (toks[1], arg(0)))
             rhs = arg(0)

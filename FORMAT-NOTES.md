@@ -59445,3 +59445,145 @@ population `add` saturates; (3) 10400 / 10401's identical inputs; (4) fields 3 a
 the header, 4-vectors from `slots[0]` and `slots[4]`; (5) `fx.hurst.absent` --
 subdivided records with no baked `hurst` exist (Bricks' `background 0.5, opacitymult
 0.9, depth 8` family) and nothing here exercises the arm.
+
+## Record 10253 is not the fault: graph 001's stone layout is a Flood-Fill pixel machine, and the fault is upstream in the FX-Map that draws its mask
+
+WHAT 10253 IS. Not a data-passing construct and not the gate on the graph -- it is a
+`pixelprocessor` that reads a Flood-Fill cell image on input 0 and a random-grey image on
+input 1 and returns a hue-shift of one grey per cell. Its program (address 4022752, native
+size) samples input 0 at `$pos`, takes its `.z` channel (the cell's "is this a real cell"
+flag), and where that is 0 returns 0, else does an HSV-style recolour of a per-cell value.
+Input 0 is 10252, the last stage of a Flood-Fill; input 1 is 10080. The 0.2115 the brief
+saw is exactly `rand(1.0)` for the whole image: 10080 is `0.001 + rand(0.999)`, a
+pixelprocessor with NO inputs, and under the old default `rand` inside a pixel processor is
+ONE draw for the whole canvas (`$number` 0, no salt), so every cell read the same grey.
+That is a fixed-`rand` constant exactly as the brief guessed, and it is the LAST link, not
+the first.
+
+THE CONSTRUCT, decoded. Records 10175-10252 are Adobe's **Flood Fill** and **Flood Fill to
+...** library nodes compiled to pixel processors, and the `-512 / -1024 / -7.499 / -3.499`
+values are its jump-flood encoding, not integers passed between stages:
+
+  * 10175 seeds the field: for each pixel it finds which of the four sides of its cell it
+    is nearest and writes an offset TOWARD the cell's top-left corner into channels 0-1,
+    the cell's colour flag into 2, alpha 1.
+  * 10176-10182, then 10182..10211, are **jump-flood** passes. Each reads its own channels
+    0-1 as an offset in texels, samples itself at `$pos + offset` and at `$pos + 2*offset`,
+    and keeps whichever still points inside the same cell -- so the offset DOUBLES every
+    pass (`-512 = -2^9`, `-1024 = -2^10` are those doubled offsets in texels, i.e. the
+    corner is 512/1024 texels away at 1024-px), converging every pixel's offset onto its
+    cell's corner. The `blend switch` stages between them (`opacitymult` programs returning
+    `(ceil(0.7*sizelog2) >= k) ? 0 : 1`, k = 16, 8, 4, 2, 1) turn passes on by resolution:
+    a 1024 canvas needs `log2` more doublings than a 256 one, so the switch is a per-size
+    loop unrolled into records. The `-7.499 / -3.499` and the `0.5` alternative are two of
+    those switch selectors' baked branches, not image data.
+  * 10218-10252 (**Flood Fill to Bounding Box** / **to Random Grayscale**) reduce the
+    settled field to per-cell min/max corners (`min` of top-lefts, `max` of bottom-rights)
+    and hand 10253 a per-cell size in channels 0-1 and the colour flag in 2.
+
+So the chain is a real image algorithm reading its own channels at computed positions --
+which is why it collapsed: OUR evaluation destroyed the encoding four ways, none of them in
+10253.
+
+WHERE IT COLLAPSED, and it is UPSTREAM of 10253 every time.
+
+  1. **The mask 10174 was solid white.** Its FX-Map 10081 is a random-size stone tiling,
+     and the whole tiling is in the SPARE WORDS of the chain nodes `fxrender.chain` reads as
+     "0". 10081's chain is `0x1CB` -> two `0x89` switches -> two `0x19B` iterate loops:
+     the `0x1CB`'s second child is a DRAW pass that runs after its first child's STATISTICS
+     pass, and each `0x89` sends a wide cell down a FALSE child and a tall one down a TRUE
+     child. The one-successor walk takes the statistics pass only and draws 8 black
+     patterns -> constant 0. Reading the tree (below) draws 96 patterns, a stone grid of
+     random-width bricks, mean 0.65 at native size. Corpus census (437 files): the false
+     child is wired on 205 of 27,093 `0x89`, the after-child on 65 of 1,865 `0x1CB`, 88 of
+     238 `0x99`; ~150 records the one-successor walk truncates.
+
+  2. **`select` was eager.** 10081's gate program writes the row's height and edge into
+     slots 44/38 INSIDE its row-start branch (`select(rowstart, new, old)`), and the
+     transpiler's straight-line emission ran the write on every cell of the row -- with the
+     difference of two fresh jitters, -0.0185 at cell 1 -- clobbering the row's own height.
+     The engine is demand-driven (`while` already re-evaluates operand trees per iteration),
+     so a `set` under one branch of a `select` executes only where that branch is taken.
+     Under the lazy reading the first row's cell widths sum to 1.0 and the row height
+     survives the row; under eager they do not. The tiling's own consistency is the arbiter
+     -- no reference, rand-driven.
+
+  3. **`rand` in a pixel processor was one draw.** 10080 fed every cell 0.2115. Salting the
+     hash per pixel makes it white noise (mean 0.500, sd 0.289), one grey per cell after
+     10252 samples it at cell centres.
+
+  4. **A sub-pixel blur was the identity, and the `brick` pattern was inset.** 10164's blur
+     is `256/min($size)` = 1 px at the record's own size, 0.25 px at `--dim 256`, and its
+     `|blur - x|` edge detector read exactly 0; and every stone drew as a `brick` profile
+     inset to 85% of its cell, so the 5-9 px gap swallowed the 2 px mortar the programs
+     state and the flood fill saw one connected region.
+
+WHAT LANDED, all behind arms, defaults unchanged, on `8bd9f7f`:
+
+    fx.chain              list | tree     `render2/fxchain.py`: the spare word of 0x89/0x99
+                                          is a second (FALSE) child, of 0x1CB a child run
+                                          after the loop; 0x19B is an iterate. Applies only
+                                          to a record whose chain needs it AND is wholly
+                                          modelled (`fxchain.needed`); 3 pack records
+                                          (Bricks 10081, SandyStonePath 2, Leaking004 817).
+    program.select        eager | lazy    `transpile.select_guards`: a `set` demanded only
+                                          through one `select` branch executes only on that
+                                          branch's lanes; one nothing demands does not run.
+    pixelprocessor.rand   image | pixel   salt `rand`'s hash per pixel index.
+    pixelprocessor.sample bilinear|nearest an encoded-integer image must be sampled nearest.
+    blur.subpixel         identity|fractional mix the 1-px box in by a radius < 1 px.
+    fx.brick              inset | fill     patterntype 9's footprint: 85% box or the whole box.
+
+    SPEC 13.7 gains the two-way-node reading; `test_fxchain.py` (7 tests) holds the tree
+    structure, the lazy row height, the two-pass emission, the white-noise rand, the nearest
+    sampler, and every default arm equal to what it drew before.
+
+THE ARBITER, seed-free. The construct's own consistency: under the arms 10081 draws bricks
+whose widths sum to the canvas (`program.select` test), 10252 hands 10253 a per-cell size
+image (channel 2 = cell flag, 81% lit), and 10253 comes alive. Cone flat count and graph
+001 instruments, `--dim 256`, `$outputsize` 10 (last is native `$outputsize` 10 at
+`--dim 1024`, the export size):
+
+    quantity                 5-arm baseline   +6 arms 256    +6 arms 1024   Textures_1 ref
+    cone flat (of 2466)          1939              119            116            --
+    record 10253            0.2115 / 0.000    0.492 / 0.239   0.420 / 0.309    --
+    height mean                  0.500            0.725          0.784          0.440
+    height blob_d                 --              24.2           18.8           35.8
+    AO mean                      0.804            0.750          0.783          0.830
+    basecolor mean               0.242            0.314          0.319          0.262
+    basecolor blob_n              --              48             48             40
+
+Height, AO and basecolor come alive with stone-shaped blobs at the right count (blob_n 48
+against 40; blob_d 19-24 against 36 is ~1.5x small -- the tiling draws more, smaller cells
+than the reference, an open level). Corr on graph 001 (rand-driven, so only a sign check):
++0.000 flat -> +0.166 at 1024, every channel positive. The four deterministic graphs move
+INSIDE the 0.03 guard against the tree/header baseline: 004 +0.686 -> +0.680, 005 +0.800 ->
++0.791, 003 +0.777 -> +0.782 (mean corr, 128 grid, `$outputsize` 10) -- the arms touch only
+records whose chain or sampling the fix changes, and no deterministic graph exercises the
+chain-tree arm (only Bricks 10081 does among the packs).
+
+REFUTED. The brief's reading that 10253 is "the gate on the whole graph" and a
+"data-passing construct" -- it is the last link of a Flood Fill and the constant is its
+input 10080's one-draw `rand`, both downstream symptoms. The `-1024/-512` are jump-flood
+offsets in texels (doubled per pass), NOT a `$sizelog2`-vs-`--dim` inconsistency: they are
+`-2^(pass)` and the `blend switch` selectors gate passes by `sizelog2`, so at `--dim 256`
+with `$outputsize` 10 the offsets are large because the FIELD is 1024-addressed, which is
+correct. `distance` 10173 saturating at 1.0 was a SYMPTOM of the white mask, not a
+`distance`-3.0 bug: with the mask alive it produces the expected graded field.
+
+THE NEXT ANNIHILATION POINT, all arms, `$outputsize` 10, `--dim 1024`: down from 13 to 4.
+The first is 10326, a `pixelprocessor` (mean-0.994 input -> constant 1.0), then two
+`levels` (10344 `[0.297,0.603]`, 10335 `[0.5,0.5]` a hard step) and a `blend` add 10336 --
+all four the same species as before: an authored threshold our level sits above, on the
+grunge/AO branch that reads the now-live mask at too high a level. At `--dim 256` seven
+remain, the extra three the `transformation` records at 0.8515 that are a resolution floor
+(the mask's cell interiors read one value at 256). Not actioned: they are level faults on a
+now-live signal, not dead constructs.
+
+OPEN. blob_d is 1.5x small (the tiling's cell count is high) -- an `x_amount`/`y_amount`
+input default or a `numberadded` reading, not chased here. `fx.chain=tree` refuses a record
+with a Quadrant-pointer leaf or an unmodelled family rather than half-draw it (0 pack
+records hit this). The lazy `select` arm is off by default because it is a different program
+on every `set`-under-`select` in the corpus and only Bricks 10081 is arbitrated; the same
+is true of the five other arms. Whether the engine's Flood Fill settles the field with
+these exact passes or a true jump-flood is not separable from the compiled records alone.

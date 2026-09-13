@@ -10,6 +10,7 @@ import math
 
 import numpy as np
 
+import assume
 import sbsruntime
 import transpile
 
@@ -178,6 +179,33 @@ def _fast_sampler(image):
         return top + (bot - top) * fv
 
     return sampler
+
+
+def nearest_sampler(image):
+    """`pos -> value`, NEAREST texel, wrap-tiled -- the sampler for an encoded image.
+
+    A pixel processor that stores integers, offsets or cell sizes in float channels and
+    reads them back at `$pos + k texels` needs the texel it names and nothing of its
+    neighbours: interpolating two encoded offsets gives an offset that names no pixel.
+    `sampler` above returns the exact texel only when the arithmetic lands on it to the
+    last bit (`u == floor(u)`), which `(col + 0.5) / W + k / W` does not always do. This
+    is the reading behind `assume.QUESTIONS['pixelprocessor.sample'] = 'nearest'`; the
+    texel is the one whose centre is nearest, `floor(pos * W)`.
+    """
+    im = np.asarray(image)
+    H, W = im.shape[:2]
+    base = im.reshape(-1, im.shape[2]) if im.ndim == 3 else im.reshape(-1, 1)
+    grid = _GRIDS.get((W, H))
+
+    def sample(pos):
+        pos = np.asarray(pos)
+        if pos is grid:
+            return base.astype(_grid_result_type(base.dtype), copy=True)
+        u = np.floor(pos[:, 0] * W).astype(np.int64) % W
+        v = np.floor(pos[:, 1] * H).astype(np.int64) % H
+        return base[v * W + u].astype(_grid_result_type(base.dtype), copy=False)
+
+    return sample
 
 
 def to_image(out, N, H, W):
@@ -415,8 +443,12 @@ def blend(mode, dst, src, opacity):
 _SRC = {}
 
 
+def _select_arm():
+    return assume.assumed("program.select", "eager")
+
+
 def _source(asm, start):
-    key = (getattr(asm, 'path', id(asm)), start)
+    key = (getattr(asm, 'path', id(asm)), start, _select_arm())
     got = _SRC.get(key)
     if got is None:
         end = asm.program_span(start)
@@ -431,7 +463,7 @@ _CODE = {}
 
 def _code(asm, start):
     """The program's compiled code object. Pure in (path, address), so it is shared."""
-    key = (getattr(asm, 'path', id(asm)), start)
+    key = (getattr(asm, 'path', id(asm)), start, _select_arm())
     got = _CODE.get(key)
     if got is None:
         got = _CODE[key] = compile(_source(asm, start), '<prog>', 'exec')
@@ -454,7 +486,7 @@ def bind(asm, start, cache, memo):
     Keeping the memo beside the cache makes that unrepresentable rather than merely
     unlikely -- the pair is created together and collected together.
     """
-    key = (getattr(asm, 'path', id(asm)), start)
+    key = (getattr(asm, 'path', id(asm)), start, _select_arm())
     fn = memo.get(key)
     if fn is None:
         scope = {}

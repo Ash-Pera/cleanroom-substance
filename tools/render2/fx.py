@@ -49,6 +49,7 @@ import numpy as np
 
 import assume
 import disasm
+import fxchain
 import fxrender
 import fxtree
 import sbsruntime
@@ -360,6 +361,14 @@ def emissions(rec, run, slots, cache=None):
     stack falls back to it FROM THE FRAME THE WALK STARTED WITH, so a refusal costs a
     re-walk and never an approximation.
     """
+    # THE CHAIN AS A TREE, behind `fx.chain`. Decided before the table is asked for,
+    # because a record this arm applies to has leaves the list walk's table never
+    # reaches, and before the seeding, because those leaves' programs are in
+    # `rec.programs` and would otherwise be run as the record's prologue.
+    if fxchain.active(rec):
+        got = fxchain.emissions(rec, run, slots)
+        assume.note(rec.index)
+        return got
     nodes = fxrender.chain(rec)
     table = fxrender.entries(rec)
     if not table:
@@ -1012,7 +1021,12 @@ def render_fxmaps(ctx, v):
         run = fxrender.make_runner(ctx.asm, rec, programs=ctx.fx_funcs,
                                    cache_funcs=ctx.cache_funcs)
         try:
-            pats = emissions(rec, run, fxrender.seed_slots(rec, run), cache=ctx.cache)
+            seeded = (
+                fxchain.seed(rec, run)
+                if fxchain.active(rec)
+                else fxrender.seed_slots(rec, run)
+            )
+            pats = emissions(rec, run, seeded, cache=ctx.cache)
         except fxrender.Unmodelled as e:
             raise Unsupported('fxmaps: %s' % e) from e
         return splat(rec, pats, W, H, images=images, header=header_fields(ctx, v))

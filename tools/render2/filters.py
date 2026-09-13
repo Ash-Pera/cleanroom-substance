@@ -24,8 +24,8 @@ import sbsruntime
 # file's head segment rather than record words, and its legend entry is not in mask order.
 import text                                                          # noqa: E402
 
-from ops import (Unsupported, blend, footprint_scale, pos_grid, prefilter, sampler,
-                 to_image)
+from ops import (Unsupported, blend, footprint_scale, nearest_sampler, pos_grid,
+                 prefilter, sampler, to_image)
 
 #: Parameter defaults for values the format does not record. See the module docstring.
 #:
@@ -259,12 +259,21 @@ def f_pixelprocessor(ctx, v):
     N = W * H
     saved = dict(sbsruntime.SAMPLERS)
     sbsruntime.SAMPLERS.clear()
+    # THE SAMPLER A PIXEL PROGRAM READS ITS INPUTS THROUGH, behind `pixelprocessor.sample`.
+    # `bilinear` is the shared sampler every filter uses; `nearest` returns the texel
+    # whose centre is nearest, which is what a program that stores offsets or cell sizes
+    # in its channels and reads them back at `$pos + k texels` needs (the flood fill of
+    # Bricks graph 001, records 10175-10252). See `ops.nearest_sampler`.
+    make = sampler
+    if assume.assumed("pixelprocessor.sample", "bilinear") == "nearest":
+        make = nearest_sampler
+        assume.note(v.index)
     try:
         for k in range(len(v.inputs)):
-            sbsruntime.SAMPLERS[k] = sampler(ctx.src(v, k))
+            sbsruntime.SAMPLERS[k] = make(ctx.src(v, k))
         for k, src in ctx.sampler_bindings(v).items():
             if k not in sbsruntime.SAMPLERS:
-                sbsruntime.SAMPLERS[k] = sampler(ctx.outputs[src])
+                sbsruntime.SAMPLERS[k] = make(ctx.outputs[src])
                 ctx.low_confidence.add(v.index)
         # THE PIXEL PROGRAM IS THE LAST HEADER SLOT, which is the record layout model read
         # straight: [tag][arity][inputs][one slot per set class bit][the filter's own].
@@ -299,7 +308,25 @@ def f_pixelprocessor(ctx, v):
                 except Unsupported:
                     pass
         pos = pos_grid(W, H)
-        out = ctx.run(v, main, N, slots=slots, pos=pos, W=W, H=H)
+        # `rand` PER PIXEL, behind `pixelprocessor.rand`. The hash in `sbsruntime.rand`
+        # takes `$number` (0 here) and `CONTEXT['salt']` (0.0 outside the FX tree
+        # runner), so a pixel program's `rand` is one draw for the whole image under the
+        # default. `pixel` salts it by the pixel's row-major index plus one, the same
+        # third input the FX tree runner uses per region, and clears it after -- so a
+        # program that is only `rand(1)` is a white noise at one draw per pixel. Bricks
+        # 10080 is the specimen (`0.001 + rand(0.999)`, no inputs), sampled by 10253
+        # once per flood-fill cell; see FORMAT-NOTES.md, "Record 10253 is not the fault".
+        salted = assume.assumed("pixelprocessor.rand", "image") == "pixel"
+        if salted:
+            sbsruntime.CONTEXT["salt"] = np.arange(1, N + 1, dtype=np.float64).reshape(
+                -1, 1
+            )
+            assume.note(v.index)
+        try:
+            out = ctx.run(v, main, N, slots=slots, pos=pos, W=W, H=H)
+        finally:
+            if salted:
+                sbsruntime.CONTEXT["salt"] = 0.0
         return to_image(out, N, H, W)
     finally:
         sbsruntime.SAMPLERS.clear()
@@ -657,8 +684,20 @@ def f_blur(ctx, v):
         intensity = float(got[0])
     src = to_image(ctx.sample(v, 0, pos), N, H, W)
     radius = float(np.clip(abs(intensity), 0.0, 256.0)) / _reference_px(v)
-    rpx = int(round(radius * max(W, H)))
+    rfl = radius * max(W, H)
+    rpx = int(round(rfl))
     if rpx < 1:
+        # A SUB-PIXEL RADIUS, behind `blur.subpixel`. `identity` is the reading as it
+        # stood. `fractional` mixes the 1-px box in by the radius, so a blur the record
+        # states at a fraction of a pixel still moves the picture by that fraction: a
+        # box of half-width r < 1 covers each neighbour by r, which is exactly the lerp.
+        # Bricks 10164 is the specimen -- intensity `256 / min($size)`, one pixel at
+        # the record's own size, 0.25 px when a 1024 record is drawn on a 256 grid --
+        # whose downstream `|blur - x|` edge detector graph 001's flood-fill mask is
+        # built from, and the identity returns exactly zero to it.
+        if assume.assumed("blur.subpixel", "identity") == "fractional" and rfl > 0:
+            assume.note(v.index)
+            return src + (_box(src, 1) - src) * np.float32(rfl)
         return src                       # a blur of sub-pixel radius is the identity
     return _box(src, rpx)
 

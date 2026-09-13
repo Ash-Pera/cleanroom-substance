@@ -433,7 +433,12 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
             end = spans[ptr] = asm.program_span(ptr, asm.body_hi)
         if end is None:
             raise Unmodelled("program at %d has no span" % ptr)
-        fn = cache.get(ptr)
+        # KEYED ON THE `program.select` ARM as well as the address: the transpiled
+        # source differs under `lazy`, and the assembly-level memo outlives any one
+        # scope. `eager` keeps the bare address as its key so nothing else moves.
+        arm = assume.assumed("program.select", "eager")
+        key = ptr if arm == "eager" else (ptr, arm)
+        fn = cache.get(key)
         if fn is None:
             src = transpile.transpile(asm.data, ptr, end, "python", "prog")
             scope = {}
@@ -443,7 +448,7 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
                 # module level; rebinding them in the scope points them at the caller's
                 # cache, because `prog.__globals__` IS this scope.
                 scope["cache_read"], scope["cache_write"] = cache_funcs
-            fn = cache[ptr] = scope["prog"]
+            fn = cache[key] = scope["prog"]
         sbsruntime.set_context(width=rec.width, height=rec.height,
                                number=number if isinstance(number, np.ndarray)
                                else float(number))
