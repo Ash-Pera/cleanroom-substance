@@ -368,7 +368,7 @@ def record_report(indices, asm_path=None, choices=""):
             run = fxrender.make_runner(asm, rec, programs=ctx.fx_funcs, cache_funcs=ctx.cache_funcs)
             try:
                 pats = fx.emissions(rec, run, fxrender.seed_slots(rec, run), cache=ctx.cache)
-                img = fx.splat(rec, pats, v.width, v.height)[..., 0]
+                img = fx.splat(rec, pats, v.width, v.height, header=fx.header_fields(ctx, v))[..., 0]
             except Exception as e:
                 print("%-8d %-9s REFUSED: %s" % (ri, "%dx%d" % (v.width, v.height), e))
                 continue

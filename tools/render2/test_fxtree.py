@@ -68,7 +68,7 @@ def _render(asm, ri, cap=256, **choices):
     run = fxrender.make_runner(asm, rec, programs=ctx.fx_funcs, cache_funcs=ctx.cache_funcs)
     with assume.scope(**choices):
         pats = fx.emissions(rec, run, fxrender.seed_slots(rec, run), cache=ctx.cache)
-        img = fx.splat(rec, pats, W, H)
+        img = fx.splat(rec, pats, W, H, header=fx.header_fields(ctx, v))
     return img, sum(getattr(p, "count", 1) for p in pats)
 
 
@@ -260,6 +260,43 @@ def test_a_rand_leaf_under_five_quadrants_is_white_noise():
     flat, _n = _render(asm, 9924)
     assert flat.std() < 1e-6, "the flat arm draws one pattern: a constant"
     print("ok  9924 under the tree arm: mean %.3f sd %.3f lag-1 %+.3f" % (x.mean(), x.std(), lag))
+
+
+def test_the_header_names_background_hurst_and_opacitymult_and_the_default_ignores_them():
+    """Records 9806 / 9804: the `opacity = -1` record bakes `background` 1.0 beside
+    `hurst` 0.66 and `opacitymult` 0.44; its 256-px sibling bakes the same two and no
+    background. The names are `model.W1_PARAMS`' (Clouds_3's 0.42 / 10.7 at fields 1 / 2,
+    ie_particles' (0,0,0,1) at field 0). Under the defaults the draw does not read them --
+    9806 is the zero the notebook recorded -- and under `fx.header=read` with a signed add
+    the record is the white canvas minus its strokes, at a mean the thresholds downstream
+    can cut. See FORMAT-NOTES.md, "Graph 001's first annihilation point is a white canvas
+    the file states"."""
+    asm = _bricks()
+    if asm is None:
+        return _skip("no Bricks specimen")
+    v6 = model.View(asm, asm.records[9806])
+    v4 = model.View(asm, asm.records[9804])
+    assert abs(v6.baked("background") - 1.0) < 1e-6, v6.params
+    assert abs(v6.baked("hurst") - 0.66) < 1e-6 and abs(v6.baked("opacitymult") - 0.44) < 1e-6
+    assert v4.baked("background") is None and abs(v4.baked("hurst") - 0.66) < 1e-6
+    assert fx.header_fields(Context(asm, cap=64), v6) is None, "the default reads nothing"
+    dead, _n = _render(asm, 9806, **{"fx.subdivide": "tree"})
+    assert float(dead.max()) == 0.0, "under the defaults the -1 patterns clip to nothing"
+    live, n = _render(
+        asm,
+        9806,
+        **{
+            "fx.subdivide": "tree",
+            "fx.negopacity": "signed",
+            "fx.combine": "bit18",
+            "fx.header": "read",
+            "fx.hurst": "exp",
+        }
+    )
+    x = live[..., 0].astype(np.float64)
+    assert n == 86 and x.shape == (64, 64), (n, x.shape)
+    assert 0.35 < x.mean() < 0.65 and x.std() > 0.1 and x.max() < 1.0, (x.mean(), x.std(), x.max())
+    print("ok  9806 under fx.header=read: mean %.3f sd %.3f (defaults: %.3f)" % (x.mean(), x.std(), dead.mean()))
 
 
 def test_the_budget_refuses_rather_than_truncates():

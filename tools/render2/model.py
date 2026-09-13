@@ -151,6 +151,40 @@ W1_PARAMS = {
     # the ordinary pair, and both are now read: 01 bakes the radius, 10 points at a program
     # this filter evaluates. See `decompose`'s note in the w1 loop for the evidence.
     21: [(0xc, 2, 'distance', 'scalar')],             # distance
+    # `fxmaps` NAMES ITS FIRST THREE FIELDS FROM TWO PAIRED SOURCES, and the other two are
+    # declared for their width only. The FX-Map NODE's own parameters -- not the
+    # patterns' -- are what the permitted sources declare on a `compFilter` of this
+    # filter: `colorswitch`, `outputsize`, `format`, `culling`, `background` (Float4),
+    # `pixelsize`, `tiling`, `randomseed`, `hurst` (Float1) and `opacitymult` (Float1).
+    #
+    #   field 1, field 2   `SubstanceDesigner__Clouds_3_Animated.sbs` (pairs5, permitted)
+    #                      declares ONE fxmaps node with `hurst 0.42` and `opacitymult
+    #                      10.7`; its compiled sibling's record 50 -- the one whose cells
+    #                      the source's paramsets already matched node for node -- bakes
+    #                      0.42 at field 1 and 10.7 at field 2.
+    #   field 0            `ie_particles.sbs` (pairs, permitted) declares two fxmaps nodes
+    #                      and compiles to two records: the colour node stating
+    #                      `background 0 0 0 1` is the colour record 22, whose field 0 is
+    #                      FOUR words holding (0, 0, 0, 1); the grey node states no
+    #                      background and record 21 bakes none. Corpus-wide the field is
+    #                      1 word on grey records and 4 on colour ones -- `channel`, as
+    #                      `levels`' fields are -- and its colour values are (0,0,0,1) on
+    #                      119 of 167, (0.498, 0.498, 1, 1) -- a flat normal -- on 15.
+    #
+    # `hurst` is the Substance UI's "Roughness" and `opacitymult` its "Global Opacity";
+    # what each DOES to the draw is `fx.header` / `fx.hurst`'s question, not this table's.
+    # Fields 3 and 4 are unnamed and listed so the end-anchored block charges their
+    # width: field 3's baked arm is FOUR words (the width legend's `w1.6 = 4`; Auras_FX
+    # record 314 holds (0.5, 0.5, 0, 1) there) and its program arm returns `slots[0]` as a
+    # 4-vector, field 4's program `slots[4]` likewise; field 4 is never baked in the corpus
+    # (`sbsasm.PARAM_SPEC`: bit 8 alone is set in 0 of 39,942), so its width is unmeasured.
+    4: [
+        (0x003, 0, 'background', 'channel'),  # fxmaps
+        (0x00C, 2, 'hurst', 'scalar'),
+        (0x030, 4, 'opacitymult', 'scalar'),
+        (0x0C0, 6, None, 4),
+        (0x300, 8, None, 1),
+    ],
     18: [(0x3, 0, 'intensity', 'scalar'),             # normal
          (0xc, 2, 'inversedy', 'flag'),
          (0x30, 4, 'input2alpha', 'flag')],

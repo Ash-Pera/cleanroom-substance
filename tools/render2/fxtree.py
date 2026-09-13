@@ -642,8 +642,42 @@ def _sources(b, images):
     return out
 
 
-def draw(canvas, b, W, H, images=None):
+def _gain(b, header):
+    """(m, 1) multiplier on the batch's opacity from the record header, or None.
+
+    `opacitymult` (field 2) scales every pattern; `hurst` (field 1) scales by depth under
+    `fx.hurst`: `exp` is 2^(-hurst * depth), `exp2` is 2^(-2 * hurst * depth), `pow` is
+    hurst^depth, `off` is 1. A record
+    that bakes no `hurst` takes `fx.hurst.absent` -- 0 or 1 -- because the source omits
+    the default and the file does not state it. Depth is the region depth the tree gave
+    each pattern (root 0, its children 0, one more per quadrant level), so the flat arm,
+    whose patterns are all depth 0, is scaled by `opacitymult` alone.
+    """
+    if header is None:
+        return None
+    g = None
+    opmul = header.get("opacitymult")
+    if opmul is not None:
+        g = np.full((b.count, 1), float(opmul), np.float32)
+    how = assume.assumed("fx.hurst", "off")
+    if how != "off" and b.depth is not None:
+        h = header.get("hurst")
+        if h is None:
+            h = 1.0 if assume.assumed("fx.hurst.absent", "zero") == "one" else 0.0
+        d = np.asarray(b.depth, np.float64).reshape(-1, 1)
+        if how == "exp":
+            f = np.exp2(-float(h) * d)
+        else:
+            f = np.power(float(h), d)
+        f = f.astype(np.float32)
+        g = f if g is None else g * f
+    return g
+
+
+def draw(canvas, b, W, H, images=None, header=None):
     """Draw a Batch onto `canvas` (H, W, nchan), under `fx.splat`'s own arms.
+
+    `header` is `fx.header_fields`' reading of the record's w1 fields; see `_gain`.
 
     Per pattern this is `fx.splat`'s arithmetic -- the same footprint, the same tile
     wrap, the same coverage -- written over arrays: every copy of every pattern gets a
@@ -661,6 +695,8 @@ def draw(canvas, b, W, H, images=None):
     if b.size is None:
         return
     mode = assume.assumed("fx.combine", "max")
+    if mode == "bit18":
+        mode = fx._mode_for(b.tag, mode)
     if mode not in ("max", "add"):
         raise Unsupported("fxmaps: fx.combine=%s is not drawn as a grid" % mode)
     forced = assume.assumed("fx.profile")
@@ -686,6 +722,9 @@ def draw(canvas, b, W, H, images=None):
     if not ok.any():
         return
     col = _opacity(b, nchan, neg)
+    gain = _gain(b, header)
+    if gain is not None:
+        col = (col * gain).astype(np.float32)
     rot = np.zeros(m) if b.rotation is None else b.rotation.astype(np.float32).astype(np.float64)
     th = 2.0 * np.pi * rot
     ct, st = np.cos(th), np.sin(th)
@@ -761,13 +800,15 @@ def draw(canvas, b, W, H, images=None):
                 continue
             if src is None:
                 if cov is None and hit.all():
-                    tile[...] = fx._combine(tile, colj)
+                    tile[...] = fx._combine(tile, colj, mode)
                 elif fx.BLEND_IN_PLACE:
                     fx._blend(
                         tile, colj if cov is None else colj * cov[:, :, None], mode, hit[:, :, None]
                     )
                 else:
-                    tile[hit] = fx._combine(tile[hit], colj if cov is None else colj * cov[hit, None])
+                    tile[hit] = fx._combine(
+                        tile[hit], colj if cov is None else colj * cov[hit, None], mode
+                    )
                 continue
             uv = np.stack([lx[hit] + 0.5, ly[hit] + 0.5], axis=-1)
             got = np.asarray(sampler(src)(uv), np.float32)
@@ -776,7 +817,9 @@ def draw(canvas, b, W, H, images=None):
             if got.shape[-1] < nchan:
                 got = np.repeat(got[:, :1], nchan, axis=-1)
             tile[hit] = fx._combine(
-                tile[hit], got[:, :nchan] * colj if cov is None else got[:, :nchan] * colj * cov[hit, None]
+                tile[hit],
+                got[:, :nchan] * colj if cov is None else got[:, :nchan] * colj * cov[hit, None],
+                mode,
             )
     # CHUNKS OF SIMILAR FOOTPRINT. Sorted by block area so a chunk's (ky, kx) block is not
     # sized by one large pattern for thousands of small ones.

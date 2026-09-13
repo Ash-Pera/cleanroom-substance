@@ -171,7 +171,12 @@ UNNAMED_BUT_DECLARED = {
         # both filters' fields are visible: `fxmaps`' five are named by `sbsasm.PARAM_SPEC`
         # (fx_param0..3) but not by `model.W1_PARAMS`, which is what this scan reads, and
         # `emboss`' four are unnamed anywhere.
-        4:  (0, 2, 4, 6, 8),   # fxmaps
+        # fxmaps 0, 2 and 4 WERE HERE and are `background`, `hurst` and `opacitymult`:
+        # two paired sources, Clouds_3 (0.42 / 10.7 at fields 1 / 2) and ie_particles
+        # ((0,0,0,1) at field 0 on the one colour record). 6 and 8 stay: field 3 bakes
+        # four words (Auras_FX 314: (0.5, 0.5, 0, 1)) and its program returns `slots[0]`
+        # 4-wide, field 4's `slots[4]`; what either is, nothing readable states.
+        4:  (6, 8),   # fxmaps
         8:  (1, 3, 5, 7),      # emboss
         # `normal` field 2 WAS HERE and is now `input2alpha`. Its one program arm in the
         # corpus is `inputref.b2` on a graph input the manifest names `Alpha_Channel_Content`

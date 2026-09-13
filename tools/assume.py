@@ -142,8 +142,36 @@ QUESTIONS = {
     'fx.pos':             ('origin', 'corner'),
     'fx.scanner':         ('once', 'loop'),
     'fx.gatescan':        ('once', 'loop', 'filter'),
-    'fx.combine':         ('max', 'add', 'over'),
+    # `bit18` IS PER CELL: entry-tag bit 18 clear draws by signed `add`, set draws by
+    # `max`. Over the permitted paired sources bit 18 is set on exactly the entries whose
+    # `paramset` DECLARES a `blendingmode` (ie_curve 43 of 43 own entries, ie_particles
+    # 2 of 2, ie_pcloud 110 of 110, Bruno 1) and clear on every entry of the two sources
+    # that declare none (Simulator__Grid 19, Clouds_3 4); the compiled tag does not say
+    # WHICH declared mode, and a source states no default. `max` was arbitrated on
+    # Chesterfield's tufting records, whose entries set bit 18; Bricks' subdivided
+    # scatters -- the `opacity = -1` construct among them -- clear it. See FORMAT-NOTES.md,
+    # "Graph 001's first annihilation point is a white canvas the file states".
+    'fx.combine':         ('max', 'add', 'over', 'bit18'),
     'fx.negopacity':      ('clip', 'signed', 'abs'),
+    # THE FX-MAP RECORD'S OWN HEADER FIELDS. `read` initialises the canvas to field 0
+    # (`background`, 1 word grey / 4 colour) and multiplies every pattern's opacity by
+    # field 2 (`opacitymult`, the UI's Global Opacity); `ignore` is the draw as it stood,
+    # a zero canvas and no multiplier. The names are `model.W1_PARAMS`' and rest on two
+    # paired sources (Clouds_3's 0.42 / 10.7, ie_particles' (0,0,0,1)). Corpus-wide, all
+    # 2,071 records carrying a negative baked opacity bake `background = 1.0` and none of
+    # the 2,874 with only non-negative ones does.
+    'fx.header':          ('ignore', 'read'),
+    # `hurst` (field 1, the UI's Roughness) as a per-depth gain on the pattern's opacity,
+    # under the tree arm's depth (root 0, its children 0, one more per quadrant level).
+    # `exp` is the fBm reading of the name, 2^(-hurst * depth), under which the baked 0.0
+    # the white-noise records state (Bricks 343, 9924: `rand(1)` leaves at depth 4) is
+    # "no attenuation"; `pow` is hurst^depth, under which 0.0 kills every subdivided leaf
+    # -- kept as the arm the noise records refute. `fx.hurst.absent` is the value a record
+    # that bakes no field 1 takes: the source omits a default and the file does not say.
+    # `exp2` is 2^(-2 * hurst * depth): the same exponent per AREA halving rather than
+    # per side halving, kept because graph 001's own thresholds sit between `exp` and it.
+    'fx.hurst':           ('off', 'exp', 'exp2', 'pow'),
+    'fx.hurst.absent':    ('zero', 'one'),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
     # candidate below is a guess that would need something outside the file to settle.

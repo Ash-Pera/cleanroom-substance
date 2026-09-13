@@ -625,8 +625,25 @@ def _cell(patterns):
     return np.asarray(d, np.float32)
 
 
-def _combine(dst, src):
-    mode = assume.assumed('fx.combine', 'max')
+def _mode_for(tag, mode):
+    """The combine one pattern draws under: `mode`, or per cell under `bit18`.
+
+    `bit18` reads the entry tag: bit 18 set is `max`, clear is signed `add`. Over the
+    permitted paired sources that bit is set on exactly the entries whose `paramset`
+    declares a `blendingmode` and clear where none is declared -- see `assume.QUESTIONS`
+    and FORMAT-NOTES.md, "Graph 001's first annihilation point is a white canvas the file
+    states". A pattern with no tag (a synthetic one) is drawn by `max`.
+    """
+    if mode != 'bit18':
+        return mode
+    if tag is None:
+        return 'max'
+    return 'max' if (int(tag) >> 18) & 1 else 'add'
+
+
+def _combine(dst, src, mode=None):
+    if mode is None:
+        mode = assume.assumed('fx.combine', 'max')
     if mode == 'add':
         return dst + src
     if mode == 'over':
@@ -705,10 +722,24 @@ def _coverage(lx, ly, prof):
     return fxrender.profile_value(lx, ly, prof)
 
 
-def splat(rec, patterns, W, H, images=None):
-    """Draw the emitted patterns onto a W x H canvas."""
+def splat(rec, patterns, W, H, images=None, header=None):
+    """Draw the emitted patterns onto a W x H canvas.
+
+    `header` is `header_fields`' reading of the record's own w1 fields, or None: under
+    `fx.header=read` the canvas starts at its `background` and every pattern's opacity is
+    multiplied by its `opacitymult`; `hurst` reaches only the tree arm's grid draw, where
+    a pattern has a depth (`fxtree.draw`).
+    """
     nchan = 4 if rec.colour else 1
     canvas = np.zeros((H, W, nchan), np.float32)
+    if header is not None and header.get('background') is not None:
+        bg = np.asarray(header['background'], np.float32).ravel()
+        if bg.size < nchan:
+            bg = np.repeat(bg[:1], nchan)
+        canvas[...] = bg[:nchan]
+    opmul = None
+    if header is not None and header.get('opacitymult') is not None:
+        opmul = np.float32(header['opacitymult'])
     # ONE ROW AND ONE COLUMN, NOT TWO FULL GRIDS. `pxg` never varied down a column nor
     # `pyg` across a row, so the mgrid pair spent H*W building W + H distinct numbers and
     # every tile then subtracted its centre out of a 2-D slice. The broadcast below
@@ -758,9 +789,10 @@ def splat(rec, patterns, W, H, images=None):
 
     for p in patterns:
         if isinstance(p, fxtree.Batch):
-            fxtree.draw(canvas, p, W, H, images=images)
+            fxtree.draw(canvas, p, W, H, images=images, header=header)
             continue
         tag = p.get('_tag')
+        pmode = _mode_for(tag, mode)
         if skip_markers and tag is not None and (int(tag) & 0xFF) == 0x08:
             continue
         if p.get('patternsize') is None and p.get('patterntype') is None:
@@ -805,6 +837,8 @@ def splat(rec, patterns, W, H, images=None):
             col = np.clip(np.abs(col[:nchan]), 0.0, 1.0)
         else:
             col = np.clip(col[:nchan], 0.0, 1.0)
+        if opmul is not None:
+            col = col * opmul
 
         rot = float(val(p, 'patternrotation', np.zeros(1, np.float32))[0])
         th = 2.0 * math.pi * rot
@@ -845,13 +879,14 @@ def splat(rec, patterns, W, H, images=None):
                 tile = canvas[r0:r1 + 1, c0:c1 + 1]
                 if src is None:
                     if cov is None and hit.all():
-                        tile[...] = _combine(tile, col)
+                        tile[...] = _combine(tile, col, pmode)
                     elif BLEND_IN_PLACE:
                         _blend(tile, col if cov is None else col * cov[:, :, None],
-                               mode, hit[:, :, None])
+                               pmode, hit[:, :, None])
                     else:
                         tile[hit] = _combine(tile[hit],
-                                             col if cov is None else col * cov[hit, None])
+                                             col if cov is None else col * cov[hit, None],
+                                             pmode)
                     continue
                 uv = np.stack([lx[hit] + 0.5, ly[hit] + 0.5], axis=-1)
                 got = np.asarray(sampler(src)(uv), np.float32)
@@ -861,8 +896,46 @@ def splat(rec, patterns, W, H, images=None):
                     got = np.repeat(got[:, :1], nchan, axis=-1)
                 tile[hit] = _combine(tile[hit],
                                      got[:, :nchan] * col if cov is None else
-                                     got[:, :nchan] * col * cov[hit, None])
+                                     got[:, :nchan] * col * cov[hit, None],
+                                     pmode)
     return np.clip(canvas, 0.0, 1.0)
+
+
+def header_fields(ctx, v):
+    """{background, hurst, opacitymult} from the record's own w1 fields, or None.
+
+    None under `fx.header=ignore`, the default, which draws as before. Under `read` each
+    named field is its baked value, or its program evaluated once at the record's declared
+    size (`Context.run`), or absent. `background` comes back as a (nchan,) vector, the two
+    scalars as floats. A program that does not evaluate leaves its field absent and marks
+    the record low-confidence rather than refusing it: the field was ignored outright
+    until now, and a draw that falls back to that is not worse than the draw it replaces.
+    """
+    if assume.assumed('fx.header', 'ignore') != 'read':
+        return None
+    nchan = 4 if v.colour else 1
+    out = {}
+    for name, width in (('background', nchan), ('hurst', 1), ('opacitymult', 1)):
+        p = v.params.get(name)
+        if p is None:
+            continue
+        if p.kind == 'baked':
+            vals = np.asarray(p.value, np.float32).ravel()
+        else:
+            try:
+                vals = np.asarray(ctx.run(v, p.value, 1), np.float32).ravel()
+            except Exception:
+                ctx.low_confidence.add(v.index)
+                continue
+        if vals.size == 0:
+            continue
+        if width == 1:
+            out[name] = float(vals[0])
+        else:
+            out[name] = vals[:width] if vals.size >= width else np.repeat(vals[:1], width)
+    if out:
+        assume.note(v.index)
+    return out
 
 
 def _profile_for(p):
@@ -942,7 +1015,7 @@ def render_fxmaps(ctx, v):
             pats = emissions(rec, run, fxrender.seed_slots(rec, run), cache=ctx.cache)
         except fxrender.Unmodelled as e:
             raise Unsupported('fxmaps: %s' % e) from e
-        return splat(rec, pats, W, H, images=images)
+        return splat(rec, pats, W, H, images=images, header=header_fields(ctx, v))
     finally:
         sbsruntime.SAMPLERS.clear()
         sbsruntime.SAMPLERS.update(saved)
