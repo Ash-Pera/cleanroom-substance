@@ -12,6 +12,8 @@ pattern, and the cons chain is quadrant subdivision". Knobs are environment vari
     SZ=region|canvas   patternsize / frameoffset units               default region
     QORDER=rowmajor|clockwise|colmajor   which output is which quadrant
     SALT=0|1        fresh `rand` draw per region                     default 1
+    SEED=<float>    reseed every salted draw -- two runs differing only in SEED
+                    state the renderer-side seed floor of any instrument
     ASSUME=k=v,...  assume.scope choices, e.g. fx.negopacity=abs
     DIM, SAVE       render cap; npz of the declared outputs
 
@@ -31,13 +33,14 @@ ROOT_SUBDIVIDES = os.environ.get('ROOT','1')=='1'   # leaf depth = index (1) or 
 BO_UNITS = os.environ.get('BO','region')            # branchoffset scale: region | canvas
 SIZE_UNITS = os.environ.get('SZ','region')          # patternsize/frameoffset: region | canvas
 SALT = os.environ.get('SALT','1')=='1'              # fresh rand per region
+SEED = float(os.environ.get('SEED','0'))           # reseeds every salted draw: the renderer-side seed floor
 
 _rand0 = sbsruntime.rand
 def rand_salted(limit):
     x = np.asarray(limit, dtype=np.float64)
     num = sbsruntime.CONTEXT["number"]
     n = num.astype(np.float64, copy=False).reshape(-1, 1) if isinstance(num, np.ndarray) and num.ndim else float(num)
-    s = float(sbsruntime.CONTEXT.get("salt", 0.0)) if SALT else 0.0
+    s = (float(sbsruntime.CONTEXT.get("salt", 0.0)) + SEED) if SALT else 0.0
     h = np.modf(np.sin(x * 12.9898 + n * 78.233 + s * 37.719) * 43758.5453)[0] % 1.0
     return x * h
 sbsruntime.rand = rand_salted
@@ -191,44 +194,50 @@ if os.environ.get('SUBDIV','1')=='1':
     importlib.import_module('fx').emissions = emissions_subdiv
 
 # ---- render + score ----
-BASE=R+'/archive/specimens/new_opengameart/Kutejnikov__Bricks_and_tiles'
-ap=glob.glob(BASE+'/x_Bricks_Textures_1/assemblies/content/0000/*.sbsasm')[0]
-REF=BASE+'/reference_renders/Textures_1/'
-asm=sbsasm.Assembly(ap)
-root=ET.parse(sorted(glob.glob(os.path.dirname(ap)+'/*.xml'))[0]).getroot()
-uid2={}
-for g in root.iter('graph'):
-    gn=(g.get('pkgurl') or '').split('/')[-1]
-    for o in g.iter('output'): uid2[int(o.get('uid'))]=gn
-names=manifest.output_names(asm)
-DIM=int(os.environ.get('DIM','256'))
-t=time.time()
-extra={k.split('=')[0]:k.split('=')[1] for k in os.environ.get('ASSUME','').split(',') if '='in k}
-with assume.scope(**extra):
-    outs,fails,info=engine.render(asm,max_dim=DIM,outputsize=(10,10))
-print('render %.0fs  outputs %d  failures %d'%(time.time()-t,len(outs),len(fails)))
-from PIL import Image
-def load(p):
-    im=Image.open(p); a=np.asarray(im).astype(np.float64)
-    a=a/(65535.0 if (im.mode=='I;16' or a.max()>255) else 255.0)
-    return a[:,:,:3] if a.ndim==3 else a[:,:,None]
-def rs(x,n=128):
-    return np.stack([np.asarray(Image.fromarray((np.clip(x[:,:,c],0,1)*65535).astype(np.uint16)).resize((n,n),Image.BILINEAR),dtype=np.float64)/65535 for c in range(x.shape[2])],-1)
-rows=[]
-for uid,fmt,grey,ri in asm.outputs():
-    g=uid2.get(uid); nm=names.get(uid,'?')
-    p=REF+'%s_%s.png'%(g,nm)
-    if not os.path.exists(p) or ri not in outs: continue
-    a=rs(np.asarray(outs[ri],np.float64)); b=rs(load(p))
-    for c in range(min(a.shape[2],b.shape[2])):
-        x,y=a[:,:,c].ravel(),b[:,:,c].ravel()
-        corr=float(np.corrcoef(x,y)[0,1]) if x.std()>1e-9 and y.std()>1e-9 else 0.0
-        rows.append((g,nm,c,corr,x.mean(),y.mean(),x.std(),y.std()))
-print('%-4s %-17s ch  corr    mean ours/ref   sd ours/ref'%('g','output'))
-for r in rows: print('%-4s %-17s %d  %+.3f   %.3f/%.3f   %.3f/%.3f'%r)
-byg=collections.defaultdict(list)
-for r in rows: byg[r[0]].append(r[3])
-print('VARIANT',{k:os.environ.get(k) for k in ('SUBDIV','ROOT','BO','SZ','QORDER','ASSUME')})
-print('MEAN CORR by graph:', {g:round(float(np.mean(v)),3) for g,v in sorted(byg.items())}, 'all %.3f'%np.mean([r[3] for r in rows]))
-if os.environ.get('SAVE'):
-    np.savez_compressed(os.environ['SAVE'], **{str(ri):np.asarray(outs[ri]) for uid,fmt,grey,ri in asm.outputs() if ri in outs})
+def main():
+
+    BASE=R+'/archive/specimens/new_opengameart/Kutejnikov__Bricks_and_tiles'
+    ap=glob.glob(BASE+'/x_Bricks_Textures_1/assemblies/content/0000/*.sbsasm')[0]
+    REF=BASE+'/reference_renders/Textures_1/'
+    asm=sbsasm.Assembly(ap)
+    root=ET.parse(sorted(glob.glob(os.path.dirname(ap)+'/*.xml'))[0]).getroot()
+    uid2={}
+    for g in root.iter('graph'):
+        gn=(g.get('pkgurl') or '').split('/')[-1]
+        for o in g.iter('output'): uid2[int(o.get('uid'))]=gn
+    names=manifest.output_names(asm)
+    DIM=int(os.environ.get('DIM','256'))
+    t=time.time()
+    extra={k.split('=')[0]:k.split('=')[1] for k in os.environ.get('ASSUME','').split(',') if '='in k}
+    with assume.scope(**extra):
+        outs,fails,info=engine.render(asm,max_dim=DIM,outputsize=(10,10))
+    print('render %.0fs  outputs %d  failures %d'%(time.time()-t,len(outs),len(fails)))
+    from PIL import Image
+    def load(p):
+        im=Image.open(p); a=np.asarray(im).astype(np.float64)
+        a=a/(65535.0 if (im.mode=='I;16' or a.max()>255) else 255.0)
+        return a[:,:,:3] if a.ndim==3 else a[:,:,None]
+    def rs(x,n=128):
+        return np.stack([np.asarray(Image.fromarray((np.clip(x[:,:,c],0,1)*65535).astype(np.uint16)).resize((n,n),Image.BILINEAR),dtype=np.float64)/65535 for c in range(x.shape[2])],-1)
+    rows=[]
+    for uid,fmt,grey,ri in asm.outputs():
+        g=uid2.get(uid); nm=names.get(uid,'?')
+        p=REF+'%s_%s.png'%(g,nm)
+        if not os.path.exists(p) or ri not in outs: continue
+        a=rs(np.asarray(outs[ri],np.float64)); b=rs(load(p))
+        for c in range(min(a.shape[2],b.shape[2])):
+            x,y=a[:,:,c].ravel(),b[:,:,c].ravel()
+            corr=float(np.corrcoef(x,y)[0,1]) if x.std()>1e-9 and y.std()>1e-9 else 0.0
+            rows.append((g,nm,c,corr,x.mean(),y.mean(),x.std(),y.std()))
+    print('%-4s %-17s ch  corr    mean ours/ref   sd ours/ref'%('g','output'))
+    for r in rows: print('%-4s %-17s %d  %+.3f   %.3f/%.3f   %.3f/%.3f'%r)
+    byg=collections.defaultdict(list)
+    for r in rows: byg[r[0]].append(r[3])
+    print('VARIANT',{k:os.environ.get(k) for k in ('SUBDIV','ROOT','BO','SZ','QORDER','ASSUME')})
+    print('MEAN CORR by graph:', {g:round(float(np.mean(v)),3) for g,v in sorted(byg.items())}, 'all %.3f'%np.mean([r[3] for r in rows]))
+    if os.environ.get('SAVE'):
+        np.savez_compressed(os.environ['SAVE'], **{str(ri):np.asarray(outs[ri]) for uid,fmt,grey,ri in asm.outputs() if ri in outs})
+
+
+if __name__ == '__main__':
+    main()

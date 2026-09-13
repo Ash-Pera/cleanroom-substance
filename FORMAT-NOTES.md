@@ -58950,3 +58950,73 @@ regression guard rather than a discriminator, since their structure survives a r
 and their subdivided records supply detail rather than layout. The cone flatness count
 (2,026 -> 1,920 of 2,466 on graph 001) stays as the coarse first check: an authored
 threshold that cuts nothing is wrong whichever seed drew the input.
+
+## Structural instruments: what a picture states about its nodes, and the first things they decide
+
+`archive/tools/structstats.py`. Each instrument is one sentence and one number per channel,
+chosen by looking at the 003 pictures side by side (reference / HEAD / subdivided): the
+reference has the same eight-row pitch, mortar two to three times wider, brick edges that
+wander where ours are ruler-straight, a tone per brick, and no disc pattern where the
+subdivided renders sprinkle one. So:
+
+    level          mean, p5, p50, p95, sd
+    pitch_x/y      first autocorrelation peak past lag 2, and its height (`pitch_peak`)
+    line_width     25th percentile of dark-run lengths (dark = below Otsu) along rows and
+                   columns -- the width of the thin dark structure, a mortar line
+    line_jitter    sd of the per-column centroid of darkness within +/- pitch/4 of each
+                   horizontal dark line -- how far a brick edge wanders, in px
+    blob_d, blob_n median equivalent diameter and count of bright components (Otsu, >= 4 px)
+    tone_between   sd of the per-blob mean -- the tone per brick
+    tone_within    mean per-blob sd -- the texture inside a brick
+    grain          power fraction above half Nyquist
+    noise_lag1     lag-1 autocorrelation -- 0 for white noise
+
+`--floor` measures each on Textures_1 against Textures_2; `--render a.npz ...` on saved
+renders against Textures_1 per output; `--records i,j` on single fxmaps records under the
+probe's knobs, with no reference at all.
+
+TEXTURES_2 IS NOT A RESEED, and the instruments are what showed it: 003's row pitch is
+32 px in Textures_1 and 42 in Textures_2, 002's 32 against 43, so the second export set
+changed a tile count and cannot state a seed floor for those graphs. Graph 001's pair is
+the nearest thing to one (pitch 34/37, blob_d 36/33, line_width 4/4, jitter 1.7/2.1,
+tone_between 0.053/0.055). The RENDERER-side floor is measured directly -- the probe's
+`SEED` reseeds every draw -- and it is tight: on 003 height, mean 0.674 -> 0.653,
+line_width 4 -> 4, line_jitter 1.24 -> 1.25, blob_d 44.8 -> 44.4, tone_between 0.033 ->
+0.037, tone_within 0.124 -> 0.120. Differences below those are noise; the ones below are
+not.
+
+THE ROOT CONVENTION IS DECIDED BY THE GENERATOR'S OWN STATISTICS, no reference involved.
+Record 9924, `rand(1.0)` opacity under five Quadrants on a 16-px canvas:
+
+    ROOT=1  (root subdivides)     1365 patterns   mean 0.799  sd 0.159  lag1 +0.024
+    ROOT=0  (root's region = its children's)   342   mean 0.513  sd 0.292  lag1 -0.012
+
+Uniform white noise is 0.500 / 0.289 / 0. The second row is that; the first is four draws
+max-combined per pixel. Together with the size-depth census (879 of 1,146) this is settled:
+the first cell does not subdivide, and the probe's default should be ROOT=0. On graph 003
+that alone takes corr from 0.754 to 0.781 against HEAD's 0.801.
+
+WHAT THE INSTRUMENTS SAY ABOUT 003 that corr cannot, height channel, 256-px grid:
+
+                     mean    p5     p50    p95   line_w  jitter  blob_d  tone_betw  tone_within
+    Textures_1       0.520  0.298  0.526  0.728   6.0    1.98    34.5    0.039      0.054
+    HEAD             0.650  0.158  0.726  0.875   4.0    1.17    46.1    0.022      0.113
+    subdiv ROOT=1    0.447  0.149  0.481  0.610   4.0    1.28    42.7    0.046      0.072
+    subdiv ROOT=0    0.674  0.158  0.738  0.986   4.0    1.24    44.8    0.033      0.124
+
+Four discrepancies stand outside the floor in EVERY variant, so they are not the
+subdivision's and are the next leads, each now with a number to close: the mortar is 4 px
+where the reference draws 6 (the `distance` / blur / `levels` chain that widens the brick
+mask); the brick edges wander 1.2 px where the reference's wander 2.0 (a warp whose driving
+noise or intensity is short); the texture inside a brick is twice too strong (0.12 against
+0.054 -- the grunge overlay's opacity or level); and the mortar floor is 0.16 where the
+reference's is 0.30 (a level, the class of fault this thread began with). The tone per
+brick, 0.039, is reached only by the subdivided variants (0.022 -> 0.033 / 0.046), which is
+the one thing corr already credited them for and the one thing the pictures show they add.
+
+BRANCHOFFSET UNITS AND QUADRANT ORDER DO NOT REGISTER ON 003. Region against canvas
+offsets, row-major against clockwise against column-major: every instrument on every
+channel moves less than the renderer's own seed floor. 003's subdivided records supply
+detail, not layout, so this graph cannot arbitrate them; a graph whose layout is a
+subdivided record -- 001 once it renders, or RoofTiles, 80 of 113 records subdividing --
+is where those two questions go.
