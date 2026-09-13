@@ -58908,3 +58908,45 @@ the source that corroborates it, and a probe whose knobs are the open questions.
 model is to be arbitrated on graphs 002, 004 and 005, which are deterministic and already
 at 0.75-0.87, before anything is defaulted -- a change that makes a noise generator live
 and costs 0.1 on every scored graph is not one to switch on.
+
+## Arbitrating the subdivision draw model without corr: three seed-free instruments, one of them already decisive
+
+CORR IS THE WRONG INSTRUMENT FOR THIS, and the census says how wrong. Every subdivided FX-Map
+in `Bricks.sbsasm` calls `rand` -- 19 per graph, 0 rand-free -- so there is no subdivided
+population whose pixels a differently-seeded export could agree with. Textures_1 against
+Textures_2 on the same file: graphs 001, 002 and 003 correlate +0.02..+0.10, 004 and 005
++0.80..+0.99. (An earlier line in this notebook called 002 deterministic; it is not. And
+002's Textures_2 is not a pure reseed either -- its AO band share at 4-8 cycles goes 0.002 to
+0.150 -- so the pair bounds the seed floor from above.)
+
+WHAT SURVIVES A RESEED, measured on that pair over the three randomised graphs, per output
+channel at 512: mean moves a median 1.0% (max 16%), p50 1.3%, p95 0.3%, sd 4.9%; octave
+band SHARES move 18-58% at the median. So the level statistics -- mean, median, p95, the
+guard's `dc` -- are seed-invariant to about a percent and are the arbiter for exactly the
+class of fault this thread is about (a threshold at 0.29 fed a constant 0.611). The
+spectral shape is usable only against a per-graph floor, and only for moves larger than
+it: a depth off by one shifts the feature scale by a full octave, which is larger.
+
+THE FILE STATES THE ROOT CONVENTION ITSELF, and no export is needed. A sizeless leaf fills
+its region, so a record's own canvas says how big the author expected that region to be.
+Over 1,146 sizeless leaves under subdivision (reference packs, pairs5, 60 corpus files):
+
+    log2(record size) - leaf depth      -4    -3    -2    -1     0    +1    +3
+    leaves                               7    25    69   879   138    14    12
+
+879 of 1,146 -- 77% -- sit one level DEEPER than the canvas: a 16-px record puts its leaf
+under five Quadrants. One cell per pixel holds only if the root cell's region is the
+canvas and its children's are too -- the root does not subdivide -- or, the same thing
+said of the leaf, a leaf draws in its PARENT's region. That is `ROOT=0` in the probe, and
+it is the reading the probe's own first picture asked for (9924 at mean 0.80 from four
+draws max-combined per pixel; at one draw per pixel a `rand(1)` noise reads 0.50).
+
+SO THE ORDER OF ARBITRATION is: (1) the size-depth census for the root convention, done;
+(2) per-record white-noise statistics for the combine rule -- a `rand(1.0)` leaf at one cell
+per pixel must read mean 0.50, sd 0.29, and anything else is the combine or the depth;
+(3) mean / p50 / p95 per output channel against Textures_1 for units and quadrant order,
+with the 1% seed floor above as the resolution; (4) corr on 004 and 005 only, as a
+regression guard rather than a discriminator, since their structure survives a reseed
+and their subdivided records supply detail rather than layout. The cone flatness count
+(2,026 -> 1,920 of 2,466 on graph 001) stays as the coarse first check: an authored
+threshold that cuts nothing is wrong whichever seed drew the input.
