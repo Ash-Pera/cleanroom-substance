@@ -659,7 +659,7 @@ def _gain(b, header):
     opmul = header.get("opacitymult")
     if opmul is not None:
         g = np.full((b.count, 1), float(opmul), np.float32)
-    how = assume.assumed("fx.hurst", "off")
+    how = assume.assumed("fx.hurst", "exp")
     if how != "off" and b.depth is not None:
         h = header.get("hurst")
         if h is None:
@@ -694,13 +694,13 @@ def draw(canvas, b, W, H, images=None, header=None):
         return
     if b.size is None:
         return
-    mode = assume.assumed("fx.combine", "max")
+    mode = assume.assumed("fx.combine", "bit18")
     if mode == "bit18":
         mode = fx._mode_for(b.tag, mode)
     if mode not in ("max", "add"):
         raise Unsupported("fxmaps: fx.combine=%s is not drawn as a grid" % mode)
     forced = assume.assumed("fx.profile")
-    neg = assume.assumed("fx.negopacity", "clip")
+    neg = assume.assumed("fx.negopacity", "signed")
     prof = forced if forced is not None else fx._profile_for({"patterntype": b.patterntype})
     m = b.count
     # THE LOOP'S OWN ROUNDING, so that a depth-0 record draws bit for bit what the flat

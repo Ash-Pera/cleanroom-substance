@@ -60319,3 +60319,49 @@ the spots overlap (2 x an 8-px region at depth 5 would), and ours emits a sparse
 Which leaves emit is the question; not answered here. `fx.patternsize=cell` and
 `fx.branchoffset=cell` raise `AttributeError: 'Batch' object has no attribute 'get'` under
 the tree arm -- the per-pattern scaling was written for dicts and never met a `Batch`.
+
+## Eight arms flipped on the ratchet: the readings the Bricks sessions verified now render at bare defaults
+
+THE QUESTION. `python3 tools/render2 <file>` with no arms gave Bricks 3,981 of 12,585
+records and SandyStonePath 625 of 1,778 -- every reading the graph-001 sessions verified
+(`fx.chain=tree`, `program.select=lazy`, the pixel-processor arms, the Quadrant draw arms)
+was on file as an arm and off by default, so the renderer of record drew the dead
+tiling for anyone who did not know to ask. The two ratchet tests
+(`test_render2_reference_agreement_does_not_regress`, `test_the_new_guard_does_not_weaken_
+the_old_floors`) are the guard a default flips on; asked of the six graph-001 arms as a
+block they refused (8 rows), so each of ten arms was asked alone (`assume.scope` around
+the test body, one arm at a time):
+
+    fx.chain=tree                  PASS       fx.negopacity=signed          PASS
+    program.select=lazy            PASS       fx.combine=bit18              PASS
+    pixelprocessor.rand=pixel      PASS       fx.hurst=exp                  PASS
+    pixelprocessor.sample=nearest  PASS       fx.header=read                FAIL, 21 rows
+    fx.brick=fill                  PASS       blur.subpixel=fractional      FAIL,  8 rows
+
+The block's eight objections were `blur.subpixel=fractional`'s alone: 003 band 2.9 / 3.6
+/ 6.6 / 6.8 on AO / height / normal / roughness at 128 (a sub-pixel box mixed in adds
+power the reference does not have), 002 normal ch2 band 0.23. `fx.header=read` fails on
+002 dc and corr (basecolor +0.033, height +0.25 at 256) -- the `opacitymult` /
+`background` reading brightens 002 past its floor. Both stay arms. The eight that pass
+alone pass TOGETHER (both tests), which had to be asked: `fx.chain=tree` alone turns
+Bricks 10081's row-start `select` into a count of 2^31-1 and loses 219 records, because
+the count is right only under `program.select=lazy`; the pair is what the graph-001
+section arbitrated.
+
+FLIPPED, each declaration and each read site, the old reading now the arm:
+`program.select` lazy, `fx.chain` tree, `pixelprocessor.rand` pixel,
+`pixelprocessor.sample` nearest, `fx.brick` fill, `fx.negopacity` signed, `fx.combine`
+bit18, `fx.hurst` exp. Three `test_fxchain` tests that named the old default as "the
+default" now ask for it by name; 33 tests pass. At bare defaults, 256 px: Bricks 12,585 of
+12,585 (five graphs; at 64 px five Auto Levels divide 0/0 on pyramids a 64-px grid cannot
+hold, a grid artefact), SandyStonePath 1,774 of 1,778 (from 625).
+
+WHAT THE RATCHET SAID ABOUT THE TWO REFUSED. `blur.subpixel=fractional` was arbitrated on
+the sub-pixel blur of Bricks 10164 by the flood fill coming alive, which it still does
+under the arm; the ratchet's objection is that the same reading, applied to every blur
+under one pixel, adds high-frequency power on 003 the reference lacks. So the reading is
+right for 10164 and wrong as a rule -- what distinguishes 10164 (`256/min($size)`, a
+radius tied to the canvas) from the blurs that object is the next question there.
+`fx.header=read` brightens 002 by `opacitymult`; the header fields are the file's, the
+objection is to what `bit18` and the tree draw do with them on 002, and that is where the
+708-style per-record isolation goes next.

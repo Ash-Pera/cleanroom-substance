@@ -462,7 +462,7 @@ _SRC = {}
 
 
 def _select_arm():
-    return assume.assumed("program.select", "eager")
+    return assume.assumed("program.select", "lazy")
 
 
 def _source(asm, start):

@@ -463,7 +463,7 @@ def make_runner(asm, rec, programs=None, cache_funcs=None, inputs=None):
         # KEYED ON THE `program.select` ARM as well as the address: the transpiled
         # source differs under `lazy`, and the assembly-level memo outlives any one
         # scope. `eager` keeps the bare address as its key so nothing else moves.
-        arm = assume.assumed("program.select", "eager")
+        arm = assume.assumed("program.select", "lazy")
         key = ptr if arm == "eager" else (ptr, arm)
         fn = cache.get(key)
         if fn is None:
@@ -1579,7 +1579,7 @@ def profile_value(lx, ly, profile):
         # draws every stone as a `brick`, so under `inset` the gap it draws is 5-9 px at
         # 256 where the program says 2, and the flood-fill mask downstream reads the
         # mortar as one region. See FORMAT-NOTES.md, "Record 10253 is not the fault".
-        if assume.assumed("fx.brick", "inset") == "fill":
+        if assume.assumed("fx.brick", "fill") == "fill":
             return ins
         c = np.maximum(np.abs(2.0 * lx), np.abs(2.0 * ly))
         return ((c <= 0.85).astype(np.float32) * ins).astype(np.float32)
@@ -1796,7 +1796,7 @@ def cell_divisor(rec, patterns, cells=None):
 
 def _combine(dst, src):
     """Fold one pattern's contribution into the canvas -- see QUESTIONS['fx.combine']."""
-    mode = assume.assumed("fx.combine", "max")
+    mode = assume.assumed("fx.combine", "bit18")
     if mode == "add":
         return dst + src
     if mode == "over":
@@ -2042,7 +2042,7 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
         if col.size < nchan:
             col = np.repeat(col[:1], nchan)
         # See assume.QUESTIONS['fx.negopacity'] -- the clip makes a negative opacity inert.
-        _neg = assume.assumed("fx.negopacity", "clip")
+        _neg = assume.assumed("fx.negopacity", "signed")
         if _neg == "signed":
             col = np.clip(col[:nchan], -1.0, 1.0)
         elif _neg == "abs":

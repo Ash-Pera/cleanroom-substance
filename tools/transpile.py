@@ -316,7 +316,7 @@ def transpile(data, start, end, backend="python", name="program", result=None):
     if not ins:
         raise Unsupported("empty program")
     byk = {i[0]: i for i in ins}
-    lazy = backend == "python" and assume.assumed("program.select", "eager") == "lazy"
+    lazy = backend == "python" and assume.assumed("program.select", "lazy") == "lazy"
     guards = (
         select_guards(ins, ins[-1][0] if result is None else result) if lazy else {}
     )

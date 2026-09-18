@@ -161,8 +161,10 @@ def test_tiling_emits_two_passes():
     stats = [np.ravel(p["patternsize"]) for p in pats[:48]]
     draw = [np.ravel(p["patternsize"]) for p in pats[48:]]
     assert all((d < s).all() for s, d in zip(stats, draw))
-    # the list walk draws the statistics pass alone
-    listed = _emit(asm, TILING)
+    # the list walk draws the statistics pass alone (the reading before `tree` became
+    # the default; asked for by name)
+    with assume.scope(**{"fx.chain": "list", "program.select": "eager"}):
+        listed = _emit(asm, TILING)
     assert len(listed) < 20 and all(float(np.ravel(p["opacity"])[0]) == 0.0 for p in listed)
 
 
@@ -170,9 +172,11 @@ def test_default_arms_unchanged():
     asm = _bricks()
     if asm is None:
         return _skip("Bricks specimen not present")
-    # a record the tree arm applies to draws what it drew under the default
+    # a record the tree arm applies to draws, under the LIST reading (an arm since the
+    # defaults flipped), what the list walk always drew: eight black patterns
     v = model.View(asm, asm.records[TILING])
-    a = np.asarray(fx.render_fxmaps(Context(asm, cap=256), v))
+    with assume.scope(**{"fx.chain": "list", "program.select": "eager"}):
+        a = np.asarray(fx.render_fxmaps(Context(asm, cap=256), v))
     assert a.max() == 0.0
     # and one it does not apply to is identical under the arm
     other = next(
@@ -193,7 +197,8 @@ def test_pixel_rand_is_white_noise():
     import filters
 
     v = model.View(asm, asm.records[NOISE])
-    flat = np.asarray(filters.f_pixelprocessor(Context(asm, cap=256), v))
+    with assume.scope(**{"pixelprocessor.rand": "image"}):
+        flat = np.asarray(filters.f_pixelprocessor(Context(asm, cap=256), v))
     assert flat.std() < 1e-9 and abs(flat.mean() - 0.2115) < 1e-3
     with assume.scope(**{"pixelprocessor.rand": "pixel"}):
         noise = np.asarray(filters.f_pixelprocessor(Context(asm, cap=256), v))

@@ -218,8 +218,8 @@ QUESTIONS = {
     # Chesterfield's tufting records, whose entries set bit 18; Bricks' subdivided
     # scatters -- the `opacity = -1` construct among them -- clear it. See FORMAT-NOTES.md,
     # "Graph 001's first annihilation point is a white canvas the file states".
-    "fx.combine": ("max", "add", "over", "bit18"),
-    "fx.negopacity": ("clip", "signed", "abs"),
+    "fx.combine": ("bit18", "max", "add", "over"),
+    "fx.negopacity": ("signed", "clip", "abs"),
     # THE FX-MAP RECORD'S OWN HEADER FIELDS. `read` initialises the canvas to field 0
     # (`background`, 1 word grey / 4 colour) and multiplies every pattern's opacity by
     # field 2 (`opacitymult`, the UI's Global Opacity); `ignore` is the draw as it stood,
@@ -237,7 +237,7 @@ QUESTIONS = {
     # that bakes no field 1 takes: the source omits a default and the file does not say.
     # `exp2` is 2^(-2 * hurst * depth): the same exponent per AREA halving rather than
     # per side halving, kept because graph 001's own thresholds sit between `exp` and it.
-    "fx.hurst": ("off", "exp", "exp2", "pow"),
+    "fx.hurst": ("exp", "off", "exp2", "pow"),
     "fx.hurst.absent": ("zero", "one"),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
@@ -416,7 +416,7 @@ QUESTIONS = {
     # cell of the row with the difference of two fresh jitters, so the tiling's own
     # consistency (cell widths summing to the canvas, monotone edges) is the arbiter. See
     # `transpile.select_guards` and FORMAT-NOTES.md, "Record 10253 is not the fault".
-    "program.select": ("eager", "lazy"),
+    "program.select": ("lazy", "eager"),
     # HOW AN FX-MAP'S CHAIN NODES ARE WALKED. `list` follows one successor per node --
     # `fxrender.chain` -- and reads 0x89's spare word as "0", 0x1CB's as "0", and 0x19B
     # by its low byte as a stepper. `tree` reads the words the file fills: a 0x89 / 0x99
@@ -426,14 +426,14 @@ QUESTIONS = {
     # nodes). Corpus census (437 files): 205 of 27,093 0x89 nodes carry a false child,
     # 88 of 238 0x99, 65 of 1,865 0x1CB -- about 150 records. A record whose chain has
     # none of these renders identically under both arms by construction (`fxchain.needed`).
-    "fx.chain": ("list", "tree"),
+    "fx.chain": ("tree", "list"),
     # `rand` INSIDE A PIXEL PROCESSOR. `image` is one draw per record -- `$number` is 0
     # and nothing else salts the hash -- so a program that is only `rand(1)` renders a
     # constant. `pixel` salts the hash per pixel, so the same program is a white noise.
     # Bricks 10080 (`0.001 + rand(0.999)`, no inputs) feeds a flood-fill-to-random-grey
     # that samples it once per cell at the cell's centre, and the reference height shows
     # one grey per stone; under `image` every cell reads the same 0.2115.
-    "pixelprocessor.rand": ("image", "pixel"),
+    "pixelprocessor.rand": ("pixel", "image"),
     # A `blur` WHOSE RADIUS IS UNDER A PIXEL ON THE RENDER GRID. `identity` returns the
     # input; `fractional` mixes the one-pixel box in by the radius. Not a question about
     # the format -- the radius is read the same way under both -- but about a render
@@ -446,7 +446,7 @@ QUESTIONS = {
     # offset in texels, a cell's size, an id -- survives only the second: interpolating
     # two encoded offsets names no pixel. The file states no filtering mode per input
     # that this reader has found. See `ops.nearest_sampler`.
-    "pixelprocessor.sample": ("bilinear", "nearest"),
+    "pixelprocessor.sample": ("nearest", "bilinear"),
     # WHAT `$outputsize` SAYS INSIDE A PIXEL PROCESSOR'S PROGRAMS. `grid` (the default,
     # arbitrated on the whole reference set): log2 of the grid the record is drawn on --
     # the rule `Context.run` already applies to `$size` for this one population, extended
@@ -459,7 +459,7 @@ QUESTIONS = {
     # THE `brick` PATTERN'S FOOTPRINT (patterntype 9, `SHAPE_MODELLED`). `inset` is the
     # hard fill at 85% of the box the profile has always drawn; `fill` is the whole box.
     # See `fxrender.profile_value`.
-    "fx.brick": ("inset", "fill"),
+    "fx.brick": ("fill", "inset"),
 }
 
 _ACTIVE = {}

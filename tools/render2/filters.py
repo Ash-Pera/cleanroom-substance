@@ -370,7 +370,7 @@ def f_pixelprocessor(ctx, v):
     # in its channels and reads them back at `$pos + k texels` needs (the flood fill of
     # Bricks graph 001, records 10175-10252). See `ops.nearest_sampler`.
     make = sampler
-    if assume.assumed("pixelprocessor.sample", "bilinear") == "nearest":
+    if assume.assumed("pixelprocessor.sample", "nearest") == "nearest":
         make = nearest_sampler
         assume.note(v.index)
     try:
@@ -453,7 +453,7 @@ def f_pixelprocessor(ctx, v):
         # program that is only `rand(1)` is a white noise at one draw per pixel. Bricks
         # 10080 is the specimen (`0.001 + rand(0.999)`, no inputs), sampled by 10253
         # once per flood-fill cell; see FORMAT-NOTES.md, "Record 10253 is not the fault".
-        salted = assume.assumed("pixelprocessor.rand", "image") == "pixel"
+        salted = assume.assumed("pixelprocessor.rand", "pixel") == "pixel"
         if salted:
             sbsruntime.CONTEXT["salt"] = np.arange(1, N + 1, dtype=np.float64).reshape(
                 -1, 1

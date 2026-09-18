@@ -221,7 +221,7 @@ def seed(rec, run):
 
 def active(rec):
     """Is the tree arm in force for this record?"""
-    return assume.assumed("fx.chain", "list") == "tree" and needed(rec)
+    return assume.assumed("fx.chain", "tree") == "tree" and needed(rec)
 
 
 def needed(rec):
