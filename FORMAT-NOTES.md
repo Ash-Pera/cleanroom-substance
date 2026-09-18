@@ -60227,3 +60227,17 @@ record whose declared size is `2^$outputsize` on both axes -- a canvas-sized pix
 -- and a record pinned to its own size reads the render's `$outputsize` as before.
 Chesterfield AO back to band 2.55, dc -0.014, corr +0.88; RoofTiles' normal keeps
 +0.31/+0.73/+0.39. Ratchet passes; 19 tests.
+
+ADDENDUM, `spread` as the default, asked of the ratchet rather than the per-graph corr.
+`test_render2_reference_agreement_does_not_regress` with `distance.propagate` defaulting
+to `spread`: 002 roughness dc -0.32 / -0.44 / -0.44 at 128 / 256 / 512 (a level miss, not a
+direction), 002 basecolor band 1.68 -> 0.33 and normal band 1.48 -> 0.33 at 256 (the
+high-frequency power is gone: the tilt replaced the hard lines and nothing put the lines
+back), 003 basecolor band 0.16 at 128, plus the corr rows the tilt hole explains. That is
+two objections the tilt/level instrument does not answer -- roughness level and line
+power -- so the case for `spread` in the "seed-free" section was overstated by them, and
+the default stays `field`. The rows to chase before asking again: what `spread` does to
+002's roughness chain (a distinct-source `distance` there), and the mortar-line power.
+Also: RoofTiles' roughness in `reference_renders/clear` is a flat 0.282 (paint cleared),
+so its corr is not a render question; the 0.28 -> 0.03 under the matrix flip was against
+`old`.
