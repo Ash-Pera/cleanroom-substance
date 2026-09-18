@@ -27,9 +27,20 @@ sentence, is measured on the Textures_1 / Textures_2 pair to state its own seed 
     grain        fraction of spectral power above half Nyquist (zero-mean channel)
     noise_lag1   lag-1 autocorrelation, x and y averaged -- 0 for white noise
 
+    PER TILE (`--tiles`, height only): the graph's own tile mask segments the picture, and
+    what is read is what a draw model puts INSIDE a cell, which a per-cell random draw
+    (a Flood Fill to Gradient's direction, a row height) moves around but does not change:
+    tilt         value change across one tile of the plane fitted to the height inside it,
+                 `|grad| x sqrt(area)`; median and quartiles over tiles
+    tile_level   mean height on the tiles;  mortar_level  mean height off them
+    The mask is edge 0 of the graph's 13.86-px `distance` tone node, rendered under the
+    arms given, so the SAME segmentation reads reference and render. Seed-free because the
+    reference's mask is the file's own deterministic layout on 002-005 (alignment printed).
+
     python3 archive/tools/structstats.py --floor            # T1 vs T2 per instrument
     python3 archive/tools/structstats.py --render a.npz [b.npz ...] --graph 003
     python3 archive/tools/structstats.py --records 9924,343 --assume fx.subdivide=tree
+    python3 archive/tools/structstats.py --tiles a.npz [b.npz ...] --graph 005
 """
 import argparse
 import glob
@@ -311,9 +322,96 @@ def render_report(npzs, graph, outputs=None, grid=GRID):
             print("%-22s" % ("  " + lab[:20]) + "".join("%8s" % fmt(r.get(k)) for k in KEYS))
 
 
+def _tone_mask_record(asm, graph):
+    """Edge 0 of the graph's 13.86-px two-edge `distance` -- its tile mask -- or None."""
+    import struct
+
+    outs = [ri for g, _nm, ri in _bricks_outputs() if g == graph]
+    seen, todo = set(), list(outs)
+    while todo:
+        i = todo.pop()
+        if i in seen:
+            continue
+        seen.add(i)
+        todo.extend(asm.records[i].edges)
+    for i in sorted(seen):
+        r = asm.records[i]
+        if r.filter_name != "distance" or len(r.edges) != 2 or r.edges[0] == r.edges[1]:
+            continue
+        w = r.words[2 + len(r.edges) + 2]
+        if abs(struct.unpack("<f", struct.pack("<I", w))[0] - 13.86) < 0.01:
+            return r.edges[0]
+    return None
+
+
+def tile_instruments(x, lab, n, mask):
+    """tilt (median, p25, p75), tile_level, mortar_level of channel `x` under labels `lab`."""
+    yy, xx = np.mgrid[0 : x.shape[0], 0 : x.shape[1]]
+    mags = []
+    for k in range(1, n + 1):
+        sel = lab == k
+        if sel.sum() < 150:
+            continue
+        A = np.c_[xx[sel], yy[sel], np.ones(sel.sum())]
+        coef = np.linalg.lstsq(A, x[sel], rcond=None)[0]
+        mags.append(np.hypot(coef[0], coef[1]) * np.sqrt(sel.sum()))
+    mags = np.array(mags) if mags else np.array([np.nan])
+    return {
+        "tilt": float(np.median(mags)),
+        "tilt_p25": float(np.percentile(mags, 25)),
+        "tilt_p75": float(np.percentile(mags, 75)),
+        "tile_level": float(x[lab > 0].mean()),
+        "mortar_level": float(x[~mask].mean()),
+    }
+
+
+def tiles_report(npzs, graph, choices="", grid=GRID):
+    """Per-tile instruments on the reference height and every saved render's."""
+    from scipy import ndimage
+
+    import assume
+    import sbsasm
+    from render2.engine import render
+
+    ap = glob.glob(BRICKS + "/x_Bricks_Textures_1/assemblies/content/0000/*.sbsasm")[0]
+    asm = sbsasm.Assembly(ap)
+    mrec = _tone_mask_record(asm, graph)
+    if mrec is None:
+        print("graph %s: no 13.86-px tone node, no tile mask" % graph)
+        return
+    picks = dict(kv.split("=") for kv in choices.split(",") if kv)
+    for k, v in list(picks.items()):
+        for cand in assume.QUESTIONS.get(k, ()):
+            if str(cand) == v:
+                picks[k] = cand
+    with assume.scope(**picks):
+        outs, _f, _i = render(asm, max_dim=grid, outputsize=(10, 10), stop_after=mrec + 1)
+    m = np.asarray(outs[mrec], np.float64)
+    m = m if m.ndim == 3 else m[:, :, None]
+    mask = resample(m, grid)[:, :, 0] > 0.5
+    lab, n = ndimage.label(ndimage.binary_erosion(mask, iterations=3))
+    hri = [ri for g, nm, ri in _bricks_outputs() if g == graph and nm == "height"][0]
+    ref = load_png(BRICKS + "/reference_renders/Textures_1/%s_height.png" % graph, grid)[:, :, 0]
+    align = np.corrcoef(mask.ravel().astype(float), ref.ravel())[0, 1]
+    print("graph %s height, %d-px grid, mask rec %d, %d tiles, mask/ref corr %.2f" % (graph, grid, mrec, n, align))
+    rows = [("T1", tile_instruments(ref, lab, n, mask))]
+    for f in npzs:
+        z = np.load(f)
+        if str(hri) not in z.files:
+            continue
+        a = np.asarray(z[str(hri)], np.float64)
+        a = a if a.ndim == 3 else a[:, :, None]
+        rows.append((os.path.basename(f)[:-4], tile_instruments(resample(a, grid)[:, :, 0], lab, n, mask)))
+    keys = ["tilt", "tilt_p25", "tilt_p75", "tile_level", "mortar_level"]
+    print("%-22s" % "" + "".join("%13s" % k for k in keys))
+    for lab_, r in rows:
+        print("%-22s" % ("  " + lab_[:20]) + "".join("%13.3f" % r[k] for k in keys))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--floor", action="store_true")
+    ap.add_argument("--tiles", nargs="*", default=None, help="saved renders; per-tile height instruments")
     ap.add_argument("--render", nargs="*", default=None)
     ap.add_argument("--graph", default="003")
     ap.add_argument("--outputs", default=None)
@@ -331,6 +429,8 @@ def main():
         floor_report(grid=a.grid)
     if a.render:
         render_report(a.render, a.graph, a.outputs.split(",") if a.outputs else None, a.grid)
+    if a.tiles is not None:
+        tiles_report(a.tiles, a.graph, a.assume, a.grid)
 
 
 
