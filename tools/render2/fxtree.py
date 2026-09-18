@@ -730,6 +730,7 @@ def draw(canvas, b, W, H, images=None, header=None):
     if gain is not None:
         col = (col * gain).astype(np.float32)
     rot = np.zeros(m) if b.rotation is None else b.rotation.astype(np.float32).astype(np.float64)
+    rot = np.where(np.isfinite(rot), rot, 0.0)  # the texture rule, as in `fx.splat`
     th = 2.0 * np.pi * rot
     if assume.assumed("fx.rotation", "ccw") == "cw":
         th = -th  # see assume.QUESTIONS['fx.rotation']

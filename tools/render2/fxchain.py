@@ -287,7 +287,11 @@ def emissions(rec, run, slots):
         # iterate: bit 5 puts `randomseed` first, `numberadded` last
         if len(n.progs) > 1:
             run(n.progs[0], slots, number)
-        raw = int(round(float(np.asarray(run(n.progs[-1], slots, number)).ravel()[0])))
+        _c = float(np.asarray(run(n.progs[-1], slots, number)).ravel()[0])
+        # A NON-FINITE COUNT IS ZERO PATTERNS: the count program divided 0/0 (a size read
+        # as 0 upstream) and the texture rule writes 0 (`nonfinite.fill`); six corpus
+        # files raised `cannot convert float NaN to integer` here.
+        raw = int(round(_c)) if np.isfinite(_c) else 0
         if not 0 <= raw <= MAX_PATTERNS:
             raise Unsupported("fxmaps: numberadded = %d" % raw)
         if n.loop:

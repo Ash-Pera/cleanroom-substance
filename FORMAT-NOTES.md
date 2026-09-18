@@ -60603,3 +60603,10 @@ ADDENDUM: `curve record carries no readable spline` (11 files) was `Record.curve
 refusing any count over 16. The payload confirms its own count (its first word equals slot
 2) and the containment test bounds the read; Wood_Plain 524 holds 22 points at a span of
 exactly 24 x 22 + 4. The cap is `CURVE_MAX_POINTS` now. Wood_Plain 1,588 of 1,588.
+
+ADDENDUM: `fxmaps: ValueError: cannot convert float NaN to integer` (6 files) was two
+sites: a count program returning NaN at `int(round(...))` in `fx.emissions` and
+`fxchain.emissions` (a non-finite count is zero patterns), and a NaN `patternrotation`
+reaching `math.ceil` in `splat` (the size and centre were checked for finiteness, the
+rotation was not; it is 0 now, in `fxtree.draw` as well) -- the texture rule in both
+places. Road_01 686 -> 794 of 794.

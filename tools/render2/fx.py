@@ -551,7 +551,11 @@ def _walk(rec, run, slots, nodes, table, collect):
                 raise Unsupported("fxmaps: addnode with no numberadded program")
             if "randomseed" in progs and progs["randomseed"] is not None:
                 run(progs["randomseed"], slots, number)
-            raw = int(round(float(np.asarray(run(prog, slots, number)).ravel()[0])))
+            _c = float(np.asarray(run(prog, slots, number)).ravel()[0])
+            # A NON-FINITE COUNT IS ZERO PATTERNS: the count program divided 0/0 (a size read
+            # as 0 upstream) and the texture rule writes 0 (`nonfinite.fill`); six corpus
+            # files raised `cannot convert float NaN to integer` here.
+            raw = int(round(_c)) if np.isfinite(_c) else 0
             if not 0 <= raw <= MAX_PATTERNS:
                 raise Unsupported("fxmaps: numberadded = %d" % raw)
             n, mode = emission_count(rec, raw)
@@ -895,6 +899,8 @@ def splat(rec, patterns, W, H, images=None, header=None):
             cx = (cx + 0.5) % 1.0 - 0.5
             cy = (cy + 0.5) % 1.0 - 0.5
         rot = float(val(p, "patternrotation", np.zeros(1, np.float32))[0])
+        if not math.isfinite(rot):
+            rot = 0.0  # the texture rule: a non-finite rotation program wrote 0
         th = 2.0 * math.pi * rot
         if rot_cw:
             th = -th
