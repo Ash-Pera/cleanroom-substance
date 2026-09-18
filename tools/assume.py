@@ -339,6 +339,12 @@ QUESTIONS = {
     #                         position into a gradient, not the parameter's own.
     "blend.w1bit8": ("ignore", "alphablend", "background_used"),
     "transformation.w1low": ("ignore", "tiling", "filtering", "mipmap"),
+    # HOW `matrix22`'S FOUR WORDS ARE LAID OUT. `columns` (the default since this was
+    # arbitrated on the whole reference set): the words are a column-major 2x2, so the
+    # sampled position is `(m0 x + m2 y, m1 x + m3 y)`. `rows` is the reading before it,
+    # `(m0 x + m1 y, m2 x + m3 y)`, which turns every rotation the wrong way. Symmetric
+    # matrices (scales, flips -- all of Bricks) draw identically under both.
+    "transformation.matrix": ("columns", "rows"),
     "dyngradient.gradpos": ("ignore", "position", "variation"),
     "emboss.w1field0": ("ignore", "intensity", "greyscale_amount"),
     "fxmaps.cls22": ("ignore", "outputsize"),
@@ -358,6 +364,20 @@ QUESTIONS = {
     # -- no opacity, no rotation, nothing about drawing. Drawing them at `fx.sizeless`'s full
     # canvas is what pins 574 of 574 flat-origin records to a constant.
     "fx.markers": ("skip", "draw"),
+    # WHERE A PATTERN CENTRE OUTSIDE THE CANVAS GOES. `reach` draws up to three neighbour
+    # copies and drops what they do not cover; `wrap` takes the centre modulo the canvas
+    # first, which is what a tileable FX-Map does, and is the only way RoofTiles record 7's
+    # rows (centres x = 0, 0.5, 1.0, ... 4.5) can all land. Identical for every pattern the
+    # copies already reached.
+    "fx.centre": ("reach", "wrap"),
+    # THE SENSE OF `patternrotation`. `ccw` is what `splat` has always drawn: a rotation of
+    # r turns is +2 pi r in the canvas's (x right, y down) frame. `cw` is the other sense.
+    # RoofTiles' shingles are 0.75-turn gradient stripes (records 7, 61) and under `ccw`
+    # each shingle is bright at the top where the reference is bright at the bottom lip,
+    # with the layout otherwise in place (height corr -0.79 at the exported tile counts);
+    # inverting `transformation`'s matrix instead fixes RoofTiles and wrecks Chesterfield
+    # and Auras, so the sense in question is this one. Arbitrated on every pack.
+    "fx.rotation": ("ccw", "cw"),
     "fx.typeless_profile": ("rect", "disc", "cone", "paraboloid", "bell", "gaussian"),
     # QUADRANT SUBDIVISION. `flat` is `fx.emissions` as it stood: every table entry drawn
     # once at full canvas, the chain-family cells read as links. `tree` reads the entry

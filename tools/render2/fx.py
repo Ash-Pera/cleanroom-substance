@@ -793,6 +793,12 @@ def splat(rec, patterns, W, H, images=None, header=None):
     skip_root = assume.assumed("fx.rootentry") == "skip"
     skip_markers = assume.assumed("fx.markers", "skip") == "skip"
     neg = assume.assumed("fx.negopacity", "clip")
+    wrap_centre = assume.assumed("fx.centre", "reach") == "wrap"
+    if wrap_centre:
+        assume.note(rec.index)
+    rot_cw = assume.assumed("fx.rotation", "ccw") == "cw"
+    if rot_cw:
+        assume.note(rec.index)
 
     def val(pat, name, default):
         v = pat.get(name)
@@ -874,8 +880,19 @@ def splat(rec, patterns, W, H, images=None, header=None):
         if opmul is not None:
             col = col * opmul
 
+        if wrap_centre:
+            # THE CANVAS IS A TORUS. A pattern placed at x = 2.0 is at x = 0: the row
+            # stagger of RoofTiles record 7 is `branchoffset` x = 0, 0.5, 1.0, 1.5, 2.0 ...
+            # for rows 0, 1, 2, ..., one full-width stripe each, and under the bounded
+            # neighbour copies below (`reach`) everything past the second row fell off the
+            # canvas. Wrapping the centre first leaves every pattern the copies already
+            # reached exactly where it was.
+            cx = (cx + 0.5) % 1.0 - 0.5
+            cy = (cy + 0.5) % 1.0 - 0.5
         rot = float(val(p, "patternrotation", np.zeros(1, np.float32))[0])
         th = 2.0 * math.pi * rot
+        if rot_cw:
+            th = -th
         ct, st = math.cos(th), math.sin(th)
         prof = forced if forced is not None else _profile_for(p)
         hx = 0.5 * (sx * abs(ct) + sy * abs(st))

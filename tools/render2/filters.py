@@ -321,13 +321,15 @@ def annihilated_samplers(asm, ptr):
         m = _DEF_RE.match(ln)
         if m:
             defs[int(m.group(1))] = (m.group(2), m.group(3))
-    zero = {
-        g
-        for g, (op, ar) in defs.items()
-        if op.startswith("const")
-        and ar.strip()
-        and all(t.strip() and float(t) == 0.0 for t in ar.split(","))
-    }
+    def _is_zero(ar):
+        # A constant the disassembler cannot print shows as `?`; that is not a zero.
+        try:
+            toks = [t.strip() for t in ar.split(",")]
+            return bool(toks) and all(t and float(t) == 0.0 for t in toks)
+        except ValueError:
+            return False
+
+    zero = {g for g, (op, ar) in defs.items() if op.startswith("const") and _is_zero(ar)}
     by_index = {}
     for g, (op, ar) in defs.items():
         if op.startswith("sample"):
@@ -493,10 +495,20 @@ def f_transformation(ctx, v):
         off = (0.0, 0.0)
     pos = pos_grid(W, H)
     c = pos - 0.5
+    # THE FOUR WORDS ARE COLUMN-MAJOR. Read as rows -- `x_in = m0 x + m1 y` -- a 90-degree
+    # rotation turns the wrong way: RoofTiles record 62 (`0, -1, 1, 0`) lays its shingle
+    # rows in place but with every shingle's gradient upside down, height corr -0.79
+    # against the reference at the exported tile counts, +0.81 read as columns. Scales
+    # and flips are symmetric, so Bricks is bit-identical either way, Auras and
+    # SandyStonePath unchanged, Chesterfield +0.007 (normal ch2 +0.05). `rows` keeps the
+    # old reading. See FORMAT-NOTES.md, "RoofTiles: the shingles are upside down".
+    if assume.assumed("transformation.matrix", "columns") == "rows":
+        m = (m[0], m[2], m[1], m[3])
+        assume.note(v.index)
     in_pos = np.stack(
         [
-            m[0] * c[:, 0] + m[1] * c[:, 1] + 0.5 + off[0],
-            m[2] * c[:, 0] + m[3] * c[:, 1] + 0.5 + off[1],
+            m[0] * c[:, 0] + m[2] * c[:, 1] + 0.5 + off[0],
+            m[1] * c[:, 0] + m[3] * c[:, 1] + 0.5 + off[1],
         ],
         axis=-1,
     )

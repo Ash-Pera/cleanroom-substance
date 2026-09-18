@@ -60098,3 +60098,56 @@ node family the tree walk does not model, so the record takes the list walk, whi
 record 7 as five gradient rows with the last cut short at 5,5 and mostly black at 10,10.
 Bits 18 and 22 set with a 0x48 low byte is not a shape in `FX_NODE_PARAMS`. That family
 is the next thing on this pack; the tile count and the blur default come after it.
+
+## RoofTiles: the shingles were upside down, and the cause is `transformation`'s matrix read row-major -- arbitrated column-major on every pack, and flipped
+
+THREE READINGS, IN THE ORDER THEY FELL. RoofTiles' height at the exported tile counts
+(`Horizontal_tiles` 14, `Vertical_tiles` 9 -- the reference's pitch at a 512 grid is 73 x
+57 px, a two-shingle x period -- through the graph-input override, which now reaches FX
+programs) had the rows, the stagger and the shingle gradient in place and scored -0.643:
+a vertical flip of our picture scores +0.646 and no shift does better than +0.43. Folded
+onto the row period, the reference's shingle is DARK at the top and bright at its bottom
+lip (0.15 -> 0.64); ours was the reverse (0.70 -> 0.07), already at record 62.
+
+  1. `fx.centre = wrap`. Record 7 emits one full-width stripe per row at `branchoffset`
+     x = 0, 0.5, 1.0, 1.5, 2.0 ... -- the stagger -- and `splat`'s bounded neighbour
+     copies (`reach`) dropped every row past the second; at ten rows the record was
+     mostly black. The canvas is a torus; the arm takes the centre modulo the canvas
+     first, in both draw paths (`fx.splat`, `fxtree.draw`), and is identical for every
+     pattern the copies already reached. Default `reach`. It fixes record 7 and moves
+     nothing else measured.
+
+  2. `fx.rotation = cw`, the sense of `patternrotation`: RoofTiles does not move under
+     it (record 61's shingles are 126 patterns at rotation ~0 whose gradient is the
+     profile's own). Kept as an arm, default `ccw`; not what this was.
+
+  3. `transformation.matrix`. Record 62 is `matrix22 = (0, -1, 1, 0)`, a quarter turn,
+     applied as `x_in = m0 x + m1 y, y_in = m2 x + m3 y`. Inverting every matrix fixes
+     RoofTiles (+0.81) and wrecks Chesterfield (0.878 -> 0.172) and Auras (0.872 -> 0.327)
+     -- a scale's inverse is 1/s, so that test conflated two things. TRANSPOSING is the
+     clean test: identical for every symmetric matrix, the opposite sense for a rotation.
+     Whole reference set, 256 px, implied `$outputsize`, twelve arms + `fx.centre=wrap`:
+
+        pack                    rows   as read   transposed
+        Auras                     3    +0.872     +0.872
+        Chesterfield             10    +0.878     +0.885   (normal ch2 +0.70 -> +0.75)
+        RoofTiles (14 x 9)        6    -0.257     +0.419   (height -0.79 -> +0.81)
+        SandyStonePath            9    +0.056     +0.056
+        Bricks 001..005                          bit-identical, all five graphs
+
+     Never worse, strictly better on two packs. The four words are column-major:
+     `x_in = m0 x + m2 y, y_in = m1 x + m3 y`. FLIPPED: `assume.QUESTIONS
+     ['transformation.matrix']` is `("columns", "rows")`, `columns` the default, `rows` the
+     reading before this section. 33 tests pass. This is the first default this project
+     has flipped on the guard rather than added beside it, and it is what the guard is for.
+
+RoofTiles height after: corr +0.673 (from -0.643), mean 0.470 against 0.388. Seen: rows,
+stagger, dark-top / bright-lip gradient all the reference's; ours are hard rectangles with
+sharp gaps and no wood grain, and a third too bright. Basecolor still hangs on `blur` 2190
+(no intensity, no arm) -- as does Auras' fourth output (`blur` 342); a `blur.default_intensity`
+question is the next cheap unlock for both.
+
+ALSO FIXED IN PASSING: `annihilated_samplers` raised on a disassembly constant printed as
+`?` (Auras records 24, 399), which took Auras from 427 to 391 records and two of its
+outputs for the hours between the previous commit and this one; the parse now treats an
+unprintable constant as not-zero.

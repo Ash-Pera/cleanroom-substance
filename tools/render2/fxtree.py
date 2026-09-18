@@ -715,6 +715,10 @@ def draw(canvas, b, W, H, images=None, header=None):
     sy = size[:, 1].astype(np.float64)
     cx = centre[:, 0].astype(np.float64)
     cy = centre[:, 1].astype(np.float64)
+    if assume.assumed("fx.centre", "reach") == "wrap":
+        # The canvas is a torus; see `fx.splat` and `assume.QUESTIONS['fx.centre']`.
+        cx = (cx + 0.5) % 1.0 - 0.5
+        cy = (cy + 0.5) % 1.0 - 0.5
     ok = np.isfinite(sx) & np.isfinite(sy) & np.isfinite(cx) & np.isfinite(cy)
     ok &= (sx > 0) & (sy > 0)
     ok &= np.maximum(sx, sy) <= 64.0
@@ -727,6 +731,8 @@ def draw(canvas, b, W, H, images=None, header=None):
         col = (col * gain).astype(np.float32)
     rot = np.zeros(m) if b.rotation is None else b.rotation.astype(np.float32).astype(np.float64)
     th = 2.0 * np.pi * rot
+    if assume.assumed("fx.rotation", "ccw") == "cw":
+        th = -th  # see assume.QUESTIONS['fx.rotation']
     ct, st = np.cos(th), np.sin(th)
     hx = 0.5 * (sx * np.abs(ct) + sy * np.abs(st))
     hy = 0.5 * (sx * np.abs(st) + sy * np.abs(ct))
