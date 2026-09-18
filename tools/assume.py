@@ -442,6 +442,15 @@ QUESTIONS = {
     # two encoded offsets names no pixel. The file states no filtering mode per input
     # that this reader has found. See `ops.nearest_sampler`.
     "pixelprocessor.sample": ("bilinear", "nearest"),
+    # WHAT `$outputsize` SAYS INSIDE A PIXEL PROCESSOR'S PROGRAMS. `grid` (the default,
+    # arbitrated on the whole reference set): log2 of the grid the record is drawn on --
+    # the rule `Context.run` already applies to `$size` for this one population, extended
+    # to the other name a texel is derived from. `render`: the size the graph is evaluated
+    # at, what every other program reads, and the reading before this. Under `--dim` below
+    # the export size it is the difference between a live flood fill / height-to-normal
+    # and a constant: RoofTiles' normal 0.00 -> +0.31/+0.73/+0.39, Chesterfield +0.002,
+    # Auras and Bricks 002-005 identical, at 256 px under the implied `$outputsize`.
+    "pixelprocessor.outputsize": ("grid", "render"),
     # THE `brick` PATTERN'S FOOTPRINT (patterntype 9, `SHAPE_MODELLED`). `inset` is the
     # hard fill at 85% of the box the profile has always drawn; `fill` is the whole box.
     # See `fxrender.profile_value`.

@@ -15,6 +15,7 @@ explicit `assume` scope overrides it, so a sweep can still ask what a different 
 would do.
 """
 
+import math
 import re
 
 import numpy as np
@@ -411,10 +412,26 @@ def f_pixelprocessor(ctx, v):
         if main not in progs:
             progs = progs + [main]
         slots = {}
+        # `$outputsize` DESCRIBES THE SAME GRID AS `$size` AND `$pos`, for this record's
+        # programs, behind `pixelprocessor.outputsize`. `Context.run` already hands the
+        # image program the grid it is drawn on as `$size`, for the reason stated there;
+        # a record that derives its texel from `$outputsize` instead -- in its prologue,
+        # `0.5 / 2^os` into a slot (Bricks' flood-fill seed 10175; RoofTiles'
+        # height-to-normal 2599) -- was still told the export size, and on a 256-px grid
+        # under `$outputsize` 11 its neighbour tap is an eighth of a pixel: no edge is
+        # ever found, the normal is flat 0.5. `grid` hands these programs log2 of the
+        # grid. Every other record's programs still read the render's.
+        gi = None
+        if (
+            assume.assumed("pixelprocessor.outputsize", "grid") == "grid"
+            and ctx._os_uid is not None
+        ):
+            gi = {ctx._os_uid: (math.log2(W), math.log2(H))}
+            assume.note(v.index)
         for p in progs:
             if p != main:
                 try:
-                    ctx.run(v, p, 1, slots=slots)
+                    ctx.run(v, p, 1, slots=slots, inputs=gi)
                 except Unsupported:
                     pass
         pos = pos_grid(W, H)
@@ -433,7 +450,7 @@ def f_pixelprocessor(ctx, v):
             )
             assume.note(v.index)
         try:
-            out = ctx.run(v, main, N, slots=slots, pos=pos, W=W, H=H)
+            out = ctx.run(v, main, N, slots=slots, pos=pos, W=W, H=H, inputs=gi)
         finally:
             if salted:
                 sbsruntime.CONTEXT["salt"] = 0.0

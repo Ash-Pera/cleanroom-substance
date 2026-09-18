@@ -60179,3 +60179,38 @@ divides by zero; and on Bricks it costs 003 0.17 for 004's +0.02. Refused and re
 is exactly linear between ridges, and from the seeds' rims not registering -- the SEED
 SIZE (0.32 x cell by the program) or the field's numerics, not `distance.propagate`.
 Left open.
+
+## A pixel processor's `$outputsize` is the grid it is drawn on: the `$size` rule extended to the other name a texel is derived from, arbitrated on every pack, flipped
+
+THE RULE THAT EXISTED. `Context.run` hands a pixel processor's own image program the grid
+it is drawn on as `$size` -- "`$size` and `$pos` have to describe the same grid or a
+neighbour tap becomes sub-pixel and the filter silently turns into an identity". A
+program that derives its texel from `$outputsize` by `inputref` instead -- in the record's
+PROLOGUE, `0.5 / 2^os` into a slot, which is how Bricks' flood-fill seed 10175 and
+RoofTiles' height-to-normal 2599 both do it -- was still told the export size. On a 256-px
+grid under `$outputsize` 11 the tap is an eighth of a pixel: no edge is found, the normal
+is flat 0.5, the flood fill is a constant (the "dead on any grid where a texel is not a
+pixel" section, now with its cause one level deeper than "the condition").
+
+`pixelprocessor.outputsize`: `grid` hands the record's programs -- prologue and image
+program, through `Context.run(..., inputs=)` -- `log2(W), log2(H)` of the grid; `render`
+is the reading before. Whole reference set, 256 px, implied `$outputsize`, the arms of
+the previous sections:
+
+    pack                      render    grid
+    Auras                     +0.872    +0.872
+    Chesterfield              +0.885    +0.887
+    RoofTiles (14 x 9)        +0.419    +0.454   normal 0.00/0.00/0.00 -> +0.31/+0.73/+0.39
+    SandyStonePath            +0.056    +0.035   (rand-driven scatter; dc unchanged)
+    Bricks 002/003/004/005    identical to three decimals
+    Bricks 001                +0.133    +0.122   (the flood fill alive at 256: 10253 sd
+                                                 0.328, ~48 greys, where it was one)
+
+No deterministic channel worse, two packs better. FLIPPED: `("grid", "render")`, `grid` the
+default. 33 tests pass. What it means for the notebook: graph 001 no longer needs native
+size for its flood fill -- the 256-px condition now evaluates it -- and the "next
+annihilation point" family of that graph can be measured at the guard's own grid.
+
+WHAT IT DOES NOT SAY. `$outputsize` read by a FILTER PARAMETER program (a blur radius, a
+size expression) still reads the render's, as it should: those are properties of the graph,
+not taps on a grid. The population this touches is exactly the one `$size` already touched.

@@ -152,7 +152,7 @@ class Context(object):
             out[self._os_uid] = tuple(self.outputsize)
         return out
 
-    def run(self, v, ptr, n, slots=None, pos=None, W=None, H=None):
+    def run(self, v, ptr, n, slots=None, pos=None, W=None, H=None, inputs=None):
         """Evaluate one of `v`'s programs. `$size` is the RECORD'S DECLARED SIZE.
 
         THE ONE PLACE THAT DECIDES IT, because two of the three ways to get this wrong are
@@ -176,9 +176,14 @@ class Context(object):
         silently turns into an identity.
         """
         fn = bind(self.asm, ptr, self.cache, self._funcs)
+        gi = self.graph_inputs(n)
+        if inputs:
+            gi = dict(gi)
+            for uid, val in inputs.items():
+                gi[uid] = np.repeat(np.array(val, np.float32).reshape(1, -1), n, axis=0)
         return run_program(
             fn,
-            self.graph_inputs(n),
+            gi,
             {} if slots is None else slots,
             n,
             pos=pos,
