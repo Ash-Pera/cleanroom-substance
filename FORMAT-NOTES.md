@@ -60214,3 +60214,16 @@ annihilation point" family of that graph can be measured at the guard's own grid
 WHAT IT DOES NOT SAY. `$outputsize` read by a FILTER PARAMETER program (a blur radius, a
 size expression) still reads the render's, as it should: those are properties of the graph,
 not taps on a grid. The population this touches is exactly the one `$size` already touched.
+
+ADDENDUM, the ratchet's objection and the rule's edge. The wide suite after the flip failed
+`test_render2_reference_agreement_does_not_regress` on three Chesterfield rows -- `AO`
+band 0.0007 at every grid (structure gone), `AO` dc +0.11, basecolor ch2 dc -0.013 -- the
+per-pack mean corr had hidden it (+0.887). The record is 364, the HBAO gradient LUT the
+`Context.graph_inputs` docstring already describes: a pixel processor pinned to 2048 x 16
+at every output size that reads `$outputsize` to turn a per-pixel slope back into a
+per-canvas one. It is not stepping the canvas by texels, and handing it the grid's log2
+broke the compensation. THE RULE'S EDGE IS THE RECORD'S SIZE: `grid` applies only to a
+record whose declared size is `2^$outputsize` on both axes -- a canvas-sized pixel machine
+-- and a record pinned to its own size reads the render's `$outputsize` as before.
+Chesterfield AO back to band 2.55, dc -0.014, corr +0.88; RoofTiles' normal keeps
++0.31/+0.73/+0.39. Ratchet passes; 19 tests.

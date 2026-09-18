@@ -421,10 +421,20 @@ def f_pixelprocessor(ctx, v):
         # under `$outputsize` 11 its neighbour tap is an eighth of a pixel: no edge is
         # ever found, the normal is flat 0.5. `grid` hands these programs log2 of the
         # grid. Every other record's programs still read the render's.
+        # ONLY FOR A RECORD THAT IS THE CANVAS. A pixel processor pinned to its own size
+        # is not stepping the canvas by texels: ChesterfieldSofa 364, an HBAO gradient LUT
+        # at 2048 x 16 at every output size, reads `$outputsize` to turn a per-pixel slope
+        # back into a per-canvas one (see `Context.graph_inputs`), and handing it the grid
+        # flattened the pack's AO (band 0.0007, dc +0.11 on the ratchet). The record's
+        # declared size against the render's `$outputsize` is the test; a canvas-sized
+        # record is one whose size IS `2^$outputsize`.
         gi = None
         if (
             assume.assumed("pixelprocessor.outputsize", "grid") == "grid"
             and ctx._os_uid is not None
+            and ctx.outputsize is not None
+            and (v.width, v.height)
+            == (2 ** int(ctx.outputsize[0]), 2 ** int(ctx.outputsize[1]))
         ):
             gi = {ctx._os_uid: (math.log2(W), math.log2(H))}
             assume.note(v.index)
