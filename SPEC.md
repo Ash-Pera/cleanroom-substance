@@ -2307,12 +2307,18 @@ stated zero times** — of 26,108 compiled warp intensities and 15 in permitted 
 the control, states 1.0 ten thousand times; an author who wants the default leaves the
 parameter alone, so the default is the value never typed. Both read as 1.0; every
 reference channel is inert to the value and the guard passes (§13.9). `blur`'s omitted
-intensity is **refused**: its only never-typed value is 0.0, absent because nobody authors
-a no-op blur, so the mechanism says nothing there — and the one reference picture that
-holds such a blur (RoofTiles 2190, on the tile-colour chain to `basecolor`) cannot
-arbitrate it either: at 256 and at the 2048 export `basecolor` is the same under 0.0, 0.5,
-1.0 and 4.0 to three digits, because the chain the blur sits on is a `warp` (2203) whose
-source was blank until the leaf count above and stays within the picture's noise after it.
+intensity (137 corpus records, 81 files) reads as **10.0** by the same mechanism: 10.0
+is stated once in 14,931 baked blur intensities with 8.0 at 21 and 16.0 at 31 beside it
+(1.0, once a candidate here, is stated 10,200 times); `sharpen`'s 1.0 (0 of 1,148, 0.5 at
+59) is the mechanism's fourth agreement. The one reference picture that holds such a
+blur (RoofTiles 2190, on the tile-colour chain to `basecolor`) cannot arbitrate the
+value: at 256 and at the 2048 export `basecolor` is the same under 0.0, 0.5, 1.0, 4.0 and
+10.0 to three digits, because the chain the blur sits on is a `warp` (2203) whose source
+was blank until the leaf count above and stays within the picture's noise after it; what
+the flip changes is that the channel is scored at all. `dirmotionblur`'s 8 omitted
+intensities read as 10.0 too, on a weaker footing: 10.0 and 5.0 are both stated 0 times
+in 14,278, so the signature names two values, and 10.0 is the one `blur`'s names (the
+reading before was 0.0, a no-op, which is certainly not the engine's).
 
 A record whose arithmetic produces a non-finite sample (an Auto Levels dividing 0/0 on a
 constant input — a max/min pyramid over an image that is one value) writes **0** there:
@@ -2397,9 +2403,10 @@ Two more instruments and a rule, added after the eleven readings below were deci
 256 / 512, against bounds taken when the row was first scored — and the old reading is
 kept as a named arm. Per-pack mean correlation is not the ratchet: it hid the loss of a
 whole AO channel (Chesterfield's, band 0.0007) behind +0.887. Under that rule these
-seventeen readings are the defaults, each with the section that arbitrated it in
+nineteen readings are the defaults, each with the section that arbitrated it in
 FORMAT-NOTES.md: `transformation.matrix = columns`; `pixelprocessor.outputsize = grid` for
 canvas-sized records; `warp.default_intensity = 1.0`, `normal.default_intensity = 1.0`,
+`blur.default_intensity = 10.0`, `dirmotionblur.default_intensity = 10.0`,
 `nonfinite.fill = 0.0` (§13.8); `fx.leafcount = header` (§13.7 — a corpus-wide structural
 reading, bit-identical on Bricks, RoofTiles band 1.36 → 1.39); `fx.header = read`
 (RoofTiles +0.441 → +0.491, its roughness −0.03 → +0.26 with the dc 0.151 → 0.060; Bricks

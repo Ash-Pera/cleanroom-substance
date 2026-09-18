@@ -60869,3 +60869,28 @@ now (~30 us a pattern, 589,824 in 18 s at 64 px), and an unset count still reads
 2^31 - 1 and refuses. FabricSubstance009: 1,961 of 1,961 in 47 s (from 786 in 607 s).
 The fourth sweep, three and a half hours in at 220 of 437 files on the code before this,
 is restarted on this.
+
+## `blur`'s omitted intensity is 10.0 by the never-typed argument: stated once in 14,931, between 8.0 at 21 and 16.0 at 31 -- the largest census root (137 records, 81 files) closes
+
+The blur value was "unarbitrable": the picture cannot see it (RoofTiles 2190, above), and
+the never-typed mechanism that named `warp`'s and `normal`'s 1.0 was said to name nothing
+for blur because "its only never-typed value is 0.0". That was measured over the
+candidates the question listed -- 0.0 / 0.25 / 0.5 / 1.0 / 2.0 / 4.0 -- and 10.0 was not
+among them. Over every baked intensity in the corpus:
+
+    filter          baked    omitted   never-typed candidate     stated     neighbours
+    warp           24,815      871     1.0                       0          0.5: 576  2.0: 850
+    normal          1,263      116     1.0                       0          0.5, 2.0 present
+    sharpen         1,148      167     1.0                       0          0.5: 59   2.0: 1
+    blur           14,931      137     10.0                      1          8.0: 21   16.0: 31
+                                       (1.0, the old lead)       10,200
+    dirmotionblur  14,278        8     10.0 -- and 5.0           0 and 0    8.0: 48   16.0: 27
+
+Four filters, one mechanism, and the value it names is in each case the node's UI
+default (1, 1, 1, 10) -- which is what "never typed" predicts and this table did not
+assume. `blur.default_intensity = 10.0` is the default; `refuse` and the six values stay
+arms. The ratchet passes (the value is inert on every floored row; RoofTiles' basecolor
+is scored now, +0.640 / +0.632 / +0.287, the same three digits under 0.0 .. 10.0).
+`dirmotionblur.default_intensity = 10.0` on the weaker footing the table shows (two
+never-typed values; the reading before was a silent 0.0), 8 records, marked
+low-confidence. SPEC §13.8 and the defaults list in §13.9 updated.

@@ -878,7 +878,7 @@ def f_blur(ctx, v):
     pos = pos_grid(W, H)
     p = v.params.get("intensity")
     if p is None:
-        d = assume.assumed("blur.default_intensity", "refuse")
+        d = assume.assumed("blur.default_intensity", 10.0)
         if d == "refuse":
             raise Unsupported(
                 "blur stores no intensity: neither class bit 12 (baked) nor 13 "
@@ -956,7 +956,16 @@ def f_dirmotionblur(ctx, v):
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
-    intensity = np.asarray(_scalar(ctx, v, "intensity", 0.0, W, H, pos), np.float32)
+    if v.params.get("intensity") is None:
+        # The value never typed (assume.QUESTIONS); 8 corpus records omit it.
+        d = assume.assumed("dirmotionblur.default_intensity", 10.0)
+        if d == "refuse":
+            raise Unsupported("dirmotionblur stores no intensity; the source omitted it")
+        ctx.low_confidence.add(v.index)
+        assume.note(v.index)
+    else:
+        d = 0.0
+    intensity = np.asarray(_scalar(ctx, v, "intensity", float(d), W, H, pos), np.float32)
     angle = np.asarray(_scalar(ctx, v, "mblurangle", 0.0, W, H, pos), np.float32)
     # LENGTH IS THE INTENSITY IN THE RECORD'S OWN PIXEL SCALE, WITH NO EXTRA FACTOR. This
     # read `* 10.0`, and that multiplier is where graph 004's top two octaves went: four

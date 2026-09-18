@@ -64,7 +64,18 @@ QUESTIONS = {
     # BLUR'S INTENSITY WHEN THE SOURCE OMITTED IT -- the same question as warp's, and it
     # gates RoofTiles' basecolor (record 2190) and Auras' fourth basecolor (342), both
     # with reference maps, so unlike warp's this one is measurable. `refuse` first.
-    "blur.default_intensity": ("refuse", 0.5, 1.0, 0.0, 0.25, 2.0, 4.0),
+    # THE VALUE NEVER TYPED, for blur: 10.0 is stated ONCE in 14,931 baked blur
+    # intensities, with 8.0 at 21 and 16.0 at 31 beside it (1.0, the value this list once
+    # led with as a candidate, is stated 10,200 times) -- the same signature warp's and
+    # normal's 1.0 carry (0 of 24,815, 0 of 1,263), and the one mechanism that names an
+    # engine default from a corpus: an author who wants it leaves the field alone.
+    # `refuse` is the reading before; the picture cannot separate them (RoofTiles 2190).
+    "blur.default_intensity": (10.0, "refuse", 0.5, 1.0, 0.0, 0.25, 2.0, 4.0),
+    # The same for the directional motion blur's 8 omitted records: 10.0 is stated 0 times
+    # in 14,278 (8.0 at 48, 16.0 at 27) -- and so is 5.0, so the signature alone does not
+    # single it out; 10.0 is the value blur's signature names and it is the one a no-op
+    # (0.0, the reading before) is certainly not.
+    "dirmotionblur.default_intensity": (10.0, 0.0, 5.0, "refuse"),
     "normal.default_intensity": (1.0, "refuse", 0.5, 2.0, 4.0, 8.0, 16.0),
     "blur.kernel": ("box", "gaussian"),
     "emboss.probe": ("passthrough",),
