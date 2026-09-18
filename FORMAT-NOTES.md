@@ -60610,3 +60610,109 @@ sites: a count program returning NaN at `int(round(...))` in `fx.emissions` and
 reaching `math.ceil` in `splat` (the size and centre were checked for finiteness, the
 rotation was not; it is 0 now, in `fxtree.draw` as well) -- the texture rule in both
 places. Road_01 686 -> 794 of 794.
+
+## The blur value cannot be seen because the picture behind it was blank: a leaf node's upper bits are its baked emission count (1,371 chains drew one pattern), and entry bit 7 occupies no slot (140 programs read one slot late)
+
+WHAT WAS BEING ASKED. The native `blur.default_intensity` arbitration on RoofTiles
+(2048, 633 s a run) came back IDENTICAL under 0.0 and 0.5 -- basecolor ch0/1/2 +0.650 /
++0.718 / +0.489, band 0.710 / 0.675 / 0.306, to three digits -- and at 256 identical under
+0.0, 0.5, 1.0, 2.0 and 4.0. That is not "the export size does not separate them"; a 4-px
+blur at 2048 is visible. It is the input to the blur being flat. Walked: RoofTiles 1.1 has
+ONE intensity-less blur, 2190, its source 2186 is `0.000..0.000` at every grid, and its
+consumer 2202 feeds the warp 2203 at input 1 whose own source 2201 is also
+`0.000..0.000`. Two blanks, two roots, both in the FX-Map records feeding the chain, and
+one of them under `fx.header=ignore`.
+
+ROOT 1: `fx.header`. 2157 is an FX-Map baking `background = 0.498` that rendered 0.0 --
+under `ignore` the canvas starts at zero. The arm was refused in an earlier session on
+002's height dc at 256, which the capped-grid section then attributed to the grid, and at
+native it was within 0.004 of the defaults on Bricks. It flips now: the ratchet passes
+(both tests, all three grids), and it is decisive on the one pack that carries a
+background:
+
+    256 px                                fx.header=ignore     fx.header=read
+    RoofTiles mean corr / band / |dc|     +0.441 / 1.417 / 0.047   +0.491 / 1.360 / 0.032
+      roughness                           -0.031 / 0.558 / +0.151  +0.261 / 1.087 / +0.060
+      height                              +0.807 / 1.492 / +0.065  +0.808 / 1.553 / +0.082
+    Bricks (48 rows)                      +0.674 / 1.521 / 0.061   +0.675 / 1.578 / 0.065
+    Auras, Chesterfield, SandyStonePath   bit-identical
+
+ROOT 2, AND THE FINDING: THE LEAF'S UPPER BITS. 2201 is a leaf-only chain -- node
+`0x190B`, one entry `0x54540088` -- whose placement program lays `floor($number / 5)`
+rows and columns, and the list walk emitted ONE pattern of the 25 it names (there is no
+count node to ask, and `emission_count` is only asked by one). `leaf_successor`'s
+docstring lists the leaf headers the corpus carries and leaves their upper bits open:
+"0xC0B, 0x510B, 0x1B90B, 0x3C10B, 0xE100B and eleven more". Read as integers, `>> 8`:
+12, 81, 441, 961, 3600 -- 9^2, 21^2, 31^2, 60^2. `0x190B` is 25 = 5^2. The bits are the
+Iterate node's Number, baked into the header. Over the corpus:
+
+    leaf nodes with upper bits                                1,635   (437 files)
+      square count, no independent reader                     1,000
+      square, `grid_width` N with N^2 = count                   287 of 287
+      `number_grid` reads N with N = count or N^2 = count       134 of 134
+      NOT square, `grid_width` N with N | count                 129   (119 = 7x17 under
+                                                                       floor($number/7);
+                                                                       589 = 19x31;
+                                                                       143 = 13x11;
+                                                                       110, 400, 12)
+      not square, no reader                                       38
+    plain `0x0B` (count 0)                                         1   (Cliff 1200)
+
+    chains:  leaf only                                         1,371   -> drew ONE pattern
+             count node + leaf                                   264   -> the node's count
+               both readable: leaf == emitted                     46 of 56
+               differ (count + gate chains emitting 1)            10
+
+So where two readers exist they agree on every square layout, and where the layout is
+not square the header is the one place the count is stated at all -- `grid_width` squares
+its N and would say 49 for the 119 row lines of RoofTiles 2194. The reading is
+`fx.leafcount` (`header` | `one`): a chain without a count node emits `header >> 8`
+patterns with `$number` = 0..n-1; a chain with one keeps the node's count. 2194 goes from
+mean 0.0036 (one row line) to 0.16 (119), 2201 from 0.0002 to 0.13 (25 tiles), and the
+warp 2203 has a source. On the packs the arm is bit-identical on Bricks, Auras,
+Chesterfield and SandyStonePath (none has a leaf-only chain on a scored path) and moves
+RoofTiles' band 1.360 -> 1.391 (roughness 1.087 -> 1.357) with corr and dc unchanged; the
+ratchet passes. It is a structural reading decided by the corpus's own arithmetic, not
+by a picture, and it is the default.
+
+ROOT 3, FOUND ON THE WAY: ENTRY BIT 7. 2201's entry read `opacity` as a 2-vector in
+[-0.5, 0.5], `patternsize` as a scalar in [0.03, 0.34] and `patternsuppl` as the trailer
+word `0x0900003b`. `fx_entry_walk` credits bit 7 a structural slot; over every bit-7
+entry in the corpus (267, 81 files), split on bit 31:
+
+                                   bit 7 = a slot            bit 7 = no slot
+    0x54540088  (108)   opacity     108 resolve, 0 arity-ok   108 / 108
+                        patternsize 108 resolve, 0 arity-ok   108 / 108
+                        patternsuppl  0 resolve               108 / 108
+    0x54d40088   (14)   branchoffset  0 resolve                14 / 14
+    0x54500088   (12)   as 0x54540088                          12 / 12
+    0x14540088, 0x540088, 0x14400088 (2 each)                 all / all
+    -- bit 31 set --
+    0xd5140088   (24)   all six      24 / 24                  opacity 0 / 24
+    0x91100088    (7)   all but imageindex 7 / 7              opacity 0 / 7
+    0x83000088   (86)   frameoffset 86 / 86                    0 / 86
+
+Bit 7 is not a slot. The word it was credited with is slot 2, a record-local pointer
+(`rec + 8`) whose `+52` target is the opacity program written inline after the entry --
+a luminance-of-the-input program returning a clamped scalar -- and `0x54540848` entries,
+which set no bit 7, carry the same word at slot 2 and have always read it as `opacity`.
+In bit-31 entries slot 1 is a small integer (8, 2, 4: the image index as a value, not the
+own-pointer) and takes the slot bit 7 was credited with, so those land right today and are
+left exactly as they read; whether bit 31 is that leading index or a trailing program is
+recorded open in SPEC §8 (the trailing row resolves on 0xd5140088, 24 of 24, and on none
+of 0x83000088, 0 of 86). The fix is in the single walk (`fx_entry_walk`,
+`fx_entry_walk_end`), no arm -- a slot count is not a reading.
+
+`fx.gridnamed` (`slot26` | `branchoffset`) went in alongside and stays on its old reading:
+`grid_width` only read `floor($number / N)` from programs that write slot 26 (the chain
+spelling), and 2201's is the entry's own `branchoffset` program returning the position.
+Under the leaf count that record no longer needs it, and on every pack the arm is inert;
+what it would decide is a count-node chain whose entry spells a grid, and none is scored.
+
+WHAT THE BLUR VALUE STILL IS: unarbitrated. With the chain alive, RoofTiles basecolor at
+256 is identical under 0.0 / 1.0 / 4.0 (+0.640 / +0.632 / +0.287 either way): the warp
+2203 that the blurred 2202 drives is within the picture's noise. `refuse` stays, recorded
+in SPEC §13.8.
+
+The fast suites pass (47); the ratchet and its floor test pass under all of the above.
+The fourth corpus sweep is running and lands as an addendum.

@@ -961,6 +961,9 @@ def leaf_successor(header):
     0xC0B, 0x510B, 0x1B90B, 0x3C10B, 0xE100B and eleven more, 18 distinct headers over 77
     nodes -- and every one has bits 4-7 clear, so the rule reads the same shape from all of
     them. What those upper bits mean is not decided here; this claims only the successor.
+    (They are the leaf's BAKED EMISSION COUNT -- 0x510B is 81 = 9^2, 0x1B90B 441 = 21^2,
+    0xE100B 3600 = 60^2 -- read by `render2.fx.leaf_count`, where the corpus measurement
+    is stated.)
 
     The BRANCH (0x1B, bit 4 set) is deliberately NOT derived. Its shape is two children and
     a program -- `FX_NODES2` states (8, 20) and (16,) -- and while the mask rule does give
@@ -1915,6 +1918,29 @@ def fx_entry_walk(tag):
     for bit, name, width in FX_PARAM_BITS:
         if not (tag >> bit) & 1:
             continue
+        if bit == 7 and not (tag >> 31) & 1:
+            # BIT 7 IS NOT A SLOT. Crediting it one put every program of the `0x??5?0088`
+            # family (0x54540088 108 entries, 0x54d40088 14, 0x54500088 12, 0x14540088,
+            # 0x540088, 0x14400088 2 each; Bricks 002/005/006, Cliff, Cobblestone,
+            # RoofTiles ...) one slot late: the word named `opacity` returned a 2-vector
+            # in [-0.5, 0.5] (the position), `patternsize` a scalar (the rotation), and
+            # `patternsuppl` landed on the trailer word `0x0900003b` -- 0 of 108 resolved.
+            # Without the slot, 140 of 140 named programs resolve with the arity the
+            # name declares (opacity 1, branchoffset 2, patternsize 2, rotation 1, suppl
+            # 1); with it, 0 of 108 for three of the five. The word bit 7 was credited
+            # with is the record-local pointer at slot 2 -- `rec + 8`, whose `+52` target
+            # is the opacity program written inline after the entry -- and that pointer
+            # is the same in `0x54540848` entries, which set no bit 7 and have always
+            # read it as `opacity`.
+            #
+            # THE BIT-31 ENTRIES ARE LEFT AS THEY READ. Their slot 1 is a small integer
+            # (8, 2, 4 -- the image index, read as a value), not the own-pointer, and it
+            # takes the very slot bit 7 was credited with, so their named programs land
+            # right today (0xd5140088 24 of 24 with arity, 0x91100088 7 of 7). Whether
+            # bit 31 is "a leading baked index" or "a trailing program" is not decided
+            # here: the trailing row resolves on 0xd5140088 (24 of 24) and on none of
+            # 0x83000088 (0 of 86), and no reference has either tag.
+            continue
         if bit in FX_PROGRAM_BITS:
             sl += 1
             out.append((bit, sl, name, "program", 1))
@@ -1932,6 +1958,8 @@ def fx_entry_walk_end(tag):
     sl = 1
     for bit, _name, width in FX_PARAM_BITS:
         if (tag >> bit) & 1:
+            if bit == 7 and not (tag >> 31) & 1:
+                continue  # not a slot; see `fx_entry_walk`
             sl += 1 if bit in FX_PROGRAM_BITS else width
     return sl
 

@@ -1021,6 +1021,22 @@ def grid_width(rec):
         cands = set()
     if not cands:
         cands = set(rec.programs or ())
+    # THE ENTRY'S OWN `branchoffset` PROGRAM, AS AN ARM. The slot-26 test below recognises
+    # the chain-node spelling, where the placement is written into the slot frame; a table
+    # entry that points at a program NAMED branchoffset (bit 22) returns the position
+    # instead, and RoofTiles 2201 lays `floor($number / 5)` rows that way. Its count is the
+    # leaf header's now (`render2.fx.leaf_count`, 25), which this reader is not consulted
+    # for; the arm is what `grid_width` would say on a COUNT-NODE chain whose entry
+    # program spells a grid, and no pack has one -- inert on all five, unmeasured on the
+    # corpus, so `slot26` (the reading as it stood) stays the default.
+    named = set()
+    if assume.assumed("fx.gridnamed", "slot26") == "branchoffset":
+        try:
+            for _o, _t, _s, name, kind, val in rec.fx_named_params():
+                if name == "branchoffset" and kind == "program" and val:
+                    named.add(val)
+        except Exception:
+            named = set()
     for ptr in sorted(cands):
         end = asm.program_span(ptr)
         if not end:
@@ -1029,7 +1045,7 @@ def grid_width(rec):
             src = transpile.transpile(asm.data, ptr, end, "python", "p")
         except Exception:
             continue
-        if "slots[26]" not in src:
+        if "slots[26]" not in src and ptr not in named:
             continue
         number_vars, consts = set(), {}
         for line in src.splitlines():

@@ -262,7 +262,7 @@ def test_a_rand_leaf_under_five_quadrants_is_white_noise():
     print("ok  9924 under the tree arm: mean %.3f sd %.3f lag-1 %+.3f" % (x.mean(), x.std(), lag))
 
 
-def test_the_header_names_background_hurst_and_opacitymult_and_the_default_ignores_them():
+def test_the_header_names_background_hurst_and_opacitymult_and_the_default_reads_them():
     """Records 9806 / 9804: the `opacity = -1` record bakes `background` 1.0 beside
     `hurst` 0.66 and `opacitymult` 0.44; its 256-px sibling bakes the same two and no
     background. The names are `model.W1_PARAMS`' (Clouds_3's 0.42 / 10.7 at fields 1 / 2,
@@ -279,9 +279,13 @@ def test_the_header_names_background_hurst_and_opacitymult_and_the_default_ignor
     assert abs(v6.baked("background") - 1.0) < 1e-6, v6.params
     assert abs(v6.baked("hurst") - 0.66) < 1e-6 and abs(v6.baked("opacitymult") - 0.44) < 1e-6
     assert v4.baked("background") is None and abs(v4.baked("hurst") - 0.66) < 1e-6
-    assert fx.header_fields(Context(asm, cap=64), v6) is None, "the default reads nothing"
-    dead, _n = _render(asm, 9806, **{"fx.subdivide": "tree"})
-    assert float(dead.max()) == 0.0, "under the defaults the -1 patterns clip to nothing"
+    # `fx.header=read` is the default since the leaf-count session; the old reading is
+    # the `ignore` arm, scoped by name.
+    with assume.scope(**{"fx.header": "ignore"}):
+        assert fx.header_fields(Context(asm, cap=64), v6) is None, "`ignore` reads nothing"
+    assert fx.header_fields(Context(asm, cap=64), v6) is not None, "the default reads them"
+    dead, _n = _render(asm, 9806, **{"fx.subdivide": "tree", "fx.header": "ignore", "fx.negopacity": "clip"})
+    assert float(dead.max()) == 0.0, "under `ignore` + `clip` the -1 patterns clip to nothing"
     live, n = _render(
         asm,
         9806,

@@ -597,8 +597,39 @@ def _walk(rec, run, slots, nodes, table, collect):
             return
         raise Unsupported("fxmaps: node header %#x is not modelled" % hdr)
 
-    walk(0, 0, "chain")
+    # THE LEAF'S UPPER BITS ARE THE BAKED EMISSION COUNT. `leaf_successor` left them open
+    # ("0xC0B, 0x510B, 0x1B90B, 0x3C10B, 0xE100B and eleven more"): they are 12, 81, 441,
+    # 961, 3600 -- 9^2, 21^2, 31^2, 60^2 -- the Iterate node's Number, written into the
+    # header when the source baked it. Corpus-wide 1,635 leaf nodes carry one; every reader
+    # that names a count independently agrees where the layout is square (`grid_width` 287
+    # of 287, `number_grid` 134 of 134), and where it is not the header holds the product
+    # the readers cannot (0x770B = 119 = 7 x 17 rows under a `floor($number / 7)`
+    # placement; 589 = 19 x 31; 143 = 13 x 11). The leaf is not in `nodes` -- it names no
+    # program -- so the count is read off the walk. 1,371 leaf-only chains emitted ONE
+    # pattern of theirs: RoofTiles 2194 drew one row line of 119 and 2201 one tile of 25.
+    # A chain with a count node keeps that node's count (264 chains; the leaf's agrees
+    # where both can be read). The arm is `fx.leafcount`.
+    n = leaf_count(rec) if not any(fxnodes.role(h) == "count" for _o, h, _p in nodes) else 0
+    if n > 0 and assume.assumed("fx.leafcount", "header") == "header":
+        if n > MAX_PATTERNS:
+            raise Unsupported("fxmaps: leaf count = %d" % n)
+        assume.note(rec.index)
+        for k in range(n):
+            walk(0, k, "chain")
+    else:
+        walk(0, 0, "chain")
     return out, closed[0]
+
+
+def leaf_count(rec):
+    """`header >> 8` of the record's leaf node (nibble B, mask bits clear), or 0."""
+    try:
+        for item in rec.fx_walk():
+            if item[0] == "node" and (item[2] & 0xFF) == 0x0B:
+                return int(item[2]) >> 8
+    except Exception:
+        return 0
+    return 0
 
 
 def _known_node(hdr):
@@ -980,7 +1011,7 @@ def header_fields(ctx, v):
     the record low-confidence rather than refusing it: the field was ignored outright
     until now, and a draw that falls back to that is not worse than the draw it replaces.
     """
-    if assume.assumed("fx.header", "ignore") != "read":
+    if assume.assumed("fx.header", "read") != "read":
         return None
     nchan = 4 if v.colour else 1
     out = {}

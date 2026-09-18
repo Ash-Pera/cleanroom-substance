@@ -916,6 +916,22 @@ structure's stated extent.
 4, 7, 16 and 17 `structural` — they occupy slots but are not parameters — and
 `fx_entry_layout` drops them, so `fx_table`'s step, which searches "the slots the tag's
 *parameter* layout declares", passes over them numerically and enqueues nothing they name.
+
+**Bit 7 occupies no slot.** Crediting it one put every program of the `0x??5?0088`
+family one slot late — `0x54540088` (108 entries; Bricks 002/005/006, Cliff, Cobblestone,
+RoofTiles), `0x54d40088` (14), `0x54500088` (12) and three smaller tags: the word named
+`opacity` returned a 2-vector in [−0.5, 0.5] (the position), `patternsize` a scalar (the
+rotation), and `patternsuppl` landed on the trailer word `0x0900003b`, 0 of 108 resolving.
+Without the slot, 140 of 140 named programs resolve with the arity the name declares
+(opacity 1, branchoffset 2, patternsize 2, rotation 1, suppl 1). The word bit 7 was
+credited with is slot 2, a record-local pointer (`rec + 8`) whose `+52` target is the
+opacity program written inline after the entry — the same word `0x54540848` entries carry
+at slot 2 with no bit 7 set, where it has always read as `opacity`. Entries that set bit
+31 as well are left as they read: their slot 1 is a small integer (8, 2, 4 — the image
+index as a value, not the own-pointer), which takes the slot bit 7 was credited with, so
+their named programs land where they did (`0xd5140088` 24 of 24 with arity; `0x91100088`
+7 of 7). Whether bit 31 is that leading index or a trailing program is open: the trailing
+row resolves on `0xd5140088` (24 of 24) and on none of `0x83000088` (0 of 86).
 Bit 16 is a four-word field and the shape is the same two-forward-pointers one:
 
     0x00410008   slots 2,3 -> one cell      slots 4,5 -> another, further forward
@@ -2100,7 +2116,7 @@ are themselves a tree of Quadrants, each drawing in its own region (**Subdivisio
 | `0x99` `0x??9B` | **stepper / switch** — a per-iteration state update (a raster/spiral position); `0x99`'s spare word (3) is likewise a FALSE child when wired |
 | `0x1DB` `0x1A3` | the `0x1CB` / `0x1AB` **iterates in a variant compile** — bit 3 clear on the iterate family, bit 4 set on the two-pass node. `0x1DB` lays out `[hdr][baked word][program][after][loop]` (§6's mask places it so) and its program is Bricks 10081's `0x1CB` program line for line (zero the statistics slots, return 1); `0x1A3` has `0x1AB`'s shape (randomseed and numberadded programs, loop child) and its count program reads a tile-count graph input as 10081's does. Cliff, Cobblestone, desert_cliff_eroded and 15 more corpus files carry the stone tiling this way; an earlier row here called `0x1DB` an unestablished branch |
 | `0x??1B` | **branch** — a state-initialiser program and TWO children (§8), both walked |
-| `0x??0B` | leaf — the entry table draws |
+| `0x??0B` | leaf — the entry table draws. **The upper bits (`header >> 8`) are the baked emission count**: `0x190B` is 25, `0x510B` 81 = 9², `0x1B90B` 441 = 21², `0xE100B` 3600 = 60². Corpus-wide 1,635 leaf nodes carry one; every independent count reader agrees where the layout is square (`grid_width` 287 of 287, `number_grid` 134 of 134) and where it is not the header holds the product the readers cannot express (`0x770B` = 119 = 7 × 17 rows under a `floor($number / 7)` placement; 589 = 19 × 31; 143 = 13 × 11). In a chain with a count node that node's count stands (46 of 56 readable agree; the 10 that differ are count-plus-gate chains that emit one under the gate). A leaf-only chain — 1,371 of them — emits `header >> 8` patterns with `$number` = 0…n−1; one leaf is plain `0x0B` in the whole corpus (Cliff 1200). `fx.leafcount` (`header` \| `one`) |
 
 **The spare word of `0x89`, `0x99` and `0x1CB` is a second child, and the table above
 reads it as nothing.** `0x89` / `0x99` are two-way Switches: the word before the
@@ -2117,7 +2133,8 @@ every one of which the one-successor walk truncates. The reading is `fx.chain=tr
 (`render2/fxchain.py`); the "gate: walk on while true" row is exactly the false-child =
 0 case. FORMAT-NOTES.md, "Record 10253 is not the fault".
 
-**The emission count**, in this order:
+**The emission count**, in this order (a leaf-only chain takes its leaf's baked count
+above, and none of this applies):
 
 1. If a placement program lays a `$number` **grid** — `floor($number / N)` — the bound is
    that grid's cell count `N²`, not `numberadded`, which for those records is an amount.
@@ -2291,7 +2308,11 @@ the control, states 1.0 ten thousand times; an author who wants the default leav
 parameter alone, so the default is the value never typed. Both read as 1.0; every
 reference channel is inert to the value and the guard passes (§13.9). `blur`'s omitted
 intensity is **refused**: its only never-typed value is 0.0, absent because nobody authors
-a no-op blur, so the mechanism says nothing there.
+a no-op blur, so the mechanism says nothing there — and the one reference picture that
+holds such a blur (RoofTiles 2190, on the tile-colour chain to `basecolor`) cannot
+arbitrate it either: at 256 and at the 2048 export `basecolor` is the same under 0.0, 0.5,
+1.0 and 4.0 to three digits, because the chain the blur sits on is a `warp` (2203) whose
+source was blank until the leaf count above and stays within the picture's noise after it.
 
 A record whose arithmetic produces a non-finite sample (an Auto Levels dividing 0/0 on a
 constant input — a max/min pyramid over an image that is one value) writes **0** there:
@@ -2376,15 +2397,20 @@ Two more instruments and a rule, added after the eleven readings below were deci
 256 / 512, against bounds taken when the row was first scored — and the old reading is
 kept as a named arm. Per-pack mean correlation is not the ratchet: it hid the loss of a
 whole AO channel (Chesterfield's, band 0.0007) behind +0.887. Under that rule these
-fifteen readings are the defaults, each with the section that arbitrated it in
+seventeen readings are the defaults, each with the section that arbitrated it in
 FORMAT-NOTES.md: `transformation.matrix = columns`; `pixelprocessor.outputsize = grid` for
 canvas-sized records; `warp.default_intensity = 1.0`, `normal.default_intensity = 1.0`,
-`nonfinite.fill = 0.0` (§13.8); and the eight Bricks readings the graph-001 sections
-verified — `fx.chain = tree`, `program.select = lazy`, `pixelprocessor.rand = pixel`,
+`nonfinite.fill = 0.0` (§13.8); `fx.leafcount = header` (§13.7 — a corpus-wide structural
+reading, bit-identical on Bricks, RoofTiles band 1.36 → 1.39); `fx.header = read`
+(RoofTiles +0.441 → +0.491, its roughness −0.03 → +0.26 with the dc 0.151 → 0.060; Bricks
++0.674 → +0.675, its 256-px objection of an earlier session was the grid's, and it passes
+the ratchet now); and the eight Bricks readings the graph-001 sections verified —
+`fx.chain = tree`, `program.select = lazy`, `pixelprocessor.rand = pixel`,
 `pixelprocessor.sample = nearest`, `fx.brick = fill`, `fx.negopacity = signed`,
 `fx.combine = bit18`, `fx.hurst = exp` — which pass alone and together (`tree` needs `lazy`:
 alone it turns 10081's row-start count into 2³¹ − 1). Refused by the same rule and kept as
 arms: `distance.propagate = spread` (level right, line power and 002's roughness wrong),
 `fx.subdivide = tree` (one record, 708, whose Quadrant leaves emit sparsely under a 0.29
-step), `fx.header = read` and `blur.subpixel = fractional` (within 0.004 of the defaults
-at native, worse at 256).
+step), `blur.subpixel = fractional` (within 0.004 of the defaults at native, worse at
+256) and `fx.gridnamed = branchoffset` (inert on every pack: the leaf-only chains that
+spell a grid in their entry's `branchoffset` program take the leaf's count instead).

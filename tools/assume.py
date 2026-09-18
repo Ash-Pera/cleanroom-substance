@@ -131,6 +131,15 @@ QUESTIONS = {
     "fx.rootentry": ("draw", "skip"),
     "emboss.intensity": ("program", "reference"),
     "fx.gridcount": ("numberadded", "divisor"),
+    # WHICH PROGRAMS `grid_width` READS `floor($number / N)` FROM. `slot26` is the chain
+    # spelling alone -- a program that writes the placement into slot 26; `branchoffset`
+    # adds the table entry's own bit-22 program, which returns the position instead.
+    # Inert on every pack (the leaf-only chains that spell it get their count from the
+    # leaf header instead); an arm for a count-node chain that spells one.
+    "fx.gridnamed": ("slot26", "branchoffset"),
+    # A LEAF NODE'S UPPER BITS (`header >> 8`) AS THE BAKED EMISSION COUNT, for a chain
+    # without a count node; `one` is the walk as it stood, one emission per leaf.
+    "fx.leafcount": ("header", "one"),
     # WHERE A CHAIN NODE'S PROGRAMS ARE PLACED. 'table' reads the byte offsets out of
     # `FX_NODE_PARAMS`, per header; 'walk' computes them from the header's mask through
     # `node_shape` and pairs the names onto them in field order. Two statements of one
@@ -232,7 +241,7 @@ QUESTIONS = {
     # paired sources (Clouds_3's 0.42 / 10.7, ie_particles' (0,0,0,1)). Corpus-wide, all
     # 2,071 records carrying a negative baked opacity bake `background = 1.0` and none of
     # the 2,874 with only non-negative ones does.
-    "fx.header": ("ignore", "read"),
+    "fx.header": ("read", "ignore"),
     # `hurst` (field 1, the UI's Roughness) as a per-depth gain on the pattern's opacity,
     # under the tree arm's depth (root 0, its children 0, one more per quadrant level).
     # `exp` is the fBm reading of the name, 2^(-hurst * depth), under which the baked 0.0
