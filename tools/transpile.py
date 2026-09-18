@@ -14,6 +14,7 @@ Backends emit Python (vectorised over numpy, so a program can be run and tested)
 and OSL. The Python backend is what makes the ISA falsifiable: transpile a program whose
 algorithm is known, evaluate it, and compare against the closed form.
 """
+
 import struct
 
 import assume
@@ -51,8 +52,10 @@ def immediate(op, addr, toks):
     raw = disasm.immediate(addr, toks)
     want = 4 if oid == 0x02 else 4 * comps
     if len(raw) < want:
-        raise Unsupported("opcode %04X at %d: %d immediate bytes, wanted %d"
-                          % (op, addr, len(raw), want))
+        raise Unsupported(
+            "opcode %04X at %d: %d immediate bytes, wanted %d"
+            % (op, addr, len(raw), want)
+        )
     body = raw[:want]
     # A uid is an integer however the instruction types its result.
     kind = "i" if oid == 0x02 else ("f" if ty == 1 else "i")
@@ -67,6 +70,7 @@ def swizzle_mask(mask, ncomp):
 
 # ---------------------------------------------------------------------------
 # backends
+
 
 class Backend:
     """Emits one line of target source per instruction."""
@@ -89,18 +93,22 @@ class Backend:
 
 class Python(Backend):
     name = "python"
-    header = ("import numpy as np\n"
-              "from sbsruntime import (sysvar, sample_lum, sample_col, vec, swizzle,\n"
-              "                        select, rand, cartesian, lerp, sbs_mod, atan2, cvt,\n"
-              "                        dot,\n"
-              "                        cache_read, cache_write, clamp)\n")
+    header = (
+        "import numpy as np\n"
+        "from sbsruntime import (sysvar, sample_lum, sample_col, vec, swizzle,\n"
+        "                        select, rand, cartesian, lerp, sbs_mod, atan2, cvt,\n"
+        "                        dot,\n"
+        "                        cache_read, cache_write, clamp)\n"
+    )
 
     def const(self, values, ty):
         if ty == 0:
             return "np.bool_(%s)" % bool(values[0])
         if len(values) == 1:
             return repr(float(values[0]) if ty == 1 else int(values[0]))
-        return "vec(%s)" % ", ".join(repr(float(v) if ty == 1 else int(v)) for v in values)
+        return "vec(%s)" % ", ".join(
+            repr(float(v) if ty == 1 else int(v)) for v in values
+        )
 
 
 class GLSL(Backend):
@@ -139,33 +147,68 @@ BACKENDS = {b.name: b for b in (Python, GLSL, OSL)}
 # ('fn', name)      a call, arguments in order
 # handled inline:   const, sysvar, inputref, get, set, seq, vec, swizzle, cvt, sample*
 
-BINOP = {0x12: "+", 0x13: "-", 0x14: "*", 0x15: "/",
-         0x1A: "and", 0x1B: "or",
-         0x1D: "==", 0x1E: "!=", 0x1F: ">", 0x20: ">=", 0x21: "<", 0x22: "<="}
+BINOP = {
+    0x12: "+",
+    0x13: "-",
+    0x14: "*",
+    0x15: "/",
+    0x1A: "and",
+    0x1B: "or",
+    0x1D: "==",
+    0x1E: "!=",
+    0x1F: ">",
+    0x20: ">=",
+    0x21: "<",
+    0x22: "<=",
+}
 
-FUNCS = {0x16: "sbs_mod", 0x17: "-", 0x18: "dot", 0x23: "abs", 0x24: "floor",
-         0x2A: "exp",
-         0x25: "ceil", 0x26: "cos", 0x27: "sin", 0x28: "sqrt", 0x29: "log",
-         # NOT 0x2C: "not". That opcode does not exist -- zero occurrences in 30,932,107
-         # instructions corpus-wide, no row in OPCODES.md, no name in disasm.NAMES. It was
-         # the only entry in this table that never fires. The real `not` is 0x1C, which has
-         # its own branch below (0x1C is in neither table, so nothing shadows it), and the
-         # dead entry looks like an off-by-0x10 transcription of it. Removing it changes no
-         # output: the README's "mutate the operation table one entry at a time" had one
-         # entry here that could not be meaningfully mutated.
-         0x2B: "exp2", 0x2D: "atan2", 0x2E: "cartesian",
-         0x35: "log2", 0x36: "pow",
-         0x2F: "lerp", 0x30: "minimum", 0x31: "maximum", 0x32: "rand"}
+FUNCS = {
+    0x16: "sbs_mod",
+    0x17: "-",
+    0x18: "dot",
+    0x23: "abs",
+    0x24: "floor",
+    0x2A: "exp",
+    0x25: "ceil",
+    0x26: "cos",
+    0x27: "sin",
+    0x28: "sqrt",
+    0x29: "log",
+    # NOT 0x2C: "not". That opcode does not exist -- zero occurrences in 30,932,107
+    # instructions corpus-wide, no row in OPCODES.md, no name in disasm.NAMES. It was
+    # the only entry in this table that never fires. The real `not` is 0x1C, which has
+    # its own branch below (0x1C is in neither table, so nothing shadows it), and the
+    # dead entry looks like an off-by-0x10 transcription of it. Removing it changes no
+    # output: the README's "mutate the operation table one entry at a time" had one
+    # entry here that could not be meaningfully mutated.
+    0x2B: "exp2",
+    0x2D: "atan2",
+    0x2E: "cartesian",
+    0x35: "log2",
+    0x36: "pow",
+    0x2F: "lerp",
+    0x30: "minimum",
+    0x31: "maximum",
+    0x32: "rand",
+}
 
-PY_FUNCS = {"abs": "np.abs", "floor": "np.floor", "ceil": "np.ceil", "cos": "np.cos",
-            "exp": "np.exp",
-            "sin": "np.sin", "sqrt": "np.sqrt", "log": "np.log", "log2": "np.log2",
-            "exp2": "np.exp2",
-            "pow": "np.power",
-            # atan2 is NOT np.arctan2: one operand of two components, not two scalars.
- "minimum": "np.minimum", "maximum": "np.maximum",
-            # dot is row-wise, not np.dot, which is a matrix product.
-            }
+PY_FUNCS = {
+    "abs": "np.abs",
+    "floor": "np.floor",
+    "ceil": "np.ceil",
+    "cos": "np.cos",
+    "exp": "np.exp",
+    "sin": "np.sin",
+    "sqrt": "np.sqrt",
+    "log": "np.log",
+    "log2": "np.log2",
+    "exp2": "np.exp2",
+    "pow": "np.power",
+    # atan2 is NOT np.arctan2: one operand of two components, not two scalars.
+    "minimum": "np.minimum",
+    "maximum": "np.maximum",
+    # dot is row-wise, not np.dot, which is a matrix product.
+}
 
 PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or"}
 
@@ -263,6 +306,10 @@ def transpile(data, start, end, backend="python", name="program", result=None):
 
     `result` names the value number to return, for reading a sub-expression out of a
     larger program; the default is the program's final value.
+
+    `assume.QUESTIONS['program.select']` selects how a `set` under a `select` branch is
+    emitted -- see `select_guards`. The default, `eager`, is the straight-line emission
+    as it has always been; callers that memoise the source key on the arm.
     """
     be = BACKENDS[backend]()
     ins = list(disasm.decode(data, start, end))
@@ -287,7 +334,6 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             parts.append(c if branch else "~%s" % c)
         return "(%s)" % " & ".join(parts)
 
-
     def emit(k, active=None):
         """The lines one instruction emits, unindented.
 
@@ -301,8 +347,10 @@ def transpile(data, start, end, backend="python", name="program", result=None):
 
         def arg(i):
             if i >= len(toks):
-                raise Unsupported("opcode %04X at %d: wanted operand %d of %d"
-                                  % (op, addr, i, len(toks)))
+                raise Unsupported(
+                    "opcode %04X at %d: wanted operand %d of %d"
+                    % (op, addr, i, len(toks))
+                )
             t = toks[i]
             if t == 0xFFFF and backend == "python":
                 # The same absent-value sentinel `while`'s condition operand and
@@ -318,13 +366,13 @@ def transpile(data, start, end, backend="python", name="program", result=None):
                 return "float('nan')"
             return be.var(t)
 
-        if oid == 0x00:                                    # const
+        if oid == 0x00:  # const
             rhs = be.const(immediate(op, addr, toks), ty)
-        elif oid == 0x01:                                  # system variable
+        elif oid == 0x01:  # system variable
             rhs = be.call("sysvar", [str(toks[0]), str(ncomp)])
-        elif oid == 0x02:                                  # graph input by uid
+        elif oid == 0x02:  # graph input by uid
             rhs = "inputs[%d]" % (immediate(op, addr, toks)[0] & 0xFFFFFFFF)
-        elif oid == 0x03:                                  # cache_read: 0x03/0x06 are a
+        elif oid == 0x03:  # cache_read: 0x03/0x06 are a
             # per-package indexed value cache used for cross-record common-subexpression
             # elimination -- 0x06 (below) writes a value once, from a dedicated
             # pixelprocessor record that is never itself sampled as an image, and any
@@ -335,9 +383,9 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             # possibly a different record, evaluated earlier in record order. cache_read
             # raises rather than guessing -- see sbsruntime.cache_read's docstring.
             rhs = be.call("cache_read", [str(toks[0]) if toks else "0"])
-        elif oid == 0x04:                                  # get variable slot
+        elif oid == 0x04:  # get variable slot
             rhs = "slots[%d]" % toks[0]
-        elif oid == 0x07:                                  # set variable slot
+        elif oid == 0x07:  # set variable slot
             # Every sample runs in one shared Python `for` loop (see the while handling
             # below), so a plain assignment here would keep overwriting a lane's slot
             # after ITS OWN condition went true, using whatever the other, still-running
@@ -347,6 +395,12 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             # the only one that can still be unset on its first iteration, checked first
             # so the ternary short-circuits before `expr` (which may combine `own` with
             # an outer loop's mask, for nested loops) ever has to evaluate `None & array`.
+            # THE LAZY ARM: a `set` demanded only through one branch of a `select` is
+            # applied only on the lanes where that branch is taken, and a `set` nothing
+            # demands is not applied at all. `prev` is the slot's value where the write
+            # does not happen; an unset slot stays unset in the engine, and here reads
+            # back as zeros of the value's own shape, which is what an unset slot has
+            # always read as through `seed_slots`. See `select_guards`.
             gexpr = guard_expr(k) if lazy else None
             if gexpr == "False":
                 pass
@@ -377,9 +431,9 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             else:
                 out.append("slots[%d] = %s" % (toks[1], arg(0)))
             rhs = arg(0)
-        elif oid == 0x0C:                                  # sequence
+        elif oid == 0x0C:  # sequence
             rhs = arg(len(toks) - 1)
-        elif oid == 0x0D:                                  # construct vector, by
+        elif oid == 0x0D:  # construct vector, by
             # concatenation: always exactly two operands whatever the result width.
             # The instruction's own declared ncomp is authoritative -- see `vec`'s
             # docstring for why concatenation alone can overshoot it.
@@ -387,28 +441,28 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             if backend == "python":
                 args.append("ncomp=%d" % ncomp)
             rhs = be.call("vec", args)
-        elif oid == 0x0F:                                  # build a 4-vector from four
+        elif oid == 0x0F:  # build a 4-vector from four
             # scalars. Probable rather than confirmed -- 28 instances, all terminal, all
             # in `levels`, all of the shape (x, x, x, 1). See OPCODES.md.
             args = [arg(i) for i in range(len(toks))]
             if backend == "python":
                 args.append("ncomp=%d" % ncomp)
             rhs = be.call("vec", args)
-        elif oid == 0x10:                                  # swizzle
+        elif oid == 0x10:  # swizzle
             mask = swizzle_mask(toks[1], ncomp)
             rhs = be.call("swizzle", [arg(0), str(mask)])
-        elif oid == 0x11:                                  # type conversion
+        elif oid == 0x11:  # type conversion
             if backend == "python":
                 rhs = be.call("cvt", [arg(0), "True" if ty == 2 else "False"])
             else:
                 rhs = be.call("float" if ty == 1 else "int", [arg(0)])
-        elif oid == 0x09:                                  # select(cond, a, b)
+        elif oid == 0x09:  # select(cond, a, b)
             rhs = be.call("select", [arg(0), arg(1), arg(2)])
-        elif oid == 0x1C:                                  # not
+        elif oid == 0x1C:  # not
             rhs = be.call("np.logical_not" if backend == "python" else "not", [arg(0)])
-        elif oid == 0x33:                                  # sample luminance
+        elif oid == 0x33:  # sample luminance
             rhs = be.call("sample_lum", [str(toks[1]), arg(0)])
-        elif oid == 0x34:                                  # sample colour
+        elif oid == 0x34:  # sample colour
             rhs = be.call("sample_col", [str(toks[1]), arg(0)])
         elif oid in BINOP:
             # Clamp the OPERANDS, not just the result. A corpus census found both
@@ -435,7 +489,7 @@ def transpile(data, start, end, backend="python", name="program", result=None):
                 if backend == "python":
                     fn = PY_FUNCS.get(fn, fn)
                 rhs = be.call(fn, [arg(i) for i in range(len(toks))])
-        elif oid == 0x06:                                  # cache_write: the other half
+        elif oid == 0x06:  # cache_write: the other half
             # of 0x03's pair. Position 0 is the value (an ordinary reference); position 1
             # is the cache index (immediate). Meaning known, same evaluation limit as
             # cache_read -- see there.
@@ -447,12 +501,14 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             # visible in the output rather than silent.
             imm_pos = disasm.IMM.get(oid, ())
             imm_pos = range(len(toks)) if imm_pos == "all" else imm_pos
-            rhs = be.call("op%02X" % oid,
-                          [str(toks[i]) if i in imm_pos else arg(i)
-                           for i in range(len(toks))])
+            rhs = be.call(
+                "op%02X" % oid,
+                [str(toks[i]) if i in imm_pos else arg(i) for i in range(len(toks))],
+            )
         else:
-            raise Unsupported("opcode %04X (id %02X, type %d) at %d"
-                              % (op, oid, ty, addr))
+            raise Unsupported(
+                "opcode %04X (id %02X, type %d) at %d" % (op, oid, ty, addr)
+            )
         # Clamp to the instruction's own declared width. Without this a value can drift
         # wider than declared and the drift only surfaces later, at a `vec` or a binary
         # operation that cannot broadcast. See sbsruntime.clamp.
@@ -492,7 +548,9 @@ def transpile(data, start, end, backend="python", name="program", result=None):
     for k, addr, op, toks in ins:
         if (op & 0x3F) == 0x0B:
             if len(toks) < 3:
-                raise Unsupported("opcode %04X at %d: while wants 3 operands" % (op, addr))
+                raise Unsupported(
+                    "opcode %04X at %d: while wants 3 operands" % (op, addr)
+                )
             # Opcode 0x0B has two encodings: a 6-operand form (406 in the corpus, all
             # well-ordered) and a 5-operand form (515). In the 5-operand form operand 2 is
             # k-1 and operand 4 is 0, in 515 of 515.
@@ -524,10 +582,14 @@ def transpile(data, start, end, backend="python", name="program", result=None):
             # guess at the current evidence level: emitting a loop with no break would be
             # unbounded, and emitting a single pass would assume the answer.
             if len(toks) >= 2 and toks[1] == 0xFFFF:
-                raise Unsupported("opcode %04X at %d: while condition absent (0xFFFF); "
-                                  "what bounds the loop is not known" % (op, addr))
+                raise Unsupported(
+                    "opcode %04X at %d: while condition absent (0xFFFF); "
+                    "what bounds the loop is not known" % (op, addr)
+                )
             if not (toks[0] < toks[1] < toks[2] < k):
-                raise Unsupported("opcode %04X at %d: while operands out of order" % (op, addr))
+                raise Unsupported(
+                    "opcode %04X at %d: while operands out of order" % (op, addr)
+                )
             # Five-tuple: `emit_range` unpacks a trip count as the fifth element.
             # The condition-less form, which was the only producer of one, now
             # raises above, so it is None here and the `icond is None` branch in
@@ -572,16 +634,24 @@ def transpile(data, start, end, backend="python", name="program", result=None):
                 lines.append(pad + "%s = None" % own)
                 lines.append(pad + "for _it%d in range(1 << 16):" % kw)
                 emit_range(i0 + 1, icond, depth + 1, active=(own, expr))
-                lines.append(pad + "    _stop%d = np.asarray(%s).astype(bool)"
-                              % (kw, be.var(icond)))
-                lines.append(pad + "    %s = ~_stop%d if %s is None else (%s & ~_stop%d)"
-                              % (own, kw, own, own, kw))
+                lines.append(
+                    pad
+                    + "    _stop%d = np.asarray(%s).astype(bool)" % (kw, be.var(icond))
+                )
+                lines.append(
+                    pad
+                    + "    %s = ~_stop%d if %s is None else (%s & ~_stop%d)"
+                    % (own, kw, own, own, kw)
+                )
                 lines.append(pad + "    if not np.any(%s): break" % own)
                 emit_range(icond + 1, ibody, depth + 1, active=(own, expr))
                 # The carry is frozen the same way: past a lane's own stopping point, its
                 # exposed final value must stay put rather than keep tracking the body.
-                lines.append(pad + "    %s = %s if %s is None else select(%s, %s, %s)"
-                              % (be.var(kw), be.var(ibody), own, own, be.var(ibody), be.var(kw)))
+                lines.append(
+                    pad
+                    + "    %s = %s if %s is None else select(%s, %s, %s)"
+                    % (be.var(kw), be.var(ibody), own, own, be.var(ibody), be.var(kw))
+                )
                 k = kw + 1
                 continue
             for ln in emit(k, active=active):
@@ -594,7 +664,9 @@ def transpile(data, start, end, backend="python", name="program", result=None):
         raise Unsupported("empty program")
     last = be.var(k if result is None else result)
     body = "\n".join(lines)
-    return ("%s\ndef %s(inputs=None, slots=None):\n"
-            "    inputs = inputs if inputs is not None else {}\n"
-            "    slots = slots if slots is not None else {}\n"
-            "%s\n    return %s\n" % (be.header, name, body, last))
+    return (
+        "%s\ndef %s(inputs=None, slots=None):\n"
+        "    inputs = inputs if inputs is not None else {}\n"
+        "    slots = slots if slots is not None else {}\n"
+        "%s\n    return %s\n" % (be.header, name, body, last)
+    )

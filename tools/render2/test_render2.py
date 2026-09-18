@@ -13,6 +13,7 @@ took the best agreement in this repository to a constant and nothing automated n
 four commits. The same exposure applies to a second renderer, and more so: nothing else in
 the suite runs it.
 """
+
 import glob
 import os
 import re
@@ -24,15 +25,15 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if os.path.dirname(_HERE) not in sys.path:
     sys.path.insert(0, os.path.dirname(_HERE))
 if _HERE not in sys.path:
-    sys.path.append(_HERE)          # see __init__.py: this package goes LAST
+    sys.path.append(_HERE)  # see __init__.py: this package goes LAST
 
-import sbsasm                                                        # noqa: E402
-import manifest                                                      # noqa: E402
-import filters as filters_mod                                        # noqa: E402
-import model                                                         # noqa: E402
-import ops                                                           # noqa: E402
-import sbsruntime                                                    # noqa: E402
-from engine import Context, render                                   # noqa: E402
+import sbsasm  # noqa: E402
+import manifest  # noqa: E402
+import filters as filters_mod  # noqa: E402
+import model  # noqa: E402
+import ops  # noqa: E402
+import sbsruntime  # noqa: E402
+from engine import Context, render  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -97,23 +98,27 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 #: size through `render.py`, `REFERENCE_FLOOR_RENDER2` at the implied size through this
 #: renderer -- and each states its own.
 REFERENCE_FLOOR = {
-    ('basecolor', 0): 0.95,          # measured +0.9758
-    ('basecolor', 1): 0.92,          # measured +0.9494
-    ('basecolor', 2): 0.87,          # measured +0.9066
-    ('roughness', 0): 0.93,          # measured +0.9582
-    ('ambientocclusion', 0): 0.94,   # measured +0.9701
+    ("basecolor", 0): 0.95,  # measured +0.9758
+    ("basecolor", 1): 0.92,  # measured +0.9494
+    ("basecolor", 2): 0.87,  # measured +0.9066
+    ("roughness", 0): 0.93,  # measured +0.9582
+    ("ambientocclusion", 0): 0.94,  # measured +0.9701
 }
 
 #: (record, parameter) -> value the walk must read. Every one of these is a record where
 #: the LAYOUTS memo reads something else or nothing at all; see FORMAT-NOTES.
 WALKED_PARAMETERS = {
-    (34, 'levelinlow'): 0.1375, (34, 'levelinhigh'): 0.1375,
-    (34, 'leveloutlow'): 1.0, (34, 'levelouthigh'): 0.0,
-    (68, 'levelinlow'): 0.2821, (68, 'levelinhigh'): 0.7023,
-    (68, 'levelinmid'): 0.8617, (68, 'leveloutlow'): 0.3521,
-    (19, 'intensity'): 0.25,
-    (23, 'intensity'): 0.38,
-    (9, 'intensity'): 3.59,
+    (34, "levelinlow"): 0.1375,
+    (34, "levelinhigh"): 0.1375,
+    (34, "leveloutlow"): 1.0,
+    (34, "levelouthigh"): 0.0,
+    (68, "levelinlow"): 0.2821,
+    (68, "levelinhigh"): 0.7023,
+    (68, "levelinmid"): 0.8617,
+    (68, "leveloutlow"): 0.3521,
+    (19, "intensity"): 0.25,
+    (23, "intensity"): 0.38,
+    (9, "intensity"): 3.59,
 }
 
 
@@ -126,23 +131,27 @@ def _skip(reason):
     Under pytest this raises the framework's skip; run as a script it prints and the
     caller returns.
     """
-    pytest = sys.modules.get('pytest')
+    pytest = sys.modules.get("pytest")
     if pytest is not None:
         pytest.skip(reason)
-    print('SKIP ' + reason)
+    print("SKIP " + reason)
 
 
 def specimen():
-    hits = glob.glob(os.path.join(ROOT, '**', 'Rokviz japanese fabric 8.sbsasm'),
-                     recursive=True)
+    hits = glob.glob(
+        os.path.join(ROOT, "**", "Rokviz japanese fabric 8.sbsasm"), recursive=True
+    )
     return hits[0] if hits else None
 
 
 def references():
     out = {}
-    for p in glob.glob(os.path.join(ROOT, '**', 'Rokviz_japanese_fabric_8_*.png'),
-                       recursive=True):
-        out[re.sub(r'[^a-z]', '', os.path.basename(p).rsplit('_', 1)[-1][:-4].lower())] = p
+    for p in glob.glob(
+        os.path.join(ROOT, "**", "Rokviz_japanese_fabric_8_*.png"), recursive=True
+    ):
+        out[
+            re.sub(r"[^a-z]", "", os.path.basename(p).rsplit("_", 1)[-1][:-4].lower())
+        ] = p
     return out
 
 
@@ -156,11 +165,11 @@ def references():
 #: what is known about it. Bits, not field indices: `blend`'s relocated opacity straddles
 #: fields 4 and 5, and an index-based reading would call both unnamed.
 UNNAMED_BUT_DECLARED = {
-    'w1': {
+    "w1": {
         # DECLARED FOR THEIR WIDTH, still unread: `W1_PARAMS` carries these with no name, so
         # the placement is right and the value is not read. Being here is the difference
         # between "we know it is there" and "it silently moves a named parameter".
-        1:  (6,),        # blend -- two words, put `opacitymult` two slots late until 1241661
+        1: (6,),  # blend -- two words, put `opacitymult` two slots late until 1241661
         # `fxmaps` AND `emboss` ARE NEW HERE AND NOTHING ABOUT THEM CHANGED. Both were
         # stored by `costs.json` in the INTERACTION form -- `clsbits` + `pairs` + base/cross
         # vectors, with no `cls` or `w1` key at all -- so `_declared_without_a_name` read
@@ -176,14 +185,14 @@ UNNAMED_BUT_DECLARED = {
         # ((0,0,0,1) at field 0 on the one colour record). 6 and 8 stay: field 3 bakes
         # four words (Auras_FX 314: (0.5, 0.5, 0, 1)) and its program returns `slots[0]`
         # 4-wide, field 4's `slots[4]`; what either is, nothing readable states.
-        4:  (6, 8),   # fxmaps
-        8:  (1, 3, 5, 7),      # emboss
+        4: (6, 8),  # fxmaps
+        8: (1, 3, 5, 7),  # emboss
         # `normal` field 2 WAS HERE and is now `input2alpha`. Its one program arm in the
         # corpus is `inputref.b2` on a graph input the manifest names `Alpha_Channel_Content`
         # -- see `model.W1_PARAMS`. Naming it changes no pixel: `f_normal` still writes a
         # constant alpha and reads the field for nothing.
         # NOT DECLARED AT ALL. A program arm here moves whatever this legend does name.
-        12: (7,),        # directionalwarp
+        12: (7,),  # directionalwarp
         # `pixelprocessor` 2 AND `distance` 0 LEFT, and neither was ever a field.
         #
         # pixelprocessor's was "one field, 16 words, 1 corpus record" -- the FIFTH BIT of
@@ -200,12 +209,16 @@ UNNAMED_BUT_DECLARED = {
         # which tracks a single bit and not baked-versus-program. The legend states it as an
         # `edge_bits` entry, so it is no longer a declared field to be unnamed.
     },
-    'cls': {
+    "cls": {
         # Bit 23 is a PROGRAM POINTER wherever it appears -- it decodes to 10 ops on the
         # simple filters, 14-82 on pixelprocessor -- and `walk_programs` already offers
         # every class slot to the program machinery, so these are run; what is unknown is
         # which parameter each computes.
-        0: (23,), 1: (23,), 14: (23,), 20: (23,), 22: (23,),
+        0: (23,),
+        1: (23,),
+        14: (23,),
+        20: (23,),
+        22: (23,),
         # THE SAME FIVE FILTERS AGAIN, for the same reason as the `w1` half above:
         # `transformation`, `fxmaps`, `uniform`, `emboss` and `levels` were stored in
         # `costs.json`'s INTERACTION form, which carries `clsbits` and no `cls` key, so this
@@ -218,12 +231,21 @@ UNNAMED_BUT_DECLARED = {
         # the corpus that set class bit 26 on this filter -- two of them, at two words. A
         # cell the legend now measures and no name covers is exactly what this inventory
         # is for.
-        2: (23,), 4: (22, 23), 6: (23, 25), 8: (23, 26, 27), 15: (23,),
+        2: (23,),
+        4: (22, 23),
+        6: (23, 25),
+        8: (23, 26, 27),
+        15: (23,),
         # (26, 27) is a per-filter parameter pair, baked then program: blur holds
         # (16.0, 16.0), warp (0.9801, 0.9801), directionalwarp (0.99, 1.0). NOT `$outputsize`
         # -- those are floats, not log2 integers.
-        3: (23, 26), 7: (23, 26, 27), 10: (23, 26, 27), 11: (23, 26, 27),
-        12: (23, 26, 27), 13: (23, 26, 27), 21: (23, 26, 27),
+        3: (23, 26),
+        7: (23, 26, 27),
+        10: (23, 26, 27),
+        11: (23, 26, 27),
+        12: (23, 26, 27),
+        13: (23, 26, 27),
+        21: (23, 26, 27),
         # `normal` 10/11/14/15 and `dyngradient` 11 WERE HERE AND ARE THE RECORD'S SIZE.
         # Word0's low half is not a presence mask: bits 8-11 are log2 width and 12-15 log2
         # height, so these four are bits 2 and 3 of the two nibbles. A fit that offers every
@@ -250,15 +272,23 @@ def _asks_without_a_legend(count=False):
     a filter that asks for a name is enough to be checked.
     """
     import ast
-    tree = ast.parse(open(os.path.join(_HERE, 'filters.py'), encoding='utf-8').read())
+
+    tree = ast.parse(open(os.path.join(_HERE, "filters.py"), encoding="utf-8").read())
     ids = _filter_ids()
-    askers = {'_scalar': 2, '_vector': 2, '_channelwise': 2}     # index of the name argument
+    askers = {
+        "_scalar": 2,
+        "_vector": 2,
+        "_channelwise": 2,
+    }  # index of the name argument
     bad, checked = [], 0
     for node in tree.body:
         if not isinstance(node, ast.FunctionDef):
             continue
-        declared = [d.args[0].value for d in node.decorator_list
-                    if isinstance(d, ast.Call) and getattr(d.func, 'id', '') == 'filt']
+        declared = [
+            d.args[0].value
+            for d in node.decorator_list
+            if isinstance(d, ast.Call) and getattr(d.func, "id", "") == "filt"
+        ]
         if not declared:
             continue
         asked = set()
@@ -266,12 +296,20 @@ def _asks_without_a_legend(count=False):
             if not isinstance(n, ast.Call) or not n.args:
                 continue
             f = n.func
-            if isinstance(f, ast.Name) and f.id in askers and len(n.args) > askers[f.id]:
+            if (
+                isinstance(f, ast.Name)
+                and f.id in askers
+                and len(n.args) > askers[f.id]
+            ):
                 a = n.args[askers[f.id]]
             elif isinstance(f, ast.Attribute) and (
-                    f.attr in ('baked', 'program', 'has')
-                    or (f.attr == 'get' and isinstance(f.value, ast.Attribute)
-                        and f.value.attr == 'params')):
+                f.attr in ("baked", "program", "has")
+                or (
+                    f.attr == "get"
+                    and isinstance(f.value, ast.Attribute)
+                    and f.value.attr == "params"
+                )
+            ):
                 a = n.args[0]
             else:
                 continue
@@ -300,20 +338,27 @@ def test_every_parameter_a_filter_asks_for_can_be_supplied():
     a filter that asks for a name is enough to be checked.
     """
     bad, checked = _asks_without_a_legend(count=True)
-    assert checked > 15, 'the filter table was not read: %d functions' % checked
-    assert not bad, ('these filters ask for a parameter no legend can supply, so every '
-                     'record renders at the default: %r' % (bad,))
+    assert checked > 15, "the filter table was not read: %d functions" % checked
+    assert not bad, (
+        "these filters ask for a parameter no legend can supply, so every "
+        "record renders at the default: %r" % (bad,)
+    )
     # AND IT CAN FIRE. This check passes by finding nothing, which is the same output a
     # broken scan produces -- so take a legend away and watch it come back. `sharpen` is
     # the one that was actually in this state until the legend named bit 28.
     saved = model.CLS_NAMES.pop(13)
     try:
         again = _asks_without_a_legend()
-        assert ('sharpen', 13, 'intensity') in again, \
-            'with filter 13 unnamed the scan still reports %r -- it is not looking' % (again,)
+        assert ("sharpen", 13, "intensity") in again, (
+            "with filter 13 unnamed the scan still reports %r -- it is not looking"
+            % (again,)
+        )
     finally:
         model.CLS_NAMES[13] = saved
-    print('ok  test_every_parameter_a_filter_asks_for_can_be_supplied (%d filters)' % checked)
+    print(
+        "ok  test_every_parameter_a_filter_asks_for_can_be_supplied (%d filters)"
+        % checked
+    )
 
 
 def _declared_without_a_name():
@@ -329,9 +374,10 @@ def _declared_without_a_name():
     coefficient -- and there are no variants left to union.
     """
     import json
-    leg = json.load(open(os.path.join(ROOT, 'tools', 'legend.json'), encoding='utf-8'))
+
+    leg = json.load(open(os.path.join(ROOT, "tools", "legend.json"), encoding="utf-8"))
     ids = _filter_ids()
-    got = {'w1': {}, 'cls': {}}
+    got = {"w1": {}, "cls": {}}
     for name in filters_mod.FILTERS:
         fid = ids.get(name)
         if fid is None:
@@ -342,16 +388,19 @@ def _declared_without_a_name():
         # an edge slot are one word in every state, so only a kind-0 field is free. A `cls`
         # cell is in `cls` at all only when it costs something; the bits measured at zero are
         # in `cls_free` and are not declared fields.
-        w1_rows = {int(j) for j, kind in entry.get('w1', {}).items()
-                   if not ((3 << int(j)) & cov_w1) and kind != 0}
-        cls_rows = {int(b) for b in entry.get('cls', {}) if int(b) not in cov_cls}
-        sh4 = entry.get('shape4')
+        w1_rows = {
+            int(j)
+            for j, kind in entry.get("w1", {}).items()
+            if not ((3 << int(j)) & cov_w1) and kind != 0
+        }
+        cls_rows = {int(b) for b in entry.get("cls", {}) if int(b) not in cov_cls}
+        sh4 = entry.get("shape4")
         if sh4 is not None and sh4[0] not in cov_cls and sh4[1]:
             cls_rows.add(sh4[0])
         if w1_rows:
-            got['w1'][fid] = tuple(sorted(w1_rows))
+            got["w1"][fid] = tuple(sorted(w1_rows))
         if cls_rows:
-            got['cls'][fid] = tuple(sorted(cls_rows))
+            got["cls"][fid] = tuple(sorted(cls_rows))
     return got
 
 
@@ -364,33 +413,41 @@ def test_the_declared_fields_the_legend_ignores_are_the_known_ones():
     is known to be uncovered; this fails when the set moves in either direction.
     """
     got = _declared_without_a_name()
-    for half in ('w1', 'cls'):
-        new_ = {k: v for k, v in got[half].items() if UNNAMED_BUT_DECLARED[half].get(k) != v}
-        gone = {k: v for k, v in UNNAMED_BUT_DECLARED[half].items() if got[half].get(k) != v}
+    for half in ("w1", "cls"):
+        new_ = {
+            k: v for k, v in got[half].items() if UNNAMED_BUT_DECLARED[half].get(k) != v
+        }
+        gone = {
+            k: v for k, v in UNNAMED_BUT_DECLARED[half].items() if got[half].get(k) != v
+        }
         assert not new_ and not gone, (
-            '%s: the declared-but-unnamed set moved. Now uncovered and not in the '
-            'inventory: %r. In the inventory and no longer uncovered -- name it in SPEC '
-            'and delete the entry: %r' % (half, new_, gone))
+            "%s: the declared-but-unnamed set moved. Now uncovered and not in the "
+            "inventory: %r. In the inventory and no longer uncovered -- name it in SPEC "
+            "and delete the entry: %r" % (half, new_, gone)
+        )
     # AND IT CAN FIRE: take `hsl`'s six names away and its class bits must reappear.
     saved = model.CLS_NAMES.pop(14)
-    model._covered_bits.cache_clear()          # or the mutation is invisible; see model.py
+    model._covered_bits.cache_clear()  # or the mutation is invisible; see model.py
     try:
         again = _declared_without_a_name()
-        assert set(again['cls'].get(14, ())) >= {24, 26, 28}, \
-            'with filter 14 unnamed the scan reports %r for hsl -- it is not looking' \
-            % (again['cls'].get(14),)
+        assert set(again["cls"].get(14, ())) >= {24, 26, 28}, (
+            "with filter 14 unnamed the scan reports %r for hsl -- it is not looking"
+            % (again["cls"].get(14),)
+        )
     finally:
         model.CLS_NAMES[14] = saved
         model._covered_bits.cache_clear()
-    print('ok  test_the_declared_fields_the_legend_ignores_are_the_known_ones '
-          '(%d w1, %d class)' % (len(got['w1']), len(got['cls'])))
+    print(
+        "ok  test_the_declared_fields_the_legend_ignores_are_the_known_ones "
+        "(%d w1, %d class)" % (len(got["w1"]), len(got["cls"]))
+    )
 
 
 def test_walk_reads_the_parameters_the_memo_cannot():
     """The structural half: what the walk names, from the record's own words."""
     path = specimen()
     if not path:
-        return _skip('test_walk_reads_the_parameters_the_memo_cannot: no specimen')
+        return _skip("test_walk_reads_the_parameters_the_memo_cannot: no specimen")
     asm = sbsasm.Assembly(path)
     bad = []
     for (index, name), want in sorted(WALKED_PARAMETERS.items()):
@@ -398,14 +455,16 @@ def test_walk_reads_the_parameters_the_memo_cannot():
         got = v.baked(name)
         if got is None or abs(float(np.asarray(got).ravel()[0]) - want) > 5e-4:
             bad.append((index, name, got, want))
-    assert not bad, 'the walk no longer names these: %r' % (bad,)
+    assert not bad, "the walk no longer names these: %r" % (bad,)
     # Record 34 is only a threshold because its input span is zero AND its output range is
     # reversed. Both halves, asserted, because either one alone is a different filter.
     v = model.View(asm, asm.records[34])
-    assert abs(v.baked('levelinlow') - v.baked('levelinhigh')) < 1e-6
-    assert v.baked('leveloutlow') > v.baked('levelouthigh')
-    print('ok  test_walk_reads_the_parameters_the_memo_cannot (%d parameters)'
-          % len(WALKED_PARAMETERS))
+    assert abs(v.baked("levelinlow") - v.baked("levelinhigh")) < 1e-6
+    assert v.baked("leveloutlow") > v.baked("levelouthigh")
+    print(
+        "ok  test_walk_reads_the_parameters_the_memo_cannot (%d parameters)"
+        % len(WALKED_PARAMETERS)
+    )
 
 
 def test_blend_reads_the_relocated_opacity():
@@ -421,28 +480,37 @@ def test_blend_reads_the_relocated_opacity():
     Dropping the field composites at full strength: 1,133 corpus records, 963 of them a
     stated constant as low as 0.05.
     """
-    hits = glob.glob(os.path.join(ROOT, '**', 'ChesterfieldSofa.sbsasm'), recursive=True)
+    hits = glob.glob(
+        os.path.join(ROOT, "**", "ChesterfieldSofa.sbsasm"), recursive=True
+    )
     if not hits:
-        return _skip('test_blend_reads_the_relocated_opacity: no ChesterfieldSofa')
+        return _skip("test_blend_reads_the_relocated_opacity: no ChesterfieldSofa")
     asm = sbsasm.Assembly(hits[0])
     #: index -> the `opacitymult` its source node states, from `ChesterfieldSofa.sbs`.
     want = {356: 0.73, 859: 0.40, 871: 0.20}
     got = {}
     for rec in asm.records:
-        if rec.filter_name != 'blend' or len(rec.words) < 2:
+        if rec.filter_name != "blend" or len(rec.words) < 2:
             continue
         w1 = rec.words[1]
         if (w1 >> 9) & 3:
-            assert (w1 >> 4) & 3 == 3, \
-                'record %d relocates its opacity while (4, 5) is not the image-input ' \
-                'code -- the two arms are not exclusive after all' % rec.index
+            assert (w1 >> 4) & 3 == 3, (
+                "record %d relocates its opacity while (4, 5) is not the image-input "
+                "code -- the two arms are not exclusive after all" % rec.index
+            )
             v = model.View(asm, rec)
-            got[rec.index] = v.baked('opacitymult')
-    assert set(got) == set(want), \
-        'the relocated-opacity records moved: %r, expected %r' % (sorted(got), sorted(want))
-    bad = [(i, got[i], want[i]) for i in want
-           if got[i] is None or abs(got[i] - want[i]) > 5e-4]
-    assert not bad, 'the walk no longer reads the source\'s own opacity: %r' % (bad,)
+            got[rec.index] = v.baked("opacitymult")
+    assert set(got) == set(want), (
+        "the relocated-opacity records moved: %r, expected %r"
+        % (sorted(got), sorted(want))
+    )
+    bad = [
+        (i, got[i], want[i])
+        for i in want
+        if got[i] is None or abs(got[i] - want[i]) > 5e-4
+    ]
+    assert not bad, "the walk no longer reads the source's own opacity: %r" % (bad,)
+
     # AND THE GUARD FIRES. `model` refuses a record that sets both arms, on the strength
     # of "it never happens" -- 1,133 of 1,133. A refusal nothing has ever seen refuse is
     # indistinguishable from no refusal at all, so set both arms on a record that passes
@@ -450,23 +518,23 @@ def test_blend_reads_the_relocated_opacity():
     # broken shim would raise here too, and prove nothing about the guard.
     class _Reworded(object):
         def __init__(self, r, words):
-            object.__setattr__(self, '_r', r)
-            object.__setattr__(self, 'words', words)
+            object.__setattr__(self, "_r", r)
+            object.__setattr__(self, "words", words)
 
         def __getattr__(self, k):
-            return getattr(object.__getattribute__(self, '_r'), k)
+            return getattr(object.__getattribute__(self, "_r"), k)
 
     rec = asm.records[356]
-    assert model.View(asm, _Reworded(rec, list(rec.words))).has('opacitymult')
+    assert model.View(asm, _Reworded(rec, list(rec.words))).has("opacitymult")
     both_arms = list(rec.words)
-    both_arms[1] = (both_arms[1] & ~0x30) | 0x10        # (4, 5) baked, (9, 10) still baked
+    both_arms[1] = (both_arms[1] & ~0x30) | 0x10  # (4, 5) baked, (9, 10) still baked
     try:
         model.View(asm, _Reworded(rec, both_arms))
     except model.Shifted:
         pass
     else:
-        raise AssertionError('a record setting both opacity arms was accepted')
-    print('ok  test_blend_reads_the_relocated_opacity (%d records)' % len(got))
+        raise AssertionError("a record setting both opacity arms was accepted")
+    print("ok  test_blend_reads_the_relocated_opacity (%d records)" % len(got))
 
 
 def test_hsl_names_its_three_parameters():
@@ -480,28 +548,36 @@ def test_hsl_names_its_three_parameters():
     and a third node leaves all three dynamic -- which is the record that has to come back
     as three PROGRAMS, or the bit pairing is wrong in a way constants cannot show.
     """
-    hits = glob.glob(os.path.join(ROOT, '**', 'ChesterfieldSofa.sbsasm'), recursive=True)
+    hits = glob.glob(
+        os.path.join(ROOT, "**", "ChesterfieldSofa.sbsasm"), recursive=True
+    )
     if not hits:
-        return _skip('test_hsl_names_its_three_parameters: no ChesterfieldSofa')
+        return _skip("test_hsl_names_its_three_parameters: no ChesterfieldSofa")
     asm = sbsasm.Assembly(hits[0])
-    baked = {351: {'saturation': 0.58},
-             866: {'saturation': 0.65, 'luminosity': 0.60}}
+    baked = {351: {"saturation": 0.58}, 866: {"saturation": 0.65, "luminosity": 0.60}}
     for index, want in sorted(baked.items()):
         v = model.View(asm, asm.records[index])
         for name, value in want.items():
             got = v.baked(name)
-            assert got is not None and abs(got - value) < 5e-4, \
-                'record %d %s reads %r, the source states %r' % (index, name, got, value)
-        assert set(v.params) == set(want), \
-            'record %d names %r, the source states %r' % (index, sorted(v.params),
-                                                         sorted(want))
+            assert got is not None and abs(got - value) < 5e-4, (
+                "record %d %s reads %r, the source states %r"
+                % (index, name, got, value)
+            )
+        assert set(v.params) == set(want), (
+            "record %d names %r, the source states %r"
+            % (index, sorted(v.params), sorted(want))
+        )
     # The all-dynamic node: three PROGRAM arms, which is what pairs the odd bits with the
     # even ones. A legend that only got the baked bits right would name nothing here.
     v = model.View(asm, asm.records[864])
-    assert {k: p.kind for k, p in v.params.items()} == \
-        {'hue': 'program', 'saturation': 'program', 'luminosity': 'program'}, \
-        'the all-dynamic hsl record names %r' % ({k: p.kind for k, p in v.params.items()},)
-    print('ok  test_hsl_names_its_three_parameters (3 records)')
+    assert {k: p.kind for k, p in v.params.items()} == {
+        "hue": "program",
+        "saturation": "program",
+        "luminosity": "program",
+    }, "the all-dynamic hsl record names %r" % (
+        {k: p.kind for k, p in v.params.items()},
+    )
+    print("ok  test_hsl_names_its_three_parameters (3 records)")
 
 
 def test_normal_declares_the_field_that_shifts_its_intensity():
@@ -517,25 +593,33 @@ def test_normal_declares_the_field_that_shifts_its_intensity():
     Asserted on the VALUES the two programs return, not on the slots alone: a placement that
     is off by one still yields a float, and a slot number does not say which program ran.
     """
-    hits = glob.glob(os.path.join(ROOT, '**', 'stone_stylized_adaptive.sbsasm'),
-                     recursive=True)
+    hits = glob.glob(
+        os.path.join(ROOT, "**", "stone_stylized_adaptive.sbsasm"), recursive=True
+    )
     if not hits:
-        return _skip('test_normal_declares_the_field_that_shifts_its_intensity: no specimen')
+        return _skip(
+            "test_normal_declares_the_field_that_shifts_its_intensity: no specimen"
+        )
     asm = sbsasm.Assembly(hits[0])
     v = model.View(asm, asm.records[18])
-    assert v.rec.filter_name == 'normal', 'record 18 is %r' % (v.rec.filter_name,)
+    assert v.rec.filter_name == "normal", "record 18 is %r" % (v.rec.filter_name,)
     kinds = {k: p.kind for k, p in v.params.items()}
-    assert kinds == {'intensity': 'program', 'inversedy': 'program'}, \
-        'record 18 names %r' % (kinds,)
-    assert v.params['intensity'].slot < v.params['inversedy'].slot, \
-        'the fields are placed in descending mask order'
+    assert kinds == {"intensity": "program", "inversedy": "program"}, (
+        "record 18 names %r" % (kinds,)
+    )
+    assert v.params["intensity"].slot < v.params["inversedy"].slot, (
+        "the fields are placed in descending mask order"
+    )
     ctx = Context(asm)
-    got = {n: float(np.asarray(ctx.run(v, v.params[n].value, 1)).ravel()[0])
-           for n in ('intensity', 'inversedy')}
-    assert abs(got['intensity'] - 5.0) < 1e-6 and abs(got['inversedy']) < 1e-6, \
-        'the two programs return %r; intensity 5.0 is the file\'s, 0.0 is inversedy\'s' \
+    got = {
+        n: float(np.asarray(ctx.run(v, v.params[n].value, 1)).ravel()[0])
+        for n in ("intensity", "inversedy")
+    }
+    assert abs(got["intensity"] - 5.0) < 1e-6 and abs(got["inversedy"]) < 1e-6, (
+        "the two programs return %r; intensity 5.0 is the file's, 0.0 is inversedy's"
         % (got,)
-    print('ok  test_normal_declares_the_field_that_shifts_its_intensity')
+    )
+    print("ok  test_normal_declares_the_field_that_shifts_its_intensity")
 
 
 def test_distance_reads_the_radius_its_source_states():
@@ -553,40 +637,51 @@ def test_distance_reads_the_radius_its_source_states():
     Both halves are asserted here: the declared values, and that a program arm resolves to a
     program rather than to a plausible-looking float.
     """
-    hits = glob.glob(os.path.join(ROOT, '**', 'StylizedCobblestoneStreet.sbsasm'),
-                     recursive=True)
+    hits = glob.glob(
+        os.path.join(ROOT, "**", "StylizedCobblestoneStreet.sbsasm"), recursive=True
+    )
     if not hits:
-        return _skip('test_distance_reads_the_radius_its_source_states: no specimen')
+        return _skip("test_distance_reads_the_radius_its_source_states: no specimen")
     asm = sbsasm.Assembly(hits[0])
     for index, want in ((3, 56.3), (180, 64.22)):
         v = model.View(asm, asm.records[index])
-        got = v.baked('distance')
-        assert got is not None and abs(got - want) < 5e-3, \
-            'record %d reads %r, the source states %r' % (index, got, want)
+        got = v.baked("distance")
+        assert got is not None and abs(got - want) < 5e-3, (
+            "record %d reads %r, the source states %r" % (index, got, want)
+        )
     # THE PROGRAM ARM NEEDS ITS OWN SPECIMEN: this pack has no distance record whose field 1
     # holds a program. PavingStones does, and what the legend names there must be an address
     # the file can decode -- the check that told the two namings apart in the first place.
-    other = glob.glob(os.path.join(ROOT, '**', 'PavingStonesSubstance003_COMPILED.sbsasm'),
-                      recursive=True)
+    other = glob.glob(
+        os.path.join(ROOT, "**", "PavingStonesSubstance003_COMPILED.sbsasm"),
+        recursive=True,
+    )
     checked = 0
     if other:
         asm2 = sbsasm.Assembly(other[0])
         for rec in asm2.records:
-            if (rec.filter_name != 'distance' or len(rec.words) < 2
-                    or (rec.words[1] >> 2) & 3 != 2):
+            if (
+                rec.filter_name != "distance"
+                or len(rec.words) < 2
+                or (rec.words[1] >> 2) & 3 != 2
+            ):
                 continue
             v2 = model.View(asm2, rec)
-            p = v2.params.get('distance')
+            p = v2.params.get("distance")
             checked += 1
-            assert p is not None and p.kind == 'program', \
-                'record %d: field 1 holds a program and the legend reports %r' % (
-                    rec.index, p)
-            assert asm2.valid_program(rec.words[p.slot] + 52), \
-                'record %d: the named slot %d does not decode as a program, which is what ' \
-                'the field-0 naming looked like' % (rec.index, p.slot)
-        assert checked, 'PavingStones no longer has a program-arm distance record'
-    print('ok  test_distance_reads_the_radius_its_source_states (2 values from the source, '
-          '%d program-arm records)' % checked)
+            assert p is not None and p.kind == "program", (
+                "record %d: field 1 holds a program and the legend reports %r"
+                % (rec.index, p)
+            )
+            assert asm2.valid_program(rec.words[p.slot] + 52), (
+                "record %d: the named slot %d does not decode as a program, which is what "
+                "the field-0 naming looked like" % (rec.index, p.slot)
+            )
+        assert checked, "PavingStones no longer has a program-arm distance record"
+    print(
+        "ok  test_distance_reads_the_radius_its_source_states (2 values from the source, "
+        "%d program-arm records)" % checked
+    )
 
 
 def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
@@ -601,10 +696,13 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
     ChesterfieldSofa is the specimen because Rokviz cannot see it: 0 of its 70 records have
     a class bit costing a word before bit 16, while Chesterfield has 28 that do.
     """
-    hits = glob.glob(os.path.join(ROOT, '**', 'ChesterfieldSofa.sbsasm'), recursive=True)
+    hits = glob.glob(
+        os.path.join(ROOT, "**", "ChesterfieldSofa.sbsasm"), recursive=True
+    )
     if not hits:
-        return _skip('test_the_size_slot_is_the_walks_placement: no ChesterfieldSofa')
+        return _skip("test_the_size_slot_is_the_walks_placement: no ChesterfieldSofa")
     import decompose
+
     asm = sbsasm.Assembly(hits[0])
     disagree, checked, clashes = 0, 0, 0
     for rec in asm.records:
@@ -612,7 +710,7 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
         if not d:
             continue
         v = model.View(asm, rec)
-        placed = dict((b, sl) for (b, sl, _n) in d.get('cls_params', ())).get(16)
+        placed = dict((b, sl) for (b, sl, _n) in d.get("cls_params", ())).get(16)
         if placed is not None:
             checked += 1
             # THE ONE EXCEPTION IS GONE, AND ITS CAUSE WITH IT. This specimen's `normal`
@@ -625,35 +723,43 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
             # it moved (the old slot did in 251). The guard stays -- it is what stands
             # between a float and `walk_programs` if a placement ever goes wrong again --
             # and this asserts it is now silent rather than asserting it fires.
-            clash = any(e[0] == 'clash' for e in v.ignored)
+            clash = any(e[0] == "clash" for e in v.ignored)
             if clash:
                 clashes += 1
                 assert v.size_slot is None and placed in {
-                    p.slot for p in v.params.values() if p.slot is not None}, \
-                    'record %d: a clash was reported and bit 16 at %r is not on a named ' \
-                    'parameter' % (rec.index, placed)
+                    p.slot for p in v.params.values() if p.slot is not None
+                }, (
+                    "record %d: a clash was reported and bit 16 at %r is not on a named "
+                    "parameter" % (rec.index, placed)
+                )
             else:
-                assert v.size_slot == placed, \
-                    'record %d: size_slot %r, the walk placed bit 16 at %r' \
+                assert v.size_slot == placed, (
+                    "record %d: size_slot %r, the walk placed bit 16 at %r"
                     % (rec.index, v.size_slot, placed)
-            if d.get('prog') is not None and placed != d['prog']:
+                )
+            if d.get("prog") is not None and placed != d["prog"]:
                 disagree += 1
         if v.size_slot is not None:
-            assert 0 <= v.size_slot < len(rec.words), \
-                'record %d: size_slot %d is outside its %d words' \
+            assert 0 <= v.size_slot < len(rec.words), (
+                "record %d: size_slot %d is outside its %d words"
                 % (rec.index, v.size_slot, len(rec.words))
-    assert checked > 0, 'no record on this specimen places a size expression'
-    assert disagree >= 28, \
-        'only %d records here distinguish the walk from the block start -- this specimen ' \
-        'can no longer catch the regression it was chosen for' % (disagree,)
-    assert not clashes, \
-        '%d record(s) here report a placement clash. The class block is over-long again: ' \
-        'a class parameter is landing on the slot the end-anchored parameter block owns, ' \
-        'which is the shape `normal` had before its costs were pinned to its base region' \
+            )
+    assert checked > 0, "no record on this specimen places a size expression"
+    assert disagree >= 28, (
+        "only %d records here distinguish the walk from the block start -- this specimen "
+        "can no longer catch the regression it was chosen for" % (disagree,)
+    )
+    assert not clashes, (
+        "%d record(s) here report a placement clash. The class block is over-long again: "
+        "a class parameter is landing on the slot the end-anchored parameter block owns, "
+        "which is the shape `normal` had before its costs were pinned to its base region"
         % (clashes,)
-    print('ok  test_the_size_slot_is_the_walks_placement_not_the_blocks_start '
-          '(%d placed, %d where the retired rule differs, %d clashing with a parameter)'
-          % (checked, disagree, clashes))
+    )
+    print(
+        "ok  test_the_size_slot_is_the_walks_placement_not_the_blocks_start "
+        "(%d placed, %d where the retired rule differs, %d clashing with a parameter)"
+        % (checked, disagree, clashes)
+    )
 
 
 #: (form) -> (a two-stop table in that layout, what a ramp indexed at 0, 0.5 and 1 must
@@ -662,17 +768,19 @@ def test_the_size_slot_is_the_walks_placement_not_the_blocks_start():
 #: reliably in reach of any file sweep. The u16 rows carry the trailing midpoint word, so
 #: they also assert that a reader ignoring it reads the rest correctly.
 RAMP_CASES = {
-    'grey-u16':   ([(0, 0, 32768), (65535, 65535, 32768)],
-                   [[0.0], [0.5], [1.0]]),
-    'grey-float': ([(0.0, 0.25, -1.0), (1.0, 0.75, -1.0)],
-                   [[0.25], [0.5], [0.75]]),
+    "grey-u16": ([(0, 0, 32768), (65535, 65535, 32768)], [[0.0], [0.5], [1.0]]),
+    "grey-float": ([(0.0, 0.25, -1.0), (1.0, 0.75, -1.0)], [[0.25], [0.5], [0.75]]),
     # Real entries, from `stone_stylized_adaptive` record 337: lo | hi<<16 is RGBA bytes,
     # so 0xFF000000 is opaque black and 0xFFFFFFFF opaque white.
-    'rgba-u16':   ([(0, 0, 65280, 32768), (65535, 65535, 65535, 32768)],
-                   [[0.0, 0.0, 0.0, 1.0], [0.5, 0.5, 0.5, 1.0], [1.0, 1.0, 1.0, 1.0]]),
+    "rgba-u16": (
+        [(0, 0, 65280, 32768), (65535, 65535, 65535, 32768)],
+        [[0.0, 0.0, 0.0, 1.0], [0.5, 0.5, 0.5, 1.0], [1.0, 1.0, 1.0, 1.0]],
+    ),
     # Six components and five: both are this form, and the reader slices 1:5 from each.
-    'rgba-float': ([(0.0, 1.0, 0.0, 0.0, 1.0, -1.0), (1.0, 0.0, 0.0, 1.0, 1.0)],
-                   [[1.0, 0.0, 0.0, 1.0], [0.5, 0.0, 0.5, 1.0], [0.0, 0.0, 1.0, 1.0]]),
+    "rgba-float": (
+        [(0.0, 1.0, 0.0, 0.0, 1.0, -1.0), (1.0, 0.0, 0.0, 1.0, 1.0)],
+        [[1.0, 0.0, 0.0, 1.0], [0.5, 0.0, 0.5, 1.0], [0.0, 0.0, 1.0, 1.0]],
+    ),
 }
 
 
@@ -680,7 +788,7 @@ class _RampView:
     """The least `f_gradient` needs: a record that states its ramp, and a size."""
 
     def __init__(self, got, w=3, h=1):
-        self.rec = type('_RampRec', (), {'read_ramp': lambda _self, g=got: g})()
+        self.rec = type("_RampRec", (), {"read_ramp": lambda _self, g=got: g})()
         self._wh = (w, h)
 
     def size(self, cap):
@@ -727,18 +835,24 @@ def test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it():
         check in this repository and the whole `test_filters` floor table is scored at the
         declared size.
     """
-    hits = glob.glob(os.path.join(ROOT, '**', 'ChesterfieldSofa.sbsasm'), recursive=True)
+    hits = glob.glob(
+        os.path.join(ROOT, "**", "ChesterfieldSofa.sbsasm"), recursive=True
+    )
     if not hits:
-        return _skip('test_a_records_size_is_a_function_of_outputsize: no ChesterfieldSofa')
+        return _skip(
+            "test_a_records_size_is_a_function_of_outputsize: no ChesterfieldSofa"
+        )
     import disasm
     from engine import declared_outputsize, record_sizes
+
     asm = sbsasm.Assembly(hits[0])
 
-    assert record_sizes(asm, None) is None, \
-        'record_sizes must be inert without an $outputsize -- everything else is scored ' \
-        'at the declared one'
+    assert record_sizes(asm, None) is None, (
+        "record_sizes must be inert without an $outputsize -- everything else is scored "
+        "at the declared one"
+    )
     declared = declared_outputsize(asm)
-    assert declared == (8, 8), 'ChesterfieldSofa declares $outputsize %r' % (declared,)
+    assert declared == (8, 8), "ChesterfieldSofa declares $outputsize %r" % (declared,)
 
     # -- the selectors ---------------------------------------------------------------
     # The chain into basecolor, oldest first. Each is `$sizelog2.x < K ? 0.0 : 1.0`, and
@@ -751,26 +865,30 @@ def test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it():
     gates = []
     for i in chain:
         rec = asm.records[i]
-        assert (rec.slot1_flags or {}).get('blendingmode') == 7, \
-            'record %d is no longer a switch blend' % i
+        assert (rec.slot1_flags or {}).get("blendingmode") == 7, (
+            "record %d is no longer a switch blend" % i
+        )
         v = model.View(asm, rec)
-        p = v.params.get('opacitymult')
-        assert p is not None and p.kind == 'program', \
-            'record %d states no selector program' % i
+        p = v.params.get("opacitymult")
+        assert p is not None and p.kind == "program", (
+            "record %d states no selector program" % i
+        )
         ptr = v.words[p.slot] + 52
         txt = disasm.text(asm.data, ptr, asm.program_span(ptr))
-        got = re.findall(r'sysvar\.\w+\s+3\b', txt)
-        assert got, 'record %d selector no longer reads $sizelog2:\n%s' % (i, txt)
-        found = re.findall(r'const\.f1\s+(\d+)\s*$', txt, re.M)
-        assert found, 'record %d selector states no threshold:\n%s' % (i, txt)
+        got = re.findall(r"sysvar\.\w+\s+3\b", txt)
+        assert got, "record %d selector no longer reads $sizelog2:\n%s" % (i, txt)
+        found = re.findall(r"const\.f1\s+(\d+)\s*$", txt, re.M)
+        assert found, "record %d selector states no threshold:\n%s" % (i, txt)
         gates.append(int(found[0]))
-    assert gates == list(range(3, 13)), \
-        'the LOD thresholds are %r, not the octaves 3..12' % (gates,)
+    assert gates == list(range(3, 13)), (
+        "the LOD thresholds are %r, not the octaves 3..12" % (gates,)
+    )
     at_declared = sum(1 for k in gates if declared[0] >= k)
     at_exported = sum(1 for k in gates if 11 >= k)
-    assert (at_declared, at_exported) == (6, 9), \
-        'the selections are %d src at the declared size and %d at the exported one, ' \
-        'not 6 and 9' % (at_declared, at_exported)
+    assert (at_declared, at_exported) == (6, 9), (
+        "the selections are %d src at the declared size and %d at the exported one, "
+        "not 6 and 9" % (at_declared, at_exported)
+    )
 
     # -- the sizes -------------------------------------------------------------------
     sizes = record_sizes(asm, (11, 11))
@@ -779,20 +897,26 @@ def test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it():
     for rec in asm.records:
         w, _h = sizes[rec.index]
         grew[w // rec.width] = grew.get(w // rec.width, 0) + 1
-    assert grew.get(1, 0) >= 60 and grew.get(8, 0) >= 700 and len(grew) >= 3, \
-        'sizes at $outputsize 11 group as %r -- a uniform scale of the tag would put ' \
-        'every record in one bucket, and it is wrong for the ones that are not' % (grew,)
-    assert max(grew) == 8, \
-        'some record grew by %rx, which no size expression in this file states: the ' \
-        'no-expression fallback is copying its parent instead of scaling by the factor ' \
-        'the parent moved, and that turns a 16x16 minification into an identity' % (max(grew),)
-    assert sizes[871] == (2048, 2048), \
-        'the basecolor record is %r at $outputsize 11, not the 2048 the export is' \
+    assert grew.get(1, 0) >= 60 and grew.get(8, 0) >= 700 and len(grew) >= 3, (
+        "sizes at $outputsize 11 group as %r -- a uniform scale of the tag would put "
+        "every record in one bucket, and it is wrong for the ones that are not"
+        % (grew,)
+    )
+    assert max(grew) == 8, (
+        "some record grew by %rx, which no size expression in this file states: the "
+        "no-expression fallback is copying its parent instead of scaling by the factor "
+        "the parent moved, and that turns a 16x16 minification into an identity"
+        % (max(grew),)
+    )
+    assert sizes[871] == (2048, 2048), (
+        "the basecolor record is %r at $outputsize 11, not the 2048 the export is"
         % (sizes[871],)
-    print('ok  test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it '
-          '(10 gates %d..%d, %d src at 8 and %d at 11, size groups %r)'
-          % (gates[0], gates[-1], at_declared, at_exported,
-             sorted(grew.items())))
+    )
+    print(
+        "ok  test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it "
+        "(10 gates %d..%d, %d src at 8 and %d at 11, size groups %r)"
+        % (gates[0], gates[-1], at_declared, at_exported, sorted(grew.items()))
+    )
 
 
 def test_the_gradient_reads_the_layout_the_record_states():
@@ -813,35 +937,44 @@ def test_the_gradient_reads_the_layout_the_record_states():
     reader cannot read refuses out loud rather than slicing a short entry into silence.
     """
     assert set(filters_mod._RAMP_WIDTH) == set(sbsasm.RAMP_FORMS), (
-        'the gradient reader covers %r and the decode states %r -- a layout with no reader '
-        'raises at render time, on whichever record happens to carry it'
-        % (sorted(filters_mod._RAMP_WIDTH), sorted(sbsasm.RAMP_FORMS)))
+        "the gradient reader covers %r and the decode states %r -- a layout with no reader "
+        "raises at render time, on whichever record happens to carry it"
+        % (sorted(filters_mod._RAMP_WIDTH), sorted(sbsasm.RAMP_FORMS))
+    )
 
     ctx = _RampCtx()
     for form, (table, want) in sorted(RAMP_CASES.items()):
         img = filters_mod.f_gradient(ctx, _RampView((form, table)))
         got = np.asarray(img, np.float32).reshape(3, -1)
-        assert got.shape == np.asarray(want).shape, \
-            '%s: read %r components, expected %r' % (form, got.shape, np.shape(want))
-        assert np.allclose(got, np.asarray(want, np.float32), atol=2e-3), \
-            '%s: the ramp reads %r, not %r' % (form, got.tolist(), want)
+        assert got.shape == np.asarray(want).shape, (
+            "%s: read %r components, expected %r" % (form, got.shape, np.shape(want))
+        )
+        assert np.allclose(got, np.asarray(want, np.float32), atol=2e-3), (
+            "%s: the ramp reads %r, not %r" % (form, got.tolist(), want)
+        )
 
     # AND IT CAN FIRE, on both halves of the guard.
-    for why, bogus in (('an unknown form', ('rgba-u32', [(0, 1, 2, 3)])),
-                       ('an entry too short for its form', ('rgba-u16', [(0, 1), (1, 2)]))):
+    for why, bogus in (
+        ("an unknown form", ("rgba-u32", [(0, 1, 2, 3)])),
+        ("an entry too short for its form", ("rgba-u16", [(0, 1), (1, 2)])),
+    ):
         try:
             filters_mod.f_gradient(ctx, _RampView(bogus))
         except filters_mod.Unsupported:
             pass
         else:
-            assert False, '%s rendered instead of refusing: %r' % (why, bogus)
+            assert False, "%s rendered instead of refusing: %r" % (why, bogus)
 
     # The corpus half: this is what licenses deleting the type test -- the form the record
     # states and the values it yields never disagree.
-    files = sorted(glob.glob(os.path.join(ROOT, '**', '*.sbsasm'), recursive=True))[:120]
+    files = sorted(glob.glob(os.path.join(ROOT, "**", "*.sbsasm"), recursive=True))[
+        :120
+    ]
     if not files:
-        print('ok  test_the_gradient_reads_the_layout_the_record_states '
-              '(%d forms, no .sbsasm files to sweep)' % len(RAMP_CASES))
+        print(
+            "ok  test_the_gradient_reads_the_layout_the_record_states "
+            "(%d forms, no .sbsasm files to sweep)" % len(RAMP_CASES)
+        )
         return
     seen, bad, n = {}, [], 0
     for path in files:
@@ -855,14 +988,20 @@ def test_the_gradient_reads_the_layout_the_record_states():
             seen[form] = seen.get(form, 0) + 1
             n += 1
             if form not in sbsasm.RAMP_FORMS:
-                bad.append((os.path.basename(path), r.index, form, 'not a stated form'))
-            elif any(isinstance(e[0], float) != form.endswith('float') for e in table):
-                bad.append((os.path.basename(path), r.index, form, 'entries are not that'))
+                bad.append((os.path.basename(path), r.index, form, "not a stated form"))
+            elif any(isinstance(e[0], float) != form.endswith("float") for e in table):
+                bad.append(
+                    (os.path.basename(path), r.index, form, "entries are not that")
+                )
             elif len(table[0]) < filters_mod._RAMP_WIDTH[form]:
                 bad.append((os.path.basename(path), r.index, form, len(table[0])))
-    assert not bad, 'records whose ramp entries are not what the form says: %r' % (bad[:8],)
-    print('ok  test_the_gradient_reads_the_layout_the_record_states (%d forms read, '
-          '%d records swept: %r)' % (len(RAMP_CASES), n, sorted(seen.items())))
+    assert not bad, "records whose ramp entries are not what the form says: %r" % (
+        bad[:8],
+    )
+    print(
+        "ok  test_the_gradient_reads_the_layout_the_record_states (%d forms read, "
+        "%d records swept: %r)" % (len(RAMP_CASES), n, sorted(seen.items()))
+    )
 
 
 def test_the_legend_agrees_with_the_shipped_sources():
@@ -881,71 +1020,95 @@ def test_the_legend_agrees_with_the_shipped_sources():
     format, and it is independent evidence: the values come from the source XML, not from
     anything `model` computed.
     """
-    sys.path.insert(0, os.path.join(ROOT, 'tools'))
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
     import sourcematch
-    if not sourcematch.pairs(os.path.join(ROOT, 'archive', 'specimens')):
-        return _skip('test_the_legend_agrees_with_the_shipped_sources: no source pairs')
+
+    if not sourcematch.pairs(os.path.join(ROOT, "archive", "specimens")):
+        return _skip("test_the_legend_agrees_with_the_shipped_sources: no source pairs")
     lost = sourcematch.verify(ROOT)
-    assert not lost, 'sourcematch no longer re-derives what it was built from: %r' % (lost,)
+    assert not lost, "sourcematch no longer re-derives what it was built from: %r" % (
+        lost,
+    )
 
     ids = _filter_ids()
     disagree, checked = [], 0
-    for sbs, asm in sourcematch.pairs(os.path.join(ROOT, 'archive', 'specimens')):
+    for sbs, asm in sourcematch.pairs(os.path.join(ROOT, "archive", "specimens")):
         for filter_name, param, loc, row in sourcematch.match(sbs, asm):
-            if row['verdict'] != 'CONFIRMED':
+            if row["verdict"] != "CONFIRMED":
                 continue
             fid = ids.get(filter_name)
             kind, which = loc
-            if kind not in ('cls', 'w1'):
-                continue                      # an end-relative window names no field
+            if kind not in ("cls", "w1"):
+                continue  # an end-relative window names no field
             # A W1 FIELD CAN CARRY TWO NAMES, and taking the first is how this check
             # first reported `directionalwarp` disagreeing with itself. Its `intensity` is
             # mask 0x6 and its `warpangle` 0x18, so field 1 -- bits (2, 3) -- holds one bit
             # of each: the straddle SPEC 13.4 warns about, arriving as a false positive in
             # the check written to catch drift. Every name whose mask touches the field is
             # a candidate, and agreement means the source's name is among them.
-            if kind == 'cls':
+            if kind == "cls":
                 entry = model.CLS_NAMES.get(fid, {}).get(which)
                 names = {entry[0]} if entry else set()
             else:
-                names = {nm for (mask, _sh, nm, _k) in model.W1_PARAMS.get(fid, ())
-                         if nm and mask & (3 << which)}   # `which` is the field's own BIT
+                names = {
+                    nm
+                    for (mask, _sh, nm, _k) in model.W1_PARAMS.get(fid, ())
+                    if nm and mask & (3 << which)
+                }  # `which` is the field's own BIT
             if not names:
-                continue                      # unnamed here: the inventory's business
+                continue  # unnamed here: the inventory's business
             checked += 1
             if param not in names:
-                disagree.append((filter_name, loc, 'legend says %r' % sorted(names),
-                                 'the source says %r' % param))
-    assert checked >= 5, 'only %d legend entries were checked against a source' % checked
-    assert not disagree, 'the legend and the sources disagree: %r' % (disagree,)
-    print('ok  test_the_legend_agrees_with_the_shipped_sources (%d namings re-derived, '
-          '%d legend entries confirmed)' % (len(sourcematch.EXPECTED), checked))
+                disagree.append(
+                    (
+                        filter_name,
+                        loc,
+                        "legend says %r" % sorted(names),
+                        "the source says %r" % param,
+                    )
+                )
+    assert checked >= 5, (
+        "only %d legend entries were checked against a source" % checked
+    )
+    assert not disagree, "the legend and the sources disagree: %r" % (disagree,)
+    print(
+        "ok  test_the_legend_agrees_with_the_shipped_sources (%d namings re-derived, "
+        "%d legend entries confirmed)" % (len(sourcematch.EXPECTED), checked)
+    )
 
 
 def test_every_record_renders():
     path = specimen()
     if not path:
-        return _skip('test_every_record_renders: no specimen')
+        return _skip("test_every_record_renders: no specimen")
     asm = sbsasm.Assembly(path)
     outs, fails, info = render(asm, max_dim=128)
-    assert not fails, 'records failed with no assumption scope: %r' % (fails,)
+    assert not fails, "records failed with no assumption scope: %r" % (fails,)
     assert len(outs) == len(asm.records)
     # THE RENDER REPORTS WHAT IT DECLINED TO READ. Not an error and not low-confidence --
     # the walk placed these fields, so the layout is right -- but a count that exists is the
     # difference between `hsl` being an identity in 747 records and nobody noticing.
-    ignored = info['ignored']
-    assert ignored, ('nothing reported as ignored on a specimen that has 7 such records -- '
-                     'the channel is not wired, which is exactly the silence it exists to '
-                     'break')
+    ignored = info["ignored"]
+    assert ignored, (
+        "nothing reported as ignored on a specimen that has 7 such records -- "
+        "the channel is not wired, which is exactly the silence it exists to "
+        "break"
+    )
     for i, entries in ignored.items():
         w0 = asm.records[i].words[0]
         w1 = asm.records[i].words[1] if len(asm.records[i].words) > 1 else 0
-        for (half, which, _slot, _w) in entries:
-            stated = (w0 >> which) & 1 if half == 'cls' else (w1 >> which) & 3   # `which` is the field's own BIT (SPEC 7.3)
-            assert stated, ('record %d is reported as ignoring %s %s and its own word does '
-                            'not state it' % (i, half, which))
-    print('ok  test_every_record_renders (%d records, %d low-confidence, %d stating a '
-          'field no name covers)' % (len(outs), len(info['low_confidence']), len(ignored)))
+        for half, which, _slot, _w in entries:
+            stated = (
+                (w0 >> which) & 1 if half == "cls" else (w1 >> which) & 3
+            )  # `which` is the field's own BIT (SPEC 7.3)
+            assert stated, (
+                "record %d is reported as ignoring %s %s and its own word does "
+                "not state it" % (i, half, which)
+            )
+    print(
+        "ok  test_every_record_renders (%d records, %d low-confidence, %d stating a "
+        "field no name covers)" % (len(outs), len(info["low_confidence"]), len(ignored))
+    )
 
 
 def test_the_render_threads_its_own_value_cache():
@@ -964,16 +1127,18 @@ def test_the_render_threads_its_own_value_cache():
     """
     path = specimen()
     if not path:
-        return _skip('test_the_render_threads_its_own_value_cache: no specimen')
+        return _skip("test_the_render_threads_its_own_value_cache: no specimen")
     asm = sbsasm.Assembly(path)
     prev = sbsruntime.use_shared_cache(None)
     try:
-        assert sbsruntime.use_shared_cache(None) is None, \
-            'use_shared_cache(None) must REMOVE, or a render cannot be run without one'
+        assert sbsruntime.use_shared_cache(None) is None, (
+            "use_shared_cache(None) must REMOVE, or a render cannot be run without one"
+        )
         _outs, fails, _info = render(asm, max_dim=64)
-        assert not fails, 'records failed with no cache installed: %r' % (fails,)
-        assert sbsruntime.use_shared_cache(None) is None, \
-            'the render installed a module-global cache'
+        assert not fails, "records failed with no cache installed: %r" % (fails,)
+        assert sbsruntime.use_shared_cache(None) is None, (
+            "the render installed a module-global cache"
+        )
 
         # TWO CONTEXTS OVER ONE ASSEMBLY ARE TWO CACHES. Asserted through the compiled
         # program's own namespace, which is where `ops.bind`'s substitution has to land:
@@ -986,20 +1151,20 @@ def test_the_render_threads_its_own_value_cache():
             if got:
                 ptr = got[0]
                 break
-        assert ptr is not None, 'the specimen names no program to bind'
+        assert ptr is not None, "the specimen names no program to bind"
         fa = ops.bind(asm, ptr, a.cache, a._funcs)
         fb = ops.bind(asm, ptr, b.cache, b._funcs)
-        assert fa is not fb, 'two Contexts were handed one compiled program'
-        fa.__globals__['cache_write'](np.float32(0.5), 3)
-        assert list(a.cache) == [3], 'the write missed its own Context: %r' % (a.cache,)
+        assert fa is not fb, "two Contexts were handed one compiled program"
+        fa.__globals__["cache_write"](np.float32(0.5), 3)
+        assert list(a.cache) == [3], "the write missed its own Context: %r" % (a.cache,)
         assert not b.cache, "the write reached the other Context: %r" % (b.cache,)
         try:
-            fb.__globals__['cache_read'](3)
+            fb.__globals__["cache_read"](3)
         except sbsruntime.NoSharedCache:
             pass
         else:
             raise AssertionError("one Context read another's cached value")
-        print('ok  test_the_render_threads_its_own_value_cache')
+        print("ok  test_the_render_threads_its_own_value_cache")
     finally:
         sbsruntime.use_shared_cache(prev)
 
@@ -1015,7 +1180,12 @@ def test_the_fast_sampler_is_the_shared_one():
     dtype for both the image and the positions. So both are varied here independently.
     """
     rng = np.random.default_rng(20260827)
-    shapes = [(256, 256, 1), (16, 16, 4), (128, 128, 3), (100, 60, 2)]   # last is not pow2
+    shapes = [
+        (256, 256, 1),
+        (16, 16, 4),
+        (128, 128, 3),
+        (100, 60, 2),
+    ]  # last is not pow2
     checked = 0
     for H, W, C in shapes:
         img = rng.random((H, W, C))
@@ -1023,12 +1193,15 @@ def test_the_fast_sampler_is_the_shared_one():
         gy = np.repeat((np.arange(H) + 0.5) / H, W)
         cases = {
             # the 62% case: an image sampled at its own pixel centres
-            'identity': np.stack([gx, gy], axis=-1),
+            "identity": np.stack([gx, gy], axis=-1),
             # texel centres reached from outside [0, 1], so the wrap is exercised too
-            'wrapped': np.stack([gx + 2.0, gy - 3.0], axis=-1),
-            'random': np.concatenate([rng.uniform(-3.0, 4.0, (2000, 2)),
-                                      np.array([[0.0, 0.0], [1.0, 1.0],
-                                                [-1e-9, 1.0 + 1e-9]])]),
+            "wrapped": np.stack([gx + 2.0, gy - 3.0], axis=-1),
+            "random": np.concatenate(
+                [
+                    rng.uniform(-3.0, 4.0, (2000, 2)),
+                    np.array([[0.0, 0.0], [1.0, 1.0], [-1e-9, 1.0 + 1e-9]]),
+                ]
+            ),
         }
         for name, pos in cases.items():
             for idt in (np.float32, np.float64):
@@ -1036,14 +1209,27 @@ def test_the_fast_sampler_is_the_shared_one():
                     im, ps = img.astype(idt), pos.astype(pdt)
                     want = sbsruntime.image_sampler(im)(ps)
                     got = ops._fast_sampler(im)(ps)
-                    where = '%dx%dx%d %s img=%s pos=%s' % (
-                        H, W, C, name, np.dtype(idt).name, np.dtype(pdt).name)
-                    assert got.dtype == want.dtype, \
-                        '%s: dtype %s, shared gives %s' % (where, got.dtype, want.dtype)
-                    assert got.shape == want.shape, \
-                        '%s: shape %s, shared gives %s' % (where, got.shape, want.shape)
-                    assert np.array_equal(got, want, equal_nan=True), \
-                        '%s: max|d| %r' % (where, float(np.nanmax(np.abs(got - want))))
+                    where = "%dx%dx%d %s img=%s pos=%s" % (
+                        H,
+                        W,
+                        C,
+                        name,
+                        np.dtype(idt).name,
+                        np.dtype(pdt).name,
+                    )
+                    assert got.dtype == want.dtype, "%s: dtype %s, shared gives %s" % (
+                        where,
+                        got.dtype,
+                        want.dtype,
+                    )
+                    assert got.shape == want.shape, "%s: shape %s, shared gives %s" % (
+                        where,
+                        got.shape,
+                        want.shape,
+                    )
+                    assert np.array_equal(got, want, equal_nan=True), (
+                        "%s: max|d| %r" % (where, float(np.nanmax(np.abs(got - want))))
+                    )
                     checked += 1
     # The identity-grid branch: `pos_grid` for the IMAGE's own dimensions is answered
     # without any index arithmetic, and must agree with the shared sampler to the bit and
@@ -1053,29 +1239,35 @@ def test_the_fast_sampler_is_the_shared_one():
         for idt in (np.float32, np.float64):
             im = img.astype(idt)
             grid = ops.pos_grid(W, H)
-            assert not grid.flags.writeable, 'pos_grid must hand back a read-only array'
-            assert grid is ops.pos_grid(W, H), 'pos_grid must memoise, or `is` cannot work'
+            assert not grid.flags.writeable, "pos_grid must hand back a read-only array"
+            assert grid is ops.pos_grid(W, H), (
+                "pos_grid must memoise, or `is` cannot work"
+            )
             want = sbsruntime.image_sampler(im)(grid)
             got = ops._fast_sampler(im)(grid)
-            assert got.dtype == want.dtype and np.array_equal(got, want), \
-                'identity grid %dx%dx%d img=%s' % (H, W, C, np.dtype(idt).name)
-            assert got.base is None and not np.shares_memory(got, im), \
-                'the identity branch must copy, not alias the record it sampled'
+            assert got.dtype == want.dtype and np.array_equal(got, want), (
+                "identity grid %dx%dx%d img=%s" % (H, W, C, np.dtype(idt).name)
+            )
+            assert got.base is None and not np.shares_memory(got, im), (
+                "the identity branch must copy, not alias the record it sampled"
+            )
             # a grid of the WRONG size is an ordinary resample, not the identity
             other = ops.pos_grid(W * 2, H * 2)
-            assert np.array_equal(ops._fast_sampler(im)(other),
-                                  sbsruntime.image_sampler(im)(other)), \
-                'a foreign grid took the identity branch'
+            assert np.array_equal(
+                ops._fast_sampler(im)(other), sbsruntime.image_sampler(im)(other)
+            ), "a foreign grid took the identity branch"
             checked += 3
     # And the toggle really reaches the shared implementation, so an A/B measures something.
     saved = ops.FAST_SAMPLER
     try:
         ops.FAST_SAMPLER = False
-        assert ops.sampler(np.zeros((8, 8, 1))).__qualname__.startswith('image_sampler')
+        assert ops.sampler(np.zeros((8, 8, 1))).__qualname__.startswith("image_sampler")
     finally:
         ops.FAST_SAMPLER = saved
-    print('ok  test_the_fast_sampler_is_the_shared_one (%d dtype/position combinations)'
-          % checked)
+    print(
+        "ok  test_the_fast_sampler_is_the_shared_one (%d dtype/position combinations)"
+        % checked
+    )
 
 
 def test_reference_agreement_does_not_regress():
@@ -1096,8 +1288,9 @@ def test_reference_agreement_does_not_regress():
     """
     path, refs = specimen(), references()
     if not path or not refs:
-        return _skip('test_reference_agreement_does_not_regress: no specimen or maps')
+        return _skip("test_reference_agreement_does_not_regress: no specimen or maps")
     from PIL import Image
+
     asm = sbsasm.Assembly(path)
     outs, _fails, _info = render(asm, max_dim=256)
     at12, _f12, _i12 = render(asm, max_dim=256, outputsize=(12, 12))
@@ -1106,26 +1299,35 @@ def test_reference_agreement_does_not_regress():
     def load(p):
         im = Image.open(p)
         a = np.asarray(im).astype(np.float64)
-        a = a / (65535.0 if (im.mode == 'I;16' or a.max() > 255) else 255.0)
+        a = a / (65535.0 if (im.mode == "I;16" or a.max() > 255) else 255.0)
         return a[:, :, :3] if a.ndim == 3 else a[:, :, None]
 
     def rs(x, n=64):
         return np.stack(
-            [np.asarray(Image.fromarray((np.clip(x[:, :, c], 0, 1) * 65535)
-                                        .astype(np.uint16)).resize((n, n), Image.BILINEAR),
-                        dtype=np.float64) / 65535.0 for c in range(x.shape[2])], axis=-1)
+            [
+                np.asarray(
+                    Image.fromarray(
+                        (np.clip(x[:, :, c], 0, 1) * 65535).astype(np.uint16)
+                    ).resize((n, n), Image.BILINEAR),
+                    dtype=np.float64,
+                )
+                / 65535.0
+                for c in range(x.shape[2])
+            ],
+            axis=-1,
+        )
 
     seen, flat, worse, moved = [], [], [], []
     height_mean = None
     for uid, _fmt, _grey, ri in asm.outputs():
-        nm = (names.get(uid) or '').lower()
-        key = re.sub(r'[^a-z]', '', nm)
+        nm = (names.get(uid) or "").lower()
+        key = re.sub(r"[^a-z]", "", nm)
         if key not in refs or ri not in outs:
             continue
         o = np.asarray(outs[ri], dtype=np.float64)
         if o.ndim == 2:
             o = o[:, :, None]
-        if nm == 'height':
+        if nm == "height":
             height_mean = float(o.mean())
         a, b = rs(o), rs(load(refs[key]))
         o12 = np.asarray(at12[ri], dtype=np.float64) if ri in at12 else None
@@ -1142,7 +1344,7 @@ def test_reference_agreement_does_not_regress():
             if corr < REFERENCE_FLOOR[(nm, c)]:
                 worse.append(((nm, c), round(corr, 4), REFERENCE_FLOOR[(nm, c)]))
             if a12 is None or c >= a12.shape[2]:
-                moved.append(((nm, c), 'not produced at $outputsize 12'))
+                moved.append(((nm, c), "not produced at $outputsize 12"))
                 continue
             # THE CLAIM IS ABOUT THE SCORE, NOT ABOUT THE PIXELS, and the two are not the
             # same statement. The render is NOT bit-identical between the two output sizes
@@ -1157,21 +1359,24 @@ def test_reference_agreement_does_not_regress():
                 moved.append(((nm, c), round(corr, 6), round(c12, 6)))
     assert not moved, (
         "this specimen's render is supposed to be invariant under $outputsize -- 0 mode-7 "
-        'switch blends and 0 of 106 programs reading $sizelog2 -- and it is not: %r. '
-        'Either the graph changed or `record_sizes` now moves something that branches'
-        % (moved,))
-    assert not flat, 'channels collapsed to a constant: %r' % (flat,)
-    assert not worse, 'channels below their floor: %r' % (worse,)
+        "switch blends and 0 of 106 programs reading $sizelog2 -- and it is not: %r. "
+        "Either the graph changed or `record_sizes` now moves something that branches"
+        % (moved,)
+    )
+    assert not flat, "channels collapsed to a constant: %r" % (flat,)
+    assert not worse, "channels below their floor: %r" % (worse,)
     missing = sorted(set(REFERENCE_FLOOR) - set(seen))
-    assert not missing, 'channels no longer produced: %r' % (missing,)
+    assert not missing, "channels no longer produced: %r" % (missing,)
     # The FX emission count arbiter: `height` back-solves to a mask of mean 0.5 through two
     # `levels`, and the engine's own export means 0.78628. A wrong count moves this first.
-    assert height_mean is not None and abs(height_mean - 0.7863) < 0.004, \
-        'height mean %r is not the engine\'s 0.78628 -- the FX emission count moved' \
+    assert height_mean is not None and abs(height_mean - 0.7863) < 0.004, (
+        "height mean %r is not the engine's 0.78628 -- the FX emission count moved"
         % (height_mean,)
-    print('ok  test_reference_agreement_does_not_regress (%d channels, height mean %.5f)'
-          % (len(seen), height_mean))
-
+    )
+    print(
+        "ok  test_reference_agreement_does_not_regress (%d channels, height mean %.5f)"
+        % (len(seen), height_mean)
+    )
 
 
 #: (pack directory, height map, normal map, the `normal` record's baked intensity, the pure
@@ -1180,8 +1385,13 @@ def test_reference_agreement_does_not_regress():
 #: point of this check is the ARITHMETIC of the reference scale and a chain walk would put a
 #: second decode inside the assertion.
 _NORMAL_SCALE_PACKS = (
-    ('minime453__Chesterfield_PBR_Material', 'ChesterfieldSofa_Height.png',
-     'ChesterfieldSofa_Normal.png', 10.0, 0.5),
+    (
+        "minime453__Chesterfield_PBR_Material",
+        "ChesterfieldSofa_Height.png",
+        "ChesterfieldSofa_Normal.png",
+        10.0,
+        0.5,
+    ),
 )
 
 
@@ -1202,11 +1412,11 @@ def test_normal_intensity_is_a_slope_per_256_pixels_not_per_record_pixel():
     try:
         from PIL import Image
     except ImportError:
-        return _skip('test_normal_intensity_is_a_slope_per_256_pixels: no PIL')
+        return _skip("test_normal_intensity_is_a_slope_per_256_pixels: no PIL")
     ran = 0
     for pack, hname, nname, intensity, gain in _NORMAL_SCALE_PACKS:
-        hits = glob.glob(os.path.join(ROOT, '**', pack, '**', hname), recursive=True)
-        nits = glob.glob(os.path.join(ROOT, '**', pack, '**', nname), recursive=True)
+        hits = glob.glob(os.path.join(ROOT, "**", pack, "**", hname), recursive=True)
+        nits = glob.glob(os.path.join(ROOT, "**", pack, "**", nname), recursive=True)
         if not hits or not nits:
             continue
         h = np.asarray(Image.open(hits[0])).astype(np.float64)
@@ -1217,23 +1427,32 @@ def test_normal_intensity_is_a_slope_per_256_pixels_not_per_record_pixel():
         R = h.shape[0]
         nz = (n[:, :, 2] - 0.5) * 2
         gy, gx = np.gradient(h)
-        for axis, slope, grad in (('x', (n[:, :, 0] - 0.5) * 2 / nz, -gx),
-                                  ('y', (n[:, :, 1] - 0.5) * 2 / nz, -gy)):
+        for axis, slope, grad in (
+            ("x", (n[:, :, 0] - 0.5) * 2 / nz, -gx),
+            ("y", (n[:, :, 1] - 0.5) * 2 / nz, -gy),
+        ):
             k = float(np.sum(slope * grad) / np.sum(grad * grad))
             corr = float(np.corrcoef(slope.ravel(), grad.ravel())[0, 1])
             want = (intensity / gain) * (R / 256.0)
             other = intensity / gain
-            assert corr > 0.9, ('%s %s: the exported height and normal do not describe one '
-                               'surface (corr %.3f); this check cannot arbitrate a scale on '
-                               'maps that disagree' % (pack, axis, corr))
+            assert corr > 0.9, (
+                "%s %s: the exported height and normal do not describe one "
+                "surface (corr %.3f); this check cannot arbitrate a scale on "
+                "maps that disagree" % (pack, axis, corr)
+            )
             assert abs(k - want) / want < 0.01, (
-                '%s %s: exported slope/gradient is %.3f. A 256-px reference predicts %.3f; '
-                'the record\'s own size predicts %.3f' % (pack, axis, k, want, other))
+                "%s %s: exported slope/gradient is %.3f. A 256-px reference predicts %.3f; "
+                "the record's own size predicts %.3f" % (pack, axis, k, want, other)
+            )
             ran += 1
     if not ran:
-        return _skip('test_normal_intensity_is_a_slope_per_256_pixels: no reference pack')
-    print('ok  test_normal_intensity_is_a_slope_per_256_pixels_not_per_record_pixel '
-          '(%d axes)' % (ran,))
+        return _skip(
+            "test_normal_intensity_is_a_slope_per_256_pixels: no reference pack"
+        )
+    print(
+        "ok  test_normal_intensity_is_a_slope_per_256_pixels_not_per_record_pixel "
+        "(%d axes)" % (ran,)
+    )
 
 
 def test_normal_reference_px_is_not_the_records_size():
@@ -1242,36 +1461,124 @@ def test_normal_reference_px_is_not_the_records_size():
     `_normal_reference_px` must not track the View's size. The reference-map check above is
     the evidence; this is the guard that runs with no specimen present.
     """
+
     class _V(object):
         width = 2048
 
     got = filters_mod._normal_reference_px(_V())
-    assert got == 256.0, ('_normal_reference_px returned %r for a 2048-px record; the '
-                          'engine\'s exports say the reference is a constant 256' % (got,))
+    assert got == 256.0, (
+        "_normal_reference_px returned %r for a 2048-px record; the "
+        "engine's exports say the reference is a constant 256" % (got,)
+    )
     import assume as _assume
-    with _assume.scope(**{'normal.reference_px': 'record'}):
+
+    with _assume.scope(**{"normal.reference_px": "record"}):
         back = filters_mod._normal_reference_px(_V())
-    assert back == 2048.0, ('the \'record\' arm no longer restores the old reading (%r)'
-                            % (back,))
-    print('ok  test_normal_reference_px_is_not_the_records_size')
+    assert back == 2048.0, (
+        "the 'record' arm no longer restores the old reading (%r)" % (back,)
+    )
+    print("ok  test_normal_reference_px_is_not_the_records_size")
 
 
-if __name__ == '__main__':
-    for fn in (test_every_parameter_a_filter_asks_for_can_be_supplied,
-               test_the_declared_fields_the_legend_ignores_are_the_known_ones,
-               test_walk_reads_the_parameters_the_memo_cannot,
-               test_blend_reads_the_relocated_opacity,
-               test_hsl_names_its_three_parameters,
-               test_normal_declares_the_field_that_shifts_its_intensity,
-               test_normal_intensity_is_a_slope_per_256_pixels_not_per_record_pixel,
-               test_normal_reference_px_is_not_the_records_size,
-               test_distance_reads_the_radius_its_source_states,
-               test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
-               test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it,
-               test_the_gradient_reads_the_layout_the_record_states,
-               test_the_legend_agrees_with_the_shipped_sources,
-               test_every_record_renders,
-               test_the_render_threads_its_own_value_cache,
-               test_the_fast_sampler_is_the_shared_one,
-               test_reference_agreement_does_not_regress):
+def test_the_two_node_models_read_the_same_chain():
+    """`fxnodes`' mask placement against the per-header offsets `FX_NODE_PARAMS` states.
+
+    THE FIRST HALF NEEDS NO CORPUS: the mask places every program `FX_NODE_PARAMS` places,
+    at the same byte offset, for all four headers that table carries. That is the claim the
+    walk arm makes -- placement, not meaning -- and the names it hangs on those offsets come
+    from the census under either arm.
+
+    WHAT IT MUST NOT BECOME. An earlier version of this file asserted that the mask
+    reproduced the table's NAMES as a derivation, on a rule that read `count` against `gate`
+    off the low nibble. That rule was a fit on six headers with two co-extensive
+    discriminators, and the second assertion here is what withdrew it: bits 1 and 8 separate
+    the two groups equally, so a run that reports one bit means a specimen has appeared that
+    decides it -- which would be a finding, not a failure. Re-read `fxnodes` before changing
+    the expected value.
+
+    THE THIRD ASSERTION IS A DISAGREEMENT, asserted so it cannot quietly become an
+    agreement. `0x??1B` is `state` to the census (both renderers order their arms so the
+    pass-through one is unreachable) and `branch` to the mask, which says it has no program
+    of its own. No corpus record dispatches a bit-7-clear header, so nothing draws
+    differently either way.
+
+    The corpus half is a spot check at twelve files, not a corpus run: `python3
+    tools/fxnodes.py` is the full comparison and prints its own counts.
+    """
+    import fxnodes  # noqa: E402
+    import corpus  # noqa: E402
+
+    for hdr, want in sorted(sbsasm.FX_NODE_PARAMS.items()):
+        got = {b: n for b, n in fxnodes.mask_programs(hdr).items() if n is not None}
+        assert got == want, "the mask places %#x as %r; FX_NODE_PARAMS says %r" % (
+            hdr,
+            got,
+            want,
+        )
+
+    assert (
+        fxnodes.walk_role(0x401B) == "branch" and fxnodes.census_role(0x401B) == "state"
+    ), (
+        'the 0x??1B reading moved; see fxnodes, "THE ONE PLACE THE ARMS WOULD DRAW '
+        'DIFFERENTLY"'
+    )
+
+    paths = corpus.paths()[:12]
+    if not paths:
+        print(
+            "ok  test_the_two_node_models_read_the_same_chain (no corpus: rules only)"
+        )
+        return
+    sep = fxnodes.separability(paths)["separating_bits"].get("count|gate")
+    assert sep == [1, 8], (
+        "the count/gate split is now separated by %r rather than by bits 1 and 8. If that "
+        "is one bit, a specimen has appeared that identifies it and the role becomes "
+        'derivable -- see fxnodes, "WHAT WOULD MAKE THE ROLE DERIVABLE"' % (sep,)
+    )
+    res = fxnodes.compare(paths)
+    assert not res.get("records_structure_differs"), (
+        "%d records walk to a different node list under the two models"
+        % res["records_structure_differs"]
+    )
+    assert res["programs_named_by_table"] == res["programs_agreeing"], (
+        "the mask names %d of %d node programs differently: %r"
+        % (
+            res["programs_named_by_table"] - res["programs_agreeing"],
+            res["programs_named_by_table"],
+            res["name_disagreements"],
+        )
+    )
+    print(
+        "ok  test_the_two_node_models_read_the_same_chain (%d records, %d programs on "
+        "%d distinct headers, %d files)"
+        % (
+            res["records"],
+            res["programs_agreeing"],
+            res["distinct_headers_named"],
+            res["files"],
+        )
+    )
+
+
+if __name__ == "__main__":
+    for fn in (
+        test_every_parameter_a_filter_asks_for_can_be_supplied,
+        test_the_declared_fields_the_legend_ignores_are_the_known_ones,
+        test_walk_reads_the_parameters_the_memo_cannot,
+        test_blend_reads_the_relocated_opacity,
+        test_hsl_names_its_three_parameters,
+        test_normal_declares_the_field_that_shifts_its_intensity,
+        test_normal_intensity_is_a_slope_per_256_pixels_not_per_record_pixel,
+        test_normal_reference_px_is_not_the_records_size,
+        test_distance_reads_the_radius_its_source_states,
+        test_the_size_slot_is_the_walks_placement_not_the_blocks_start,
+        test_a_records_size_is_a_function_of_outputsize_and_the_switches_read_it,
+        test_the_gradient_reads_the_layout_the_record_states,
+        test_the_legend_agrees_with_the_shipped_sources,
+        test_every_record_renders,
+        test_the_render_threads_its_own_value_cache,
+        test_the_fast_sampler_is_the_shared_one,
+        test_the_two_node_models_read_the_same_chain,
+        test_reference_agreement_does_not_regress,
+    ):
         fn()

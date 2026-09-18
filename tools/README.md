@@ -197,6 +197,11 @@ no source this project may read names filter 5.
     run_file.py           evaluates every program in a file through one shared cache
     render.py             walks a record graph in index order and evaluates what it can
     render2/              the same, rebuilt so every structural read comes from the walk
+    fxnodes.py            where an FX chain node's programs sit, computed from the header
+                          mask -- the second statement of the offsets `FX_NODE_PARAMS`
+                          tabulates, switchable at `assume.QUESTIONS['fx.nodemodel']`, with
+                          its own comparison (`python3 tools/fxnodes.py`) and the
+                          separability check that withdrew a role rule fitted to those bits
 
 `render.py` implements ten filters: `bitmap`, `pixelprocessor`, `blend`, `transformation`,
 `levels`, `uniform`, `directionalwarp`, `gradient`, `curve` and `dirmotionblur`. That is
@@ -379,6 +384,29 @@ what it drops; the discipline is that it runs BEFORE any measurement, not after.
 frame; the `paramset` table then reads that frame and computes each pattern's size, offset,
 rotation and emit condition. The connection is measured: slots at index 64 and above are
 read-and-written within one file 88.1% of the time against a 0.0% cross-file control.
+
+**A node's programs are PLACED by the mask, and there are now two implementations of that
+placement.** `sbsasm.node_shape` derives a node's successor and program slots from the
+header -- `base + popcount(header & 0xF0)` -- while `FX_NODE_PARAMS` states the same offsets
+per header as a table, so the address is stated twice and nothing was checking that the two
+agreed. `fxnodes` is the walk arm: it computes the offsets and pairs the parameter names
+onto them in field order, bit 5's program before bit 7's base program, which is the pairing
+containment establishes for `0x1AB`. Over all 437 corpus files the two arms place all 62,721
+named node programs at the same address, no record's node list differs, and no render moves.
+Read the denominator with it: those 62,721 occurrences are FOUR distinct headers, of which
+`0x18B` and `0x89` are 97%.
+
+**THE ROLE IS NOT DERIVABLE FROM THE MASK, and a rule claiming otherwise was written here
+and withdrawn.** It read bit 7 with bit 4 clear as a `count` at low nibble B and a `gate` at
+nibble 9. Asked `separability.py`'s question over the corpus's own chain headers, `count`
+and `gate` are separated by bit 1 **and** bit 8, perfectly and equally -- three count
+headers against one gate header, two candidate discriminators, no specimen between them. So
+the nibble reading is one of two the corpus cannot tell apart, which is a fit on the header
+population and not a walk; `node_shape` declines the identical inference. Both arms take the
+role from `fxrender`'s census, a header the census does not carry is refused under both, and
+`python3 tools/fxnodes.py --separability` is the standing measurement. What the mask does
+state about a role is an absence: bit 7 clear means the node declares no program, so the
+leaf, the pointer cell and the `0x??1B` branch pass through.
 
 The entries are a LINKED LIST. Each entry stores a pointer to the next one -- the header slot
 reaching furthest forward, past the entry's own inline program -- and the walk follows it

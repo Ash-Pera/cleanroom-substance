@@ -14,6 +14,7 @@ number comes from outside the file. Every use marks the record LOW_CONFIDENCE an
 explicit `assume` scope overrides it, so a sweep can still ask what a different default
 would do.
 """
+
 import numpy as np
 
 import assume
@@ -22,10 +23,18 @@ import sbsruntime
 
 # `text` (filter 17) is a module of its own: its string and its font are RESOURCES in the
 # file's head segment rather than record words, and its legend entry is not in mask order.
-import text                                                          # noqa: E402
+import text  # noqa: E402
 
-from ops import (Unsupported, blend, footprint_scale, nearest_sampler, pos_grid,
-                 prefilter, sampler, to_image)
+from ops import (
+    nearest_sampler,
+    Unsupported,
+    blend,
+    footprint_scale,
+    pos_grid,
+    prefilter,
+    sampler,
+    to_image,
+)
 
 #: Parameter defaults for values the format does not record. See the module docstring.
 #:
@@ -43,10 +52,10 @@ from ops import (Unsupported, blend, footprint_scale, nearest_sampler, pos_grid,
 #: and mean, one distinct value. One specimen is one specimen; it is still a check the
 #: default could have failed.
 DEFAULTS = {
-    'grayscale.weights': (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
-    'uniform.fill': 0.0,
-    'levels.in': (0.0, 0.5, 1.0),
-    'levels.out': (0.0, 1.0),
+    "grayscale.weights": (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0),
+    "uniform.fill": 0.0,
+    "levels.in": (0.0, 0.5, 1.0),
+    "levels.out": (0.0, 1.0),
 }
 
 FILTERS = {}
@@ -56,10 +65,11 @@ def filt(name):
     def wrap(fn):
         FILTERS[name] = fn
         return fn
+
     return wrap
 
 
-FILTERS['text'] = text.f_text
+FILTERS["text"] = text.f_text
 
 
 def _scalar(ctx, v, name, default, W, H, pos):
@@ -67,7 +77,7 @@ def _scalar(ctx, v, name, default, W, H, pos):
     p = v.params.get(name)
     if p is None:
         return np.float32(default)
-    if p.kind == 'baked':
+    if p.kind == "baked":
         return np.float32(p.value if p.width == 1 else p.value[0])
     # NO W/H: `Context.run` supplies the record's declared size. Passing the capped grid
     # here made every program-valued `opacitymult`, all five `levels` parameters and
@@ -81,8 +91,9 @@ def _scalar(ctx, v, name, default, W, H, pos):
     # size is the only defensible answer. (A `pixelprocessor`'s own image program is the
     # other population -- it does read `$pos` -- and keeps the render grid.) `pos` is still
     # passed here in case a parameter program ever reads it.
-    return to_image(ctx.run(v, p.value, W * H, pos=pos),
-                    W * H, H, W).reshape(W * H, -1)[:, :1]
+    return to_image(ctx.run(v, p.value, W * H, pos=pos), W * H, H, W).reshape(
+        W * H, -1
+    )[:, :1]
 
 
 def _channelwise(ctx, v, name, default, W, H, pos, nchan):
@@ -101,7 +112,7 @@ def _channelwise(ctx, v, name, default, W, H, pos, nchan):
     p = v.params.get(name)
     if p is None:
         return np.float32(default)
-    if p.kind == 'baked':
+    if p.kind == "baked":
         if p.width == 1:
             return np.float32(p.value)
         vals = np.asarray(p.value, dtype=np.float32).ravel()
@@ -118,7 +129,7 @@ def _vector(ctx, v, name, width):
     p = v.params.get(name)
     if p is None:
         return None
-    if p.kind == 'baked':
+    if p.kind == "baked":
         vals = (p.value,) if p.width == 1 else tuple(p.value)
         return vals if len(vals) == width else None
     out = np.asarray(ctx.run(v, p.value, 1)).ravel()
@@ -129,64 +140,78 @@ def _vector(ctx, v, name, width):
 # Sources
 # ---------------------------------------------------------------------------
 
-@filt('bitmap')
+
+@filt("bitmap")
 def f_bitmap(ctx, v):
     b = v.rec.bitmap
     if b is None:
-        raise Unsupported('bitmap record states no payload')
-    if b['kind'] == 'pixels':
+        raise Unsupported("bitmap record states no payload")
+    if b["kind"] == "pixels":
         return _pixels(ctx, v, b)
-    if b['kind'] == 'graph_input':
+    if b["kind"] == "graph_input":
         got = _graph_input_default(ctx, v)
         if got is not None:
             ctx.low_confidence.add(v.index)
             return got
-        raise Unsupported('bitmap is a graph image input and the package ships no image '
-                          'and declares no default')
-    raise Unsupported('bitmap kind %r has no supplied output' % b['kind'])
+        raise Unsupported(
+            "bitmap is a graph image input and the package ships no image "
+            "and declares no default"
+        )
+    raise Unsupported("bitmap kind %r has no supplied output" % b["kind"])
 
 
 def _pixels(ctx, v, b):
     asm = ctx.asm
-    off, size, ch, depth = b['offset'], b['size'], b['channels'], b['depth']
-    if b.get('compressed') == 'jpeg':
+    off, size, ch, depth = b["offset"], b["size"], b["channels"], b["depth"]
+    if b.get("compressed") == "jpeg":
         import io
         import struct
         from PIL import Image
-        p = b['data_offset']
-        if asm.data[p:p + 3] != b'\xff\xd8\xff':
-            raise Unsupported('bitmap is flagged JPEG but has no JPEG stream at +52')
-        n = struct.unpack_from('<I', asm.data, p - 4)[0]
+
+        p = b["data_offset"]
+        if asm.data[p : p + 3] != b"\xff\xd8\xff":
+            raise Unsupported("bitmap is flagged JPEG but has no JPEG stream at +52")
+        n = struct.unpack_from("<I", asm.data, p - 4)[0]
         try:
-            im = Image.open(io.BytesIO(asm.data[p:p + n]))
+            im = Image.open(io.BytesIO(asm.data[p : p + n]))
             im.load()
         except Exception as e:
             raise Unsupported("bitmap's JPEG payload will not decode: %s" % e)
-        got = {'L': 1, 'RGB': 3, 'RGBA': 4}.get(im.mode)
+        got = {"L": 1, "RGB": 3, "RGBA": 4}.get(im.mode)
         if got is None:
             raise Unsupported("bitmap's JPEG has an unhandled mode %r" % im.mode)
         if (im.size[0], im.size[1]) != (v.width, v.height):
-            raise Unsupported("bitmap's JPEG is %dx%d, record declares %dx%d"
-                              % (im.size[0], im.size[1], v.width, v.height))
-        return (np.asarray(im, dtype=np.float32) / 255.0).reshape(v.height, v.width, got)
+            raise Unsupported(
+                "bitmap's JPEG is %dx%d, record declares %dx%d"
+                % (im.size[0], im.size[1], v.width, v.height)
+            )
+        return (np.asarray(im, dtype=np.float32) / 255.0).reshape(
+            v.height, v.width, got
+        )
     if depth is None:
-        raise Unsupported('bitmap has pixels but an undecoded channel code')
+        raise Unsupported("bitmap has pixels but an undecoded channel code")
     if off + size > len(asm.data):
-        raise Unsupported('bitmap wants %d bytes at %d, file holds %d'
-                          % (size, off, max(0, len(asm.data) - off)))
-    arr = np.frombuffer(asm.data[off:off + size], dtype='<u1' if depth == 8 else '<u2')
+        raise Unsupported(
+            "bitmap wants %d bytes at %d, file holds %d"
+            % (size, off, max(0, len(asm.data) - off))
+        )
+    arr = np.frombuffer(
+        asm.data[off : off + size], dtype="<u1" if depth == 8 else "<u2"
+    )
     ch = ch if (ch and ch > 1) else 1
-    return arr.reshape(v.height, v.width, ch).astype(np.float32) / float((1 << depth) - 1)
+    return arr.reshape(v.height, v.width, ch).astype(np.float32) / float(
+        (1 << depth) - 1
+    )
 
 
 def _graph_input_default(ctx, v):
     """The manifest's substitute for an unconnected image input, as a uniform, or None."""
-    uid = (v.rec.bitmap or {}).get('uid')
+    uid = (v.rec.bitmap or {}).get("uid")
     got = manifest.image_input_defaults(ctx.asm).get(uid)
     if got is None:
         return None
     try:
-        parts = [float(x) for x in got[0].replace(';', ',').split(',') if x.strip()]
+        parts = [float(x) for x in got[0].replace(";", ",").split(",") if x.strip()]
     except ValueError:
         return None
     if not parts:
@@ -196,13 +221,13 @@ def _graph_input_default(ctx, v):
     return np.zeros((v.height, v.width, n), np.float32) + np.asarray(vals, np.float32)
 
 
-@filt('uniform')
+@filt("uniform")
 def f_uniform(ctx, v):
     W, H = v.size(ctx.cap)
     n = 4 if v.colour else 1
-    col = _vector(ctx, v, 'outputcolor', 4)
+    col = _vector(ctx, v, "outputcolor", 4)
     if col is None:
-        col = _vector(ctx, v, 'outputcolor', n)
+        col = _vector(ctx, v, "outputcolor", n)
     if col is None:
         # NO BAKED FILL AND NO PROGRAM AT THE NAMED SLOT. The class word says the source
         # set no colour, so the engine's default applies -- and a `uniform` still carries
@@ -211,7 +236,7 @@ def f_uniform(ctx, v):
         if prog is not None:
             col = prog
         else:
-            fill = assume.assumed('uniform.fill', DEFAULTS['uniform.fill'])
+            fill = assume.assumed("uniform.fill", DEFAULTS["uniform.fill"])
             arr = np.asarray(fill, dtype=np.float32).ravel()
             col = tuple(np.repeat(arr, n)) if arr.size == 1 else tuple(arr[:n])
             ctx.low_confidence.add(v.index)
@@ -237,15 +262,19 @@ def _fill_program(ctx, v):
             continue
         if out.size == 1 and n > 1:
             out = np.repeat(out, n)
-        if out.size >= n and np.all(np.isfinite(out[:n])) \
-                and np.all((out[:n] >= -0.01) & (out[:n] <= 1.01)):
+        if (
+            out.size >= n
+            and np.all(np.isfinite(out[:n]))
+            and np.all((out[:n] >= -0.01) & (out[:n] <= 1.01))
+        ):
             return tuple(float(x) for x in out[:n])
     return None
 
 
-@filt('fxmaps')
+@filt("fxmaps")
 def f_fxmaps(ctx, v):
     import fx
+
     return fx.render_fxmaps(ctx, v)
 
 
@@ -253,7 +282,8 @@ def f_fxmaps(ctx, v):
 # Per-pixel programs
 # ---------------------------------------------------------------------------
 
-@filt('pixelprocessor')
+
+@filt("pixelprocessor")
 def f_pixelprocessor(ctx, v):
     W, H = v.size(ctx.cap)
     N = W * H
@@ -297,7 +327,7 @@ def f_pixelprocessor(ctx, v):
         if main is None and progs:
             main = progs[-1]
         if main is None:
-            raise Unsupported('pixelprocessor names no program')
+            raise Unsupported("pixelprocessor names no program")
         if main not in progs:
             progs = progs + [main]
         slots = {}
@@ -337,50 +367,61 @@ def f_pixelprocessor(ctx, v):
 # Compositing
 # ---------------------------------------------------------------------------
 
-@filt('blend')
+
+@filt("blend")
 def f_blend(ctx, v):
-    mode = (v.rec.slot1_flags or {}).get('blendingmode')
+    mode = (v.rec.slot1_flags or {}).get("blendingmode")
     if mode is None:
-        raise Unsupported('blend record states no readable blendingmode')
+        raise Unsupported("blend record states no readable blendingmode")
     if len(v.inputs) < 2:
-        raise Unsupported('blend has fewer than 2 edges')
+        raise Unsupported("blend has fewer than 2 edges")
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
     dst = ctx.sample(v, 0, pos)
     src = ctx.sample(v, 1, pos)
     if dst.shape[-1] != src.shape[-1]:
-        raise Unsupported('blend inputs disagree on channel count (%d vs %d)'
-                          % (dst.shape[-1], src.shape[-1]))
+        raise Unsupported(
+            "blend inputs disagree on channel count (%d vs %d)"
+            % (dst.shape[-1], src.shape[-1])
+        )
     # OPACITY IS `opacitymult` OR 1.0, AND NOTHING ELSE. The old reader fell back to the
     # size-expression slot when the parameter was absent, which is where its 1,004
     # size-expression misattributions came from: an absent field means the source left the
     # multiplier at 1, not that the number is somewhere else.
-    opacity = _scalar(ctx, v, 'opacitymult', 1.0, W, H, pos)
-    opacity = np.asarray(opacity, np.float32).reshape(-1, 1) if np.ndim(opacity) \
+    opacity = _scalar(ctx, v, "opacitymult", 1.0, W, H, pos)
+    opacity = (
+        np.asarray(opacity, np.float32).reshape(-1, 1)
+        if np.ndim(opacity)
         else np.full((N, 1), float(opacity), np.float32)
+    )
     if len(v.inputs) > 2 and v.inputs[2] is not None:
         opacity = opacity * ctx.sample(v, 2, pos)[:, :1]
     return to_image(blend(mode, dst, src, opacity), N, H, W)
 
 
-@filt('transformation')
+@filt("transformation")
 def f_transformation(ctx, v):
     W, H = v.size(ctx.cap)
-    m = _vector(ctx, v, 'matrix22', 4)
+    m = _vector(ctx, v, "matrix22", 4)
     if m is None:
-        if v.has('matrix22'):
-            raise Unsupported('matrix22 is a program that does not evaluate 4-wide')
+        if v.has("matrix22"):
+            raise Unsupported("matrix22 is a program that does not evaluate 4-wide")
         m = (1.0, 0.0, 0.0, 1.0)
-    off = _vector(ctx, v, 'offset', 2)
+    off = _vector(ctx, v, "offset", 2)
     if off is None:
-        if v.has('offset'):
-            raise Unsupported('offset is a program that does not evaluate 2-wide')
+        if v.has("offset"):
+            raise Unsupported("offset is a program that does not evaluate 2-wide")
         off = (0.0, 0.0)
     pos = pos_grid(W, H)
     c = pos - 0.5
-    in_pos = np.stack([m[0] * c[:, 0] + m[1] * c[:, 1] + 0.5 + off[0],
-                       m[2] * c[:, 0] + m[3] * c[:, 1] + 0.5 + off[1]], axis=-1)
+    in_pos = np.stack(
+        [
+            m[0] * c[:, 0] + m[1] * c[:, 1] + 0.5 + off[0],
+            m[2] * c[:, 0] + m[3] * c[:, 1] + 0.5 + off[1],
+        ],
+        axis=-1,
+    )
     src = np.asarray(ctx.src(v, 0))
     scale = footprint_scale(m, W, H, src.shape)
     if scale >= 2.0:
@@ -388,7 +429,7 @@ def f_transformation(ctx, v):
     return to_image(sampler(src)(in_pos), W * H, H, W)
 
 
-@filt('shuffle')
+@filt("shuffle")
 def f_shuffle(ctx, v):
     """Two authoring nodes, one filter id, separated by TAG BIT 0 -- the colour flag.
 
@@ -404,15 +445,17 @@ def f_shuffle(ctx, v):
     N = W * H
     pos = pos_grid(W, H)
     if not v.colour:
-        w = _vector(ctx, v, 'channelsweights', 4)
+        w = _vector(ctx, v, "channelsweights", 4)
         if w is None:
-            w = assume.assumed('grayscale.weights', DEFAULTS['grayscale.weights'])
+            w = assume.assumed("grayscale.weights", DEFAULTS["grayscale.weights"])
             ctx.low_confidence.add(v.index)
             assume.note(v.index)
         hot = np.asarray(w, np.float32).ravel()
         if hot.size != 4 or not np.all(np.isfinite(hot)):
-            raise Unsupported('channelsweights is not four finite numbers (%r)'
-                              % (np.round(hot, 4).tolist(),))
+            raise Unsupported(
+                "channelsweights is not four finite numbers (%r)"
+                % (np.round(hot, 4).tolist(),)
+            )
         src = ctx.sample(v, 0, pos)
         used = [k for k, x in enumerate(hot) if abs(x) > 1e-9]
         if used and max(used) >= src.shape[-1]:
@@ -420,28 +463,32 @@ def f_shuffle(ctx, v):
             # is three channels or one, and weighting a fourth means reading padding this
             # renderer invented -- the exact error that made a fitted weight vector look
             # like the best candidate on this file's own arbiter.
-            raise Unsupported('channelsweights weights channel %d of an input with only %d'
-                              % (max(used), src.shape[-1]))
-        w4 = hot[:src.shape[-1]]
+            raise Unsupported(
+                "channelsweights weights channel %d of an input with only %d"
+                % (max(used), src.shape[-1])
+            )
+        w4 = hot[: src.shape[-1]]
         return to_image((src * w4).sum(axis=-1, keepdims=True), N, H, W)
 
     w1 = v.words[1] if len(v.words) > 1 else 0
     sels = [(w1 >> (8 * k)) & 0xFF for k in range(4)]
     if not all(s <= 7 for s in sels):
-        raise Unsupported('shuffle selector word %#010x is not four selectors' % w1)
+        raise Unsupported("shuffle selector word %#010x is not four selectors" % w1)
     nout = 4 if v.colour else 1
     cols = []
     cache = {}
     for s in sels[:nout]:
         k, c = s // 4, s % 4
         if k >= len(v.inputs) or v.inputs[k] is None:
-            raise Unsupported('shuffle wants input %d, which this record does not have'
-                              % (k + 1))
+            raise Unsupported(
+                "shuffle wants input %d, which this record does not have" % (k + 1)
+            )
         a = cache.setdefault(k, ctx.sample(v, k, pos))
         if c >= a.shape[-1]:
-            raise Unsupported('shuffle selects channel %d of an input with only %d'
-                              % (c, a.shape[-1]))
-        cols.append(a[:, c:c + 1])
+            raise Unsupported(
+                "shuffle selects channel %d of an input with only %d" % (c, a.shape[-1])
+            )
+        cols.append(a[:, c : c + 1])
     return to_image(np.concatenate(cols, axis=-1), N, H, W)
 
 
@@ -449,7 +496,8 @@ def f_shuffle(ctx, v):
 # Tone
 # ---------------------------------------------------------------------------
 
-@filt('levels')
+
+@filt("levels")
 def f_levels(ctx, v):
     W, H = v.size(ctx.cap)
     N = W * H
@@ -460,11 +508,11 @@ def f_levels(ctx, v):
     def par(name, default):
         return _channelwise(ctx, v, name, default, W, H, pos, nchan)
 
-    lo = par('levelinlow', DEFAULTS['levels.in'][0])
-    mid = par('levelinmid', DEFAULTS['levels.in'][1])
-    hi = par('levelinhigh', DEFAULTS['levels.in'][2])
-    out_lo = par('leveloutlow', DEFAULTS['levels.out'][0])
-    out_hi = par('levelouthigh', DEFAULTS['levels.out'][1])
+    lo = par("levelinlow", DEFAULTS["levels.in"][0])
+    mid = par("levelinmid", DEFAULTS["levels.in"][1])
+    hi = par("levelinhigh", DEFAULTS["levels.in"][2])
+    out_lo = par("leveloutlow", DEFAULTS["levels.out"][0])
+    out_hi = par("levelouthigh", DEFAULTS["levels.out"][1])
 
     # A ZERO-WIDE INPUT SPAN IS A THRESHOLD, not a division to guard against, and it is
     # how this format writes a hard binarisation: `levelinlow == levelinhigh` with the
@@ -475,7 +523,7 @@ def f_levels(ctx, v):
     degenerate = np.abs(span) < 1e-6
     safe = np.where(degenerate, 1.0, span)
     ramp = np.clip((src - lo) / safe, 0.0, 1.0)
-    if assume.assumed('levels.zerospan') == 'identity':
+    if assume.assumed("levels.zerospan") == "identity":
         step = np.clip(src, 0.0, 1.0)
         if np.any(degenerate):
             assume.note(v.index)
@@ -484,32 +532,34 @@ def f_levels(ctx, v):
     t = np.where(degenerate, step, ramp)
 
     m = np.clip(mid, 1e-4, 1 - 1e-4)
-    with np.errstate(all='ignore'):
+    with np.errstate(all="ignore"):
         gamma = np.power(t, np.log(0.5) / np.log(m))
     t = np.where(np.abs(m - 0.5) < 1e-6, t, gamma)
     return to_image(np.clip(out_lo + t * (out_hi - out_lo), 0.0, 1.0), N, H, W)
 
 
-@filt('normal')
+@filt("normal")
 def f_normal(ctx, v):
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
-    p = v.params.get('intensity')
+    p = v.params.get("intensity")
     if p is None:
-        d = assume.assumed('normal.default_intensity', 'refuse')
-        if d == 'refuse':
-            raise Unsupported('normal stores no intensity (its w1 field is absent), so the '
-                              'source omitted it and the engine default applies')
+        d = assume.assumed("normal.default_intensity", "refuse")
+        if d == "refuse":
+            raise Unsupported(
+                "normal stores no intensity (its w1 field is absent), so the "
+                "source omitted it and the engine default applies"
+            )
         intensity = float(d)
         ctx.low_confidence.add(v.index)
         assume.note(v.index)
-    elif p.kind == 'baked':
+    elif p.kind == "baked":
         intensity = float(p.value)
     else:
         got = np.asarray(ctx.run(v, p.value, 1)).ravel()
         if got.size < 1 or not np.isfinite(got[0]):
-            raise Unsupported('normal intensity program does not evaluate to a scalar')
+            raise Unsupported("normal intensity program does not evaluate to a scalar")
         intensity = float(got[0])
 
     height = to_image(ctx.sample(v, 0, pos), N, H, W)[:, :, 0].astype(np.float32)
@@ -571,14 +621,16 @@ def f_normal(ctx, v):
     # write it, `normal_format == <int>` off a graph input -- reads as "not inverted" and
     # its program is never run. That the field IS inversedy remains an assumption; that it
     # has two arms is the walk's own declaration.
-    inv = v.params.get('inversedy')
-    if assume.assumed('normal.inversedy', 'field1') != 'ignore' and inv is not None:
-        if inv.kind == 'baked':
+    inv = v.params.get("inversedy")
+    if assume.assumed("normal.inversedy", "field1") != "ignore" and inv is not None:
+        if inv.kind == "baked":
             flip = True
         else:
             got = np.asarray(ctx.run(v, inv.value, 1)).ravel()
             if got.size < 1 or not np.isfinite(got[0]):
-                raise Unsupported('normal inversedy program does not evaluate to a scalar')
+                raise Unsupported(
+                    "normal inversedy program does not evaluate to a scalar"
+                )
             flip = bool(got[0] > 0.5)
         if flip:
             gy = -gy
@@ -587,29 +639,31 @@ def f_normal(ctx, v):
     nx, ny = -gx * intensity, -gy * intensity
     nz = np.ones_like(nx)
     ln = np.sqrt(nx * nx + ny * ny + nz * nz)
-    rgb = np.stack([0.5 + 0.5 * nx / ln, 0.5 + 0.5 * ny / ln,
-                    0.5 + 0.5 * nz / ln], axis=-1).reshape(N, 3)
+    rgb = np.stack(
+        [0.5 + 0.5 * nx / ln, 0.5 + 0.5 * ny / ln, 0.5 + 0.5 * nz / ln], axis=-1
+    ).reshape(N, 3)
     rgb = np.clip(rgb, 0.0, 1.0)
     if v.colour:
         rgb = np.concatenate([rgb, np.ones((N, 1), np.float32)], axis=-1)
     return to_image(rgb, N, H, W)
 
 
-@filt('hsl')
+@filt("hsl")
 def f_hsl(ctx, v):
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
     src = ctx.sample(v, 0, pos)
-    h = _scalar(ctx, v, 'hue', 0.5, W, H, pos)
-    s = _scalar(ctx, v, 'saturation', 0.5, W, H, pos)
-    lu = _scalar(ctx, v, 'luminosity', 0.5, W, H, pos)
+    h = _scalar(ctx, v, "hue", 0.5, W, H, pos)
+    s = _scalar(ctx, v, "saturation", 0.5, W, H, pos)
+    lu = _scalar(ctx, v, "luminosity", 0.5, W, H, pos)
     rgb = src[:, :3] if src.shape[-1] >= 3 else np.repeat(src[:, :1], 3, axis=1)
     mx, mn = rgb.max(axis=1, keepdims=True), rgb.min(axis=1, keepdims=True)
     lum = 0.5 * (mx + mn)
-    with np.errstate(all='ignore'):
-        sat = np.where(mx == mn, 0.0,
-                       (mx - mn) / np.where(lum < 0.5, mx + mn, 2.0 - mx - mn))
+    with np.errstate(all="ignore"):
+        sat = np.where(
+            mx == mn, 0.0, (mx - mn) / np.where(lum < 0.5, mx + mn, 2.0 - mx - mn)
+        )
         hue = np.zeros_like(lum)
         d = mx - mn
         r, g, b = rgb[:, :1], rgb[:, 1:2], rgb[:, 2:3]
@@ -625,11 +679,17 @@ def f_hsl(ctx, v):
 
     def chan(tc):
         tc = tc % 1.0
-        out = np.where(tc < 1 / 6.0, p_ + (q - p_) * 6.0 * tc,
-                       np.where(tc < 0.5, q,
-                                np.where(tc < 2 / 3.0,
-                                         p_ + (q - p_) * (2 / 3.0 - tc) * 6.0, p_)))
+        out = np.where(
+            tc < 1 / 6.0,
+            p_ + (q - p_) * 6.0 * tc,
+            np.where(
+                tc < 0.5,
+                q,
+                np.where(tc < 2 / 3.0, p_ + (q - p_) * (2 / 3.0 - tc) * 6.0, p_),
+            ),
+        )
         return out
+
     out = np.concatenate([chan(hue + 1 / 3.0), chan(hue), chan(hue - 1 / 3.0)], axis=1)
     if src.shape[-1] == 4:
         out = np.concatenate([out, src[:, 3:4]], axis=1)
@@ -640,6 +700,7 @@ def f_hsl(ctx, v):
 # Spatial
 # ---------------------------------------------------------------------------
 
+
 def _normal_reference_px(v):
     """The pixel grid `normal`'s intensity is expressed against: a CONSTANT 256.
 
@@ -648,8 +709,8 @@ def _normal_reference_px(v):
     measured here is evidence about those, and they are untouched. `f_normal`'s comment
     carries the two-pack measurement that pins this one.
     """
-    forced = assume.assumed('normal.reference_px', 256.0)
-    if forced == 'record':
+    forced = assume.assumed("normal.reference_px", 256.0)
+    if forced == "record":
         return float(v.width) if v.width else 256.0
     return float(forced)
 
@@ -660,27 +721,29 @@ def _reference_px(v):
     A fixed 256 is right for 98.6% of the corpus by a property of the corpus, not of the
     format, and wrong by 2x or 4x on the rest. An explicit `warp.reference_px` still wins.
     """
-    forced = assume.assumed('warp.reference_px')
-    if forced is not None and forced != 'record':
+    forced = assume.assumed("warp.reference_px")
+    if forced is not None and forced != "record":
         return float(forced)
     return float(v.width) if v.width else 256.0
 
 
-@filt('blur')
+@filt("blur")
 def f_blur(ctx, v):
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
-    p = v.params.get('intensity')
+    p = v.params.get("intensity")
     if p is None:
-        raise Unsupported('blur stores no intensity: neither class bit 12 (baked) nor 13 '
-                          '(program) is set, so the source omitted it')
-    if p.kind == 'baked':
+        raise Unsupported(
+            "blur stores no intensity: neither class bit 12 (baked) nor 13 "
+            "(program) is set, so the source omitted it"
+        )
+    if p.kind == "baked":
         intensity = float(p.value)
     else:
         got = np.asarray(ctx.run(v, p.value, 1)).ravel()
         if got.size != 1 or not np.isfinite(got[0]):
-            raise Unsupported('blur intensity program does not evaluate to a scalar')
+            raise Unsupported("blur intensity program does not evaluate to a scalar")
         intensity = float(got[0])
     src = to_image(ctx.sample(v, 0, pos), N, H, W)
     radius = float(np.clip(abs(intensity), 0.0, 256.0)) / _reference_px(v)
@@ -693,12 +756,12 @@ def f_blur(ctx, v):
         # box of half-width r < 1 covers each neighbour by r, which is exactly the lerp.
         # Bricks 10164 is the specimen -- intensity `256 / min($size)`, one pixel at
         # the record's own size, 0.25 px when a 1024 record is drawn on a 256 grid --
-        # whose downstream `|blur - x|` edge detector graph 001's flood-fill mask is
-        # built from, and the identity returns exactly zero to it.
+        # whose downstream `|blur - x|` is the edge detector graph 001's flood-fill mask
+        # is built from, and the identity returns exactly zero to it.
         if assume.assumed("blur.subpixel", "identity") == "fractional" and rfl > 0:
             assume.note(v.index)
             return src + (_box(src, 1) - src) * np.float32(rfl)
-        return src                       # a blur of sub-pixel radius is the identity
+        return src  # a blur of sub-pixel radius is the identity
     return _box(src, rpx)
 
 
@@ -714,7 +777,7 @@ def _box(src, rpx):
     return np.clip(out / k, 0.0, 1.0)
 
 
-@filt('sharpen')
+@filt("sharpen")
 def f_sharpen(ctx, v):
     W, H = v.size(ctx.cap)
     N = W * H
@@ -722,26 +785,26 @@ def f_sharpen(ctx, v):
     src = to_image(ctx.sample(v, 0, pos), N, H, W)
     # `v.baked(name, 1.0) or 1.0` read the baked arm ONLY and turned a stated 0.0 into 1.0,
     # which mattered the moment the legend started supplying this parameter at all.
-    p = v.params.get('intensity')
+    p = v.params.get("intensity")
     if p is None:
-        amount = 1.0                      # absent: the node default, and NOT recorded here
-    elif p.kind == 'baked':
+        amount = 1.0  # absent: the node default, and NOT recorded here
+    elif p.kind == "baked":
         amount = float(p.value)
     else:
         got = np.asarray(ctx.run(v, p.value, 1)).ravel()
         if got.size < 1 or not np.isfinite(got[0]):
-            raise Unsupported('sharpen intensity program does not evaluate to a scalar')
+            raise Unsupported("sharpen intensity program does not evaluate to a scalar")
         amount = float(got[0])
     return np.clip(src + amount * (src - _box(src, 1)), 0.0, 1.0)
 
 
-@filt('dirmotionblur')
+@filt("dirmotionblur")
 def f_dirmotionblur(ctx, v):
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
-    intensity = np.asarray(_scalar(ctx, v, 'intensity', 0.0, W, H, pos), np.float32)
-    angle = np.asarray(_scalar(ctx, v, 'mblurangle', 0.0, W, H, pos), np.float32)
+    intensity = np.asarray(_scalar(ctx, v, "intensity", 0.0, W, H, pos), np.float32)
+    angle = np.asarray(_scalar(ctx, v, "mblurangle", 0.0, W, H, pos), np.float32)
     # LENGTH IS THE INTENSITY IN THE RECORD'S OWN PIXEL SCALE, WITH NO EXTRA FACTOR. This
     # read `* 10.0`, and that multiplier is where graph 004's top two octaves went: four
     # chained `dirmotionblur` records take band-5 power from 1.288e-03 to 4.114e-06 -- 313x
@@ -772,32 +835,40 @@ def f_dirmotionblur(ctx, v):
     acc = None
     for k in range(TAPS):
         f = (k / (TAPS - 1.0)) - 0.5
-        off = np.concatenate([(length * f) * np.cos(turn) * np.ones((N, 1), np.float32),
-                              (length * f) * np.sin(turn) * np.ones((N, 1), np.float32)],
-                             axis=-1)
+        off = np.concatenate(
+            [
+                (length * f) * np.cos(turn) * np.ones((N, 1), np.float32),
+                (length * f) * np.sin(turn) * np.ones((N, 1), np.float32),
+            ],
+            axis=-1,
+        )
         val = smp(pos + off)
         acc = val if acc is None else acc + val
     return to_image(acc / float(TAPS), N, H, W)
 
 
-@filt('directionalwarp')
+@filt("directionalwarp")
 def f_directionalwarp(ctx, v):
     if len(v.inputs) < 2:
-        raise Unsupported('directionalwarp has fewer than 2 edges')
+        raise Unsupported("directionalwarp has fewer than 2 edges")
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
-    a, b = (1, 0) if assume.assumed('dirwarp.edges') == 'swapped' else (0, 1)
+    a, b = (1, 0) if assume.assumed("dirwarp.edges") == "swapped" else (0, 1)
     if a:
         assume.note(v.index)
-    intensity = np.asarray(_scalar(ctx, v, 'intensity', 0.0, W, H, pos), np.float32)
-    angle = np.asarray(_scalar(ctx, v, 'warpangle', 0.0, W, H, pos), np.float32)
+    intensity = np.asarray(_scalar(ctx, v, "intensity", 0.0, W, H, pos), np.float32)
+    angle = np.asarray(_scalar(ctx, v, "warpangle", 0.0, W, H, pos), np.float32)
     height = ctx.sample(v, b, pos)[:, :1]
     disp = (2.0 * height - 1.0) * intensity / _reference_px(v)
     turn = 2.0 * np.pi * angle
     in_pos = pos + np.concatenate(
-        [disp * np.cos(turn) * np.ones((N, 1), np.float32),
-         disp * np.sin(turn) * np.ones((N, 1), np.float32)], axis=-1)
+        [
+            disp * np.cos(turn) * np.ones((N, 1), np.float32),
+            disp * np.sin(turn) * np.ones((N, 1), np.float32),
+        ],
+        axis=-1,
+    )
     return to_image(sampler(ctx.src(v, a))(in_pos), N, H, W)
 
 
@@ -809,10 +880,10 @@ def f_directionalwarp(ctx, v):
 #: keys are asserted against `sbsasm.RAMP_FORMS` by the suite, so a new layout in the decode
 #: fails there rather than at whichever record happens to reach it first. Entries may be one
 #: component WIDER than this -- the trailing midpoint word, which nothing here reads.
-_RAMP_WIDTH = {'grey-u16': 2, 'rgba-u16': 3, 'grey-float': 2, 'rgba-float': 5}
+_RAMP_WIDTH = {"grey-u16": 2, "rgba-u16": 3, "grey-float": 2, "rgba-float": 5}
 
 
-@filt('gradient')
+@filt("gradient")
 def f_gradient(ctx, v):
     """A colour or greyscale ramp indexed by the input's first channel.
 
@@ -832,44 +903,55 @@ def f_gradient(ctx, v):
     """
     got = v.rec.read_ramp()
     if not got:
-        raise Unsupported('gradient record carries no readable ramp')
+        raise Unsupported("gradient record carries no readable ramp")
     form, table = got
     if form not in _RAMP_WIDTH:
-        raise Unsupported('gradient ramp form %r has no reader here' % (form,))
+        raise Unsupported("gradient ramp form %r has no reader here" % (form,))
     if len(table[0]) < _RAMP_WIDTH[form]:
-        raise Unsupported('%s ramp entry is %d components, needs %d'
-                          % (form, len(table[0]), _RAMP_WIDTH[form]))
+        raise Unsupported(
+            "%s ramp entry is %d components, needs %d"
+            % (form, len(table[0]), _RAMP_WIDTH[form])
+        )
     W, H = v.size(ctx.cap)
     N = W * H
-    if form == 'rgba-float':
+    if form == "rgba-float":
         stops = np.array([e[0] for e in table], np.float32)
         vals = np.array([list(e[1:5]) for e in table], np.float32)
-    elif form == 'grey-float':
+    elif form == "grey-float":
         stops = np.array([e[0] for e in table], np.float32)
         vals = np.array([e[1] for e in table], np.float32)
-    elif form == 'rgba-u16':
+    elif form == "rgba-u16":
         stops = np.array([e[0] for e in table], np.float32) / 65535.0
         packed = [(int(e[1]) | (int(e[2]) << 16)) & 0xFFFFFFFF for e in table]
-        vals = np.array([[(u >> (8 * k)) & 0xFF for k in range(4)] for u in packed],
-                        np.float32) / 255.0
+        vals = (
+            np.array(
+                [[(u >> (8 * k)) & 0xFF for k in range(4)] for u in packed], np.float32
+            )
+            / 255.0
+        )
     else:
         stops = np.array([e[0] for e in table], np.float32) / 65535.0
         vals = np.array([e[1] for e in table], np.float32) / 65535.0
     t = np.clip(ctx.sample(v, 0, pos_grid(W, H))[:, :1], 0.0, 1.0).ravel()
     if vals.ndim == 2:
-        out = np.stack([np.interp(t, stops, vals[:, c]).astype(np.float32)
-                        for c in range(vals.shape[1])], axis=-1)
+        out = np.stack(
+            [
+                np.interp(t, stops, vals[:, c]).astype(np.float32)
+                for c in range(vals.shape[1])
+            ],
+            axis=-1,
+        )
     else:
         out = np.interp(t, stops, vals).astype(np.float32).reshape(N, 1)
     return to_image(out, N, H, W)
 
 
-@filt('curve')
+@filt("curve")
 def f_curve(ctx, v):
     """A cubic Bezier transfer curve, sampled to a lookup and applied per channel."""
     knots = v.rec.curve_points
     if not knots or len(knots) < 2:
-        raise Unsupported('curve record carries no readable spline')
+        raise Unsupported("curve record carries no readable spline")
     W, H = v.size(ctx.cap)
     N = W * H
     src = np.clip(ctx.sample(v, 0, pos_grid(W, H)), 0.0, 1.0)
@@ -880,7 +962,7 @@ def f_curve(ctx, v):
         p2, p3 = (knots[k + 1][2], knots[k + 1][3]), (knots[k + 1][0], knots[k + 1][1])
         u = np.linspace(0.0, 1.0, TAPS // max(1, len(knots) - 1), dtype=np.float32)
         b0, b1 = (1 - u) ** 3, 3 * u * (1 - u) ** 2
-        b2, b3 = 3 * u * u * (1 - u), u ** 3
+        b2, b3 = 3 * u * u * (1 - u), u**3
         xs.append(b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0])
         ys.append(b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1])
     cx, cy = np.concatenate(xs), np.concatenate(ys)
@@ -889,14 +971,14 @@ def f_curve(ctx, v):
     return to_image(out.reshape(src.shape), N, H, W)
 
 
-@filt('warp')
+@filt("warp")
 def f_warp(ctx, v):
     """Displace input 0 by the GRADIENT of input 1, scaled by `intensity`."""
     if len(v.inputs) < 2:
-        raise Unsupported('warp has fewer than 2 edges')
-    p = v.params.get('intensity')
+        raise Unsupported("warp has fewer than 2 edges")
+    p = v.params.get("intensity")
     if p is None:
-        d = assume.assumed('warp.default_intensity', 'refuse')
+        d = assume.assumed("warp.default_intensity", "refuse")
         # THE BITS ARE 29 AND 30, NOT 13 AND 14. `CLS_NAMES[7]` maps bit 29 to
         # `('intensity', 'baked')` and bit 30 to `('intensity', 'program')`, and that is the
         # mapping `View._add` actually uses. The old message named 13/14, which sent a reader
@@ -913,9 +995,11 @@ def f_warp(ctx, v):
         # same reasoning: an invented intensity renders something WRONG instead of nothing.
         # Whether `warp` should gain a `warp.default_intensity` arm the way `normal` has
         # `normal.default_intensity` is a policy question and the owner's to decide.
-        if d == 'refuse':
-            raise Unsupported('warp stores no intensity: neither class bit 29 (baked) nor 30 '
-                              '(program) is set, so the source omitted it')
+        if d == "refuse":
+            raise Unsupported(
+                "warp stores no intensity: neither class bit 29 (baked) nor 30 "
+                "(program) is set, so the source omitted it"
+            )
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
@@ -926,28 +1010,35 @@ def f_warp(ctx, v):
         intensity = float(d)
         ctx.low_confidence.add(v.index)
         assume.note(v.index)
-    elif p.kind == 'baked':
+    elif p.kind == "baked":
         intensity = float(p.value)
         if not (intensity == intensity and -1e3 < intensity < 1e3):
-            raise Unsupported('warp intensity is not a plausible float (%r)' % intensity)
+            raise Unsupported(
+                "warp intensity is not a plausible float (%r)" % intensity
+            )
     else:
         got = np.asarray(ctx.run(v, p.value, 1)).ravel()
         if got.size != 1 or not np.isfinite(got[0]):
-            raise Unsupported('warp intensity program does not evaluate to a scalar')
+            raise Unsupported("warp intensity program does not evaluate to a scalar")
         intensity = float(got[0])
     gmap = to_image(ctx.sample(v, 1, pos), N, H, W)[:, :, 0].astype(np.float32)
     gy, gx = np.gradient(gmap)
     ref = _reference_px(v)
-    in_pos = pos + np.concatenate([(gx * W / ref * intensity).reshape(N, 1),
-                                   (gy * H / ref * intensity).reshape(N, 1)], axis=-1)
+    in_pos = pos + np.concatenate(
+        [
+            (gx * W / ref * intensity).reshape(N, 1),
+            (gy * H / ref * intensity).reshape(N, 1),
+        ],
+        axis=-1,
+    )
     return to_image(sampler(ctx.src(v, 0))(in_pos), N, H, W)
 
 
-@filt('emboss')
+@filt("emboss")
 def f_emboss(ctx, v):
     """Input 0 plus a directional difference of input 1 -- a lit relief."""
     if len(v.inputs) < 2:
-        raise Unsupported('emboss has fewer than 2 edges')
+        raise Unsupported("emboss has fewer than 2 edges")
     W, H = v.size(ctx.cap)
     N = W * H
     pos = pos_grid(W, H)
@@ -957,7 +1048,7 @@ def f_emboss(ctx, v):
     g0 = to_image(smp(pos), N, H, W)[:, :, :1]
     g1 = to_image(smp(pos + np.array([OFF, -OFF], np.float32)), N, H, W)[:, :, :1]
     k = 0.1
-    if assume.assumed('emboss.intensity') == 'program':
+    if assume.assumed("emboss.intensity") == "program":
         for q in ctx.walk_programs(v):
             try:
                 got = np.asarray(ctx.run(v, q, 1)).ravel()
@@ -970,7 +1061,7 @@ def f_emboss(ctx, v):
     return np.clip(base + k * (g0 - g1), 0.0, 1.0)
 
 
-@filt('distance')
+@filt("distance")
 def f_distance(ctx, v):
     """A distance field grown from the mask input, out to a radius the record states.
 
@@ -980,6 +1071,7 @@ def f_distance(ctx, v):
     than folded into it.
     """
     import distance as dist
+
     # THE RADIUS IS FIELD 1, AND BOTH OF ITS ARMS ARE READ HERE. It was named at field 0,
     # which is not a parameter at all: field 0's low bit declares the optional mask INPUT,
     # and the walk was charging that input twice -- once as the edge it is, once as this
@@ -1004,10 +1096,13 @@ def f_distance(ctx, v):
     # undecodable "programs", 105 denormal "radii" (pointers read as floats), 3 records that
     # raised `Shifted` and 87 with no parameter at all. The guard stays because what it
     # asserts is right whatever the naming, and it is now silent.
-    p = v.params.get('distance')
-    if p is not None and p.kind == 'program':
-        _raw = v.words[p.slot] if (p.slot is not None
-                                   and 0 <= p.slot < len(v.words)) else None
+    p = v.params.get("distance")
+    if p is not None and p.kind == "program":
+        _raw = (
+            v.words[p.slot]
+            if (p.slot is not None and 0 <= p.slot < len(v.words))
+            else None
+        )
         if _raw is None or not ctx.asm.valid_program(_raw + 52):
             p = None
     val = how = None
@@ -1017,35 +1112,38 @@ def f_distance(ctx, v):
     # the locator it replaces, on the five program-arm records of PavingStonesSubstance003:
     # identical, 5 of 5 (0.0, 1.0, 1.0, 3.2, -3.2).
     if p is not None:
-        if p.kind == 'baked':
-            val, how = float(p.value), 'walked'
+        if p.kind == "baked":
+            val, how = float(p.value), "walked"
         else:
             got = np.asarray(ctx.run(v, p.value, 1)).ravel()
             if got.size and np.isfinite(got[0]):
-                val, how = float(got[0]), 'walked'
+                val, how = float(got[0]), "walked"
     if val is None:
         try:
-            val, how = dist.distance_param(
-                v.rec, lambda p_: ctx.run(v, p_, 1), {})
+            val, how = dist.distance_param(v.rec, lambda p_: ctx.run(v, p_, 1), {})
         except dist.Unlocated as e:
-            raise Unsupported('distance: %s' % e) from e
+            raise Unsupported("distance: %s" % e) from e
         if dist.is_low_confidence(how):
             ctx.low_confidence.add(v.index)
     W, H = v.size(ctx.cap)
     pos = pos_grid(W, H)
-    mask_edge = assume.assumed('distance.mask_edge', 0)
+    mask_edge = assume.assumed("distance.mask_edge", 0)
     if mask_edge >= len(v.inputs) or v.edge(mask_edge) not in ctx.outputs:
         mask_edge = 0
-    if assume.assumed('distance.mask_edge') is not None:
+    if assume.assumed("distance.mask_edge") is not None:
         assume.note(v.index)
     mask = ctx.sample(v, mask_edge, pos).reshape(H, W, -1)[:, :, 0]
     field = dist.distance_field(mask, dist.scale_radius(val, W))
-    if assume.assumed('distance.invert', False):
+    if assume.assumed("distance.invert", False):
         field = 1.0 - field
         assume.note(v.index)
-    payload = next((e for k, e in enumerate(v.inputs)
-                    if k != mask_edge and e in ctx.outputs), None)
-    if assume.assumed('distance.propagate', 'field') == 'nearest' and payload is not None:
+    payload = next(
+        (e for k, e in enumerate(v.inputs) if k != mask_edge and e in ctx.outputs), None
+    )
+    if (
+        assume.assumed("distance.propagate", "field") == "nearest"
+        and payload is not None
+    ):
         src = sampler(ctx.outputs[payload])(pos).reshape(H, W, -1)
         vals = dist.propagate(mask, dist.scale_radius(val, W), src)
         assume.note(v.index)
@@ -1053,11 +1151,11 @@ def f_distance(ctx, v):
     return to_image(field.reshape(-1, 1), W * H, H, W)
 
 
-@filt('dyngradient')
+@filt("dyngradient")
 def f_dyngradient(ctx, v):
     """Input 0 indexes into input 1, which is a one-row (or one-column) ramp image."""
     if len(v.inputs) < 2:
-        raise Unsupported('dyngradient has fewer than 2 edges')
+        raise Unsupported("dyngradient has fewer than 2 edges")
     W, H = v.size(ctx.cap)
     idx = ctx.sample(v, 0, pos_grid(W, H)).reshape(H, W, -1)[:, :, 0]
     strip = np.asarray(ctx.src(v, 1), np.float32)

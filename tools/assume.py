@@ -5,15 +5,28 @@ The registry is deliberately opt-in: without a scope, callers keep their existin
 defaults. ``scope()`` validates registered enumerated choices, tracks records rendered
 under a choice in ``USED``, and restores the previous state when it exits.
 """
+
 import contextlib
 
 
 # Empty tuples identify free-form values; other entries list the candidates a scope may use.
 QUESTIONS = {
-    'blur.intensity':     ('program', 'slot3'),
-    'warp.reference_px':  ('record', 256.0, 64.0, 128.0, 320.0, 384.0, 448.0, 512.0,
-                           640.0, 768.0, 1024.0, 2048.0),
-    'dirwarp.edges':      ('declared', 'swapped'),
+    "blur.intensity": ("program", "slot3"),
+    "warp.reference_px": (
+        "record",
+        256.0,
+        64.0,
+        128.0,
+        320.0,
+        384.0,
+        448.0,
+        512.0,
+        640.0,
+        768.0,
+        1024.0,
+        2048.0,
+    ),
+    "dirwarp.edges": ("declared", "swapped"),
     # NORMAL'S INTENSITY WHEN THE SOURCE OMITTED IT. Not a placement question -- the
     # placement is settled (`header_words - 1`, 8 of 8 containment pairings). This is the
     # 389 corpus records whose last header slot holds a PROGRAM POINTER rather than a
@@ -37,14 +50,14 @@ QUESTIONS = {
     # stated in permitted sources, while 0.75, 1.5 and 2.0 are present, and `blur` -- the
     # control -- states 1.0 10,357 times, so the test discriminates. See FORMAT-NOTES,
     # "Permitted sources corroborate `warp` default = 1.0".
-    'warp.default_intensity': ('refuse', 1.0, 0.0, 0.25, 0.5, 2.0),
-    'normal.default_intensity': ('refuse', 0.5, 1.0, 2.0, 4.0, 8.0, 16.0),
-    'blur.kernel':        ('box', 'gaussian'),
-    'emboss.probe':       ('passthrough',),
+    "warp.default_intensity": ("refuse", 1.0, 0.0, 0.25, 0.5, 2.0),
+    "normal.default_intensity": ("refuse", 0.5, 1.0, 2.0, 4.0, 8.0, 16.0),
+    "blur.kernel": ("box", "gaussian"),
+    "emboss.probe": ("passthrough",),
     # 'word1bit2' is the archived renderer's reading -- bit 2 as a BOOLEAN, which sees
     # a baked flag and misses the 38 corpus records whose field 1 holds a program.
     # 'field1' reads the two-bit code the walk declares, both arms.
-    'normal.inversedy':   ('ignore', 'word1bit2', 'field1'),
+    "normal.inversedy": ("ignore", "word1bit2", "field1"),
     # THE GRID `normal`'s INTENSITY IS EXPRESSED AGAINST. Default 256.0 -- a constant, not
     # the record's size. Measured against the engine's own exports, with no render of ours
     # in the loop: regressing the exported normal map's slope on the exported height map's
@@ -63,18 +76,58 @@ QUESTIONS = {
     # above names (hard 256, the tag, `1 << DECLARED $outputsize`) are all file properties
     # and are still tied; only a reference pack with a non-256-tag `normal` record separates
     # them, and none exists. See FORMAT-NOTES.md, "`normal`'s 31% gain error is `height`'s".
-    'normal.reference_px': (256.0, 'record', 64.0, 128.0, 512.0, 1024.0, 2048.0, 4096.0),
-    'distance.param':     ('program', 'block1', 'slot5', 'wide', 'layout'),
-    'distance.invert':    (False, True),
-    'distance.mask_edge': (0, 1),
-    'distance.propagate': ('field', 'nearest'),
-    'fx.profile':         ('rect', 'square', 'disc', 'paraboloid', 'bell', 'gaussian',
-                           'thorn', 'pyramid', 'brick', 'gradation', 'waves', 'halfbell',
-                           'ridgedbell', 'crescent', 'capsule', 'cone'),
-    'fx.sizeless':        ('fill', 'skip', 'half', 'quarter'),
-    'fx.rootentry':       ('draw', 'skip'),
-    'emboss.intensity':   ('program', 'reference'),
-    'fx.gridcount':       ('numberadded', 'divisor'),
+    "normal.reference_px": (
+        256.0,
+        "record",
+        64.0,
+        128.0,
+        512.0,
+        1024.0,
+        2048.0,
+        4096.0,
+    ),
+    "distance.param": ("program", "block1", "slot5", "wide", "layout"),
+    "distance.invert": (False, True),
+    "distance.mask_edge": (0, 1),
+    "distance.propagate": ("field", "nearest"),
+    "fx.profile": (
+        "rect",
+        "square",
+        "disc",
+        "paraboloid",
+        "bell",
+        "gaussian",
+        "thorn",
+        "pyramid",
+        "brick",
+        "gradation",
+        "waves",
+        "halfbell",
+        "ridgedbell",
+        "crescent",
+        "capsule",
+        "cone",
+    ),
+    "fx.sizeless": ("fill", "skip", "half", "quarter"),
+    "fx.rootentry": ("draw", "skip"),
+    "emboss.intensity": ("program", "reference"),
+    "fx.gridcount": ("numberadded", "divisor"),
+    # WHERE A CHAIN NODE'S PROGRAMS ARE PLACED. 'table' reads the byte offsets out of
+    # `FX_NODE_PARAMS`, per header; 'walk' computes them from the header's mask through
+    # `node_shape` and pairs the names onto them in field order. Two statements of one
+    # address, which is the discipline the rest of the decode runs on.
+    #
+    # THE ROLE ITSELF IS NOT PART OF THE ARM, and an earlier version of this comment said
+    # it was. Nothing in the mask states what a node's program DOES; the rule that read a
+    # `count` against a `gate` off the low nibble was a fit on six headers whose two
+    # candidate discriminators -- bits 1 and 8 -- the corpus cannot separate. Both arms take
+    # the role from the census; see `fxnodes`, and `python3 tools/fxnodes.py --separability`
+    # for the measurement that withdrew the fit.
+    #
+    # NOT AN ARM TO TEST A CHANGE. Over all 437 corpus files the two place every program
+    # identically, so this changes no render. It is a question rather than a replacement
+    # because a per-header offset table goes stale silently and a walk does not.
+    "fx.nodemodel": ("table", "walk"),
     # WHAT `$pos` IS INSIDE AN FX-MAP. It is NOT the sampling coordinate it is in a
     # `pixelprocessor`, and the split is clean: of the programs that read `$pos`, 54,661 of
     # 55,462 pixelprocessor ones feed `samplelum`/`samplecol` (98.6%) against 17 of 26,803
@@ -139,9 +192,9 @@ QUESTIONS = {
     # node has more than one child at all. That negative is BOUNDED BY THE CLEAN-ROOM RULE:
     # the sources that do branch are Allegorithmic and may not be read, so the claim is
     # "absent from what may be examined", not "absent from the format".
-    'fx.pos':             ('origin', 'corner'),
-    'fx.scanner':         ('once', 'loop'),
-    'fx.gatescan':        ('once', 'loop', 'filter'),
+    "fx.pos": ("origin", "corner"),
+    "fx.scanner": ("once", "loop"),
+    "fx.gatescan": ("once", "loop", "filter"),
     # `bit18` IS PER CELL: entry-tag bit 18 clear draws by signed `add`, set draws by
     # `max`. Over the permitted paired sources bit 18 is set on exactly the entries whose
     # `paramset` DECLARES a `blendingmode` (ie_curve 43 of 43 own entries, ie_particles
@@ -151,8 +204,8 @@ QUESTIONS = {
     # Chesterfield's tufting records, whose entries set bit 18; Bricks' subdivided
     # scatters -- the `opacity = -1` construct among them -- clear it. See FORMAT-NOTES.md,
     # "Graph 001's first annihilation point is a white canvas the file states".
-    'fx.combine':         ('max', 'add', 'over', 'bit18'),
-    'fx.negopacity':      ('clip', 'signed', 'abs'),
+    "fx.combine": ("max", "add", "over", "bit18"),
+    "fx.negopacity": ("clip", "signed", "abs"),
     # THE FX-MAP RECORD'S OWN HEADER FIELDS. `read` initialises the canvas to field 0
     # (`background`, 1 word grey / 4 colour) and multiplies every pattern's opacity by
     # field 2 (`opacitymult`, the UI's Global Opacity); `ignore` is the draw as it stood,
@@ -160,7 +213,7 @@ QUESTIONS = {
     # paired sources (Clouds_3's 0.42 / 10.7, ie_particles' (0,0,0,1)). Corpus-wide, all
     # 2,071 records carrying a negative baked opacity bake `background = 1.0` and none of
     # the 2,874 with only non-negative ones does.
-    'fx.header':          ('ignore', 'read'),
+    "fx.header": ("ignore", "read"),
     # `hurst` (field 1, the UI's Roughness) as a per-depth gain on the pattern's opacity,
     # under the tree arm's depth (root 0, its children 0, one more per quadrant level).
     # `exp` is the fBm reading of the name, 2^(-hurst * depth), under which the baked 0.0
@@ -170,8 +223,8 @@ QUESTIONS = {
     # that bakes no field 1 takes: the source omits a default and the file does not say.
     # `exp2` is 2^(-2 * hurst * depth): the same exponent per AREA halving rather than
     # per side halving, kept because graph 001's own thresholds sit between `exp` and it.
-    'fx.hurst':           ('off', 'exp', 'exp2', 'pow'),
-    'fx.hurst.absent':    ('zero', 'one'),
+    "fx.hurst": ("off", "exp", "exp2", "pow"),
+    "fx.hurst.absent": ("zero", "one"),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
     # candidate below is a guess that would need something outside the file to settle.
@@ -279,28 +332,28 @@ QUESTIONS = {
     #                         `Stone_colour_Gradient_Input_Position`, `Stone_Colour_Grad` and
     #                         `Lichen_Colour_Variation` -- the material author's names for a
     #                         position into a gradient, not the parameter's own.
-    'blend.w1bit8':       ('ignore', 'alphablend', 'background_used'),
-    'transformation.w1low': ('ignore', 'tiling', 'filtering', 'mipmap'),
-    'dyngradient.gradpos': ('ignore', 'position', 'variation'),
-    'emboss.w1field0':    ('ignore', 'intensity', 'greyscale_amount'),
-    'fxmaps.cls22':       ('ignore', 'outputsize'),
-    'levels.zerospan':    ('step', 'identity'),
-    'levels.inversion':   ('flat', 'complete'),
-    'levels.interclamp':  ('clamp', 'noclamp'),
-    'nonfinite.fill':     (0.0, 0.5, 1.0),
-    'uniform.fill':       (),
-    'grayscale.weights':  (),
-    'fx.branchoffset':    ('canvas', 'cell'),
-    'fx.patternsize':     ('canvas', 'cell'),
-    'fx.frameoffset':     ('canvas', 'cell'),
+    "blend.w1bit8": ("ignore", "alphablend", "background_used"),
+    "transformation.w1low": ("ignore", "tiling", "filtering", "mipmap"),
+    "dyngradient.gradpos": ("ignore", "position", "variation"),
+    "emboss.w1field0": ("ignore", "intensity", "greyscale_amount"),
+    "fxmaps.cls22": ("ignore", "outputsize"),
+    "levels.zerospan": ("step", "identity"),
+    "levels.inversion": ("flat", "complete"),
+    "levels.interclamp": ("clamp", "noclamp"),
+    "nonfinite.fill": (0.0, 0.5, 1.0),
+    "uniform.fill": (),
+    "grayscale.weights": (),
+    "fx.branchoffset": ("canvas", "cell"),
+    "fx.patternsize": ("canvas", "cell"),
+    "fx.frameoffset": ("canvas", "cell"),
     # SKIP FIRST, i.e. the default, and it is a READING rather than a guess. `splat` has
     # always carried `if skip_markers and (tag & 0xFF) == 0x08: continue`; the file tags these
     # patterns and we drew them anyway. Of the sizeless patterns on flat-origin fxmaps records,
     # 628 of 815 (77%) carry tag byte 0x08, and 85% carry ONLY `branchoffset` + `patterntype`
     # -- no opacity, no rotation, nothing about drawing. Drawing them at `fx.sizeless`'s full
     # canvas is what pins 574 of 574 flat-origin records to a constant.
-    'fx.markers':         ('skip', 'draw'),
-    'fx.typeless_profile': ('rect', 'disc', 'cone', 'paraboloid', 'bell', 'gaussian'),
+    "fx.markers": ("skip", "draw"),
+    "fx.typeless_profile": ("rect", "disc", "cone", "paraboloid", "bell", "gaussian"),
     # QUADRANT SUBDIVISION. `flat` is `fx.emissions` as it stood: every table entry drawn
     # once at full canvas, the chain-family cells read as links. `tree` reads the entry
     # cells as a nesting -- each cell a Quadrant whose four outputs are the quarters of its
@@ -311,14 +364,14 @@ QUESTIONS = {
     # leaves; record 9924 at 0.513 / 0.292 / -0.012). DEFAULT `flat` UNTIL THE ARBITER SAYS
     # OTHERWISE: the reference guards are floored on flat, and a default flips when the
     # seed-free instruments on the deterministic graphs say the tree arm is not worse.
-    'fx.subdivide':       ('flat', 'tree'),
+    "fx.subdivide": ("flat", "tree"),
     # The two draw-model questions the tree arm leaves open. `branchoffset` offsets a cell's
     # own pattern and its children; whether its unit is the canvas or the cell's region is
     # not settled (Bricks 9804's author halves it per level by hand, which argues canvas).
     # Which output is which quadrant is not settled either. Graph 003 cannot tell any of
     # these apart -- every instrument moves less than the renderer's own seed floor.
-    'fx.tree.branchoffset': ('canvas', 'region'),
-    'fx.tree.order':      ('rowmajor', 'clockwise', 'colmajor'),
+    "fx.tree.branchoffset": ("canvas", "region"),
+    "fx.tree.order": ("rowmajor", "clockwise", "colmajor"),
     # HOW A `set` UNDER A `select` BRANCH EXECUTES. `eager` is the transpiler as it stood:
     # straight-line code, every `set` applied whichever branch the condition picks.
     # `lazy` applies a `set` only on the lanes whose `select` demands that branch, and not
@@ -388,8 +441,10 @@ def scope(**choices):
     for key, value in choices.items():
         allowed = QUESTIONS.get(key)
         if allowed and value not in allowed:
-            raise ValueError('assume: %r is not a candidate for %r; try one of %r'
-                             % (value, key, allowed))
+            raise ValueError(
+                "assume: %r is not a candidate for %r; try one of %r"
+                % (value, key, allowed)
+            )
     saved = dict(_ACTIVE)
     saved_used = set(USED)
     _ACTIVE.update(choices)

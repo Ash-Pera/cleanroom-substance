@@ -59587,3 +59587,66 @@ records hit this). The lazy `select` arm is off by default because it is a diffe
 on every `set`-under-`select` in the corpus and only Bricks 10081 is arbitrated; the same
 is true of the five other arms. Whether the engine's Flood Fill settles the field with
 these exact passes or a true jump-flood is not separable from the compiled records alone.
+
+## Where an FX-Map node's programs sit is stated twice, `fxnodes` checks the two statements agree over the whole corpus, and a role rule read off the mask is withdrawn as a fit
+
+PROVENANCE FIRST. This is the 2026-09-08 work three earlier sections describe as "another
+session's uncommitted reformat and `fxnodes` work" and staged around. It sat in the tree under
+five commits (`536219d` .. `bdfb06c`), each of which had to `git add -p` past it. It lands
+here as two commits: the `black` sweep alone -- 101 files, each checked AST-identical to its
+`HEAD` revision with `ast.dump`, so it can change nothing -- and then this: the untracked
+`tools/fxnodes.py`, the `fxnodes` hunks in `assume.py`, `fxrender.py`, `render2/fx.py`,
+`render2/test_render2.py`, the `tools/README.md` paragraphs, an import reorder in
+`render2/filters.py`, and one docstring hunk in `transpile.py` naming `program.select` that
+the 2026-09-13 session left unstaged. Measurements below are at this commit on `188a8af`.
+
+WHAT IS STATED TWICE. `sbsasm.node_shape` derives where a chain node's programs and successor
+sit from the header -- base program at word 1 (word 2 once bit 4 has spent one), bit 5's
+program one word on, successor at `base + popcount(header & 0xF0)` -- and `FX_NODE_PARAMS`
+tabulates the same offsets per header with the parameter names attached. Two statements of
+one address, and nothing compared them. `fxnodes` is the walk arm: it computes the offsets
+from the mask and pairs the names on in ascending bit order (bit 5's program before bit 7's
+base program, which is the pairing containment establishes for `0x1AB`: word 1 `randomseed`,
+word 2 `numberadded`). `assume.QUESTIONS['fx.nodemodel']` is `("table", "walk")`, default
+`table`, so no render moves by default -- and, measured, none moves under `walk` either:
+
+    records                        27,184
+    records whose node list differs     0
+    programs named by the table    62,721
+    programs the walk places identically   62,721
+    named by the walk only              0
+    distinct chain headers              8, of which the table names 4
+
+Read the denominator: 62,721 occurrences are FOUR headers, and `0x18B` and `0x89` are 97% of
+them. The arm is not a place to test a change (the two cannot disagree on this corpus); it is
+kept as a question because a per-header offset table goes stale silently when a fifth header
+appears and a walk does not. `python3 tools/fxnodes.py` is the standing comparison.
+
+THE ROLE IS NOT IN THE MASK, AND A RULE SAYING IT WAS IS WITHDRAWN. The first version of
+`fxnodes` read a role off the bits: bit 7 with bit 4 clear is a `count` when the low nibble is
+B and a `gate` when it is 9. Asked `separability.py`'s question over the corpus's own chain
+headers (`python3 tools/fxnodes.py --separability`):
+
+    census role   headers                  bits separating it from the others
+    count         0x18B 0x1AB 0x1CB        from gate: 1 AND 8 (co-extensive, both perfect)
+    gate          0x89                     from state: 4
+    state         0x99 0x19B               from count: 4
+    (unnamed)     0x1A3 0x1DB
+
+Three count headers against ONE gate header, and bits 1 and 8 split them equally well with no
+specimen between -- the nibble reading is one of two the corpus cannot tell apart, which is a
+fit on the header population, not a walk. `node_shape` already declines the identical
+inference one line up ("a three-point fit on a two-valued output"). Withdrawn, not demoted:
+both arms take the role from `fxrender`'s census, a header the census does not carry is
+refused under both, and the one thing the mask does state about a role is an absence -- bit 7
+clear means no program is declared, so the leaf, the pointer cell and the `0x??1B` branch
+pass through. `render2/fx.py` now dispatches on `count`/`gate`/`state`/`leaf` rather than on
+header constants, which is the same dispatch spelled by role.
+
+CHECKED. `test_render2.py`: 18 pass (17 before; the one added,
+`test_the_two_node_models_read_the_same_chain`, walks a chain under both arms). `fxnodes.py`
+self-comparison as tabulated above. The reformat commit is AST-identical file by file.
+
+NOT DONE HERE. The `0x1A3` and `0x1DB` headers the census does not name (the walk places
+their programs; nothing says what they do). And the OPEN list of the previous section stands
+unchanged: blob_d 1.5x small on graph 001 is the next thing to chase.

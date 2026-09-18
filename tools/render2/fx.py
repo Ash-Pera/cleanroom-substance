@@ -8,6 +8,13 @@ nibble-8 category error survived (two implementations making the same mistake in
 never disagree). What is rewritten here is everything downstream: WHEN each program runs,
 HOW MANY times, and what the numbers mean once you have them.
 
+WHICH ROLE A NODE HAS is asked of `fxnodes`, so the arms below dispatch on
+`count`/`gate`/`state`/`leaf` rather than on header constants. The role itself is
+`fxrender`'s census under either arm of `assume.QUESTIONS['fx.nodemodel']` -- nothing in the
+mask states what a node's program does, and a rule that read one off the low nibble was
+withdrawn as a fit. What the arm chooses is how the node's programs were LOCATED: by the
+mask, or by `FX_NODE_PARAMS`' per-header offsets. See `fxnodes`.
+
 THE EMISSION COUNT IS STATED BY THE PLACEMENT PROGRAM, and reading it there rather than
 from `numberadded` is the change that renders `Rokviz japanese fabric 8`.
 
@@ -41,6 +48,7 @@ same statement written as a MULTIPLY by 1/N is the same statement. `number_grid`
 both, and reads the DIMENSIONALITY too: a program that decomposes $number into a row and
 a column walks an N x N grid, one that scales it linearly walks a run of N.
 """
+
 import math
 import re
 import struct
@@ -50,6 +58,7 @@ import numpy as np
 import assume
 import disasm
 import fxchain
+import fxnodes
 import fxrender
 import fxtree
 import sbsruntime
@@ -65,7 +74,7 @@ _GRID_CACHE = {}
 #: split, which is `grid_width`'s two-axis case and not this one. Read BROADLY on purpose:
 #: a false "two-dimensional" only declines the record and falls back to `numberadded`,
 #: while a missed one would emit N patterns where the record wants N**2.
-_DECOMPOSE = ('mod', 'cvt', 'floor')
+_DECOMPOSE = ("mod", "cvt", "floor")
 
 #: The `$number` system variable's id. See sbsruntime.SYSVARS.
 _NUMBER = 10
@@ -84,7 +93,7 @@ def _const_value(addr, op, toks):
     if imm is None or len(imm) < 4:
         return None
     if ty == 2:
-        return float(struct.unpack_from('<I', imm, 0)[0])
+        return float(struct.unpack_from("<I", imm, 0)[0])
     got = disasm.floats(addr, toks)
     return float(got[0]) if got else None
 
@@ -109,7 +118,7 @@ def number_grid(rec):
     earlier registers, so this is a small SSA walk. Bounded at 4096 because above that
     `$number` is a coordinate normalised by the canvas rather than a stamp index.
     """
-    key = (getattr(rec.asm, 'path', id(rec.asm)), rec.index)
+    key = (getattr(rec.asm, "path", id(rec.asm)), rec.index)
     if key in _GRID_CACHE:
         return _GRID_CACHE[key]
     asm = rec.asm
@@ -133,11 +142,11 @@ def number_grid(rec):
             continue
         for k, addr, op, toks in stream:
             nm = disasm.name(op)
-            if nm == 'sysvar':
+            if nm == "sysvar":
                 if toks and toks[0] == _NUMBER:
                     num.add(k)
                 continue
-            if nm == 'const':
+            if nm == "const":
                 v = _const_value(addr, op, toks)
                 if v is not None:
                     const[k] = v
@@ -145,12 +154,12 @@ def number_grid(rec):
             # An operand token is a register only if it names an EARLIER instruction;
             # anything else in the tuple is an immediate.
             regs = [t for t in toks if t < k]
-            if nm in ('mul', 'div') and len(toks) >= 2:
+            if nm in ("mul", "div") and len(toks) >= 2:
                 a, b = toks[0], toks[1]
-                pairs = ((a, b), (b, a)) if nm == 'mul' else ((a, b),)
+                pairs = ((a, b), (b, a)) if nm == "mul" else ((a, b),)
                 for x, y in pairs:
                     if x in num and const.get(y):
-                        n = (1.0 / const[y]) if nm == 'mul' else const[y]
+                        n = (1.0 / const[y]) if nm == "mul" else const[y]
                         if abs(n - round(n)) < 1e-3 and 1 < round(n) <= 4096:
                             found.add(int(round(n)))
                         num.add(k)
@@ -191,10 +200,10 @@ def emission_count(rec, numberadded):
     FIVE OR SIX candidates on most of them, so picking one would be inventing a number.
     `number_grid` answers only where the record names exactly ONE.
     """
-    if assume.assumed('fx.gridcount', 'divisor') == 'divisor':
+    if assume.assumed("fx.gridcount", "divisor") == "divisor":
         w = _grid_width(rec)
         if w:
-            return w * w, 'grid'
+            return w * w, "grid"
     if numberadded == 1:
         grid = number_grid(rec)
         # ONE-DIMENSIONAL ONLY. The two-axis spelling is `grid_width`'s own case, and where
@@ -203,15 +212,15 @@ def emission_count(rec, numberadded):
         # whole board is written against. What is left is the gap `grid_width` cannot
         # express at all: `$number` scaled LINEARLY by 1/N, a run of N rather than a grid.
         if grid is not None and grid[1] == 1 and grid[0] <= MAX_PATTERNS:
-            return grid[0], 'placement'
-    return numberadded, 'chain'
+            return grid[0], "placement"
+    return numberadded, "chain"
 
 
 _WIDTH_CACHE = {}
 
 
 def _grid_width(rec):
-    key = (getattr(rec.asm, 'path', id(rec.asm)), rec.index)
+    key = (getattr(rec.asm, "path", id(rec.asm)), rec.index)
     if key not in _WIDTH_CACHE:
         try:
             _WIDTH_CACHE[key] = fxrender.grid_width(rec)
@@ -229,13 +238,14 @@ def _grid_width(rec):
 #: answers before the walk starts.
 
 
-_CACHE_READ = re.compile(r'cache_read\((\d+)\)')
-_CACHE_WRITE = re.compile(r'cache_write\([^,]+,\s*(\d+)\)')
+_CACHE_READ = re.compile(r"cache_read\((\d+)\)")
+_CACHE_WRITE = re.compile(r"cache_write\([^,]+,\s*(\d+)\)")
 
 
 def _prog_source(asm, ptr):
     """The program's transpiled Python source, from `ops`' own memo, or None."""
     import ops
+
     try:
         return ops._source(asm, ptr)
     except Exception:
@@ -266,14 +276,14 @@ def batch_reads(asm, run, nodes, table):
 
     `None` means "run the scalar walk", never "run something approximate".
     """
-    flow = getattr(run, 'flow', None)
+    flow = getattr(run, "flow", None)
     if flow is None:
         return None
     reads = set()
     writes_idx, reads_idx = set(), set()
     for _o, _t, params in table:
         for _n, (kind, value) in fxrender.in_eval_order(params):
-            if kind == 'baked' or not value:
+            if kind == "baked" or not value:
                 continue
             src = _prog_source(asm, value)
             if src is None:
@@ -372,11 +382,12 @@ def emissions(rec, run, slots, cache=None):
     nodes = fxrender.chain(rec)
     table = fxrender.entries(rec)
     if not table:
-        raise Unsupported('fxmaps: no emittable entries -- %s'
-                          % fxrender.why_no_entries(rec))
+        raise Unsupported(
+            "fxmaps: no emittable entries -- %s" % fxrender.why_no_entries(rec)
+        )
     for _off, hdr, _p in nodes:
         if not _known_node(hdr):
-            raise Unsupported('fxmaps: node header %#x is not modelled' % hdr)
+            raise Unsupported("fxmaps: node header %#x is not modelled" % hdr)
 
     # THE RECORD'S OWN PROGRAMS SEED THE FRAME. The chain's programs read constants the
     # record's prologue writes, so running only the chain leaves better than half of all
@@ -384,7 +395,7 @@ def emissions(rec, run, slots, cache=None):
     fx_progs = {p for _o, _h, ps in nodes for p in ps.values() if p}
     for _o, _t, params in table:
         for _k, (kind, value) in params.items():
-            if kind != 'baked' and value:
+            if kind != "baked" and value:
                 fx_progs.add(value)
     for prog in sorted(set(rec.programs) - fx_progs):
         try:
@@ -406,7 +417,7 @@ def emissions(rec, run, slots, cache=None):
         got = _batch_emit(run, table, frames, reads, cache)
         if got is not None:
             if not got and not closed:
-                raise Unsupported('fxmaps: emitted no patterns and no gate closed')
+                raise Unsupported("fxmaps: emitted no patterns and no gate closed")
             return got
         # THE FRAMES WOULD NOT STACK. Restore the frame the walk started from: the chain
         # has been driven and its writes are in `slots`, so re-walking without this would
@@ -416,7 +427,7 @@ def emissions(rec, run, slots, cache=None):
 
     out, closed = _walk(rec, run, slots, nodes, table, None)
     if not out and not closed:
-        raise Unsupported('fxmaps: emitted no patterns and no gate closed')
+        raise Unsupported("fxmaps: emitted no patterns and no gate closed")
     return out
 
 
@@ -453,12 +464,12 @@ def _batch_emit(run, table, frames, reads, cache=None):
     before = dict(cache) if cache is not None else {}
     cols = []
     for _o, tag, params in table:
-        per = {'patterntype': fx_patterntype(tag), '_tag': tag}
+        per = {"patterntype": fx_patterntype(tag), "_tag": tag}
         wide = {}
         for name, (kind, value) in fxrender.in_eval_order(params):
             if value is None:
                 continue
-            if kind != 'baked':
+            if kind != "baked":
                 # A FRESH FRAME PER PARAMETER. `batch_reads` has already refused any
                 # parameter that writes a slot, so nothing should reach the dict -- the
                 # copy is what makes that a fact rather than a hope, and it is one dict
@@ -505,11 +516,11 @@ def _walk(rec, run, slots, nodes, table, collect):
             out.append((float(number), {k: slots[k] for k in collect if k in slots}))
             return
         for _o, tag, params in table:
-            got = {'patterntype': fx_patterntype(tag), '_tag': tag}
+            got = {"patterntype": fx_patterntype(tag), "_tag": tag}
             for name, (kind, value) in fxrender.in_eval_order(params):
                 if value is None:
                     continue
-                if kind != 'baked':
+                if kind != "baked":
                     got[name] = run(value, slots, number)
                 elif isinstance(value, np.ndarray):
                     got[name] = value
@@ -526,31 +537,34 @@ def _walk(rec, run, slots, nodes, table, collect):
 
     def walk(i, number, mode):
         if len(out) * per_emission > MAX_PATTERNS:
-            raise Unsupported('fxmaps: more than %d patterns' % MAX_PATTERNS)
+            raise Unsupported("fxmaps: more than %d patterns" % MAX_PATTERNS)
         if i == len(nodes):
             emit(number)
             return
         _off, hdr, progs = nodes[i]
-        if hdr in fxrender.ADDNODE:
-            prog = progs.get('numberadded')
+        # See `fxnodes`: `role` is the header's reading under `fx.nodemodel`, and the arms
+        # below are what a role DOES, unchanged from when each tested the header itself.
+        role = fxnodes.role(hdr)
+        if role == "count":
+            prog = progs.get("numberadded")
             if prog is None:
-                raise Unsupported('fxmaps: addnode with no numberadded program')
-            if 'randomseed' in progs and progs['randomseed'] is not None:
-                run(progs['randomseed'], slots, number)
+                raise Unsupported("fxmaps: addnode with no numberadded program")
+            if "randomseed" in progs and progs["randomseed"] is not None:
+                run(progs["randomseed"], slots, number)
             raw = int(round(float(np.asarray(run(prog, slots, number)).ravel()[0])))
             if not 0 <= raw <= MAX_PATTERNS:
-                raise Unsupported('fxmaps: numberadded = %d' % raw)
+                raise Unsupported("fxmaps: numberadded = %d" % raw)
             n, mode = emission_count(rec, raw)
-            if mode != 'chain':
+            if mode != "chain":
                 assume.note(rec.index)
             for k in range(n):
                 walk(i + 1, k, mode)
             return
-        if hdr == fxrender.GATE:
-            prog = progs.get('switch')
+        if role == "gate":
+            prog = progs.get("switch")
             if prog is None:
-                raise Unsupported('fxmaps: markov2 with no switch program')
-            if mode == 'placement':
+                raise Unsupported("fxmaps: markov2 with no switch program")
+            if mode == "placement":
                 # HELD TO ONE RUN under a stated count, for the same reason the scanner is:
                 # the placement program already carries this pattern's position, and the
                 # gate's spiral would add a second one -- re-driving it per emission walks
@@ -567,27 +581,24 @@ def _walk(rec, run, slots, nodes, table, collect):
             else:
                 closed[0] = True
             return
-        if hdr == fxrender.STEPPER or (hdr & 0xFF) in (fxrender.STEPPER2,
-                                                       fxrender.BRANCH):
+        if role == "state":
             prog = progs.get(None)
-            if prog is not None and (mode == 'chain' or i not in ran_once):
+            if prog is not None and (mode == "chain" or i not in ran_once):
                 ran_once.add(i)
                 run(prog, slots, number)
             walk(i + 1, number, mode)
             return
-        if (hdr & 0xFF) == fxrender.PASSTHROUGH or fxrender._is_leaf(hdr):
+        if role in ("branch", "leaf", "link"):
             walk(i + 1, number, mode)
             return
-        raise Unsupported('fxmaps: node header %#x is not modelled' % hdr)
+        raise Unsupported("fxmaps: node header %#x is not modelled" % hdr)
 
-    walk(0, 0, 'chain')
+    walk(0, 0, "chain")
     return out, closed[0]
 
 
 def _known_node(hdr):
-    return (hdr in fxrender.ADDNODE or hdr == fxrender.GATE or hdr == fxrender.STEPPER
-            or (hdr & 0xFF) in (fxrender.STEPPER2, fxrender.PASSTHROUGH, fxrender.BRANCH)
-            or fxrender._is_leaf(hdr))
+    return fxnodes.known(hdr)
 
 
 # ---------------------------------------------------------------------------
@@ -613,8 +624,11 @@ def _cell(patterns):
     """
     if not patterns:
         return None
-    b = [np.asarray(q.get('branchoffset'), np.float64).ravel()
-         for q in patterns if q.get('branchoffset') is not None]
+    b = [
+        np.asarray(q.get("branchoffset"), np.float64).ravel()
+        for q in patterns
+        if q.get("branchoffset") is not None
+    ]
     if len(b) != len(patterns) or not b:
         return None
     w = max(x.size for x in b)
@@ -623,9 +637,12 @@ def _cell(patterns):
     for k in range(min(2, a.shape[1])):
         col = a[:, k]
         sp = float(col.max() - col.min())
-        ok = (sp >= 1 and abs(sp - round(sp)) < 1e-4
-              and bool(np.all(np.abs(col - np.round(col)) < 1e-4))
-              and len({round(float(t), 6) for t in col}) == round(sp) + 1)
+        ok = (
+            sp >= 1
+            and abs(sp - round(sp)) < 1e-4
+            and bool(np.all(np.abs(col - np.round(col)) < 1e-4))
+            and len({round(float(t), 6) for t in col}) == round(sp) + 1
+        )
         d.append(1.0 / (round(sp) + 1.0) if ok else 1.0)
     if not any(x != 1.0 for x in d):
         return None
@@ -643,19 +660,19 @@ def _mode_for(tag, mode):
     and FORMAT-NOTES.md, "Graph 001's first annihilation point is a white canvas the file
     states". A pattern with no tag (a synthetic one) is drawn by `max`.
     """
-    if mode != 'bit18':
+    if mode != "bit18":
         return mode
     if tag is None:
-        return 'max'
-    return 'max' if (int(tag) >> 18) & 1 else 'add'
+        return "max"
+    return "max" if (int(tag) >> 18) & 1 else "add"
 
 
 def _combine(dst, src, mode=None):
     if mode is None:
-        mode = assume.assumed('fx.combine', 'max')
-    if mode == 'add':
+        mode = assume.assumed("fx.combine", "max")
+    if mode == "add":
         return dst + src
-    if mode == 'over':
+    if mode == "over":
         a = np.clip(np.abs(src), 0.0, 1.0)
         return dst * (1.0 - a) + src
     return np.maximum(dst, src)
@@ -676,10 +693,10 @@ def _blend(dst, src, mode, where):
     an equality, not an approximation. It is A/B'd against the gathering form by toggling
     `fx.BLEND_IN_PLACE`.
     """
-    if mode == 'add':
+    if mode == "add":
         np.add(dst, src, out=dst, where=where)
         return
-    if mode == 'over':
+    if mode == "over":
         a = np.clip(np.abs(src), 0.0, 1.0)
         np.copyto(dst, dst * (1.0 - a) + src, where=where)
         return
@@ -718,14 +735,14 @@ def _coverage(lx, ly, prof):
     """
     if not FAST_RASTER:
         return fxrender.profile_value(lx, ly, prof)
-    if prof == 'bell':
+    if prof == "bell":
         r = np.sqrt((2.0 * lx) ** 2 + (2.0 * ly) ** 2)
         t = np.clip(1.0 - r * r, 0.0, 1.0)
         return (t * t).astype(np.float32)
-    if prof == 'paraboloid':
+    if prof == "paraboloid":
         r = np.sqrt((2.0 * lx) ** 2 + (2.0 * ly) ** 2)
         return np.clip(1.0 - r * r, 0.0, 1.0).astype(np.float32)
-    if prof == 'pyramid':
+    if prof == "pyramid":
         c = np.maximum(np.abs(2.0 * lx), np.abs(2.0 * ly))
         return np.clip(1.0 - c, 0.0, 1.0).astype(np.float32)
     return fxrender.profile_value(lx, ly, prof)
@@ -741,14 +758,14 @@ def splat(rec, patterns, W, H, images=None, header=None):
     """
     nchan = 4 if rec.colour else 1
     canvas = np.zeros((H, W, nchan), np.float32)
-    if header is not None and header.get('background') is not None:
-        bg = np.asarray(header['background'], np.float32).ravel()
+    if header is not None and header.get("background") is not None:
+        bg = np.asarray(header["background"], np.float32).ravel()
         if bg.size < nchan:
             bg = np.repeat(bg[:1], nchan)
         canvas[...] = bg[:nchan]
     opmul = None
-    if header is not None and header.get('opacitymult') is not None:
-        opmul = np.float32(header['opacitymult'])
+    if header is not None and header.get("opacitymult") is not None:
+        opmul = np.float32(header["opacitymult"])
     # ONE ROW AND ONE COLUMN, NOT TWO FULL GRIDS. `pxg` never varied down a column nor
     # `pyg` across a row, so the mgrid pair spent H*W building W + H distinct numbers and
     # every tile then subtracted its centre out of a 2-D slice. The broadcast below
@@ -761,26 +778,29 @@ def splat(rec, patterns, W, H, images=None, header=None):
         pxg = (xx + 0.5) / W - 0.5
         pyg = (yy + 0.5) / H - 0.5
 
-    forced = assume.assumed('fx.profile')
+    forced = assume.assumed("fx.profile")
     # ONCE PER RECORD. `_combine` asked `assume` for this on every tile it drew.
-    mode = assume.assumed('fx.combine', 'max')
+    mode = assume.assumed("fx.combine", "max")
     cell = None
-    for key in ('fx.branchoffset', 'fx.patternsize', 'fx.frameoffset'):
-        if assume.assumed(key) == 'cell':
+    for key in ("fx.branchoffset", "fx.patternsize", "fx.frameoffset"):
+        if assume.assumed(key) == "cell":
             cell = _cell(patterns)
             break
-    base_scale = cell if assume.assumed('fx.branchoffset') == 'cell' else None
-    size_scale = cell if assume.assumed('fx.patternsize') == 'cell' else None
-    frame_scale = cell if assume.assumed('fx.frameoffset') == 'cell' else None
-    sizeless = assume.assumed('fx.sizeless', 'fill')
-    skip_root = assume.assumed('fx.rootentry') == 'skip'
-    skip_markers = assume.assumed('fx.markers', 'skip') == 'skip'
-    neg = assume.assumed('fx.negopacity', 'clip')
+    base_scale = cell if assume.assumed("fx.branchoffset") == "cell" else None
+    size_scale = cell if assume.assumed("fx.patternsize") == "cell" else None
+    frame_scale = cell if assume.assumed("fx.frameoffset") == "cell" else None
+    sizeless = assume.assumed("fx.sizeless", "fill")
+    skip_root = assume.assumed("fx.rootentry") == "skip"
+    skip_markers = assume.assumed("fx.markers", "skip") == "skip"
+    neg = assume.assumed("fx.negopacity", "clip")
 
     def val(pat, name, default):
         v = pat.get(name)
-        return np.asarray(default, np.float32) if v is None \
+        return (
+            np.asarray(default, np.float32)
+            if v is None
             else np.asarray(v, np.float32).ravel()
+        )
 
     # A SUBDIVIDED CELL ARRIVES AS ONE `fxtree.Batch` OF m PATTERNS and is drawn as one
     # pass. `over` is the one combine that pass cannot express -- it is order-dependent --
@@ -800,30 +820,31 @@ def splat(rec, patterns, W, H, images=None, header=None):
         if isinstance(p, fxtree.Batch):
             fxtree.draw(canvas, p, W, H, images=images, header=header)
             continue
-        tag = p.get('_tag')
+        tag = p.get("_tag")
         pmode = _mode_for(tag, mode)
         if skip_markers and tag is not None and (int(tag) & 0xFF) == 0x08:
             continue
-        if p.get('patternsize') is None and p.get('patterntype') is None:
-            b = np.asarray(p.get('branchoffset', _ZERO2), np.float64).ravel()
+        if p.get("patternsize") is None and p.get("patterntype") is None:
+            b = np.asarray(p.get("branchoffset", _ZERO2), np.float64).ravel()
             if skip_root and b.size >= 2 and not np.any(np.abs(b[:2]) > 1e-6):
                 continue
-            if sizeless == 'skip':
+            if sizeless == "skip":
                 continue
-            if sizeless in ('half', 'quarter'):
+            if sizeless in ("half", "quarter"):
                 p = dict(p)
-                p['patternsize'] = np.full(2, 0.5 if sizeless == 'half' else 0.25,
-                                           np.float32)
+                p["patternsize"] = np.full(
+                    2, 0.5 if sizeless == "half" else 0.25, np.float32
+                )
         src = _image_for(p, images)
-        base = val(p, 'branchoffset', _ZERO2)
-        off = val(p, 'frameoffset', _ZERO2)
-        size = val(p, 'patternsize', _ONE2)
+        base = val(p, "branchoffset", _ZERO2)
+        off = val(p, "frameoffset", _ZERO2)
+        size = val(p, "patternsize", _ONE2)
         if base_scale is not None:
-            base = base * base_scale[:base.size]
+            base = base * base_scale[: base.size]
         if frame_scale is not None:
-            off = off * frame_scale[:off.size]
+            off = off * frame_scale[: off.size]
         if size_scale is not None:
-            size = size * size_scale[:size.size]
+            size = size * size_scale[: size.size]
         if size.size < 2:
             size = np.repeat(size[:1], 2)
         if base.size < 2:
@@ -832,24 +853,28 @@ def splat(rec, patterns, W, H, images=None, header=None):
             off = np.repeat(off[:1], 2)
         sx, sy = float(size[0]), float(size[1])
         cx, cy = float(base[0] + off[0]), float(base[1] + off[1])
-        if not (math.isfinite(sx) and math.isfinite(sy)
-                and math.isfinite(cx) and math.isfinite(cy)):
+        if not (
+            math.isfinite(sx)
+            and math.isfinite(sy)
+            and math.isfinite(cx)
+            and math.isfinite(cy)
+        ):
             continue
         if sx <= 0 or sy <= 0 or max(sx, sy) > 64.0 or min(sx, sy) < MIN_SIZE:
             continue
-        col = val(p, 'opacity', _ONE1)
+        col = val(p, "opacity", _ONE1)
         if col.size < nchan:
             col = np.repeat(col[:1], nchan)
-        if neg == 'signed':
+        if neg == "signed":
             col = np.clip(col[:nchan], -1.0, 1.0)
-        elif neg == 'abs':
+        elif neg == "abs":
             col = np.clip(np.abs(col[:nchan]), 0.0, 1.0)
         else:
             col = np.clip(col[:nchan], 0.0, 1.0)
         if opmul is not None:
             col = col * opmul
 
-        rot = float(val(p, 'patternrotation', np.zeros(1, np.float32))[0])
+        rot = float(val(p, "patternrotation", np.zeros(1, np.float32))[0])
         th = 2.0 * math.pi * rot
         ct, st = math.cos(th), math.sin(th)
         prof = forced if forced is not None else _profile_for(p)
@@ -870,14 +895,14 @@ def splat(rec, patterns, W, H, images=None, header=None):
                 if c0 > c1 or r0 > r1:
                     continue
                 if FAST_RASTER:
-                    dx = (pxg[c0:c1 + 1] - ux)[None, :]
-                    dy = (pyg[r0:r1 + 1] - uy)[:, None]
+                    dx = (pxg[c0 : c1 + 1] - ux)[None, :]
+                    dy = (pyg[r0 : r1 + 1] - uy)[:, None]
                 else:
-                    dx = pxg[r0:r1 + 1, c0:c1 + 1] - ux
-                    dy = pyg[r0:r1 + 1, c0:c1 + 1] - uy
+                    dx = pxg[r0 : r1 + 1, c0 : c1 + 1] - ux
+                    dy = pyg[r0 : r1 + 1, c0 : c1 + 1] - uy
                 lx = (dx * ct + dy * st) / sx
                 ly = (-dx * st + dy * ct) / sy
-                if prof in ('rect', 'square'):
+                if prof in ("rect", "square"):
                     hit = (np.abs(lx) <= 0.5) & (np.abs(ly) <= 0.5)
                     cov = None
                 else:
@@ -885,17 +910,21 @@ def splat(rec, patterns, W, H, images=None, header=None):
                     hit = cov > 0
                 if not hit.any():
                     continue
-                tile = canvas[r0:r1 + 1, c0:c1 + 1]
+                tile = canvas[r0 : r1 + 1, c0 : c1 + 1]
                 if src is None:
                     if cov is None and hit.all():
                         tile[...] = _combine(tile, col, pmode)
                     elif BLEND_IN_PLACE:
-                        _blend(tile, col if cov is None else col * cov[:, :, None],
-                               pmode, hit[:, :, None])
+                        _blend(
+                            tile,
+                            col if cov is None else col * cov[:, :, None],
+                            pmode,
+                            hit[:, :, None],
+                        )
                     else:
-                        tile[hit] = _combine(tile[hit],
-                                             col if cov is None else col * cov[hit, None],
-                                             pmode)
+                        tile[hit] = _combine(
+                            tile[hit], col if cov is None else col * cov[hit, None], pmode
+                        )
                     continue
                 uv = np.stack([lx[hit] + 0.5, ly[hit] + 0.5], axis=-1)
                 got = np.asarray(sampler(src)(uv), np.float32)
@@ -903,10 +932,13 @@ def splat(rec, patterns, W, H, images=None, header=None):
                     got = got[:, None]
                 if got.shape[-1] < nchan:
                     got = np.repeat(got[:, :1], nchan, axis=-1)
-                tile[hit] = _combine(tile[hit],
-                                     got[:, :nchan] * col if cov is None else
-                                     got[:, :nchan] * col * cov[hit, None],
-                                     pmode)
+                tile[hit] = _combine(
+                    tile[hit],
+                    got[:, :nchan] * col
+                    if cov is None
+                    else got[:, :nchan] * col * cov[hit, None],
+                    pmode,
+                )
     return np.clip(canvas, 0.0, 1.0)
 
 
@@ -920,15 +952,15 @@ def header_fields(ctx, v):
     the record low-confidence rather than refusing it: the field was ignored outright
     until now, and a draw that falls back to that is not worse than the draw it replaces.
     """
-    if assume.assumed('fx.header', 'ignore') != 'read':
+    if assume.assumed("fx.header", "ignore") != "read":
         return None
     nchan = 4 if v.colour else 1
     out = {}
-    for name, width in (('background', nchan), ('hurst', 1), ('opacitymult', 1)):
+    for name, width in (("background", nchan), ("hurst", 1), ("opacitymult", 1)):
         p = v.params.get(name)
         if p is None:
             continue
-        if p.kind == 'baked':
+        if p.kind == "baked":
             vals = np.asarray(p.value, np.float32).ravel()
         else:
             try:
@@ -948,10 +980,10 @@ def header_fields(ctx, v):
 
 
 def _profile_for(p):
-    t = p.get('patterntype')
+    t = p.get("patterntype")
     if t is None:
-        return assume.assumed('fx.typeless_profile', 'rect')
-    return fxrender.PATTERN_SHAPES.get(t, 'rect')
+        return assume.assumed("fx.typeless_profile", "rect")
+    return fxrender.PATTERN_SHAPES.get(t, "rect")
 
 
 def _image_for(p, images):
@@ -982,7 +1014,7 @@ def _image_for(p, images):
     """
     if not images:
         return None
-    v = p.get('imageindex')
+    v = p.get("imageindex")
     if v is None:
         if len(images) == 1:
             return next(iter(images.values()))
@@ -1018,8 +1050,9 @@ def render_fxmaps(ctx, v):
                 sbsruntime.SAMPLERS[k] = sampler(ctx.outputs[srci])
                 images[k] = ctx.outputs[srci]
                 ctx.low_confidence.add(v.index)
-        run = fxrender.make_runner(ctx.asm, rec, programs=ctx.fx_funcs,
-                                   cache_funcs=ctx.cache_funcs)
+        run = fxrender.make_runner(
+            ctx.asm, rec, programs=ctx.fx_funcs, cache_funcs=ctx.cache_funcs
+        )
         try:
             seeded = (
                 fxchain.seed(rec, run)
@@ -1028,7 +1061,7 @@ def render_fxmaps(ctx, v):
             )
             pats = emissions(rec, run, seeded, cache=ctx.cache)
         except fxrender.Unmodelled as e:
-            raise Unsupported('fxmaps: %s' % e) from e
+            raise Unsupported("fxmaps: %s" % e) from e
         return splat(rec, pats, W, H, images=images, header=header_fields(ctx, v))
     finally:
         sbsruntime.SAMPLERS.clear()

@@ -176,6 +176,7 @@ family that appears in five of the six reference packs -- Bricks 180 entries, Ro
 Rusty_Metal 10, Cobblestone 6, Chesterfield 4, Auras none -- and is not a reciprocal. See
 SPEC 13.7.
 """
+
 import argparse
 import os
 import math
@@ -186,10 +187,17 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import assume, disasm, sbsruntime, transpile                          # noqa: E402
-from sbsasm import (Assembly, FX_NODES, FX_NODES2, fx_patterntype,                   # noqa: E402
-                    fx_entry_layout, node_shape, leaf_successor,
-                    pointer_cell_successor)
+import assume, disasm, fxnodes, sbsruntime, transpile  # noqa: E402
+from sbsasm import (
+    Assembly,
+    FX_NODES,
+    FX_NODES2,
+    fx_patterntype,  # noqa: E402
+    fx_entry_layout,
+    node_shape,
+    leaf_successor,
+    pointer_cell_successor,
+)
 
 # 0x1CB joins these on the value evidence in sbsasm's FX_NODE_PARAMS: its +4 program is
 # 1.0 in 180 of 183, matching 0x18B's `numberadded` (1.0 in 69.5%) and not 0x1AB's
@@ -221,6 +229,13 @@ _SCAN_TRACE = None
 # node carrying no program, so a 0x20B never reaches the `hdr in ADDNODE` test. Measured:
 # 0 occurrences across 437 corpus files plus the 8 pack assemblies, and removing it moves
 # 0 records.
+# THESE FOUR CONSTANTS ARE A CENSUS, AND THE MASK DOES NOT REPLACE THEM. `fxnodes` places
+# a node's programs from the header mask instead of from `FX_NODE_PARAMS`' per-header
+# offsets, and `assume.QUESTIONS`' `fx.nodemodel` chooses which placement the dispatch below
+# uses -- but the ROLE is this census's to say under either arm. A rule reading `count`
+# against `gate` off the low nibble was tried and withdrawn: bits 1 and 8 separate the two
+# groups equally over the whole corpus, so the nibble is one of two readings and not a
+# derivation. `fxnodes --separability` is that measurement.
 ADDNODE = frozenset({0x18B, 0x1AB, 0x1CB})
 GATE = 0x89
 
@@ -233,7 +248,7 @@ GATE = 0x89
 #: one of them survives `sysvar` being taught to refuse an unset `$pos` -- which is the
 #: natural way to catch the next leak of this kind. Both entries are module constants, so
 #: neither costs an allocation per call.
-_FX_POS = {'origin': np.zeros((1, 2)), 'corner': np.array([[-0.5, -0.5]])}
+_FX_POS = {"origin": np.zeros((1, 2)), "corner": np.array([[-0.5, -0.5]])}
 
 #: One successor, one unnamed program, and the program is a per-iteration STATE UPDATE
 #: rather than a count or a predicate. In StylizedCobblestoneStreet record 27 it reads slots
@@ -300,12 +315,15 @@ BRANCH = 0x1B
 #: TAUTOLOGY once word 2 is known to address word 3.
 PASSTHROUGH = 0x1B
 
+
 #: The 0x??0B family is where a chain ENDS. Its "programs" are not its own: in record 27
 #: the leaf's five programs are byte-identical to the five parameter programs of the table
 #: entry it hands off to, at the same five addresses. The leaf IS the entry seen from the
 #: node side, so the walk passes straight through it and the table does the emitting.
 def _is_leaf(hdr):
     return (hdr & 0xFF) == 0x0B
+
+
 #: The per-record emission budget. A runtime bound, not a format fact -- a record asking
 #: for more is refused rather than rendered slowly.
 #:
@@ -321,8 +339,8 @@ def _is_leaf(hdr):
 #: emission is about 3 us per pattern batched, drawing one is 50-80 us.
 MAX_PATTERNS = 40000
 
-_SLOT_WRITE = re.compile(r'slots\[(\d+)\]\s*=')
-_SLOT_ANY = re.compile(r'slots\[(\d+)\]')
+_SLOT_WRITE = re.compile(r"slots\[(\d+)\]\s*=")
+_SLOT_ANY = re.compile(r"slots\[(\d+)\]")
 
 #: Below this many patterns the scalar path is used unchanged. Batching costs a snapshot
 #: of the slot frame and an extra dict per pattern, which is not worth it for a handful,
@@ -359,17 +377,19 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
     # if it does not: the substitution lives in the compiled function's namespace, so a
     # function memoized on the assembly would carry one caller's cache to the next one to
     # ask for that address. Spans and flows stay on the assembly -- they are pure in `ptr`.
-    _memo = getattr(asm, '_fx_runner_memo', None)
+    _memo = getattr(asm, "_fx_runner_memo", None)
     if _memo is None:
         _memo = ({}, {}, {})
         try:
             asm._fx_runner_memo = _memo
         except AttributeError:
-            pass                      # __slots__ assembly: fall back to per-record
+            pass  # __slots__ assembly: fall back to per-record
     cache, _spans_memo, _flows_memo = _memo
     if cache_funcs is not None and programs is None:
-        raise ValueError("a bound value cache needs the caller's own program memo, "
-                         "not the assembly's shared one")
+        raise ValueError(
+            "a bound value cache needs the caller's own program memo, "
+            "not the assembly's shared one"
+        )
     if programs is not None:
         cache = programs
 
@@ -381,7 +401,7 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
     # Safe to share: `Perm` is only ever READ by transpiled code, and its `__missing__`
     # returns a default without storing it.
     shared_inputs = Perm()
-    for _t, uid, val in asm.header.get('inputs') or []:
+    for _t, uid, val in asm.header.get("inputs") or []:
         if val:
             shared_inputs[uid] = np.array(val, dtype=np.float32).reshape(1, -1)
 
@@ -412,11 +432,11 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
             try:
                 src = transpile.transpile(asm.data, ptr, end, "python", "prog")
             except Exception:
-                src = ''
+                src = ""
             for line in src.splitlines():
                 line = line.strip()
                 lhs = _SLOT_WRITE.match(line)
-                for m in _SLOT_ANY.finditer(line if lhs is None else line[lhs.end():]):
+                for m in _SLOT_ANY.finditer(line if lhs is None else line[lhs.end() :]):
                     k = int(m.group(1))
                     if k not in writes:
                         reads.add(k)
@@ -449,9 +469,11 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
                 # cache, because `prog.__globals__` IS this scope.
                 scope["cache_read"], scope["cache_write"] = cache_funcs
             fn = cache[key] = scope["prog"]
-        sbsruntime.set_context(width=rec.width, height=rec.height,
-                               number=number if isinstance(number, np.ndarray)
-                               else float(number))
+        sbsruntime.set_context(
+            width=rec.width,
+            height=rec.height,
+            number=number if isinstance(number, np.ndarray) else float(number),
+        )
         # `$pos` IS NOT A PARAMETER OF THIS RECORD, so it has to be cleared and not merely
         # left unset. `set_context` ignores a None by design -- right for its own callers,
         # wrong here -- so the only way to say "no position" is to assign it, exactly as
@@ -470,7 +492,7 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
         # scanned offset to -- see `assume.QUESTIONS['fx.pos']` for the census that says so
         # and for why 'origin' is the default. The chain walk is flat, so there is one node
         # position and it is the root's; a subdivided tree would have to thread it here.
-        sbsruntime.CONTEXT['pos'] = _FX_POS[assume.assumed('fx.pos', 'origin')]
+        sbsruntime.CONTEXT["pos"] = _FX_POS[assume.assumed("fx.pos", "origin")]
         inputs = shared_inputs
         with np.errstate(all="ignore"):
             try:
@@ -481,8 +503,9 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
                 # was fixed there, and this file -- committed one turn later -- reintroduced it. It is
                 # why an A/B over the sampling records showed "no sampler 0" in every arm while 18
                 # records failed with a message about slots.
-                raise Unmodelled("no sampler for input %s (an unwired edge, NOT a "
-                                 "missing slot)" % e) from e
+                raise Unmodelled(
+                    "no sampler for input %s (an unwired edge, NOT a missing slot)" % e
+                ) from e
             except KeyError as e:
                 raise Unmodelled("slot %s read but never set" % e) from e
         out = np.asarray(out)
@@ -500,7 +523,17 @@ def scope_call(fn, inputs, slots):
 
 
 def chain(rec):
-    """[(offset, header, {name: program})] in chain order."""
+    """[(offset, header, {name: program})] in chain order.
+
+    UNDER `fx.nodemodel` = 'walk' THE NAMES REACH THEIR PROGRAMS THROUGH AN OFFSET THE MASK
+    PLACED rather than through `FX_NODE_PARAMS`' per-header offsets; the roles, and so the
+    names themselves, are the census's either way. The list is otherwise identical -- same
+    nodes, same order, same programs. See `fxnodes`, which measures the two over the corpus:
+    62,721 of 62,721 named programs land on the same address and no record's node list
+    differs.
+    """
+    if fxnodes.model() == "walk":
+        return fxnodes.chain(rec)
     nodes, order = {}, []
     for off, hdr, name, prog in rec.fx_node_params():
         if off not in nodes:
@@ -510,8 +543,8 @@ def chain(rec):
     return [(off, nodes[off][0], nodes[off][1]) for off in order]
 
 
-_SLOT_SET = re.compile(r'slots\[(\d+)\]\s*=')
-_SLOT_GET = re.compile(r'slots\[(\d+)\](?!\s*=)')
+_SLOT_SET = re.compile(r"slots\[(\d+)\]\s*=")
+_SLOT_GET = re.compile(r"slots\[(\d+)\](?!\s*=)")
 
 
 def _slot_flow(asm, ptr):
@@ -527,7 +560,7 @@ def _slot_flow(asm, ptr):
     for line in src.splitlines():
         line = line.strip()
         m = _SLOT_SET.match(line)
-        for g in _SLOT_GET.finditer(line if m is None else line[m.end():]):
+        for g in _SLOT_GET.finditer(line if m is None else line[m.end() :]):
             k = int(g.group(1))
             if k not in sets:
                 reads.add(k)
@@ -556,12 +589,12 @@ def _recover_last_inline(rec, tbl, order):
     """
     asm = rec.asm
     for idx, off in enumerate(order):
-        missing = [n for n, (k, v) in tbl[off][1].items() if k == 'program' and not v]
+        missing = [n for n, (k, v) in tbl[off][1].items() if k == "program" and not v]
         if not missing:
             continue
         layout = fx_entry_layout(tbl[off][0])
-        slot_of = {n: sl for sl, n, how in layout if how == 'program'}
-        prog_slots = [sl for sl, _n, how in layout if how == 'program']
+        slot_of = {n: sl for sl, n, how in layout if how == "program"}
+        prog_slots = [sl for sl, _n, how in layout if how == "program"]
         if not prog_slots:
             continue
         last = max(prog_slots)
@@ -569,7 +602,7 @@ def _recover_last_inline(rec, tbl, order):
         # anywhere else -- the two halves of "otherwise unwritten".
         need = set()
         for name, (kind, value) in tbl[off][1].items():
-            if kind != 'program' or not value:
+            if kind != "program" or not value:
                 continue
             f = _slot_flow(asm, value)
             if f:
@@ -581,7 +614,7 @@ def _recover_last_inline(rec, tbl, order):
         if not f:
             continue
         elsewhere = set()
-        for p in (rec.programs or ()):
+        for p in rec.programs or ():
             if p == at:
                 continue
             g = _slot_flow(asm, p)
@@ -615,13 +648,16 @@ def _recover_last_inline(rec, tbl, order):
         # a one-edge record there is nothing for the parameter to select and no value is owed.
         # Counted here rather than taken on trust: 25 of the 29 suppressed sit on one-edge
         # records, and the remaining 4 are suppressed by the duplication test alone.
-        sibling_addrs = {v for n, (k, v) in tbl[off][1].items()
-                         if k == 'program' and v and slot_of.get(n) != last}
+        sibling_addrs = {
+            v
+            for n, (k, v) in tbl[off][1].items()
+            if k == "program" and v and slot_of.get(n) != last
+        }
         if at in sibling_addrs:
             continue
         for name in missing:
             if slot_of.get(name) == last:
-                tbl[off][1][name] = ('program', at)
+                tbl[off][1][name] = ("program", at)
 
 
 def in_eval_order(params):
@@ -638,9 +674,13 @@ def in_eval_order(params):
     blocks three of the four declared outputs of the smallest reference specimen. Baked
     parameters are constants and cannot participate, so they go first.
     """
-    return sorted(params.items(),
-                  key=lambda kv: (kv[1][0] != 'baked',
-                                  kv[1][1] if isinstance(kv[1][1], int) else 0))
+    return sorted(
+        params.items(),
+        key=lambda kv: (
+            kv[1][0] != "baked",
+            kv[1][1] if isinstance(kv[1][1], int) else 0,
+        ),
+    )
 
 
 def entries(rec, baked_pairs=True):
@@ -726,10 +766,10 @@ def entries(rec, baked_pairs=True):
     for _o in chain_family:
         if _o + 8 > len(rec.asm.data):
             continue
-        _nxt = struct.unpack_from('<I', rec.asm.data, _o + 4)[0] + 52
+        _nxt = struct.unpack_from("<I", rec.asm.data, _o + 4)[0] + 52
         if not (rec.asm.body_lo <= _nxt < rec.asm.body_hi - 7) or _nxt in tbl:
             continue
-        _t2 = struct.unpack_from('<I', rec.asm.data, _nxt)[0]
+        _t2 = struct.unpack_from("<I", rec.asm.data, _nxt)[0]
         # THE TARGET IS A HEADER WORD, AND THE ENTRIES START AFTER IT. A chain-family entry's `+4`
         # pointer does not address another entry -- it addresses word 3 of the entry ITSELF, which
         # holds a small non-tag word, and the run begins one word later:
@@ -760,7 +800,7 @@ def entries(rec, baked_pairs=True):
             _after = _nxt + 4
             if _after + 4 > len(rec.asm.data) or _after in tbl:
                 continue
-            _t3 = struct.unpack_from('<I', rec.asm.data, _after)[0]
+            _t3 = struct.unpack_from("<I", rec.asm.data, _after)[0]
             if (_t3 & 0xF) != 8 or (_t3 >> 16) == 0x0002:
                 continue
             if not rec.asm.entry_layout_holds(_after, _t3):
@@ -807,7 +847,7 @@ def entries(rec, baked_pairs=True):
                 # guessing, and the parameter reads as absent instead of as zero.
                 if not (off + 4 <= len(rec.asm.data) - 4):
                     continue
-                _w1 = struct.unpack_from('<I', rec.asm.data, off + 4)[0] + 52
+                _w1 = struct.unpack_from("<I", rec.asm.data, off + 4)[0] + 52
                 # NARROWED TO THE CONFIGURATION THE SPECIMEN SHOWS. `fx_table` calls this word the
                 # entry's PAYLOAD, and for most entries it plausibly addresses a program while the baked
                 # slots stay inline -- declining all 399 non-inline reads over 12 files on the strength
@@ -815,9 +855,9 @@ def entries(rec, baked_pairs=True):
                 # BACKWARD, before the tag, where an inline slot cannot be. 15 entries in 30 files.
                 if _w1 < off + 8:
                     continue
-                raw = rec.asm.data[off + 4 * sl:off + 4 * sl + 4 * width]
+                raw = rec.asm.data[off + 4 * sl : off + 4 * sl + 4 * width]
                 if len(raw) == 4 * width:
-                    tbl[off][1][partner] = ('baked', np.frombuffer(raw, dtype='<f4'))
+                    tbl[off][1][partner] = ("baked", np.frombuffer(raw, dtype="<f4"))
     return [(off, tbl[off][0], tbl[off][1]) for off in order]
 
 
@@ -831,15 +871,23 @@ def baked_slots(tag):
     # claimed the two were identical; they were not, and `sbsasm.fx_entry_walk` records the
     # measurement. Deriving from that walk means they cannot drift again.
     from sbsasm import fx_entry_walk
-    return [(bit, sl, width) for bit, sl, _name, kind, width in fx_entry_walk(tag)
-            if kind == 'baked']
+
+    return [
+        (bit, sl, width)
+        for bit, sl, _name, kind, width in fx_entry_walk(tag)
+        if kind == "baked"
+    ]
 
 
 def _partners():
     from sbsasm import FX_PARAM_BITS, FX_PROGRAM_BITS
+
     names = {b: n for b, n, _w in FX_PARAM_BITS}
-    return {b: names.get(b + 1) for b, _n, _w in FX_PARAM_BITS
-            if b not in FX_PROGRAM_BITS and (b + 1) in FX_PROGRAM_BITS}
+    return {
+        b: names.get(b + 1)
+        for b, _n, _w in FX_PARAM_BITS
+        if b not in FX_PROGRAM_BITS and (b + 1) in FX_PROGRAM_BITS
+    }
 
 
 PARTNER = _partners()
@@ -877,8 +925,8 @@ def seed_slots(rec, run):
     """
     slots = {}
     fx = {p for _o, _h, _n, p in rec.fx_node_params()}
-    fx |= {v for _o, _t, _s, _n, k, v in rec.fx_named_params() if k != 'baked' and v}
-    for p in (rec.programs or ()):
+    fx |= {v for _o, _t, _s, _n, k, v in rec.fx_named_params() if k != "baked" and v}
+    for p in rec.programs or ():
         if p in fx:
             continue
         try:
@@ -906,10 +954,10 @@ def seed_slots(rec, run):
 #: `$number` is system variable 10, and `floor($number / N)` is a grid's row index with N
 #: its width. Read by following the SSA names rather than by matching a fixed instruction
 #: offset, so a record whose program is ordered differently still resolves.
-_ASSIGN = re.compile(r'^\s*(v\d+)\s*=\s*(.+?)\s*$')
-_SYSVAR10 = re.compile(r'^sysvar\(10[,)]')
-_CONST = re.compile(r'^([0-9]+\.[0-9]+)$')
-_DIV = re.compile(r'^\(?\s*(v\d+)\s*/\s*(v\d+)\s*\)?$')
+_ASSIGN = re.compile(r"^\s*(v\d+)\s*=\s*(.+?)\s*$")
+_SYSVAR10 = re.compile(r"^sysvar\(10[,)]")
+_CONST = re.compile(r"^([0-9]+\.[0-9]+)$")
+_DIV = re.compile(r"^\(?\s*(v\d+)\s*/\s*(v\d+)\s*\)?$")
 
 
 def grid_width(rec):
@@ -949,7 +997,7 @@ def grid_width(rec):
             src = transpile.transpile(asm.data, ptr, end, "python", "p")
         except Exception:
             continue
-        if 'slots[26]' not in src:
+        if "slots[26]" not in src:
             continue
         number_vars, consts = set(), {}
         for line in src.splitlines():
@@ -997,8 +1045,8 @@ def why_no_entries(rec):
         walk = list(rec.fx_walk())
     except Exception as exc:
         return "fx_walk raised %s: %s" % (type(exc).__name__, exc)
-    nodes = [t for t in walk if t[0] == 'node']
-    raw = [t for t in walk if t[0] == 'entry']
+    nodes = [t for t in walk if t[0] == "node"]
+    raw = [t for t in walk if t[0] == "entry"]
 
     if raw:
         # SAY WHICH KIND, because "entries reached, none usable" points at the table read and
@@ -1008,24 +1056,35 @@ def why_no_entries(rec):
         # cells, 22 leaves and 4 chain-family links against a handful of real tags. NOT a reason
         # to stop the run on them -- that was measured and withdrawn; a pointer cell is a
         # WAYPOINT, and breaking on one cost 80 records their table.
-        cells = sum(1 for _k, _o, t, _p in walk
-                    if _k == 'entry' and (node_shape(t) is not None
-                                          or leaf_successor(t) is not None
-                                          or pointer_cell_successor(t) is not None))
-        links = sum(1 for _k, _o, t, _p in walk
-                    if _k == 'entry' and (t >> 16) == 0x0002)
+        cells = sum(
+            1
+            for _k, _o, t, _p in walk
+            if _k == "entry"
+            and (
+                node_shape(t) is not None
+                or leaf_successor(t) is not None
+                or pointer_cell_successor(t) is not None
+            )
+        )
+        links = sum(
+            1 for _k, _o, t, _p in walk if _k == "entry" and (t >> 16) == 0x0002
+        )
         tags = len(raw) - cells - links
         if not tags:
-            return ("walk: the run reached %d node/cell header(s) and %d chain link(s) and "
-                    "no entry tag -- there is no table at the end of this chain"
-                    % (cells, links))
-        return ("table read: %d entry tag(s) reached, none usable (alongside %d node/cell "
-                "header(s) and %d chain link(s), which are not tags)" % (tags, cells, links))
+            return (
+                "walk: the run reached %d node/cell header(s) and %d chain link(s) and "
+                "no entry tag -- there is no table at the end of this chain"
+                % (cells, links)
+            )
+        return (
+            "table read: %d entry tag(s) reached, none usable (alongside %d node/cell "
+            "header(s) and %d chain link(s), which are not tags)" % (tags, cells, links)
+        )
 
     def header_at(off):
         if off is None or not (asm.body_lo <= off < asm.body_hi - 3):
             return None
-        return struct.unpack_from('<I', asm.data, off)[0]
+        return struct.unpack_from("<I", asm.data, off)[0]
 
     if not nodes:
         try:
@@ -1043,21 +1102,35 @@ def why_no_entries(rec):
         # reason -- `FX_NODES2[0x1B]`'s program tuple is EMPTY and `fx_tree` yields only from
         # inside `for sl in prog_slots`. Exactly the misattribution this function exists to
         # prevent, one level further in, so it now ASKS the derivations instead of guessing.
-        known = (node_shape(h) is not None or leaf_successor(h) is not None
-                 or pointer_cell_successor(h) is not None or (h & 0xFF) in FX_NODES2)
-        where = ('' if rec.offset <= root < rec.end
-                 else ' (and the root lies outside the record, inside the body)')
+        known = (
+            node_shape(h) is not None
+            or leaf_successor(h) is not None
+            or pointer_cell_successor(h) is not None
+            or (h & 0xFF) in FX_NODES2
+        )
+        where = (
+            ""
+            if rec.offset <= root < rec.end
+            else " (and the root lies outside the record, inside the body)"
+        )
         if not known:
-            return ("walk: stopped AT THE ROOT, %#x holds header %#010x -- no derivation "
-                    "and no table row knows it%s" % (root, h, where))
-        return ("walk: root %#x holds header %#010x, which the vocabulary DOES know -- the "
-                "walk reached it and yielded no node, so nothing handed off to a table%s"
-                % (root, h, where))
+            return (
+                "walk: stopped AT THE ROOT, %#x holds header %#010x -- no derivation "
+                "and no table row knows it%s" % (root, h, where)
+            )
+        return (
+            "walk: root %#x holds header %#010x, which the vocabulary DOES know -- the "
+            "walk reached it and yielded no node, so nothing handed off to a table%s"
+            % (root, h, where)
+        )
 
     last = nodes[-1][1]
     h = header_at(last)
-    return ("walk: %d node(s), then no handoff -- last node %#x holds header %#010x, "
-            "whose successor reaches no table" % (len(nodes), last, h if h is not None else 0))
+    return (
+        "walk: %d node(s), then no handoff -- last node %#x holds header %#010x, "
+        "whose successor reaches no table"
+        % (len(nodes), last, h if h is not None else 0)
+    )
 
 
 def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
@@ -1079,9 +1152,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         # drawable table, rendered against its own reference image.
         raise Unmodelled("no emittable entries -- %s" % why_no_entries(rec))
     for _off, hdr, _p in nodes:
-        if hdr not in ADDNODE and hdr != GATE and hdr != STEPPER \
-                and (hdr & 0xFF) != STEPPER2 and (hdr & 0xFF) != PASSTHROUGH \
-                and (hdr & 0xFF) != BRANCH and not _is_leaf(hdr):
+        if not fxnodes.known(hdr):
             raise Unmodelled("node header %#x is not modelled" % hdr)
 
     out = []
@@ -1094,13 +1165,13 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     fx_progs = {p for _o, _h, ps in nodes for p in ps.values() if p}
     for _o, _t, params in table:
         for _k, (kind, value) in params.items():
-            if kind != 'baked' and value:
+            if kind != "baked" and value:
                 fx_progs.add(value)
     for prog in sorted(set(rec.programs) - fx_progs):
         try:
             run(prog, slots, 0)
         except Exception:
-            pass          # a record program that cannot run is not fatal to the walk
+            pass  # a record program that cannot run is not fatal to the walk
 
     # IS THE SLOT FRAME SCRATCH OR STATE, for the programs an emission runs? A parameter
     # program that writes a slot is not by itself a reason to refuse batching -- the commonest
@@ -1112,19 +1183,19 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
     # preserves it exactly. So the walk is simulated instead: parameters in evaluation order,
     # and a read counts as CARRIED only if a parameter writes that slot and nothing has
     # written it yet this emission.
-    flow = getattr(run, 'flow', None)
+    flow = getattr(run, "flow", None)
     batchable = False
     if flow is not None:
         try:
             param_writes = set()
             for _o, _t, params in table:
                 for _n, (kind, value) in in_eval_order(params):
-                    if kind != 'baked' and value:
+                    if kind != "baked" and value:
                         param_writes |= flow(value)[1]
             carried, written = set(), set()
             for _o, _t, params in table:
                 for _n, (kind, value) in in_eval_order(params):
-                    if kind == 'baked' or not value:
+                    if kind == "baked" or not value:
                         continue
                     r, w = flow(value)
                     carried |= (r & param_writes) - written
@@ -1137,7 +1208,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         except Exception:
             batchable = False
 
-    closed = [False]          # did a gate evaluate against its polarity and stop a branch?
+    closed = [False]  # did a gate evaluate against its polarity and stop a branch?
 
     def emit(number):
         for _o, _t, params in table:
@@ -1145,14 +1216,14 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             # and by the time `splat` runs the tag is gone -- so it is attached here rather than
             # re-derived, which would mean re-walking the table and guessing which entry produced
             # which emission.
-            got = {'patterntype': fx_patterntype(_t), '_tag': _t}
+            got = {"patterntype": fx_patterntype(_t), "_tag": _t}
             for name, (kind, value) in in_eval_order(params):
                 if value is None:
                     continue
-                if kind != 'baked':
+                if kind != "baked":
                     got[name] = run(value, slots, number)
                 elif isinstance(value, np.ndarray):
-                    got[name] = value          # already decoded by `baked_slots`
+                    got[name] = value  # already decoded by `baked_slots`
                 else:
                     # `fx_named_params` yields a baked parameter as a TUPLE OF FLOATS, one
                     # per declared word -- see its docstring. It used to hand back the raw
@@ -1177,12 +1248,12 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
         m = len(numbers)
         cols = []
         for _o, _t, params in table:
-            per = {'patterntype': fx_patterntype(_t), '_tag': _t}
+            per = {"patterntype": fx_patterntype(_t), "_tag": _t}
             wide = {}
             for name, (kind, value) in in_eval_order(params):
                 if value is None:
                     continue
-                if kind != 'baked':
+                if kind != "baked":
                     a = np.asarray(run(value, slots, numbers, flatten=False))
                     # NORMALISE TO (rows, components) AND SAY WHETHER THE ROWS ARE PATTERNS. A program that
                     # ignores $number returns one row however wide it is, and the module's 1-D convention
@@ -1225,8 +1296,14 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             emit(number)
             return
         _off, hdr, progs = nodes[i]
-        if hdr in ADDNODE:
-            prog = progs.get('numberadded')
+        # ONE DISPATCH, TWO PLACEMENTS. Each arm below is unchanged from when it tested the
+        # header itself, and `fx.nodemodel` decides only how a node's programs were located
+        # -- by the mask or by the offset table -- not what the node does. The scanner and
+        # grid arms stay keyed on the exact header 0x99 under both: they come from reading
+        # that node's slot traffic, not from any bit of its mask.
+        role = fxnodes.role(hdr)
+        if role == "count":
+            prog = progs.get("numberadded")
             if prog is None:
                 raise Unmodelled("addnode with no numberadded program")
             # See assume.QUESTIONS['fx.gridcount']. Where the placement program lays a $number
@@ -1236,24 +1313,37 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             # emission carries every cell off-canvas. ADOPTED AS THE DEFAULT -- and not a coverage
             # trade, since the corpus renders exactly the same 46 outputs either way. What changes
             # is whether they are RIGHT.
-            if _grid[0] is None and assume.assumed('fx.gridcount', 'divisor') == 'divisor':
+            if (
+                _grid[0] is None
+                and assume.assumed("fx.gridcount", "divisor") == "divisor"
+            ):
                 _w = grid_width(rec)
                 _grid[0] = _w * _w if _w else 0
             if _grid[0]:
-                run(prog, slots, number)          # keep the initializer's slot writes
+                run(prog, slots, number)  # keep the initializer's slot writes
                 for k in range(_grid[0]):
                     walk(i + 1, k)
                 return
-            if 'randomseed' in progs and progs['randomseed'] is not None:
-                run(progs['randomseed'], slots, number)
+            if "randomseed" in progs and progs["randomseed"] is not None:
+                run(progs["randomseed"], slots, number)
             n = int(round(float(run(prog, slots, number)[0])))
             if not 0 <= n <= MAX_PATTERNS:
                 raise Unmodelled("numberadded = %d" % n)
             # Everything below is a leaf, so no node between here and the table can move the slot
             # frame, and the patterns differ only in $number. See `emit_batch` for the second
             # condition and how it is decided.
-            if n > BATCH_MIN and batchable and all(_is_leaf(nodes[j][1])
-                                                   for j in range(i + 1, len(nodes))):
+            # Asked as a ROLE, so the model in force answers it. The two arms name the
+            # same set here -- `_is_leaf` is low byte 0x0B and the mask's `leaf` is nibble B
+            # with bits 4-7 clear, which is the same byte -- so this is consistency rather
+            # than a change.
+            if (
+                n > BATCH_MIN
+                and batchable
+                and all(
+                    fxnodes.role(nodes[j][1]) == "leaf"
+                    for j in range(i + 1, len(nodes))
+                )
+            ):
                 emit_batch(np.arange(n, dtype=np.float64))
                 return
             for k in range(n):
@@ -1265,7 +1355,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 _grid[1] = True
             walk(i + 1, number)
             return
-        elif hdr == STEPPER and assume.assumed('fx.scanner') == 'loop':
+        elif hdr == STEPPER and assume.assumed("fx.scanner") == "loop":
             # See assume.QUESTIONS['fx.scanner']. The body advances a position and returns its own
             # in-bounds predicate, so it is run, then the subtree emits, then the predicate decides
             # whether to go round again -- matching the single-shot order exactly, so the first
@@ -1277,10 +1367,21 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             for _it in range(SCAN_LIMIT):
                 v = run(prog, slots, number)
                 if _SCAN_TRACE is not None and len(_SCAN_TRACE) < 8:
-                    _g = lambda k: np.round(np.asarray(slots.get(k, [np.nan]),
-                                                       dtype=float).ravel(), 4).tolist()
-                    _SCAN_TRACE.append((_it, _g(18), _g(14), _g(0), _g(10), _g(16), _g(17),
-                                        float(np.asarray(v, dtype=np.float64).ravel()[-1])))
+                    _g = lambda k: np.round(
+                        np.asarray(slots.get(k, [np.nan]), dtype=float).ravel(), 4
+                    ).tolist()
+                    _SCAN_TRACE.append(
+                        (
+                            _it,
+                            _g(18),
+                            _g(14),
+                            _g(0),
+                            _g(10),
+                            _g(16),
+                            _g(17),
+                            float(np.asarray(v, dtype=np.float64).ravel()[-1]),
+                        )
+                    )
                 walk(i + 1, number)
                 try:
                     ok = bool(np.asarray(v, dtype=np.float64).ravel()[-1])
@@ -1289,7 +1390,7 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 if not ok:
                     break
             return
-        elif hdr == STEPPER or (hdr & 0xFF) in (STEPPER2, BRANCH):
+        elif role == "state":
             # Run the state update, then continue to the single successor. The return
             # value is discarded: this program is a chain of `seq`-joined `set`s, and
             # what it produces is the slot frame the entry then reads, not a number.
@@ -1297,38 +1398,44 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
             if prog is not None:
                 run(prog, slots, number)
             walk(i + 1, number)
-        elif (hdr & 0xFF) == PASSTHROUGH:
+        elif role == "branch":
             # Continue to the successor and run NOTHING. The cell is three words -- see PASSTHROUGH
             # -- and the pointer it holds is real but its role is not established, so evaluating it
             # would be writing this record's slot frame from a word whose meaning is a guess.
             walk(i + 1, number)
-        elif _is_leaf(hdr):
-            walk(i + 1, number)             # the leaf is the entry; the table emits
-        else:
-            prog = progs.get('switch')
+        elif role in ("leaf", "link"):
+            walk(i + 1, number)  # the leaf is the entry; the table emits
+        elif role == "gate":
+            prog = progs.get("switch")
             if prog is None:
                 raise Unmodelled("markov2 with no switch program")
-            if assume.assumed('fx.gatescan') == 'filter':
+            if assume.assumed("fx.gatescan") == "filter":
                 # A gate whose program SPIRALS a position and tests it against a rectangle may be a
                 # FILTER rather than a terminator: step the spiral a bounded number of times and emit
                 # only where the predicate holds. See assume.QUESTIONS['fx.gatescan'].
                 _any = False
                 for _it in range(64):
                     _v = run(prog, slots, number)
-                    if bool(np.asarray(_v, dtype=np.float64).ravel()[0]) == gate_polarity:
+                    if (
+                        bool(np.asarray(_v, dtype=np.float64).ravel()[0])
+                        == gate_polarity
+                    ):
                         walk(i + 1, number)
                         _any = True
                 if not _any:
                     closed[0] = True
                 return
-            if assume.assumed('fx.gatescan') == 'loop':
+            if assume.assumed("fx.gatescan") == "loop":
                 # See assume.QUESTIONS['fx.gatescan']. Run-then-emit-then-test, the same
                 # order the STEPPER scanner arm uses, so the first stamp is identical to
                 # the one-shot reading and the loop only adds the ones that were missing.
                 _any = False
                 for _it in range(SCAN_LIMIT):
                     _v = run(prog, slots, number)
-                    if bool(np.asarray(_v, dtype=np.float64).ravel()[0]) != gate_polarity:
+                    if (
+                        bool(np.asarray(_v, dtype=np.float64).ravel()[0])
+                        != gate_polarity
+                    ):
                         break
                     walk(i + 1, number)
                     _any = True
@@ -1339,6 +1446,12 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
                 walk(i + 1, number)
             else:
                 closed[0] = True
+        else:
+            # Unreachable: the loop above refuses the record before the first emission.
+            # Written out anyway, because the gate used to be the catch-all `else` and a
+            # header the model did not know would have been DRAWN as a gate rather than
+            # refused if that pre-check were ever removed.
+            raise Unmodelled("node header %#x is not modelled" % hdr)
 
     walk(0, 0)
     # AN EMPTY EMISSION IS A RESULT WHEN A GATE SAID SO. Four FabricSubstance005 records
@@ -1382,10 +1495,21 @@ def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
 # FILES (195 tags against 336) with only 43 and 10 declarations between them, so any bit
 # reflecting authoring style separates the files rather than the types.
 PATTERN_SHAPES = {
-    2: 'square',        # UNREACHABLE from a tag; see above. Correct pairing, lossy nibble.
-    3: 'disc', 4: 'paraboloid', 5: 'bell', 6: 'gaussian', 7: 'thorn',
-    8: 'pyramid', 9: 'brick', 10: 'gradation', 11: 'waves', 12: 'halfbell',
-    13: 'ridgedbell', 14: 'crescent', 15: 'capsule', 16: 'cone',
+    2: "square",  # UNREACHABLE from a tag; see above. Correct pairing, lossy nibble.
+    3: "disc",
+    4: "paraboloid",
+    5: "bell",
+    6: "gaussian",
+    7: "thorn",
+    8: "pyramid",
+    9: "brick",
+    10: "gradation",
+    11: "waves",
+    12: "halfbell",
+    13: "ridgedbell",
+    14: "crescent",
+    15: "capsule",
+    16: "cone",
     # 17 is producible (nibble 15) and its shape is unknown -- 4 entries corpus-wide.
 }
 
@@ -1393,8 +1517,9 @@ PATTERN_SHAPES = {
 # family -- gaussian is radial and falls off, square does not -- but not always the
 # exact analytic form, and pretending otherwise would repeat this file's own mistake: a
 # shape that cannot be flat by construction passes a flatness check without being right.
-SHAPE_MODELLED = frozenset({'bell', 'thorn', 'brick', 'waves', 'halfbell',
-                            'ridgedbell', 'crescent', 'capsule'})
+SHAPE_MODELLED = frozenset(
+    {"bell", "thorn", "brick", "waves", "halfbell", "ridgedbell", "crescent", "capsule"}
+)
 
 
 def profile_value(lx, ly, profile):
@@ -1410,52 +1535,62 @@ def profile_value(lx, ly, profile):
     measuring the metric rather than the format. An unknown name raises rather than defaulting.
     """
     inside = (np.abs(lx) <= 0.5) & (np.abs(ly) <= 0.5)
-    if profile in ('rect', 'square'):
+    if profile in ("rect", "square"):
         return inside.astype(np.float32)
-    r = np.sqrt((2.0 * lx) ** 2 + (2.0 * ly) ** 2)      # 0 at centre, 1 at the box edge
+    r = np.sqrt((2.0 * lx) ** 2 + (2.0 * ly) ** 2)  # 0 at centre, 1 at the box edge
     ins = inside.astype(np.float32)
-    if profile == 'disc':
-        return ((r <= 1.0) & inside).astype(np.float32)      # hard circle, no falloff
-    if profile == 'cone':
-        return (np.clip(1.0 - r, 0.0, 1.0) * ins).astype(np.float32)           # linear
-    if profile == 'paraboloid':
-        return (np.clip(1.0 - r * r, 0.0, 1.0) * ins).astype(np.float32)       # quadratic
-    if profile == 'gaussian':
+    if profile == "disc":
+        return ((r <= 1.0) & inside).astype(np.float32)  # hard circle, no falloff
+    if profile == "cone":
+        return (np.clip(1.0 - r, 0.0, 1.0) * ins).astype(np.float32)  # linear
+    if profile == "paraboloid":
+        return (np.clip(1.0 - r * r, 0.0, 1.0) * ins).astype(np.float32)  # quadratic
+    if profile == "gaussian":
         return (np.exp(-4.0 * r * r) * ins).astype(np.float32)
-    if profile == 'pyramid':
-        c = np.maximum(np.abs(2.0 * lx), np.abs(2.0 * ly))   # Chebyshev, not Euclidean
+    if profile == "pyramid":
+        c = np.maximum(np.abs(2.0 * lx), np.abs(2.0 * ly))  # Chebyshev, not Euclidean
         return (np.clip(1.0 - c, 0.0, 1.0) * ins).astype(np.float32)
-    if profile == 'gradation':
-        return (np.clip(0.5 + lx, 0.0, 1.0) * ins).astype(np.float32)   # ramp along x
+    if profile == "gradation":
+        return (np.clip(0.5 + lx, 0.0, 1.0) * ins).astype(np.float32)  # ramp along x
     # --- SHAPE_MODELLED below: the family is named, the curve is chosen. ---
-    if profile == 'bell':
+    if profile == "bell":
         t = np.clip(1.0 - r * r, 0.0, 1.0)
-        return (t * t * ins).astype(np.float32)              # smoother than paraboloid
-    if profile == 'halfbell':
+        return (t * t * ins).astype(np.float32)  # smoother than paraboloid
+    if profile == "halfbell":
         t = np.clip(1.0 - r * r, 0.0, 1.0)
         return (t * (ly >= 0.0) * ins).astype(np.float32)
-    if profile == 'ridgedbell':
+    if profile == "ridgedbell":
         t = np.clip(1.0 - r, 0.0, 1.0)
         return (t * np.abs(np.cos(3.0 * np.pi * r)) * ins).astype(np.float32)
-    if profile == 'thorn':
+    if profile == "thorn":
         t = np.clip(1.0 - r, 0.0, 1.0)
-        return (t ** 3 * ins).astype(np.float32)             # sharper than cone
-    if profile == 'brick':
+        return (t**3 * ins).astype(np.float32)  # sharper than cone
+    if profile == "brick":
+        # THE INSET IS A MODELLED GUESS, and `fx.brick` holds the alternative. `inset`
+        # is the 85% hard fill as it stood; `fill` fills the box. Bricks record 10081
+        # states its own mortar gap in its programs (0.19^2 x the largest cell) and
+        # draws every stone as a `brick`, so under `inset` the gap it draws is 5-9 px at
+        # 256 where the program says 2, and the flood-fill mask downstream reads the
+        # mortar as one region. See FORMAT-NOTES.md, "Record 10253 is not the fault".
+        if assume.assumed("fx.brick", "inset") == "fill":
+            return ins
         c = np.maximum(np.abs(2.0 * lx), np.abs(2.0 * ly))
         return ((c <= 0.85).astype(np.float32) * ins).astype(np.float32)
-    if profile == 'waves':
-        return (np.clip(0.5 + 0.5 * np.cos(2.0 * np.pi * lx * 2.0), 0.0, 1.0)
-                * ins).astype(np.float32)
-    if profile == 'crescent':
+    if profile == "waves":
+        return (
+            np.clip(0.5 + 0.5 * np.cos(2.0 * np.pi * lx * 2.0), 0.0, 1.0) * ins
+        ).astype(np.float32)
+    if profile == "crescent":
         outer = np.clip(1.0 - r, 0.0, 1.0)
         inner = np.sqrt((2.0 * (lx - 0.15)) ** 2 + (2.0 * ly) ** 2)
         return (outer * (inner > 0.75) * ins).astype(np.float32)
-    if profile == 'capsule':
-        d = np.abs(2.0 * ly) / np.maximum(1e-6, 1.0)         # a bar with rounded ends
-        cap = np.clip(1.0 - np.maximum(d, np.clip(np.abs(2.0 * lx) - 0.5, 0.0, None)),
-                      0.0, 1.0)
+    if profile == "capsule":
+        d = np.abs(2.0 * ly) / np.maximum(1e-6, 1.0)  # a bar with rounded ends
+        cap = np.clip(
+            1.0 - np.maximum(d, np.clip(np.abs(2.0 * lx) - 0.5, 0.0, None)), 0.0, 1.0
+        )
         return (cap * ins).astype(np.float32)
-    raise ValueError('unknown pattern profile %r' % (profile,))
+    raise ValueError("unknown pattern profile %r" % (profile,))
 
 
 # Smallest patternsize component that is a size rather than a misread. Named so the
@@ -1464,7 +1599,7 @@ def profile_value(lx, ly, profile):
 MIN_PATTERN_SIZE = 1e-6
 
 
-_RAND_CALL = re.compile(r'\brand\(')
+_RAND_CALL = re.compile(r"\brand\(")
 
 
 def branchoffset_is_rand(rec):
@@ -1486,7 +1621,7 @@ def branchoffset_is_rand(rec):
     except Exception:
         return False
     for _off, _tag, _slot, name, kind, val in params:
-        if name != 'branchoffset' or kind != 'program' or not val:
+        if name != "branchoffset" or kind != "program" or not val:
             continue
         end = asm.program_span(val)
         if not end:
@@ -1516,8 +1651,11 @@ def _cell_divisor(patterns):
     """
     if not patterns:
         return None
-    b = [np.asarray(q.get('branchoffset'), dtype=np.float64).ravel()
-         for q in patterns if q.get('branchoffset') is not None]
+    b = [
+        np.asarray(q.get("branchoffset"), dtype=np.float64).ravel()
+        for q in patterns
+        if q.get("branchoffset") is not None
+    ]
     if len(b) != len(patterns) or not b:
         return None
     w = max(x.size for x in b)
@@ -1534,9 +1672,12 @@ def _cell_divisor(patterns):
     for k in range(min(2, a.shape[1])):
         col = a[:, k]
         sp = float(col.max() - col.min())
-        ok = (sp >= 1 and abs(sp - round(sp)) < 1e-4
-              and bool(np.all(np.abs(col - np.round(col)) < 1e-4))
-              and len({round(float(t), 6) for t in col}) == round(sp) + 1)
+        ok = (
+            sp >= 1
+            and abs(sp - round(sp)) < 1e-4
+            and bool(np.all(np.abs(col - np.round(col)) < 1e-4))
+            and len({round(float(t), 6) for t in col}) == round(sp) + 1
+        )
         d.append(1.0 / (round(sp) + 1.0) if ok else 1.0)
     if not any(x != 1.0 for x in d):
         return None
@@ -1558,7 +1699,10 @@ def gate_bounds_slots(rec):
     asm = rec.asm
     out = []
     for _off, hdr, progs in chain(rec):
-        if hdr != GATE:
+        # "The chain's GATE nodes" is a question about the node's ROLE, so the model in
+        # force answers it rather than the constant. Identical on this corpus, where 0x89
+        # is the only gate either model names.
+        if fxnodes.role(hdr) != "gate":
             continue
         for _name, ptr in progs.items():
             if not ptr:
@@ -1619,8 +1763,12 @@ def declared_cells(rec, slots):
         if a.size != 4:
             continue
         nx, ny = a[1] - a[0], a[3] - a[2]
-        if (nx >= 1 and ny >= 1 and abs(nx - round(nx)) < 1e-4
-                and abs(ny - round(ny)) < 1e-4):
+        if (
+            nx >= 1
+            and ny >= 1
+            and abs(nx - round(nx)) < 1e-4
+            and abs(ny - round(ny)) < 1e-4
+        ):
             return (int(round(nx)), int(round(ny)))
     return None
 
@@ -1641,10 +1789,10 @@ def cell_divisor(rec, patterns, cells=None):
 
 def _combine(dst, src):
     """Fold one pattern's contribution into the canvas -- see QUESTIONS['fx.combine']."""
-    mode = assume.assumed('fx.combine', 'max')
-    if mode == 'add':
+    mode = assume.assumed("fx.combine", "max")
+    if mode == "add":
         return dst + src
-    if mode == 'over':
+    if mode == "over":
         a = np.clip(np.abs(src), 0.0, 1.0)
         return dst * (1.0 - a) + src
     return np.maximum(dst, src)
@@ -1700,24 +1848,24 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
     # The footprint is the largest open question here and the one the reference renders
     # could settle, so it is arbitrable. An explicit scope still wins; with none, the shape
     # comes from the entry's own patterntype -- data, not an assumption.
-    forced = profile if profile is not None else assume.assumed('fx.profile', None)
+    forced = profile if profile is not None else assume.assumed("fx.profile", None)
 
     def profile_for(p):
         if forced is not None:
             return forced
-        t = p.get('patterntype')
+        t = p.get("patterntype")
         # nibble 0 is the documented catch-all -- patterntype 1, 2 and a source-declared
         # function graph all land there -- and Square is the member of it that Lines
         # record 0 confirms, so an unresolved type keeps today's hard fill.
         if t is None:
             # See assume.QUESTIONS['fx.typeless_profile']. Default unchanged.
-            return assume.assumed('fx.typeless_profile', 'rect')
-        return PATTERN_SHAPES.get(t, 'rect')
+            return assume.assumed("fx.typeless_profile", "rect")
+        return PATTERN_SHAPES.get(t, "rect")
 
     def image_for(p):
         if not images:
             return None
-        v = p.get('imageindex')
+        v = p.get("imageindex")
         if v is None:
             return None
         try:
@@ -1725,6 +1873,7 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
         except Exception:
             return None
         return images.get(idx)
+
     nchan = 4 if rec.colour else 1
     canvas = np.zeros((H * W, nchan), dtype=np.float32)
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
@@ -1740,8 +1889,11 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
     # cell per emission for no gain.
     def val(pat, name, default):
         v = pat.get(name)
-        return np.asarray(default, dtype=np.float32) if v is None \
+        return (
+            np.asarray(default, dtype=np.float32)
+            if v is None
             else np.asarray(v, dtype=np.float32).ravel()
+        )
 
     # BRANCHOFFSET MAY BE IN CELL UNITS -- see assume.QUESTIONS['fx.branchoffset']. Over 966
     # square-grid records its span / (G - 1) has median exactly 1.0000, so it spans G - 1 cells
@@ -1758,10 +1910,10 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
     # candidate is retired, having thresholded on a SYMPTOM and now rendering byte-identically
     # to 'cell' on all 175 Bricks records.
     size_scale = None
-    if assume.assumed('fx.patternsize') == 'cell' and (patterns or cells):
+    if assume.assumed("fx.patternsize") == "cell" and (patterns or cells):
         size_scale = cell_divisor(rec, patterns, cells)
         if size_scale is not None:
-            assume.note(getattr(rec, 'index', -1))
+            assume.note(getattr(rec, "index", -1))
 
     # THE GUARD IS THE SPAN, NOT THE COUNT. This used to divide by round(sqrt(N)) on a
     # perfect-square emission count, which is not merely over-broad -- it selects AGAINST its
@@ -1775,65 +1927,74 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
     # while sqrt(N) would have missed 41; the other 2,983 are fractional, and those are what
     # the old guard was scaling. The divisor is per axis.
     frame_scale = None
-    if assume.assumed('fx.frameoffset') == 'cell' and (patterns or cells):
+    if assume.assumed("fx.frameoffset") == "cell" and (patterns or cells):
         frame_scale = cell_divisor(rec, patterns, cells)
         if frame_scale is not None:
-            assume.note(getattr(rec, 'index', -1))
+            assume.note(getattr(rec, "index", -1))
 
     cell_scale = None
-    if assume.assumed('fx.branchoffset') == 'cell' and (patterns or cells):
+    if assume.assumed("fx.branchoffset") == "cell" and (patterns or cells):
         cell_scale = cell_divisor(rec, patterns, cells)
         if cell_scale is not None:
-            assume.note(getattr(rec, 'index', -1))
+            assume.note(getattr(rec, "index", -1))
 
     # AN ENTRY THAT STATES NEITHER SHAPE NOR EXTENT: see assume.QUESTIONS['fx.sizeless'].
     # The default stays 'fill' -- a full-cell rect, today's behaviour -- because that is
     # what the code has always done, not because it is established.
-    _sizeless = assume.assumed('fx.sizeless', 'fill')
+    _sizeless = assume.assumed("fx.sizeless", "fill")
 
     # THE ROOT ENTRY -- see assume.QUESTIONS['fx.rootentry']. A typeless, sizeless pattern
     # at branchoffset exactly (0, 0) is the whole-canvas cell of the FX-Map's own tree, not
     # a draw. Tested by its own key rather than by `fx.sizeless`, which the references
     # decide the other way: this is one pattern per record with an exact signature.
-    _rootskip = assume.assumed('fx.rootentry') == 'skip'
+    _rootskip = assume.assumed("fx.rootentry") == "skip"
     # See assume.QUESTIONS['fx.markers'] -- the 0x08 entry family states a position and
     # nothing else. `_tag` travels with each pattern from `emit`.
-    _markerskip = assume.assumed('fx.markers') == 'skip'
+    _markerskip = assume.assumed("fx.markers") == "skip"
 
     for p in patterns:
-        if _markerskip and (p.get('_tag') is not None) and (int(p['_tag']) & 0xFF) == 0x08:
+        if (
+            _markerskip
+            and (p.get("_tag") is not None)
+            and (int(p["_tag"]) & 0xFF) == 0x08
+        ):
             continue
-        if (_rootskip and p.get('patternsize') is None and p.get('patterntype') is None
-                and p.get('branchoffset') is not None):
-            _b = np.asarray(p['branchoffset'], dtype=np.float64).ravel()
+        if (
+            _rootskip
+            and p.get("patternsize") is None
+            and p.get("patterntype") is None
+            and p.get("branchoffset") is not None
+        ):
+            _b = np.asarray(p["branchoffset"], dtype=np.float64).ravel()
             if _b.size >= 2 and not np.any(np.abs(_b[:2]) > 1e-6):
-                assume.note(getattr(rec, 'index', -1))
+                assume.note(getattr(rec, "index", -1))
                 continue
-        if p.get('patternsize') is None and p.get('patterntype') is None:
-            if _sizeless == 'skip':
+        if p.get("patternsize") is None and p.get("patterntype") is None:
+            if _sizeless == "skip":
                 continue
-            if _sizeless in ('half', 'quarter'):
+            if _sizeless in ("half", "quarter"):
                 p = dict(p)
-                p['patternsize'] = np.full(2, 0.5 if _sizeless == 'half' else 0.25,
-                                           dtype=np.float32)
+                p["patternsize"] = np.full(
+                    2, 0.5 if _sizeless == "half" else 0.25, dtype=np.float32
+                )
         src = image_for(p)
-        base = val(p, 'branchoffset', _ZERO2)
+        base = val(p, "branchoffset", _ZERO2)
         if cell_scale is not None:
-            base = base * cell_scale[:base.size]
-        off = val(p, 'frameoffset', _ZERO2)
+            base = base * cell_scale[: base.size]
+        off = val(p, "frameoffset", _ZERO2)
         if frame_scale is not None:
-            off = off * frame_scale[:off.size]
-        size = val(p, 'patternsize', _ONE2)
+            off = off * frame_scale[: off.size]
+        size = val(p, "patternsize", _ONE2)
         if size_scale is not None:
-            size = size * size_scale[:size.size]
-        rot = float(val(p, 'patternrotation', _ZERO1)[0])
+            size = size * size_scale[: size.size]
+        rot = float(val(p, "patternrotation", _ZERO1)[0])
         # MOST PATTERNS DO NOT CARRY AN OPACITY AT ALL, which is what makes this default
         # load-bearing rather than a corner. Over 195,933 emitted patterns in 20 files, 163,676
         # (83.5%) have none and take 1.0 here; 29,802 are in (0, 1], 1,195 negative, 975 exactly
         # zero, 285 above 1. So a record's appearance is decided by the DEFAULTS for five patterns
         # in six, and a full-cell size at full opacity is what paints an FX-Map solid white -- the
         # `fx.sizeless` and `fx.patternsize` questions, not this one.
-        col = val(p, 'opacity', _ONE1)
+        col = val(p, "opacity", _ONE1)
         if size.size < 2:
             size = np.repeat(size[:1], 2)
         if base.size < 2:
@@ -1844,11 +2005,19 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
         cx, cy = float(base[0] + off[0]), float(base[1] + off[1])
         # `math.isfinite` on four scalars, not `np.isfinite` on a freshly built list:
         # the numpy form allocated an array per pattern to test four numbers.
-        if not (math.isfinite(sx) and math.isfinite(sy)
-                and math.isfinite(cx) and math.isfinite(cy)) or sx <= 0 or sy <= 0:
+        if (
+            not (
+                math.isfinite(sx)
+                and math.isfinite(sy)
+                and math.isfinite(cx)
+                and math.isfinite(cy)
+            )
+            or sx <= 0
+            or sy <= 0
+        ):
             continue
         if max(sx, sy) > 64.0:
-            continue          # a pattern 64 cells across is a misread, not a pattern
+            continue  # a pattern 64 cells across is a misread, not a pattern
         if min(sx, sy) < MIN_PATTERN_SIZE:
             # ...and neither is a pattern 1e-33 cells across. The upper bound had no lower twin, so a
             # size small enough to make dx / sx overflow float32 was admitted and then neutralised
@@ -1866,10 +2035,10 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
         if col.size < nchan:
             col = np.repeat(col[:1], nchan)
         # See assume.QUESTIONS['fx.negopacity'] -- the clip makes a negative opacity inert.
-        _neg = assume.assumed('fx.negopacity', 'clip')
-        if _neg == 'signed':
+        _neg = assume.assumed("fx.negopacity", "clip")
+        if _neg == "signed":
             col = np.clip(col[:nchan], -1.0, 1.0)
-        elif _neg == 'abs':
+        elif _neg == "abs":
             col = np.clip(np.abs(col[:nchan]), 0.0, 1.0)
         else:
             col = np.clip(col[:nchan], 0.0, 1.0)
@@ -1877,7 +2046,7 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
         th = 2.0 * math.pi * rot
         ct, st = math.cos(th), math.sin(th)
         reach = int(min(3, math.ceil(max(sx, sy))))
-        prof = profile_for(p)          # depends only on `p`; was recomputed 49 times
+        prof = profile_for(p)  # depends only on `p`; was recomputed 49 times
         # THE FOOTPRINT, NOT THE CANVAS. profile_value multiplies every profile by
         # `inside = (|lx| <= 0.5) & (|ly| <= 0.5)`, so a point outside the pattern's own box
         # can never write to the canvas and evaluating all H*W points per emission was pure
@@ -1907,9 +2076,9 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
                 r0 = max(math.floor((uy - hy + 0.5) * H - 0.5), 0)
                 r1 = min(math.ceil((uy + hy + 0.5) * H - 0.5), H - 1)
                 if c0 > c1 or r0 > r1:
-                    continue                 # the footprint misses the canvas entirely
-                dx = pxg[r0:r1 + 1, c0:c1 + 1] - ux
-                dy = pyg[r0:r1 + 1, c0:c1 + 1] - uy
+                    continue  # the footprint misses the canvas entirely
+                dx = pxg[r0 : r1 + 1, c0 : c1 + 1] - ux
+                dy = pyg[r0 : r1 + 1, c0 : c1 + 1] - uy
                 lx = (dx * ct + dy * st) / sx
                 ly = (-dx * st + dy * ct) / sy
                 # A HARD FILL NEEDS NO COVERAGE ARRAY. For 'rect'/'square', profile_value returns
@@ -1918,7 +2087,7 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
                 # files splat evaluates 91,461,962 points, and the typeless entries that default to
                 # a hard fill are exactly the ones whose footprint covers half the canvas. Same
                 # values, bit for bit.
-                if prof in ('rect', 'square'):
+                if prof in ("rect", "square"):
                     hit = (np.abs(lx) <= 0.5) & (np.abs(ly) <= 0.5)
                     cov = None
                 else:
@@ -1926,15 +2095,16 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
                     hit = cov > 0
                 if not hit.any():
                     continue
-                tile = cview[r0:r1 + 1, c0:c1 + 1]
+                tile = cview[r0 : r1 + 1, c0 : c1 + 1]
                 if src is None:
                     if cov is None and hit.all():
                         # The footprint covers the whole slice, so there is no mask to apply -- boolean
                         # indexing an all-true mask copies the block out and back for nothing.
                         tile[...] = _combine(tile, col)
                     else:
-                        tile[hit] = _combine(tile[hit],
-                                             col if cov is None else col * cov[hit, None])
+                        tile[hit] = _combine(
+                            tile[hit], col if cov is None else col * cov[hit, None]
+                        )
                     continue
                 # The pattern IS the input image: local coordinates, which run
                 # -0.5..0.5 across the footprint, map straight onto its UV.
@@ -1945,9 +2115,12 @@ def splat(rec, patterns, W=None, H=None, profile=None, images=None, cells=None):
                     sampled = sampled[:, None]
                 if sampled.shape[-1] < nchan:
                     sampled = np.repeat(sampled[:, :1], nchan, axis=-1)
-                tile[hit] = _combine(tile[hit],
-                                     sampled[:, :nchan] * col if cov is None else
-                                     sampled[:, :nchan] * col * cov[hit, None])
+                tile[hit] = _combine(
+                    tile[hit],
+                    sampled[:, :nchan] * col
+                    if cov is None
+                    else sampled[:, :nchan] * col * cov[hit, None],
+                )
     return np.clip(canvas, 0, 1).reshape(H, W, nchan)
 
 
@@ -1967,22 +2140,25 @@ def render_record(path, idx, size=256):
 
 def save(img, out):
     from PIL import Image
+
     a = (np.clip(img, 0, 1) * 255).astype(np.uint8)
     if a.shape[2] == 1:
-        Image.fromarray(a[:, :, 0], 'L').save(out)
+        Image.fromarray(a[:, :, 0], "L").save(out)
     else:
-        Image.fromarray(a[:, :, :3], 'RGB').save(out)
+        Image.fromarray(a[:, :, :3], "RGB").save(out)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument('path')
-    ap.add_argument('record', type=int)
-    ap.add_argument('-o', '--out', default='/tmp/fx.png')
-    ap.add_argument('-s', '--size', type=int, default=256)
+    ap.add_argument("path")
+    ap.add_argument("record", type=int)
+    ap.add_argument("-o", "--out", default="/tmp/fx.png")
+    ap.add_argument("-s", "--size", type=int, default=256)
     a = ap.parse_args()
     img, pats = render_record(a.path, a.record, a.size)
-    print('%d patterns   min %.3f max %.3f mean %.3f'
-          % (len(pats), img.min(), img.max(), img.mean()))
+    print(
+        "%d patterns   min %.3f max %.3f mean %.3f"
+        % (len(pats), img.min(), img.max(), img.mean())
+    )
     save(img, a.out)
-    print('wrote', a.out)
+    print("wrote", a.out)
