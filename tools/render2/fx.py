@@ -1051,7 +1051,11 @@ def render_fxmaps(ctx, v):
                 images[k] = ctx.outputs[srci]
                 ctx.low_confidence.add(v.index)
         run = fxrender.make_runner(
-            ctx.asm, rec, programs=ctx.fx_funcs, cache_funcs=ctx.cache_funcs
+            ctx.asm,
+            rec,
+            programs=ctx.fx_funcs,
+            cache_funcs=ctx.cache_funcs,
+            inputs=ctx.input_overrides,
         )
         try:
             seeded = (

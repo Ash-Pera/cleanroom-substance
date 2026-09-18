@@ -364,7 +364,7 @@ class Perm(dict):
         return 0.5
 
 
-def make_runner(asm, rec, programs=None, cache_funcs=None):
+def make_runner(asm, rec, programs=None, cache_funcs=None, inputs=None):
     # PER ASSEMBLY, NOT PER RECORD. `cache` holds compiled program objects, `spans` program
     # extents and `flows` slot read/write sets -- all keyed on `ptr` alone, none depending on
     # which record is asking. They were being rebuilt per record, so a program reached from
@@ -404,6 +404,13 @@ def make_runner(asm, rec, programs=None, cache_funcs=None):
     for _t, uid, val in asm.header.get("inputs") or []:
         if val:
             shared_inputs[uid] = np.array(val, dtype=np.float32).reshape(1, -1)
+    # THE CALLER'S GRAPH INPUTS OVER THE DECLARED ONES, {uid: value} -- the same override
+    # `render2.engine.Context.graph_inputs` applies to every other program. This runner
+    # read the header alone, so an FX-Map's tile count stayed at the declared `Tiles`
+    # whatever the caller set (RoofTiles: 5 x 5 declared, exported at twice that). None
+    # changes nothing.
+    for uid, val in (inputs or {}).items():
+        shared_inputs[uid] = np.array(val, dtype=np.float32).reshape(1, -1)
 
     # `program_span` is memoized inside the assembly, but reaching that memo is still a
     # method call and a tuple hash per emission. Keyed by ptr alone here because

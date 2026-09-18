@@ -60063,3 +60063,38 @@ the outlines arrive thin and bright where the reference's are wide and dark (the
 scatter is jittered on a seed the pack does not record); the level numbers move little
 (height dc +0.064, baseColor within 0.05, roughness -0.18). The instrument for this pack,
 when it is built, is per-cell like `--tiles`.
+
+## RoofTiles: `warp.default_intensity` = 1.0 takes it from 1,640 to 2,619 of 2,632 records and five of six outputs; the shingles come out at half the reference's count through a leaf tag `0x14500048` the tree walk does not model
+
+`--dim 128`, twelve arms: 1,640 of 2,632, four roots (`warp` 79, 537, 960 and `blur` 2190,
+"stores no intensity"), 988 cascaded, one output. With `warp.default_intensity=1.0`:
+2,619 of 2,632, one root left (`blur` 2190, no arm), five of six outputs (basecolor 2270
+hangs on the blur). The arm the notebook said "could not be measured" now renders a pack
+with references, but the references cannot arbitrate its VALUE yet: every candidate
+(0.0, 0.25, 0.5, 1.0, 2.0) scores identically, because what the warps warp is dominated
+by the fault below. That the value is 1.0 rests on the earlier corpus argument alone.
+
+SEEN, height against `reference_renders/clear`: rows of shingles with the reference's
+top-to-bottom gradient and stagger, at 5 rows x 7 where the reference has ~10 x 14. The
+manifest declares `Tiles` (uid 2367149106, int2) 5,5, and `Horizontal_tiles` /
+`Vertical_tiles` 5 with a `Direct_Tiles` toggle. The exporter set twice the count.
+
+TWO RUNNERS, ONE HEADER. `render2.engine.Context.graph_inputs` applies the caller's
+overrides (previous section) to every program it runs; `fxrender.make_runner` built an
+FX-Map's inputs from `asm.header` alone, so an FX program reading `Tiles` by `inputref`
+saw 5,5 whatever the caller set. `make_runner(..., inputs=)` now takes the same overrides
+and `render2.fx` passes `ctx.input_overrides`; None changes nothing. NOTE what it still
+does not pass: the `$outputsize` override. An FX program reading `$outputsize` by
+`inputref` (RoofTiles 13512, 15964, ...; Bricks declares 8 and is scored at 10) gets the
+DECLARED value while every other program gets the render's -- a discrepancy this session
+found and did not change, because closing it moves every FX-Map that reads `$outputsize`
+under `--outputsize`, and that is a guard question.
+
+WITH `Tiles` = 10,10 the FX-Maps 1 and 16 draw ten rows; the height still draws five. The
+shingles reach the height through record 7 (and 1's chain), whose survey stops at word
+10788: header `0x14500048`, followed by five pointers (`0x29f8 0x2a08 0x2b88 0x30cc
+0x3454`) and `0x900003b` -- `fxchain.family` None, `sbsasm.node_shape` None. A leaf or
+node family the tree walk does not model, so the record takes the list walk, which draws
+record 7 as five gradient rows with the last cut short at 5,5 and mostly black at 10,10.
+Bits 18 and 22 set with a 0x48 low byte is not a shape in `FX_NODE_PARAMS`. That family
+is the next thing on this pack; the tile count and the blur default come after it.
