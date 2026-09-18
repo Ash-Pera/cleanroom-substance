@@ -15,6 +15,8 @@ explicit `assume` scope overrides it, so a sweep can still ask what a different 
 would do.
 """
 
+import re
+
 import numpy as np
 
 import assume
@@ -283,6 +285,76 @@ def f_fxmaps(ctx, v):
 # ---------------------------------------------------------------------------
 
 
+
+_DEAD_SAMPLER = {}
+_DEF_RE = re.compile(r"^\s*%(\d+)\s+[0-9A-F]{4}\s+(\S+?)\s+(.*)$")
+
+
+def annihilated_samplers(asm, ptr):
+    """Sampler indices whose EVERY use in the program at `ptr` is a multiply by a constant
+    zero -- reads whose binding cannot change the program's output.
+
+    The proof `archive/tools/render.py::sampler_is_annihilated` reads off the bytecode,
+    carried to the renderer of record. A source graph with a trailing UNCONNECTED input
+    slot compiles to a sample of index == arity that the program then multiplies away
+    (`%20 samplelum %19, #3; %21 const 0; %22 mul %20, %21`); refusing it for want of a
+    binding was refusing a record whose output is the same for any image bound there.
+    SandyStonePath record 177 is one -- the Flood Fill to Gradient's fourth, unwired
+    input -- and 995 of the pack's 1,778 records cascaded from that one refusal, five of
+    its six reference maps with them. A LIVE read of an unwired input still refuses: what
+    the engine substitutes for it is not known from the file.
+    """
+    key = (getattr(asm, "path", id(asm)), ptr)
+    got = _DEAD_SAMPLER.get(key)
+    if got is not None:
+        return got
+    import disasm
+
+    try:
+        hi = asm.program_end(ptr)
+        lines = disasm.text(asm.data, ptr, hi).splitlines()
+    except Exception:
+        _DEAD_SAMPLER[key] = frozenset()
+        return _DEAD_SAMPLER[key]
+    defs = {}
+    for ln in lines:
+        m = _DEF_RE.match(ln)
+        if m:
+            defs[int(m.group(1))] = (m.group(2), m.group(3))
+    zero = {
+        g
+        for g, (op, ar) in defs.items()
+        if op.startswith("const")
+        and ar.strip()
+        and all(t.strip() and float(t) == 0.0 for t in ar.split(","))
+    }
+    by_index = {}
+    for g, (op, ar) in defs.items():
+        if op.startswith("sample"):
+            ims = re.findall(r"#(\d+)", ar)
+            if ims:
+                by_index.setdefault(int(ims[0]), set()).add(g)
+    uses = {}
+    for g, (op, ar) in defs.items():
+        for u in re.findall(r"%(\d+)", ar):
+            uses.setdefault(int(u), []).append((op, ar))
+    dead = set()
+    for index, targets in by_index.items():
+        ok = True
+        for t in targets:
+            for op, ar in uses.get(t, ()):
+                others = [int(x) for x in re.findall(r"%(\d+)", ar) if int(x) != t]
+                if not op.startswith("mul") or not any(o in zero for o in others):
+                    ok = False
+                    break
+            if not ok:
+                break
+        if ok:
+            dead.add(index)
+    _DEAD_SAMPLER[key] = frozenset(dead)
+    return _DEAD_SAMPLER[key]
+
+
 @filt("pixelprocessor")
 def f_pixelprocessor(ctx, v):
     W, H = v.size(ctx.cap)
@@ -328,6 +400,12 @@ def f_pixelprocessor(ctx, v):
             main = progs[-1]
         if main is None:
             raise Unsupported("pixelprocessor names no program")
+        # AN ANNIHILATED READ OF AN UNBOUND SAMPLER IS BOUND TO ZERO, by proof; see
+        # `annihilated_samplers`. Nothing that rendered before reaches this line with a
+        # different result, because a bound index is never rebound here.
+        for k in annihilated_samplers(ctx.asm, main):
+            if k not in sbsruntime.SAMPLERS:
+                sbsruntime.SAMPLERS[k] = lambda pos: np.zeros((len(pos), 1), np.float32)
         if main not in progs:
             progs = progs + [main]
         slots = {}

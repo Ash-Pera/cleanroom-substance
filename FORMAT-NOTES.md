@@ -59978,3 +59978,63 @@ assumed; `field`'s mortar level moves at native (002 0.901 -> 0.555, 005 0.868 -
 its tile level does not (0.84-0.89). Mean signed corr at 128, native: 001 +0.149 / +0.147,
 002 +0.763 / +0.605, 003 +0.763 / +0.714, 004 +0.720 / +0.637, 005 +0.792 / +0.677
 (field / spread) -- the same ordering as at 256, the same hole.
+
+## SandyStonePath renders end to end: one annihilated read of an unwired input, refused by `render2` and proved irrelevant by `render.py` two years of sections ago, was 995 of its 1,778 records
+
+THE WIDEST GUARD ON FILE, all reference packs through `refcompare`, `render2`, 256 px,
+implied `$outputsize`, before this section (both propagation arms give the same rows):
+
+    pack                       rows  flat   corr    band   |dc|
+    Auras                        3     0   +0.872  7.325  0.139
+    Bricks_and_tiles (field)    48     9   +0.794  1.698  0.065
+    Bricks_and_tiles (spread)   48     0   +0.573  0.707  0.052
+    Chesterfield                10     0   +0.913  0.987  0.023
+    RoofTiles                    2     2     --      --     --
+    SandyStonePath               1     1     --      --     --
+
+`spread` leaves Auras and Chesterfield untouched, takes Bricks from nine flat rows to none
+(graph 001 alive) and lowers its mean corr by the tilt hole and by graph 001 now counting.
+Two packs contribute one flat `metallic` each and nothing else -- "cannot arbitrate
+anything", the earlier section said. Both are dead at a root, and neither root is a decode.
+
+SANDYSTONEPATH, `--dim 256` (its declared size), no arms: 625 of 1,778 records, one output.
+Root: records 11 and 1734, "non-finite values" -- an Auto Levels, `(x - lo) / (hi - lo)`,
+with `hi == lo` because its min/max pyramid (4..10, a 16:1 interleaved reduction, four
+levels to a 1 x 1) reduced a black image: record 3, a 56.3-px `distance` of record 2, and
+record 2 is the Bricks stone tiling (`0x1CB` statistics pass, `0x89` wide/tall switches,
+`0x19B` splits -- the same chain byte for byte in shape) drawing eight black patterns under
+the list walk. Under the eleven arms record 2 draws its scatter -- discs at 0.32 of the
+cell, `lerp(0.32, rand, 0)` in the draw pass, SEEDS -- and record 3 is the Voronoi partition
+of the canvas by those seeds, cones meeting on dark ridges: the cobbles. The pyramid then
+reads 0.18..1.0 and 11 renders. 782 records, still one output.
+
+Root two: record 177, a pixel processor sampling input 3 with arity 3 -- the Flood Fill to
+Gradient in its four-input variant, the fourth slot unwired -- and the sample is
+`%20 samplelum %19, #3; %21 const 0; %22 mul %20, %21`: multiplied by a constant zero.
+`archive/tools/render.py::sampler_is_annihilated` proved that shape binding-irrelevant
+(UHL3D-Stylized_Sand 2194, PavingStones003 547, stylized_round_stones 736) and binds a
+zero sampler; `render2` never carried the proof and refused. 995 records cascaded from that
+one refusal. `render2/filters.py::annihilated_samplers` is the proof carried over -- every
+sampler index of the program whose every use is a mul by a const zero -- and
+`f_pixelprocessor` binds those to zero when no edge or manifest binding claims them. A LIVE
+read of an unwired input refuses as before; a bound index is never rebound, so nothing that
+rendered before moves. 25 tests pass.
+
+AFTER: 1,778 of 1,778 records, 0 failures, six of six outputs, under the eleven arms.
+Through `refcompare`: nine live rows (baseColor x3, normal x3, roughness, height) and the
+flat metallic, against one flat row before. Corr is ~0 on all but roughness (+0.50): the
+cobble scatter is a jittered grid whose seed the pack does not record, the graph 001
+situation. Levels: height dc +0.06, baseColor dc within 0.05, roughness dc -0.16.
+
+SEEN, and it says what is next. The reference roughness carries a 5 x 5 square-tile grid
+and so does ours -- the grid is a construct of the graph and it renders. The reference
+height and baseColor carry the Voronoi cobbles from record 11 with that grid faint under
+them; ours carry the grid alone, clean squares, no cobbles. The cobble layer is alive at 11
+and lost between there and the outputs -- a blend or mask reading, downstream of 12..46
+(`11`'s consumers: two blurs, four blends). Not chased here.
+
+ROOFTILES, the other dead pack, `--dim 128`: 1,640 of 2,632, 992 cascaded from FOUR roots
+-- `warp` 79, 537, 960 and `blur` 2190, each "stores no intensity", the source having left
+the parameter at its engine default. `warp.default_intensity` exists as an arm (`refuse`,
+1.0, 0.0, 0.25, 0.5, 2.0), `blur` has none; five of six outputs hang on those four. That is
+the next pack.
