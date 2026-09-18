@@ -51,6 +51,10 @@ QUESTIONS = {
     # control -- states 1.0 10,357 times, so the test discriminates. See FORMAT-NOTES,
     # "Permitted sources corroborate `warp` default = 1.0".
     "warp.default_intensity": ("refuse", 1.0, 0.0, 0.25, 0.5, 2.0),
+    # BLUR'S INTENSITY WHEN THE SOURCE OMITTED IT -- the same question as warp's, and it
+    # gates RoofTiles' basecolor (record 2190) and Auras' fourth basecolor (342), both
+    # with reference maps, so unlike warp's this one is measurable. `refuse` first.
+    "blur.default_intensity": ("refuse", 0.5, 1.0, 0.0, 0.25, 2.0, 4.0),
     "normal.default_intensity": ("refuse", 0.5, 1.0, 2.0, 4.0, 8.0, 16.0),
     "blur.kernel": ("box", "gaussian"),
     "emboss.probe": ("passthrough",),

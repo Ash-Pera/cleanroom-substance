@@ -824,11 +824,20 @@ def f_blur(ctx, v):
     pos = pos_grid(W, H)
     p = v.params.get("intensity")
     if p is None:
-        raise Unsupported(
-            "blur stores no intensity: neither class bit 12 (baked) nor 13 "
-            "(program) is set, so the source omitted it"
-        )
-    if p.kind == "baked":
+        d = assume.assumed("blur.default_intensity", "refuse")
+        if d == "refuse":
+            raise Unsupported(
+                "blur stores no intensity: neither class bit 12 (baked) nor 13 "
+                "(program) is set, so the source omitted it"
+            )
+        # The engine default the source left in place; see assume.QUESTIONS.
+        p = None
+        intensity = float(d)
+        ctx.low_confidence.add(v.index)
+        assume.note(v.index)
+    if p is None:
+        pass
+    elif p.kind == "baked":
         intensity = float(p.value)
     else:
         got = np.asarray(ctx.run(v, p.value, 1)).ravel()

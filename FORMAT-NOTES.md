@@ -60151,3 +60151,9 @@ ALSO FIXED IN PASSING: `annihilated_samplers` raised on a disassembly constant p
 `?` (Auras records 24, 399), which took Auras from 427 to 391 records and two of its
 outputs for the hours between the previous commit and this one; the parse now treats an
 unprintable constant as not-zero.
+
+ADDENDUM: `blur.default_intensity` (`refuse`, 0.5, 1.0, 0.0, 0.25, 2.0, 4.0), the blur twin
+of warp's question. Any value but `refuse` renders RoofTiles' basecolor (+0.62 / +0.72 /
++0.52 by channel against the reference, 14 x 9) and the three channels do not move between
+0.0 and 2.0 at 256 px -- the blur is inconsequential at this grid, so the reference cannot
+pick the value and the default stays `refuse`. Auras' paired rows do not change either way.
