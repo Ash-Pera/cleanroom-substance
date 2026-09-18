@@ -60571,3 +60571,14 @@ value, the engine's unset variable. `fxrender.new_slots()` (behind `fx.unset`: `
 `refuse`) builds the frame `seed_slots`, `emissions` and `fxchain.seed` start from; under
 `zero` an unset read is 0.0, under `refuse` the diagnostic that found the frame model
 stays. MetalPlates004 1,089 -> 1,354 of 1,354; 33 tests; both ratchet tests pass.
+
+ADDENDUM, RoofTiles' straight shingle edges. The weakest deterministic rows at 256 are
+RoofTiles' normal x (+0.31 against y +0.73): the vertical shingle edges are ruler-straight
+where the reference's wobble. The three warps whose intensity was defaulted (79, 537,
+960) were inert to the value because their DISPLACEMENT MAPS are flat: 78 is a Copy of a
+white `uniform` over a sparse noise (white under the arbitrated edge order -- swapping
+Copy's order takes Chesterfield to -0.377, so the order stands), 530 is flat black, 911
+a sparse FX-Map. A flat map has no gradient, so the author's own graph disables those two
+warps; the reference's wobble enters the height elsewhere (1181 / 1124 into 1182), not
+chased. `fx.subdivide` does not touch 74 (its root is a `0x510B` leaf family the tree
+arm does not read; the list walk draws its one pattern either way).
