@@ -60292,3 +60292,30 @@ exact" was against the probe, not the reference, and the reference disagrees. Le
 arm. What would move it: the tree arm's own faults on 002-004 (band up 3x on 003 normal
 means it draws structure the reference does not have) -- a per-record isolation on Bricks
 like the one done for `distance.propagate`.
+
+## The corpus sweep's census, and the one Bricks record where the Quadrant tree draws worse than `flat`
+
+THE SWEEP, 397 of 437 files (an hour's cap at 64 px, bare defaults, before the warp flip):
+498,814 of 725,136 records (68.8%). Roots by files hit: `warp` no intensity 145 (the
+flipped default reaches every one), unbound graph image inputs 73 (nothing to bind), pixel
+processors producing non-finite values 67 (Auto Levels dividing 0/0 on a constant input --
+MossSubstance001's is alive under `fx.subdivide=tree`), `normal` no intensity 44 (arm,
+`refuse`), `blur` no intensity 26 (arm, `refuse`), FX-Map sampler unbound 19, pattern
+budget exceeded 28 (`numberadded` 1,050,625 and 2,253,001 -- 1025^2 and 1501^2, tile
+samplers at full density), `0x1db` header 17, `vectorshape` unimplemented 7, `input 0 is
+not wired` 12. The after-count under the new default is the next sweep's.
+
+THE TREE ARM ON 003, per record. Of the 47 records `fx.subdivide` touches in graph 003's
+ancestry, 46 draw identically under `tree` and `flat`; the whole of the ratchet's
+objection is record 708. `flat` draws it as ONE Gaussian (mean 0.65, p5 0.38); `tree` as a
+scatter of ~100 soft spots on black (mean 0.315, p5 0.006) -- plainly what the record is,
+five Quadrant levels, `opacitymult` 0.4, `hurst` 0, leaves at `patternsize` (2, 2). Its
+only consumer is `709`, a hard step at 0.29, so what 003 sees is the FRACTION of 708 above
+0.29: 1.00 under `flat` (an inert white mask), 0.28 under the eleven arms, 0.62 with the
+header ignored, 0.22 with `fx.tree.branchoffset=region`; `combine`, `hurst.absent`,
+`tree.order`, `sizeless` do not move it. The reference's 003 has no disc pattern, so the
+mask should be near white -- which the tree can only give if nearly every leaf draws and
+the spots overlap (2 x an 8-px region at depth 5 would), and ours emits a sparse hundred.
+Which leaves emit is the question; not answered here. `fx.patternsize=cell` and
+`fx.branchoffset=cell` raise `AttributeError: 'Batch' object has no attribute 'get'` under
+the tree arm -- the per-pattern scaling was written for dicts and never met a `Batch`.
