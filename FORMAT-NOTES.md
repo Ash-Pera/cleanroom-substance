@@ -60274,3 +60274,21 @@ all 15 in permitted sources while 0.75, 1.5 and 2.0 occur; `blur`, the control, 
 `test_the_new_guard_does_not_weaken_the_old_floors` pass with it as default. `refuse` is
 the arm. The corpus sweep running beside this section will say how many records it
 reaches at 64 px; the earlier count at 128 was 50,204.
+
+ADDENDUM, two defaults asked of the ratchet and refused, from the corpus sweep's first
+census (139 of 437 files at 64 px, bare defaults; the sweep is still running and its
+totals follow in a later section). Roots by files hit: `warp` no intensity 43 (now the
+flipped default's), unbound graph image inputs 24 (no image to bind; inherent), pixel
+processors producing non-finite values 21, `normal` no intensity 15, an FX node header
+`0x1db` the tree walk does not model 8, `blur` no intensity 8, `fxmaps` sampler unbound 7,
+`numberadded` over the pattern budget 3. The non-finite ones are Auto Levels dividing 0/0
+on a constant input, as SandyStonePath's were: MossSubstance001 record 64 reads a blend
+(56) that is flat 1.0 under the defaults and a 0.51 +- 0.11 texture under
+`fx.subdivide=tree` ALONE -- the Quadrant-subdivision reading revives the chain. Asked of
+the ratchet as the default: refused, Bricks 002 height dc, 003 height corr and dc, 003
+normal band, 004 basecolor band and dc all adverse at every grid; `test_fxtree`'s
+"the flat arm draws one pattern" also assumes the default. The earlier "90 of 95 trees
+exact" was against the probe, not the reference, and the reference disagrees. Left as an
+arm. What would move it: the tree arm's own faults on 002-004 (band up 3x on 003 normal
+means it draws structure the reference does not have) -- a per-record isolation on Bricks
+like the one done for `distance.propagate`.
