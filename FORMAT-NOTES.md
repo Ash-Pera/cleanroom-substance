@@ -59650,3 +59650,61 @@ self-comparison as tabulated above. The reformat commit is AST-identical file by
 NOT DONE HERE. The `0x1A3` and `0x1DB` headers the census does not name (the walk places
 their programs; nothing says what they do). And the OPEN list of the previous section stands
 unchanged: blob_d 1.5x small on graph 001 is the next thing to chase.
+
+## blob_d 1.5x small on graph 001 is one draw of an arbitrary hash: the tiling's statistics bracket the reference over six seeds, and the item closes without a code change
+
+THE QUESTION the previous section left open: graph 001's stones came out with median
+diameter 24 against the reference's 36 at a 256 grid, with 48 blobs against 38-40, and the
+guess was an `x_amount`/`y_amount` default or a `numberadded` reading. Measurements at
+`2497eca`, all eleven arms (`fx.subdivide=tree, fx.negopacity=signed, fx.combine=bit18,
+fx.header=read, fx.hurst=exp, fx.chain=tree, program.select=lazy, pixelprocessor.rand=pixel,
+pixelprocessor.sample=nearest, blur.subpixel=fractional, fx.brick=fill`), `--dim 256`,
+`$outputsize` 10. The baseline reproduces: height blob_d 24.2, blob_n 48.
+
+NEITHER GUESS. `x_amount` (uid 966468536) is 5 and `y_amount` (966474941) is 6 in the header's
+input defaults, the draw pass's `numberadded` is their product, and the picture has six rows
+of five base cells -- the same rows the reference has. What the picture has that the
+reference does not is TWO ROWS 22-25 px TALL where the others are 45-60, and inside them a
+run of sliver cells: the gate program cuts a cell wider than tall into `ceil(w/h)` columns,
+so a short row is a row of many narrow cells, and the median diameter drops while the count
+barely rises (the slivers are under the 4-px floor or merge under Otsu).
+
+THE ROW HEIGHT IS A RAND DRAW AT THE ROW-START INDEX. The gate program (3882176, lazy
+select) sets the next row edge at row start, `$number = 5 x row`:
+
+    edge[row+1] = (row+1)/y + 0.61 x (rand(1.0) - 0.5) / y         (1.0 on the last row)
+
+so a height is `1/6 +- 0.1` of the canvas and our `rand` -- `frac(sin(12.9898 + n x 78.233)
+x 43758.5453)`, the arbitrary hash `sbsruntime.rand` documents as arbitrary -- gives at n =
+0, 5, 10, 15, 20, 25 the draws 0.92, 0.16, 0.77, 0.10, 0.12, 0.58. Heights 53.6, 22.7, 58.7,
+25.3, 43.0, 52.6 px at 256, which is the render to the pixel. Two -2 sigma rows in six, and
+they alternate with tall ones because that is what those six hash values do.
+
+SIX OTHER SEEDS (the hash's `n` offset by 1009 x seed, nothing else changed), height /
+basecolor / AO, 256 grid:
+
+    seed        height blob_d  blob_n   basecolor blob_d  blob_n   AO blob_d  blob_n
+    committed        24.2       48          20.2       48          24.0       49
+    1                36.5       41          32.4       41          35.2       44
+    2                34.8       44          29.9       44          34.7       44
+    3                40.4       39          35.1       39          38.9       40
+    4                43.4       37          39.2       37          43.3       37
+    5                30.4       45          26.3       45          30.3       45
+    6                34.4       42          29.1       43          34.3       42
+    Textures_1       35.8       38          36.3       40          30.6       48
+
+The reference sits inside the seed spread on every channel; the committed draw is its tail.
+Seen side by side (seeds 1 and 4 against the reference), the tiling has the reference's
+rows of near-square stones with the occasional two-stack. CLOSED, no code change: the
+hash is not the file's and no seed of ours will reproduce the reference's layout, so the
+instrument for this graph is the spread, not one draw. The one modelled deviation the
+sweep does not excuse is `rand`'s documented collision -- the gate's x-jitter and y-jitter
+are two `rand(1.0)` calls in one emission and draw the same value -- which correlates cell
+width with row height; the six seeds say it does not move the statistics, so it stays as
+it is.
+
+WHAT THE PICTURES SAY IS LEFT is level, not layout: height p50 0.825 and p95 1.000 against
+0.469 / 0.694, a hard bevel and white stone faces where the reference has a soft rounded
+bevel at mid-grey, on every seed (height mean 0.71-0.74 on all six). That is the "authored
+threshold our level sits above" family -- 10326 and the three below it -- and it is the next
+thing.
