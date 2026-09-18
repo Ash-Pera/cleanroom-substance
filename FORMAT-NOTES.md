@@ -60241,3 +60241,20 @@ the default stays `field`. The rows to chase before asking again: what `spread` 
 Also: RoofTiles' roughness in `reference_renders/clear` is a flat 0.282 (paint cleared),
 so its corr is not a render question; the 0.28 -> 0.03 under the matrix flip was against
 `old`.
+
+ADDENDUM, 002's roughness level. Isolating `spread` per distinct-source `distance` on graph
+002 (corr and dc per output): the roughness dc is -0.385 under `field` already and -0.399
+with `spread` on 7611 -- the ratchet's -0.44 is a pre-existing level miss, not the arm's.
+(`7611` under `spread` also puts 002's height level right, dc +0.250 -> +0.035, at the
+tilt hole's corr cost 0.58 -> 0.34.) The roughness chain: `12572` levels (in [0.337,
+0.949] mid 0.473, out [0.048, 0.877]) of `12571`, a SOFTLIGHT (mode 11) at 0.94 of base
+`12570` (0.532) and foreground `12569` (0.127, a sparse grunge: `12505` levels of `12504`
+levels (`levelinlow` 0.333) of `12503`, a subtract of two transformed grunge FX-Maps). For
+the levels to land on the reference's 0.615 the softlight must give ~0.75, which needs a
+BRIGHT foreground (~0.85); ours darkens the base to 0.391 and the output to 0.230. The
+softlight members are indistinguishable here (the mode-11 section); the operand order
+swapped is worse (0.13). What is left is the grunge's level -- `12497`/`12499`/`12502`
+FX-Maps at 0.52 / 0.19 / 0.06 -- or a graph input the exporter set, and neither was chased.
+Graph 001's "annihilation points" at 256 under the current defaults: none -- the 48
+`levels` at 0.5 +- 1/2048 are a normal-combine idiom float32 keeps, and `10323`..`10326`
+are a max/min pyramid whose constant channel is the image's true maximum.
