@@ -59887,3 +59887,48 @@ should default to `spread`. Not flipped here: the rule is a default flips on a g
 passes, and the guard on file is the corr. The next session that touches the guard should
 add tilt / tile level / mortar level beside it and flip on the pair; until then `spread` is
 the arm to render Bricks with.
+
+## Graph 001's Flood Fill is dead on any grid where a texel is not a pixel: the seed pass steps by half a texel of `$outputsize`, and at `--dim 256` / `$outputsize` 10 no pixel is an edge
+
+WHAT `10253` ACTUALLY HELD. Every 256-px measurement of graph 001 in the sections above
+(`$outputsize` 10) had `10253` at ONE value on every stone -- p50 = p95 = 0.317, seed 1 --
+and `10252`'s channels 0-1 were the global `$pos` ramp masked by the tiling, not a per-cell
+bounding box. The Flood Fill's seed pass `10175` was a constant image: ch0 -0.001, ch1 0,
+ch2 0, ch3 1, on every pixel. Read at 256 under `spread`, the "per-stone tone" was the
+mortar's zero against one grey; the cross-hair seams were `$pos` itself.
+
+WHY. `10175`'s program (3935388) decides whether a pixel is on a cell edge by sampling the
+mask at `$pos`, `$pos - (h, 0)`, `$pos - (0, h)` and `$pos - (h, h)` with `h = slots[0]`,
+which its prologue (3936032) sets to half a texel: `0.5 / 2^$outputsize`. All four
+samples under 0.5, or all four over, is "not an edge", and a not-edge pixel writes the
+constants above -- `slots[0] x (-1, 0)` into channels 0-1, `(0, 1)` into 2-3. On a 256-px
+grid with `$outputsize` 10 the step is an eighth of a pixel; the sampler returns the same
+value at both ends, no pixel is ever an edge, and the jump-flood passes have nothing to
+propagate (`10182` -0.125 flat, `10211` -32 flat, `10218` 0.5 flat). The `-512 / -1024`
+reading of the earlier section is right about the units and wrong about the consequence:
+a field addressed in texels of a 1024 canvas cannot be evaluated on 256 pixels.
+
+THE SAME GRID WITH `$outputsize` 8 (a texel is a pixel), the twelve arms:
+
+    record   256 / os 10                      256 / os 8
+    10175    ch2 0.000 flat                   ch2 0..0.5, edge pixels found
+    10252    ch0 = $pos ramp; ch2 0.81 flag   ch0 per-cell ramp; ch2 per-cell width, max 0.242
+    10253    one grey, 0.317, on every cell   one grey PER cell, 0..0.973, sd 0.328
+    10254    the same one grey spread         each stone's grey spread across the mortar
+
+Seen: cell-relative position ramps, per-cell widths, a different grey per stone, and
+`spread` carrying it over the mortar with no seam. This is what the Flood Fill sections
+described and what only native size delivers; `$outputsize` 8 is not the export condition
+(size expressions, `$sizelog2`-gated passes and blur radii all read it), so the condition
+for graph 001 is `--dim 1024`, `$outputsize` 10, and the 256-px numbers for it -- blob_d,
+tone_between, the seed sweep, the `spread` tables -- are numbers about a dead flood fill
+drawn over a live tiling. The tiling conclusions (row heights from the hash, the seed
+sweep) do not depend on it; the tone conclusions do, and are re-measured below at native.
+
+GENERAL. Any pixel-machine that steps by `$outputsize` texels -- Flood Fill and its
+descendants, jump floods, the `select`-gated multi-pass constructs -- is dead under
+`--dim < 2^$outputsize`, silently, with plausible-looking constants. The guard's 256/os-10
+condition is fine for the filter graph and blind to these. Graphs 002-005 carry Flood Fill
+to Gradient through a different construct (`2660`, whose bbox comes from `2651` and not
+from a seed pass) and did render their per-tile ramps at 256; that is why the tilt
+instrument worked there.
