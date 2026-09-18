@@ -1104,7 +1104,7 @@ def f_warp(ctx, v):
         raise Unsupported("warp has fewer than 2 edges")
     p = v.params.get("intensity")
     if p is None:
-        d = assume.assumed("warp.default_intensity", "refuse")
+        d = assume.assumed("warp.default_intensity", 1.0)
         # THE BITS ARE 29 AND 30, NOT 13 AND 14. `CLS_NAMES[7]` maps bit 29 to
         # `('intensity', 'baked')` and bit 30 to `('intensity', 'program')`, and that is the
         # mapping `View._add` actually uses. The old message named 13/14, which sent a reader

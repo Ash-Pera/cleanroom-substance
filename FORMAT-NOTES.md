@@ -60258,3 +60258,19 @@ FX-Maps at 0.52 / 0.19 / 0.06 -- or a graph input the exporter set, and neither 
 Graph 001's "annihilation points" at 256 under the current defaults: none -- the 48
 `levels` at 0.5 +- 1/2048 are a normal-combine idiom float32 keeps, and `10323`..`10326`
 are a max/min pyramid whose constant channel is the image's true maximum.
+
+## `warp.default_intensity` = 1.0 is the default: the reference set is inert to the value, the ratchet passes, and it renders what `refuse` left dark
+
+The section that added the arm ("renders 50,204 more records -- and the guard CANNOT SEE
+IT AT ALL") could not flip it because no reference channel then depended on a warp that
+lacked its intensity. RoofTiles does: three of its four roots are such warps (79, 537,
+960), and with the arm on, five of its six outputs render and its height scores +0.81
+against `reference_renders/clear`. The VALUE stays unarbitrated by any picture -- height,
+basecolor and normal are identical to three decimals under 0.0, 0.25, 0.5, 1.0 and 2.0 at
+256 px, the warps' intensity multiplying a map that is flat where it matters -- so 1.0
+rests where it did, on the corpus argument (absent from all 26,108 stated intensities and
+all 15 in permitted sources while 0.75, 1.5 and 2.0 occur; `blur`, the control, states
+1.0 10,357 times). `test_render2_reference_agreement_does_not_regress` and
+`test_the_new_guard_does_not_weaken_the_old_floors` pass with it as default. `refuse` is
+the arm. The corpus sweep running beside this section will say how many records it
+reaches at 64 px; the earlier count at 128 was 50,204.

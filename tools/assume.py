@@ -42,15 +42,20 @@ QUESTIONS = {
     # is available here as for warp -- 1.0 is absent from the baked values -- and it is
     # refuted the same way: in `blur`, 1.0 is the MODAL baked value at 10,200 of 14,931, so
     # this compiler plainly does not omit parameters merely because they equal a default.
-    # ARMS TO TEST A CANDIDATE, NOT A CHANGE: the first arm is `refuse`, so adding this
-    # question changes no render. `warp` refuses when its intensity is absent (880 records,
+    # FLIPPED TO 1.0 on the reference set: every reference channel is inert to the value
+    # (RoofTiles, the one pack it unblocks, scores identically under 0.0 .. 2.0 at 256),
+    # the ratchet passes, and it renders five of RoofTiles' six outputs and ~50,000 corpus
+    # records that `refuse` left dark. `refuse` is the arm now. The value itself still
+    # rests on the corpus argument below, not on a picture.
+    # ARMS TO TEST A CANDIDATE, NOT A CHANGE: the first arm WAS `refuse`, so adding this
+    # question changed no render. `warp` refuses when its intensity is absent (880 records,
     # 3.13% of warps, blocking 1,347 downstream) and had no arm at all, so the alternative
     # could not be measured. 1.0 is first among the values because it is the candidate the
     # evidence points at: absent from all 26,108 compiled stated intensities and from all 15
     # stated in permitted sources, while 0.75, 1.5 and 2.0 are present, and `blur` -- the
     # control -- states 1.0 10,357 times, so the test discriminates. See FORMAT-NOTES,
     # "Permitted sources corroborate `warp` default = 1.0".
-    "warp.default_intensity": ("refuse", 1.0, 0.0, 0.25, 0.5, 2.0),
+    "warp.default_intensity": (1.0, "refuse", 0.0, 0.25, 0.5, 2.0),
     # BLUR'S INTENSITY WHEN THE SOURCE OMITTED IT -- the same question as warp's, and it
     # gates RoofTiles' basecolor (record 2190) and Auras' fourth basecolor (342), both
     # with reference maps, so unlike warp's this one is measurable. `refuse` first.
