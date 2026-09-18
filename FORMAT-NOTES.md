@@ -60598,3 +60598,8 @@ cost model 5, empty-table FX-Maps 4. The `warp`, `normal`, non-finite, `0x1db`,
 answer at 256 (RoofTiles basecolor identical under 0.0 .. 2.0). At the export size a
 0.5-px-at-256 blur is 4 px, which a picture can see; `nativeguard.py` on RoofTiles under
 0.0 / 0.5 / 1.0 / 2.0 is running as this is written.
+
+ADDENDUM: `curve record carries no readable spline` (11 files) was `Record.curve_points`
+refusing any count over 16. The payload confirms its own count (its first word equals slot
+2) and the containment test bounds the read; Wood_Plain 524 holds 22 points at a span of
+exactly 24 x 22 + 4. The cap is `CURVE_MAX_POINTS` now. Wood_Plain 1,588 of 1,588.

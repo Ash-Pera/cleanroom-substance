@@ -5999,7 +5999,10 @@ class Record:
         if self.filter_id != 22 or len(self.words) < 4:
             return None
         n = self.words[2]
-        if not (1 <= n <= 16):
+        # The count is confirmed by the payload's own first word below, and the table
+        # must fit the body; 16 was a fitted cap that eleven corpus files exceed (Wood_Plain
+        # 524 holds 22 points, span 24 x 22 + 4 exactly). `CURVE_MAX_POINTS` is the bound.
+        if not (1 <= n <= self.CURVE_MAX_POINTS):
             return None
         off = self.words[3] + 52
         if not (self.asm.body_lo <= off and off + 4 + 24 * n <= self.asm.body_hi):
