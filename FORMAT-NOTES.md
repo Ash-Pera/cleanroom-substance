@@ -60582,3 +60582,19 @@ a sparse FX-Map. A flat map has no gradient, so the author's own graph disables 
 warps; the reference's wobble enters the height elsewhere (1181 / 1124 into 1182), not
 chased. `fx.subdivide` does not touch 74 (its root is a `0x510B` leaf family the tree
 arm does not read; the list walk draws its one pattern either way).
+
+## The third sweep: 89.9% of the corpus renders at bare defaults; `blur`'s omitted intensity is the largest root left
+
+All 437 files, 64 px, bare defaults, after `vectorshape`, `sbs_div`, the unwired-edge
+skip, `greyscale.wide`, `pixelprocessor.unset` and `fx.unset`: 812,493 of 903,616 records
+(89.9%; 74.5% at the previous sweep, 68.8% at the first). Roots by files hit: `blur` no
+intensity 91, unbound graph image inputs 87, pattern budget 54 (1025^2, 1501^2, 1024^2,
+2049^2 -- tile samplers at full density, sub-pixel at any grid this sweep uses), `curve`
+with no readable spline 11, an FX-Map `ValueError` on a NaN pattern count 6, filter 9's
+cost model 5, empty-table FX-Maps 4. The `warp`, `normal`, non-finite, `0x1db`,
+`vectorshape`, unwired-input and slot classes are gone from the census.
+
+`blur` is the lever now, and its value is the question the never-typed argument could not
+answer at 256 (RoofTiles basecolor identical under 0.0 .. 2.0). At the export size a
+0.5-px-at-256 blur is 4 px, which a picture can see; `nativeguard.py` on RoofTiles under
+0.0 / 0.5 / 1.0 / 2.0 is running as this is written.
