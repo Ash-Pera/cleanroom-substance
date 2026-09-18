@@ -60165,3 +60165,17 @@ one reached through `Context.run`. Measured neutral: Bricks' five graphs and the
 packs score identically before and after (no FX program on the guard reads `$outputsize`
 to an effect at 256). It is a consistency correction, not an arm: two programs in one
 graph were reading two different `$outputsize`s.
+
+ADDENDUM, SandyStonePath's rings, two readings tried and refused. The outline chain is
+`47 = |11 - blur(11)|` -> `48` levels (x20) -> `49` a step at 0.002, so a thin outline
+needs the field FLAT (or exactly linear) inside a cell: a box blur of a linear ramp is the
+ramp, and the response is nonzero only where the slope changes. Ours lights 85% of the
+canvas: the cones' interior response is ~0.001, above the step, and the seed-disc rim is a
+slope change as real as the ridge. (a) Propagating the seeds' own grey into the black
+(threshold 0, no falloff) would make the cells flat -- but every seed is the same white
+(record 2's opacity is 1 on all), so record 3 becomes a constant and the Auto Levels
+divides by zero; and on Bricks it costs 003 0.17 for 004's +0.02. Refused and removed.
+(b) The reference's per-cell greys and its clean outlines therefore come from a field that
+is exactly linear between ridges, and from the seeds' rims not registering -- the SEED
+SIZE (0.32 x cell by the program) or the field's numerics, not `distance.propagate`.
+Left open.
