@@ -205,6 +205,17 @@ def emission_count(rec, numberadded):
         if w:
             return w * w, "grid"
     if numberadded == 1:
+        # THE LEAF'S BAKED COUNT, where the count node degenerates to 1. Tiled roof 383:
+        # `numberadded` is `((aspect - 1) mod 2 + aspect)^2` -- the spiral's bound, 1 on a
+        # square canvas -- under a leaf `0x160B` that states 22, and its entry's
+        # branchoffset walks `$number` down a column. The same contradiction 'placement'
+        # fires on, with the count stated by the file instead of read off a constant;
+        # the gate that bounds the spiral runs once, as under 'placement'. Where both are
+        # readable and the node's count is not 1 the two agree (46 of 46); the 10 that
+        # differ are all of this shape. See `leaf_count`; the arm is `fx.leafcount`.
+        n = leaf_count(rec) if assume.assumed("fx.leafcount", "header") == "header" else 0
+        if n > 1 and n <= MAX_PATTERNS:
+            return n, "placement"
         grid = number_grid(rec)
         # ONE-DIMENSIONAL ONLY. The two-axis spelling is `grid_width`'s own case, and where
         # it declines a record that is `grid_width`'s judgement -- overriding it with a

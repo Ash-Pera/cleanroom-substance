@@ -60716,3 +60716,13 @@ in SPEC §13.8.
 
 The fast suites pass (47); the ratchet and its floor test pass under all of the above.
 The fourth corpus sweep is running and lands as an addendum.
+
+ADDENDUM, THE TEN THAT DIFFERED. Tiled roof 383 (and 389, 398, 405, 410; EmptyTest 2, 6,
+11; fz_explosion 19, 26): a count node whose `numberadded` is `((aspect - 1) mod 2 +
+aspect)^2` -- a spiral's bound, 1 on a square canvas, the Chesterfield shape `grid_width`'s
+docstring describes -- above a gate and a leaf stating 22 / 32 / 10, with the entry's
+`branchoffset` walking `$number` down a column (0.09 a step). `emission_count` now takes
+the leaf's count where the node's is 1, in the existing 'placement' mode (the gate that
+bounds the spiral runs once; under 'chain' it closes after the first): 22 patterns in a
+column, 56 of 56 readable count-node chains agree with their leaf. Ratchet passes, 47
+fast tests pass.
