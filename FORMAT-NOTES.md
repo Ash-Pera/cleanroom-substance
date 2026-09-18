@@ -60038,3 +60038,28 @@ ROOFTILES, the other dead pack, `--dim 128`: 1,640 of 2,632, 992 cascaded from F
 the parameter at its engine default. `warp.default_intensity` exists as an arm (`refuse`,
 1.0, 0.0, 0.25, 0.5, 2.0), `blur` has none; five of six outputs hang on those four. That is
 the next pack.
+
+## SandyStonePath's cobbles sit behind a graph input the export set on and the file declares off: `render2` takes graph-input overrides, and with `Use_Random_Tiles` = 1 the Voronoi outlines land where the reference's mortar is
+
+The cobble layer's path from record 11 to the height: `45 = 11 - blur(11)` (edge detect),
+`48`/`49` levels to a mask (15% lit, the cell ridges), `50`..`54` distance dilations, and
+then `55`, a `switch` (blend mode 7) between `27` -- the 5 x 5 square-tile grid -- and `54`,
+the cobble edges, whose selector program is `select(inputs[89582107], 1, 0)`. The manifest
+names 89582107 `Use_Random_Tiles`, a toggle, default 0. Under the default every output is
+the grid; the reference's height and baseColor are cobbles, its roughness the grid. The
+exporter set the toggle on. Nothing in the pack records that, and `$randomseed` is the
+same story (declared 0, the scatter's jitter does not match).
+
+`render2.engine.render(..., inputs={uid: value})` and `Context(inputs=...)` evaluate the
+graph with the given inputs over the header's declared defaults, the way `$outputsize` is
+already overridden; None leaves everything as it was. Default-inert; 18 tests pass.
+
+WITH THE TOGGLE ON, `--dim 256`, implied `$outputsize`, twelve arms, through `refcompare`:
+the Voronoi cell outlines are drawn where the reference's mortar runs, with two faults
+that are the next layer -- every seed disc carries a dotted ring (the edge detect sees the
+distance field's plateau edge at the 0.32-of-cell seed, and the reference does not), and
+the outlines arrive thin and bright where the reference's are wide and dark (the
+`50`..`54` dilations and the levels after the switch). Corr stays ~0 either way (the
+scatter is jittered on a seed the pack does not record); the level numbers move little
+(height dc +0.064, baseColor within 0.05, roughness -0.18). The instrument for this pack,
+when it is built, is per-cell like `--tiles`.

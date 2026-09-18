@@ -32,7 +32,7 @@ from ops import Unsupported, bind, conform, run_program, sampler  # noqa: F401
 class Context(object):
     """Everything a filter needs that is not its own record."""
 
-    def __init__(self, asm, cap=None, outputsize=None):
+    def __init__(self, asm, cap=None, outputsize=None, inputs=None):
         self.asm = asm
         self.cap = cap
         # THE `$outputsize` THE GRAPH IS BEING EVALUATED AT, or None for the declared one.
@@ -57,6 +57,12 @@ class Context(object):
         self.synthetic = set()
         self._bindings = {}
         self._inputs = {}
+        # GRAPH INPUTS THE CALLER SETS, {uid: value}, over the header's declared defaults.
+        # What an export was made with is not in the file when it is not the default:
+        # SandyStonePath's reference maps were exported with `Use_Random_Tiles` (uid
+        # 89582107, a toggle declared 0) on, and the whole cobble layer sits behind that
+        # switch (record 55). None leaves every input at its declared default.
+        self.input_overrides = dict(inputs or {})
 
         # THE 0x03/0x06 VALUE CACHE IS THIS CONTEXT'S, not `sbsruntime`'s module global.
         # The two opcodes are cross-record common-subexpression elimination -- a value one
@@ -128,6 +134,10 @@ class Context(object):
             if self._os_uid is not None:
                 got[self._os_uid] = np.repeat(
                     np.array(self.outputsize, np.float32).reshape(1, -1), n, axis=0
+                )
+            for uid, val in self.input_overrides.items():
+                got[uid] = np.repeat(
+                    np.array(val, np.float32).reshape(1, -1), n, axis=0
                 )
         return got
 
@@ -443,7 +453,13 @@ def record_sizes(asm, outputsize):
 
 
 def render(
-    asm, precomputed=None, verbose=False, max_dim=None, stop_after=None, outputsize=None
+    asm,
+    precomputed=None,
+    verbose=False,
+    max_dim=None,
+    stop_after=None,
+    outputsize=None,
+    inputs=None,
 ):
     """Evaluate every record. Returns (outputs, failures, info).
 
@@ -454,6 +470,9 @@ def render(
     every size expression in the file is a function of it. Scoring a render against an
     exported map produced at a different `$outputsize` compares two different graphs.
 
+    `inputs` is {uid: value} for graph inputs to evaluate at instead of their declared
+    defaults -- the same reasoning, for a parameter the exporter changed. See `Context`.
+
     `info` carries `low_confidence` -- records whose output rests on a value the FORMAT
     does not record -- `cascaded`, the failures that are only consequences, and `ignored`,
     records that STATE a field this renderer's legend does not name. The last is the one
@@ -461,7 +480,7 @@ def render(
     renders, so `hsl` was an identity in 747 records and `sharpen` in 1,156 without either
     ever appearing in a count.
     """
-    ctx = Context(asm, cap=max_dim, outputsize=outputsize)
+    ctx = Context(asm, cap=max_dim, outputsize=outputsize, inputs=inputs)
     ctx.outputs.update(precomputed or {})
     failures, cascaded, ignored = {}, set(), {}
     sizes = record_sizes(asm, outputsize) or {}
