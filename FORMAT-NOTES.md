@@ -59969,3 +59969,12 @@ pictures on all five; against it, the corr guard at 128, whose loss is isolated 
 Flood Fill to Gradient's random per-tile direction. The default is still `field`. It
 should flip, with `--tiles` beside the corr as the guard; that is a decision for whoever
 owns the guard, and it is one line in `assume.QUESTIONS`.
+
+ADDENDUM, native 1024 for all five graphs, both arms (full-file renders, 121 s and 126 s,
+0 failures). `--tiles`: `spread`'s tilt, tile level and mortar level on 002/003/004/005 are
+the 256-px values to three decimals (0.258/0.629/0.423, 0.247/0.564/0.218, 0.226/0.622/0.343,
+0.258/0.629/0.454) -- these four graphs' Flood Fill to Gradient is texel-independent, as
+assumed; `field`'s mortar level moves at native (002 0.901 -> 0.555, 005 0.868 -> 0.487),
+its tile level does not (0.84-0.89). Mean signed corr at 128, native: 001 +0.149 / +0.147,
+002 +0.763 / +0.605, 003 +0.763 / +0.714, 004 +0.720 / +0.637, 005 +0.792 / +0.677
+(field / spread) -- the same ordering as at 256, the same hole.
