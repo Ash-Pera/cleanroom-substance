@@ -60561,3 +60561,13 @@ with a pattern that matched `(a / b)` alone; under `sbs_div(a, b)` it matched no
 exist (`grid_width`, and `fx.py`'s cache read/write patterns); the third spelling change
 will find the same trap, and this note is where it is written down. Both ratchet tests
 pass with the pattern fixed.
+
+## An FX-Map's unset slot reads as 0 after seeding, as a pixel processor's does
+
+`fxmaps: slot 15 read but never set` (5 files): MetalPlatesSubstance004 222 is one
+entry whose opacity program opens `clamp(slots[15], 2)`, and after `seed_slots` has run
+every program the record names the frame holds 0-3, 7, 11-13 -- slot 15 is an initial
+value, the engine's unset variable. `fxrender.new_slots()` (behind `fx.unset`: `zero`,
+`refuse`) builds the frame `seed_slots`, `emissions` and `fxchain.seed` start from; under
+`zero` an unset read is 0.0, under `refuse` the diagnostic that found the frame model
+stays. MetalPlates004 1,089 -> 1,354 of 1,354; 33 tests; both ratchet tests pass.

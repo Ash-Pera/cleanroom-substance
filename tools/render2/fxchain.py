@@ -215,7 +215,7 @@ def seed(rec, run):
     names and would run the rest once at `$number` 0 as if they were the record's own
     prologue -- writing the very slots the walk is about to compute.
     """
-    slots = {}
+    slots = fxrender.new_slots()
     fx = programs(rec)
     for p in rec.programs or ():
         if p in fx:

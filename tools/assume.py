@@ -478,6 +478,10 @@ QUESTIONS = {
     # the "slot N read but never set" refusal, which found the slot-frame model and is
     # still what the FX-Map path raises. 13 corpus files at 64 px.
     "pixelprocessor.unset": ("zero", "refuse"),
+    # THE SAME FOR AN FX-MAP'S SLOT FRAME: an entry or node program's read of a slot that
+    # the record's own programs and the chain never set. `zero` after seeding; `refuse`
+    # is the diagnostic that found the frame model. 5 corpus files.
+    "fx.unset": ("zero", "refuse"),
     # THE `brick` PATTERN'S FOOTPRINT (patterntype 9, `SHAPE_MODELLED`). `inset` is the
     # hard fill at 85% of the box the profile has always drawn; `fill` is the whole box.
     # See `fxrender.profile_value`.

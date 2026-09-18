@@ -920,6 +920,27 @@ PARTNER = _partners()
 SCAN_STATE_DEFAULTS = {12: 0.0, 14: 0.0, 16: 0.0, 17: 0.0}
 
 
+class ZeroSlots(dict):
+    """A slot frame whose unset entries read as 0.0 -- see `new_slots`."""
+
+    def __missing__(self, key):
+        return np.float32(0.0)
+
+
+def new_slots():
+    """An empty slot frame, behind `fx.unset`.
+
+    `zero`: an entry slot the record's own programs and the chain never set reads as
+    0.0, the engine's unset variable -- after `seed_slots` has run every program the
+    record names, what remains unset is an initial value (MetalPlatesSubstance004 222:
+    one entry, `clamp(slots[15], 2)`, seeded slots 0-3, 7, 11-13). `refuse`: the frame is
+    a plain dict and the read raises "slot N read but never set", which is what found the
+    slot-frame model (99.892% of entry reads resolve against the record's own programs)
+    and is the arm now.
+    """
+    return ZeroSlots() if assume.assumed("fx.unset", "zero") == "zero" else {}
+
+
 def seed_slots(rec, run):
     """Run the record's OWN non-FX programs once, so the table can read what they set.
 
@@ -930,7 +951,7 @@ def seed_slots(rec, run):
     it. Evaluated once at N=1 into the dict the walk then uses. Takes rendering from 27.9%
     to 85.2% of fxmaps records -- the single largest lever in this file.
     """
-    slots = {}
+    slots = new_slots()
     fx = {p for _o, _h, _n, p in rec.fx_node_params()}
     fx |= {v for _o, _t, _s, _n, k, v in rec.fx_named_params() if k != "baked" and v}
     for p in rec.programs or ():
@@ -1147,7 +1168,7 @@ def why_no_entries(rec):
 
 
 def emissions(rec, run, gate_polarity=True, baked_pairs=True, slots=None):
-    slots = {} if slots is None else slots
+    slots = new_slots() if slots is None else slots
     nodes = chain(rec)
     table = entries(rec, baked_pairs)
     if not table:
