@@ -1072,7 +1072,7 @@ def render_fxmaps(ctx, v):
             rec,
             programs=ctx.fx_funcs,
             cache_funcs=ctx.cache_funcs,
-            inputs=ctx.input_overrides,
+            inputs=ctx.program_inputs(),
         )
         try:
             seeded = (

@@ -60157,3 +60157,11 @@ of warp's question. Any value but `refuse` renders RoofTiles' basecolor (+0.62 /
 +0.52 by channel against the reference, 14 x 9) and the three channels do not move between
 0.0 and 2.0 at 256 px -- the blur is inconsequential at this grid, so the reference cannot
 pick the value and the default stays `refuse`. Auras' paired rows do not change either way.
+
+ADDENDUM: FX programs now read the render's `$outputsize`. `Context.program_inputs()` is the
+caller's overrides plus `{$outputsize uid: this render's size}`, and `render2.fx` hands it to
+`fxrender.make_runner`, so a program reached through the FX runner reads the same graph as
+one reached through `Context.run`. Measured neutral: Bricks' five graphs and the four other
+packs score identically before and after (no FX program on the guard reads `$outputsize`
+to an effect at 256). It is a consistency correction, not an arm: two programs in one
+graph were reading two different `$outputsize`s.

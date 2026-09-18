@@ -141,6 +141,17 @@ class Context(object):
                 )
         return got
 
+    def program_inputs(self):
+        """{uid: value} an FX-Map's runner applies over the header: the caller's overrides
+        and the `$outputsize` this render is at -- the same two `graph_inputs` applies, so
+        a program reached through `fxrender.make_runner` reads the graph the other programs
+        read. Before this, an FX program reading `$outputsize` by `inputref` got the
+        DECLARED size under `--outputsize` while every filter parameter got the render's."""
+        out = dict(self.input_overrides)
+        if self._os_uid is not None:
+            out[self._os_uid] = tuple(self.outputsize)
+        return out
+
     def run(self, v, ptr, n, slots=None, pos=None, W=None, H=None):
         """Evaluate one of `v`'s programs. `$size` is the RECORD'S DECLARED SIZE.
 
