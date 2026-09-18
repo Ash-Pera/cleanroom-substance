@@ -42,6 +42,7 @@ sweep died of it. If HEAD moves while arms are running, the arms are unaffected:
 the archive, not the checkout. The commit is recorded so the run can be reproduced, and
 `moved_during_run` is reported for information, not as a verdict.
 """
+
 import argparse
 import json
 import os
@@ -55,24 +56,26 @@ REPO = os.path.dirname(HERE)
 
 
 def repo_commit(repo=REPO):
-    return subprocess.check_output(['git', '-C', repo, 'rev-parse', 'HEAD'],
-                                   text=True).strip()
+    return subprocess.check_output(
+        ["git", "-C", repo, "rev-parse", "HEAD"], text=True
+    ).strip()
 
 
-def pin(commit='HEAD', repo=REPO, into=None):
+def pin(commit="HEAD", repo=REPO, into=None):
     """Materialise `repo`'s tree at `commit` and return (root, resolved sha).
 
     `git archive` and not a copy of the checkout: the checkout holds ten sessions'
     in-flight edits, and the whole point is to not measure them.
     """
-    sha = subprocess.check_output(['git', '-C', repo, 'rev-parse', commit],
-                                  text=True).strip()
-    root = into or tempfile.mkdtemp(prefix='sweep-%s-' % sha[:10])
-    tar = subprocess.check_output(['git', '-C', repo, 'archive', sha])
-    p = subprocess.Popen(['tar', '-x', '-C', root], stdin=subprocess.PIPE)
+    sha = subprocess.check_output(
+        ["git", "-C", repo, "rev-parse", commit], text=True
+    ).strip()
+    root = into or tempfile.mkdtemp(prefix="sweep-%s-" % sha[:10])
+    tar = subprocess.check_output(["git", "-C", repo, "archive", sha])
+    p = subprocess.Popen(["tar", "-x", "-C", root], stdin=subprocess.PIPE)
     p.communicate(tar)
     if p.returncode:
-        raise RuntimeError('git archive %s did not extract' % sha)
+        raise RuntimeError("git archive %s did not extract" % sha)
     _complete_data(root, repo)
     return root, sha
 
@@ -90,20 +93,22 @@ def _complete_data(root, repo):
     measurement, not the thing under measurement: swapping the corpus listing changes which
     files an arm renders, and every arm still renders the same ones.
     """
-    src_dir, dst_dir = os.path.join(repo, 'tools'), os.path.join(root, 'tools')
+    src_dir, dst_dir = os.path.join(repo, "tools"), os.path.join(root, "tools")
     copied = []
     if not os.path.isdir(src_dir):
         return copied
     for name in sorted(os.listdir(src_dir)):
-        if name.endswith('.py') or name.startswith('.') or name == '__pycache__':
+        if name.endswith(".py") or name.startswith(".") or name == "__pycache__":
             continue
         s, d = os.path.join(src_dir, name), os.path.join(dst_dir, name)
         if os.path.isfile(s) and not os.path.exists(d):
             shutil.copy2(s, d)
             copied.append(name)
     if copied:
-        print('sweep: completed pinned tree with untracked data: %s'
-              % ', '.join(copied), file=sys.stderr)
+        print(
+            "sweep: completed pinned tree with untracked data: %s" % ", ".join(copied),
+            file=sys.stderr,
+        )
     return copied
 
 
@@ -183,7 +188,7 @@ print(json.dumps(out))
 '''
 
 
-def run(key, files, arms=None, max_dim=64, base_scope=None, commit='HEAD', repo=REPO):
+def run(key, files, arms=None, max_dim=64, base_scope=None, commit="HEAD", repo=REPO):
     """Every arm of `key`, in one child process, against one pinned tree.
 
     `arms=None` takes the candidates from the PINNED `assume.QUESTIONS`, not from the
@@ -198,104 +203,151 @@ def run(key, files, arms=None, max_dim=64, base_scope=None, commit='HEAD', repo=
     # a report with a commit on it and nothing measured, which reads like a null result
     # rather than a mistake.
     if not arms:
-        raise KeyError('%r has no arms at %s; `--list` shows the %d questions it does have'
-                       % (key, sha[:10], len(_pinned_questions(root))))
-    spec = {'key': key, 'arms': list(arms), 'files': list(files),
-            'max_dim': max_dim, 'base_scope': base_scope or {}}
-    src = os.path.join(root, '_sweep_child.py')
-    with open(src, 'w') as fh:
+        raise KeyError(
+            "%r has no arms at %s; `--list` shows the %d questions it does have"
+            % (key, sha[:10], len(_pinned_questions(root)))
+        )
+    spec = {
+        "key": key,
+        "arms": list(arms),
+        "files": list(files),
+        "max_dim": max_dim,
+        "base_scope": base_scope or {},
+    }
+    src = os.path.join(root, "_sweep_child.py")
+    with open(src, "w") as fh:
         fh.write(_child_source)
     env = dict(os.environ)
     # PYTHONPATH is inherited and the parent may well have the checkout on it.
-    env.pop('PYTHONPATH', None)
-    proc = subprocess.run([sys.executable, src, root, repo, json.dumps(spec)],
-                          cwd=repo, env=env, capture_output=True, text=True)
+    env.pop("PYTHONPATH", None)
+    proc = subprocess.run(
+        [sys.executable, src, root, repo, json.dumps(spec)],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
-        raise RuntimeError('sweep child failed (%d):\n%s' % (proc.returncode,
-                                                             proc.stderr[-2000:]))
+        raise RuntimeError(
+            "sweep child failed (%d):\n%s" % (proc.returncode, proc.stderr[-2000:])
+        )
     result = json.loads(proc.stdout.strip().splitlines()[-1])
-    if 'error' in result:
-        raise RuntimeError(result['error'])
-    result.update({'key': key, 'commit': sha, 'pinned_root': root,
-                   'max_dim': max_dim, 'base_scope': base_scope or {},
-                   'shared_tree': True, 'moved_during_run': repo_commit(repo) != sha})
+    if "error" in result:
+        raise RuntimeError(result["error"])
+    result.update(
+        {
+            "key": key,
+            "commit": sha,
+            "pinned_root": root,
+            "max_dim": max_dim,
+            "base_scope": base_scope or {},
+            "shared_tree": True,
+            "moved_during_run": repo_commit(repo) != sha,
+        }
+    )
     return result
 
 
 def _pinned_questions(root):
-    src = ('import sys, json; sys.path.insert(0, %r); import assume; '
-           'print(json.dumps({k: [repr(a) for a in (v or ())] '
-           'for k, v in assume.QUESTIONS.items()}))' % os.path.join(root, 'tools'))
-    return json.loads(subprocess.check_output([sys.executable, '-c', src], text=True))
+    src = (
+        "import sys, json; sys.path.insert(0, %r); import assume; "
+        "print(json.dumps({k: [repr(a) for a in (v or ())] "
+        "for k, v in assume.QUESTIONS.items()}))" % os.path.join(root, "tools")
+    )
+    return json.loads(subprocess.check_output([sys.executable, "-c", src], text=True))
 
 
 def _pinned_arms(root, key):
-    src = ('import sys, json; sys.path.insert(0, %r); import assume; '
-           'print(json.dumps(list(assume.QUESTIONS.get(%r) or ())))'
-           % (os.path.join(root, 'tools'), key))
-    return json.loads(subprocess.check_output([sys.executable, '-c', src], text=True))
+    src = (
+        "import sys, json; sys.path.insert(0, %r); import assume; "
+        "print(json.dumps(list(assume.QUESTIONS.get(%r) or ())))"
+        % (os.path.join(root, "tools"), key)
+    )
+    return json.loads(subprocess.check_output([sys.executable, "-c", src], text=True))
 
 
 def report(result):
-    lines = ['%s -- %d arms, commit %s, max_dim %s'
-             % (result['key'], len(result['arms']), result['commit'][:10],
-                result['max_dim'])]
-    lines.append('arms shared the tree by construction (one `git archive`, one process)')
-    if result['moved_during_run']:
-        lines.append('NOTE: HEAD moved during the run; the arms are unaffected, they read '
-                     'the archive')
-    for row in result['arms']:
-        lines.append('')
-        lines.append('  arm %r' % (row['arm'],))
-        if 'error' in row:
-            lines.append('    ERROR %s' % row['error'])
+    lines = [
+        "%s -- %d arms, commit %s, max_dim %s"
+        % (result["key"], len(result["arms"]), result["commit"][:10], result["max_dim"])
+    ]
+    lines.append(
+        "arms shared the tree by construction (one `git archive`, one process)"
+    )
+    if result["moved_during_run"]:
+        lines.append(
+            "NOTE: HEAD moved during the run; the arms are unaffected, they read "
+            "the archive"
+        )
+    for row in result["arms"]:
+        lines.append("")
+        lines.append("  arm %r" % (row["arm"],))
+        if "error" in row:
+            lines.append("    ERROR %s" % row["error"])
             continue
-        for path, r in sorted(row['files'].items()):
-            if 'error' in r:
-                lines.append('    %-40s ERROR %s' % (os.path.basename(path), r['error']))
+        for path, r in sorted(row["files"].items()):
+            if "error" in r:
+                lines.append(
+                    "    %-40s ERROR %s" % (os.path.basename(path), r["error"])
+                )
                 continue
-            ok = [o for o in r['outputs'] if o['ok']]
-            varying = [o for o in ok if o['std'] > 1e-6]
-            lines.append('    %-40s %d/%d outputs, %d varying   (%d/%d records)'
-                         % (os.path.basename(path), len(ok), len(r['outputs']),
-                            len(varying), r['produced'], r['records']))
-            for o in r['outputs']:
-                lines.append('        %-14s %s' % (
-                    o['name'],
-                    ('mean %.4f std %.5f' % (o['mean'], o['std'])) if o['ok']
-                    else 'BLOCKED: %s' % str(o['why'])[:70]))
-    return '\n'.join(lines)
+            ok = [o for o in r["outputs"] if o["ok"]]
+            varying = [o for o in ok if o["std"] > 1e-6]
+            lines.append(
+                "    %-40s %d/%d outputs, %d varying   (%d/%d records)"
+                % (
+                    os.path.basename(path),
+                    len(ok),
+                    len(r["outputs"]),
+                    len(varying),
+                    r["produced"],
+                    r["records"],
+                )
+            )
+            for o in r["outputs"]:
+                lines.append(
+                    "        %-14s %s"
+                    % (
+                        o["name"],
+                        ("mean %.4f std %.5f" % (o["mean"], o["std"]))
+                        if o["ok"]
+                        else "BLOCKED: %s" % str(o["why"])[:70],
+                    )
+                )
+    return "\n".join(lines)
 
 
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('key', nargs='?')
-    ap.add_argument('files', nargs='*')
-    ap.add_argument('--list', action='store_true', help='every question and its arms')
-    ap.add_argument('--dim', type=int, default=64)
-    ap.add_argument('--commit', default='HEAD')
-    ap.add_argument('--json', help='write the full result here')
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("key", nargs="?")
+    ap.add_argument("files", nargs="*")
+    ap.add_argument("--list", action="store_true", help="every question and its arms")
+    ap.add_argument("--dim", type=int, default=64)
+    ap.add_argument("--commit", default="HEAD")
+    ap.add_argument("--json", help="write the full result here")
     args = ap.parse_args(argv)
 
     if args.list or not args.key:
         root, sha = pin(args.commit)
         qs = _pinned_questions(root)
-        print('%d questions, %d arms, at %s'
-              % (len(qs), sum(len(v) for v in qs.values()), sha[:10]))
+        print(
+            "%d questions, %d arms, at %s"
+            % (len(qs), sum(len(v) for v in qs.values()), sha[:10])
+        )
         for k in sorted(qs):
-            print('  %-28s %s' % (k, ', '.join(qs[k]) or '(continuous)'))
+            print("  %-28s %s" % (k, ", ".join(qs[k]) or "(continuous)"))
         return 0
 
     if not args.files:
-        print('give at least one .sbsasm to render', file=sys.stderr)
+        print("give at least one .sbsasm to render", file=sys.stderr)
         return 2
     result = run(args.key, args.files, max_dim=args.dim, commit=args.commit)
     print(report(result))
     if args.json:
-        with open(args.json, 'w') as fh:
+        with open(args.json, "w") as fh:
             json.dump(result, fh, indent=1)
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

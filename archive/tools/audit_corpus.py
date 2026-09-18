@@ -4,6 +4,7 @@
 The point is the failure columns. A segmenter that silently guesses looks perfect;
 this one is meant to make its own gaps countable.
 """
+
 import collections, os, struct, sys
 
 # THE MODULES THIS TOOL AUDITS ARE IN tools/, AND THIS TOOL IS NOT. The archive cut moved
@@ -13,7 +14,9 @@ import collections, os, struct, sys
 # it because it defines no test. So the tool that prints this project's headline figures
 # has not been runnable as documented since the cut, which is the mechanical half of why
 # the `record bytes interpreted` row went four points stale without anyone noticing.
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools'))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools")
+)
 
 import disasm
 import decompose
@@ -65,12 +68,23 @@ _TAG, _W1, _INP, _CLS, _PAR, _PRG, _BASE = 1, 2, 3, 4, 5, 6, 7
 _PROGBODY = 8
 _RAMP, _CURVE, _VEC, _FXNODE, _FXENTRY, _BMP = 9, 10, 11, 12, 13, 14
 _PAD = 15
-_REGION_NAMES = {_TAG: 'tag', _W1: 'w1', _INP: 'input edge', _CLS: 'class slot',
-                 _PAR: 'w1 parameter', _PRG: 'size / program slot',
-                 _BASE: 'header, no named slot', _PROGBODY: 'program body',
-                 _RAMP: 'ramp table', _CURVE: 'curve table', _VEC: 'vector strip',
-                 _FXNODE: 'fx node cell', _FXENTRY: 'fx entry', _BMP: 'bitmap pixels',
-                 _PAD: 'alignment pad'}
+_REGION_NAMES = {
+    _TAG: "tag",
+    _W1: "w1",
+    _INP: "input edge",
+    _CLS: "class slot",
+    _PAR: "w1 parameter",
+    _PRG: "size / program slot",
+    _BASE: "header, no named slot",
+    _PROGBODY: "program body",
+    _RAMP: "ramp table",
+    _CURVE: "curve table",
+    _VEC: "vector strip",
+    _FXNODE: "fx node cell",
+    _FXENTRY: "fx entry",
+    _BMP: "bitmap pixels",
+    _PAD: "alignment pad",
+}
 _TIER_HDR = frozenset((_TAG, _W1, _INP, _CLS, _PAR, _PRG, _BASE))
 _TIER_PROG = _TIER_HDR | frozenset((_PROGBODY,))
 # `+ every payload reader` KEEPS ITS OLD DEFINITION, and the pad is a FOURTH tier rather
@@ -115,7 +129,7 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
         if y <= x:
             return
         seg = seen[x:y]
-        if seg.count(0) == y - x:                  # slice assignment, not a Python loop
+        if seg.count(0) == y - x:  # slice assignment, not a Python loop
             seen[x:y] = bytes((v,)) * (y - x)
             return
         for i in range(x, y):
@@ -136,23 +150,23 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
         slot(0, _TAG)
         if d is None:
             continue
-        ins, cls = set(d.get('inputs') or ()), set(d.get('cls_slots') or ())
+        ins, cls = set(d.get("inputs") or ()), set(d.get("cls_slots") or ())
         if len(r.words) > 1 and 1 not in ins and 1 not in cls:
             slot(1, _W1)
         for s in ins:
             slot(s, _INP)
         for s in cls:
             slot(s, _CLS)
-        for t in (d.get('param_slots') or ()):
+        for t in d.get("param_slots") or ():
             pos, wd = (t[2], t[3]) if len(t) >= 4 else (t[2], 1)
             slot(pos, _PAR, int(wd))
-        slot(d.get('prog'), _PRG)
+        slot(d.get("prog"), _PRG)
         # Whatever the walk's own header end covers and no slot above named. This is the
         # cost model's BASE REGION -- the words `pos = max(pos, const)` steps over -- and
         # it is 0.11% of record bytes, so naming it separately keeps it from hiding inside
         # either "understood" or "unexplained".
-        if d.get('end') is not None:
-            mark(lo, lo + 4 * d['end'], _BASE)
+        if d.get("end") is not None:
+            mark(lo, lo + 4 * d["end"], _BASE)
     for r in a.records:
         try:
             progs = r.programs
@@ -172,7 +186,7 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
                 got = r.read_ramp()
                 if got:
                     form, tab = got
-                    w = len(tab[0]) * (4 if 'float' in form else 2)
+                    w = len(tab[0]) * (4 if "float" in form else 2)
                     mark(r.words[3] + 52, r.words[3] + 52 + w * len(tab), _RAMP)
             elif f == 22:
                 # `curve_chain`, not `curve_points`. Slot 2 is the total point count over
@@ -207,9 +221,12 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
                 # them is the shape of the bug this arm already carries a note about.
             elif f == 16:
                 bm = r.bitmap
-                if isinstance(bm, dict) and bm.get('kind') in ('pixels', 'inline_pixels'):
-                    st, sz = bm.get('offset'), bm.get('size')
-                    if st is not None and bm.get('compressed'):
+                if isinstance(bm, dict) and bm.get("kind") in (
+                    "pixels",
+                    "inline_pixels",
+                ):
+                    st, sz = bm.get("offset"), bm.get("size")
+                    if st is not None and bm.get("compressed"):
                         # A COMPRESSED IMAGE'S `size` IS ITS UNCOMPRESSED SIZE, and
                         # `Record.bitmap`'s docstring says so in as many words -- "`size`
                         # stays the UNCOMPRESSED size, because that is what it is".
@@ -240,9 +257,12 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
                         # nothing to do with bitmaps. Recorded rather than quietly fixed:
                         # a byte count that moves a long way for a change this local is a
                         # reason to look at the change, not to believe the count.
-                        _jn = (struct.unpack_from('<I', a.data, st)[0]
-                               if st + 4 <= len(a.data) else 0)
-                        dof = bm.get('data_offset')
+                        _jn = (
+                            struct.unpack_from("<I", a.data, st)[0]
+                            if st + 4 <= len(a.data)
+                            else 0
+                        )
+                        dof = bm.get("data_offset")
                         if dof and 0 < _jn and dof + _jn <= len(a.data):
                             mark(st, dof + _jn, _BMP)
                     elif st is not None and sz:
@@ -250,7 +270,7 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
             elif f == 4:
                 ent, nodes = [], []
                 for kind, off, hdr, prog in r.fx_walk():
-                    if kind == 'node':
+                    if kind == "node":
                         nodes.append((off, hdr))
                     else:
                         ent.append((off, hdr, prog))
@@ -290,7 +310,7 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
                     except Exception:
                         sz = None
                     hi = off + (sz or 4)
-                    st = _stated('node', off, hdr)
+                    st = _stated("node", off, hdr)
                     if st and st > hi:
                         hi = st
                     mark(off, hi, _FXNODE)
@@ -307,7 +327,7 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
                     if hi is None:
                         nx = ent[i + 1][0] if i + 1 < len(ent) else None
                         hi = nx if (nx and 0 < nx - off < 4096) else off + 8
-                    st = _stated('entry', off, tag)
+                    st = _stated("entry", off, tag)
                     if st and st > hi:
                         hi = st
                     mark(off, hi, _FXENTRY)
@@ -341,8 +361,16 @@ def _byte_canvas(a, fx_cells=None, fx_tags=None):
         j = i
         while j < n and not seen[j]:
             j += 1
-        if (j - i == 2 and j % 4 == 0 and i > 0 and seen[i - 1] and j < n and seen[j]
-                and a.data[i] == 0 and a.data[i + 1] == 0):
+        if (
+            j - i == 2
+            and j % 4 == 0
+            and i > 0
+            and seen[i - 1]
+            and j < n
+            and seen[j]
+            and a.data[i] == 0
+            and a.data[i + 1] == 0
+        ):
             seen[i] = seen[i + 1] = _PAD
         i = j + 1
     return seen
@@ -393,20 +421,22 @@ def _residual_class(a, seen, x, y, fx_cells, fx_tags=frozenset()):
     n = len(a.data)
     seg = a.data[x:y]
     if not any(seg):
-        return 'zeros, not the pad'
+        return "zeros, not the pad"
     if len(seg) >= 16 and len(set(seg)) == 1:
-        return 'constant fill'
+        return "constant fill"
     q = x + (-x) % 4
     if q + 4 <= min(y, n):
-        w0 = struct.unpack_from('<I', a.data, q)[0]
-        if q not in fx_cells and (sbsasm.node_shape(w0) is not None
-                                  or ((w0 & 0xF) == 8
-                                      and (w0 in fx_tags or a.entry_layout_holds(q, w0)))):
-            return 'fx cell not reached'
-    if ((x > 0 and seen[x - 1] in (_FXNODE, _FXENTRY))
-            or (y < n and seen[y] in (_FXNODE, _FXENTRY))):
-        return 'abuts an fx cell'
-    return 'other'
+        w0 = struct.unpack_from("<I", a.data, q)[0]
+        if q not in fx_cells and (
+            sbsasm.node_shape(w0) is not None
+            or ((w0 & 0xF) == 8 and (w0 in fx_tags or a.entry_layout_holds(q, w0)))
+        ):
+            return "fx cell not reached"
+    if (x > 0 and seen[x - 1] in (_FXNODE, _FXENTRY)) or (
+        y < n and seen[y] in (_FXNODE, _FXENTRY)
+    ):
+        return "abuts an fx cell"
+    return "other"
 
 
 def record_bytes(a, tot, byfilter_bytes, resid=None):
@@ -420,7 +450,7 @@ def record_bytes(a, tot, byfilter_bytes, resid=None):
         i = seen.find(_PAD, i)
         if i < 0:
             break
-        tot['pad_runs'] += 1
+        tot["pad_runs"] += 1
         i += 2
     if resid is not None:
         n = len(a.data)
@@ -433,24 +463,28 @@ def record_bytes(a, tot, byfilter_bytes, resid=None):
                 j = i
                 while j < r.end and not seen[j]:
                     j += 1
-                resid[(r.filter_id,
-                       _residual_class(a, seen, i, j, fx_cells, fx_tags))] += j - i
+                resid[
+                    (r.filter_id, _residual_class(a, seen, i, j, fx_cells, fx_tags))
+                ] += j - i
                 i = j
     for r in a.records:
         lo, hi = r.offset, r.end
         if hi <= lo:
             continue
         seg = seen[lo:hi]
-        tot['rb_total'] += hi - lo
-        byfilter_bytes[r.filter_id]['_total'] += hi - lo
+        tot["rb_total"] += hi - lo
+        byfilter_bytes[r.filter_id]["_total"] += hi - lo
         for v in set(seg):
             c = seg.count(v)
-            tot['rb_%d' % v] += c
+            tot["rb_%d" % v] += c
             byfilter_bytes[r.filter_id][v] += c
+
 
 def main(paths):
     tot = collections.Counter()
-    byfilter = collections.defaultdict(lambda: [0, 0, 0])   # records, no prog, unresolved edges
+    byfilter = collections.defaultdict(
+        lambda: [0, 0, 0]
+    )  # records, no prog, unresolved edges
     byfilter_bytes = collections.defaultdict(collections.Counter)
     resid = collections.Counter()
     unexplained = []
@@ -459,21 +493,22 @@ def main(paths):
         try:
             a = Assembly(p)
         except Exception as e:
-            failed.append((p, str(e)[:60])); continue
+            failed.append((p, str(e)[:60]))
+            continue
         cov = a.coverage()
         record_bytes(a, tot, byfilter_bytes, resid)
-        tot['files'] += 1
-        tot['bytes'] += cov['total']
-        tot['unexplained'] += cov['unexplained']
-        tot['records'] += len(a.records)
-        tot['programs'] += cov['programs_found']
-        if cov['unexplained']:
-            unexplained.append((cov['unexplained'] / cov['total'], p))
+        tot["files"] += 1
+        tot["bytes"] += cov["total"]
+        tot["unexplained"] += cov["unexplained"]
+        tot["records"] += len(a.records)
+        tot["programs"] += cov["programs_found"]
+        if cov["unexplained"]:
+            unexplained.append((cov["unexplained"] / cov["total"], p))
         for r in a.records:
             f = r.filter_id
             byfilter[f][0] += 1
             if r.known:
-                tot['known_records'] += 1
+                tot["known_records"] += 1
             # Programs the WALK's own slots do not name.
             #
             # This was "programs off the layout table", splitting records by whether
@@ -499,13 +534,13 @@ def main(paths):
             _d = decompose.decompose(r)
             if f != 4:
                 slots = set()
-                if _d is not None and _d.get('end') is not None:
-                    if _d.get('prog') is not None:
-                        slots.add(_d['prog'])
-                    for t in _d.get('param_slots', ()):
+                if _d is not None and _d.get("end") is not None:
+                    if _d.get("prog") is not None:
+                        slots.add(_d["prog"])
+                    for t in _d.get("param_slots", ()):
                         pos, wd = (t[2], t[3]) if len(t) >= 4 else (t[2], 1)
                         slots.update(range(pos, pos + int(wd)))
-                    slots.update(_d.get('cls_slots', ()))
+                    slots.update(_d.get("cls_slots", ()))
                 named = set()
                 for sx in slots:
                     if sx is None or sx >= len(r.words):
@@ -514,14 +549,14 @@ def main(paths):
                     if a.body_lo <= q < a.body_hi and a.valid_program(q):
                         named.add(q)
                 extra = [p for p in r.classified_programs() if p not in named]
-                side = 'payload' if f in PAYLOAD_PROGRAM_FILTERS else 'other'
-                tot[side + '_records'] += 1
-                tot[side + '_recovered'] += len(extra)
+                side = "payload" if f in PAYLOAD_PROGRAM_FILTERS else "other"
+                tot[side + "_records"] += 1
+                tot[side + "_recovered"] += len(extra)
                 if extra:
-                    tot[side + '_records_gaining'] += 1
+                    tot[side + "_records_gaining"] += 1
             par = r.size_or_baked
             if par is None:
-                tot['no_param'] += 1
+                tot["no_param"] += 1
                 # Distinguish a record that HAS no parameter slot from one whose
                 # parameter this model failed to read. A four-word blend is
                 # [tag][flags][edge][edge] and ends before a parameter slot could exist,
@@ -546,25 +581,28 @@ def main(paths):
                 # parameter list, so this is the same test on the same two facts, taken
                 # from the mechanism that actually decodes the record.
                 sl = r.layout[1]
-                if (_d is not None and _d.get('end') is not None
-                        and not _d['param_slots']
-                        and len(r.words) <= max(list(_d['inputs']) + [1]) + 1):
-                    tot['param_absent'] += 1
+                if (
+                    _d is not None
+                    and _d.get("end") is not None
+                    and not _d["param_slots"]
+                    and len(r.words) <= max(list(_d["inputs"]) + [1]) + 1
+                ):
+                    tot["param_absent"] += 1
                 elif sl is not None and sl >= len(r.words):
-                    tot['param_absent'] += 1
-                elif (r.filter_id == 0 and sl in (2, 3, 4) and r.ramp):
+                    tot["param_absent"] += 1
+                elif r.filter_id == 0 and sl in (2, 3, 4) and r.ramp:
                     # For `gradient` the layout's parameter slot is one the RAMP uses --
                     # slot 2 is the stop count, 3 the table start, 4 its end. All 38 of
                     # these records return a ramp, and in all 38 the slot is 4, the end
                     # pointer. The field is read; it is just not a parameter. Same class
                     # as "the slot is an edge" above.
-                    tot['param_is_edge'] += 1
+                    tot["param_is_edge"] += 1
                 elif sl is None:
                     # The layout names no parameter slot at all. That is the same fact as
                     # "the block ends before one could exist", and was being counted as a
                     # miss: 117 of `gradient`'s 155 supposed misses, whose payload is the
                     # ramp and is read - 150 of the 155 return one.
-                    tot['param_absent'] += 1
+                    tot["param_absent"] += 1
                 # THE RECORD'S OWN EDGE SLOTS, from the walk. This asked EDGE_SLOTS,
                 # a per-FILTER union of every edge slot any layouts.json key registered
                 # for that filter -- so "some record of this filter has an edge here"
@@ -573,9 +611,14 @@ def main(paths):
                 # and the union claimed 2 of them as edges that their own walk does not:
                 # those are now reported unread, which is a slightly worse number and
                 # the correct one.
-                elif (sl is not None and sl < len(r.words)
-                      and (r.words[sl] in [e for e in r.edges if e is not None]
-                           or (_d is not None and sl in _d.get('inputs', ())))):
+                elif (
+                    sl is not None
+                    and sl < len(r.words)
+                    and (
+                        r.words[sl] in [e for e in r.edges if e is not None]
+                        or (_d is not None and sl in _d.get("inputs", ()))
+                    )
+                ):
                     # The slot the layout calls the parameter is already claimed as an
                     # EDGE by this same record - it holds a backward record index that
                     # `Record.edges` resolved. That is a record with no parameter, not one
@@ -591,7 +634,7 @@ def main(paths):
                     # index from the same record - a record nothing reaches is what a
                     # missing edge leaves behind. So the layout entry for those keys names
                     # an edge slot as the parameter slot.
-                    tot['param_is_edge'] += 1
+                    tot["param_is_edge"] += 1
                 else:
                     # The per-filter column counts only this branch. Counting every
                     # `None` there reported `bitmap` at 66% and `blend` at 6% where the
@@ -599,104 +642,152 @@ def main(paths):
                     # long, `[tag][flags]`, with no room for a parameter slot at all, and
                     # the audit's own summary already classifies those as correct.
                     byfilter[f][1] += 1
-                    tot['param_unread'] += 1
-            elif par[0] == 'program':
+                    tot["param_unread"] += 1
+            elif par[0] == "program":
                 # Not every program-valued parameter is a size expression. A size is a
                 # TWO-component integer -- (log2 width, log2 height) -- and that is what
                 # 90-99.5% of them return for every filter except two. `pixelprocessor`
                 # returns a ONE-component integer in 99.7% and `fxmaps` in 99.3%, so for
                 # those the slot holds something else entirely and calling it a size was
                 # a label this audit applied, not a fact it measured.
-                tot['param_program'] += 1
+                tot["param_program"] += 1
                 last = None
                 for last in disasm.decode(r.asm.data, par[1], r.asm.body_hi):
                     pass
                 if True:
                     if last is not None and (((last[2] >> 6) & 3) + 1) == 2:
-                        tot['param_size2'] += 1
+                        tot["param_size2"] += 1
                     else:
-                        tot['param_size1'] += 1
-            elif par[0] == 'float':
-                tot['param_float'] += 1
+                        tot["param_size1"] += 1
+            elif par[0] == "float":
+                tot["param_float"] += 1
             else:
-                tot['param_zero'] += 1
+                tot["param_zero"] += 1
             for e in r.edges:
                 if e is None:
                     byfilter[f][2] += 1
-                    tot['unresolved_edges'] += 1
+                    tot["unresolved_edges"] += 1
                 else:
-                    tot['resolved_edges'] += 1
-    print('files parsed          : %d   (failed %d)' % (tot['files'], len(failed)))
-    print('records               : %d' % tot['records'])
-    print('  filter identified   : %d  (%.1f%%)' % (tot['known_records'],
-          100 * tot['known_records'] / max(1, tot['records'])))
-    r_ = tot['records']
-    print('  size expression or first parameter read: %d  (%.1f%%)' % (r_ - tot['no_param'],
-          100 * (r_ - tot['no_param']) / max(1, r_)))
-    print('    record has no parameter slot: %d  (%.2f%%)  -- correct, not a miss'
-          % (tot['param_absent'], 100 * tot['param_absent'] / max(1, r_)))
-    print('    slot is an edge or a ramp bound: %d  (%.2f%%)  -- read, not a parameter'
-          % (tot['param_is_edge'], 100 * tot['param_is_edge'] / max(1, r_)))
-    print('    genuinely unread     : %d  (%.2f%%)'
-          % (tot['param_unread'], 100 * tot['param_unread'] / max(1, r_)))
-    print('    the parameter is a program: %d  (%.1f%%)' % (tot['param_program'],
-          100 * tot['param_program'] / max(1, r_)))
-    print('      returning 2 components -- an output size : %d' % tot['param_size2'])
-    print('      returning 1 component  -- a random seed : %d' % tot['param_size1'])
-    print('    a baked filter parameter : %d  (%.1f%%)' % (tot['param_float'],
-          100 * tot['param_float'] / max(1, r_)))
-    print('    as zero / absent    : %d  (%.1f%%)' % (tot['param_zero'],
-          100 * tot['param_zero'] / max(1, r_)))
-    e = tot['resolved_edges'] + tot['unresolved_edges']
-    print('edge slots            : %d   resolved %.2f%%' % (e, 100 * tot['resolved_edges'] / max(1, e)))
+                    tot["resolved_edges"] += 1
+    print("files parsed          : %d   (failed %d)" % (tot["files"], len(failed)))
+    print("records               : %d" % tot["records"])
+    print(
+        "  filter identified   : %d  (%.1f%%)"
+        % (tot["known_records"], 100 * tot["known_records"] / max(1, tot["records"]))
+    )
+    r_ = tot["records"]
+    print(
+        "  size expression or first parameter read: %d  (%.1f%%)"
+        % (r_ - tot["no_param"], 100 * (r_ - tot["no_param"]) / max(1, r_))
+    )
+    print(
+        "    record has no parameter slot: %d  (%.2f%%)  -- correct, not a miss"
+        % (tot["param_absent"], 100 * tot["param_absent"] / max(1, r_))
+    )
+    print(
+        "    slot is an edge or a ramp bound: %d  (%.2f%%)  -- read, not a parameter"
+        % (tot["param_is_edge"], 100 * tot["param_is_edge"] / max(1, r_))
+    )
+    print(
+        "    genuinely unread     : %d  (%.2f%%)"
+        % (tot["param_unread"], 100 * tot["param_unread"] / max(1, r_))
+    )
+    print(
+        "    the parameter is a program: %d  (%.1f%%)"
+        % (tot["param_program"], 100 * tot["param_program"] / max(1, r_))
+    )
+    print("      returning 2 components -- an output size : %d" % tot["param_size2"])
+    print("      returning 1 component  -- a random seed : %d" % tot["param_size1"])
+    print(
+        "    a baked filter parameter : %d  (%.1f%%)"
+        % (tot["param_float"], 100 * tot["param_float"] / max(1, r_))
+    )
+    print(
+        "    as zero / absent    : %d  (%.1f%%)"
+        % (tot["param_zero"], 100 * tot["param_zero"] / max(1, r_))
+    )
+    e = tot["resolved_edges"] + tot["unresolved_edges"]
+    print(
+        "edge slots            : %d   resolved %.2f%%"
+        % (e, 100 * tot["resolved_edges"] / max(1, e))
+    )
     # Programs the non-slot probes find beyond what the WALK's slots name. The
     # payload row is EXPECTED, not a gap: pixelprocessor carries its pixel program past
     # the header by construction. The `other` row is the one to read -- it is what the
     # walk does not reach on filters that have no reason to hide a program.
-    pr, ot = tot['payload_records'], tot['other_records']
-    print('programs beyond the walk\'s slots (fxmaps excluded):')
-    print('    payload-program filters: %d records  recovered %d  (%.2f%% gain one)'
-          '   -- expected, one per record'
-          % (pr, tot['payload_recovered'],
-             100 * tot['payload_records_gaining'] / max(1, pr)))
-    print('    all other filters      : %d records  recovered %d  (%.2f%% gain one)'
-          % (ot, tot['other_recovered'],
-             100 * tot['other_records_gaining'] / max(1, ot)))
-    print('bytes                 : %d   unexplained %d  (%.3f%%)' % (
-        tot['bytes'], tot['unexplained'], 100 * tot['unexplained'] / max(1, tot['bytes'])))
-    print('files with any unexplained bytes: %d' % len(unexplained))
+    pr, ot = tot["payload_records"], tot["other_records"]
+    print("programs beyond the walk's slots (fxmaps excluded):")
+    print(
+        "    payload-program filters: %d records  recovered %d  (%.2f%% gain one)"
+        "   -- expected, one per record"
+        % (
+            pr,
+            tot["payload_recovered"],
+            100 * tot["payload_records_gaining"] / max(1, pr),
+        )
+    )
+    print(
+        "    all other filters      : %d records  recovered %d  (%.2f%% gain one)"
+        % (ot, tot["other_recovered"], 100 * tot["other_records_gaining"] / max(1, ot))
+    )
+    print(
+        "bytes                 : %d   unexplained %d  (%.3f%%)"
+        % (
+            tot["bytes"],
+            tot["unexplained"],
+            100 * tot["unexplained"] / max(1, tot["bytes"]),
+        )
+    )
+    print("files with any unexplained bytes: %d" % len(unexplained))
     # THIS IS THE HEADLINE ROW, and the line above is not. `coverage()`'s unexplained
     # count is circular -- record extents are marked on enumeration and the directory
     # partitions the body -- so it reads 0.000% and means "the directory is complete".
-    rbt = max(1, tot['rb_total'])
-    hdr = sum(tot['rb_%d' % v] for v in _TIER_HDR)
-    prg = hdr + tot['rb_%d' % _PROGBODY]
-    padb = sum(tot['rb_%d' % v] for v in _TIER_PAY_EXCLUDE)
-    pay = rbt - tot['rb_0'] - padb
-    print('record bytes          : %d  (%.1f MB over %d records)'
-          % (tot['rb_total'], tot['rb_total'] / 1e6, tot['records']))
-    print('  interpreted, header slots only        : %.3f%%' % (100 * hdr / rbt))
-    print('  interpreted, + program bodies         : %.3f%%   <- the README row'
-          % (100 * prg / rbt))
-    print('  interpreted, + every payload reader   : %.3f%%' % (100 * pay / rbt))
-    print('  accounted, + the 2-byte alignment pad : %.3f%%   (%d runs of 2, every one'
-          ' `00 00` with a decoded structure on both sides)' % (100 * (pay + padb) / rbt,
-                                                                tot['pad_runs']))
-    print('  uninterpreted                         : %d bytes  (%.3f%%)'
-          % (tot['rb_0'], 100 * tot['rb_0'] / rbt))
+    rbt = max(1, tot["rb_total"])
+    hdr = sum(tot["rb_%d" % v] for v in _TIER_HDR)
+    prg = hdr + tot["rb_%d" % _PROGBODY]
+    padb = sum(tot["rb_%d" % v] for v in _TIER_PAY_EXCLUDE)
+    pay = rbt - tot["rb_0"] - padb
+    print(
+        "record bytes          : %d  (%.1f MB over %d records)"
+        % (tot["rb_total"], tot["rb_total"] / 1e6, tot["records"])
+    )
+    print("  interpreted, header slots only        : %.3f%%" % (100 * hdr / rbt))
+    print(
+        "  interpreted, + program bodies         : %.3f%%   <- the README row"
+        % (100 * prg / rbt)
+    )
+    print("  interpreted, + every payload reader   : %.3f%%" % (100 * pay / rbt))
+    print(
+        "  accounted, + the 2-byte alignment pad : %.3f%%   (%d runs of 2, every one"
+        " `00 00` with a decoded structure on both sides)"
+        % (100 * (pay + padb) / rbt, tot["pad_runs"])
+    )
+    print(
+        "  uninterpreted                         : %d bytes  (%.3f%%)"
+        % (tot["rb_0"], 100 * tot["rb_0"] / rbt)
+    )
     for v in sorted(_REGION_NAMES):
-        c = tot['rb_%d' % v]
+        c = tot["rb_%d" % v]
         if c:
-            print('      %-24s %12d %6.2f%%' % (_REGION_NAMES[v], c, 100 * c / rbt))
+            print("      %-24s %12d %6.2f%%" % (_REGION_NAMES[v], c, 100 * c / rbt))
     print()
-    print('  uninterpreted record bytes, by filter:')
-    print('    %-24s %12s %12s %12s %9s'
-          % ('filter', 'record bytes', 'align pad', 'uninterp', 'interp'))
+    print("  uninterpreted record bytes, by filter:")
+    print(
+        "    %-24s %12s %12s %12s %9s"
+        % ("filter", "record bytes", "align pad", "uninterp", "interp")
+    )
     for f, c in sorted(byfilter_bytes.items(), key=lambda kv: -kv[1][0])[:10]:
-        t = max(1, c['_total'])
-        print('    %-24s %12d %12d %12d %8.2f%%'
-              % (FILTERS.get(f) or 'fid %d *' % f, c['_total'], c[_PAD], c[0],
-                 100 * (t - c[0] - c[_PAD]) / t))
+        t = max(1, c["_total"])
+        print(
+            "    %-24s %12d %12d %12d %8.2f%%"
+            % (
+                FILTERS.get(f) or "fid %d *" % f,
+                c["_total"],
+                c[_PAD],
+                c[0],
+                100 * (t - c[0] - c[_PAD]) / t,
+            )
+        )
     print()
     # WHAT IS LEFT, CLASSIFIED. The residual after the pad is not one thing, and reporting
     # it as one number is what let `fxmaps` sit at the top of the table for a week looking
@@ -704,44 +795,56 @@ def main(paths):
     # the only column here that is a decode gap: a word the format's own tag vocabulary
     # recognises as an FX node header or entry tag, that no `fx_walk` in the file yields.
     if resid:
-        print('  uninterpreted (pad excluded), classified:')
+        print("  uninterpreted (pad excluded), classified:")
         kinds = sorted({k for _f, k in resid})
-        print('    %-24s %s' % ('filter', ' '.join('%16s' % k for k in kinds)))
+        print("    %-24s %s" % ("filter", " ".join("%16s" % k for k in kinds)))
         rows = collections.Counter()
         for (f, k), v in resid.items():
             rows[f] += v
         for f, _v in rows.most_common(10):
-            print('    %-24s %s'
-                  % (FILTERS.get(f) or 'fid %d *' % f,
-                     ' '.join('%16d' % resid[(f, k)] for k in kinds)))
-        print('    %-24s %s'
-              % ('TOTAL', ' '.join('%16d' % sum(resid[(f, k)] for f in rows)
-                                   for k in kinds)))
+            print(
+                "    %-24s %s"
+                % (
+                    FILTERS.get(f) or "fid %d *" % f,
+                    " ".join("%16d" % resid[(f, k)] for k in kinds),
+                )
+            )
+        print(
+            "    %-24s %s"
+            % (
+                "TOTAL",
+                " ".join("%16d" % sum(resid[(f, k)] for f in rows) for k in kinds),
+            )
+        )
     print()
-    print('per filter (records, no program, unresolved edge slots):')
-    print('  %-28s %10s %10s %12s' % ('filter', 'records', 'unread', 'unres edges'))
+    print("per filter (records, no program, unresolved edge slots):")
+    print("  %-28s %10s %10s %12s" % ("filter", "records", "unread", "unres edges"))
     for f, (n, np_, ue) in sorted(byfilter.items(), key=lambda kv: -kv[1][0])[:22]:
-        name = FILTERS.get(f) or 'fid %d *' % f
+        name = FILTERS.get(f) or "fid %d *" % f
         # An unresolved-edge percentage with no explanation reads as a defect. Where the
         # model knows why a filter's slots do not all resolve, say so on the same line --
         # `PARTIAL_EDGES` held that knowledge and nothing consulted it, so the column
         # invited the reading its own note already answered.
-        print('  %-28s %10d %9.0f%% %11.1f%%   %s'
-              % (name, n, 100 * np_ / n, 100 * ue / n, PARTIAL_EDGES.get(f, '')))
+        print(
+            "  %-28s %10d %9.0f%% %11.1f%%   %s"
+            % (name, n, 100 * np_ / n, 100 * ue / n, PARTIAL_EDGES.get(f, ""))
+        )
     if unexplained:
-        print('\nworst unexplained-byte files:')
+        print("\nworst unexplained-byte files:")
         for frac, p in sorted(unexplained, reverse=True)[:6]:
-            print('   %6.2f%%  %s' % (100 * frac, p.split('/')[-1]))
+            print("   %6.2f%%  %s" % (100 * frac, p.split("/")[-1]))
     if failed:
-        print('\nparse failures:')
+        print("\nparse failures:")
         for p, e in failed[:6]:
-            print('   %-52s %s' % (p.split('/')[-1][:52], e))
+            print("   %-52s %s" % (p.split("/")[-1][:52], e))
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # Through `corpus.paths`. This tool read tools/DISTINCT.txt directly, which had been
     # WITHDRAWN as duplicate-laden - reverify.py's docstring says so - and moved to the
     # root list. That correction never reached here, and this is what prints the headline
     # figures, so every count below was inflated by about 20%. See tools/corpus.py.
     import corpus
+
     paths = corpus.paths(verbose=True)
-    main(paths[:int(sys.argv[1])] if len(sys.argv) > 1 else paths)
+    main(paths[: int(sys.argv[1])] if len(sys.argv) > 1 else paths)

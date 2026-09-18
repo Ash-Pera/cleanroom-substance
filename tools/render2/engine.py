@@ -17,6 +17,7 @@ was rebuilt against:
     three-channel bitmap this file carries used to be widened with an invented alpha, and
     a weight-vector sweep then picked the vector that read most of that invented channel.
 """
+
 import numpy as np
 
 import assume
@@ -25,7 +26,7 @@ import sbsruntime
 
 import filters
 import model
-from ops import Unsupported, bind, conform, run_program, sampler       # noqa: F401
+from ops import Unsupported, bind, conform, run_program, sampler  # noqa: F401
 
 
 class Context(object):
@@ -46,9 +47,11 @@ class Context(object):
         # no `$outputsize` or the file states no default for it, and then every record keeps
         # its tag; so must every program.
         self.outputsize = outputsize
-        self._os_uid = (outputsize_uid(asm)
-                        if outputsize is not None and declared_outputsize(asm) is not None
-                        else None)
+        self._os_uid = (
+            outputsize_uid(asm)
+            if outputsize is not None and declared_outputsize(asm) is not None
+            else None
+        )
         self.outputs = {}
         self.low_confidence = set()
         self.synthetic = set()
@@ -80,7 +83,7 @@ class Context(object):
         """Input k's full-resolution array, or a cascade failure."""
         e = v.edge(k)
         if e is None:
-            raise Unsupported('input %d is not wired' % k)
+            raise Unsupported("input %d is not wired" % k)
         if e not in self.outputs:
             raise _cascade(e)
         return self.outputs[e]
@@ -117,13 +120,15 @@ class Context(object):
         got = self._inputs.get(n)
         if got is None:
             got = self._inputs[n] = {}
-            for _t, uid, val in self.asm.header.get('inputs') or []:
+            for _t, uid, val in self.asm.header.get("inputs") or []:
                 if val:
-                    got[uid] = np.repeat(np.array(val, np.float32).reshape(1, -1),
-                                         n, axis=0)
+                    got[uid] = np.repeat(
+                        np.array(val, np.float32).reshape(1, -1), n, axis=0
+                    )
             if self._os_uid is not None:
                 got[self._os_uid] = np.repeat(
-                    np.array(self.outputsize, np.float32).reshape(1, -1), n, axis=0)
+                    np.array(self.outputsize, np.float32).reshape(1, -1), n, axis=0
+                )
         return got
 
     def run(self, v, ptr, n, slots=None, pos=None, W=None, H=None):
@@ -150,10 +155,15 @@ class Context(object):
         silently turns into an identity.
         """
         fn = bind(self.asm, ptr, self.cache, self._funcs)
-        return run_program(fn, self.graph_inputs(n),
-                           {} if slots is None else slots, n, pos=pos,
-                           W=v.width if W is None else W,
-                           H=v.height if H is None else H)
+        return run_program(
+            fn,
+            self.graph_inputs(n),
+            {} if slots is None else slots,
+            n,
+            pos=pos,
+            W=v.width if W is None else W,
+            H=v.height if H is None else H,
+        )
 
     def prog_at(self, v, slot):
         """The program a slot names, or None -- `word + 52`, bounds- and validity-checked."""
@@ -182,10 +192,10 @@ class Context(object):
         if include_prog_slot and v.prog_slot is not None:
             cands.append(v.prog_slot)
         for p in v.params.values():
-            if p.kind == 'program':
+            if p.kind == "program":
                 cands.append(p.slot)
         for _f, p in v.unnamed:
-            if p.kind == 'program':
+            if p.kind == "program":
                 cands.append(p.slot)
         cands.extend(v.cls_slots)
         for slot in sorted(set(cands)):
@@ -218,8 +228,11 @@ class Context(object):
             order = manifest.image_inputs_for_output(self.asm, uid) or ()
             by_uid = {}
             for r in self.asm.records:
-                if r.filter_name == 'bitmap' and (r.bitmap or {}).get('kind') == 'graph_input':
-                    by_uid.setdefault(r.bitmap['uid'], r.index)
+                if (
+                    r.filter_name == "bitmap"
+                    and (r.bitmap or {}).get("kind") == "graph_input"
+                ):
+                    by_uid.setdefault(r.bitmap["uid"], r.index)
             for k, iu in enumerate(order):
                 s = by_uid.get(iu)
                 if s is not None and s in self.outputs:
@@ -229,7 +242,7 @@ class Context(object):
 
 
 def _cascade(e):
-    exc = Unsupported('edge -> record %s has no output yet' % e)
+    exc = Unsupported("edge -> record %s has no output yet" % e)
     exc.cascade = True
     return exc
 
@@ -237,6 +250,7 @@ def _cascade(e):
 # ---------------------------------------------------------------------------
 # `$outputsize`
 # ---------------------------------------------------------------------------
+
 
 def outputsize_uid(asm):
     """The uid of the graph's `$outputsize` input, or None.
@@ -246,7 +260,7 @@ def outputsize_uid(asm):
     silently pick someone's tile count on the next file.
     """
     for uid, entry in (manifest.alter_outputs(asm) or {}).items():
-        if len(entry) > 1 and entry[1] == '$outputsize':
+        if len(entry) > 1 and entry[1] == "$outputsize":
             return uid
     return None
 
@@ -254,7 +268,7 @@ def outputsize_uid(asm):
 def declared_outputsize(asm):
     """The `$outputsize` the file's own interface block declares, as (log2 w, log2 h)."""
     uid = outputsize_uid(asm)
-    for _t, u, val in asm.header.get('inputs') or []:
+    for _t, u, val in asm.header.get("inputs") or []:
         if u == uid and val and len(val) >= 2:
             return (int(val[0]), int(val[1]))
     return None
@@ -298,6 +312,7 @@ def implied_outputsize(paths):
     covers the five packs under `new_opengameart`; Rokviz lives outside that tree.
     """
     from PIL import Image
+
     seen = set()
     for p in paths:
         try:
@@ -365,7 +380,7 @@ def record_sizes(asm, outputsize):
     if declared is None or uid is None:
         return None
     base = {}
-    for _t, u, val in asm.header.get('inputs') or []:
+    for _t, u, val in asm.header.get("inputs") or []:
         if val:
             base[u] = np.array(val, np.float32).reshape(1, -1)
 
@@ -384,18 +399,23 @@ def record_sizes(asm, outputsize):
             if asm.body_lo <= ptr < asm.body_hi and asm.valid_program(ptr):
                 try:
                     fn = bind(asm, ptr, {}, cache)
-                    ref = np.ravel(run_program(fn, at(declared), {}, 1,
-                                               W=rec.width, H=rec.height))
-                    got = np.ravel(run_program(fn, want, {}, 1,
-                                               W=rec.width, H=rec.height))
+                    ref = np.ravel(
+                        run_program(fn, at(declared), {}, 1, W=rec.width, H=rec.height)
+                    )
+                    got = np.ravel(
+                        run_program(fn, want, {}, 1, W=rec.width, H=rec.height)
+                    )
                 except Exception:
                     ref = got = np.zeros(0)
                 # A NEGATIVE OR ABSURD log2 IS THE SLOT BEING WRONG, not a tiny record.
                 # Clamping it to 1 px would make a misread slot look like an answer; the
                 # bound is what makes the tag check able to fail.
-                if len(ref) >= 2 and len(got) >= 2 and \
-                        all(0 <= int(x) <= 16 for x in (ref[0], ref[1], got[0], got[1])) \
-                        and (1 << int(ref[0]), 1 << int(ref[1])) == (rec.width, rec.height):
+                if (
+                    len(ref) >= 2
+                    and len(got) >= 2
+                    and all(0 <= int(x) <= 16 for x in (ref[0], ref[1], got[0], got[1]))
+                    and (1 << int(ref[0]), 1 << int(ref[1])) == (rec.width, rec.height)
+                ):
                     size = (1 << int(got[0]), 1 << int(got[1]))
         if size is None:
             # RELATIVE TO THE PARENT, NOT EQUAL TO IT. A node with no size expression
@@ -405,17 +425,26 @@ def record_sizes(asm, outputsize):
             # size makes them 2048x2048 and turns a deliberate 64x downsample into an
             # identity. Scale the tag by the factor the parent moved instead, which leaves
             # the ratio the file states untouched.
-            scale = max((out[e][0] / float(asm.records[e].width)
-                         for e in v.inputs if e is not None and e in out), default=None)
+            scale = max(
+                (
+                    out[e][0] / float(asm.records[e].width)
+                    for e in v.inputs
+                    if e is not None and e in out
+                ),
+                default=None,
+            )
             if scale:
-                size = (max(1, int(round(rec.width * scale))),
-                        max(1, int(round(rec.height * scale))))
+                size = (
+                    max(1, int(round(rec.width * scale))),
+                    max(1, int(round(rec.height * scale))),
+                )
         out[rec.index] = size or (rec.width, rec.height)
     return out
 
 
-def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None,
-           outputsize=None):
+def render(
+    asm, precomputed=None, verbose=False, max_dim=None, stop_after=None, outputsize=None
+):
     """Evaluate every record. Returns (outputs, failures, info).
 
     `outputsize` is the graph input `$outputsize` as (log2 w, log2 h) and defaults to the
@@ -457,23 +486,32 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None,
                 # value IS in the file and this renderer did not read it.
                 ignored[i] = tuple(v.ignored)
             if not v.walked:
-                raise Unsupported('the cost model does not cover this record header, so '
-                                  'no slot of it can be read structurally')
+                raise Unsupported(
+                    "the cost model does not cover this record header, so "
+                    "no slot of it can be read structurally"
+                )
             fn = filters.FILTERS.get(v.filter)
             if fn is None:
-                raise Unsupported('filter %r has no implementation here' % v.filter)
+                raise Unsupported("filter %r has no implementation here" % v.filter)
             out = np.asarray(fn(ctx, v))
             want = 4 if v.colour else 1
             fixed = conform(out, want)
             if fixed is None:
-                raise Unsupported('%s record produced %d channels, not %d'
-                                  % ('colour' if v.colour else 'greyscale',
-                                     out.shape[-1] if out.ndim == 3 else 1, want))
+                raise Unsupported(
+                    "%s record produced %d channels, not %d"
+                    % (
+                        "colour" if v.colour else "greyscale",
+                        out.shape[-1] if out.ndim == 3 else 1,
+                        want,
+                    )
+                )
             if fixed.size and not np.all(np.isfinite(fixed)):
-                fill = assume.assumed('nonfinite.fill')
+                fill = assume.assumed("nonfinite.fill")
                 if fill is None:
-                    raise Unsupported('produced non-finite values (%.1f%% of samples)'
-                                      % (100.0 * float(np.mean(~np.isfinite(fixed)))))
+                    raise Unsupported(
+                        "produced non-finite values (%.1f%% of samples)"
+                        % (100.0 * float(np.mean(~np.isfinite(fixed))))
+                    )
                 fixed = np.where(np.isfinite(fixed), fixed, np.float32(fill))
                 ctx.low_confidence.add(i)
                 assume.note(i)
@@ -482,15 +520,17 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None,
         # `v` is not bound when it is the View that raised.
         except Unsupported as e:
             failures[i] = str(e)
-            if getattr(e, 'cascade', False):
+            if getattr(e, "cascade", False):
                 cascaded.add(i)
             if verbose:
-                print('rec%d (%s): SKIP - %s' % (i, rec.filter_name, e))
+                print("rec%d (%s): SKIP - %s" % (i, rec.filter_name, e))
         except Exception as e:
-            failures[i] = '%s: %s' % (type(e).__name__, e)
+            failures[i] = "%s: %s" % (type(e).__name__, e)
             if verbose:
-                print('rec%d (%s): ERROR - %s: %s'
-                      % (i, rec.filter_name, type(e).__name__, e))
+                print(
+                    "rec%d (%s): ERROR - %s: %s"
+                    % (i, rec.filter_name, type(e).__name__, e)
+                )
         if stop_after is not None and i >= stop_after:
             break
 
@@ -505,6 +545,10 @@ def render(asm, precomputed=None, verbose=False, max_dim=None, stop_after=None,
         if a.min() < 0.0 or a.max() > 1.0:
             ctx.outputs[ri] = np.clip(a, 0.0, 1.0)
 
-    info = {'low_confidence': ctx.low_confidence, 'cascaded': cascaded,
-            'synthetic': ctx.synthetic, 'ignored': ignored}
+    info = {
+        "low_confidence": ctx.low_confidence,
+        "cascaded": cascaded,
+        "synthetic": ctx.synthetic,
+        "ignored": ignored,
+    }
     return ctx.outputs, failures, info

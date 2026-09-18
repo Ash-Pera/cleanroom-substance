@@ -84,6 +84,7 @@ existing caller keeps its name. This module imports numpy and PIL and nothing el
 tree, which is what lets `tools/render2/test_render2.py` use it without dragging a renderer
 into its process.
 """
+
 import math
 
 import numpy as np
@@ -111,12 +112,20 @@ def resample(x, n=SCORE_GRID):
     """Per channel, at 16-bit precision -- an 8-bit round trip here would quantise the
     very differences being measured."""
     from PIL import Image
+
     x = np.clip(x, 0.0, 1.0)
     if x.ndim == 2:
         x = x[:, :, None]
-    chans = [np.asarray(Image.fromarray((x[:, :, c] * 65535).astype(np.uint16))
-                        .resize((n, n), Image.BILINEAR), dtype=np.float64) / 65535.0
-             for c in range(x.shape[2])]
+    chans = [
+        np.asarray(
+            Image.fromarray((x[:, :, c] * 65535).astype(np.uint16)).resize(
+                (n, n), Image.BILINEAR
+            ),
+            dtype=np.float64,
+        )
+        / 65535.0
+        for c in range(x.shape[2])
+    ]
     return np.stack(chans, axis=-1)
 
 
@@ -147,7 +156,7 @@ def structure(a, low_grid=LOW_GRID):
     a = np.asarray(a, dtype=np.float64)
     h, w = a.shape[:2]
     k = max(1, min(h, w) // low_grid)
-    lo = a[:h // k * k, :w // k * k].reshape(h // k, k, w // k, k).mean(axis=(1, 3))
+    lo = a[: h // k * k, : w // k * k].reshape(h // k, k, w // k, k).mean(axis=(1, 3))
     d = np.diff(a, axis=0)[:, :-1] + np.diff(a, axis=1)[:-1, :]
     return float(lo.std()), float(d.std())
 
@@ -173,9 +182,9 @@ def band_power(a, edges=BANDS):
     h, w = a.shape[:2]
     x = (a - a.mean()) * (np.hanning(h)[:, None] * np.hanning(w)[None, :])
     f = np.fft.rfft2(x)
-    p = (f.real ** 2 + f.imag ** 2) / float(h * w) ** 2
+    p = (f.real**2 + f.imag**2) / float(h * w) ** 2
     # `rfft2` keeps half the plane; every column but DC and Nyquist stands for two.
-    p[:, 1:w // 2 if w % 2 == 0 else None] *= 2.0
+    p[:, 1 : w // 2 if w % 2 == 0 else None] *= 2.0
     r = np.hypot((np.fft.fftfreq(h) * h)[:, None], (np.fft.rfftfreq(w) * w)[None, :])
     out = []
     for lo, hi in zip(edges[:-1], edges[1:]):
@@ -194,8 +203,11 @@ def structure_grid(ours, ref, grid=None):
     out = []
     for a in (ours, ref):
         a = np.clip(np.asarray(a, dtype=np.float64), 0.0, 1.0)
-        out.append(a if a.shape[0] == n and a.shape[1] == n
-                   else resample(a[:, :, None], n)[:, :, 0])
+        out.append(
+            a
+            if a.shape[0] == n and a.shape[1] == n
+            else resample(a[:, :, None], n)[:, :, 0]
+        )
     return n, out[0], out[1]
 
 
@@ -213,7 +225,8 @@ class Reading(object):
     put energy in. The two are deliberately different grids and saying so is the point of
     this docstring.
     """
-    __slots__ = ('corr', 'band', 'dc', 'mae', 'sd', 'ref_sd', 'uniq', 'band_n', 'bands')
+
+    __slots__ = ("corr", "band", "dc", "mae", "sd", "ref_sd", "uniq", "band_n", "bands")
 
     def __init__(self, corr, band, dc, mae, sd, ref_sd, uniq, band_n, bands):
         self.corr, self.band, self.dc, self.mae = corr, band, dc, mae
@@ -228,9 +241,20 @@ class Reading(object):
         return (round(self.corr, 4), round(self.band, 4), round(self.dc, 4))
 
     def __repr__(self):
-        return ('Reading(corr=%+.4f band=%.4f dc=%+.4f mae=%.4f sd=%.5f ref_sd=%.5f '
-                'uniq=%d n=%d)' % (self.corr, self.band, self.dc, self.mae, self.sd,
-                                   self.ref_sd, self.uniq, self.band_n))
+        return (
+            "Reading(corr=%+.4f band=%.4f dc=%+.4f mae=%.4f sd=%.5f ref_sd=%.5f "
+            "uniq=%d n=%d)"
+            % (
+                self.corr,
+                self.band,
+                self.dc,
+                self.mae,
+                self.sd,
+                self.ref_sd,
+                self.uniq,
+                self.band_n,
+            )
+        )
 
 
 def measure(ours, ref, score_grid=SCORE_GRID, band_grid=None):
@@ -257,8 +281,8 @@ def measure(ours, ref, score_grid=SCORE_GRID, band_grid=None):
     uniq = int(len(np.unique(np.round(o.ravel(), 4))))
     n, o_n, r_n = structure_grid(ours, ref, band_grid)
     (bo, to), (br, tr) = band_power(o_n), band_power(r_n)
-    band = float(to / tr) if tr > 1e-18 else float('inf') if to > 1e-18 else 1.0
-    bands = tuple(float(b / c) if c > 1e-18 else float('inf') for b, c in zip(bo, br))
+    band = float(to / tr) if tr > 1e-18 else float("inf") if to > 1e-18 else 1.0
+    bands = tuple(float(b / c) if c > 1e-18 else float("inf") for b, c in zip(bo, br))
     return Reading(corr, band, dc, mae, sd, ref_sd, uniq, n, bands)
 
 
@@ -326,9 +350,10 @@ class Cause(object):
     moves in either direction. An improvement failing the suite is intended -- it means the
     recorded cause is no longer the whole story and the entry is owed a re-take.
     """
-    __slots__ = ('ident', 'mechanism', 'records', 'note', 'source')
 
-    def __init__(self, ident, mechanism='', records=(), note='', source=''):
+    __slots__ = ("ident", "mechanism", "records", "note", "source")
+
+    def __init__(self, ident, mechanism="", records=(), note="", source=""):
         self.ident = ident
         self.mechanism = mechanism
         self.records = tuple(records)
@@ -340,7 +365,7 @@ class Cause(object):
         return bool(self.records) or len(self.mechanism.strip()) >= 8
 
     def __repr__(self):
-        return 'Cause(%s, records=%s)' % (self.ident, list(self.records))
+        return "Cause(%s, records=%s)" % (self.ident, list(self.records))
 
 
 class Entry(object):
@@ -361,9 +386,10 @@ class Entry(object):
     `declared` is `{quantity: cause id}` for quantities outside a health bar today.
     `mae` is recorded per grid as context and is not bounded.
     """
-    __slots__ = ('at', 'was', 'declared', 'mae', 'note')
 
-    def __init__(self, at, was=None, declared=None, mae=None, note=''):
+    __slots__ = ("at", "was", "declared", "mae", "note")
+
+    def __init__(self, at, was=None, declared=None, mae=None, note=""):
         self.at = dict(at)
         self.was = was
         self.declared = dict(declared or {})
@@ -383,42 +409,42 @@ class Entry(object):
         dc    an upper bound on |dc|: no further from 0.0 than recorded, plus `DC_MARGIN`.
         """
         corr, band, dc = self.at[grid]
-        if quantity == 'corr':
+        if quantity == "corr":
             lo = corr - CORR_MARGIN
             if self.was is not None and self.was[1] == grid:
                 lo = max(lo, self.was[0])
             return lo
-        if quantity == 'band':
+        if quantity == "band":
             return abs(math.log(max(band, 1e-9))) + BAND_MARGIN
-        if quantity == 'dc':
+        if quantity == "dc":
             return abs(dc) + DC_MARGIN
         raise KeyError(quantity)
 
 
 def _adverse(quantity, value, bound):
     """How far past the bound a value sits, in that quantity's own units. <= 0 is fine."""
-    if quantity == 'corr':
+    if quantity == "corr":
         return bound - value
-    if quantity == 'band':
+    if quantity == "band":
         return abs(math.log(max(value, 1e-9))) - bound
-    if quantity == 'dc':
+    if quantity == "dc":
         return abs(value) - bound
     raise KeyError(quantity)
 
 
 def _hard(quantity):
-    return {'corr': CORR_HARD, 'band': BAND_HARD, 'dc': DC_HARD}[quantity]
+    return {"corr": CORR_HARD, "band": BAND_HARD, "dc": DC_HARD}[quantity]
 
 
 def _value(reading, quantity):
-    return {'corr': reading.corr, 'band': reading.band, 'dc': reading.dc}[quantity]
+    return {"corr": reading.corr, "band": reading.band, "dc": reading.dc}[quantity]
 
 
 def _health(quantity, value):
     """Is this value inside its absolute health bar? `corr` has none -- see the header."""
-    if quantity == 'dc':
+    if quantity == "dc":
         return abs(value) <= DC_BAR
-    if quantity == 'band':
+    if quantity == "band":
         return (1.0 / BAND_BAR) <= value <= BAND_BAR
     return True
 
@@ -430,14 +456,14 @@ def _fmt_key(key):
     A guard whose own reporting degrades quietly is the thing this module exists to stop.
     """
     if isinstance(key, (str, bytes)):
-        return key if isinstance(key, str) else key.decode('utf-8', 'replace')
-    return ' '.join(str(p) for p in key)
+        return key if isinstance(key, str) else key.decode("utf-8", "replace")
+    return " ".join(str(p) for p in key)
 
 
-QUANTITIES = ('corr', 'band', 'dc')
+QUANTITIES = ("corr", "band", "dc")
 
 
-def check(table, readings, causes, label=''):
+def check(table, readings, causes, label=""):
     """Score a whole table. Returns a list of failure strings, empty when the table holds.
 
     `readings` is `{key: {grid: Reading}}`; a key or a grid that is absent is a MISSING
@@ -449,21 +475,25 @@ def check(table, readings, causes, label=''):
     every bound under it meaningless. Then the health bars, then the ratchet.
     """
     fails = []
-    pre = ('%s: ' % label) if label else ''
+    pre = ("%s: " % label) if label else ""
     for key in sorted(table):
         e = table[key]
         got = readings.get(key) or {}
         want = e.grids()
         absent = [g for g in want if g not in got]
         if absent:
-            fails.append('%s%s is no longer produced or paired at grid(s) %s -- this is '
-                         'the e231131 shape: an output stopped rendering and nothing '
-                         'failed' % (pre, _fmt_key(key), absent))
+            fails.append(
+                "%s%s is no longer produced or paired at grid(s) %s -- this is "
+                "the e231131 shape: an output stopped rendering and nothing "
+                "failed" % (pre, _fmt_key(key), absent)
+            )
             continue
         flat = [g for g in want if got[g].flat]
         if flat:
-            fails.append('%s%s renders CONSTANT at grid(s) %s -- this is the b2f1d97 shape'
-                         % (pre, _fmt_key(key), flat))
+            fails.append(
+                "%s%s renders CONSTANT at grid(s) %s -- this is the b2f1d97 shape"
+                % (pre, _fmt_key(key), flat)
+            )
             continue
         for q in QUANTITIES:
             cid = e.declared.get(q)
@@ -471,41 +501,49 @@ def check(table, readings, causes, label=''):
             if cid is not None:
                 cause = causes.get(cid)
                 if cause is None:
-                    fails.append('%s%s declares %s under cause %r, which is not in the '
-                                 'cause register -- a bypass needs a cause'
-                                 % (pre, _fmt_key(key), q, cid))
+                    fails.append(
+                        "%s%s declares %s under cause %r, which is not in the "
+                        "cause register -- a bypass needs a cause"
+                        % (pre, _fmt_key(key), q, cid)
+                    )
                     continue
                 if not cause.names_something():
-                    fails.append('%s%s declares %s under cause %r, which names neither a '
-                                 'record nor a mechanism -- a bypass with no cause must '
-                                 'fail' % (pre, _fmt_key(key), q, cid))
+                    fails.append(
+                        "%s%s declares %s under cause %r, which names neither a "
+                        "record nor a mechanism -- a bypass with no cause must "
+                        "fail" % (pre, _fmt_key(key), q, cid)
+                    )
                     continue
                 # A DECLARATION IS A PIN, NOT AN AMNESTY. Two-sided, at every grid.
                 moved = []
                 for g in want:
                     rec = e.at[g][QUANTITIES.index(q)]
-                    tol = {'corr': CORR_MARGIN, 'band': BAND_MARGIN, 'dc': DC_MARGIN}[q]
-                    if q == 'band':
-                        off = abs(math.log(max(vals[g], 1e-9)) - math.log(max(rec, 1e-9)))
+                    tol = {"corr": CORR_MARGIN, "band": BAND_MARGIN, "dc": DC_MARGIN}[q]
+                    if q == "band":
+                        off = abs(
+                            math.log(max(vals[g], 1e-9)) - math.log(max(rec, 1e-9))
+                        )
                     else:
                         off = abs(vals[g] - rec)
                     if off > tol:
                         moved.append((g, round(rec, 4), round(vals[g], 4)))
                 if moved:
                     fails.append(
-                        '%s%s %s is DECLARED broken under %r and has MOVED: (grid, '
-                        'recorded, now) %s. A declared quantity is pinned two-sided -- if '
-                        'this improved, re-take the entry and say why; if it got worse, '
-                        'the recorded cause is no longer the whole story'
-                        % (pre, _fmt_key(key), q, cid, moved))
+                        "%s%s %s is DECLARED broken under %r and has MOVED: (grid, "
+                        "recorded, now) %s. A declared quantity is pinned two-sided -- if "
+                        "this improved, re-take the entry and say why; if it got worse, "
+                        "the recorded cause is no longer the whole story"
+                        % (pre, _fmt_key(key), q, cid, moved)
+                    )
                 continue
             sick = [(g, round(vals[g], 4)) for g in want if not _health(q, vals[g])]
             if sick:
                 fails.append(
-                    '%s%s %s is outside its health bar at (grid, value) %s and declares no '
-                    'cause. Either the channel regressed, or it is broken today and the '
-                    'entry owes a Cause naming the record or mechanism responsible'
-                    % (pre, _fmt_key(key), q, sick))
+                    "%s%s %s is outside its health bar at (grid, value) %s and declares no "
+                    "cause. Either the channel regressed, or it is broken today and the "
+                    "entry owes a Cause naming the record or mechanism responsible"
+                    % (pre, _fmt_key(key), q, sick)
+                )
                 # AND FALL THROUGH TO THE RATCHET. This used to `continue`, so a quantity
                 # that was BOTH outside its health bar and adverse against its recorded
                 # value reported only the first and the regression went unlisted. That is
@@ -520,17 +558,31 @@ def check(table, readings, causes, label=''):
             worst = max(over, key=lambda g: over[g])
             if over[worst] > _hard(q):
                 fails.append(
-                    '%s%s %s fell %.4f past its bound at grid %d (recorded %.4f, now '
-                    '%.4f) -- past the hard margin, so one grid is enough'
-                    % (pre, _fmt_key(key), q, over[worst], worst,
-                       e.at[worst][QUANTITIES.index(q)], vals[worst]))
+                    "%s%s %s fell %.4f past its bound at grid %d (recorded %.4f, now "
+                    "%.4f) -- past the hard margin, so one grid is enough"
+                    % (
+                        pre,
+                        _fmt_key(key),
+                        q,
+                        over[worst],
+                        worst,
+                        e.at[worst][QUANTITIES.index(q)],
+                        vals[worst],
+                    )
+                )
                 continue
             if all(over[g] > 0 for g in want):
                 fails.append(
-                    '%s%s %s is adverse at EVERY scored grid %s: recorded %s, now %s'
-                    % (pre, _fmt_key(key), q, want,
-                       [round(e.at[g][QUANTITIES.index(q)], 4) for g in want],
-                       [round(vals[g], 4) for g in want]))
+                    "%s%s %s is adverse at EVERY scored grid %s: recorded %s, now %s"
+                    % (
+                        pre,
+                        _fmt_key(key),
+                        q,
+                        want,
+                        [round(e.at[g][QUANTITIES.index(q)], 4) for g in want],
+                        [round(vals[g], 4) for g in want],
+                    )
+                )
     return fails
 
 
@@ -546,7 +598,7 @@ def report(table, readings, quantity=None):
         for g in e.grids():
             r = (readings.get(key) or {}).get(g)
             if r is None:
-                out.append('%-70s %5d  MISSING' % ('/'.join(str(k) for k in key), g))
+                out.append("%-70s %5d  MISSING" % ("/".join(str(k) for k in key), g))
                 continue
             rec = e.at[g]
             marks = []
@@ -554,9 +606,21 @@ def report(table, readings, quantity=None):
                 if quantity and q != quantity:
                     continue
                 over = _adverse(q, _value(r, q), e.bound(q, g))
-                marks.append('%s%s' % (q, '!' if over > 0 else ''))
-            out.append('%-70s %5d  corr %+.4f (%+.4f)  band %.4f (%.4f)  dc %+.4f (%+.4f)'
-                       '  mae %.4f  %s'
-                       % ('/'.join(str(k) for k in key), g, r.corr, rec[0], r.band, rec[1],
-                          r.dc, rec[2], r.mae, ' '.join(marks)))
+                marks.append("%s%s" % (q, "!" if over > 0 else ""))
+            out.append(
+                "%-70s %5d  corr %+.4f (%+.4f)  band %.4f (%.4f)  dc %+.4f (%+.4f)"
+                "  mae %.4f  %s"
+                % (
+                    "/".join(str(k) for k in key),
+                    g,
+                    r.corr,
+                    rec[0],
+                    r.band,
+                    rec[1],
+                    r.dc,
+                    rec[2],
+                    r.mae,
+                    " ".join(marks),
+                )
+            )
     return out

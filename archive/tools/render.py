@@ -35,6 +35,7 @@ non-negative. Not a transpiler defect: `np.sqrt` of a negative number is the
 correct IEEE-754 answer and matches the math the compiled program performs, and
 there is no evidence here for what the real engine does at that input.
 """
+
 import math
 import os
 import re
@@ -66,7 +67,6 @@ class Unsupported(Exception):
 #: a 0.0% control is not "wrong five times in six" -- the control is the
 #: load-bearing half. The honest response is to MARK it.
 LOW_CONFIDENCE = set()
-
 
 
 #: Records that failed ONLY because an input of theirs failed. `failures` still holds a
@@ -105,7 +105,7 @@ CASCADED = set()
 
 def default_inputs(asm, N):
     out = {}
-    for t, u, v in asm.header.get('inputs') or []:
+    for t, u, v in asm.header.get("inputs") or []:
         if not v:
             continue
         arr = np.array(v, dtype=np.float32).reshape(1, -1)
@@ -144,8 +144,8 @@ def sampler_bindings(asm, rec, outputs):
         return {}
     by_uid = {}
     for r in asm.records:
-        if r.filter_name == 'bitmap' and (r.bitmap or {}).get('kind') == 'graph_input':
-            by_uid.setdefault(r.bitmap['uid'], r.index)
+        if r.filter_name == "bitmap" and (r.bitmap or {}).get("kind") == "graph_input":
+            by_uid.setdefault(r.bitmap["uid"], r.index)
     out = {}
     for k, input_uid in enumerate(order):
         src = by_uid.get(input_uid)
@@ -174,7 +174,6 @@ def cascade(message):
     return exc
 
 
-
 def graph_input_default(asm, rec):
     """A uniform image from the manifest default for rec's image input, or None.
 
@@ -189,12 +188,14 @@ def graph_input_default(asm, rec):
     assembly header cannot supply it. Returns None rather than guessing when no default
     is declared, which is why this fills 50 of 536 records and refuses the other 486.
     """
-    uid = (rec.bitmap or {}).get('uid')
+    uid = (rec.bitmap or {}).get("uid")
     got = manifest.image_input_defaults(asm).get(uid)
     if got is None:
         return None
     try:
-        parts = [float(x) for x in got[0].replace(';', ',').split(',') if x.strip() != '']
+        parts = [
+            float(x) for x in got[0].replace(";", ",").split(",") if x.strip() != ""
+        ]
     except ValueError:
         return None
     if not parts:
@@ -204,13 +205,14 @@ def graph_input_default(asm, rec):
     # with its last value rather than with zero, so `1` and `1,1,1` mean the same thing.
     vals = ([parts[0]] * ch) if len(parts) == 1 else (parts + [parts[-1]] * ch)[:ch]
     return np.full((rec.height, rec.width, ch), 0.0, dtype=np.float32) + np.asarray(
-        vals, dtype=np.float32)
+        vals, dtype=np.float32
+    )
 
 
 def load_pixels_bitmap(asm, rec):
     b = rec.bitmap
-    off, size, ch, depth = b['offset'], b['size'], b['channels'], b['depth']
-    if b.get('compressed') == 'jpeg':
+    off, size, ch, depth = b["offset"], b["size"], b["channels"], b["depth"]
+    if b.get("compressed") == "jpeg":
         # Class-word bit 11 marks a JPEG payload; see Record.bitmap. Untreated, these read
         # as raw pixels and produce entropy-7.7 noise -- 8 of the 9 in the corpus do not
         # even fail, they silently feed that noise downstream.
@@ -221,18 +223,19 @@ def load_pixels_bitmap(asm, rec):
         import io
         import struct as _struct
         from PIL import Image
-        p = b['data_offset']
-        if asm.data[p:p + 3] != b'\xff\xd8\xff':
+
+        p = b["data_offset"]
+        if asm.data[p : p + 3] != b"\xff\xd8\xff":
             raise Unsupported("bitmap is flagged JPEG but has no JPEG stream at +52")
         # The length is the u32 immediately ahead of the SOI, not a scan for `ff d9`:
         # that byte pair occurs inside entropy-coded data, so scanning can truncate.
-        n = _struct.unpack_from('<I', asm.data, p - 4)[0]
+        n = _struct.unpack_from("<I", asm.data, p - 4)[0]
         try:
-            im = Image.open(io.BytesIO(asm.data[p:p + n]))
+            im = Image.open(io.BytesIO(asm.data[p : p + n]))
             im.load()
         except Exception as e:
             raise Unsupported("bitmap's JPEG payload will not decode: %s" % e)
-        got = {'L': 1, 'RGB': 3, 'RGBA': 4}.get(im.mode)
+        got = {"L": 1, "RGB": 3, "RGBA": 4}.get(im.mode)
         if got is None:
             raise Unsupported("bitmap's JPEG has an unhandled mode %r" % im.mode)
         # Width and height are checked against the record every time -- a stream that is not
@@ -241,31 +244,41 @@ def load_pixels_bitmap(asm, rec):
         # CHANNELS has no entry for, and demanding agreement there would refuse exactly the
         # records this branch exists to recover.
         if (im.size[0], im.size[1]) != (rec.width, rec.height):
-            raise Unsupported("bitmap's JPEG is %dx%d, record declares %dx%d"
-                              % (im.size[0], im.size[1], rec.width, rec.height))
+            raise Unsupported(
+                "bitmap's JPEG is %dx%d, record declares %dx%d"
+                % (im.size[0], im.size[1], rec.width, rec.height)
+            )
         if ch is not None and got != ch:
-            raise Unsupported("bitmap's JPEG has %d channels, record declares %d"
-                              % (got, ch))
+            raise Unsupported(
+                "bitmap's JPEG has %d channels, record declares %d" % (got, ch)
+            )
         a = np.asarray(im, dtype=np.float32) / 255.0
         return a.reshape(rec.height, rec.width, got)
     if depth is None:
         # Record.bitmap's own documented gap: a channel code CHANNELS does not cover
         # (cls 0x808) reports 'pixels' with channels/depth/size all None, since the byte
         # offset is known even though the layout is not.
-        raise Unsupported("bitmap has pixels but an undecoded channel code (depth is None)")
+        raise Unsupported(
+            "bitmap has pixels but an undecoded channel code (depth is None)"
+        )
     if off + size > len(asm.data):
         # Not a decode error: the declared offset/size are consistent with the record's own
         # width/height/channels/depth, but the file this .sbsasm was extracted from does not
         # hold that many bytes there -- confirmed on a real specimen, short by exactly the
         # missing amount, i.e. genuinely truncated. Left to `np.frombuffer` this raises a
         # confusing `cannot reshape` error instead of naming the real problem.
-        raise Unsupported("bitmap wants %d bytes at %d, file has %d" %
-                          (size, off, max(0, len(asm.data) - off)))
+        raise Unsupported(
+            "bitmap wants %d bytes at %d, file has %d"
+            % (size, off, max(0, len(asm.data) - off))
+        )
     dtype = "<u1" if depth == 8 else "<u2"
     maxval = float((1 << depth) - 1)
-    arr = np.frombuffer(asm.data[off:off + size], dtype=dtype)
-    arr = arr.reshape(rec.height, rec.width, ch) if ch and ch > 1 else \
-          arr.reshape(rec.height, rec.width, 1)
+    arr = np.frombuffer(asm.data[off : off + size], dtype=dtype)
+    arr = (
+        arr.reshape(rec.height, rec.width, ch)
+        if ch and ch > 1
+        else arr.reshape(rec.height, rec.width, 1)
+    )
     return arr.astype(np.float32) / maxval
 
 
@@ -302,7 +315,7 @@ def synthetic_bitmap(rec, seed):
     IDENTICAL -- a comparison between them would otherwise be trivially all-false
     everywhere, which looks like a wiring bug but is two placeholders agreeing.
     """
-    yy, xx = np.mgrid[0:rec.height, 0:rec.width].astype(np.float32)
+    yy, xx = np.mgrid[0 : rec.height, 0 : rec.width].astype(np.float32)
     u, v = xx / max(rec.width, 1), yy / max(rec.height, 1)
     a, b, c = (seed * 37 % 97) / 97, (seed * 61 % 89) / 89, (seed * 13 % 61) / 61
     img = 0.5 + 0.5 * np.sin(2 * np.pi * (u * (2 + a) + v * (2 + b) + c))
@@ -351,15 +364,21 @@ def prefilter(src, scale):
     false about which readings are in doubt.
     """
     img = src
-    while scale >= 2.0 and img.shape[0] >= 2 and img.shape[1] >= 2 \
-            and img.shape[0] % 2 == 0 and img.shape[1] % 2 == 0:
-        img = 0.25 * (img[0::2, 0::2] + img[1::2, 0::2]
-                      + img[0::2, 1::2] + img[1::2, 1::2])
+    while (
+        scale >= 2.0
+        and img.shape[0] >= 2
+        and img.shape[1] >= 2
+        and img.shape[0] % 2 == 0
+        and img.shape[1] % 2 == 0
+    ):
+        img = 0.25 * (
+            img[0::2, 0::2] + img[1::2, 0::2] + img[0::2, 1::2] + img[1::2, 1::2]
+        )
         scale /= 2.0
     return img
 
 
-_POS_SYSVAR = re.compile(r'sysvar\(8,')
+_POS_SYSVAR = re.compile(r"sysvar\(8,")
 _READS_POS = {}
 _PROG_SRC = {}
 
@@ -396,10 +415,10 @@ def _reference_px(rec):
     file, including 127.162 and 253.44, not powers of two at all). What survives is
     narrower: this is the quantity the withdrawn blur slot-3 fallback was reading.
     """
-    forced = assume.assumed('warp.reference_px')
-    if forced is not None and forced != 'record':
+    forced = assume.assumed("warp.reference_px")
+    if forced is not None and forced != "record":
         return float(forced)
-    w = getattr(rec, 'width', None)
+    w = getattr(rec, "width", None)
     if isinstance(w, (int, float)) and w and w > 0:
         return float(w)
     return 256.0
@@ -416,9 +435,11 @@ def _prog_source(asm, ptr):
     if got is None:
         end = asm.program_span(ptr)
         try:
-            got = transpile.transpile(asm.data, ptr, end, "python", "prog") if end else ''
+            got = (
+                transpile.transpile(asm.data, ptr, end, "python", "prog") if end else ""
+            )
         except Exception:
-            got = ''
+            got = ""
         _PROG_SRC[key] = got
     return got
 
@@ -437,7 +458,7 @@ def _reads_pos(asm, ptr):
 
 
 _DEAD_SAMPLER = {}
-_DEF_RE = re.compile(r'^\s*%(\d+)\s+[0-9A-F]{4}\s+(\S+?)\s+(.*)$')
+_DEF_RE = re.compile(r"^\s*%(\d+)\s+[0-9A-F]{4}\s+(\S+?)\s+(.*)$")
 
 
 def sampler_is_annihilated(asm, ptr, index):
@@ -476,6 +497,7 @@ def sampler_is_annihilated(asm, ptr, index):
         return got
     try:
         import disasm
+
         hi = asm.program_end(ptr)
         lines = disasm.text(asm.data, ptr, hi).splitlines()
     except Exception:
@@ -486,13 +508,17 @@ def sampler_is_annihilated(asm, ptr, index):
         m = _DEF_RE.match(ln)
         if m:
             defs[int(m.group(1))] = (m.group(2), m.group(3))
-    zero = {g for g, (op, ar) in defs.items()
-            if op.startswith('const') and ar.strip()
-            and all(t.strip() and float(t) == 0.0 for t in ar.split(','))}
+    zero = {
+        g
+        for g, (op, ar) in defs.items()
+        if op.startswith("const")
+        and ar.strip()
+        and all(t.strip() and float(t) == 0.0 for t in ar.split(","))
+    }
     targets = set()
     for g, (op, ar) in defs.items():
-        if op.startswith('sample'):
-            ims = re.findall(r'#(\d+)', ar)
+        if op.startswith("sample"):
+            ims = re.findall(r"#(\d+)", ar)
             if ims and int(ims[0]) == index:
                 targets.add(g)
     if not targets:
@@ -500,13 +526,13 @@ def sampler_is_annihilated(asm, ptr, index):
         return False
     uses = {}
     for g, (op, ar) in defs.items():
-        for u in re.findall(r'%(\d+)', ar):
+        for u in re.findall(r"%(\d+)", ar):
             uses.setdefault(int(u), []).append((op, ar))
     ok = True
     for t in targets:
         for op, ar in uses.get(t, ()):
-            others = [int(x) for x in re.findall(r'%(\d+)', ar) if int(x) != t]
-            if not op.startswith('mul') or not any(o in zero for o in others):
+            others = [int(x) for x in re.findall(r"%(\d+)", ar) if int(x) != t]
+            if not op.startswith("mul") or not any(o in zero for o in others):
                 ok = False
                 break
         if not ok:
@@ -549,7 +575,7 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
             # every use of this sampler's result is multiplied by a constant zero, the program
             # computes the same output for ANY binding, so evaluating it with zeros is exact
             # rather than assumed -- see `sampler_is_annihilated`. Anything else still refuses.
-            idx = getattr(e, 'index', None)
+            idx = getattr(e, "index", None)
             if idx is not None and sampler_is_annihilated(asm, start, idx):
                 # RESTORED AFTERWARDS, ALWAYS. `SAMPLERS` is module-global and nothing else clears
                 # it between records, which is the leak that made this file's render depend on
@@ -557,21 +583,25 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
                 _had = idx in sbsruntime.SAMPLERS
                 _prev = sbsruntime.SAMPLERS.get(idx)
                 sbsruntime.SAMPLERS[idx] = sbsruntime.image_sampler(
-                    np.zeros((1, 1, 1), dtype=np.float32))
+                    np.zeros((1, 1, 1), dtype=np.float32)
+                )
                 try:
                     out = scope["prog"](inputs=inputs, slots=slots)
                 except sbsruntime.MissingSampler as e2:
-                    raise cascade("input %s has no output yet -- no sampler was installed "
-                                  "for it, which is an unwired edge and NOT a missing slot"
-                                  % e2) from e2
+                    raise cascade(
+                        "input %s has no output yet -- no sampler was installed "
+                        "for it, which is an unwired edge and NOT a missing slot" % e2
+                    ) from e2
                 finally:
                     if _had:
                         sbsruntime.SAMPLERS[idx] = _prev
                     else:
                         sbsruntime.SAMPLERS.pop(idx, None)
             else:
-                raise cascade("input %s has no output yet -- no sampler was installed for "
-                              "it, which is an unwired edge and NOT a missing slot" % e) from e
+                raise cascade(
+                    "input %s has no output yet -- no sampler was installed for "
+                    "it, which is an unwired edge and NOT a missing slot" % e
+                ) from e
         except KeyError as e:
             # `inputs` is keyed by uid (large, from default_inputs) and always fully populated
             # from the package's own declarations; `slots` is keyed by small integers. With
@@ -582,8 +612,10 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
             # sub-programs whose slots are written by ANOTHER of the record's programs sharing
             # slot state, which this walker does not model across records. Confirmed on a real
             # specimen that the record's other .programs entries do not set it either.
-            raise Unsupported("slot %s read but never set (cross-record/-program slot "
-                              "sharing, not modeled here)" % e) from e
+            raise Unsupported(
+                "slot %s read but never set (cross-record/-program slot "
+                "sharing, not modeled here)" % e
+            ) from e
     return np.asarray(out)
 
 
@@ -611,10 +643,10 @@ def eval_program(asm, start, inputs, slots, N, pos=None, W=None, H=None):
 # the blend BEFORE opacity; `apply_blend` mixes afterward, the structure mode 0 was
 # verified under.
 BLEND_MODES = {
-    0:  ('copy',       lambda d, s: s),
-    1:  ('add',        lambda d, s: d + s),                  # a.k.a. linear dodge
-    2:  ('subtract',   lambda d, s: d - s),
-    3:  ('multiply',   lambda d, s: d * s),
+    0: ("copy", lambda d, s: s),
+    1: ("add", lambda d, s: d + s),  # a.k.a. linear dodge
+    2: ("subtract", lambda d, s: d - s),
+    3: ("multiply", lambda d, s: d * s),
     # `addsub` lightens where the source is above mid-grey and darkens below it. The
     # exact pivot scaling is the least certain entry in this table -- the behaviour is
     # described consistently but never published as an equation, so this maps src=0 ->
@@ -636,9 +668,9 @@ BLEND_MODES = {
     #
     # The mode NUMBER is not in doubt -- see
     # test_filters.test_blendingmode_matches_the_source_that_declares_it, which pairs
-    4:  ('addsub',     lambda d, s: d + 2.0 * s - 1.0),
-    5:  ('max',        lambda d, s: np.maximum(d, s)),        # a.k.a. lighten
-    6:  ('min',        lambda d, s: np.minimum(d, s)),        # a.k.a. darken
+    4: ("addsub", lambda d, s: d + 2.0 * s - 1.0),
+    5: ("max", lambda d, s: np.maximum(d, s)),  # a.k.a. lighten
+    6: ("min", lambda d, s: np.minimum(d, s)),  # a.k.a. darken
     # `switch` is handled specially in `apply_blend` -- it is a hard choice between
     # the two inputs driven by opacity, not a per-channel function that opacity then
     # mixes, so running it through the normal lerp would silently turn it into `copy`.
@@ -649,14 +681,21 @@ BLEND_MODES = {
     # in Chesterfield gives a spatially constant value in 102 of 102, and every one is
     # exactly 0.0 or 1.0. A mode misidentified as `switch` would be reading some other
     # filter's per-pixel parameter.
-    7:  ('switch',     None),
-    8:  ('divide',     lambda d, s: d / np.where(np.abs(s) < 1e-6, 1e-6, s)),
-    9:  ('overlay',    lambda d, s: np.where(d < 0.5, 2.0 * d * s,
-                                             1.0 - 2.0 * (1.0 - d) * (1.0 - s))),
-    10: ('screen',     lambda d, s: 1.0 - (1.0 - d) * (1.0 - s)),
-    11: ('softlight',  lambda d, s: np.where(s < 0.5,
-                                             2.0 * d * s + d * d * (1.0 - 2.0 * s),
-                                             2.0 * d * (1.0 - s) + np.sqrt(np.clip(d, 0, None)) * (2.0 * s - 1.0))),
+    7: ("switch", None),
+    8: ("divide", lambda d, s: d / np.where(np.abs(s) < 1e-6, 1e-6, s)),
+    9: (
+        "overlay",
+        lambda d, s: np.where(d < 0.5, 2.0 * d * s, 1.0 - 2.0 * (1.0 - d) * (1.0 - s)),
+    ),
+    10: ("screen", lambda d, s: 1.0 - (1.0 - d) * (1.0 - s)),
+    11: (
+        "softlight",
+        lambda d, s: np.where(
+            s < 0.5,
+            2.0 * d * s + d * d * (1.0 - 2.0 * s),
+            2.0 * d * (1.0 - s) + np.sqrt(np.clip(d, 0, None)) * (2.0 * s - 1.0),
+        ),
+    ),
 }
 
 
@@ -677,12 +716,11 @@ def apply_blend(mode, dst, src, opacity):
     if entry is None:
         raise Unsupported("blend mode %r is outside the verified 0-11 range" % (mode,))
     name, fn = entry
-    if name == 'switch':
+    if name == "switch":
         return np.where(opacity >= 0.5, src, dst)
     with np.errstate(all="ignore"):
         blended = fn(dst, src)
         return np.clip(dst * (1.0 - opacity) + blended * opacity, 0.0, 1.0)
-
 
 
 class _SwappedEdges(object):
@@ -728,7 +766,7 @@ class _Resized(object):
     is never constructed.
     """
 
-    __slots__ = ('_rec', 'width', 'height')
+    __slots__ = ("_rec", "width", "height")
 
     def __init__(self, rec, size):
         self._rec = rec
@@ -766,12 +804,17 @@ def cls_pair_slot(rec, low_bit):
     if not d:
         return None
     w0 = rec.words[0]
-    state = ('baked' if (w0 >> low_bit) & 1 else
-             'program' if (w0 >> (low_bit + 1)) & 1 else None)
+    state = (
+        "baked"
+        if (w0 >> low_bit) & 1
+        else "program"
+        if (w0 >> (low_bit + 1)) & 1
+        else None
+    )
     if state is None:
         return None
-    want = low_bit if state == 'baked' else low_bit + 1
-    for b, slot, width in d.get('cls_params', ()):
+    want = low_bit if state == "baked" else low_bit + 1
+    for b, slot, width in d.get("cls_params", ()):
         if b == want:
             return (state, slot, width)
     return None
@@ -804,6 +847,7 @@ def walk_named_offset(asm, rec):
     """
     try:
         import decompose
+
         d = decompose.decompose(rec)
     except Exception:
         return None
@@ -823,7 +867,7 @@ def walk_named_offset(asm, rec):
     # thing, because the reader imposed an even two-bit grid the format does not have.)
     # Over 69,282 bit-26 records the field read returns the SAME program as the elimination
     # rule in 69,282 of 69,282, the 82 included.
-    named = [t for t in d.get('param_slots', ()) if t[0] == 25 and t[1] == 2]
+    named = [t for t in d.get("param_slots", ()) if t[0] == 25 and t[1] == 2]
     if len(named) != 1:
         return None
     pos = named[0][2]
@@ -833,8 +877,11 @@ def walk_named_offset(asm, rec):
     if not (asm.body_lo <= p < asm.body_hi and asm.valid_program(p)):
         return None
     try:
-        v = np.asarray(eval_program(asm, p, default_inputs(asm, 1), {}, 1,
-                                    W=rec.width, H=rec.height)).reshape(-1)
+        v = np.asarray(
+            eval_program(
+                asm, p, default_inputs(asm, 1), {}, 1, W=rec.width, H=rec.height
+            )
+        ).reshape(-1)
     except Exception:
         return None
     if v.size != 2:
@@ -868,12 +915,13 @@ def walk_named_matrix(asm, rec):
     """
     try:
         import decompose
+
         d = decompose.decompose(rec)
     except Exception:
         return None
     if not d:
         return None
-    named = [t for t in d.get('param_slots', ()) if t[0] == 6]
+    named = [t for t in d.get("param_slots", ()) if t[0] == 6]
     if len(named) != 1:
         return None
     pos = named[0][2]
@@ -883,8 +931,11 @@ def walk_named_matrix(asm, rec):
     if not (asm.body_lo <= p < asm.body_hi and asm.valid_program(p)):
         return None
     try:
-        v = np.asarray(eval_program(asm, p, default_inputs(asm, 1), {}, 1,
-                                    W=rec.width, H=rec.height)).reshape(-1)
+        v = np.asarray(
+            eval_program(
+                asm, p, default_inputs(asm, 1), {}, 1, W=rec.width, H=rec.height
+            )
+        ).reshape(-1)
     except Exception:
         return None
     if v.size != 4:
@@ -892,8 +943,15 @@ def walk_named_matrix(asm, rec):
     return tuple(float(x) for x in v)
 
 
-def render(asm, precomputed=None, verbose=True, max_dim=None,
-           synth_missing_bitmaps=False, stop_after=None, sizes=None):
+def render(
+    asm,
+    precomputed=None,
+    verbose=True,
+    max_dim=None,
+    synth_missing_bitmaps=False,
+    stop_after=None,
+    sizes=None,
+):
     """Evaluate every record 0..N-1 that a filter type here can handle.
 
     `precomputed` pre-seeds outputs for records the walker cannot compute itself
@@ -935,17 +993,23 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
         # for a caller supplying its own dict, because `load_pixels_bitmap` reshapes the
         # resource by `rec.width * rec.height` and a moved size there is not a bigger
         # picture, it is a `ValueError`.
-        if sizes and i in sizes and sizes[i] != (rec.width, rec.height) \
-                and rec.filter_name != "bitmap":
+        if (
+            sizes
+            and i in sizes
+            and sizes[i] != (rec.width, rec.height)
+            and rec.filter_name != "bitmap"
+        ):
             rec = _Resized(rec, sizes[i])
         try:
             if rec.filter_name == "bitmap":
                 b = rec.bitmap
-                if b['kind'] == 'pixels':
+                if b["kind"] == "pixels":
                     outputs[i] = load_pixels_bitmap(asm, rec)
-                elif b['kind'] == 'graph_input' and \
-                        assume.assumed('graph_input.manifest_default', True) and \
-                        graph_input_default(asm, rec) is not None:
+                elif (
+                    b["kind"] == "graph_input"
+                    and assume.assumed("graph_input.manifest_default", True)
+                    and graph_input_default(asm, rec) is not None
+                ):
                     # The manifest declares what the engine substitutes when this image input is left
                     # unconnected, so this is the file's own value, not an invention. Still
                     # LOW_CONFIDENCE: that the substitution is a UNIFORM of that value is the reading,
@@ -958,7 +1022,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     outputs[i] = synthetic_bitmap(rec, i)
                     synthetic.add(i)
                 else:
-                    raise Unsupported("bitmap kind %r has no supplied output" % b['kind'])
+                    raise Unsupported(
+                        "bitmap kind %r has no supplied output" % b["kind"]
+                    )
 
             elif rec.filter_name == "pixelprocessor":
                 W, H = rec.width, rec.height
@@ -985,7 +1051,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # record would otherwise beat a correct binding here and be invisible.
                 for slot_i, src in sampler_bindings(asm, rec, outputs).items():
                     if slot_i not in own_slots:
-                        sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(outputs[src])
+                        sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
+                            outputs[src]
+                        )
                         LOW_CONFIDENCE.add(i)
                 progs = rec.filter_programs
                 if not progs:
@@ -1028,10 +1096,12 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     lit = [p for p in progs if _reads_pos(asm, p)]
                     if len(lit) == 1:
                         main = lit[0]
-                    elif len(lit) > 1 and len(
-                            set(_prog_source(asm, p) for p in lit)) == 1:
+                    elif (
+                        len(lit) > 1
+                        and len(set(_prog_source(asm, p) for p in lit)) == 1
+                    ):
                         main = lit[0]
-                slots = {}          # per-record frame; see the slot-frame note above
+                slots = {}  # per-record frame; see the slot-frame note above
                 for p in progs:
                     if p is not main:
                         eval_program(asm, p, default_inputs(asm, 1), slots, 1)
@@ -1039,7 +1109,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 out = eval_program(asm, main, inputs, slots, N, pos=pos, W=W, H=H)
                 outputs[i] = to_image(out, N, H, W)
                 if tainted:
-                    synthetic.add(i)   # downstream of a synthetic placeholder somewhere
+                    synthetic.add(i)  # downstream of a synthetic placeholder somewhere
 
             elif rec.filter_name == "blend":
                 # `blendingmode` is the low nibble of slot 1 -- FORMAT-NOTES.md, corpus-wide
@@ -1077,8 +1147,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 src = sbsruntime.image_sampler(outputs[rec.edges[1]])(pos)
                 c = max(dst.shape[-1], src.shape[-1])
                 if dst.shape[-1] != c or src.shape[-1] != c:
-                    raise Unsupported("blend inputs disagree on channel count (%d vs %d)"
-                                      % (dst.shape[-1], src.shape[-1]))
+                    raise Unsupported(
+                        "blend inputs disagree on channel count (%d vs %d)"
+                        % (dst.shape[-1], src.shape[-1])
+                    )
 
                 # Record.size_or_baked's own docstring: its 'program' case is the record's OUTPUT
                 # SIZE expression in 91.3% of records, not a filter parameter -- confirmed the hard
@@ -1097,8 +1169,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # 276 to a program). No record has both a baked opacitymult and a float in
                 # `size_or_baked`, and 3,896 of the 3,898 lie in [0, 1].
                 par = rec.size_or_baked
-                baked_opacity = next((v for nm, kind, v in (rec.named_parameters or ())
-                                      if nm == 'opacitymult' and kind == 'baked'), None)
+                baked_opacity = next(
+                    (
+                        v
+                        for nm, kind, v in (rec.named_parameters or ())
+                        if nm == "opacitymult" and kind == "baked"
+                    ),
+                    None,
+                )
                 if baked_opacity is not None:
                     opacity = np.full((N, 1), float(baked_opacity), dtype=np.float32)
                 elif par and par[0] == "float":
@@ -1108,14 +1186,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     if fprogs:
                         for slot_i, edge_rec in enumerate(rec.edges):
                             sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
-                                outputs[edge_rec])
-                        slots = {}          # per-record frame; see the slot-frame note above
+                                outputs[edge_rec]
+                            )
+                        slots = {}  # per-record frame; see the slot-frame note above
                         for p in fprogs[:-1]:
                             eval_program(asm, p, default_inputs(asm, 1), slots, 1)
                         opacity = to_image(
-                            eval_program(asm, fprogs[-1], default_inputs(asm, N), slots, N,
-                                        pos=pos, W=W, H=H),
-                            N, H, W).reshape(N, -1)[:, :1]
+                            eval_program(
+                                asm,
+                                fprogs[-1],
+                                default_inputs(asm, N),
+                                slots,
+                                N,
+                                pos=pos,
+                                W=W,
+                                H=H,
+                            ),
+                            N,
+                            H,
+                            W,
+                        ).reshape(N, -1)[:, :1]
                     else:
                         # No program at all beyond (possibly) the size expression: confirmed on a real
                         # specimen (record 322) whose only program IS the one Record.size_or_baked names,
@@ -1128,8 +1218,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
                 if len(rec.edges) > 2:
                     if rec.edges[2] not in outputs:
-                        raise cascade("mask edge -> record %s has no output yet"
-                                          % rec.edges[2])
+                        raise cascade(
+                            "mask edge -> record %s has no output yet" % rec.edges[2]
+                        )
                     tainted = tainted or rec.edges[2] in synthetic
                     mask = sbsruntime.image_sampler(outputs[rec.edges[2]])(pos)
                     opacity = opacity * mask[:, :1]
@@ -1205,9 +1296,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
 
                 by_width = {}
                 n_evaluated = 0
-                n_size = 0          # identified as this record's OWN size expression
-                n_failed = 0        # would not evaluate, so its width is unknown
-                n_two = 0           # 2-wide, the only width an OFFSET can have
+                n_size = 0  # identified as this record's OWN size expression
+                n_failed = 0  # would not evaluate, so its width is unknown
+                n_two = 0  # 2-wide, the only width an OFFSET can have
                 if (m is None and has_matrix_param) or offset_is_program:
                     for p in fprogs:
                         try:
@@ -1215,9 +1306,17 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             # is what the engine would report, and an offset of `-1.0 / $size.x` means one
                             # pixel of the real output. Evaluating it at a stale 256 while the record is 16
                             # wide gets the shift wrong by 16x, in units that look plausible either way.
-                            a = np.asarray(eval_program(asm, p, default_inputs(asm, 1),
-                                                        {}, 1, W=rec.width,
-                                                        H=rec.height)).reshape(-1)
+                            a = np.asarray(
+                                eval_program(
+                                    asm,
+                                    p,
+                                    default_inputs(asm, 1),
+                                    {},
+                                    1,
+                                    W=rec.width,
+                                    H=rec.height,
+                                )
+                            ).reshape(-1)
                         except Exception:
                             n_failed += 1
                             continue
@@ -1233,9 +1332,13 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # log2-size, so this cannot change an answer that currently works. Of the 887 it
                         # refuses, 825 (93%) leave exactly one candidate once the size expression is set
                         # aside; 62 stay ambiguous and still refuse.
-                        if (a.size == 2 and rec.width and rec.height
-                                and abs(float(a[0]) - math.log2(rec.width)) < 1e-6
-                                and abs(float(a[1]) - math.log2(rec.height)) < 1e-6):
+                        if (
+                            a.size == 2
+                            and rec.width
+                            and rec.height
+                            and abs(float(a[0]) - math.log2(rec.width)) < 1e-6
+                            and abs(float(a[1]) - math.log2(rec.height)) < 1e-6
+                        ):
                             n_size += 1
                             continue
                         # COUNTED AFTER THE SIZE EXPRESSION IS SET ASIDE, and that placement is the whole
@@ -1262,11 +1365,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # the w1 pair at bits 6,7 -- field 3 -- and the slot that field names holds the
                 # program. Agreement with the width rule is 5,105/5,105 where that rule resolves.
                 # See `walk_named_matrix`. Evaluated once, here, since it runs a program.
-                walk_m = (walk_named_matrix(asm, rec)
-                          if (m is None and has_matrix_param) else None)
+                walk_m = (
+                    walk_named_matrix(asm, rec)
+                    if (m is None and has_matrix_param)
+                    else None
+                )
                 if m is None:
                     if not has_matrix_param:
-                        m = (1.0, 0.0, 0.0, 1.0)      # no matrix parameter: identity
+                        m = (1.0, 0.0, 0.0, 1.0)  # no matrix parameter: identity
                     elif walk_m is not None:
                         m = walk_m
                         matrix_from_program = True
@@ -1284,9 +1390,11 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # sets bit 7, so field 3 is state 2, and the walk names slot 4, which holds
                         # 0x1d54 -- the identity. What still reaches here is a record where the WALK is
                         # not decisive either. Those are genuine absences, not coin tosses.
-                        raise Unsupported("matrix is a program this cannot single out "
-                                          "(%d programs, widths %s)"
-                                          % (len(fprogs), sorted(k for k in by_width)))
+                        raise Unsupported(
+                            "matrix is a program this cannot single out "
+                            "(%d programs, widths %s)"
+                            % (len(fprogs), sorted(k for k in by_width))
+                        )
                 if len(rec.edges) < 1 or rec.edges[0] not in outputs:
                     raise cascade("edge has no output yet")
                 tainted = rec.edges[0] in synthetic
@@ -1302,9 +1410,11 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             if by_width.get(2):
                                 offset = by_width[2]
                             else:
-                                raise Unsupported("offset is a program this cannot single out "
-                                                  "(%d programs, widths %s)"
-                                                  % (len(fprogs), sorted(k for k in by_width)))
+                                raise Unsupported(
+                                    "offset is a program this cannot single out "
+                                    "(%d programs, widths %s)"
+                                    % (len(fprogs), sorted(k for k in by_width))
+                                )
                     elif fprogs and has_matrix_param and (n_failed > 0 or n_two > 0):
                         # WHICH programs remain unread -- the earlier form did not ask. It refused whenever
                         # the record had any filter program and a matrix parameter, including when the ONE
@@ -1322,9 +1432,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # in every case -- wood_cedar_white's records all name address 5748, returning 1.0
                         # -- and a scalar is not a translation. A 2-wide leftover still refuses: that IS
                         # offset-shaped while bit 26 says there is no offset program.
-                        raise Unsupported("no offset bit set and %d offset-shaped program(s) "
-                                          "remain unread (%d would not evaluate)"
-                                          % (n_two, n_failed))
+                        raise Unsupported(
+                            "no offset bit set and %d offset-shaped program(s) "
+                            "remain unread (%d would not evaluate)" % (n_two, n_failed)
+                        )
                     else:
                         offset = (0.0, 0.0)
 
@@ -1374,37 +1485,58 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # Compiler default-omission convention (established for blend mode and opacity
                 # elsewhere in this file): a parameter left at its default is absent from the
                 # bytecode. Levels' identity is in 0/0.5/1, out 0/1.
-                DEFAULTS = {'levelinlow': 0.0, 'levelinmid': 0.5, 'levelinhigh': 1.0,
-                           'leveloutlow': 0.0, 'levelouthigh': 1.0}
+                DEFAULTS = {
+                    "levelinlow": 0.0,
+                    "levelinmid": 0.5,
+                    "levelinhigh": 1.0,
+                    "leveloutlow": 0.0,
+                    "levelouthigh": 1.0,
+                }
                 params = dict(DEFAULTS)
                 for name, kind, value in rec.named_parameters:
                     if name not in DEFAULTS:
                         continue
-                    if kind == 'baked':
+                    if kind == "baked":
                         params[name] = np.float32(value)
                     else:
-                        sbsruntime.SAMPLERS[0] = sbsruntime.image_sampler(outputs[rec.edges[0]])
+                        sbsruntime.SAMPLERS[0] = sbsruntime.image_sampler(
+                            outputs[rec.edges[0]]
+                        )
                         params[name] = to_image(
-                            eval_program(asm, value, default_inputs(asm, N), {}, N,
-                                        pos=pos, W=W, H=H),
-                            N, H, W).reshape(N, -1)[:, :1]
+                            eval_program(
+                                asm,
+                                value,
+                                default_inputs(asm, N),
+                                {},
+                                N,
+                                pos=pos,
+                                W=W,
+                                H=H,
+                            ),
+                            N,
+                            H,
+                            W,
+                        ).reshape(N, -1)[:, :1]
 
-                in_low, in_mid, in_high = (params['levelinlow'], params['levelinmid'],
-                                           params['levelinhigh'])
+                in_low, in_mid, in_high = (
+                    params["levelinlow"],
+                    params["levelinmid"],
+                    params["levelinhigh"],
+                )
                 # See assume.QUESTIONS['levels.inversion']. Only fires where exactly ONE of the
                 # pair is stated AND it sits at an inversion extreme -- the population the
                 # structural side isolated.
-                if assume.assumed('levels.inversion') == 'complete':
+                if assume.assumed("levels.inversion") == "complete":
                     _named = {n for n, _k, _v in (rec.named_parameters or ())}
-                    _lo_set = 'levelinlow' in _named
-                    _hi_set = 'levelinhigh' in _named
+                    _lo_set = "levelinlow" in _named
+                    _hi_set = "levelinhigh" in _named
                     if _lo_set and not _hi_set and abs(float(in_low) - 1.0) < 1e-6:
                         in_high = np.float32(0.0)
                         assume.note(i)
                     elif _hi_set and not _lo_set and abs(float(in_high)) < 1e-6:
                         in_low = np.float32(1.0)
                         assume.note(i)
-                out_low, out_high = params['leveloutlow'], params['levelouthigh']
+                out_low, out_high = params["leveloutlow"], params["levelouthigh"]
 
                 span = in_high - in_low
                 # A ZERO-WIDTH INPUT RANGE IS A STEP, NOT A RAMP. Where in_low equals in_high the
@@ -1428,7 +1560,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 degenerate = np.abs(span) < 1e-6
                 span = np.where(degenerate, 1.0, span)
                 _ramp = np.clip((src - in_low) / span, 0.0, 1.0)
-                if assume.assumed('levels.zerospan') == 'identity':
+                if assume.assumed("levels.zerospan") == "identity":
                     _deg = np.clip(src, 0.0, 1.0)
                     if np.any(degenerate):
                         assume.note(i)
@@ -1471,8 +1603,11 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # the one 'noclamp' encodes. THE ARM IS MEASURABLE ON ALMOST NONE OF ITS OWN
                 # POPULATION: 492 of the 500 set only an out-parameter, so `t` is `src` and
                 # clamping cannot matter. A null result here is a result.
-                if (assume.assumed('levels.interclamp') == 'noclamp'
-                        and len(rec.words) > 1 and (rec.words[1] >> 10) & 3):
+                if (
+                    assume.assumed("levels.interclamp") == "noclamp"
+                    and len(rec.words) > 1
+                    and (rec.words[1] >> 10) & 3
+                ):
                     t = np.where(degenerate, _deg, (src - in_low) / span)
                     assume.note(i)
 
@@ -1537,7 +1672,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 #
                 # The 1.1% residual is a second, unidentified word shape, raised rather than
                 # guessed at.
-                has_prog = rec.size_or_baked is not None and rec.size_or_baked[0] == 'program'
+                has_prog = (
+                    rec.size_or_baked is not None and rec.size_or_baked[0] == "program"
+                )
                 # AND ONE MORE POINTER WHEN CLASS BIT 7 IS SET. Seven records read a denormal
                 # where a colour should be, and all seven carry TWO pointers ahead of the slot
                 # rather than one: MetalSubstance009 record 9887 is `[tag][ptr][ptr][1.0][bytecode
@@ -1575,25 +1712,39 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # with no colour program fall through to the arbitrated default below.
                 if not (rec.cls >> 8) & 1:
                     _sb = rec.size_or_baked
-                    _others = [q for q in (rec.programs or ())
-                               if not (_sb is not None and _sb[0] == 'program' and _sb[1] == q)]
+                    _others = [
+                        q
+                        for q in (rec.programs or ())
+                        if not (_sb is not None and _sb[0] == "program" and _sb[1] == q)
+                    ]
                     if _others:
                         try:
-                            _v = np.asarray(eval_program(asm, _others[0],
-                                                         default_inputs(asm, 1), {}, 1)).ravel()
+                            _v = np.asarray(
+                                eval_program(
+                                    asm, _others[0], default_inputs(asm, 1), {}, 1
+                                )
+                            ).ravel()
                         except Exception:
                             _v = np.zeros(0, dtype=np.float32)
                         if _v.size == 1 and n > 1:
                             _v = np.repeat(_v, n)
-                        if (_v.size >= n and np.all(np.isfinite(_v[:n]))
-                                and np.all((_v[:n] >= -0.01) & (_v[:n] <= 1.01))):
+                        if (
+                            _v.size >= n
+                            and np.all(np.isfinite(_v[:n]))
+                            and np.all((_v[:n] >= -0.01) & (_v[:n] <= 1.01))
+                        ):
                             W, H = rec.width, rec.height
                             if max_dim:
                                 W, H = min(W, max_dim), min(H, max_dim)
                             N = W * H
                             outputs[i] = to_image(
-                                np.tile(np.clip(_v[:n], 0.0, 1.0).astype(np.float32), (N, 1)),
-                                N, H, W)
+                                np.tile(
+                                    np.clip(_v[:n], 0.0, 1.0).astype(np.float32), (N, 1)
+                                ),
+                                N,
+                                H,
+                                W,
+                            )
                             continue
 
                 if not (rec.cls >> 8) & 1 or len(rec.words) < start + n:
@@ -1624,18 +1775,22 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # from behaviour rather than read from the file. Chesterfield cannot arbitrate it
                     # and was tried first: there the fill changes 6 records and 0 declared outputs, so
                     # every candidate ties, and a tie is not evidence for the incumbent.
-                    fill = assume.assumed('uniform.fill', 0.0)
+                    fill = assume.assumed("uniform.fill", 0.0)
                     v = np.asarray(fill, dtype=np.float32).ravel()
                     if v.size == 1:
                         v = np.repeat(v, n)
                     if v.size != n:
-                        raise Unsupported("uniform.fill supplies %d components, record "
-                                          "wants %d" % (v.size, n))
+                        raise Unsupported(
+                            "uniform.fill supplies %d components, record "
+                            "wants %d" % (v.size, n)
+                        )
                     W, H = rec.width, rec.height
                     if max_dim:
                         W, H = min(W, max_dim), min(H, max_dim)
                     N = W * H
-                    outputs[i] = to_image(np.tile(np.clip(v, 0.0, 1.0), (N, 1)), N, H, W)
+                    outputs[i] = to_image(
+                        np.tile(np.clip(v, 0.0, 1.0), (N, 1)), N, H, W
+                    )
                     LOW_CONFIDENCE.add(i)
                     assume.note(i)
                     continue
@@ -1656,11 +1811,15 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # marked LOW_CONFIDENCE and noted in `assume.USED`. The measurement applied this
                 # file's `start` formula WITHOUT the gate that precedes it: reading a branch's guard
                 # while skipping the branch's entry condition.
-                color = np.array(rec.words[start:start + n], dtype=np.uint32).view(np.float32)
+                color = np.array(rec.words[start : start + n], dtype=np.uint32).view(
+                    np.float32
+                )
                 if not np.all((-0.01 <= color) & (color <= 1.01) & (color == color)):
-                    raise Unsupported("uniform fill color slot does not decode as a "
-                                      "plausible color (%r) -- an unidentified second "
-                                      "word shape" % (color.tolist(),))
+                    raise Unsupported(
+                        "uniform fill color slot does not decode as a "
+                        "plausible color (%r) -- an unidentified second "
+                        "word shape" % (color.tolist(),)
+                    )
                 color = np.clip(color, 0.0, 1.0).astype(np.float32)
 
                 W, H = rec.width, rec.height
@@ -1700,7 +1859,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 tainted = any(e in synthetic for e in rec.edges[:2])
                 # See assume.QUESTIONS['dirwarp.edges'] -- the order is a declared convention
                 # with no bytecode-level proof. Swapping it here keeps the experiment to one line.
-                if assume.assumed('dirwarp.edges') == 'swapped':
+                if assume.assumed("dirwarp.edges") == "swapped":
                     rec = _SwappedEdges(rec)
                     assume.note(i)
 
@@ -1710,23 +1869,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 N = W * H
                 pos = pos_grid(W, H)
 
-                DEFAULTS = {'intensity': 0.0, 'warpangle': 0.0}
+                DEFAULTS = {"intensity": 0.0, "warpangle": 0.0}
                 params = dict(DEFAULTS)
                 for name, kind, value in rec.named_parameters:
                     if name not in DEFAULTS:
                         continue
-                    if kind == 'baked':
+                    if kind == "baked":
                         params[name] = np.float32(value)
                     else:
                         for slot_i, edge_rec in enumerate(rec.edges[:2]):
                             sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
-                                outputs[edge_rec])
+                                outputs[edge_rec]
+                            )
                         params[name] = to_image(
-                            eval_program(asm, value, default_inputs(asm, N), {}, N,
-                                        pos=pos, W=W, H=H),
-                            N, H, W).reshape(N, -1)[:, :1]
+                            eval_program(
+                                asm,
+                                value,
+                                default_inputs(asm, N),
+                                {},
+                                N,
+                                pos=pos,
+                                W=W,
+                                H=H,
+                            ),
+                            N,
+                            H,
+                            W,
+                        ).reshape(N, -1)[:, :1]
 
-                intensity, angle = params['intensity'], params['warpangle']
+                intensity, angle = params["intensity"], params["warpangle"]
 
                 height = sbsruntime.image_sampler(outputs[rec.edges[1]])(pos)[:, :1]
                 signed = 2.0 * height - 1.0
@@ -1734,8 +1905,12 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 REFERENCE_PX = _reference_px(rec)
                 disp = signed * intensity / REFERENCE_PX
                 in_pos = pos + np.concatenate(
-                    [disp * np.cos(turn) * np.ones((N, 1), dtype=np.float32),
-                     disp * np.sin(turn) * np.ones((N, 1), dtype=np.float32)], axis=-1)
+                    [
+                        disp * np.cos(turn) * np.ones((N, 1), dtype=np.float32),
+                        disp * np.sin(turn) * np.ones((N, 1), dtype=np.float32),
+                    ],
+                    axis=-1,
+                )
 
                 result = sbsruntime.image_sampler(outputs[rec.edges[0]])(in_pos)
                 outputs[i] = to_image(result, N, H, W)
@@ -1790,9 +1965,16 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     if isinstance(table[0][0], float) or len(table[0]) < 3:
                         raise Unsupported("colour ramp is not in the u16 packed form")
                     stops = np.array([e[0] for e in table], dtype=np.float32) / 65535.0
-                    packed = [(int(e[1]) | (int(e[2]) << 16)) & 0xFFFFFFFF for e in table]
-                    vals = np.array([[(u >> (8 * k)) & 0xFF for k in range(4)]
-                                     for u in packed], dtype=np.float32) / 255.0
+                    packed = [
+                        (int(e[1]) | (int(e[2]) << 16)) & 0xFFFFFFFF for e in table
+                    ]
+                    vals = (
+                        np.array(
+                            [[(u >> (8 * k)) & 0xFF for k in range(4)] for u in packed],
+                            dtype=np.float32,
+                        )
+                        / 255.0
+                    )
                 elif isinstance(table[0][0], float):
                     stops = np.array([e[0] for e in table], dtype=np.float32)
                     vals = np.array([e[1] for e in table], dtype=np.float32)
@@ -1809,8 +1991,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 src = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos)
                 t = np.clip(src[:, :1], 0.0, 1.0)
                 if vals.ndim == 2:
-                    cols = [np.interp(t.ravel(), stops, vals[:, c]).astype(np.float32)
-                            for c in range(vals.shape[1])]
+                    cols = [
+                        np.interp(t.ravel(), stops, vals[:, c]).astype(np.float32)
+                        for c in range(vals.shape[1])
+                    ]
                     result = np.stack(cols, axis=-1)
                     outputs[i] = to_image(result, N, H, W)
                 else:
@@ -1856,12 +2040,13 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     p1 = (knots[k][4], knots[k][5])
                     p2 = (knots[k + 1][2], knots[k + 1][3])
                     p3 = (knots[k + 1][0], knots[k + 1][1])
-                    u = np.linspace(0.0, 1.0, TAPS // max(1, len(knots) - 1),
-                                    dtype=np.float32)
+                    u = np.linspace(
+                        0.0, 1.0, TAPS // max(1, len(knots) - 1), dtype=np.float32
+                    )
                     b0 = (1 - u) ** 3
                     b1 = 3 * u * (1 - u) ** 2
                     b2 = 3 * u * u * (1 - u)
-                    b3 = u ** 3
+                    b3 = u**3
                     xs.append(b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0])
                     ys.append(b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1])
                 cx = np.concatenate(xs)
@@ -1897,23 +2082,35 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 N = W * H
                 pos = pos_grid(W, H)
 
-                DEFAULTS = {'intensity': 0.0, 'mblurangle': 0.0}
+                DEFAULTS = {"intensity": 0.0, "mblurangle": 0.0}
                 params = dict(DEFAULTS)
                 for name, kind, value in rec.named_parameters:
                     if name not in DEFAULTS:
                         continue
-                    if kind == 'baked':
+                    if kind == "baked":
                         params[name] = np.float32(value)
                     else:
                         sbsruntime.SAMPLERS[0] = sbsruntime.image_sampler(
-                            outputs[rec.edges[0]])
+                            outputs[rec.edges[0]]
+                        )
                         params[name] = to_image(
-                            eval_program(asm, value, default_inputs(asm, N), {}, N,
-                                        pos=pos, W=W, H=H),
-                            N, H, W).reshape(N, -1)[:, :1]
+                            eval_program(
+                                asm,
+                                value,
+                                default_inputs(asm, N),
+                                {},
+                                N,
+                                pos=pos,
+                                W=W,
+                                H=H,
+                            ),
+                            N,
+                            H,
+                            W,
+                        ).reshape(N, -1)[:, :1]
 
-                intensity = np.asarray(params['intensity'], dtype=np.float32)
-                angle = np.asarray(params['mblurangle'], dtype=np.float32)
+                intensity = np.asarray(params["intensity"], dtype=np.float32)
+                angle = np.asarray(params["mblurangle"], dtype=np.float32)
                 REFERENCE_PX = _reference_px(rec)
                 length = np.clip(np.abs(intensity), 0.0, 256.0) / REFERENCE_PX * 10.0
                 turn = 2.0 * np.pi * angle
@@ -1922,12 +2119,16 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 TAPS = 17
                 acc = None
                 for k in range(TAPS):
-                    f = (k / (TAPS - 1.0)) - 0.5          # -0.5 .. +0.5, centred
+                    f = (k / (TAPS - 1.0)) - 0.5  # -0.5 .. +0.5, centred
                     dx = (length * f) * np.cos(turn)
                     dy = (length * f) * np.sin(turn)
                     off = np.concatenate(
-                        [dx * np.ones((N, 1), dtype=np.float32),
-                         dy * np.ones((N, 1), dtype=np.float32)], axis=-1)
+                        [
+                            dx * np.ones((N, 1), dtype=np.float32),
+                            dy * np.ones((N, 1), dtype=np.float32),
+                        ],
+                        axis=-1,
+                    )
                     v = sampler(pos + off)
                     acc = v if acc is None else acc + v
                 outputs[i] = to_image(acc / float(TAPS), N, H, W)
@@ -2025,33 +2226,49 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 _pair = cls_pair_slot(rec, 29)
                 if _pair is None:
                     # Bits 29/30, not 13/14 -- see `render2/filters.py:f_warp`.
-                    raise Unsupported("warp intensity: neither class bit 29 (baked) nor 30 "
-                                      "(program) is set, so the source omitted it and the "
-                                      "engine's default applies")
+                    raise Unsupported(
+                        "warp intensity: neither class bit 29 (baked) nor 30 "
+                        "(program) is set, so the source omitted it and the "
+                        "engine's default applies"
+                    )
                 sl = _pair[1]
                 if sl >= len(rec.words):
                     raise Unsupported("warp record too short for an intensity slot")
-                if _pair[0] == 'baked':
-                    intensity = float(np.frombuffer(
-                        np.uint32(rec.words[sl]).tobytes(), dtype=np.float32)[0])
+                if _pair[0] == "baked":
+                    intensity = float(
+                        np.frombuffer(
+                            np.uint32(rec.words[sl]).tobytes(), dtype=np.float32
+                        )[0]
+                    )
                     if not (intensity == intensity and -1e3 < intensity < 1e3):
-                        raise Unsupported("warp intensity slot %d is not a plausible float"
-                                          % sl)
+                        raise Unsupported(
+                            "warp intensity slot %d is not a plausible float" % sl
+                        )
                 else:
                     _q = rec.words[sl] + 52
                     intensity = None
                     if asm.body_lo <= _q < asm.body_hi and asm.valid_program(_q):
                         try:
-                            _v = np.asarray(eval_program(asm, _q, default_inputs(asm, 1),
-                                                         {}, 1, W=rec.width,
-                                                         H=rec.height)).reshape(-1)
+                            _v = np.asarray(
+                                eval_program(
+                                    asm,
+                                    _q,
+                                    default_inputs(asm, 1),
+                                    {},
+                                    1,
+                                    W=rec.width,
+                                    H=rec.height,
+                                )
+                            ).reshape(-1)
                         except Exception:
                             _v = np.zeros(0, dtype=np.float32)
                         if _v.size == 1 and np.isfinite(_v[0]):
                             intensity = float(_v[0])
                     if intensity is None:
-                        raise Unsupported("warp intensity: class bit 14 names a program "
-                                          "slot that does not evaluate to a scalar")
+                        raise Unsupported(
+                            "warp intensity: class bit 14 names a program "
+                            "slot that does not evaluate to a scalar"
+                        )
                 tainted = any(e in synthetic for e in rec.edges[:2])
 
                 W, H = rec.width, rec.height
@@ -2060,8 +2277,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 N = W * H
                 pos = pos_grid(W, H)
 
-                gmap = to_image(sbsruntime.image_sampler(outputs[rec.edges[1]])(pos),
-                                N, H, W)[:, :, 0]
+                gmap = to_image(
+                    sbsruntime.image_sampler(outputs[rec.edges[1]])(pos), N, H, W
+                )[:, :, 0]
                 # np.gradient returns d/drow, d/dcol; scale each to UV by its own axis
                 # length so the displacement is resolution-independent.
                 gy, gx = np.gradient(gmap.astype(np.float32))
@@ -2115,19 +2333,24 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # plausible wrong picture with no error at all.
                     _walked = decompose.decompose(rec)
                     _wslot = _wwidth = None
-                    for _b, _s, _wd in ((_walked or {}).get('cls_params') or []):
+                    for _b, _s, _wd in (_walked or {}).get("cls_params") or []:
                         if _b - 16 == 8:
                             _wslot, _wwidth = _s, _wd
-                    if ((rec.cls >> 8) & 1):
+                    if (rec.cls >> 8) & 1:
                         if _wslot is None:
-                            raise Unsupported("shuffle class bit 8 is set but the walk "
-                                              "names no slot for the weight vector")
+                            raise Unsupported(
+                                "shuffle class bit 8 is set but the walk "
+                                "names no slot for the weight vector"
+                            )
                         if _wwidth != 4:
-                            raise Unsupported("shuffle weight field is %s words wide, not 4"
-                                              % _wwidth)
+                            raise Unsupported(
+                                "shuffle weight field is %s words wide, not 4" % _wwidth
+                            )
                         if _wslot + 4 > len(rec.words):
-                            raise Unsupported("shuffle single-input record too short for a "
-                                              "one-hot channel selector")
+                            raise Unsupported(
+                                "shuffle single-input record too short for a "
+                                "one-hot channel selector"
+                            )
                     # IT IS A WEIGHT VECTOR, NOT A ONE-HOT SELECTOR -- the one-hot form is its special
                     # case. The generalisation is forced by what the non-one-hot records hold: of the
                     # 79 this refused, the commonest are (0.30, 0.59, 0.11, 0.00) x17 -- Rec.601
@@ -2170,58 +2393,81 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # if the compiler ever emitted the weights as a PROGRAM this refusal would be a
                         # missed read. It never does -- over all 7,682 shuffle records, bit 24 set with 25
                         # clear 7,080, both clear 602, bit 25 set 0.
-                        w = assume.assumed('grayscale.weights')
+                        w = assume.assumed("grayscale.weights")
                         if w is None:
-                            raise Unsupported("shuffle stores no weight vector (class bit "
-                                              "8 clear) and its default is not in the file")
+                            raise Unsupported(
+                                "shuffle stores no weight vector (class bit "
+                                "8 clear) and its default is not in the file"
+                            )
                         hot = np.asarray(w, dtype=np.float32).ravel()
                         if hot.size != 4:
-                            raise Unsupported("grayscale.weights must be 4 numbers, got %d"
-                                              % hot.size)
+                            raise Unsupported(
+                                "grayscale.weights must be 4 numbers, got %d" % hot.size
+                            )
                         LOW_CONFIDENCE.add(i)
                         assume.note(i)
                     else:
                         hot = np.frombuffer(
-                            np.array(rec.words[_wslot:_wslot + 4],
-                                     dtype=np.uint32).tobytes(), dtype=np.float32)
-                    if not (np.all(np.isfinite(hot)) and np.all(np.abs(hot) <= 4.0)
-                            and float(np.abs(hot).sum()) > 1e-6):
-                        raise Unsupported("shuffle single-input weight vector is not "
-                                          "plausible (%r)" % (np.round(hot, 4).tolist(),))
+                            np.array(
+                                rec.words[_wslot : _wslot + 4], dtype=np.uint32
+                            ).tobytes(),
+                            dtype=np.float32,
+                        )
+                    if not (
+                        np.all(np.isfinite(hot))
+                        and np.all(np.abs(hot) <= 4.0)
+                        and float(np.abs(hot).sum()) > 1e-6
+                    ):
+                        raise Unsupported(
+                            "shuffle single-input weight vector is not "
+                            "plausible (%r)" % (np.round(hot, 4).tolist(),)
+                        )
                     if rec.edges[0] not in outputs:
-                        raise cascade("edge -> record %s has no output yet"
-                                          % rec.edges[0])
+                        raise cascade(
+                            "edge -> record %s has no output yet" % rec.edges[0]
+                        )
                     W, H = rec.width, rec.height
                     if max_dim:
                         W, H = min(W, max_dim), min(H, max_dim)
                     N = W * H
-                    src = sbsruntime.image_sampler(outputs[rec.edges[0]])(pos_grid(W, H))
+                    src = sbsruntime.image_sampler(outputs[rec.edges[0]])(
+                        pos_grid(W, H)
+                    )
                     used = [k for k, w in enumerate(hot) if abs(w) > 1e-9]
                     if used and max(used) >= src.shape[-1]:
                         # Same refusal the multi-input path makes, for the same reason: a weight on a
                         # channel the input lacks means the reading is wrong here.
-                        raise Unsupported("shuffle weights channel %d of an input with "
-                                          "only %d" % (max(used), src.shape[-1]))
-                    w = hot[:src.shape[-1]].astype(np.float32)
-                    outputs[i] = to_image((src * w).sum(axis=-1, keepdims=True), N, H, W)
+                        raise Unsupported(
+                            "shuffle weights channel %d of an input with "
+                            "only %d" % (max(used), src.shape[-1])
+                        )
+                    w = hot[: src.shape[-1]].astype(np.float32)
+                    outputs[i] = to_image(
+                        (src * w).sum(axis=-1, keepdims=True), N, H, W
+                    )
                     if rec.edges[0] in synthetic:
                         synthetic.add(i)
                     continue
                 w1 = rec.words[1]
                 sels = [(w1 >> (8 * k)) & 0xFF for k in range(4)]
                 if not all(s <= 7 for s in sels):
-                    raise Unsupported("shuffle slot 1 %#010x is not a selector word" % w1)
+                    raise Unsupported(
+                        "shuffle slot 1 %#010x is not a selector word" % w1
+                    )
 
                 nout = 4 if rec.colour else 1
                 sels = sels[:nout]
                 need = {s // 4 for s in sels}
                 for k in sorted(need):
                     if k >= len(rec.edges) or rec.edges[k] is None:
-                        raise Unsupported("shuffle wants input %d, which this record "
-                                          "does not have" % (k + 1))
+                        raise Unsupported(
+                            "shuffle wants input %d, which this record "
+                            "does not have" % (k + 1)
+                        )
                     if rec.edges[k] not in outputs:
-                        raise cascade("edge -> record %s has no output yet"
-                                          % rec.edges[k])
+                        raise cascade(
+                            "edge -> record %s has no output yet" % rec.edges[k]
+                        )
                 tainted = any(rec.edges[k] in synthetic for k in need)
 
                 W, H = rec.width, rec.height
@@ -2229,8 +2475,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     W, H = min(W, max_dim), min(H, max_dim)
                 N = W * H
                 pos = pos_grid(W, H)
-                src = {k: sbsruntime.image_sampler(outputs[rec.edges[k]])(pos)
-                       for k in need}
+                src = {
+                    k: sbsruntime.image_sampler(outputs[rec.edges[k]])(pos)
+                    for k in need
+                }
 
                 cols = []
                 for s in sels:
@@ -2240,15 +2488,19 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # Not silently clamped to an existing channel: a selector naming a channel the
                         # input does not carry means the reading is wrong here, and a wrong image is
                         # worse than a refusal.
-                        raise Unsupported("shuffle selects channel %d of an input with "
-                                          "only %d" % (c, a.shape[-1]))
-                    cols.append(a[:, c:c + 1])
+                        raise Unsupported(
+                            "shuffle selects channel %d of an input with "
+                            "only %d" % (c, a.shape[-1])
+                        )
+                    cols.append(a[:, c : c + 1])
                 outputs[i] = to_image(np.concatenate(cols, axis=-1), N, H, W)
                 if tainted:
                     synthetic.add(i)
 
-            elif (rec.filter_name == "emboss"
-                  and assume.assumed('emboss.probe') == 'passthrough'):
+            elif (
+                rec.filter_name == "emboss"
+                and assume.assumed("emboss.probe") == "passthrough"
+            ):
                 # COUNTING PROBE ONLY -- see assume.QUESTIONS['emboss.probe']. Renders the record
                 # as its first input so the number of outputs emboss gates can be measured. Not a
                 # reading of emboss, and its images are not to be scored.
@@ -2281,8 +2533,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 by_width = {}
                 for prog in rec.filter_programs:
                     try:
-                        val = np.asarray(eval_program(asm, prog, default_inputs(asm, 1),
-                                                      {}, 1)).reshape(-1)
+                        val = np.asarray(
+                            eval_program(asm, prog, default_inputs(asm, 1), {}, 1)
+                        ).reshape(-1)
                     except Exception:
                         continue
                     by_width[val.size] = None if val.size in by_width else float(val[0])
@@ -2310,9 +2563,13 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # 1,379 records: 961 agree, 65 have the scan landing AT/PAST the header end (so it
                     # was reading bytecode), 322 the scan misses entirely, 10 undecided, 0 impossible.
                     _sl = record_layout.header_words(
-                        rec.filter_id, rec.words[0],
+                        rec.filter_id,
+                        rec.words[0],
                         rec.words[1] if len(rec.words) > 1 else None,
-                        asm.header.get('version') if isinstance(asm.header, dict) else 0)
+                        asm.header.get("version")
+                        if isinstance(asm.header, dict)
+                        else 0,
+                    )
                     # THE LAST HEADER SLOT IS NOT ALWAYS A PARAMETER. When the source
                     # declared no intensity the header simply ends one word earlier, and
                     # `end - 1` is then the last PROGRAM POINTER instead. A pointer read as
@@ -2346,8 +2603,11 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         if asm.body_lo <= q < asm.body_hi and asm.valid_program(q):
                             omitted = True
                         else:
-                            f = float(np.frombuffer(np.uint32(w).tobytes(),
-                                                    dtype=np.float32)[0])
+                            f = float(
+                                np.frombuffer(np.uint32(w).tobytes(), dtype=np.float32)[
+                                    0
+                                ]
+                            )
                             if np.isfinite(f) and 1e-3 < abs(f) < 1e3:
                                 intensity = f
                                 LOW_CONFIDENCE.add(i)
@@ -2355,8 +2615,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # The value is in neither the assembly nor the source that produced it,
                     # so it is a question rather than a gap -- see `assume.QUESTIONS`.
                     # Default 'refuse', so nothing renders differently unless asked.
-                    _d = assume.assumed('normal.default_intensity', 'refuse')
-                    if _d != 'refuse':
+                    _d = assume.assumed("normal.default_intensity", "refuse")
+                    if _d != "refuse":
                         intensity = float(_d)
                         assume.note(i)
                         LOW_CONFIDENCE.add(i)
@@ -2365,17 +2625,21 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         raise Unsupported(
                             "normal intensity: the last header slot holds a program "
                             "pointer, so this record carries no baked parameter -- the "
-                            "source omitted it and the engine's default applies")
-                    raise Unsupported("normal: intensity is neither a single-width "
-                                      "program nor a baked float in the block")
+                            "source omitted it and the engine's default applies"
+                        )
+                    raise Unsupported(
+                        "normal: intensity is neither a single-width "
+                        "program nor a baked float in the block"
+                    )
 
                 W, H = rec.width, rec.height
                 if max_dim:
                     W, H = min(W, max_dim), min(H, max_dim)
                 N = W * H
                 pos = pos_grid(W, H)
-                height = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos),
-                                  N, H, W)[:, :, 0].astype(np.float32)
+                height = to_image(
+                    sbsruntime.image_sampler(outputs[rec.edges[0]])(pos), N, H, W
+                )[:, :, 0].astype(np.float32)
                 # NOT VERIFIED, stated as directionalwarp's is: the FORMULA and intensity's
                 # absolute scale. This filter's math is engine-side. The standard
                 # height-to-normal shape is used -- central-difference, scale by intensity,
@@ -2399,19 +2663,30 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # fits equally. minime453__Stylized_Sandy_Stone_Path sets it on rec 175, which
                 # feeds basecolor/AO/height, while its exported normal comes from rec 1452 with the
                 # bit CLEAR and needs no flip -- consistent, but not a second confirmation.
-                if (assume.assumed('normal.inversedy', 'word1bit2') == 'word1bit2'
-                        and len(rec.words) > 1 and (rec.words[1] >> 2) & 1):
+                if (
+                    assume.assumed("normal.inversedy", "word1bit2") == "word1bit2"
+                    and len(rec.words) > 1
+                    and (rec.words[1] >> 2) & 1
+                ):
                     gy = -gy
                     LOW_CONFIDENCE.add(i)
                     assume.note(i)
                 nx, ny = -gx * intensity, -gy * intensity
                 nz = np.ones_like(nx)
                 length = np.sqrt(nx * nx + ny * ny + nz * nz)
-                rgb = np.stack([0.5 + 0.5 * nx / length, 0.5 + 0.5 * ny / length,
-                                0.5 + 0.5 * nz / length], axis=-1)
+                rgb = np.stack(
+                    [
+                        0.5 + 0.5 * nx / length,
+                        0.5 + 0.5 * ny / length,
+                        0.5 + 0.5 * nz / length,
+                    ],
+                    axis=-1,
+                )
                 rgb = np.clip(rgb.reshape(N, 3), 0.0, 1.0)
                 if rec.colour:
-                    rgb = np.concatenate([rgb, np.ones((N, 1), dtype=np.float32)], axis=-1)
+                    rgb = np.concatenate(
+                        [rgb, np.ones((N, 1), dtype=np.float32)], axis=-1
+                    )
                 outputs[i] = to_image(rgb, N, H, W)
                 if tainted:
                     synthetic.add(i)
@@ -2480,10 +2755,13 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # `$outputsize`, and only 8 of those sit at the size-expression slot.
                 _pair = cls_pair_slot(rec, 28)
                 _islot = _pair[1] if _pair else None
-                _baked = bool(_pair and _pair[0] == 'baked')
+                _baked = bool(_pair and _pair[0] == "baked")
                 if _baked and _islot is not None and _islot < len(rec.words):
-                    v = float(np.frombuffer(np.uint32(rec.words[_islot]).tobytes(),
-                                            dtype=np.float32)[0])
+                    v = float(
+                        np.frombuffer(
+                            np.uint32(rec.words[_islot]).tobytes(), dtype=np.float32
+                        )[0]
+                    )
                     if np.isfinite(v) and (v == 0.0 or 1e-6 < abs(v) < 1e4):
                         intensity = v
                 # CLASS BITS 12 AND 13 ARE THE (BAKED, PROGRAM) PAIR FOR THIS PARAMETER, which is
@@ -2499,14 +2777,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # the 2-wide ones looked like an unexplained residue. Restricted to records where
                 # BIT 13 OWNS THE SLOT, all 60 hold a program at the slot the walk names, all
                 # evaluate 1-wide, p50 1.00. The 2-wide reads were bit-13-CLEAR records.
-                elif (_pair and _pair[0] == 'program'
-                      and _islot is not None and _islot < len(rec.words)):
+                elif (
+                    _pair
+                    and _pair[0] == "program"
+                    and _islot is not None
+                    and _islot < len(rec.words)
+                ):
                     _p = rec.words[_islot] + 52
                     if asm.body_lo <= _p < asm.body_hi and asm.valid_program(_p):
                         try:
-                            _v = np.asarray(eval_program(asm, _p, default_inputs(asm, 1),
-                                                         {}, 1, W=rec.width,
-                                                         H=rec.height)).reshape(-1)
+                            _v = np.asarray(
+                                eval_program(
+                                    asm,
+                                    _p,
+                                    default_inputs(asm, 1),
+                                    {},
+                                    1,
+                                    W=rec.width,
+                                    H=rec.height,
+                                )
+                            ).reshape(-1)
                         except Exception:
                             _v = np.zeros(0, dtype=np.float32)
                         if _v.size == 1 and np.isfinite(_v[0]):
@@ -2531,12 +2821,20 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # 0 of 57 records against index 0's 8 of 93. Reading by WIDTH rather than position
                 # also covers the single-program records and agrees on all 40 where both apply. Not
                 # source-confirmed: containment recovers 1 of 42 against a 2-of-42 control.
-                if intensity is None and assume.assumed('blur.intensity') == 'program':
-                    for _ptr in (rec.filter_programs or ()):
+                if intensity is None and assume.assumed("blur.intensity") == "program":
+                    for _ptr in rec.filter_programs or ():
                         try:
-                            _v = np.asarray(eval_program(asm, _ptr, default_inputs(asm, 1),
-                                                         {}, 1, W=rec.width,
-                                                         H=rec.height)).reshape(-1)
+                            _v = np.asarray(
+                                eval_program(
+                                    asm,
+                                    _ptr,
+                                    default_inputs(asm, 1),
+                                    {},
+                                    1,
+                                    W=rec.width,
+                                    H=rec.height,
+                                )
+                            ).reshape(-1)
                         except Exception:
                             continue
                         if _v.size == 1 and np.isfinite(_v[0]):
@@ -2549,21 +2847,28 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # shorter than its baked sibling in 140 of 140. See the warp branch.
                     raise Unsupported(
                         "blur intensity: %s (walk slot %s)"
-                        % ("neither class bit 12 (baked) nor 13 (program) is set, so the "
-                           "source omitted it and the engine's default applies"
-                           if not (_pair or _baked) else
-                           "class bit 13 names a program slot that does not evaluate to a "
-                           "scalar" if not _baked else
-                           "the walk does not resolve this record's header" if _islot is None
-                           else "slot does not read as a plausible intensity",
-                           _islot))
+                        % (
+                            "neither class bit 12 (baked) nor 13 (program) is set, so the "
+                            "source omitted it and the engine's default applies"
+                            if not (_pair or _baked)
+                            else "class bit 13 names a program slot that does not evaluate to a "
+                            "scalar"
+                            if not _baked
+                            else "the walk does not resolve this record's header"
+                            if _islot is None
+                            else "slot does not read as a plausible intensity",
+                            _islot,
+                        )
+                    )
 
                 W, H = rec.width, rec.height
                 if max_dim:
                     W, H = min(W, max_dim), min(H, max_dim)
                 N = W * H
                 pos = pos_grid(W, H)
-                src = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos), N, H, W)
+                src = to_image(
+                    sbsruntime.image_sampler(outputs[rec.edges[0]])(pos), N, H, W
+                )
                 # NOT VERIFIED, and shared with directionalwarp and dirmotionblur: the absolute
                 # pixel scale of `intensity`. A separable box blur is used, which is what the
                 # parameter means before any kernel shape is assumed; a Gaussian would differ in
@@ -2572,10 +2877,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 radius = float(np.clip(abs(intensity), 0.0, 256.0)) / REFERENCE_PX
                 rpx = int(round(radius * max(W, H)))
                 if rpx < 1:
-                    outputs[i] = src            # a blur of sub-pixel radius is the identity
+                    outputs[i] = src  # a blur of sub-pixel radius is the identity
                 else:
                     k = 2 * rpx + 1
-                    if assume.assumed('blur.kernel', 'box') == 'gaussian':
+                    if assume.assumed("blur.kernel", "box") == "gaussian":
                         # See assume.QUESTIONS['blur.kernel']. sigma = rpx/2 puts the
                         # box's half-width at two sigma, the usual correspondence.
                         _d = np.arange(-rpx, rpx + 1, dtype=np.float64)
@@ -2590,7 +2895,7 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         outputs[i] = np.clip(out2, 0.0, 1.0)
                     else:
                         acc = np.zeros_like(src)
-                        for d in range(-rpx, rpx + 1):     # separable: rows then columns
+                        for d in range(-rpx, rpx + 1):  # separable: rows then columns
                             acc += np.roll(src, d, axis=1)
                         acc /= k
                         out2 = np.zeros_like(acc)
@@ -2619,20 +2924,30 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     W, H = min(W, max_dim), min(H, max_dim)
                 N = W * H
                 pos = pos_grid(W, H)
-                _base = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos), N, H, W)
+                _base = to_image(
+                    sbsruntime.image_sampler(outputs[rec.edges[0]])(pos), N, H, W
+                )
                 _gsrc = sbsruntime.image_sampler(outputs[rec.edges[1]])
                 _OFF = 0.005859375
                 _shift = pos + np.array([_OFF, -_OFF], dtype=np.float32)
                 _g0 = to_image(_gsrc(pos), N, H, W)[:, :, :1]
                 _g1 = to_image(_gsrc(_shift), N, H, W)[:, :, :1]
                 _k = 0.1
-                if assume.assumed('emboss.intensity') == 'program':
+                if assume.assumed("emboss.intensity") == "program":
                     _fp = rec.filter_programs or ()
                     if _fp:
                         try:
-                            _v = np.asarray(eval_program(asm, _fp[0],
-                                                         default_inputs(asm, 1), {}, 1,
-                                                         W=rec.width, H=rec.height)).reshape(-1)
+                            _v = np.asarray(
+                                eval_program(
+                                    asm,
+                                    _fp[0],
+                                    default_inputs(asm, 1),
+                                    {},
+                                    1,
+                                    W=rec.width,
+                                    H=rec.height,
+                                )
+                            ).reshape(-1)
                             if _v.size and np.isfinite(_v[0]):
                                 _k = float(_v[0])
                         except Exception:
@@ -2668,37 +2983,59 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # common one, so it is asked first. THE ABSENCE IS MEASURED -- a neither-bit
                 # sharpen record is one word shorter than its baked sibling in 162 of 167.
                 if not ((rec.words[0] >> 28) & 1 or (rec.words[0] >> 29) & 1):
-                    raise Unsupported("sharpen intensity: neither class bit 12 (baked) nor "
-                                      "13 (program) is set, so the source omitted it and "
-                                      "the engine's default applies")
+                    raise Unsupported(
+                        "sharpen intensity: neither class bit 12 (baked) nor "
+                        "13 (program) is set, so the source omitted it and "
+                        "the engine's default applies"
+                    )
                 if islot is None:
-                    raise Unsupported("sharpen intensity: the walk does not resolve this "
-                                      "record's header")
+                    raise Unsupported(
+                        "sharpen intensity: the walk does not resolve this "
+                        "record's header"
+                    )
                 if islot >= len(rec.words):
-                    raise Unsupported("sharpen intensity: slot %d past the record end"
-                                      % islot)
+                    raise Unsupported(
+                        "sharpen intensity: slot %d past the record end" % islot
+                    )
                 amount = None
-                if _pair and _pair[0] == 'baked':
-                    amount = float(np.frombuffer(np.uint32(rec.words[islot]).tobytes(),
-                                                 dtype=np.float32)[0])
-                    if not (np.isfinite(amount)
-                            and (amount == 0.0 or 1e-6 < abs(amount) < 1e4)):
-                        raise Unsupported("sharpen intensity slot does not read as a "
-                                          "plausible value (%r)" % amount)
-                elif _pair and _pair[0] == 'program':
+                if _pair and _pair[0] == "baked":
+                    amount = float(
+                        np.frombuffer(
+                            np.uint32(rec.words[islot]).tobytes(), dtype=np.float32
+                        )[0]
+                    )
+                    if not (
+                        np.isfinite(amount)
+                        and (amount == 0.0 or 1e-6 < abs(amount) < 1e4)
+                    ):
+                        raise Unsupported(
+                            "sharpen intensity slot does not read as a "
+                            "plausible value (%r)" % amount
+                        )
+                elif _pair and _pair[0] == "program":
                     _p = rec.words[islot] + 52
                     if asm.body_lo <= _p < asm.body_hi and asm.valid_program(_p):
                         try:
-                            _v = np.asarray(eval_program(asm, _p, default_inputs(asm, 1),
-                                                         {}, 1, W=rec.width,
-                                                         H=rec.height)).reshape(-1)
+                            _v = np.asarray(
+                                eval_program(
+                                    asm,
+                                    _p,
+                                    default_inputs(asm, 1),
+                                    {},
+                                    1,
+                                    W=rec.width,
+                                    H=rec.height,
+                                )
+                            ).reshape(-1)
                         except Exception:
                             _v = np.zeros(0, dtype=np.float32)
                         if _v.size == 1 and np.isfinite(_v[0]):
                             amount = float(_v[0])
                     if amount is None:
-                        raise Unsupported("sharpen intensity: class bit 13 names a program "
-                                          "slot that does not evaluate to a scalar")
+                        raise Unsupported(
+                            "sharpen intensity: class bit 13 names a program "
+                            "slot that does not evaluate to a scalar"
+                        )
                 else:
                     # UNREACHABLE for the neither-bit case, refused above; this catches a pair the walk
                     # reports in a state neither arm reads.
@@ -2711,15 +3048,21 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # these are `end = 4` with costly class bits 16 and 27, so every header word is
                     # accounted for. 167 records, 18 declared outputs; rendering them needs the
                     # ENGINE's default, which belongs in `assume.QUESTIONS`.
-                    raise Unsupported("sharpen intensity: neither class bit 12 (baked) nor "
-                                      "13 (program) is set, so the source omitted it and "
-                                      "the engine's default applies")
+                    raise Unsupported(
+                        "sharpen intensity: neither class bit 12 (baked) nor "
+                        "13 (program) is set, so the source omitted it and "
+                        "the engine's default applies"
+                    )
                 W, H = rec.width, rec.height
                 if max_dim:
                     W, H = min(W, max_dim), min(H, max_dim)
                 N = W * H
-                src = to_image(sbsruntime.image_sampler(outputs[rec.edges[0]])(pos_grid(W, H)),
-                               N, H, W)
+                src = to_image(
+                    sbsruntime.image_sampler(outputs[rec.edges[0]])(pos_grid(W, H)),
+                    N,
+                    H,
+                    W,
+                )
                 blurred = np.zeros_like(src)
                 for dy in (-1, 0, 1):
                     row = np.roll(src, dy, axis=0)
@@ -2759,7 +3102,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     for slot_i, edge_rec in enumerate(rec.edges or ()):
                         if edge_rec in outputs:
                             sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
-                                outputs[edge_rec])
+                                outputs[edge_rec]
+                            )
                             own_slots.add(slot_i)
                     # A record with no edge in a slot may still reach an image through the graph's
                     # declared image inputs -- see `sampler_bindings`. Edge slots WIN where both
@@ -2768,7 +3112,8 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     for slot_i, src in sampler_bindings(asm, rec, outputs).items():
                         if slot_i not in own_slots:
                             sbsruntime.SAMPLERS[slot_i] = sbsruntime.image_sampler(
-                                outputs[src])
+                                outputs[src]
+                            )
                             LOW_CONFIDENCE.add(i)
                     try:
                         runner = fxrender.make_runner(asm, rec)
@@ -2782,8 +3127,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                         # best-effort above, so an absent edge plus a failed walk means downstream. String
                         # matching would have to know a second module's prose, and it was exactly that
                         # coupling that made `WoodSubstance005`'s record 194 look like the blocker.
-                        if any(e2 is not None and e2 not in outputs
-                               for e2 in (rec.edges or ())):
+                        if any(
+                            e2 is not None and e2 not in outputs
+                            for e2 in (rec.edges or ())
+                        ):
                             raise cascade("fxmaps: %s" % e) from e
                         raise Unsupported("fxmaps: %s" % e) from e
                     if not pats:
@@ -2799,11 +3146,14 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # rather than sampling whatever image is nearest. NOT a general edge-list index:
                     # over 80 files the 133 records whose patterns all index 0 have SIX edges and the
                     # 27 using index 1 have THREE, so it addresses some unestablished subset.
-                    images = {slot: outputs[e]
-                              for slot, e in enumerate(rec.edges or ())
-                              if e is not None and e in outputs}
-                    outputs[i] = fxrender.splat(rec, pats, W, H, images=images,
-                                                cells=fx_cells)
+                    images = {
+                        slot: outputs[e]
+                        for slot, e in enumerate(rec.edges or ())
+                        if e is not None and e in outputs
+                    }
+                    outputs[i] = fxrender.splat(
+                        rec, pats, W, H, images=images, cells=fx_cells
+                    )
                     if any(e in synthetic for e in (rec.edges or ()) if e is not None):
                         synthetic.add(i)
                 finally:
@@ -2823,8 +3173,10 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     raise cascade("edge has no output yet")
                 try:
                     val, how = distance.distance_param(
-                        rec, lambda p: eval_program(asm, p, default_inputs(asm, 1), {}, 1),
-                        {})
+                        rec,
+                        lambda p: eval_program(asm, p, default_inputs(asm, 1), {}, 1),
+                        {},
+                    )
                 except distance.Unlocated as e:
                     raise Unsupported("distance: %s" % e) from e
                 if distance.is_low_confidence(how):
@@ -2834,17 +3186,19 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     W, H = min(W, max_dim), min(H, max_dim)
                 # Which edge is the mask is NOT established -- both questions are on the
                 # blocked list. Default 0, arbitrable through the assume channel.
-                mask_edge = assume.assumed('distance.mask_edge', 0)
+                mask_edge = assume.assumed("distance.mask_edge", 0)
                 if mask_edge >= len(rec.edges) or rec.edges[mask_edge] not in outputs:
                     mask_edge = 0
-                if assume.assumed('distance.mask_edge') is not None:
+                if assume.assumed("distance.mask_edge") is not None:
                     assume.note(i)
                 src = outputs[rec.edges[mask_edge]]
-                mask = sbsruntime.image_sampler(src)(pos_grid(W, H)).reshape(H, W, -1)[:, :, 0]
+                mask = sbsruntime.image_sampler(src)(pos_grid(W, H)).reshape(H, W, -1)[
+                    :, :, 0
+                ]
                 # Radius scales with resolution: 0.14 px at 256 is 0.035 at 64 and the filter
                 # becomes a no-op that reads as a dead parameter. See the module docstring.
                 field = distance.distance_field(mask, distance.scale_radius(val, W))
-                if assume.assumed('distance.invert', False):
+                if assume.assumed("distance.invert", False):
                     field = 1.0 - field
                     assume.note(i)
                 # THE SECOND EDGE, WHICH THIS FILTER HAS BEEN THROWING AWAY. See
@@ -2854,16 +3208,25 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # colour header, so under 'field' the 122 colour ones refuse -- correctly. Under
                 # 'nearest' the payload is edge 1's value at the closest lit mask pixel, faded
                 # by the same field.
-                _prop = assume.assumed('distance.propagate', 'field')
-                _payload = next((e for k, e in enumerate(rec.edges)
-                                 if k != mask_edge and e in outputs), None)
-                if _prop == 'nearest' and _payload is not None:
+                _prop = assume.assumed("distance.propagate", "field")
+                _payload = next(
+                    (
+                        e
+                        for k, e in enumerate(rec.edges)
+                        if k != mask_edge and e in outputs
+                    ),
+                    None,
+                )
+                if _prop == "nearest" and _payload is not None:
                     _src_img = sbsruntime.image_sampler(outputs[_payload])(
-                        pos_grid(W, H)).reshape(H, W, -1)
+                        pos_grid(W, H)
+                    ).reshape(H, W, -1)
                     _vals = distance.propagate(
-                        mask, distance.scale_radius(val, W), _src_img)
-                    outputs[i] = to_image((_vals * field[:, :, None]).reshape(H * W, -1),
-                                          W * H, H, W)
+                        mask, distance.scale_radius(val, W), _src_img
+                    )
+                    outputs[i] = to_image(
+                        (_vals * field[:, :, None]).reshape(H * W, -1), W * H, H, W
+                    )
                     assume.note(i)
                     if _payload in synthetic:
                         synthetic.add(i)
@@ -2937,22 +3300,30 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 walked = decompose.decompose(rec)
                 if walked is None:
                     raise Unsupported("hsl record has no structural decomposition")
-                cls_slots = {b - 16: s for b, s, _w in (walked.get('cls_params') or [])
-                             if b >= 16}
+                cls_slots = {
+                    b - 16: s
+                    for b, s, _w in (walked.get("cls_params") or [])
+                    if b >= 16
+                }
                 vals = {}
-                for bit, name in ((8, 'hue'), (10, 'saturation'), (12, 'luminosity')):
+                for bit, name in ((8, "hue"), (10, "saturation"), (12, "luminosity")):
                     if not (rec.cls >> bit) & 1:
                         continue
                     sl = cls_slots.get(bit)
                     if sl is None:
-                        raise Unsupported("hsl class bit %d set but the walk names no "
-                                          "slot for it" % bit)
+                        raise Unsupported(
+                            "hsl class bit %d set but the walk names no "
+                            "slot for it" % bit
+                        )
                     if sl >= len(rec.words):
-                        raise Unsupported("hsl mask names slot %d, record has %d"
-                                          % (sl, len(rec.words)))
-                    f = np.frombuffer(np.array([int(rec.words[sl])],
-                                               dtype=np.uint32).tobytes(),
-                                      dtype='<f4')[0]
+                        raise Unsupported(
+                            "hsl mask names slot %d, record has %d"
+                            % (sl, len(rec.words))
+                        )
+                    f = np.frombuffer(
+                        np.array([int(rec.words[sl])], dtype=np.uint32).tobytes(),
+                        dtype="<f4",
+                    )[0]
                     if not np.isfinite(f) or abs(f) > 1e3:
                         raise Unsupported("hsl %s slot is not a plausible float" % name)
                     vals[name] = float(f)
@@ -2969,9 +3340,9 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 # better (`saturation` buys ch2 and loses ch1; `luminosity` takes ch1 correlation
                 # from 0.865 to 0.296). And the structure says they have no parameter at all:
                 # class 0x0219 sets NONE of the parameter bits.
-                h_sh = vals.get('hue', 0.5) - 0.5
-                s_sh = vals.get('saturation', 0.5) - 0.5
-                l_sh = vals.get('luminosity', 0.5) - 0.5
+                h_sh = vals.get("hue", 0.5) - 0.5
+                s_sh = vals.get("saturation", 0.5) - 0.5
+                l_sh = vals.get("luminosity", 0.5) - 0.5
                 a = src.reshape(src.shape[0], src.shape[1], -1).astype(np.float32)
                 if a.shape[2] >= 3:
                     r0, g0, b0 = a[:, :, 0], a[:, :, 1], a[:, :, 2]
@@ -2979,17 +3350,26 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     mn = np.minimum(np.minimum(r0, g0), b0)
                     L = (mx + mn) / 2.0
                     d = mx - mn
-                    S = np.where(d < 1e-9, 0.0,
-                                 d / np.maximum(1e-9, 1.0 - np.abs(2.0 * L - 1.0)))
+                    S = np.where(
+                        d < 1e-9, 0.0, d / np.maximum(1e-9, 1.0 - np.abs(2.0 * L - 1.0))
+                    )
                     # `dd` is the guarded denominator: where d is 0 the pixel is grey, `m` is False
                     # and the sector value is discarded, so the guard only keeps the arithmetic
                     # finite rather than changing any kept result.
                     m = d > 1e-9
                     dd = np.maximum(1e-9, d)
-                    H = np.select([m & (mx == r0), m & (mx == g0), m],
-                                  [((g0 - b0) / dd) % 6.0,
-                                   ((b0 - r0) / dd) + 2.0,
-                                   ((r0 - g0) / dd) + 4.0], default=0.0) / 6.0
+                    H = (
+                        np.select(
+                            [m & (mx == r0), m & (mx == g0), m],
+                            [
+                                ((g0 - b0) / dd) % 6.0,
+                                ((b0 - r0) / dd) + 2.0,
+                                ((r0 - g0) / dd) + 4.0,
+                            ],
+                            default=0.0,
+                        )
+                        / 6.0
+                    )
                     H = (H + h_sh) % 1.0
                     S = np.clip(S + 2.0 * s_sh, 0.0, 1.0)
                     L = np.clip(L + l_sh, 0.0, 1.0)
@@ -3044,14 +3424,17 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 if max_dim:
                     W, H = min(W, max_dim), min(H, max_dim)
                 idx = sbsruntime.image_sampler(outputs[rec.edges[0]])(
-                    pos_grid(W, H)).reshape(H, W, -1)[:, :, 0]
+                    pos_grid(W, H)
+                ).reshape(H, W, -1)[:, :, 0]
                 strip = np.asarray(outputs[rec.edges[1]], dtype=np.float32)
                 if strip.ndim == 2:
                     strip = strip[:, :, None]
                 sh, sw = strip.shape[0], strip.shape[1]
-                along_x = sw >= sh              # the long axis is the ramp
+                along_x = sw >= sh  # the long axis is the ramp
                 n = sw if along_x else sh
-                k = np.clip((np.clip(idx, 0.0, 1.0) * (n - 1)).round().astype(int), 0, n - 1)
+                k = np.clip(
+                    (np.clip(idx, 0.0, 1.0) * (n - 1)).round().astype(int), 0, n - 1
+                )
                 mid = (sh // 2) if along_x else (sw // 2)
                 ramp = strip[mid, :, :] if along_x else strip[:, mid, :]
                 outputs[i] = to_image(ramp[k.ravel()], W * H, H, W)
@@ -3088,7 +3471,11 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                 want = 4 if rec.colour else 1
                 if arr.ndim == 3 and arr.shape[-1] != want:
                     if not rec.colour:
-                        spread = float(np.max(np.abs(arr - arr[..., :1]))) if arr.size else 0.0
+                        spread = (
+                            float(np.max(np.abs(arr - arr[..., :1])))
+                            if arr.size
+                            else 0.0
+                        )
                         if spread > 1e-9:
                             del outputs[i]
                             synthetic.discard(i)
@@ -3096,17 +3483,21 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                             raise Unsupported(
                                 "greyscale record produced %d channels that disagree by "
                                 "%.4g -- the program evaluated is not this record's image "
-                                "program" % (arr.shape[-1], spread))
+                                "program" % (arr.shape[-1], spread)
+                            )
                         outputs[i] = arr[..., :1]
                     elif arr.shape[-1] == 3:
                         outputs[i] = np.concatenate(
-                            [arr, np.ones(arr.shape[:2] + (1,), dtype=arr.dtype)], axis=-1)
+                            [arr, np.ones(arr.shape[:2] + (1,), dtype=arr.dtype)],
+                            axis=-1,
+                        )
                     else:
                         del outputs[i]
                         synthetic.discard(i)
                         LOW_CONFIDENCE.discard(i)
-                        raise Unsupported("colour record produced %d channels, not 4"
-                                          % arr.shape[-1])
+                        raise Unsupported(
+                            "colour record produced %d channels, not 4" % arr.shape[-1]
+                        )
                     arr = np.asarray(outputs[i])
                 if arr.size and not np.all(np.isfinite(arr)):
                     # MOSTLY AN ARTEFACT OF `max_dim`, NOT A PROPERTY OF THE FILE. The recurring
@@ -3124,28 +3515,34 @@ def render(asm, precomputed=None, verbose=True, max_dim=None,
                     # are not decode work, which also mis-poses `nonfinite.fill` for them: filling with
                     # 0.0, 0.5 or 1.0 would paint over a raster that is simply too coarse. Resolve the
                     # arm on the two survivors or not at all. UNDER AN OPEN SCOPE, write the value.
-                    _fill = assume.assumed('nonfinite.fill')
+                    _fill = assume.assumed("nonfinite.fill")
                     if _fill is not None:
-                        outputs[i] = np.where(np.isfinite(arr), arr,
-                                              np.float32(_fill)).astype(arr.dtype)
+                        outputs[i] = np.where(
+                            np.isfinite(arr), arr, np.float32(_fill)
+                        ).astype(arr.dtype)
                         LOW_CONFIDENCE.add(i)
                         assume.note(i)
                         continue
                     del outputs[i]
                     synthetic.discard(i)
                     LOW_CONFIDENCE.discard(i)
-                    raise Unsupported("produced non-finite values (%.1f%% of samples)"
-                                      % (100.0 * float(np.mean(~np.isfinite(arr)))))
+                    raise Unsupported(
+                        "produced non-finite values (%.1f%% of samples)"
+                        % (100.0 * float(np.mean(~np.isfinite(arr))))
+                    )
         except Unsupported as e:
             failures[i] = str(e)
-            if getattr(e, 'cascade', False):
+            if getattr(e, "cascade", False):
                 CASCADED.add(i)
             if verbose:
                 print("rec%d (%s): SKIP - %s" % (i, rec.filter_name, e))
         except Exception as e:
             failures[i] = "%s: %s" % (type(e).__name__, e)
             if verbose:
-                print("rec%d (%s): ERROR - %s: %s" % (i, rec.filter_name, type(e).__name__, e))
+                print(
+                    "rec%d (%s): ERROR - %s: %s"
+                    % (i, rec.filter_name, type(e).__name__, e)
+                )
 
         if stop_after is not None and i >= stop_after:
             # A caller that wants ONE record's output does not need the rest of the file.

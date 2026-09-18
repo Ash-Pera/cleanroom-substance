@@ -33,6 +33,7 @@ to render are drawn as an empty red box: a hole in the graph is worth as much as
 
 `--dot` additionally writes Graphviz source, for when a file is too wide to read as an image.
 """
+
 import argparse
 import os
 import sys
@@ -40,16 +41,20 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import assume                                                        # noqa: E402
-import render                                                        # noqa: E402
-import sbsasm                                                        # noqa: E402
+import assume  # noqa: E402
+import render  # noqa: E402
+import sbsasm  # noqa: E402
 
 ROLE = [(235, 235, 240), (90, 210, 230), (240, 165, 70), (130, 130, 140)]
-ROLE_NAME = ['dst', 'src', 'mask', 'in']
+ROLE_NAME = ["dst", "src", "mask", "in"]
 
 
 def edges_of(asm, i):
-    return [e for e in asm.records[i].edges if isinstance(e, int) and 0 <= e < len(asm.records)]
+    return [
+        e
+        for e in asm.records[i].edges
+        if isinstance(e, int) and 0 <= e < len(asm.records)
+    ]
 
 
 def cone_of(asm, root):
@@ -70,7 +75,7 @@ def depths(asm, want):
     def go(i, guard=0):
         if i in d:
             return d[i]
-        if guard > 512:                      # cycles are not expected; do not hang on one
+        if guard > 512:  # cycles are not expected; do not hang on one
             return 0
         ins = [e for e in edges_of(asm, i) if e in want]
         d[i] = 0 if not ins else 1 + max(go(e, guard + 1) for e in ins)
@@ -151,10 +156,12 @@ def order_layers(asm, layers, want, rounds=12):
 
     for r in range(rounds):
         c = centres()
-        for ly in (sorted(layers) if r % 2 == 0 else sorted(layers, reverse=True)):
+        for ly in sorted(layers) if r % 2 == 0 else sorted(layers, reverse=True):
+
             def bary(i):
                 ns = [c[j] for j in nbr[i] if j in c]
                 return sum(ns) / len(ns) if ns else c[i]
+
             layers[ly] = sorted(layers[ly], key=lambda i: (bary(i), i))
     return layers
 
@@ -162,6 +169,7 @@ def order_layers(asm, layers, want, rounds=12):
 def _seg_cross(a, b, c, d):
     def side(p, q, r):
         return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
     d1, d2 = side(a, b, c), side(a, b, d)
     d3, d4 = side(c, d, a), side(c, d, b)
     return ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0))
@@ -183,6 +191,7 @@ def count_crossings(segments):
 
 def thumb(arr, side):
     from PIL import Image
+
     a = np.clip(np.nan_to_num(np.asarray(arr, dtype=np.float64)), 0.0, 1.0)
     if a.ndim == 2:
         a = a[:, :, None]
@@ -193,18 +202,21 @@ def thumb(arr, side):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('path')
-    ap.add_argument('-o', '--out', default=None)
-    ap.add_argument('--cone', type=int, default=None)
-    ap.add_argument('--dim', type=int, default=128)
-    ap.add_argument('--thumb', type=int, default=64)
-    ap.add_argument('--cell', action='store_true')
-    ap.add_argument('--weights', default=None)
-    ap.add_argument('--dot', default=None)
-    ap.add_argument('--asap', action='store_true',
-                    help='layer by longest path from the sources instead of '
-                         'pushing nodes down to their earliest consumer')
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("path")
+    ap.add_argument("-o", "--out", default=None)
+    ap.add_argument("--cone", type=int, default=None)
+    ap.add_argument("--dim", type=int, default=128)
+    ap.add_argument("--thumb", type=int, default=64)
+    ap.add_argument("--cell", action="store_true")
+    ap.add_argument("--weights", default=None)
+    ap.add_argument("--dot", default=None)
+    ap.add_argument(
+        "--asap",
+        action="store_true",
+        help="layer by longest path from the sources instead of "
+        "pushing nodes down to their earliest consumer",
+    )
     args = ap.parse_args(argv)
 
     from PIL import Image, ImageDraw
@@ -212,17 +224,21 @@ def main(argv=None):
     asm = sbsasm.Assembly(args.path)
     scope = {}
     if args.cell:
-        scope['fx.patternsize'] = 'cell'
-        scope['fx.branchoffset'] = 'cell'
+        scope["fx.patternsize"] = "cell"
+        scope["fx.branchoffset"] = "cell"
     if args.weights:
-        scope['grayscale.weights'] = tuple(float(x) for x in args.weights.split(','))
+        scope["grayscale.weights"] = tuple(float(x) for x in args.weights.split(","))
     if scope:
         with assume.scope(**scope):
             produced, failed, _s = render.render(asm, verbose=False, max_dim=args.dim)
     else:
         produced, failed, _s = render.render(asm, verbose=False, max_dim=args.dim)
 
-    want = cone_of(asm, args.cone) if args.cone is not None else set(range(len(asm.records)))
+    want = (
+        cone_of(asm, args.cone)
+        if args.cone is not None
+        else set(range(len(asm.records)))
+    )
     d = depths(asm, want)
     if not args.asap:
         d = as_late_as_possible(asm, d, want)
@@ -234,11 +250,14 @@ def main(argv=None):
     width = max(len(v) for v in layers.values())
     W = width * (T + GAPX) + GAPX
     H = (max(layers) + 1) * (T + GAPY) + GAPY + 24
-    img = Image.new('RGB', (W, H), (14, 14, 18))
+    img = Image.new("RGB", (W, H), (14, 14, 18))
     dr = ImageDraw.Draw(img)
-    dr.text((10, 6), '%s   %d records   flow top->bottom   '
-                     'white=dst  cyan=src  orange=mask'
-            % (os.path.basename(args.path), len(want)), fill=(235, 235, 240))
+    dr.text(
+        (10, 6),
+        "%s   %d records   flow top->bottom   "
+        "white=dst  cyan=src  orange=mask" % (os.path.basename(args.path), len(want)),
+        fill=(235, 235, 240),
+    )
 
     def place(lay):
         p = {}
@@ -256,8 +275,12 @@ def main(argv=None):
                 continue
             for e in edges_of(asm, i):
                 if e in p:
-                    segs.append(((p[e][0] + T // 2, p[e][1] + T),
-                                 (p[i][0] + T // 2, p[i][1] - LBL)))
+                    segs.append(
+                        (
+                            (p[e][0] + T // 2, p[e][1] + T),
+                            (p[i][0] + T // 2, p[i][1] - LBL),
+                        )
+                    )
         return segs
 
     # KEEP WHICHEVER ORDERING ACTUALLY WINS, because the heuristic does not always. Under
@@ -272,11 +295,13 @@ def main(argv=None):
     pos_swept = place(swept)
     n_swept = count_crossings(segments(pos_swept))
     if n_swept < n_plain:
-        layers, pos, kept = swept, pos_swept, 'barycentre'
+        layers, pos, kept = swept, pos_swept, "barycentre"
     else:
-        layers, pos, kept = plain, pos_plain, 'file order'
-    print('edge crossings: file order %d, barycentre %d -> using %s (%d)'
-          % (n_plain, n_swept, kept, min(n_plain, n_swept)))
+        layers, pos, kept = plain, pos_plain, "file order"
+    print(
+        "edge crossings: file order %d, barycentre %d -> using %s (%d)"
+        % (n_plain, n_swept, kept, min(n_plain, n_swept))
+    )
 
     # edges first, so nodes draw over them
     for i in sorted(want):
@@ -287,8 +312,11 @@ def main(argv=None):
             if e not in pos:
                 continue
             xe, ye = pos[e]
-            dr.line([xe + T // 2, ye + T, xi + T // 2, yi - LBL],
-                    fill=ROLE[min(slot, 3)], width=2 if slot < 3 else 1)
+            dr.line(
+                [xe + T // 2, ye + T, xi + T // 2, yi - LBL],
+                fill=ROLE[min(slot, 3)],
+                width=2 if slot < 3 else 1,
+            )
 
     for i in sorted(want):
         if i not in pos:
@@ -298,43 +326,54 @@ def main(argv=None):
         v = produced.get(i)
         if v is None:
             dr.rectangle([x, y, x + T, y + T], outline=(190, 90, 90), fill=(46, 24, 24))
-            dr.text((x + 3, y + T // 2 - 5), 'FAILED', fill=(210, 130, 130))
+            dr.text((x + 3, y + T // 2 - 5), "FAILED", fill=(210, 130, 130))
         else:
             img.paste(Image.fromarray(thumb(v, T)), (x, y))
             a = np.nan_to_num(np.asarray(v, dtype=np.float64))
             flat = a.reshape(-1, a.shape[-1]) if a.ndim == 3 else a.reshape(-1, 1)
             if float(flat.std()) < 1e-6:
                 dr.rectangle([x, y, x + T, y + T], outline=(120, 120, 60))
-        mode = ''
-        if r.filter_name == 'blend':
-            m = (r.slot1_flags or {}).get('blendingmode')
+        mode = ""
+        if r.filter_name == "blend":
+            m = (r.slot1_flags or {}).get("blendingmode")
             if m is not None:
-                mode = ' m%d' % m
-        dr.text((x, y - LBL + 2), '%d %s%s' % (i, r.filter_name[:9], mode), fill=(225, 225, 232))
+                mode = " m%d" % m
+        dr.text(
+            (x, y - LBL + 2),
+            "%d %s%s" % (i, r.filter_name[:9], mode),
+            fill=(225, 225, 232),
+        )
 
-    out = args.out or (os.path.splitext(os.path.basename(args.path))[0] + '-graph.png')
+    out = args.out or (os.path.splitext(os.path.basename(args.path))[0] + "-graph.png")
     img.save(out)
-    print('%s: %d records in view, %d produced, %d failed'
-          % (os.path.basename(args.path), len(want), len(produced), len(failed)))
-    print('wrote %s  (%dx%d)' % (out, img.size[0], img.size[1]))
+    print(
+        "%s: %d records in view, %d produced, %d failed"
+        % (os.path.basename(args.path), len(want), len(produced), len(failed))
+    )
+    print("wrote %s  (%dx%d)" % (out, img.size[0], img.size[1]))
 
     if args.dot:
-        with open(args.dot, 'w') as fh:
-            fh.write('digraph records {\n  rankdir=TB;\n  node [shape=box,fontsize=9];\n')
+        with open(args.dot, "w") as fh:
+            fh.write(
+                "digraph records {\n  rankdir=TB;\n  node [shape=box,fontsize=9];\n"
+            )
             for i in sorted(want):
                 r = asm.records[i]
-                fh.write('  r%d [label="%d %s"%s];\n'
-                         % (i, i, r.filter_name,
-                            ',color=red' if i not in produced else ''))
+                fh.write(
+                    '  r%d [label="%d %s"%s];\n'
+                    % (i, i, r.filter_name, ",color=red" if i not in produced else "")
+                )
             for i in sorted(want):
                 for slot, e in enumerate(edges_of(asm, i)):
                     if e in want:
-                        fh.write('  r%d -> r%d [label="%s"];\n'
-                                 % (e, i, ROLE_NAME[min(slot, 3)]))
-            fh.write('}\n')
-        print('wrote %s' % args.dot)
+                        fh.write(
+                            '  r%d -> r%d [label="%s"];\n'
+                            % (e, i, ROLE_NAME[min(slot, 3)])
+                        )
+            fh.write("}\n")
+        print("wrote %s" % args.dot)
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

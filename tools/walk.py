@@ -36,6 +36,7 @@ Run it to validate against the established `Record` model and node census over t
 
     python3 tools/walk.py     # eighteen filters, four encodings, FX nodes; manifest files
 """
+
 import os
 import sys
 import glob
@@ -54,10 +55,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # non-scalar codes. "4 is the widest scalar the format has" -- the fitted `<= 4`
 # ceiling is this table's range, stated by the file.
 LEGEND_FROM_TYPE = {
-    0: 1,   # Float1
-    4: 1,   # Integer1  ($randomseed)
-    5: 1,   # image input -- one edge slot (a backward record index)
-    8: 2,   # Integer2  ($outputsize)  <- the only width > 1 in the blend/levels specs
+    0: 1,  # Float1
+    4: 1,  # Integer1  ($randomseed)
+    5: 1,  # image input -- one edge slot (a backward record index)
+    8: 2,  # Integer2  ($outputsize)  <- the only width > 1 in the blend/levels specs
 }
 
 
@@ -70,14 +71,15 @@ def legend_from_manifest(xml_path):
     exercise.
     """
     import re
+
     leg = dict(LEGEND_FROM_TYPE)
     try:
-        text = open(xml_path, encoding='utf-8', errors='replace').read()
+        text = open(xml_path, encoding="utf-8", errors="replace").read()
     except OSError:
         return leg
     for m in re.finditer(r'<input\b[^>]*\btype="(\d+)"[^>]*\bdefault="([^"]*)"', text):
         code = int(m.group(1))
-        comps = len([c for c in m.group(2).split(',') if c != ''])
+        comps = len([c for c in m.group(2).split(",") if c != ""])
         if comps:
             leg[code] = comps
     return leg
@@ -91,15 +93,16 @@ def legend_from_manifest(xml_path):
 # 10 program, 11 image input (an edge).
 # ---------------------------------------------------------------------------
 
+
 class Spec:
     def __init__(self, base, cls_widths, w1_fields, has_w1=True, conj=(), arity=None):
-        self.base = base                 # base image inputs, contiguous from slot 2
-        self.cls_widths = cls_widths     # {class-word bit: width in words}
-        self.w1_fields = w1_fields        # [(mask, shift, kind)] in field order
+        self.base = base  # base image inputs, contiguous from slot 2
+        self.cls_widths = cls_widths  # {class-word bit: width in words}
+        self.w1_fields = w1_fields  # [(mask, shift, kind)] in field order
         self.has_w1 = has_w1
-        self.conj = conj                 # [(bitx, bity, width)] -- a PAIR of tag bits that,
-                                         # set together, name one field (bitmap's offset word)
-        self.arity = arity               # an Arity, or None -- the count-field encoding
+        self.conj = conj  # [(bitx, bity, width)] -- a PAIR of tag bits that,
+        # set together, name one field (bitmap's offset word)
+        self.arity = arity  # an Arity, or None -- the count-field encoding
 
 
 class Arity:
@@ -109,6 +112,7 @@ class Arity:
         prefix       fixed non-edge slots after the masks (fxmaps' tree-root pointer)
         read(w1)     the count, extracted from word1 (a nibble, or the whole small word)
     """
+
     def __init__(self, prefix, read):
         self.prefix = prefix
         self.read = read
@@ -124,13 +128,13 @@ class Arity:
 #     an integer  a fixed component count from the manifest type: matrix22 is Float4 (4),
 #                 offset is Float2 (2)
 def _field_width(kind, code, colour):
-    if code != 1:            # 10 program / 11 image -> one pointer or edge slot
+    if code != 1:  # 10 program / 11 image -> one pointer or edge slot
         return 1
-    if kind == 'channel':    # baked, per-channel: component count from the colour bit
+    if kind == "channel":  # baked, per-channel: component count from the colour bit
         return 4 if colour else 1
     if isinstance(kind, int):
-        return kind          # baked, fixed component count (Float2/Float4/...)
-    return 1                 # baked scalar (Float1)
+        return kind  # baked, fixed component count (Float2/Float4/...)
+    return 1  # baked scalar (Float1)
 
 
 # The class-word inherited-parameter block. Bit 10 is `$outputsize` (integer2, width 2
@@ -138,6 +142,7 @@ def _field_width(kind, code, colour):
 # same set of bits `_compute_layout`'s `g` sums -- but as widths from the legend, not a
 # fitted `2 * bit`.
 _CLS = {0: 1, 7: 1, 10: 2, 11: 1, 13: 1}
+
 
 def _costs_arity(filter_id, w1):
     """The arity count for `filter_id`, read from the cost legend rather than restated.
@@ -148,58 +153,99 @@ def _costs_arity(filter_id, w1):
     and says so here, so a reader who sees it knows the legend did not load.
     """
     import record_layout
+
     ar = record_layout.arity_field(filter_id)
     if ar is None:
-        return (w1 >> 10) & 0xF          # legend absent: the stale nibble, knowingly
+        return (w1 >> 10) & 0xF  # legend absent: the stale nibble, knowingly
     return (w1 >> ar[0]) & ar[1]
 
 
 SPECS = {
-    1:  Spec(base=2, cls_widths=_CLS,          # blend
-             w1_fields=[(0x30, 4, 'scalar'),    # opacitymult (Float1)
-                        (0x600, 9, 'scalar')]),  # opacitymult AGAIN, relocated: connect the
-                                                 # node's `opacity` input and the slider
-                                                 # moves here while (4,5) goes to state 11,
-                                                 # the image-input code. A two-bit code at
-                                                 # bits (9,10) -- 01 baked, 10 program --
-                                                 # with bit 8 as its always-on present flag.
-                                                 # NOT a size nibble: the baked slot is a
-                                                 # float in [0,1], not a magnitude count.
-                                                 # ChesterfieldSofa.sbs states three such
-                                                 # sliders and the compiled file sets three
-                                                 # of these fields, holding those floats;
-                                                 # SandyStonePath.sbs agrees five for five.
-    15: Spec(base=1, cls_widths=_CLS,          # levels
-             w1_fields=[(0x003, 0, 'channel'), (0x00c, 2, 'channel'),
-                        (0x030, 4, 'channel'), (0x0c0, 6, 'channel'),
-                        (0x300, 8, 'channel')]),  # five per-channel level fields
-    2:  Spec(base=1, cls_widths={0: 1, 7: 1},   # transformation
-             w1_fields=[(0xC0, 6, 4),            # matrix22 pair (6,7): baked Float4
-                        (0x06000000, 25, 2),     # offset pair (25,26): baked Float2
-                        (0x10000000, 28, 'channel')]),  # background colour: per-channel
-                                                 # (Float1 grayscale / Float4 colour)
-    16: Spec(base=0, cls_widths={0: 1},         # bitmap -- a generator, no image edge
-             w1_fields=[],
-             conj=[(24, 27, 1)]),                # bits 24+27 together: the offset word
-    20: Spec(base=0, cls_widths={}, w1_fields=[],  # pixelprocessor -- arity integer
-             arity=Arity(prefix=0,
-                         read=lambda w1: w1 if 1 <= w1 <= 8 else (0 if w1 == 0 else w1 & 0xF))),
-    4:  Spec(base=0, cls_widths={}, w1_fields=[],  # fxmaps -- arity integer after the root
-             # ASKS THE COST LEGEND, does not restate it. This was `(w1 >> 10) & 0xF`, a
-             # hardcoded copy of a rule the width legend already holds -- and it went stale: the
-             # field is SIX bits, and a nibble truncates every count above 15 rather than
-             # failing, so this arm disagreed with `decompose` on 10 records without either
-             # side noticing (`ie_curve` #35 declares 34 inputs and the nibble read back 2).
-             # The width is settled on the structural PROG invariant over 41,164 records --
-             # 4 bits 41,118, 5 bits 41,126, 6 bits 41,128, and 7 and 8 add nothing, so 6 is
-             # pinned from both sides. Read lazily so import order stays free.
-             arity=Arity(prefix=1, read=lambda w1: _costs_arity(4, w1))),
-    11: Spec(base=1, cls_widths=_CLS,           # dirmotionblur -- two-bit codes, like blend
-             w1_fields=[(0x3, 0, 'scalar'),      # intensity
-                        (0xc, 2, 'scalar')]),     # mblurangle
-    12: Spec(base=2, cls_widths=_CLS,           # directionalwarp
-             w1_fields=[(0x6, 1, 'scalar'),      # intensity
-                        (0x18, 3, 'scalar')]),    # warpangle
+    1: Spec(
+        base=2,
+        cls_widths=_CLS,  # blend
+        w1_fields=[
+            (0x30, 4, "scalar"),  # opacitymult (Float1)
+            (0x600, 9, "scalar"),
+        ],
+    ),  # opacitymult AGAIN, relocated: connect the
+    # node's `opacity` input and the slider
+    # moves here while (4,5) goes to state 11,
+    # the image-input code. A two-bit code at
+    # bits (9,10) -- 01 baked, 10 program --
+    # with bit 8 as its always-on present flag.
+    # NOT a size nibble: the baked slot is a
+    # float in [0,1], not a magnitude count.
+    # ChesterfieldSofa.sbs states three such
+    # sliders and the compiled file sets three
+    # of these fields, holding those floats;
+    # SandyStonePath.sbs agrees five for five.
+    15: Spec(
+        base=1,
+        cls_widths=_CLS,  # levels
+        w1_fields=[
+            (0x003, 0, "channel"),
+            (0x00C, 2, "channel"),
+            (0x030, 4, "channel"),
+            (0x0C0, 6, "channel"),
+            (0x300, 8, "channel"),
+        ],
+    ),  # five per-channel level fields
+    2: Spec(
+        base=1,
+        cls_widths={0: 1, 7: 1},  # transformation
+        w1_fields=[
+            (0xC0, 6, 4),  # matrix22 pair (6,7): baked Float4
+            (0x06000000, 25, 2),  # offset pair (25,26): baked Float2
+            (0x10000000, 28, "channel"),
+        ],
+    ),  # background colour: per-channel
+    # (Float1 grayscale / Float4 colour)
+    16: Spec(
+        base=0,
+        cls_widths={0: 1},  # bitmap -- a generator, no image edge
+        w1_fields=[],
+        conj=[(24, 27, 1)],
+    ),  # bits 24+27 together: the offset word
+    20: Spec(
+        base=0,
+        cls_widths={},
+        w1_fields=[],  # pixelprocessor -- arity integer
+        arity=Arity(
+            prefix=0,
+            read=lambda w1: w1 if 1 <= w1 <= 8 else (0 if w1 == 0 else w1 & 0xF),
+        ),
+    ),
+    4: Spec(
+        base=0,
+        cls_widths={},
+        w1_fields=[],  # fxmaps -- arity integer after the root
+        # ASKS THE COST LEGEND, does not restate it. This was `(w1 >> 10) & 0xF`, a
+        # hardcoded copy of a rule the width legend already holds -- and it went stale: the
+        # field is SIX bits, and a nibble truncates every count above 15 rather than
+        # failing, so this arm disagreed with `decompose` on 10 records without either
+        # side noticing (`ie_curve` #35 declares 34 inputs and the nibble read back 2).
+        # The width is settled on the structural PROG invariant over 41,164 records --
+        # 4 bits 41,118, 5 bits 41,126, 6 bits 41,128, and 7 and 8 add nothing, so 6 is
+        # pinned from both sides. Read lazily so import order stays free.
+        arity=Arity(prefix=1, read=lambda w1: _costs_arity(4, w1)),
+    ),
+    11: Spec(
+        base=1,
+        cls_widths=_CLS,  # dirmotionblur -- two-bit codes, like blend
+        w1_fields=[
+            (0x3, 0, "scalar"),  # intensity
+            (0xC, 2, "scalar"),
+        ],
+    ),  # mblurangle
+    12: Spec(
+        base=2,
+        cls_widths=_CLS,  # directionalwarp
+        w1_fields=[
+            (0x6, 1, "scalar"),  # intensity
+            (0x18, 3, "scalar"),
+        ],
+    ),  # warpangle
 }
 
 # Popcount was read as the format's THIRD self-describing encoding: for `blur` (10) and
@@ -239,19 +285,19 @@ POPCOUNT_MASK = {10: 0x2881, 7: 0x0881}
 # by version (the w1 word appears at 0x90000), distance by w1 bit 0 (its second input).
 #     filter          edges                                          note
 TIER_A_EDGES = {
-    0:  [1],                                                        # gradient (residue: [])
-    3:  lambda w0, w1, v: [1] if not (w0 & 1) else [2, 3],          # shuffle (tag bit 0)
-    6:  [],                                                         # uniform (generator)
-    8:  [2, 3],                                                     # emboss (fixed, no variation)
-    7:  lambda w0, w1, v: [2, 3] if v >= 0x90000 else [1, 2],       # warp
-    10: [1],                                                        # blur
-    13: [1],                                                        # sharpen
-    14: [1],                                                        # hsl
-    17: [],                                                         # text (generator)
-    18: [2],                                                        # normal (residue: [1,2])
-    19: [1, 2],                                                     # dyngradient (residue: [1])
-    21: lambda w0, w1, v: [2, 3] if w1 & 1 else [2],               # distance
-    22: [1],                                                        # curve
+    0: [1],  # gradient (residue: [])
+    3: lambda w0, w1, v: [1] if not (w0 & 1) else [2, 3],  # shuffle (tag bit 0)
+    6: [],  # uniform (generator)
+    8: [2, 3],  # emboss (fixed, no variation)
+    7: lambda w0, w1, v: [2, 3] if v >= 0x90000 else [1, 2],  # warp
+    10: [1],  # blur
+    13: [1],  # sharpen
+    14: [1],  # hsl
+    17: [],  # text (generator)
+    18: [2],  # normal (residue: [1,2])
+    19: [1, 2],  # dyngradient (residue: [1])
+    21: lambda w0, w1, v: [2, 3] if w1 & 1 else [2],  # distance
+    22: [1],  # curve
 }
 
 
@@ -268,19 +314,20 @@ def validate_cls_driven(files):
     import record_layout
     from collections import Counter
     from sbsasm import Assembly
+
     stat = {f: Counter() for f in TIER_A_EDGES}
     for p in files:
         try:
             a = Assembly(p)
         except Exception:
             continue
-        ver = a.header.get('version') if isinstance(a.header, dict) else 0
+        ver = a.header.get("version") if isinstance(a.header, dict) else 0
         for r in a.records:
             f = r.filter_id
             if f not in TIER_A_EDGES or len(r.words) < 2:
                 continue
             c = stat[f]
-            c['records'] += 1
+            c["records"] += 1
             # Two-shape filters must be read with w1 nulled in the no-w1 shape, exactly as
             # the model does. warp's w1 is a VERSION fact (absent before 0x90000); shuffle's
             # is a per-record TAG fact -- low byte 0x06 is grayscaleconversion (1 input at
@@ -296,11 +343,13 @@ def validate_cls_driven(files):
             h = record_layout.header_words(f, r.words[0], w1, version=ver)
             hw = r.header_words
             if hw is not None:
-                c['header seen'] += 1
+                c["header seen"] += 1
                 if h == hw:
-                    c['header exact'] += 1
-            if list(_tier_a_edges(f, r.words[0], r.words[1], ver)) == list(r.edge_slots):
-                c['edges exact'] += 1
+                    c["header exact"] += 1
+            if list(_tier_a_edges(f, r.words[0], r.words[1], ver)) == list(
+                r.edge_slots
+            ):
+                c["edges exact"] += 1
     return stat
 
 
@@ -361,7 +410,9 @@ def validate_cls_driven(files):
 # actually show (it calls 0x95540288 four bytes against a 32-byte cell seen 36 of 36 times).
 # So NODE_TAGS is gone; walk_node returns None for every nibble-8 tag and entry sizing is
 # fx_entry_layout's job.
-NODE_TAGS = {}                      # nibble-8 entries are not nodes; see above
+NODE_TAGS = {}  # nibble-8 entries are not nodes; see above
+
+
 # The CHAIN FAMILY: tags whose high 16 bits are 0x0002 are linked lists, not fixed-size
 # nodes, and their gap "sizes" are run lengths. 8,794 of 8,811 such cells are
 # non-deterministic against 0% for any other high-half value -- so the family, not the two
@@ -369,6 +420,8 @@ NODE_TAGS = {}                      # nibble-8 entries are not nodes; see above
 # the thing to exclude. walk_node returns None for all of them.
 def _is_chain(tag):
     return (tag >> 16) == 0x0002
+
+
 #
 # One apparent gap that is not one: kind 0x48's bit 9 is set in a large fraction of cells and
 # charges no width here, so a cross-check reads it as a field both this table and
@@ -406,14 +459,23 @@ def _is_chain(tag):
 #   0x49 is NOT here. It reads 3 words uniquely too, on 11 cells, which is under the
 #   census's reporting threshold. Left out rather than rounded up.
 NODE_LEGEND = {
-    0x8b: (3, {}), 0x89: (4, {}), 0xcb: (4, {}), 0x99: (5, {}),
-    0x9b: (4, {}), 0xab: (4, {}), 0xa3: (4, {}), 0xdb: (5, {}), 0x0b: (2, {}),
-    0x1b: (3, {}), 0x09: (3, {}), 0x4b: (3, {}),
+    0x8B: (3, {}),
+    0x89: (4, {}),
+    0xCB: (4, {}),
+    0x99: (5, {}),
+    0x9B: (4, {}),
+    0xAB: (4, {}),
+    0xA3: (4, {}),
+    0xDB: (5, {}),
+    0x0B: (2, {}),
+    0x1B: (3, {}),
+    0x09: (3, {}),
+    0x4B: (3, {}),
 }
 
 # The rows the landing test SUPPLIED, as opposed to the ones it reproduced. node_census
 # reads this so its own summary cannot report a self-check as a corroboration.
-NODE_LEGEND_FROM_LANDING = frozenset({0x1b, 0x09, 0x4b})
+NODE_LEGEND_FROM_LANDING = frozenset({0x1B, 0x09, 0x4B})
 
 
 def _walk_mask(mask_word, const_words, bit_widths):
@@ -435,7 +497,7 @@ def walk_node(tag):
     """A tree node's size in words and its field offsets, or None for an uncatalogued
     kind. The tag itself is the mask; no per-node table is consulted."""
     if _is_chain(tag):
-        return None                      # a linked-list chain, not a fixed-size node
+        return None  # a linked-list chain, not a fixed-size node
     ent = NODE_TAGS.get(tag)
     if ent is not None:
         size, ptrs = ent
@@ -454,7 +516,7 @@ class Overrun(Exception):
 
 
 class Walk:
-    __slots__ = ('header_words', 'edge_slots', 'param_slots')
+    __slots__ = ("header_words", "edge_slots", "param_slots")
 
     def __init__(self, header_words, edge_slots, param_slots):
         self.header_words = header_words
@@ -469,8 +531,8 @@ def walk(spec, word0, word1, n_words, legend=None):
     never consults a per-record table and never rounds: position advances by legend widths.
     """
     cls = word0 >> 16
-    colour = bool(word0 & 1)             # tag bit 0: the record's colour flag
-    pos = 2 if spec.has_w1 else 1        # slots 0 (tag+cls) and 1 (w1) are the masks
+    colour = bool(word0 & 1)  # tag bit 0: the record's colour flag
+    pos = 2 if spec.has_w1 else 1  # slots 0 (tag+cls) and 1 (w1) are the masks
     edges, params = [], []
 
     # the count-field encoding: a fixed prefix, then N edges named by an integer in word1
@@ -481,7 +543,7 @@ def walk(spec, word0, word1, n_words, legend=None):
             edges.append(pos)
             pos += 1
         if pos > n_words:
-            raise Overrun('arity %d edges past record %d words' % (n, n_words))
+            raise Overrun("arity %d edges past record %d words" % (n, n_words))
         return Walk(pos, edges, params)
 
     # base image inputs, contiguous
@@ -509,10 +571,10 @@ def walk(spec, word0, word1, n_words, legend=None):
     for mask, shift, kind in spec.w1_fields:
         code = (word1 & mask) >> shift
         if code == 0:
-            continue                      # absent, consumes nothing
-        if code == 3:                     # image input -> an edge
+            continue  # absent, consumes nothing
+        if code == 3:  # image input -> an edge
             edges.append(pos)
-        else:                             # baked (01) or program (10) -> a parameter
+        else:  # baked (01) or program (10) -> a parameter
             params.append(pos)
         pos += _field_width(kind, code, colour)
 
@@ -525,7 +587,7 @@ def walk(spec, word0, word1, n_words, legend=None):
             pos += width
 
     if pos > n_words:
-        raise Overrun('header %d words > record %d words' % (pos, n_words))
+        raise Overrun("header %d words > record %d words" % (pos, n_words))
     return Walk(pos, edges, params)
 
 
@@ -533,11 +595,12 @@ def walk(spec, word0, word1, n_words, legend=None):
 # Validation against the established Record model.
 # ---------------------------------------------------------------------------
 
+
 def _corpus_files(limit=None):
     files = []
-    for root in ('corpus', 'extracted', 'extracted2', 'extracted3', 'new_sbs'):
-        for p in glob.glob(os.path.join(root, '**', '*.sbsasm'), recursive=True):
-            if os.path.exists(os.path.splitext(p)[0] + '.xml'):
+    for root in ("corpus", "extracted", "extracted2", "extracted3", "new_sbs"):
+        for p in glob.glob(os.path.join(root, "**", "*.sbsasm"), recursive=True):
+            if os.path.exists(os.path.splitext(p)[0] + ".xml"):
                 files.append(p)
     files.sort()
     return files[:limit] if limit else files
@@ -565,10 +628,10 @@ def validate_nodes(files):
     from collections import Counter, defaultdict
     import node_census
 
-    size_ok = Counter()                     # kind -> cells whose walk size LANDS validly
+    size_ok = Counter()  # kind -> cells whose walk size LANDS validly
     size_seen = Counter()
-    seen = Counter()                        # tag -> cells, for the pointer rates
-    ptr = defaultdict(Counter)              # tag -> Counter of program-pointer offsets
+    seen = Counter()  # tag -> cells, for the pointer rates
+    ptr = defaultdict(Counter)  # tag -> Counter of program-pointer offsets
 
     for a, tag, pos, span_end, rec_end in node_census.harvest(files):
         w = walk_node(tag)
@@ -579,7 +642,7 @@ def validate_nodes(files):
         if node_census.lands(a, pos + 4 * w[0], span_end, rec_end):
             size_ok[tag & 0xFF] += 1
         for off in range(4, min(span_end - pos, 64), 4):
-            v = struct.unpack_from('<I', a.data, pos + off)[0]
+            v = struct.unpack_from("<I", a.data, pos + off)[0]
             q = v + 52
             if a.body_lo <= q < a.body_hi and a.valid_program(q):
                 ptr[tag][off] += 1
@@ -621,6 +684,7 @@ def check_popcount(files):
     `CLS_PROGRAM_BITS` had lost bit 30, not that the count was right after all."""
     from collections import Counter
     from sbsasm import Assembly
+
     stat = {f: Counter() for f in POPCOUNT_MASK}
     for p in files:
         try:
@@ -635,32 +699,36 @@ def check_popcount(files):
             block = r.program_slots()
             if not block:
                 continue
-            stat[f]['records'] += 1
-            predicted = bin(r.cls & mask).count('1')
+            stat[f]["records"] += 1
+            predicted = bin(r.cls & mask).count("1")
             actual = sum(1 for _s, isp in block if isp)
-            stat[f]['program slots'] += actual
+            stat[f]["program slots"] += actual
             if predicted == actual:
-                stat[f]['exact'] += 1
+                stat[f]["exact"] += 1
     return stat
 
 
 def main(argv):
     from sbsasm import Assembly
+
     limit = int(argv[1]) if len(argv) > 1 else None
     files = _corpus_files(limit)
-    print('validating walk() over %d files with a manifest\n' % len(files))
+    print("validating walk() over %d files with a manifest\n" % len(files))
 
     # show the legend is read, not fitted
-    xml0 = os.path.splitext(files[0])[0] + '.xml'
+    xml0 = os.path.splitext(files[0])[0] + ".xml"
     leg = legend_from_manifest(xml0)
-    print('width legend seeded from %s' % os.path.basename(xml0))
-    print('   type 8 ($outputsize) -> %d words   (class-word bit 10 costs %d)\n'
-          % (leg.get(8, 0), _CLS[10]))
+    print("width legend seeded from %s" % os.path.basename(xml0))
+    print(
+        "   type 8 ($outputsize) -> %d words   (class-word bit 10 costs %d)\n"
+        % (leg.get(8, 0), _CLS[10])
+    )
 
     from collections import Counter
+
     stat = {f: Counter() for f in SPECS}
     overruns = 0
-    boundary_fail = []          # walk edge slot that is NOT a backward index -- loud fail
+    boundary_fail = []  # walk edge slot that is NOT a backward index -- loud fail
 
     for p in files:
         try:
@@ -674,25 +742,25 @@ def main(argv):
             if spec is None or len(r.words) < 2:
                 continue
             c = stat[f]
-            c['records'] += 1
+            c["records"] += 1
             try:
                 w = walk(spec, r.words[0], r.words[1], len(r.words), leg)
             except Overrun:
                 overruns += 1
-                c['overrun'] += 1
+                c["overrun"] += 1
                 continue
             # 1) header length vs the established model. Not meaningful for the arity
             #    encoding: there the walk states the EDGE run, and the parameter/bank
             #    region past it is a separate matter -- edges are the claim to check.
             hw = r.header_words
             if spec.arity is None and hw is not None:
-                c['header seen'] += 1
+                c["header seen"] += 1
                 if w.header_words == hw:
-                    c['header exact'] += 1
+                    c["header exact"] += 1
             # 2) edge slots vs the established model
             ref = set(r.edge_slots)
             if set(w.edge_slots) == ref:
-                c['edges exact'] += 1
+                c["edges exact"] += 1
             # 3) the format's own edge invariant: every edge slot the walk names holds
             #    a backward record index or the absent sentinel. A loud check.
             for s in w.edge_slots:
@@ -701,70 +769,114 @@ def main(argv):
                     if not (v == 0xFFFFFFFF or v == 0 or (v < r.index and v < nrec)):
                         boundary_fail.append((os.path.basename(p), r.index, f, s, v))
 
-    name = {1: 'blend', 15: 'levels', 2: 'transformation', 16: 'bitmap',
-            20: 'pixelprocessor', 4: 'fxmaps', 7: 'warp', 10: 'blur',
-            11: 'dirmotionblur', 12: 'directionalwarp', 0: 'gradient', 13: 'sharpen',
-            14: 'hsl', 17: 'text', 18: 'normal', 19: 'dyngradient', 21: 'distance',
-            22: 'curve', 6: 'uniform'}
-    print('%-15s %8s %10s %8s %10s %8s %8s'
-          % ('filter', 'records', 'hdr seen', 'hdr ok', 'edges ok', 'overrun', ''))
-    print('%-15s %8s %10s %8s %10s %8s %8s'
-          % ('-' * 15, '-' * 8, '-' * 10, '-' * 8, '-' * 10, '-' * 8, ''))
+    name = {
+        1: "blend",
+        15: "levels",
+        2: "transformation",
+        16: "bitmap",
+        20: "pixelprocessor",
+        4: "fxmaps",
+        7: "warp",
+        10: "blur",
+        11: "dirmotionblur",
+        12: "directionalwarp",
+        0: "gradient",
+        13: "sharpen",
+        14: "hsl",
+        17: "text",
+        18: "normal",
+        19: "dyngradient",
+        21: "distance",
+        22: "curve",
+        6: "uniform",
+    }
+    print(
+        "%-15s %8s %10s %8s %10s %8s %8s"
+        % ("filter", "records", "hdr seen", "hdr ok", "edges ok", "overrun", "")
+    )
+    print(
+        "%-15s %8s %10s %8s %10s %8s %8s"
+        % ("-" * 15, "-" * 8, "-" * 10, "-" * 8, "-" * 10, "-" * 8, "")
+    )
     for f in sorted(SPECS):
         c = stat[f]
-        rec = c['records'] or 1
-        hcol = ('%6.2f%%' % (100.0 * c['header exact'] / c['header seen'])
-                if c['header seen'] else '  n/a  ')
-        print('%-15s %8d %10d %8s %9.2f%% %8d'
-              % (name[f], c['records'], c['header seen'], hcol,
-                 100.0 * c['edges exact'] / rec, c['overrun']))
+        rec = c["records"] or 1
+        hcol = (
+            "%6.2f%%" % (100.0 * c["header exact"] / c["header seen"])
+            if c["header seen"]
+            else "  n/a  "
+        )
+        print(
+            "%-15s %8d %10d %8s %9.2f%% %8d"
+            % (
+                name[f],
+                c["records"],
+                c["header seen"],
+                hcol,
+                100.0 * c["edges exact"] / rec,
+                c["overrun"],
+            )
+        )
 
-    print('\nloud checks (a fitted table cannot make these):')
-    print('   overruns past record end          %d' % overruns)
-    print('   walk edge slot not a backward idx  %d' % len(boundary_fail))
+    print("\nloud checks (a fitted table cannot make these):")
+    print("   overruns past record end          %d" % overruns)
+    print("   walk edge slot not a backward idx  %d" % len(boundary_fail))
     for row in boundary_fail[:10]:
-        print('      %s  rec %d  fid %d  slot %d = %d' % row)
+        print("      %s  rec %d  fid %d  slot %d = %d" % row)
 
     # The same primitive at the tree scale: walk_node over FX-Map node cells.
-    print('\nFX-Map tree nodes -- the same [mask][fields] walk, one scale down:')
+    print("\nFX-Map tree nodes -- the same [mask][fields] walk, one scale down:")
     size_ok, size_seen, pb, pt = validate_nodes(files)
-    print('   %-10s %10s %12s' % ('node kind', 'cells', 'size exact'))
+    print("   %-10s %10s %12s" % ("node kind", "cells", "size exact"))
     for kind in sorted(size_seen):
         n = size_seen[kind]
-        print('   %#04x %14d %11.2f%%' % (kind, n, 100.0 * size_ok[kind] / n))
+        print("   %#04x %14d %11.2f%%" % (kind, n, 100.0 * size_ok[kind] / n))
     if pt:
-        print('   program pointers on a predicted field boundary  %d / %d = %.2f%%'
-              % (pb, pt, 100.0 * pb / pt))
+        print(
+            "   program pointers on a predicted field boundary  %d / %d = %.2f%%"
+            % (pb, pt, 100.0 * pb / pt)
+        )
 
     # Tier B, third encoding: popcount states the program-slot count (role, not extent).
-    print('\npopcount encoding -- program-slot count stated by the class word:')
+    print("\npopcount encoding -- program-slot count stated by the class word:")
     pc = check_popcount(files)
     for f in sorted(pc):
         c = pc[f]
-        rec = c['records'] or 1
-        print('   %-14s %8d records   popcount==program count %6.2f%%'
-              % (name.get(f, f), c['records'], 100.0 * c['exact'] / rec))
+        rec = c["records"] or 1
+        print(
+            "   %-14s %8d records   popcount==program count %6.2f%%"
+            % (name.get(f, f), c["records"], 100.0 * c["exact"] / rec)
+        )
 
     # Tier A: draining the layouts.json memo -- class-word header + fixed-base edges.
-    print('\ndraining the memo -- cls-driven header (costs legend) + fixed-base edges:')
-    print('   %-14s %8s %10s %10s' % ('filter', 'records', 'header ok', 'edges ok'))
+    print("\ndraining the memo -- cls-driven header (costs legend) + fixed-base edges:")
+    print("   %-14s %8s %10s %10s" % ("filter", "records", "header ok", "edges ok"))
     ca = validate_cls_driven(files)
     drained = total = 0
-    for f in sorted(ca, key=lambda f: -ca[f]['records']):
+    for f in sorted(ca, key=lambda f: -ca[f]["records"]):
         c = ca[f]
-        rec = c['records'] or 1
-        hs = c['header seen'] or 1
-        total += c['records']
-        drained += c['edges exact']
-        print('   %-14s %8d %9.2f%% %9.2f%%'
-              % (name.get(f, f), c['records'],
-                 100.0 * c['header exact'] / hs, 100.0 * c['edges exact'] / rec))
-    print('   edges reproduced without the table: %d / %d = %.2f%%'
-          % (drained, total, 100.0 * drained / (total or 1)))
+        rec = c["records"] or 1
+        hs = c["header seen"] or 1
+        total += c["records"]
+        drained += c["edges exact"]
+        print(
+            "   %-14s %8d %9.2f%% %9.2f%%"
+            % (
+                name.get(f, f),
+                c["records"],
+                100.0 * c["header exact"] / hs,
+                100.0 * c["edges exact"] / rec,
+            )
+        )
+    print(
+        "   edges reproduced without the table: %d / %d = %.2f%%"
+        % (drained, total, 100.0 * drained / (total or 1))
+    )
 
     # Overall: how much of the corpus a walk mechanism now covers, and what is left.
     from collections import Counter as _C
     from sbsasm import Assembly as _A, FILTERS as _F
+
     cov = _C()
     left = _C()
     for p in files:
@@ -775,17 +887,21 @@ def main(argv):
         for r in a.records:
             f = r.filter_id
             if f in SPECS or f in TIER_A_EDGES:
-                cov['covered'] += 1
+                cov["covered"] += 1
             else:
-                cov['left'] += 1
+                cov["left"] += 1
                 left[_F.get(f, f)] += 1
-    tot = cov['covered'] + cov['left']
-    print('\ncorpus coverage by a walk mechanism: %d / %d = %.2f%%'
-          % (cov['covered'], tot, 100.0 * cov['covered'] / (tot or 1)))
-    print('   not yet covered, by filter: %s'
-          % ', '.join('%s %d' % (k, v) for k, v in left.most_common()))
+    tot = cov["covered"] + cov["left"]
+    print(
+        "\ncorpus coverage by a walk mechanism: %d / %d = %.2f%%"
+        % (cov["covered"], tot, 100.0 * cov["covered"] / (tot or 1))
+    )
+    print(
+        "   not yet covered, by filter: %s"
+        % ", ".join("%s %d" % (k, v) for k, v in left.most_common())
+    )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

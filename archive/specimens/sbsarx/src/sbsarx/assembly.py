@@ -4,6 +4,7 @@ Only the parts a resource reader needs are implemented here. The full descriptio
 the format is in FORMAT-NOTES.md in the parent project; section names are cited at the
 facts they establish.
 """
+
 from __future__ import annotations
 
 import struct

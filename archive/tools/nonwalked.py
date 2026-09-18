@@ -83,19 +83,20 @@ WHAT IT REPORTS, and the one finding that reframes the rest:
      comparison -- every arm in one run against one pinned tree (`git show HEAD:`, not the
      shared checkout), with `sbsruntime.SAMPLERS.clear()` between files.
 """
+
 import collections
 import glob
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import assume                                                        # noqa: E402
-import corpus                                                        # noqa: E402
-import sbsasm                                                        # noqa: E402
-import walk                                                          # noqa: E402
-from sbsasm import Assembly                                          # noqa: E402
+import assume  # noqa: E402
+import corpus  # noqa: E402
+import sbsasm  # noqa: E402
+import walk  # noqa: E402
+from sbsasm import Assembly  # noqa: E402
 
-REF_GLOB = 'new_opengameart/**/*.sbsasm'
+REF_GLOB = "new_opengameart/**/*.sbsasm"
 
 
 def reference_files():
@@ -114,10 +115,20 @@ def routing():
             n[r.filter_id] += 1
     rows = []
     for f, c in n.most_common():
-        edges = ('walk/spec' if f in walk.SPECS else
-                 'walk/tierA' if f in walk.TIER_A_EDGES else 'NOT WALKED')
-        params = ('walk' if f in sbsasm.WALKED_PARAMS else
-                  'memo' if f in sbsasm.PARAM_SPEC else 'no spec')
+        edges = (
+            "walk/spec"
+            if f in walk.SPECS
+            else "walk/tierA"
+            if f in walk.TIER_A_EDGES
+            else "NOT WALKED"
+        )
+        params = (
+            "walk"
+            if f in sbsasm.WALKED_PARAMS
+            else "memo"
+            if f in sbsasm.PARAM_SPEC
+            else "no spec"
+        )
         rows.append((sbsasm.FILTERS.get(f, f), c, edges, params))
     return rows, sum(n.values())
 
@@ -130,6 +141,7 @@ def edge_xor(paths):
     model puts a parameter.
     """
     import decompose
+
     stat = collections.defaultdict(collections.Counter)
     for p in paths:
         try:
@@ -143,25 +155,26 @@ def edge_xor(paths):
             if len(r.words) < 3:
                 continue
             hit = sbsasm.LAYOUTS.get(
-                (f, r.cls, r.words[1] & sbsasm.LAYOUT_MASK.get(f, 0)))
+                (f, r.cls, r.words[1] & sbsasm.LAYOUT_MASK.get(f, 0))
+            )
             if not hit or len(hit[1]) < 2:
                 continue
             present = [nm for nm, pres, _p in sbsasm.PARAM_SPEC[f] if r.words[1] & pres]
             if not present:
                 continue
             try:
-                edges = set(decompose.decompose(r)['inputs'])
+                edges = set(decompose.decompose(r)["inputs"])
             except Exception:
                 continue
             for _nm, sl in zip(present, r._param_slots(hit[1], len(present))):
                 c = stat[f]
-                c['slots'] += 1
+                c["slots"] += 1
                 if sl < 2 or sl >= len(r.words):
-                    c['outside record'] += 1
+                    c["outside record"] += 1
                 elif sl in edges:
-                    c['ON AN INPUT EDGE'] += 1
+                    c["ON AN INPUT EDGE"] += 1
                 else:
-                    c['clean'] += 1
+                    c["clean"] += 1
     return stat
 
 
@@ -171,10 +184,10 @@ def blind_spot():
     rf = set(os.path.abspath(p) for p in reference_files())
     here = os.path.dirname(os.path.abspath(__file__))
     uses_corpus = uses_refs = 0
-    for py in sorted(glob.glob(os.path.join(here, '*.py'))):
-        text = open(py, encoding='utf-8', errors='replace').read()
-        uses_corpus += 'corpus.paths()' in text
-        uses_refs += 'new_opengameart' in text
+    for py in sorted(glob.glob(os.path.join(here, "*.py"))):
+        text = open(py, encoding="utf-8", errors="replace").read()
+        uses_corpus += "corpus.paths()" in text
+        uses_refs += "new_opengameart" in text
     return len(cp), len(rf), len(cp & rf), uses_corpus, uses_refs
 
 
@@ -235,59 +248,97 @@ READ_PATHS = """  "no spec" is NOT "not read" and NOT "not walked" -- see the no
 
 def main():
     rows, tot = routing()
-    print('ROUTING -- %d records over %d corpus files\n' % (tot, len(corpus.paths())))
-    print('  %-16s %8s %7s  %-12s %s' % ('filter', 'records', 'share', 'edges', 'parameters'))
+    print("ROUTING -- %d records over %d corpus files\n" % (tot, len(corpus.paths())))
+    print(
+        "  %-16s %8s %7s  %-12s %s"
+        % ("filter", "records", "share", "edges", "parameters")
+    )
     share = collections.Counter()
     for name, c, edges, params in rows:
         share[params] += c
-        print('  %-16s %8d %6.2f%%  %-12s %s' % (name, c, 100.0 * c / tot, edges, params))
-    print('\n  parameters by routing:')
-    for k in ('walk', 'memo', 'no spec'):
-        print('     %-10s %8d %6.2f%%' % (k, share[k], 100.0 * share[k] / tot))
+        print(
+            "  %-16s %8d %6.2f%%  %-12s %s" % (name, c, 100.0 * c / tot, edges, params)
+        )
+    print("\n  parameters by routing:")
+    for k in ("walk", "memo", "no spec"):
+        print("     %-10s %8d %6.2f%%" % (k, share[k], 100.0 * share[k] / tot))
     print(READ_PATHS)
 
-    print('\nEDGE-XOR-PARAMETER, memo-routed filters (corpus + reference packs):')
+    print("\nEDGE-XOR-PARAMETER, memo-routed filters (corpus + reference packs):")
     stat = edge_xor(list(corpus.paths()) + reference_files())
-    print('  %-16s %9s %9s %14s %9s' % ('filter', 'slots', 'clean', 'ON EDGE', 'outside'))
+    print(
+        "  %-16s %9s %9s %14s %9s" % ("filter", "slots", "clean", "ON EDGE", "outside")
+    )
     tt = collections.Counter()
     for f in sorted(stat):
         c = stat[f]
         for k in c:
             tt[k] += c[k]
-        print('  %-16s %9d %9d %14d %9d'
-              % (sbsasm.FILTERS.get(f, f), c['slots'], c['clean'],
-                 c['ON AN INPUT EDGE'], c['outside record']))
-    print('  %-16s %9d %9d %14d %9d'
-          % ('TOTAL', tt['slots'], tt['clean'], tt['ON AN INPUT EDGE'], tt['outside record']))
-    if tt['slots']:
-        print('  corrupt reads: %d of %d = %.2f%%'
-              % (tt['ON AN INPUT EDGE'] + tt['outside record'], tt['slots'],
-                 100.0 * (tt['ON AN INPUT EDGE'] + tt['outside record']) / tt['slots']))
+        print(
+            "  %-16s %9d %9d %14d %9d"
+            % (
+                sbsasm.FILTERS.get(f, f),
+                c["slots"],
+                c["clean"],
+                c["ON AN INPUT EDGE"],
+                c["outside record"],
+            )
+        )
+    print(
+        "  %-16s %9d %9d %14d %9d"
+        % (
+            "TOTAL",
+            tt["slots"],
+            tt["clean"],
+            tt["ON AN INPUT EDGE"],
+            tt["outside record"],
+        )
+    )
+    if tt["slots"]:
+        print(
+            "  corrupt reads: %d of %d = %.2f%%"
+            % (
+                tt["ON AN INPUT EDGE"] + tt["outside record"],
+                tt["slots"],
+                100.0 * (tt["ON AN INPUT EDGE"] + tt["outside record"]) / tt["slots"],
+            )
+        )
 
     nc, nr, ov, uc, ur = blind_spot()
-    print('\nCENSUS BLIND SPOT:')
-    print('  corpus.paths()          %4d files' % nc)
-    print('  reference packs         %4d files   (the only ground-truth renders)' % nr)
-    print('  overlap                 %4d files' % ov)
-    print('  tools measuring corpus  %4d' % uc)
-    print('  tools touching packs    %4d' % ur)
+    print("\nCENSUS BLIND SPOT:")
+    print("  corpus.paths()          %4d files" % nc)
+    print("  reference packs         %4d files   (the only ground-truth renders)" % nr)
+    print("  overlap                 %4d files" % ov)
+    print("  tools measuring corpus  %4d" % uc)
+    print("  tools touching packs    %4d" % ur)
     if ov == 0:
-        print('  -> DISJOINT. No corpus-wide figure in this project describes the files it'
-              '\n     is scored on, and nothing scored is covered by a corpus census.')
+        print(
+            "  -> DISJOINT. No corpus-wide figure in this project describes the files it"
+            "\n     is scored on, and nothing scored is covered by a corpus census."
+        )
 
-    print('\nOPEN QUESTIONS -- the live guesses, %d of them:' % len(assume.QUESTIONS))
+    print("\nOPEN QUESTIONS -- the live guesses, %d of them:" % len(assume.QUESTIONS))
     bymod = collections.defaultdict(list)
     for k, v in sorted(assume.QUESTIONS.items()):
-        bymod[k.split('.')[0]].append((k, len(v)))
+        bymod[k.split(".")[0]].append((k, len(v)))
     for mod in sorted(bymod, key=lambda m: -sum(n for _k, n in bymod[m])):
         ks = bymod[mod]
-        print('  %-12s %2d question(s), %3d arms total'
-              % (mod, len(ks), sum(n for _k, n in ks)))
+        print(
+            "  %-12s %2d question(s), %3d arms total"
+            % (mod, len(ks), sum(n for _k, n in ks))
+        )
         for k, n in ks:
-            print('       %-26s %d arm%s%s'
-                  % (k, n, '' if n == 1 else 's', '   <- unresolved, no arms' if not n else ''))
+            print(
+                "       %-26s %d arm%s%s"
+                % (
+                    k,
+                    n,
+                    "" if n == 1 else "s",
+                    "   <- unresolved, no arms" if not n else "",
+                )
+            )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

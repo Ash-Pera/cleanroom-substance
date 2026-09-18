@@ -20,6 +20,7 @@ Structure validated, per single-graph package:
   * table_end == u32_at(0x2C) + 52
   * floats may differ from the manifest by %g rounding; compare with epsilon
 """
+
 import collections, glob, hashlib, math, os, re, struct, sys
 import xml.etree.ElementTree as ET
 
@@ -60,11 +61,13 @@ def pack(t, dv):
 def _find_root():
     d = os.path.dirname(os.path.abspath(__file__))
     while True:
-        if os.path.exists(os.path.join(d, 'SPEC.md')):
+        if os.path.exists(os.path.join(d, "SPEC.md")):
             return d
         parent = os.path.dirname(d)
         if parent == d:
-            raise RuntimeError('repository root not found above %s (no SPEC.md)' % __file__)
+            raise RuntimeError(
+                "repository root not found above %s (no SPEC.md)" % __file__
+            )
         d = parent
 
 
@@ -74,14 +77,24 @@ _ROOT = _find_root()
 # imports: `sbsasm` and friends stayed in tools/. Under pytest conftest.py puts them on the
 # path, but this script's own entry point is a subprocess with no such help, and `analyse`
 # imports sbsasm lazily -- so the break surfaced as an empty stdout, not an ImportError.
-sys.path.insert(0, os.path.join(_ROOT, 'tools'))
+sys.path.insert(0, os.path.join(_ROOT, "tools"))
 
 
 def specimens():
     seen = set()
-    for pat in ("x_*", "corpus/x_*", "pairs/x_*", "pairs2/x_*", "pairs3/x_*",
-                "pairs4/x_*", "pairs5/x_*", "pairs6/x_*", "tiny/x_*", "tiny2/x_*",
-                "acg2/x_*"):
+    for pat in (
+        "x_*",
+        "corpus/x_*",
+        "pairs/x_*",
+        "pairs2/x_*",
+        "pairs3/x_*",
+        "pairs4/x_*",
+        "pairs5/x_*",
+        "pairs6/x_*",
+        "tiny/x_*",
+        "tiny2/x_*",
+        "acg2/x_*",
+    ):
         for xd in sorted(glob.glob(os.path.join(_ROOT, pat))):
             a = glob.glob(os.path.join(xd, "**", "*.sbsasm"), recursive=True)
             x = glob.glob(os.path.join(xd, "**", "*.xml"), recursive=True)
@@ -100,11 +113,14 @@ def analyse(asm, xml):
     d = open(asm, "rb").read()
     n = len(d)
     root = ET.parse(xml).getroot()
-    r = {"n": n, "ver": struct.unpack_from("<I", d, 4)[0],
-         "ok_magic": d[:4] == b"SBAM",
-         "ok_size": struct.unpack_from("<I", d, 0x10)[0] == n,
-         "ok_trailer": struct.unpack_from("<I", d, 0x1C)[0] == n - 28,
-         "ngraphs": len(root.findall("graphs/graph"))}
+    r = {
+        "n": n,
+        "ver": struct.unpack_from("<I", d, 4)[0],
+        "ok_magic": d[:4] == b"SBAM",
+        "ok_size": struct.unpack_from("<I", d, 0x10)[0] == n,
+        "ok_trailer": struct.unpack_from("<I", d, 0x1C)[0] == n - 28,
+        "ngraphs": len(root.findall("graphs/graph")),
+    }
     r["layout"] = "table" if struct.unpack_from("<I", d, 0x38)[0] < n else "alt"
 
     # The manifest declares each output's width and height. That is an INDEPENDENT source
@@ -113,10 +129,13 @@ def analyse(asm, xml):
     # manifest, so agreement is a consequence test rather than a restatement.
     try:
         import sbsasm as _sa
+
         _a = _sa.Assembly(asm)
-        want = {int(e.get("uid")): (int(e.get("width")), int(e.get("height")))
-                for e in root.iter("output")
-                if e.get("uid") and e.get("width") and e.get("height")}
+        want = {
+            int(e.get("uid")): (int(e.get("width")), int(e.get("height")))
+            for e in root.iter("output")
+            if e.get("uid") and e.get("width") and e.get("height")
+        }
         tag_ok = tag_n = expr_ok = expr_n = 0
         for uid, _fmt, _grey, idx in _a.outputs():
             if uid not in want or not (0 <= idx < len(_a.records)):
@@ -130,8 +149,10 @@ def analyse(asm, xml):
                 got = None
             if got is not None:
                 expr_n += 1
-                expr_ok += tuple(got) == (int(math.log2(want[uid][0])),
-                                          int(math.log2(want[uid][1])))
+                expr_ok += tuple(got) == (
+                    int(math.log2(want[uid][0])),
+                    int(math.log2(want[uid][1])),
+                )
         r["tag_vs_manifest"] = (tag_ok, tag_n)
         r["expr_vs_manifest"] = (expr_ok, expr_n)
     except (OSError, ValueError, KeyError, struct.error):
@@ -146,10 +167,14 @@ def analyse(asm, xml):
     # EVERY graph, plus the package globals, in one uid-ascending sequence.
     entries = []
     for g in graphs:
-        entries += [(int(i.get("type", 0)), int(i.get("uid", "0")), i.get("default"))
-                    for i in g.findall("inputs/input")]
-    entries += [(int(i.get("type", 0)), int(i.get("uid", "0")), i.get("default"))
-                for i in root.findall("global/inputs/input")]
+        entries += [
+            (int(i.get("type", 0)), int(i.get("uid", "0")), i.get("default"))
+            for i in g.findall("inputs/input")
+        ]
+    entries += [
+        (int(i.get("type", 0)), int(i.get("uid", "0")), i.get("default"))
+        for i in root.findall("global/inputs/input")
+    ]
     entries.sort(key=lambda z: z[1])
 
     ents = []
@@ -166,7 +191,7 @@ def analyse(asm, xml):
 
     pos = start
     for b, w, t in ents:
-        seg = d[pos:pos + w]
+        seg = d[pos : pos + w]
         pos += w
         if b is None:
             continue
@@ -199,8 +224,13 @@ def analyse(asm, xml):
     if r["ok_header"] and outs:
         got = list(struct.unpack_from("<%dI" % len(outs), d, start + total + 4))
         r["ok_outarray"] = sorted(got) == sorted(outs)
-        r["out_order"] = ("declaration" if got == outs
-                          else "uid-ascending" if got == sorted(outs) else "other")
+        r["out_order"] = (
+            "declaration"
+            if got == outs
+            else "uid-ascending"
+            if got == sorted(outs)
+            else "other"
+        )
 
     # input descriptor array: (u32 type, u32 uid) per input, same uid-ascending order
     desc = start + total + 4 + 4 * len(outs)
@@ -208,7 +238,8 @@ def analyse(asm, xml):
     if desc + 8 * len(entries) <= n:
         r["ok_desc"] = all(
             struct.unpack_from("<II", d, desc + 8 * k) == (t, u)
-            for k, (t, u, _dv) in enumerate(entries))
+            for k, (t, u, _dv) in enumerate(entries)
+        )
 
     # trailing array descriptor + back-pointer to the value table
     foot = desc + 8 * len(entries)
@@ -224,8 +255,11 @@ def analyse(asm, xml):
         if 0 <= dir0 and dir0 + 4 * cnt <= n and cnt >= 1:
             ents = struct.unpack_from("<%dI" % cnt, d, dir0)
             # a single-entry directory is trivially ordered
-            r["ok_dir"] = (all(ents[i] < ents[i + 1] for i in range(cnt - 1))
-                           and 0 < ents[0] and ents[-1] < start)
+            r["ok_dir"] = (
+                all(ents[i] < ents[i + 1] for i in range(cnt - 1))
+                and 0 < ents[0]
+                and ents[-1] < start
+            )
     return r
 
 
@@ -241,43 +275,79 @@ def main():
         print("no specimens found")
         return 1
     multi = [k for k, r in rows if r.get("multigraph")]
-    fails = [(k, r) for k, r in rows
-             if not r["ok_magic"] or not r["ok_size"] or not r["ok_trailer"]
-             or r["bad"] or not r.get("ok_header") or not r.get("ok_outarray")]
+    fails = [
+        (k, r)
+        for k, r in rows
+        if not r["ok_magic"]
+        or not r["ok_size"]
+        or not r["ok_trailer"]
+        or r["bad"]
+        or not r.get("ok_header")
+        or not r.get("ok_outarray")
+    ]
     tot = sum(r["entries"] for _, r in rows)
     ex = sum(r["exact"] for _, r in rows)
     eps = sum(r["eps"] for _, r in rows)
     bad = sum(max(r["bad"], 0) for _, r in rows)
-    print(f"specimens              : {len(rows)}   (of which multi-graph: {len(multi)})")
+    print(
+        f"specimens              : {len(rows)}   (of which multi-graph: {len(multi)})"
+    )
     print(f"value-table entries    : {tot}")
-    print(f"  byte-exact           : {ex} ({100*ex//max(tot,1)}%)")
+    print(f"  byte-exact           : {ex} ({100 * ex // max(tot, 1)}%)")
     print(f"  within %g rounding   : {eps}")
     print(f"  unexplained          : {bad}")
-    print(f"(n_out, n_in) header   : {sum(1 for _, r in rows if r.get('ok_header'))}/{len(rows)}")
-    print(f"output uid array       : {sum(1 for _, r in rows if r.get('ok_outarray'))}/{len(rows)}")
+    print(
+        f"(n_out, n_in) header   : {sum(1 for _, r in rows if r.get('ok_header'))}/{len(rows)}"
+    )
+    print(
+        f"output uid array       : {sum(1 for _, r in rows if r.get('ok_outarray'))}/{len(rows)}"
+    )
     tg = sum(r.get("tag_vs_manifest", (0, 0))[0] for _, r in rows)
     tn = sum(r.get("tag_vs_manifest", (0, 0))[1] for _, r in rows)
     eg = sum(r.get("expr_vs_manifest", (0, 0))[0] for _, r in rows)
     en = sum(r.get("expr_vs_manifest", (0, 0))[1] for _, r in rows)
-    print(f"record tag vs manifest : {tg}/{tn}   size expression vs manifest: {eg}/{en}")
-    print("  array order          :",
-          dict(collections.Counter(r.get("out_order") for _, r in rows if r.get("ok_outarray"))))
-    print(f"input descriptor array : {sum(1 for _, r in rows if r.get('ok_desc'))}/{len(rows)}")
-    print(f"trailing array footer  : {sum(1 for _, r in rows if r.get('ok_footer'))}/{len(rows)}")
-    print(f"record directory       : {sum(1 for _, r in rows if r.get('ok_dir'))}/{len(rows)}")
-    print(f"  directory base != 0  : {sum(1 for _, r in rows if r.get('dir_base'))}/{len(rows)}"
-          "   (these are NOT at 0x38)")
+    print(
+        f"record tag vs manifest : {tg}/{tn}   size expression vs manifest: {eg}/{en}"
+    )
+    print(
+        "  array order          :",
+        dict(
+            collections.Counter(
+                r.get("out_order") for _, r in rows if r.get("ok_outarray")
+            )
+        ),
+    )
+    print(
+        f"input descriptor array : {sum(1 for _, r in rows if r.get('ok_desc'))}/{len(rows)}"
+    )
+    print(
+        f"trailing array footer  : {sum(1 for _, r in rows if r.get('ok_footer'))}/{len(rows)}"
+    )
+    print(
+        f"record directory       : {sum(1 for _, r in rows if r.get('ok_dir'))}/{len(rows)}"
+    )
+    print(
+        f"  directory base != 0  : {sum(1 for _, r in rows if r.get('dir_base'))}/{len(rows)}"
+        "   (these are NOT at 0x38)"
+    )
     if unreadable:
-        print(f"manifests unparseable  : {len(unreadable)}  " +
-              ", ".join(k for k, _ in unreadable[:4]))
-    print("versions               :", dict(collections.Counter(hex(r["ver"]) for _, r in rows)))
+        print(
+            f"manifests unparseable  : {len(unreadable)}  "
+            + ", ".join(k for k, _ in unreadable[:4])
+        )
+    print(
+        "versions               :",
+        dict(collections.Counter(hex(r["ver"]) for _, r in rows)),
+    )
 
     if fails:
         print(f"\nFAILURES ({len(fails)}):")
         for k, r in fails[:15]:
-            print(f"   {k:<40} bad={r['bad']} header={r.get('ok_header')} "
-                  f"outarray={r.get('ok_outarray')} desc={r.get('ok_desc')} "
-                  f"footer={r.get('ok_footer')}")
+            print(
+                f"   {k:<40} bad={r['bad']} header={r.get('ok_header')} "
+                f"outarray={r.get('ok_outarray')} desc={r.get('ok_desc')} "
+                f"footer={r.get('ok_footer')}"
+            )
         return 1
     return 0
 

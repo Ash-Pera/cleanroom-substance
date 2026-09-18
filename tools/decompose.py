@@ -44,6 +44,7 @@ circular and both silently passing). Compare against `_compute_layout()` / `_rea
 `_pp_edges()`, the raw words, `record_layout.header_words`, the manifest, or the render.
 See FORMAT-NOTES.md "Unified walk" and "The cost model is a width legend".
 """
+
 import record_layout
 
 
@@ -76,6 +77,7 @@ def _param_field_masks(f):
     no grid.
     """
     import sbsasm
+
     return {pres for _nm, pres, _prog in sbsasm.PARAM_SPEC.get(f, ())}
 
 
@@ -149,8 +151,11 @@ _probe_fallback = []
 #
 # 16 bitmap / 17 text are source-side: no image inputs. `vectorshape` (5) has no legend entry
 # (source geometry, no edges) and is answered by the stub in `decompose`.
-BASE_INPUTS = {int(k): v['base'] for k, v in record_layout.legend().items()
-               if v.get('base') is not None}
+BASE_INPUTS = {
+    int(k): v["base"]
+    for k, v in record_layout.legend().items()
+    if v.get("base") is not None
+}
 
 
 def _has_w1_word(f, w0, ver):
@@ -216,7 +221,7 @@ def _has_w1_word(f, w0, ver):
 #: canvas. They would sort ahead of bit 16 either way, so the key does not have to special-case
 #: them, and it must not exclude them: a bit with no cell today and a cell tomorrow belongs in
 #: the same group its neighbours are in.
-_CLASS_LOW_GROUP_LAST = 16       # the bit that goes last in the low group (bits < 24)
+_CLASS_LOW_GROUP_LAST = 16  # the bit that goes last in the low group (bits < 24)
 
 
 def _class_emission_order(filter_id, clsbits):
@@ -231,10 +236,14 @@ def _class_emission_order(filter_id, clsbits):
     format constant that every filter obeys, and the argument is what a future per-filter
     finding would key on rather than something the caller has to supply for its own sake.
     """
-    return sorted(enumerate(clsbits),
-                  key=lambda t: (0 if t[1] < 24 else 1,
-                                 1 if t[1] == _CLASS_LOW_GROUP_LAST else 0,
-                                 t[1]))
+    return sorted(
+        enumerate(clsbits),
+        key=lambda t: (
+            0 if t[1] < 24 else 1,
+            1 if t[1] == _CLASS_LOW_GROUP_LAST else 0,
+            t[1],
+        ),
+    )
 
 
 def _class_block(r, clsbits, pos, cost):
@@ -295,7 +304,7 @@ def decompose(r):
     sp = record_layout.legend().get(str(f))
     if sp is None:
         return None
-    ver = r.asm.header.get('version') if isinstance(r.asm.header, dict) else 0
+    ver = r.asm.header.get("version") if isinstance(r.asm.header, dict) else 0
     # A LEGEND ESTABLISHED ON MODERN VERSIONS DOES NOT ANSWER FOR OLDER ONES -- the
     # mechanism, kept, with NO FILTER CURRENTLY USING IT. `emboss` was the only entry and
     # the justification was "its older records sit in keys that contradict themselves".
@@ -306,29 +315,29 @@ def decompose(r):
     # records that exercise four of `emboss`'s cells, so the gate was hiding the evidence
     # for the table it was protecting. `record_layout.header_words` honours the same key,
     # and a refusal here is still what its docstring says callers must treat as a refusal.
-    mv = sp.get('min_version')
+    mv = sp.get("min_version")
     if mv is not None and (ver is None or ver < mv):
         return None
     w0 = r.words[0]
     c0 = w0 & 1
     has = record_layout.has_w1(f, w0, ver)
     if has is None:
-        return None                          # the shape is undecidable without a version
+        return None  # the shape is undecidable without a version
     w1 = r.words[1] if (has and len(r.words) > 1) else None
     n_hdr = 1 + (1 if has else 0)
-    base = sp['base']
+    base = sp["base"]
     n_base = n_hdr if base is None else base
-    fixed, where = sp['fixed'], sp.get('fixed_at', 'after_inputs')
+    fixed, where = sp["fixed"], sp.get("fixed_at", "after_inputs")
     width = record_layout.width
 
     pos = n_hdr
-    if where == 'before_inputs':
-        pos += fixed                         # fxmaps: the tree root, then the arity run
+    if where == "before_inputs":
+        pos += fixed  # fxmaps: the tree root, then the arity run
     # THE IMAGE INPUTS. Either the filter's fixed arity or, for the two filters whose w1
     # holds an input COUNT, that count. Contiguous from the cursor in both cases; fxmaps'
     # edge slots for the records that have any are exactly [3], [3,4,5] and [3..8], never a
     # gap and never a different start.
-    ar = sp.get('arity')
+    ar = sp.get("arity")
     if ar is not None:
         n_in = ((w1 >> ar[0]) & ar[1]) if w1 is not None else 0
     else:
@@ -344,38 +353,39 @@ def decompose(r):
     # 10 tracks w1 BIT 0, not baked-versus-program, and no parameter behaves that way. Read
     # across the five w1 codes the corpus holds, bit 0 set (5, 7, 9) gives two edges and
     # clear (6, 10) gives one, 2,277 of 2,277.
-    for b in sp.get('edge_bits', ()):
+    for b in sp.get("edge_bits", ()):
         if w1 is not None and (w1 >> b) & 1 and pos < len(r.words):
             inputs.append(pos)
             pos += 1
-    if where == 'after_inputs':
+    if where == "after_inputs":
         # The filter's fixed prefix: gradient's and curve's ramp pair, bitmap's pixel word,
         # `text`'s zero + string pointer + font pointer. Every one is a slot some reader
         # already resolves, which is what makes it structural rather than an intercept by
         # another name.
         pos += fixed
-    size_pos = pos                           # first slot after the base region
+    size_pos = pos  # first slot after the base region
 
     # THE CLASS BLOCK. One cell per set bit, its width from the legend. `shuffle`'s bit 24
     # joins the block only in the shape that carries no w1 word: the weights are baked there
     # and the selector lives in w1 in the shape that has one (SPEC 6.4).
-    cells = {int(b): k for b, k in sp['cls'].items()}
-    sh4 = sp.get('shape4')
+    cells = {int(b): k for b, k in sp["cls"].items()}
+    sh4 = sp.get("shape4")
     if sh4 is not None and not has:
         cells[sh4[0]] = sh4[1]
     cls_slots, cls_params, pos = _class_block(
-        r, sorted(cells), pos, lambda _i, b: width(cells[b], c0))
+        r, sorted(cells), pos, lambda _i, b: width(cells[b], c0)
+    )
     # SPEC 6.4's paired conjunction: word0's high byte is a small field for `bitmap`, not
     # eight independent flags, and bits 24 and 27 set TOGETHER name the second offset word
     # that locates its pixels. An additive model could only reach that through two halves
     # and a rounding tie.
-    for bx, by, cv in sp.get('conj', ()):
+    for bx, by, cv in sp.get("conj", ()):
         if (w0 >> bx & 1) and (w0 >> by & 1):
             for _ in range(width(cv, c0)):
                 cls_slots.append(pos)
                 pos += 1
     own_prog = None
-    if where == 'after_class':
+    if where == "after_class":
         # `pixelprocessor`: the filter's own pixel program is the slot right after the class
         # block. The arbiter is the manifest identifier of the graph input each slot's
         # program reads with its first `inputref`, taken by POSITION rather than by the
@@ -413,8 +423,8 @@ def decompose(r):
     masks = _param_field_masks(f)
     ri = r.index
     if w1 is not None:
-        iv = sp.get('w1_int')
-        rf = sp.get('w1_int_refuse')
+        iv = sp.get("w1_int")
+        rf = sp.get("w1_int_refuse")
         if iv and rf and rf[0] <= (w1 >> iv[0]) & iv[1] <= rf[1]:
             # AN UNOBSERVED VALUE OF THAT INTEGER (SPEC 7.4's 14..28). `header_words`
             # refuses it and so does the walk, because a walk that lays slots for a header
@@ -436,14 +446,14 @@ def decompose(r):
             # a field at 6, 25 or 28, so the corpus does not test that ordering.
             param_slots.append((iv[0], 2, pos, 1))
             pos += 1
-        for sh in sorted(int(k) for k in sp['w1']):
+        for sh in sorted(int(k) for k in sp["w1"]):
             st = (w1 >> sh) & 3
             if st == 0:
                 continue
             if st == 1:
-                n = width(sp['w1'][str(sh)], c0)
+                n = width(sp["w1"][str(sh)], c0)
                 if n is None:
-                    return None              # a baked cell the corpus never exercised
+                    return None  # a baked cell the corpus never exercised
                 # ONE ENTRY PER PARAMETER, CARRYING ITS WIDTH -- not one per word. A colour
                 # `levels` bakes each level as a Float4, and this loop used to emit four
                 # entries for ONE parameter, so a consumer pairing parameter NAMES against
@@ -461,7 +471,7 @@ def decompose(r):
                 pos += 1
                 continue
             if _is_image_input(r, sh, pos, masks, ri):
-                inputs.append(pos)           # state-11 image input
+                inputs.append(pos)  # state-11 image input
             else:
                 # STATE 3 IS NOT ALWAYS AN IMAGE INPUT, and a word that fails the test is
                 # still a word this field occupies. This used to advance `pos` and record
@@ -482,17 +492,24 @@ def decompose(r):
     # and a record whose first post-base slot is itself an image edge (blend's mask-only
     # records) has no size there. Not bounds-checked here: the walk names the slot even when
     # it is past the record's words, and `size_or_baked` does the bounds check.
-    if where == 'after_class':
+    if where == "after_class":
         prog = own_prog
     elif f == 17 or (f == 16 and not (r.cls & 1)) or size_pos in inputs:
         prog = None
     else:
         prog = size_pos
-    d = {'inputs': inputs, 'cls_slots': cls_slots, 'param_slots': param_slots,
-         'cls_params': cls_params, 'end': _model_end(r, pos), 'prog': prog,
-         'size_slot': _size_slot(cls_params), 'hdr': n_hdr}
-    if where == 'before_inputs':
-        d['root'] = FX_ROOT_SLOT
+    d = {
+        "inputs": inputs,
+        "cls_slots": cls_slots,
+        "param_slots": param_slots,
+        "cls_params": cls_params,
+        "end": _model_end(r, pos),
+        "prog": prog,
+        "size_slot": _size_slot(cls_params),
+        "hdr": n_hdr,
+    }
+    if where == "before_inputs":
+        d["root"] = FX_ROOT_SLOT
     return _bounded(r, d)
 
 
@@ -539,10 +556,14 @@ def _model_end(r, cursor):
     being absorbed silently.
     """
     import record_layout
+
     try:
         hw = record_layout.header_words(
-            r.filter_id, r.words[0], r.words[1] if len(r.words) > 1 else None,
-            r.asm.header.get('version') if isinstance(r.asm.header, dict) else 0)
+            r.filter_id,
+            r.words[0],
+            r.words[1] if len(r.words) > 1 else None,
+            r.asm.header.get("version") if isinstance(r.asm.header, dict) else 0,
+        )
     except Exception:
         return cursor
     return cursor if hw is None else hw
@@ -610,12 +631,14 @@ def _bounded(r, d):
     # clamped. Choosing between those with no consumer to validate against is how a fitted
     # answer gets in, so the number is recorded and the choice is left to whoever adds a
     # reader that needs it.
-    if any(s >= n for s in d['cls_slots']) or any(t[2] >= n for t in d['param_slots']):
-        d = dict(d,
-                 cls_slots=[s for s in d['cls_slots'] if s < n],
-                 param_slots=[t for t in d['param_slots'] if t[2] < n],
-                 cls_params=[t for t in d.get('cls_params', ()) if t[1] < n])
-    if d.get('end') is not None and d['end'] > n:
+    if any(s >= n for s in d["cls_slots"]) or any(t[2] >= n for t in d["param_slots"]):
+        d = dict(
+            d,
+            cls_slots=[s for s in d["cls_slots"] if s < n],
+            param_slots=[t for t in d["param_slots"] if t[2] < n],
+            cls_params=[t for t in d.get("cls_params", ()) if t[1] < n],
+        )
+    if d.get("end") is not None and d["end"] > n:
         return dict(d, end=None, prog=None)
     return d
 
@@ -649,26 +672,30 @@ def named_params(r):
     stated binarisations.
     """
     import sbsasm
+
     if r.filter_id == 4:
-        return None                          # fxmaps: parameters come from the table, not the header
+        return None  # fxmaps: parameters come from the table, not the header
     spec = sbsasm.PARAM_SPEC.get(r.filter_id)
     if spec is None:
         return []
     d = decompose(r)
-    if d is None or d.get('end') is None:
+    if d is None or d.get("end") is None:
         return None
     w1 = r.words[1] if len(r.words) > 1 else 0
-    present = sorted(((p & -p).bit_length() - 1, nm)
-                     for nm, p, _pg in spec if (w1 & p) and (w1 & p) != p)
+    present = sorted(
+        ((p & -p).bit_length() - 1, nm)
+        for nm, p, _pg in spec
+        if (w1 & p) and (w1 & p) != p
+    )
     if not present:
         return []
-    end = d['end']
+    end = d["end"]
     # ONE WIDTH PER PRESENT FIELD, from the walk, keyed by the field's OWN BIT. `param_slots`
     # already carries it (SPEC 7.3's width legend) and it is the only term the stride-1 layout
     # dropped. `_read_slot` still returns the FIRST word of a multi-word parameter, so a colour
     # record's Float4 comes back as its red component -- `render2.model.View` is the width-aware
     # reader and is the one the renderer uses.
-    widths = {sh: w for (sh, _st, _pos, w) in d.get('param_slots', ()) if w}
+    widths = {sh: w for (sh, _st, _pos, w) in d.get("param_slots", ()) if w}
     ws = [max(1, widths.get(b, 1)) for b, _nm in present]
     pos, out = end - sum(ws), []
     for (_b, nm), w in zip(present, ws):

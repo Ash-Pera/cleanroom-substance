@@ -10,6 +10,7 @@ specimen examined:
 Extraction uses `py7zr` when it is installed and falls back to `bsdtar` or `7z` on the
 path, so the package works without a compiled dependency either way.
 """
+
 from __future__ import annotations
 
 import shutil

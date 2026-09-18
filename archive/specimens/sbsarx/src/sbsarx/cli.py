@@ -1,4 +1,5 @@
 """Command line: `sbsarx list`, `sbsarx extract`, `sbsarx audit`."""
+
 from __future__ import annotations
 
 import argparse
@@ -34,17 +35,33 @@ def _print_list(pkg, show_inputs: bool) -> None:
     res = pkg.resources
     print("  embedded images (%d)" % len(res))
     for r in res:
-        print("      %2d  %-7s %5dx%-5d %-9s %10d bytes  @%d"
-              % (r.index, r.format, r.width, r.height,
-                 "colour" if r.colour else "grayscale", r.size, r.offset))
+        print(
+            "      %2d  %-7s %5dx%-5d %-9s %10d bytes  @%d"
+            % (
+                r.index,
+                r.format,
+                r.width,
+                r.height,
+                "colour" if r.colour else "grayscale",
+                r.size,
+                r.offset,
+            )
+        )
     cov = pkg.coverage()
     if cov["segment_bytes"]:
-        print("  segment %d bytes, %d covered by descriptors%s"
-              % (cov["segment_bytes"], cov["covered_bytes"],
-                 ", tiles exactly" if cov["tiles_exactly"] else ""))
+        print(
+            "  segment %d bytes, %d covered by descriptors%s"
+            % (
+                cov["segment_bytes"],
+                cov["covered_bytes"],
+                ", tiles exactly" if cov["tiles_exactly"] else "",
+            )
+        )
     if res and pkg.graphs:
-        print("  note: the format does not record which embedded image corresponds to "
-              "which\n        declared output, or whether an image is a source input at all.")
+        print(
+            "  note: the format does not record which embedded image corresponds to "
+            "which\n        declared output, or whether an image is a source input at all."
+        )
 
 
 def cmd_list(args) -> int:
@@ -56,20 +73,33 @@ def cmd_list(args) -> int:
 def cmd_extract(args) -> int:
     for path in args.paths:
         pkg = _open(path)
-        out = Path(args.output) / Path(path).stem if len(args.paths) > 1 else Path(args.output)
+        out = (
+            Path(args.output) / Path(path).stem
+            if len(args.paths) > 1
+            else Path(args.output)
+        )
         written = []
         for res in pkg.resources:
             if res.is_jpeg or imaging.available():
                 target = pkg.write(res, out)
                 written.append((res, target))
-                lossy = " (16-bit colour reduced to 8)" if imaging.lossy_on_write(res) else ""
+                lossy = (
+                    " (16-bit colour reduced to 8)"
+                    if imaging.lossy_on_write(res)
+                    else ""
+                )
                 print("%s  %s%s" % (target, res, lossy))
             else:
-                print("skipped %s: needs Pillow and NumPy" % imaging.suggested_name(res),
-                      file=sys.stderr)
+                print(
+                    "skipped %s: needs Pillow and NumPy" % imaging.suggested_name(res),
+                    file=sys.stderr,
+                )
         if not pkg.resources:
-            print("%s: no embedded images — this package computes its maps at cook time"
-                  % Path(path).name, file=sys.stderr)
+            print(
+                "%s: no embedded images — this package computes its maps at cook time"
+                % Path(path).name,
+                file=sys.stderr,
+            )
         if args.sidecar and written:
             _write_sidecar(pkg, written, out)
     return 0
@@ -81,7 +111,9 @@ def _write_sidecar(pkg, written, out: Path) -> None:
         "sbsarx_version": __version__,
         "graphs": [
             {
-                "identifier": g.identifier, "label": g.label, "author": g.author,
+                "identifier": g.identifier,
+                "label": g.label,
+                "author": g.author,
                 "declared_outputs": [
                     {"identifier": o.identifier, "usage": o.usage, "uid": o.uid}
                     for o in g.outputs
@@ -91,9 +123,15 @@ def _write_sidecar(pkg, written, out: Path) -> None:
         ],
         "embedded_images": [
             {
-                "index": r.index, "file": target.name, "format": r.format,
-                "width": r.width, "height": r.height, "channels": r.channels,
-                "depth": r.depth, "colour": r.colour, "offset": r.offset,
+                "index": r.index,
+                "file": target.name,
+                "format": r.format,
+                "width": r.width,
+                "height": r.height,
+                "channels": r.channels,
+                "depth": r.depth,
+                "colour": r.colour,
+                "offset": r.offset,
                 "bytes": r.size,
             }
             for r, target in written
@@ -133,10 +171,18 @@ def cmd_audit(args) -> int:
         if cov["tiles_exactly"]:
             tiled += 1
         elif args.verbose:
-            problems.append((Path(path).name,
-                             "gaps=%d overlaps=%d covered=%d/%d"
-                             % (cov["internal_gaps"], cov["overlaps"],
-                                cov["covered_bytes"], cov["segment_bytes"])))
+            problems.append(
+                (
+                    Path(path).name,
+                    "gaps=%d overlaps=%d covered=%d/%d"
+                    % (
+                        cov["internal_gaps"],
+                        cov["overlaps"],
+                        cov["covered_bytes"],
+                        cov["segment_bytes"],
+                    ),
+                )
+            )
     print("packages read            %d" % total)
     print("  failed to parse        %d" % failed)
     print("  with embedded images   %d" % with_images)
@@ -154,7 +200,8 @@ def cmd_audit(args) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="sbsarx",
-        description="Read Substance .sbsar packages without the Substance engine.")
+        description="Read Substance .sbsar packages without the Substance engine.",
+    )
     parser.add_argument("--version", action="version", version="sbsarx " + __version__)
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -166,14 +213,22 @@ def main(argv=None) -> int:
     p = sub.add_parser("extract", help="write the embedded images to disk")
     p.add_argument("paths", nargs="+")
     p.add_argument("-o", "--output", default=".", help="output directory")
-    p.add_argument("--no-sidecar", dest="sidecar", action="store_false",
-                   help="do not write sbsarx.json alongside the images")
+    p.add_argument(
+        "--no-sidecar",
+        dest="sidecar",
+        action="store_false",
+        help="do not write sbsarx.json alongside the images",
+    )
     p.set_defaults(func=cmd_extract)
 
     p = sub.add_parser("audit", help="run the reader over a corpus and report coverage")
     p.add_argument("paths", nargs="+")
-    p.add_argument("-v", "--verbose", action="store_true",
-                   help="list every package not fully accounted for")
+    p.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="list every package not fully accounted for",
+    )
     p.set_defaults(func=cmd_audit)
 
     args = parser.parse_args(argv)

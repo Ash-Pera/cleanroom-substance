@@ -14,16 +14,19 @@ entries can express the rule:
 The regeneration therefore happens in `Record._compute_layout`, which sees the whole word,
 and the table remains only as the fallback for filters whose fields are not catalogued.
 """
+
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import sbsasm                                                        # noqa: E402
+import sbsasm  # noqa: E402
 
 
 def main():
-    print('%-18s %12s %12s %14s  %s'
-          % ('filter', 'LAYOUT_MASK', 'field bits', 'lost by key', 'verdict'))
+    print(
+        "%-18s %12s %12s %14s  %s"
+        % ("filter", "LAYOUT_MASK", "field bits", "lost by key", "verdict")
+    )
     lossy = 0
     for f in sorted(sbsasm.PARAM_SPEC):
         if f in sbsasm.PARAM_RAW:
@@ -33,18 +36,29 @@ def main():
         for _n, m, _h in sbsasm.PARAM_SPEC[f]:
             cov |= m
         if f == 1:
-            cov |= 0x200                      # blend's bit-9 flag
+            cov |= 0x200  # blend's bit-9 flag
         lost = cov & ~lm
         lossy += bool(lost)
-        print('%-18s %12s %12s %14s  %s'
-              % (sbsasm.FILTERS.get(f, 'fid %d' % f), hex(lm), hex(cov), hex(lost),
-                 'LOSSY' if lost else 'complete'))
-    print('\n%d of %d catalogued filters have a key that cannot carry their own rule.'
-          % (lossy, len([f for f in sbsasm.PARAM_SPEC if f not in sbsasm.PARAM_RAW])))
-    print('fxmaps is a fifth: LAYOUT_MASK 0xe55 keeps bits 10 and 11 of its 4-bit arity')
-    print('field at bits 10-13 and discards 12 and 13.')
+        print(
+            "%-18s %12s %12s %14s  %s"
+            % (
+                sbsasm.FILTERS.get(f, "fid %d" % f),
+                hex(lm),
+                hex(cov),
+                hex(lost),
+                "LOSSY" if lost else "complete",
+            )
+        )
+    print(
+        "\n%d of %d catalogued filters have a key that cannot carry their own rule."
+        % (lossy, len([f for f in sbsasm.PARAM_SPEC if f not in sbsasm.PARAM_RAW]))
+    )
+    print(
+        "fxmaps is a fifth: LAYOUT_MASK 0xe55 keeps bits 10 and 11 of its 4-bit arity"
+    )
+    print("field at bits 10-13 and discards 12 and 13.")
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

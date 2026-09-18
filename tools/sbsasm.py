@@ -19,6 +19,7 @@ wrong assumption shows up as a number instead of as a plausible-looking result.
         for p in rec.programs:
             print(a.disassemble(p))
 """
+
 import math
 import os
 import struct
@@ -29,9 +30,18 @@ import disasm
 # ---------------------------------------------------------------- filter table
 
 FILTERS = {
-    0: 'gradient', 1: 'blend', 2: 'transformation', 3: 'shuffle', 4: 'fxmaps',
-    6: 'uniform', 7: 'warp', 10: 'blur', 12: 'directionalwarp', 13: 'sharpen',
-    11: 'dirmotionblur', 22: 'curve',
+    0: "gradient",
+    1: "blend",
+    2: "transformation",
+    3: "shuffle",
+    4: "fxmaps",
+    6: "uniform",
+    7: "warp",
+    10: "blur",
+    12: "directionalwarp",
+    13: "sharpen",
+    11: "dirmotionblur",
+    22: "curve",
     # COUNT-EXACT ON ONE PERMITTED SPECIMEN, and the earlier note here was wrong. It said
     # filter 8 "cannot be" verified from this corpus, on a measurement that paired every
     # source with an unrelated package's binary -- see `provenance.own_assembly` for how
@@ -75,12 +85,17 @@ FILTERS = {
     # nothing confirms `intensity` over `lightangle`, and the FORMULA is not established);
     # what is corrected here is that it was also quoting a verification that excludes it.
     # Implementing emboss still needs a permitted source that both pairs and states a value.
-        8: 'emboss',
-    14: 'hsl', 15: 'levels', 16: 'bitmap', 17: 'text', 18: 'normal',
-    20: 'pixelprocessor', 21: 'distance',
-    19: 'dyngradient',
-    5: 'vectorshape',
-    9: 'filter9',
+    8: "emboss",
+    14: "hsl",
+    15: "levels",
+    16: "bitmap",
+    17: "text",
+    18: "normal",
+    20: "pixelprocessor",
+    21: "distance",
+    19: "dyngradient",
+    5: "vectorshape",
+    9: "filter9",
 }
 # `vectorshape` and `filter9` are PROJECT LABELS, not names recovered from a source file.
 # Every other entry above is a name this format's own `.sbs` sources use; these two are not,
@@ -216,9 +231,25 @@ UNNAMED = {}
 # record index - EXCLUDING slot 1 wherever slot 1 is a parameter word, because a small
 # packed integer passes the "valid backward index" test trivially. That conflation is
 # what produced the shared-reference error; see FORMAT-NOTES.md.
-EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 9: [2, 3], 10: [1],
-         11: [2], 12: [2, 3], 13: [1], 14: [1], 15: [2], 18: [2], 19: [1, 2],
-         21: [2], 22: [1]}
+EDGES = {
+    0: [1],
+    1: [2, 3],
+    2: [2],
+    3: [2, 3],
+    7: [1, 2],
+    8: [2, 3],
+    9: [2, 3],
+    10: [1],
+    11: [2],
+    12: [2, 3],
+    13: [1],
+    14: [1],
+    15: [2],
+    18: [2],
+    19: [1, 2],
+    21: [2],
+    22: [1],
+}
 # dyngradient (19) takes TWO inputs -- its unique greyscale input at slot 1 and its shared
 # control map at slot 2 -- and slot 2 holds a valid backward record index in 2,225 of 2,225
 # records. The default was [1], which made `arity` report one input and left the fallback a
@@ -266,7 +297,7 @@ EDGES = {0: [1], 1: [2, 3], 2: [2], 3: [2, 3], 7: [1, 2], 8: [2, 3], 9: [2, 3], 
 # `bitmap` was listed here too and is not a gap: 1,345 records, 0 edge slots, no image input
 # at all. That is a fact about the filter, and listing it under "not fully resolved" invited
 # the opposite reading.
-PARTIAL_EDGES = {21: 'distance slot 3 is a shared control map, not a data edge'}
+PARTIAL_EDGES = {21: "distance slot 3 is a shared control map, not a data edge"}
 # `emboss` was listed here on the reading that it takes three image inputs in slots 1-3.
 # It takes two, in slots 2 and 3, and `_real_edges` already drops slot 1: that slot takes
 # **22 distinct values across the entire corpus**, at most 7 in any one file, which is a
@@ -311,29 +342,58 @@ SHARED = {19: [2]}
 # at the first of them, which is why it kept landing at "block position 0".
 #
 # Measured: the slot holding a valid program pointer in the largest share of records.
-PROG_SLOT = {0: 4, 1: 4, 2: 3, 4: 3, 6: 1, 7: 3, 10: 2, 11: 3, 12: 4, 13: 2, 14: 2,
-             15: 3, 18: 3, 19: 3, 21: 4, 22: 4}
+PROG_SLOT = {
+    0: 4,
+    1: 4,
+    2: 3,
+    4: 3,
+    6: 1,
+    7: 3,
+    10: 2,
+    11: 3,
+    12: 4,
+    13: 2,
+    14: 2,
+    15: 3,
+    18: 3,
+    19: 3,
+    21: 4,
+    22: 4,
+}
 
 # Some filters emit more than one record layout, distinguished by input count.
 # Candidates are tried in order and the first whose program slot validates is used;
 # because the pointer/float union is unambiguous, a wrong guess cannot validate.
 # Each entry is (edge slots, program slot).
 ALT_LAYOUTS = {
-    3: [([2, 3], 4), ([1], 2)],          # shuffle: two inputs, or one
+    3: [([2, 3], 4), ([1], 2)],  # shuffle: two inputs, or one
 }
 
 # Filters whose slot 1 is a packed parameter word rather than a reference.
 PARAM_WORD = {1, 2, 4, 8, 11, 12, 15, 18, 20, 21, 22}
 
-CHANNELS = {1: 1, 2: 3, 3: 4}          # bitmap class -> channel count
+CHANNELS = {1: 1, 2: 3, 3: 4}  # bitmap class -> channel count
 
 # Slot 1 holds both parameter values and layout bits. These masks keep the layout bits
 # and drop the rest, found by dropping any bit whose removal does not cost determinism.
 # For `blend` the search independently rejected bits 0-3 - the `blendingmode` nibble -
 # and kept 4, 5 and 9, which is what the layout actually varies on.
-LAYOUT_MASK = {0: 0x3FFF, 1: 0x230, 2: 0x060000C0, 3: 0x06001FE0, 4: 0xE55,
-               6: 0x0036FFE0, 7: 0x2FF8, 10: 0x0, 11: 0x04, 12: 0x1E, 15: 0x3FD,
-               19: 0x0, 20: 0x0B, 21: 0x01}
+LAYOUT_MASK = {
+    0: 0x3FFF,
+    1: 0x230,
+    2: 0x060000C0,
+    3: 0x06001FE0,
+    4: 0xE55,
+    6: 0x0036FFE0,
+    7: 0x2FF8,
+    10: 0x0,
+    11: 0x04,
+    12: 0x1E,
+    15: 0x3FD,
+    19: 0x0,
+    20: 0x0B,
+    21: 0x01,
+}
 
 
 def _load_layouts():
@@ -348,20 +408,21 @@ def _load_layouts():
     """
     import json
     import os
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'layouts.json')
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "layouts.json")
     try:
         with open(path) as f:
             raw = json.load(f)
     except FileNotFoundError:
-        return {}, {}           # no table shipped: every reader falls back to probing
+        return {}, {}  # no table shipped: every reader falls back to probing
     except (json.JSONDecodeError, OSError):
-        raise                   # a table that exists and will not load is a defect, not
-                                # a reason to silently run without one. Returning {} here
-                                # disables every layout lookup in the module and every
-                                # count downstream drops without saying why.
+        raise  # a table that exists and will not load is a defect, not
+        # a reason to silently run without one. Returning {} here
+        # disables every layout lookup in the module and every
+        # count downstream drops without saying why.
     lay, hdr = {}, {}
     for k, v in raw.items():
-        key = tuple(int(x) for x in k.split(','))
+        key = tuple(int(x) for x in k.split(","))
         lay[key] = (tuple(v[0]), tuple(v[1]))
         if len(v) > 3 and v[3]:
             hdr[key] = v[3]
@@ -391,10 +452,10 @@ LAYOUTS, HEADER_WORDS = _load_layouts()
 # stay because their comments record which source node each header is (addnode, markov2) and
 # the return type, evidence `node_shape` does not carry.
 FX_NODES = {
-    0x18B: (8,  (4,)),        # [header][program][next]          addnode,     -> i1
-    0x89:  (12, (4,)),        # [header][program][0][next]       markov2,     -> b2
-    0x1AB: (12, (4, 8)),      # [header][program][program][next]              -> i1
-    0x1CB: (12, (4,)),        # [header][program][0][next]                    -> i1
+    0x18B: (8, (4,)),  # [header][program][next]          addnode,     -> i1
+    0x89: (12, (4,)),  # [header][program][0][next]       markov2,     -> b2
+    0x1AB: (12, (4, 8)),  # [header][program][program][next]              -> i1
+    0x1CB: (12, (4,)),  # [header][program][0][next]                    -> i1
 }
 
 # The FX-Map source language, mapped onto this ISA.
@@ -431,15 +492,29 @@ FX_NODES = {
 # `get_float2` maps to `get`. So the lowering depends on the ARGUMENT, not only the
 # function, which is why one source name can reach two opcodes.
 FX_LOWERING = {
-    'const_float1': 'const',  'const_int1': 'const',   'const_float2': 'const',
-    'get_float3':   'inputref', 'get_integer1': 'inputref',
-    'get_bool':     'get',    'get_float2': 'get',     'get_float1': 'sysvar',
-    'swizzle1':     'swizzle', 'toint1': 'cvt',        'tofloat': 'cvt',
-    'ifelse':       'select', 'lr': 'lt',              'not': 'not',
-    'mul':          'mul',    'div': 'div',            'mod': 'mod',
-    'samplecol':    'samplecol',
+    "const_float1": "const",
+    "const_int1": "const",
+    "const_float2": "const",
+    "get_float3": "inputref",
+    "get_integer1": "inputref",
+    "get_bool": "get",
+    "get_float2": "get",
+    "get_float1": "sysvar",
+    "swizzle1": "swizzle",
+    "toint1": "cvt",
+    "tofloat": "cvt",
+    "ifelse": "select",
+    "lr": "lt",
+    "not": "not",
+    "mul": "mul",
+    "div": "div",
+    "mod": "mod",
+    "samplecol": "samplecol",
     # name-fixed, see above
-    'add': 'add', 'sequence': 'seq', 'set': 'set', 'vector2': 'vec',
+    "add": "add",
+    "sequence": "seq",
+    "set": "set",
+    "vector2": "vec",
 }
 
 
@@ -498,10 +573,10 @@ FX_LOWERING = {
 # identical. The value comparison is what makes it falsifiable: had +4 matched `0x1AB`'s
 # seed distribution the reading would have inverted, and it does not.
 FX_NODE_PARAMS = {
-    0x18B: {4: 'numberadded'},
-    0x1AB: {4: 'randomseed', 8: 'numberadded'},
-    0x89:  {4: 'switch'},
-    0x1CB: {4: 'numberadded'},           # + a baked randomseed of 0 at +8; see above
+    0x18B: {4: "numberadded"},
+    0x1AB: {4: "randomseed", 8: "numberadded"},
+    0x89: {4: "switch"},
+    0x1CB: {4: "numberadded"},  # + a baked randomseed of 0 at +8; see above
 }
 
 
@@ -640,7 +715,7 @@ FX_NODE_PARAMS = {
 # `walk.NODE_LEGEND` reaches the same width independently: 0x1b is 3 words there, derived by
 # the landing test over the whole corpus rather than from these bytes.
 FX_NODES2 = {
-    0x1B: ((8,), ()),   # one pointer, at word 2, addressing the next structure at word 3
+    0x1B: ((8,), ()),  # one pointer, at word 2, addressing the next structure at word 3
 }
 
 
@@ -747,11 +822,11 @@ def node_shape(header):
     # UNEXPLAINED AND LEFT OUT: `0x081`, one specimen, bit 7 set and nibble 1. Its predicted
     # successor (slot 2) scores 0 of 1. One word is not a population either way, so it is
     # not swept in with the 23 and it is not claimed against them.
-    succ = 4 * (base + bin(header & 0xF0).count('1'))
+    succ = 4 * (base + bin(header & 0xF0).count("1"))
     # (the bit-7-clear arm of this same rule is `leaf_successor` below)
-    pbase = 1 + (1 if header & 0x10 else 0)          # bit 4 shifts the program one word on
+    pbase = 1 + (1 if header & 0x10 else 0)  # bit 4 shifts the program one word on
     progs = [4 * pbase]
-    if header & 0x20:                                # bit 5: randomseed program follows
+    if header & 0x20:  # bit 5: randomseed program follows
         progs.append(4 * (pbase + 1))
     return (succ, tuple(progs))
 
@@ -865,7 +940,7 @@ def chain_extent(asm, off):
     lo, hi = asm.body_lo, asm.body_hi
     if not (lo <= off < hi - 8):
         return None
-    nxt = struct.unpack_from('<I', asm.data, off + 4)[0] + 52
+    nxt = struct.unpack_from("<I", asm.data, off + 4)[0] + 52
     return (nxt - off) if off < nxt < hi else None
 
 
@@ -895,7 +970,7 @@ def leaf_successor(header):
     """
     if (header & 0xF) != 0xB or (header & 0xF0):
         return None
-    return 4 * (1 + bin(header & 0xF0).count('1'))
+    return 4 * (1 + bin(header & 0xF0).count("1"))
 
 
 # Named parameter blocks: slot 1 carries one presence bit per parameter, and the
@@ -1064,18 +1139,22 @@ PARAM_SPEC = {
     # Corpus-wide the arms never collide: 963 records read code 01 there and 170 read 10,
     # and code 11 -- the only state this table's `x == mask` edge test would fire on --
     # occurs 0 times in 310,697 blend records.
-    1:  [('opacitymult', 0x30, 0x20), ('opacitymult', 0x600, 0x400)],
-    12: [('intensity', 0x06, 0x04), ('warpangle', 0x18, 0x10)],
-    15: [('levelinlow',   0x003, 0x002), ('levelinhigh', 0x00c, 0x008),
-         ('levelinmid',   0x030, 0x020), ('leveloutlow', 0x0c0, 0x080),
-         ('levelouthigh', 0x300, 0x200)],
+    1: [("opacitymult", 0x30, 0x20), ("opacitymult", 0x600, 0x400)],
+    12: [("intensity", 0x06, 0x04), ("warpangle", 0x18, 0x10)],
+    15: [
+        ("levelinlow", 0x003, 0x002),
+        ("levelinhigh", 0x00C, 0x008),
+        ("levelinmid", 0x030, 0x020),
+        ("leveloutlow", 0x0C0, 0x080),
+        ("levelouthigh", 0x300, 0x200),
+    ],
     # `dirmotionblur`, named from the permitted sources - see the FILTERS table. Its bit
     # pairs were derived mechanically before the filter had a name: 32,204 of 32,204 slot
     # kinds correct. The distributions that were recorded as suggestive and not claimed
     #   intensity   one-sided, p50 1.45, p99 36.3, max 500
     #   mblurangle  symmetric, 28.0% negative, p1 -0.125, values in multiples of 1/16
     # are what the source names say they are.
-    11: [('intensity', 0x003, 0x002), ('mblurangle', 0x00c, 0x008)],
+    11: [("intensity", 0x003, 0x002), ("mblurangle", 0x00C, 0x008)],
     # `fxmaps` has four, derived the same way. Two of the pairs are exact and two are near
     # it, over 92,815 slot reads:
     #
@@ -1091,8 +1170,12 @@ PARAM_SPEC = {
     #
     # The source also declares `patterntype` and `blendingmode` (Int32) and `colorswitch`
     # (Bool). Those are NOT floats, which is why this filter is in PARAM_RAW below.
-    4:  [('fx_param0', 0x003, 0x002), ('fx_param1', 0x030, 0x020),
-         ('fx_param2', 0x0c0, 0x080), ('fx_param3', 0x300, 0x200)],
+    4: [
+        ("fx_param0", 0x003, 0x002),
+        ("fx_param1", 0x030, 0x020),
+        ("fx_param2", 0x0C0, 0x080),
+        ("fx_param3", 0x300, 0x200),
+    ],
 }
 
 # Filters whose baked parameter values are reported as the raw u32 rather than as a float.
@@ -1277,7 +1360,7 @@ CLS_PROGRAM_BITS = {10: frozenset({16, 23, 27, 29}), 7: frozenset({16, 23, 27, 3
 # Recorded rather than acted on: which tag the contradiction is against has to be settled
 # before the 8 mean anything.
 FX_PAYLOAD_PROG = {
-    0x00020018: 20,                       # BYTE offset from the entry's +4 pointer
+    0x00020018: 20,  # BYTE offset from the entry's +4 pointer
 }
 
 
@@ -1349,25 +1432,72 @@ FX_PAYLOAD_PROG = {
 # right for both). What is left below is a table of MEASURED slot positions, still checked
 # against the layout by `test_entry_layout_agrees_with_the_census`; it drives no reading.
 FX_ENTRY_PROGS = {
-    0x00000008: [2, 3, 4, 5, 6], 0x0000019B: [2], 0x0000100B: [5], 0x0000190B: [4],
-    0x0000770B: [4, 5, 8], 0x0001900B: [4, 5, 8], 0x00024D0B: [4, 5, 6, 7, 8], 0x0006910B:
-    [4], 0x000E100B: [4, 5, 8], 0x00100048: [2], 0x00410008: [6], 0x0041010B: [4],
-    0x00420008: [3], 0x00420018: [4], 0x00500248: [2, 3], 0x00500E48: [2, 3], 0x00520158:
-    [4, 5], 0x01520248: [3, 4, 5], 0x02400448: [2], 0x02440248: [2], 0x02520448: [3, 4],
-    0x03520248: [3, 4, 5], 0x04000048: [2], 0x04000148: [2], 0x04000E48: [2], 0x04440048:
-    [2, 3], 0x04540048: [2, 3, 4], 0x05140048: [2, 3, 4], 0x05400348: [2, 3, 4], 0x08520158:
-    [4, 5], 0x0C520958: [4, 5, 6], 0x124A0648: [4, 7], 0x12520448: [3, 4, 7], 0x13120658:
-    [4, 5, 8], 0x13520248: [3, 4, 5, 8], 0x13520658: [4, 5, 6, 9], 0x13520948: [3, 4, 5, 8],
-    0x13520958: [4, 5, 6, 9], 0x14120648: [3, 4, 5], 0x14420248: [3, 4, 5], 0x14420448: [3,
-    4, 5], 0x14520248: [3, 4, 5, 6], 0x14540E48: [2, 3, 4, 5], 0x15000448: [2, 3, 4],
-    0x150A0248: [4, 5, 6], 0x15140848: [3, 4, 5], 0x15400348: [2, 3, 4, 5], 0x34520A48: [3,
-    4, 5, 6], 0x34520A58: [4, 5, 6, 7], 0x35520A48: [3, 4, 5, 6, 7], 0x54500048: [2, 3, 4,
-    5, 6], 0x54500148: [2, 3, 4, 5, 6], 0x54500248: [2, 3, 4, 5, 6], 0x54500448: [2, 3, 4,
-    5, 6], 0x54500748: [2, 3, 4, 5, 6], 0x54500848: [2, 3, 4, 5, 6], 0x54500C48: [2, 3, 4,
-    5, 6], 0x54540248: [2, 3, 4, 5, 6], 0x54540748: [2, 3, 4, 5, 6], 0x54540848: [2, 3, 4,
-    5, 6], 0x54540E48: [2, 3, 4, 5, 6], 0x55140048: [2, 3, 4, 5, 6], 0x95140088: [3, 4, 5,
-    6, 7], 0xD4500088: [3, 4, 5, 6, 7, 8], 0xD4540088: [3, 4, 5, 6, 7, 8], 0xD5140088: [3,
-    4, 5, 6, 7, 8],
+    0x00000008: [2, 3, 4, 5, 6],
+    0x0000019B: [2],
+    0x0000100B: [5],
+    0x0000190B: [4],
+    0x0000770B: [4, 5, 8],
+    0x0001900B: [4, 5, 8],
+    0x00024D0B: [4, 5, 6, 7, 8],
+    0x0006910B: [4],
+    0x000E100B: [4, 5, 8],
+    0x00100048: [2],
+    0x00410008: [6],
+    0x0041010B: [4],
+    0x00420008: [3],
+    0x00420018: [4],
+    0x00500248: [2, 3],
+    0x00500E48: [2, 3],
+    0x00520158: [4, 5],
+    0x01520248: [3, 4, 5],
+    0x02400448: [2],
+    0x02440248: [2],
+    0x02520448: [3, 4],
+    0x03520248: [3, 4, 5],
+    0x04000048: [2],
+    0x04000148: [2],
+    0x04000E48: [2],
+    0x04440048: [2, 3],
+    0x04540048: [2, 3, 4],
+    0x05140048: [2, 3, 4],
+    0x05400348: [2, 3, 4],
+    0x08520158: [4, 5],
+    0x0C520958: [4, 5, 6],
+    0x124A0648: [4, 7],
+    0x12520448: [3, 4, 7],
+    0x13120658: [4, 5, 8],
+    0x13520248: [3, 4, 5, 8],
+    0x13520658: [4, 5, 6, 9],
+    0x13520948: [3, 4, 5, 8],
+    0x13520958: [4, 5, 6, 9],
+    0x14120648: [3, 4, 5],
+    0x14420248: [3, 4, 5],
+    0x14420448: [3, 4, 5],
+    0x14520248: [3, 4, 5, 6],
+    0x14540E48: [2, 3, 4, 5],
+    0x15000448: [2, 3, 4],
+    0x150A0248: [4, 5, 6],
+    0x15140848: [3, 4, 5],
+    0x15400348: [2, 3, 4, 5],
+    0x34520A48: [3, 4, 5, 6],
+    0x34520A58: [4, 5, 6, 7],
+    0x35520A48: [3, 4, 5, 6, 7],
+    0x54500048: [2, 3, 4, 5, 6],
+    0x54500148: [2, 3, 4, 5, 6],
+    0x54500248: [2, 3, 4, 5, 6],
+    0x54500448: [2, 3, 4, 5, 6],
+    0x54500748: [2, 3, 4, 5, 6],
+    0x54500848: [2, 3, 4, 5, 6],
+    0x54500C48: [2, 3, 4, 5, 6],
+    0x54540248: [2, 3, 4, 5, 6],
+    0x54540748: [2, 3, 4, 5, 6],
+    0x54540848: [2, 3, 4, 5, 6],
+    0x54540E48: [2, 3, 4, 5, 6],
+    0x55140048: [2, 3, 4, 5, 6],
+    0x95140088: [3, 4, 5, 6, 7],
+    0xD4500088: [3, 4, 5, 6, 7, 8],
+    0xD4540088: [3, 4, 5, 6, 7, 8],
+    0xD5140088: [3, 4, 5, 6, 7, 8],
 }
 
 
@@ -1395,21 +1525,67 @@ FX_ENTRY_PROGS = {
 # `fx_table` breaks on `node_shape` and on a tag whose predicted programs do not resolve.
 # It is read by the vocabulary test and by the two `0x1B` handoff guards, both of which were
 # REJECTING valid tags while it was short.
-FX_TAG_LOW16 = frozenset({
-    0x0008, 0x0018, 0x0048, 0x0088, 0x0148, 0x0158, 0x0248, 0x0288, 0x0348,
-    0x0448, 0x0548, 0x0648, 0x0658, 0x0748, 0x0848, 0x0948, 0x0958, 0x0A48,
-    0x0A58, 0x0B48, 0x0C48, 0x0D48, 0x0E48,
-})
+FX_TAG_LOW16 = frozenset(
+    {
+        0x0008,
+        0x0018,
+        0x0048,
+        0x0088,
+        0x0148,
+        0x0158,
+        0x0248,
+        0x0288,
+        0x0348,
+        0x0448,
+        0x0548,
+        0x0648,
+        0x0658,
+        0x0748,
+        0x0848,
+        0x0948,
+        0x0958,
+        0x0A48,
+        0x0A58,
+        0x0B48,
+        0x0C48,
+        0x0D48,
+        0x0E48,
+    }
+)
 FX_ENTRY = {
-    0x00000048: 64, 0x00000448: 64, 0x00000E48: 64, 0x00020008: 8,
-    0x00020018: 16, 0x00420008: 24, 0x02000048: 76, 0x02510448: 80,
-    0x05140048: 56, 0x54500148: 80, 0x54500248: 80, 0x54500448: 80,
-    0x54500848: 80, 0x54500C48: 80, 0x54540248: 80, 0x54540748: 80,
-    0x54540848: 80, 0x54540E48: 80, 0x95540288: 4,  0xD4540088: 88,
+    0x00000048: 64,
+    0x00000448: 64,
+    0x00000E48: 64,
+    0x00020008: 8,
+    0x00020018: 16,
+    0x00420008: 24,
+    0x02000048: 76,
+    0x02510448: 80,
+    0x05140048: 56,
+    0x54500148: 80,
+    0x54500248: 80,
+    0x54500448: 80,
+    0x54500848: 80,
+    0x54500C48: 80,
+    0x54540248: 80,
+    0x54540748: 80,
+    0x54540848: 80,
+    0x54540E48: 80,
+    0x95540288: 4,
+    0xD4540088: 88,
     # terminal - the last entry of its table
-    0x02520448: 'T', 0x04440048: 'T', 0x04540048: 'T', 0x05400348: 'T',
-    0x08000248: 'T', 0x08000848: 'T', 0x0A800048: 'T', 0x15140848: 'T',
-    0x15400348: 'T', 0x22000248: 'T', 0x22000D48: 'T', 0x55140048: 'T',
+    0x02520448: "T",
+    0x04440048: "T",
+    0x04540048: "T",
+    0x05400348: "T",
+    0x08000248: "T",
+    0x08000848: "T",
+    0x0A800048: "T",
+    0x15140848: "T",
+    0x15400348: "T",
+    0x22000248: "T",
+    0x22000D48: "T",
+    0x55140048: "T",
 }
 
 
@@ -1568,23 +1744,23 @@ FX_ENTRY = {
 # not extend to it. Named with that stated rather than left blank, because the width, the
 # alternation and the exclusivity all point the same way.
 FX_PARAM_BITS = (
-    (4,  None,              1),   # leading baked words; which parameters they are is
-    (7,  None,              1),   # not established -- only that each takes one slot,
-    (16, None,              4),   # except this one, which takes FOUR: see below
-    (17, None,              1),   # which is what fixes where the program run starts
-    (19, 'opacity',         1),   # baked forms. See the pairing note above; bit 19 is the
-    (20, 'opacity',         1),   # weakest row and bit 21's width is inferred, not measured
-    (21, 'branchoffset',    2),
-    (22, 'branchoffset',    1),
-    (23, 'frameoffset',     2),
-    (24, 'frameoffset',     1),
-    (25, 'patternsize',     2),
-    (26, 'patternsize',     1),
-    (27, 'patternrotation', 1),
-    (28, 'patternrotation', 1),
-    (29, 'patternsuppl',    1),
-    (30, 'patternsuppl',    1),
-    (31, 'imageindex',      1),
+    (4, None, 1),  # leading baked words; which parameters they are is
+    (7, None, 1),  # not established -- only that each takes one slot,
+    (16, None, 4),  # except this one, which takes FOUR: see below
+    (17, None, 1),  # which is what fixes where the program run starts
+    (19, "opacity", 1),  # baked forms. See the pairing note above; bit 19 is the
+    (20, "opacity", 1),  # weakest row and bit 21's width is inferred, not measured
+    (21, "branchoffset", 2),
+    (22, "branchoffset", 1),
+    (23, "frameoffset", 2),
+    (24, "frameoffset", 1),
+    (25, "patternsize", 2),
+    (26, "patternsize", 1),
+    (27, "patternrotation", 1),
+    (28, "patternrotation", 1),
+    (29, "patternsuppl", 1),
+    (30, "patternsuppl", 1),
+    (31, "imageindex", 1),
 )
 
 # The bits whose parameter is stored as a POINTER to a program rather than baked in place.
@@ -1648,10 +1824,16 @@ FX_STRUCTURAL_BITS = frozenset({4, 7, 16, 17})
 # slot to put it in. It has four and five. So `patterntype` and `blendingmode` are not in
 # the FX table at all, and looking for them there -- in a baked field, in the tag's nibbles,
 # in a program slot -- is looking in the wrong structure.
-FX_UNSTORED_PARAMS = frozenset({
-    'patterntype', 'blendingmode', 'imagefiltering', 'imagepremul', 'randomseed',
-    'colorswitch',
-})
+FX_UNSTORED_PARAMS = frozenset(
+    {
+        "patterntype",
+        "blendingmode",
+        "imagefiltering",
+        "imagepremul",
+        "randomseed",
+        "colorswitch",
+    }
+)
 
 # ...BUT `patterntype` IS IN THE FILE. It is nibble 2 of the tag, offset by two.
 #
@@ -1735,12 +1917,12 @@ def fx_entry_walk(tag):
             continue
         if bit in FX_PROGRAM_BITS:
             sl += 1
-            out.append((bit, sl, name, 'program', 1))
+            out.append((bit, sl, name, "program", 1))
         elif bit in FX_STRUCTURAL_BITS:
-            out.append((bit, sl + 1, name, 'structural', width))
+            out.append((bit, sl + 1, name, "structural", width))
             sl += width
         else:
-            out.append((bit, sl + 1, name, 'baked', width))
+            out.append((bit, sl + 1, name, "baked", width))
             sl += width
     return out
 
@@ -1766,8 +1948,11 @@ def fx_entry_layout(tag):
     program -- its first word is the instruction count. Callers must not confuse the two:
     reading an inline slot as a pointer lands 52 bytes past a random instruction.
     """
-    out = [(sl, name, kind) for _b, sl, name, kind, _w in fx_entry_walk(tag)
-           if kind != 'structural']
+    out = [
+        (sl, name, kind)
+        for _b, sl, name, kind, _w in fx_entry_walk(tag)
+        if kind != "structural"
+    ]
     sl = fx_entry_walk_end(tag)
     # THE INLINE PROGRAM. `FX_TABLE` recorded, for 22 tags, "the byte offset of the
     # program within the structure the entry's +4 word addresses", and withdrew itself
@@ -1792,9 +1977,10 @@ def fx_entry_layout(tag):
     # than numeric parameters, and `inputref const add` / `inputref cvt swizzle` are the
     # two commonest shapes. No permitted source sets bits 25, 27 or 29 on any entry, so
     # nothing available can say which parameter this is.
-    if not any(k == 'program' for _s, _n, k in out) and (
-            tag & sum(1 << b for b in FX_INLINE_BITS)):
-        out.append((sl + 1, None, 'inline'))
+    if not any(k == "program" for _s, _n, k in out) and (
+        tag & sum(1 << b for b in FX_INLINE_BITS)
+    ):
+        out.append((sl + 1, None, "inline"))
     # WITHDRAWN: a clip against `FX_ENTRY`'s stated length used to sit here.
     #
     # It was added because `0x00020008` -- the commonest tag, 50,965 entries -- put a baked
@@ -1835,7 +2021,7 @@ _RULED_PARAMS = {1: 2, 12: 2, 15: 1, 11: 1}
 #: The entry layouts `Record.read_ramp` can state, so a reader can assert it covers all of
 #: them rather than discovering a fifth one at render time. `render2.filters` does exactly
 #: that. See `read_ramp` for what each entry holds.
-RAMP_FORMS = ('grey-u16', 'rgba-u16', 'grey-float', 'rgba-float')
+RAMP_FORMS = ("grey-u16", "rgba-u16", "grey-float", "rgba-float")
 
 
 class Record:
@@ -1871,11 +2057,22 @@ class Record:
     value is computed by a program rather than baked -- which their own
     docstrings cover but a caller cannot recover from the None alone.
     """
-    __slots__ = ('index', 'offset', 'end', 'tag', 'cls', 'asm', '_words', '_layout', '_programs')
+
+    __slots__ = (
+        "index",
+        "offset",
+        "end",
+        "tag",
+        "cls",
+        "asm",
+        "_words",
+        "_layout",
+        "_programs",
+    )
 
     def __init__(self, asm, index, offset, end):
         self.asm, self.index, self.offset, self.end = asm, index, offset, end
-        w0 = struct.unpack_from('<I', asm.data, offset)[0]
+        w0 = struct.unpack_from("<I", asm.data, offset)[0]
         self.tag, self.cls = w0 & 0xFFFF, w0 >> 16
         self._words = None
         self._layout = None
@@ -1888,7 +2085,7 @@ class Record:
         w = self._words
         if w is None:
             n = (self.end - self.offset) // 4
-            w = struct.unpack_from('<%dI' % n, self.asm.data, self.offset) if n else ()
+            w = struct.unpack_from("<%dI" % n, self.asm.data, self.offset) if n else ()
             self._words = w
         return w
 
@@ -1932,7 +2129,7 @@ class Record:
     @property
     def arity(self):
         """Number of image inputs, or None when the layout is not known."""
-        if self.filter_id == 20:                       # variable-length input list
+        if self.filter_id == 20:  # variable-length input list
             n = self.words[1] if len(self.words) > 1 else -1
             return n if 0 <= n <= 16 else None
         e = EDGES.get(self.filter_id)
@@ -1954,9 +2151,10 @@ class Record:
         # `_compute_layout` stays only for the records decompose does not cover (the unnamed
         # filter 9). See tools/decompose.py and FORMAT-NOTES.md "Unified walk".
         import decompose as _decompose
+
         _d = _decompose.decompose(self)
         if _d is not None:
-            self._layout = r = (list(_d['inputs']), _d['prog'])
+            self._layout = r = (list(_d["inputs"]), _d["prog"])
             return r
         edges, prog = self._compute_layout()
         edges = self._real_edges(edges)
@@ -1972,9 +2170,13 @@ class Record:
         # holds 9812, no record index, so its genuine program survives. Where the named
         # program slot holds a valid backward record index, it is an edge and there is no
         # program: drop it.
-        if (prog is not None and prog in set(edges) and prog < len(self.words)
-                and self.words[prog] < self.index
-                and self.words[prog] < len(self.asm.records)):
+        if (
+            prog is not None
+            and prog in set(edges)
+            and prog < len(self.words)
+            and self.words[prog] < self.index
+            and self.words[prog] < len(self.asm.records)
+        ):
             prog = None
         self._layout = r = (edges, prog)
         return r
@@ -2084,10 +2286,11 @@ class Record:
         edges fail the backward-index invariant, so a wrong shape never displaces the table.
         """
         import walk as _walk
+
         f = self.filter_id
         if f == 17 or f not in _walk.TIER_A_EDGES or len(self.words) < 2:
             return None
-        ver = self.asm.header.get('version') if isinstance(self.asm.header, dict) else 0
+        ver = self.asm.header.get("version") if isinstance(self.asm.header, dict) else 0
         edges = _walk._tier_a_edges(f, self.words[0], self.words[1], ver)
         n = len(self.asm.records)
         for s in edges:
@@ -2096,7 +2299,7 @@ class Record:
             v = self.words[s]
             if not (v == 0xFFFFFFFF or v == 0 or (v < self.index and v < n)):
                 return None
-        if f == 6:                                   # uniform: no input, size expr at slot 1
+        if f == 6:  # uniform: no input, size expr at slot 1
             prog = 1
         else:
             prog = (max(edges) + 1) if edges else 2
@@ -2227,14 +2430,19 @@ class Record:
             # state-11 field's edge lands after them. Omitting this placed the mask input
             # of 8,188 blend records too early, and 99.99% of the slots that dropped out
             # of the edge list were valid backward record indices - real edges, lost.
-            g = ((self.cls & 1) + ((self.cls >> 7) & 1) + ((self.cls >> 11) & 1)
-                 + ((self.cls >> 13) & 1) + 2 * ((self.cls >> 10) & 1))
+            g = (
+                (self.cls & 1)
+                + ((self.cls >> 7) & 1)
+                + ((self.cls >> 11) & 1)
+                + ((self.cls >> 13) & 1)
+                + 2 * ((self.cls >> 10) & 1)
+            )
             s = 2 + base + g
             for _nm, mask, hi in PARAM_SPEC[f]:
                 x = w1 & mask
                 if not x:
                     continue
-                if x == mask:                      # state 11: an image input
+                if x == mask:  # state 11: an image input
                     edges.append(s)
                 s += 1
             prog = 2 + base
@@ -2276,9 +2484,11 @@ class Record:
         _spec_prog = {2: 3, 16: 2}.get(f)
         if _spec_prog is not None and len(self.words) > 1:
             import walk as _walk
+
             try:
-                w = _walk.walk(_walk.SPECS[f], self.words[0], self.words[1],
-                               len(self.words))
+                w = _walk.walk(
+                    _walk.SPECS[f], self.words[0], self.words[1], len(self.words)
+                )
             except _walk.Overrun:
                 w = None
             if w is not None:
@@ -2287,8 +2497,10 @@ class Record:
                     sl = None
                 elif f == 16:
                     q = self.words[sl] + 52
-                    if not (self.asm.body_lo <= q < self.asm.body_hi
-                            and self.asm.valid_program(q)):
+                    if not (
+                        self.asm.body_lo <= q < self.asm.body_hi
+                        and self.asm.valid_program(q)
+                    ):
                         sl = None
                 return (list(w.edge_slots), sl)
 
@@ -2310,9 +2522,12 @@ class Record:
             for edges, prog in alts:
                 if prog < len(self.words):
                     q = self.words[prog] + 52
-                    if self.asm.body_lo <= q < self.asm.body_hi and self.asm.valid_program(q):
+                    if (
+                        self.asm.body_lo <= q < self.asm.body_hi
+                        and self.asm.valid_program(q)
+                    ):
                         return (edges, prog)
-            return alts[0]                       # nothing validated; report the default
+            return alts[0]  # nothing validated; report the default
         return (EDGES.get(f, []), PROG_SLOT.get(f))
 
     @property
@@ -2324,9 +2539,9 @@ class Record:
         cross-check on the tag, not a substitute for it.
         """
         par = self.size_or_baked
-        if not par or par[0] != 'program':
+        if not par or par[0] != "program":
             return None
-        decl = {u: v for t, u, v in (self.asm.header.get('inputs') or [])}
+        decl = {u: v for t, u, v in (self.asm.header.get("inputs") or [])}
         vals = []
         for k, addr, op, toks in disasm.decode(self.asm.data, par[1], self.end):
             _ntok, _ty, n, oid = disasm.fields(op)
@@ -2339,7 +2554,9 @@ class Record:
                 raw = disasm.immediate(addr, toks)
                 if len(raw) < 4 * n:
                     return None
-                vals.append(tuple(struct.unpack_from('<i', raw, 4 * i)[0] for i in range(n)))
+                vals.append(
+                    tuple(struct.unpack_from("<i", raw, 4 * i)[0] for i in range(n))
+                )
             elif oid in (0x12, 0x13):
                 if len(toks) < 2:
                     return None
@@ -2349,7 +2566,9 @@ class Record:
                     return None
                 if len(x) != len(y):
                     return None
-                vals.append(tuple(p + q if oid == 0x12 else p - q for p, q in zip(x, y)))
+                vals.append(
+                    tuple(p + q if oid == 0x12 else p - q for p, q in zip(x, y))
+                )
             else:
                 return None
         return vals[-1] if vals and len(vals[-1]) == 2 else None
@@ -2369,6 +2588,7 @@ class Record:
         # (filter, cls, w1 & LAYOUT_MASK), and that key is lossy: it masks w1, so it cannot
         # even represent the arity fields. See archive/tools/derive_legend.py.
         import record_layout
+
         w1 = self.words[1]
         # Two-shape filters. Warp's w1 word is a VERSION fact -- absent before 0x90000,
         # present from it -- and the old edge-start detector could not tell w1 == 0 from
@@ -2381,7 +2601,11 @@ class Record:
         # nulls `w1` for the shape that has none is never wrong; removing it is a separate
         # tidy with its own diff.
         if self.filter_id == 7:
-            ver = self.asm.header.get('version') if isinstance(self.asm.header, dict) else 0
+            ver = (
+                self.asm.header.get("version")
+                if isinstance(self.asm.header, dict)
+                else 0
+            )
             if ver < 0x90000:
                 w1 = None
         elif self.filter_id == 3:
@@ -2390,7 +2614,7 @@ class Record:
             # was wrong on 51 of 7,682 records.
             if not (self.words[0] & 1):
                 w1 = None
-        ver = self.asm.header.get('version') if isinstance(self.asm.header, dict) else 0
+        ver = self.asm.header.get("version") if isinstance(self.asm.header, dict) else 0
         n = record_layout.header_words(self.filter_id, self.words[0], w1, version=ver)
         if n is not None:
             return n
@@ -2422,9 +2646,10 @@ class Record:
         # absence rather than a guess.
         try:
             import decompose as _decompose
+
             _d = _decompose.decompose(self)
-            if _d is not None and _d.get('end') is not None:
-                return _d['end']
+            if _d is not None and _d.get("end") is not None:
+                return _d["end"]
         except Exception:
             pass
         # THE `HEADER_WORDS` MEMO USED TO BE THE FALLBACK HERE, AND IS DRAINED. It held 666
@@ -2465,9 +2690,10 @@ class Record:
         # with this computation on 27,663 of 27,663 records across every filter present, the
         # single exception being one record of the unnamed filter 9.
         import decompose as _decompose
+
         d = _decompose.decompose(self)
         if d is not None:
-            return d['inputs']
+            return d["inputs"]
         e = self._pp_edges()
         if e is not None:
             return e
@@ -2492,7 +2718,7 @@ class Record:
         if 1 <= n <= 8 and len(self.words) >= 2 + n:
             return list(range(2, 2 + n))
         if n == 0:
-            return []                      # a generator: no image input at all
+            return []  # a generator: no image input at all
         # The count field is FIVE bits (0..16), not the low nibble: 16 needs bit 4, and a
         # nibble reads 16 (0x10) as 0. ie_curve record 233 is the one record where this
         # bites -- w1 = 0x10, and its bytecode references 21 input uids over slots 2..17,
@@ -2547,7 +2773,7 @@ class Record:
                 continue
             v = self.words[sl]
             if v == 0xFFFFFFFF:
-                continue                  # -1: this record has no input in this slot
+                continue  # -1: this record has no input in this slot
             if v == 0 or (v < self.index and v < len(self.asm.records)):
                 out.append(v)
                 continue
@@ -2598,8 +2824,9 @@ class Record:
 
     @property
     def shared_refs(self):
-        return [self.words[s] for s in SHARED.get(self.filter_id, [])
-                if s < len(self.words)]
+        return [
+            self.words[s] for s in SHARED.get(self.filter_id, []) if s < len(self.words)
+        ]
 
     @property
     def slot1_flags(self):
@@ -2613,11 +2840,11 @@ class Record:
         if self.filter_id not in PARAM_WORD or len(self.words) < 2:
             return None
         v = self.words[1]
-        d = {'raw': v}
-        if self.filter_id == 1:                        # blend
-            d['blendingmode'] = v & 0xF                # confirmed
-            d['computes_own_size'] = bool(v >> 5 & 1)  # confirmed
-            d['unknown_bits'] = v & ~0x2F
+        d = {"raw": v}
+        if self.filter_id == 1:  # blend
+            d["blendingmode"] = v & 0xF  # confirmed
+            d["computes_own_size"] = bool(v >> 5 & 1)  # confirmed
+            d["unknown_bits"] = v & ~0x2F
         return d
 
     @property
@@ -2650,12 +2877,12 @@ class Record:
         v = self.words[sl]
         p = v + 52
         if self.asm.body_lo <= p < self.asm.body_hi and self.asm.valid_program(p):
-            return ('program', p)
+            return ("program", p)
         if v == 0:
-            return ('zero', 0)
-        f = struct.unpack('<f', struct.pack('<I', v))[0]
+            return ("zero", 0)
+        f = struct.unpack("<f", struct.pack("<I", v))[0]
         if math.isfinite(f) and (f == 0 or 1e-6 <= abs(f) <= 1e6):
-            return ('float', f)
+            return ("float", f)
         # The program can be INLINE at the slot rather than pointed at by it. The slot
         # then holds a program header -- 0x09000022 is [34 instructions][const.f1] -- which
         # reads as a denormal float and was being discarded.
@@ -2665,7 +2892,7 @@ class Record:
         # `gradient` (351 of 353).
         addr = self.offset + 4 * sl
         if self.asm.program_span(addr, self.end):
-            return ('program', addr)
+            return ("program", addr)
         # REMOVED HERE: a tail that recognised a program slot "pushed along" by inputs the
         # layout key could not count, by stepping past the run of backward record indices.
         # It was load-bearing until 1332e2f and is not now. Its whole premise was that the
@@ -3148,6 +3375,7 @@ class Record:
         `levelinhigh` (0.99859) instead of a mid-grey, and nothing in the traced cone does.
         """
         import decompose as _decompose
+
         d = _decompose.decompose(self)
         if d is None:
             return []
@@ -3188,13 +3416,19 @@ class Record:
             # is not `3 << (2j + shift)` and SPEC 7.4 needs the counter-example, not a
             # workaround.
             raise ValueError(
-                'filter %d has a PARAM_SPEC mask that is not a two-bit field: %r. '
-                'See SPEC 7.4 -- a presence mask must be 3 << (the field\'s own bit).'
-                % (self.filter_id,
-                   [hex(pres) for _n, pres, _p in spec
-                    if not any(pres == (3 << sh) for sh in range(32))]))
+                "filter %d has a PARAM_SPEC mask that is not a two-bit field: %r. "
+                "See SPEC 7.4 -- a presence mask must be 3 << (the field's own bit)."
+                % (
+                    self.filter_id,
+                    [
+                        hex(pres)
+                        for _n, pres, _p in spec
+                        if not any(pres == (3 << sh) for sh in range(32))
+                    ],
+                )
+            )
         out = []
-        for sh, _st, pos, _w in d['param_slots']:
+        for sh, _st, pos, _w in d["param_slots"]:
             nm = names.get(sh)
             if nm is None or not (0 <= pos < len(self.words)):
                 continue
@@ -3242,24 +3476,32 @@ class Record:
         slots, owner = None, {}
         try:
             import decompose as _decompose
+
             _d = _decompose.decompose(self)
         except Exception:
             _d = None
-        if _d is not None and _d.get('end') is not None:
-            slots = sorted(set(_d['cls_slots'])
-                           | {t[2] for t in _d.get('param_slots', ()) if len(t) >= 3})
+        if _d is not None and _d.get("end") is not None:
+            slots = sorted(
+                set(_d["cls_slots"])
+                | {t[2] for t in _d.get("param_slots", ()) if len(t) >= 3}
+            )
             # WHICH BIT PLACED WHICH SLOT is the walk's own answer, and the only thing this
             # needs from it beyond the block itself. `cls_params` carries (bit, first slot,
             # width), so a multi-word cell owns every word of its own extent.
-            for (b, sl, n) in _d.get('cls_params', ()):
+            for b, sl, n in _d.get("cls_params", ()):
                 for i in range(n):
                     owner[sl + i] = b
         if slots is None:
             # The memo fallback states no bit per slot, so it keeps the positional reading of
             # the count -- the same answer it has always given, for the records the walk
             # cannot resolve. It is reached 0 times in 42,166 corpus blur/warp records.
-            hit = LAYOUTS.get((self.filter_id, self.cls,
-                               self.words[1] & LAYOUT_MASK.get(self.filter_id, 0)))
+            hit = LAYOUTS.get(
+                (
+                    self.filter_id,
+                    self.cls,
+                    self.words[1] & LAYOUT_MASK.get(self.filter_id, 0),
+                )
+            )
             if not hit:
                 return []
             slots = list(hit[1])
@@ -3315,8 +3557,9 @@ class Record:
         """
         raw = self.words[slot]
         ptr = raw + 52
-        slot_is_program = (self.asm.body_lo <= ptr < self.asm.body_hi
-                           and self.asm.valid_program(ptr))
+        slot_is_program = (
+            self.asm.body_lo <= ptr < self.asm.body_hi and self.asm.valid_program(ptr)
+        )
         if self.filter_id in BIT_EXACT_KINDS:
             w1 = self.words[1] if len(self.words) > 1 else 0
             bit_is_program = False
@@ -3343,10 +3586,10 @@ class Record:
                 _kind_conflicts.append((self.filter_id, name, self.index))
             slot_is_program = bit_is_program
         if slot_is_program:
-            return (name, 'program', ptr)
+            return (name, "program", ptr)
         if self.filter_id in PARAM_RAW:
-            return (name, 'baked', raw)
-        return (name, 'baked', struct.unpack('<f', struct.pack('<I', raw))[0])
+            return (name, "baked", raw)
+        return (name, "baked", struct.unpack("<f", struct.pack("<I", raw))[0])
 
     def _parameters_paired(self, spec):
         """Parameters for filters whose bits come in (baked, program) pairs.
@@ -3466,7 +3709,7 @@ class Record:
         slots = list(block)[1:]
         need = count - len(slots)
         if need <= 0:
-            return slots[len(slots) - count:]
+            return slots[len(slots) - count :]
         backward = [slots[0] - need + i for i in range(need)] + slots
         if any(block[i + 1] != block[i] + 1 for i in range(len(block) - 1)):
             return backward
@@ -3573,11 +3816,12 @@ class Record:
         _d = None
         try:
             import decompose
+
             _d = decompose.decompose(self)
         except Exception:
             _d = None
         if _d is not None and self.filter_id not in _PAYLOAD_PROGRAM_FILTERS:
-            end = _d.get('end')
+            end = _d.get("end")
         # NOT EVERY WORD IS A SLOT, AND THE WALK SAYS WHICH ARE. Two kinds of word in the
         # region below are not pointers and never were, and both used to be excluded by
         # accident rather than on purpose -- by `Assembly.code_lo`, a floor at the first
@@ -3600,8 +3844,8 @@ class Record:
         # and puts its size expression at slot 1.
         _skip = set()
         if _d is not None:
-            _skip.update(_d.get('inputs') or ())
-            _skip.update(range(_d.get('hdr') or 0))
+            _skip.update(_d.get("inputs") or ())
+            _skip.update(range(_d.get("hdr") or 0))
         for _s, word in enumerate(self.words if end is None else self.words[:end]):
             if _s in _skip:
                 continue
@@ -3651,24 +3895,29 @@ class Record:
         # header end already coincides with a slot-named program.
         try:
             import record_layout
+
             w1 = self.words[1] if len(self.words) > 1 else None
             if self.filter_id == 7:
-                ver = asm.header.get('version') if isinstance(asm.header, dict) else 0
+                ver = asm.header.get("version") if isinstance(asm.header, dict) else 0
                 if ver < 0x90000:
                     w1 = None
             elif self.filter_id == 3:
-                if not (self.words[0] & 1):     # see Record.header_words
+                if not (self.words[0] & 1):  # see Record.header_words
                     w1 = None
             # `version` is REQUIRED now: header_words owns the warp/shuffle two-shape
             # gate, and refuses rather than guessing when it cannot see the version. This
             # call omitted it, which made every filter-7 answer here depend on the local
             # gating above rather than on the rule.
-            _ver = asm.header.get('version') if isinstance(asm.header, dict) else 0
-            rl = (record_layout.header_words(self.filter_id, self.words[0], w1,
-                                             version=_ver)
-                  if w1 is not None or self.filter_id in (7, 3) else
-                  record_layout.header_words(self.filter_id, self.words[0],
-                                             self.words[1], version=_ver))
+            _ver = asm.header.get("version") if isinstance(asm.header, dict) else 0
+            rl = (
+                record_layout.header_words(
+                    self.filter_id, self.words[0], w1, version=_ver
+                )
+                if w1 is not None or self.filter_id in (7, 3)
+                else record_layout.header_words(
+                    self.filter_id, self.words[0], self.words[1], version=_ver
+                )
+            )
         except Exception:
             rl = None
         if rl is not None:
@@ -3720,9 +3969,9 @@ class Record:
                     # one-instruction const, and 24 directionalwarp records had their
                     # boundary pulled into the header exactly that way, surfacing as
                     # "observed short of rule".
-                    cnt = struct.unpack_from('<H', asm.data, pa)[0]
+                    cnt = struct.unpack_from("<H", asm.data, pa)[0]
                     if cnt == 1:
-                        op1 = struct.unpack_from('<H', asm.data, pa + 2)[0]
+                        op1 = struct.unpack_from("<H", asm.data, pa + 2)[0]
                         if op1 & 0x3F != 0x02:
                             break
                     try:
@@ -3912,20 +4161,21 @@ class Record:
         stop = len(self.words)
         try:
             import decompose as _decompose
+
             _d = _decompose.decompose(self)
         except Exception:
             _d = None
         if _d is not None and self.filter_id not in _PAYLOAD_PROGRAM_FILTERS:
-            if _d.get('end') is not None:
-                stop = min(stop, _d['end'])
+            if _d.get("end") is not None:
+                stop = min(stop, _d["end"])
         # SAME SKIP AS `programs`, and for the same reason: an input edge's word is a
         # record index, so `edge_word + 52` is the offset of the record it names and asking
         # whether a program starts there is a category error; and the record's own header
         # words are not slots at all. This loop began at a HARDCODED 2 -- the right answer
         # for every shape that carries a w1 word and wrong for `uniform`, which has none
         # and puts its size expression at slot 1. The walk states both, so both are read.
-        _first = 2 if _d is None else (_d.get('hdr') or 0)
-        _edges = set(_d.get('inputs') or ()) if _d is not None else set()
+        _first = 2 if _d is None else (_d.get("hdr") or 0)
+        _edges = set(_d.get("inputs") or ()) if _d is not None else set()
         cand = []
         for s in range(_first, len(self.words)):
             if s in _edges:
@@ -3950,7 +4200,7 @@ class Record:
         """
         out = list(self.programs)
         par = self.size_or_baked
-        if out and par and par[0] == 'program' and out[0] == par[1]:
+        if out and par and par[0] == "program" and out[0] == par[1]:
             # ONLY when that program could actually BE a size expression. A size is an
             # INTEGER -- (log2 width, log2 height) -- so a FLOAT-valued program in this
             # slot is not the record's size under any reading, and stripping it deletes
@@ -3975,8 +4225,10 @@ class Record:
             # `audit_corpus.py` already records that calling that a size is "a label this
             # audit applied, not a fact it measured" -- whatever it is, it is not a filter
             # parameter this changes the reading of, so it stays out of scope.
-            if self.asm.program_result(par[1]) is None or \
-                    self.asm.program_result(par[1])[0] != 1:
+            if (
+                self.asm.program_result(par[1]) is None
+                or self.asm.program_result(par[1])[0] != 1
+            ):
                 out = out[1:]
         return out
 
@@ -3997,15 +4249,18 @@ class Record:
             # so yielding it moves no handoff.
             if hdr is None or (hdr >> 16) != 0x0002 or (hdr & 0xF) != 8:
                 last = off
-            _s = (pointer_cell_payload(self.asm, off)
-                  if hdr is not None and pointer_cell_successor(hdr) is not None else None)
+            _s = (
+                pointer_cell_payload(self.asm, off)
+                if hdr is not None and pointer_cell_successor(hdr) is not None
+                else None
+            )
             if _s is not None and off + _s + 4 <= self.asm.body_hi:
                 cells.append((off, hdr, _s))
-            items.append(('node', off, hdr, prog))
+            items.append(("node", off, hdr, prog))
         start = None
         if last is not None:
-            q = last                      # fx_tree yields absolute offsets
-            h = struct.unpack_from('<I', self.asm.data, q)[0]
+            q = last  # fx_tree yields absolute offsets
+            h = struct.unpack_from("<I", self.asm.data, q)[0]
             sh = node_shape(h)
             # THE 0x??0B FAMILY HANDS OFF TOO, and its next-pointer is at word 1. Only
             # FX_NODES was consulted here, so 643 chains ending on one of those leaves
@@ -4050,10 +4305,12 @@ class Record:
             # This cannot go through `off1`, which POINTER-READS the byte it is given. The
             # table is AT byte 12, not addressed by a word there.
             if start is None and (h & 0xFF) == 0x1B and q + 16 <= self.asm.body_hi:
-                _w1 = struct.unpack_from('<I', self.asm.data, q + 4)[0]
+                _w1 = struct.unpack_from("<I", self.asm.data, q + 4)[0]
                 if _w1 != 0x3039:
-                    _t = struct.unpack_from('<I', self.asm.data, q + 12)[0]
-                    if (_t & 0xFFFF) in FX_TAG_LOW16 and self.offset <= q + 12 < self.end - 7:
+                    _t = struct.unpack_from("<I", self.asm.data, q + 12)[0]
+                    if (
+                        _t & 0xFFFF
+                    ) in FX_TAG_LOW16 and self.offset <= q + 12 < self.end - 7:
                         start = q + 12
                         off1 = None
             if off1 is None and start is None:
@@ -4064,14 +4321,17 @@ class Record:
             if off1 is None and start is None:
                 # A pointer cell ends the chain by ADDRESSING the table at slot 2 -- the
                 # same derivation `fx_tree` walks by, so the two halves cannot drift.
-                off1 = (pointer_cell_payload(self.asm, q)
-                        if pointer_cell_successor(h) is not None else None)
+                off1 = (
+                    pointer_cell_payload(self.asm, q)
+                    if pointer_cell_successor(h) is not None
+                    else None
+                )
             if off1 is None and start is None:
                 _s2 = FX_NODES2.get(h & 0xFF)
                 if _s2 and _s2[0]:
                     off1 = _s2[0][-1]
             if start is None and off1 is not None and q + off1 + 4 <= self.asm.body_hi:
-                nxt = struct.unpack_from('<I', self.asm.data, q + off1)[0] + 52
+                nxt = struct.unpack_from("<I", self.asm.data, q + off1)[0] + 52
                 # BOUNDED BY THE BODY, as `fx_table` is and for the reason it records:
                 # "805 fxmaps records address a table that lies outside them, and in 757
                 # of 757 resolvable cases it sits inside an earlier record". The handoff
@@ -4115,16 +4375,18 @@ class Record:
                 # test refuses a landing that is a real entry. Added as a further arm, so
                 # every landing admitted today is still admitted.
                 if self.asm.body_lo <= nxt < self.asm.body_hi - 7 and (
-                        self.offset <= nxt < self.end - 7
-                        or self.asm.entry_layout_holds(
-                            nxt, struct.unpack_from('<I', self.asm.data, nxt)[0])
-                        or self.asm.fx_out_of_line(nxt) is not None):
+                    self.offset <= nxt < self.end - 7
+                    or self.asm.entry_layout_holds(
+                        nxt, struct.unpack_from("<I", self.asm.data, nxt)[0]
+                    )
+                    or self.asm.fx_out_of_line(nxt) is not None
+                ):
                     start = nxt
         # EVERY POINTER CELL STATES A PAYLOAD, not just the last one. A chain list can
         # name more than one entry (see `fx_tree`), and `start` holds one handoff.
         starts = []
         for _o, _h, _s in cells:
-            t = struct.unpack_from('<I', self.asm.data, _o + _s)[0] + 52
+            t = struct.unpack_from("<I", self.asm.data, _o + _s)[0] + 52
             if self.asm.body_lo <= t < self.asm.body_hi - 3 and t not in starts:
                 starts.append(t)
         if not starts and start is not None:
@@ -4188,7 +4450,7 @@ class Record:
         # freezing it is what keeps the rule from licensing itself: a header admitted
         # here has to be one the established walk yields somewhere else in this same
         # record, so the evidence does not come from the decision to follow it.
-        vocab = {it[2] for it in items if it[0] == 'node'}
+        vocab = {it[2] for it in items if it[0] == "node"}
         node_offs = {it[1] for it in items}
         emitted = set()
         # AN ENTRY IS YIELDED ONCE PER PROGRAM SLOT, as a node is, and this dropped every
@@ -4208,8 +4470,8 @@ class Record:
         emitted_items = set()
         pending_tables = list(starts or [None])
         pending_chains = []
-        guard = 64                       # runaway guard, as `fx_table`'s own loop has
-        extended = False                 # `_fx_extend` fires once, after the rest drains
+        guard = 64  # runaway guard, as `fx_table`'s own loop has
+        extended = False  # `_fx_extend` fires once, after the rest drains
         while (pending_tables or pending_chains) and guard > 0:
             guard -= 1
             while pending_tables:
@@ -4220,8 +4482,8 @@ class Record:
                         continue
                     emitted_items.add((off, prog))
                     emitted.add(off)
-                    seen_items.append(('entry', off, tag, prog))
-                    yield ('entry', off, tag, prog)
+                    seen_items.append(("entry", off, tag, prog))
+                    yield ("entry", off, tag, prog)
                     # A CELL WITH TWO FORWARD POINTERS LOSES ONE, and the answer is to
                     # follow both rather than to move the choice. `fx_table` steps by "the
                     # slot reaching furthest forward" over the slots the tag's PARAMETER
@@ -4260,12 +4522,15 @@ class Record:
                             at = off + 4 * sl
                             if at + 4 > self.asm.body_hi:
                                 break
-                            pv = struct.unpack_from('<I', self.asm.data, at)[0] + 52
+                            pv = struct.unpack_from("<I", self.asm.data, at)[0] + 52
                             if not (off < pv < self.asm.body_hi - 7) or pv in emitted:
                                 continue
-                            tw = struct.unpack_from('<I', self.asm.data, pv)[0]
-                            if ((tw & 0xF) == 8 and pv not in pending_tables
-                                    and self.asm.entry_layout_holds(pv, tw)):
+                            tw = struct.unpack_from("<I", self.asm.data, pv)[0]
+                            if (
+                                (tw & 0xF) == 8
+                                and pv not in pending_tables
+                                and self.asm.entry_layout_holds(pv, tw)
+                            ):
                                 pending_tables.append(pv)
                 # A TABLE RUN HANDS BACK TO A CHAIN, which is this docstring's handoff
                 # read in the other direction. `fx_table` stops when the entry's own
@@ -4287,7 +4552,7 @@ class Record:
                 for h in stop:
                     if h in node_offs:
                         continue
-                    hw = struct.unpack_from('<I', self.asm.data, h)[0]
+                    hw = struct.unpack_from("<I", self.asm.data, h)[0]
                     if hw in vocab:
                         pending_chains.append(h)
             while pending_chains:
@@ -4417,13 +4682,15 @@ class Record:
         """
         a = self.asm
         d, lo, hi = a.data, a.body_lo, a.body_hi
-        vocab_entry = {it[2] for it in seen_items if it[0] == 'entry' and it[2] is not None}
+        vocab_entry = {
+            it[2] for it in seen_items if it[0] == "entry" and it[2] is not None
+        }
         out = []
 
         def offer(pv):
             if not (lo < pv < hi - 7) or pv in emitted:
                 return
-            tw = struct.unpack_from('<I', d, pv)[0]
+            tw = struct.unpack_from("<I", d, pv)[0]
             # THE SAME TWO-ARMED TEST `fx_table`'s OWN LOOP MAKES, and this arm had only
             # the first. `entry_layout_holds` reads the tag's program slots FORWARD, and
             # an entry whose parameter block sits OUT OF LINE keeps them behind the tag,
@@ -4458,13 +4725,13 @@ class Record:
                 out.append(pv)
 
         for kind, off, tag, _prog in seen_items:
-            if kind != 'entry' or tag is None:
+            if kind != "entry" or tag is None:
                 continue
             # RULE 2 -- the cell states its own payload slot.
             if pointer_cell_successor(tag) is not None:
                 sl = pointer_cell_payload(a, off)
                 if off + sl + 4 <= hi:
-                    offer(struct.unpack_from('<I', d, off + sl)[0] + 52)
+                    offer(struct.unpack_from("<I", d, off + sl)[0] + 52)
                 continue
             # RULE 1b -- AN OUT-OF-LINE CELL DOES NOT KEEP ITS STRUCTURAL WORD AT
             # `off + 4 * slot`, and the sweep below reads it there. The cell is yielded at
@@ -4485,22 +4752,25 @@ class Record:
             if _oat is not None and (tag & Assembly.FX_TRAILING_POINTER_MASK):
                 at = _oat[0] + 8
                 if at + 4 <= hi:
-                    pv = struct.unpack_from('<I', d, at)[0] + 52
-                    if (off < pv < hi - 7 and lo < pv
-                            and struct.unpack_from('<I', d, pv)[0] in vocab_entry):
+                    pv = struct.unpack_from("<I", d, at)[0] + 52
+                    if (
+                        off < pv < hi - 7
+                        and lo < pv
+                        and struct.unpack_from("<I", d, pv)[0] in vocab_entry
+                    ):
                         offer(pv)
             # RULE 1 -- the structural words, forward only, in the frozen vocabulary.
             for _b, sl0, _nm, k, w in fx_entry_walk(tag):
-                if k != 'structural':
+                if k != "structural":
                     continue
                 for sl in range(sl0, sl0 + w):
                     at = off + 4 * sl
                     if at + 4 > hi:
                         break
-                    pv = struct.unpack_from('<I', d, at)[0] + 52
+                    pv = struct.unpack_from("<I", d, at)[0] + 52
                     if pv <= off or not (lo < pv < hi - 7):
                         continue
-                    if struct.unpack_from('<I', d, pv)[0] in vocab_entry:
+                    if struct.unpack_from("<I", d, pv)[0] in vocab_entry:
                         offer(pv)
         return out
 
@@ -4534,7 +4804,7 @@ class Record:
         d, lo, hi = self.asm.data, self.asm.body_lo, self.asm.body_hi
         seen = set()
         for kind, off, tag, _prog in self.fx_walk():
-            if kind != 'entry' or off in seen:
+            if kind != "entry" or off in seen:
                 continue
             seen.add(off)
             # AN OUT-OF-LINE CELL IS YIELDED AT ITS BLOCK, so its slot numbering starts
@@ -4555,7 +4825,7 @@ class Record:
             # forward from a block, `entry_layout_holds` passes by coincidence often enough
             # to matter, and it did, reading `0x03500248`'s three programs two slots out.
             base = off
-            if off + 4 <= hi and struct.unpack_from('<I', d, off)[0] != tag:
+            if off + 4 <= hi and struct.unpack_from("<I", d, off)[0] != tag:
                 _got = self.asm.fx_out_of_line_at(off, tag)
                 if _got is not None:
                     base = _got[1]
@@ -4571,27 +4841,39 @@ class Record:
             # Yielded as a TUPLE OF FLOATS, length = width, decoded here rather than handed
             # back raw: this module has no numpy, and a caller that received a bare word had
             # no way to know how many words the parameter actually occupied.
-            widths = {sl: w for _b, sl, _n, k, w in fx_entry_walk(tag) if k == 'baked'}
+            widths = {sl: w for _b, sl, _n, k, w in fx_entry_walk(tag) if k == "baked"}
             for sl, name, how in layout:
                 if base + 4 * sl + 4 > hi:
                     break
-                w = struct.unpack_from('<I', d, base + 4 * sl)[0]
-                if how == 'baked':
+                w = struct.unpack_from("<I", d, base + 4 * sl)[0]
+                if how == "baked":
                     n = widths.get(sl, 1)
                     if base + 4 * (sl + n) <= hi:
-                        raw = d[base + 4 * sl:base + 4 * (sl + n)]
-                        yield off, tag, sl, name, how, struct.unpack('<%df' % n, raw)
+                        raw = d[base + 4 * sl : base + 4 * (sl + n)]
+                        yield off, tag, sl, name, how, struct.unpack("<%df" % n, raw)
                     else:
-                        yield off, tag, sl, name, how, struct.unpack('<f',
-                                                                    struct.pack('<I', w))
+                        yield (
+                            off,
+                            tag,
+                            sl,
+                            name,
+                            how,
+                            struct.unpack("<f", struct.pack("<I", w)),
+                        )
                     continue
-                if how == 'inline':
+                if how == "inline":
                     # The slot IS the program; its address is not read from the word. This
                     # kind is set STRUCTURALLY by `fx_entry_layout` (bits 25/27/29 with no
                     # program bit), not by probing whether the word decodes.
                     at = base + 4 * sl
-                    yield off, tag, sl, name, how, (at if self.asm.program_span(at, hi)
-                                                    else None)
+                    yield (
+                        off,
+                        tag,
+                        sl,
+                        name,
+                        how,
+                        (at if self.asm.program_span(at, hi) else None),
+                    )
                     continue
                 # A program parameter is a POINTER. Follow it; report a miss as None. The
                 # slot's word is NOT inspected to re-decide the structure the tag stated --
@@ -4604,8 +4886,14 @@ class Record:
                 # value-driven read the format does not require, and it invented a phantom
                 # `imageindex` that duplicated an earlier program pointer 2,056 times.
                 pv = w + 52
-                yield off, tag, sl, name, how, (
-                    pv if lo < pv < hi and self.asm.program_span(pv, hi) else None)
+                yield (
+                    off,
+                    tag,
+                    sl,
+                    name,
+                    how,
+                    (pv if lo < pv < hi and self.asm.program_span(pv, hi) else None),
+                )
 
     def fx_node_params(self):
         """Yield (node offset, header, name or None, program offset) for the node chain.
@@ -4619,7 +4907,7 @@ class Record:
         of which any permitted source contains.
         """
         for kind, off, hdr, prog in self.fx_walk():
-            if kind != 'node' or not prog:
+            if kind != "node" or not prog:
                 continue
             names = FX_NODE_PARAMS.get(hdr) or {}
             # `fx_walk` yields the program's ADDRESS, not the slot that named it, so the
@@ -4630,7 +4918,7 @@ class Record:
             for sl, nm in names.items():
                 if off + sl + 4 > self.asm.body_hi:
                     continue
-                if struct.unpack_from('<I', self.asm.data, off + sl)[0] + 52 == prog:
+                if struct.unpack_from("<I", self.asm.data, off + sl)[0] + 52 == prog:
                     name = nm
                     break
             yield off, hdr, name, prog
@@ -4658,10 +4946,11 @@ class Record:
         if self.filter_id != 4:
             return None
         import decompose as _decompose
+
         d = _decompose.decompose(self)
         if d is None:
             return None
-        slot = d.get('root')
+        slot = d.get("root")
         if slot is None or slot >= len(self.words):
             return None
         return self.words[slot] + 52
@@ -4703,13 +4992,13 @@ class Record:
         o, e = self.asm.body_lo, self.asm.body_hi
         if not (o <= q < e - 7):
             return
-        if start is None and node_shape(struct.unpack_from('<I', d, q)[0]) is not None:
+        if start is None and node_shape(struct.unpack_from("<I", d, q)[0]) is not None:
             return
-        limit = 64                       # runaway guard: the longest real walk is 17
+        limit = 64  # runaway guard: the longest real walk is 17
         nth = 0
         while q + 8 <= e and limit > 0:
             limit -= 1
-            tag = struct.unpack_from('<I', d, q)[0]
+            tag = struct.unpack_from("<I", d, q)[0]
             # WITHDRAWN: STOPPING THE RUN ON THE BIT-7-CLEAR FAMILIES. `node_shape` only
             # knows bit-7-SET headers, so leaves and pointer cells appear in this run --
             # 26 and 34 of them across 32 records that yield no usable entry -- and that
@@ -4791,7 +5080,7 @@ class Record:
             # node headers, which end in 9 or 0xB. Stopping when the +4 pointer failed to
             # land in-record instead discarded 1,974 records whose FIRST entry has an
             # unusable pointer, reporting them as having no readable content at all.
-            t = struct.unpack_from('<I', d, q + 4)[0] + 52
+            t = struct.unpack_from("<I", d, q + 4)[0] + 52
             # An entry is recognised by EITHER signal: a tag whose low nibble is 8 -- what
             # separates entries from node headers, which end in 9 or 0xB -- or a payload
             # pointer that lands in the record. Requiring the pointer alone discarded 1,974
@@ -4855,7 +5144,7 @@ class Record:
                 #
                 # Where the element states nothing -- no forward step in the body -- the
                 # scan is left at its full width rather than guessed at.
-                _step = struct.unpack_from('<I', d, q + 4)[0] + 52
+                _step = struct.unpack_from("<I", d, q + 4)[0] + 52
                 _lim = min(14, (_step - q) // 4) if q < _step < e else 14
                 # AND BY THE MASK, where the element states a width that way instead. The
                 # bound above reads the element's slot-1 STEP, and the one-word `0x0000000b`
@@ -4883,9 +5172,12 @@ class Record:
                 for sl in range(2, _lim):
                     if q + 4 * sl + 4 > e:
                         break
-                    pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
-                    if o < pv < e and self.asm.program_span(pv, e) and (
-                            struct.unpack_from('<I', d, pv)[0] & 0xF) not in (9, 0xB):
+                    pv = struct.unpack_from("<I", d, q + 4 * sl)[0] + 52
+                    if (
+                        o < pv < e
+                        and self.asm.program_span(pv, e)
+                        and (struct.unpack_from("<I", d, pv)[0] & 0xF) not in (9, 0xB)
+                    ):
                         yield q, tag, pv
                         any_ = True
                 if not any_:
@@ -4897,14 +5189,15 @@ class Record:
                 # and extends to the tags it never saw. Bit 26 alone (`patternsize` as a
                 # program) names slot 2 on the whole 0x040002xx.. family the census left
                 # blank, and 0.0% of the slots it adds lie inside another program's span.
-                slots = [sl for sl, _nm, kind in fx_entry_layout(tag)
-                         if kind == 'program']
+                slots = [
+                    sl for sl, _nm, kind in fx_entry_layout(tag) if kind == "program"
+                ]
                 if slots:
                     any_ = False
                     for sl in slots:
                         if q + 4 * sl + 4 > e:
                             break
-                        pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
+                        pv = struct.unpack_from("<I", d, q + 4 * sl)[0] + 52
                         if o < pv < e and self.asm.program_span(pv, e):
                             yield q, tag, pv
                             any_ = True
@@ -4917,12 +5210,18 @@ class Record:
                     prog = None
                     off = FX_PAYLOAD_PROG.get(tag)
                     if off is not None:
-                        if o <= t < e - 3 and t + off + 4 <= e \
-                                and self.asm.program_span(t + off, e):
+                        if (
+                            o <= t < e - 3
+                            and t + off + 4 <= e
+                            and self.asm.program_span(t + off, e)
+                        ):
                             prog = t + off
                     else:
-                        inline = [sl for sl, _nm, kind in fx_entry_layout(tag)
-                                  if kind == 'inline']
+                        inline = [
+                            sl
+                            for sl, _nm, kind in fx_entry_layout(tag)
+                            if kind == "inline"
+                        ]
                         if inline:
                             cand = q + 4 * inline[0]
                             if cand + 4 <= e and self.asm.program_span(cand, e):
@@ -4958,7 +5257,7 @@ class Record:
             for sl in range(1, span + 1):
                 if q + 4 * sl + 4 > e:
                     break
-                pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
+                pv = struct.unpack_from("<I", d, q + 4 * sl)[0] + 52
                 if q < pv < e and (nxt is None or pv > nxt):
                     nxt = pv
             if nxt is None:
@@ -5005,7 +5304,7 @@ class Record:
         pending = []
         while o <= q < e - 7 and q not in seen:
             seen.add(q)
-            h = struct.unpack_from('<I', d, q)[0]
+            h = struct.unpack_from("<I", d, q)[0]
             shape = node_shape(h)
             if shape is None:
                 # The leaf/branch families node_shape does not derive (low-byte bit 7 clear).
@@ -5041,7 +5340,7 @@ class Record:
                 # 343 is a measurement. They are all in one file (`Splatter.sbsasm`).
                 _extra = []
                 if (h & 0xFF) == 0x1B and q + 8 <= e:
-                    _w1 = struct.unpack_from('<I', d, q + 4)[0]
+                    _w1 = struct.unpack_from("<I", d, q + 4)[0]
                     if _w1 == 0x3039:
                         # One POINTER child at byte 8; the other child is CONTIGUOUS at
                         # byte 12 and so cannot go in `nxts`, which pointer-reads each
@@ -5055,7 +5354,8 @@ class Record:
                             if q + n_off + 4 > e:
                                 return
                             targets.append(
-                                struct.unpack_from('<I', d, q + n_off)[0] + 52)
+                                struct.unpack_from("<I", d, q + n_off)[0] + 52
+                            )
                         targets.extend(_extra)
                         pending.extend(targets[1:])
                         q = targets[0]
@@ -5067,8 +5367,7 @@ class Record:
                     # program and second successor, are the ENTRY's own fields -- the same
                     # borrow-the-neighbour error as the sentinel form, one structure over.
                     # Yield the node owning nothing and let the chain end here.
-                    _t3 = (struct.unpack_from('<I', d, q + 12)[0]
-                           if q + 16 <= e else 0)
+                    _t3 = struct.unpack_from("<I", d, q + 12)[0] if q + 16 <= e else 0
                     if (_t3 & 0xFFFF) in FX_TAG_LOW16:
                         yield q, h, None
                         if not pending:
@@ -5099,7 +5398,7 @@ class Record:
                     # `q` is already in `seen` -- the outer loop adds it on arrival, so
                     # this steps rather than re-testing it and stopping on the first cell.
                     while o <= q < e - 7:
-                        hh = struct.unpack_from('<I', d, q)[0]
+                        hh = struct.unpack_from("<I", d, q)[0]
                         if pointer_cell_successor(hh) is not None:
                             yield q, hh, None
                         elif (hh >> 16) != 0x0002:
@@ -5127,7 +5426,7 @@ class Record:
                             yield q, hh, None
                         if q + 8 > e:
                             break
-                        nq = struct.unpack_from('<I', d, q + 4)[0] + 52
+                        nq = struct.unpack_from("<I", d, q + 4)[0] + 52
                         if nq in seen or not (o <= nq < e - 7):
                             break
                         seen.add(nq)
@@ -5203,13 +5502,21 @@ class Record:
                     for sl in prog_slots:
                         if q + sl + 4 > e:
                             return
-                        p = struct.unpack_from('<I', d, q + sl)[0] + 52
-                        yield q, h, (p if (o < p < e and self.asm.program_span(p, e)) else None)
+                        p = struct.unpack_from("<I", d, q + sl)[0] + 52
+                        yield (
+                            q,
+                            h,
+                            (
+                                p
+                                if (o < p < e and self.asm.program_span(p, e))
+                                else None
+                            ),
+                        )
                 targets = []
                 for n_off in nxts:
                     if q + n_off + 4 > e:
                         return
-                    targets.append(struct.unpack_from('<I', d, q + n_off)[0] + 52)
+                    targets.append(struct.unpack_from("<I", d, q + n_off)[0] + 52)
                 if not targets:
                     if not pending:
                         return
@@ -5222,11 +5529,11 @@ class Record:
             for sl in prog_slots:
                 if q + sl + 4 > e:
                     return
-                p = struct.unpack_from('<I', d, q + sl)[0] + 52
+                p = struct.unpack_from("<I", d, q + sl)[0] + 52
                 yield q, h, (p if (o < p < e and self.asm.program_span(p, e)) else None)
             if q + nxt_off + 4 > e:
                 return
-            q = struct.unpack_from('<I', d, q + nxt_off)[0] + 52
+            q = struct.unpack_from("<I", d, q + nxt_off)[0] + 52
             if not (o <= q < e - 7) or q in seen:
                 while pending and (not (o <= q < e - 7) or q in seen):
                     q = pending.pop()
@@ -5288,6 +5595,7 @@ class Record:
         if (self.words[1] >> 6 & 1) if len(self.words) > 1 else False:
             try:
                 import decompose as _decompose
+
                 _d = _decompose.decompose(self)
             except Exception:
                 _d = None
@@ -5301,8 +5609,11 @@ class Record:
                 # never disagrees, and resolves the 2 the width rule could not --
                 # NightSkyHDRISubstance001 record 1589 (slots 3 and 7) and pbr_render record
                 # 44 (slots 3 and 9), both w1 bit 28 set. 66,508 of 66,508.
-                _m = [t for t in _d.get('param_slots', ())
-                      if len(t) >= 4 and t[3] == 4 and t[0] == 6]
+                _m = [
+                    t
+                    for t in _d.get("param_slots", ())
+                    if len(t) >= 4 and t[3] == 4 and t[0] == 6
+                ]
                 if len(_m) == 1:
                     base = 4 * _m[0][2]
         if base is None:
@@ -5335,7 +5646,7 @@ class Record:
             return None
         if base // 4 + 3 >= len(self.words):
             return None
-        m = struct.unpack_from('<4f', self.asm.data, self.offset + base)
+        m = struct.unpack_from("<4f", self.asm.data, self.offset + base)
         if not all(-1e4 < x < 1e4 and x == x for x in m):
             return None
         # A transform cannot be singular: a zero determinant collapses the image to a
@@ -5374,7 +5685,7 @@ class Record:
         if self.filter_id != 2 or len(self.words) < 2:
             return None
         w = self.words[1]
-        if not (w >> 25 & 1):                   # not baked (bit 26 means it is a program)
+        if not (w >> 25 & 1):  # not baked (bit 26 means it is a program)
             return None
         # THE WALK NAMES THE SLOT; the formula below only ever guessed at it. `decompose`
         # enumerates a record's parameter slots as (field, state, position, WIDTH), and
@@ -5398,6 +5709,7 @@ class Record:
         s = None
         try:
             import decompose
+
             _d = decompose.decompose(self)
         except Exception:
             _d = None
@@ -5410,8 +5722,11 @@ class Record:
             # 242,931 filter-2 records the field read names the same slot the width rule
             # named, on every record where that rule answered, and it no longer depends on
             # no other parameter happening to be two words wide.
-            _two = [t for t in _d.get('param_slots', ())
-                    if len(t) >= 4 and t[0] == 25 and t[1] == 1]
+            _two = [
+                t
+                for t in _d.get("param_slots", ())
+                if len(t) >= 4 and t[0] == 25 and t[1] == 1
+            ]
             if len(_two) == 1:
                 s = _two[0][2]
         if s is None:
@@ -5430,7 +5745,7 @@ class Record:
             return None
         if s + 1 >= len(self.words):
             return None
-        o = struct.unpack_from('<2f', self.asm.data, self.offset + 4 * s)
+        o = struct.unpack_from("<2f", self.asm.data, self.offset + 4 * s)
         return o if all(x == x and abs(x) < 1e4 for x in o) else None
 
     def read_ramp(self):
@@ -5612,11 +5927,15 @@ class Record:
                 continue
             if (end - start) != count * fwidth:
                 continue
-            out = [struct.unpack_from('<%df' % (fwidth // 4), self.asm.data,
-                                      start + i * fwidth) for i in range(count)]
+            out = [
+                struct.unpack_from(
+                    "<%df" % (fwidth // 4), self.asm.data, start + i * fwidth
+                )
+                for i in range(count)
+            ]
             if any(out[i][0] > out[i + 1][0] for i in range(len(out) - 1)):
                 continue
-            return ('rgba-float' if self.colour else 'grey-float'), out
+            return ("rgba-float" if self.colour else "grey-float"), out
         # Slot 4 is not always the table's end. Requiring `end - start == count * width`
         # rejected 968 records; in every one of them the span is LARGER than the table
         # needs, never smaller, and the table fits inside it at the formula width. So the
@@ -5625,11 +5944,13 @@ class Record:
         if start + count * width > end:
             return None
         n = width // 2
-        out = [struct.unpack_from('<%dH' % n, self.asm.data, start + i * width)
-               for i in range(count)]
+        out = [
+            struct.unpack_from("<%dH" % n, self.asm.data, start + i * width)
+            for i in range(count)
+        ]
         if any(out[i][0] > out[i + 1][0] for i in range(len(out) - 1)):
-            return None                     # not a ramp: positions do not ascend
-        return ('rgba-u16' if self.colour else 'grey-u16'), out
+            return None  # not a ramp: positions do not ascend
+        return ("rgba-u16" if self.colour else "grey-u16"), out
 
     @property
     def ramp(self):
@@ -5683,10 +6004,10 @@ class Record:
         off = self.words[3] + 52
         if not (self.asm.body_lo <= off and off + 4 + 24 * n <= self.asm.body_hi):
             return None
-        if struct.unpack_from('<I', self.asm.data, off)[0] != n:
-            return None                     # the table does not confirm the count
-        v = struct.unpack_from('<%df' % (6 * n), self.asm.data, off + 4)
-        return [tuple(v[i * 6:i * 6 + 6]) for i in range(n)]
+        if struct.unpack_from("<I", self.asm.data, off)[0] != n:
+            return None  # the table does not confirm the count
+        v = struct.unpack_from("<%df" % (6 * n), self.asm.data, off + 4)
+        return [tuple(v[i * 6 : i * 6 + 6]) for i in range(n)]
 
     #: The largest sub-table count the chain walk will accept. It is a containment bound
     #: and not a fitted one -- the walk already requires each table to fit inside the
@@ -5754,8 +6075,8 @@ class Record:
         while tot < want:
             if q + 4 > end:
                 return []
-            n = struct.unpack_from('<I', d, q)[0]
-            if n == 0:                       # filler between tables
+            n = struct.unpack_from("<I", d, q)[0]
+            if n == 0:  # filler between tables
                 zeros += 1
                 if zeros > 8:
                     return []
@@ -5765,7 +6086,7 @@ class Record:
                 return []
             if tot + n > want or q + 4 + 24 * n > end:
                 return []
-            v = struct.unpack_from('<%df' % (6 * n), d, q + 4)
+            v = struct.unpack_from("<%df" % (6 * n), d, q + 4)
             if not all(-1e3 <= x <= 1e3 for x in v):
                 return []
             out.append((q, n))
@@ -5903,11 +6224,11 @@ class Record:
         if got is None or self.vector_extent is None:
             return None
         d = self.asm.data
-        kind = struct.unpack_from('<I', d, self.words[1] + 52)[0]
+        kind = struct.unpack_from("<I", d, self.words[1] + 52)[0]
         v = []
         for _hdr, vq, nv, _flag in got[1]:
             if nv:
-                v.extend(struct.unpack_from('<%dI' % nv, d, vq))
+                v.extend(struct.unpack_from("<%dI" % nv, d, vq))
         return kind, [((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0) for x in v]
 
     #: The three values filter 5's payload header takes in `word0`. Not a format
@@ -6038,7 +6359,7 @@ class Record:
                 # so a payload this walk cannot follow still reports the extent the
                 # first part states.
                 return None
-            w = struct.unpack_from('<I', d, p)[0]
+            w = struct.unpack_from("<I", d, p)[0]
             if w == 0:
                 return p + 4, parts
             hdr = p
@@ -6046,7 +6367,7 @@ class Record:
                 p += 4
                 if p + 4 > len(d):
                     return None
-                w = struct.unpack_from('<I', d, p)[0]
+                w = struct.unpack_from("<I", d, p)[0]
             v = p + 4
             if v + 4 * (w >> 3) > len(d):
                 return None
@@ -6109,7 +6430,7 @@ class Record:
         else:
             # Unexercised on this corpus. The first part's own length word, which is
             # what every reading before `vector_parts` used for the whole payload.
-            n = (struct.unpack_from('<2I', d, off)[1] + 23) // 2
+            n = (struct.unpack_from("<2I", d, off)[1] + 23) // 2
         if n < 12 or (n - 8) % 4 or off + n > len(d):
             return None
         return off, n
@@ -6134,8 +6455,10 @@ class Record:
         for _hdr, vq, nv, _flag in got[1]:
             if nv < 3:
                 continue
-            p = [((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0)
-                 for x in struct.unpack_from('<%dI' % nv, d, vq)]
+            p = [
+                ((x & 0xFFFF) / 65535.0, (x >> 16) / 65535.0)
+                for x in struct.unpack_from("<%dI" % nv, d, vq)
+            ]
             for i in range(len(p) - 2):
                 a, b, c = p[i], p[i + 1], p[i + 2]
                 if a == b or b == c or a == c:
@@ -6223,10 +6546,15 @@ class Record:
             # refuse on the undecodable channel code -- so this is both a correctness fix
             # and 45 images the renderer could not previously produce at all.
             if hi & 8:
-                return {'kind': 'pixels', 'offset': off + 52, 'compressed': 'jpeg',
-                        'data_offset': off + 56,
-                        'size': self.width * self.height * ch * bpc if ch else None,
-                        'channels': ch, 'depth': bpc * 8 if ch else None}
+                return {
+                    "kind": "pixels",
+                    "offset": off + 52,
+                    "compressed": "jpeg",
+                    "data_offset": off + 56,
+                    "size": self.width * self.height * ch * bpc if ch else None,
+                    "channels": ch,
+                    "depth": bpc * 8 if ch else None,
+                }
             # THE SKEW IS THE FORMAT'S UNIVERSAL +52, and this used to read +4.
             #
             # `off + 4` came from a story about an eight-byte magic-plus-version header
@@ -6271,9 +6599,13 @@ class Record:
             # Under +4 that word was "byte 48 of 48 unidentified bytes in front of the
             # stream"; under +52 the payload simply opens `[u32 length][SOI]` at the image
             # offset, and there are no unidentified bytes.
-            return {'kind': 'pixels', 'offset': off + 52,
-                    'size': self.width * self.height * ch * bpc if ch else None,
-                    'channels': ch, 'depth': bpc * 8 if ch else None}
+            return {
+                "kind": "pixels",
+                "offset": off + 52,
+                "size": self.width * self.height * ch * bpc if ch else None,
+                "channels": ch,
+                "depth": bpc * 8 if ch else None,
+            }
 
         # Class-word bit 8 says the record carries its own image rather than naming one.
         # It never names a graph input: 0 of 241 bit-8 records hold a uid their manifest
@@ -6303,46 +6635,59 @@ class Record:
             if asm.program_span(body, self.end) is not None:
                 # The image is computed. Grid record 6 is
                 #   select(inputref(uid) > 0, 0.0, 1.0)  -- a parameter-driven toggle.
-                return {'kind': 'computed', 'program': body}
+                return {"kind": "computed", "program": body}
             for s in range(2, min(len(self.words), 4)):
                 if 0 < self.words[s] < len(asm.data):
-                    return pixels(self.words[s])       # 3-word form: slot 2 is the offset
-            return {'kind': 'inline_pixels', 'offset': body,
-                    'size': self.end - body}           # data stored in the record itself
+                    return pixels(self.words[s])  # 3-word form: slot 2 is the offset
+            return {
+                "kind": "inline_pixels",
+                "offset": body,
+                "size": self.end - body,
+            }  # data stored in the record itself
 
         if not long_form and v < len(asm.data):
             return pixels(v)
-        return {'kind': 'graph_input', 'uid': v}
+        return {"kind": "graph_input", "uid": v}
 
     def describe(self):
-        name = self.filter_name or ('fid %d (%s)' % (self.filter_id,
-                                                     UNNAMED.get(self.filter_id, 'unknown')))
-        s = '[%4d] @%-9d %-30s %5dx%-5d %s' % (
-            self.index, self.offset, name, self.width, self.height,
-            'colour' if self.colour else 'grey')
+        name = self.filter_name or (
+            "fid %d (%s)" % (self.filter_id, UNNAMED.get(self.filter_id, "unknown"))
+        )
+        s = "[%4d] @%-9d %-30s %5dx%-5d %s" % (
+            self.index,
+            self.offset,
+            name,
+            self.width,
+            self.height,
+            "colour" if self.colour else "grey",
+        )
         e = self.edges
         if e:
-            s += '  inputs=' + ','.join('-' if v == 0 else ('?' if v is None else str(v))
-                                        for v in e)
+            s += "  inputs=" + ",".join(
+                "-" if v == 0 else ("?" if v is None else str(v)) for v in e
+            )
         p = self.slot1_flags
-        if p and 'blendingmode' in p:
-            s += '  mode=%d' % p['blendingmode']
+        if p and "blendingmode" in p:
+            s += "  mode=%d" % p["blendingmode"]
         if self.programs:
-            s += '  prog@%d' % self.programs[0]
+            s += "  prog@%d" % self.programs[0]
         p2 = self.size_or_baked
-        if p2 and p2[0] == 'float':
-            s += '  param=%g' % p2[1]
+        if p2 and p2[0] == "float":
+            s += "  param=%g" % p2[1]
         mx = self.matrix
         if mx:
-            s += '  matrix=[%g %g %g %g]' % mx
+            s += "  matrix=[%g %g %g %g]" % mx
         rp = self.ramp
         if rp:
-            s += '  ramp=%d stops x%d' % (len(rp), len(rp[0]))
+            s += "  ramp=%d stops x%d" % (len(rp), len(rp[0]))
         b = self.bitmap
         if b:
-            s += ('  pixels@%d %dB %dch %d-bit' % (b['offset'], b['size'],
-                                                   b['channels'], b['depth'])
-                  if b['kind'] == 'pixels' else '  input uid=%d' % b['uid'])
+            s += (
+                "  pixels@%d %dB %dch %d-bit"
+                % (b["offset"], b["size"], b["channels"], b["depth"])
+                if b["kind"] == "pixels"
+                else "  input uid=%d" % b["uid"]
+            )
         return s
 
 
@@ -6367,7 +6712,8 @@ class Assembly:
         # Assembly instances and processes, so caching parsed Assemblies costs the
         # records and memo tables, not four gigabytes of file data.
         import mmap as _mmap
-        fh = open(path, 'rb')
+
+        fh = open(path, "rb")
         try:
             self.data = d = _mmap.mmap(fh.fileno(), 0, access=_mmap.ACCESS_READ)
         except (ValueError, OSError):
@@ -6375,18 +6721,20 @@ class Assembly:
         self._vp_cache = {}
         self._pe_cache = {}
         self.header = S.parse(path)
-        c, dir_at = self.header['dir_count'], self.header['dir_at']
+        c, dir_at = self.header["dir_count"], self.header["dir_at"]
         if c < 1 or dir_at + 4 * c > len(d):
-            raise ValueError('directory out of range')
-        ents = struct.unpack_from('<%dI' % c, d, dir_at)
+            raise ValueError("directory out of range")
+        ents = struct.unpack_from("<%dI" % c, d, dir_at)
         # Layout B (version 2): body precedes the directory.
-        self.layout = 'B' if sum(1 for e in ents if e + 52 < dir_at) > len(ents) // 2 else 'A'
-        self.body_lo = 0x38 if self.layout == 'B' else dir_at + 4 * c
+        self.layout = (
+            "B" if sum(1 for e in ents if e + 52 < dir_at) > len(ents) // 2 else "A"
+        )
+        self.body_lo = 0x38 if self.layout == "B" else dir_at + 4 * c
         # In layout B the body PRECEDES the directory, so the record body ends where the
         # directory begins. Ending it at table_start instead let the last record's extent
         # swallow the directory and the output table behind it -- which coverage() then
         # reported as 'records', i.e. explained.
-        self.body_hi = dir_at if self.layout == 'B' else self.header['table_start']
+        self.body_hi = dir_at if self.layout == "B" else self.header["table_start"]
         offs = sorted(e + 52 for e in ents)
         # Where the record region begins. NOT a floor for programs any more, and the
         # retraction is the point.
@@ -6422,14 +6770,15 @@ class Assembly:
         # output table between them - which is precisely how the output table stayed
         # unread: coverage() relabelled it 'resource segment' and never contradicted
         # itself, because a file with no resources still had bytes there to claim.
-        self.resource_end = dir_at if self.layout == 'A' else None
+        self.resource_end = dir_at if self.layout == "A" else None
         # The output table: one 8-byte entry per graph output, immediately after the
         # directory in BOTH layouts. Layout A puts the body after the directory so it
         # lands before the first record; layout B puts the body first so it lands before
         # the value table. One rule, two apparent positions.
-        self.output_table = (dir_at + 4 * c,
-                             min(offs) if self.layout == 'A' and offs
-                             else self.header['table_start'])
+        self.output_table = (
+            dir_at + 4 * c,
+            min(offs) if self.layout == "A" and offs else self.header["table_start"],
+        )
 
     # ---- outputs
     # ---- programs
@@ -6468,12 +6817,12 @@ class Assembly:
         lo, hi = self.output_table
         if hi <= lo:
             return []
-        uids = self.header.get('output_uids') or []
+        uids = self.header.get("output_uids") or []
         out = []
         for j, off in enumerate(range(lo, hi, 8)):
             if off + 8 > len(self.data):
                 break
-            w0, idx = struct.unpack_from('<II', self.data, off)
+            w0, idx = struct.unpack_from("<II", self.data, off)
             uid = uids[j] if j < len(uids) else None
             if (w0 >> 16) == 2:
                 # A numeric VALUE output, not an image: the manifest declares it with a
@@ -6481,7 +6830,7 @@ class Assembly:
                 # low half is that type code, in 48 of 48 across the corpus, and all 48
                 # name a pixelprocessor record - the only filter that computes a number
                 # rather than an image.
-                out.append((uid, ('value', w0 & 0xFFFF), None, idx))
+                out.append((uid, ("value", w0 & 0xFFFF), None, idx))
             else:
                 fmt = (w0 & 0xFFFF) >> 4
                 out.append((uid, fmt, bool(fmt & 4), idx))
@@ -6510,14 +6859,14 @@ class Assembly:
         not one of them resolves, which is what bytecode read as a tag looks like. See the
         stopping rule in `Record.fx_table` for the measurement and its control.
         """
-        pred = [sl for sl, _n, k in fx_entry_layout(tag) if k == 'program']
+        pred = [sl for sl, _n, k in fx_entry_layout(tag) if k == "program"]
         if not pred:
             return True
         lo, hi = self.body_lo, self.body_hi
         for sl in pred:
             if off + 4 * sl + 4 > hi:
                 continue
-            pv = struct.unpack_from('<I', self.data, off + 4 * sl)[0] + 52
+            pv = struct.unpack_from("<I", self.data, off + 4 * sl)[0] + 52
             if lo < pv < hi and self.program_span(pv, hi):
                 return True
         return False
@@ -6567,9 +6916,9 @@ class Assembly:
             if at + 4 > hi:
                 break
             if any(a <= at < b for a, b in spans):
-                return sl            # this slot is program body: the entry ended here
-            if kind == 'program':
-                pv = struct.unpack_from('<I', self.data, at)[0] + 52
+                return sl  # this slot is program body: the entry ended here
+            if kind == "program":
+                pv = struct.unpack_from("<I", self.data, at)[0] + 52
                 if lo <= pv < hi:
                     end = self.program_span(pv, hi)
                     if end:
@@ -6620,7 +6969,7 @@ class Assembly:
         d, lo, hi = self.data, self.body_lo, self.body_hi
         if off < lo or off + 8 > hi:
             return None
-        tag = struct.unpack_from('<I', d, off)[0]
+        tag = struct.unpack_from("<I", d, off)[0]
         if (tag & 0xF) != 8:
             return None
         walk = list(fx_entry_walk(tag))
@@ -6631,7 +6980,7 @@ class Assembly:
         base = off - 4 * width
         if base < lo:
             return None
-        block = struct.unpack_from('<I', d, off + 4)[0] + 52
+        block = struct.unpack_from("<I", d, off + 4)[0] + 52
         if (block - base) % 4:
             return None
         slot = (block - base) // 4
@@ -6639,12 +6988,12 @@ class Assembly:
             return None
         progs = []
         for sl, _n, kind in lay:
-            if kind != 'program':
+            if kind != "program":
                 continue
             at = base + 4 * sl
             if at < lo or at + 4 > hi:
                 return None
-            pv = struct.unpack_from('<I', d, at)[0] + 52
+            pv = struct.unpack_from("<I", d, at)[0] + 52
             # `lo <= pv`, NOT `lo < pv`, which is the bound the rest of this file writes
             # out of habit. A program can begin at `body_lo` -- `concrete_049` record 0's
             # `opacity` names one, 68 bytes at 0x38 -- and the strict form is the whole
@@ -6877,7 +7226,7 @@ class Assembly:
         # which was inflating the transpiler's failure list. See FORMAT-NOTES.md.
         if p & 3:
             return None
-        n = struct.unpack_from('<H', d, p)[0]
+        n = struct.unpack_from("<H", d, p)[0]
         # The bound is the FIELD's range, not a guess about programs. The cap sat at
         # 20,000 as an anti-garbage margin and silently rejected the corpus's largest
         # per-pixel functions -- 45 records whose functions run 21,102 to 41,493
@@ -6893,13 +7242,13 @@ class Assembly:
         for k in range(n):
             if q + 2 > hi:
                 return None
-            op = struct.unpack_from('<H', d, q)[0]
+            op = struct.unpack_from("<H", d, q)[0]
             if not isa.plausible(op):
                 return None
             L = isa.LEN.get(op)
             oid = op & 0x3F
             imm = disasm.IMM.get(oid)
-            if imm != 'all' and L > 1:
+            if imm != "all" and L > 1:
                 pos = imm or ()
                 if q + 2 * L > hi:
                     return None
@@ -6917,7 +7266,7 @@ class Assembly:
                         # control: exempting tokens 3+ newly admits 0 of 2,622 random
                         # body offsets, and recovers 68 real per-pixel functions.
                         continue
-                    v = struct.unpack_from('<H', d, q + 2 + 2 * i)[0]
+                    v = struct.unpack_from("<H", d, q + 2 + 2 * i)[0]
                     # 0xFFFF is the absent marker, not a value number - the u16 form of the
                     # 0xFFFFFFFF an absent edge uses. Rejecting it as an impossible forward
                     # reference threw away 10 `pixelprocessor` programs in `US_Flag`,
@@ -6948,7 +7297,7 @@ class Assembly:
         d, out = self.data, {}
         # Scan the u32 view rather than unpacking per word: this walks the whole file,
         # and an unpack_from per candidate made the corpus audit four times slower.
-        a = memoryview(d)[: len(d) & ~3].cast('I')
+        a = memoryview(d)[: len(d) & ~3].cast("I")
         lo, hi = self.body_lo - 52, self.body_hi - 52
         seen = set()
         for v in a:
@@ -6969,13 +7318,13 @@ class Assembly:
         """
         d, q = self.data, 0x38
         while q + 4 <= len(d):
-            n = struct.unpack_from('<I', d, q)[0]
+            n = struct.unpack_from("<I", d, q)[0]
             if not (1 <= n <= limit) or q + 4 + 4 * n > len(d):
                 return
-            chars = struct.unpack_from('<%dI' % n, d, q + 4)
+            chars = struct.unpack_from("<%dI" % n, d, q + 4)
             if not all(9 <= c < 0x110000 for c in chars):
                 return
-            yield ''.join(chr(c) for c in chars)
+            yield "".join(chr(c) for c in chars)
             q += 4 + 4 * n
 
     def program_end(self, p):
@@ -6992,7 +7341,7 @@ class Assembly:
             return hit
         r = self.program_span(p)
         if r is None:
-            raise ValueError('no program at 0x%x' % p)
+            raise ValueError("no program at 0x%x" % p)
         self._pe_cache[p] = r
         return r
 
@@ -7027,18 +7376,18 @@ class Assembly:
         def mark(a, b, v):
             a, b = max(0, a), min(n, b)
             if b > a:
-                seen[a:b] = bytes((v,)) * (b - a)   # slice assignment, not a Python loop
+                seen[a:b] = bytes((v,)) * (b - a)  # slice assignment, not a Python loop
 
-        mark(0, 0x38, 1)                                   # header
-        c, dir_at = self.header['dir_count'], self.header['dir_at']
-        mark(dir_at, dir_at + 4 * c, 2)                    # directory
-        mark(self.header['table_start'], n, 3)             # value table + footer
+        mark(0, 0x38, 1)  # header
+        c, dir_at = self.header["dir_count"], self.header["dir_at"]
+        mark(dir_at, dir_at + 4 * c, 2)  # directory
+        mark(self.header["table_start"], n, 3)  # value table + footer
         if self.resource_end:
-            mark(0x38, self.resource_end, 4)               # resource segment
-        mark(self.output_table[0], self.output_table[1], 8)   # output table
+            mark(0x38, self.resource_end, 4)  # resource segment
+        mark(self.output_table[0], self.output_table[1], 8)  # output table
         nprog = 0
         for r in self.records:
-            mark(r.offset, r.end, 5)                       # record
+            mark(r.offset, r.end, 5)  # record
             for p in r.programs:
                 mark(p, self.program_end(p), 6)
                 nprog += 1
@@ -7069,7 +7418,7 @@ class Assembly:
         # so the cooker pads each start up to 4. Stepping and resuming on 4 finds the
         # identical 121 programs and the identical 9,704 bytes. It is a fact about the
         # format, and it now lives in `program_span` where the rest of the predicate is.
-        if self.layout == 'B' and self.records:
+        if self.layout == "B" and self.records:
             first = min(r.offset for r in self.records)
             q = (max(0, self.body_lo) + 3) & ~3
             while q + 4 <= first:
@@ -7092,34 +7441,54 @@ class Assembly:
         # bytearray.count is C-speed; counting byte-by-byte in Python made this
         # function 97% of the corpus audit's runtime.
         counts = {v: seen.count(v) for v in range(9)}
-        return {'total': n, 'unexplained': counts.get(0, 0),
-                'header': counts.get(1, 0), 'directory': counts.get(2, 0),
-                'value_table': counts.get(3, 0), 'resources': counts.get(4, 0),
-                'records': counts.get(5, 0) + counts.get(6, 0),
-                'layout_b_prologue': counts.get(7, 0),
-                'output_table': counts.get(8, 0),
-                'programs_found': nprog}
+        return {
+            "total": n,
+            "unexplained": counts.get(0, 0),
+            "header": counts.get(1, 0),
+            "directory": counts.get(2, 0),
+            "value_table": counts.get(3, 0),
+            "resources": counts.get(4, 0),
+            "records": counts.get(5, 0) + counts.get(6, 0),
+            "layout_b_prologue": counts.get(7, 0),
+            "output_table": counts.get(8, 0),
+            "programs_found": nprog,
+        }
 
     def summary(self):
         cov = self.coverage()
         known = sum(1 for r in self.records if r.known)
         unresolved = sum(1 for r in self.records for e in r.edges if e is None)
-        return ('%s\n  version %s  layout %s  %d records  %d inputs  %d outputs\n'
-                '  filters known %d/%d (%.1f%%)   programs located %d\n'
-                '  unresolved edge slots %d\n'
-                '  bytes: %d total, %d unexplained (%.2f%%)%s'
-                % (self.path, hex(self.header['version']), self.layout,
-                   len(self.records), self.header['n_in'], self.header['n_out'],
-                   known, len(self.records), 100 * known / max(1, len(self.records)),
-                   cov['programs_found'], unresolved,
-                   cov['total'], cov['unexplained'],
-                   100 * cov['unexplained'] / max(1, cov['total']),
-                   '' if not cov['layout_b_prologue']
-                   else ', %d in the layout-B prologue (known gap)' % cov['layout_b_prologue']))
+        return (
+            "%s\n  version %s  layout %s  %d records  %d inputs  %d outputs\n"
+            "  filters known %d/%d (%.1f%%)   programs located %d\n"
+            "  unresolved edge slots %d\n"
+            "  bytes: %d total, %d unexplained (%.2f%%)%s"
+            % (
+                self.path,
+                hex(self.header["version"]),
+                self.layout,
+                len(self.records),
+                self.header["n_in"],
+                self.header["n_out"],
+                known,
+                len(self.records),
+                100 * known / max(1, len(self.records)),
+                cov["programs_found"],
+                unresolved,
+                cov["total"],
+                cov["unexplained"],
+                100 * cov["unexplained"] / max(1, cov["total"]),
+                ""
+                if not cov["layout_b_prologue"]
+                else ", %d in the layout-B prologue (known gap)"
+                % cov["layout_b_prologue"],
+            )
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
+
     a = Assembly(sys.argv[1])
     print(a.summary())
     print()

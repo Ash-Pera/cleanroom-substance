@@ -17,22 +17,23 @@ SKIPS rather than fails when the corpus is absent -- the corpus is not in this r
 
     SBS_PARSE_FILES=0 python3 -m pytest test_standalone_parse.py   # 0 means all of it
 """
+
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import corpus                                                        # noqa: E402
-import standalone_parse                                              # noqa: E402
-import standalone_parse_ref                                          # noqa: E402
+import corpus  # noqa: E402
+import standalone_parse  # noqa: E402
+import standalone_parse_ref  # noqa: E402
 
-LIMIT = int(os.environ.get('SBS_PARSE_FILES', '120'))
+LIMIT = int(os.environ.get("SBS_PARSE_FILES", "120"))
 
 
 def _outcome(mod, path):
     """(result, exception name) -- an exception is an answer, not a reason to skip."""
     try:
         return mod.parse(path), None
-    except Exception as exc:                                  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         return None, type(exc).__name__
 
 
@@ -42,7 +43,7 @@ def test_optimised_parser_matches_the_reference():
     if LIMIT:
         paths = paths[:LIMIT]
     if not paths:
-        print('SKIP test_optimised_parser_matches_the_reference: no corpus')
+        print("SKIP test_optimised_parser_matches_the_reference: no corpus")
         return
     same, differ, raised = 0, [], 0
     for p in paths:
@@ -53,16 +54,23 @@ def test_optimised_parser_matches_the_reference():
             same += 1
         else:
             differ.append((os.path.basename(p), fast[1], slow[1]))
-    print('standalone parsers agree on %d of %d files (%d refused by both)'
-          % (same, len(paths), raised))
+    print(
+        "standalone parsers agree on %d of %d files (%d refused by both)"
+        % (same, len(paths), raised)
+    )
     # NOT just `not differ`: a comparison that silently skipped files would pass. The
     # invariant is that EVERY path offered got compared, which holds at any corpus size --
     # an arbitrary floor here (it was 20) false-fails on a small corpus, which is a test
     # reporting on its own invocation rather than on the parsers.
-    assert same + len(differ) == len(paths), \
-        'compared %d of %d paths' % (same + len(differ), len(paths))
-    assert not differ, 'parsers disagree on %d files, first: %r' % (len(differ), differ[:3])
+    assert same + len(differ) == len(paths), "compared %d of %d paths" % (
+        same + len(differ),
+        len(paths),
+    )
+    assert not differ, "parsers disagree on %d files, first: %r" % (
+        len(differ),
+        differ[:3],
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_optimised_parser_matches_the_reference()

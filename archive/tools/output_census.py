@@ -32,6 +32,7 @@ output it blocks rather than once per record it takes down. The same output can 
 under two roots when two independent gaps block it, which is why the column sums exceed the
 number of blocked outputs.
 """
+
 import collections
 import os
 import sys
@@ -39,10 +40,10 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import corpus                                                        # noqa: E402
-import manifest                                                      # noqa: E402
-import render                                                        # noqa: E402
-from sbsasm import Assembly                                          # noqa: E402
+import corpus  # noqa: E402
+import manifest  # noqa: E402
+import render  # noqa: E402
+from sbsasm import Assembly  # noqa: E402
 
 
 def image_fed_outputs(asm):
@@ -122,62 +123,75 @@ def census(paths, max_dim=64):
     for path in paths:
         try:
             asm = Assembly(path)
-            produced, failures, _synth = render.render(asm, verbose=False, max_dim=max_dim)
+            produced, failures, _synth = render.render(
+                asm, verbose=False, max_dim=max_dim
+            )
             # Snapshot immediately: `CASCADED` is module state that the next render clears.
             cascaded = set(render.CASCADED)
         except Exception:
             continue
-        tally['files'] += 1
+        tally["files"] += 1
         outs = [(uid, rec) for uid, _f, _g, rec in asm.outputs()]
         if not outs:
             continue
         fed = image_fed_outputs(asm)
         for uid, rec in outs:
-            tally['declared'] += 1
+            tally["declared"] += 1
             if uid in fed:
-                tally['needs an image'] += 1
+                tally["needs an image"] += 1
                 continue
-            tally['renderable'] += 1
+            tally["renderable"] += 1
             if rec in produced:
-                tally['rendered'] += 1
+                tally["rendered"] += 1
                 arr = np.asarray(produced[rec], dtype=np.float64)
                 if arr.min() == arr.max():
-                    tally['rendered flat'] += 1
+                    tally["rendered flat"] += 1
                     flat = {}
                     for j, a in produced.items():
                         v = np.asarray(a, dtype=np.float64)
                         flat[j] = bool(v.min() == v.max())
-                    tally['flat from ' + flat_origin(asm, rec, produced, flat)] += 1
+                    tally["flat from " + flat_origin(asm, rec, produced, flat)] += 1
                 continue
             for msg in roots_blocking(asm, rec, failures, cascaded):
-                roots[msg.split('(')[0].strip()[:64]] += 1
+                roots[msg.split("(")[0].strip()[:64]] += 1
     return tally, roots
 
 
 def main(argv):
     paths = argv[1:] or corpus.paths()
     tally, roots = census(paths)
-    if not tally['files']:
-        print('no files rendered')
+    if not tally["files"]:
+        print("no files rendered")
         return 1
-    renderable = max(1, tally['renderable'])
-    print('files %d' % tally['files'])
-    print('declared outputs                      %d' % tally['declared'])
-    print('  fed by a user-supplied IMAGE input  %d   (cannot render standalone)'
-          % tally['needs an image'])
-    print('  renderable in principle             %d' % tally['renderable'])
-    print('rendered                              %d  (%.0f%% of renderable)'
-          % (tally['rendered'], 100.0 * tally['rendered'] / renderable))
-    print('  of those, FLAT                      %d' % tally['rendered flat'])
-    for key in sorted(k for k in tally if k.startswith('flat from ')):
-        print('    %-34s %d   %s' % (key, tally[key],
-                                     '(a constant channel is a real answer)'
-                                     if key == 'flat from uniform' else ''))
-    print('\nroot causes, counted once per blocked output:')
+    renderable = max(1, tally["renderable"])
+    print("files %d" % tally["files"])
+    print("declared outputs                      %d" % tally["declared"])
+    print(
+        "  fed by a user-supplied IMAGE input  %d   (cannot render standalone)"
+        % tally["needs an image"]
+    )
+    print("  renderable in principle             %d" % tally["renderable"])
+    print(
+        "rendered                              %d  (%.0f%% of renderable)"
+        % (tally["rendered"], 100.0 * tally["rendered"] / renderable)
+    )
+    print("  of those, FLAT                      %d" % tally["rendered flat"])
+    for key in sorted(k for k in tally if k.startswith("flat from ")):
+        print(
+            "    %-34s %d   %s"
+            % (
+                key,
+                tally[key],
+                "(a constant channel is a real answer)"
+                if key == "flat from uniform"
+                else "",
+            )
+        )
+    print("\nroot causes, counted once per blocked output:")
     for msg, n in roots.most_common(20):
-        print('   %4d  %s' % (n, msg))
+        print("   %4d  %s" % (n, msg))
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

@@ -71,34 +71,35 @@ the walk cannot answer yet -- not because a search is acceptable.
 That is the honest shape of "port everything onto the walk": three filters moved on strong
 evidence, and this one is blocked on a cost model that has to be finished first.
 """
+
 import collections
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import corpus                                                        # noqa: E402
-import decompose                                                     # noqa: E402
-import record_layout                                                 # noqa: E402
-import sbsasm                                                        # noqa: E402
+import corpus  # noqa: E402
+import decompose  # noqa: E402
+import record_layout  # noqa: E402
+import sbsasm  # noqa: E402
 
 
 def census(paths=None):
     """{filter name: Counter} over the corpus, or the given paths."""
     st = collections.defaultdict(collections.Counter)
-    for p in (paths or corpus.paths()):
+    for p in paths or corpus.paths():
         try:
             asm = sbsasm.Assembly.cached(p)
         except Exception:
             continue
         for r in asm.records:
-            c = st[sbsasm.FILTERS.get(r.filter_id, 'f%s' % r.filter_id)]
-            c['records'] += 1
+            c = st[sbsasm.FILTERS.get(r.filter_id, "f%s" % r.filter_id)]
+            c["records"] += 1
             d = decompose.decompose(r)
-            if d is None or d.get('end') is None:
-                c['no-walk'] += 1
+            if d is None or d.get("end") is None:
+                c["no-walk"] += 1
                 continue
-            end, n = d['end'], len(r.words)
-            c['past' if end > n else '==len' if end == n else 'bounds'] += 1
+            end, n = d["end"], len(r.words)
+            c["past" if end > n else "==len" if end == n else "bounds"] += 1
     return st
 
 
@@ -126,71 +127,105 @@ def model_agreement(paths=None):
     `header_words`, so passing `version` is all a caller has to get right.
     """
     st = collections.defaultdict(collections.Counter)
-    for p in (paths or corpus.paths()):
+    for p in paths or corpus.paths():
         try:
             asm = sbsasm.Assembly.cached(p)
         except Exception:
             continue
-        ver = asm.header.get('version') if isinstance(asm.header, dict) else 0
+        ver = asm.header.get("version") if isinstance(asm.header, dict) else 0
         for r in asm.records:
-            c = st[sbsasm.FILTERS.get(r.filter_id, 'f%s' % r.filter_id)]
-            c['records'] += 1
+            c = st[sbsasm.FILTERS.get(r.filter_id, "f%s" % r.filter_id)]
+            c["records"] += 1
             d = decompose.decompose(r)
-            end = d.get('end') if d else None
+            end = d.get("end") if d else None
             w1 = r.words[1] if len(r.words) > 1 else None
             try:
                 hw = record_layout.header_words(r.filter_id, r.words[0], w1, ver)
             except Exception:
                 hw = None
             if end is None or hw is None:
-                c['one side silent'] += 1
+                c["one side silent"] += 1
             elif end == hw:
-                c['agree'] += 1
+                c["agree"] += 1
             elif end > hw:
-                c['walk LONGER'] += 1
+                c["walk LONGER"] += 1
             else:
-                c['walk SHORTER'] += 1
+                c["walk SHORTER"] += 1
     return st
 
 
 def main(argv):
     st = census(argv[1:] or None)
-    print('%-18s %8s %10s %10s %10s %8s'
-          % ('filter', 'records', 'bounds', '==len', 'past', 'no-walk'))
+    print(
+        "%-18s %8s %10s %10s %10s %8s"
+        % ("filter", "records", "bounds", "==len", "past", "no-walk")
+    )
     tot = collections.Counter()
-    for nm in sorted(st, key=lambda k: -st[k]['records']):
+    for nm in sorted(st, key=lambda k: -st[k]["records"]):
         c = st[nm]
         tot.update(c)
-        print('%-18s %8d %10d %10d %10d %8d'
-              % (nm, c['records'], c['bounds'], c['==len'], c['past'], c['no-walk']))
-    print('%-18s %8d %10d %10d %10d %8d'
-          % ('TOTAL', tot['records'], tot['bounds'], tot['==len'],
-             tot['past'], tot['no-walk']))
-    if tot['past']:
-        print('\n%d records claim a header longer than the record. A header cannot '
-              'exceed its\nrecord, so every one of these is a defect in the walk rather '
-              'than a gap in it.' % tot['past'])
+        print(
+            "%-18s %8d %10d %10d %10d %8d"
+            % (nm, c["records"], c["bounds"], c["==len"], c["past"], c["no-walk"])
+        )
+    print(
+        "%-18s %8d %10d %10d %10d %8d"
+        % (
+            "TOTAL",
+            tot["records"],
+            tot["bounds"],
+            tot["==len"],
+            tot["past"],
+            tot["no-walk"],
+        )
+    )
+    if tot["past"]:
+        print(
+            "\n%d records claim a header longer than the record. A header cannot "
+            "exceed its\nrecord, so every one of these is a defect in the walk rather "
+            "than a gap in it." % tot["past"]
+        )
 
     ag = model_agreement(argv[1:] or None)
-    print('\nTHE WALK vs `header_words` -- two readers of the SAME cost model:')
-    print('%-18s %8s %10s %12s %12s %8s'
-          % ('filter', 'records', 'agree', 'walk LONGER', 'walk SHORTER', 'silent'))
+    print("\nTHE WALK vs `header_words` -- two readers of the SAME cost model:")
+    print(
+        "%-18s %8s %10s %12s %12s %8s"
+        % ("filter", "records", "agree", "walk LONGER", "walk SHORTER", "silent")
+    )
     t2 = collections.Counter()
-    for nm in sorted(ag, key=lambda k: -(ag[k]['walk LONGER'] + ag[k]['walk SHORTER'])):
+    for nm in sorted(ag, key=lambda k: -(ag[k]["walk LONGER"] + ag[k]["walk SHORTER"])):
         c = ag[nm]
         t2.update(c)
-        if c['walk LONGER'] or c['walk SHORTER']:
-            print('%-18s %8d %10d %12d %12d %8d'
-                  % (nm, c['records'], c['agree'], c['walk LONGER'],
-                     c['walk SHORTER'], c['one side silent']))
-    print('%-18s %8d %10d %12d %12d %8d'
-          % ('TOTAL(all)', t2['records'], t2['agree'], t2['walk LONGER'],
-             t2['walk SHORTER'], t2['one side silent']))
-    print('\nA disagreement here needs no render and no containment to call: the same '
-          'costs,\nread two ways, cannot give two answers. Filters absent from this list '
-          'agree exactly.')
+        if c["walk LONGER"] or c["walk SHORTER"]:
+            print(
+                "%-18s %8d %10d %12d %12d %8d"
+                % (
+                    nm,
+                    c["records"],
+                    c["agree"],
+                    c["walk LONGER"],
+                    c["walk SHORTER"],
+                    c["one side silent"],
+                )
+            )
+    print(
+        "%-18s %8d %10d %12d %12d %8d"
+        % (
+            "TOTAL(all)",
+            t2["records"],
+            t2["agree"],
+            t2["walk LONGER"],
+            t2["walk SHORTER"],
+            t2["one side silent"],
+        )
+    )
+    print(
+        "\nA disagreement here needs no render and no containment to call: the same "
+        "costs,\nread two ways, cannot give two answers. Filters absent from this list "
+        "agree exactly."
+    )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

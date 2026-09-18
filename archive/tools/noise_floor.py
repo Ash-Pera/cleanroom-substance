@@ -80,6 +80,7 @@ AND IT DOES NOT MAKE SMALL DELTAS MEANINGFUL. A zero floor means a 0.0014 moveme
 rather than noise; it says nothing about whether 0.0014 is enough to DISCRIMINATE between
 two decodes. That is the sensitivity question and it needs its own instrument.
 """
+
 import argparse
 import collections
 import glob
@@ -90,14 +91,14 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import _repo_root                                                    # noqa: E402
-_repo_root.add_tools_to_path()
-import render as R                                                   # noqa: E402
-import sbsruntime                                                    # noqa: E402
-from sbsasm import Assembly                                          # noqa: E402
+import _repo_root  # noqa: E402
 
-REF_GLOB = os.path.join(_repo_root.SPECIMENS,
-                        'new_opengameart', '**', '*.sbsasm')
+_repo_root.add_tools_to_path()
+import render as R  # noqa: E402
+import sbsruntime  # noqa: E402
+from sbsasm import Assembly  # noqa: E402
+
+REF_GLOB = os.path.join(_repo_root.SPECIMENS, "new_opengameart", "**", "*.sbsasm")
 
 
 def reference_files():
@@ -120,7 +121,7 @@ def _render(path, dim, clear):
 
 def _delta(a, b):
     """(record-set difference, max |pixel delta| over common records, n records moved)."""
-    only = (set(a) ^ set(b))
+    only = set(a) ^ set(b)
     worst, moved = 0.0, 0
     for i in set(a) & set(b):
         x, y = a[i], b[i]
@@ -138,91 +139,124 @@ def _delta(a, b):
 def _hash_only(path, dim, out):
     """Render once and write {record: sha256 of its array}. The separate-process arm's child."""
     import hashlib
+
     o = _render(path, dim, clear=True)
-    json.dump({str(i): hashlib.sha256(v.tobytes()).hexdigest() for i, v in o.items()},
-              open(out, 'w'))
+    json.dump(
+        {str(i): hashlib.sha256(v.tobytes()).hexdigest() for i, v in o.items()},
+        open(out, "w"),
+    )
 
 
 def main(argv=None):
-    if argv is None and len(sys.argv) > 1 and sys.argv[1] == '--hash-only':
+    if argv is None and len(sys.argv) > 1 and sys.argv[1] == "--hash-only":
         _hash_only(sys.argv[2], int(sys.argv[3]), sys.argv[4])
         return 0
     ap = argparse.ArgumentParser()
-    ap.add_argument('--dim', type=int, default=64, help='render grid cap (default 64)')
-    ap.add_argument('--packs', type=int, default=3, help='how many packs to test')
-    ap.add_argument('--json', default='/tmp/noise_floor.json')
+    ap.add_argument("--dim", type=int, default=64, help="render grid cap (default 64)")
+    ap.add_argument("--packs", type=int, default=3, help="how many packs to test")
+    ap.add_argument("--json", default="/tmp/noise_floor.json")
     a = ap.parse_args(argv)
 
-    files = reference_files()[:a.packs]
+    files = reference_files()[: a.packs]
     if len(files) < 2:
-        print('need at least 2 reference packs, found %d' % len(files))
+        print("need at least 2 reference packs, found %d" % len(files))
         return 2
     other = files[-1]
     rows = []
-    print('noise floor -- same file, same code, %d packs, max_dim=%d\n' % (len(files), a.dim))
-    print('  %-26s %-8s %10s %9s %s' % ('file', 'arm', 'recset d', 'max |d|', 'recs moved'))
+    print(
+        "noise floor -- same file, same code, %d packs, max_dim=%d\n"
+        % (len(files), a.dim)
+    )
+    print(
+        "  %-26s %-8s %10s %9s %s"
+        % ("file", "arm", "recset d", "max |d|", "recs moved")
+    )
     for path in files:
         name = os.path.basename(path)[:26]
         base = _render(path, a.dim, clear=True)
 
         # 1. same process, back to back, NO clear -- the leak
         s, w, m = _delta(base, _render(path, a.dim, clear=False))
-        rows.append(dict(file=name, arm='same-proc/noclear', recset=s, worst=w, moved=m))
-        print('  %-26s %-8s %10d %9.6g %d' % (name, 'noclear', s, w, m))
+        rows.append(
+            dict(file=name, arm="same-proc/noclear", recset=s, worst=w, moved=m)
+        )
+        print("  %-26s %-8s %10d %9.6g %d" % (name, "noclear", s, w, m))
 
         # 2. same process, back to back, WITH clear
         s, w, m = _delta(base, _render(path, a.dim, clear=True))
-        rows.append(dict(file=name, arm='same-proc/clear', recset=s, worst=w, moved=m))
-        print('  %-26s %-8s %10d %9.6g %d' % (name, 'clear', s, w, m))
+        rows.append(dict(file=name, arm="same-proc/clear", recset=s, worst=w, moved=m))
+        print("  %-26s %-8s %10d %9.6g %d" % (name, "clear", s, w, m))
 
         # 3. after a DIFFERENT file, no clear -- cross-file contamination
         if other != path:
             sbsruntime.SAMPLERS.clear()
             _render(other, a.dim, clear=False)
             s, w, m = _delta(base, _render(path, a.dim, clear=False))
-            rows.append(dict(file=name, arm='after-other/noclear', recset=s, worst=w, moved=m))
-            print('  %-26s %-8s %10d %9.6g %d' % (name, 'afterY', s, w, m))
+            rows.append(
+                dict(file=name, arm="after-other/noclear", recset=s, worst=w, moved=m)
+            )
+            print("  %-26s %-8s %10d %9.6g %d" % (name, "afterY", s, w, m))
 
             # 4. after a different file, WITH clear
             sbsruntime.SAMPLERS.clear()
             _render(other, a.dim, clear=False)
             s, w, m = _delta(base, _render(path, a.dim, clear=True))
-            rows.append(dict(file=name, arm='after-other/clear', recset=s, worst=w, moved=m))
-            print('  %-26s %-8s %10d %9.6g %d' % (name, 'afterY+c', s, w, m))
+            rows.append(
+                dict(file=name, arm="after-other/clear", recset=s, worst=w, moved=m)
+            )
+            print("  %-26s %-8s %10d %9.6g %d" % (name, "afterY+c", s, w, m))
 
     # 5. separate processes. Run as a child so nothing of this process's state can carry,
     # which is the only arm the in-process ones cannot cover by construction.
     import subprocess, hashlib, tempfile
+
     for path in files[:1]:
         name = os.path.basename(path)[:26]
         hs = []
         for _ in range(2):
-            fd, tmp = tempfile.mkstemp(suffix='.json'); os.close(fd)
-            subprocess.run([sys.executable, os.path.abspath(__file__),
-                            '--hash-only', path, str(a.dim), tmp], check=True,
-                           stdout=subprocess.DEVNULL)
-            hs.append(json.load(open(tmp))); os.unlink(tmp)
+            fd, tmp = tempfile.mkstemp(suffix=".json")
+            os.close(fd)
+            subprocess.run(
+                [
+                    sys.executable,
+                    os.path.abspath(__file__),
+                    "--hash-only",
+                    path,
+                    str(a.dim),
+                    tmp,
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            hs.append(json.load(open(tmp)))
+            os.unlink(tmp)
         diff = sum(1 for k in set(hs[0]) | set(hs[1]) if hs[0].get(k) != hs[1].get(k))
-        rows.append(dict(file=name, arm='separate-process', recset=diff, worst=0.0, moved=diff))
-        print('  %-26s %-8s %10d %9s %d' % (name, 'xproc', diff, '-', diff))
+        rows.append(
+            dict(file=name, arm="separate-process", recset=diff, worst=0.0, moved=diff)
+        )
+        print("  %-26s %-8s %10d %9s %d" % (name, "xproc", diff, "-", diff))
 
-    with open(a.json, 'w') as fh:
+    with open(a.json, "w") as fh:
         json.dump(rows, fh, indent=1)
 
     print()
     byarm = collections.defaultdict(lambda: [0, 0.0, 0])
     for r in rows:
-        v = byarm[r['arm']]
-        v[0] += r['recset']; v[1] = max(v[1], r['worst']); v[2] += r['moved']
-    print('  THE FLOOR, per arm (all should be zero; anything else is the instrument):')
+        v = byarm[r["arm"]]
+        v[0] += r["recset"]
+        v[1] = max(v[1], r["worst"])
+        v[2] += r["moved"]
+    print("  THE FLOOR, per arm (all should be zero; anything else is the instrument):")
     for arm, (s, w, m) in sorted(byarm.items()):
-        print('    %-22s record-set delta %4d   max |pixel delta| %-12.6g records moved %d'
-              % (arm, s, w, m))
+        print(
+            "    %-22s record-set delta %4d   max |pixel delta| %-12.6g records moved %d"
+            % (arm, s, w, m)
+        )
     floor = max((v[1] for v in byarm.values()), default=0.0)
-    print('\n  worst non-zero movement under a provably null change: %.6g' % floor)
-    print('  raw: %s' % a.json)
+    print("\n  worst non-zero movement under a provably null change: %.6g" % floor)
+    print("  raw: %s" % a.json)
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

@@ -57,15 +57,16 @@ THIS DOES NOT PROVE A DECODE CORRECT either way. Staying inside your own extent 
 NECESSARY, NOT SUFFICIENT: a rule can read the wrong slot within the right structure and
 pass clean.
 """
+
 import collections
 import os
 import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import corpus                                                        # noqa: E402
-import sbsasm                                                        # noqa: E402
-import decompose                                                     # noqa: E402
+import corpus  # noqa: E402
+import sbsasm  # noqa: E402
+import decompose  # noqa: E402
 
 
 # gradient (0) and curve (22) carry an embedded table -- a colour ramp and a spline control
@@ -92,7 +93,7 @@ def _naming_slots(rec, q, prog, limit):
         at = q + 4 * k
         if at + 4 > hi:
             break
-        if struct.unpack_from('<I', data, at)[0] + 52 == prog:
+        if struct.unpack_from("<I", data, at)[0] + 52 == prog:
             out.append(k)
     return out
 
@@ -113,11 +114,11 @@ def stated_extent(rec, kind, q, tag):
              bounds the entry's own fields. An entry whose block is OUT OF LINE is yielded
              at that block and states its extent from there instead; see below.
     """
-    if kind == 'node':
+    if kind == "node":
         sh = sbsasm.node_shape(tag)
         if sh:
             return sh[0] // 4 + 1
-        lf = getattr(sbsasm, 'leaf_successor', lambda _t: None)(tag)
+        lf = getattr(sbsasm, "leaf_successor", lambda _t: None)(tag)
         if lf is not None:
             return lf // 4 + 1
         # THE POINTER CELL STATES ITS WIDTH TOO, and this did not ask because the cell was
@@ -127,7 +128,7 @@ def stated_extent(rec, kind, q, tag):
         # that the docstring says is the weaker signal. Same rule as the branches above: the
         # fields end at the slot the header locates, width is that slot plus one, which is
         # `POINTER_CELL_WORDS` (3) and is what 362 of 362 cells stating a width say.
-        pc = getattr(sbsasm, 'pointer_cell_successor', lambda _t: None)(tag)
+        pc = getattr(sbsasm, "pointer_cell_successor", lambda _t: None)(tag)
         if pc is not None:
             return pc // 4 + 1
         s2 = sbsasm.FX_NODES2.get(tag & 0xFF)
@@ -150,7 +151,7 @@ def stated_extent(rec, kind, q, tag):
         d, e = rec.asm.data, rec.end
         if q + 8 > e:
             return None
-        step = struct.unpack_from('<I', d, q + 4)[0] + 52
+        step = struct.unpack_from("<I", d, q + 4)[0] + 52
         return (step - q) // 4 if q < step < e else None
     # AN ENTRY WHOSE FIELDS ARE OUT OF LINE IS YIELDED AT ITS BLOCK, and the span below
     # would then be measured from the wrong end. `fx_out_of_line_span` asks the same
@@ -165,7 +166,7 @@ def stated_extent(rec, kind, q, tag):
     # statement, not the neighbour's position, and it is one word SHORT of the cell where
     # the mask puts a structural slot at 2. `audit_corpus` uses this as a byte floor, so
     # short is the direction to be wrong in.
-    if struct.unpack_from('<I', rec.asm.data, q)[0] != tag:
+    if struct.unpack_from("<I", rec.asm.data, q)[0] != tag:
         _w = rec.asm.fx_out_of_line_span(q, tag)
         if _w:
             return _w
@@ -196,7 +197,7 @@ def stated_extent(rec, kind, q, tag):
     for sl in range(1, span + 1):
         if q + 4 * sl + 4 > e:
             break
-        pv = struct.unpack_from('<I', d, q + 4 * sl)[0] + 52
+        pv = struct.unpack_from("<I", d, q + 4 * sl)[0] + 52
         if q < pv < e and (nxt is None or pv > nxt):
             nxt = pv
     if nxt is not None:
@@ -245,10 +246,10 @@ def fx_violations(rec):
         # branch, whose header states six words while the next structure the walk yields
         # begins three words in.
         extent = stated_extent(rec, kind, q, tag)
-        source = 'stated'
+        source = "stated"
         if extent is None:
             extent = (nxt[q] - q) // 4
-            source = 'proxy'
+            source = "proxy"
         if extent <= 0:
             continue
         slots = _naming_slots(rec, q, prog, 32)
@@ -264,10 +265,10 @@ def fx_violations(rec):
 
 def header_violations(rec):
     """[(slot, end)] for record-header programs named past the walk's own header end."""
-    if rec.filter_id in getattr(sbsasm, '_PAYLOAD_PROGRAM_FILTERS', {4, 20}):
-        return []                                # payload legitimately holds pointers
+    if rec.filter_id in getattr(sbsasm, "_PAYLOAD_PROGRAM_FILTERS", {4, 20}):
+        return []  # payload legitimately holds pointers
     d = decompose.decompose(rec)
-    if not d or d.get('end') is None:
+    if not d or d.get("end") is None:
         return []
     # THE SIZE SLOT IS PART OF THE HEADER even though it sits AT `end`. `decompose` computes
     # `prog` as the first slot after the base region and `end` as the cursor after the
@@ -306,16 +307,16 @@ def _header_end(rec, d):
     Read off `size_or_baked`, which has already decided the slot's role -- not off whether
     the word's value looks like a pointer, which is the probe this project does not make.
     """
-    prog = d.get('prog')
+    prog = d.get("prog")
     if prog is None:
-        return d['end']
+        return d["end"]
     try:
         sob = rec.size_or_baked
     except Exception:
         sob = None
-    if sob and sob[0] == 'program' and sob[1] == rec.offset + 4 * prog:
-        return max(d['end'], prog)          # inline: the slot is the program's first word
-    return max(d['end'], prog + 1)          # pointer: the slot is a header word
+    if sob and sob[0] == "program" and sob[1] == rec.offset + 4 * prog:
+        return max(d["end"], prog)  # inline: the slot is the program's first word
+    return max(d["end"], prog + 1)  # pointer: the slot is a header word
 
 
 def overlap_violations(rec):
@@ -333,15 +334,14 @@ def overlap_violations(rec):
     directly (shuffle 1,623 and distance 77 records where `end` exceeds the record), and
     both filters appear here, so neither reading can be assumed for the whole population.
     """
-    if rec.filter_id in getattr(sbsasm, '_PAYLOAD_PROGRAM_FILTERS', {4, 20}):
+    if rec.filter_id in getattr(sbsasm, "_PAYLOAD_PROGRAM_FILTERS", {4, 20}):
         return []
     d = decompose.decompose(rec)
-    if not d or d.get('end') is None:
+    if not d or d.get("end") is None:
         return []
     end = _header_end(rec, d)
     hi = rec.offset + 4 * end
-    return [((p - rec.offset) // 4, end) for p in rec.programs
-            if rec.offset <= p < hi]
+    return [((p - rec.offset) // 4, end) for p in rec.programs if rec.offset <= p < hi]
 
 
 def pointer_bound(rec):
@@ -371,17 +371,20 @@ def pointer_bound(rec):
     Returns None for the 4,815 records that point at no program inside themselves; they
     state no bound and this has nothing to say about them.
     """
-    if rec.filter_id in getattr(sbsasm, '_PAYLOAD_PROGRAM_FILTERS', {4, 20}):
+    if rec.filter_id in getattr(sbsasm, "_PAYLOAD_PROGRAM_FILTERS", {4, 20}):
         return None
     d = decompose.decompose(rec)
-    if not d or d.get('end') is None:
+    if not d or d.get("end") is None:
         return None
     asm = rec.asm
     inline = []
     for w in rec.words:
         p = w + 52
-        if rec.offset <= p < rec.end and asm.body_lo <= p < asm.body_hi \
-                and asm.valid_program(p):
+        if (
+            rec.offset <= p < rec.end
+            and asm.body_lo <= p < asm.body_hi
+            and asm.valid_program(p)
+        ):
             inline.append((p - rec.offset) // 4)
     if not inline:
         return None
@@ -417,20 +420,20 @@ def _gap_kind(rec, first):
     gaps from their filters' exact records at all -- is more often an artefact than a rule.
     """
     if rec.filter_id in _TABLE_FILTERS:
-        return 'embedded table'
+        return "embedded table"
     addr = rec.offset + 4 * first
     try:
         if addr in set(rec.programs):
-            return 'named program'
+            return "named program"
     except Exception:
         pass
     try:
         sob = rec.size_or_baked
-        if sob and sob[0] == 'program' and sob[1] == addr:
-            return 'named program'
+        if sob and sob[0] == "program" and sob[1] == addr:
+            return "named program"
     except Exception:
         pass
-    return 'UNNAMED (value-test coincidence)'
+    return "UNNAMED (value-test coincidence)"
 
 
 def census(paths=None):
@@ -463,24 +466,25 @@ def census(paths=None):
             except Exception:
                 b = None
             if b is not None:
-                pb['bounded'] += 1
+                pb["bounded"] += 1
                 if b[0] > b[1]:
-                    pb['VIOLATION'] += 1
+                    pb["VIOLATION"] += 1
                 elif b[0] < b[1]:
-                    pb['gap'] += 1
-                    pb['gap ' + _gap_kind(r, b[1])] += 1
+                    pb["gap"] += 1
+                    pb["gap " + _gap_kind(r, b[1])] += 1
                 else:
-                    pb['exact'] += 1
+                    pb["exact"] += 1
             if r.filter_id != 4:
                 continue
             for kind, tag, k, extent, src in fx_violations(r):
-                fx[(kind, 'match at +%d words, extent %d (%s)' % (k, extent, src))] += 1
+                fx[(kind, "match at +%d words, extent %d (%s)" % (k, extent, src))] += 1
             try:
                 items = list(r.fx_walk())
             except Exception:
                 items = []
-            fx_tot['attributions'] += sum(
-                1 for it in items if len(it) > 3 and it[3] is not None)
+            fx_tot["attributions"] += sum(
+                1 for it in items if len(it) > 3 and it[3] is not None
+            )
     return fx, fx_tot, hdr, hdr_tot, ov, pb
 
 
@@ -488,54 +492,59 @@ def main(argv):
     n = int(argv[0]) if argv else 80
     paths = corpus.paths()[:n]
     fx, fx_tot, hdr, hdr_tot, ov, pb = census(paths)
-    print('walk partition check -- %d files\n' % len(paths))
-    print('RECORD HEADER: programs named only by a word past the walk\'s header end')
-    print('  %-20s %10s %10s' % ('filter', 'violations', 'programs'))
+    print("walk partition check -- %d files\n" % len(paths))
+    print("RECORD HEADER: programs named only by a word past the walk's header end")
+    print("  %-20s %10s %10s" % ("filter", "violations", "programs"))
     any_h = False
     for f in sorted(hdr, key=lambda k: -hdr[k]):
         if hdr[f]:
-            print('  %-20s %10d %10d' % (f, hdr[f], hdr_tot[f]))
+            print("  %-20s %10d %10d" % (f, hdr[f], hdr_tot[f]))
             any_h = True
     if not any_h:
-        print('  none')
+        print("  none")
     print()
     print("POINTER BOUND: the header end against the record's own first inline program")
-    n = pb.get('bounded', 0)
+    n = pb.get("bounded", 0)
     if not n:
-        print('  no record states this bound')
+        print("  no record states this bound")
     else:
-        for k in ('exact', 'gap', 'VIOLATION'):
-            print('  %-20s %10d %9.4f%%' % (k, pb.get(k, 0), 100.0 * pb.get(k, 0) / n))
+        for k in ("exact", "gap", "VIOLATION"):
+            print("  %-20s %10d %9.4f%%" % (k, pb.get(k, 0), 100.0 * pb.get(k, 0) / n))
         # A gap unclassified is not a finding -- see `_gap_kind`. Almost all of them are an
         # embedded table whose extent the record states, and most of the rest are a payload
         # word this check's own value test mistook for a pointer.
-        for k in ('embedded table', 'named program',
-                  'UNNAMED (value-test coincidence)'):
-            v = pb.get('gap ' + k, 0)
+        for k in (
+            "embedded table",
+            "named program",
+            "UNNAMED (value-test coincidence)",
+        ):
+            v = pb.get("gap " + k, 0)
             if v:
-                print('      of which %-34s %8d' % (k, v))
-        print('  %-20s %10d' % ('records bounded', n))
+                print("      of which %-34s %8d" % (k, v))
+        print("  %-20s %10d" % ("records bounded", n))
     print()
-    print('HEADER OVERLAP: a program that STARTS inside the walked header')
+    print("HEADER OVERLAP: a program that STARTS inside the walked header")
     if not sum(ov.values()):
-        print('  none')
+        print("  none")
     else:
         for f in sorted(ov, key=lambda k: -ov[k]):
             if ov[f]:
-                print('  %-20s %10d %10d' % (f, ov[f], hdr_tot[f]))
-        print('  %-20s %10d %10d' % ('TOTAL', sum(ov.values()), sum(hdr_tot.values())))
+                print("  %-20s %10d %10d" % (f, ov[f], hdr_tot[f]))
+        print("  %-20s %10d %10d" % ("TOTAL", sum(ov.values()), sum(hdr_tot.values())))
     print()
-    print('FX STRUCTURES: a program named by a slot outside its own structure')
+    print("FX STRUCTURES: a program named by a slot outside its own structure")
     if not fx:
-        print('  none')
+        print("  none")
     else:
         for (kind, where), c in fx.most_common(20):
-            print('  %-6s %-44s %5d' % (kind, where, c))
-    n_att = fx_tot.get('attributions', 0)
-    print('\n  total FX violations: %d of %d attributions (%.2f%%)'
-          % (sum(fx.values()), n_att, 100.0 * sum(fx.values()) / max(n_att, 1)))
+            print("  %-6s %-44s %5d" % (kind, where, c))
+    n_att = fx_tot.get("attributions", 0)
+    print(
+        "\n  total FX violations: %d of %d attributions (%.2f%%)"
+        % (sum(fx.values()), n_att, 100.0 * sum(fx.values()) / max(n_att, 1))
+    )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))

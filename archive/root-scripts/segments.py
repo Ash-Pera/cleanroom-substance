@@ -7,7 +7,9 @@ gives bytes-per-pixel; a change in that lag marks a format change, and hence a b
 Boundaries between same-format resources do not show as a lag change and need the
 discontinuity signal instead.
 """
+
 import struct, collections
+
 
 def stride(d, lo, hi, sample=8192):
     """best byte-lag (1..4) and its score for a region."""
@@ -21,23 +23,29 @@ def stride(d, lo, hi, sample=8192):
             best, bs = k, s
     return best, bs
 
+
 def kind(d, lo, hi):
     """format label for a region."""
     n = hi - lo
     if n < 256:
-        return '?'
-    blk = d[lo:min(hi, lo + 16384)]
+        return "?"
+    blk = d[lo : min(hi, lo + 16384)]
     if blk.count(0) > len(blk) * 0.95:
-        return 'zeros'
+        return "zeros"
     k, _ = stride(d, lo, hi)
     if k == 4:
         q = len(blk) // 4
         ff = sum(1 for i in range(3, len(blk), 4) if blk[i] == 0xFF) / max(q, 1)
-        fe = sum(1 for i in range(3, len(blk), 4) if blk[i] in (0x3D, 0x3E, 0x3F)) / max(q, 1)
-        if ff > 0.85: return 'RGBA8'
-        if fe > 0.75: return 'f32'
-        return '4byte'
-    return {1: 'L8', 2: '16bit', 3: 'RGB8'}.get(k, '?')
+        fe = sum(
+            1 for i in range(3, len(blk), 4) if blk[i] in (0x3D, 0x3E, 0x3F)
+        ) / max(q, 1)
+        if ff > 0.85:
+            return "RGBA8"
+        if fe > 0.75:
+            return "f32"
+        return "4byte"
+    return {1: "L8", 2: "16bit", 3: "RGB8"}.get(k, "?")
+
 
 def coarse_runs(d, lo, hi, blk=4096):
     """contiguous runs of one format label at `blk` granularity."""
@@ -54,6 +62,7 @@ def coarse_runs(d, lo, hi, blk=4096):
         runs.append([start, hi, cur])
     return runs
 
+
 def refine(d, runs, blk=4096):
     """binary-search each boundary down to 64-byte precision."""
     for i in range(len(runs) - 1):
@@ -61,7 +70,8 @@ def refine(d, runs, blk=4096):
         lo, hi = max(a[0], b[0] - blk), b[0] + blk
         while hi - lo > 64:
             mid = (lo + hi) // 2 & ~63
-            if mid <= lo or mid >= hi: break
+            if mid <= lo or mid >= hi:
+                break
             if kind(d, mid, min(mid + 2048, b[1])) == b[2]:
                 hi = mid
             else:

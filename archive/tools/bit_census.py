@@ -53,14 +53,20 @@ grid -- a starting-point script for this census did exactly that. `_w1_of` deleg
 `record_layout.two_shape_w1` and the spec's own mode, which is what `decompose` does, and
 `--check` re-runs the answer against `decompose`'s reported `hdr` on every record it covers.
 """
+
 import argparse
 import collections
 import json
 import os
 import sys
 
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'tools'))
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "tools",
+    ),
+)
 
 import corpus
 import decompose
@@ -72,24 +78,31 @@ from render2 import model
 #: a fitted table that offers every bit of word0 as a feature will charge header words to
 #: them. Named here so the census reports them as structure rather than as unknowns, and so
 #: a nonzero cost coefficient landing on one of them shows up as the defect it is.
-LOW_HALF = ([(0, 'colour flag')] + [(b, 'filter id') for b in range(1, 8)]
-            + [(b, 'log2 width') for b in range(8, 12)]
-            + [(b, 'log2 height') for b in range(12, 16)])
+LOW_HALF = (
+    [(0, "colour flag")]
+    + [(b, "filter id") for b in range(1, 8)]
+    + [(b, "log2 width") for b in range(8, 12)]
+    + [(b, "log2 height") for b in range(12, 16)]
+)
 LOW_HALF_NAME = dict(LOW_HALF)
 
 #: The two class bits every filter shares, from the manifest rather than from a fit: bit 16
 #: resolves a type-4 `$outputsize` input and bit 23 a type-8 `$randomseed` (SPEC 13.4).
-UNIVERSAL_CLS = {16: '$outputsize', 23: '$randomseed'}
+UNIVERSAL_CLS = {16: "$outputsize", 23: "$randomseed"}
 
 #: Names the MODEL carries somewhere other than `render2.model`'s two legends. A census
 #: that only asks `_covered_bits` reports these as unnamed and overstates the gap: `blend`'s
 #: blend mode is decoded, has been for a long time, and lives in `Record.slot1_flags` as
 #: `v & 0xF` -- four `w1` bits that cost no header word because the mask state IS the value.
 NAMED_ELSEWHERE_W1 = {
-    1: [(0x000F, 'blendingmode (Record.slot1_flags)')],
+    1: [(0x000F, "blendingmode (Record.slot1_flags)")],
     # `sbsasm.PARAM_SPEC` names fxmaps' four fields; `render2.model.W1_PARAMS` does not.
-    4: [(0x0003, 'fx_param0'), (0x0030, 'fx_param1'),
-        (0x00C0, 'fx_param2'), (0x0300, 'fx_param3')],
+    4: [
+        (0x0003, "fx_param0"),
+        (0x0030, "fx_param1"),
+        (0x00C0, "fx_param2"),
+        (0x0300, "fx_param3"),
+    ],
 }
 
 #: Class bits this census NAMED and the code legend does not carry. Kept separate from
@@ -119,15 +132,17 @@ NAMED_ELSEWHERE_W1 = {
 #:            program sitting there is the same `sysvar..exp2` on 358 records and an
 #:            `inputref` on a graph input named `$pixelsize` on 8. See SPEC 7.3.
 PENDING_CLS = {
-    6:  {25: 'outputcolor (program arm)'},
-    8:  {27: '$pixelsize (program; a class slot the walk places, since the base is pinned)'},
-    7:  {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
-    10: {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
-    11: {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
-    12: {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
-    13: {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
-    18: {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
-    21: {26: '$pixelsize (baked)', 27: '$pixelsize (program)'},
+    6: {25: "outputcolor (program arm)"},
+    8: {
+        27: "$pixelsize (program; a class slot the walk places, since the base is pinned)"
+    },
+    7: {26: "$pixelsize (baked)", 27: "$pixelsize (program)"},
+    10: {26: "$pixelsize (baked)", 27: "$pixelsize (program)"},
+    11: {26: "$pixelsize (baked)", 27: "$pixelsize (program)"},
+    12: {26: "$pixelsize (baked)", 27: "$pixelsize (program)"},
+    13: {26: "$pixelsize (baked)", 27: "$pixelsize (program)"},
+    18: {26: "$pixelsize (baked)", 27: "$pixelsize (program)"},
+    21: {26: "$pixelsize (baked)", 27: "$pixelsize (program)"},
 }
 
 
@@ -145,9 +160,9 @@ def _legend_spec(f, ver):
     sp = record_layout.legend().get(str(f))
     if sp is None:
         return None
-    mv = sp.get('min_version')
+    mv = sp.get("min_version")
     if mv is not None and (ver is None or ver < mv):
-        return None                      # this filter's modern layout only
+        return None  # this filter's modern layout only
     return sp
 
 
@@ -159,9 +174,9 @@ def _spec_clsbits(spec):
     report `free` rather than `unmodelled`, which is the distinction this census exists
     for -- a bit charged NOTHING and unnamed misplaces no word whatever it means.
     """
-    bits = {int(k) for k in spec.get('cls', {})}
-    bits |= set(spec.get('cls_free', ()))
-    sh4 = spec.get('shape4')
+    bits = {int(k) for k in spec.get("cls", {})}
+    bits |= set(spec.get("cls_free", ()))
+    sh4 = spec.get("shape4")
     if sh4 is not None:
         bits.add(sh4[0])
     return sorted(bits)
@@ -175,7 +190,7 @@ def _spec_fields(spec):
     that no even grid could hold -- `blend`'s relocated opacity at 9,
     `transformation`'s offset at 25 -- are ordinary entries here.
     """
-    return sorted(int(k) for k in spec.get('w1', {}))
+    return sorted(int(k) for k in spec.get("w1", {}))
 
 
 def _cls_cost(spec, b, colour):
@@ -184,12 +199,12 @@ def _cls_cost(spec, b, colour):
     None is "carries no cell", never zero -- the distinction between `unmodelled` and
     `free` is the whole census.
     """
-    if str(b) in spec.get('cls', {}):
-        return record_layout.width(spec['cls'][str(b)], colour)
-    sh4 = spec.get('shape4')
+    if str(b) in spec.get("cls", {}):
+        return record_layout.width(spec["cls"][str(b)], colour)
+    sh4 = spec.get("shape4")
     if sh4 is not None and b == sh4[0]:
         return record_layout.width(sh4[1], colour)
-    if b in spec.get('cls_free', ()):
+    if b in spec.get("cls_free", ()):
         return 0
     return None
 
@@ -206,10 +221,10 @@ def _field_cost(spec, sh, state, colour):
     A cell whose kind is None is one the corpus never bakes in either colour (`fxmaps` at
     bit 8 is the only one): the width is unknown rather than zero, and this says so.
     """
-    if str(sh) not in spec.get('w1', {}):
+    if str(sh) not in spec.get("w1", {}):
         return None
     if state == 1:
-        return record_layout.width(spec['w1'][str(sh)], colour)
+        return record_layout.width(spec["w1"][str(sh)], colour)
     return 1 if state in (2, 3) else 0
 
 
@@ -221,7 +236,7 @@ def _arity_bits(spec):
     carried a `mask | (mask + 1)` workaround for one of them while the missing fifth bit
     reappeared in the fit as a phantom "w1 field 2 bakes 16 words" cell.
     """
-    ar = spec.get('arity')
+    ar = spec.get("arity")
     return (ar[1] << ar[0]) if ar else 0
 
 
@@ -233,7 +248,7 @@ def _int_bits(spec):
     used to report all six low bits as `unmodelled` when five of them are one number the
     legend reads and the sixth is a separate flag.
     """
-    iv = spec.get('w1_int')
+    iv = spec.get("w1_int")
     return (iv[1] << iv[0]) if iv else 0
 
 
@@ -247,14 +262,16 @@ def _identified(spec, colour):
     those absences as zeros, indistinguishable from a measured zero, which is exactly
     what a census must not repeat.
     """
-    cn = 'colour' if colour else 'grey'
+    cn = "colour" if colour else "grey"
     out = {}
-    for lab, ev in (spec.get('evidence') or {}).items():
-        kind, _dot, num = lab.partition('.')
-        if kind not in ('cls', 'w1', 'shape4'):
+    for lab, ev in (spec.get("evidence") or {}).items():
+        kind, _dot, num = lab.partition(".")
+        if kind not in ("cls", "w1", "shape4"):
             continue
-        out['%s%s' % ('cls' if kind != 'w1' else 'f', num)] = \
-            ev.get(cn) in ('measured', 'residual')
+        out["%s%s" % ("cls" if kind != "w1" else "f", num)] = ev.get(cn) in (
+            "measured",
+            "residual",
+        )
     return out
 
 
@@ -274,13 +291,13 @@ def _w1_of(r, spec, ver):
 #: and that a MEASUREMENT nevertheless describes. Printed under the shared-bit summary so the
 #: census does not present a settled bit as an open one. See SPEC 13.4.
 CHARACTERISED_CLS = {
-    19: 'clear IFF the class word is exactly 0x0080 -- an exact partition over 903,616 '
-        'records. Still unnamed',
+    19: "clear IFF the class word is exactly 0x0080 -- an exact partition over 903,616 "
+    "records. Still unnamed",
     20: "the output's format bit 4: 94.67% vs 0.60% over the 2,455 records an output names, "
-        'and 1,185 of 1,222 within the 156 files whose own outputs disagree on it',
+    "and 1,185 of 1,222 within the 156 files whose own outputs disagree on it",
     21: "the output's format bit 6: 98.46% vs 0.00%",
     24: "the filter's sampling class, low bit (0 pixel-local, 3 samples elsewhere); a "
-        'parameter instead in uniform, hsl, shuffle and dyngradient',
+    "parameter instead in uniform, hsl, shuffle and dyngradient",
     25: "the filter's sampling class, high bit; same four exceptions",
 }
 
@@ -291,21 +308,27 @@ class FilterCensus(object):
     def __init__(self, fid):
         self.fid = fid
         self.records = 0
-        self.uncovered = 0                     # no spec answered for the record
+        self.uncovered = 0  # no spec answered for the record
         self.colour = 0
-        self.w0_set = collections.Counter()    # bit -> records
+        self.w0_set = collections.Counter()  # bit -> records
         self.w1_records = 0
         self.w1_set = collections.Counter()
-        self.states = collections.defaultdict(collections.Counter)   # field -> state -> n
+        self.states = collections.defaultdict(
+            collections.Counter
+        )  # field -> state -> n
         self.cls_cost = collections.defaultdict(collections.Counter)  # bit -> cost -> n
-        self.field_cost = collections.defaultdict(collections.Counter)  # (j,st) -> cost -> n
-        self.spec_keys = collections.Counter()  # a short description of the spec that answered
-        self.specs = {}                         # description -> spec
+        self.field_cost = collections.defaultdict(
+            collections.Counter
+        )  # (j,st) -> cost -> n
+        self.spec_keys = (
+            collections.Counter()
+        )  # a short description of the spec that answered
+        self.specs = {}  # description -> spec
         self.modelled_cls = set()
         self.modelled_fields = set()
         self.arity_mask = 0
         self.int_mask = 0
-        self.free_mask = 0                      # w1 bits whose field costs 0 in every state
+        self.free_mask = 0  # w1 bits whose field costs 0 in every state
         self.free_values = collections.Counter()  # the value those bits carry
 
     def add(self, r, spec, ver):
@@ -319,8 +342,8 @@ class FilterCensus(object):
         if spec is None:
             self.uncovered += 1
             return
-        self.spec_keys[spec['name']] += 1
-        self.specs[spec['name']] = spec
+        self.spec_keys[spec["name"]] += 1
+        self.specs[spec["name"]] = spec
         self.modelled_cls |= set(_spec_clsbits(spec))
         fields = _spec_fields(spec)
         self.modelled_fields |= set(fields)
@@ -376,11 +399,11 @@ class FilterCensus(object):
         costs = self.cls_cost[b]
         vals = {c for c in costs if c is not None}
         if not costs or set(costs) == {None}:
-            return 'unmodelled', None
+            return "unmodelled", None
         cost = max(vals) if vals else None
         if cost and cost > 0:
-            return 'costed', cost
-        return 'free', 0
+            return "costed", cost
+        return "free", 0
 
     def unaccounted_cls(self):
         """Class bits set in the corpus that no NAME covers, with their status."""
@@ -401,20 +424,27 @@ class FilterCensus(object):
             if (named >> b) & 1 or not self.w1_set[b]:
                 continue
             if (self.arity_mask >> b) & 1:
-                st = 'arity'
+                st = "arity"
                 j = None
             elif (self.int_mask >> b) & 1:
-                st = 'integer'
+                st = "integer"
                 j = None
             else:
-                j = next((sh for sh in sorted(self.modelled_fields)
-                          if sh <= b <= sh + 1), None)
+                j = next(
+                    (sh for sh in sorted(self.modelled_fields) if sh <= b <= sh + 1),
+                    None,
+                )
                 if j is not None:
-                    cells = [c for (jj, s), cc in self.field_cost.items() if jj == j
-                             for c in cc if c]
-                    st = 'costed' if any(c > 0 for c in cells) else 'free'
+                    cells = [
+                        c
+                        for (jj, s), cc in self.field_cost.items()
+                        if jj == j
+                        for c in cc
+                        if c
+                    ]
+                    st = "costed" if any(c > 0 for c in cells) else "free"
                 else:
-                    st = 'unmodelled'
+                    st = "unmodelled"
             out.append((b, self.w1_set[b], st, j))
         return out
 
@@ -428,7 +458,7 @@ def run(paths, wanted=None, check=False):
             a = sbsasm.Assembly(p)
         except Exception:
             continue
-        ver = a.header.get('version') if isinstance(a.header, dict) else 0
+        ver = a.header.get("version") if isinstance(a.header, dict) else 0
         for r in a.records:
             f = r.filter_id
             if wanted is not None and f not in wanted:
@@ -450,10 +480,10 @@ def run(paths, wanted=None, check=False):
                     d = decompose.decompose(r)
                 except Exception:
                     d = None
-                if d is not None and 'hdr' in d:
+                if d is not None and "hdr" in d:
                     ours = 2 if _w1_of(r, spec, ver) is not None else 1
-                    if ours != d['hdr']:
-                        mismatch[(f, ours, d['hdr'])] += 1
+                    if ours != d["hdr"]:
+                        mismatch[(f, ours, d["hdr"])] += 1
                 if d is not None:
                     _loud(a, r, d, loud)
     return cens, mismatch, loud
@@ -468,20 +498,20 @@ def _loud(a, r, d, loud):
     not. Run over the census so a state legend that is wrong for one filter shows up as a
     number rather than as a plausible float.
     """
-    for s in d.get('inputs', ()):
+    for s in d.get("inputs", ()):
         if s >= len(r.words):
             continue
         v = r.words[s]
         ok = (0 <= v < r.index) or v == 0xFFFFFFFF
-        loud[('edge', r.filter_id, bool(ok))] += 1
-    for (j, st, slot, _w) in d.get('param_slots', ()):
+        loud[("edge", r.filter_id, bool(ok))] += 1
+    for j, st, slot, _w in d.get("param_slots", ()):
         if st != 2 or slot >= len(r.words):
             continue
-        loud[('prog', r.filter_id, j, a.valid_program(r.words[slot] + 52))] += 1
+        loud[("prog", r.filter_id, j, a.valid_program(r.words[slot] + 52))] += 1
 
 
 def _bar(n, tot):
-    return '%8d %6.2f%%' % (n, 100.0 * n / tot if tot else 0.0)
+    return "%8d %6.2f%%" % (n, 100.0 * n / tot if tot else 0.0)
 
 
 def report(cens, out=sys.stdout):
@@ -489,63 +519,103 @@ def report(cens, out=sys.stdout):
     shared = collections.defaultdict(list)
     for f in sorted(cens, key=lambda f: -cens[f].records):
         c = cens[f]
-        print('', file=out)
-        print('=' * 78, file=out)
-        print('%-16s filter %-3d  %d records  (%d colour)  spec %s' % (
-            names.get(f, '?'), f, c.records, c.colour,
-            ', '.join('%s x%d' % (k or 'plain', n) for k, n in c.spec_keys.most_common())
-            or 'NONE'), file=out)
+        print("", file=out)
+        print("=" * 78, file=out)
+        print(
+            "%-16s filter %-3d  %d records  (%d colour)  spec %s"
+            % (
+                names.get(f, "?"),
+                f,
+                c.records,
+                c.colour,
+                ", ".join(
+                    "%s x%d" % (k or "plain", n) for k, n in c.spec_keys.most_common()
+                )
+                or "NONE",
+            ),
+            file=out,
+        )
         if c.uncovered:
-            print('  %d records no spec answered for' % c.uncovered, file=out)
+            print("  %d records no spec answered for" % c.uncovered, file=out)
         spec = next(iter(c.specs.values()), None)
         if spec is not None:
             # The identifiability flags are reported for the COLOUR the filter has most
             # records of, because a cell can be measured in one colour and predicted in the
             # other and a single flag has to say which population it describes.
             ident = _identified(spec, 1 if c.colour * 2 >= c.records else 0)
-            print('  has_w1 %-8s base %-4s fixed %-3s%s' % (
-                spec.get('has_w1'), spec.get('base'), spec.get('fixed'),
-                '   arity bits 0x%x' % c.arity_mask if c.arity_mask else ''), file=out)
+            print(
+                "  has_w1 %-8s base %-4s fixed %-3s%s"
+                % (
+                    spec.get("has_w1"),
+                    spec.get("base"),
+                    spec.get("fixed"),
+                    "   arity bits 0x%x" % c.arity_mask if c.arity_mask else "",
+                ),
+                file=out,
+            )
         else:
             ident = {}
 
-        print('  word0 low half (SPEC 6.2 -- structure, not a presence mask)', file=out)
-        for lo, hi, what in ((0, 0, 'colour flag'), (1, 7, 'filter id'),
-                             (8, 11, 'log2 width'), (12, 15, 'log2 height')):
-            bits = ' '.join('%d:%d' % (b, c.w0_set[b]) for b in range(lo, hi + 1)
-                            if c.w0_set[b])
-            charged = [b for b in range(lo, hi + 1)
-                       if any(k for k in c.cls_cost.get(b, ()) if k)]
-            print('    bits %-5s %-12s %s%s' % (
-                '%d-%d' % (lo, hi) if hi > lo else str(lo), what,
-                bits or '(never set)',
-                '   *** CHARGED A SLOT: %s' % charged if charged else ''), file=out)
+        print("  word0 low half (SPEC 6.2 -- structure, not a presence mask)", file=out)
+        for lo, hi, what in (
+            (0, 0, "colour flag"),
+            (1, 7, "filter id"),
+            (8, 11, "log2 width"),
+            (12, 15, "log2 height"),
+        ):
+            bits = " ".join(
+                "%d:%d" % (b, c.w0_set[b]) for b in range(lo, hi + 1) if c.w0_set[b]
+            )
+            charged = [
+                b
+                for b in range(lo, hi + 1)
+                if any(k for k in c.cls_cost.get(b, ()) if k)
+            ]
+            print(
+                "    bits %-5s %-12s %s%s"
+                % (
+                    "%d-%d" % (lo, hi) if hi > lo else str(lo),
+                    what,
+                    bits or "(never set)",
+                    "   *** CHARGED A SLOT: %s" % charged if charged else "",
+                ),
+                file=out,
+            )
 
-        print('  class word (word0 bits 16-31)', file=out)
-        print('    bit  %-16s %-9s %-11s %s' % ('records', 'cost', 'status', 'name'),
-              file=out)
+        print("  class word (word0 bits 16-31)", file=out)
+        print(
+            "    bit  %-16s %-9s %-11s %s" % ("records", "cost", "status", "name"),
+            file=out,
+        )
         named = c.named_cls()
         for b in range(16, 32):
             n = c.w0_set[b]
             if not n:
                 continue
             st, cost = c.cls_status(b)
-            nm = UNIVERSAL_CLS.get(b) or (model.CLS_NAMES.get(f, {}).get(b, ('', ''))[0])
+            nm = (
+                UNIVERSAL_CLS.get(b) or (model.CLS_NAMES.get(f, {}).get(b, ("", ""))[0])
+            )
             if not nm and b in PENDING_CLS.get(f, {}):
-                nm = PENDING_CLS[f][b] + '  [not in the code legend]'
-            idflag = ident.get('cls%d' % b)
+                nm = PENDING_CLS[f][b] + "  [not in the code legend]"
+            idflag = ident.get("cls%d" % b)
             costs = sorted(k for k in c.cls_cost[b] if k is not None)
-            cs = ('/'.join(str(x) for x in costs) if costs else '-')
+            cs = "/".join(str(x) for x in costs) if costs else "-"
             if idflag is False:
-                cs += ' (unident)'
-            print('    %-4d %s %-9s %-11s %s' % (
-                b, _bar(n, c.records), cs, st, nm or '--'), file=out)
+                cs += " (unident)"
+            print(
+                "    %-4d %s %-9s %-11s %s"
+                % (b, _bar(n, c.records), cs, st, nm or "--"),
+                file=out,
+            )
             if b not in named:
                 shared[b].append((names.get(f, f), n, st))
 
         if c.w1_records:
-            print('  w1 (present on %d of %d records)' % (c.w1_records, c.records),
-                  file=out)
+            print(
+                "  w1 (present on %d of %d records)" % (c.w1_records, c.records),
+                file=out,
+            )
             w1named = c.named_w1_bits()
             allf = sorted(set(c.states) | set(c.modelled_fields))
             for j in allf:
@@ -553,70 +623,137 @@ def report(cens, out=sys.stdout):
                 sc = c.states[j]
                 if not any(s for s in sc if s):
                     continue
-                nm = [nm for (mask, _sh, nm, _k) in model.W1_PARAMS.get(f, ())
-                      if nm and (mask & (3 << bits[0]))]
-                nm += [n2 for (mask, n2) in NAMED_ELSEWHERE_W1.get(f, ())
-                       if mask & (3 << bits[0])]
-                nm += [n2 for (n2, pres, _pg) in sbsasm.PARAM_SPEC.get(f, ())
-                       if (pres & (3 << bits[0])) and n2 not in nm]
-                costs = ' '.join('%d:%s' % (s, '/'.join(
-                    str(x) for x in sorted(k for k in c.field_cost[(j, s)] if k is not None))
-                    or '-') for s in (1, 2, 3) if sc[s])
-                idf = ident.get('f%d' % j)
-                print('    field@%-2d  bits %2d,%-3d %s %-30s cost %-14s %s' % (
-                    j, bits[0], bits[1], ' ' if idf is not False else '?',
-                    ' '.join('%s:%d' % (('baked', 'prog', 'edge')[s - 1], sc[s])
-                             for s in (1, 2, 3) if sc[s]),
-                    costs, '/'.join(nm) if nm else '--'), file=out)
-            loose = [b for b in sorted(c.w1_set)
-                     if not (c.arity_mask >> b) & 1 and not (c.int_mask >> b) & 1
-                     and not any(sh <= b <= sh + 1 for sh in c.modelled_fields)]
+                nm = [
+                    nm
+                    for (mask, _sh, nm, _k) in model.W1_PARAMS.get(f, ())
+                    if nm and (mask & (3 << bits[0]))
+                ]
+                nm += [
+                    n2
+                    for (mask, n2) in NAMED_ELSEWHERE_W1.get(f, ())
+                    if mask & (3 << bits[0])
+                ]
+                nm += [
+                    n2
+                    for (n2, pres, _pg) in sbsasm.PARAM_SPEC.get(f, ())
+                    if (pres & (3 << bits[0])) and n2 not in nm
+                ]
+                costs = " ".join(
+                    "%d:%s"
+                    % (
+                        s,
+                        "/".join(
+                            str(x)
+                            for x in sorted(
+                                k for k in c.field_cost[(j, s)] if k is not None
+                            )
+                        )
+                        or "-",
+                    )
+                    for s in (1, 2, 3)
+                    if sc[s]
+                )
+                idf = ident.get("f%d" % j)
+                print(
+                    "    field@%-2d  bits %2d,%-3d %s %-30s cost %-14s %s"
+                    % (
+                        j,
+                        bits[0],
+                        bits[1],
+                        " " if idf is not False else "?",
+                        " ".join(
+                            "%s:%d" % (("baked", "prog", "edge")[s - 1], sc[s])
+                            for s in (1, 2, 3)
+                            if sc[s]
+                        ),
+                        costs,
+                        "/".join(nm) if nm else "--",
+                    ),
+                    file=out,
+                )
+            loose = [
+                b
+                for b in sorted(c.w1_set)
+                if not (c.arity_mask >> b) & 1
+                and not (c.int_mask >> b) & 1
+                and not any(sh <= b <= sh + 1 for sh in c.modelled_fields)
+            ]
             if loose:
-                print('    bits in no modelled field: %s' % ' '.join(
-                    '%d:%d' % (b, c.w1_set[b]) for b in loose), file=out)
+                print(
+                    "    bits in no modelled field: %s"
+                    % " ".join("%d:%d" % (b, c.w1_set[b]) for b in loose),
+                    file=out,
+                )
             if c.arity_mask:
                 ab = [b for b in sorted(c.w1_set) if (c.arity_mask >> b) & 1]
-                print('    arity count bits: %s' % (' '.join(
-                    '%d:%d' % (b, c.w1_set[b]) for b in ab) or '(never set)'), file=out)
+                print(
+                    "    arity count bits: %s"
+                    % (
+                        " ".join("%d:%d" % (b, c.w1_set[b]) for b in ab)
+                        or "(never set)"
+                    ),
+                    file=out,
+                )
             if c.int_mask:
                 spec0 = next(iter(c.specs.values()))
-                iv = spec0.get('w1_int')
+                iv = spec0.get("w1_int")
                 ib = [b for b in sorted(c.w1_set) if (c.int_mask >> b) & 1]
-                print('    integer field bits (SPEC 7.4, one value emits a pointer): %s'
-                      '   value %d -> 1 word' % (' '.join(
-                          '%d:%d' % (b, c.w1_set[b]) for b in ib) or '(never set)', iv[2]),
-                      file=out)
+                print(
+                    "    integer field bits (SPEC 7.4, one value emits a pointer): %s"
+                    "   value %d -> 1 word"
+                    % (
+                        " ".join("%d:%d" % (b, c.w1_set[b]) for b in ib)
+                        or "(never set)",
+                        iv[2],
+                    ),
+                    file=out,
+                )
             if c.free_mask:
                 vals = c.free_values.most_common(6)
-                print('    mask-valued fields (0 words in every state) mask 0x%x, values: %s'
-                      % (c.free_mask, '  '.join('%s:%d' % (bin(v), n) for v, n in vals)),
-                      file=out)
+                print(
+                    "    mask-valued fields (0 words in every state) mask 0x%x, values: %s"
+                    % (c.free_mask, "  ".join("%s:%d" % (bin(v), n) for v, n in vals)),
+                    file=out,
+                )
 
         ucls = c.unaccounted_cls()
         uw1 = c.unaccounted_w1()
-        print('  UNNAMED, still set:', file=out)
-        print('    class %s' % (', '.join('%d(%s,%d)' % (b, st, n)
-                                          for b, n, st, _c in ucls) or 'none'), file=out)
-        print('    w1    %s' % (', '.join('%d(%s)' % (b, st)
-                                          for b, _n, st, _j in uw1) or 'none'), file=out)
-        bad = [x for x in ucls if x[2] in ('costed', 'unmodelled')]
-        bad += [x for x in uw1 if x[2] == 'unmodelled']
+        print("  UNNAMED, still set:", file=out)
+        print(
+            "    class %s"
+            % (", ".join("%d(%s,%d)" % (b, st, n) for b, n, st, _c in ucls) or "none"),
+            file=out,
+        )
+        print(
+            "    w1    %s"
+            % (", ".join("%d(%s)" % (b, st) for b, _n, st, _j in uw1) or "none"),
+            file=out,
+        )
+        bad = [x for x in ucls if x[2] in ("costed", "unmodelled")]
+        bad += [x for x in uw1 if x[2] == "unmodelled"]
         if bad:
-            print('    ^ of which NOT merely free/constant: %s' % bad, file=out)
+            print("    ^ of which NOT merely free/constant: %s" % bad, file=out)
 
-    print('', file=out)
-    print('=' * 78, file=out)
-    print('CLASS BITS NO NAME LEGEND COVERS -- which filters set them', file=out)
+    print("", file=out)
+    print("=" * 78, file=out)
+    print("CLASS BITS NO NAME LEGEND COVERS -- which filters set them", file=out)
     for b in sorted(shared):
         tot = sum(n for _f, n, _s in shared[b])
         sts = sorted({s for _f, _n, s in shared[b]})
-        print('  bit %-3d %2d filters  %9d records  %s' % (
-            b, len(shared[b]), tot, ','.join(sts)), file=out)
-        print('          %s' % ' '.join('%s:%d' % (f, n) for f, n, _s
-                                        in sorted(shared[b], key=lambda x: -x[1])),
-              file=out)
+        print(
+            "  bit %-3d %2d filters  %9d records  %s"
+            % (b, len(shared[b]), tot, ",".join(sts)),
+            file=out,
+        )
+        print(
+            "          %s"
+            % " ".join(
+                "%s:%d" % (f, n) for f, n, _s in sorted(shared[b], key=lambda x: -x[1])
+            ),
+            file=out,
+        )
         if b in CHARACTERISED_CLS:
-            print('          -> %s' % CHARACTERISED_CLS[b], file=out)
+            print("          -> %s" % CHARACTERISED_CLS[b], file=out)
     return shared
 
 
@@ -624,31 +761,42 @@ def to_json(cens):
     out = {}
     for f, c in cens.items():
         out[str(f)] = {
-            'name': sbsasm.FILTERS.get(f), 'records': c.records, 'colour': c.colour,
-            'uncovered': c.uncovered,
-            'w0_set': {str(b): n for b, n in sorted(c.w0_set.items())},
-            'w1_records': c.w1_records,
-            'w1_set': {str(b): n for b, n in sorted(c.w1_set.items())},
-            'states': {str(j): {str(s): n for s, n in sorted(v.items())}
-                       for j, v in sorted(c.states.items())},
-            'cls_cost': {str(b): {str(k): n for k, n in sorted(
-                v.items(), key=lambda kv: (kv[0] is None, kv[0]))}
-                for b, v in sorted(c.cls_cost.items())},
-            'unaccounted_cls': c.unaccounted_cls(),
-            'unaccounted_w1': c.unaccounted_w1(),
-            'arity_mask': c.arity_mask,
-            'int_mask': c.int_mask,
+            "name": sbsasm.FILTERS.get(f),
+            "records": c.records,
+            "colour": c.colour,
+            "uncovered": c.uncovered,
+            "w0_set": {str(b): n for b, n in sorted(c.w0_set.items())},
+            "w1_records": c.w1_records,
+            "w1_set": {str(b): n for b, n in sorted(c.w1_set.items())},
+            "states": {
+                str(j): {str(s): n for s, n in sorted(v.items())}
+                for j, v in sorted(c.states.items())
+            },
+            "cls_cost": {
+                str(b): {
+                    str(k): n
+                    for k, n in sorted(v.items(), key=lambda kv: (kv[0] is None, kv[0]))
+                }
+                for b, v in sorted(c.cls_cost.items())
+            },
+            "unaccounted_cls": c.unaccounted_cls(),
+            "unaccounted_w1": c.unaccounted_w1(),
+            "arity_mask": c.arity_mask,
+            "int_mask": c.int_mask,
         }
     return out
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument('filters', nargs='*', help='filter names or ids; default all')
-    ap.add_argument('--limit', type=int, default=None, help='first N corpus files')
-    ap.add_argument('--json', dest='json_out', default=None)
-    ap.add_argument('--check', action='store_true',
-                    help="audit this file's w1-presence rule against decompose's hdr")
+    ap.add_argument("filters", nargs="*", help="filter names or ids; default all")
+    ap.add_argument("--limit", type=int, default=None, help="first N corpus files")
+    ap.add_argument("--json", dest="json_out", default=None)
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help="audit this file's w1-presence rule against decompose's hdr",
+    )
     args = ap.parse_args(argv)
 
     byname = {v: k for k, v in sbsasm.FILTERS.items()}
@@ -657,32 +805,50 @@ def main(argv=None):
         wanted = {int(x) if x.isdigit() else byname[x] for x in args.filters}
     paths = corpus.paths()
     if args.limit:
-        paths = paths[:args.limit]
+        paths = paths[: args.limit]
     cens, mismatch, loud = run(paths, wanted, check=args.check)
-    print('%d files, %d records' % (len(paths), sum(c.records for c in cens.values())))
+    print("%d files, %d records" % (len(paths), sum(c.records for c in cens.values())))
     report(cens)
     if args.check:
-        print('')
-        print('w1-presence check against decompose hdr: %s' % (
-            'AGREE on every covered record' if not mismatch else dict(mismatch)))
-        eok = sum(n for k, n in loud.items() if k[0] == 'edge' and k[2])
-        ebad = {sbsasm.FILTERS.get(k[1], k[1]): n for k, n in loud.items()
-                if k[0] == 'edge' and not k[2]}
-        pok = sum(n for k, n in loud.items() if k[0] == 'prog' and k[3])
-        pbad = {(sbsasm.FILTERS.get(k[1], k[1]), k[2]): n for k, n in loud.items()
-                if k[0] == 'prog' and not k[3]}
-        print('SPEC 6.3 loud check -- edge slots holding a backward index: %d of %d%s'
-              % (eok, eok + sum(ebad.values()),
-                 '' if not ebad else '   FAILING: %s' % ebad))
-        print('SPEC 6.3 loud check -- state-2 slots resolving a program : %d of %d%s'
-              % (pok, pok + sum(pbad.values()),
-                 '' if not pbad else '\n    FAILING (filter, field): %s' % pbad))
+        print("")
+        print(
+            "w1-presence check against decompose hdr: %s"
+            % ("AGREE on every covered record" if not mismatch else dict(mismatch))
+        )
+        eok = sum(n for k, n in loud.items() if k[0] == "edge" and k[2])
+        ebad = {
+            sbsasm.FILTERS.get(k[1], k[1]): n
+            for k, n in loud.items()
+            if k[0] == "edge" and not k[2]
+        }
+        pok = sum(n for k, n in loud.items() if k[0] == "prog" and k[3])
+        pbad = {
+            (sbsasm.FILTERS.get(k[1], k[1]), k[2]): n
+            for k, n in loud.items()
+            if k[0] == "prog" and not k[3]
+        }
+        print(
+            "SPEC 6.3 loud check -- edge slots holding a backward index: %d of %d%s"
+            % (
+                eok,
+                eok + sum(ebad.values()),
+                "" if not ebad else "   FAILING: %s" % ebad,
+            )
+        )
+        print(
+            "SPEC 6.3 loud check -- state-2 slots resolving a program : %d of %d%s"
+            % (
+                pok,
+                pok + sum(pbad.values()),
+                "" if not pbad else "\n    FAILING (filter, field): %s" % pbad,
+            )
+        )
     if args.json_out:
-        with open(args.json_out, 'w') as fh:
+        with open(args.json_out, "w") as fh:
             json.dump(to_json(cens), fh, indent=1, sort_keys=True)
-        print('\nwrote %s' % args.json_out)
+        print("\nwrote %s" % args.json_out)
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

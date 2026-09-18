@@ -32,6 +32,7 @@ claim of agreement was simply never checked after it was written. Which is the s
 failure this module was created to fix, one level up: a statement about the data, made
 once and not re-measured.
 """
+
 import glob
 import hashlib
 import json
@@ -44,11 +45,11 @@ import re
 #   .hashcache.json persistent: (size, mtime) -> sha1 per path, so a cold process
 #                   hashes only files that changed since the last run
 _MEMO = {}
-_HASHCACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.hashcache.json')
+_HASHCACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".hashcache.json")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LIST = os.path.join(ROOT, 'DISTINCT.txt')
-LEGACY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DISTINCT.txt')
+LIST = os.path.join(ROOT, "DISTINCT.txt")
+LEGACY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DISTINCT.txt")
 
 
 def paths(listing=None, verbose=False):
@@ -79,17 +80,17 @@ def paths(listing=None, verbose=False):
             p = os.path.join(ROOT, p)
         try:
             st = os.stat(p)
-            sig = '%d:%d' % (st.st_size, st.st_mtime_ns)
+            sig = "%d:%d" % (st.st_size, st.st_mtime_ns)
             ent = hc.get(p)
             if ent and ent[0] == sig:
                 h = ent[1]
             else:
-                with open(p, 'rb') as fh:
+                with open(p, "rb") as fh:
                     h = hashlib.sha1(fh.read()).hexdigest()
                 hc[p] = [sig, h]
                 hc_dirty = True
         except OSError:
-            continue                      # a path that no longer resolves is not a file
+            continue  # a path that no longer resolves is not a file
         if h in seen:
             dropped += 1
             continue
@@ -97,17 +98,22 @@ def paths(listing=None, verbose=False):
         out.append(p)
     if hc_dirty:
         try:
-            tmp = _HASHCACHE + '.tmp'
-            json.dump(hc, open(tmp, 'w'))
+            tmp = _HASHCACHE + ".tmp"
+            json.dump(hc, open(tmp, "w"))
             os.replace(tmp, _HASHCACHE)
         except OSError:
             pass
     if memo_key is not None:
         _MEMO[memo_key] = list(out)
     if verbose:
-        print('corpus: %d files from %s%s'
-              % (len(out), os.path.relpath(src, ROOT),
-                 (' (%d duplicate-content paths dropped)' % dropped) if dropped else ''))
+        print(
+            "corpus: %d files from %s%s"
+            % (
+                len(out),
+                os.path.relpath(src, ROOT),
+                (" (%d duplicate-content paths dropped)" % dropped) if dropped else "",
+            )
+        )
     return out
 
 
@@ -134,7 +140,7 @@ def paths(listing=None, verbose=False):
 #: `sourcematch --verify` and `test_the_legend_agrees_with_the_shipped_sources` while looking
 #: more conservative than the rule it was enforcing. Only an UNREADABLE file fails closed.
 _AUTHOR = re.compile(rb'<author v="([^"]*)"/>')
-_EXCLUDED_AUTHOR = b'Allegorithmic'
+_EXCLUDED_AUTHOR = b"Allegorithmic"
 
 #: The package author sits in the preamble -- 320 of the 332 tagged sources have it inside
 #: the first 8 KB, median offset 524 bytes. These files run to megabytes on ONE line, so the
@@ -146,7 +152,7 @@ _HEAD = 8192
 def source_author(path):
     """The author a `.sbs` states, `None` if it states none, `False` if unreadable."""
     try:
-        with open(path, 'rb') as fh:
+        with open(path, "rb") as fh:
             head = fh.read(_HEAD)
             m = _AUTHOR.search(head)
             if m is None:
@@ -154,7 +160,7 @@ def source_author(path):
                 m = _AUTHOR.search(fh.read())
     except OSError:
         return False
-    return None if m is None else m.group(1).decode('utf-8', 'replace')
+    return None if m is None else m.group(1).decode("utf-8", "replace")
 
 
 def source_excluded(path):
@@ -166,7 +172,7 @@ def source_excluded(path):
     a = source_author(path)
     if a is False:
         return True
-    return a is not None and 'Allegorithmic' in a
+    return a is not None and "Allegorithmic" in a
 
 
 def sources(root=None):
@@ -177,15 +183,23 @@ def sources(root=None):
     exposed separately for a caller handed a single path on a command line.
     """
     base = root or ROOT
-    return [p for p in sorted(glob.glob(os.path.join(base, '**', '*.sbs'), recursive=True))
-            if not p.endswith('.sbsar') and not source_excluded(p)]
+    return [
+        p
+        for p in sorted(glob.glob(os.path.join(base, "**", "*.sbs"), recursive=True))
+        if not p.endswith(".sbsar") and not source_excluded(p)
+    ]
 
 
-if __name__ == '__main__':
-    print('%d distinct files' % len(paths(verbose=True)))
+if __name__ == "__main__":
+    print("%d distinct files" % len(paths(verbose=True)))
     allowed = sources()
-    every = [p for p in glob.glob(os.path.join(ROOT, '**', '*.sbs'), recursive=True)
-             if not p.endswith('.sbsar')]
+    every = [
+        p
+        for p in glob.glob(os.path.join(ROOT, "**", "*.sbs"), recursive=True)
+        if not p.endswith(".sbsar")
+    ]
     untagged = sum(1 for p in allowed if source_author(p) is None)
-    print('%d sources, %d readable under SPEC 12 (%d excluded, %d of the readable untagged)'
-          % (len(every), len(allowed), len(every) - len(allowed), untagged))
+    print(
+        "%d sources, %d readable under SPEC 12 (%d excluded, %d of the readable untagged)"
+        % (len(every), len(allowed), len(every) - len(allowed), untagged)
+    )

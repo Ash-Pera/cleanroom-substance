@@ -8,41 +8,89 @@ Usage:
     print(disasm.text(data, prog_ptr, hi))          # listing for one program
     for op,args,imm in disasm.decode(data, ptr, hi) # structured
 """
+
 import struct, isa
 
 NAMES = {
- (1,0x00):'const',   (2,0x00):'const',   (0,0x00):'const',
- (1,0x01):'sysvar',  (1,0x02):'inputref',(2,0x02):'inputref',(0,0x02):'inputref',
- (1,0x04):'get',     (2,0x04):'get',     (0,0x04):'get',
- (1,0x07):'set',     (2,0x07):'set',     (0,0x07):'set',
- (1,0x09):'select',  (2,0x09):'select',  (0,0x09):'select',
- (1,0x0C):'seq',     (2,0x0C):'seq',     (0,0x0C):'seq',
- (1,0x0D):'vec',     (2,0x0D):'vec',
- (1,0x10):'swizzle', (2,0x10):'swizzle',
- (1,0x11):'cvt',     (2,0x11):'cvt',
- (1,0x12):'add',     (2,0x12):'add',
- (1,0x13):'sub',     (2,0x13):'sub',
- (1,0x14):'mul',     (2,0x14):'mul',
- (1,0x15):'div',     (2,0x15):'div',
- (1,0x16):'mod',     (2,0x16):'mod',
- (1,0x17):'neg',     (2,0x17):'neg',
- (1,0x18):'dot',     (2,0x18):'dot',
- (1,0x23):'abs',     (2,0x23):'abs',     (1,0x24):'floor',   (1,0x25):'ceil',
- (1,0x26):'cos',     (1,0x27):'sin',     (1,0x28):'sqrt',
- (1,0x29):'ln',      (1,0x2B):'exp2',    (1,0x2D):'atan2',
- (1,0x35):'log2',    (1,0x36):'pow',
- (1,0x2E):'cartesian',(1,0x2F):'lerp',
- (1,0x30):'min',     (2,0x30):'min',
- (1,0x31):'max',     (2,0x31):'max',
- (1,0x32):'rand',
- (1,0x33):'samplelum',(1,0x34):'samplecol',
- (1,0x0B):'while',    (0,0x0B):'while',    (2,0x0B):'while',
- (0,0x03):'cache_read', (1,0x03):'cache_read', (2,0x03):'cache_read',
- (0,0x06):'cache_write',(1,0x06):'cache_write',(2,0x06):'cache_write',
- (0,0x1A):'and',     (0,0x1B):'or',      (0,0x1C):'not',
- (0,0x1D):'eq',      (0,0x1F):'gt',      (0,0x20):'gteq',
- (0,0x21):'lt',      (0,0x22):'lteq',     (0,0x1E):'neq',
- (1,0x2A):'exp',
+    (1, 0x00): "const",
+    (2, 0x00): "const",
+    (0, 0x00): "const",
+    (1, 0x01): "sysvar",
+    (1, 0x02): "inputref",
+    (2, 0x02): "inputref",
+    (0, 0x02): "inputref",
+    (1, 0x04): "get",
+    (2, 0x04): "get",
+    (0, 0x04): "get",
+    (1, 0x07): "set",
+    (2, 0x07): "set",
+    (0, 0x07): "set",
+    (1, 0x09): "select",
+    (2, 0x09): "select",
+    (0, 0x09): "select",
+    (1, 0x0C): "seq",
+    (2, 0x0C): "seq",
+    (0, 0x0C): "seq",
+    (1, 0x0D): "vec",
+    (2, 0x0D): "vec",
+    (1, 0x10): "swizzle",
+    (2, 0x10): "swizzle",
+    (1, 0x11): "cvt",
+    (2, 0x11): "cvt",
+    (1, 0x12): "add",
+    (2, 0x12): "add",
+    (1, 0x13): "sub",
+    (2, 0x13): "sub",
+    (1, 0x14): "mul",
+    (2, 0x14): "mul",
+    (1, 0x15): "div",
+    (2, 0x15): "div",
+    (1, 0x16): "mod",
+    (2, 0x16): "mod",
+    (1, 0x17): "neg",
+    (2, 0x17): "neg",
+    (1, 0x18): "dot",
+    (2, 0x18): "dot",
+    (1, 0x23): "abs",
+    (2, 0x23): "abs",
+    (1, 0x24): "floor",
+    (1, 0x25): "ceil",
+    (1, 0x26): "cos",
+    (1, 0x27): "sin",
+    (1, 0x28): "sqrt",
+    (1, 0x29): "ln",
+    (1, 0x2B): "exp2",
+    (1, 0x2D): "atan2",
+    (1, 0x35): "log2",
+    (1, 0x36): "pow",
+    (1, 0x2E): "cartesian",
+    (1, 0x2F): "lerp",
+    (1, 0x30): "min",
+    (2, 0x30): "min",
+    (1, 0x31): "max",
+    (2, 0x31): "max",
+    (1, 0x32): "rand",
+    (1, 0x33): "samplelum",
+    (1, 0x34): "samplecol",
+    (1, 0x0B): "while",
+    (0, 0x0B): "while",
+    (2, 0x0B): "while",
+    (0, 0x03): "cache_read",
+    (1, 0x03): "cache_read",
+    (2, 0x03): "cache_read",
+    (0, 0x06): "cache_write",
+    (1, 0x06): "cache_write",
+    (2, 0x06): "cache_write",
+    (0, 0x1A): "and",
+    (0, 0x1B): "or",
+    (0, 0x1C): "not",
+    (0, 0x1D): "eq",
+    (0, 0x1F): "gt",
+    (0, 0x20): "gteq",
+    (0, 0x21): "lt",
+    (0, 0x22): "lteq",
+    (0, 0x1E): "neq",
+    (1, 0x2A): "exp",
 }
 # 0x1E and 0x2A were named in OPCODES.md and wired into transpile.py's OPS and FUNCS, and
 # this table was never updated -- so every listing printed `op1E`/`op2A` for operations the
@@ -58,7 +106,7 @@ NAMES = {
 # the linear branch's 0.0773994 constant is 1/12.92 to 8 decimal places. Transpiled and
 # evaluated against the closed form: max deviation 1.19e-07, identical to the ln/exp2
 # proof. See tools/test_transpile.py, test_pow_via_srgb_decode.
-TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
+TYPE = {0: "b", 1: "f", 2: "i", 3: "?"}
 
 # Operations whose operand tokens are immediates rather than value numbers.
 # 'all' = every token is part of one immediate; otherwise a tuple of token positions.
@@ -113,19 +161,30 @@ TYPE = {0:'b', 1:'f', 2:'i', 3:'?'}
 # Measured on programs a record's slots name, never on the permissive whole-file scan:
 # on that scan even `add` reads 38.5% impossible and `lteq` 86.5%, because the scan
 # accepts positions that are not programs at all.
-IMM = {0x00:'all', 0x02:'all', 0x01:'all', 0x04:'all', 0x03:'all',
-       0x10:(1,), 0x07:(1,), 0x0B:(),
-       # sample (0x33 luminance, 0x34 colour): token 0 is the coordinate OPERAND and
-       # everything after it is immediate. Token 1 is the sampler index; tokens 2+ are
-       # flags whose meaning is unread. The transpiler has treated them that way since
-       # it was written -- its emission reads toks[1] and arg(0) and nothing else --
-       # but this table said only token 1 was immediate, so the validator demanded
-       # value-ordering from flag bytes. That single gap produced the whole "programs
-       # start at S = 1" episode: 178 per-pixel functions failed strict validation on
-       # sample flag tokens alone, an S=1 slack was added on a measured control, and
-       # the correct fix was HERE all along. All 178 validate at strict S=0 with the
-       # positions right.
-       0x33:(1,2,3,4,5,6), 0x34:(1,2,3,4,5,6), 0x06:(1,)}
+IMM = {
+    0x00: "all",
+    0x02: "all",
+    0x01: "all",
+    0x04: "all",
+    0x03: "all",
+    0x10: (1,),
+    0x07: (1,),
+    0x0B: (),
+    # sample (0x33 luminance, 0x34 colour): token 0 is the coordinate OPERAND and
+    # everything after it is immediate. Token 1 is the sampler index; tokens 2+ are
+    # flags whose meaning is unread. The transpiler has treated them that way since
+    # it was written -- its emission reads toks[1] and arg(0) and nothing else --
+    # but this table said only token 1 was immediate, so the validator demanded
+    # value-ordering from flag bytes. That single gap produced the whole "programs
+    # start at S = 1" episode: 178 per-pixel functions failed strict validation on
+    # sample flag tokens alone, an S=1 slack was added on a measured control, and
+    # the correct fix was HERE all along. All 178 validate at strict S=0 with the
+    # positions right.
+    0x33: (1, 2, 3, 4, 5, 6),
+    0x34: (1, 2, 3, 4, 5, 6),
+    0x06: (1,),
+}
+
 
 def fields(op):
     """(ntok, ty, comps, id) -- a bare tuple, not a dict.
@@ -138,9 +197,11 @@ def fields(op):
     """
     return (op >> 10) + 1, (op >> 8) & 3, ((op >> 6) & 3) + 1, op & 0x3F
 
+
 def name(op):
     _ntok, ty, _comps, oid = fields(op)
-    return NAMES.get((ty, oid), 'op%02X' % oid)
+    return NAMES.get((ty, oid), "op%02X" % oid)
+
 
 def decode(d, ptr, hi):
     """Yield (index, addr, opcode, operand tokens) for one program.
@@ -151,16 +212,19 @@ def decode(d, ptr, hi):
     cost about 1.6x its own runtime for no behavioural difference, on the single hottest
     call in the transpiler.
     """
-    n = struct.unpack_from('<H', d, ptr)[0]
+    n = struct.unpack_from("<H", d, ptr)[0]
     q = ptr + 2
     for k in range(n):
-        if q + 2 > hi: return
-        op = struct.unpack_from('<H', d, q)[0]
+        if q + 2 > hi:
+            return
+        op = struct.unpack_from("<H", d, q)[0]
         L = isa.LEN.get(op)
-        if not L: return
-        toks = struct.unpack_from('<%dH' % (L - 1), d, q + 2) if L > 1 else ()
+        if not L:
+            return
+        toks = struct.unpack_from("<%dH" % (L - 1), d, q + 2) if L > 1 else ()
         yield k, q, op, toks
         q += 2 * L
+
 
 def pad_bytes(toks):
     """Bytes of alignment padding ahead of an instruction's immediate.
@@ -204,37 +268,47 @@ def _imm(ty, oid, toks, addr=None):
     and is no longer needed: the pad follows from the token count alone.
     """
     pad = pad_bytes(toks)
-    raw = b''.join(struct.pack('<H', t) for t in toks)[pad:]
+    raw = b"".join(struct.pack("<H", t) for t in toks)[pad:]
     if oid == 0x02:
-        return 'uid=%d' % struct.unpack_from('<I', raw)[0] if len(raw) >= 4 else '?'
+        return "uid=%d" % struct.unpack_from("<I", raw)[0] if len(raw) >= 4 else "?"
     if oid != 0x00:
-        return ' '.join('%d' % t for t in toks[pad // 2:])
+        return " ".join("%d" % t for t in toks[pad // 2 :])
     out = []
     for i in range(0, len(raw) - 3, 4):
-        if ty == 1: out.append('%g' % struct.unpack_from('<f', raw, i)[0])
-        else:       out.append('%d' % struct.unpack_from('<i', raw, i)[0])
-    return ', '.join(out) if out else '?'
+        if ty == 1:
+            out.append("%g" % struct.unpack_from("<f", raw, i)[0])
+        else:
+            out.append("%d" % struct.unpack_from("<i", raw, i)[0])
+    return ", ".join(out) if out else "?"
+
 
 def text(d, ptr, hi, mark=()):
     """Human-readable listing. `mark` is a set of opcodes to flag with '<<<'."""
-    n = struct.unpack_from('<H', d, ptr)[0]
-    lines = ['; program @%d  %d instructions' % (ptr, n)]
+    n = struct.unpack_from("<H", d, ptr)[0]
+    lines = ["; program @%d  %d instructions" % (ptr, n)]
     for k, addr, op, toks in decode(d, ptr, hi):
         _ntok, ty, comps, oid = fields(op)
-        nm = '%s.%s%d' % (name(op), TYPE[ty], comps)
+        nm = "%s.%s%d" % (name(op), TYPE[ty], comps)
         rule = IMM.get(oid)
-        if rule == 'all':
+        if rule == "all":
             args = _imm(ty, oid, toks, addr)
         else:
             pos = rule or ()
-            args = ', '.join('#%d' % t if i in pos
-                             else ('%%%d' % t if t < k else '%%%d!' % t)
-                             for i, t in enumerate(toks))
-        lines.append('  %%%-4d %04X  %-14s %-34s%s' % (k, op, nm, args,
-                     '   <<<' if op in mark else ''))
-    return '\n'.join(lines)
+            args = ", ".join(
+                "#%d" % t if i in pos else ("%%%d" % t if t < k else "%%%d!" % t)
+                for i, t in enumerate(toks)
+            )
+        lines.append(
+            "  %%%-4d %04X  %-14s %-34s%s"
+            % (k, op, nm, args, "   <<<" if op in mark else "")
+        )
+    return "\n".join(lines)
 
-_PACK_FMT = ['<%dH' % i for i in range(9)]   # 9: one more than the widest instruction seen
+
+_PACK_FMT = [
+    "<%dH" % i for i in range(9)
+]  # 9: one more than the widest instruction seen
+
 
 def immediate(addr, toks):
     """The immediate bytes an instruction carries, with the alignment pad removed.
@@ -251,18 +325,18 @@ def immediate(addr, toks):
     real instruction; anything longer falls back to building one on demand.
     """
     n = len(toks)
-    fmt = _PACK_FMT[n] if n < len(_PACK_FMT) else '<%dH' % n
-    return struct.pack(fmt, *toks)[pad_bytes(toks):]
+    fmt = _PACK_FMT[n] if n < len(_PACK_FMT) else "<%dH" % n
+    return struct.pack(fmt, *toks)[pad_bytes(toks) :]
 
 
 def uid(addr, toks):
     """The u32 uid carried by an inputref (op id 0x02), or None."""
     raw = immediate(addr, toks)
-    return struct.unpack_from('<I', raw)[0] if len(raw) >= 4 else None
+    return struct.unpack_from("<I", raw)[0] if len(raw) >= 4 else None
 
 
 def floats(addr, toks, n=None):
     """The float32 immediates a const.f instruction carries."""
     raw = immediate(addr, toks)
-    out = [struct.unpack_from('<f', raw, i)[0] for i in range(0, len(raw) - 3, 4)]
+    out = [struct.unpack_from("<f", raw, i)[0] for i in range(0, len(raw) - 3, 4)]
     return out[:n] if n else out

@@ -18,6 +18,7 @@ The second is the sharp one - it can fail, and a wrong table would fail it often
     python3 attribute_outputs.py <file.sbsasm> <manifest.xml>
     python3 attribute_outputs.py --corpus <list-file>
 """
+
 import struct
 import collections
 import sys
@@ -112,46 +113,57 @@ def check(asm, xml_path):
     # the manifest says it alters 96.1% of outputs. Both sides say "everything", so those
     # rows agree almost by construction and cannot fail the way the others can. Counted
     # separately rather than folded into the headline.
-    intype = {u: t for t, u, v in (asm.header.get('inputs') or [])}
-    for g in root.iter('graph'):
-        for inp in g.iter('input'):
-            uid = inp.get('uid')
+    intype = {u: t for t, u, v in (asm.header.get("inputs") or [])}
+    for g in root.iter("graph"):
+        for inp in g.iter("input"):
+            uid = inp.get("uid")
             if uid is None:
                 continue
             uid = int(uid)
-            alters = {x for x in (inp.get('alteroutputs') or '').split(',') if x}
+            alters = {x for x in (inp.get("alteroutputs") or "").split(",") if x}
             if uid not in rd:
                 skip += 1
                 continue
             cl = closure(fwd, rd[uid])
-            for o in g.iter('output'):
-                ouid = o.get('uid')
+            for o in g.iter("output"):
+                ouid = o.get("uid")
                 if ouid is None or int(ouid) not in table:
                     continue
                 rec = table[int(ouid)]
                 reach = rec in cl
                 if intype.get(uid) == 8:
-                    if (ouid in alters) == reach: vac_ok += 1
-                    else: vac_bad += 1
+                    if (ouid in alters) == reach:
+                        vac_ok += 1
+                    else:
+                        vac_bad += 1
                     continue
                 if (ouid in alters) == reach:
                     ok += 1
                 else:
                     bad += 1
                     if len(detail) < 5:
-                        detail.append((uid, ouid, 'alters but unreachable'
-                                       if ouid in alters else 'reachable but does not alter'))
+                        detail.append(
+                            (
+                                uid,
+                                ouid,
+                                "alters but unreachable"
+                                if ouid in alters
+                                else "reachable but does not alter",
+                            )
+                        )
     return ok, bad, skip, detail, vac_ok, vac_bad
 
 
 def main(argv):
-    if len(argv) >= 2 and argv[0] == '--corpus':
+    if len(argv) >= 2 and argv[0] == "--corpus":
         import glob, os
+
         paths = [l.strip() for l in open(argv[1]) if l.strip()]
-        tot = collections.Counter(); files = 0
+        tot = collections.Counter()
+        files = 0
         unreadable = []
         for p in paths:
-            xs = glob.glob(os.path.join(os.path.dirname(p), '*.xml'))
+            xs = glob.glob(os.path.join(os.path.dirname(p), "*.xml"))
             if not xs:
                 continue
             try:
@@ -165,35 +177,48 @@ def main(argv):
                 unreadable.append((p, e))
                 continue
             files += 1
-            tot['ok'] += ok; tot['bad'] += bad; tot['skip'] += skip
-            tot['vac_ok'] += v1; tot['vac_bad'] += v2
-        n = tot['ok'] + tot['bad']
-        print('specimens checked        : %d' % files)
+            tot["ok"] += ok
+            tot["bad"] += bad
+            tot["skip"] += skip
+            tot["vac_ok"] += v1
+            tot["vac_bad"] += v2
+        n = tot["ok"] + tot["bad"]
+        print("specimens checked        : %d" % files)
         if unreadable:
-            print('unreadable specimens     : %d' % len(unreadable))
+            print("unreadable specimens     : %d" % len(unreadable))
             for _p, _e in unreadable[:4]:
-                print('   %-44s %s' % (_p.split('/')[-1][:44], type(_e).__name__))
-        print('(input, output) pairs    : %d' % n)
-        print('   agree with the table  : %d  (%.2f%%)' % (tot['ok'], 100*tot['ok']/max(n, 1)))
-        print('   violations            : %d' % tot['bad'])
-        print('   inputs no program reads: %d' % tot['skip'])
-        v = tot['vac_ok'] + tot['vac_bad']
-        print('output-size rows, counted apart : %d  (%d agree) -- near-vacuous, see check()'
-              % (v, tot['vac_ok']))
+                print("   %-44s %s" % (_p.split("/")[-1][:44], type(_e).__name__))
+        print("(input, output) pairs    : %d" % n)
+        print(
+            "   agree with the table  : %d  (%.2f%%)"
+            % (tot["ok"], 100 * tot["ok"] / max(n, 1))
+        )
+        print("   violations            : %d" % tot["bad"])
+        print("   inputs no program reads: %d" % tot["skip"])
+        v = tot["vac_ok"] + tot["vac_bad"]
+        print(
+            "output-size rows, counted apart : %d  (%d agree) -- near-vacuous, see check()"
+            % (v, tot["vac_ok"])
+        )
         return
     a = Assembly(argv[0])
     ok, bad, skip, detail, v1, v2 = check(a, argv[1])
-    print('output table:')
+    print("output table:")
     for uid, fmt, gray, idx in a.outputs():
         r = a.records[idx] if 0 <= idx < len(a.records) else None
-        print('   uid=%-12s format=%-5s grayscale=%-6s record %-6d %s'
-              % (uid, fmt, gray, idx, r.filter_name if r else '?'))
-    print('\nmanifest cross-check: %d agree, %d violations, %d inputs unread' % (ok, bad, skip))
+        print(
+            "   uid=%-12s format=%-5s grayscale=%-6s record %-6d %s"
+            % (uid, fmt, gray, idx, r.filter_name if r else "?")
+        )
+    print(
+        "\nmanifest cross-check: %d agree, %d violations, %d inputs unread"
+        % (ok, bad, skip)
+    )
     for d in detail:
-        print('   input %s vs output %s: %s' % d)
+        print("   input %s vs output %s: %s" % d)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if len(sys.argv) < 3:
         sys.exit(__doc__)
     main(sys.argv[1:])

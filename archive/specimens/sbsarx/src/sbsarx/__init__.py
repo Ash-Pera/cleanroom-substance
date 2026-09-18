@@ -18,6 +18,7 @@ Nothing here guesses.
 
 Derived from the clean-room format description in the parent project; see FORMAT-NOTES.md.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,9 +33,17 @@ from .resources import Resource
 __version__ = "0.1.0"
 
 __all__ = [
-    "open_package", "open_assembly", "Package",
-    "Resource", "Graph", "Input", "Output", "Manifest", "Assembly",
-    "NotAPackage", "NotAnAssembly",
+    "open_package",
+    "open_assembly",
+    "Package",
+    "Resource",
+    "Graph",
+    "Input",
+    "Output",
+    "Manifest",
+    "Assembly",
+    "NotAPackage",
+    "NotAnAssembly",
 ]
 
 

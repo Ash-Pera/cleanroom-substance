@@ -13,6 +13,7 @@ than it should, this catches a table that is not doing the job its derivation cl
 
 SKIPS when the corpus is absent.
 """
+
 import contextlib
 import io
 import collections
@@ -20,11 +21,11 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import corpus                                                        # noqa: E402
-import sbsasm                                                        # noqa: E402
-from sbsasm import Assembly                                          # noqa: E402
+import corpus  # noqa: E402
+import sbsasm  # noqa: E402
+from sbsasm import Assembly  # noqa: E402
 
-FILES = int(os.environ.get('SBS_TABLE_FILES', '120'))
+FILES = int(os.environ.get("SBS_TABLE_FILES", "120"))
 
 
 def _snapshot(paths):
@@ -44,7 +45,7 @@ def _snapshot(paths):
                 try:
                     fx = tuple((k, o, t, pr) for k, o, t, pr in r.fx_walk())
                 except Exception:
-                    fx = ('error',)
+                    fx = ("error",)
             # program_slots and named_parameters are observed too: LAYOUTS and LAYOUT_MASK
             # are drained from the layout computation (edges/programs) but STILL feed these
             # two -- program_slots keys the blur/warp popcount block, named_parameters reads
@@ -53,16 +54,20 @@ def _snapshot(paths):
             try:
                 psl = tuple(r.program_slots)
             except Exception:
-                psl = ('error',)
+                psl = ("error",)
             try:
                 npr = tuple(r.named_parameters)
             except Exception:
-                npr = ('error',)
-            out[(p, r.index)] = (frozenset(r.programs),
-                                 tuple(r.edge_slots),
-                                 tuple(r.edges),
-                                 None if r.size_or_baked is None else r.size_or_baked[0],
-                                 fx, psl, npr)
+                npr = ("error",)
+            out[(p, r.index)] = (
+                frozenset(r.programs),
+                tuple(r.edge_slots),
+                tuple(r.edges),
+                None if r.size_or_baked is None else r.size_or_baked[0],
+                fx,
+                psl,
+                npr,
+            )
     return out
 
 
@@ -102,7 +107,7 @@ def test_layouts_drained_from_layout():
     """
     paths = corpus.paths()[:FILES]
     if not paths:
-        print('SKIP test_layouts_drained_from_layout: no corpus')
+        print("SKIP test_layouts_drained_from_layout: no corpus")
         return
     saved = dict(sbsasm.LAYOUTS)
 
@@ -114,9 +119,11 @@ def test_layouts_drained_from_layout():
             except Exception:
                 continue
             for r in a.records:
-                out[(p, r.index)] = (frozenset(r.programs), tuple(r.edge_slots),
-                                     None if r.size_or_baked is None
-                                     else r.size_or_baked[0])
+                out[(p, r.index)] = (
+                    frozenset(r.programs),
+                    tuple(r.edge_slots),
+                    None if r.size_or_baked is None else r.size_or_baked[0],
+                )
         return out
 
     base = layout_reads()
@@ -127,11 +134,13 @@ def test_layouts_drained_from_layout():
         sbsasm.LAYOUTS.clear()
         sbsasm.LAYOUTS.update(saved)
     if not base:
-        print('SKIP test_layouts_drained_from_layout: no records')
+        print("SKIP test_layouts_drained_from_layout: no records")
         return
     changed = sum(1 for k, v in base.items() if mut.get(k) != v)
-    assert changed == 0, ('layouts.json still changes %d edge/program/size readings; the '
-                          'layout drain regressed' % changed)
+    assert changed == 0, (
+        "layouts.json still changes %d edge/program/size readings; the "
+        "layout drain regressed" % changed
+    )
     return
 
 
@@ -144,7 +153,7 @@ def test_layouts_changes_no_program_discovery():
     """
     paths = corpus.paths()[:FILES]
     if not paths:
-        print('SKIP test_layouts_changes_no_program_discovery: no corpus')
+        print("SKIP test_layouts_changes_no_program_discovery: no corpus")
         return
     base = _snapshot(paths)
     saved = dict(sbsasm.LAYOUTS)
@@ -155,10 +164,10 @@ def test_layouts_changes_no_program_discovery():
         sbsasm.LAYOUTS.clear()
         sbsasm.LAYOUTS.update(saved)
     if not base:
-        print('SKIP test_layouts_changes_no_program_discovery: no records')
+        print("SKIP test_layouts_changes_no_program_discovery: no records")
         return
     bad = sum(1 for k, v in base.items() if mut.get(k, (None,))[0] != v[0])
-    assert bad == 0, ('%d records find different programs without layouts.json' % bad)
+    assert bad == 0, "%d records find different programs without layouts.json" % bad
     return
 
 
@@ -203,19 +212,21 @@ def test_every_table_is_load_bearing():
     """
     paths = corpus.paths()[:FILES]
     if not paths:
-        print('SKIP test_every_table_is_load_bearing: no corpus')
+        print("SKIP test_every_table_is_load_bearing: no corpus")
         return
     dead = []
-    for name in ('EDGES',):
+    for name in ("EDGES",):
         tab = getattr(sbsasm, name, None)
         if not isinstance(tab, dict) or not tab:
             continue
         n, changed = _knockout(tab, paths)
-        print('    %-14s %7d of %7d records read differently without it  (%.3f%%)'
-              % (name, changed, n, 100 * changed / max(1, n)))
+        print(
+            "    %-14s %7d of %7d records read differently without it  (%.3f%%)"
+            % (name, changed, n, 100 * changed / max(1, n))
+        )
         if changed == 0:
             dead.append(name)
-    assert not dead, ('these tables change no reading at all: %s' % dead)
+    assert not dead, "these tables change no reading at all: %s" % dead
     return
 
 
@@ -241,19 +252,22 @@ def test_layouts_is_fully_drained():
     """
     paths = corpus.paths()[:FILES]
     if not paths:
-        print('SKIP test_layouts_is_fully_drained: no corpus')
+        print("SKIP test_layouts_is_fully_drained: no corpus")
         return
-    for name in ('LAYOUTS', 'LAYOUT_MASK'):
+    for name in ("LAYOUTS", "LAYOUT_MASK"):
         tab = getattr(sbsasm, name)
         n, changed = _knockout(tab, paths)
         if not n:
-            print('SKIP test_layouts_is_fully_drained: no records')
+            print("SKIP test_layouts_is_fully_drained: no records")
             return
-        print('    %-14s %7d of %7d records read differently without it'
-              % (name, changed, n))
+        print(
+            "    %-14s %7d of %7d records read differently without it"
+            % (name, changed, n)
+        )
         assert changed == 0, (
-            '%s still decides %d of %d readings -- layouts.json is not drained, and '
-            'something has been routed back onto the memo' % (name, changed, n))
+            "%s still decides %d of %d readings -- layouts.json is not drained, and "
+            "something has been routed back onto the memo" % (name, changed, n)
+        )
     return
 
 
@@ -263,14 +277,16 @@ def test_layouts_is_fully_drained():
 # error in a future pytest, so the returns are gone. Reading the printed SKIP keeps the
 # distinction that matters: a suite that silently skips everything looks identical to a
 # passing one, which is the failure this directory has already recorded once.
-if __name__ == '__main__':
-    for fn in (test_layouts_drained_from_layout,
-               test_layouts_changes_no_program_discovery,
-               test_layouts_is_fully_drained,
-               test_every_table_is_load_bearing):
+if __name__ == "__main__":
+    for fn in (
+        test_layouts_drained_from_layout,
+        test_layouts_changes_no_program_discovery,
+        test_layouts_is_fully_drained,
+        test_every_table_is_load_bearing,
+    ):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()
         out = buf.getvalue()
         sys.stdout.write(out)
-        print('%-52s %s' % (fn.__name__, 'skipped' if 'SKIP' in out else 'ok'))
+        print("%-52s %s" % (fn.__name__, "skipped" if "SKIP" in out else "ok"))

@@ -38,6 +38,7 @@ comparison the boundary falls on changes the result by less than the tolerance. 
 `eq` and `min`/`max` are simply not reached: neither program contains them. Covering
 those needs a third specimen with a known algorithm that uses them.
 """
+
 import glob
 import os
 import struct
@@ -50,6 +51,7 @@ import transpile
 # ---------------------------------------------------------------------------
 # specimens
 
+
 def corpus_roots():
     env = os.environ.get("SBS_CORPUS")
     if env:
@@ -58,6 +60,7 @@ def corpus_roots():
     # moved this suite from tools/ to archive/tools/, and a hardcoded one-level walk went
     # on resolving -- to archive/, where no specimen lives -- instead of failing loudly.
     import corpus
+
     return [corpus.ROOT]
 
 
@@ -92,6 +95,7 @@ def numpy_or_skip():
 # ---------------------------------------------------------------------------
 # structural: the immediate decoding
 
+
 def test_pad_follows_token_count():
     """A 4-byte immediate needs an even number of u16 tokens, so an odd count above
     one is the alignment pad. One token is never padded -- those are the u16
@@ -114,8 +118,8 @@ def test_immediate_strips_the_pad():
     value = 0.00031308
     stored = struct.unpack("<f", struct.pack("<f", value))[0]
     packed = struct.unpack("<2H", struct.pack("<f", value))
-    bare = disasm.immediate(0x1002, list(packed))                 # unpadded form
-    padded = disasm.immediate(0x1000, [0] + list(packed))         # padded form
+    bare = disasm.immediate(0x1002, list(packed))  # unpadded form
+    padded = disasm.immediate(0x1000, [0] + list(packed))  # padded form
     assert struct.unpack_from("<f", bare)[0] == stored
     assert struct.unpack_from("<f", padded)[0] == stored
 
@@ -131,7 +135,7 @@ def test_swizzle_mask_is_two_bits_per_component():
     assert transpile.swizzle_mask(0, 1) == [0]
     assert transpile.swizzle_mask(1, 1) == [1]
     assert transpile.swizzle_mask(2, 1) == [2]
-    assert transpile.swizzle_mask(36, 3) == [0, 1, 2]      # 0b100100, identity xyz
+    assert transpile.swizzle_mask(36, 3) == [0, 1, 2]  # 0b100100, identity xyz
 
 
 def test_while_carries_no_immediate():
@@ -155,20 +159,41 @@ def test_while_emits_a_loop_that_counts():
     continuation one, and the body being inside the loop rather than before it.
     """
     import numpy as np
+
     # const 0 ; set slot0 ; get slot0 ; get slot1 ; gteq ; get slot0 ; const 1 ; add ;
     # set slot0 ; while(init=1, cond=4, body=8)
     words = [
         10,
-        0x0900, 0, 0,          # v0 = const 0.0
-        0x0907, 0, 0,          # v1 = set slot0 = v0     <- init
-        0x0504, 0,             # v2 = get slot0
-        0x0504, 1,             # v3 = get slot1
-        0x085D, 2, 3,          # v4 = eq(v2, v3)         <- condition
-        0x0504, 0,             # v5 = get slot0
-        0x0900, 0x0000, 0x3F80,  # v6 = const 1.0
-        0x0912, 5, 6,          # v7 = add(v5, v6)
-        0x0907, 7, 0,          # v8 = set slot0 = v7     <- body
-        0x150B, 1, 4, 8, 0, 0,   # v9 = while(init, cond, body, pad, pad)
+        0x0900,
+        0,
+        0,  # v0 = const 0.0
+        0x0907,
+        0,
+        0,  # v1 = set slot0 = v0     <- init
+        0x0504,
+        0,  # v2 = get slot0
+        0x0504,
+        1,  # v3 = get slot1
+        0x085D,
+        2,
+        3,  # v4 = eq(v2, v3)         <- condition
+        0x0504,
+        0,  # v5 = get slot0
+        0x0900,
+        0x0000,
+        0x3F80,  # v6 = const 1.0
+        0x0912,
+        5,
+        6,  # v7 = add(v5, v6)
+        0x0907,
+        7,
+        0,  # v8 = set slot0 = v7     <- body
+        0x150B,
+        1,
+        4,
+        8,
+        0,
+        0,  # v9 = while(init, cond, body, pad, pad)
     ]
     data = struct.pack("<%dH" % len(words), *words)
     src = transpile.transpile(data, 0, len(data), "python", "_loop")
@@ -176,7 +201,10 @@ def test_while_emits_a_loop_that_counts():
     g = {}
     exec(src, g)
     for limit in (0, 1, 5, 17):
-        slots = {0: np.array([[0.0]], np.float32), 1: np.array([[float(limit)]], np.float32)}
+        slots = {
+            0: np.array([[0.0]], np.float32),
+            1: np.array([[float(limit)]], np.float32),
+        }
         g["_loop"](inputs={}, slots=slots)
         got = float(np.asarray(slots[0]).ravel()[0])
         assert got == limit, "limit %d: slot0 ended at %r" % (limit, got)
@@ -197,18 +225,39 @@ def test_while_masks_per_lane_when_run_in_batch():
     this checks values rather than trusting a clean run.
     """
     import numpy as np
+
     words = [
         10,
-        0x0900, 0, 0,
-        0x0907, 0, 0,
-        0x0504, 0,
-        0x0504, 1,
-        0x085D, 2, 3,
-        0x0504, 0,
-        0x0900, 0x0000, 0x3F80,
-        0x0912, 5, 6,
-        0x0907, 7, 0,
-        0x150B, 1, 4, 8, 0, 0,
+        0x0900,
+        0,
+        0,
+        0x0907,
+        0,
+        0,
+        0x0504,
+        0,
+        0x0504,
+        1,
+        0x085D,
+        2,
+        3,
+        0x0504,
+        0,
+        0x0900,
+        0x0000,
+        0x3F80,
+        0x0912,
+        5,
+        6,
+        0x0907,
+        7,
+        0,
+        0x150B,
+        1,
+        4,
+        8,
+        0,
+        0,
     ]
     data = struct.pack("<%dH" % len(words), *words)
     src = transpile.transpile(data, 0, len(data), "python", "_loop")
@@ -216,8 +265,10 @@ def test_while_masks_per_lane_when_run_in_batch():
     g = {}
     exec(src, g)
     limits = [0, 1, 5, 17]
-    slots = {0: np.zeros((4, 1), np.float32),
-             1: np.array([[float(l)] for l in limits], np.float32)}
+    slots = {
+        0: np.zeros((4, 1), np.float32),
+        1: np.array([[float(l)] for l in limits], np.float32),
+    }
     g["_loop"](inputs={}, slots=slots)
     got = np.asarray(slots[0]).ravel().tolist()
     assert got == [float(l) for l in limits], "batched run: slot0 ended at %r" % got
@@ -243,16 +294,33 @@ def test_condition_less_while_raises():
     raises Unsupported, including operand-3 values (1, 3, 5) a literal reading would take
     as valid scan widths.
     """
+
     def loop(operand3):
         words = [
             7,
-            0x0900, 0, 0,           # v0 = const 0.0
-            0x0907, 0, 0,           # v1 = set slot0 = v0        <- init
-            0x0504, 0,              # v2 = get slot0
-            0x0900, 0x0000, 0x3F80,  # v3 = const 1.0
-            0x0912, 2, 3,           # v4 = add(v2, v3)
-            0x0907, 4, 0,           # v5 = set slot0 = v4        <- body
-            0x150B, 1, 0xFFFF, 5, operand3, 0,   # v6 = while(init, ABSENT, body, ?, pad)
+            0x0900,
+            0,
+            0,  # v0 = const 0.0
+            0x0907,
+            0,
+            0,  # v1 = set slot0 = v0        <- init
+            0x0504,
+            0,  # v2 = get slot0
+            0x0900,
+            0x0000,
+            0x3F80,  # v3 = const 1.0
+            0x0912,
+            2,
+            3,  # v4 = add(v2, v3)
+            0x0907,
+            4,
+            0,  # v5 = set slot0 = v4        <- body
+            0x150B,
+            1,
+            0xFFFF,
+            5,
+            operand3,
+            0,  # v6 = while(init, ABSENT, body, ?, pad)
         ]
         return struct.pack("<%dH" % len(words), *words)
 
@@ -261,8 +329,9 @@ def test_condition_less_while_raises():
             transpile.transpile(loop(operand3), 0, 999, "python", "_scan")
         except transpile.Unsupported:
             continue
-        raise AssertionError("condition-absent while with operand 3 = %d was accepted"
-                             % operand3)
+        raise AssertionError(
+            "condition-absent while with operand 3 = %d was accepted" % operand3
+        )
 
 
 def test_log2_is_named_and_transpiled():
@@ -284,16 +353,24 @@ def test_log2_matches_ie_pcloud_source():
     assert end is not None, "no program at %d" % start
     rows = list(disasm.decode(asm.data, start, end))
     assert [disasm.name(op) for _k, _addr, op, _toks in rows] == [
-        "inputref", "swizzle", "log2", "cvt",
+        "inputref",
+        "swizzle",
+        "log2",
+        "cvt",
     ]
-    assert disasm.fields(rows[2][2])[3] == 0x35   # (ntok, ty, comps, id) -- id is index 3
+    assert (
+        disasm.fields(rows[2][2])[3] == 0x35
+    )  # (ntok, ty, comps, id) -- id is index 3
 
     refs = asm.referenced_programs()
     matches = 0
     for p_start, p_end in refs.items():
         r = list(disasm.decode(asm.data, p_start, p_end))
         if len(r) == 4 and [disasm.name(op) for _k, _a, op, _t in r] == [
-            "inputref", "swizzle", "log2", "cvt",
+            "inputref",
+            "swizzle",
+            "log2",
+            "cvt",
         ]:
             matches += 1
     assert matches == 4, "expected 4 identical copies, found %d" % matches
@@ -334,7 +411,7 @@ SRGB_DECODE_VIA_POW = ("LeakingSubstance004_COMPILED.sbsasm", 460092, 0.04045)
 #: version-2 prologue's programs.
 LOG2_SOURCE_MATCH = ("ie_pcloud.sbsasm", 6656)
 
-TOLERANCE = 1e-6        # float32 rounding is ~1e-7; anything larger is a real error
+TOLERANCE = 1e-6  # float32 rounding is ~1e-7; anything larger is a real error
 
 #: Deviations recorded by the known-algorithm tests, for the standalone report. The
 #: tests themselves only assert -- returning a value from a test is a pytest error.
@@ -399,8 +476,9 @@ def test_srgb_encode():
     asm = load(name)
     ramp, got = _run(asm, start, boundaries=(threshold,))
     with np.errstate(all="ignore"):
-        want = np.where(ramp <= threshold,
-                        12.92 * ramp, 1.055 * np.power(ramp, 1 / 2.4) - 0.055)
+        want = np.where(
+            ramp <= threshold, 12.92 * ramp, 1.055 * np.power(ramp, 1 / 2.4) - 0.055
+        )
     deviation = float(np.abs(got - want).max())
     DEVIATIONS["test_srgb_encode"] = deviation
     assert deviation < TOLERANCE, "max deviation %.3g" % deviation
@@ -414,8 +492,9 @@ def test_srgb_decode():
     asm = load(name)
     ramp, got = _run(asm, start, result=result, boundaries=(threshold,))
     with np.errstate(all="ignore"):
-        want = np.where(ramp <= threshold,
-                        ramp / 12.92, np.power((ramp + 0.055) / 1.055, 2.4))
+        want = np.where(
+            ramp <= threshold, ramp / 12.92, np.power((ramp + 0.055) / 1.055, 2.4)
+        )
     deviation = float(np.abs(got - want).max())
     DEVIATIONS["test_srgb_decode"] = deviation
     assert deviation < TOLERANCE, "max deviation %.3g" % deviation
@@ -431,14 +510,16 @@ def test_pow_via_srgb_decode():
     asm = load(name)
     ramp, got = _run(asm, start, boundaries=(threshold,))
     with np.errstate(all="ignore"):
-        want = np.where(ramp <= threshold,
-                        ramp / 12.92, np.power((ramp + 0.055) / 1.055, 2.4))
+        want = np.where(
+            ramp <= threshold, ramp / 12.92, np.power((ramp + 0.055) / 1.055, 2.4)
+        )
     deviation = float(np.abs(got - want).max())
     DEVIATIONS["test_pow_via_srgb_decode"] = deviation
     assert deviation < TOLERANCE, "max deviation %.3g" % deviation
 
 
 # ---------------------------------------------------------------------------
+
 
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

@@ -42,6 +42,7 @@ That is checked rather than asserted: every row is also reported with Adobe-auth
 manifests EXCLUDED (`nonadobe_*` columns), so a reader can see for themselves that no
 conclusion here rests on them. `--exclude-adobe` runs the whole thing that way.
 """
+
 import argparse
 import collections
 import os
@@ -50,17 +51,17 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-import _repo_root                                                     # noqa: E402
+import _repo_root  # noqa: E402
 
 ROOT = _repo_root.ROOT
-_TOOLS = os.path.join(ROOT, 'tools')
+_TOOLS = os.path.join(ROOT, "tools")
 if _TOOLS not in sys.path:
     sys.path.insert(0, _TOOLS)
 
-import corpus                                                         # noqa: E402
-import decompose                                                      # noqa: E402
-import disasm                                                         # noqa: E402
-import sbsasm                                                         # noqa: E402
+import corpus  # noqa: E402
+import decompose  # noqa: E402
+import disasm  # noqa: E402
+import sbsasm  # noqa: E402
 
 #: `<input uid=... identifier=... type=...>`, the one declaration this whole tool rests on.
 #: `manifest.py` parses only type-5 inputs and the `alteroutputs` attribute; nothing there
@@ -72,21 +73,32 @@ _AUTHOR = re.compile(r'\bauthor="([^"]*)"')
 #: Authors whose `.sbs` sources the provenance rule excludes. Their MANIFESTS are not
 #: excluded (see the module docstring) -- this set exists so the report can show every
 #: figure with and without them, which is what makes the boundary claim checkable.
-_ADOBE = frozenset(('Allegorithmic', 'Adobe', 'Adobe Inc.', 'Adobe Systems'))
+_ADOBE = frozenset(("Allegorithmic", "Adobe", "Adobe Inc.", "Adobe Systems"))
 
 #: The type codes SPEC 7.2 states, for the second-order check "does the name agree with the
 #: field's type".
-TYPE_NAMES = {0: 'float1', 1: 'float2', 2: 'float3', 3: 'float4', 4: 'int1',
-              5: 'image', 6: 'string', 7: 'font', 8: 'int2', 9: 'int3', 10: 'int4'}
+TYPE_NAMES = {
+    0: "float1",
+    1: "float2",
+    2: "float3",
+    3: "float4",
+    4: "int1",
+    5: "image",
+    6: "string",
+    7: "font",
+    8: "int2",
+    9: "int3",
+    10: "int4",
+}
 
 
 def manifest_inputs(asm_path):
     """{uid: (identifier, type code)} and the set of authors, from the sibling `.xml`."""
-    xml = os.path.splitext(asm_path)[0] + '.xml'
+    xml = os.path.splitext(asm_path)[0] + ".xml"
     if not os.path.exists(xml):
         return {}, frozenset()
     try:
-        text = open(xml, encoding='utf-8', errors='replace').read()
+        text = open(xml, encoding="utf-8", errors="replace").read()
     except OSError:
         return {}, frozenset()
     ins = {int(u): (i, int(t)) for u, i, t in _INPUT.findall(text)}
@@ -121,7 +133,7 @@ def first_inputref(asm, ptr, hi):
             uid = disasm.uid(addr, toks)
     if ty is None:
         return None
-    return (uid, disasm.TYPE.get(ty, '?'), comps, n)
+    return (uid, disasm.TYPE.get(ty, "?"), comps, n)
 
 
 def _roles(r, d):
@@ -133,29 +145,29 @@ def _roles(r, d):
     for.
     """
     out = {}
-    for pos in d.get('inputs') or ():
-        out[pos] = 'edge'
-    for bit, pos, n in d.get('cls_params') or ():
+    for pos in d.get("inputs") or ():
+        out[pos] = "edge"
+    for bit, pos, n in d.get("cls_params") or ():
         for i in range(n):
-            out[pos + i] = 'cls%d' % bit
-    for fld, _st, pos, n in d.get('param_slots') or ():
+            out[pos + i] = "cls%d" % bit
+    for fld, _st, pos, n in d.get("param_slots") or ():
         for i in range(n):
-            out[pos + i] = 'w1f%d' % fld
-    ss = d.get('size_slot')
-    if ss is not None and out.get(ss, '').startswith('cls'):
-        out[ss] = 'size'
-    p = d.get('prog')
+            out[pos + i] = "w1f%d" % fld
+    ss = d.get("size_slot")
+    if ss is not None and out.get(ss, "").startswith("cls"):
+        out[ss] = "size"
+    p = d.get("prog")
     if p is not None and p not in out:
-        out[p] = 'size'
+        out[p] = "size"
     # SLOTS THE WALK PLACES BUT LABELS NOTHING. `end` is the header boundary and `hdr` the
     # mask-word count, so every word between them belongs to the record's header and the
     # walk owes an account of it. A program sitting in one is a parameter the cost model
     # charges to nobody, which is precisely the shape of `emboss`'s grid-shift bug, so this
     # sweep reports them as `spare` rather than skipping the range.
-    end = d.get('end')
+    end = d.get("end")
     if end is not None:
-        for k in range(d.get('hdr') or 0, min(end, len(r.words))):
-            out.setdefault(k, 'spare')
+        for k in range(d.get("hdr") or 0, min(end, len(r.words))):
+            out.setdefault(k, "spare")
     return out
 
 
@@ -165,8 +177,8 @@ class Tally(object):
     def __init__(self):
         self.records = 0
         self.resolved = 0
-        self.noname = 0                      # a program with no inputref (a computed arm)
-        self.unknown_uid = 0                 # an inputref the manifest does not declare
+        self.noname = 0  # a program with no inputref (a computed arm)
+        self.unknown_uid = 0  # an inputref the manifest does not declare
         self.names = collections.Counter()
         self.pkgs = collections.defaultdict(set)
         self.authors = collections.defaultdict(set)
@@ -188,7 +200,7 @@ class Tally(object):
         self.resolved += 1
         self.names[name] += 1
         self.pkgs[name].add(pkg)
-        self.authors[name] |= set(authors) or {'(none declared)'}
+        self.authors[name] |= set(authors) or {"(none declared)"}
         self.types[TYPE_NAMES.get(tcode, tcode)] += 1
         if len(self.examples) < 4:
             self.examples.append(ex)
@@ -222,10 +234,10 @@ def sweep(paths, exclude_adobe=False, verbose=False):
             if d is None:
                 continue
             roles = _roles(r, d)
-            fname = r.filter_name or ('filter%d' % r.filter_id)
+            fname = r.filter_name or ("filter%d" % r.filter_id)
             words = r.words
             for pos, role in roles.items():
-                if role == 'edge' or pos >= len(words):
+                if role == "edge" or pos >= len(words):
                     continue
                 got = first_inputref(asm, words[pos] + 52, hi)
                 if got is None:
@@ -237,17 +249,18 @@ def sweep(paths, exclude_adobe=False, verbose=False):
                     name, tcode = ins[uid]
                 else:
                     name, tcode = False, None
-                ex = '%s rec %d slot %d' % (pkg, r.index, pos)
-                ret = '%s%d' % (ret_ty, ret_n)
+                ex = "%s rec %d slot %d" % (pkg, r.index, pos)
+                ret = "%s%d" % (ret_ty, ret_n)
                 tallies[(fname, role)].add(pkg, authors, name, tcode, ret, ex)
                 if not adobe:
                     nonadobe[(fname, role)].add(pkg, authors, name, tcode, ret, ex)
         if verbose and files % 50 == 0:
-            print('  ... %d files' % files, file=sys.stderr)
+            print("  ... %d files" % files, file=sys.stderr)
     return tallies, nonadobe, files, skipped
 
 
 # ---------------------------------------------------------------- naming status
+
 
 def legend_names():
     """{(filter name, role) -> the legend's name}, read from the code rather than retyped.
@@ -264,37 +277,37 @@ def legend_names():
     with no per-filter grid shift and no straddle relabelling in between.
     """
     out = {}
-    r2 = os.path.join(_TOOLS, 'render2')
+    r2 = os.path.join(_TOOLS, "render2")
     if r2 not in sys.path:
         sys.path.insert(0, r2)
-    import model                                                       # noqa: E402
-    import bit_census                                                  # noqa: E402
+    import model  # noqa: E402
+    import bit_census  # noqa: E402
 
     def field_of(fid, mask):
         return (mask & -mask).bit_length() - 1
 
-    for fid, spec in getattr(model, 'W1_PARAMS', {}).items():
-        fname = sbsasm.FILTERS.get(fid, 'filter%d' % fid)
+    for fid, spec in getattr(model, "W1_PARAMS", {}).items():
+        fname = sbsasm.FILTERS.get(fid, "filter%d" % fid)
         for entry in spec:
             mask, nm = entry[0], entry[2]
             if nm:
-                out[(fname, 'w1f%d' % field_of(fid, mask))] = nm
-    for fid, bits in getattr(model, 'CLS_NAMES', {}).items():
-        fname = sbsasm.FILTERS.get(fid, 'filter%d' % fid)
+                out[(fname, "w1f%d" % field_of(fid, mask))] = nm
+    for fid, bits in getattr(model, "CLS_NAMES", {}).items():
+        fname = sbsasm.FILTERS.get(fid, "filter%d" % fid)
         for b, nm in bits.items():
-            out[(fname, 'cls%d' % b)] = nm[0] if isinstance(nm, tuple) else nm
-    for fid, bits in getattr(bit_census, 'PENDING_CLS', {}).items():
-        fname = sbsasm.FILTERS.get(fid, 'filter%d' % fid)
+            out[(fname, "cls%d" % b)] = nm[0] if isinstance(nm, tuple) else nm
+    for fid, bits in getattr(bit_census, "PENDING_CLS", {}).items():
+        fname = sbsasm.FILTERS.get(fid, "filter%d" % fid)
         for b, nm in bits.items():
-            out.setdefault((fname, 'cls%d' % b), nm)
-    for fid, entries in getattr(bit_census, 'NAMED_ELSEWHERE_W1', {}).items():
-        fname = sbsasm.FILTERS.get(fid, 'filter%d' % fid)
+            out.setdefault((fname, "cls%d" % b), nm)
+    for fid, entries in getattr(bit_census, "NAMED_ELSEWHERE_W1", {}).items():
+        fname = sbsasm.FILTERS.get(fid, "filter%d" % fid)
         for mask, nm in entries:
-            out.setdefault((fname, 'w1f%d' % field_of(fid, mask)), nm)
+            out.setdefault((fname, "w1f%d" % field_of(fid, mask)), nm)
     for fname in set(sbsasm.FILTERS.values()) | {f for f, _ in out}:
-        out.setdefault((fname, 'cls16'), '$outputsize')
-        out.setdefault((fname, 'cls23'), '$randomseed')
-        out.setdefault((fname, 'size'), '$outputsize')
+        out.setdefault((fname, "cls16"), "$outputsize")
+        out.setdefault((fname, "cls23"), "$randomseed")
+        out.setdefault((fname, "size"), "$outputsize")
     return out
 
 
@@ -321,11 +334,12 @@ def silent_roles():
     Returns [(filter name, field bit, program-state words, baked-state words)].
     """
     import record_layout
+
     out = []
     for key, spec in sorted(record_layout.legend().items(), key=lambda kv: int(kv[0])):
         fid = int(key)
-        fname = sbsasm.FILTERS.get(fid, 'filter%d' % fid)
-        for j, kind in sorted(spec.get('w1', {}).items(), key=lambda kv: int(kv[0])):
+        fname = sbsasm.FILTERS.get(fid, "filter%d" % fid)
+        for j, kind in sorted(spec.get("w1", {}).items(), key=lambda kv: int(kv[0])):
             baked = record_layout.width(kind, 1)
             out.append((fname, int(j), 1.0, float(baked) if baked is not None else 0.0))
     return out
@@ -333,9 +347,12 @@ def silent_roles():
 
 # ---------------------------------------------------------------- report
 
+
 def _row(tally, limit=3):
-    return '; '.join('%s %d (%dp/%da)' % (nm, c, len(tally.pkgs[nm]), len(tally.authors[nm]))
-                     for nm, c in tally.names.most_common(limit))
+    return "; ".join(
+        "%s %d (%dp/%da)" % (nm, c, len(tally.pkgs[nm]), len(tally.authors[nm]))
+        for nm, c in tally.names.most_common(limit)
+    )
 
 
 def report(tallies, nonadobe, files, args):
@@ -350,13 +367,24 @@ def report(tallies, nonadobe, files, args):
     """
     named = legend_names()
     rows = sorted(tallies.items(), key=lambda kv: (-kv[1].records, kv[0]))
-    print('%d files, %d (filter, slot role) pairs carrying at least one program\n' % (
-        files, len(rows)))
-    hdr = ('%-16s %-7s %-10s %7s %7s %5s %5s %6s %6s  %s' % (
-        'filter', 'role', 'status', 'progs', 'named', 'pkgs', 'auth', 'names', 'allpkg',
-        'top manifest identifiers'))
+    print(
+        "%d files, %d (filter, slot role) pairs carrying at least one program\n"
+        % (files, len(rows))
+    )
+    hdr = "%-16s %-7s %-10s %7s %7s %5s %5s %6s %6s  %s" % (
+        "filter",
+        "role",
+        "status",
+        "progs",
+        "named",
+        "pkgs",
+        "auth",
+        "names",
+        "allpkg",
+        "top manifest identifiers",
+    )
     print(hdr)
-    print('-' * len(hdr))
+    print("-" * len(hdr))
     for (fname, role), t in rows:
         legend = named.get((fname, role))
         if args.unnamed and legend:
@@ -370,68 +398,116 @@ def report(tallies, nonadobe, files, args):
         top = t.names.most_common(1)
         pk = len(t.pkgs[top[0][0]]) if top else 0
         au = len(t.authors[top[0][0]]) if top else 0
-        status = legend or 'UNNAMED'
+        status = legend or "UNNAMED"
         if pk < args.min_pkgs:
-            status = (status + ' *lead*') if not legend else status
-        print('%-16s %-7s %-10s %7d %7d %5d %5d %6d %6d  %s' % (
-            fname[:16], role, status[:10], t.records, t.resolved, pk, au,
-            len(t.names), len(t.all_pkgs), _row(t)[:70]))
+            status = (status + " *lead*") if not legend else status
+        print(
+            "%-16s %-7s %-10s %7d %7d %5d %5d %6d %6d  %s"
+            % (
+                fname[:16],
+                role,
+                status[:10],
+                t.records,
+                t.resolved,
+                pk,
+                au,
+                len(t.names),
+                len(t.all_pkgs),
+                _row(t)[:70],
+            )
+        )
         if args.detail:
             nd = nonadobe.get((fname, role))
-            print('        return types: %s' % dict(t.rets.most_common(6)))
-            print('        input types : %s' % dict(t.types.most_common(6)))
-            print('        no inputref : %d    uid not in manifest: %d' % (
-                t.noname, t.unknown_uid))
+            print("        return types: %s" % dict(t.rets.most_common(6)))
+            print("        input types : %s" % dict(t.types.most_common(6)))
+            print(
+                "        no inputref : %d    uid not in manifest: %d"
+                % (t.noname, t.unknown_uid)
+            )
             if nd:
-                print('        non-Adobe   : %d progs, %d named, top %s' % (
-                    nd.records, nd.resolved, _row(nd)))
+                print(
+                    "        non-Adobe   : %d progs, %d named, top %s"
+                    % (nd.records, nd.resolved, _row(nd))
+                )
             for e in t.examples:
-                print('        e.g. %s' % e)
+                print("        e.g. %s" % e)
             for nm, c in t.names.most_common(12):
-                print('          %-40s %6d  %2d pkgs  %2d authors  %s' % (
-                    nm[:40], c, len(t.pkgs[nm]), len(t.authors[nm]),
-                    ', '.join(sorted(t.authors[nm])[:3])))
+                print(
+                    "          %-40s %6d  %2d pkgs  %2d authors  %s"
+                    % (
+                        nm[:40],
+                        c,
+                        len(t.pkgs[nm]),
+                        len(t.authors[nm]),
+                        ", ".join(sorted(t.authors[nm])[:3]),
+                    )
+                )
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--limit', type=int, default=0, help='first N corpus files only')
-    ap.add_argument('--filter', help='restrict to one filter name')
-    ap.add_argument('--unnamed', action='store_true', help='only roles the legend leaves unnamed')
-    ap.add_argument('--controls', action='store_true', help='only roles the legend names')
-    ap.add_argument('--detail', action='store_true', help='per-name breakdown')
-    ap.add_argument('--silent', action='store_true',
-                    help='list the roles this arbiter structurally cannot speak for')
-    ap.add_argument('--exclude-adobe', action='store_true',
-                    help='drop specimens whose manifest declares an Adobe author')
-    ap.add_argument('--min-pkgs', type=int, default=2,
-                    help='packages below which a name is reported as a lead (default 2)')
-    ap.add_argument('--min-records', type=int, default=1)
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--limit", type=int, default=0, help="first N corpus files only")
+    ap.add_argument("--filter", help="restrict to one filter name")
+    ap.add_argument(
+        "--unnamed", action="store_true", help="only roles the legend leaves unnamed"
+    )
+    ap.add_argument(
+        "--controls", action="store_true", help="only roles the legend names"
+    )
+    ap.add_argument("--detail", action="store_true", help="per-name breakdown")
+    ap.add_argument(
+        "--silent",
+        action="store_true",
+        help="list the roles this arbiter structurally cannot speak for",
+    )
+    ap.add_argument(
+        "--exclude-adobe",
+        action="store_true",
+        help="drop specimens whose manifest declares an Adobe author",
+    )
+    ap.add_argument(
+        "--min-pkgs",
+        type=int,
+        default=2,
+        help="packages below which a name is reported as a lead (default 2)",
+    )
+    ap.add_argument("--min-records", type=int, default=1)
     args = ap.parse_args(argv)
 
     if args.silent:
-        print('Every w1 field and the words its PROGRAM state is charged.')
-        print('prog=0 means there is no pointer slot, so no program, so nothing the')
-        print('manifest can be asked about -- structural silence, not a null result.\n')
-        print('  %-16s %-6s %6s %6s  %s' % ('filter', 'field', 'prog', 'baked', 'arbiter'))
+        print("Every w1 field and the words its PROGRAM state is charged.")
+        print("prog=0 means there is no pointer slot, so no program, so nothing the")
+        print("manifest can be asked about -- structural silence, not a null result.\n")
+        print(
+            "  %-16s %-6s %6s %6s  %s" % ("filter", "field", "prog", "baked", "arbiter")
+        )
         for fname, j, prog, baked in silent_roles():
             if args.filter and args.filter != fname:
                 continue
-            print('  %-16s w1f%-3d %6g %6g  %s' % (
-                fname, j, prog, baked,
-                'CAN speak' if prog else 'SILENT (no pointer slot)'))
+            print(
+                "  %-16s w1f%-3d %6g %6g  %s"
+                % (
+                    fname,
+                    j,
+                    prog,
+                    baked,
+                    "CAN speak" if prog else "SILENT (no pointer slot)",
+                )
+            )
         return 0
 
     paths = corpus.paths()
     if args.limit:
-        paths = paths[:args.limit]
+        paths = paths[: args.limit]
     tallies, nonadobe, files, skipped = sweep(paths, args.exclude_adobe, verbose=True)
     report(tallies, nonadobe, files, args)
     if skipped:
-        print('\n%d specimens skipped (unreadable, or Adobe-authored under --exclude-adobe)'
-              % skipped)
+        print(
+            "\n%d specimens skipped (unreadable, or Adobe-authored under --exclude-adobe)"
+            % skipped
+        )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     raise SystemExit(main())

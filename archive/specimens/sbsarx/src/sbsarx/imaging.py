@@ -8,6 +8,7 @@ only the geometry the descriptor already states.
 Pillow and NumPy are optional. Without them `raw_to_png` is unavailable, but JPEG
 resources can still be written out byte for byte.
 """
+
 from __future__ import annotations
 
 from .resources import Resource
@@ -44,6 +45,7 @@ def to_pillow(res: Resource, data: bytes):
         import io
 
         from PIL import Image
+
         return Image.open(io.BytesIO(data))
 
     try:
@@ -57,7 +59,11 @@ def to_pillow(res: Resource, data: bytes):
 
     mode, dtype = _MODES[res.format]
     array = np.frombuffer(data, dtype=dtype)
-    shape = (res.height, res.width) if res.channels == 1 else (res.height, res.width, res.channels)
+    shape = (
+        (res.height, res.width)
+        if res.channels == 1
+        else (res.height, res.width, res.channels)
+    )
     array = array.reshape(shape)
 
     if res.depth == 32:
@@ -67,16 +73,18 @@ def to_pillow(res: Resource, data: bytes):
         clipped = np.clip(array, 0.0, 1.0)
         if res.channels == 1:
             return Image.fromarray((clipped * 65535).astype("<u2"), mode="I;16")
-        return Image.fromarray((clipped * 255).astype("u1"),
-                               mode="RGB" if res.channels == 3 else "RGBA")
+        return Image.fromarray(
+            (clipped * 255).astype("u1"), mode="RGB" if res.channels == 3 else "RGBA"
+        )
 
     if res.depth == 16:
         # Pillow has no 16-bit RGBA mode. Grayscale keeps its full precision as I;16;
         # colour is reduced to 8 bits, which is lossy and is reported by the caller.
         if res.channels == 1:
             return Image.fromarray(array, mode="I;16")
-        return Image.fromarray((array >> 8).astype("u1"),
-                               mode="RGB" if res.channels == 3 else "RGBA")
+        return Image.fromarray(
+            (array >> 8).astype("u1"), mode="RGB" if res.channels == 3 else "RGBA"
+        )
     return Image.fromarray(array, mode=mode)
 
 

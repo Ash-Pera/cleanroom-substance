@@ -32,6 +32,7 @@ Sources in FORMAT-NOTES.md: "Resource descriptors are ordinary records, and NN c
 the format", "The record type's high byte is the output resolution", "Format 8 is JPEG",
 "The manifest's declared output size is a default, not the resource resolution".
 """
+
 from __future__ import annotations
 
 import struct
@@ -57,12 +58,31 @@ FORMATS: dict[int, tuple[str, int, int]] = {
 
 #: The depth byte each format must carry. Agreement is 564 of 565 descriptors, so a
 #: disagreement is evidence the tag is not a descriptor at all.
-_DEPTH = {1: 0x08, 2: 0x08, 3: 0x08, 8: 0x08, 5: 0x18, 6: 0x18, 7: 0x18,
-          33: 0x38, 34: 0x38, 35: 0x38}
+_DEPTH = {
+    1: 0x08,
+    2: 0x08,
+    3: 0x08,
+    8: 0x08,
+    5: 0x18,
+    6: 0x18,
+    7: 0x18,
+    33: 0x38,
+    34: 0x38,
+    35: 0x38,
+}
 
 #: The grayscale/colour flag each format must carry. JPEG may be either.
-_COLOUR = {1: 0x20, 5: 0x20, 33: 0x20,
-           2: 0x21, 3: 0x21, 6: 0x21, 7: 0x21, 34: 0x21, 35: 0x21}
+_COLOUR = {
+    1: 0x20,
+    5: 0x20,
+    33: 0x20,
+    2: 0x21,
+    3: 0x21,
+    6: 0x21,
+    7: 0x21,
+    34: 0x21,
+    35: 0x21,
+}
 
 _BITMAP_FILTER = 16
 JPEG_SOI = b"\xff\xd8"
@@ -100,7 +120,11 @@ class Resource:
     def __str__(self) -> str:
         geometry = "%dx%d" % (self.width, self.height) if self.geometry_known else "?x?"
         return "%-6s %s %s, %d bytes" % (
-            self.format, geometry, "colour" if self.colour else "grayscale", self.size)
+            self.format,
+            geometry,
+            "colour" if self.colour else "grayscale",
+            self.size,
+        )
 
 
 def decode_tag(tag: int) -> tuple[int, int, int, int] | None:
@@ -111,7 +135,7 @@ def decode_tag(tag: int) -> tuple[int, int, int, int] | None:
     depth = (tag >> 16) & 0xFF
     fmt = (tag >> 24) & 0xFF
 
-    if colour_byte >> 1 != _BITMAP_FILTER:      # 0x20 grayscale, 0x21 colour
+    if colour_byte >> 1 != _BITMAP_FILTER:  # 0x20 grayscale, 0x21 colour
         return None
     if fmt not in FORMATS:
         return None
@@ -175,12 +199,12 @@ def resources(asm: Assembly) -> list[Resource]:
             continue
 
         if fmt == 8:
-            if offset + 6 > len(data) or data[offset + 4:offset + 6] != JPEG_SOI:
+            if offset + 6 > len(data) or data[offset + 4 : offset + 6] != JPEG_SOI:
                 continue
             size = struct.unpack_from("<I", data, offset)[0] + 4
             if size > span or offset + size > segment_end:
                 continue
-            geometry = jpeg_geometry(data[offset + 4:offset + size])
+            geometry = jpeg_geometry(data[offset + 4 : offset + size])
             width, height = geometry or (declared_w, declared_h)
             known = geometry is not None
             slack = span - size
@@ -194,20 +218,30 @@ def resources(asm: Assembly) -> list[Resource]:
                 size = span
             slack = span - size
 
-        found.append(Resource(
-            index=len(found), format=name, width=width, height=height,
-            channels=channels or (3 if colour_byte & 1 else 1),
-            depth={0x08: 8, 0x18: 16, 0x38: 32}[_DEPTH[fmt]], colour=bool(colour_byte & 1),
-            offset=offset, size=size, declared_width=declared_w,
-            declared_height=declared_h, references=refs, slack=slack,
-            geometry_known=known,
-        ))
+        found.append(
+            Resource(
+                index=len(found),
+                format=name,
+                width=width,
+                height=height,
+                channels=channels or (3 if colour_byte & 1 else 1),
+                depth={0x08: 8, 0x18: 16, 0x38: 32}[_DEPTH[fmt]],
+                colour=bool(colour_byte & 1),
+                offset=offset,
+                size=size,
+                declared_width=declared_w,
+                declared_height=declared_h,
+                references=refs,
+                slack=slack,
+                geometry_known=known,
+            )
+        )
     return found
 
 
 def payload(asm: Assembly, res: Resource) -> bytes:
     """The resource's bytes: raw pixels, or the JPEG file with its length prefix removed."""
-    blob = asm.data[res.offset:res.offset + res.size]
+    blob = asm.data[res.offset : res.offset + res.size]
     return blob[4:] if res.is_jpeg else blob
 
 
@@ -244,7 +278,8 @@ def segment_report(asm: Assembly, found: list[Resource]) -> dict:
         "trailing_bytes": max(0, tail),
         "undescribed_bytes": undescribed,
         "declared_geometry_differs": sum(
-            1 for r in found if r.declared_geometry_differs),
+            1 for r in found if r.declared_geometry_differs
+        ),
         "geometry_unknown": sum(1 for r in found if not r.geometry_known),
         "tiles_exactly": (
             bool(found) and found[0].offset == BODY and gaps == 0 and overlaps == 0

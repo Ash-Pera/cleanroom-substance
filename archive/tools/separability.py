@@ -24,8 +24,12 @@ offered for it is evidence for the partner too.
 
     python3 archive/tools/separability.py
 """
+
 import sys, os, collections
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools'))
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools")
+)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sbsasm, provenance, corpus
 
@@ -72,39 +76,57 @@ def separability(masks, bits, weights=None):
             if o == b or not sets[o]:
                 continue
             if sets[o] == s:
-                rel.append((o, 'identical'))
+                rel.append((o, "identical"))
             elif s < sets[o]:
-                rel.append((o, 'implies'))
+                rel.append((o, "implies"))
         out[b] = (sum(weights.get(m, 1) for m in s), rel)
     return out
 
 
 def report(title, masks, bits, weights=None, names=None):
     print()
-    print('=' * 76)
+    print("=" * 76)
     print(title)
-    print('  distinct masks: %d' % len(set(masks)))
+    print("  distinct masks: %d" % len(set(masks)))
     sep = separability(list(set(masks)), bits, weights)
     bad = [(b, n, r) for b, (n, r) in sorted(sep.items()) if r]
     ok = [(b, n) for b, (n, r) in sorted(sep.items()) if not r and n]
     absent = [b for b, (n, r) in sorted(sep.items()) if not n]
     for b, n, r in bad:
-        ident = [o for o, k in r if k == 'identical']
-        impl = [o for o, k in r if k == 'implies']
-        nm = (names or {}).get(b) or ''
-        print('  bit %-2d %-16s n=%-7d NOT SEPARABLE%s%s' % (
-            b, nm, n,
-            '  identical to ' + ','.join(str(x) for x in ident) if ident else '',
-            '  implies ' + ','.join(str(x) for x in impl) if impl else ''))
+        ident = [o for o, k in r if k == "identical"]
+        impl = [o for o, k in r if k == "implies"]
+        nm = (names or {}).get(b) or ""
+        print(
+            "  bit %-2d %-16s n=%-7d NOT SEPARABLE%s%s"
+            % (
+                b,
+                nm,
+                n,
+                "  identical to " + ",".join(str(x) for x in ident) if ident else "",
+                "  implies " + ",".join(str(x) for x in impl) if impl else "",
+            )
+        )
     if ok:
-        print('  separable: ' + ', '.join('%d%s' % (b, ('(' + (names or {}).get(b, '') + ')') if (names or {}).get(b) else '') for b, _n in ok))
+        print(
+            "  separable: "
+            + ", ".join(
+                "%d%s"
+                % (
+                    b,
+                    ("(" + (names or {}).get(b, "") + ")")
+                    if (names or {}).get(b)
+                    else "",
+                )
+                for b, _n in ok
+            )
+        )
     if absent:
-        print('  never set here: ' + ', '.join(str(b) for b in absent))
+        print("  never set here: " + ", ".join(str(b) for b in absent))
 
 
 def main():
     files = permitted_files()
-    print('permitted compiled specimens: %d' % len(files))
+    print("permitted compiled specimens: %d" % len(files))
 
     entry_tags = collections.Counter()
     w0 = collections.Counter()
@@ -115,7 +137,7 @@ def main():
         except Exception:
             continue
         for rec in asm.records:
-            fid = getattr(rec, 'filter_id', None)
+            fid = getattr(rec, "filter_id", None)
             if len(rec.words) > 0:
                 w0[rec.words[0]] += 1
             if len(rec.words) > 1 and fid is not None:
@@ -129,19 +151,33 @@ def main():
             except Exception:
                 pass
 
-    names = {b: (n or '') for b, n, _w in sbsasm.FX_PARAM_BITS}
-    report('FX ENTRY TAGS -- FX_PARAM_BITS, the table that produced both errors',
-           list(entry_tags.elements()), [b for b, _n, _w in sbsasm.FX_PARAM_BITS],
-           entry_tags, names)
+    names = {b: (n or "") for b, n, _w in sbsasm.FX_PARAM_BITS}
+    report(
+        "FX ENTRY TAGS -- FX_PARAM_BITS, the table that produced both errors",
+        list(entry_tags.elements()),
+        [b for b, _n, _w in sbsasm.FX_PARAM_BITS],
+        entry_tags,
+        names,
+    )
 
-    report('RECORD WORD 0 -- the class word, bits 16..31',
-           list(w0.elements()), list(range(16, 32)), w0)
+    report(
+        "RECORD WORD 0 -- the class word, bits 16..31",
+        list(w0.elements()),
+        list(range(16, 32)),
+        w0,
+    )
 
-    for fid, cnt in sorted(w1_by_filter.items(), key=lambda kv: -sum(kv[1].values()))[:6]:
-        report('RECORD WORD 1 -- filter_id %d (%d records, %d distinct)'
-               % (fid, sum(cnt.values()), len(cnt)),
-               list(cnt.elements()), list(range(0, 32)), cnt)
+    for fid, cnt in sorted(w1_by_filter.items(), key=lambda kv: -sum(kv[1].values()))[
+        :6
+    ]:
+        report(
+            "RECORD WORD 1 -- filter_id %d (%d records, %d distinct)"
+            % (fid, sum(cnt.values()), len(cnt)),
+            list(cnt.elements()),
+            list(range(0, 32)),
+            cnt,
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

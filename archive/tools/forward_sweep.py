@@ -163,17 +163,20 @@ The cone-differencing that produced the 25 records is unaffected -- it is a grap
 computation with no render in it -- and the roughness/basecolor divergence is still real at
 both 128 and 256. What is withdrawn is the mechanism I attached to it.
 """
+
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import numpy as np                                                   # noqa: E402
-import sbsasm                                                        # noqa: E402
-import sbsruntime                                                    # noqa: E402
-import render as R                                                   # noqa: E402
+import numpy as np  # noqa: E402
+import sbsasm  # noqa: E402
+import sbsruntime  # noqa: E402
+import render as R  # noqa: E402
 
-IN_FLOOR = 0.02        # an input must carry this much contrast for a collapse to mean anything
-OUT_CEIL = 0.005       # below this the output is flat
+IN_FLOOR = (
+    0.02  # an input must carry this much contrast for a collapse to mean anything
+)
+OUT_CEIL = 0.005  # below this the output is flat
 
 
 def chan_std(x):
@@ -186,7 +189,7 @@ def chan_std(x):
 
 def sweep(path, max_dim=256):
     """[(record, filter, size, in_std, out_std, out_mean, inputs)], in forward order."""
-    sbsruntime.SAMPLERS.clear()          # samplers persist across renders; see refcompare
+    sbsruntime.SAMPLERS.clear()  # samplers persist across renders; see refcompare
     asm = sbsasm.Assembly(path)
     produced, failures, _synth = R.render(asm, verbose=False, max_dim=max_dim)
     out = []
@@ -206,46 +209,66 @@ def sweep(path, max_dim=256):
         si = max(chan_std(produced[j]) for j in ins)
         so = chan_std(produced[i])
         if si > IN_FLOOR and so < OUT_CEIL:
-            out.append((i, sbsasm.FILTERS.get(rec.filter_id, str(rec.filter_id)),
-                        '%dx%d' % (rec.width, rec.height), si, so,
-                        float(np.asarray(produced[i], dtype=np.float64).mean()), ins))
+            out.append(
+                (
+                    i,
+                    sbsasm.FILTERS.get(rec.filter_id, str(rec.filter_id)),
+                    "%dx%d" % (rec.width, rec.height),
+                    si,
+                    so,
+                    float(np.asarray(produced[i], dtype=np.float64).mean()),
+                    ins,
+                )
+            )
     return out, failures
 
 
 def main(argv):
     max_dim = 256
-    if '--dim' in argv:
-        k = argv.index('--dim')
-        max_dim = int(argv[k + 1]); del argv[k:k + 2]
-    if '--packs' in argv:
+    if "--dim" in argv:
+        k = argv.index("--dim")
+        max_dim = int(argv[k + 1])
+        del argv[k : k + 2]
+    if "--packs" in argv:
         import refcompare, glob
+
         paths = []
         for pack in refcompare.reference_packs():
-            paths += glob.glob(os.path.join(refcompare.PACKS, pack, '**', '*.sbsasm'),
-                               recursive=True)
+            paths += glob.glob(
+                os.path.join(refcompare.PACKS, pack, "**", "*.sbsasm"), recursive=True
+            )
     elif len(argv) > 1:
         paths = [argv[1]]
     else:
         import corpus
+
         paths = corpus.paths()[:1]
     for p in paths:
         try:
             rows, failures = sweep(p, max_dim)
         except Exception as e:
-            print('%s: %s' % (os.path.basename(p), e))
+            print("%s: %s" % (os.path.basename(p), e))
             continue
-        print('\n== %s ==' % os.path.basename(p))
-        print('%-6s %-15s %-10s %8s %8s %8s  %s'
-              % ('rec', 'filter', 'size', 'in_std', 'out_std', 'out_mean', 'inputs'))
+        print("\n== %s ==" % os.path.basename(p))
+        print(
+            "%-6s %-15s %-10s %8s %8s %8s  %s"
+            % ("rec", "filter", "size", "in_std", "out_std", "out_mean", "inputs")
+        )
         for t in rows[:20]:
-            print('%-6d %-15s %-10s %8.4f %8.4f %8.4f  %s' % t)
-        print('collapses: %d' % len(rows))
-        hard = [(i, str(v)[:48]) for i, v in sorted(failures.items())
-                if 'has no output yet' not in str(v)]
+            print("%-6d %-15s %-10s %8.4f %8.4f %8.4f  %s" % t)
+        print("collapses: %d" % len(rows))
+        hard = [
+            (i, str(v)[:48])
+            for i, v in sorted(failures.items())
+            if "has no output yet" not in str(v)
+        ]
         if hard:
-            print('genuine render failures: %d   first: rec %d  %s' % (len(hard), hard[0][0], hard[0][1]))
+            print(
+                "genuine render failures: %d   first: rec %d  %s"
+                % (len(hard), hard[0][0], hard[0][1])
+            )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

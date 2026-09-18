@@ -126,6 +126,7 @@ true since the file was refreshed.) So a diff after a change is attributable to 
 to nothing else -- which is how the emboss re-derivation was shown to move filter 8's entry
 and no other, and how the canvas tie-break was shown to move 13, 18 and 19 and no others.
 """
+
 #
 # A CHANGE HERE PAIRS WITH ONE IN `decompose.py`, and the pair has to land in ONE commit.
 # Several sessions share this working tree and one git HEAD; when the two halves landed in two
@@ -144,10 +145,11 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import _repo_root                                                     # noqa: E402
-_repo_root.add_tools_to_path()      # `corpus` and `sbsasm` went to tools/ at the archive cut
-import corpus                                                        # noqa: E402
-from sbsasm import Assembly, FILTERS                                  # noqa: E402
+import _repo_root  # noqa: E402
+
+_repo_root.add_tools_to_path()  # `corpus` and `sbsasm` went to tools/ at the archive cut
+import corpus  # noqa: E402
+from sbsasm import Assembly, FILTERS  # noqa: E402
 
 PAYLOAD = {0: 3, 22: 3, 5: 1, 4: 2, 16: 1}  # filter -> slot holding its payload pointer
 # bitmap (16) stores PIXELS: slot 1 is the pixel offset when it is small enough to be a
@@ -188,7 +190,7 @@ PAYLOAD = {0: 3, 22: 3, 5: 1, 4: 2, 16: 1}  # filter -> slot holding its payload
 # This is the canonical copy. Two others existed -- `decompose`'s `mask = max(mask, 0x3F)`
 # workaround and `walk.SPECS[4]`'s hardcoded `(w1 >> 10) & 0xF` -- and both are redundant
 # once costs.json carries 63; walk's stale nibble disagreed with decompose on 10 records.
-W1_ARITY = {20: (0, 0xF), 4: (10, 0x3F)}     # filter -> (shift, mask)
+W1_ARITY = {20: (0, 0xF), 4: (10, 0x3F)}  # filter -> (shift, mask)
 W1_ABSENT = {6, 5, 16, 13, 10, 14, 19, 0, 22}
 # blur (10), hsl (14) and dyngradient (19) joined when the all-baked records entered
 # the fit: they are start-1 filters -- words[1] is their first EDGE -- and keying on an
@@ -204,7 +206,7 @@ W1_ABSENT = {6, 5, 16, 13, 10, 14, 19, 0, 22}
 # 99.983%; curve 913 keys -> 23, still 100.000%. Curve's exactness did not move, and
 # that is the point -- 100% over 913 keys for 1,273 records was nearly one key per
 # record and claimed almost nothing. The same 100% over 23 keys is a real claim.
-W1_PER_RECORD = {3}      # warp (7) moved to the version rule above
+W1_PER_RECORD = {3}  # warp (7) moved to the version rule above
 
 # Filters whose costs are fitted on modern versions only. Emboss is EXACT (375 of 375)
 # from 0x50000 up under the colour-x-baked-states law, and its 51 older records sit in
@@ -213,11 +215,11 @@ W1_PER_RECORD = {3}      # warp (7) moved to the version rule above
 # below it, falling to the memo rather than guessing at a population that has already
 # demonstrated it is not a function of these masks.
 MIN_VERSION = {8: 0x50000}
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'costs.json')
-KEEP = 0.995                     # a filter is kept only at this exactness or better
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "costs.json")
+KEEP = 0.995  # a filter is kept only at this exactness or better
 
 
-W1_CORR = {}       # filter -> (n, corr(record index, words[1])), filled by observed()
+W1_CORR = {}  # filter -> (n, corr(record index, words[1])), filled by observed()
 
 
 def _payload_first_word(owner, target, host):
@@ -251,7 +253,7 @@ def _payload_first_word(owner, target, host):
     if owner.filter_id != 4:
         return first
     try:
-        for (off, _hdr, prog) in owner.fx_tree():
+        for off, _hdr, prog in owner.fx_tree():
             for x in (off, prog):
                 if x is not None and host.offset < x < first:
                     first = x
@@ -287,7 +289,9 @@ def observed():
     every filter every time rather than waiting to notice a key count.
     """
     obs = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
-    below_obs = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
+    below_obs = collections.defaultdict(
+        lambda: collections.defaultdict(collections.Counter)
+    )
     acc = collections.defaultdict(lambda: [0, 0.0, 0.0, 0.0, 0.0, 0.0])
     for p in corpus.paths():
         try:
@@ -302,10 +306,14 @@ def observed():
         # mismeasured v2 gradients, the ramp of record N+1 begins at word 5 of record
         # N, exactly where record N's header should end. So the header boundary is the
         # earliest in-record target of ANY record's payload pointer, not just its own.
-        foreign = sorted(((r.words[PAYLOAD[r.filter_id]] + 52, r.index, r)
-                          for r in a.records if r.filter_id in PAYLOAD
-                          and len(r.words) > PAYLOAD[r.filter_id]),
-                         key=lambda t: (t[0], t[1]))
+        foreign = sorted(
+            (
+                (r.words[PAYLOAD[r.filter_id]] + 52, r.index, r)
+                for r in a.records
+                if r.filter_id in PAYLOAD and len(r.words) > PAYLOAD[r.filter_id]
+            ),
+            key=lambda t: (t[0], t[1]),
+        )
         foreign_at = [t for t, _, _ in foreign]
         for i, r in enumerate(a.records):
             if len(r.words) < 2:
@@ -314,7 +322,12 @@ def observed():
             # whose header boundary happens to be measurable.
             v = acc[r.filter_id]
             x, y = float(i), float(r.words[1])
-            v[0] += 1; v[1] += x; v[2] += y; v[3] += x * x; v[4] += y * y; v[5] += x * y
+            v[0] += 1
+            v[1] += x
+            v[2] += y
+            v[3] += x * x
+            v[4] += y * y
+            v[5] += x * y
             sl = PAYLOAD.get(r.filter_id)
             if sl is not None:
                 if len(r.words) <= sl:
@@ -367,7 +380,7 @@ def observed():
             f = r.filter_id
             below = False
             if f in MIN_VERSION:
-                ver = a.header.get('version') if isinstance(a.header, dict) else 0
+                ver = a.header.get("version") if isinstance(a.header, dict) else 0
                 # KEPT, NOT DROPPED. These records cannot join the fit -- their layout is a
                 # different version's and pooling them costs exactness -- but they are the
                 # only place some features VARY, and a feature that never varies cannot be
@@ -383,7 +396,7 @@ def observed():
                 # could not tell w1 == 0 from "an edge to record 0" -- the ambiguity
                 # its own docstring predicted -- and misread 180 v9 records, holding
                 # warp at 99.31%. With version as the rule it fits at 99.993%.
-                ver = a.header.get('version') if isinstance(a.header, dict) else 0
+                ver = a.header.get("version") if isinstance(a.header, dict) else 0
                 if ver < 0x90000:
                     w1 = None
             elif f in W1_PER_RECORD:
@@ -412,7 +425,7 @@ def observed():
     W1_CORR.clear()
     for f, (n, sx, sy, sxx, syy, sxy) in acc.items():
         den = ((n * sxx - sx * sx) * (n * syy - sy * sy)) ** 0.5
-        W1_CORR[f] = (n, (n * sxy - sx * sy) / den if den > 0 else float('nan'))
+        W1_CORR[f] = (n, (n * sxy - sx * sy) / den if den > 0 else float("nan"))
     return obs, below_obs
 
 
@@ -483,7 +496,7 @@ PIN_BASE = {8: 5}
 PIN_CONST_BITS = {8: (27,)}
 
 
-def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
+def fit(f, keys, bitrange=range(32), colour="off", conjunctions=False):
     """Fit costs for one filter. Returns (spec, exact_fraction) or (None, 0.0).
 
     Weighted by record count, and refit once with anomalous keys excluded. The first
@@ -494,8 +507,8 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     keys, junk included -- exclusion is for the fit, never for the score.
     """
     arity = W1_ARITY.get(f)
-    gsh = W1_GRID_SHIFT.get(f, 0)          # w1 field j sits at bit 2j + gsh
-    pin = PIN_BASE.get(f)                  # a pinned intercept: solve on `header - pin`
+    gsh = W1_GRID_SHIFT.get(f, 0)  # w1 field j sits at bit 2j + gsh
+    pin = PIN_BASE.get(f)  # a pinned intercept: solve on `header - pin`
     pinbits = PIN_CONST_BITS.get(f, ())
     if pin is not None:
         keys = [(k, h - pin, n) for k, h, n in keys]
@@ -517,8 +530,15 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
         if arity is not None:
             sh, m = arity
             excl = {j for j in range(16) if (m << sh) >> (2 * j) & 3}
-        pairs = [j for j in range(16) if j not in excl
-                 and len({(w >> (2 * j + gsh)) & 3 for w in aw}) > 1] if aw else []
+        pairs = (
+            [
+                j
+                for j in range(16)
+                if j not in excl and len({(w >> (2 * j + gsh)) & 3 for w in aw}) > 1
+            ]
+            if aw
+            else []
+        )
         return clsbits, pairs
 
     clsbits, pairs = bits_of(keys, bitrange)
@@ -547,14 +567,14 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
         v = [1.0] + [float(cls >> b & 1) for b in clsbits]
         v += [float((cls >> bx & 1) & (cls >> by & 1)) for bx, by in conj]
         if has_absent:
-            v.append(float(w1 is not None))    # the w1 word itself occupies a slot
+            v.append(float(w1 is not None))  # the w1 word itself occupies a slot
         if arity is not None:
             sh, m = arity
             v.append(float((w1 >> sh) & m) if w1 is not None else 0.0)
         for j in pairs:
             st = ((w1 >> (2 * j + gsh)) & 3) if w1 is not None else 0
             v += [float(st == 1), float(st == 2), float(st == 3)]
-        if colour == 'full':
+        if colour == "full":
             # The colour flag is tag bit 0, and its cost is not additive: a colour
             # value bakes more floats than a grayscale one, so the flag multiplies
             # WIDTHS rather than adding a constant. Crossing it with every feature
@@ -562,14 +582,14 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
             # value slot only when cls bit 8 is set, which a main effect cannot say.
             c0 = float(cls & 1)
             v = v + [c0 * x for x in v]
-        elif colour == 'states':
+        elif colour == "states":
             # The lean variant, and the width law's own shape: colour multiplies BAKED
             # widths and nothing else, so cross the flag with the state features alone.
             # Half the columns of 'full', which is what lets a 30-key filter fit at
             # all -- emboss was underdetermined under 'full' and is EXACT under this.
             c0 = float(cls & 1)
             nstate = 3 * len(pairs)
-            v = v + [c0 * x for x in v[len(v) - nstate:]]
+            v = v + [c0 * x for x in v[len(v) - nstate :]]
         return v
 
     # Columns for (pair, state) combinations no key exhibits are phantoms: they carry
@@ -580,7 +600,7 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     # state never observed.
     _Xall = np.array([row(k[0], k[1]) for k, _, _ in keys])
     live = np.any(_Xall != 0, axis=0)
-    live[0] = pin is None                     # the constant stays -- unless it is PINNED
+    live[0] = pin is None  # the constant stays -- unless it is PINNED
 
     # How many directions the data cannot see. A field that is present in every key
     # is indistinguishable from the constant, so only their SUM is identified: fxmaps
@@ -640,13 +660,26 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     wt = np.array([n for _, _, n in keys], dtype=float)
     # robust pass: refit without keys the first fit missed by 2+ words
     err = np.abs(np.rint(X @ c) - y)
-    keep = [k for k, e in zip(fit_pop, np.abs(np.rint(
-        np.array([row(k[0], k[1]) for k, _, _ in fit_pop]) @ c)
-        - np.array([h for _, h, _ in fit_pop]))) if e < 2] if fit_pop else []
+    keep = (
+        [
+            k
+            for k, e in zip(
+                fit_pop,
+                np.abs(
+                    np.rint(np.array([row(k[0], k[1]) for k, _, _ in fit_pop]) @ c)
+                    - np.array([h for _, h, _ in fit_pop])
+                ),
+            )
+            if e < 2
+        ]
+        if fit_pop
+        else []
+    )
     if len(keep) >= 10 and len(keep) < len(fit_pop):
         c2 = solve(keep)
         if c2 is not None:
             c = c2
+
     # Integer refinement. Weighted least squares minimises squared error, and under
     # collinearity the minimiser can round to a vector that loses whole keys by exactly
     # one word while a neighbouring integer vector loses none -- v2 transformation sat
@@ -655,6 +688,7 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     # exact hits), in half-word steps, until a sweep improves nothing.
     def _score(cv):
         return float(wt[np.rint(X @ cv) == y].sum())
+
     wt = np.array([n for _, _, n in keys], dtype=float)
     X = np.array([row(k[0], k[1]) for k, _, _ in keys])
     y = np.array([h for _, h, _ in keys], dtype=float)
@@ -663,9 +697,10 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
         moved = False
         for i in range(len(c)):
             if pin is not None and i == 0:
-                continue                      # the intercept is pinned; it is not a knob
+                continue  # the intercept is pinned; it is not a knob
             for d in (-1.0, -0.5, 0.5, 1.0):
-                c2 = c.copy(); c2[i] += d
+                c2 = c.copy()
+                c2[i] += d
                 s2 = _score(c2)
                 if s2 > best:
                     c, best, moved = c2, s2, True
@@ -683,20 +718,22 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
     # name a coefficient AND say whether the data pins it. A violation on a blind
     # direction is a fact about the observation table; a violation on an identified
     # one is a fact about the model, and only the second is worth chasing.
-    labels = ['const'] + ['cls%d' % b for b in clsbits]
-    labels += ['cls%d&cls%d' % (bx, by) for bx, by in conj]
+    labels = ["const"] + ["cls%d" % b for b in clsbits]
+    labels += ["cls%d&cls%d" % (bx, by) for bx, by in conj]
     if has_absent:
-        labels.append('w1_present')
+        labels.append("w1_present")
     if arity is not None:
-        labels.append('arity')
+        labels.append("arity")
     for j in pairs:
-        labels += ['f%d.1' % j, 'f%d.2' % j, 'f%d.3' % j]
-    if colour == 'full':
-        labels = labels + ['colour*' + n for n in labels]
-    elif colour == 'states':
-        labels = labels + ['colour*' + n for n in labels[len(labels) - 3 * len(pairs):]]
+        labels += ["f%d.1" % j, "f%d.2" % j, "f%d.3" % j]
+    if colour == "full":
+        labels = labels + ["colour*" + n for n in labels]
+    elif colour == "states":
+        labels = labels + [
+            "colour*" + n for n in labels[len(labels) - 3 * len(pairs) :]
+        ]
     flags, unident = [], 0
-    for i, v in enumerate(c[:len(labels)]):
+    for i, v in enumerate(c[: len(labels)]):
         # The <= 4 ceiling is a claim about a PARAMETER: the widest scalar is a Float4.
         # The constant is not a parameter -- it is the count of slots every record of
         # the filter carries, and it legitimately runs 1 to 5 across the corpus
@@ -704,76 +741,120 @@ def fit(f, keys, bitrange=range(32), colour='off', conjunctions=False):
         # bound to it was a category error, and text's const = 5 was the whole of what
         # it caught. Integrality and non-negativity still apply: a constant that is not
         # a whole non-negative number of slots is as wrong as ever.
-        cap = float('inf') if labels[i] == 'const' else 4
+        cap = float("inf") if labels[i] == "const" else 4
         if v and (float(v) != int(float(v)) or v < 0 or v > cap):
             if identified[i]:
                 flags.append([labels[i], float(v)])
             else:
                 unident += 1
 
-    if colour == 'states':
+    if colour == "states":
         nstate = 3 * len(pairs)
-        base_c, cross_c = c[:len(c) - nstate], c[len(c) - nstate:]
-        spec = {'interaction': 'colour_states', 'nullity': nullity, 'flags': flags, 'unident': unident,
-                'identified': [bool(x) for x in identified],
-                'clsbits': clsbits, 'pairs': pairs,
-                'has_absent': bool(has_absent),
-                'arity_sm': list(arity) if arity is not None else None,
-                'base': [float(x) for x in base_c],
-                'cross': [float(x) for x in cross_c],
-                'mode': ('absent' if f in W1_ABSENT else
-                         'per_record' if f in W1_PER_RECORD else
-                         'arity' if f in W1_ARITY else 'codes')}
+        base_c, cross_c = c[: len(c) - nstate], c[len(c) - nstate :]
+        spec = {
+            "interaction": "colour_states",
+            "nullity": nullity,
+            "flags": flags,
+            "unident": unident,
+            "identified": [bool(x) for x in identified],
+            "clsbits": clsbits,
+            "pairs": pairs,
+            "has_absent": bool(has_absent),
+            "arity_sm": list(arity) if arity is not None else None,
+            "base": [float(x) for x in base_c],
+            "cross": [float(x) for x in cross_c],
+            "mode": (
+                "absent"
+                if f in W1_ABSENT
+                else "per_record"
+                if f in W1_PER_RECORD
+                else "arity"
+                if f in W1_ARITY
+                else "codes"
+            ),
+        }
         # THE INTERACTION BRANCHES EMIT THE GRID SHIFT TOO. They used to return before the
         # `if gsh` line below, so a shifted interaction filter fitted on the odd grid and was
         # then READ on the even one by `record_layout._interaction` and `decompose`. It cost
         # nothing while `emboss` was the only such filter and its shift was 0.
         if gsh:
-            spec['w1_shift'] = gsh
+            spec["w1_shift"] = gsh
         wt_ = np.array([n for _, _, n in keys], dtype=float)
         return spec, float(wt_[ok].sum() / wt_.sum())
-    if colour == 'full':
+    if colour == "full":
         # Interaction spec: store the two half-vectors; predict as base + bit0*cross.
         half = len(c) // 2
         base_c, cross_c = c[:half], c[half:]
-        spec = {'interaction': 'colour', 'nullity': nullity, 'flags': flags, 'unident': unident,
-                'identified': [bool(x) for x in identified],
-                'clsbits': clsbits, 'pairs': pairs,
-                'has_absent': bool(has_absent),
-                'arity_sm': list(arity) if arity is not None else None,
-                'base': [float(x) for x in base_c],
-                'cross': [float(x) for x in cross_c],
-                'mode': ('absent' if f in W1_ABSENT else
-                         'per_record' if f in W1_PER_RECORD else
-                         'arity' if f in W1_ARITY else 'codes')}
+        spec = {
+            "interaction": "colour",
+            "nullity": nullity,
+            "flags": flags,
+            "unident": unident,
+            "identified": [bool(x) for x in identified],
+            "clsbits": clsbits,
+            "pairs": pairs,
+            "has_absent": bool(has_absent),
+            "arity_sm": list(arity) if arity is not None else None,
+            "base": [float(x) for x in base_c],
+            "cross": [float(x) for x in cross_c],
+            "mode": (
+                "absent"
+                if f in W1_ABSENT
+                else "per_record"
+                if f in W1_PER_RECORD
+                else "arity"
+                if f in W1_ARITY
+                else "codes"
+            ),
+        }
         # THE INTERACTION BRANCHES EMIT THE GRID SHIFT TOO. They used to return before the
         # `if gsh` line below, so a shifted interaction filter fitted on the odd grid and was
         # then READ on the even one by `record_layout._interaction` and `decompose`. It cost
         # nothing while `emboss` was the only such filter and its shift was 0.
         if gsh:
-            spec['w1_shift'] = gsh
+            spec["w1_shift"] = gsh
         wt_ = np.array([n for _, _, n in keys], dtype=float)
         return spec, float(wt_[ok].sum() / wt_.sum())
-    names = ['const'] + ['cls%s' % b for b in clsbits]
-    mode = ('absent' if f in W1_ABSENT else
-            'per_record' if f in W1_PER_RECORD else
-            'arity' if f in W1_ARITY else 'codes')
-    spec = {'const': c[0], 'cls': {str(b): c[1 + i] for i, b in enumerate(clsbits)},
-            'w1': {}, 'mode': mode, 'nullity': nullity, 'flags': flags,
-            'unident': unident,
-            'conj': [[bx, by, float(c[1 + len(clsbits) + n])]
-                     for n, (bx, by) in enumerate(conj) if c[1 + len(clsbits) + n]],
-            'identified': [bool(x) for x in identified]}
+    names = ["const"] + ["cls%s" % b for b in clsbits]
+    mode = (
+        "absent"
+        if f in W1_ABSENT
+        else "per_record"
+        if f in W1_PER_RECORD
+        else "arity"
+        if f in W1_ARITY
+        else "codes"
+    )
+    spec = {
+        "const": c[0],
+        "cls": {str(b): c[1 + i] for i, b in enumerate(clsbits)},
+        "w1": {},
+        "mode": mode,
+        "nullity": nullity,
+        "flags": flags,
+        "unident": unident,
+        "conj": [
+            [bx, by, float(c[1 + len(clsbits) + n])]
+            for n, (bx, by) in enumerate(conj)
+            if c[1 + len(clsbits) + n]
+        ],
+        "identified": [bool(x) for x in identified],
+    }
     i = 1 + len(clsbits) + len(conj)
     if has_absent:
-        spec['w1_present'] = c[i]; i += 1
+        spec["w1_present"] = c[i]
+        i += 1
     if arity is not None:
-        spec['arity'] = {'shift': arity[0], 'mask': arity[1], 'cost': c[i]}; i += 1
+        spec["arity"] = {"shift": arity[0], "mask": arity[1], "cost": c[i]}
+        i += 1
     if gsh:
-        spec['w1_shift'] = gsh
+        spec["w1_shift"] = gsh
     for n_, j in enumerate(pairs):
-        spec['w1'][str(j)] = {'1': c[i + 3 * n_], '2': c[i + 3 * n_ + 1],
-                              '3': c[i + 3 * n_ + 2]}
+        spec["w1"][str(j)] = {
+            "1": c[i + 3 * n_],
+            "2": c[i + 3 * n_ + 1],
+            "3": c[i + 3 * n_ + 2],
+        }
     return spec, float(wt[ok].sum() / wt.sum())
 
 
@@ -842,14 +923,16 @@ def _canvas_charge(spec):
     """
     if spec is None:
         return 0.0
-    if spec.get('cls') is not None:
-        return sum(abs(float(v)) for b, v in spec['cls'].items() if int(b) in CANVAS_BITS)
+    if spec.get("cls") is not None:
+        return sum(
+            abs(float(v)) for b, v in spec["cls"].items() if int(b) in CANVAS_BITS
+        )
     tot = 0.0
-    for i, b in enumerate(spec.get('clsbits', ())):
+    for i, b in enumerate(spec.get("clsbits", ())):
         if b in CANVAS_BITS:
-            tot += abs(float(spec['base'][1 + i]))
-            if spec.get('interaction') == 'colour':
-                tot += abs(float(spec['cross'][1 + i]))
+            tot += abs(float(spec["base"][1 + i]))
+            if spec.get("interaction") == "colour":
+                tot += abs(float(spec["cross"][1 + i]))
     return tot
 
 
@@ -882,11 +965,11 @@ def _bit_cost(spec, b):
     """What a spec charges for class bit `b`, or None if it carries no coefficient."""
     if spec is None:
         return None
-    if spec.get('cls') is not None:
-        v = spec['cls'].get(str(b))
+    if spec.get("cls") is not None:
+        v = spec["cls"].get(str(b))
         return None if v is None else float(v)
-    if spec.get('clsbits') and b in spec['clsbits']:
-        return float(spec['base'][1 + spec['clsbits'].index(b)])
+    if spec.get("clsbits") and b in spec["clsbits"]:
+        return float(spec["base"][1 + spec["clsbits"].index(b)])
     return None
 
 
@@ -909,7 +992,7 @@ def _format_wide_cost(out, b, minimum=5):
             vals[v] += 1
     if len(vals) != 1:
         return None
-    (v, n), = vals.items()
+    ((v, n),) = vals.items()
     return v if n >= minimum else None
 
 
@@ -921,31 +1004,34 @@ def _transfer_constant(spec, b, cost):
     constant to the bit adds and subtracts the same word on every one of them. What changes
     is that a WALK can now place the word instead of a caller inventing its position.
     """
-    if spec.get('cls') is not None:
-        spec['cls'][str(b)] = cost
-        spec['const'] = spec['const'] - cost
+    if spec.get("cls") is not None:
+        spec["cls"][str(b)] = cost
+        spec["const"] = spec["const"] - cost
         return spec
-    i = bisect.bisect_left(spec['clsbits'], b)
-    spec['clsbits'].insert(i, b)
-    spec['base'].insert(1 + i, cost)
-    spec['base'][0] -= cost
-    if spec.get('interaction') == 'colour':
+    i = bisect.bisect_left(spec["clsbits"], b)
+    spec["clsbits"].insert(i, b)
+    spec["base"].insert(1 + i, cost)
+    spec["base"][0] -= cost
+    if spec.get("interaction") == "colour":
         # `colour` stores two aligned halves; `colour_states` stores only the state columns
         # in `cross`, which a class bit is not one of.
-        spec['cross'].insert(1 + i, 0.0)
-    if spec.get('identified') is not None:
-        spec['identified'].insert(1 + i, False)   # identified elsewhere, not by this fit
+        spec["cross"].insert(1 + i, 0.0)
+    if spec.get("identified") is not None:
+        spec["identified"].insert(1 + i, False)  # identified elsewhere, not by this fit
     return spec
 
 
 def main():
     obs, below_obs = observed()
     out, report, transferred = {}, [], []
-    for f, d in sorted(obs.items(), key=lambda kv: -sum(sum(c.values()) for c in kv[1].values())):
+    for f, d in sorted(
+        obs.items(), key=lambda kv: -sum(sum(c.values()) for c in kv[1].values())
+    ):
         keys = [(k, c.most_common(1)[0][0], sum(c.values())) for k, c in d.items()]
         n = sum(x[2] for x in keys)
         if len(keys) < 10:
-            report.append((f, n, len(keys), None, 'too few keys')); continue
+            report.append((f, n, len(keys), None, "too few keys"))
+            continue
         if f in SPLIT_SAMPLING:
             # EVERY class that fits is kept, each behind its own guard. The old form
             # kept only the best single class, which turned "class 0 does not fit yet"
@@ -959,7 +1045,7 @@ def main():
                     continue
                 spec, exact = None, 0.0
                 for br in (range(32), range(16, 32), range(8, 32)):
-                    for cm in ('off', 'full', 'states'):
+                    for cm in ("off", "full", "states"):
                         try:
                             s2, e2 = fit(f, sub, br, colour=cm)
                         except Exception:
@@ -968,17 +1054,25 @@ def main():
                             spec, exact = s2, e2
                 if spec is None or exact < KEEP:
                     continue
-                spec['guard'] = {'shift': 24, 'mask': 3, 'value': sc}
+                spec["guard"] = {"shift": 24, "mask": 3, "value": sc}
                 variants.append(spec)
                 cn = sum(x[2] for x in sub)
                 cov += cn
                 wex += exact * cn
             if not variants:
-                report.append((f, n, len(keys), 0.0, 'rejected')); continue
-            report.append((f, cov, len(keys), wex / max(1, cov),
-                           'kept (%d class variant%s)' % (len(variants),
-                                                          's' if len(variants) > 1 else '')))
-            out[str(f)] = {'variants': variants} if len(variants) > 1 else variants[0]
+                report.append((f, n, len(keys), 0.0, "rejected"))
+                continue
+            report.append(
+                (
+                    f,
+                    cov,
+                    len(keys),
+                    wex / max(1, cov),
+                    "kept (%d class variant%s)"
+                    % (len(variants), "s" if len(variants) > 1 else ""),
+                )
+            )
+            out[str(f)] = {"variants": variants} if len(variants) > 1 else variants[0]
             continue
         # EVERY CANDIDATE IS COMPARED BY THE SAME RULE -- more exact, or equally exact
         # and less lawless (`_better`). It used to be a chain of `>` against whichever
@@ -991,10 +1085,12 @@ def main():
         # hurt the integer refinement, so the mask that sees the format byte without
         # them is its own candidate. bitmap: 99.33% under both other masks, 100.00%
         # under this one.
-        for _cand in ((range(16, 32), 'off'),      # narrow: the class word alone
-                      (range(8, 32), 'off'),       # + the format byte, without bits 0-7
-                      (range(32), 'full'),         # colour-interaction
-                      (range(16, 32), 'states')):  # lean colour-x-baked
+        for _cand in (
+            (range(16, 32), "off"),  # narrow: the class word alone
+            (range(8, 32), "off"),  # + the format byte, without bits 0-7
+            (range(32), "full"),  # colour-interaction
+            (range(16, 32), "states"),
+        ):  # lean colour-x-baked
             _s, _e = fit(f, keys, _cand[0], colour=_cand[1])
             if _better(_s, _e, spec, exact):
                 spec, exact = _s, _e
@@ -1015,32 +1111,38 @@ def main():
             # feature set. Scored on `flags` -- the violations the data pins -- because the
             # 0.5 pair it exists to beat is pinned.
             better = exact5 > exact or (
-                exact5 == exact and spec is not None
-                and len(spec5.get('flags', ())) < len(spec.get('flags', ())))
+                exact5 == exact
+                and spec is not None
+                and len(spec5.get("flags", ())) < len(spec.get("flags", ()))
+            )
             if better:
                 spec, exact = spec5, exact5
         if spec is None:
-            report.append((f, n, len(keys), None, 'underdetermined')); continue
-        report.append((f, n, len(keys), exact, 'kept' if exact >= KEEP else 'rejected'))
+            report.append((f, n, len(keys), None, "underdetermined"))
+            continue
+        report.append((f, n, len(keys), exact, "kept" if exact >= KEEP else "rejected"))
         if exact >= KEEP:
             if f in MIN_VERSION:
-                spec['min_version'] = MIN_VERSION[f]
+                spec["min_version"] = MIN_VERSION[f]
             # WHAT THIS POPULATION COULD NOT SEE, said out loud. Restricted to the class
             # word: bits 0-15 hold the filter id and are constant by construction, so
             # "constant here" says nothing about them.
             const_bits = _constant_set_bits(keys, range(16, 32))
             if const_bits:
-                spec['constant_bits'] = const_bits
+                spec["constant_bits"] = const_bits
             # ... and where another population CAN see it, take the coefficient from there.
             # `below_obs` is the records `MIN_VERSION` excludes: a different version's
             # layout, so not fit material, but the only place these bits vary.
             bel = below_obs.get(f)
-            bkeys = ([(k, c.most_common(1)[0][0], sum(c.values())) for k, c in bel.items()]
-                     if bel else [])
+            bkeys = (
+                [(k, c.most_common(1)[0][0], sum(c.values())) for k, c in bel.items()]
+                if bel
+                else []
+            )
             if const_bits and len(bkeys) >= 10:
                 bspec, bexact = None, 0.0
                 for br in (range(32), range(16, 32), range(8, 32)):
-                    for cm in ('off', 'full', 'states'):
+                    for cm in ("off", "full", "states"):
                         try:
                             s2, e2 = fit(f, bkeys, br, colour=cm)
                         except Exception:
@@ -1049,34 +1151,46 @@ def main():
                             bspec, bexact = s2, e2
                 for b in const_bits:
                     if _bit_cost(spec, b) is not None:
-                        continue                     # this fit already charges it
+                        continue  # this fit already charges it
                     cst = _bit_cost(bspec, b)
                     if cst is None or cst <= 0 or float(cst) != int(float(cst)):
-                        continue                     # not identified, or not a whole slot
+                        continue  # not identified, or not a whole slot
                     if _format_wide_cost(out, b) != float(cst):
-                        continue                     # a per-filter fact, not a format one
+                        continue  # a per-filter fact, not a format one
                     _transfer_constant(spec, b, float(cst))
-                    transferred.append((f, b, float(cst), bexact, len(bkeys),
-                                        sum(x[2] for x in bkeys)))
+                    transferred.append(
+                        (f, b, float(cst), bexact, len(bkeys), sum(x[2] for x in bkeys))
+                    )
             out[str(f)] = spec
-    with open(OUT, 'w') as fh:
+    with open(OUT, "w") as fh:
         json.dump(out, fh, indent=0, sort_keys=True)
     for f, b, cst, bexact, nk, nr in transferred:
-        print('transferred: filter %d bit %d costs %g word(s) -- constant in the fitted '
-              'population, identified in the %d records below its version gate (%d keys, '
-              '%.4f exact)' % (f, b, cst, nr, nk, bexact))
-    print('%-16s %9s %7s %9s  %s' % ('filter', 'records', 'keys', 'exact', 'status'))
+        print(
+            "transferred: filter %d bit %d costs %g word(s) -- constant in the fitted "
+            "population, identified in the %d records below its version gate (%d keys, "
+            "%.4f exact)" % (f, b, cst, nr, nk, bexact)
+        )
+    print("%-16s %9s %7s %9s  %s" % ("filter", "records", "keys", "exact", "status"))
     kept = tot = 0
     for f, n, k, e, st in report:
         tot += n
-        if st.startswith('kept'):
+        if st.startswith("kept"):
             kept += n
-        print('  %-14s %9d %7d %9s  %s'
-              % (FILTERS.get(f) or 'fid %d' % f, n, k,
-                 ('%.3f%%' % (100 * e)) if e is not None else '    -', st))
+        print(
+            "  %-14s %9d %7d %9s  %s"
+            % (
+                FILTERS.get(f) or "fid %d" % f,
+                n,
+                k,
+                ("%.3f%%" % (100 * e)) if e is not None else "    -",
+                st,
+            )
+        )
     print()
-    print('wrote %s: %d filters, covering %d of %d records (%.2f%%) at >= %.1f%% exact'
-          % (os.path.basename(OUT), len(out), kept, tot, 100 * kept / tot, 100 * KEEP))
+    print(
+        "wrote %s: %d filters, covering %d of %d records (%.2f%%) at >= %.1f%% exact"
+        % (os.path.basename(OUT), len(out), kept, tot, 100 * kept / tot, 100 * KEEP)
+    )
     # ---- the width law
     # A cost is not a free parameter. The record is a serialized parameter list, so
     # every coefficient must be a TYPE WIDTH: baked = the parameter's component count
@@ -1101,13 +1215,14 @@ def main():
         # A guarded filter carries one spec per variant, and the law applies to each
         # of them: a class that fits with a fractional or negative coefficient is
         # exactly as much of a flag as an unguarded filter that does.
-        for v in spec.get('variants', [spec]):
-            specs.append(('%s/c%d' % (fs, v['guard']['value'])
-                          if 'variants' in spec else fs, v))
+        for v in spec.get("variants", [spec]):
+            specs.append(
+                ("%s/c%d" % (fs, v["guard"]["value"]) if "variants" in spec else fs, v)
+            )
     for fs, spec in specs:
-        for label, v in spec.get('flags', ()):
+        for label, v in spec.get("flags", ()):
             lawless.append((fs, label, v))
-        blind += spec.get('unident', 0)
+        blind += spec.get("unident", 0)
     # ---- the w1 audit
     # A filter declared 'codes' whose words[1] tracks the record index is not holding
     # codes; it is holding an edge, and the fit is keying on a per-record value. This
@@ -1121,23 +1236,31 @@ def main():
             suspect.append((f, n, c))
     if suspect:
         print()
-        print('w1 audit -- filters read as CODES whose words[1] tracks the record index:')
+        print(
+            "w1 audit -- filters read as CODES whose words[1] tracks the record index:"
+        )
         for f, n, c in suspect:
-            print('   %-16s %7d records  corr %.3f  <- declare it in W1_ABSENT'
-                  % (FILTERS.get(f) or 'fid %d' % f, n, c))
+            print(
+                "   %-16s %7d records  corr %.3f  <- declare it in W1_ABSENT"
+                % (FILTERS.get(f) or "fid %d" % f, n, c)
+            )
 
     if lawless or blind:
         print()
-        print('coefficients violating the width law: %d identified, %d on a direction '
-              'the data cannot see' % (len(lawless), blind))
+        print(
+            "coefficients violating the width law: %d identified, %d on a direction "
+            "the data cannot see" % (len(lawless), blind)
+        )
         for fs, label, v in lawless:
-            print('   filter %-8s %-14s %g' % (fs, label, v))
+            print("   filter %-8s %-14s %g" % (fs, label, v))
         if blind:
-            print('   (%d suppressed: their value changes with which solution the fit'
-                  ' returns, so the number is not a measurement -- only its SUM with'
-                  ' another coefficient is.)' % blind)
+            print(
+                "   (%d suppressed: their value changes with which solution the fit"
+                " returns, so the number is not a measurement -- only its SUM with"
+                " another coefficient is.)" % blind
+            )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

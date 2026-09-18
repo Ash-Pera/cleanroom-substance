@@ -34,6 +34,7 @@ contradicted 0 times -- our walk is a strict SUBSET, so it misses paths (sampler
 images without an edge). Also unread: 310 `<sbspreset>` blocks carrying 7,507 values,
 none of which are in the header, which holds only the default set.
 """
+
 import os
 import re
 
@@ -41,19 +42,21 @@ _OUTPUT = re.compile(r'<output\s+uid="(\d+)"\s+identifier="([^"]+)"', re.S)
 _INPUT5 = re.compile(r'<input uid="(\d+)"\s+identifier="([^"]+)"\s+type="5"([^>]*)')
 _DEFAULT = re.compile(r'default="([^"]*)"')
 _CHANNEL = re.compile(r'<channel names="([^"]+)"')
-_INPUT_ANY = re.compile(r'<input uid="(\d+)"\s+identifier="([^"]+)"\s+type="(\d+)"([^>]*)')
+_INPUT_ANY = re.compile(
+    r'<input uid="(\d+)"\s+identifier="([^"]+)"\s+type="(\d+)"([^>]*)'
+)
 _ALTER = re.compile(r'alteroutputs="([^"]*)"')
-_GRAPH_SPLIT = re.compile(r'(?=<graph )')
+_GRAPH_SPLIT = re.compile(r"(?=<graph )")
 
 _CACHE = {}
 
 
 def path_for(asm):
     """The manifest beside this assembly, or None. Same stem, .xml extension."""
-    p = getattr(asm, 'path', None)
+    p = getattr(asm, "path", None)
     if not p:
         return None
-    xml = os.path.splitext(p)[0] + '.xml'
+    xml = os.path.splitext(p)[0] + ".xml"
     return xml if os.path.exists(xml) else None
 
 
@@ -62,14 +65,14 @@ _MISSING = object()
 
 
 def _parsed(asm):
-    key = getattr(asm, 'path', None)
+    key = getattr(asm, "path", None)
     if key in _CACHE:
         return _CACHE[key]
     names, defaults, channels, alter, graphs = {}, {}, [], {}, []
     xml = path_for(asm)
     if xml:
         try:
-            text = open(xml, encoding='utf-8', errors='replace').read()
+            text = open(xml, encoding="utf-8", errors="replace").read()
             names = {int(u): i for u, i in _OUTPUT.findall(text)}
             for uid, ident, rest in _INPUT5.findall(text):
                 m = _DEFAULT.search(rest)
@@ -79,17 +82,25 @@ def _parsed(asm):
             for uid, ident, typ, rest in _INPUT_ANY.findall(text):
                 m = _ALTER.search(rest)
                 if m is not None:
-                    alter[int(uid)] = (int(typ), ident,
-                                       {int(z) for z in m.group(1).split(',') if z})
+                    alter[int(uid)] = (
+                        int(typ),
+                        ident,
+                        {int(z) for z in m.group(1).split(",") if z},
+                    )
             for block in _GRAPH_SPLIT.split(text)[1:]:
                 url = re.search(r'pkgurl="([^"]*)"', block)
-                graphs.append({
-                    'pkgurl': url.group(1) if url else None,
-                    'outputs': [int(u) for u, _i in _OUTPUT.findall(block)],
-                    # DECLARATION ORDER IS LOAD-BEARING -- see image_inputs_for_output.
-                    'image_inputs': [int(u) for u, _i, ty, _r in _INPUT_ANY.findall(block)
-                                     if ty == '5'],
-                })
+                graphs.append(
+                    {
+                        "pkgurl": url.group(1) if url else None,
+                        "outputs": [int(u) for u, _i in _OUTPUT.findall(block)],
+                        # DECLARATION ORDER IS LOAD-BEARING -- see image_inputs_for_output.
+                        "image_inputs": [
+                            int(u)
+                            for u, _i, ty, _r in _INPUT_ANY.findall(block)
+                            if ty == "5"
+                        ],
+                    }
+                )
         except Exception:
             names, defaults, channels, alter, graphs = {}, {}, [], {}, []
     _CACHE[key] = (names, defaults, channels, alter, graphs)
@@ -128,23 +139,23 @@ def output_channels(asm):
     output that declares no channel cannot borrow the next one's -- which a non-greedy
     match across `<output ...>` boundaries would happily do.
     """
-    got = _CHANNEL_CACHE.get(getattr(asm, 'path', None), _MISSING)
+    got = _CHANNEL_CACHE.get(getattr(asm, "path", None), _MISSING)
     if got is not _MISSING:
         return got
     out = {}
     xml = path_for(asm)
     if xml:
         try:
-            text = open(xml, encoding='utf-8', errors='replace').read()
+            text = open(xml, encoding="utf-8", errors="replace").read()
             for block in text.split('<output uid="')[1:]:
-                head = block.split('</output>', 1)[0]
+                head = block.split("</output>", 1)[0]
                 uid = head.split('"', 1)[0]
                 m = re.search(r'<channel\s+names="([^"]*)"', head)
                 if uid.isdigit() and m:
                     out[int(uid)] = m.group(1)
         except Exception:
             out = {}
-    _CHANNEL_CACHE[getattr(asm, 'path', None)] = out
+    _CHANNEL_CACHE[getattr(asm, "path", None)] = out
     return out
 
 
@@ -230,6 +241,6 @@ def image_inputs_for_output(asm, output_uid):
     Returns [] when the output is not declared by any graph block.
     """
     for g in graphs(asm):
-        if output_uid in g['outputs']:
-            return list(g['image_inputs'])
+        if output_uid in g["outputs"]:
+            return list(g["image_inputs"])
     return []

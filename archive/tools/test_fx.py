@@ -34,6 +34,7 @@ Two fixes made it real: a coverage check (entries and entry programs per record)
 reading the offsets under test FROM the table rather than restating them, since the
 hardcoded version validated the constants it had been written with.
 """
+
 import contextlib
 import io
 import collections
@@ -42,17 +43,26 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import xml.etree.ElementTree as ET                                   # noqa: E402
+import xml.etree.ElementTree as ET  # noqa: E402
 
-import containment                                                   # noqa: E402
-import corpus                                                        # noqa: E402
-import disasm                                                        # noqa: E402
-import provenance                                                    # noqa: E402
-from sbsasm import (Assembly, FX_NODES, FX_NODES2, FX_TAG_LOW16,     # noqa: E402
-                    FX_ENTRY, FX_ENTRY_PROGS, FX_NODE_PARAMS, FX_LOWERING,
-                    fx_entry_layout, node_shape)
+import containment  # noqa: E402
+import corpus  # noqa: E402
+import disasm  # noqa: E402
+import provenance  # noqa: E402
+from sbsasm import (
+    Assembly,
+    FX_NODES,
+    FX_NODES2,
+    FX_TAG_LOW16,  # noqa: E402
+    FX_ENTRY,
+    FX_ENTRY_PROGS,
+    FX_NODE_PARAMS,
+    FX_LOWERING,
+    fx_entry_layout,
+    node_shape,
+)
 
-LIMIT = int(os.environ.get('SBS_FX_FILES', '250'))
+LIMIT = int(os.environ.get("SBS_FX_FILES", "250"))
 
 
 def _files():
@@ -63,7 +73,7 @@ def _walk(a, r):
     """(nodes, entries) as lists of (offset, tag, program)."""
     nodes, entries = [], []
     for kind, off, tag, prog in r.fx_walk():
-        (nodes if kind == 'node' else entries).append((off, tag, prog))
+        (nodes if kind == "node" else entries).append((off, tag, prog))
     return nodes, entries
 
 
@@ -93,10 +103,10 @@ def test_coverage_does_not_regress():
             entries += len({o for o, _t, _p in ents})
             progs += len({pv for _o, _t, pv in ents if pv is not None})
     if not recs:
-        print('SKIP test_coverage_does_not_regress: no corpus')
+        print("SKIP test_coverage_does_not_regress: no corpus")
         return
-    assert entries / recs > 1.8, (entries, recs)      # measured 2.72
-    assert progs / recs > 1.6, (progs, recs)          # measured 2.53
+    assert entries / recs > 1.8, (entries, recs)  # measured 2.72
+    assert progs / recs > 1.6, (progs, recs)  # measured 2.53
     return
 
 
@@ -116,7 +126,7 @@ def test_records_yield_structure():
             if not nodes and not entries:
                 empty += 1
     if not n:
-        print('SKIP test_records_yield_structure: no corpus')
+        print("SKIP test_records_yield_structure: no corpus")
         return
     assert empty / n < 0.02, (empty, n)
     return
@@ -146,7 +156,7 @@ def test_entry_tags_are_in_the_vocabulary():
                 else:
                     bad += 1
     if not (good + bad):
-        print('SKIP test_entry_tags_are_in_the_vocabulary: no corpus')
+        print("SKIP test_entry_tags_are_in_the_vocabulary: no corpus")
         return
     rate = good / (good + bad)
     assert rate > 0.90, rate
@@ -183,8 +193,8 @@ def test_0x1B_branches_to_two_distinct_children():
                 nxts = FX_NODES2[0x1B][0]
                 if len(nxts) != 2 or off + max(nxts) + 4 > r.end:
                     continue
-                c1 = struct.unpack_from('<I', d, off + nxts[0])[0]
-                c2 = struct.unpack_from('<I', d, off + nxts[1])[0]
+                c1 = struct.unpack_from("<I", d, off + nxts[0])[0]
+                c2 = struct.unpack_from("<I", d, off + nxts[1])[0]
                 if c1 == c2:
                     same += 1
                 else:
@@ -194,11 +204,11 @@ def test_0x1B_branches_to_two_distinct_children():
                     if not (a.body_lo <= t < a.body_hi - 4):
                         continue
                     probed += 1
-                    w = struct.unpack_from('<I', d, t)[0]
+                    w = struct.unpack_from("<I", d, t)[0]
                     if (w & 0xF) in (9, 0xB) and not a.program_span(t, r.end):
                         landed += 1
     if not (same + diff):
-        print('SKIP test_0x1B_branches_to_two_distinct_children: none in this corpus')
+        print("SKIP test_0x1B_branches_to_two_distinct_children: none in this corpus")
         return
     assert same == 0, (same, diff)
     assert probed and landed / probed > 0.80, (landed, probed)
@@ -230,18 +240,18 @@ def test_entry_slot_roles_are_fixed():
                 for k in slots:
                     if off + 4 * k + 4 > r.end:
                         break
-                    if struct.unpack_from('<I', d, off + 4 * k)[0] + 52 != prog:
+                    if struct.unpack_from("<I", d, off + 4 * k)[0] + 52 != prog:
                         continue
                     end = a.program_span(prog, r.end)
                     if end is None:
                         break
                     ins = list(disasm.decode(d, prog, end))
                     _n, ty, comps, _o = disasm.fields(ins[-1][2])
-                    seen[(tag, k)]['%s%d' % (disasm.TYPE[ty], comps)] += 1
+                    seen[(tag, k)]["%s%d" % (disasm.TYPE[ty], comps)] += 1
                     break
     big = [(k, c) for k, c in seen.items() if sum(c.values()) >= 100]
     if not big:
-        print('SKIP test_entry_slot_roles_are_fixed: no corpus')
+        print("SKIP test_entry_slot_roles_are_fixed: no corpus")
         return
     pure = sum(1 for _k, c in big if c.most_common(1)[0][1] / sum(c.values()) > 0.95)
     assert pure / len(big) > 0.90, (pure, len(big))
@@ -263,14 +273,18 @@ def test_fx_programs_use_no_opcode_a_filter_does_not():
                         continue
                     e = a.program_span(prog, r.end)
                     if e:
-                        fx |= {disasm.name(i[2]) for i in disasm.decode(a.data, prog, e)}
+                        fx |= {
+                            disasm.name(i[2]) for i in disasm.decode(a.data, prog, e)
+                        }
             else:
                 for prog in r.programs:
                     e = a.program_span(prog, r.end)
                     if e:
-                        filt |= {disasm.name(i[2]) for i in disasm.decode(a.data, prog, e)}
+                        filt |= {
+                            disasm.name(i[2]) for i in disasm.decode(a.data, prog, e)
+                        }
     if not fx:
-        print('SKIP test_fx_programs_use_no_opcode_a_filter_does_not: no corpus')
+        print("SKIP test_fx_programs_use_no_opcode_a_filter_does_not: no corpus")
         return
     assert not (fx - filt), sorted(fx - filt)
     return
@@ -295,10 +309,10 @@ def test_fx_node_programs_never_loop():
                     continue
                 for i in disasm.decode(a.data, prog, e):
                     n += 1
-                    if disasm.name(i[2]) == 'while':
+                    if disasm.name(i[2]) == "while":
                         loops += 1
     if not n:
-        print('SKIP test_fx_node_programs_never_loop: no corpus')
+        print("SKIP test_fx_node_programs_never_loop: no corpus")
         return
     assert loops == 0, loops
     return
@@ -310,6 +324,7 @@ def test_entries_read_the_slots_nodes_write():
     Only high slot indices carry the test -- small ones collide by chance, which is why the
     same comparison over all slots shows 74.7% against a 52.2% control and means nothing.
     """
+
     def slots(a, prog, end, want):
         out = set()
         for i in disasm.decode(a.data, prog, end):
@@ -333,13 +348,13 @@ def test_entries_read_the_slots_nodes_write():
                 e = a.program_span(prog, r.end)
                 if e is None:
                     continue
-                if kind == 'node':
-                    W |= slots(a, prog, e, 'set')
+                if kind == "node":
+                    W |= slots(a, prog, e, "set")
                 else:
-                    R |= slots(a, prog, e, 'get')
+                    R |= slots(a, prog, e, "get")
         if W or R:
             per.append((W, R))
-    hi = lambda s: {x for x in s if x >= 64}                          # noqa: E731
+    hi = lambda s: {x for x in s if x >= 64}  # noqa: E731
     own = ownd = ctl = 0
     for i, (W, R) in enumerate(per):
         r_ = hi(R)
@@ -349,10 +364,12 @@ def test_entries_read_the_slots_nodes_write():
     # NOT a skip. Too few high slots is how a broken walk looks from here -- shifting
     # every program slot by one word made this test skip rather than fail, which is the
     # same worthlessness as measuring purity alone.
-    assert ownd >= 20, ('too few high slots to test: the walk is finding less than it should',
-                        ownd)
+    assert ownd >= 20, (
+        "too few high slots to test: the walk is finding less than it should",
+        ownd,
+    )
     assert own / ownd > 0.70, (own, ownd)
-    assert ctl / ownd < 0.20, (ctl, ownd)                             # the control
+    assert ctl / ownd < 0.20, (ctl, ownd)  # the control
     return
 
 
@@ -378,28 +395,28 @@ def test_entry_layout_names_the_program_slots():
                 continue
             seen = set()
             for kind, off, tag, _p in r.fx_walk():
-                if kind != 'entry' or off in seen:
+                if kind != "entry" or off in seen:
                     continue
                 seen.add(off)
                 lay = fx_entry_layout(tag)
                 for sl, _nm, how in lay:
-                    if how != 'program' or off + 4 * sl + 4 > hi:
+                    if how != "program" or off + 4 * sl + 4 > hi:
                         continue
                     tot += 1
-                    pv = struct.unpack_from('<I', d, off + 4 * sl)[0] + 52
+                    pv = struct.unpack_from("<I", d, off + 4 * sl)[0] + 52
                     if lo < pv < hi and a.program_span(pv, hi):
                         hit += 1
-                    s2 = sl + len(lay) + 3                 # off the end of the layout
+                    s2 = sl + len(lay) + 3  # off the end of the layout
                     if off + 4 * s2 + 4 <= hi:
                         ctln += 1
-                        qv = struct.unpack_from('<I', d, off + 4 * s2)[0] + 52
+                        qv = struct.unpack_from("<I", d, off + 4 * s2)[0] + 52
                         if lo < qv < hi and a.program_span(qv, hi):
                             ctl += 1
     if not tot:
-        print('SKIP test_entry_layout_names_the_program_slots: no corpus')
+        print("SKIP test_entry_layout_names_the_program_slots: no corpus")
         return
     assert hit / tot > 0.95, (hit, tot)
-    assert ctl / max(ctln, 1) < 0.10, (ctl, ctln)                     # the control
+    assert ctl / max(ctln, 1) < 0.10, (ctl, ctln)  # the control
     return
 
 
@@ -414,8 +431,11 @@ def test_entry_layout_agrees_with_the_census():
     the layout does not claim to describe them.
     """
     rows = [(t, sorted(s)) for t, s in FX_ENTRY_PROGS.items() if (t & 0xF) == 8 and t]
-    ok = sum(1 for t, s in rows
-             if [x for x, _n, k in fx_entry_layout(t) if k == 'program'] == s)
+    ok = sum(
+        1
+        for t, s in rows
+        if [x for x, _n, k in fx_entry_layout(t) if k == "program"] == s
+    )
     assert ok / len(rows) > 0.90, (ok, len(rows))
     return
 
@@ -450,13 +470,13 @@ def test_node_programs_are_named_and_typed():
                 if last is None:
                     continue
                 _n, ty, comps, _o = disasm.fields(last)
-                types[name]['%s%d' % (disasm.TYPE[ty], comps)] += 1
+                types[name]["%s%d" % (disasm.TYPE[ty], comps)] += 1
     if not seen:
-        print('SKIP test_node_programs_are_named_and_typed: no corpus')
+        print("SKIP test_node_programs_are_named_and_typed: no corpus")
         return
     total = seen[True] + seen[False]
     assert seen[True] / total > 0.80, (seen[True], total)
-    for name, want in (('numberadded', 'i1'), ('switch', 'b2')):
+    for name, want in (("numberadded", "i1"), ("switch", "b2")):
         c = types[name]
         n = sum(c.values())
         assert n > 100, (name, n)
@@ -476,6 +496,7 @@ def test_the_layout_rejects_bytecode_read_as_an_entry():
     Fails if the stopping rule is removed: 2,622 entries reappear inside program spans.
     """
     import bisect
+
     bad = tot = 0
     for f in corpus.paths():
         try:
@@ -495,7 +516,7 @@ def test_the_layout_rejects_bytecode_read_as_an_entry():
                 continue
             seen = set()
             for kind, off, _tag, _p in r.fx_walk():
-                if kind != 'entry' or off in seen:
+                if kind != "entry" or off in seen:
                     continue
                 seen.add(off)
                 tot += 1
@@ -503,7 +524,7 @@ def test_the_layout_rejects_bytecode_read_as_an_entry():
                 if i >= 0 and spans[i][0] < off < spans[i][1]:
                     bad += 1
     if not tot:
-        print('SKIP test_the_layout_rejects_bytecode_read_as_an_entry: no corpus')
+        print("SKIP test_the_layout_rejects_bytecode_read_as_an_entry: no corpus")
         return
     assert bad / tot < 0.02, (bad, tot)
     return
@@ -523,11 +544,11 @@ def test_inline_programs_are_where_the_layout_says():
                 continue
             seen = set()
             for kind, off, tag, _p in r.fx_walk():
-                if kind != 'entry' or off in seen:
+                if kind != "entry" or off in seen:
                     continue
                 seen.add(off)
                 for sl, _nm, how in fx_entry_layout(tag):
-                    if how != 'inline' or off + 4 * sl + 2 > hi:
+                    if how != "inline" or off + 4 * sl + 2 > hi:
                         continue
                     tot += 1
                     hit += bool(a.program_span(off + 4 * sl, hi))
@@ -535,12 +556,11 @@ def test_inline_programs_are_where_the_layout_says():
                         ctln += 1
                         ctl += bool(a.program_span(off + 4 * (sl + 2), hi))
     if not tot:
-        print('SKIP test_inline_programs_are_where_the_layout_says: no corpus')
+        print("SKIP test_inline_programs_are_where_the_layout_says: no corpus")
         return
     assert hit / tot > 0.85, (hit, tot)
-    assert ctl / max(ctln, 1) < 0.15, (ctl, ctln)                     # the control
+    assert ctl / max(ctln, 1) < 0.15, (ctl, ctln)  # the control
     return
-
 
 
 # --- the source-side check ------------------------------------------------------------
@@ -548,7 +568,7 @@ def test_inline_programs_are_where_the_layout_says():
 # `addnode` declares `numberadded`; `markov2` declares `switch`. A node's compiled program
 # IS that parameter's function graph, so the pair is IDENTIFIED and the multisets can be
 # compared without guessing an alignment.
-_NODE_HDR = {'addnode': {0x18B, 0x1AB, 0x20B}, 'markov2': {0x89}}
+_NODE_HDR = {"addnode": {0x18B, 0x1AB, 0x20B}, "markov2": {0x89}}
 
 
 def _v(el, tag):
@@ -556,20 +576,20 @@ def _v(el, tag):
     c = el.find(tag)
     if c is None:
         return None
-    if c.get('v') is not None:
-        return c.get('v')
-    return c.find('value').get('v') if c.find('value') is not None else None
+    if c.get("v") is not None:
+        return c.get("v")
+    return c.find("value").get("v") if c.find("value") is not None else None
 
 
 def _source_graphs(path):
     """(node type, parameter name, multiset of source function names) per declared graph."""
     out = []
-    for g in ET.parse(path).getroot().iter('paramsGraphData'):
-        ntype = _v(g, 'type')
-        for par in g.iter('parameter'):
-            fns = [n.get('v') for n in par.iter('function') if n.get('v')]
+    for g in ET.parse(path).getroot().iter("paramsGraphData"):
+        ntype = _v(g, "type")
+        for par in g.iter("parameter"):
+            fns = [n.get("v") for n in par.iter("function") if n.get("v")]
             if fns:
-                out.append((ntype, _v(par, 'name'), collections.Counter(fns)))
+                out.append((ntype, _v(par, "name"), collections.Counter(fns)))
     return out
 
 
@@ -583,8 +603,12 @@ def _compiled_multisets(path):
         for _off, hdr, prog in r.fx_tree():
             if prog is None:
                 continue
-            out[hdr].append(collections.Counter(
-                disasm.name(op) for _k, _q, op, _t in disasm.decode(a.data, prog, a.body_hi)))
+            out[hdr].append(
+                collections.Counter(
+                    disasm.name(op)
+                    for _k, _q, op, _t in disasm.decode(a.data, prog, a.body_hi)
+                )
+            )
     return out
 
 
@@ -608,7 +632,10 @@ def _fx_sources():
             continue
         seen.add(q)
         try:
-            if 'paramsGraphData' not in open(q, encoding='utf-8', errors='replace').read():
+            if (
+                "paramsGraphData"
+                not in open(q, encoding="utf-8", errors="replace").read()
+            ):
                 continue
         except OSError:
             continue
@@ -674,16 +701,24 @@ def test_fx_lowering_reproduces_the_compiled_multisets():
     """
     files = _fx_sources()
     if not files:
-        print('SKIP test_fx_lowering_reproduces_the_compiled_multisets: no permitted sources')
+        print(
+            "SKIP test_fx_lowering_reproduces_the_compiled_multisets: no permitted sources"
+        )
         return
     matched, unmatched = _equations(FX_LOWERING)
-    print('FX_LOWERING: %d equations matched, %d unmatched, over %d permitted sources'
-          % (matched, unmatched, len(files)))
+    print(
+        "FX_LOWERING: %d equations matched, %d unmatched, over %d permitted sources"
+        % (matched, unmatched, len(files))
+    )
     # NOT just `unmatched == 0`. Nothing found is also zero unmatched, and a test that
     # passes when the parser silently returns no graphs is the failure this file's
     # docstring already records once.
-    assert matched >= 12, 'only %d equations found; the source parse has regressed' % matched
-    assert unmatched == 0, '%d source graphs do not reproduce their compiled program' % unmatched
+    assert matched >= 12, (
+        "only %d equations found; the source parse has regressed" % matched
+    )
+    assert unmatched == 0, (
+        "%d source graphs do not reproduce their compiled program" % unmatched
+    )
 
 
 # The standalone runner reads SKIP from what a check PRINTS, not from what it returns.
@@ -710,6 +745,7 @@ def test_entry_programs_are_yielded_in_a_runnable_order():
     contains no forward reference. Measured at 0 of 9,736 records, and a reversed order is
     the control: it must fail.
     """
+
     def setget(d, p, hi):
         sets, gets = set(), set()
         for _k, _a, op, toks in disasm.decode(d, p, hi):
@@ -729,7 +765,7 @@ def test_entry_programs_are_yielded_in_a_runnable_order():
             for q in seq[:i]:
                 before |= setget(d, q, hi)[0]
             later = set()
-            for q in seq[i + 1:]:
+            for q in seq[i + 1 :]:
                 later |= setget(d, q, hi)[0]
             if (g - before) & later:
                 bad += 1
@@ -745,43 +781,55 @@ def test_entry_programs_are_yielded_in_a_runnable_order():
         for r in a.records:
             if r.filter_id != 4:
                 continue
-            seq = [v for _o, _t, _s, _n, k, v in r.fx_named_params() if k != 'baked' and v]
+            seq = [
+                v for _o, _t, _s, _n, k, v in r.fx_named_params() if k != "baked" and v
+            ]
             if len(seq) < 2:
                 continue
             n += 1
             fwd += bool(forward_refs(d, hi, seq))
-            rev += bool(forward_refs(d, hi, list(reversed(seq))))   # the control
+            rev += bool(forward_refs(d, hi, list(reversed(seq))))  # the control
     if not n:
-        print('SKIP test_entry_programs_are_yielded_in_a_runnable_order: no corpus')
+        print("SKIP test_entry_programs_are_yielded_in_a_runnable_order: no corpus")
         return 0
-    assert fwd == 0, ('a yielded entry program reads a slot only a later one writes', fwd, n)
-    assert rev > 0, ('the control did not fail: reversing the order broke nothing, so this '
-                     'test proves nothing about the order', rev, n)
+    assert fwd == 0, (
+        "a yielded entry program reads a slot only a later one writes",
+        fwd,
+        n,
+    )
+    assert rev > 0, (
+        "the control did not fail: reversing the order broke nothing, so this "
+        "test proves nothing about the order",
+        rev,
+        n,
+    )
     return n
 
 
-if __name__ == '__main__':
-    for fn in (test_coverage_does_not_regress,
-               test_records_yield_structure,
-               test_entry_tags_are_in_the_vocabulary,
-               test_0x1B_branches_to_two_distinct_children,
-               test_entry_slot_roles_are_fixed,
-               test_fx_programs_use_no_opcode_a_filter_does_not,
-               test_fx_node_programs_never_loop,
-               test_entries_read_the_slots_nodes_write,
-               test_entry_layout_names_the_program_slots,
-               test_entry_layout_agrees_with_the_census,
-               test_node_programs_are_named_and_typed,
-               test_the_layout_rejects_bytecode_read_as_an_entry,
-               test_inline_programs_are_where_the_layout_says,
-               test_fx_lowering_reproduces_the_compiled_multisets,
-               test_entry_programs_are_yielded_in_a_runnable_order):
+if __name__ == "__main__":
+    for fn in (
+        test_coverage_does_not_regress,
+        test_records_yield_structure,
+        test_entry_tags_are_in_the_vocabulary,
+        test_0x1B_branches_to_two_distinct_children,
+        test_entry_slot_roles_are_fixed,
+        test_fx_programs_use_no_opcode_a_filter_does_not,
+        test_fx_node_programs_never_loop,
+        test_entries_read_the_slots_nodes_write,
+        test_entry_layout_names_the_program_slots,
+        test_entry_layout_agrees_with_the_census,
+        test_node_programs_are_named_and_typed,
+        test_the_layout_rejects_bytecode_read_as_an_entry,
+        test_inline_programs_are_where_the_layout_says,
+        test_fx_lowering_reproduces_the_compiled_multisets,
+        test_entry_programs_are_yielded_in_a_runnable_order,
+    ):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()
         out = buf.getvalue()
         sys.stdout.write(out)
-        print('%-52s %s' % (fn.__name__, 'skipped' if 'SKIP' in out else 'ok'))
+        print("%-52s %s" % (fn.__name__, "skipped" if "SKIP" in out else "ok"))
 
 
 def test_0x1B_owns_its_fields_and_does_not_borrow_its_neighbours():
@@ -825,16 +873,19 @@ def test_0x1B_owns_its_fields_and_does_not_borrow_its_neighbours():
             if r.filter_id != 4:
                 continue
             try:
-                items = [(off, hdr, prog) for kind, off, hdr, prog in r.fx_walk()
-                         if kind == 'node']
+                items = [
+                    (off, hdr, prog)
+                    for kind, off, hdr, prog in r.fx_walk()
+                    if kind == "node"
+                ]
             except Exception:
                 continue
             offs = {off for off, _h, _p in items}
             for off, hdr, prog in items:
                 if (hdr & 0xFF) != 0x1B or off + 16 > r.end:
                     continue
-                if struct.unpack_from('<I', d, off + 4)[0] != 0x3039:
-                    continue          # the six-word form, not established
+                if struct.unpack_from("<I", d, off + 4)[0] != 0x3039:
+                    continue  # the six-word form, not established
                 checked += 1
                 if prog is None:
                     no_prog += 1
@@ -842,7 +893,7 @@ def test_0x1B_owns_its_fields_and_does_not_borrow_its_neighbours():
                     child_visited += 1
                 # The neighbour's OWN fields, by its own shape -- this is the arithmetic
                 # that makes the claim checkable rather than a matter of taste.
-                child_hdr = struct.unpack_from('<I', d, off + 12)[0]
+                child_hdr = struct.unpack_from("<I", d, off + 12)[0]
                 sh = node_shape(child_hdr)
                 if sh is None:
                     continue
@@ -850,22 +901,25 @@ def test_0x1B_owns_its_fields_and_does_not_borrow_its_neighbours():
                 claimed = set(FX_NODES2.get(0x1B, ((), ()))[0] or ())
                 claimed |= set(FX_NODES2.get(0x1B, ((), ()))[1] or ())
                 if claimed & owned:
-                    borrowed.append((os.path.basename(p), off,
-                                     sorted(claimed & owned)))
+                    borrowed.append((os.path.basename(p), off, sorted(claimed & owned)))
     if not checked:
-        print('SKIP test_0x1B_owns_its_fields: no sentinel 0x1B in this corpus')
+        print("SKIP test_0x1B_owns_its_fields: no sentinel 0x1B in this corpus")
         return
     assert no_prog == checked, (
-        'a sentinel 0x1B yielded a program of its own on %d of %d nodes; byte 16 is the '
-        'contiguous neighbour\'s program (12 + 4), not this node\'s'
-        % (checked - no_prog, checked))
+        "a sentinel 0x1B yielded a program of its own on %d of %d nodes; byte 16 is the "
+        "contiguous neighbour's program (12 + 4), not this node's"
+        % (checked - no_prog, checked)
+    )
     assert child_visited == checked, (
-        'the contiguous child at byte 12 was not visited on %d of %d sentinel 0x1B nodes '
-        '-- nothing addresses it unless the walk continues there'
-        % (checked - child_visited, checked))
-    print('0x1B ownership: %d sentinel nodes, %d yield no program, %d contiguous children '
-          'visited; %d borrow-claims against the neighbour'
-          % (checked, no_prog, child_visited, len(borrowed)))
+        "the contiguous child at byte 12 was not visited on %d of %d sentinel 0x1B nodes "
+        "-- nothing addresses it unless the walk continues there"
+        % (checked - child_visited, checked)
+    )
+    print(
+        "0x1B ownership: %d sentinel nodes, %d yield no program, %d contiguous children "
+        "visited; %d borrow-claims against the neighbour"
+        % (checked, no_prog, child_visited, len(borrowed))
+    )
     return
 
 
@@ -906,12 +960,12 @@ def test_out_of_line_blocks_hold_the_programs_their_tag_declares():
             except Exception:
                 continue
             for kind, off, tag, _p in items:
-                if kind != 'entry' or tag is None or off in seen:
+                if kind != "entry" or tag is None or off in seen:
                     continue
                 seen.add(off)
                 if off + 4 > a.body_hi:
                     continue
-                inline = struct.unpack_from('<I', d, off)[0] == tag
+                inline = struct.unpack_from("<I", d, off)[0] == tag
                 if inline:
                     # CONTROL: the block is at the offset, so the tag word IS there and the
                     # out-of-line identity has no business holding.
@@ -930,21 +984,27 @@ def test_out_of_line_blocks_hold_the_programs_their_tag_declares():
                         slots += 1
                         resolved += 1 if p else 0
     assert cells >= 100, (
-        'only %d out-of-line cells in %d files -- the assertions below say nothing about '
-        'a population this small, and the corpus this was written against has 846'
-        % (cells, LIMIT))
+        "only %d out-of-line cells in %d files -- the assertions below say nothing about "
+        "a population this small, and the corpus this was written against has 846"
+        % (cells, LIMIT)
+    )
     assert both_ends == cells, (
-        'the block-side and tag-side readings of the identity disagree on %d of %d cells'
-        % (cells - both_ends, cells))
+        "the block-side and tag-side readings of the identity disagree on %d of %d cells"
+        % (cells - both_ends, cells)
+    )
     assert resolved == slots, (
-        '%d of %d declared program slots do not resolve on cells the identity admits; '
-        'it admitted 1,749 of 1,749 when it was written' % (slots - resolved, slots))
+        "%d of %d declared program slots do not resolve on cells the identity admits; "
+        "it admitted 1,749 of 1,749 when it was written" % (slots - resolved, slots)
+    )
     assert ctl_tot > 1000 and ctl / ctl_tot < 0.01, (
-        'the identity fires on %d of %d entries whose block is INLINE (%.2f%%); it was '
-        '95 of 137,552 corpus-wide' % (ctl, ctl_tot, 100.0 * ctl / max(1, ctl_tot)))
-    print('out-of-line cells: %d, %d program slots all resolving; control %d of %d '
-          'inline-block entries (%.2f%%)'
-          % (cells, slots, ctl, ctl_tot, 100.0 * ctl / max(1, ctl_tot)))
+        "the identity fires on %d of %d entries whose block is INLINE (%.2f%%); it was "
+        "95 of 137,552 corpus-wide" % (ctl, ctl_tot, 100.0 * ctl / max(1, ctl_tot))
+    )
+    print(
+        "out-of-line cells: %d, %d program slots all resolving; control %d of %d "
+        "inline-block entries (%.2f%%)"
+        % (cells, slots, ctl, ctl_tot, 100.0 * ctl / max(1, ctl_tot))
+    )
     return
 
 
@@ -987,7 +1047,7 @@ def test_out_of_line_slot_2_is_split_by_the_tag_and_not_by_a_value():
             except Exception:
                 continue
             for kind, off, tag, _p in items:
-                if kind != 'entry' or tag is None or off in seen:
+                if kind != "entry" or tag is None or off in seen:
                     continue
                 seen.add(off)
                 got = a.fx_out_of_line_at(off, tag)
@@ -996,13 +1056,14 @@ def test_out_of_line_slot_2_is_split_by_the_tag_and_not_by_a_value():
                 q = got[0] + 8
                 if q + 4 > hi:
                     continue
-                w = struct.unpack_from('<I', d, q)[0] + 52
-                nxt = struct.unpack_from('<I', d, w)[0] if lo <= w < hi - 3 else None
+                w = struct.unpack_from("<I", d, q)[0] + 52
+                nxt = struct.unpack_from("<I", d, w)[0] if lo <= w < hi - 3 else None
                 is_cell = nxt is not None and (
                     (nxt & 0xF) == 8
                     or sbsasm.node_shape(nxt) is not None
                     or sbsasm.leaf_successor(nxt) is not None
-                    or sbsasm.pointer_cell_successor(nxt) is not None)
+                    or sbsasm.pointer_cell_successor(nxt) is not None
+                )
                 is_prog = bool(lo <= q < hi and a.program_span(q, hi))
                 # The span is measured from the BLOCK, which is the offset the walk
                 # yields the cell at -- `got[0]` is the tag, four words further on.
@@ -1019,24 +1080,33 @@ def test_out_of_line_slot_2_is_split_by_the_tag_and_not_by_a_value():
                     nodecl_prog += 1 if is_prog else 0
                     span_ok += 0 if covers else 1
     assert decl >= 100 and nodecl >= 30, (
-        'the split is %d / %d cells over %d files -- too small for the assertions below '
-        'to mean anything; corpus-wide it is 876 / 316' % (decl, nodecl, LIMIT))
+        "the split is %d / %d cells over %d files -- too small for the assertions below "
+        "to mean anything; corpus-wide it is 876 / 316" % (decl, nodecl, LIMIT)
+    )
     assert decl_cell == decl, (
-        '%d of %d cells whose tag sets bit 16 or 17 do NOT point at a known cell'
-        % (decl - decl_cell, decl))
+        "%d of %d cells whose tag sets bit 16 or 17 do NOT point at a known cell"
+        % (decl - decl_cell, decl)
+    )
     assert decl_prog == 0, (
-        '%d of %d cells whose tag sets bit 16 or 17 have a PROGRAM at tag + 8' % (decl_prog, decl))
+        "%d of %d cells whose tag sets bit 16 or 17 have a PROGRAM at tag + 8"
+        % (decl_prog, decl)
+    )
     assert nodecl_prog == nodecl, (
-        '%d of %d cells whose tag sets neither bit have no program at tag + 8'
-        % (nodecl - nodecl_prog, nodecl))
+        "%d of %d cells whose tag sets neither bit have no program at tag + 8"
+        % (nodecl - nodecl_prog, nodecl)
+    )
     assert nodecl_cell == 0, (
-        '%d of %d cells whose tag sets neither bit DO point at a known cell'
-        % (nodecl_cell, nodecl))
+        "%d of %d cells whose tag sets neither bit DO point at a known cell"
+        % (nodecl_cell, nodecl)
+    )
     assert span_ok == decl + nodecl, (
-        'the credited span disagrees with the tag on %d of %d cells'
-        % (decl + nodecl - span_ok, decl + nodecl))
-    print('out-of-line slot 2: %d cells declare it (all a cell, none a program), '
-          '%d do not (all a program, none a cell)' % (decl, nodecl))
+        "the credited span disagrees with the tag on %d of %d cells"
+        % (decl + nodecl - span_ok, decl + nodecl)
+    )
+    print(
+        "out-of-line slot 2: %d cells declare it (all a cell, none a program), "
+        "%d do not (all a program, none a cell)" % (decl, nodecl)
+    )
     return
 
 
@@ -1051,14 +1121,15 @@ def test_entry_width_is_self_delimiting_not_bit_decided():
     a bit -- the slot run ends where a program the entry names begins.
     """
     from separability import permitted_files
+
     want = {0x83000088: 6, 0x91100088: 6, 0xD5140088: 9}
     files = permitted_files()
-    assert files, 'no permitted specimens -- corpus absent or gate misconfigured'
+    assert files, "no permitted specimens -- corpus absent or gate misconfigured"
     seen, checked = {}, 0
     for f in files:
         asm = Assembly(f)
         for rec in asm.records:
-            if getattr(rec, 'filter_id', None) != 4:
+            if getattr(rec, "filter_id", None) != 4:
                 continue
             try:
                 tbl = list(rec.fx_table())
@@ -1072,7 +1143,7 @@ def test_entry_width_is_self_delimiting_not_bit_decided():
                 checked += 1
         if checked and len(seen) == len(want):
             break
-    assert seen, 'no bit-31 entries reached'
+    assert seen, "no bit-31 entries reached"
     for tag, widths in seen.items():
         assert widths == {want[tag]}, (hex(tag), widths, want[tag])
 
@@ -1087,13 +1158,14 @@ def test_no_named_bit_is_identical_to_another():
     have a control population, and they are inventoried in FORMAT-NOTES.md instead.
     """
     from separability import permitted_files, separability
+
     tags = collections.Counter()
     files = permitted_files()
-    assert files, 'no permitted specimens -- corpus absent or gate misconfigured'
+    assert files, "no permitted specimens -- corpus absent or gate misconfigured"
     for f in files:
         asm = Assembly(f)
         for rec in asm.records:
-            if getattr(rec, 'filter_id', None) != 4:
+            if getattr(rec, "filter_id", None) != 4:
                 continue
             try:
                 for _o, t, _p in rec.fx_table():
@@ -1101,9 +1173,10 @@ def test_no_named_bit_is_identical_to_another():
                         tags[t] += 1
             except Exception:
                 pass
-    assert tags, 'no entry tags reached'
+    assert tags, "no entry tags reached"
     from sbsasm import FX_PARAM_BITS
+
     sep = separability(list(set(tags)), [b for b, _n, _w in FX_PARAM_BITS])
-    ident = {b: [o for o, k in r if k == 'identical'] for b, (_n, r) in sep.items()}
+    ident = {b: [o for o, k in r if k == "identical"] for b, (_n, r) in sep.items()}
     ident = {b: v for b, v in ident.items() if v}
     assert not ident, ident

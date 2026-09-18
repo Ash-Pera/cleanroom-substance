@@ -6,6 +6,7 @@ table, whose records embed instructions. Counting those as code inflates opcode
 statistics and, in small files, dominates them. This module returns the code span with
 the resource table excised.
 """
+
 import struct
 
 import extract_images as E
@@ -17,7 +18,7 @@ def code_spans(path):
     d = open(path, "rb").read()
     r = S.parse(path)
     cnt, dir0 = r["dir_count"], r["dir_at"]
-    if cnt < 1 or dir0 + 4 * cnt > len(d):   # small graphs legitimately have 1-2 records
+    if cnt < 1 or dir0 + 4 * cnt > len(d):  # small graphs legitimately have 1-2 records
         return d, [], r
     ents = list(struct.unpack_from("<%dI" % cnt, d, dir0))
     # The body runs from just after the directory to the value table. Directory entries

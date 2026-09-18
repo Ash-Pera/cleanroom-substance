@@ -21,6 +21,7 @@ until someone printed a diff and got `nan` back.
 flat: a record producing NaN is a defect to investigate, and a record producing a constant
 is usually correct behaviour.
 """
+
 import numpy as np
 
 DEFAULT_EPS = 0.01
@@ -36,8 +37,8 @@ def classify(x, eps=DEFAULT_EPS):
     a = _chan(x)
     finite = np.isfinite(a)
     if not finite.all():
-        return 'non-finite' if not finite.any() else 'non-finite-partial'
-    return 'spatial' if spread(a, eps=None) > eps else 'flat'
+        return "non-finite" if not finite.any() else "non-finite-partial"
+    return "spatial" if spread(a, eps=None) > eps else "flat"
 
 
 def spread(x, eps=DEFAULT_EPS):
@@ -49,11 +50,11 @@ def spread(x, eps=DEFAULT_EPS):
     """
     a = _chan(x)
     if not np.isfinite(a).all():
-        return float('nan')
+        return float("nan")
     v = max(float(a[:, :, c].std()) for c in range(a.shape[2]))
     return v
 
 
 def varies(x, eps=DEFAULT_EPS):
     """True only for a finite image that actually varies. NaN is never 'varies'."""
-    return classify(x, eps) == 'spatial'
+    return classify(x, eps) == "spatial"

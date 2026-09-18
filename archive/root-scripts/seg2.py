@@ -11,9 +11,11 @@ MiB that all read as stride b. Every interior MiB votes, not just the first -- w
 is what makes smooth resources survivable: they score flat across all candidates and
 simply abstain.
 """
+
 MiB = 1048576
 BPP = (1, 2, 3, 4, 8)
 SKEW = 52
+
 
 def rowscore(d, o, bpp, rows=40):
     """Mean abs row-to-row delta at stride 1024*bpp, normalised against the same
@@ -24,6 +26,7 @@ def rowscore(d, o, bpp, rows=40):
     so it is blind to L16 and RGBA16 rasters -- 28% of the corpus. Measured on a known
     2048x2048 L16 record, step 4 scores 1.022 (no signal) where step 1 scores 0.471."""
     s = 1024 * bpp
+
     def mad(extra):
         tot = cnt = 0
         for k in range(rows):
@@ -31,17 +34,21 @@ def rowscore(d, o, bpp, rows=40):
             if b + 512 > len(d):
                 break
             for i in range(512):
-                tot += abs(d[a + i] - d[b + i]); cnt += 1
+                tot += abs(d[a + i] - d[b + i])
+                cnt += 1
         return (tot / cnt) if cnt else None
-    hit, ref = mad(0), mad(501)      # 501: prime-ish, breaks any stride alignment
+
+    hit, ref = mad(0), mad(501)  # 501: prime-ish, breaks any stride alignment
     if hit is None or not ref:
         return None
     return hit / ref
+
 
 def scores(d, base):
     """scores[m][b] = how well stride b reads at MiB m of the segment."""
     n = base // MiB
     return [{b: rowscore(d, SKEW + 4 + m * MiB, b) for b in BPP} for m in range(n)]
+
 
 def segment(d, base):
     """DP: partition n MiB into resources, cost of a bpp-b resource at MiB m being

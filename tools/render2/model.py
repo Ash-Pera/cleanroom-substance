@@ -41,6 +41,7 @@ colour parameters, so a mismatch cannot be an author's tweak:
 So this is not a tidier spelling of the old reads. It is a different answer, and the
 reference arbitrates it.
 """
+
 import functools
 
 import numpy as np
@@ -89,21 +90,31 @@ W1_PARAMS = {
     # also unknown -- the shipped sources write six blend parameters (blendingmode,
     # colorblending, opacitymult, outputsize, format, tiling) and the two words look like
     # packed 16-bit halves -- so it is declared for its width and left unnamed.
-    1:  [(0x30, 4, 'opacitymult', 'scalar'),          # blend
-         (0xC0, 6, None, 2),
-         (0x600, 9, 'opacitymult', 'scalar')],
-    2:  [(0xC0, 6, 'matrix22', 4),                    # transformation
-         (0x06000000, 25, 'offset', 2),
-         (0x10000000, 28, 'backgroundcolour', 'channel')],
-    11: [(0x3, 0, 'intensity', 'scalar'),             # dirmotionblur
-         (0xc, 2, 'mblurangle', 'scalar')],
-    12: [(0x6, 1, 'intensity', 'scalar'),             # directionalwarp
-         (0x18, 3, 'warpangle', 'scalar')],
-    15: [(0x003, 0, 'levelinlow', 'channel'),         # levels
-         (0x00c, 2, 'levelinhigh', 'channel'),
-         (0x030, 4, 'levelinmid', 'channel'),
-         (0x0c0, 6, 'leveloutlow', 'channel'),
-         (0x300, 8, 'levelouthigh', 'channel')],
+    1: [
+        (0x30, 4, "opacitymult", "scalar"),  # blend
+        (0xC0, 6, None, 2),
+        (0x600, 9, "opacitymult", "scalar"),
+    ],
+    2: [
+        (0xC0, 6, "matrix22", 4),  # transformation
+        (0x06000000, 25, "offset", 2),
+        (0x10000000, 28, "backgroundcolour", "channel"),
+    ],
+    11: [
+        (0x3, 0, "intensity", "scalar"),  # dirmotionblur
+        (0xC, 2, "mblurangle", "scalar"),
+    ],
+    12: [
+        (0x6, 1, "intensity", "scalar"),  # directionalwarp
+        (0x18, 3, "warpangle", "scalar"),
+    ],
+    15: [
+        (0x003, 0, "levelinlow", "channel"),  # levels
+        (0x00C, 2, "levelinhigh", "channel"),
+        (0x030, 4, "levelinmid", "channel"),
+        (0x0C0, 6, "leveloutlow", "channel"),
+        (0x300, 8, "levelouthigh", "channel"),
+    ],
     # `normal` DECLARES THREE FIELDS AND THIS TABLE NAMED ONE. Fields 1 and 2 are flags
     # whose baked arm costs nothing, so leaving them out looked free -- but their PROGRAM
     # arm is a word, and 38 corpus records put a program in field 1 while `intensity` is
@@ -150,7 +161,7 @@ W1_PARAMS = {
     # end-anchored block a word for an input that is not in it. The two arms of field 1 are
     # the ordinary pair, and both are now read: 01 bakes the radius, 10 points at a program
     # this filter evaluates. See `decompose`'s note in the w1 loop for the evidence.
-    21: [(0xc, 2, 'distance', 'scalar')],             # distance
+    21: [(0xC, 2, "distance", "scalar")],  # distance
     # `fxmaps` NAMES ITS FIRST THREE FIELDS FROM TWO PAIRED SOURCES, and the other two are
     # declared for their width only. The FX-Map NODE's own parameters -- not the
     # patterns' -- are what the permitted sources declare on a `compFilter` of this
@@ -179,15 +190,17 @@ W1_PARAMS = {
     # 4-vector, field 4's program `slots[4]` likewise; field 4 is never baked in the corpus
     # (`sbsasm.PARAM_SPEC`: bit 8 alone is set in 0 of 39,942), so its width is unmeasured.
     4: [
-        (0x003, 0, 'background', 'channel'),  # fxmaps
-        (0x00C, 2, 'hurst', 'scalar'),
-        (0x030, 4, 'opacitymult', 'scalar'),
+        (0x003, 0, "background", "channel"),  # fxmaps
+        (0x00C, 2, "hurst", "scalar"),
+        (0x030, 4, "opacitymult", "scalar"),
         (0x0C0, 6, None, 4),
         (0x300, 8, None, 1),
     ],
-    18: [(0x3, 0, 'intensity', 'scalar'),             # normal
-         (0xc, 2, 'inversedy', 'flag'),
-         (0x30, 4, 'input2alpha', 'flag')],
+    18: [
+        (0x3, 0, "intensity", "scalar"),  # normal
+        (0xC, 2, "inversedy", "flag"),
+        (0x30, 4, "input2alpha", "flag"),
+    ],
     # `text` is THE ONE FILTER whose block is not in ascending mask order, and `View` walks
     # this list rather than sorting it, so the order written here IS the placement. The
     # widths are `decompose`'s and are right; only the order differs. Ascending order puts
@@ -202,10 +215,12 @@ W1_PARAMS = {
     # reader. Its PROGRAM arm (bit 13) costs 0 too and is unobserved in 437 files, and `View`
     # would charge it one and shift the block -- so a file that sets bit 13 is a thing to
     # look at rather than to trust.
-    17: [(0xC00, 10, 'matrix22', 4),                  # text
-         (0xC0, 6, 'position', 2),
-         (0x300, 8, 'fontsize', 'scalar'),
-         (0x3000, 12, 'align_flag', 'flag')],
+    17: [
+        (0xC00, 10, "matrix22", 4),  # text
+        (0xC0, 6, "position", 2),
+        (0x300, 8, "fontsize", "scalar"),
+        (0x3000, 12, "align_flag", "flag"),
+    ],
 }
 
 
@@ -221,7 +236,7 @@ def _covered_bits(fid):
     index-based reading calls both halves unnamed.
     """
     w1 = 0
-    for (mask, _shift, name, _kind) in W1_PARAMS.get(fid, ()):
+    for mask, _shift, name, _kind in W1_PARAMS.get(fid, ()):
         if name is not None:
             w1 |= mask
     cls = {_SIZE_BIT} | set(CLS_NAMES.get(fid, {}))
@@ -237,9 +252,9 @@ def _baked_width(kind, colour):
     program arm costs one word and the placement is anchored at the header end: an
     undeclared program sitting after `intensity` moves intensity's slot by one.
     """
-    if kind == 'flag':
+    if kind == "flag":
         return 0
-    if kind == 'channel':
+    if kind == "channel":
         return 4 if colour else 1
     return kind if isinstance(kind, int) else 1
 
@@ -249,10 +264,10 @@ def _baked_width(kind, colour):
 #: costs its own width, the upper that it is a program and costs one pointer -- so the two
 #: bits of one parameter share a name and differ only in kind.
 CLS_NAMES = {
-    3:  {24: ('channelsweights', 'baked')},   # shuffle / grayscaleconversion, four words
-    6:  {24: ('outputcolor', 'baked')},       # uniform's fill
-    7:  {29: ('intensity', 'baked'), 30: ('intensity', 'program')},    # warp
-    10: {28: ('intensity', 'baked'), 29: ('intensity', 'program')},    # blur
+    3: {24: ("channelsweights", "baked")},  # shuffle / grayscaleconversion, four words
+    6: {24: ("outputcolor", "baked")},  # uniform's fill
+    7: {29: ("intensity", "baked"), 30: ("intensity", "program")},  # warp
+    10: {28: ("intensity", "baked"), 29: ("intensity", "program")},  # blur
     # `sharpen` AT THE SAME PAIR AS `blur`, and on the same kind of evidence the pair law
     # is built from -- but WITHOUT a source to check it against, which `hsl` had and this
     # does not: all 28 sharpen nodes in the shipped sources state no parameters at all.
@@ -261,7 +276,7 @@ CLS_NAMES = {
     # baked/program pair shape; the position is the one `blur` -- the other one-scalar
     # filter -- uses for the same parameter name. Until this table named it, `f_sharpen`
     # asked for `intensity`, no legend supplied it, and every record ran at the default.
-    13: {28: ('intensity', 'baked'), 29: ('intensity', 'program')},    # sharpen
+    13: {28: ("intensity", "baked"), 29: ("intensity", "program")},  # sharpen
     # `hsl`, THREE PARAMETERS AND SIX BITS, from the shipped sources. ChesterfieldSofa.sbs
     # states `saturation` 0.65 with `luminosity` 0.60 on one node and `saturation` 0.58 on
     # another; the compiled records set bit 26 to 0.65 / 0.58 and bit 28 to 0.60.
@@ -274,9 +289,14 @@ CLS_NAMES = {
     # integers-as-denormals, which is what a program pointer looks like read as a float.
     # Unnamed until this table said otherwise, all 747 corpus `hsl` records rendered as an
     # identity: `_scalar` returns the 0.5 default for a parameter nothing names.
-    14: {24: ('hue', 'baked'), 25: ('hue', 'program'),                 # hsl
-         26: ('saturation', 'baked'), 27: ('saturation', 'program'),
-         28: ('luminosity', 'baked'), 29: ('luminosity', 'program')},
+    14: {
+        24: ("hue", "baked"),
+        25: ("hue", "program"),  # hsl
+        26: ("saturation", "baked"),
+        27: ("saturation", "program"),
+        28: ("luminosity", "baked"),
+        29: ("luminosity", "program"),
+    },
 }
 
 #: Class bit 0 -- w0 bit 16 -- is the inherited `$outputsize`, and it is the ONE class
@@ -308,19 +328,25 @@ class Shifted(ValueError):
 
 class Param(object):
     """One parameter the walk located. `kind` is 'baked' or 'program'."""
-    __slots__ = ('name', 'kind', 'slot', 'width', 'value')
+
+    __slots__ = ("name", "kind", "slot", "width", "value")
 
     def __init__(self, name, kind, slot, width, value):
         self.name, self.kind, self.slot = name, kind, slot
         self.width, self.value = width, value
 
     def __repr__(self):
-        return 'Param(%r, %r, slot=%d, w=%d, %r)' % (
-            self.name, self.kind, self.slot, self.width, self.value)
+        return "Param(%r, %r, slot=%d, w=%d, %r)" % (
+            self.name,
+            self.kind,
+            self.slot,
+            self.width,
+            self.value,
+        )
 
 
 def _floats(words, slot, width):
-    return np.array(words[slot:slot + width], dtype=np.uint32).view(np.float32)
+    return np.array(words[slot : slot + width], dtype=np.uint32).view(np.float32)
 
 
 class View(object):
@@ -353,9 +379,27 @@ class View(object):
     The class-word parameters keep the forward cursor, because they sit before the w1
     fields and an end anchor cannot reach them. Both are the walk; neither is a memo.
     """
-    __slots__ = ('rec', 'asm', 'index', 'filter', 'filter_id', 'colour', 'width',
-                 'height', 'words', 'inputs', 'params', 'size_slot', 'walked',
-                 'header_end', 'unnamed', 'prog_slot', 'cls_slots', 'ignored')
+
+    __slots__ = (
+        "rec",
+        "asm",
+        "index",
+        "filter",
+        "filter_id",
+        "colour",
+        "width",
+        "height",
+        "words",
+        "inputs",
+        "params",
+        "size_slot",
+        "walked",
+        "header_end",
+        "unnamed",
+        "prog_slot",
+        "cls_slots",
+        "ignored",
+    )
 
     def __init__(self, asm, rec, size=None):
         self.rec, self.asm, self.index = rec, asm, rec.index
@@ -384,12 +428,12 @@ class View(object):
         if d is None:
             return
         self.walked = True
-        self.header_end = d.get('end')
+        self.header_end = d.get("end")
 
         # EDGES ARE THE WALK'S `inputs`, RESOLVED THROUGH THE SLOT. An edge slot holds a
         # backward record index; the walk says which slots are edges and the word says
         # which record. Nothing scans for plausible indices.
-        for slot in d.get('inputs', ()):
+        for slot in d.get("inputs", ()):
             v = rec.words[slot] if 0 <= slot < len(rec.words) else None
             self.inputs.append(v if (v is not None and 0 <= v < rec.index) else None)
 
@@ -398,8 +442,8 @@ class View(object):
         # STARTS, which is the same word only when no costing class bit precedes bit 16.
         # Over 120 files those differ on 7,590 records. `decompose` now places it and says
         # so, so there is nothing left to reconcile.
-        self.prog_slot = d.get('prog')
-        self.size_slot = d.get('size_slot')
+        self.prog_slot = d.get("prog")
+        self.size_slot = d.get("size_slot")
 
         # THE BRANCH THAT USED TO SIT HERE IS GONE. `emboss` was the last filter whose size
         # expression this file had to guess at -- `prog`, on the strength of the word there
@@ -417,10 +461,10 @@ class View(object):
         # programs (pixelprocessor) has to be able to find them. Two Chesterfield
         # pixelprocessors failed on "slot 0 read but never set" -- and took 759 records
         # down with them -- because their setup program sits in an unnamed class slot.
-        self.cls_slots = [s for s in d.get('cls_slots', ()) if 0 <= s < len(rec.words)]
+        self.cls_slots = [s for s in d.get("cls_slots", ()) if 0 <= s < len(rec.words)]
         cls_names = CLS_NAMES.get(rec.filter_id, {})
         cov_w1, cov_cls = _covered_bits(rec.filter_id)
-        for (bit, slot, width) in d.get('cls_params', ()):
+        for bit, slot, width in d.get("cls_params", ()):
             entry = cls_names.get(bit)
             if entry is not None:
                 self._add(entry[0], entry[1], slot, width)
@@ -429,43 +473,58 @@ class View(object):
                 # walk placed it, so the layout is right and the render goes on -- but it is
                 # the thing that has to be visible: `hsl` was an identity in 747 records and
                 # `sharpen` in 1,156, and both looked like ordinary output.
-                self.ignored.append(('cls', bit, slot, width))
+                self.ignored.append(("cls", bit, slot, width))
 
         # The filter's OWN parameters, from the w1 word, anchored at the header end and
         # laid out in ascending mask order, each taking its own width.
         w1 = rec.words[1] if len(rec.words) > 1 else 0
         n_masks = 2 if len(rec.words) > 1 else 1
         present = []
-        for (mask, shift, name, kind) in W1_PARAMS.get(rec.filter_id, ()):
+        for mask, shift, name, kind in W1_PARAMS.get(rec.filter_id, ()):
             code = (w1 & mask) >> shift
             if code == 1:
-                present.append((name, 'baked', _baked_width(kind, self.colour), shift // 2))
+                present.append(
+                    (name, "baked", _baked_width(kind, self.colour), shift // 2)
+                )
             elif code == 2:
-                present.append((name, 'program', 1, shift // 2))
+                present.append((name, "program", 1, shift // 2))
         # ONE ARM AT A TIME. Two entries can share a name (`blend`'s opacity is at (4, 5)
         # or at (9, 10), never both), and a name added twice would keep the second silently
         # while charging both widths to the layout. It has never happened in 437 files; say
         # so out loud rather than render the wrong slot.
         names = [t[0] for t in present if t[0] is not None]
         if len(set(names)) != len(names):
-            raise Shifted('filter %d: two w1 fields are present under one name (%s) -- '
-                          'they are relocation arms and only one is ever set'
-                          % (rec.filter_id,
-                             ', '.join(sorted({n for n in names if names.count(n) > 1}))))
+            raise Shifted(
+                "filter %d: two w1 fields are present under one name (%s) -- "
+                "they are relocation arms and only one is ever set"
+                % (
+                    rec.filter_id,
+                    ", ".join(sorted({n for n in names if names.count(n) > 1})),
+                )
+            )
         end = self.header_end
         if present and end is not None:
             pos = end - sum(t[2] for t in present)
-            in_slots = [s for s in d.get('inputs', ()) if isinstance(s, int)]
-            if pos < n_masks or (in_slots and pos <= max(in_slots)) \
-                    or end > len(rec.words):
+            in_slots = [s for s in d.get("inputs", ()) if isinstance(s, int)]
+            if (
+                pos < n_masks
+                or (in_slots and pos <= max(in_slots))
+                or end > len(rec.words)
+            ):
                 raise Shifted(
-                    'filter %d: the named parameters would start at slot %d, which is %s '
-                    '-- a `w1` field this legend does not name is taking the space'
-                    % (rec.filter_id, pos,
-                       'inside the record\'s masks' if pos < n_masks else
-                       'an input edge' if in_slots and pos <= max(in_slots) else
-                       'past the record\'s %d words' % len(rec.words)))
-            for (name, kind, width, field) in present:
+                    "filter %d: the named parameters would start at slot %d, which is %s "
+                    "-- a `w1` field this legend does not name is taking the space"
+                    % (
+                        rec.filter_id,
+                        pos,
+                        "inside the record's masks"
+                        if pos < n_masks
+                        else "an input edge"
+                        if in_slots and pos <= max(in_slots)
+                        else "past the record's %d words" % len(rec.words),
+                    )
+                )
+            for name, kind, width, field in present:
                 self._add(name, kind, pos, width, field)
                 pos += width
         # THE TWO PLACEMENTS MUST NOT OVERLAP, and on 1,012 `normal` records they did: the
@@ -490,7 +549,7 @@ class View(object):
         # caught there instead of being absorbed here.
         taken = {p.slot for p in self.params.values() if p.slot is not None}
         if self.size_slot is not None and self.size_slot in taken:
-            self.ignored.append(('clash', _SIZE_BIT, self.size_slot, 1))
+            self.ignored.append(("clash", _SIZE_BIT, self.size_slot, 1))
             self.size_slot = None
 
         # Slots the cost model calls parameters keep their place in the PROGRAM candidate
@@ -499,20 +558,21 @@ class View(object):
         # reports SPEC 7.3's width-legend keys, so the presence mask is `3 << _j` and the
         # two straddling fields this used to mis-cover -- `transformation`'s offset at 25
         # and `blend`'s relocated opacity at 9 -- resolve like every other.
-        for (_j, state, slot, _w) in d.get('param_slots', ()):
+        for _j, state, slot, _w in d.get("param_slots", ()):
             if _w >= 1 and not ((3 << _j) & cov_w1):
-                self.ignored.append(('w1', _j, slot, _w))
+                self.ignored.append(("w1", _j, slot, _w))
             if state == 2 and 0 <= slot < len(rec.words):
-                self.unnamed.append((_j, Param(None, 'program', slot, 1,
-                                               rec.words[slot] + 52)))
+                self.unnamed.append(
+                    (_j, Param(None, "program", slot, 1, rec.words[slot] + 52))
+                )
 
     def _add(self, name, kind, slot, width, field=None):
         if slot < 0 or slot + width > len(self.words):
             return
-        if kind == 'program':
+        if kind == "program":
             value = self.words[slot] + 52
         elif width == 0:
-            value = 1.0                 # a flag: the mask state IS the value
+            value = 1.0  # a flag: the mask state IS the value
         elif width == 1:
             value = float(_floats(self.words, slot, 1)[0])
         else:
@@ -531,12 +591,12 @@ class View(object):
     def baked(self, name, default=None):
         """The parameter's constant, or `default` when it is absent or a program."""
         p = self.params.get(name)
-        return default if p is None or p.kind != 'baked' else p.value
+        return default if p is None or p.kind != "baked" else p.value
 
     def program(self, name):
         """The program address the parameter names, or None."""
         p = self.params.get(name)
-        return None if p is None or p.kind != 'program' else p.value
+        return None if p is None or p.kind != "program" else p.value
 
     def has(self, name):
         return name in self.params
@@ -550,8 +610,12 @@ class View(object):
         return (min(w, cap), min(h, cap)) if cap else (w, h)
 
     def __repr__(self):
-        return '<View %d %s inputs=%s params=%s>' % (
-            self.index, self.filter, self.inputs, sorted(self.params))
+        return "<View %d %s inputs=%s params=%s>" % (
+            self.index,
+            self.filter,
+            self.inputs,
+            sorted(self.params),
+        )
 
 
 def views(asm):

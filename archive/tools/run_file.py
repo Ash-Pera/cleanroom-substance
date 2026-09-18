@@ -20,6 +20,7 @@ This supplies what the runtime needs:
     python3 tools/run_file.py <file.sbsasm>
     python3 tools/run_file.py --corpus <list-file> [limit]
 """
+
 import collections
 import os
 import sys
@@ -27,10 +28,10 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import disasm                                                        # noqa: E402
-import sbsasm                                                        # noqa: E402
-import sbsruntime                                                    # noqa: E402
-import transpile                                                     # noqa: E402
+import disasm  # noqa: E402
+import sbsasm  # noqa: E402
+import sbsruntime  # noqa: E402
+import transpile  # noqa: E402
 
 
 class Permissive(dict):
@@ -102,9 +103,10 @@ def inputs_for(data, start, end, value=0.5):
 
 
 def _namespace():
-    ns = {'np': np}
-    ns.update({k: getattr(sbsruntime, k)
-               for k in dir(sbsruntime) if not k.startswith('_')})
+    ns = {"np": np}
+    ns.update(
+        {k: getattr(sbsruntime, k) for k in dir(sbsruntime) if not k.startswith("_")}
+    )
     return ns
 
 
@@ -157,33 +159,34 @@ def run_file(path, stats):
     cache = {}
     prev = sbsruntime.use_shared_cache(cache)
     try:
-        for rec in asm.records:                 # record order: writers precede readers
+        for rec in asm.records:  # record order: writers precede readers
             try:
                 sbsruntime.set_context(width=rec.width, height=rec.height)
             except Exception:
                 pass
             for q in programs_of(asm, rec):
-                stats['programs'] += 1
+                stats["programs"] += 1
                 try:
                     src = transpile.transpile(asm.data, q, asm.body_hi)
                 except Exception as exc:
-                    stats['not transpiled: ' + type(exc).__name__] += 1
+                    stats["not transpiled: " + type(exc).__name__] += 1
                     continue
                 ns = _namespace()
                 try:
                     exec(src, ns)
-                    val = ns['program'](
+                    val = ns["program"](
                         inputs=inputs_for(asm.data, q, asm.body_hi),
-                        slots=slots_for(asm.data, q, asm.body_hi))
+                        slots=slots_for(asm.data, q, asm.body_hi),
+                    )
                 except Exception as exc:
-                    stats['failed: ' + type(exc).__name__] += 1
+                    stats["failed: " + type(exc).__name__] += 1
                     continue
-                stats['ran'] += 1
+                stats["ran"] += 1
                 try:
                     arr = np.asarray(val, dtype=float)
-                    stats['finite'] += bool(np.all(np.isfinite(arr)))
+                    stats["finite"] += bool(np.all(np.isfinite(arr)))
                 except Exception:
-                    stats['unmeasurable value'] += 1
+                    stats["unmeasurable value"] += 1
     finally:
         sbsruntime.use_shared_cache(prev)
     return stats
@@ -192,10 +195,10 @@ def run_file(path, stats):
 def main():
     args = sys.argv[1:]
     stats = collections.Counter()
-    if args and args[0] == '--corpus':
+    if args and args[0] == "--corpus":
         paths = [l.strip() for l in open(args[1]) if l.strip()]
         if len(args) > 2:
-            paths = paths[:int(args[2])]
+            paths = paths[: int(args[2])]
     else:
         paths = args
     files = 0
@@ -204,19 +207,24 @@ def main():
             run_file(p, stats)
             files += 1
         except Exception as exc:
-            stats['file unreadable: ' + type(exc).__name__] += 1
-    n = stats['programs']
-    print('files                 : %d' % files)
-    print('programs              : %d' % n)
+            stats["file unreadable: " + type(exc).__name__] += 1
+    n = stats["programs"]
+    print("files                 : %d" % files)
+    print("programs              : %d" % n)
     if n:
-        print('  ran to a value      : %d  (%.2f%%)' % (stats['ran'], 100 * stats['ran'] / n))
-        print('  all values finite   : %d  (%.2f%%)'
-              % (stats['finite'], 100 * stats['finite'] / n))
+        print(
+            "  ran to a value      : %d  (%.2f%%)"
+            % (stats["ran"], 100 * stats["ran"] / n)
+        )
+        print(
+            "  all values finite   : %d  (%.2f%%)"
+            % (stats["finite"], 100 * stats["finite"] / n)
+        )
     for k, v in stats.most_common():
-        if k.startswith(('failed', 'not transpiled', 'file unreadable')):
-            print('  %-34s%d' % (k, v))
+        if k.startswith(("failed", "not transpiled", "file unreadable")):
+            print("  %-34s%d" % (k, v))
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

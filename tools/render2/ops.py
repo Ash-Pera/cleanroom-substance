@@ -6,6 +6,7 @@ Everything in this module is arithmetic on arrays plus the bytecode VM, which is
 reused rather than rewritten. What was rewritten is everything that decides WHICH program
 to run and WHAT its number means; that is `filters.py`, reading `model.View`.
 """
+
 import math
 
 import numpy as np
@@ -21,6 +22,7 @@ class Unsupported(Exception):
     `cascade` is True when the failure is only the shadow of an upstream one -- a record
     whose input was never produced -- so a root-cause list is `failures - cascaded`.
     """
+
     cascade = False
 
 
@@ -160,9 +162,10 @@ def _fast_sampler(image):
             # any caller wrote through it.
             return base.astype(_grid_result_type(base.dtype), copy=True)
         if np.all(u == fu0) and np.all(v == fv0):
-            fdt = np.result_type(u.dtype, np.int64)     # what `u - u0` would have been
-            return base[v0m * W + u0m].astype(np.result_type(base.dtype, fdt),
-                                              copy=False)
+            fdt = np.result_type(u.dtype, np.int64)  # what `u - u0` would have been
+            return base[v0m * W + u0m].astype(
+                np.result_type(base.dtype, fdt), copy=False
+            )
         if pow2:
             u1m = (u0 + 1) & wm
             v1m = (v0 + 1) & hm
@@ -172,8 +175,10 @@ def _fast_sampler(image):
         fu = (u - u0)[:, None]
         fv = (v - v0)[:, None]
         r0, r1 = v0m * W, v1m * W
-        a0 = base[r0 + u0m]; b0 = base[r0 + u1m]
-        a1 = base[r1 + u0m]; b1 = base[r1 + u1m]
+        a0 = base[r0 + u0m]
+        b0 = base[r0 + u1m]
+        a1 = base[r1 + u0m]
+        b1 = base[r1 + u1m]
         top = a0 + (b0 - a0) * fu
         bot = a1 + (b1 - a1) * fu
         return top + (bot - top) * fv
@@ -245,10 +250,16 @@ def prefilter(src, scale):
     odd dimension rather than padding.
     """
     img = np.asarray(src, dtype=np.float64)
-    while scale >= 2.0 and img.shape[0] >= 2 and img.shape[1] >= 2 \
-            and img.shape[0] % 2 == 0 and img.shape[1] % 2 == 0:
-        img = 0.25 * (img[0::2, 0::2] + img[1::2, 0::2]
-                      + img[0::2, 1::2] + img[1::2, 1::2])
+    while (
+        scale >= 2.0
+        and img.shape[0] >= 2
+        and img.shape[1] >= 2
+        and img.shape[0] % 2 == 0
+        and img.shape[1] % 2 == 0
+    ):
+        img = 0.25 * (
+            img[0::2, 0::2] + img[1::2, 0::2] + img[0::2, 1::2] + img[1::2, 1::2]
+        )
         scale /= 2.0
     return img
 
@@ -352,21 +363,28 @@ def conform(arr, want):
 #: permitted source" and "`Add Sub` is `d + 2s - 1` because a permitted source implements
 #: it".
 BLEND_MODES = {
-    0:  ('copy',       lambda d, s: s),
-    1:  ('add',        lambda d, s: d + s),
-    2:  ('subtract',   lambda d, s: d - s),
-    3:  ('multiply',   lambda d, s: d * s),
-    4:  ('addsub',     lambda d, s: d + 2.0 * s - 1.0),
-    5:  ('max',        lambda d, s: np.maximum(d, s)),
-    6:  ('min',        lambda d, s: np.minimum(d, s)),
-    7:  ('switch',     None),
-    8:  ('divide',     lambda d, s: d / np.where(np.abs(s) < 1e-6, 1e-6, s)),
-    9:  ('overlay',    lambda d, s: np.where(d < 0.5, 2.0 * d * s,
-                                             1.0 - 2.0 * (1.0 - d) * (1.0 - s))),
-    10: ('screen',     lambda d, s: 1.0 - (1.0 - d) * (1.0 - s)),
-    11: ('softlight',  lambda d, s: np.where(
-        s < 0.5, 2.0 * d * s + d * d * (1.0 - 2.0 * s),
-        2.0 * d * (1.0 - s) + np.sqrt(np.clip(d, 0, None)) * (2.0 * s - 1.0))),
+    0: ("copy", lambda d, s: s),
+    1: ("add", lambda d, s: d + s),
+    2: ("subtract", lambda d, s: d - s),
+    3: ("multiply", lambda d, s: d * s),
+    4: ("addsub", lambda d, s: d + 2.0 * s - 1.0),
+    5: ("max", lambda d, s: np.maximum(d, s)),
+    6: ("min", lambda d, s: np.minimum(d, s)),
+    7: ("switch", None),
+    8: ("divide", lambda d, s: d / np.where(np.abs(s) < 1e-6, 1e-6, s)),
+    9: (
+        "overlay",
+        lambda d, s: np.where(d < 0.5, 2.0 * d * s, 1.0 - 2.0 * (1.0 - d) * (1.0 - s)),
+    ),
+    10: ("screen", lambda d, s: 1.0 - (1.0 - d) * (1.0 - s)),
+    11: (
+        "softlight",
+        lambda d, s: np.where(
+            s < 0.5,
+            2.0 * d * s + d * d * (1.0 - 2.0 * s),
+            2.0 * d * (1.0 - s) + np.sqrt(np.clip(d, 0, None)) * (2.0 * s - 1.0),
+        ),
+    ),
 }
 
 
@@ -423,11 +441,11 @@ def blend(mode, dst, src, opacity):
     """
     entry = BLEND_MODES.get(mode)
     if entry is None:
-        raise Unsupported('blend mode %r is outside the verified 0-11 range' % (mode,))
+        raise Unsupported("blend mode %r is outside the verified 0-11 range" % (mode,))
     name, fn = entry
-    if name == 'switch':
+    if name == "switch":
         return np.where(opacity >= 0.5, src, dst)
-    with np.errstate(all='ignore'):
+    with np.errstate(all="ignore"):
         return np.clip(dst * (1.0 - opacity) + fn(dst, src) * opacity, 0.0, 1.0)
 
 
@@ -448,13 +466,13 @@ def _select_arm():
 
 
 def _source(asm, start):
-    key = (getattr(asm, 'path', id(asm)), start, _select_arm())
+    key = (getattr(asm, "path", id(asm)), start, _select_arm())
     got = _SRC.get(key)
     if got is None:
         end = asm.program_span(start)
         if end is None:
-            raise Unsupported('program at %d does not resolve a span' % start)
-        got = _SRC[key] = transpile.transpile(asm.data, start, end, 'python', 'prog')
+            raise Unsupported("program at %d does not resolve a span" % start)
+        got = _SRC[key] = transpile.transpile(asm.data, start, end, "python", "prog")
     return got
 
 
@@ -463,10 +481,10 @@ _CODE = {}
 
 def _code(asm, start):
     """The program's compiled code object. Pure in (path, address), so it is shared."""
-    key = (getattr(asm, 'path', id(asm)), start, _select_arm())
+    key = (getattr(asm, "path", id(asm)), start, _select_arm())
     got = _CODE.get(key)
     if got is None:
-        got = _CODE[key] = compile(_source(asm, start), '<prog>', 'exec')
+        got = _CODE[key] = compile(_source(asm, start), "<prog>", "exec")
     return got
 
 
@@ -486,13 +504,13 @@ def bind(asm, start, cache, memo):
     Keeping the memo beside the cache makes that unrepresentable rather than merely
     unlikely -- the pair is created together and collected together.
     """
-    key = (getattr(asm, 'path', id(asm)), start, _select_arm())
+    key = (getattr(asm, "path", id(asm)), start, _select_arm())
     fn = memo.get(key)
     if fn is None:
         scope = {}
         exec(_code(asm, start), scope)
-        scope['cache_read'], scope['cache_write'] = sbsruntime.cache_functions(cache)
-        fn = memo[key] = scope['prog']
+        scope["cache_read"], scope["cache_write"] = sbsruntime.cache_functions(cache)
+        fn = memo[key] = scope["prog"]
     return fn
 
 
@@ -503,20 +521,24 @@ def run_program(fn, inputs, slots, N, pos=None, W=None, H=None):
     # position and not "keep the last record's". `pos` is therefore assigned directly;
     # there is no other way to clear it.
     sbsruntime.set_context(number=0.0, width=W, height=H)
-    sbsruntime.CONTEXT['pos'] = pos
-    with np.errstate(all='ignore'):
+    sbsruntime.CONTEXT["pos"] = pos
+    with np.errstate(all="ignore"):
         try:
             return np.asarray(fn(inputs=inputs, slots=slots))
         except sbsruntime.MissingSampler as e:
-            raise cascade('sampler %s is not bound -- an unwired image input' % e) from e
+            raise cascade(
+                "sampler %s is not bound -- an unwired image input" % e
+            ) from e
         except KeyError as e:
-            raise Unsupported('slot %s read but never set' % e) from e
+            raise Unsupported("slot %s read but never set" % e) from e
 
 
 def graph_inputs(asm, N):
     """The graph's declared input defaults, broadcast to N rows, for `inputref`."""
     out = {}
-    for _t, uid, v in asm.header.get('inputs') or []:
+    for _t, uid, v in asm.header.get("inputs") or []:
         if v:
-            out[uid] = np.repeat(np.array(v, dtype=np.float32).reshape(1, -1), N, axis=0)
+            out[uid] = np.repeat(
+                np.array(v, dtype=np.float32).reshape(1, -1), N, axis=0
+            )
     return out

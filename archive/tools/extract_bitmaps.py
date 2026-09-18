@@ -17,6 +17,7 @@ mipmaps, no padding between images.
 Verified over the corpus: the class word determines bytes-per-pixel with no exceptions,
 and no resource ever overruns the record region.
 """
+
 import struct
 import standalone_parse as S
 import sbsasm
@@ -29,12 +30,18 @@ CHANNELS = {1: 1, 2: 3, 3: 4}
 #: pixel agrees with this table in 100% of samples for every code below.
 #: Code 8 is JPEG, which carries its own geometry and a 4-byte length prefix.
 FORMATS = {
-    1:  ('L8',      1, 1),   2:  ('RGB8',    3, 1),   3:  ('RGBA8',   4, 1),
-    5:  ('L16',     1, 2),   6:  ('RGB16',   3, 2),   7:  ('RGBA16',  4, 2),
-    33: ('L32F',    1, 4),   34: ('RGB32F',  3, 4),   35: ('RGBA32F', 4, 4),
-    8:  ('JPEG',    0, 0),
+    1: ("L8", 1, 1),
+    2: ("RGB8", 3, 1),
+    3: ("RGBA8", 4, 1),
+    5: ("L16", 1, 2),
+    6: ("RGB16", 3, 2),
+    7: ("RGBA16", 4, 2),
+    33: ("L32F", 1, 4),
+    34: ("RGB32F", 3, 4),
+    35: ("RGBA32F", 4, 4),
+    8: ("JPEG", 0, 0),
 }
-JPEG_SOI = b'\xff\xd8'
+JPEG_SOI = b"\xff\xd8"
 
 
 def pixel_format(cls):
@@ -78,37 +85,54 @@ def bitmaps(path):
         if r.filter_id != 16:
             continue
         b = r.bitmap
-        if not b or b['kind'] != 'pixels':
+        if not b or b["kind"] != "pixels":
             continue
         name = format_name(r.cls)
-        pos = b.get('data_offset') or b['offset']   # the model's offset, +52 corrected
-        row = {'record': r.index, 'offset': pos, 'width': r.width, 'height': r.height,
-               'channels': b.get('channels'), 'depth': b.get('depth'), 'format': name}
-        if b.get('compressed') == 'jpeg':
+        pos = b.get("data_offset") or b["offset"]  # the model's offset, +52 corrected
+        row = {
+            "record": r.index,
+            "offset": pos,
+            "width": r.width,
+            "height": r.height,
+            "channels": b.get("channels"),
+            "depth": b.get("depth"),
+            "format": name,
+        }
+        if b.get("compressed") == "jpeg":
             # [u32 length][stream]; the model's offset points AT the stream, so the
             # length word is the four bytes in front of it.
             if pos < 4 or pos + 2 > len(d):
                 continue
-            size = struct.unpack_from('<I', d, pos - 4)[0]
-            if size <= 0 or pos + size > len(d) or d[pos:pos + 2] != JPEG_SOI:
+            size = struct.unpack_from("<I", d, pos - 4)[0]
+            if size <= 0 or pos + size > len(d) or d[pos : pos + 2] != JPEG_SOI:
                 continue
-            row.update(format=name or 'JPEG', size=size,
-                       data=memoryview(d)[pos:pos + size])
+            row.update(
+                format=name or "JPEG", size=size, data=memoryview(d)[pos : pos + size]
+            )
             yield row
             continue
-        size = b.get('size')
+        size = b.get("size")
         if not size or pos + size > len(d):
             continue
-        row.update(size=size, data=memoryview(d)[pos:pos + size])
+        row.update(size=size, data=memoryview(d)[pos : pos + size])
         yield row
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
+
     for b in bitmaps(sys.argv[1]):
-        print('record %-5d %5dx%-5d %-8s offset %-10d %d bytes'
-              % (b['record'], b['width'], b['height'], b['format'],
-                 b['offset'], b['size']))
+        print(
+            "record %-5d %5dx%-5d %-8s offset %-10d %d bytes"
+            % (
+                b["record"],
+                b["width"],
+                b["height"],
+                b["format"],
+                b["offset"],
+                b["size"],
+            )
+        )
 
 
 def graph_inputs(path):
@@ -123,11 +147,15 @@ def graph_inputs(path):
         if r.filter_id != 16:
             continue
         b = r.bitmap
-        if not b or b['kind'] != 'graph_input':
+        if not b or b["kind"] != "graph_input":
             continue
-        yield {'record': r.index, 'uid': b['uid'],
-               'width': r.width, 'height': r.height, 'colour': bool(r.colour)}
-
+        yield {
+            "record": r.index,
+            "uid": b["uid"],
+            "width": r.width,
+            "height": r.height,
+            "colour": bool(r.colour),
+        }
 
 
 def strings(path, limit=4096):
@@ -142,14 +170,14 @@ def strings(path, limit=4096):
     `text` records, and no file without them does. The strings are the rendered
     content - "STOP", "YIELD", "ONE WAY".
     """
-    d = open(path, 'rb').read()
+    d = open(path, "rb").read()
     q, hi = 0x38, len(d)
     while q + 4 <= hi:
-        n = struct.unpack_from('<I', d, q)[0]
+        n = struct.unpack_from("<I", d, q)[0]
         if not (1 <= n <= limit) or q + 4 + 4 * n > hi:
             return
-        chars = struct.unpack_from('<%dI' % n, d, q + 4)
+        chars = struct.unpack_from("<%dI" % n, d, q + 4)
         if not all(9 <= c < 0x110000 for c in chars):
             return
-        yield ''.join(chr(c) for c in chars)
+        yield "".join(chr(c) for c in chars)
         q += 4 + 4 * n

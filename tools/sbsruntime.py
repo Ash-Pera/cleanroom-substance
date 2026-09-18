@@ -4,6 +4,7 @@ A value with one component is an array of shape (N,); a k-component value is (N,
 Everything is evaluated for N sample points at once, so a transpiled program can be run
 over a grid and compared against a reference implementation.
 """
+
 import numpy as np
 
 #: System variable ids, read off how programs use them.
@@ -44,26 +45,34 @@ def set_context(width=None, height=None, number=None, time=None, pos=None):
     default of None, `$pos` reads back as zeros, exactly as before this existed: nothing
     that does not pass `pos` explicitly changes behavior.
     """
-    for key, value in (("width", width), ("height", height),
-                       ("number", number), ("time", time), ("pos", pos)):
+    for key, value in (
+        ("width", width),
+        ("height", height),
+        ("number", number),
+        ("time", time),
+        ("pos", pos),
+    ):
         if value is not None:
             CONTEXT[key] = value
 
 
 def sysvar(vid, ncomp, n=1):
     width, height = CONTEXT["width"], CONTEXT["height"]
-    if vid == 8:                                    # $pos
+    if vid == 8:  # $pos
         pos = CONTEXT["pos"]
         if pos is not None:
             return np.asarray(pos)[:, :ncomp] if ncomp > 1 else np.asarray(pos)[:, 0]
         return np.zeros((n, ncomp)) if ncomp > 1 else np.zeros(n)
-    if vid == 1:                                    # $size, in pixels
-        return np.tile([float(width), float(height)][:ncomp], (n, 1)) if ncomp > 1 \
+    if vid == 1:  # $size, in pixels
+        return (
+            np.tile([float(width), float(height)][:ncomp], (n, 1))
+            if ncomp > 1
             else np.full(n, float(width))
-    if vid == 3:                                    # $sizelog2
+        )
+    if vid == 3:  # $sizelog2
         logs = [np.log2(width), np.log2(height)][:ncomp]
         return np.tile(logs, (n, 1)) if ncomp > 1 else np.full(n, logs[0])
-    if vid == 10:                                   # $number
+    if vid == 10:  # $number
         # $number MAY BE A VECTOR. An FX-Map's emission loop can evaluate one parameter
         # program for every pattern at once when nothing in the chain below it mutates the
         # slot frame -- see fxrender's batched emission -- and then the pattern index is
@@ -84,7 +93,7 @@ def sysvar(vid, ncomp, n=1):
             # rest of this module is written in.
             return num.astype(np.float64, copy=False).reshape(-1, 1)
         return np.full(n, float(num))
-    if vid == 0:                                    # $time
+    if vid == 0:  # $time
         return np.full(n, float(CONTEXT["time"]))
     # Named from SYSVARS, which is the catalogue this function's numeric branches are
     # written against. It had no reader at all, so the names above and the ids below
@@ -150,8 +159,10 @@ def vec(*parts, ncomp=None):
     out = np.concatenate(cols, axis=-1)
     if ncomp is not None and out.shape[1] != ncomp:
         if out.shape[1] < ncomp:
-            raise ValueError("vec: concatenation gave %d components, declared %d -- "
-                              "no observed case to model padding on" % (out.shape[1], ncomp))
+            raise ValueError(
+                "vec: concatenation gave %d components, declared %d -- "
+                "no observed case to model padding on" % (out.shape[1], ncomp)
+            )
         out = out[:, :ncomp]
     return out
 
@@ -269,7 +280,6 @@ def cartesian(r, theta):
     return vec(r * np.cos(theta), r * np.sin(theta))
 
 
-
 def clamp(value, ncomp):
     """Truncate a value to the component width its instruction declared.
 
@@ -293,6 +303,7 @@ def clamp(value, ncomp):
     if arr.ndim < 2 or arr.shape[-1] <= ncomp:
         return value
     return arr[..., :ncomp]
+
 
 def rand(limit):
     """A random value in [0, `limit`) -- the argument is the RANGE, not a seed.
@@ -375,7 +386,8 @@ def _sampler(index):
     except KeyError:
         exc = MissingSampler(
             "no sampler installed for input %r (the record's edge is unwired, which is "
-            "NOT a missing slot)" % (index,))
+            "NOT a missing slot)" % (index,)
+        )
         # The index as data, not only inside the message. A caller that wants to decide
         # anything about WHICH input is missing should not have to parse prose.
         exc.index = index
@@ -418,10 +430,14 @@ def image_sampler(image):
         # arithmetic and differ by up to 2.95e-08 in float32, about one ulp. That is
         # below any threshold this repository compares renders at (the reference MAEs
         # are quoted to 1e-04), so it is bought deliberately rather than by accident.
-        base = image.reshape(-1, image.shape[2]) if image.ndim == 3 else image.reshape(-1)
+        base = (
+            image.reshape(-1, image.shape[2]) if image.ndim == 3 else image.reshape(-1)
+        )
         r0, r1 = v0m * W, v1m * W
-        a0 = base[r0 + u0m]; b0 = base[r0 + u1m]
-        a1 = base[r1 + u0m]; b1 = base[r1 + u1m]
+        a0 = base[r0 + u0m]
+        b0 = base[r0 + u1m]
+        a1 = base[r1 + u0m]
+        b1 = base[r1 + u1m]
         top = a0 + (b0 - a0) * fu
         bot = a1 + (b1 - a1) * fu
         return top + (bot - top) * fv
@@ -478,7 +494,8 @@ def cache_read(index):
     if _CACHE is None:
         raise NoSharedCache(
             "cache index %r: needs the whole file evaluated in record order with a shared "
-            "cache, not a single program" % index)
+            "cache, not a single program" % index
+        )
     if index not in _CACHE:
         raise NoSharedCache("cache index %r read before anything wrote it" % index)
     return _CACHE[index]
@@ -489,7 +506,8 @@ def cache_write(value, index):
     if _CACHE is None:
         raise NoSharedCache(
             "cache index %r: needs the whole file evaluated in record order with a shared "
-            "cache, not a single program" % index)
+            "cache, not a single program" % index
+        )
     _CACHE[index] = value
     return value
 
@@ -511,6 +529,7 @@ def cache_functions(cache):
     `use_shared_cache` stays for callers that cannot bind a namespace -- and for the
     single-program transpile, which has no caller to thread anything and should raise.
     """
+
     def cache_read(index):
         if index not in cache:
             raise NoSharedCache("cache index %r read before anything wrote it" % index)

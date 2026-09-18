@@ -53,6 +53,7 @@ them ever entered the corpus; seeing how much of the corpus leans on Adobe-publi
 material; and surfacing non-Adobe authors whose terms are not permissive at all, which is
 how `GameTextures.com` was found.
 """
+
 import glob
 import hashlib
 import os
@@ -60,7 +61,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import _repo_root                                                    # noqa: E402
+import _repo_root  # noqa: E402
 
 ROOT = _repo_root.ROOT
 
@@ -69,7 +70,7 @@ ROOT = _repo_root.ROOT
 DOC_TOTAL, DOC_EXCLUDED, DOC_PERMITTED = 142, 42, 100
 
 EXCLUDED_AUTHORS = [
-    'Allegorithmic',     # Adobe, pre-acquisition -- Adobe's own bundled library sources
+    "Allegorithmic",  # Adobe, pre-acquisition -- Adobe's own bundled library sources
 ]
 
 # Authors found to carry non-permissive terms but NOT currently part of the stated rule.
@@ -83,11 +84,19 @@ FLAGGED_AUTHORS = [
     # a way those terms do not appear to allow. Analysing the compiled sibling stands on
     # the same footing as any other freely distributed .sbsar; whether the SOURCE should be
     # excluded the way Allegorithmic's is remains an open call.
-    'GameTextures.com',
+    "GameTextures.com",
 ]
 
-SEARCH_DIRS = ["pairs", "pairs2", "pairs3", "pairs4", "pairs5", "pairs6", "new_sbs",
-               "new_opengameart"]
+SEARCH_DIRS = [
+    "pairs",
+    "pairs2",
+    "pairs3",
+    "pairs4",
+    "pairs5",
+    "pairs6",
+    "new_sbs",
+    "new_opengameart",
+]
 
 
 def author_tags(sbs_path):
@@ -100,7 +109,7 @@ def author_tags(sbs_path):
     them rather than "the" author.
     """
     try:
-        data = open(sbs_path, encoding='utf-8', errors='replace').read()
+        data = open(sbs_path, encoding="utf-8", errors="replace").read()
     except OSError:
         return []
     return re.findall(r'<author v="([^"]*)"', data)
@@ -128,8 +137,10 @@ def own_assembly(sbs_path):
     142 paired sources, 136 have their own binary under that rule and 6 do not.
     """
     d, base = os.path.split(sbs_path)
-    stem = base[:-4] if base.lower().endswith('.sbs') else base
-    hits = sorted(glob.glob(os.path.join(d, 'x_' + stem, '**', '*.sbsasm'), recursive=True))
+    stem = base[:-4] if base.lower().endswith(".sbs") else base
+    hits = sorted(
+        glob.glob(os.path.join(d, "x_" + stem, "**", "*.sbsasm"), recursive=True)
+    )
     return hits[0] if hits else None
 
 
@@ -146,7 +157,7 @@ def paired_sources():
         if not os.path.exists(p[:-4] + ".sbsar"):
             continue
         try:
-            h = hashlib.sha1(open(p, 'rb').read()).hexdigest()
+            h = hashlib.sha1(open(p, "rb").read()).hexdigest()
         except OSError:
             continue
         if h in seen:
@@ -192,9 +203,9 @@ def manifest_authors(sbsasm_path):
     outcome, not a failure, and is counted separately from "checked and clean".
     """
     out = set()
-    for x in glob.glob(os.path.join(os.path.dirname(sbsasm_path), '*.xml')):
+    for x in glob.glob(os.path.join(os.path.dirname(sbsasm_path), "*.xml")):
         try:
-            text = open(x, encoding='utf-8', errors='replace').read()
+            text = open(x, encoding="utf-8", errors="replace").read()
         except OSError:
             continue
         out |= {a for a in AUTHOR_ATTR.findall(text) if a}
@@ -207,7 +218,7 @@ def compiled_audit(listing=None):
     Returns (rows, no_author) where rows is [(relpath, {authors}), ...] for entries whose
     manifest declares at least one author. NOT an exclusion list: see the module docstring.
     """
-    src = listing or os.path.join(ROOT, 'DISTINCT.txt')
+    src = listing or os.path.join(ROOT, "DISTINCT.txt")
     rows, no_author = [], []
     for line in open(src):
         p = line.strip()
@@ -222,18 +233,21 @@ def compiled_audit(listing=None):
     return rows, no_author
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     excluded, flagged, permitted = audit()
     total = len(excluded) + len(flagged) + len(permitted)
     # `new_opengameart/` postdates the published figures; hold it out so the comparison
     # below is against the same population the document was describing.
     added = [r for r, *_ in excluded] + [r for r, *_ in flagged] + permitted
-    new = [r for r in added if r.startswith('new_opengameart/')]
-    print('paired sources (distinct by content): %d' % total)
-    print('  excluded by the stated rule:        %d' % len(excluded))
-    print('  permitted:                          %d' % (len(permitted) + len(flagged)))
+    new = [r for r in added if r.startswith("new_opengameart/")]
+    print("paired sources (distinct by content): %d" % total)
+    print("  excluded by the stated rule:        %d" % len(excluded))
+    print("  permitted:                          %d" % (len(permitted) + len(flagged)))
     if new:
-        print('  (of which %d are new_opengameart/, added after the figures below)' % len(new))
+        print(
+            "  (of which %d are new_opengameart/, added after the figures below)"
+            % len(new)
+        )
     print()
     # THE TWO DOCUMENTS WERE COUNTING TWO POPULATIONS, and this line used to quote one
     # triple and attribute it to both, which is what made them look contradictory.
@@ -251,50 +265,75 @@ if __name__ == '__main__':
     # `paired_sources()` returns the distinct-by-content set and its docstring calls that
     # the rule's population, so that is what this tool reports and what the documents now
     # quote. Both are printed, because a count with no population named is how this started.
-    print('DISTINCT BY CONTENT is the rule\'s population -- paired_sources()\'s docstring.')
-    print('  documents state (2026-09-02): %d paired, %d excluded, %d permitted'
-          % (DOC_TOTAL, DOC_EXCLUDED, DOC_PERMITTED))
-    print('  re-running the rule now:      %d paired, %d excluded, %d permitted'
-          % (total, len(excluded), len(permitted) + len(flagged)))
+    print(
+        "DISTINCT BY CONTENT is the rule's population -- paired_sources()'s docstring."
+    )
+    print(
+        "  documents state (2026-09-02): %d paired, %d excluded, %d permitted"
+        % (DOC_TOTAL, DOC_EXCLUDED, DOC_PERMITTED)
+    )
+    print(
+        "  re-running the rule now:      %d paired, %d excluded, %d permitted"
+        % (total, len(excluded), len(permitted) + len(flagged))
+    )
     if (total, len(excluded)) != (DOC_TOTAL, DOC_EXCLUDED):
         print()
-        print('  THE DOCUMENTS ARE STALE by %+d paired and %+d excluded. The rule is a'
-              % (total - DOC_TOTAL, len(excluded) - DOC_EXCLUDED))
-        print('  single string match and this is the tool that runs it: re-state the')
-        print('  documents from this output rather than the other way round.')
+        print(
+            "  THE DOCUMENTS ARE STALE by %+d paired and %+d excluded. The rule is a"
+            % (total - DOC_TOTAL, len(excluded) - DOC_EXCLUDED)
+        )
+        print("  single string match and this is the tool that runs it: re-state the")
+        print("  documents from this output rather than the other way round.")
     print()
     if flagged:
-        print('flagged, NOT excluded by the current rule (%d):' % len(flagged))
+        print("flagged, NOT excluded by the current rule (%d):" % len(flagged))
         for rel, who in flagged:
-            print('    %-70s %s' % (rel, who))
+            print("    %-70s %s" % (rel, who))
         print()
-        print('  These are a live question, not a settled exclusion -- see FLAGGED_AUTHORS.')
+        print(
+            "  These are a live question, not a settled exclusion -- see FLAGGED_AUTHORS."
+        )
 
     # --- compiled side ---------------------------------------------------------------
     rows, no_author = compiled_audit()
     if rows or no_author:
         import collections
+
         adobe = [(p, w) for p, w in rows if w & set(ADOBE_NAMES)]
         flag2 = [(p, w) for p, w in rows if w & set(FLAGGED_AUTHORS)]
         counts = collections.Counter(a for _p, w in rows for a in w)
         print()
-        print('COMPILED SIDE -- authorship read from each specimen\'s .sbsar manifest')
-        print('  DISTINCT.txt entries:              %d' % (len(rows) + len(no_author)))
-        print('    manifest declares an author:     %d' % len(rows))
-        print('    no author declared / no manifest: %d' % len(no_author))
+        print("COMPILED SIDE -- authorship read from each specimen's .sbsar manifest")
+        print("  DISTINCT.txt entries:              %d" % (len(rows) + len(no_author)))
+        print("    manifest declares an author:     %d" % len(rows))
+        print("    no author declared / no manifest: %d" % len(no_author))
         print()
-        print('  authored by Adobe/Allegorithmic:   %d' % len(adobe))
-        print('  authored by a FLAGGED party:       %d  %s'
-              % (len(flag2), sorted({a for _p, w in flag2 for a in w & set(FLAGGED_AUTHORS)})))
+        print("  authored by Adobe/Allegorithmic:   %d" % len(adobe))
+        print(
+            "  authored by a FLAGGED party:       %d  %s"
+            % (
+                len(flag2),
+                sorted({a for _p, w in flag2 for a in w & set(FLAGGED_AUTHORS)}),
+            )
+        )
         print()
-        print('  NOTE: this is NOT an exclusion list. A freely distributed compiled .sbsar')
-        print('  is analysable whoever wrote it; the rule refuses Adobe\'s .sbs DEFINITIONS.')
-        print('  Source-side excluded: %d. Compiled-side Adobe-authored: %d. The %d extra are'
-              % (len(excluded), len(adobe), max(0, len(adobe) - len(excluded))))
-        print('  compiled-only specimens with no .sbs in the corpus to exclude.')
+        print(
+            "  NOTE: this is NOT an exclusion list. A freely distributed compiled .sbsar"
+        )
+        print(
+            "  is analysable whoever wrote it; the rule refuses Adobe's .sbs DEFINITIONS."
+        )
+        print(
+            "  Source-side excluded: %d. Compiled-side Adobe-authored: %d. The %d extra are"
+            % (len(excluded), len(adobe), max(0, len(adobe) - len(excluded)))
+        )
+        print("  compiled-only specimens with no .sbs in the corpus to exclude.")
         print()
-        print('  top authors by specimen count:')
+        print("  top authors by specimen count:")
         for name, n in counts.most_common(8):
-            mark = '  <-- Adobe' if name in ADOBE_NAMES else (
-                   '  <-- flagged' if name in FLAGGED_AUTHORS else '')
-            print('      %-34s %4d%s' % (name[:34], n, mark))
+            mark = (
+                "  <-- Adobe"
+                if name in ADOBE_NAMES
+                else ("  <-- flagged" if name in FLAGGED_AUTHORS else "")
+            )
+            print("      %-34s %4d%s" % (name[:34], n, mark))

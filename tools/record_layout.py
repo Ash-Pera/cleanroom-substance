@@ -95,6 +95,7 @@ say the width is 1, so the cell is per-channel `C` and not `Float4`. `legend.jso
 `evidence` map names the source of every one, per colour, so an absence can never be read as
 a measured zero -- which is exactly what the fitted table stored, and indistinguishably.
 """
+
 import functools
 import json
 import os
@@ -111,7 +112,7 @@ def legend():
     """
     global _LEGEND
     if _LEGEND is None:
-        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'legend.json')
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "legend.json")
         try:
             with open(p) as fh:
                 _LEGEND = json.load(fh)
@@ -129,7 +130,7 @@ def width(kind, colour):
     """
     if kind is None:
         return None
-    if kind == 'C':
+    if kind == "C":
         return 4 if colour else 1
     return int(kind)
 
@@ -152,11 +153,11 @@ def arity_field(filter_id):
     sp = legend().get(str(filter_id))
     if sp is None:
         return None
-    ar = sp.get('arity')
+    ar = sp.get("arity")
     return tuple(ar) if ar else None
 
 
-W1_REFUSE = object()        # "the shape is undecidable from what you passed"
+W1_REFUSE = object()  # "the shape is undecidable from what you passed"
 
 
 def has_w1(filter_id, word0, version):
@@ -181,14 +182,14 @@ def has_w1(filter_id, word0, version):
                      present from it. Undecidable without a version, so refuse.
     """
     sp = legend().get(str(filter_id))
-    rule = sp.get('has_w1') if sp else None
-    if rule == 'always':
+    rule = sp.get("has_w1") if sp else None
+    if rule == "always":
         return True
-    if rule == 'never':
+    if rule == "never":
         return False
-    if rule == 'tagbit0':
+    if rule == "tagbit0":
         return bool(word0 & 1)
-    if rule == 'v9':
+    if rule == "v9":
         return None if version is None else version >= 0x90000
     return None
 
@@ -240,27 +241,27 @@ def header_words(filter_id, word0, w1, version=None):
     sp = legend().get(str(filter_id))
     if sp is None:
         return None
-    mv = sp.get('min_version')
+    mv = sp.get("min_version")
     if mv is not None and (version is None or version < mv):
-        return None                      # this filter's modern layout only
+        return None  # this filter's modern layout only
     has = has_w1(filter_id, word0, version)
     if has is None:
-        return None                      # the shape is undecidable: refuse
+        return None  # the shape is undecidable: refuse
     c0 = word0 & 1
     n_hdr = 1 + (1 if has else 0)
-    base = sp['base']
-    total = n_hdr + (n_hdr if base is None else base) + sp['fixed']
-    for b, k in sp['cls'].items():
+    base = sp["base"]
+    total = n_hdr + (n_hdr if base is None else base) + sp["fixed"]
+    for b, k in sp["cls"].items():
         if (word0 >> int(b)) & 1:
             total += width(k, c0)
-    sh4 = sp.get('shape4')
+    sh4 = sp.get("shape4")
     if sh4 is not None and not has and (word0 >> sh4[0]) & 1:
         # SPEC 6.4's two-shape filter, from the far side: `shuffle` bakes its
         # `channelsweights` at class bit 24 in the shape that carries NO w1 word, and
         # packs a per-channel selector into w1 in the shape that does. One cell, gated on
         # the shape rather than split into two fitted variants.
         total += width(sh4[1], c0)
-    for bx, by, cv in sp.get('conj', ()):
+    for bx, by, cv in sp.get("conj", ()):
         # SPEC 6.4's paired conjunction: word0's high byte is a small field for `bitmap`,
         # not eight independent flags, and bits 24 and 27 set TOGETHER mean the record
         # carries the second offset word that locates its pixels. An additive model can
@@ -268,15 +269,15 @@ def header_words(filter_id, word0, w1, version=None):
         if (word0 >> bx & 1) and (word0 >> by & 1):
             total += width(cv, c0)
     if has and w1 is not None:
-        ar = sp.get('arity')
+        ar = sp.get("arity")
         if ar:
             total += (w1 >> ar[0]) & ar[1]
-        for b in sp.get('edge_bits', ()):
+        for b in sp.get("edge_bits", ()):
             # A w1 bit that declares an image INPUT from its LOW BIT alone rather than
             # from a two-bit code (SPEC 6.3). One field in one filter: `distance`'s
             # optional mask input, whose cost tracks bit 0 and not baked-versus-program.
             total += (w1 >> b) & 1
-        iv = sp.get('w1_int')
+        iv = sp.get("w1_int")
         if iv:
             # THE ONE w1 REGION THAT IS AN INTEGER AND NOT TWO-BIT FIELDS (SPEC 7.4).
             # `transformation`'s bits 0-4 hold a 5-bit value; 0..13 are literal and cost
@@ -286,7 +287,7 @@ def header_words(filter_id, word0, w1, version=None):
             # that -- cost is additive over a partition, and `0x3f`/`0x3e` and
             # `0x23`/`0x22` differ in bit 0 alone and disagree about what it costs.
             v = (w1 >> iv[0]) & iv[1]
-            rf = sp.get('w1_int_refuse')
+            rf = sp.get("w1_int_refuse")
             if rf and rf[0] <= v <= rf[1]:
                 # AN UNOBSERVED VALUE OF THE INTEGER, AND THE LEGEND HAS NO READING FOR IT.
                 # This used to charge zero, silently, while SPEC 7.4 said a reader should
@@ -299,15 +300,15 @@ def header_words(filter_id, word0, w1, version=None):
                 return None
             if v == iv[2]:
                 total += 1
-        for sh, k in sp['w1'].items():
+        for sh, k in sp["w1"].items():
             st = (w1 >> int(sh)) & 3
             if st == 1:
                 n = width(k, c0)
                 if n is None:
-                    return None          # a baked cell with no reading: refuse
+                    return None  # a baked cell with no reading: refuse
                 total += n
             elif st:
-                total += 1               # a program pointer, or an edge slot
+                total += 1  # a program pointer, or an edge slot
     return total if total > 0 else None
 
 

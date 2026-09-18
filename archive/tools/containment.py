@@ -34,6 +34,7 @@ of the locations outright and make the rest true by construction; `record_floats
 that measurement. This file is what commit f49b107 used to overrule a fitted slot formula
 for `warp`, and an arbiter wired into the thing it arbitrates stops being one.
 """
+
 import collections
 import glob
 import os
@@ -44,6 +45,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import _repo_root
+
 _repo_root.add_tools_to_path()
 
 import decompose
@@ -52,18 +54,33 @@ from sbsasm import Assembly, FILTERS
 
 ROOT = _repo_root.ROOT
 
-NODE = re.compile(r'<compNode>((?:(?!</compNode>).)*?)</compNode>', re.S)
+NODE = re.compile(r"<compNode>((?:(?!</compNode>).)*?)</compNode>", re.S)
 # `.sbs` serialises a value TWO ways -- as a direct attribute (`<x v="1"/>`) and nested
 # (`<x><value v="1"/></x>`) -- a fact tools/pixelgraph.py's docstring already records. An
 # earlier version of this file matched only the direct form, which made 23 of 92 permitted
 # specimens (25%) contribute nothing and reported `fxmaps` as declaring zero values when
 # every FX-Map parameter it declares uses the nested form. Both are matched here.
-PARAM = re.compile(r'<constantValueFloat[1234](?: v="([^"]+)"/>'
-                   r'|><value v="([^"]+)"/></constantValueFloat[1234]>)')
+PARAM = re.compile(
+    r'<constantValueFloat[1234](?: v="([^"]+)"/>'
+    r'|><value v="([^"]+)"/></constantValueFloat[1234]>)'
+)
 FILT = re.compile(r'<filter v="([^"]+)"/>')
 
-DEFAULT_FILTERS = ["levels", "fxmaps", "blend", "transformation", "directionalwarp", "warp",
-                   "blur", "gradient", "uniform", "curve", "hsl", "sharpen", "normal"]
+DEFAULT_FILTERS = [
+    "levels",
+    "fxmaps",
+    "blend",
+    "transformation",
+    "directionalwarp",
+    "warp",
+    "blur",
+    "gradient",
+    "uniform",
+    "curve",
+    "hsl",
+    "sharpen",
+    "normal",
+]
 
 MIN_DECIMALS = 5
 
@@ -72,12 +89,12 @@ def distinctive(v):
     if not (0.0 < abs(v) < 1000.0):
         return False
     s = "%.9g" % v
-    return '.' in s and len(s.split('.')[-1]) >= MIN_DECIMALS
+    return "." in s and len(s.split(".")[-1]) >= MIN_DECIMALS
 
 
 def f32(v):
     """Round-trip through float32, the width the binary stores."""
-    return round(struct.unpack('<f', struct.pack('<f', v))[0], 6)
+    return round(struct.unpack("<f", struct.pack("<f", v))[0], 6)
 
 
 def declared(sbs_text, wanted):
@@ -100,8 +117,16 @@ def declared(sbs_text, wanted):
 
 def sbsasm_for(sbs_path):
     stem = os.path.basename(sbs_path)[:-4]
-    hits = glob.glob(os.path.join(os.path.dirname(sbs_path), "x_" + stem,
-                                  "assemblies", "content", "*", "*.sbsasm"))
+    hits = glob.glob(
+        os.path.join(
+            os.path.dirname(sbs_path),
+            "x_" + stem,
+            "assemblies",
+            "content",
+            "*",
+            "*.sbsasm",
+        )
+    )
     return hits[0] if hits else None
 
 
@@ -138,7 +163,7 @@ def record_floats(rec):
     """
     out = set()
     for w in rec.words:
-        v = struct.unpack('<f', struct.pack('<I', w & 0xFFFFFFFF))[0]
+        v = struct.unpack("<f", struct.pack("<I", w & 0xFFFFFFFF))[0]
         if v == v and distinctive(v):
             out.add(round(v, 6))
     return out
@@ -152,21 +177,21 @@ def _walk_verdict(rec, slot):
     try:
         d = decompose.decompose(rec)
     except Exception:
-        return 'walk declines'
+        return "walk declines"
     if d is None:
-        return 'walk declines'
-    for entry in d['param_slots']:
+        return "walk declines"
+    for entry in d["param_slots"]:
         pos, width = entry[2], entry[3]
         if pos <= slot < pos + width:
-            return 'parameter'
-    if slot in d['inputs']:
-        return 'input edge'
-    if slot in d['cls_slots']:
-        return 'inherited'
-    end = d['end']
+            return "parameter"
+    if slot in d["inputs"]:
+        return "input edge"
+    if slot in d["cls_slots"]:
+        return "inherited"
+    end = d["end"]
     if end is not None and slot >= end:
-        return 'past walk end'
-    return 'unnamed, inside extent'
+        return "past walk end"
+    return "unnamed, inside extent"
 
 
 def walk_placement(permitted_only=True):
@@ -187,12 +212,14 @@ def walk_placement(permitted_only=True):
     """
     out = collections.defaultdict(collections.Counter)
     for p in paired_sources():
-        if permitted_only and (matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)):
+        if permitted_only and (
+            matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)
+        ):
             continue
         asmf = sbsasm_for(p)
         if not asmf:
             continue
-        data = open(p, encoding='utf-8', errors='replace').read()
+        data = open(p, encoding="utf-8", errors="replace").read()
         decl = declared(data, DEFAULT_FILTERS)
         if not decl:
             continue
@@ -213,7 +240,7 @@ def walk_placement(permitted_only=True):
             if slots is None:
                 continue
             for k, w in enumerate(rec.words):
-                v = struct.unpack('<f', struct.pack('<I', int(w) & 0xFFFFFFFF))[0]
+                v = struct.unpack("<f", struct.pack("<I", int(w) & 0xFFFFFFFF))[0]
                 if v == v and distinctive(v):
                     slots[round(v, 6)].append((rec, k))
         for name, vals in decl.items():
@@ -227,6 +254,7 @@ def walk_placement(permitted_only=True):
                 if hits and len(hits) == 1:
                     out[name][_walk_verdict(*hits[0])] += 1
     return out
+
 
 # --- gradient: the values are in the ramp table, and they are quantised ------------
 #
@@ -244,8 +272,9 @@ def walk_placement(permitted_only=True):
 NAMED = re.compile(
     r'<name v="([^"]+)"/>(?:<relativeTo[^>]*(?:/>|></relativeTo>))?<paramValue>'
     r'<constantValueFloat[1234](?: v="([^"]+)"/>'
-    r'|><value v="([^"]+)"/></constantValueFloat[1234]>)')
-CELL = re.compile(r'<paramsArrayCell>(.*?)</paramsArrayCell>', re.S)
+    r'|><value v="([^"]+)"/></constantValueFloat[1234]>)'
+)
+CELL = re.compile(r"<paramsArrayCell>(.*?)</paramsArrayCell>", re.S)
 
 
 def q16(v):
@@ -289,7 +318,7 @@ def ramp_pool(asm, fid=0):
             if isinstance(first, int):
                 posv.add(first)
                 allv.update(stop)
-            else:                                   # the float32 ramp encoding
+            else:  # the float32 ramp encoding
                 posv.add(q16(float(first)))
                 allv.update(q16(float(c)) for c in stop if 0.0 <= float(c) <= 1.0)
     return allv, posv
@@ -304,9 +333,11 @@ def ramp_report(permitted_only=True):
     """Containment for `gradient`, with the same-pool control that makes it evidence."""
     tp = hp = tv = hv = ct = ch = files = 0
     for p in paired_sources():
-        if permitted_only and (matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)):
+        if permitted_only and (
+            matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)
+        ):
             continue
-        data = open(p, encoding='utf-8', errors='replace').read()
+        data = open(p, encoding="utf-8", errors="replace").read()
         pos, vals = declared_ramp(data)
         if not (pos or vals):
             continue
@@ -321,13 +352,16 @@ def ramp_report(permitted_only=True):
         if not allv:
             continue
         files += 1
-        tp += len(pos); hp += sum(1 for t in pos if _near(t, posv))
-        tv += len(vals); hv += sum(1 for t in vals if _near(t, allv))
+        tp += len(pos)
+        hp += sum(1 for t in pos if _near(t, posv))
+        tv += len(vals)
+        hv += sum(1 for t in vals if _near(t, allv))
         # control: values declared on every OTHER filter, quantised the same way and
         # tested against the same ramp pool. Without it, a large pool scores by size.
         other = declared(data, [f for f in DEFAULT_FILTERS if f != "gradient"])
         oset = {q16(v) for s in other.values() for v in s if 0.0 <= v <= 1.0}
-        ct += len(oset); ch += sum(1 for t in oset if _near(t, allv))
+        ct += len(oset)
+        ch += sum(1 for t in oset if _near(t, allv))
     return dict(files=files, pos=(hp, tp), vals=(hv, tv), control=(ch, ct))
 
 
@@ -350,11 +384,13 @@ def matched_control(name, fid, permitted_only=True, skip=None):
     hit = tot = chit = ctot = 0
     per = []
     for p in paired_sources():
-        if permitted_only and (matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)):
+        if permitted_only and (
+            matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)
+        ):
             continue
         if skip and skip in p:
             continue
-        data = open(p, encoding='utf-8', errors='replace').read()
+        data = open(p, encoding="utf-8", errors="replace").read()
         decl = declared(data, DEFAULT_FILTERS)
         if not decl.get(name):
             continue
@@ -371,7 +407,7 @@ def matched_control(name, fid, permitted_only=True, skip=None):
                 pool |= record_floats(rec)
                 nrec += 1
         if not nrec:
-            continue            # no records of this filter here: the file cannot test it
+            continue  # no records of this filter here: the file cannot test it
         seen = collections.Counter()
         for s in decl.values():
             for v in s:
@@ -383,8 +419,10 @@ def matched_control(name, fid, permitted_only=True, skip=None):
                 other |= {v for v in s if seen[v] == 1}
         if not own:
             continue
-        hit += len(own & pool); tot += len(own)
-        chit += len(other & pool); ctot += len(other)
+        hit += len(own & pool)
+        tot += len(own)
+        chit += len(other & pool)
+        ctot += len(other)
         per.append((os.path.relpath(p, ROOT), len(own & pool), len(own)))
     return hit, tot, chit, ctot, per
 
@@ -396,9 +434,11 @@ def confusion(wanted=None, permitted_only=True):
     totals = collections.Counter()
     n_files = 0
     for p in paired_sources():
-        if permitted_only and (matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)):
+        if permitted_only and (
+            matches(p, EXCLUDED_AUTHORS) or matches(p, FLAGGED_AUTHORS)
+        ):
             continue
-        data = open(p, encoding='utf-8', errors='replace').read()
+        data = open(p, encoding="utf-8", errors="replace").read()
         decl = declared(data, wanted)
         if not decl:
             continue
@@ -429,13 +469,17 @@ def confusion(wanted=None, permitted_only=True):
     return matrix, totals, n_files
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     matrix, totals, n_files = confusion()
-    print("Containment identification, PERMITTED sources only (%d specimens)\n" % n_files)
+    print(
+        "Containment identification, PERMITTED sources only (%d specimens)\n" % n_files
+    )
     print("  row = filter the value was declared on in the .sbs source")
     print("  col = filter of the compiled record the value was found in\n")
-    print("  %-16s %8s %7s %10s   %s" % ("declared on", "targets", "found", "on-target",
-                                          "where found"))
+    print(
+        "  %-16s %8s %7s %10s   %s"
+        % ("declared on", "targets", "found", "on-target", "where found")
+    )
     for src in DEFAULT_FILTERS:
         if not totals.get(src):
             continue
@@ -443,33 +487,62 @@ if __name__ == '__main__':
         tot = sum(row.values())
         diag = row.get(src, 0)
         cells = ", ".join("%s=%d" % (k, v) for k, v in row.most_common(4))
-        print("  %-16s %8d %7d %6d %5.1f%%   %s"
-              % (src, totals[src], tot, diag, (100.0 * diag / tot) if tot else 0.0, cells))
+        print(
+            "  %-16s %8d %7d %6d %5.1f%%   %s"
+            % (src, totals[src], tot, diag, (100.0 * diag / tot) if tot else 0.0, cells)
+        )
 
     print()
     r = ramp_report()
     pct = lambda a, b: (100.0 * a / b) if b else 0.0
-    print("gradient, read from the ramp table in u16 space (%d permitted specimens)"
-          % r['files'])
-    print("  declared stop POSITIONS found in the filter-0 position column: "
-          "%d/%d (%.1f%%)" % (r['pos'][0], r['pos'][1], pct(*r['pos'])))
-    print("  declared colour values found anywhere in filter-0 ramps:       "
-          "%d/%d (%.1f%%)" % (r['vals'][0], r['vals'][1], pct(*r['vals'])))
-    print("  CONTROL, other filters' values against the same pool:          "
-          "%d/%d (%.1f%%)" % (r['control'][0], r['control'][1], pct(*r['control'])))
+    print(
+        "gradient, read from the ramp table in u16 space (%d permitted specimens)"
+        % r["files"]
+    )
+    print(
+        "  declared stop POSITIONS found in the filter-0 position column: "
+        "%d/%d (%.1f%%)" % (r["pos"][0], r["pos"][1], pct(*r["pos"]))
+    )
+    print(
+        "  declared colour values found anywhere in filter-0 ramps:       "
+        "%d/%d (%.1f%%)" % (r["vals"][0], r["vals"][1], pct(*r["vals"]))
+    )
+    print(
+        "  CONTROL, other filters' values against the same pool:          "
+        "%d/%d (%.1f%%)" % (r["control"][0], r["control"][1], pct(*r["control"]))
+    )
 
     print()
-    print("matched control -- declared value lands in its own filter's records, against")
+    print(
+        "matched control -- declared value lands in its own filter's records, against"
+    )
     print("the same test run on every OTHER filter's declared values in the same file")
     print("  %-16s %-8s %12s %14s %s" % ("filter", "id", "own", "control", "specimens"))
-    for nm, fid in [("warp", 7), ("blur", 10), ("directionalwarp", 12), ("sharpen", 13),
-                    ("levels", 15), ("uniform", 6)]:
+    for nm, fid in [
+        ("warp", 7),
+        ("blur", 10),
+        ("directionalwarp", 12),
+        ("sharpen", 13),
+        ("levels", 15),
+        ("uniform", 6),
+    ]:
         h, t, ch, ct, per = matched_control(nm, fid)
         if not t:
             continue
-        print("  %-16s %-8d %6d/%-5d %5.1f%%  %5d/%-6d %4.1f%%   %d"
-              % (nm, fid, h, t, 100.0 * h / t, ch, ct,
-                 (100.0 * ch / ct) if ct else 0.0, len(per)))
+        print(
+            "  %-16s %-8d %6d/%-5d %5.1f%%  %5d/%-6d %4.1f%%   %d"
+            % (
+                nm,
+                fid,
+                h,
+                t,
+                100.0 * h / t,
+                ch,
+                ct,
+                (100.0 * ch / ct) if ct else 0.0,
+                len(per),
+            )
+        )
 
     print()
     print("where a located value LANDS, scored against the walk (the walk does not")
@@ -487,12 +560,24 @@ if __name__ == '__main__':
         print("  %-16s %7d   %s" % (name, n, cells))
     n = sum(grand.values())
     if n:
-        print("  %-16s %7d   %s" % ("TOTAL", n,
-              ", ".join("%s=%d (%.1f%%)" % (k, v, 100.0 * v / n)
-                        for k, v in grand.most_common())))
+        print(
+            "  %-16s %7d   %s"
+            % (
+                "TOTAL",
+                n,
+                ", ".join(
+                    "%s=%d (%.1f%%)" % (k, v, 100.0 * v / n)
+                    for k, v in grand.most_common()
+                ),
+            )
+        )
         named = sum(grand[k] for k in ("parameter", "inherited", "input edge"))
-        print("  a scan narrowed to walk-named PARAMETER slots would lose %d of %d (%.1f%%);"
-              % (n - grand["parameter"], n, 100.0 * (n - grand["parameter"]) / n))
-        print("  narrowed to ANY walk-named slot, %d of %d (%.1f%%) -- and either way the"
-              % (n - named, n, 100.0 * (n - named) / n))
+        print(
+            "  a scan narrowed to walk-named PARAMETER slots would lose %d of %d (%.1f%%);"
+            % (n - grand["parameter"], n, 100.0 * (n - grand["parameter"]) / n)
+        )
+        print(
+            "  narrowed to ANY walk-named slot, %d of %d (%.1f%%) -- and either way the"
+            % (n - named, n, 100.0 * (n - named) / n)
+        )
         print("  remainder would agree with the walk by construction.")

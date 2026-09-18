@@ -4,6 +4,7 @@
 Locates the interface block by scanning for the footer's arithmetic signature, then
 walks it backwards to recover input types, uids and default values.
 """
+
 import struct, sys
 
 if sys.byteorder != "little":
@@ -11,8 +12,19 @@ if sys.byteorder != "little":
 
 FLOATT = {0: 1, 1: 2, 2: 3, 3: 4}
 INTT = {4: 1, 8: 2, 9: 3, 10: 4}
-TYPENAME = {0:'float1',1:'float2',2:'float3',3:'float4',4:'int1',
-            5:'image',6:'string',7:'font',8:'int2',9:'int3',10:'int4'}
+TYPENAME = {
+    0: "float1",
+    1: "float2",
+    2: "float3",
+    3: "float4",
+    4: "int1",
+    5: "image",
+    6: "string",
+    7: "font",
+    8: "int2",
+    9: "int3",
+    10: "int4",
+}
 
 
 def image_width(ver):
@@ -118,8 +130,11 @@ def parse(path):
         span = 0
         for k in range(n_in):
             t = struct.unpack_from("<I", d, dsc + 8 * k)[0]
-            span += 4 * FLOATT[t] if t in FLOATT else (
-                4 * INTT[t] if t in INTT else (iw if t == 5 else 0))
+            span += (
+                4 * FLOATT[t]
+                if t in FLOATT
+                else (4 * INTT[t] if t in INTT else (iw if t == 5 else 0))
+            )
         if tstart + span == hdr:
             chosen = (foot, count, dir_ref, back, n_out, n_in, hdr, dsc)
             break
@@ -136,24 +151,36 @@ def parse(path):
     for t, uid in inputs:
         if t in FLOATT:
             k = FLOATT[t]
-            v = struct.unpack_from("<%df" % k, d, pos); w = 4 * k
+            v = struct.unpack_from("<%df" % k, d, pos)
+            w = 4 * k
         elif t in INTT:
             k = INTT[t]
-            v = struct.unpack_from("<%di" % k, d, pos); w = 4 * k
+            v = struct.unpack_from("<%di" % k, d, pos)
+            w = 4 * k
         else:
             w = iw if t == 5 else 0
             v = struct.unpack_from("<4f", d, pos) if w == 16 else ()
         vals.append((t, uid, v))
         pos += w
-    return dict(version=ver, dir_count=count, dir_at=dir_ref - 4 + 0x38,
-                table_start=tstart, n_in=n_in, n_out=n_out,
-                inputs=vals, output_uids=out_uids, table_ok=(pos == hdr))
+    return dict(
+        version=ver,
+        dir_count=count,
+        dir_at=dir_ref - 4 + 0x38,
+        table_start=tstart,
+        n_in=n_in,
+        n_out=n_out,
+        inputs=vals,
+        output_uids=out_uids,
+        table_ok=(pos == hdr),
+    )
 
 
 if __name__ == "__main__":
     for p in sys.argv[1:]:
         r = parse(p)
-        print(f"{p}\n  version 0x{r['version']:08X}  inputs {r['n_in']}  outputs {r['n_out']}"
-              f"  directory {r['dir_count']} entries @0x{r['dir_at']:X}  consistent={r['table_ok']}")
+        print(
+            f"{p}\n  version 0x{r['version']:08X}  inputs {r['n_in']}  outputs {r['n_out']}"
+            f"  directory {r['dir_count']} entries @0x{r['dir_at']:X}  consistent={r['table_ok']}"
+        )
         for t, uid, v in r["inputs"][:8]:
             print(f"    uid={uid:<11} {TYPENAME.get(t, t):<7} {v}")

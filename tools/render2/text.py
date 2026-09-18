@@ -145,6 +145,7 @@ structure the record states. A downstream `blend`, `distance` or `transformation
 mask of the right shape in the right place, and a human reading the render can tell SPEED
 LIMIT from DO NOT ENTER. It is not glyph-exact and does not claim to be.
 """
+
 import os
 import struct
 
@@ -170,9 +171,9 @@ from ops import Unsupported, pos_grid, to_image
 #: `text.background` / `text.foreground` -- no corpus record sets `background` or
 #: `colorswitch`, so the polarity is in neither the assembly nor the manifest.
 DEFAULTS = {
-    'text.fontsize': 0.2,
-    'text.background': 0.0,
-    'text.foreground': 1.0,
+    "text.fontsize": 0.2,
+    "text.background": 0.0,
+    "text.foreground": 1.0,
 }
 
 #: The em box as a fraction of `fontsize`, and the line advance as a multiple of it.
@@ -184,17 +185,17 @@ _EM_PER_LINE = 0.8
 #: the layout as filled cap-height boxes. 'embedded' would hand the record's OWN payload to
 #: the rasteriser and is NOT enabled: see the module docstring's provenance note. Set
 #: `SBS_TEXT_FONT` to override.
-_FONT_SOURCE = os.environ.get('SBS_TEXT_FONT', 'system')
+_FONT_SOURCE = os.environ.get("SBS_TEXT_FONT", "system")
 
 #: Candidate system faces, most-generic first. Nothing here is read unless it exists.
 _FONT_CANDIDATES = (
-    '/System/Library/Fonts/Supplemental/Arial.ttf',
-    '/System/Library/Fonts/Helvetica.ttc',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-    '/usr/share/fonts/TTF/DejaVuSans.ttf',
-    '/usr/share/fonts/dejavu/DejaVuSans.ttf',
-    'C:\\Windows\\Fonts\\arial.ttf',
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "C:\\Windows\\Fonts\\arial.ttf",
 )
 
 #: Advance width in em for the box backend, and the cap height it draws. Uppercase Latin in
@@ -202,12 +203,13 @@ _FONT_CANDIDATES = (
 #: used when no font is available at all.
 _BOX_ADVANCE = 0.62
 _BOX_CAP = 0.70
-_BOX_INK = 0.78         # the drawn fraction of the advance, so glyphs do not run together
+_BOX_INK = 0.78  # the drawn fraction of the advance, so glyphs do not run together
 
 
 # ---------------------------------------------------------------------------
 # Resources
 # ---------------------------------------------------------------------------
+
 
 def read_string(asm, offset):
     """The `[u32 count][u32 codepoint ...]` resource at `offset`, or None.
@@ -227,18 +229,18 @@ def read_string(asm, offset):
     d = asm.data
     if not (0 <= offset and offset + 4 <= len(d)):
         return None
-    n = struct.unpack_from('<I', d, offset)[0]
+    n = struct.unpack_from("<I", d, offset)[0]
     if not (0 <= n <= 65536) or offset + 4 + 4 * n > len(d):
         return None
     if n == 0:
-        return ''
-    chars = struct.unpack_from('<%dI' % n, d, offset + 4)
+        return ""
+    chars = struct.unpack_from("<%dI" % n, d, offset + 4)
     for c in chars:
         if c >= 0x110000 or 0xD800 <= c <= 0xDFFF:
             return None
         if c < 0x20 and c not in (0x09, 0x0A, 0x0D):
             return None
-    return ''.join(chr(c) for c in chars)
+    return "".join(chr(c) for c in chars)
 
 
 _STRING_INPUTS = {}
@@ -251,7 +253,7 @@ def string_inputs(asm):
     type, so this cannot route through it. Parsed the same way -- one pass over the same
     file -- and cached per assembly path.
     """
-    key = getattr(asm, 'path', None)
+    key = getattr(asm, "path", None)
     got = _STRING_INPUTS.get(key)
     if got is not None:
         return got
@@ -260,9 +262,13 @@ def string_inputs(asm):
     if xml:
         try:
             import re
-            text = open(xml, encoding='utf-8', errors='replace').read()
-            for m in re.finditer(r'<input\s+uid="(\d+)"\s+identifier="([^"]*)"\s*'
-                                 r'type="6"\s*default="([^"]*)"', text):
+
+            text = open(xml, encoding="utf-8", errors="replace").read()
+            for m in re.finditer(
+                r'<input\s+uid="(\d+)"\s+identifier="([^"]*)"\s*'
+                r'type="6"\s*default="([^"]*)"',
+                text,
+            ):
                 out[int(m.group(1))] = (m.group(2), m.group(3))
         except Exception:
             out = {}
@@ -287,12 +293,12 @@ def embedded_font(asm, v):
     p = v.words[4] + 52
     if not (0 <= p and p + 12 <= len(d)):
         return None
-    length = struct.unpack_from('<I', d, p + 4)[0]
+    length = struct.unpack_from("<I", d, p + 4)[0]
     q = p + 8
     if not (12 <= length and q + length <= len(d)):
         return None
-    magic = bytes(d[q:q + 4])
-    if magic not in (b'\x00\x01\x00\x00', b'ttcf', b'OTTO', b'true'):
+    magic = bytes(d[q : q + 4])
+    if magic not in (b"\x00\x01\x00\x00", b"ttcf", b"OTTO", b"true"):
         return None
     return (q, length, magic)
 
@@ -306,25 +312,26 @@ def text_of(ctx, v):
     """
     words = v.words
     if len(words) < 4:
-        return ('', 'missing')
+        return ("", "missing")
     w1 = words[1] if len(words) > 1 else 0
     if w1 & 0x2:
         got = string_inputs(ctx.asm).get(words[3])
         if got is None:
-            return ('', 'missing')
-        return (got[1], 'input')
+            return ("", "missing")
+        return (got[1], "input")
     s = read_string(ctx.asm, words[3] + 52)
-    return ('', 'missing') if s is None else (s, 'resource')
+    return ("", "missing") if s is None else (s, "resource")
 
 
 # ---------------------------------------------------------------------------
 # Layout
 # ---------------------------------------------------------------------------
 
+
 def _metrics(font):
     """`advance(ch) -> em` for the chosen backend."""
     if font is None:
-        return lambda ch: (0.0 if ch == '\n' else _BOX_ADVANCE)
+        return lambda ch: 0.0 if ch == "\n" else _BOX_ADVANCE
     unit = float(font.size)
 
     def advance(ch):
@@ -332,6 +339,7 @@ def _metrics(font):
             return font.getlength(ch) / unit
         except Exception:
             return _BOX_ADVANCE
+
     return advance
 
 
@@ -342,19 +350,19 @@ def _wrap(line, advance, limit_em):
     only corpus string that wraps is prose, and a hard break inside `authorized` would be
     a worse error than one over-wide line.
     """
-    words = line.split(' ')
+    words = line.split(" ")
     out, cur, cur_w = [], [], 0.0
-    space = advance(' ')
+    space = advance(" ")
     for w in words:
         w_em = sum(advance(c) for c in w)
         step = w_em if not cur else space + w_em
         if cur and cur_w + step > limit_em:
-            out.append(' '.join(cur))
+            out.append(" ".join(cur))
             cur, cur_w = [w], w_em
         else:
             cur.append(w)
             cur_w += step
-    out.append(' '.join(cur))
+    out.append(" ".join(cur))
     return out
 
 
@@ -368,7 +376,7 @@ def layout(s, fontsize, advance, wrap_em=None):
     """
     em = fontsize * _EM_PER_LINE
     rows = []
-    for raw in s.split('\n'):
+    for raw in s.split("\n"):
         if wrap_em is not None and em > 0:
             rows.extend(_wrap(raw, advance, wrap_em / em))
         else:
@@ -387,7 +395,9 @@ def _affine(v, W, H, matrix, position):
     a, b, c, d = matrix
     det = a * d - b * c
     if not np.isfinite(det) or abs(det) < 1e-9:
-        raise Unsupported('matrix22 is singular (det %.3g), so no text can be placed' % det)
+        raise Unsupported(
+            "matrix22 is singular (det %.3g), so no text can be placed" % det
+        )
     ia, ib, ic, idd = d / det, -b / det, -c / det, a / det
     grid = pos_grid(W, H)
     cx = grid[:, 0] - 0.5 - np.float32(position[0])
@@ -399,9 +409,10 @@ def _affine(v, W, H, matrix, position):
 # Rasterising
 # ---------------------------------------------------------------------------
 
+
 def _system_font(px):
     """A system sans-serif at `px`, or None. Lazily imported; never a hard dependency."""
-    if _FONT_SOURCE == 'boxes':
+    if _FONT_SOURCE == "boxes":
         return None
     try:
         from PIL import ImageFont
@@ -424,10 +435,10 @@ def anchor(v):
     `assume`'s `text.anchor` overrides it. 'flag' (the default) reads the record; 'centre'
     and 'left' force one answer for a sweep.
     """
-    choice = assume.assumed('text.anchor', 'flag')
-    if choice in ('centre', 'left'):
+    choice = assume.assumed("text.anchor", "flag")
+    if choice in ("centre", "left"):
         return choice
-    return 'centre' if v.has('align_flag') else 'left'
+    return "centre" if v.has("align_flag") else "left"
 
 
 def _coverage_boxes(rows, em, advance, tx, ty, align):
@@ -443,9 +454,11 @@ def _coverage_boxes(rows, em, advance, tx, ty, align):
     n = len(rows)
     for i, row in enumerate(rows):
         width = sum(advance(ch) for ch in row) * em
-        y0 = (i - 0.5 * n) * (em / _EM_PER_LINE) + 0.5 * (em / _EM_PER_LINE - em * _BOX_CAP)
+        y0 = (i - 0.5 * n) * (em / _EM_PER_LINE) + 0.5 * (
+            em / _EM_PER_LINE - em * _BOX_CAP
+        )
         y1 = y0 + em * _BOX_CAP
-        x = -0.5 * width if align == 'centre' else 0.0
+        x = -0.5 * width if align == "centre" else 0.0
         for ch in row:
             w = advance(ch) * em
             if ch.strip():
@@ -467,7 +480,7 @@ def _coverage_font(font, rows, em, advance, tx, ty, W, H, align):
     lo_x, hi_x = float(tx.min()), float(tx.max())
     lo_y, hi_y = float(ty.min()), float(ty.max())
     if not all(np.isfinite(z) for z in (lo_x, hi_x, lo_y, hi_y)):
-        raise Unsupported('the inverse text transform is not finite')
+        raise Unsupported("the inverse text transform is not finite")
     span_x, span_y = max(hi_x - lo_x, 1e-4), max(hi_y - lo_y, 1e-4)
     # Cap the raster: a 2048 record with a matrix that magnifies 20x would otherwise ask
     # for a 40k-pixel bitmap. 4096 is four times the largest canvas this filter appears on.
@@ -478,7 +491,7 @@ def _coverage_font(font, rows, em, advance, tx, ty, W, H, align):
     if px < 1.0:
         return np.zeros(tx.shape, np.float32)
     face = font.font_variant(size=int(round(max(1.0, min(px, 4096.0)))))
-    img = Image.new('L', (RW, RH), 0)
+    img = Image.new("L", (RW, RH), 0)
     draw = ImageDraw.Draw(img)
     n = len(rows)
     advance_units = em / _EM_PER_LINE
@@ -489,8 +502,13 @@ def _coverage_font(font, rows, em, advance, tx, ty, W, H, align):
         cy = (i + 0.5 - 0.5 * n) * advance_units
         rx = (0.0 - lo_x) / span_x * RW
         ry = (cy - lo_y) / span_y * RH
-        draw.text((rx, ry), row, fill=255, font=face,
-                  anchor='mm' if align == 'centre' else 'lm')
+        draw.text(
+            (rx, ry),
+            row,
+            fill=255,
+            font=face,
+            anchor="mm" if align == "centre" else "lm",
+        )
 
     raster = np.asarray(img, dtype=np.float32) / 255.0
     # Bilinear sample of the raster at every canvas pixel. Outside the raster is
@@ -515,6 +533,7 @@ def _coverage_font(font, rows, em, advance, tx, ty, W, H, align):
 # The filter
 # ---------------------------------------------------------------------------
 
+
 def f_text(ctx, v):
     """Filter 17. Registered into `filters.FILTERS` by the hook in `filters.py`.
 
@@ -528,29 +547,29 @@ def f_text(ctx, v):
     n = 4 if v.colour else 1
     s, source = text_of(ctx, v)
 
-    bg = np.float32(assume.assumed('text.background', DEFAULTS['text.background']))
-    fg = np.float32(assume.assumed('text.foreground', DEFAULTS['text.foreground']))
+    bg = np.float32(assume.assumed("text.background", DEFAULTS["text.background"]))
+    fg = np.float32(assume.assumed("text.foreground", DEFAULTS["text.foreground"]))
     ctx.low_confidence.add(v.index)
     assume.note(v.index)
 
-    fontsize = v.baked('fontsize')
+    fontsize = v.baked("fontsize")
     if fontsize is None:
-        if v.has('fontsize'):
-            got = np.asarray(ctx.run(v, v.program('fontsize'), 1)).ravel()
+        if v.has("fontsize"):
+            got = np.asarray(ctx.run(v, v.program("fontsize"), 1)).ravel()
             fontsize = float(got[0]) if got.size else None
         if fontsize is None:
-            fontsize = assume.assumed('text.fontsize', DEFAULTS['text.fontsize'])
+            fontsize = assume.assumed("text.fontsize", DEFAULTS["text.fontsize"])
 
-    matrix = v.baked('matrix22')
-    if matrix is None and v.has('matrix22'):
-        got = np.asarray(ctx.run(v, v.program('matrix22'), 1)).ravel()
+    matrix = v.baked("matrix22")
+    if matrix is None and v.has("matrix22"):
+        got = np.asarray(ctx.run(v, v.program("matrix22"), 1)).ravel()
         matrix = tuple(float(x) for x in got[:4]) if got.size >= 4 else None
     if matrix is None:
         matrix = (1.0, 0.0, 0.0, 1.0)
 
-    position = v.baked('position')
-    if position is None and v.has('position'):
-        got = np.asarray(ctx.run(v, v.program('position'), 1)).ravel()
+    position = v.baked("position")
+    if position is None and v.has("position"):
+        got = np.asarray(ctx.run(v, v.program("position"), 1)).ravel()
         position = tuple(float(x) for x in got[:2]) if got.size >= 2 else None
     if position is None:
         position = (0.0, 0.0)
@@ -582,6 +601,5 @@ def f_text(ctx, v):
         # RGB IS THE INK AND ALPHA IS THE COVERAGE. No corpus `text` record is a colour
         # record, so this branch is unexercised by the corpus and is written to be the
         # obvious thing rather than to be a claim about the format.
-        out = np.concatenate([np.repeat(out, 3, axis=2),
-                              cov.reshape(H, W, 1)], axis=2)
+        out = np.concatenate([np.repeat(out, 3, axis=2), cov.reshape(H, W, 1)], axis=2)
     return to_image(out.reshape(H * W, n), H * W, H, W)

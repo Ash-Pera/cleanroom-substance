@@ -86,39 +86,49 @@ itself. The two fields are perfectly confounded across every pair this join reac
 is no independent variation to read and no amount of care with the join recovers it. What is
 needed is a permitted source declaring both fields varying independently, and none does.
 """
+
 import collections
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import disasm                                                        # noqa: E402
-import provenance                                                    # noqa: E402
-from sbsasm import Assembly                                          # noqa: E402
+import disasm  # noqa: E402
+import provenance  # noqa: E402
+from sbsasm import Assembly  # noqa: E402
 
 #: The FX entry parameters a tag names. Others (`blendingmode`, `imagefiltering`, `switch`)
 #: are declared by sources but have no established bit, so they cannot key a join.
-TAGNAMES = frozenset({'opacity', 'branchoffset', 'frameoffset', 'patternsize',
-                      'patternrotation', 'patternsuppl', 'imageindex'})
+TAGNAMES = frozenset(
+    {
+        "opacity",
+        "branchoffset",
+        "frameoffset",
+        "patternsize",
+        "patternrotation",
+        "patternsuppl",
+        "imageindex",
+    }
+)
 
 _STR = re.compile(r'<constantValueString v="([^"]+)"')
 _PARAM = re.compile(r'<parameter><name v="([^"]+)"/>(.*?)(?=<parameter><name|\Z)', re.S)
-_PGD = re.compile(r'<paramsGraphData>(.*?)</paramsGraphData>', re.S)
+_PGD = re.compile(r"<paramsGraphData>(.*?)</paramsGraphData>", re.S)
 _INPUT = re.compile(r'<input uid="(\d+)" identifier="([^"]+)"')
 
 
 def manifest_inputs(asm_path):
     """{uid: identifier} from the package manifest, or None if there is none."""
-    xml = os.path.splitext(asm_path)[0] + '.xml'
+    xml = os.path.splitext(asm_path)[0] + ".xml"
     if not os.path.exists(xml):
         return None
-    text = open(xml, encoding='utf-8', errors='replace').read()
+    text = open(xml, encoding="utf-8", errors="replace").read()
     return {int(m.group(1)): m.group(2) for m in _INPUT.finditer(text)}
 
 
 def source_paramsets(sbs_path, vocab):
     """[{parameter: frozenset(input names)}] for each paramset with a dynamic reference."""
-    text = open(sbs_path, encoding='utf-8', errors='replace').read()
+    text = open(sbs_path, encoding="utf-8", errors="replace").read()
     out = []
     for block in _PGD.finditer(text):
         blk = block.group(1)
@@ -127,10 +137,10 @@ def source_paramsets(sbs_path, vocab):
         refs = {}
         for pm in _PARAM.finditer(blk):
             name, body = pm.group(1), pm.group(2)
-            if name not in TAGNAMES or '<dynamicValue>' not in body:
+            if name not in TAGNAMES or "<dynamicValue>" not in body:
                 continue
-            names = {s.lstrip('#') for s in _STR.findall(body)}
-            names &= vocab            # the manifest decides what is an input
+            names = {s.lstrip("#") for s in _STR.findall(body)}
+            names &= vocab  # the manifest decides what is an input
             if names:
                 refs[name] = frozenset(names)
         if refs:
@@ -149,14 +159,17 @@ def assembly_entries(asm_path, name_of):
         by_entry = collections.defaultdict(dict)
         tags = {}
         for off, tag, _slot, name, kind, val in r.fx_named_params():
-            if kind != 'program' or name not in TAGNAMES:
+            if kind != "program" or name not in TAGNAMES:
                 continue
             try:
                 text = disasm.text(a.data, val, a.program_end(val))
             except Exception:
                 continue
-            names = {name_of[int(u)] for u in re.findall(r'uid=(\d+)', text)
-                     if int(u) in name_of}
+            names = {
+                name_of[int(u)]
+                for u in re.findall(r"uid=(\d+)", text)
+                if int(u) in name_of
+            }
             names &= vocab
             if names:
                 by_entry[off][name] = frozenset(names)
@@ -228,7 +241,7 @@ def _subset_hits(refs, ent):
     top = max(b[0] for b in best)
     top_hits = [b for b in best if b[0] == top]
     if len(top_hits) != 1:
-        return []                      # ambiguous under a weaker key: decline it
+        return []  # ambiguous under a weaker key: decline it
     _n, where, tag = top_hits[0]
     return [(where[0], where[1], tag)]
 
@@ -240,26 +253,28 @@ def main():
             continue
         if provenance.matches(p, provenance.FLAGGED_AUTHORS):
             continue
-        stat['permitted sources'] += 1
+        stat["permitted sources"] += 1
         rows = join(p)
         if rows is None:
             continue
-        stat['files with a joinable paramset'] += 1
+        stat["files with a joinable paramset"] += 1
         for _refs, hits in rows:
-            stat['paramsets'] += 1
+            stat["paramsets"] += 1
             if not hits:
-                stat['  no entry carries that name-set'] += 1
+                stat["  no entry carries that name-set"] += 1
             elif len(hits) == 1:
-                stat['  joined to exactly one entry'] += 1
+                stat["  joined to exactly one entry"] += 1
             else:
-                stat['  joined to several entries (instances)'] += 1
+                stat["  joined to several entries (instances)"] += 1
     for k, v in stat.most_common():
-        print('  %-46s %d' % (k, v))
-    print('\nCoverage is narrow and concentrated -- see the module docstring before deriving'
-          '\nanything from it. It does not settle `blendingmode`; that field is perfectly'
-          '\nconfounded with `patterntype` across every pair this join reaches.')
+        print("  %-46s %d" % (k, v))
+    print(
+        "\nCoverage is narrow and concentrated -- see the module docstring before deriving"
+        "\nanything from it. It does not settle `blendingmode`; that field is perfectly"
+        "\nconfounded with `patterntype` across every pair this join reaches."
+    )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

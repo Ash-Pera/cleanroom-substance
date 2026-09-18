@@ -8,6 +8,7 @@ Usage:
 Reports only what is directly verifiable from the bytes. Fields whose meaning is
 still a guess are labelled as such.
 """
+
 import argparse
 import collections
 import glob
@@ -77,20 +78,26 @@ def probe(path):
         aligned = (first - HEADER_SIZE) % 4 == 0
         print(f"    layout: OFFSET TABLE at 0x{HEADER_SIZE:X}")
         print(f"    monotonic run: {len(offs)} entries (may overrun into record data)")
-        print(f"    implied count if table abuts first record: {implied} "
-              f"(4-byte aligned: {aligned})")
+        print(
+            f"    implied count if table abuts first record: {implied} "
+            f"(4-byte aligned: {aligned})"
+        )
         if offs:
             gaps = [offs[i + 1] - offs[i] for i in range(len(offs) - 1)]
             print(f"    first targets: {[hex(x) for x in offs[:6]]}")
-            print(f"    record spans: min={min(gaps)} median={sorted(gaps)[len(gaps)//2]} max={max(gaps)}")
+            print(
+                f"    record spans: min={min(gaps)} median={sorted(gaps)[len(gaps) // 2]} max={max(gaps)}"
+            )
     else:
-        print(f"    layout: NO offset table (first u32 0x{first:X} > filesize) -- "
-              f"alternate/inline-data layout")
+        print(
+            f"    layout: NO offset table (first u32 0x{first:X} > filesize) -- "
+            f"alternate/inline-data layout"
+        )
 
     # ---- float parameter block ---------------------------------------
     t = u32(0x2C)
     if 0 < t < n:
-        raw = d[t:t + 64]
+        raw = d[t : t + 64]
         floats = struct.unpack_from("<%df" % (len(raw) // 4), raw)
         pretty = [f"{f:.6g}" if abs(f) < 1e8 else "?" for f in floats]
         print(f"  [param block @0x{t:X} (size-{n - t})]")
@@ -104,12 +111,19 @@ def probe(path):
 
     # ---- statistics ---------------------------------------------------
     print("  [stats]")
-    print(f"    entropy whole={entropy(d):.3f}  head4k={entropy(d[:4096]):.3f}  "
-          f"tail4k={entropy(d[-4096:]):.3f}   (>7.9 would imply crypt/compression)")
+    print(
+        f"    entropy whole={entropy(d):.3f}  head4k={entropy(d[:4096]):.3f}  "
+        f"tail4k={entropy(d[-4096:]):.3f}   (>7.9 would imply crypt/compression)"
+    )
     bh = collections.Counter(d)
-    print(f"    byte hist top5: {[(hex(b), round(c / n, 4)) for b, c in bh.most_common(5)]}")
+    print(
+        f"    byte hist top5: {[(hex(b), round(c / n, 4)) for b, c in bh.most_common(5)]}"
+    )
     import re
-    strs = [s for s in re.findall(rb"[ -~]{8,}", d) if not re.fullmatch(rb"[\x20-\x40]+", s)]
+
+    strs = [
+        s for s in re.findall(rb"[ -~]{8,}", d) if not re.fullmatch(rb"[\x20-\x40]+", s)
+    ]
     print(f"    plausible ascii strings (>=8, non-punct): {len(strs)}")
     for s in strs[:5]:
         print(f"      {s[:60]!r}")
@@ -125,6 +139,7 @@ NONNUM_WIDTH = {5: 16, 6: 0, 7: 0}
 
 def _pack_default(t, dv):
     import re as _re
+
     parts = [p for p in _re.split(r"[,\s]+", dv.strip()) if p]
     try:
         if t in FLOAT_T:
@@ -155,14 +170,23 @@ def decode_default_table(sbsasm_path, xml_path, ulp_tolerance=2):
     for i in graph.findall("inputs/input"):
         t = int(i.get("type", 0))
         dv = i.get("default")
-        rec.append({
-            "ident": i.get("identifier", "?"), "uid": int(i.get("uid", "0")),
-            "t": t, "dv": dv, "b": _pack_default(t, dv) if dv is not None else None,
-        })
+        rec.append(
+            {
+                "ident": i.get("identifier", "?"),
+                "uid": int(i.get("uid", "0")),
+                "t": t,
+                "dv": dv,
+                "b": _pack_default(t, dv) if dv is not None else None,
+            }
+        )
     rec.sort(key=lambda r: r["uid"])
     # every input consumes space; non-numeric ones have no comparable bytes
-    ents = [(r["b"], len(r["b"])) if r["b"] is not None
-            else (None, NONNUM_WIDTH.get(r["t"], 0)) for r in rec]
+    ents = [
+        (r["b"], len(r["b"]))
+        if r["b"] is not None
+        else (None, NONNUM_WIDTH.get(r["t"], 0))
+        for r in rec
+    ]
     total = sum(w for _, w in ents)
 
     # Deterministic location: the header field at 0x2C equals table_end - 52 in every
@@ -196,7 +220,7 @@ def decode_default_table(sbsasm_path, xml_path, ulp_tolerance=2):
     print(f"  [default table] start=0x{start:X} len={total} ({how})")
     pos, exact, eps, unexpl = start, 0, 0, 0
     for (b, w), r in zip(ents, rec):
-        seg = d[pos:pos + w]
+        seg = d[pos : pos + w]
         pos += w
         if b is None:
             continue
@@ -214,15 +238,21 @@ def decode_default_table(sbsasm_path, xml_path, ulp_tolerance=2):
         # round-trip an f32 -- the binary value is the authoritative one
         if all(abs(p - q) <= 1e-5 * max(1.0, abs(q)) for p, q in zip(got, want)):
             eps += 1
-            print(f"    ROUNDED  @0x{pos - w:X} {r['ident'][:26]:<26} "
-                  f"xml={want} binary={got}")
+            print(
+                f"    ROUNDED  @0x{pos - w:X} {r['ident'][:26]:<26} "
+                f"xml={want} binary={got}"
+            )
         else:
             unexpl += 1
-            print(f"    MISMATCH @0x{pos - w:X} {r['ident'][:26]:<26} "
-                  f"xml={want} binary={got}")
+            print(
+                f"    MISMATCH @0x{pos - w:X} {r['ident'][:26]:<26} "
+                f"xml={want} binary={got}"
+            )
     n_cmp = exact + eps + unexpl
-    print(f"    {exact}/{n_cmp} byte-exact, {eps} explained by %g rounding, "
-          f"{unexpl} unexplained")
+    print(
+        f"    {exact}/{n_cmp} byte-exact, {eps} explained by %g rounding, "
+        f"{unexpl} unexplained"
+    )
 
 
 def from_sbsar(path):
@@ -241,8 +271,11 @@ def from_sbsar(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+")
-    ap.add_argument("--sbsar", action="store_true",
-                    help="treat inputs as .sbsar archives and extract first")
+    ap.add_argument(
+        "--sbsar",
+        action="store_true",
+        help="treat inputs as .sbsar archives and extract first",
+    )
     a = ap.parse_args()
     for f in a.files:
         if a.sbsar or f.lower().endswith(".sbsar"):

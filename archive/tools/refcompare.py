@@ -203,6 +203,7 @@ author, on the same footing as the .sbsar beside them -- the standing exclusion 
 Adobe's engine and of Adobe's bundled .sbs sources, neither of which is involved in
 reading a PNG somebody published with their material.
 """
+
 import glob
 import os
 import re
@@ -211,14 +212,15 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import _repo_root                                                    # noqa: E402
+import _repo_root  # noqa: E402
+
 _repo_root.add_tools_to_path()
-import manifest                                                      # noqa: E402
-import render                                                        # noqa: E402
-import sbsasm                                                        # noqa: E402
+import manifest  # noqa: E402
+import render  # noqa: E402
+import sbsasm  # noqa: E402
 
 ROOT = _repo_root.ROOT
-PACKS = os.path.join(_repo_root.SPECIMENS, 'new_opengameart')
+PACKS = os.path.join(_repo_root.SPECIMENS, "new_opengameart")
 #: The score grid. `refguard.SCORE_GRID` is the same constant under the guard's own name and
 #: the two are asserted equal below, because `resample`'s default moved with the function
 #: and a reader changing one of them would silently leave the other behind.
@@ -283,9 +285,10 @@ RENDER_DIM = 128
 def load_reference(path):
     """A reference map as float in [0, 1], (H, W, C) -- by IMAGE MODE, not by guess."""
     from PIL import Image
+
     im = Image.open(path)
     a = np.asarray(im).astype(np.float64)
-    a = a / (65535.0 if (im.mode == 'I;16' or a.max() > 255) else 255.0)
+    a = a / (65535.0 if (im.mode == "I;16" or a.max() > 255) else 255.0)
     return a[:, :, :3] if a.ndim == 3 else a[:, :, None]
 
 
@@ -300,25 +303,33 @@ def load_reference(path):
 # `corpus.py`'s argument, one level up: a correction written into one implementation does
 # not propagate to a second, and this module and that guard were about to have two copies
 # of the same spectrum.
-from refguard import (BANDS, LOW_GRID, band_power,           # noqa: F401  (re-exported)
-                      resample, structure)
-from refguard import structure_grid as _structure_grid       # noqa: F401
-import refguard                                              # noqa: E402
+from refguard import (
+    BANDS,
+    LOW_GRID,
+    band_power,  # noqa: F401  (re-exported)
+    resample,
+    structure,
+)
+from refguard import structure_grid as _structure_grid  # noqa: F401
+import refguard  # noqa: E402
+
 assert refguard.SCORE_GRID == SIZE, (
-    'the score grid has two names and they have parted: refcompare.SIZE=%r, '
-    'refguard.SCORE_GRID=%r -- `resample`\'s default follows the second'
-    % (SIZE, refguard.SCORE_GRID))
+    "the score grid has two names and they have parted: refcompare.SIZE=%r, "
+    "refguard.SCORE_GRID=%r -- `resample`'s default follows the second"
+    % (SIZE, refguard.SCORE_GRID)
+)
 
 
 def _key(s):
-    return re.sub(r'[^a-z]', '', (s or '').lower())
+    return re.sub(r"[^a-z]", "", (s or "").lower())
 
 
 def reference_packs(match=None):
     """Packages that ship exported maps, as {name: [png paths]}."""
     out = {}
-    for png in glob.glob(os.path.join(PACKS, '*', 'reference_renders', '**', '*.png'),
-                         recursive=True):
+    for png in glob.glob(
+        os.path.join(PACKS, "*", "reference_renders", "**", "*.png"), recursive=True
+    ):
         pack = os.path.relpath(png, PACKS).split(os.sep)[0]
         out.setdefault(pack, []).append(png)
     if match:
@@ -327,8 +338,11 @@ def reference_packs(match=None):
         # called RoofTiles everywhere else, so filtering on the directory alone silently
         # returns nothing for the name a caller actually has in hand.
         m = match.lower()
-        out = {k: v for k, v in out.items()
-               if m in k.lower() or any(m in os.path.basename(p).lower() for p in v)}
+        out = {
+            k: v
+            for k, v in out.items()
+            if m in k.lower() or any(m in os.path.basename(p).lower() for p in v)
+        }
     return out
 
 
@@ -346,8 +360,8 @@ def graph_dir(asm, uid):
     directories after the same graphs, so this is a lookup on both sides.
     """
     for g in manifest.graphs(asm):
-        if uid in g['outputs'] and g.get('pkgurl'):
-            return g['pkgurl'].rstrip('/').rsplit('/', 1)[-1] or None
+        if uid in g["outputs"] and g.get("pkgurl"):
+            return g["pkgurl"].rstrip("/").rsplit("/", 1)[-1] or None
     return None
 
 
@@ -361,8 +375,9 @@ def implied_outputsize(refs):
     max on disagreement. `corpus.py`'s argument applies verbatim: a correction written
     into one implementation does not propagate to a second.
     """
-    import render2                                                   # noqa: F401
+    import render2  # noqa: F401
     from engine import implied_outputsize as _impl
+
     return _impl(refs)
 
 
@@ -382,8 +397,9 @@ def _sizes_at(asm, outputsize):
     """
     if outputsize is None:
         return None
-    import render2                                                   # noqa: F401
+    import render2  # noqa: F401
     from engine import record_sizes
+
     return record_sizes(asm, outputsize)
 
 
@@ -406,7 +422,7 @@ def _renderer(which):
     argument is the same one `corpus.py` makes about corpus lists: a correction written
     into one implementation does not propagate to a second.
     """
-    if which == 'render2':
+    if which == "render2":
         # THROUGH THE PACKAGE, NOT BY PATH. A first attempt inserted `tools/render2` on
         # `sys.path`, imported `engine`, and popped the path again to avoid shadowing
         # `model`/`ops`/`filters` for everyone else. It imported fine and then rendered 60
@@ -422,21 +438,27 @@ def _renderer(which):
         # `sizes` dict as well would run `record_sizes` twice and let the two answers
         # drift. It takes the OUTPUT SIZE; `render.py` takes the sizes.
         def go(asm, max_dim, sizes, _os=None):
-            outs, _f, _i = _r2.render(asm, verbose=False, max_dim=max_dim, outputsize=_os)
+            outs, _f, _i = _r2.render(
+                asm, verbose=False, max_dim=max_dim, outputsize=_os
+            )
             return outs
+
         go.wants_outputsize = True
         return go
 
     def go(asm, max_dim, sizes, _os=None):
-        produced, _failures, _synth = render.render(asm, verbose=False, max_dim=max_dim,
-                                                    sizes=sizes)
+        produced, _failures, _synth = render.render(
+            asm, verbose=False, max_dim=max_dim, sizes=sizes
+        )
         return produced
+
     go.wants_outputsize = False
     return go
 
 
-def compare_pack(pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer='render',
-                 grid=SIZE, qualify_graph=False):
+def compare_pack(
+    pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer="render", grid=SIZE, qualify_graph=False
+):
     """Yield (output name, channel, ours, reference) arrays for every paired output.
 
     `outputsize` is `(log2 w, log2 h)`, or the string `'implied'` for whatever this
@@ -458,7 +480,7 @@ def compare_pack(pack, refs, max_dim=RENDER_DIM, outputsize=None, renderer='rend
     `REFERENCE_FLOOR_RENDER2` and FORMAT-NOTES.md, "The output size the reference was
     exported at is a property of the SCORE".
     """
-    asms = glob.glob(os.path.join(PACKS, pack, '**', '*.sbsasm'), recursive=True)
+    asms = glob.glob(os.path.join(PACKS, pack, "**", "*.sbsasm"), recursive=True)
     if not asms:
         return
     for _asm_path in sorted(asms):
@@ -521,26 +543,36 @@ def _package_refs(asm_path, refs):
     narrowing there would discard all of them.
     """
     parts = os.path.normpath(asm_path).split(os.sep)
-    own = next((c for c in parts if c.startswith('x_')), None)
+    own = next((c for c in parts if c.startswith("x_")), None)
     if not own:
         return refs
-    scoped = [r for r in refs
-              if any(c and not c.startswith('x_') and own.lower().endswith(c.lower())
-                     for c in os.path.normpath(r).split(os.sep)[:-1])]
+    scoped = [
+        r
+        for r in refs
+        if any(
+            c and not c.startswith("x_") and own.lower().endswith(c.lower())
+            for c in os.path.normpath(r).split(os.sep)[:-1]
+        )
+    ]
     return scoped if scoped else refs
 
 
-def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render',
-                 grid=SIZE, qualify_graph=False):
+def _compare_one(
+    asm_path, refs, max_dim, outputsize=None, renderer="render", grid=SIZE, qualify_graph=False
+):
     asm = sbsasm.Assembly(asm_path)
     refs = _package_refs(asm_path, refs)
     names = manifest.output_names(asm)
-    want = implied_outputsize(refs) if outputsize == 'implied' else outputsize
+    want = implied_outputsize(refs) if outputsize == "implied" else outputsize
     run = _renderer(renderer)
-    produced = run(asm, max_dim, None if run.wants_outputsize else _sizes_at(asm, want),
-                   want if run.wants_outputsize else None)
+    produced = run(
+        asm,
+        max_dim,
+        None if run.wants_outputsize else _sizes_at(asm, want),
+        want if run.wants_outputsize else None,
+    )
     for uid, _fmt, _gray, rec in asm.outputs():
-        name = names.get(uid) or '?'
+        name = names.get(uid) or "?"
         pool = refs
         gdir = graph_dir(asm, uid)
         # A GRAPH'S EXPORTS CAN BE MARKED BY A FILENAME PREFIX INSTEAD OF A DIRECTORY, and
@@ -600,21 +632,32 @@ def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render',
         # and 003 render in ONE pass under ONE scope, and a scope held constant across both
         # cannot explain a difference between them.
         if gdir:
-            _pre = [r for r in refs if os.path.basename(r).startswith(gdir + '_')]
-            if _pre and any(os.path.basename(r).startswith((graph_dir(asm, u) or '\0') + '_')
-                            for u, _f, _g, _rc in asm.outputs() for r in refs):
+            _pre = [r for r in refs if os.path.basename(r).startswith(gdir + "_")]
+            if _pre and any(
+                os.path.basename(r).startswith((graph_dir(asm, u) or "\0") + "_")
+                for u, _f, _g, _rc in asm.outputs()
+                for r in refs
+            ):
                 pool = _pre
-        if gdir and pool is refs and any(
-                ('%s%s%s' % (os.sep, graph_dir(asm, u) or '\0', os.sep)) in r
-                for u, _f, _g, _rc in asm.outputs() for r in refs):
+        if (
+            gdir
+            and pool is refs
+            and any(
+                ("%s%s%s" % (os.sep, graph_dir(asm, u) or "\0", os.sep)) in r
+                for u, _f, _g, _rc in asm.outputs()
+                for r in refs
+            )
+        ):
             # ONLY WHERE THE PACKAGE SORTS ITS EXPORTS BY GRAPH. Most ship one graph and
             # put its maps straight in `reference_renders/`, and narrowing there would
             # discard every one of them. Where the directories DO exist, an empty result is
             # the answer: that graph exported nothing, and borrowing a sibling's map would
             # manufacture a score rather than find one.
-            own = [r for r in refs if ('%s%s%s' % (os.sep, gdir, os.sep)) in r]
+            own = [r for r in refs if ("%s%s%s" % (os.sep, gdir, os.sep)) in r]
             pool = own
-        paired = [r for r in pool if _key(name) and _key(name) in _key(os.path.basename(r))]
+        paired = [
+            r for r in pool if _key(name) and _key(name) in _key(os.path.basename(r))
+        ]
         if not paired:
             # THE IDENTIFIER FIRST, THEN THE DECLARED CHANNEL. An output's identifier is its
             # own name and is usually what its exported map is called too, which is why
@@ -631,8 +674,11 @@ def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render',
             # to resemble would guarantee a good score and measure nothing.
             _ch = manifest.output_channels(asm).get(uid)
             if _ch:
-                paired = [r for r in pool
-                          if _key(_ch) and _key(_ch) in _key(os.path.basename(r))]
+                paired = [
+                    r
+                    for r in pool
+                    if _key(_ch) and _key(_ch) in _key(os.path.basename(r))
+                ]
                 if paired:
                     name = _ch
         # ONE KEY PER GRAPH, when the caller asks. A multi-graph pack yields the same
@@ -642,8 +688,12 @@ def _compare_one(asm_path, refs, max_dim, outputsize=None, renderer='render',
         if qualify_graph and gdir:
             name = "%s/%s" % (gdir, name)
         if rec not in produced or not paired:
-            yield name, None, None, ('not rendered' if rec not in produced
-                                     else 'no matching reference')
+            yield (
+                name,
+                None,
+                None,
+                ("not rendered" if rec not in produced else "no matching reference"),
+            )
             continue
         ours = np.asarray(produced[rec], dtype=np.float64)
         ref = load_reference(paired[0])
@@ -673,48 +723,74 @@ def main(argv):
     .REFERENCE_FLOOR` is scored from. For a reading of where the renderer actually stands,
     pass `--renderer render2 --outputsize implied --dim 512` or larger.
     """
-    args = [a for a in argv[1:] if not a.startswith('--')]
-    opts = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '')
-                for a in argv[1:] if a.startswith('--'))
+    args = [a for a in argv[1:] if not a.startswith("--")]
+    opts = dict(
+        a[2:].split("=", 1) if "=" in a else (a[2:], "")
+        for a in argv[1:]
+        if a.startswith("--")
+    )
     # Also accept the space-separated spelling, which is what anyone types first.
     rest = list(argv[1:])
     while rest:
         a = rest.pop(0)
-        if a.startswith('--') and '=' not in a and rest and not rest[0].startswith('--'):
+        if (
+            a.startswith("--")
+            and "=" not in a
+            and rest
+            and not rest[0].startswith("--")
+        ):
             opts[a[2:]] = rest.pop(0)
             if opts[a[2:]] in args:
                 args.remove(opts[a[2:]])
     match = args[0] if args else None
-    osz = opts.get('outputsize') or None
-    if osz not in (None, 'implied', 'declared'):
+    osz = opts.get("outputsize") or None
+    if osz not in (None, "implied", "declared"):
         osz = (int(osz), int(osz))
-    elif osz == 'declared':
+    elif osz == "declared":
         osz = None
-    renderer = opts.get('renderer') or 'render'
-    dim = int(opts.get('dim') or RENDER_DIM)
-    want_bands = 'bands' in opts
-    want_structure = 'structure' in opts or want_bands
-    sgrid = int(opts['grid']) if opts.get('grid') else None
+    renderer = opts.get("renderer") or "render"
+    dim = int(opts.get("dim") or RENDER_DIM)
+    want_bands = "bands" in opts
+    want_structure = "structure" in opts or want_bands
+    sgrid = int(opts["grid"]) if opts.get("grid") else None
     packs = reference_packs(match)
     if not packs:
-        print('no packages with reference maps found under %s' % PACKS)
+        print("no packages with reference maps found under %s" % PACKS)
         return 0
     for pack, refs in sorted(packs.items()):
-        print('\n=== %s   (%d exported maps)   renderer %s, $outputsize %s, max_dim %d'
-              % (pack, len(refs), renderer,
-                 (implied_outputsize(refs) if osz == 'implied' else osz) or 'declared',
-                 dim))
-        print('   %-12s %-3s %-21s %-21s %-7s %s'
-              % ('output', 'ch', 'ours mean/std', 'reference mean/std', 'MAE',
-                 'DC = ours mean - ref mean'))
-        for name, chan, ours, ref in compare_pack(pack, refs, max_dim=dim,
-                                                  outputsize=osz,
-                                                  renderer=renderer,
-                                                  grid=None if want_structure else SIZE):
+        print(
+            "\n=== %s   (%d exported maps)   renderer %s, $outputsize %s, max_dim %d"
+            % (
+                pack,
+                len(refs),
+                renderer,
+                (implied_outputsize(refs) if osz == "implied" else osz) or "declared",
+                dim,
+            )
+        )
+        print(
+            "   %-12s %-3s %-21s %-21s %-7s %s"
+            % (
+                "output",
+                "ch",
+                "ours mean/std",
+                "reference mean/std",
+                "MAE",
+                "DC = ours mean - ref mean",
+            )
+        )
+        for name, chan, ours, ref in compare_pack(
+            pack,
+            refs,
+            max_dim=dim,
+            outputsize=osz,
+            renderer=renderer,
+            grid=None if want_structure else SIZE,
+        ):
             if chan is None:
-                print('   %-12s %s' % (name, ref))
+                print("   %-12s %s" % (name, ref))
                 continue
-            struct = ''
+            struct = ""
             if want_structure:
                 # THE STRUCTURE RATIO AND THE SCALAR SCORES, ON ONE LINE, BECAUSE EITHER
                 # ALONE MISLEADS. A profile that fills the panel while wrecking the
@@ -724,16 +800,25 @@ def main(argv):
                 # row here is comparable to a row of the table above and to the floors.
                 n, o_n, r_n = _structure_grid(ours, ref, sgrid)
                 (lo_o, ed_o), (lo_r, ed_r) = structure(o_n), structure(r_n)
-                struct = ('  |  n=%-5d low %.5f/%.5f=%5.2f  edge %.5f/%.5f=%5.2f'
-                          % (n, lo_o, lo_r, lo_o / max(lo_r, 1e-12),
-                             ed_o, ed_r, ed_o / max(ed_r, 1e-12)))
+                struct = "  |  n=%-5d low %.5f/%.5f=%5.2f  edge %.5f/%.5f=%5.2f" % (
+                    n,
+                    lo_o,
+                    lo_r,
+                    lo_o / max(lo_r, 1e-12),
+                    ed_o,
+                    ed_r,
+                    ed_o / max(ed_r, 1e-12),
+                )
                 if want_bands:
                     (bo, to), (br, tr) = band_power(o_n), band_power(r_n)
-                    struct += ('\n   %-16s bands %s  total %.3f'
-                               % ('', ' '.join('%d-%d %.2f' % (lo, hi, b / max(c, 1e-18))
-                                               for lo, hi, b, c
-                                               in zip(BANDS[:-1], BANDS[1:], bo, br)),
-                                  to / max(tr, 1e-18)))
+                    struct += "\n   %-16s bands %s  total %.3f" % (
+                        "",
+                        " ".join(
+                            "%d-%d %.2f" % (lo, hi, b / max(c, 1e-18))
+                            for lo, hi, b, c in zip(BANDS[:-1], BANDS[1:], bo, br)
+                        ),
+                        to / max(tr, 1e-18),
+                    )
                 ours, ref = resample(ours, SIZE)[:, :, 0], resample(ref, SIZE)[:, :, 0]
             # STRUCTURE AND GAIN ARE DIFFERENT FAILURES and MAE does not separate them.
             # The best affine fit of ours onto the reference, and the error that REMAINS
@@ -749,7 +834,11 @@ def main(argv):
             # y = -0.001x + 0.516, a slope of zero -- ours carries no information about the
             # reference at all, and its MAE of 0.248 is just the 0.23 offset between two
             # means.
-            fit = np.polyfit(ours.ravel(), ref.ravel(), 1) if ours.std() > 1e-9 else (0.0, 0.0)
+            fit = (
+                np.polyfit(ours.ravel(), ref.ravel(), 1)
+                if ours.std() > 1e-9
+                else (0.0, 0.0)
+            )
             resid = float(np.abs(np.polyval(fit, ours.ravel()) - ref.ravel()).mean())
             # THE CORRELATION IS PRINTED, and it did not used to be. This column was labelled
             # `r=` and carried `resid` -- the residual AFTER the affine fit -- while the
@@ -806,15 +895,31 @@ def main(argv):
             # It is signed and it is ours-minus-reference, the same order as the two mean
             # columns it is derived from, so a negative DC means our render is DARKER.
             dc = float(ours.mean() - ref.mean())
-            print('   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f  DC=%+.4f  corr=%+.4f'
-                  ' y=%.3fx%+.3f resid=%.4f uniq=%d%s%s'
-                  % (name if chan == 0 else '', chan, ours.mean(), ours.std(),
-                     ref.mean(), ref.std(), np.abs(ours - ref).mean(), dc,
-                     corr, fit[0], fit[1], resid, uniq,
-                     '  DEGENERATE' if (uniq < 20 or ours.std() < 0.1 * ref.std())
-                     else '', struct))
+            print(
+                "   %-12s %-3d %.4f / %-13.4f %.4f / %-13.4f %.4f  DC=%+.4f  corr=%+.4f"
+                " y=%.3fx%+.3f resid=%.4f uniq=%d%s%s"
+                % (
+                    name if chan == 0 else "",
+                    chan,
+                    ours.mean(),
+                    ours.std(),
+                    ref.mean(),
+                    ref.std(),
+                    np.abs(ours - ref).mean(),
+                    dc,
+                    corr,
+                    fit[0],
+                    fit[1],
+                    resid,
+                    uniq,
+                    "  DEGENERATE"
+                    if (uniq < 20 or ours.std() < 0.1 * ref.std())
+                    else "",
+                    struct,
+                )
+            )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

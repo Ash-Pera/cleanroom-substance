@@ -22,6 +22,7 @@ square image, which holds for every case checked against rendered output.
 
 Usage: python3 extract_images.py FILE.sbsasm [outdir]
 """
+
 import math
 import os
 import struct
@@ -43,10 +44,12 @@ def valid_tag(tag):
     """A resource tag is 0xAA in byte 1, a known format in byte 3, a known depth in
     byte 2, and a grayscale/colour flag in byte 0. Requiring all four rejects float
     bit patterns, which otherwise match the 0xAA marker alone."""
-    return (((tag >> 8) & 0xFF) == 0xAA
-            and ((tag >> 24) & 0xFF) in FORMATS
-            and ((tag >> 16) & 0xFF) in (0x08, 0x18)
-            and (tag & 0xFF) in (0x20, 0x21))
+    return (
+        ((tag >> 8) & 0xFF) == 0xAA
+        and ((tag >> 24) & 0xFF) in FORMATS
+        and ((tag >> 16) & 0xFF) in (0x08, 0x18)
+        and (tag & 0xFF) in (0x20, 0x21)
+    )
 
 
 def find_table(d, r, segment=None):
@@ -87,40 +90,60 @@ def describe(path):
             s = int(math.isqrt(px))
             if s * s == px:
                 w = h = s
-        imgs.append(dict(index=i, tag=tag, offset=off, size=size, code=code,
-                         bpp=bpp, mode=mode, format=name, w=w, h=h,
-                         gray=(tag & 0xFF) == 0x20,
-                         depth=16 if ((tag >> 16) & 0xFF) == 0x18 else 8))
-    return {"segment": base, "images": imgs,
-            "sums": sum(i["size"] for i in imgs) == base}
+        imgs.append(
+            dict(
+                index=i,
+                tag=tag,
+                offset=off,
+                size=size,
+                code=code,
+                bpp=bpp,
+                mode=mode,
+                format=name,
+                w=w,
+                h=h,
+                gray=(tag & 0xFF) == 0x20,
+                depth=16 if ((tag >> 16) & 0xFF) == 0x18 else 8,
+            )
+        )
+    return {
+        "segment": base,
+        "images": imgs,
+        "sums": sum(i["size"] for i in imgs) == base,
+    }
 
 
 def extract(path, outdir):
     from PIL import Image
+
     d = open(path, "rb").read()
     info = describe(path)
     if not info.get("images"):
         return info
     r = S.parse(path)
-    seg = d[0x38:0x38 + info["segment"]]
+    seg = d[0x38 : 0x38 + info["segment"]]
     os.makedirs(outdir, exist_ok=True)
     stem = os.path.splitext(os.path.basename(path))[0]
     for im in info["images"]:
         if not (im["w"] and im["mode"]):
             im["file"] = None
             continue
-        raw = seg[im["offset"] - 4:im["offset"] - 4 + im["size"]]
+        raw = seg[im["offset"] - 4 : im["offset"] - 4 + im["size"]]
         if len(raw) < im["size"]:
             im["file"] = None
             continue
-        p = os.path.join(outdir, f"{stem}_{im['index']}_{im['w']}x{im['h']}_{im['format']}.png")
+        p = os.path.join(
+            outdir, f"{stem}_{im['index']}_{im['w']}x{im['h']}_{im['format']}.png"
+        )
         if im["mode"] == "RGBA16":
             # PIL has no 16-bit-per-channel RGBA loader; take the high byte of each
             import numpy as _np
+
             a = _np.frombuffer(raw, dtype="<u2").reshape(im["h"], im["w"], 4)
             Image.fromarray((a >> 8).astype("uint8"), "RGBA").save(p)
         elif im["mode"] == "I;16":
             import numpy as _np
+
             a = _np.frombuffer(raw, dtype="<u2").reshape(im["h"], im["w"])
             Image.fromarray((a >> 8).astype("uint8"), "L").save(p)
         else:
@@ -130,10 +153,15 @@ def extract(path, outdir):
 
 
 if __name__ == "__main__":
-    out = (extract(sys.argv[1], sys.argv[2]) if len(sys.argv) > 2
-           else describe(sys.argv[1]))
+    out = (
+        extract(sys.argv[1], sys.argv[2])
+        if len(sys.argv) > 2
+        else describe(sys.argv[1])
+    )
     print(f"segment {out['segment']} bytes, sizes sum exactly: {out.get('sums')}")
     for im in out.get("images", []):
         dim = f"{im['w']}x{im['h']}" if im["w"] else "dims unresolved"
-        print(f"  [{im['index']}] {im['format']:<8} {dim:<12} {im['size']:>9} bytes "
-              f"{'gray' if im['gray'] else 'colour'} {im['depth']}-bit  {im.get('file') or ''}")
+        print(
+            f"  [{im['index']}] {im['format']:<8} {dim:<12} {im['size']:>9} bytes "
+            f"{'gray' if im['gray'] else 'colour'} {im['depth']}-bit  {im.get('file') or ''}"
+        )

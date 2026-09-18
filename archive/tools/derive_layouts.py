@@ -22,6 +22,7 @@ is claimed only when zero is the minority reading.
 
 Keys seen fewer than `MIN` times are dropped rather than guessed at.
 """
+
 import collections
 import json
 import math
@@ -63,9 +64,12 @@ def header_sizes(paths):
             # corpus. Blinding the model to it moved 29 of 842 keys and 94 header sizes.
             # A record's inline programs are observable without any table: a slot whose
             # +52 target is a decodable program lying inside this same record.
-            inline = [r.words[s] + 52 for s in range(1, len(r.words))
-                      if r.offset <= r.words[s] + 52 < r.end
-                      and a.program_span(r.words[s] + 52, r.end)]
+            inline = [
+                r.words[s] + 52
+                for s in range(1, len(r.words))
+                if r.offset <= r.words[s] + 52 < r.end
+                and a.program_span(r.words[s] + 52, r.end)
+            ]
             if not inline:
                 continue
             k = (r.filter_id, r.cls, r.words[1] & LAYOUT_MASK.get(r.filter_id, 0))
@@ -114,12 +118,12 @@ def derive(paths, headers=None):
                     # layout, not a record to skip: counting only the records long enough
                     # to have a slot let a slot present in 1 of 37 records be claimed as
                     # an edge for all 37, and every such claim became an unresolved edge.
-                    role[k][sl]['X'] += 1
+                    role[k][sl]["X"] += 1
                     continue
                 v = r.words[sl]
                 q = v + 52
                 if a.body_lo <= q < a.body_hi and a.program_span(q) is not None:
-                    role[k][sl]['P'] += 1
+                    role[k][sl]["P"] += 1
                 # NOT counted here: a program starting AT the slot. `Record.size_or_baked`
                 # does try that reading, and it is right there -- one named slot, tried
                 # only after the pointer and float readings fail, with 2 slots in
@@ -128,7 +132,7 @@ def derive(paths, headers=None):
                 # where positions that decode are everywhere, and it claimed 955,857
                 # parameter readings including slot 6 of blend across 129,610 records.
                 elif 0 < v < r.index and v in tags and (r.tag >> 8) == (tags[v] >> 8):
-                    role[k][sl]['E'] += 1
+                    role[k][sl]["E"] += 1
                     targets[k][sl].add(v)
                 elif 0 < v < r.index and v in tags:
                     # A backward reference whose target has a DIFFERENT resolution.
@@ -137,16 +141,16 @@ def derive(paths, headers=None):
                     # preserves resolution, which is false for the filters that resize.
                     # transformation agrees on resolution in only 39.5% of its backward
                     # references, so this test rejected its input edge in 16,484 records.
-                    role[k][sl]['B'] += 1
+                    role[k][sl]["B"] += 1
                     targets[k][sl].add(v)
                 elif v == 0:
-                    role[k][sl]['Z'] += 1
+                    role[k][sl]["Z"] += 1
                 else:
-                    f32 = struct.unpack('<f', struct.pack('<I', v))[0]
+                    f32 = struct.unpack("<f", struct.pack("<I", v))[0]
                     if math.isfinite(f32) and 1e-6 <= abs(f32) <= 1e6:
-                        role[k][sl]['F'] += 1
+                        role[k][sl]["F"] += 1
                     else:
-                        role[k][sl]['.'] += 1
+                        role[k][sl]["."] += 1
     out = {}
     for k, slots in role.items():
         # Both guards, not just the record count. `header_sizes` has required three
@@ -159,10 +163,11 @@ def derive(paths, headers=None):
         edges, progs = [], []
         for sl, c in slots.items():
             t = sum(c.values())
-            if c['X'] / t > 0.05:
-                continue                  # not present often enough to be part of the layout
-            if c['E'] / t > 0.9 and (len(targets[k][sl]) > 0.05 * t
-                                     or len(targets[k][sl]) >= 5):
+            if c["X"] / t > 0.05:
+                continue  # not present often enough to be part of the layout
+            if c["E"] / t > 0.9 and (
+                len(targets[k][sl]) > 0.05 * t or len(targets[k][sl]) >= 5
+            ):
                 # The diversity guard applies HERE too, not only to the resizing-filter
                 # branch below. A slot holding a constant small integer that happens to
                 # name a same-resolution record passes the resolution test at 100% with
@@ -176,7 +181,7 @@ def derive(paths, headers=None):
                 # (diversity 0.028) -- the ratio alone would discard both, and slot 3 is a
                 # real edge to a shared control map.
                 edges.append(sl)
-            elif (c['E'] + c['B']) / t > 0.9 and len(targets[k][sl]) > 0.05 * t:
+            elif (c["E"] + c["B"]) / t > 0.9 and len(targets[k][sl]) > 0.05 * t:
                 # A resizing filter's edge: almost always a backward reference, but not
                 # to a same-resolution record. Value diversity is what keeps this from
                 # being the small-integer trap that has caught this project seven times --
@@ -188,14 +193,14 @@ def derive(paths, headers=None):
                 # in that gap, keeping 96.1% of known edges and admitting 0% of packed
                 # words. Confirmed independently by reachability from the output table.
                 edges.append(sl)
-            elif c['P'] / t > 0.5:
+            elif c["P"] / t > 0.5:
                 # A slot that is a program in the majority of a key's records is a
                 # program slot even when the rest of them hold an edge instead. Requiring
                 # one bucket to reach 90% classified such a slot as neither and emitted an
                 # empty layout: pixelprocessor (20,137,0) is 87% program and 13% edge
                 # across slots 2, 3 and 4, and lost all three.
                 progs.append(sl)
-            elif (c['P'] + c['F'] + c['Z']) / t > 0.9 and (c['P'] + c['F']) / t > 0.5:
+            elif (c["P"] + c["F"] + c["Z"]) / t > 0.9 and (c["P"] + c["F"]) / t > 0.5:
                 # The parameter union: a program, a float, or zero. Zero is a real
                 # parameter value - it is the default of `levelinlow`, of every offset
                 # and of the matrix off-diagonals - so excluding it drops genuine
@@ -211,14 +216,15 @@ def derive(paths, headers=None):
             after = max(edges) + 1
             if after in progs:
                 progs = [after] + [x for x in progs if x != after]
-        out['%d,%d,%d' % k] = [edges, progs, seen[k], headers.get(k, 0)]
+        out["%d,%d,%d" % k] = [edges, progs, seen[k], headers.get(k, 0)]
     return out
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Through `corpus.paths`: layouts.json is DERIVED from this list, so a duplicated
     # corpus does not just inflate the counts, it reweights which keys clear the MIN
     # threshold at all. See tools/corpus.py.
     import corpus
+
     paths = corpus.paths(sys.argv[1] if len(sys.argv) > 1 else None, verbose=True)
     json.dump(derive(paths, header_sizes(paths)), sys.stdout, indent=0, sort_keys=True)

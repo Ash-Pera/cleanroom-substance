@@ -72,15 +72,16 @@ Run it to derive the legend and check it against the one walk.py states:
 
     python3 tools/node_census.py
 """
+
 import collections
 import struct
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import corpus                                                        # noqa: E402
-import walk                                                          # noqa: E402
-from sbsasm import Assembly                                          # noqa: E402
+import corpus  # noqa: E402
+import walk  # noqa: E402
+from sbsasm import Assembly  # noqa: E402
 
 # Candidate sizes to score, in words. Nothing observed approaches this; it bounds the
 # scan, it does not bound a node.
@@ -151,7 +152,7 @@ def lands(a, off, span_end, rec_end):
         return True
     if off + 4 > rec_end:
         return False
-    w = struct.unpack_from('<I', a.data, off)[0]
+    w = struct.unpack_from("<I", a.data, off)[0]
     if is_chain(w):
         return True
     return w > 0xFF and (w & 0xF) in (8, 3, 9, 0xB)
@@ -167,7 +168,7 @@ def harvest(files=None):
     implementations of one walk is how the nibble-8 category error survived as long as it
     did (see `sbsasm.fx_entry_walk`'s note on the same hazard).
     """
-    for p in (corpus.paths() if files is None else files):
+    for p in corpus.paths() if files is None else files:
         try:
             a = Assembly(p)
         except Exception:
@@ -175,7 +176,7 @@ def harvest(files=None):
         for r in a.records:
             if r.filter_id != 4 or len(r.words) < 4:
                 continue
-            root = r.fx_root                     # the walk's slot, not a hardcoded 2
+            root = r.fx_root  # the walk's slot, not a hardcoded 2
             if root is None or not (r.offset < root < r.end):
                 continue
             spans = []
@@ -190,7 +191,7 @@ def harvest(files=None):
             for s, e in spans + [(r.end, r.end)]:
                 pos = (pos + 3) & ~3
                 if pos + 8 <= s:
-                    tag = struct.unpack_from('<I', a.data, pos)[0]
+                    tag = struct.unpack_from("<I", a.data, pos)[0]
                     yield a, tag, pos, s, r.end
                 pos = max(pos, e)
 
@@ -214,7 +215,7 @@ def measure(files=None, ptr_cap=4000):
         if probed[tag] < ptr_cap:
             probed[tag] += 1
             for off in range(4, min(s - pos, 64), 4):
-                v = struct.unpack_from('<I', a.data, pos + off)[0]
+                v = struct.unpack_from("<I", a.data, pos + off)[0]
                 q = v + 52
                 if a.body_lo <= q < a.body_hi and a.valid_program(q):
                     ptr[tag][off] += 1
@@ -237,8 +238,11 @@ def derive(admit, seen):
     out = {}
     for kind, tags in bykind.items():
         n = sum(seen[t] for t in tags)
-        ok = [w for w in range(1, MAX_WORDS + 1)
-              if sum(admit[t].get(w, 0) for t in tags) / n >= AGREE]
+        ok = [
+            w
+            for w in range(1, MAX_WORDS + 1)
+            if sum(admit[t].get(w, 0) for t in tags) / n >= AGREE
+        ]
         pick = next((w for w in ok if w >= 2), None)
         out[kind] = (pick, ok, len(tags), n)
     return out
@@ -248,49 +252,59 @@ def main():
     admit, seen, ptr = measure()
     node_cells = sum(n for t, n in seen.items() if is_node_tag(t))
     node_tags = sum(1 for t in seen if is_node_tag(t))
-    print('fx cells harvested %d   node cells %d   node tags %d\n'
-          % (sum(seen.values()), node_cells, node_tags))
+    print(
+        "fx cells harvested %d   node cells %d   node tags %d\n"
+        % (sum(seen.values()), node_cells, node_tags)
+    )
 
     legend = derive(admit, seen)
-    print('derived size legend, by the landing test (legend-free instrument):')
-    print('   kind  tags   cells  size  admissible        walk.NODE_LEGEND')
+    print("derived size legend, by the landing test (legend-free instrument):")
+    print("   kind  tags   cells  size  admissible        walk.NODE_LEGEND")
     agree = disagree = selfsame = 0
     for kind, (pick, ok, ntags, n) in sorted(legend.items(), key=lambda kv: -kv[1][3]):
         stated = walk.NODE_LEGEND.get(kind)
         stated = stated[0] if stated else None
         if pick is None:
-            verdict = 'no size lands'
+            verdict = "no size lands"
         elif stated is None:
-            verdict = 'NEW' + ('  (thin)' if n < MIN_CELLS else '')
+            verdict = "NEW" + ("  (thin)" if n < MIN_CELLS else "")
         elif stated == pick:
             # A row this instrument SUPPLIED cannot also corroborate it. Counting those as
             # agreements would turn a tautology into a headline; they are named instead.
             if kind in walk.NODE_LEGEND_FROM_LANDING:
-                verdict = 'agrees (this instrument supplied it -- not a check)'
+                verdict = "agrees (this instrument supplied it -- not a check)"
                 selfsame += 1
             else:
-                verdict = 'agrees'
+                verdict = "agrees"
                 agree += 1
         else:
-            verdict = 'DISAGREES, states %d' % stated
+            verdict = "DISAGREES, states %d" % stated
             disagree += 1
-        print('  %#04x %5d %7d %5s  %-17s %s'
-              % (kind, ntags, n, pick, ','.join(str(w) for w in ok) or '-', verdict))
-    print('\n  %d kinds reproduced independently (the gap derived them, the landing test'
-          ' agrees), %d disagreements' % (agree, disagree))
-    print('  %d further kinds stated on this instrument alone -- no second reading'
-          % selfsame)
+        print(
+            "  %#04x %5d %7d %5s  %-17s %s"
+            % (kind, ntags, n, pick, ",".join(str(w) for w in ok) or "-", verdict)
+        )
+    print(
+        "\n  %d kinds reproduced independently (the gap derived them, the landing test"
+        " agrees), %d disagreements" % (agree, disagree)
+    )
+    print(
+        "  %d further kinds stated on this instrument alone -- no second reading"
+        % selfsame
+    )
 
-    print('\npointer maps, top tags:')
+    print("\npointer maps, top tags:")
     for t, n in sorted(seen.items(), key=lambda kv: -kv[1])[:10]:
         if is_chain(t) or not n:
             continue
-        m = ['+%d' % o for o, h in sorted(ptr[t].items()) if h / min(n, 4000) > 0.9]
+        m = ["+%d" % o for o, h in sorted(ptr[t].items()) if h / min(n, 4000) > 0.9]
         size = legend.get(t & 0xFF, (None,))[0] if is_node_tag(t) else None
-        print('   %#012x %-9s pointers %s'
-              % (t, ('size %dw' % size) if size else 'entry', ' '.join(m) or '-'))
+        print(
+            "   %#012x %-9s pointers %s"
+            % (t, ("size %dw" % size) if size else "entry", " ".join(m) or "-")
+        )
     return 1 if disagree else 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

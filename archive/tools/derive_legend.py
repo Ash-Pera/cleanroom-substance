@@ -100,6 +100,7 @@ population can see it, bit 27 by the eight that can, and bit 19 is set on 903,60
 corpus records and varies in no filter's population at all, so nothing anywhere measures it.
 1 + 1 + 0 = 2 closes the residual exactly, and the closure is the check.
 """
+
 import argparse
 import collections
 import json
@@ -109,34 +110,96 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import _repo_root                                            # noqa: F401  (puts tools/ on the path)
+import _repo_root  # noqa: F401  (puts tools/ on the path)
 import derive_costs
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), 'tools', 'legend.json')
+OUT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "tools",
+    "legend.json",
+)
 
-NAMES = {0: 'gradient', 1: 'blend', 2: 'transformation', 3: 'shuffle', 4: 'fxmaps',
-         # 5 is `PROJECT_LABELS`' descriptive label and not a name any permitted source
-         # states -- see SPEC 12. What is added here is its SHAPE, which the file states.
-         5: 'vectorshape',
-         6: 'uniform', 7: 'warp', 8: 'emboss', 10: 'blur', 11: 'dirmotionblur',
-         12: 'directionalwarp', 13: 'sharpen', 14: 'hsl', 15: 'levels', 16: 'bitmap',
-         17: 'text', 18: 'normal', 19: 'dyngradient', 20: 'pixelprocessor',
-         21: 'distance', 22: 'curve'}
+NAMES = {
+    0: "gradient",
+    1: "blend",
+    2: "transformation",
+    3: "shuffle",
+    4: "fxmaps",
+    # 5 is `PROJECT_LABELS`' descriptive label and not a name any permitted source
+    # states -- see SPEC 12. What is added here is its SHAPE, which the file states.
+    5: "vectorshape",
+    6: "uniform",
+    7: "warp",
+    8: "emboss",
+    10: "blur",
+    11: "dirmotionblur",
+    12: "directionalwarp",
+    13: "sharpen",
+    14: "hsl",
+    15: "levels",
+    16: "bitmap",
+    17: "text",
+    18: "normal",
+    19: "dyngradient",
+    20: "pixelprocessor",
+    21: "distance",
+    22: "curve",
+}
 
 #: How the record's shape decides whether it carries a w1 word. `tagbit0` and `v9` are
 #: `record_layout.two_shape_w1`'s two rules, restated as data rather than as a branch.
-HAS_W1 = {0: 'never', 1: 'always', 2: 'always', 3: 'tagbit0', 4: 'always', 5: 'never',
-          6: 'never',
-          7: 'v9', 8: 'always', 10: 'never', 11: 'always', 12: 'always', 13: 'never',
-          14: 'never', 15: 'always', 16: 'never', 17: 'always', 18: 'always',
-          19: 'never', 20: 'always', 21: 'always', 22: 'never'}
+HAS_W1 = {
+    0: "never",
+    1: "always",
+    2: "always",
+    3: "tagbit0",
+    4: "always",
+    5: "never",
+    6: "never",
+    7: "v9",
+    8: "always",
+    10: "never",
+    11: "always",
+    12: "always",
+    13: "never",
+    14: "never",
+    15: "always",
+    16: "never",
+    17: "always",
+    18: "always",
+    19: "never",
+    20: "always",
+    21: "always",
+    22: "never",
+}
 
 #: The filter's fixed image-input arity -- `decompose.BASE_INPUTS`, a format fact and not a
 #: fitted memo entry. `shuffle` is `n_hdr`: its no-w1 shape takes one image at slot 1 and
 #: its w1 shape two at slots 2-3, so its base arity IS the number of mask words.
-BASE = {0: 1, 1: 2, 2: 1, 3: None, 4: 0, 5: 0, 6: 0, 7: 2, 8: 2, 10: 1, 11: 1, 12: 2,
-        13: 1, 14: 1, 15: 1, 16: 0, 17: 0, 18: 1, 19: 2, 20: 0, 21: 1, 22: 1}
+BASE = {
+    0: 1,
+    1: 2,
+    2: 1,
+    3: None,
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 2,
+    8: 2,
+    10: 1,
+    11: 1,
+    12: 2,
+    13: 1,
+    14: 1,
+    15: 1,
+    16: 0,
+    17: 0,
+    18: 1,
+    19: 2,
+    20: 0,
+    21: 1,
+    22: 1,
+}
 
 #: The filter's FIXED PREFIX: slots every record of the filter carries whatever its masks
 #: say. Each is a slot some reader already resolves, which is what makes it structural
@@ -152,7 +215,7 @@ FIXED = {0: 2, 4: 1, 5: 1, 16: 1, 17: 3, 20: 1, 22: 2}
 #: each away from the default: fxmaps' root pointer comes BEFORE its inputs (slot 2, with
 #: the arity run contiguous from slot 3), and pixelprocessor's own program comes after the
 #: CLASS BLOCK rather than before it (SPEC 6.1).
-FIXED_AT = {4: 'before_inputs', 20: 'after_class'}
+FIXED_AT = {4: "before_inputs", 20: "after_class"}
 
 #: WHICH BITS OF `w1` BEGIN A TWO-BIT FIELD. 32 numbers, and the part of the legend this
 #: script states rather than finds -- the search that produced them is in FORMAT-NOTES.md.
@@ -179,10 +242,27 @@ FIXED_AT = {4: 'before_inputs', 20: 'after_class'}
 #: There is no `w1_shift` and no straddle table here because there is no grid to shift and
 #: no field to un-straddle: a field begins at its own bit.
 W1_OFFSETS = {
-    0: [], 1: [4, 6, 9], 2: [6, 25, 28], 3: [], 4: [0, 2, 4, 6, 8], 6: [], 7: [],
-    8: [1, 3, 5, 7], 10: [], 11: [0, 2], 12: [1, 3, 7], 13: [], 14: [],
-    15: [0, 2, 4, 6, 8], 16: [], 17: [6, 8, 10], 18: [0, 2, 4], 19: [], 20: [],
-    21: [2], 22: [],
+    0: [],
+    1: [4, 6, 9],
+    2: [6, 25, 28],
+    3: [],
+    4: [0, 2, 4, 6, 8],
+    6: [],
+    7: [],
+    8: [1, 3, 5, 7],
+    10: [],
+    11: [0, 2],
+    12: [1, 3, 7],
+    13: [],
+    14: [],
+    15: [0, 2, 4, 6, 8],
+    16: [],
+    17: [6, 8, 10],
+    18: [0, 2, 4],
+    19: [],
+    20: [],
+    21: [2],
+    22: [],
 }
 
 #: The one filter whose parameter block is not emitted in ascending bit order (SPEC 6.1):
@@ -306,23 +386,21 @@ SHAPE4 = {3: 24}
 
 WIDTHS = (0, 1, 2, 4)
 GREY, COLOUR = 0, 1
-_CNAME = {GREY: 'grey', COLOUR: 'colour'}
+_CNAME = {GREY: "grey", COLOUR: "colour"}
 
 
 def has_w1(f, w0, ver):
     """Does a record of this filter, tag `w0`, version `ver` carry a w1 word?"""
     rule = HAS_W1.get(f)
-    if rule == 'always':
+    if rule == "always":
         return True
-    if rule == 'never':
+    if rule == "never":
         return False
-    if rule == 'tagbit0':
+    if rule == "tagbit0":
         return bool(w0 & 1)
-    if rule == 'v9':
+    if rule == "v9":
         return None if ver is None else ver >= 0x90000
     return None
-
-
 
 
 def _keys(table, f):
@@ -351,7 +429,7 @@ def _row(f, w0, w1, clsbits):
         if (w0 >> b) & 1:
             if b == shape4:
                 if not has:
-                    w1_on.append(('shape4', b))    # the no-w1 shape bakes the weights
+                    w1_on.append(("shape4", b))  # the no-w1 shape bakes the weights
             else:
                 cls_on.append(b)
     conj_on = 0
@@ -366,13 +444,13 @@ def _row(f, w0, w1, clsbits):
             forced += (w1 >> b) & 1
         iv = W1_INT.get(f)
         if iv and (w1 >> iv[0]) & iv[1] == iv[2]:
-            forced += 1                            # the integer field's program arm
+            forced += 1  # the integer field's program arm
         for sh in W1_OFFSETS.get(f, ()):
             st = (w1 >> sh) & 3
             if st == 1:
-                w1_on.append(('w1', sh))
+                w1_on.append(("w1", sh))
             elif st in (2, 3):
-                forced += 1                        # a pointer, or an edge slot
+                forced += 1  # a pointer, or an edge slot
     return cls_on, w1_on, conj_on, forced
 
 
@@ -399,12 +477,12 @@ def _system(f, keys, clsbits, c0):
         cls_on, w1_on, conj_on, forced = _row(f, w0, w1, clsbits)
         v = collections.Counter()
         for b in cls_on:
-            v[col(('cls', b))] += 1
+            v[col(("cls", b))] += 1
         for c in w1_on:
             v[col(c)] += 1
         if conj_on:
             for bx, by in CONJ.get(f, ()):
-                v[col(('conj', bx, by))] += 1
+                v[col(("conj", bx, by))] += 1
         triples.append(v)
         y.append(h - forced)
         wt.append(n)
@@ -412,7 +490,7 @@ def _system(f, keys, clsbits, c0):
     # the report can say "unexercised" rather than leaving the cell out and letting a
     # reader assume it was measured at zero.
     for sh in W1_OFFSETS.get(f, ()):
-        col(('w1', sh))
+        col(("w1", sh))
     X = np.zeros((len(triples), len(cols)))
     for i, v in enumerate(triples):
         for j, m in v.items():
@@ -448,8 +526,11 @@ def _identified(X, free):
     tol = max(M.shape) * (sv[0] if len(sv) else 0.0) * np.finfo(float).eps
     padded = np.concatenate([sv, np.zeros(vt.shape[0] - len(sv))])
     nb = vt[padded <= tol]
-    blind = (np.linalg.norm(nb, axis=0) > 1e-9) if nb.size \
+    blind = (
+        (np.linalg.norm(nb, axis=0) > 1e-9)
+        if nb.size
         else np.zeros(int(live.sum()), dtype=bool)
+    )
     out[np.flatnonzero(live)] = ~blind
     return out
 
@@ -468,8 +549,11 @@ def _solve(cols, X, y, wt, pinned):
         sol = np.rint(np.linalg.lstsq(F * sw[:, None], rhs * sw, rcond=None)[0])
         for k, j in enumerate(free):
             widths[cols[j]] = int(sol[k])
-    pred = (sum(X[:, j] * widths[cols[j]] for j in range(len(cols)))
-            if len(cols) else np.zeros(len(y)))
+    pred = (
+        sum(X[:, j] * widths[cols[j]] for j in range(len(cols)))
+        if len(cols)
+        else np.zeros(len(y))
+    )
     ok = np.abs(pred - y) < 1e-9
     return widths, (float(wt[ok].sum() / wt.sum()) if wt.sum() else 0.0), ok
 
@@ -508,7 +592,7 @@ def _format_wide(measured, cell, minimum=5):
             vals[wd[cell]] += 1
     if len(vals) != 1:
         return None
-    (v, n), = vals.items()
+    ((v, n),) = vals.items()
     return v if n >= minimum else None
 
 
@@ -533,7 +617,9 @@ def derive(obs=None):
         keys = _keys(obs, f)
         if not keys:
             continue
-        clsbits = sorted({b for b in range(16, 32) if any((k[0] >> b) & 1 for k in keys)})
+        clsbits = sorted(
+            {b for b in range(16, 32) if any((k[0] >> b) & 1 for k in keys)}
+        )
         for c0 in (GREY, COLOUR):
             r = _system(f, keys, clsbits, c0)
             if r is None:
@@ -541,13 +627,15 @@ def derive(obs=None):
             cols, X, y, wt = r
             ident = _identified(X, list(range(len(cols))))
             w, _e, _ok = _solve(cols, X, y, wt, {})
-            sysd[(f, c0)] = dict(cols=cols, X=X, y=y, wt=wt, ident=ident, clsbits=clsbits)
+            sysd[(f, c0)] = dict(
+                cols=cols, X=X, y=y, wt=wt, ident=ident, clsbits=clsbits
+            )
             measured[(f, c0)] = {c: w[c] for j, c in enumerate(cols) if ident[j]}
 
     result = {}
     for (f, c0), d in sorted(sysd.items()):
-        cols, X, y, wt = d['cols'], d['X'], d['y'], d['wt']
-        why = {c: 'measured' for j, c in enumerate(cols) if d['ident'][j]}
+        cols, X, y, wt = d["cols"], d["X"], d["y"], d["wt"]
+        why = {c: "measured" for j, c in enumerate(cols) if d["ident"][j]}
         pinned = {}
         # RESOLVE ONE BLIND COLUMN AT A TIME, BEST SOURCE FIRST, and re-test identifiability
         # after each: pinning one column of a blind direction can make the rest of that
@@ -562,37 +650,45 @@ def derive(obs=None):
         while True:
             free = [j for j, c in enumerate(cols) if c not in pinned]
             idf = _identified(X, free)
-            blind = [free[i] for i in range(len(free))
-                     if not idf[i] and X[:, free[i]].any()]
+            blind = [
+                free[i] for i in range(len(free)) if not idf[i] and X[:, free[i]].any()
+            ]
             if not blind:
                 break
             pick = None
             for j in blind:
                 v = _borrowable(c0, measured.get((f, 1 - c0), {}).get(cols[j]))
                 if v is not None:
-                    pick = (j, v, 'other-colour')
+                    pick = (j, v, "other-colour")
                     break
             if pick is None:
                 for j in blind:
                     v = _format_wide(measured, cols[j])
                     if v is not None:
-                        pick = (j, v, 'format-wide')
+                        pick = (j, v, "format-wide")
                         break
             if pick is None:
-                pick = (blind[0], 0, 'unmeasured')
+                pick = (blind[0], 0, "unmeasured")
             j, v, src = pick
             pinned[cols[j]] = v
             why[cols[j]] = src
         widths, exact, ok = _solve(cols, X, y, wt, pinned)
         for c in cols:
-            why.setdefault(c, 'residual')
+            why.setdefault(c, "residual")
         exercise = {c: float(wt[X[:, j] > 0].sum()) for j, c in enumerate(cols)}
         for c, n in exercise.items():
             if not n:
-                why[c] = 'unexercised'
+                why[c] = "unexercised"
         result.setdefault(f, {})[c0] = dict(
-            widths=widths, exact=exact, why=why, exercise=exercise, cols=cols,
-            records=float(wt.sum()), keys=len(y), missed=float(wt[~ok].sum()))
+            widths=widths,
+            exact=exact,
+            why=why,
+            exercise=exercise,
+            cols=cols,
+            records=float(wt.sum()),
+            keys=len(y),
+            missed=float(wt[~ok].sum()),
+        )
     return result
 
 
@@ -614,12 +710,12 @@ def _kind(f, cell, colours):
             # The filter has no record of this colour AT ALL -- `text` is grey on all 59,
             # `normal` and `hsl` colour on every one. Distinct from a cell this colour's
             # records simply never set, and the two are marked differently.
-            ev[_CNAME[c0]] = 'no-records'
+            ev[_CNAME[c0]] = "no-records"
             continue
-        src = d['why'].get(cell, 'unexercised')
+        src = d["why"].get(cell, "unexercised")
         ev[_CNAME[c0]] = src
-        if src not in ('unexercised', 'unmeasured'):
-            seen[c0] = d['widths'][cell]
+        if src not in ("unexercised", "unmeasured"):
+            seen[c0] = d["widths"][cell]
     if not seen:
         return None, ev
     if len(seen) == 2:
@@ -627,86 +723,99 @@ def _kind(f, cell, colours):
         if g == k:
             return (g if g in WIDTHS else [g, k]), ev
         if (g, k) == (1, 4):
-            return 'C', ev
+            return "C", ev
         return [g, k], ev
-    (_c0, w), = seen.items()
+    ((_c0, w),) = seen.items()
     return (w if w in WIDTHS else [w]), ev
 
 
 def _spec(f, colours):
     """One filter's entry in `legend.json`."""
-    cells = sorted({c for d in colours.values() for c in d['cols']},
-                   key=lambda c: (c[0], c[1]))
+    cells = sorted(
+        {c for d in colours.values() for c in d["cols"]}, key=lambda c: (c[0], c[1])
+    )
     cls, w1, conj, shape4, free = {}, {}, [], None, []
     evidence = {}
     for c in cells:
         kind, ev = _kind(f, c, colours)
-        if c[0] == 'cls':
-            evidence['cls.%d' % c[1]] = ev
+        if c[0] == "cls":
+            evidence["cls.%d" % c[1]] = ev
             if kind:
                 cls[str(c[1])] = kind
             else:
                 free.append(c[1])
-        elif c[0] == 'w1':
-            evidence['w1.%d' % c[1]] = ev
-            w1[str(c[1])] = kind          # None = declared, never baked here: kind unknown
-        elif c[0] == 'shape4':
-            evidence['shape4.%d' % c[1]] = ev
+        elif c[0] == "w1":
+            evidence["w1.%d" % c[1]] = ev
+            w1[str(c[1])] = kind  # None = declared, never baked here: kind unknown
+        elif c[0] == "shape4":
+            evidence["shape4.%d" % c[1]] = ev
             shape4 = [c[1], kind]
-        elif c[0] == 'conj':
-            evidence['conj.%d.%d' % (c[1], c[2])] = ev
+        elif c[0] == "conj":
+            evidence["conj.%d.%d" % (c[1], c[2])] = ev
             conj.append([c[1], c[2], kind])
-    spec = {'name': NAMES.get(f, str(f)), 'has_w1': HAS_W1[f],
-            'base': BASE[f], 'fixed': FIXED.get(f, 0),
-            'cls': cls, 'w1': w1}
+    spec = {
+        "name": NAMES.get(f, str(f)),
+        "has_w1": HAS_W1[f],
+        "base": BASE[f],
+        "fixed": FIXED.get(f, 0),
+        "cls": cls,
+        "w1": w1,
+    }
     if free:
         # A class bit the population SAW and measured at zero. It gates no stored value, so
         # the walk allocates nothing for it -- but "measured at zero" and "this legend has
         # never heard of the bit" are different findings, and `bit_census` reports them in
         # different columns.
-        spec['cls_free'] = sorted(free)
+        spec["cls_free"] = sorted(free)
     if f in FIXED_AT:
-        spec['fixed_at'] = FIXED_AT[f]
+        spec["fixed_at"] = FIXED_AT[f]
     if f in W1_ORDER:
-        spec['w1_order'] = W1_ORDER[f]
+        spec["w1_order"] = W1_ORDER[f]
     if f in EDGE_BITS:
-        spec['edge_bits'] = EDGE_BITS[f]
+        spec["edge_bits"] = EDGE_BITS[f]
     if f in ARITY:
-        spec['arity'] = list(ARITY[f])
+        spec["arity"] = list(ARITY[f])
     if f in W1_INT:
         # (shift, mask, program value): the one w1 region in the corpus that is an INTEGER
         # rather than two-bit fields. See W1_INT for why no field partition can hold it.
-        spec['w1_int'] = list(W1_INT[f])
+        spec["w1_int"] = list(W1_INT[f])
     if f in W1_INT_REFUSE:
         # (lo, hi) inclusive: values of that integer the corpus never states, whose cost is
         # therefore undetermined. The readers refuse rather than price them -- see
         # W1_INT_REFUSE for why zero is not the safe default here.
-        spec['w1_int_refuse'] = list(W1_INT_REFUSE[f])
+        spec["w1_int_refuse"] = list(W1_INT_REFUSE[f])
     if conj:
-        spec['conj'] = sorted(conj)
+        spec["conj"] = sorted(conj)
     if shape4 is not None:
-        spec['shape4'] = shape4
+        spec["shape4"] = shape4
     if f in MIN_VERSION:
-        spec['min_version'] = MIN_VERSION[f]
-    spec['evidence'] = evidence
-    spec['exact'] = {_CNAME[c0]: round(d['exact'], 6) for c0, d in sorted(colours.items())}
-    spec['records'] = {_CNAME[c0]: int(d['records']) for c0, d in sorted(colours.items())}
+        spec["min_version"] = MIN_VERSION[f]
+    spec["evidence"] = evidence
+    spec["exact"] = {
+        _CNAME[c0]: round(d["exact"], 6) for c0, d in sorted(colours.items())
+    }
+    spec["records"] = {
+        _CNAME[c0]: int(d["records"]) for c0, d in sorted(colours.items())
+    }
     return spec
 
 
 def _fmt(kind):
-    return 'C' if kind == 'C' else ('?' if kind is None else str(kind))
+    return "C" if kind == "C" else ("?" if kind is None else str(kind))
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument('--dry-run', action='store_true',
-                    help='derive and report, write nothing')
+    ap.add_argument(
+        "--dry-run", action="store_true", help="derive and report, write nothing"
+    )
     args = ap.parse_args(argv)
     model = derive()
 
-    print('%-4s %-16s %8s %8s %9s %9s  %s'
-          % ('f', 'filter', 'grey', 'colour', 'exact g', 'exact c', 'legend'))
+    print(
+        "%-4s %-16s %8s %8s %9s %9s  %s"
+        % ("f", "filter", "grey", "colour", "exact g", "exact c", "legend")
+    )
     doc = {}
     kinds = pred = unknown = 0
     lawless, missed = [], []
@@ -715,32 +824,40 @@ def main(argv=None):
     for f, colours in sorted(model.items()):
         sp = _spec(f, colours)
         doc[str(f)] = sp
-        show = ['%d:%s' % (int(k), _fmt(v)) for k, v in sorted(sp['cls'].items(),
-                                                              key=lambda t: int(t[0]))]
-        if 'shape4' in sp:
-            show.append('%d:%s-if-no-w1' % tuple(sp['shape4']))
-        if 'conj' in sp:
-            show += ['conj(%d,%d):%s' % (a, b, _fmt(v)) for a, b, v in sp['conj']]
-        w1s = ['%d:%s' % (int(k), _fmt(v)) for k, v in sorted(sp['w1'].items(),
-                                                             key=lambda t: int(t[0]))]
-        if 'arity' in sp:
-            w1s.append('arity(%d,%d)' % tuple(sp['arity']))
-        if 'edge_bits' in sp:
-            w1s += ['edge bit %d' % b for b in sp['edge_bits']]
-        if 'w1_int' in sp:
-            w1s.append('int(%d,%d) prog@%d' % tuple(sp['w1_int']))
-        if 'w1_int_refuse' in sp:
-            w1s.append('refuse %d..%d' % tuple(sp['w1_int_refuse']))
-        free_labs = {'cls.%d' % b for b in sp.get('cls_free', ())}
-        for lab, ev in sp['evidence'].items():
+        show = [
+            "%d:%s" % (int(k), _fmt(v))
+            for k, v in sorted(sp["cls"].items(), key=lambda t: int(t[0]))
+        ]
+        if "shape4" in sp:
+            show.append("%d:%s-if-no-w1" % tuple(sp["shape4"]))
+        if "conj" in sp:
+            show += ["conj(%d,%d):%s" % (a, b, _fmt(v)) for a, b, v in sp["conj"]]
+        w1s = [
+            "%d:%s" % (int(k), _fmt(v))
+            for k, v in sorted(sp["w1"].items(), key=lambda t: int(t[0]))
+        ]
+        if "arity" in sp:
+            w1s.append("arity(%d,%d)" % tuple(sp["arity"]))
+        if "edge_bits" in sp:
+            w1s += ["edge bit %d" % b for b in sp["edge_bits"]]
+        if "w1_int" in sp:
+            w1s.append("int(%d,%d) prog@%d" % tuple(sp["w1_int"]))
+        if "w1_int_refuse" in sp:
+            w1s.append("refuse %d..%d" % tuple(sp["w1_int_refuse"]))
+        free_labs = {"cls.%d" % b for b in sp.get("cls_free", ())}
+        for lab, ev in sp["evidence"].items():
             for cn, src in ev.items():
                 srcs[src] += 1
                 if lab not in free_labs:
                     kinded[src] += 1
-                    if src in ('unexercised', 'no-records'):
+                    if src in ("unexercised", "no-records"):
                         pred += 1
-        for k in list(sp['cls'].values()) + [v for _a, _b, v in sp.get('conj', ())] \
-                + ([sp['shape4'][1]] if 'shape4' in sp else []) + list(sp['w1'].values()):
+        for k in (
+            list(sp["cls"].values())
+            + [v for _a, _b, v in sp.get("conj", ())]
+            + ([sp["shape4"][1]] if "shape4" in sp else [])
+            + list(sp["w1"].values())
+        ):
             if k is None:
                 unknown += 1
             elif isinstance(k, list):
@@ -748,42 +865,55 @@ def main(argv=None):
             else:
                 kinds += 1
         for c0, d in sorted(colours.items()):
-            if d['missed']:
-                missed.append((f, _CNAME[c0], int(d['missed']), int(d['records'])))
-        print('%-4d %-16s %8s %8s %9s %9s  %s   |   %s'
-              % (f, sp['name'], sp['records'].get('grey', '-'),
-                 sp['records'].get('colour', '-'),
-                 '%.5f' % sp['exact']['grey'] if 'grey' in sp['exact'] else '-',
-                 '%.5f' % sp['exact']['colour'] if 'colour' in sp['exact'] else '-',
-                 ' '.join(show), ' '.join(w1s) or '--'))
-    off = sum(len(sp['w1']) for sp in doc.values())
+            if d["missed"]:
+                missed.append((f, _CNAME[c0], int(d["missed"]), int(d["records"])))
+        print(
+            "%-4d %-16s %8s %8s %9s %9s  %s   |   %s"
+            % (
+                f,
+                sp["name"],
+                sp["records"].get("grey", "-"),
+                sp["records"].get("colour", "-"),
+                "%.5f" % sp["exact"]["grey"] if "grey" in sp["exact"] else "-",
+                "%.5f" % sp["exact"]["colour"] if "colour" in sp["exact"] else "-",
+                " ".join(show),
+                " ".join(w1s) or "--",
+            )
+        )
+    off = sum(len(sp["w1"]) for sp in doc.values())
     print()
-    print('%d kinds over %d cells, %d of them a bit offset; %d cells the corpus never bakes '
-          'in either colour' % (kinds, kinds + unknown, off, unknown))
-    print('%d (cell, colour) pairs carry a kind; %d of them are the legend PREDICTING a '
-          'colour the corpus never exercises -- %d where the filter has no record of that '
-          'colour at all, %d where it has records and none set the cell.  Every one is '
-          'marked in `evidence`, never written as a measured zero.'
-          % (sum(kinded.values()), pred, kinded['no-records'], kinded['unexercised']))
-    print('kind-bearing (cell, colour) evidence: %s' % dict(kinded.most_common()))
-    print('all (cell, colour) evidence, zero-cost class bits included: %s'
-          % dict(srcs.most_common()))
+    print(
+        "%d kinds over %d cells, %d of them a bit offset; %d cells the corpus never bakes "
+        "in either colour" % (kinds, kinds + unknown, off, unknown)
+    )
+    print(
+        "%d (cell, colour) pairs carry a kind; %d of them are the legend PREDICTING a "
+        "colour the corpus never exercises -- %d where the filter has no record of that "
+        "colour at all, %d where it has records and none set the cell.  Every one is "
+        "marked in `evidence`, never written as a measured zero."
+        % (sum(kinded.values()), pred, kinded["no-records"], kinded["unexercised"])
+    )
+    print("kind-bearing (cell, colour) evidence: %s" % dict(kinded.most_common()))
+    print(
+        "all (cell, colour) evidence, zero-cost class bits included: %s"
+        % dict(srcs.most_common())
+    )
     if lawless:
-        print('CELLS OUTSIDE THE LEGEND ALPHABET %r:' % (WIDTHS + ('C',),))
+        print("CELLS OUTSIDE THE LEGEND ALPHABET %r:" % (WIDTHS + ("C",),))
         for f, k in lawless:
-            print('   filter %-3d %s' % (f, k))
+            print("   filter %-3d %s" % (f, k))
     if missed:
-        print('KEYS THE LEGEND DOES NOT REPRODUCE:')
+        print("KEYS THE LEGEND DOES NOT REPRODUCE:")
         for f, cn, m, n in missed:
-            print('   filter %-3d %-6s %d of %d records' % (f, cn, m, n))
+            print("   filter %-3d %-6s %d of %d records" % (f, cn, m, n))
     if not args.dry_run:
-        with open(OUT, 'w') as fh:
+        with open(OUT, "w") as fh:
             json.dump(doc, fh, indent=0, sort_keys=True)
-            fh.write('\n')
+            fh.write("\n")
         print()
-        print('wrote %s: %d filters' % (OUT, len(doc)))
+        print("wrote %s: %d filters" % (OUT, len(doc)))
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

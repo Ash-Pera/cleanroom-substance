@@ -30,6 +30,7 @@ WHAT IT CANNOT SETTLE, stated here because the numbers look better than the evid
 Only 8 permitted sources in the corpus contain an FX-Map at all, and between them they
 exercise three tags. `branchoffset` rests on ONE of those files. See `FX_PARAM_BITS`.
 """
+
 import collections
 import itertools
 import os
@@ -39,11 +40,15 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import disasm                                                        # noqa: E402
-import provenance                                                    # noqa: E402
-from containment import sbsasm_for                                   # noqa: E402
-from sbsasm import (Assembly, FX_PARAM_BITS, FX_NODE_PARAMS,          # noqa: E402
-                    fx_entry_layout)
+import disasm  # noqa: E402
+import provenance  # noqa: E402
+from containment import sbsasm_for  # noqa: E402
+from sbsasm import (
+    Assembly,
+    FX_PARAM_BITS,
+    FX_NODE_PARAMS,  # noqa: E402
+    fx_entry_layout,
+)
 
 # `.sbs` serialises every value two ways -- `<x v="1"/>` and `<x><value v="1"/></x>` --
 # and 3 of the 8 permitted FX sources use the nested form for ALL of theirs. Reading only
@@ -51,18 +56,23 @@ from sbsasm import (Assembly, FX_PARAM_BITS, FX_NODE_PARAMS,          # noqa: E4
 # look underdetermined on the first pass. tools/pixelgraph.py's docstring has recorded the
 # two forms all along; this is the third module to be caught by it.
 _ALT = r'<%s(?: v="([^"]*)"/>|><value v="([^"]*)"/></%s>)'
-GD = re.compile(r'<paramsGraphData>(.*?)</paramsGraphData>', re.S)
-TY = re.compile(_ALT % ('type', 'type'))
-PA = re.compile(r'<parameter><name(?: v="([^"]*)"/>|><value v="([^"]*)"/></name>)'
-                r'(.*?)</parameter>', re.S)
-_CVT = 'Float1|Float2|Float3|Float4|Int32|Int1|Bool'
-CV = re.compile(r'<constantValue(?:%s)(?: v="([^"]*)"/>'
-                r'|><value v="([^"]*)"/></constantValue(?:%s)>)' % (_CVT, _CVT))
+GD = re.compile(r"<paramsGraphData>(.*?)</paramsGraphData>", re.S)
+TY = re.compile(_ALT % ("type", "type"))
+PA = re.compile(
+    r'<parameter><name(?: v="([^"]*)"/>|><value v="([^"]*)"/></name>)'
+    r"(.*?)</parameter>",
+    re.S,
+)
+_CVT = "Float1|Float2|Float3|Float4|Int32|Int1|Bool"
+CV = re.compile(
+    r'<constantValue(?:%s)(?: v="([^"]*)"/>'
+    r'|><value v="([^"]*)"/></constantValue(?:%s)>)' % (_CVT, _CVT)
+)
 
 
 def _num(v):
     """A literal's canonical string, rounded through float32 as the binary stores it."""
-    return '%.6g' % struct.unpack('<f', struct.pack('<f', v))[0]
+    return "%.6g" % struct.unpack("<f", struct.pack("<f", v))[0]
 
 
 def declared_literals(param_body):
@@ -81,11 +91,11 @@ def paramset_nodes(text):
     out = []
     for body in GD.findall(text):
         m = TY.search(body)
-        if not m or (m.group(1) or m.group(2)) != 'paramset':
+        if not m or (m.group(1) or m.group(2)) != "paramset":
             continue
         node = {}
         for n1, n2, pv in PA.findall(body):
-            node[n1 or n2] = (declared_literals(pv) if '<dynamicValue>' in pv else None)
+            node[n1 or n2] = declared_literals(pv) if "<dynamicValue>" in pv else None
         out.append(node)
     return out
 
@@ -99,8 +109,11 @@ def program_literals(data, ptr, hi):
             continue
         raw = disasm.immediate(addr, toks)
         for i in range(0, len(raw) - 3, 4):
-            out.add(_num(struct.unpack_from('<f', raw, i)[0]) if ty == 1
-                    else '%d' % struct.unpack_from('<i', raw, i)[0])
+            out.add(
+                _num(struct.unpack_from("<f", raw, i)[0])
+                if ty == 1
+                else "%d" % struct.unpack_from("<i", raw, i)[0]
+            )
     return out
 
 
@@ -114,13 +127,13 @@ def compiled_entries(asmf):
             continue
         seen = set()
         for kind, off, tag, _p in r.fx_walk():
-            if kind != 'entry' or off in seen:
+            if kind != "entry" or off in seen:
                 continue
             seen.add(off)
             for sl, _nm, how in fx_entry_layout(tag):
-                if how != 'program' or off + 4 * sl + 4 > hi:
+                if how != "program" or off + 4 * sl + 4 > hi:
                     continue
-                pv = struct.unpack_from('<I', d, off + 4 * sl)[0] + 52
+                pv = struct.unpack_from("<I", d, off + 4 * sl)[0] + 52
                 if lo < pv < hi and a.program_span(pv, hi):
                     out[(tag, off)][sl] = program_literals(d, pv, hi)
     return dict(out)
@@ -130,8 +143,8 @@ def fx_sources():
     """(relpath, source text, assembly path) for every PERMITTED paired source with an FX-Map."""
     for rel in provenance.audit()[2]:
         full = os.path.join(provenance.ROOT, rel)
-        text = open(full, encoding='utf-8', errors='replace').read()
-        if 'paramsGraphData' not in text:
+        text = open(full, encoding="utf-8", errors="replace").read()
+        if "paramsGraphData" not in text:
             continue
         asmf = sbsasm_for(full)
         if asmf:
@@ -153,16 +166,19 @@ def bind():
                 if len(comp) != len(names):
                     continue
                 slots = sorted(comp)
-                good = [p for p in itertools.permutations(slots)
-                        if all(decl[n] <= comp[s] for n, s in zip(names, p))]
+                good = [
+                    p
+                    for p in itertools.permutations(slots)
+                    if all(decl[n] <= comp[s] for n, s in zip(names, p))
+                ]
                 if not good:
-                    stats['no valid bijection'] += 1
+                    stats["no valid bijection"] += 1
                 elif len(good) == 1:
-                    stats['exactly one valid bijection'] += 1
+                    stats["exactly one valid bijection"] += 1
                     for n, s in zip(names, good[0]):
                         votes[(tag, s)][n] += 1
                 else:
-                    stats['several valid bijections'] += 1
+                    stats["several valid bijections"] += 1
     return votes, stats
 
 
@@ -171,9 +187,13 @@ def predict_tags(bitmap):
     hit = tot = 0
     for _rel, text, asmf in fx_sources():
         a = Assembly(asmf)
-        highs = {tag >> 20 for r in a.records if r.filter_id == 4
-                 for kind, _o, tag, _p in r.fx_walk()
-                 if kind == 'entry' and (tag & 0xF) == 8}
+        highs = {
+            tag >> 20
+            for r in a.records
+            if r.filter_id == 4
+            for kind, _o, tag, _p in r.fx_walk()
+            if kind == "entry" and (tag & 0xF) == 8
+        }
         for node in paramset_nodes(text):
             dyn = {n for n, v in node.items() if v is not None}
             if not dyn:
@@ -195,14 +215,16 @@ def node_kind(body):
     finding: the node header carries the same program/baked distinction the entry tag does.
     """
     m = TY.search(body)
-    ty = (m.group(1) or m.group(2)) if m else '?'
-    if ty != 'addnode':
+    ty = (m.group(1) or m.group(2)) if m else "?"
+    if ty != "addnode":
         return ty
-    how = {(n1 or n2): ('d' if '<dynamicValue>' in pv else 'c')
-           for n1, n2, pv in PA.findall(body)}
-    if 'randomseed' in how:
-        return 'addnode+randomseed'
-    return 'addnode(baked)' if how.get('numberadded') == 'c' else 'addnode'
+    how = {
+        (n1 or n2): ("d" if "<dynamicValue>" in pv else "c")
+        for n1, n2, pv in PA.findall(body)
+    }
+    if "randomseed" in how:
+        return "addnode+randomseed"
+    return "addnode(baked)" if how.get("numberadded") == "c" else "addnode"
 
 
 def node_cooccurrence():
@@ -210,7 +232,7 @@ def node_cooccurrence():
     out = []
     for rel, text, asmf in fx_sources():
         src = collections.Counter(node_kind(b) for b in GD.findall(text))
-        src.pop('paramset', None)
+        src.pop("paramset", None)
         a = Assembly(asmf)
         comp = collections.Counter()
         for r in a.records:
@@ -218,7 +240,7 @@ def node_cooccurrence():
                 continue
             done = set()
             for kind, off, hdr, _p in r.fx_walk():
-                if kind == 'node' and off not in done:
+                if kind == "node" and off not in done:
                     done.add(off)
                     comp[hdr] += 1
         out.append((os.path.basename(rel), src, comp))
@@ -229,50 +251,72 @@ def report_nodes():
     files = node_cooccurrence()
     kinds = sorted({k for _f, s, _c in files for k in s})
     hdrs = sorted({h for _f, _s, c in files for h in c})
-    print('NODE HEADERS -- files agreeing on presence/absence, out of %d' % len(files))
-    print('   %-10s %s' % ('header', '  '.join('%-20s' % k for k in kinds)))
+    print("NODE HEADERS -- files agreeing on presence/absence, out of %d" % len(files))
+    print("   %-10s %s" % ("header", "  ".join("%-20s" % k for k in kinds)))
     for h in hdrs:
         row = []
         for k in kinds:
             agree = sum(1 for _f, s, c in files if (s[k] > 0) == (c[h] > 0))
             exact = sum(1 for _f, s, c in files if s[k] == c[h] and s[k] > 0)
-            row.append('%d/%d%s' % (agree, len(files), '  (%d exact)' % exact if exact else ''))
+            row.append(
+                "%d/%d%s" % (agree, len(files), "  (%d exact)" % exact if exact else "")
+            )
         known = FX_NODE_PARAMS.get(h)
-        mark = '' if known is None else '   <- ' + ', '.join(
-            str(v) for v in known.values())
-        print('   0x%-8X %s%s' % (h, '  '.join('%-20s' % r for r in row), mark))
+        mark = (
+            ""
+            if known is None
+            else "   <- " + ", ".join(str(v) for v in known.values())
+        )
+        print("   0x%-8X %s%s" % (h, "  ".join("%-20s" % r for r in row), mark))
     print()
-    print('   The diagonal is what FX_NODE_PARAMS states; the off-diagonal is the control.')
+    print(
+        "   The diagonal is what FX_NODE_PARAMS states; the off-diagonal is the control."
+    )
 
 
 def main():
     names = {n: b for b, n, _w in FX_PARAM_BITS if n}
     votes, stats = bind()
-    print('CONTAINMENT BINDING, over the permitted paired sources')
+    print("CONTAINMENT BINDING, over the permitted paired sources")
     for k, v in stats.most_common():
-        print('   %-32s %6d' % (k, v))
+        print("   %-32s %6d" % (k, v))
     print()
-    print('   (tag, slot) -> name        [published bit]')
+    print("   (tag, slot) -> name        [published bit]")
     conflicts = 0
-    for (tag, sl) in sorted(votes):
+    for tag, sl in sorted(votes):
         c = votes[(tag, sl)]
         if len(c) > 1:
             conflicts += 1
         top, n = c.most_common(1)[0]
         want = dict((s, nm) for s, nm, _k in fx_entry_layout(tag))
-        agree = 'ok' if want.get(sl) == top else 'DISAGREES WITH FX_PARAM_BITS (%s)' % want.get(sl)
-        print('   0x%08X slot %-2d  %-18s n=%-5d %s'
-              % (tag, sl, top, n, agree if len(c) == 1 else 'CONFLICT %s' % c.most_common()))
+        agree = (
+            "ok"
+            if want.get(sl) == top
+            else "DISAGREES WITH FX_PARAM_BITS (%s)" % want.get(sl)
+        )
+        print(
+            "   0x%08X slot %-2d  %-18s n=%-5d %s"
+            % (
+                tag,
+                sl,
+                top,
+                n,
+                agree if len(c) == 1 else "CONFLICT %s" % c.most_common(),
+            )
+        )
     print()
-    print('   (tag, slot) pairs bound:   %d' % len(votes))
-    print('   pairs two nodes disagree about: %d' % conflicts)
+    print("   (tag, slot) pairs bound:   %d" % len(votes))
+    print("   pairs two nodes disagree about: %d" % conflicts)
 
     print()
-    print('BACKWARDS TEST -- predict the tag from the source parameter set')
+    print("BACKWARDS TEST -- predict the tag from the source parameter set")
     hit, tot = predict_tags(names)
-    print('   published map                          %d/%d  (%.1f%%)'
-          % (hit, tot, 100.0 * hit / max(tot, 1)))
+    print(
+        "   published map                          %d/%d  (%.1f%%)"
+        % (hit, tot, 100.0 * hit / max(tot, 1))
+    )
     import random
+
     random.seed(5)
     ns, bs = list(names), list(names.values())
     acc = 0
@@ -280,11 +324,13 @@ def main():
     for _ in range(trials):
         random.shuffle(bs)
         acc += predict_tags(dict(zip(ns, bs)))[0]
-    print('   CONTROL, shuffled name->bit map        %.1f%%'
-          % (100.0 * acc / max(trials * tot, 1)))
+    print(
+        "   CONTROL, shuffled name->bit map        %.1f%%"
+        % (100.0 * acc / max(trials * tot, 1))
+    )
     print()
     report_nodes()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -19,6 +19,7 @@ this one asks `decompose` once, per record, and reads the answer by NAME.
 See `model.View` and `fx.number_grid` for the two readings this changes, and
 `tools/render2/__main__.py` for the scorer it was verified with.
 """
+
 import os
 import sys
 
@@ -34,13 +35,15 @@ if _TOOLS not in sys.path:
 if _HERE not in sys.path:
     sys.path.append(_HERE)
 
-from engine import render, Context          # noqa: E402,F401
-from ops import Unsupported                 # noqa: E402,F401
-from model import View, views               # noqa: E402,F401
+from engine import render, Context  # noqa: E402,F401
+from ops import Unsupported  # noqa: E402,F401
+from model import View, views  # noqa: E402,F401
 
 for _m in (render, Context, Unsupported, View):
     if os.path.dirname(os.path.abspath(sys.modules[_m.__module__].__file__)) != _HERE:
-        raise ImportError('render2: %r resolved outside the package -- a module of the '
-                          'same name shadows it on sys.path' % _m.__module__)
+        raise ImportError(
+            "render2: %r resolved outside the package -- a module of the "
+            "same name shadows it on sys.path" % _m.__module__
+        )
 
-__all__ = ['render', 'Context', 'Unsupported', 'View', 'views']
+__all__ = ["render", "Context", "Unsupported", "View", "views"]

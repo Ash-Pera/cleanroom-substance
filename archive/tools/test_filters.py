@@ -65,15 +65,15 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import corpus                                                        # noqa: E402
-import decompose                                                     # noqa: E402
-import manifest                                                      # noqa: E402
-import provenance                                                    # noqa: E402
-import render as R                                                   # noqa: E402
-import sbsasm                                                        # noqa: E402
-from sbsasm import Assembly, FILTERS                                  # noqa: E402
-import refguard                                                      # noqa: E402
-from refguard import Cause, Entry                                    # noqa: E402
+import corpus  # noqa: E402
+import decompose  # noqa: E402
+import manifest  # noqa: E402
+import provenance  # noqa: E402
+import render as R  # noqa: E402
+import sbsasm  # noqa: E402
+from sbsasm import Assembly, FILTERS  # noqa: E402
+import refguard  # noqa: E402
+from refguard import Cause, Entry  # noqa: E402
 
 MAX_FILES = 400
 
@@ -95,12 +95,20 @@ def _bezier_y(knots, x_want):
         lo, hi = 0.0, 1.0
         for _ in range(60):
             t = (lo + hi) / 2
-            x = ((1 - t) ** 3 * p0[0] + 3 * t * (1 - t) ** 2 * p1[0]
-                 + 3 * t * t * (1 - t) * p2[0] + t ** 3 * p3[0])
+            x = (
+                (1 - t) ** 3 * p0[0]
+                + 3 * t * (1 - t) ** 2 * p1[0]
+                + 3 * t * t * (1 - t) * p2[0]
+                + t**3 * p3[0]
+            )
             lo, hi = (t, hi) if x < x_want else (lo, t)
         t = (lo + hi) / 2
-        return ((1 - t) ** 3 * p0[1] + 3 * t * (1 - t) ** 2 * p1[1]
-                + 3 * t * t * (1 - t) * p2[1] + t ** 3 * p3[1])
+        return (
+            (1 - t) ** 3 * p0[1]
+            + 3 * t * (1 - t) ** 2 * p1[1]
+            + 3 * t * t * (1 - t) * p2[1]
+            + t**3 * p3[1]
+        )
     return None
 
 
@@ -128,7 +136,7 @@ def _seeded(name, limit, predicate=None):
             rows.append(item)
         _SEEDED[key] = (rows, SEEN.get(name))
     rows, seen = _SEEDED[key]
-    SEEN[name] = seen           # restore the candidate count the callers check
+    SEEN[name] = seen  # restore the candidate count the callers check
     for item in rows:
         yield item
 
@@ -147,18 +155,27 @@ def _seeded_uncached(name, limit, predicate=None):
             asm = Assembly(path)
         except Exception:
             continue
-        hits = [r for r in asm.records
-                if FILTERS.get(r.filter_id) == name and r.edges and r.edges[0] is not None
-                and (predicate is None or predicate(r))]
+        hits = [
+            r
+            for r in asm.records
+            if FILTERS.get(r.filter_id) == name
+            and r.edges
+            and r.edges[0] is not None
+            and (predicate is None or predicate(r))
+        ]
         for rec in hits[:2]:
             w, h = min(rec.width, 64), min(rec.height, 64)
             if w < 16 or h < 8:
                 continue
             SEEN[name] += 1
             try:
-                out, _f, _s = R.render(asm, precomputed={rec.edges[0]: _ramp(h, w)},
-                                       verbose=False, max_dim=64,
-                                       stop_after=rec.index)
+                out, _f, _s = R.render(
+                    asm,
+                    precomputed={rec.edges[0]: _ramp(h, w)},
+                    verbose=False,
+                    max_dim=64,
+                    stop_after=rec.index,
+                )
             except Exception:
                 continue
             arr = out.get(rec.index)
@@ -174,7 +191,7 @@ def _seeded_uncached(name, limit, predicate=None):
 def test_curve_endpoints():
     """Whatever a spline does between its knots, it starts and ends on them."""
     n = 0
-    for rec, row in _seeded('curve', 60):
+    for rec, row in _seeded("curve", 60):
         k = rec.curve_points
         assert abs(float(row[0]) - k[0][1]) < 1e-2, (rec.index, row[0], k[0][1])
         assert abs(float(row[-1]) - k[-1][1]) < 1e-2, (rec.index, row[-1], k[-1][1])
@@ -185,9 +202,11 @@ def test_curve_endpoints():
         # and none rendered is what a BROKEN FILTER looks like from here, and it must fail.
         # Three of the eight checks in this file already did this; five, including this
         # one, printed SKIP instead and would have reported green through a total breakage.
-        if SEEN.get('curve'):
-            raise AssertionError('%d curve records found and none rendered' % SEEN['curve'])
-        print('SKIP test_curve_endpoints: no corpus')
+        if SEEN.get("curve"):
+            raise AssertionError(
+                "%d curve records found and none rendered" % SEEN["curve"]
+            )
+        print("SKIP test_curve_endpoints: no corpus")
     return
 
 
@@ -195,7 +214,7 @@ def test_curve_matches_independent_bisection():
     """render.py tabulates the Bezier; this solves x(t)=X directly. They must agree."""
     n = 0
     worst = 0.0
-    for rec, row in _seeded('curve', 60):
+    for rec, row in _seeded("curve", 60):
         xs = np.linspace(0.0, 1.0, len(row), dtype=np.float32)
         for x, got in zip(xs, row):
             ref = _bezier_y(rec.curve_points, float(x))
@@ -204,10 +223,11 @@ def test_curve_matches_independent_bisection():
             worst = max(worst, abs(float(got) - ref))
         n += 1
     if not n:
-        if SEEN.get('curve'):
-            raise AssertionError('%d curve records found and none rendered'
-                                 % SEEN['curve'])
-        print('SKIP test_curve_matches_independent_bisection: no corpus')
+        if SEEN.get("curve"):
+            raise AssertionError(
+                "%d curve records found and none rendered" % SEEN["curve"]
+            )
+        print("SKIP test_curve_matches_independent_bisection: no corpus")
         return
     assert worst < 1e-3, worst
     return
@@ -219,14 +239,22 @@ def test_curve_identity_is_exact():
     Not "knots on the diagonal" -- see this module's docstring. 215 records pass that
     and 214 of them are genuinely curved.
     """
+
     def strict(r):
         k = r.curve_points
-        return bool(k) and len(k) >= 2 and all(
-            abs(p[0] - p[1]) < 1e-6 and abs(p[2] - p[3]) < 1e-6 and abs(p[4] - p[5]) < 1e-6
-            for p in k)
+        return (
+            bool(k)
+            and len(k) >= 2
+            and all(
+                abs(p[0] - p[1]) < 1e-6
+                and abs(p[2] - p[3]) < 1e-6
+                and abs(p[4] - p[5]) < 1e-6
+                for p in k
+            )
+        )
 
     n = 0
-    for rec, row in _seeded('curve', 4, predicate=strict):
+    for rec, row in _seeded("curve", 4, predicate=strict):
         xs = np.linspace(0.0, 1.0, len(row), dtype=np.float32)
         assert float(np.abs(row - xs).max()) < 1e-3, rec.index
         n += 1
@@ -236,16 +264,21 @@ def test_curve_identity_is_exact():
         # and none rendered is what a BROKEN FILTER looks like from here, and it must fail.
         # Three of the eight checks in this file already did this; five, including this
         # one, printed SKIP instead and would have reported green through a total breakage.
-        if SEEN.get('curve'):
-            raise AssertionError('%d strict-identity curve records found and none rendered' % SEEN['curve'])
-        print('SKIP test_curve_identity_is_exact: no corpus, or no strict-identity record')
+        if SEEN.get("curve"):
+            raise AssertionError(
+                "%d strict-identity curve records found and none rendered"
+                % SEEN["curve"]
+            )
+        print(
+            "SKIP test_curve_identity_is_exact: no corpus, or no strict-identity record"
+        )
     return
 
 
 def test_dirmotionblur_is_an_average():
     """A blur averages its input, so it cannot leave the input's range."""
     n = 0
-    for _rec, row in _seeded('dirmotionblur', 200):
+    for _rec, row in _seeded("dirmotionblur", 200):
         assert float(row.min()) >= -1e-4, row.min()
         assert float(row.max()) <= 1.0 + 1e-4, row.max()
         n += 1
@@ -255,9 +288,12 @@ def test_dirmotionblur_is_an_average():
         # and none rendered is what a BROKEN FILTER looks like from here, and it must fail.
         # Three of the eight checks in this file already did this; five, including this
         # one, printed SKIP instead and would have reported green through a total breakage.
-        if SEEN.get('dirmotionblur'):
-            raise AssertionError('%d dirmotionblur records found and none rendered' % SEEN['dirmotionblur'])
-        print('SKIP test_dirmotionblur_is_an_average: no corpus')
+        if SEEN.get("dirmotionblur"):
+            raise AssertionError(
+                "%d dirmotionblur records found and none rendered"
+                % SEEN["dirmotionblur"]
+            )
+        print("SKIP test_dirmotionblur_is_an_average: no corpus")
     return
 
 
@@ -285,23 +321,28 @@ def test_dyngradient_is_a_ramp_lookup():
         except Exception:
             continue
         for rec in asm.records:
-            if FILTERS.get(rec.filter_id) != 'dyngradient':
+            if FILTERS.get(rec.filter_id) != "dyngradient":
                 continue
             if len(rec.edges or ()) < 2 or any(e is None for e in rec.edges[:2]):
                 continue
             cands += 1
             h = w = 64
-            src = np.tile(np.linspace(0.0, 1.0, w, dtype=np.float32),
-                          (h, 1)).reshape(h, w, 1)
+            src = np.tile(np.linspace(0.0, 1.0, w, dtype=np.float32), (h, 1)).reshape(
+                h, w, 1
+            )
             ramp = np.zeros((16, 256, 1), dtype=np.float32)
             ramp[:, :, 0] = np.linspace(0.0, 1.0, 256, dtype=np.float32)[None, :]
             for strip, want, label in (
-                    (ramp, src[:, :, 0], 'identity'),
-                    (ramp[:, ::-1, :].copy(), 1.0 - src[:, :, 0], 'reversed')):
+                (ramp, src[:, :, 0], "identity"),
+                (ramp[:, ::-1, :].copy(), 1.0 - src[:, :, 0], "reversed"),
+            ):
                 try:
-                    out, _f, _s = R.render(asm, precomputed={rec.edges[0]: src,
-                                                             rec.edges[1]: strip},
-                                           verbose=False, max_dim=64)
+                    out, _f, _s = R.render(
+                        asm,
+                        precomputed={rec.edges[0]: src, rec.edges[1]: strip},
+                        verbose=False,
+                        max_dim=64,
+                    )
                 except Exception:
                     out = {}
                 got = out.get(rec.index)
@@ -313,15 +354,18 @@ def test_dyngradient_is_a_ramp_lookup():
             step = np.zeros((16, 256, 1), dtype=np.float32)
             step[:, 128:, 0] = 1.0
             try:
-                out, _f, _s = R.render(asm, precomputed={rec.edges[0]: src,
-                                                         rec.edges[1]: step},
-                                       verbose=False, max_dim=64)
+                out, _f, _s = R.render(
+                    asm,
+                    precomputed={rec.edges[0]: src, rec.edges[1]: step},
+                    verbose=False,
+                    max_dim=64,
+                )
             except Exception:
                 out = {}
             got = out.get(rec.index)
             if got is not None:
                 a = np.asarray(got, dtype=np.float32).reshape(-1)
-                assert len(np.unique(np.round(a, 4))) <= 2, ('step', rec.index)
+                assert len(np.unique(np.round(a, 4))) <= 2, ("step", rec.index)
             if n >= 6:
                 break
         if n >= 6:
@@ -333,15 +377,17 @@ def test_dyngradient_is_a_ramp_lookup():
         # render that RAISES skips the assertions silently, and `if not n` then printed
         # SKIP -- so a totally broken dyngradient reported green rather than failing.
         if cands:
-            raise AssertionError('%d dyngradient records found and none rendered' % cands)
-        print('SKIP test_dyngradient_is_a_ramp_lookup: no corpus')
+            raise AssertionError(
+                "%d dyngradient records found and none rendered" % cands
+            )
+        print("SKIP test_dyngradient_is_a_ramp_lookup: no corpus")
     return
 
 
 def test_gradient_runs_and_stays_bounded():
     """A ramp lookup returns values from the ramp, so it is bounded by the table."""
     n = 0
-    for rec, row in _seeded('gradient', 20):
+    for rec, row in _seeded("gradient", 20):
         table = rec.ramp
         if not table or isinstance(table[0][0], float):
             continue
@@ -363,9 +409,11 @@ def test_gradient_runs_and_stays_bounded():
         # and none rendered is what a BROKEN FILTER looks like from here, and it must fail.
         # Three of the eight checks in this file already did this; five, including this
         # one, printed SKIP instead and would have reported green through a total breakage.
-        if SEEN.get('gradient'):
-            raise AssertionError('%d gradient records found and none rendered' % SEEN['gradient'])
-        print('SKIP test_gradient_runs_and_stays_bounded: no corpus')
+        if SEEN.get("gradient"):
+            raise AssertionError(
+                "%d gradient records found and none rendered" % SEEN["gradient"]
+            )
+        print("SKIP test_gradient_runs_and_stays_bounded: no corpus")
     return
 
 
@@ -378,7 +426,7 @@ def test_gradient_matches_an_independent_lookup():
     """
     n = 0
     worst = 0.0
-    for rec, row in _seeded('gradient', 20):
+    for rec, row in _seeded("gradient", 20):
         table = rec.ramp
         if not table or isinstance(table[0][0], float):
             continue
@@ -405,10 +453,11 @@ def test_gradient_matches_an_independent_lookup():
         worst = max(worst, float(np.abs(row - ref).max()))
         n += 1
     if not n:
-        if SEEN.get('gradient'):
-            raise AssertionError('%d gradient records found and none rendered'
-                                 % SEEN['gradient'])
-        print('SKIP test_gradient_matches_an_independent_lookup: no corpus')
+        if SEEN.get("gradient"):
+            raise AssertionError(
+                "%d gradient records found and none rendered" % SEEN["gradient"]
+            )
+        print("SKIP test_gradient_matches_an_independent_lookup: no corpus")
         return
     assert worst < 1e-3, worst
     return
@@ -416,15 +465,18 @@ def test_gradient_matches_an_independent_lookup():
 
 def _stripes(h, w, along):
     """A high-frequency pattern varying along one axis only."""
-    x = (np.arange(w if along == 'x' else h, dtype=np.float32) % 4 < 2).astype(np.float32)
-    if along == 'x':
+    x = (np.arange(w if along == "x" else h, dtype=np.float32) % 4 < 2).astype(
+        np.float32
+    )
+    if along == "x":
         return np.repeat(x[None, :, None], h, axis=0)
     return np.repeat(x[:, None, None], w, axis=1)
 
 
 def _blur_once(rec, asm, src, max_dim=64):
-    out, _f, _s = R.render(asm, precomputed={rec.edges[0]: src}, verbose=False,
-                           max_dim=max_dim)
+    out, _f, _s = R.render(
+        asm, precomputed={rec.edges[0]: src}, verbose=False, max_dim=max_dim
+    )
     got = out.get(rec.index)
     return None if got is None else np.asarray(got, dtype=np.float32)
 
@@ -450,13 +502,16 @@ def test_dirmotionblur_actually_smooths_and_only_along_its_angle():
         except Exception:
             continue
         for rec in asm.records:
-            if FILTERS.get(rec.filter_id) != 'dirmotionblur':
+            if FILTERS.get(rec.filter_id) != "dirmotionblur":
                 continue
             if not rec.edges or rec.edges[0] is None:
                 continue
-            baked = {k: float(v) for k, kind, v in (rec.named_parameters or [])
-                     if kind == 'baked'}
-            it, an = baked.get('intensity'), baked.get('mblurangle')
+            baked = {
+                k: float(v)
+                for k, kind, v in (rec.named_parameters or [])
+                if kind == "baked"
+            }
+            it, an = baked.get("intensity"), baked.get("mblurangle")
             if it is None or an is None or abs(it) < 16.0:
                 continue
             if abs((an * 4) % 1) > 1e-3:
@@ -465,32 +520,35 @@ def test_dirmotionblur_actually_smooths_and_only_along_its_angle():
             if w < 32 or h < 32:
                 continue
             candidates += 1
-            vary_y = _stripes(h, w, 'y')       # varies along Y -- the blur axis
-            vary_x = _stripes(h, w, 'x')       # varies along X -- across it
+            vary_y = _stripes(h, w, "y")  # varies along Y -- the blur axis
+            vary_x = _stripes(h, w, "x")  # varies along X -- across it
             by = _blur_once(rec, asm, vary_y)
             bx = _blur_once(rec, asm, vary_x)
             if by is None or bx is None:
                 continue
             tested += 1
-            if float(by.std()) < 0.7 * float(vary_y.std()) and \
-               float(bx.std()) > 0.7 * float(vary_x.std()):
+            if float(by.std()) < 0.7 * float(vary_y.std()) and float(
+                bx.std()
+            ) > 0.7 * float(vary_x.std()):
                 ok += 1
             if tested >= 12:
                 break
         if tested >= 12:
             break
     if not candidates:
-        print('SKIP test_dirmotionblur_actually_smooths_and_only_along_its_angle: no corpus')
+        print(
+            "SKIP test_dirmotionblur_actually_smooths_and_only_along_its_angle: no corpus"
+        )
         return
     # NOT a skip. Specimens exist and none of them rendered, which is what a broken filter
     # looks like from here -- setting TAPS=1 divides by zero, every render raises, and the
     # first version of this check reported "no specimen" and passed.
-    assert tested, ('specimens found but none rendered', candidates)
+    assert tested, ("specimens found but none rendered", candidates)
     assert ok / tested > 0.75, (ok, tested)
     return
 
 
-MANIFEST_MISSING_PATHS = 513          # ratchet; see the test below
+MANIFEST_MISSING_PATHS = 513  # ratchet; see the test below
 
 
 def _edge_closure(asm, i):
@@ -500,16 +558,17 @@ def _edge_closure(asm, i):
         if j in seen or j >= len(asm.records):
             continue
         seen.add(j)
-        for e in (asm.records[j].edges or ()):
+        for e in asm.records[j].edges or ():
             if e is not None:
                 st.append(e)
     return seen
 
 
-BLUR_NODE = re.compile(r'<compFilter>.*?</compFilter>', re.S)
+BLUR_NODE = re.compile(r"<compFilter>.*?</compFilter>", re.S)
 BLUR_INTENSITY = re.compile(
     r'<name v="intensity"/>.*?<constantValueFloat1\s*(?:v="([^"]+)"\s*/>|>\s*<value v="([^"]+)")',
-    re.S)
+    re.S,
+)
 
 
 def _blur_slot(nprog):
@@ -540,18 +599,19 @@ def test_blur_intensity_slot_recovers_the_declared_values():
     try:
         import provenance
         import containment
-    except Exception:                                       # pragma: no cover
-        print('SKIP test_blur_intensity_slot_recovers_the_declared_values: no tools')
+    except Exception:  # pragma: no cover
+        print("SKIP test_blur_intensity_slot_recovers_the_declared_values: no tools")
         return
     _exc, _flag, permitted = provenance.audit()
-    permitted = sorted({q if os.path.isabs(q) else os.path.join(provenance.ROOT, q)
-                        for q in permitted})
+    permitted = sorted(
+        {q if os.path.isabs(q) else os.path.join(provenance.ROOT, q) for q in permitted}
+    )
     declared_n = found_n = control_n = 0
     for q in permitted:
         if not os.path.exists(q):
             continue
         try:
-            txt = open(q, encoding='utf-8', errors='replace').read()
+            txt = open(q, encoding="utf-8", errors="replace").read()
         except OSError:
             continue
         decl = set()
@@ -569,28 +629,49 @@ def test_blur_intensity_slot_recovers_the_declared_values():
             continue
         pool, ctrl = set(), set()
         for rec in asm.records:
-            slot = _blur_slot(bin(rec.cls & 0x2881).count('1'))
+            slot = _blur_slot(bin(rec.cls & 0x2881).count("1"))
             if slot >= len(rec.words):
                 continue
-            v = round(float(np.frombuffer(np.uint32(rec.words[slot]).tobytes(),
-                                          dtype=np.float32)[0]), 4)
-            (pool if rec.filter_name == 'blur' else ctrl).add(v)
+            v = round(
+                float(
+                    np.frombuffer(
+                        np.uint32(rec.words[slot]).tobytes(), dtype=np.float32
+                    )[0]
+                ),
+                4,
+            )
+            (pool if rec.filter_name == "blur" else ctrl).add(v)
         declared_n += len(decl)
         found_n += len(decl & pool)
         control_n += len(decl & ctrl)
     if not declared_n:
-        print('SKIP test_blur_intensity_slot_recovers_the_declared_values: no sources')
+        print("SKIP test_blur_intensity_slot_recovers_the_declared_values: no sources")
         return
-    print('blur intensity slot: recovered %d of %d declared (%.1f%%), control %d (%.1f%%)'
-          % (found_n, declared_n, 100 * found_n / declared_n,
-             control_n, 100 * control_n / declared_n))
+    print(
+        "blur intensity slot: recovered %d of %d declared (%.1f%%), control %d (%.1f%%)"
+        % (
+            found_n,
+            declared_n,
+            100 * found_n / declared_n,
+            control_n,
+            100 * control_n / declared_n,
+        )
+    )
     # Both halves. A high recovery rate means nothing if the control matches it, and the
     # floor catches the parse silently finding no declarations at all.
-    assert declared_n >= 30, 'only %d declared values found; the source parse has moved' % declared_n
-    assert found_n >= 0.55 * declared_n, 'recovery fell to %d of %d' % (found_n, declared_n)
-    assert control_n < 0.5 * found_n, \
-        'control %d is too close to the signal %d -- the slot is not discriminating' % (
-            control_n, found_n)
+    assert declared_n >= 30, (
+        "only %d declared values found; the source parse has moved" % declared_n
+    )
+    assert found_n >= 0.55 * declared_n, "recovery fell to %d of %d" % (
+        found_n,
+        declared_n,
+    )
+    assert (
+        control_n < 0.5 * found_n
+    ), "control %d is too close to the signal %d -- the slot is not discriminating" % (
+        control_n,
+        found_n,
+    )
 
 
 def test_closure_never_claims_a_dependency_the_manifest_denies():
@@ -639,8 +720,11 @@ def test_closure_never_claims_a_dependency_the_manifest_denies():
         uid2idx = {u: i for u, _f, _c, i in table}
         gi = {}
         for r in asm.records:
-            if r.filter_name == 'bitmap' and (r.bitmap or {}).get('kind') == 'graph_input':
-                gi.setdefault(r.bitmap['uid'], []).append(r.index)
+            if (
+                r.filter_name == "bitmap"
+                and (r.bitmap or {}).get("kind") == "graph_input"
+            ):
+                gi.setdefault(r.bitmap["uid"], []).append(r.index)
         if not gi:
             continue
         cl = {u: _edge_closure(asm, i) for u, i in uid2idx.items()}
@@ -661,14 +745,24 @@ def test_closure_never_claims_a_dependency_the_manifest_denies():
                     if len(offenders) < 5:
                         offenders.append((os.path.basename(path), ident, ouid))
     if not files:
-        print('SKIP test_closure_never_claims_a_dependency_the_manifest_denies: no corpus')
+        print(
+            "SKIP test_closure_never_claims_a_dependency_the_manifest_denies: no corpus"
+        )
         return
-    assert checked, ('manifests and outputs present but no type-5 pair was compared', files)
-    assert not over, ('edge closure claims %d dependencies the manifest denies; '
-                      'the walk invents reachability. first: %s' % (over, offenders))
-    assert missed <= MANIFEST_MISSING_PATHS, (
-        'closure now misses %d manifest dependencies, worse than the recorded %d'
-        % (missed, MANIFEST_MISSING_PATHS))
+    assert checked, (
+        "manifests and outputs present but no type-5 pair was compared",
+        files,
+    )
+    assert not over, (
+        "edge closure claims %d dependencies the manifest denies; "
+        "the walk invents reachability. first: %s" % (over, offenders)
+    )
+    assert (
+        missed <= MANIFEST_MISSING_PATHS
+    ), "closure now misses %d manifest dependencies, worse than the recorded %d" % (
+        missed,
+        MANIFEST_MISSING_PATHS,
+    )
     return
 
 
@@ -681,7 +775,7 @@ def test_closure_never_claims_a_dependency_the_manifest_denies():
 # matches ACROSS packages. Pairing each source with its own binary takes it to 61.
 BLENDMODE_PAIRINGS = 55
 
-_SBS_NODE = re.compile(r'<compNode>((?:(?!</compNode>).)*?)</compNode>', re.S)
+_SBS_NODE = re.compile(r"<compNode>((?:(?!</compNode>).)*?)</compNode>", re.S)
 
 
 def _distinctive(text):
@@ -690,24 +784,28 @@ def _distinctive(text):
     Round numbers -- 0, 0.5, 0.25, 1.0 -- occur in every filter of every file and pair
     nothing with anything; five significant decimals do.
     """
-    m = re.match(r'^-?\d+\.(\d+)$', text)
-    return bool(m) and len(m.group(1).rstrip('0')) >= 5
+    m = re.match(r"^-?\d+\.(\d+)$", text)
+    return bool(m) and len(m.group(1).rstrip("0")) >= 5
 
 
 def _source_blends(path):
     """[(opacitymult, blendingmode or None)] for every blend node the .sbs declares."""
     try:
-        text = open(path, encoding='utf-8', errors='replace').read()
+        text = open(path, encoding="utf-8", errors="replace").read()
     except OSError:
         return []
     out = []
     for body in _SBS_NODE.findall(text):
         if '<filter v="blend"/>' not in body:
             continue
-        mode = re.search(r'<name v="blendingmode"/>.*?<constantValueInt32 v="(-?\d+)"/>',
-                         body, re.S)
-        opac = re.search(r'<name v="opacitymult"/>.*?<constantValueFloat1 v="([-\d.e]+)"/>',
-                         body, re.S)
+        mode = re.search(
+            r'<name v="blendingmode"/>.*?<constantValueInt32 v="(-?\d+)"/>', body, re.S
+        )
+        opac = re.search(
+            r'<name v="opacitymult"/>.*?<constantValueFloat1 v="([-\d.e]+)"/>',
+            body,
+            re.S,
+        )
         if not opac or not _distinctive(opac.group(1)):
             continue
         out.append((float(opac.group(1)), int(mode.group(1)) if mode else None))
@@ -782,11 +880,11 @@ def test_blendingmode_matches_the_source_that_declares_it():
         sources += 1
         by_value = collections.defaultdict(list)
         for rec in asm.records:
-            if rec.filter_name != 'blend' or not rec.slot1_flags:
+            if rec.filter_name != "blend" or not rec.slot1_flags:
                 continue
-            mode = rec.slot1_flags.get('blendingmode')
+            mode = rec.slot1_flags.get("blendingmode")
             for word in rec.words:
-                f = struct.unpack('<f', struct.pack('<I', int(word) & 0xFFFFFFFF))[0]
+                f = struct.unpack("<f", struct.pack("<I", int(word) & 0xFFFFFFFF))[0]
                 if np.isfinite(f) and 0.0 < f < 1.0:
                     by_value[round(f, 6)].append(mode)
         for value, mode in declared:
@@ -796,7 +894,9 @@ def test_blendingmode_matches_the_source_that_declares_it():
             if mode is None:
                 default_zero += 1 if hits[0] == 0 else 0
                 if hits[0] != 0:
-                    offenders.append((os.path.basename(path), value, 'default', hits[0]))
+                    offenders.append(
+                        (os.path.basename(path), value, "default", hits[0])
+                    )
                     differ += 1
             elif mode == hits[0]:
                 agree += 1
@@ -804,21 +904,28 @@ def test_blendingmode_matches_the_source_that_declares_it():
                 differ += 1
                 offenders.append((os.path.basename(path), value, mode, hits[0]))
     if not sources:
-        print('SKIP test_blendingmode_matches_the_source_that_declares_it: no paired sources')
+        print(
+            "SKIP test_blendingmode_matches_the_source_that_declares_it: no paired sources"
+        )
         return
-    assert not differ, ('blend slot 1 decodes a mode the source contradicts, %d times; '
-                        'first: %s' % (differ, offenders[:5]))
+    assert (
+        not differ
+    ), "blend slot 1 decodes a mode the source contradicts, %d times; " "first: %s" % (
+        differ,
+        offenders[:5],
+    )
     assert agree + default_zero >= BLENDMODE_PAIRINGS, (
-        'only %d pairings (%d declared, %d default) -- fewer than the recorded %d, so the '
-        'pairing procedure has stopped finding evidence rather than passing'
-        % (agree + default_zero, agree, default_zero, BLENDMODE_PAIRINGS))
+        "only %d pairings (%d declared, %d default) -- fewer than the recorded %d, so the "
+        "pairing procedure has stopped finding evidence rather than passing"
+        % (agree + default_zero, agree, default_zero, BLENDMODE_PAIRINGS)
+    )
     return
 
 
 # Parameter pairings the all-filter containment finds today. A floor, as above.
 ALL_PARAM_PAIRINGS = 140
 
-_SBS_PARAM_BLOCK = re.compile(r'<parameter>((?:(?!</parameter>).)*?)</parameter>', re.S)
+_SBS_PARAM_BLOCK = re.compile(r"<parameter>((?:(?!</parameter>).)*?)</parameter>", re.S)
 _SBS_PARAM_NAME = re.compile(r'<name v="([a-z0-9]+)"/>')
 _SBS_PARAM_VALUE = re.compile(r'<constantValue(?:Float1|Float4) v="([-\d.e ]+)"/>')
 _SBS_FILTER = re.compile(r'<filter v="([a-z0-9]+)"/>')
@@ -857,17 +964,19 @@ def test_no_filter_parameter_is_named_differently_from_its_source():
     try:
         own_assembly = provenance.own_assembly
     except AttributeError:
-        print('SKIP test_no_filter_parameter_is_named_differently_from_its_source: no pairing')
+        print(
+            "SKIP test_no_filter_parameter_is_named_differently_from_its_source: no pairing"
+        )
         return
     by_name = {v: k for k, v in FILTERS.items()}
-    by_name['grayscaleconversion'] = 3
+    by_name["grayscaleconversion"] = 3
     agreed = 0
     wrong = []
     for path in provenance.paired_sources():
         if provenance.matches(path, provenance.EXCLUDED_AUTHORS):
             continue
         try:
-            text = open(path, encoding='utf-8', errors='replace').read()
+            text = open(path, encoding="utf-8", errors="replace").read()
         except OSError:
             continue
         declared = []
@@ -899,31 +1008,55 @@ def test_no_filter_parameter_is_named_differently_from_its_source():
         for fid, param, value in declared:
             if once[value] != 1:
                 continue
-            holders = [r for r in by_id.get(fid, []) for w in r.words
-                       if abs(struct.unpack('<f', struct.pack('<I', int(w) & 0xFFFFFFFF))[0]
-                              - value) < 1e-6]
+            holders = [
+                r
+                for r in by_id.get(fid, [])
+                for w in r.words
+                if abs(
+                    struct.unpack("<f", struct.pack("<I", int(w) & 0xFFFFFFFF))[0]
+                    - value
+                )
+                < 1e-6
+            ]
             if len(holders) != 1:
                 continue
-            baked = {n: v for n, kind, v in holders[0].named_parameters if kind == 'baked'}
+            baked = {
+                n: v for n, kind, v in holders[0].named_parameters if kind == "baked"
+            }
             ours = [n for n, v in baked.items() if abs(float(v) - value) < 1e-6]
             if ours == [param]:
                 agreed += 1
             elif ours:
                 wrong.append((os.path.basename(path), fid, param, value, ours))
     if not agreed and not wrong:
-        print('SKIP test_no_filter_parameter_is_named_differently_from_its_source: no pairings')
+        print(
+            "SKIP test_no_filter_parameter_is_named_differently_from_its_source: no pairings"
+        )
         return
-    assert not wrong, ('a parameter is named differently from the source that declares it: '
-                       '%s' % (wrong[:5],))
-    assert agreed >= ALL_PARAM_PAIRINGS, (
-        'only %d parameters located, fewer than the recorded %d' % (agreed, ALL_PARAM_PAIRINGS))
+    assert (
+        not wrong
+    ), "a parameter is named differently from the source that declares it: " "%s" % (
+        wrong[:5],
+    )
+    assert (
+        agreed >= ALL_PARAM_PAIRINGS
+    ), "only %d parameters located, fewer than the recorded %d" % (
+        agreed,
+        ALL_PARAM_PAIRINGS,
+    )
     return
 
 
 # Levels parameter pairings this containment finds today. A floor, as above.
 LEVELS_PAIRINGS = 80
 
-_LEVEL_PARAMS = ('levelinlow', 'levelinmid', 'levelinhigh', 'leveloutlow', 'levelouthigh')
+_LEVEL_PARAMS = (
+    "levelinlow",
+    "levelinmid",
+    "levelinhigh",
+    "leveloutlow",
+    "levelouthigh",
+)
 
 
 def test_levels_parameters_are_named_the_way_the_sources_name_them():
@@ -955,7 +1088,9 @@ def test_levels_parameters_are_named_the_way_the_sources_name_them():
     try:
         own_assembly = provenance.own_assembly
     except AttributeError:
-        print('SKIP test_levels_parameters_are_named_the_way_the_sources_name_them: no pairing')
+        print(
+            "SKIP test_levels_parameters_are_named_the_way_the_sources_name_them: no pairing"
+        )
         return
     named = collections.Counter()
     wrong = []
@@ -963,7 +1098,7 @@ def test_levels_parameters_are_named_the_way_the_sources_name_them():
         if provenance.matches(path, provenance.EXCLUDED_AUTHORS):
             continue
         try:
-            text = open(path, encoding='utf-8', errors='replace').read()
+            text = open(path, encoding="utf-8", errors="replace").read()
         except OSError:
             continue
         declared = []
@@ -971,8 +1106,11 @@ def test_levels_parameters_are_named_the_way_the_sources_name_them():
             if '<filter v="levels"/>' not in body:
                 continue
             for name in _LEVEL_PARAMS:
-                m = re.search(r'<name v="%s"/>.*?<constantValueFloat4 v="([-\d.e ]+)"/>' % name,
-                              body, re.S)
+                m = re.search(
+                    r'<name v="%s"/>.*?<constantValueFloat4 v="([-\d.e ]+)"/>' % name,
+                    body,
+                    re.S,
+                )
                 if not m:
                     continue
                 first = m.group(1).split()[0]
@@ -994,12 +1132,21 @@ def test_levels_parameters_are_named_the_way_the_sources_name_them():
         for name, value in declared:
             if once[value] != 1:
                 continue
-            holders = [r for r in recs for w in r.words
-                       if abs(struct.unpack('<f', struct.pack('<I', int(w) & 0xFFFFFFFF))[0]
-                              - value) < 1e-6]
+            holders = [
+                r
+                for r in recs
+                for w in r.words
+                if abs(
+                    struct.unpack("<f", struct.pack("<I", int(w) & 0xFFFFFFFF))[0]
+                    - value
+                )
+                < 1e-6
+            ]
             if len(holders) != 1:
                 continue
-            baked = {n: v for n, kind, v in holders[0].named_parameters if kind == 'baked'}
+            baked = {
+                n: v for n, kind, v in holders[0].named_parameters if kind == "baked"
+            }
             ours = [n for n, v in baked.items() if abs(float(v) - value) < 1e-6]
             if ours == [name]:
                 named[name] += 1
@@ -1007,13 +1154,18 @@ def test_levels_parameters_are_named_the_way_the_sources_name_them():
                 wrong.append((os.path.basename(path), name, value, ours))
     total = sum(named.values())
     if not total:
-        print('SKIP test_levels_parameters_are_named_the_way_the_sources_name_them: no pairings')
+        print(
+            "SKIP test_levels_parameters_are_named_the_way_the_sources_name_them: no pairings"
+        )
         return
-    assert not wrong, ('a levels parameter is named differently from the source that '
-                       'declares it: %s' % (wrong[:5],))
+    assert not wrong, (
+        "a levels parameter is named differently from the source that "
+        "declares it: %s" % (wrong[:5],)
+    )
     assert total >= LEVELS_PAIRINGS, (
-        'only %d parameters located, fewer than the recorded %d -- the containment has '
-        'stopped finding evidence rather than passing' % (total, LEVELS_PAIRINGS))
+        "only %d parameters located, fewer than the recorded %d -- the containment has "
+        "stopped finding evidence rather than passing" % (total, LEVELS_PAIRINGS)
+    )
     return
 
 
@@ -1030,7 +1182,7 @@ def _levels_declared(path):
     the Float1 form is what made this filter look unpairable for so long.
     """
     try:
-        text = open(path, encoding='utf-8', errors='replace').read()
+        text = open(path, encoding="utf-8", errors="replace").read()
     except OSError:
         return []
     out = []
@@ -1039,13 +1191,18 @@ def _levels_declared(path):
             continue
         got = {}
         for name in _LEVEL_PARAMS:
-            m = re.search(r'<name v="%s"/><relativeTo v="\d+"/><paramValue>'
-                          r'(?:<constantValueFloat\d v="([-\d.e ]+)"/>|(<dynamicValue>))'
-                          % name, body)
+            m = re.search(
+                r'<name v="%s"/><relativeTo v="\d+"/><paramValue>'
+                r'(?:<constantValueFloat\d v="([-\d.e ]+)"/>|(<dynamicValue>))' % name,
+                body,
+            )
             if not m:
                 continue
-            got[name] = (('const', float(m.group(1).split()[0])) if m.group(1)
-                         else ('dynamic', None))
+            got[name] = (
+                ("const", float(m.group(1).split()[0]))
+                if m.group(1)
+                else ("dynamic", None)
+            )
         if got:
             out.append(got)
     return out
@@ -1096,11 +1253,14 @@ def test_levels_placement_is_the_one_the_sources_confirm():
     own `.sbs`, which no part of the decode reads.
     """
     from sbsasm import PARAM_SPEC, WALKED_PARAMS
+
     if 15 not in WALKED_PARAMS:
         # Not a skip: the routing having been reverted is exactly what this catches.
-        assert False, ('`levels` is back on the LAYOUTS memo. It recovered 69 of 93 '
-                       'source-declared nodes there against the walk\'s 82 -- see '
-                       'FORMAT-NOTES "`levels` goes on the walk"')
+        assert False, (
+            "`levels` is back on the LAYOUTS memo. It recovered 69 of 93 "
+            "source-declared nodes there against the walk's 82 -- see "
+            'FORMAT-NOTES "`levels` goes on the walk"'
+        )
     spec = PARAM_SPEC[15]
     seen = collections.Counter()
     behind = []
@@ -1118,40 +1278,59 @@ def test_levels_placement_is_the_one_the_sources_confirm():
         if not recs:
             continue
         got = {}
-        for which in ('walk', 'memo'):
+        for which in ("walk", "memo"):
             reads = []
             for r in recs:
                 try:
-                    read = (r.named_parameters if which == 'walk'
-                            else r._parameters_paired(spec))
+                    read = (
+                        r.named_parameters
+                        if which == "walk"
+                        else r._parameters_paired(spec)
+                    )
                 except Exception:
                     read = []
                 reads.append({n: (k, v) for n, k, v in read})
             edges = {}
             for i, decl in enumerate(nodes):
-                edges[i] = [j for j, rd in enumerate(reads)
-                            if set(rd) == set(decl)
-                            and all((rd[n][0] == 'program') if kind == 'dynamic'
-                                    else (rd[n][0] == 'baked'
-                                          and abs(float(rd[n][1]) - v) <= 2e-4)
-                                    for n, (kind, v) in decl.items())]
+                edges[i] = [
+                    j
+                    for j, rd in enumerate(reads)
+                    if set(rd) == set(decl)
+                    and all(
+                        (
+                            (rd[n][0] == "program")
+                            if kind == "dynamic"
+                            else (
+                                rd[n][0] == "baked" and abs(float(rd[n][1]) - v) <= 2e-4
+                            )
+                        )
+                        for n, (kind, v) in decl.items()
+                    )
+                ]
             got[which] = _max_matching(edges, len(nodes))
-        seen['nodes'] += len(nodes)
-        seen['walk'] += got['walk']
-        seen['memo'] += got['memo']
-        if got['memo'] > got['walk']:
-            behind.append((os.path.basename(path), got['walk'], got['memo']))
-    if not seen['nodes']:
-        print('SKIP test_levels_placement_is_the_one_the_sources_confirm: no pairings')
+        seen["nodes"] += len(nodes)
+        seen["walk"] += got["walk"]
+        seen["memo"] += got["memo"]
+        if got["memo"] > got["walk"]:
+            behind.append((os.path.basename(path), got["walk"], got["memo"]))
+    if not seen["nodes"]:
+        print("SKIP test_levels_placement_is_the_one_the_sources_confirm: no pairings")
         return
-    assert not behind, ('the memo recovers MORE source-declared levels nodes than the walk '
-                        'on %s -- that was true on 0 of 21 files when levels was routed' %
-                        (behind,))
-    assert seen['walk'] >= LEVELS_NODES_RECOVERED, (
-        'the walk recovers %d of %d declared levels nodes, below the recorded %d'
-        % (seen['walk'], seen['nodes'], LEVELS_NODES_RECOVERED))
-    print('ok  test_levels_placement_is_the_one_the_sources_confirm '
-          '(%d of %d nodes, memo %d)' % (seen['walk'], seen['nodes'], seen['memo']))
+    assert not behind, (
+        "the memo recovers MORE source-declared levels nodes than the walk "
+        "on %s -- that was true on 0 of 21 files when levels was routed" % (behind,)
+    )
+    assert (
+        seen["walk"] >= LEVELS_NODES_RECOVERED
+    ), "the walk recovers %d of %d declared levels nodes, below the recorded %d" % (
+        seen["walk"],
+        seen["nodes"],
+        LEVELS_NODES_RECOVERED,
+    )
+    print(
+        "ok  test_levels_placement_is_the_one_the_sources_confirm "
+        "(%d of %d nodes, memo %d)" % (seen["walk"], seen["nodes"], seen["memo"])
+    )
     return
 
 
@@ -1160,7 +1339,8 @@ def test_levels_placement_is_the_one_the_sources_confirm():
 UNIFORM_COLOUR_PAIRINGS = 150
 
 _OUTPUTCOLOR = re.compile(
-    r'<name v="outputcolor"/>.*?<constantValueFloat4 v="([-\d.e ]+)"/>', re.S)
+    r'<name v="outputcolor"/>.*?<constantValueFloat4 v="([-\d.e ]+)"/>', re.S
+)
 
 
 def test_uniform_colour_sits_where_the_source_says_it_does():
@@ -1192,7 +1372,9 @@ def test_uniform_colour_sits_where_the_source_says_it_does():
     try:
         own_assembly = provenance.own_assembly
     except AttributeError:
-        print('SKIP test_uniform_colour_sits_where_the_source_says_it_does: no pairing helper')
+        print(
+            "SKIP test_uniform_colour_sits_where_the_source_says_it_does: no pairing helper"
+        )
         return
     found = collections.Counter()
     slots = collections.Counter()
@@ -1201,7 +1383,7 @@ def test_uniform_colour_sits_where_the_source_says_it_does():
         if provenance.matches(path, provenance.EXCLUDED_AUTHORS):
             continue
         try:
-            text = open(path, encoding='utf-8', errors='replace').read()
+            text = open(path, encoding="utf-8", errors="replace").read()
         except OSError:
             continue
         declared = []
@@ -1229,31 +1411,40 @@ def test_uniform_colour_sits_where_the_source_says_it_does():
             if once[colour] != 1 or len(colour) != 4:
                 continue
             if all(abs(x) < 1e-9 or abs(x - 1.0) < 1e-9 for x in colour):
-                continue                      # round values discriminate nothing
+                continue  # round values discriminate nothing
             at = None
             for rec in recs:
                 for k in range(len(rec.words) - 3):
-                    w = np.frombuffer(np.array(rec.words[k:k + 4], dtype=np.uint32).tobytes(),
-                                      dtype='<f4')
+                    w = np.frombuffer(
+                        np.array(rec.words[k : k + 4], dtype=np.uint32).tobytes(),
+                        dtype="<f4",
+                    )
                     if all(abs(float(w[j]) - colour[j]) < 1e-5 for j in range(4)):
                         at = k
                         break
                 if at is not None:
                     break
             if at is None:
-                found['missing'] += 1
+                found["missing"] += 1
             else:
-                found['found'] += 1
+                found["found"] += 1
                 slots[at] += 1
     if not sources:
-        print('SKIP test_uniform_colour_sits_where_the_source_says_it_does: no paired sources')
+        print(
+            "SKIP test_uniform_colour_sits_where_the_source_says_it_does: no paired sources"
+        )
         return
-    assert found['found'] >= UNIFORM_COLOUR_PAIRINGS, (
-        'only %d colours located, fewer than the recorded %d -- the containment has stopped '
-        'finding evidence rather than passing' % (found['found'], UNIFORM_COLOUR_PAIRINGS))
+    assert found["found"] >= UNIFORM_COLOUR_PAIRINGS, (
+        "only %d colours located, fewer than the recorded %d -- the containment has stopped "
+        "finding evidence rather than passing"
+        % (found["found"], UNIFORM_COLOUR_PAIRINGS)
+    )
     top = slots.most_common(1)[0]
-    assert top[0] == 2 and top[1] >= 0.9 * found['found'], (
-        'the fill colour no longer sits predominantly at slot 2: %s' % (slots.most_common(4),))
+    assert (
+        top[0] == 2 and top[1] >= 0.9 * found["found"]
+    ), "the fill colour no longer sits predominantly at slot 2: %s" % (
+        slots.most_common(4),
+    )
     return
 
 
@@ -1282,20 +1473,40 @@ def test_uniform_colour_sits_where_the_source_says_it_does():
 #: FORMAT-NOTES.md, "The output size the reference was exported at is a property of the
 #: SCORE, not of the render", for the full 27-channel table at both baselines.
 REFERENCE_FLOOR = {
-    ('Kutejnikov__Auras', 'basecolor', 0): 0.90,            # unchanged, now 0.937
-    ('Kutejnikov__Auras', 'basecolor', 1): 0.82,            # unchanged, now 0.865
-    ('Kutejnikov__Auras', 'basecolor', 2): 0.91,            # unchanged, now 0.945
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 0): 0.88,  # was 0.40, now 0.916-0.940
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 1): 0.95,  # was 0.42, now 0.978-0.986
-    ('Kutejnikov__Bricks_and_tiles', 'emission', 2): 0.95,  # was 0.42, now 0.981-0.985
-    ('minime453__Chesterfield_PBR_Material', 'roughness', 0): 0.90,   # was 0.26 / 0.80, now 0.930
-    ('minime453__Chesterfield_PBR_Material', 'metallic', 0): 0.90,    # was 0.29, now 0.952
+    ("Kutejnikov__Auras", "basecolor", 0): 0.90,  # unchanged, now 0.937
+    ("Kutejnikov__Auras", "basecolor", 1): 0.82,  # unchanged, now 0.865
+    ("Kutejnikov__Auras", "basecolor", 2): 0.91,  # unchanged, now 0.945
+    ("Kutejnikov__Bricks_and_tiles", "emission", 0): 0.88,  # was 0.40, now 0.916-0.940
+    ("Kutejnikov__Bricks_and_tiles", "emission", 1): 0.95,  # was 0.42, now 0.978-0.986
+    ("Kutejnikov__Bricks_and_tiles", "emission", 2): 0.95,  # was 0.42, now 0.981-0.985
+    (
+        "minime453__Chesterfield_PBR_Material",
+        "roughness",
+        0,
+    ): 0.90,  # was 0.26 / 0.80, now 0.930
+    (
+        "minime453__Chesterfield_PBR_Material",
+        "metallic",
+        0,
+    ): 0.90,  # was 0.29, now 0.952
     # NEW ENTRIES. These channels only became worth ratcheting once the lattice appeared --
     # before it they sat at or below 0.17 and two of them were NEGATIVE.
-    ('minime453__Chesterfield_PBR_Material', 'height', 0): 0.90,      # was -0.002, now 0.949
-    ('minime453__Chesterfield_PBR_Material', 'normal', 0): 0.86,      # was -0.007, now 0.916
-    ('minime453__Chesterfield_PBR_Material', 'normal', 1): 0.86,      # was +0.002, now 0.916
-    ('minime453__Chesterfield_PBR_Material', 'AO', 0): 0.82,          # was -0.038, now 0.875
+    (
+        "minime453__Chesterfield_PBR_Material",
+        "height",
+        0,
+    ): 0.90,  # was -0.002, now 0.949
+    (
+        "minime453__Chesterfield_PBR_Material",
+        "normal",
+        0,
+    ): 0.86,  # was -0.007, now 0.916
+    (
+        "minime453__Chesterfield_PBR_Material",
+        "normal",
+        1,
+    ): 0.86,  # was +0.002, now 0.916
+    ("minime453__Chesterfield_PBR_Material", "AO", 0): 0.82,  # was -0.038, now 0.875
     # CHESTERFIELD BASECOLOR: LOWERED, WHICH IS THE ONE MOVE THIS TABLE IS NOT SUPPOSED TO
     # MAKE, so the reason is here rather than in a commit message. Routing `levels` through
     # the structural walk (`sbsasm.WALKED_PARAMS`) takes these three channels from
@@ -1329,9 +1540,21 @@ REFERENCE_FLOOR = {
     # number: -0.70 says "do not get MORE inverted than this". The fault is the nine mode-7
     # switch blends in its colour chain, which this does not touch; it is less wrong, not
     # right.
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 0): 0.72,   # was 0.60 / 0.55, now 0.7497
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 1): 0.74,   # was 0.72 / 0.60, now 0.7662
-    ('minime453__Chesterfield_PBR_Material', 'basecolor', 2): -0.70,  # was -0.78, now -0.6773
+    (
+        "minime453__Chesterfield_PBR_Material",
+        "basecolor",
+        0,
+    ): 0.72,  # was 0.60 / 0.55, now 0.7497
+    (
+        "minime453__Chesterfield_PBR_Material",
+        "basecolor",
+        1,
+    ): 0.74,  # was 0.72 / 0.60, now 0.7662
+    (
+        "minime453__Chesterfield_PBR_Material",
+        "basecolor",
+        2,
+    ): -0.70,  # was -0.78, now -0.6773
     # BRICKS BASECOLOR IS ANTI-CORRELATED AND LISTED ANYWAY. These three sit at -0.70,
     # -0.69 and -0.65: the render is not merely poor, it is inverted against the engine's
     # own export. They are here for the FIRST assertion, not the second. Nothing was
@@ -1357,9 +1580,9 @@ REFERENCE_FLOOR = {
     # +0.1615 / +0.0324 recorded here, which is the sign flip the note above predicted --
     # but the pairing ambiguity described above is unchanged, so raising these would be
     # ratcheting a property of which reference won rather than of the render.
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 0): -0.72,   # was -0.7014, now +0.4270
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 1): -0.71,   # was -0.6901, now +0.5475
-    ('Kutejnikov__Bricks_and_tiles', 'basecolor', 2): -0.67,   # was -0.6462, now +0.5148
+    ("Kutejnikov__Bricks_and_tiles", "basecolor", 0): -0.72,  # was -0.7014, now +0.4270
+    ("Kutejnikov__Bricks_and_tiles", "basecolor", 1): -0.71,  # was -0.6901, now +0.5475
+    ("Kutejnikov__Bricks_and_tiles", "basecolor", 2): -0.67,  # was -0.6462, now +0.5148
 }
 
 
@@ -1415,58 +1638,58 @@ REFERENCE_FLOOR = {
 #: exactly what this file exists to catch.
 REFERENCE_FLOOR_RENDER2 = {
     # measured 2026-09-04 at 0c6f7dd + this change, render2 / implied / max_dim 256
-    ('Kutejnikov__Auras', '004/basecolor', 0): 0.9,
-    ('Kutejnikov__Auras', '004/basecolor', 1): 0.72,
-    ('Kutejnikov__Auras', '004/basecolor', 2): 0.91,
-    ('Kutejnikov__Bricks_and_tiles', '002/ambientocclusion', 0): 0.9,
-    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0): 0.59,
-    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1): 0.64,
-    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2): 0.63,
-    ('Kutejnikov__Bricks_and_tiles', '002/height', 0): 0.57,
-    ('Kutejnikov__Bricks_and_tiles', '002/normal', 0): 0.85,
-    ('Kutejnikov__Bricks_and_tiles', '002/normal', 1): 0.85,
-    ('Kutejnikov__Bricks_and_tiles', '002/normal', 2): 0.89,
-    ('Kutejnikov__Bricks_and_tiles', '002/roughness', 0): 0.85,
-    ('Kutejnikov__Bricks_and_tiles', '003/ambientocclusion', 0): 0.91,
-    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0): 0.72,
-    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 1): 0.8,
-    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 2): 0.76,
-    ('Kutejnikov__Bricks_and_tiles', '003/height', 0): 0.71,
-    ('Kutejnikov__Bricks_and_tiles', '003/normal', 0): 0.81,
-    ('Kutejnikov__Bricks_and_tiles', '003/normal', 1): 0.86,
-    ('Kutejnikov__Bricks_and_tiles', '003/normal', 2): 0.78,
-    ('Kutejnikov__Bricks_and_tiles', '003/roughness', 0): 0.9,
-    ('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0): 0.7,
-    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0): 0.64,
-    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 1): 0.71,
-    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 2): 0.72,
-    ('Kutejnikov__Bricks_and_tiles', '004/emission', 0): 0.96,
-    ('Kutejnikov__Bricks_and_tiles', '004/emission', 1): 0.98,
-    ('Kutejnikov__Bricks_and_tiles', '004/emission', 2): 0.97,
-    ('Kutejnikov__Bricks_and_tiles', '004/height', 0): 0.44,
-    ('Kutejnikov__Bricks_and_tiles', '004/normal', 0): 0.55,
-    ('Kutejnikov__Bricks_and_tiles', '004/normal', 1): 0.55,
-    ('Kutejnikov__Bricks_and_tiles', '004/normal', 2): 0.76,
-    ('Kutejnikov__Bricks_and_tiles', '004/roughness', 0): 0.57,
-    ('Kutejnikov__Bricks_and_tiles', '005/ambientocclusion', 0): 0.85,
-    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0): -0.05,
-    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 1): 0.2,
-    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 2): 0.2,
-    ('Kutejnikov__Bricks_and_tiles', '005/height', 0): 0.54,
-    ('Kutejnikov__Bricks_and_tiles', '005/normal', 0): 0.75,
-    ('Kutejnikov__Bricks_and_tiles', '005/normal', 1): 0.75,
-    ('Kutejnikov__Bricks_and_tiles', '005/normal', 2): 0.66,
-    ('Kutejnikov__Bricks_and_tiles', '005/roughness', 0): 0.77,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0): 0.84,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0): 0.82,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 1): 0.92,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2): -0.46,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0): 0.93,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/metallic', 0): 0.99,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 0): 0.93,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 1): 0.92,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 2): 0.72,
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0): 0.91,
+    ("Kutejnikov__Auras", "004/basecolor", 0): 0.9,
+    ("Kutejnikov__Auras", "004/basecolor", 1): 0.72,
+    ("Kutejnikov__Auras", "004/basecolor", 2): 0.91,
+    ("Kutejnikov__Bricks_and_tiles", "002/ambientocclusion", 0): 0.9,
+    ("Kutejnikov__Bricks_and_tiles", "002/basecolor", 0): 0.59,
+    ("Kutejnikov__Bricks_and_tiles", "002/basecolor", 1): 0.64,
+    ("Kutejnikov__Bricks_and_tiles", "002/basecolor", 2): 0.63,
+    ("Kutejnikov__Bricks_and_tiles", "002/height", 0): 0.57,
+    ("Kutejnikov__Bricks_and_tiles", "002/normal", 0): 0.85,
+    ("Kutejnikov__Bricks_and_tiles", "002/normal", 1): 0.85,
+    ("Kutejnikov__Bricks_and_tiles", "002/normal", 2): 0.89,
+    ("Kutejnikov__Bricks_and_tiles", "002/roughness", 0): 0.85,
+    ("Kutejnikov__Bricks_and_tiles", "003/ambientocclusion", 0): 0.91,
+    ("Kutejnikov__Bricks_and_tiles", "003/basecolor", 0): 0.72,
+    ("Kutejnikov__Bricks_and_tiles", "003/basecolor", 1): 0.8,
+    ("Kutejnikov__Bricks_and_tiles", "003/basecolor", 2): 0.76,
+    ("Kutejnikov__Bricks_and_tiles", "003/height", 0): 0.71,
+    ("Kutejnikov__Bricks_and_tiles", "003/normal", 0): 0.81,
+    ("Kutejnikov__Bricks_and_tiles", "003/normal", 1): 0.86,
+    ("Kutejnikov__Bricks_and_tiles", "003/normal", 2): 0.78,
+    ("Kutejnikov__Bricks_and_tiles", "003/roughness", 0): 0.9,
+    ("Kutejnikov__Bricks_and_tiles", "004/ambientocclusion", 0): 0.7,
+    ("Kutejnikov__Bricks_and_tiles", "004/basecolor", 0): 0.64,
+    ("Kutejnikov__Bricks_and_tiles", "004/basecolor", 1): 0.71,
+    ("Kutejnikov__Bricks_and_tiles", "004/basecolor", 2): 0.72,
+    ("Kutejnikov__Bricks_and_tiles", "004/emission", 0): 0.96,
+    ("Kutejnikov__Bricks_and_tiles", "004/emission", 1): 0.98,
+    ("Kutejnikov__Bricks_and_tiles", "004/emission", 2): 0.97,
+    ("Kutejnikov__Bricks_and_tiles", "004/height", 0): 0.44,
+    ("Kutejnikov__Bricks_and_tiles", "004/normal", 0): 0.55,
+    ("Kutejnikov__Bricks_and_tiles", "004/normal", 1): 0.55,
+    ("Kutejnikov__Bricks_and_tiles", "004/normal", 2): 0.76,
+    ("Kutejnikov__Bricks_and_tiles", "004/roughness", 0): 0.57,
+    ("Kutejnikov__Bricks_and_tiles", "005/ambientocclusion", 0): 0.85,
+    ("Kutejnikov__Bricks_and_tiles", "005/basecolor", 0): -0.05,
+    ("Kutejnikov__Bricks_and_tiles", "005/basecolor", 1): 0.2,
+    ("Kutejnikov__Bricks_and_tiles", "005/basecolor", 2): 0.2,
+    ("Kutejnikov__Bricks_and_tiles", "005/height", 0): 0.54,
+    ("Kutejnikov__Bricks_and_tiles", "005/normal", 0): 0.75,
+    ("Kutejnikov__Bricks_and_tiles", "005/normal", 1): 0.75,
+    ("Kutejnikov__Bricks_and_tiles", "005/normal", 2): 0.66,
+    ("Kutejnikov__Bricks_and_tiles", "005/roughness", 0): 0.77,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/AO", 0): 0.84,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 0): 0.82,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 1): 0.92,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 2): -0.46,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/height", 0): 0.93,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/metallic", 0): 0.99,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/normal", 0): 0.93,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/normal", 1): 0.92,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/normal", 2): 0.72,
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/roughness", 0): 0.91,
     # BRICKS BASECOLOR IS WEAK AND IS LISTED ANYWAY, for the same reason `REFERENCE_FLOOR`
     # lists it: it is the output that moves most when anything in the `levels` or fx path
     # changes, and an unwatched channel that can swing by 1.1 is the whole exposure. The
@@ -1538,7 +1761,7 @@ GUARD_GRIDS = (128, 256, 512)
 #: bound is not allowed BELOW it -- re-taking can raise a floor and can never lower one, which
 #: `test_the_new_guard_does_not_weaken_the_old_floors` checks directly.
 GUARD_TABLE = {
-    ('Kutejnikov__Auras', '004/basecolor', 0): Entry(
+    ("Kutejnikov__Auras", "004/basecolor", 0): Entry(
         at={
             128: (+0.9276, 4.2881, +0.1372),
             256: (+0.9277, 4.1348, +0.1332),
@@ -1546,7 +1769,7 @@ GUARD_TABLE = {
         },
         was=(0.9, 256),
     ),
-    ('Kutejnikov__Auras', '004/basecolor', 1): Entry(
+    ("Kutejnikov__Auras", "004/basecolor", 1): Entry(
         at={
             128: (+0.7450, 18.7731, +0.2232),
             256: (+0.7497, 17.3662, +0.2190),
@@ -1554,7 +1777,7 @@ GUARD_TABLE = {
         },
         was=(0.72, 256),
     ),
-    ('Kutejnikov__Auras', '004/basecolor', 2): Entry(
+    ("Kutejnikov__Auras", "004/basecolor", 2): Entry(
         at={
             128: (+0.9467, 0.5174, -0.0583),
             256: (+0.9398, 0.4733, -0.0653),
@@ -1562,7 +1785,7 @@ GUARD_TABLE = {
         },
         was=(0.91, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '002/ambientocclusion', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "002/ambientocclusion", 0): Entry(
         at={
             128: (+0.9484, 2.1699, -0.0862),
             256: (+0.9270, 1.1009, +0.0736),
@@ -1570,7 +1793,7 @@ GUARD_TABLE = {
         },
         was=(0.9, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "002/basecolor", 0): Entry(
         at={
             128: (+0.6425, 5.0332, +0.0054),
             256: (+0.6184, 0.8924, +0.0270),
@@ -1578,7 +1801,7 @@ GUARD_TABLE = {
         },
         was=(0.59, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "002/basecolor", 1): Entry(
         at={
             128: (+0.6975, 4.7562, -0.0012),
             256: (+0.6681, 0.8751, +0.0141),
@@ -1586,7 +1809,7 @@ GUARD_TABLE = {
         },
         was=(0.64, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "002/basecolor", 2): Entry(
         at={
             128: (+0.6841, 4.2466, +0.0000),
             256: (+0.6520, 0.7390, +0.0036),
@@ -1594,7 +1817,7 @@ GUARD_TABLE = {
         },
         was=(0.63, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '002/height', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "002/height", 0): Entry(
         at={
             128: (+0.6732, 6.8677, -0.0284),
             256: (+0.5907, 0.6650, +0.2162),
@@ -1602,7 +1825,7 @@ GUARD_TABLE = {
         },
         was=(0.57, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '002/normal', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "002/normal", 0): Entry(
         at={
             128: (+0.7607, 3.1273, +0.0005),
             256: (+0.8754, 0.8876, +0.0005),
@@ -1610,7 +1833,7 @@ GUARD_TABLE = {
         },
         was=(0.85, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '002/normal', 1): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "002/normal", 1): Entry(
         at={
             128: (+0.7609, 3.1522, +0.0007),
             256: (+0.8776, 0.8811, +0.0007),
@@ -1618,7 +1841,7 @@ GUARD_TABLE = {
         },
         was=(0.85, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '002/normal', 2): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "002/normal", 2): Entry(
         at={
             128: (+0.5099, 0.8610, -0.0071),
             256: (+0.9170, 0.4375, +0.0069),
@@ -1626,7 +1849,7 @@ GUARD_TABLE = {
         },
         was=(0.89, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '002/roughness', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "002/roughness", 0): Entry(
         at={
             128: (+0.8960, 10.4656, -0.2032),
             256: (+0.8732, 4.8969, -0.4345),
@@ -1634,7 +1857,7 @@ GUARD_TABLE = {
         },
         was=(0.85, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '003/ambientocclusion', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "003/ambientocclusion", 0): Entry(
         at={
             128: (+0.6362, 0.7661, +0.0619),
             256: (+0.9306, 2.7255, -0.0392),
@@ -1642,7 +1865,7 @@ GUARD_TABLE = {
         },
         was=(0.91, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "003/basecolor", 0): Entry(
         at={
             128: (+0.5008, 0.7199, +0.0674),
             256: (+0.7453, 1.6308, +0.0555),
@@ -1650,7 +1873,7 @@ GUARD_TABLE = {
         },
         was=(0.72, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 1): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "003/basecolor", 1): Entry(
         at={
             128: (+0.5553, 0.7584, +0.0374),
             256: (+0.8245, 1.7123, +0.0329),
@@ -1658,7 +1881,7 @@ GUARD_TABLE = {
         },
         was=(0.8, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 2): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "003/basecolor", 2): Entry(
         at={
             128: (+0.5317, 0.5547, -0.0107),
             256: (+0.7876, 1.2529, -0.0059),
@@ -1666,7 +1889,7 @@ GUARD_TABLE = {
         },
         was=(0.76, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '003/height', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "003/height", 0): Entry(
         at={
             128: (+0.5243, 0.7069, +0.2840),
             256: (+0.7373, 2.8838, +0.1303),
@@ -1674,7 +1897,7 @@ GUARD_TABLE = {
         },
         was=(0.71, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '003/normal', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "003/normal", 0): Entry(
         at={
             128: (+0.7170, 0.9967, -0.0001),
             256: (+0.8398, 2.9980, -0.0001),
@@ -1682,7 +1905,7 @@ GUARD_TABLE = {
         },
         was=(0.81, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '003/normal', 1): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "003/normal", 1): Entry(
         at={
             128: (+0.4118, 0.1238, -0.0001),
             256: (+0.8846, 3.5443, -0.0001),
@@ -1690,7 +1913,7 @@ GUARD_TABLE = {
         },
         was=(0.86, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '003/normal', 2): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "003/normal", 2): Entry(
         at={
             128: (+0.3456, 0.0787, +0.0020),
             256: (+0.8016, 5.3166, -0.0093),
@@ -1698,7 +1921,7 @@ GUARD_TABLE = {
         },
         was=(0.78, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '003/roughness', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "003/roughness", 0): Entry(
         at={
             128: (+0.6413, 2.4857, -0.1560),
             256: (+0.9257, 6.6217, -0.1118),
@@ -1706,7 +1929,7 @@ GUARD_TABLE = {
         },
         was=(0.9, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/ambientocclusion", 0): Entry(
         at={
             128: (+0.7673, 1.8084, -0.0680),
             256: (+0.7232, 1.0699, +0.0245),
@@ -1714,7 +1937,7 @@ GUARD_TABLE = {
         },
         was=(0.7, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/basecolor", 0): Entry(
         at={
             128: (+0.5593, 4.5760, +0.0628),
             256: (+0.6618, 1.3726, +0.0725),
@@ -1722,7 +1945,7 @@ GUARD_TABLE = {
         },
         was=(0.64, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 1): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/basecolor", 1): Entry(
         at={
             128: (+0.6010, 3.8578, +0.0270),
             256: (+0.7365, 1.1966, +0.0277),
@@ -1730,7 +1953,7 @@ GUARD_TABLE = {
         },
         was=(0.71, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 2): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/basecolor", 2): Entry(
         at={
             128: (+0.6060, 2.8954, +0.0082),
             256: (+0.7478, 0.8925, +0.0026),
@@ -1738,7 +1961,7 @@ GUARD_TABLE = {
         },
         was=(0.72, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/emission', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/emission", 0): Entry(
         at={
             128: (+0.9939, 1.2332, +0.0033),
             256: (+0.9992, 1.0616, +0.0010),
@@ -1746,7 +1969,7 @@ GUARD_TABLE = {
         },
         was=(0.96, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/emission', 1): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/emission", 1): Entry(
         at={
             128: (+0.9795, 0.7642, -0.0002),
             256: (+0.9898, 0.6587, -0.0006),
@@ -1754,7 +1977,7 @@ GUARD_TABLE = {
         },
         was=(0.98, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/emission', 2): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/emission", 2): Entry(
         at={
             128: (+0.9786, 0.7948, -0.0001),
             256: (+0.9895, 0.6870, -0.0005),
@@ -1762,7 +1985,7 @@ GUARD_TABLE = {
         },
         was=(0.97, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/height', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/height", 0): Entry(
         at={
             128: (+0.5305, 5.0080, +0.0010),
             256: (+0.4667, 1.2717, +0.1725),
@@ -1770,7 +1993,7 @@ GUARD_TABLE = {
         },
         was=(0.44, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/normal', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/normal", 0): Entry(
         at={
             128: (+0.5977, 2.6248, -0.0001),
             256: (+0.5768, 1.0317, -0.0001),
@@ -1778,7 +2001,7 @@ GUARD_TABLE = {
         },
         was=(0.55, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/normal', 1): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/normal", 1): Entry(
         at={
             128: (+0.5925, 2.6114, +0.0001),
             256: (+0.5728, 0.9885, +0.0001),
@@ -1786,7 +2009,7 @@ GUARD_TABLE = {
         },
         was=(0.55, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/normal', 2): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/normal", 2): Entry(
         at={
             128: (+0.3767, 0.7390, -0.0007),
             256: (+0.7870, 0.4754, +0.0044),
@@ -1794,7 +2017,7 @@ GUARD_TABLE = {
         },
         was=(0.76, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '004/roughness', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "004/roughness", 0): Entry(
         at={
             128: (+0.7337, 8.7103, -0.1879),
             256: (+0.5942, 4.3923, -0.3283),
@@ -1802,7 +2025,7 @@ GUARD_TABLE = {
         },
         was=(0.57, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '005/ambientocclusion', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "005/ambientocclusion", 0): Entry(
         at={
             128: (+0.8812, 2.1654, -0.0622),
             256: (+0.9543, 1.0180, +0.0366),
@@ -1810,7 +2033,7 @@ GUARD_TABLE = {
         },
         was=(0.85, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "005/basecolor", 0): Entry(
         at={
             128: (+0.5150, 4.0208, +0.0784),
             256: (+0.7967, 1.0672, +0.0788),
@@ -1818,7 +2041,7 @@ GUARD_TABLE = {
         },
         was=(-0.05, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 1): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "005/basecolor", 1): Entry(
         at={
             128: (+0.5549, 3.4857, +0.0388),
             256: (+0.8169, 0.9303, +0.0303),
@@ -1826,7 +2049,7 @@ GUARD_TABLE = {
         },
         was=(0.2, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 2): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "005/basecolor", 2): Entry(
         at={
             128: (+0.5672, 2.5690, +0.0155),
             256: (+0.8296, 0.6970, +0.0032),
@@ -1834,7 +2057,7 @@ GUARD_TABLE = {
         },
         was=(0.2, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '005/height', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "005/height", 0): Entry(
         at={
             128: (+0.5831, 5.1629, +0.0729),
             256: (+0.6345, 0.6355, +0.2196),
@@ -1842,7 +2065,7 @@ GUARD_TABLE = {
         },
         was=(0.54, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '005/normal', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "005/normal", 0): Entry(
         at={
             128: (+0.7256, 2.9432, +0.0004),
             256: (+0.8941, 0.9900, +0.0005),
@@ -1850,7 +2073,7 @@ GUARD_TABLE = {
         },
         was=(0.75, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '005/normal', 1): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "005/normal", 1): Entry(
         at={
             128: (+0.7328, 2.9209, +0.0003),
             256: (+0.9061, 0.9470, +0.0003),
@@ -1858,7 +2081,7 @@ GUARD_TABLE = {
         },
         was=(0.75, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '005/normal', 2): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "005/normal", 2): Entry(
         at={
             128: (+0.4847, 0.8259, -0.0032),
             256: (+0.9416, 0.4477, +0.0042),
@@ -1866,7 +2089,7 @@ GUARD_TABLE = {
         },
         was=(0.66, 256),
     ),
-    ('Kutejnikov__Bricks_and_tiles', '005/roughness', 0): Entry(
+    ("Kutejnikov__Bricks_and_tiles", "005/roughness", 0): Entry(
         at={
             128: (+0.8583, 10.5119, -0.2394),
             256: (+0.8895, 4.3310, -0.3724),
@@ -1874,7 +2097,7 @@ GUARD_TABLE = {
         },
         was=(0.77, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/AO", 0): Entry(
         at={
             128: (+0.8604, 8.8715, -0.1126),
             256: (+0.8725, 2.5524, -0.0143),
@@ -1882,7 +2105,7 @@ GUARD_TABLE = {
         },
         was=(0.84, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 0): Entry(
         at={
             128: (+0.9338, 0.7747, -0.1042),
             256: (+0.9149, 0.6321, -0.0967),
@@ -1890,7 +2113,7 @@ GUARD_TABLE = {
         },
         was=(0.82, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 1): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 1): Entry(
         at={
             128: (+0.9541, 0.5522, +0.0148),
             256: (+0.9775, 0.5549, +0.0097),
@@ -1898,7 +2121,7 @@ GUARD_TABLE = {
         },
         was=(0.92, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 2): Entry(
         at={
             128: (+0.7855, 0.1217, -0.0038),
             256: (+0.8389, 0.1953, -0.0041),
@@ -1906,7 +2129,7 @@ GUARD_TABLE = {
         },
         was=(-0.46, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/height", 0): Entry(
         at={
             128: (+0.9620, 1.4562, +0.0250),
             256: (+0.9620, 1.2120, +0.0414),
@@ -1914,7 +2137,7 @@ GUARD_TABLE = {
         },
         was=(0.93, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/metallic', 0): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/metallic", 0): Entry(
         at={
             128: (+0.9979, 1.0840, +0.0021),
             256: (+0.9998, 1.0306, +0.0008),
@@ -1922,7 +2145,7 @@ GUARD_TABLE = {
         },
         was=(0.99, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 0): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/normal", 0): Entry(
         at={
             128: (+0.9642, 1.3880, +0.0001),
             256: (+0.9642, 1.2059, -0.0001),
@@ -1930,7 +2153,7 @@ GUARD_TABLE = {
         },
         was=(0.93, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 1): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/normal", 1): Entry(
         at={
             128: (+0.9640, 1.3826, +0.0002),
             256: (+0.9628, 1.2020, +0.0003),
@@ -1938,7 +2161,7 @@ GUARD_TABLE = {
         },
         was=(0.92, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 2): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/normal", 2): Entry(
         at={
             128: (+0.4911, 0.5299, +0.0005),
             256: (+0.6995, 0.6057, +0.0004),
@@ -1946,7 +2169,7 @@ GUARD_TABLE = {
         },
         was=(0.72, 256),
     ),
-    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0): Entry(
+    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/roughness", 0): Entry(
         at={
             128: (+0.9373, 0.7196, -0.0640),
             256: (+0.9349, 0.6836, -0.0639),
@@ -1974,50 +2197,50 @@ GUARD_TABLE = {
 #: outside a bar). Both are strictly more than the single correlation floor this replaces,
 #: which had no notion of amplitude or level at all.
 HEALTH_CENSUS = {
-    (('Kutejnikov__Auras', '004/basecolor', 0), 'band'),
-    (('Kutejnikov__Auras', '004/basecolor', 0), 'dc'),
-    (('Kutejnikov__Auras', '004/basecolor', 1), 'band'),
-    (('Kutejnikov__Auras', '004/basecolor', 1), 'dc'),
-    (('Kutejnikov__Auras', '004/basecolor', 2), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '002/ambientocclusion', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '002/height', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '002/height', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '003/ambientocclusion', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '003/basecolor', 1), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '003/height', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '003/normal', 1), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '003/normal', 2), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 1), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/height', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '004/height', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/ambientocclusion', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 1), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/height', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '005/height', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0), 'band'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2), 'band'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0), 'dc'),
+    (("Kutejnikov__Auras", "004/basecolor", 0), "band"),
+    (("Kutejnikov__Auras", "004/basecolor", 0), "dc"),
+    (("Kutejnikov__Auras", "004/basecolor", 1), "band"),
+    (("Kutejnikov__Auras", "004/basecolor", 1), "dc"),
+    (("Kutejnikov__Auras", "004/basecolor", 2), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "002/ambientocclusion", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "002/basecolor", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "002/basecolor", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "002/basecolor", 1), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "002/basecolor", 2), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "002/height", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "002/height", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "002/roughness", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "002/roughness", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "003/ambientocclusion", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "003/basecolor", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "003/basecolor", 1), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "003/height", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "003/normal", 1), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "003/normal", 2), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "003/roughness", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "003/roughness", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "004/ambientocclusion", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "004/basecolor", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "004/basecolor", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "004/basecolor", 1), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "004/height", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "004/height", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "004/roughness", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "004/roughness", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "005/ambientocclusion", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "005/basecolor", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "005/basecolor", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "005/basecolor", 1), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "005/height", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "005/height", 0), "dc"),
+    (("Kutejnikov__Bricks_and_tiles", "005/roughness", 0), "band"),
+    (("Kutejnikov__Bricks_and_tiles", "005/roughness", 0), "dc"),
+    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/AO", 0), "band"),
+    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/AO", 0), "dc"),
+    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 0), "dc"),
+    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 2), "band"),
+    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/height", 0), "dc"),
+    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/roughness", 0), "dc"),
 }
 
 #: Causes for health-bar failures whose mechanism IS traced. A `Cause` pins its quantity
@@ -2082,9 +2305,9 @@ GUARD_CAUSES = {
 #: are "not rendered" and never reach a floor. A picture that is constant and a refusal are
 #: both zero information; the difference is that only one of them is silent.
 CONSTANT_YIELDS_RENDER2 = {
-    'Kutejnikov__Auras': 0,
-    'Kutejnikov__Bricks_and_tiles': 9,
-    'minime453__Chesterfield_PBR_Material': 0,
+    "Kutejnikov__Auras": 0,
+    "Kutejnikov__Bricks_and_tiles": 9,
+    "minime453__Chesterfield_PBR_Material": 0,
 }
 
 
@@ -2117,11 +2340,11 @@ def test_reference_agreement_does_not_regress():
     try:
         import refcompare
     except Exception:
-        print('SKIP test_reference_agreement_does_not_regress: refcompare unavailable')
+        print("SKIP test_reference_agreement_does_not_regress: refcompare unavailable")
         return
     packs = refcompare.reference_packs()
     if not packs:
-        print('SKIP test_reference_agreement_does_not_regress: no reference packages')
+        print("SKIP test_reference_agreement_does_not_regress: no reference packages")
         return
     seen, flat, worse = {}, [], []
     for pack, refs in sorted(packs.items()):
@@ -2144,13 +2367,19 @@ def test_reference_agreement_does_not_regress():
                 worse.append((key, round(corr, 4), REFERENCE_FLOOR[key]))
     missing = sorted(set(REFERENCE_FLOOR) - set(seen))
     if not seen:
-        print('SKIP test_reference_agreement_does_not_regress: no listed channel scored')
+        print(
+            "SKIP test_reference_agreement_does_not_regress: no listed channel scored"
+        )
         return
-    assert not flat, ('a reference-scored channel renders CONSTANT: %s -- this is the '
-                      'shape of the b2f1d97 regression' % (flat,))
-    assert not worse, ('reference agreement fell below its recorded floor: %s' % (worse,))
-    assert not missing, ('a channel that used to score no longer does: %s. Either an output '
-                         'stopped rendering or its pairing broke' % (missing,))
+    assert not flat, (
+        "a reference-scored channel renders CONSTANT: %s -- this is the "
+        "shape of the b2f1d97 regression" % (flat,)
+    )
+    assert not worse, "reference agreement fell below its recorded floor: %s" % (worse,)
+    assert not missing, (
+        "a channel that used to score no longer does: %s. Either an output "
+        "stopped rendering or its pairing broke" % (missing,)
+    )
     return
 
 
@@ -2180,11 +2409,13 @@ def test_render2_reference_agreement_does_not_regress():
     try:
         import refcompare
     except Exception:
-        print('SKIP test_render2_reference_agreement_does_not_regress: no refcompare')
+        print("SKIP test_render2_reference_agreement_does_not_regress: no refcompare")
         return
     packs = refcompare.reference_packs()
     if not packs:
-        print('SKIP test_render2_reference_agreement_does_not_regress: no reference packs')
+        print(
+            "SKIP test_render2_reference_agreement_does_not_regress: no reference packs"
+        )
         return
     readings, flat, constant, missing_grid = {}, [], {}, []
     for grid in GUARD_GRIDS:
@@ -2198,8 +2429,14 @@ def test_render2_reference_agreement_does_not_regress():
             # caller that pre-resampled to 64 would have thrown away every octave above 32
             # cycles, which is the half of the instrument that sees an amplitude collapse.
             for name, chan, ours, ref in refcompare.compare_pack(
-                    pack, refs, max_dim=grid, outputsize='implied',
-                    renderer='render2', grid=None, qualify_graph=True):
+                pack,
+                refs,
+                max_dim=grid,
+                outputsize="implied",
+                renderer="render2",
+                grid=None,
+                qualify_graph=True,
+            ):
                 if chan is None:
                     continue
                 r = refguard.measure(ours, ref)
@@ -2219,7 +2456,7 @@ def test_render2_reference_agreement_does_not_regress():
         if grid == RENDER2_FLOOR_DIM:
             constant = counted
     if not readings:
-        print('SKIP test_render2_reference_agreement_does_not_regress: nothing scored')
+        print("SKIP test_render2_reference_agreement_does_not_regress: nothing scored")
         return
 
     # THE RATCHET. Derived from `Entry.bound` and `refguard._adverse`, which is where the
@@ -2235,15 +2472,35 @@ def test_render2_reference_agreement_does_not_regress():
         if any(g not in got for g in entry.grids()):
             continue
         for q in refguard.QUANTITIES:
-            adv = [(g, refguard._adverse(q, refguard._value(got[g], q), entry.bound(q, g)))
-                   for g in entry.grids()]
+            adv = [
+                (g, refguard._adverse(q, refguard._value(got[g], q), entry.bound(q, g)))
+                for g in entry.grids()
+            ]
             hard = [(g, a) for g, a in adv if a > refguard._hard(q)]
             if all(a > 0 for _g, a in adv):
-                worse.append((key, q, 'adverse at every grid',
-                              [(g, round(refguard._value(got[g], q), 4)) for g in entry.grids()]))
+                worse.append(
+                    (
+                        key,
+                        q,
+                        "adverse at every grid",
+                        [
+                            (g, round(refguard._value(got[g], q), 4))
+                            for g in entry.grids()
+                        ],
+                    )
+                )
             elif hard:
-                worse.append((key, q, 'hard-adverse at %s' % [g for g, _a in hard],
-                              [(g, round(refguard._value(got[g], q), 4)) for g in entry.grids()]))
+                worse.append(
+                    (
+                        key,
+                        q,
+                        "hard-adverse at %s" % [g for g, _a in hard],
+                        [
+                            (g, round(refguard._value(got[g], q), 4))
+                            for g in entry.grids()
+                        ],
+                    )
+                )
 
     # THE FROZEN HEALTH CENSUS -- see `HEALTH_CENSUS`. A quantity that goes outside a bar it
     # was inside is new breakage and fails; the ones already outside are a recorded backlog.
@@ -2251,8 +2508,10 @@ def test_render2_reference_agreement_does_not_regress():
     # measurement and an improvement owes it a re-take.
     sick = set()
     for key, got in readings.items():
-        for q in ('dc', 'band'):
-            if any(not refguard._health(q, refguard._value(r, q)) for r in got.values()):
+        for q in ("dc", "band"):
+            if any(
+                not refguard._health(q, refguard._value(r, q)) for r in got.values()
+            ):
                 sick.add((key, q))
     newly_sick = sorted(sick - HEALTH_CENSUS)
     recovered = sorted(HEALTH_CENSUS - sick)
@@ -2262,23 +2521,36 @@ def test_render2_reference_agreement_does_not_regress():
         if was is None or n > was:
             flat.append((pack, n, was))
     missing = sorted(set(GUARD_TABLE) - set(readings))
-    assert not flat, ('more render2 yields render CONSTANT than the frozen census: '
-                      '(pack, now, recorded) %s -- this is the b2f1d97 shape' % (flat,))
-    assert not missing, ('a channel render2 used to produce no longer scores: %s -- this '
-                         'is the e231131 shape: an output stopped rendering and nothing '
-                         'failed' % (missing,))
-    assert not missing_grid, ('an entry did not score at a grid its table records: %s'
-                              % (missing_grid,))
-    assert not worse, ('render2 reference agreement regressed against the ratchet -- '
-                       '(key, quantity, why, per-grid values) %s' % (worse,))
-    assert not newly_sick, ('a quantity went OUTSIDE a health bar it was inside: %s -- this '
-                            'is new breakage, not a recorded one' % (newly_sick,))
-    assert not recovered, ('a quantity came back INSIDE its health bar: %s -- this is an '
-                           'improvement and it is failing on purpose. Re-take HEALTH_CENSUS '
-                           'and GUARD_TABLE and say what fixed it' % (recovered,))
-    print('ok  test_render2_reference_agreement_does_not_regress (%d entries x %d grids, '
-          '%d constant yields as recorded, %d quantities outside a health bar as recorded)'
-          % (len(readings), len(GUARD_GRIDS), sum(constant.values()), len(HEALTH_CENSUS)))
+    assert not flat, (
+        "more render2 yields render CONSTANT than the frozen census: "
+        "(pack, now, recorded) %s -- this is the b2f1d97 shape" % (flat,)
+    )
+    assert not missing, (
+        "a channel render2 used to produce no longer scores: %s -- this "
+        "is the e231131 shape: an output stopped rendering and nothing "
+        "failed" % (missing,)
+    )
+    assert (
+        not missing_grid
+    ), "an entry did not score at a grid its table records: %s" % (missing_grid,)
+    assert not worse, (
+        "render2 reference agreement regressed against the ratchet -- "
+        "(key, quantity, why, per-grid values) %s" % (worse,)
+    )
+    assert not newly_sick, (
+        "a quantity went OUTSIDE a health bar it was inside: %s -- this "
+        "is new breakage, not a recorded one" % (newly_sick,)
+    )
+    assert not recovered, (
+        "a quantity came back INSIDE its health bar: %s -- this is an "
+        "improvement and it is failing on purpose. Re-take HEALTH_CENSUS "
+        "and GUARD_TABLE and say what fixed it" % (recovered,)
+    )
+    print(
+        "ok  test_render2_reference_agreement_does_not_regress (%d entries x %d grids, "
+        "%d constant yields as recorded, %d quantities outside a health bar as recorded)"
+        % (len(readings), len(GUARD_GRIDS), sum(constant.values()), len(HEALTH_CENSUS))
+    )
     return
 
 
@@ -2298,27 +2570,38 @@ def test_the_new_guard_does_not_weaken_the_old_floors():
     not adverse at 128 as well -- the multi-grid rule -- and NOT because the floor moved.
     """
     assert set(GUARD_TABLE) == set(REFERENCE_FLOOR_RENDER2), (
-        'the two tables name different channels: only in GUARD_TABLE %s, only in the old '
-        'table %s' % (sorted(set(GUARD_TABLE) - set(REFERENCE_FLOOR_RENDER2)),
-                      sorted(set(REFERENCE_FLOOR_RENDER2) - set(GUARD_TABLE))))
+        "the two tables name different channels: only in GUARD_TABLE %s, only in the old "
+        "table %s"
+        % (
+            sorted(set(GUARD_TABLE) - set(REFERENCE_FLOOR_RENDER2)),
+            sorted(set(REFERENCE_FLOOR_RENDER2) - set(GUARD_TABLE)),
+        )
+    )
     weakened, unpinned = [], []
     for key, entry in sorted(GUARD_TABLE.items()):
         old = REFERENCE_FLOOR_RENDER2[key]
         if entry.was != (old, RENDER2_FLOOR_DIM):
             unpinned.append((key, entry.was, (old, RENDER2_FLOOR_DIM)))
             continue
-        bound = entry.bound('corr', RENDER2_FLOOR_DIM)
+        bound = entry.bound("corr", RENDER2_FLOOR_DIM)
         if bound < old:
             weakened.append((key, round(bound, 4), old))
-    assert not unpinned, ('an entry does not carry its old floor: (key, was, expected) %s'
-                          % (unpinned,))
-    assert not weakened, ('the derived bound fell BELOW the old floor: (key, bound, floor) '
-                          '%s -- re-taking may raise a floor and may never lower one'
-                          % (weakened,))
-    pinned = [k for k, e in GUARD_TABLE.items()
-              if e.at[RENDER2_FLOOR_DIM][0] < REFERENCE_FLOOR_RENDER2[k]]
-    print('ok  test_the_new_guard_does_not_weaken_the_old_floors (%d floors still enforced, '
-          '%d of them above today\'s measurement)' % (len(GUARD_TABLE), len(pinned)))
+    assert (
+        not unpinned
+    ), "an entry does not carry its old floor: (key, was, expected) %s" % (unpinned,)
+    assert not weakened, (
+        "the derived bound fell BELOW the old floor: (key, bound, floor) "
+        "%s -- re-taking may raise a floor and may never lower one" % (weakened,)
+    )
+    pinned = [
+        k
+        for k, e in GUARD_TABLE.items()
+        if e.at[RENDER2_FLOOR_DIM][0] < REFERENCE_FLOOR_RENDER2[k]
+    ]
+    print(
+        "ok  test_the_new_guard_does_not_weaken_the_old_floors (%d floors still enforced, "
+        "%d of them above today's measurement)" % (len(GUARD_TABLE), len(pinned))
+    )
     return
 
 
@@ -2351,24 +2634,29 @@ def test_the_implied_outputsize_is_the_one_the_files_own_size_programs_reproduce
     """
     try:
         import refcompare
-        import render2                                              # noqa: F401
+        import render2  # noqa: F401
         from engine import record_sizes, implied_outputsize
         from PIL import Image
     except Exception as e:
-        print('SKIP test_the_implied_outputsize...: %s' % e)
+        print("SKIP test_the_implied_outputsize...: %s" % e)
         return
     packs = refcompare.reference_packs()
     if not packs:
-        print('SKIP test_the_implied_outputsize...: no reference packs')
+        print("SKIP test_the_implied_outputsize...: no reference packs")
         return
     import glob as _glob
+
     checked = []
     for pack, refs in sorted(packs.items()):
         implied = implied_outputsize(refs)
-        assert implied is not None, \
-            '%s: its own exported maps do not agree on one power-of-two size' % pack
-        for path in sorted(_glob.glob(os.path.join(refcompare.PACKS, pack, '**',
-                                                   '*.sbsasm'), recursive=True)):
+        assert implied is not None, (
+            "%s: its own exported maps do not agree on one power-of-two size" % pack
+        )
+        for path in sorted(
+            _glob.glob(
+                os.path.join(refcompare.PACKS, pack, "**", "*.sbsasm"), recursive=True
+            )
+        ):
             asm = sbsasm.Assembly(path)
             own = refcompare._package_refs(path, refs)
             names = manifest.output_names(asm)
@@ -2377,16 +2665,20 @@ def test_the_implied_outputsize_is_the_one_the_files_own_size_programs_reproduce
                 if isinstance(fmt, tuple):
                     continue
                 nm = refcompare._key(names.get(uid))
-                hit = [p for p in own
-                       if nm and nm in refcompare._key(os.path.basename(p))]
+                hit = [
+                    p for p in own if nm and nm in refcompare._key(os.path.basename(p))
+                ]
                 if not hit:
                     # THE IDENTIFIER FIRST, THEN THE DECLARED CHANNEL -- `refcompare`'s
                     # own fallback, and without it `minime453__Stylized_Sandy_Stone_Path`
                     # contributes nothing: it names all six outputs `output`, `output_1`
                     # ... and declares them baseColor, normal, roughness and so on.
                     ch = refcompare._key(manifest.output_channels(asm).get(uid))
-                    hit = [p for p in own
-                           if ch and ch in refcompare._key(os.path.basename(p))]
+                    hit = [
+                        p
+                        for p in own
+                        if ch and ch in refcompare._key(os.path.basename(p))
+                    ]
                 if hit:
                     pairs.append((ri, Image.open(hit[0]).size))
             if not pairs:
@@ -2394,22 +2686,27 @@ def test_the_implied_outputsize_is_the_one_the_files_own_size_programs_reproduce
             score = {}
             for k in range(6, 15):
                 sizes = record_sizes(asm, (k, k)) or {}
-                score[k] = sum(1 for ri, want in pairs
-                               if sizes.get(ri, (asm.records[ri].width,
-                                                 asm.records[ri].height)) == want)
+                score[k] = sum(
+                    1
+                    for ri, want in pairs
+                    if sizes.get(ri, (asm.records[ri].width, asm.records[ri].height))
+                    == want
+                )
             best = max(score.values())
             winners = sorted(k for k, v in score.items() if v == best)
-            assert best > 0, '%s: no $outputsize reproduces any output map size' % path
+            assert best > 0, "%s: no $outputsize reproduces any output map size" % path
             assert winners == [implied[0]], (
-                '%s: the size programs pick $outputsize %s, the exported pixels imply %s '
-                '-- %r' % (path, winners, implied[0], score))
+                "%s: the size programs pick $outputsize %s, the exported pixels imply %s "
+                "-- %r" % (path, winners, implied[0], score)
+            )
             checked.append((os.path.basename(path), implied[0], best, len(pairs)))
     if not checked:
-        print('SKIP test_the_implied_outputsize...: no output paired with a map')
+        print("SKIP test_the_implied_outputsize...: no output paired with a map")
         return
-    print('ok  test_the_implied_outputsize_is_the_one_the_files_own_size_programs_'
-          'reproduce (%s)'
-          % ', '.join('%s k=%d %d/%d' % c for c in checked))
+    print(
+        "ok  test_the_implied_outputsize_is_the_one_the_files_own_size_programs_"
+        "reproduce (%s)" % ", ".join("%s k=%d %d/%d" % c for c in checked)
+    )
     return
 
 
@@ -2419,26 +2716,30 @@ def test_the_implied_outputsize_is_the_one_the_files_own_size_programs_reproduce
 # error in a future pytest, so the returns are gone. Reading the printed SKIP keeps the
 # distinction that matters: a suite that silently skips everything looks identical to a
 # passing one, which is the failure this directory has already recorded once.
-if __name__ == '__main__':
-    for fn in (test_curve_endpoints,
-               test_gradient_matches_an_independent_lookup,
-               test_dirmotionblur_actually_smooths_and_only_along_its_angle, test_curve_matches_independent_bisection,
-               test_curve_identity_is_exact, test_dirmotionblur_is_an_average,
-               test_gradient_runs_and_stays_bounded,
-               test_dyngradient_is_a_ramp_lookup,
-               test_closure_never_claims_a_dependency_the_manifest_denies,
-               test_blendingmode_matches_the_source_that_declares_it,
-               test_reference_agreement_does_not_regress,
-               test_uniform_colour_sits_where_the_source_says_it_does,
-               test_levels_parameters_are_named_the_way_the_sources_name_them,
-               test_levels_placement_is_the_one_the_sources_confirm,
-               test_no_filter_parameter_is_named_differently_from_its_source):
+if __name__ == "__main__":
+    for fn in (
+        test_curve_endpoints,
+        test_gradient_matches_an_independent_lookup,
+        test_dirmotionblur_actually_smooths_and_only_along_its_angle,
+        test_curve_matches_independent_bisection,
+        test_curve_identity_is_exact,
+        test_dirmotionblur_is_an_average,
+        test_gradient_runs_and_stays_bounded,
+        test_dyngradient_is_a_ramp_lookup,
+        test_closure_never_claims_a_dependency_the_manifest_denies,
+        test_blendingmode_matches_the_source_that_declares_it,
+        test_reference_agreement_does_not_regress,
+        test_uniform_colour_sits_where_the_source_says_it_does,
+        test_levels_parameters_are_named_the_way_the_sources_name_them,
+        test_levels_placement_is_the_one_the_sources_confirm,
+        test_no_filter_parameter_is_named_differently_from_its_source,
+    ):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             fn()
         out = buf.getvalue()
         sys.stdout.write(out)
-        print('%-46s %s' % (fn.__name__, 'skipped' if 'SKIP' in out else 'ok'))
+        print("%-46s %s" % (fn.__name__, "skipped" if "SKIP" in out else "ok"))
 
 
 class _CurveStub(object):
@@ -2495,32 +2796,42 @@ def test_curve_chain_totals_the_count_the_record_states():
             # CONTROLS: the SAME code, given a slot 3 shifted one word. A stand-in with
             # the three attributes `curve_chain` reads, so the control cannot drift from
             # the rule by being a second implementation of it.
-            for delta, box in ((-1, 'early'), (1, 'late')):
+            for delta, box in ((-1, "early"), (1, "late")):
                 w = list(r.words)
                 w[3] = w[3] + 4 * delta
                 stub = _CurveStub(r.filter_id, w, r.asm)
                 if type(r).curve_chain.fget(stub):
-                    if box == 'early':
+                    if box == "early":
                         early += 1
                     else:
                         late += 1
     assert recs >= 1000, (
-        'only %d curve records declaring a count -- the assertions below say nothing '
-        'about a population this small; the corpus has 1,272' % recs)
+        "only %d curve records declaring a count -- the assertions below say nothing "
+        "about a population this small; the corpus has 1,272" % recs
+    )
     assert multi >= 5, (
         'only %d multi-table chains -- with one table each, "the chain totals slot 2" is '
-        'the same statement `curve_points` already makes; the corpus has 11' % multi)
-    assert agree == recs, (
-        '%d of %d curve records have no chain totalling the count they state' % (recs - agree, recs))
+        "the same statement `curve_points` already makes; the corpus has 11" % multi
+    )
+    assert (
+        agree == recs
+    ), "%d of %d curve records have no chain totalling the count they state" % (
+        recs - agree,
+        recs,
+    )
     assert first_is_curve_points == cp_total, (
         "`curve_points` and the chain's first sub-table disagree on %d of %d records"
-        % (cp_total - first_is_curve_points, cp_total))
+        % (cp_total - first_is_curve_points, cp_total)
+    )
     assert early == 0 and late <= recs // 100, (
-        'the control walk resolves too often: %d one word early, %d one word late, of %d'
-        % (early, late, recs))
-    print('curve chains: %d records, %d sub-tables, %d multi-table; controls %d early, '
-          '%d late; %d of %d agree with curve_points'
-          % (recs, tables, multi, early, late, first_is_curve_points, cp_total))
+        "the control walk resolves too often: %d one word early, %d one word late, of %d"
+        % (early, late, recs)
+    )
+    print(
+        "curve chains: %d records, %d sub-tables, %d multi-table; controls %d early, "
+        "%d late; %d of %d agree with curve_points"
+        % (recs, tables, multi, early, late, first_is_curve_points, cp_total)
+    )
     return
 
 
@@ -2574,11 +2885,11 @@ def test_the_vector_payload_states_its_own_end_and_lands_on_slot_2():
             if r.filter_id != 5:
                 continue
             got = r.vector_extent
-            assert got is not None, 'no extent for a filter-5 record in %s' % p
+            assert got is not None, "no extent for a filter-5 record in %s" % p
             recs += 1
             off, n = got
             end = off + n
-            emb = off + (struct.unpack_from('<2I', a.data, off)[1] + 23) // 2
+            emb = off + (struct.unpack_from("<2I", a.data, off)[1] + 23) // 2
             e2 = r.words[2] + 52 if len(r.words) > 2 else None
 
             def stated(x):
@@ -2587,54 +2898,76 @@ def test_the_vector_payload_states_its_own_end_and_lands_on_slot_2():
             # `4d2fd5c`'s own population: slot 2 can only bound a payload that lies in
             # the same record it does. 70 records point their payload OUTSIDE their extent
             # while slot 2 stays inside, and slot 2 is not a bound on those.
-            if (e2 is not None and r.offset < e2 <= r.end
-                    and r.offset <= off < r.end):
+            if e2 is not None and r.offset < e2 <= r.end and r.offset <= off < r.end:
                 bounded += 1
                 on_slot2 += 1 if end == e2 else 0
             if end != emb:
                 multi += 1
                 walk_stated += 1 if stated(end) else 0
                 emb_stated += 1 if stated(emb) else 0
-            for delta, box in ((2, 'late'), (-1, 'early')):
+            for delta, box in ((2, "late"), (-1, "early")):
                 w = list(r.words)
                 w[1] = w[1] + 4 * delta
                 stub = _VectorStub(r.filter_id, w, r.asm)
                 mut = type(r)._vector_walk.fget(stub)
                 if mut is None:
                     continue
-                if box == 'late':
+                if box == "late":
                     late_term += 1
                 else:
                     early_term += 1
                     early_stated += 1 if stated(mut[0]) else 0
     assert recs >= 100, (
-        'only %d filter-5 records -- the assertions below say nothing about a population '
-        'this small; the corpus has 139' % recs)
+        "only %d filter-5 records -- the assertions below say nothing about a population "
+        "this small; the corpus has 139" % recs
+    )
     assert bounded >= 40, (
         'only %d records where slot 2 is a usable bound -- "the walk lands on slot 2" is '
-        'vacuous without them; the corpus has 57' % bounded)
+        "vacuous without them; the corpus has 57" % bounded
+    )
     assert multi >= 20, (
-        'only %d records whose walk end differs from the embedded length word -- on the '
-        'rest the walk and the reading it replaced CANNOT disagree, so agreement is not '
-        'evidence; the corpus has 35' % multi)
+        "only %d records whose walk end differs from the embedded length word -- on the "
+        "rest the walk and the reading it replaced CANNOT disagree, so agreement is not "
+        "evidence; the corpus has 35" % multi
+    )
     assert on_slot2 == bounded, (
-        'the terminator misses slot 2 on %d of %d records where slot 2 bounds the payload'
-        % (bounded - on_slot2, bounded))
-    assert walk_stated >= multi - 1, (
-        "%d of %d multi-part walk ends land on no boundary the file states" % (multi - walk_stated, multi))
+        "the terminator misses slot 2 on %d of %d records where slot 2 bounds the payload"
+        % (bounded - on_slot2, bounded)
+    )
+    assert (
+        walk_stated >= multi - 1
+    ), "%d of %d multi-part walk ends land on no boundary the file states" % (
+        multi - walk_stated,
+        multi,
+    )
     assert emb_stated == 0, (
-        'the embedded length word already landed on a stated boundary %d times of %d, so '
-        'the walk is not what is being tested' % (emb_stated, multi))
+        "the embedded length word already landed on a stated boundary %d times of %d, so "
+        "the walk is not what is being tested" % (emb_stated, multi)
+    )
     assert late_term == 0, (
-        'the walk started two words late still terminates on %d records -- terminating is '
-        'not evidence' % late_term)
+        "the walk started two words late still terminates on %d records -- terminating is "
+        "not evidence" % late_term
+    )
     assert early_stated == 0, (
-        'the walk started one word early lands on a stated boundary %d times' % early_stated)
-    print('vector payloads: %d records, %d slot-2-bounded and %d land on it, %d multi-part '
-          '(%d walk ends stated, %d embedded-length ends stated); mutations %d late-terminate, '
-          '%d early-terminate and %d of those land stated'
-          % (recs, bounded, on_slot2, multi, walk_stated, emb_stated,
-             late_term, early_term, early_stated))
+        "the walk started one word early lands on a stated boundary %d times"
+        % early_stated
+    )
+    print(
+        "vector payloads: %d records, %d slot-2-bounded and %d land on it, %d multi-part "
+        "(%d walk ends stated, %d embedded-length ends stated); mutations %d late-terminate, "
+        "%d early-terminate and %d of those land stated"
+        % (
+            recs,
+            bounded,
+            on_slot2,
+            multi,
+            walk_stated,
+            emb_stated,
+            late_term,
+            early_term,
+            early_stated,
+        )
+    )
     return
 
 
@@ -2663,7 +2996,7 @@ def test_emboss_below_the_version_gate_is_laid_out_and_its_slots_hold():
             continue
         if not any(r.filter_id == 8 for r in a.records):
             continue
-        ver = a.header.get('version') if isinstance(a.header, dict) else 0
+        ver = a.header.get("version") if isinstance(a.header, dict) else 0
         if ver is None or ver >= GATE:
             continue
         for r in a.records:
@@ -2671,18 +3004,23 @@ def test_emboss_below_the_version_gate_is_laid_out_and_its_slots_hold():
                 continue
             below += 1
             d = decompose.decompose(r)
-            if d is None or d.get('end') is None:
+            if d is None or d.get("end") is None:
                 continue
             laid += 1
-            assert d['end'] <= len(r.words), (
-                '%s record %d: header %d words, record only %d'
-                % (os.path.basename(p), r.index, d['end'], len(r.words)))
+            assert d["end"] <= len(
+                r.words
+            ), "%s record %d: header %d words, record only %d" % (
+                os.path.basename(p),
+                r.index,
+                d["end"],
+                len(r.words),
+            )
             if (r.words[0] >> 26) & 1:
                 cls26 += 1
             w1 = r.words[1] if len(r.words) > 1 else 0
             if not (r.words[0] & 1) and ((w1 >> 5) & 3) == 1:
                 w1_5_grey += 1
-            for s in d.get('inputs') or ():
+            for s in d.get("inputs") or ():
                 if s < len(r.words):
                     edges += 1
                     edges_ok += 1 if r.words[s] < r.index else 0
@@ -2690,26 +3028,39 @@ def test_emboss_below_the_version_gate_is_laid_out_and_its_slots_hold():
                 if ((w1 >> sh) & 3) != 2:
                     continue
                 pos = None
-                for t in (d.get('param_slots') or ()):
+                for t in d.get("param_slots") or ():
                     if t[0] == sh:
                         pos = t[2]
                 if pos is None or pos >= len(r.words):
                     continue
                 state2 += 1
                 q = r.words[pos] + 52
-                state2_ok += 1 if (a.body_lo <= q < a.body_hi and a.valid_program(q)) else 0
+                state2_ok += (
+                    1 if (a.body_lo <= q < a.body_hi and a.valid_program(q)) else 0
+                )
     assert below >= 100, (
-        'only %d emboss records below v5 -- the corpus had 171 when the gate came off' % below)
-    assert laid == below, '%d of %d have no layout' % (below - laid, below)
+        "only %d emboss records below v5 -- the corpus had 171 when the gate came off"
+        % below
+    )
+    assert laid == below, "%d of %d have no layout" % (below - laid, below)
     assert cls26 >= 2 and w1_5_grey >= 1, (
-        'the below-gate records no longer exercise the cells the gate was hiding: class '
-        'bit 26 on %d records, grey w1 bit 5 baked on %d -- 2 and 13 when this landed'
-        % (cls26, w1_5_grey))
-    assert edges_ok == edges, (
-        '%d of %d edge slots do not hold a backward record index' % (edges - edges_ok, edges))
-    assert state2_ok == state2, (
-        '%d of %d state-2 slots do not resolve a program' % (state2 - state2_ok, state2))
-    print('emboss below v5: %d records, all laid out; %d edges and %d state-2 slots, all '
-          'holding; class bit 26 on %d, grey w1 bit 5 baked on %d'
-          % (below, edges, state2, cls26, w1_5_grey))
+        "the below-gate records no longer exercise the cells the gate was hiding: class "
+        "bit 26 on %d records, grey w1 bit 5 baked on %d -- 2 and 13 when this landed"
+        % (cls26, w1_5_grey)
+    )
+    assert (
+        edges_ok == edges
+    ), "%d of %d edge slots do not hold a backward record index" % (
+        edges - edges_ok,
+        edges,
+    )
+    assert state2_ok == state2, "%d of %d state-2 slots do not resolve a program" % (
+        state2 - state2_ok,
+        state2,
+    )
+    print(
+        "emboss below v5: %d records, all laid out; %d edges and %d state-2 slots, all "
+        "holding; class bit 26 on %d, grey w1 bit 5 baked on %d"
+        % (below, edges, state2, cls26, w1_5_grey)
+    )
     return

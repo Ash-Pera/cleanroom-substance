@@ -103,6 +103,7 @@ Restricted to PERMITTED sources: 28 of the 47 sources declaring a blur node are
 Allegorithmic-authored and excluded, which is the same wall FORMAT-NOTES records for the
 original blur/warp/gradient/fxmaps identification.
 """
+
 import collections
 import os
 import re
@@ -110,23 +111,30 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import provenance                                                    # noqa: E402
-import sbsasm                                                        # noqa: E402
+import provenance  # noqa: E402
+import sbsasm  # noqa: E402
 
-NODE = re.compile(r'<compNode>((?:(?!</compNode>).)*?)</compNode>', re.S)
+NODE = re.compile(r"<compNode>((?:(?!</compNode>).)*?)</compNode>", re.S)
 #: one <parameter> element, so a name cannot reach past its own value. See `declared`.
-PARAM = re.compile(r'<parameter>((?:(?!</parameter>).)*?)</parameter>', re.S)
+PARAM = re.compile(r"<parameter>((?:(?!</parameter>).)*?)</parameter>", re.S)
 
 #: source node name -> compiled filter id, for the filters whose parameter is a plain float
-FILTERS = {'blur': 10, 'sharpen': 13, 'warp': 7, 'directionalwarp': 12,
-           'dirmotionblur': 11, 'emboss': 8, 'distance': 21}
+FILTERS = {
+    "blur": 10,
+    "sharpen": 13,
+    "warp": 7,
+    "directionalwarp": 12,
+    "dirmotionblur": 11,
+    "emboss": 8,
+    "distance": 21,
+}
 
 MIN_DECIMALS = 3
 
 
 def _decimals(text):
-    m = re.match(r'^-?\d+\.(\d+)$', text)
-    return len(m.group(1).rstrip('0')) if m else 0
+    m = re.match(r"^-?\d+\.(\d+)$", text)
+    return len(m.group(1).rstrip("0")) if m else 0
 
 
 def declared(sbs_path, node, param):
@@ -137,7 +145,7 @@ def declared(sbs_path, node, param):
     lower threshold because these parameters are authored as sliders and rarely reach five.
     """
     try:
-        text = open(sbs_path, encoding='utf-8', errors='replace').read()
+        text = open(sbs_path, encoding="utf-8", errors="replace").read()
     except OSError:
         return []
     out = []
@@ -162,14 +170,17 @@ def declared(sbs_path, node, param):
         for pb in PARAM.findall(body):
             if not re.search(r'<name v="%s"/>' % param, pb):
                 continue
-            m = re.search(r'<constantValueFloat\d v="([-\d.e]+)'
-                          r'(?:[ \t][-\d.e ]*)?"/>', pb)
+            m = re.search(
+                r'<constantValueFloat\d v="([-\d.e]+)'
+                r'(?:[ \t][-\d.e ]*)?"/>',
+                pb,
+            )
             if m and _decimals(m.group(1)) >= MIN_DECIMALS:
                 out.append(float(m.group(1)))
     return out
 
 
-def locate(node, fid, param='intensity'):
+def locate(node, fid, param="intensity"):
     """[(source, record, value, slot, class word)] for every unambiguous pairing."""
     found = []
     for path in provenance.paired_sources():
@@ -193,9 +204,15 @@ def locate(node, fid, param='intensity'):
             # A value the source declares twice cannot identify one record.
             if once[v] != 1:
                 continue
-            hits = [(i, k, r) for i, r in recs for k, w in enumerate(r.words)
-                    if abs(struct.unpack('<f', struct.pack('<I', int(w) & 0xFFFFFFFF))[0]
-                           - v) < 1e-5]
+            hits = [
+                (i, k, r)
+                for i, r in recs
+                for k, w in enumerate(r.words)
+                if abs(
+                    struct.unpack("<f", struct.pack("<I", int(w) & 0xFFFFFFFF))[0] - v
+                )
+                < 1e-5
+            ]
             if len(hits) == 1:
                 i, k, r = hits[0]
                 found.append((os.path.basename(path), i, v, k, r.cls))
@@ -227,23 +244,25 @@ def main(argv):
     for node in wanted:
         fid = FILTERS.get(node)
         if fid is None:
-            print('unknown filter %r; known: %s' % (node, sorted(FILTERS)))
+            print("unknown filter %r; known: %s" % (node, sorted(FILTERS)))
             continue
         rows = locate(node, fid)
-        print('=== %s (filter %d): %d unambiguous pairing(s)' % (node, fid, len(rows)))
+        print("=== %s (filter %d): %d unambiguous pairing(s)" % (node, fid, len(rows)))
         by_slot = collections.Counter(k for _s, _i, _v, k, _c in rows)
         for slot, n in sorted(by_slot.items()):
-            classes = sorted({'0x%04X' % c for _s, _i, _v, k, c in rows if k == slot})
-            print('    slot %-3d %3d  class words %s' % (slot, n, ' '.join(classes)))
+            classes = sorted({"0x%04X" % c for _s, _i, _v, k, c in rows if k == slot})
+            print("    slot %-3d %3d  class words %s" % (slot, n, " ".join(classes)))
             grand[(node, slot)] += n
         for src, rec, val, slot, cls in rows[:4]:
-            print('      %-28s rec %-6d %-12.6f slot %-3d cls 0x%04X'
-                  % (src[:28], rec, val, slot, cls))
+            print(
+                "      %-28s rec %-6d %-12.6f slot %-3d cls 0x%04X"
+                % (src[:28], rec, val, slot, cls)
+            )
     if not grand:
-        print('no pairings -- is the corpus present?')
+        print("no pairings -- is the corpus present?")
         return 1
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

@@ -49,6 +49,7 @@ Linear, symmetric, and reaching zero at exactly R. What that does NOT establish 
 SIGN convention or whether the mask is the first or second input, both of which need an
 output to compare against -- see FORMAT-NOTES on the reference renders.
 """
+
 import struct
 
 import numpy as np
@@ -57,10 +58,10 @@ import assume
 
 try:
     from scipy import ndimage
-except ImportError:                                    # pragma: no cover
+except ImportError:  # pragma: no cover
     ndimage = None
 
-REFERENCE_PX = 256.0        # the resolution `distance` is expressed against
+REFERENCE_PX = 256.0  # the resolution `distance` is expressed against
 
 
 class Unlocated(Exception):
@@ -76,13 +77,14 @@ def _walk_params(rec):
     """
     try:
         import decompose
+
         d = decompose.decompose(rec)
     except Exception:
         return []
     if not d:
         return []
     out = []
-    for t in d.get('param_slots', ()):
+    for t in d.get("param_slots", ()):
         if len(t) >= 3:
             out.append((t[1], t[2]))
     return sorted(out, key=lambda sp: sp[1])
@@ -180,7 +182,7 @@ def _locate_slot(rec, run=None):
         # float, none for a pointer, and a value test that cannot tell them apart because a
         # pointer through float32 is a denormal. `valid_program` decides it structurally.
         if run is None:
-            return None                 # caller cannot evaluate; leave it to the program path
+            return None  # caller cannot evaluate; leave it to the program path
         ptr = int(rec.words[at]) + 52
         asm = rec.asm
         if not (asm.body_lo <= ptr < asm.body_hi and asm.valid_program(ptr)):
@@ -190,12 +192,12 @@ def _locate_slot(rec, run=None):
         except Exception:
             return None
         if v.size >= 1 and np.isfinite(v[0]):
-            return float(v[0]), 'walk parameter slot %d, PROGRAM (LOW CONFIDENCE)' % at
+            return float(v[0]), "walk parameter slot %d, PROGRAM (LOW CONFIDENCE)" % at
         return None
-    f = struct.unpack('<f', struct.pack('<I', rec.words[at]))[0]
+    f = struct.unpack("<f", struct.pack("<I", rec.words[at]))[0]
     if not np.isfinite(f) or f == 0.0 or abs(f) < 1e-30:
-        return None                     # denormal under a baked state: walk vs bytes
-    return float(f), 'walk parameter slot %d (LOW CONFIDENCE)' % at
+        return None  # denormal under a baked state: walk vs bytes
+    return float(f), "walk parameter slot %d (LOW CONFIDENCE)" % at
 
 
 def distance_param(rec, eval_program, inputs):
@@ -205,7 +207,7 @@ def distance_param(rec, eval_program, inputs):
     module does not depend on render.py.
     """
     widths = []
-    for p in (rec.filter_programs or ()):
+    for p in rec.filter_programs or ():
         try:
             v = np.asarray(eval_program(p)).ravel()
         except Exception:
@@ -213,8 +215,8 @@ def distance_param(rec, eval_program, inputs):
         if v.size == 1 and np.isfinite(v[0]):
             widths.append(float(v[0]))
     if len(widths) == 1:
-        return widths[0], 'program'
-    if not widths and assume.assumed('distance.param') == 'layout':
+        return widths[0], "program"
+    if not widths and assume.assumed("distance.param") == "layout":
         # 'layout' IS 'wide' WITH THE PRECEDENCE FIXED. See
         # assume.QUESTIONS['distance.param']: under 'wide' the 2-component reading is tried
         # FIRST and returns before the structural slot rule below is ever consulted -- an
@@ -232,22 +234,27 @@ def distance_param(rec, eval_program, inputs):
         _slot = _locate_slot(rec, eval_program)
         if _slot is not None:
             return _slot
-    if not widths and assume.assumed('distance.param') in ('wide', 'layout'):
+    if not widths and assume.assumed("distance.param") in ("wide", "layout"):
         # See assume.QUESTIONS['distance.param']. Component 0 of a 2-component program,
         # for the records whose only programs are 2-component. A candidate under an open
         # scope, never a default.
-        for p in (rec.filter_programs or ()):
+        for p in rec.filter_programs or ():
             try:
                 v = np.asarray(eval_program(p)).ravel()
             except Exception:
                 continue
-            if v.size == 2 and np.isfinite(v[0]) and 1e-3 < abs(float(v[0])) <= REFERENCE_PX:
-                return float(v[0]), 'program component 0 (ASSUMED)'
+            if (
+                v.size == 2
+                and np.isfinite(v[0])
+                and 1e-3 < abs(float(v[0])) <= REFERENCE_PX
+            ):
+                return float(v[0]), "program component 0 (ASSUMED)"
     if len(widths) > 1:
         # Two width-1 results and no way to say which is `distance`. `transformation`
         # refuses in exactly this case rather than taking the first.
-        raise Unlocated('%d width-1 program results; cannot single out `distance`'
-                        % len(widths))
+        raise Unlocated(
+            "%d width-1 program results; cannot single out `distance`" % len(widths)
+        )
     # THE FALLBACK, and the reason its hit rate cannot be read as an accuracy.
     #
     # Containment over the block looks poor -- in the population where this fallback
@@ -302,11 +309,11 @@ def distance_param(rec, eval_program, inputs):
     for state, si in _walk_params(rec)[1:]:
         if si >= len(rec.words) or state == 2:
             continue
-        f = struct.unpack('<f', struct.pack('<I', rec.words[si]))[0]
+        f = struct.unpack("<f", struct.pack("<I", rec.words[si]))[0]
         if not np.isfinite(f) or f == 0.0 or abs(f) < 1e-30:
             continue
-        return float(f), 'walk parameter slot %d (LOW CONFIDENCE)' % si
-    raise Unlocated('no program, and no baked value in a parameter slot the walk names')
+        return float(f), "walk parameter slot %d (LOW CONFIDENCE)" % si
+    raise Unlocated("no program, and no baked value in a parameter slot the walk names")
 
 
 def is_low_confidence(how):
@@ -315,7 +322,7 @@ def is_low_confidence(how):
     A caller that renders on a low-confidence parameter should record the output the way
     render.py records a synthesised bitmap -- produced, but not on the file's own evidence.
     """
-    return 'LOW CONFIDENCE' in how
+    return "LOW CONFIDENCE" in how
 
 
 def distance_field(mask, radius_px):
@@ -325,7 +332,7 @@ def distance_field(mask, radius_px):
     input: radially symmetric, exactly 0.5 at half the radius, zero at the radius.
     """
     if ndimage is None:
-        raise Unlocated('scipy is not available')
+        raise Unlocated("scipy is not available")
     m = np.asarray(mask, dtype=np.float32)
     if m.ndim == 3:
         m = m[:, :, 0]
@@ -359,7 +366,7 @@ def propagate(mask, radius_px, source):
     is arbitrated through `assume.QUESTIONS['distance.propagate']`.
     """
     if ndimage is None:
-        raise Unlocated('scipy is not available')
+        raise Unlocated("scipy is not available")
     m = np.asarray(mask, dtype=np.float32)
     if m.ndim == 3:
         m = m[:, :, 0]

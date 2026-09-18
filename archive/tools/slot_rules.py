@@ -25,14 +25,22 @@ The test is not "did it return something". Two independent checks:
 A rule whose edge check is 100% and whose correlation is near zero is not a rule that
 works. It is a rule that has not been tested.
 """
+
 import collections
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import corpus                                                        # noqa: E402
-from sbsasm import (Assembly, FILTERS, LAYOUTS, LAYOUT_MASK, EDGES,   # noqa: E402
-                    ALT_LAYOUTS, _RULED_PARAMS)
+import corpus  # noqa: E402
+from sbsasm import (
+    Assembly,
+    FILTERS,
+    LAYOUTS,
+    LAYOUT_MASK,
+    EDGES,  # noqa: E402
+    ALT_LAYOUTS,
+    _RULED_PARAMS,
+)
 
 
 def which_rule(r):
@@ -42,29 +50,29 @@ def which_rule(r):
     if f == 4 and len(w) > 1:
         k = (w[1] >> 10) & 0xF
         if k and 3 + k < len(w):
-            return 'fxmaps arity field (w1>>10)&0xF'
+            return "fxmaps arity field (w1>>10)&0xF"
         if not k:
-            return 'fxmaps arity field (w1>>10)&0xF'
+            return "fxmaps arity field (w1>>10)&0xF"
     if f == 3 and len(w) > 3:
         n = len(r.asm.records)
         bw = lambda v: v == 0 or (v < r.index and v < n)
         if bw(w[1]) or (bw(w[2]) and bw(w[3])):
-            return 'shuffle slot-1 discrimination'
+            return "shuffle slot-1 discrimination"
     if f == 8 and len(w) > 4:
         n = len(r.asm.records)
         bw = lambda v: v == 0 or (v < r.index and v < n)
         if all(bw(w[s]) for s in (2, 3)):
-            return 'emboss fixed (2,3)'
+            return "emboss fixed (2,3)"
     if f in _RULED_PARAMS and len(w) > 1 and 2 + _RULED_PARAMS[f] < len(w):
-        return 'generative walk over PARAM_SPEC'
+        return "generative walk over PARAM_SPEC"
     if f == 20:
-        return 'pixelprocessor arity nibble'
+        return "pixelprocessor arity nibble"
     if LAYOUTS and len(w) > 1:
         if LAYOUTS.get((f, r.cls, w[1] & LAYOUT_MASK.get(f, 0))):
-            return 'layouts.json table'
+            return "layouts.json table"
     if ALT_LAYOUTS.get(f):
-        return 'ALT_LAYOUTS probe'
-    return 'EDGES fallback'
+        return "ALT_LAYOUTS probe"
+    return "EDGES fallback"
 
 
 def corr(pairs):
@@ -95,51 +103,64 @@ def main():
         for r in a.records:
             rule = which_rule(r)
             c = per[rule]
-            c['records'] += 1
+            c["records"] += 1
             try:
                 slots = r.edge_slots
                 edges = r.edges
             except Exception:
-                c['raised'] += 1
+                c["raised"] += 1
                 continue
             present = [s for s in slots if s < len(r.words)]
-            c['edge slots named'] += len(present)
-            c['unresolved'] += sum(1 for e in edges if e is None)
+            c["edge slots named"] += len(present)
+            c["unresolved"] += sum(1 for e in edges if e is None)
             for s in present:
                 v = r.words[s]
                 if v != 0xFFFFFFFF:
                     vals[rule].append((v, r.index))
                     slotvals[(r.filter_id, s)].append((v, r.index))
-            c['no edge at all'] += (not present)
+            c["no edge at all"] += not present
 
     print()
-    print('%-36s %9s %9s %7s %8s' % ('rule', 'records', 'edges', 'unres', 'corr'))
-    print('%-36s %9s %9s %7s %8s' % ('-' * 36, '-' * 9, '-' * 9, '-' * 7, '-' * 8))
+    print("%-36s %9s %9s %7s %8s" % ("rule", "records", "edges", "unres", "corr"))
+    print("%-36s %9s %9s %7s %8s" % ("-" * 36, "-" * 9, "-" * 9, "-" * 7, "-" * 8))
     tot = collections.Counter()
-    for rule, c in sorted(per.items(), key=lambda kv: -kv[1]['records']):
+    for rule, c in sorted(per.items(), key=lambda kv: -kv[1]["records"]):
         cc = corr(vals[rule])
         tot.update(c)
-        print('%-36s %9d %9d %7d %8s'
-              % (rule, c['records'], c['edge slots named'], c['unresolved'],
-                 ('%+.3f' % cc) if cc is not None else '     -'))
-    print('%-36s %9d %9d %7d' % ('TOTAL', tot['records'], tot['edge slots named'],
-                                 tot['unresolved']))
+        print(
+            "%-36s %9d %9d %7d %8s"
+            % (
+                rule,
+                c["records"],
+                c["edge slots named"],
+                c["unresolved"],
+                ("%+.3f" % cc) if cc is not None else "     -",
+            )
+        )
+    print(
+        "%-36s %9d %9d %7d"
+        % ("TOTAL", tot["records"], tot["edge slots named"], tot["unresolved"])
+    )
 
     print()
-    print('per-slot control, worst 8 of those with 200+ observations:')
+    print("per-slot control, worst 8 of those with 200+ observations:")
     rows = []
     for (f, s), v in slotvals.items():
         cc = corr(v)
         if cc is not None and len(v) >= 200:
-            rows.append((cc, FILTERS.get(f) or 'fid %d' % f, s, len(v)))
+            rows.append((cc, FILTERS.get(f) or "fid %d" % f, s, len(v)))
     rows.sort()
     for cc, name, s, n in rows[:8]:
-        print('   %-18s slot %-2d  n=%-7d corr %+.3f%s'
-              % (name, s, n, cc, '   <-- NOT AN EDGE' if cc < 0.9 else ''))
-    print('   (%d slot populations checked; %d correlate above 0.9)'
-          % (len(rows), sum(1 for r in rows if r[0] > 0.9)))
+        print(
+            "   %-18s slot %-2d  n=%-7d corr %+.3f%s"
+            % (name, s, n, cc, "   <-- NOT AN EDGE" if cc < 0.9 else "")
+        )
+    print(
+        "   (%d slot populations checked; %d correlate above 0.9)"
+        % (len(rows), sum(1 for r in rows if r[0] > 0.9))
+    )
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
