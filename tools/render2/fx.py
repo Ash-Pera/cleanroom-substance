@@ -624,6 +624,11 @@ def _cell(patterns):
     """
     if not patterns:
         return None
+    # A subdivided cell arrives as an `fxtree.Batch`, whose centres already carry the
+    # region's branchoffset; the cell-unit reading is a property of the flat walk's
+    # dicts and is not asked of a batch.
+    if any(not isinstance(q, dict) for q in patterns):
+        return None
     b = [
         np.asarray(q.get("branchoffset"), np.float64).ravel()
         for q in patterns
