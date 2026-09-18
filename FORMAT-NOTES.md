@@ -60817,3 +60817,26 @@ deterministic in the file and whose export is at hand -- none of the five. What 
 decide the bit: the source pairing says `combinedistance = 0` on Sandy 3 and its record
 clears bit 1, and the library's same-edge records clear it too while wanting a field; so
 either the bit is not `combinedistance`, or a same-edge source is combined regardless.
+
+## Auras' band 7.3 is a dead noise: the warp's driver is 729 full-canvas gaussians; the cell arms revive it and the ratchet refuses them on Auras' own rows
+
+Auras 004's ring is smooth in ours and wispy in the export (band ch1 17.4, |dc| 0.139 at
+corr +0.87). Its eight chained `directionalwarp`s (432-439) all read 431, a `levels` of a
+blend of two FX-Maps (391, 393, `hurst` 0.0, `opacitymult` 0.44) that render flat 1.000,
+so the warps displace by a constant and the ring stays a ring. 391 is a spiral scanner
+(0x18B count = `((slot8 - 1) mod 2 + slot8)^2` = 729 = 27^2, 0x89 gate stepping slot 16,
+0x1CB) emitting 729 type-5 patterns at `patternsize` (2.82, 2.82) with integer
+`branchoffset`s in [-13, 13] and a polar `frameoffset` of radius 0.125 -- a 27 x 27
+lattice of gaussians 2.82 CELLS across, i.e. a Clouds-style noise, read today as 729
+gaussians 2.82 CANVASES across, which saturate to 1.0.
+
+Under `fx.patternsize=cell` + `fx.branchoffset=cell` + `fx.frameoffset=cell` (the cell
+divisor 1/27 from the integer span) 391 is a cloud (mean 0.91, sd 0.07 -- still too bright:
+729 overlapping 0.44s clip) and the output ring is warped into wisps like the export's.
+The ratchet refuses, on Auras alone: corr ch0 +0.928 -> +0.893, ch2 +0.940 -> +0.815,
+ch2 band 0.47 -> 0.09, dc -0.065 -> -0.154; band ch1 17.4 -> 12.0 and |dc| 0.139 -> 0.127
+improve, Bricks +0.675 -> +0.676, Chesterfield +0.920 -> +0.912. The same refusal the
+`fx.patternsize=cell` sections recorded twice before (-0.12 on Auras), now with its
+mechanism: a smooth ring correlates with the export's mean ring better than a ring warped
+by a noise whose draws are not the engine's. The instrument cannot see this one; what
+would is a noise-free Auras graph, or the engine's `rand`. Arms stay arms.
