@@ -59932,3 +59932,40 @@ condition is fine for the filter graph and blind to these. Graphs 002-005 carry 
 to Gradient through a different construct (`2660`, whose bbox comes from `2651` and not
 from a seed pass) and did render their per-tile ramps at 256; that is why the tilt
 instrument worked there.
+
+## At native size under `spread`, graph 001's level is the reference's on every channel
+
+`--dim 1024`, `$outputsize` 10, the eleven arms, seed as committed, at `5c937d6`; the
+Flood Fill alive (`10253` sd 0.308, ~45 distinct cell greys). `structstats --render`,
+256 grid:
+
+    height              mean    p5     p50    p95     sd   line_w  jitter  blob_d  tone_betw  tone_within
+    field              0.784  0.383  0.837  1.000  0.200   5.0    2.67    18.8    0.046      0.067
+    spread             0.490  0.174  0.522  0.730  0.171   4.0    0.94    21.9    0.050      0.065
+    Textures_1         0.440  0.131  0.469  0.694  0.176   5.0    1.68    35.8    0.053      0.074
+
+    basecolor           mean    p5     p50    p95     sd                             tone_betw
+    field              0.319  0.179  0.333  0.412  0.075                             0.018
+    spread             0.257  0.173  0.260  0.358  0.052                             0.022
+    Textures_1         0.262  0.138  0.273  0.380  0.070                             0.030
+
+    ambientocclusion    mean    p5     p50    p95     sd
+    field              0.783  0.335  0.803  0.994  0.188
+    spread             0.830  0.475  0.896  1.000  0.175
+    Textures_1         0.830  0.542  0.861  0.992  0.151
+
+Height within 0.05 at every quantile, sd 0.171 against 0.176, per-stone tone 0.050 against
+0.053; basecolor mean 0.257 against 0.262; AO mean 0.830 against 0.830. Under `field` the
+height is 0.3 too bright at every quantile. blob_d 22 against 36 and blob_n 49 against 38
+are the committed seed's two thin rows, the sweep section. Seen at 256: rounded stones with
+a soft bevel, one tone per stone, the cracks, mid-grey -- the reference's picture. What
+differs: the thin rows; the largest stones round off more than the reference's (a disc
+rather than a rounded square, which is a radius somewhere in the stone-shape chain, not
+chased); faint seams in a few stones.
+
+THE CASE FOR `spread` AS THE DEFAULT is now: the per-tile tilt and level on 002/003/004/005
+(previous section), the level on every channel of 001 at native (this one), and the
+pictures on all five; against it, the corr guard at 128, whose loss is isolated to the
+Flood Fill to Gradient's random per-tile direction. The default is still `field`. It
+should flip, with `--tiles` beside the corr as the guard; that is a decision for whoever
+owns the guard, and it is one line in `assume.QUESTIONS`.
