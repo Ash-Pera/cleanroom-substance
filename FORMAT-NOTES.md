@@ -60726,3 +60726,42 @@ the leaf's count where the node's is 1, in the existing 'placement' mode (the ga
 bounds the spiral runs once; under 'chain' it closes after the first): 22 patterns in a
 column, 56 of 56 readable count-node chains agree with their leaf. Ratchet passes, 47
 fast tests pass.
+
+## `distance`'s word 1 carries a bit that behaves as `combinedistance`; read as an arm (`distance.propagate=flag`), inert on SandyStonePath, default unchanged
+
+SandyStonePath is the pack the guard cannot see (rand-driven scatter: corr +0.02 on every
+row, and a correct render would score the same), and its picture is wrong at the root --
+a banded grey with one blob against the reference's Voronoi stones with cracks. Its
+seeds (record 2, a 25-node tile sampler with eight leaves) feed `distance` 3 wired
+`[2, 2]`, which draws cones under the default and, under `spread`, drops the source
+because it is the mask's own record (the Bricks `[158, 158]` rule).
+
+WHAT THE RECORD SAYS. Word 1 of every corpus `distance` record, against its wiring:
+
+    w1    records   edges   distance    bits
+     5       923    2, same  baked      0,2         (SandyStonePath 3, Bricks 158-type)
+     5       504    2        baked      0,2
+     6       595    1        baked      1,2
+     9       105    2        program    0,3
+    10        83    1        program    1,3
+     7        47    2        baked      0,1,2       (Flagstone_tomas 221, Obsidian 168)
+    21        20    2        baked      0,2,4       (US_Flag 280)
+
+Bit 2 / bit 3 are the baked / program distance, bit 0 the second edge. Bit 1 is set on
+every one-edge record (678 of 678) -- where there is nothing to combine, the default
+(`combinedistance = 1`) -- and clear on 1,552 of 1,599 two-edge ones, which is what the 19
+permitted two-edge sightings declare (0, all 19). The 47 two-edge records that set it are
+the combined ones. `distance.propagate=flag` reads it: set -> `nearest`, clear ->
+`spread` with the source kept even where it is the mask's own record.
+
+WHAT IT DOES TO THE PICTURE: nothing that helps. Under `flag` SandyStonePath 3 is flat
+1.000 (sd 0.017): the radius is 56 px of 256, every pixel is within reach of a seed, and
+the seeds carry two greys (0.922 and 0.461, after `opacitymult`) of which only the first
+passes `propagate`'s `mask > 0.5`. The reference's per-cell greys need a per-seed grey the
+seed record does not emit here -- its leaf `0x5300758`'s "opacity" program is a state
+writer returning the literal 0.0 -- so the field is not where this pack's picture goes
+wrong first; the seeds are. Pack scores identical to `nearest` (mean +0.027 / 0.564 /
+0.019 against the default's +0.021 / 0.498 / 0.022; corr is not the instrument here).
+Bricks under `flag` is the `spread` reading on 46 of its 86 two-edge records, which the
+ratchet refused for graph 005. Default stays `field`; the bit is recorded for the day the
+seeds are right.

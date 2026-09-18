@@ -108,7 +108,9 @@ QUESTIONS = {
     # `combinedistance` of 0 says, and 0 is what every one of the 19 permitted sightings
     # declares; `nearest` is the combined (=1) reading. Arbitrated on Bricks graph 003,
     # deterministic, same construct as graph 001's 10254. See FORMAT-NOTES.md.
-    "distance.propagate": ("field", "nearest", "spread"),
+    # `flag` reads the record: word 1 bit 1 set -> `nearest` (combined), clear -> `spread`
+    # with the source kept even where it is the mask's own record (SandyStonePath 3).
+    "distance.propagate": ("field", "nearest", "spread", "flag"),
     "fx.profile": (
         "rect",
         "square",

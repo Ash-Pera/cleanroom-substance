@@ -1294,11 +1294,22 @@ def f_distance(ctx, v):
         (e for k, e in enumerate(v.inputs) if k != mask_edge and e in ctx.outputs), None
     )
     prop = assume.assumed("distance.propagate", "field")
+    if prop == "flag":
+        # WORD 1 BIT 1 AS `combinedistance`. Over 2,277 corpus distance records word 1 is
+        # 5 / 9 / 21 (two edges, bit 1 clear) on 1,552, 6 / 10 (one edge, bit 1 set) on
+        # 678, and 7 (two edges, bit 1 SET) on 47; bit 2 / bit 3 are the baked / program
+        # distance, bit 0 the second edge. A one-edge record has nothing to combine and
+        # carries the default (1); the 19 permitted two-edge sightings declare 0 and
+        # their records clear it. Set: `nearest`; clear: `spread`, source and all.
+        prop = "nearest" if (v.rec.words[1] >> 1) & 1 else "spread"
+        same_ok = True
+    else:
+        same_ok = False
     # A SOURCE THAT IS THE MASK ITSELF IS NO SOURCE. Bricks wires the same record to both
     # edges on 46 of its 86 two-edge `distance` records ([158, 158]); read as a source it
     # turns the field into a hard dilation of the mask, and graph 005's bevels and grid
     # lines go with it. Under `spread` such a record draws the field.
-    if prop == "spread" and payload is not None and payload == v.edge(mask_edge):
+    if prop == "spread" and payload is not None and payload == v.edge(mask_edge) and not same_ok:
         payload = None
     if prop in ("nearest", "spread") and payload is not None:
         src = sampler(ctx.outputs[payload])(pos).reshape(H, W, -1)
