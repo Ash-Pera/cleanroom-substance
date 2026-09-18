@@ -59836,3 +59836,54 @@ at 0.03-0.12, `3167` multiply at 0.46) are as the hblend arbitration fixed them.
 STANDING. Graph 001's stone level under `field` is p50 0.825 because the same `2582`-shaped
 falloff fills its 3-px mortar and `10254` drops its tone -- the `spread` section. Neither
 graph's mortar is right under either arm, and the two share the cause.
+
+## The corr guard's objection to `spread` is the rand hole: per tile, the reference's tilt and level are `spread`'s on every deterministic graph, and `field`'s on none
+
+WHAT `2712` CARRIES. Its source `2711` is Adobe's Flood Fill to Gradient compiled to a
+pixel processor (program 591388): for each pixel, the cell's bounding box from input 0
+(`2660`, the flood fill), the cell-centre position, and a linear ramp across the cell whose
+DIRECTION is `sample_lum(1, centre)` -- input 1 is `2710`, white noise under
+`pixelprocessor.rand=pixel`, so one random angle per tile -- rotated into a `x * 0.7071 +
+0.1464` ramp. Input 2 (`2709`, a flat normal) contributes an angle of zero. The ramp is
+full-range by construction; what the author dials is its weight downstream (`2713` multiply
+at 0.54). Isolated on graph 005, `2712` is the record that costs the corr under BOTH
+`nearest` and `spread` (height +0.602 -> +0.492 / +0.472), and `2707` is neutral-to-better
+under `nearest`. Under `field` the ramp is dropped and the corr is highest -- which is what
+the corr does with a per-tile random direction the reference drew from a hash the file does
+not state: structure in the wrong place scores below no structure. Graph 001's
+row-heights lesson again, on the "deterministic" graphs.
+
+THE SEED-FREE INSTRUMENT. Segment the tiles from the graph's own mask (edge 0 of its
+13.86-px tone node: `7480`, `162`, `5048`, `2581`), fit a plane to the height inside each
+tile, report the value change across one tile (`|grad| x sqrt(area)`), the mean height on
+tiles and the mean in the mortar. Reference against the two arms, 256 grid,
+`$outputsize` 10, all eleven arms, at `8a56d0f`:
+
+    graph   tiles        tilt median [p25-p75]        tile level       mortar level
+    002     113   ref    0.255 [0.209-0.301]           0.644            0.318
+                  field  0.104 [0.054-0.162]           0.911            0.901
+                  spread 0.258 [0.200-0.299]           0.629            0.423
+    003      36   ref    0.201 [0.154-0.233]           0.593            0.349
+                  field  0.111 [0.055-0.152]           0.906            0.767
+                  spread 0.247 [0.171-0.286]           0.564            0.218
+    004      53   ref    0.228 [0.175-0.260]           0.622            0.346
+                  field  0.114 [0.065-0.146]           0.898            0.718
+                  spread 0.226 [0.138-0.298]           0.622            0.343
+    005      29   ref    0.233 [0.209-0.271]           0.628            0.247
+                  field  0.116 [0.068-0.146]           0.911            0.868
+                  spread 0.258 [0.158-0.313]           0.629            0.454
+
+Tilt and tile level are `spread`'s to two decimals on 004 and within the reference's own
+quartile spread on the other three; `field` is at half the tilt and a third of the way to
+white on all four, and its mortar is nearly as bright as its tiles. The mortar under
+`spread` scatters +-0.2 around the reference with no sign -- the line-darkness question of
+the previous section, not settled here, but not the arm's doing either.
+
+WHAT THIS SAYS ABOUT THE GUARD. Mean signed corr at a 128 grid cannot arbitrate a reading
+that puts a per-cell random draw into the picture, on ANY Bricks graph: all five carry the
+Flood Fill to Gradient construct and it is the height's largest single term after the
+mask. The instrument above is the companion it needs, and under it `distance.propagate`
+should default to `spread`. Not flipped here: the rule is a default flips on a guard it
+passes, and the guard on file is the corr. The next session that touches the guard should
+add tilt / tile level / mortar level beside it and flip on the pair; until then `spread` is
+the arm to render Bricks with.
