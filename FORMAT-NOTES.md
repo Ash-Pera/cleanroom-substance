@@ -60365,3 +60365,46 @@ radius tied to the canvas) from the blurs that object is the next question there
 `fx.header=read` brightens 002 by `opacitymult`; the header fields are the file's, the
 objection is to what `bit18` and the tree draw do with them on 002, and that is where the
 708-style per-record isolation goes next.
+
+## The capped grid is a lie every texel-dependent construct hears differently: 002's height is 0.544 at 128, 0.789 at 256 and 0.822 at native, and the reference's 0.572 is met at 128 by a dead machine
+
+WHAT WAS BEING ASKED. `fx.header=read` was refused by the ratchet on 002's height dc
+(+0.25 at 256 and 512, +0.01 at 128). Bisecting the ~200 records that read a header field
+under the new defaults moved nothing: 002's height is the same with the arm on none, all
+or any half of them. The dc is not the arm's. It is the GRID's: the same defaults give
+height mean 0.544 at 128, 0.789 at 256, 0.822 at 1024 (the export size), against 0.572.
+
+WHERE THE GRIDS PART, walking 002's height chain at 128 and 256 and printing every record
+whose level differs by 0.03 with its inputs' agreeing: two roots.
+
+  * `7561`, graph 002's Flood Fill: at 128 the jump flood is DEAD (`7558` -1024, `7557`
+    -512 ... the unsettled offsets, exactly graph 001's symptom before the
+    `pixelprocessor.outputsize=grid` section); at 256 it settles (-0.028). The pixel
+    processors now read the grid's `$outputsize`, but the `blend` switch selectors that
+    turn the passes on by `sizelog2` (`7530`, `7532`, `7540` ..., mode 7) are BLEND
+    records and read the render's, so at 128 the machine runs 1024-texel passes on a
+    128-px grid. `grid` was half of that construct's fix. At 256 the mismatch is 4x
+    instead of 8x and the field happens to settle.
+  * `7480`, the tile mask, 0.562 at 128 against 0.865 at 256, through `7474` distance,
+    `7473`..`7461` a warp ladder over `7410`, the difference already present at `7461`
+    (0.651 / 0.730) -- a second dependence, not traced further.
+
+The `levels` records with `levelinhigh` 0.001 / 0.05 (`7631`, `7920`, `8048`) that the
+first pass flagged are edge detectors on `blur` 7916 -- a fixed-256 record, intensity
+`256 / min($size)` = one pixel of its own size, exact at 256 and the identity at 128 --
+and zeroing them moves the height by 0.002, so they are not the level.
+
+AT NATIVE, where no cap applies (`/tmp/all_1024_*.npz`, resampled to 256): `field` height
+0.822, dc +0.250, corr +0.636; `spread` height 0.571, dc -0.001, corr +0.442. The level
+the reference states is `spread`'s, exactly, at the size the reference was made; the
+128-grid agreement under `field` was a dead flood fill and a narrower mortar cancelling
+a level fault.
+
+WHAT THIS SAYS ABOUT THE GUARD. `refcompare` scores at 128 / 256 / 512 under the implied
+`$outputsize`, and the ratchet's per-row bounds were taken there. Every reading arbitrated
+on those grids was arbitrated with the pixel machines in whatever state a 4x or 8x cap
+left them. A Bricks render at its export size takes two minutes now. The guard should
+have a native row -- one render per pack at the implied size, no cap -- and the arbitrations
+that turned on 002 (`spread`, `fx.header`, `blur.subpixel`, `fx.subdivide`) should be
+re-asked there before any of them is called settled. Not done in this section; the
+`--dim`-capped numbers above are the last ones this notebook will lean on for those.
