@@ -662,7 +662,7 @@ def f_normal(ctx, v):
     pos = pos_grid(W, H)
     p = v.params.get("intensity")
     if p is None:
-        d = assume.assumed("normal.default_intensity", "refuse")
+        d = assume.assumed("normal.default_intensity", 1.0)
         if d == "refuse":
             raise Unsupported(
                 "normal stores no intensity (its w1 field is absent), so the "

@@ -27,6 +27,11 @@ QUESTIONS = {
         2048.0,
     ),
     "dirwarp.edges": ("declared", "swapped"),
+    # FLIPPED TO 1.0 by the mechanism that settled warp's ("a value equal to the default is
+    # never typed"): over the corpus, `normal` states its intensity on 1,263 of 1,379
+    # records and 1.0 is stated ZERO times, with 0.5 (20) and 2.0 (34) both present, while
+    # `blur` -- the control -- types 1.0 ten thousand times. No reference channel depends
+    # on it; the ratchet passes; it reaches 55 corpus files. `refuse` is the arm.
     # NORMAL'S INTENSITY WHEN THE SOURCE OMITTED IT. Not a placement question -- the
     # placement is settled (`header_words - 1`, 8 of 8 containment pairings). This is the
     # 389 corpus records whose last header slot holds a PROGRAM POINTER rather than a
@@ -60,7 +65,7 @@ QUESTIONS = {
     # gates RoofTiles' basecolor (record 2190) and Auras' fourth basecolor (342), both
     # with reference maps, so unlike warp's this one is measurable. `refuse` first.
     "blur.default_intensity": ("refuse", 0.5, 1.0, 0.0, 0.25, 2.0, 4.0),
-    "normal.default_intensity": ("refuse", 0.5, 1.0, 2.0, 4.0, 8.0, 16.0),
+    "normal.default_intensity": (1.0, "refuse", 0.5, 2.0, 4.0, 8.0, 16.0),
     "blur.kernel": ("box", "gaussian"),
     "emboss.probe": ("passthrough",),
     # 'word1bit2' is the archived renderer's reading -- bit 2 as a BOOLEAN, which sees

@@ -60434,3 +60434,27 @@ carries more high-frequency power than the reference, `spread` less). The same t
 objections as at 256, so `spread` stays an arm; what native settles is that the level
 claim for it is not a cap artefact (002 height dc -0.001) and the corr claim against it
 is not either.
+
+## The corpus after the eleven flips: 74.5% of 903,616 records; `normal.default_intensity` = 1.0 by warp's own argument; `blur`'s stays refused
+
+THE AFTER-SWEEP, all 437 files, 64 px, bare defaults: 673,460 of 903,616 records (74.5%;
+the before-sweep, capped at 397 files, had 68.8% of 725,136). Roots by files hit: pixel
+processors producing non-finite values 131 (Auto Levels 0/0; the class is inflated at 64
+px by pyramids a 64-px grid cannot hold, Bricks' five among them), unbound graph image
+inputs 77, `normal` no intensity 55, `blur` no intensity 54, FX-Map sampler unbound 27
+(cascades), pattern budget 32, `0x1db` 18, `input 0 is not wired` 14, `slot 6 read but
+never set` 13. `warp` is gone from the census.
+
+`normal`, THE SAME CENSUS WARP HAD. Stated intensities over the corpus, 1,263 of 1,379
+records: 12 x277, program x275, 16 x159, 3 x75, 4 x68, 8 x67, 256 x62, 6 x35, 2 x34, 32
+x24, 0.5 x20 ... and 1.0 ZERO times, both neighbours present. The mechanism ("a value equal
+to the default is never typed") with its control (`blur` types 1.0 10,200 times) gives
+1.0 as it gave warp's. No reference pack has a `normal` without intensity in a live chain,
+so no picture speaks; the two ratchet tests pass. FLIPPED; `refuse` is the arm.
+
+`blur`, NOT SETTLED BY IT. Stated 14,931 times: 1.0 x10,200, 2.0 x638, 0.5 x628, 0.25 x272,
+4.0 x245 ... every round value between 0.1 and 20 is typed at least once EXCEPT 0.0, which
+nobody types because a zero blur is a no-op -- the objection the warp section itself
+raised against 0.0. The mechanism's one candidate is absent for a reason that is not the
+mechanism, so it says nothing here, and RoofTiles (the one pack it unblocks) is inert to
+the value at 256. Stays `refuse`.
