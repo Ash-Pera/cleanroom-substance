@@ -60466,3 +60466,31 @@ engine's defaults, which the file does not state, but the texture the engine wri
 node's output to: IEEE NaN converts to 0 in a UNORM texture (D3D's float-to-unorm rule),
 so the next node reads black. The record is marked low-confidence as before. No reference
 pack exercises it at the guard's grids; both ratchet tests pass; 20 tests.
+
+## `0x1DB` and `0x1A3` are the Bricks tiling compiled with bit 3 clear and bit 4 set; read as the iterates they are, Cliff renders whole
+
+THE HEADERS. Eighteen corpus files refused FX-Maps on "node header 0x1db is not modelled"
+(`fxnodes` had it as `state` under the withdrawn fitted rule, then refused). `node_shape`
+places `0x1DB` as (successor at word 4, program at word 2): `[hdr][baked word][program]
+[after][loop]`, which is `0x1CB` (`[hdr][program][after][loop]`) with the bit-4 word in
+front; and `0x1A3` as (successor at word 3, programs at words 1 and 2), which is
+`0x1AB`'s shape exactly. On Cliff records 1 and 21 the `0x1DB` program is Bricks 10081's
+`0x1CB` program line for line -- zero the statistics slots, return 1 -- and both children
+are `0x1A3` nodes whose second program (33 lines) reads a tile-count graph input as 10081's
+`numberadded` does, the first (11 lines) returning a slot as its `randomseed` does. The
+baked word is 2 on both. It is the stone tiling of the graph-001 sections in a variant
+compile (bit 3 clear on the iterate family, bit 4 set on the two-pass node), and the
+census that names roles had never seen it because the walk refused before the census ran.
+
+`fxchain.family` reads both as `iterate`; `read_node`'s existing rules do the rest (the
+bit-4 word is skipped by `node_shape`, `0x1A3` has no bit 6 so no after-child). Every
+record carrying either header refused before, so nothing that rendered changes; 33 tests
+pass. Cliff record 1 draws a pebble tiling -- rows of small stones at 22% coverage -- and
+the files at 64 px, bare defaults: Cliff 1,532 -> 2,559 of 2,559, Cobblestone 1,782 ->
+1,930 of 2,500, desert_cliff_eroded 3,107 -> 8,188 of 8,426. No reference speaks to the
+draw; the construct's own consistency (structured rows, a count from the graph input) is
+what stands behind it, as it stood behind 10081's before the reference did.
+
+ALSO MEASURED AND LEFT: the pattern budget (`MAX_PATTERNS` 300,000). A 1025 x 1025 tile
+sampler (AsphaltSubstance002 record 389) draws in 105 s under a 1.1 M budget and comes out
+flat 1.0 at 128 px -- sub-pixel tiles at full density. Not raised.

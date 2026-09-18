@@ -76,6 +76,17 @@ def family(hdr):
         return "switch"
     if hdr in (0x18B, 0x19B, 0x1AB, 0x1CB):
         return "iterate"
+    # THE SAME TILING, COMPILED WITH BIT 3 CLEAR AND BIT 4 SET. Cliff, Cobblestone,
+    # desert_cliff_eroded and 15 more corpus files carry the Bricks stone-tiling chain
+    # with `0x1DB` where Bricks has `0x1CB` and `0x1A3` where it has `0x1AB`.
+    # `node_shape` places them identically (`0x1DB`: one baked word, the count program,
+    # after and loop children; `0x1A3`: randomseed and numberadded programs, loop), the
+    # `0x1DB` program is the `0x1CB` program line for line (initialise the statistics
+    # slots, return 1), and the `0x1A3` count program reads a tile-count graph input as
+    # 10081's does. Read as the iterates they are; every record carrying them refused
+    # before, so nothing that rendered changes.
+    if hdr in (0x1A3, 0x1DB):
+        return "iterate"
     return None
 
 
