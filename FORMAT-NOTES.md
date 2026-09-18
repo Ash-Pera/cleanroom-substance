@@ -59784,3 +59784,55 @@ source's own value is the other reading) is not separable on Bricks, where every
 source radius covers its mortar. `distance.mask_edge` was not re-arbitrated. Graph 001's
 cross-hair lines inside each stone under `nearest`/`spread` are `10252`'s cell-centre seams
 propagated, and not chased.
+
+## `distance`'s radius unit and falloff shape are arbitrated by the guard (px at 256, linear), the bevel branch's inversions are what the file says, and the light mortar lines are `2582`'s falloff on a mortar the earlier distances have already narrowed
+
+Three questions the previous section left, each answered on the same guard (mean signed corr
+per graph, 128 grid, `$outputsize` 10, `--dim 256`, eleven arms, `distance.propagate=field`),
+at `ee4c081`.
+
+THE RADIUS UNIT. `distance.scale_radius` reads the record's radius as pixels at 256 and
+scales to the grid. Multiplying every radius by a factor:
+
+    factor      001     002     003     004     005
+    0.25      +0.083  +0.509  +0.695  +0.541  +0.422
+    0.5       +0.100  +0.558  +0.746  +0.582  +0.476
+    1         +0.133  +0.763  +0.764  +0.720  +0.791
+    2         +0.011  +0.009  +0.046  +0.402  +0.173
+
+A clean optimum at 1 on every graph. The "pixels at the record's own size" reading (which
+would be 0.25 here) is refused.
+
+THE FALLOFF SHAPE. `distance_field` is `1 - d/R`, clipped -- verified in an earlier session
+against a single pixel, which checks the code and not the engine. Raising the field to a
+power: exponent 2 gives 002 +0.579, 003 +0.761, 005 +0.500; exponent 0.5 gives +0.149,
++0.433, +0.434. Linear stands.
+
+THE BEVEL BRANCH. Graph 005's height takes its edge darkening from `3161`, a 48.64-px
+distance grown from `3160`, which is the mortar lit (15% of pixels) -- the Bevel construct,
+inverted mask then distance. Around it sit `3159`, `3160`, `3162`: three byte-identical
+`levels` blocks (flags 0x140, words `[1.0, 0.0]`, `leveloutlow` 1 / `levelouthigh` 0), the
+Invert node compiled three times, so `3160 = 3158` and `3162 = invert(3161)`; then `3163`
+(`levelinhigh` 0.77 and the same output reversal) inverts again, and the branch reaches
+`3167` (multiply, `opacitymult` 0.46) with the MORTAR RAISED: on mortar pixels 1.000, on
+tile interiors 0.716. The reference has black mortar, so this was suspect; with `3163`'s
+output inverted the height corr goes +0.602 -> +0.461 under `field` and +0.191 under
+`spread`. The file's reading agrees with the reference better than its opposite; left as is.
+
+WHERE THE LINES GO LIGHT, then. Along 005's height chain the dark fraction below 0.5 is
+already 9.0% at `2714` (reference 7.2%) and stays 9-10% through the blur, the two blends
+and the 30-warp ladder to `3125` -- the lines are never lost. The fraction below 0.3 is
+2.2% against the reference's 7.2%: ours are grey, ~0.4 at the centre, not black. That is
+set at `2582 = distance([2581, 2581], r 3.7)`: on a mortar 2-5 px wide (`2581`, runs at 256)
+the centre sits 1-2 px from the tile and reads 1 - 2/3.7 = 0.46. And the mortar is 2-5 px
+because `2575` (r 2.56) and `2581` (r 1.28) are each a distance of a distance -- a soft
+field re-thresholded at 0.5 grows the tiles by half the radius per step -- so the 4-8 px
+mortar `2574` draws is down to 2-5 by `2581`. Every step here is the arbitrated reading;
+what the reference disagrees with is the width of the mortar arriving at `2582`, or what a
+distance does at the centre of a gap narrower than its radius. Blend order and modes on the
+path (`2664` multiply at 0.09, `2714` multiply, `2760` multiply at 0.24, `3045`..`3144` min
+at 0.03-0.12, `3167` multiply at 0.46) are as the hblend arbitration fixed them.
+
+STANDING. Graph 001's stone level under `field` is p50 0.825 because the same `2582`-shaped
+falloff fills its 3-px mortar and `10254` drops its tone -- the `spread` section. Neither
+graph's mortar is right under either arm, and the two share the cause.
