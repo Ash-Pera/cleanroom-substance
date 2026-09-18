@@ -1311,6 +1311,49 @@ def f_distance(ctx, v):
     return to_image(field.reshape(-1, 1), W * H, H, W)
 
 
+@filt("vectorshape")
+def f_vectorshape(ctx, v):
+    """Filter 5: the record's embedded triangle strip, rasterised as a mask.
+
+    `Record.vector_faces` is the strip as explicit triangles in [0, 1] canvas units, joins
+    and part boundaries dropped (§13 of SPEC.md, "vectorshape"). Each triangle covers the
+    pixels whose centres lie inside it (three edge functions, one sign), and the shape is
+    the union; the fill is 1.0 where the strip covers and 0.0 elsewhere -- the record
+    names no parameter, and the class-bit-25 float where present is 1.0 on every corpus
+    record that was checked. No anti-aliasing: an edge is a pixel step. 139 corpus
+    records, 7 files blocked on "no implementation" before this.
+    """
+    faces = v.rec.vector_faces
+    if not faces:
+        raise Unsupported("vectorshape: no faces decode from the payload")
+    W, H = v.size(ctx.cap)
+    out = np.zeros((H, W), np.float32)
+    px = (np.arange(W, dtype=np.float64) + 0.5) / W
+    py = (np.arange(H, dtype=np.float64) + 0.5) / H
+    for tri in faces:
+        (x0, y0), (x1, y1), (x2, y2) = tri
+        area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+        if abs(area) < 1e-12:
+            continue
+        c0 = max(int(np.floor(min(x0, x1, x2) * W)) - 1, 0)
+        c1 = min(int(np.ceil(max(x0, x1, x2) * W)) + 1, W)
+        r0 = max(int(np.floor(min(y0, y1, y2) * H)) - 1, 0)
+        r1 = min(int(np.ceil(max(y0, y1, y2) * H)) + 1, H)
+        if c0 >= c1 or r0 >= r1:
+            continue
+        X = px[c0:c1][None, :]
+        Y = py[r0:r1][:, None]
+        e0 = (x1 - x0) * (Y - y0) - (y1 - y0) * (X - x0)
+        e1 = (x2 - x1) * (Y - y1) - (y2 - y1) * (X - x1)
+        e2 = (x0 - x2) * (Y - y2) - (y0 - y2) * (X - x2)
+        if area > 0:
+            hit = (e0 >= 0) & (e1 >= 0) & (e2 >= 0)
+        else:
+            hit = (e0 <= 0) & (e1 <= 0) & (e2 <= 0)
+        out[r0:r1, c0:c1][hit] = 1.0
+    return out[:, :, None]
+
+
 @filt("dyngradient")
 def f_dyngradient(ctx, v):
     """Input 0 indexes into input 1, which is a one-row (or one-column) ramp image."""

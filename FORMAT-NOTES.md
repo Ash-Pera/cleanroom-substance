@@ -60535,3 +60535,29 @@ program is `cache_write($size, 3); return $size`, a float2 -- whose picture is t
 effect's by-product, and the engine's greyscale output reads a wider value's x.
 `greyscale.wide` (`first`, `refuse`): component 0. Tiles017 6,711 of 8,082, its one
 remaining root an unbound graph image input. Both ratchet tests pass; 20 tests.
+
+## Filter 5 draws: the vector strip rasterised; and `/` on two Python floats no longer raises
+
+`vectorshape` had every one of its 139 records decoded to a triangle strip
+(`Record.vector_faces`, joins and part boundaries dropped) and no rasteriser, so seven
+files refused on "no implementation". `render2.filters.f_vectorshape` covers each
+triangle's pixels by three edge functions of one sign and unions them at 1.0; no
+parameter is named on any record (the class-bit-25 float is 1.0 where present and is now
+in `test_render2`'s declared-but-unnamed inventory), no anti-aliasing. ChristmasTree
+Ornament002 record 12 (2048 x 4096, 162 faces) draws the ornament's silhouette at 48%
+coverage.
+
+Behind it the file stopped on `ZeroDivisionError` in three pixel programs: the
+transpiler emits `/` as Python's operator, which raises on two Python-float operands where
+the same division over arrays gives inf or nan. `sbs_div` (numpy division under
+`errstate`, operand dtypes untouched) is the emission now, and the non-finite result is
+the texture's 0 as before. ChristmasTreeOrnament002 12,804 -> 15,177 of 15,747; 32 tests.
+
+WHAT THE RATCHET CAUGHT IN IT, before the commit: Bricks 004's AO +0.632 -> +0.190.
+`fxrender.grid_width` reads a placement program's SOURCE TEXT for `floor($number / N)`
+with a pattern that matched `(a / b)` alone; under `sbs_div(a, b)` it matched nothing,
+`grid_width` returned None on every `$number`-grid record, and each fell back to
+`numberadded`. The pattern now takes both spellings. Two readers of the transpiled text
+exist (`grid_width`, and `fx.py`'s cache read/write patterns); the third spelling change
+will find the same trap, and this note is where it is written down. Both ratchet tests
+pass with the pattern fixed.

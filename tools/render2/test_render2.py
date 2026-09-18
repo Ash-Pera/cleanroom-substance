@@ -233,6 +233,10 @@ UNNAMED_BUT_DECLARED = {
         # is for.
         2: (23,),
         4: (22, 23),
+        # `vectorshape` renders now (its strip rasterised), so its class-bit-25 float --
+        # 1.0 on every record checked, `$outputsize` where bit 16 is set instead -- is a
+        # declared field the rasteriser does not read. Named here for what it is not yet.
+        5: (25,),
         6: (23, 25),
         8: (23, 26, 27),
         15: (23,),

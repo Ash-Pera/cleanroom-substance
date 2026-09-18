@@ -964,7 +964,11 @@ def seed_slots(rec, run):
 _ASSIGN = re.compile(r"^\s*(v\d+)\s*=\s*(.+?)\s*$")
 _SYSVAR10 = re.compile(r"^sysvar\(10[,)]")
 _CONST = re.compile(r"^([0-9]+\.[0-9]+)$")
-_DIV = re.compile(r"^\(?\s*(v\d+)\s*/\s*(v\d+)\s*\)?$")
+# Either spelling of a division: the Python backend emits `(a / b)` and, since `sbs_div`,
+# `sbs_div(a, b)` -- the grid reading must see both or `grid_width` silently returns None
+# and every `$number`-grid record falls back to `numberadded` (Bricks 004's AO went
+# +0.632 -> +0.190 for the hour this pattern matched only the first).
+_DIV = re.compile(r"^(?:\(?\s*(v\d+)\s*/\s*(v\d+)\s*\)?|sbs_div\(\s*(v\d+)\s*,\s*(v\d+)\s*\))$")
 
 
 def grid_width(rec):
@@ -1020,8 +1024,10 @@ def grid_width(rec):
                 consts[name] = float(c.group(1))
                 continue
             d = _DIV.match(rhs)
-            if d and d.group(1) in number_vars and d.group(2) in consts:
-                n = consts[d.group(2)]
+            if d:
+                num, den = (d.group(1), d.group(2)) if d.group(1) else (d.group(3), d.group(4))
+            if d and num in number_vars and den in consts:
+                n = consts[den]
                 # THE UPPER BOUND SITS IN A GAP THE CORPUS LEAVES, which is what makes it a guard rather
                 # than a taste. Over 80 files the divisors found run 2, 3, 4, 5, 6, 7, 8, 10 ... 50, 64
                 # -- 355 records, dense to 64 -- and then nothing at all until 128, 130 and 16384, which

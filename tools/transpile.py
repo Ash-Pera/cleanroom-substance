@@ -96,7 +96,7 @@ class Python(Backend):
     header = (
         "import numpy as np\n"
         "from sbsruntime import (sysvar, sample_lum, sample_col, vec, swizzle,\n"
-        "                        select, rand, cartesian, lerp, sbs_mod, atan2, cvt,\n"
+        "                        select, rand, cartesian, lerp, sbs_mod, sbs_div, atan2, cvt,\n"
         "                        dot,\n"
         "                        cache_read, cache_write, clamp)\n"
     )
@@ -210,7 +210,11 @@ PY_FUNCS = {
     # dot is row-wise, not np.dot, which is a matrix product.
 }
 
-PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or"}
+# `/` goes through `sbs_div` on the Python backend: two Python-float operands (constants
+# folded by the transpiler, a size read as a scalar) raise ZeroDivisionError where the
+# same division over arrays gives inf or nan -- and the engine's texture writes those as
+# 0 (`nonfinite.fill`). ChristmasTreeOrnament002 records 1002, 3273, 5544.
+PY_LOGIC = {"and": "np.logical_and", "or": "np.logical_or", "/": "sbs_div"}
 
 
 #: Operations whose meaning is not established. Operand shape comes from the

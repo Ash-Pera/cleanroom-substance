@@ -223,6 +223,12 @@ def select(cond, a, b):
     return np.where(c, a, b)
 
 
+def sbs_div(a, b):
+    """`a / b` as numpy division: inf or nan on a zero divisor, never an exception."""
+    with np.errstate(all="ignore"):
+        return np.divide(a, b)  # dtypes as the operands had them; float / float is float64
+
+
 def sbs_mod(a, b):
     return np.mod(a, b)
 
