@@ -60458,3 +60458,11 @@ nobody types because a zero blur is a no-op -- the objection the warp section it
 raised against 0.0. The mechanism's one candidate is absent for a reason that is not the
 mechanism, so it says nothing here, and RoofTiles (the one pack it unblocks) is inert to
 the value at 256. Stays `refuse`.
+
+ADDENDUM: `nonfinite.fill` defaults to 0.0, `refuse` the arm. A record whose arithmetic
+produces NaN or inf -- the Auto Levels dividing 0/0 on a constant input, 131 corpus files
+at 64 px -- used to refuse the record and every descendant. The footing for 0.0 is not the
+engine's defaults, which the file does not state, but the texture the engine writes each
+node's output to: IEEE NaN converts to 0 in a UNORM texture (D3D's float-to-unorm rule),
+so the next node reads black. The record is marked low-confidence as before. No reference
+pack exercises it at the guard's grids; both ratchet tests pass; 20 tests.

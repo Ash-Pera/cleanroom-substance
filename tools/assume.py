@@ -365,7 +365,15 @@ QUESTIONS = {
     "levels.zerospan": ("step", "identity"),
     "levels.inversion": ("flat", "complete"),
     "levels.interclamp": ("clamp", "noclamp"),
-    "nonfinite.fill": (0.0, 0.5, 1.0),
+    # A NON-FINITE SAMPLE IS ZERO IN THE TEXTURE. Every node's output is written to a
+    # texture, and IEEE NaN / inf convert to 0 in a UNORM texture (D3D's float-to-unorm
+    # rule; GL's is unspecified and does the same in practice) -- so a record whose
+    # arithmetic divides 0/0 (an Auto Levels on a constant input: 131 corpus files at 64
+    # px, SandyStonePath's 11 before its tiling came alive) is a black image at the next
+    # node, not a refusal. 0.0 is the default on that footing, `refuse` the arm; 0.5 and
+    # 1.0 remain as the other fills a sweep can ask for. No reference pack exercises it at
+    # the guard's grids, so the ratchet is silent; the record is marked low-confidence.
+    "nonfinite.fill": (0.0, "refuse", 0.5, 1.0),
     "uniform.fill": (),
     "grayscale.weights": (),
     "fx.branchoffset": ("canvas", "cell"),

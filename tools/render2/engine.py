@@ -541,8 +541,8 @@ def render(
                     )
                 )
             if fixed.size and not np.all(np.isfinite(fixed)):
-                fill = assume.assumed("nonfinite.fill")
-                if fill is None:
+                fill = assume.assumed("nonfinite.fill", 0.0)
+                if fill == "refuse":
                     raise Unsupported(
                         "produced non-finite values (%.1f%% of samples)"
                         % (100.0 * float(np.mean(~np.isfinite(fixed))))
