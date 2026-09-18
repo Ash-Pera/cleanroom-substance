@@ -365,6 +365,18 @@ def rand(limit):
     # identity on every finite float, so every draw outside that runner is bit-for-bit
     # what it was.
     s = CONTEXT.get("salt", 0.0)
+    # THE DRAW ORDINAL, under `rand.stream`. The engine's `rand` is a stream: two calls in
+    # one program draw twice, and two patterns emitted under the same `$number` -- every
+    # leaf of a nested iterate whose innermost loop runs once, which is SandyStonePath's
+    # seed record (1,844 of 2,228 draws at `$number` 0, 248 patterns with TWO opacities
+    # between them) -- draw differently. A hash of the argument and `$number` alone gives
+    # them all one value. The ordinal counts calls since the record began
+    # (`render2.fx.render_fxmaps` zeroes it), so the k-th draw of a record is the same
+    # draw whatever grid it is on; `hash` is the reading before, and `+ 0.0` leaves it.
+    if CONTEXT.get("stream"):
+        c = CONTEXT.get("draw", 0)
+        CONTEXT["draw"] = c + 1
+        s = s + c * 0.7548776662
     h = np.modf(np.sin(x * 12.9898 + n * 78.233 + s * 37.719) * 43758.5453)[0] % 1.0
     return x * h
 

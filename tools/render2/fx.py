@@ -1102,6 +1102,11 @@ def render_fxmaps(ctx, v):
     rec = v.rec
     saved = dict(sbsruntime.SAMPLERS)
     sbsruntime.SAMPLERS.clear()
+    # `rand` as a stream, per record: see `sbsruntime.rand` and `assume.QUESTIONS`.
+    sbsruntime.CONTEXT["stream"] = assume.assumed("rand.draws", "hash") == "stream"
+    sbsruntime.CONTEXT["draw"] = 0
+    if sbsruntime.CONTEXT["stream"]:
+        assume.note(v.index)
     try:
         # BIND WHAT EXISTS AND LET THE PROGRAM ASK FOR THE REST. An FX-Map's patterns need
         # an image input only if one of its programs samples it, and most do not: refusing
@@ -1138,5 +1143,6 @@ def render_fxmaps(ctx, v):
             raise Unsupported("fxmaps: %s" % e) from e
         return splat(rec, pats, W, H, images=images, header=header_fields(ctx, v))
     finally:
+        sbsruntime.CONTEXT["stream"] = False
         sbsruntime.SAMPLERS.clear()
         sbsruntime.SAMPLERS.update(saved)

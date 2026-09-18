@@ -60765,3 +60765,55 @@ wrong first; the seeds are. Pack scores identical to `nearest` (mean +0.027 / 0.
 Bricks under `flag` is the `spread` reading on 46 of its 86 two-edge records, which the
 ratchet refused for graph 005. Default stays `field`; the bit is recorded for the day the
 seeds are right.
+
+## SandyStonePath's seeds draw two greys because `rand` hashes `$number` and every leaf of its nested iterate sees `$number` 0; a draw-ordinal stream gives the Voronoi, and the ratchet refuses it on Bricks -- both readings stay arms
+
+THE SEEDS. Record 2 is a 25-node tree (0x18B / 0x89 / 0x1CB / 0x1AB ... eight leaves) whose
+leaf colour programs are the Tile Sampler's HSL draw -- `lerp(1, rand(1), 1)` for the
+luminosity, three `rand(1.0)` calls per pattern. Spying on `rand` during the emission:
+1,844 of 2,228 draws see `$number` = 0 (the innermost iterate runs once, and `$number` is
+the innermost index), 24 each see 1..15. So 248 patterns draw TWO opacities between them
+(0.922 and 0.461 after `opacitymult`; 124 each), and the distance field behind them has
+two greys to propagate. The engine's `rand` is a generator: the k-th call draws the k-th
+value whatever `$number` is.
+
+`rand.draws` (`hash` | `stream`): `stream` adds the call's ordinal within the record to the
+hash's salt (`render_fxmaps` zeroes it per record); `hash` is the reading before. Under
+`stream` + `distance.propagate=flag` the chain is the reference's construct: seeds with a
+grey each, `distance` 3 flat per cell, `levels` 16 / 20 a clean crack network -- the
+Voronoi the export shows (`/tmp/sandy_chain3.png` while it lasts). And the pack's OUTPUTS
+do not move: at 128 the outline chain `|11 - blur(11)|` is dead (the blur's radius rounds
+to zero, so the difference is zero and `levels` 17's 0.002 step has nothing to cut), and
+at 256 the height output 1447 sits on a 60-record blend ladder above a spiral-scan
+FX-Map (34: count `((aspect - 1) mod 2 + aspect)^2` = 1 on a square canvas, two `(5.0,
+1.0)` strokes at opacity -1 on a `background` 1.0 canvas -> 0 everywhere) that is the open
+`(5.0, 1.0)` family. The pack's picture has at least three roots and this session closed
+one of them.
+
+THE RATCHET, both arms, all three grids (`ASSUME=key=value` now opens a scope for a
+whole process, so the suite runs under a candidate without editing the default):
+
+    rand.draws=stream          FAIL, 28 rows: Bricks band 002 basecolor 1.28 -> 6.13 at
+                               128, 004 height 1.89 -> 6.59, 003 normal ch2 9.9 at 256;
+                               dc +0.03 .. +0.34 on every height. Bricks' draws are
+                               per-`$number` already (count-node chains), and decorrelating
+                               the three programs of one pattern -- size, rotation and
+                               colour drawing DIFFERENT values under `stream`, the SAME
+                               value under `hash` -- is high-frequency power the export
+                               lacks. Whatever the engine's generator is, it is not this.
+    distance.propagate=flag    FAIL, 37 rows: Bricks 002 height corr 0.60 -> 0.39, 005
+                               0.63 -> 0.40, 004 0.46 -> 0.37; band and dc improve on the
+                               same rows (height dc +0.22 -> -0.07). The [158, 158]
+                               library records clear the bit and want the field.
+
+    at 256, mean corr / band / |dc|     defaults        stream          flag
+    Bricks (48)                         +0.675/1.58/.065  +0.691/1.96/.077  +0.616/1.07/.045
+    RoofTiles                           +0.491/1.39/.030  +0.480/1.50/.046  same as defaults
+    SandyStonePath                      +0.021/0.50/.022  +0.025/0.46/.022  +0.027/0.56/.019
+    Auras, Chesterfield                 bit-identical under both
+
+Defaults stay `hash` and `field`. What would decide `rand`: a pack whose scatter is
+deterministic in the file and whose export is at hand -- none of the five. What would
+decide the bit: the source pairing says `combinedistance = 0` on Sandy 3 and its record
+clears bit 1, and the library's same-edge records clear it too while wanting a field; so
+either the bit is not `combinedistance`, or a same-edge source is combined regardless.

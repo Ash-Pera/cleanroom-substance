@@ -142,6 +142,11 @@ QUESTIONS = {
     # A LEAF NODE'S UPPER BITS (`header >> 8`) AS THE BAKED EMISSION COUNT, for a chain
     # without a count node; `one` is the walk as it stood, one emission per leaf.
     "fx.leafcount": ("header", "one"),
+    # `rand` INSIDE AN FX-MAP: `hash` draws from the argument and `$number` alone, so two
+    # patterns under one `$number` draw alike; `stream` adds the draw's ordinal within the
+    # record, one value per call, as an engine's generator does. Neither is what the file
+    # states -- the hash is arbitrary either way -- so a picture decides.
+    "rand.draws": ("hash", "stream"),
     # WHERE A CHAIN NODE'S PROGRAMS ARE PLACED. 'table' reads the byte offsets out of
     # `FX_NODE_PARAMS`, per header; 'walk' computes them from the header's mask through
     # `node_shape` and pairs the names onto them in field order. Two statements of one
@@ -500,6 +505,32 @@ QUESTIONS = {
 }
 
 _ACTIVE = {}
+
+
+def _from_environ():
+    """`ASSUME="key=value,key=value"` opens a scope for the whole process.
+
+    For running a suite that has no scope hook of its own -- the ratchet in
+    `archive/tools/test_filters.py` -- under a candidate reading without editing the
+    default first. Values are matched against the question's candidates by their string
+    form, so `nonfinite.fill=0.5` is the float and `fx.header=read` the string.
+    """
+    import os
+
+    got = {}
+    for kv in os.environ.get("ASSUME", "").split(","):
+        if "=" not in kv:
+            continue
+        k, v = kv.split("=", 1)
+        for c in QUESTIONS.get(k, ()):
+            if str(c) == v:
+                v = c
+                break
+        got[k] = v
+    return got
+
+
+_ACTIVE.update(_from_environ())
 
 # Record indices rendered under an assumption; cleared for each scope.
 USED = set()
