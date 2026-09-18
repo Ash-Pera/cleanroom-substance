@@ -423,10 +423,17 @@ def transpile(data, start, end, backend="python", name="program", result=None):
                         % (toks[1], gexpr, arg(0), prev)
                     )
             elif active is not None:
+                # THE SLOT MAY BE UNSET ON THE FIRST ITERATION. A lane the loop's own
+                # mask has already stopped keeps "its" value, and on the first pass no
+                # write has happened yet: `slots[6]` raised "read but never set" on 13
+                # corpus files (OnyxSubstance001 record 272, a masked `while` whose first
+                # body write is this one). An unset slot reads as zeros of the value's
+                # own shape, as it does in the lazy arm above and through `seed_slots`.
                 own, expr = active
                 out.append(
-                    "slots[%d] = %s if %s is None else select(%s, %s, slots[%d])"
-                    % (toks[1], arg(0), own, expr, arg(0), toks[1])
+                    "slots[%d] = %s if %s is None else select(%s, %s, "
+                    "(slots[%d] if %d in slots else 0 * %s))"
+                    % (toks[1], arg(0), own, expr, arg(0), toks[1], toks[1], arg(0))
                 )
             else:
                 out.append("slots[%d] = %s" % (toks[1], arg(0)))

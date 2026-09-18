@@ -60494,3 +60494,28 @@ what stands behind it, as it stood behind 10081's before the reference did.
 ALSO MEASURED AND LEFT: the pattern budget (`MAX_PATTERNS` 300,000). A 1025 x 1025 tile
 sampler (AsphaltSubstance002 record 389) draws in 105 s under a 1.1 M budget and comes out
 flat 1.0 at 128 px -- sub-pixel tiles at full density. Not raised.
+
+## Two slot-frame gaps in pixel programs, closed; and the three refused Bricks arms re-asked at native, where none of them wins
+
+THE TRANSPILER'S FIRST WRITE IN A MASKED LOOP. `while` bodies write slots as
+`select(active, new, slots[N])` so a lane the loop has already stopped keeps its value;
+on the first pass no write has happened, and a lane stopped at iteration one read a slot
+nothing set -- "slot 6 read but never set", 13 corpus files (OnyxSubstance001 272, 397,
+487 ...). The lazy `select` emission already guards the same shape (`slots[N] if N in
+slots else 0 * new`); the loop emission now does too. Onyx 1,642 -> 1,656 of 1,682.
+
+THE READ BEFORE ANY WRITE. What remained (Onyx 1470) is a 21,643-line pixel program whose
+first touch of slot 48 is `clamp(slots[48], 3)` inside `select(cond, f(slots[48]),
+slots[48])` -- an accumulator reading its initial value, which the engine reads as 0.
+`pixelprocessor.unset` (`zero`, `refuse`): the pixel program's frame reads an unset slot
+as 0.0 after the record's own programs have seeded it; `refuse` keeps the diagnostic, and
+the FX-Map path is unchanged and still raises, since there the frame model is what a
+refusal is about. Onyx 1,682 of 1,682. 39 tests pass.
+
+THE THREE REFUSED ARMS AT NATIVE (`nativeguard.py`, Bricks only, mean corr / band / |dc|
+over 48 rows): defaults +0.679 / 1.564 / 0.062; `fx.subdivide=tree` +0.645 / 1.655 /
+0.062; `fx.header=read` +0.680 / 1.580 / 0.065; `blur.subpixel=fractional` +0.676 / 1.530
+/ 0.060. The tree arm loses at native as it did at 256 (record 708's sparse leaves); the
+other two are within 0.004 of the defaults either way -- the ratchet's 256-px objections to
+them were partly grid, and the native row has nothing to add for or against. All three
+stay arms; the question the previous native section asked is answered.

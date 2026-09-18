@@ -469,6 +469,11 @@ QUESTIONS = {
     # and a constant: RoofTiles' normal 0.00 -> +0.31/+0.73/+0.39, Chesterfield +0.002,
     # Auras and Bricks 002-005 identical, at 256 px under the implied `$outputsize`.
     "pixelprocessor.outputsize": ("grid", "render"),
+    # WHAT A PIXEL PROGRAM READS FROM A SLOT NOTHING SET. `zero`: 0.0, the engine's
+    # unset variable, after the record's own programs have seeded the frame. `refuse`:
+    # the "slot N read but never set" refusal, which found the slot-frame model and is
+    # still what the FX-Map path raises. 13 corpus files at 64 px.
+    "pixelprocessor.unset": ("zero", "refuse"),
     # THE `brick` PATTERN'S FOOTPRINT (patterntype 9, `SHAPE_MODELLED`). `inset` is the
     # hard fill at 85% of the box the profile has always drawn; `fill` is the whole box.
     # See `fxrender.profile_value`.

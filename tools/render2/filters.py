@@ -358,6 +358,14 @@ def annihilated_samplers(asm, ptr):
     return _DEAD_SAMPLER[key]
 
 
+
+class _ZeroSlots(dict):
+    """A slot frame whose unset entries read as 0.0; see `f_pixelprocessor`."""
+
+    def __missing__(self, key):
+        return np.float32(0.0)
+
+
 @filt("pixelprocessor")
 def f_pixelprocessor(ctx, v):
     W, H = v.size(ctx.cap)
@@ -411,7 +419,19 @@ def f_pixelprocessor(ctx, v):
                 sbsruntime.SAMPLERS[k] = lambda pos: np.zeros((len(pos), 1), np.float32)
         if main not in progs:
             progs = progs + [main]
-        slots = {}
+        # AN UNSET SLOT READS AS ZERO in a pixel program, behind `pixelprocessor.unset`.
+        # The record's own programs seed the frame (below), and what a program reads past
+        # that is a variable no `set` reached first -- an accumulator's initial value
+        # (OnyxSubstance001 record 1470, a 21,643-line program whose first touch of slot
+        # 48 is `clamp(slots[48], 3)` inside `select(cond, f(slots[48]), slots[48])`),
+        # which the engine reads as 0. `refuse` keeps the diagnostic that found the
+        # slot-frame model; it is the arm now, for the FX-Map path is unchanged and
+        # still raises, where the frame model is what a refusal is about.
+        slots = (
+            _ZeroSlots()
+            if assume.assumed("pixelprocessor.unset", "zero") == "zero"
+            else {}
+        )
         # `$outputsize` DESCRIBES THE SAME GRID AS `$size` AND `$pos`, for this record's
         # programs, behind `pixelprocessor.outputsize`. `Context.run` already hands the
         # image program the grid it is drawn on as `$size`, for the reason stated there;
