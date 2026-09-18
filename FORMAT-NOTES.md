@@ -60408,3 +60408,29 @@ have a native row -- one render per pack at the implied size, no cap -- and the 
 that turned on 002 (`spread`, `fx.header`, `blur.subpixel`, `fx.subdivide`) should be
 re-asked there before any of them is called settled. Not done in this section; the
 `--dim`-capped numbers above are the last ones this notebook will lean on for those.
+
+## The native row, first numbers: every deterministic graph scores higher at the export size, Chesterfield by 0.06, and `spread` against `field` keeps its shape
+
+`archive/tools/nativeguard.py` -- every pack at its implied `$outputsize`, no cap, the
+per-pack input overrides the exports used, per row `refguard.measure`. Current defaults
+(`field`) against `distance.propagate=spread`, mean signed corr / mean |dc|:
+
+    pack                       dim     field              spread
+    Auras                       512   +0.872 / 0.139      +0.872 / 0.139
+    Chesterfield               2048   +0.948 / 0.024      +0.948 / 0.024     (256 px: +0.887)
+    RoofTiles (14 x 9)         2048   +0.411 / 0.051      +0.411 / 0.051     (11 min)
+    SandyStonePath (toggle on) 2048   -0.009 / 0.023      -0.004 / 0.015
+    Bricks 001                 1024   +0.179 / 0.048      +0.122 / 0.031
+    Bricks 002                 1024   +0.782 / 0.086      +0.597 / 0.068     (256 px: +0.763)
+    Bricks 003                 1024   +0.831 / 0.043      +0.775 / 0.024     (256 px: +0.764)
+    Bricks 004                 1024   +0.736 / 0.053      +0.659 / 0.040     (256 px: +0.720)
+    Bricks 005                 1024   +0.849 / 0.083      +0.720 / 0.055     (256 px: +0.791)
+
+Every deterministic graph is higher at native than at 256 under the same reading -- the
+cap was costing Bricks 0.02-0.06 and Chesterfield 0.06 -- which is the measure of how much
+of the guard's own floor was a grid artefact. `spread` against `field` at native: corr
+lower on every Bricks graph, |dc| lower on every one, band 0.85 against 1.56 (`field`
+carries more high-frequency power than the reference, `spread` less). The same two
+objections as at 256, so `spread` stays an arm; what native settles is that the level
+claim for it is not a cap artefact (002 height dc -0.001) and the corr claim against it
+is not either.
