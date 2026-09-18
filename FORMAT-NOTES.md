@@ -59708,3 +59708,79 @@ WHAT THE PICTURES SAY IS LEFT is level, not layout: height p50 0.825 and p95 1.0
 bevel at mid-grey, on every seed (height mean 0.71-0.74 on all six). That is the "authored
 threshold our level sits above" family -- 10326 and the three below it -- and it is the next
 thing.
+
+## The stone faces are white because `distance` throws its source away: a `spread` arm (propagate, no falloff) puts graph 001's tone and graphs 002/003/005's bevel level where the reference has them, and the corr guard says no -- for reasons the pictures locate downstream
+
+WHERE THE LEVEL FAULT IS. Graph 001's height under the eleven arms (seed 1 of the sweep
+above): p50 0.825, p95 1.000, against 0.469 / 0.694. The stone faces come from
+`10254 distance` -- mask `10174` (the tiling, 81% lit), source `10253` (the Flood Fill's
+one grey per stone), radius 13.86 px at 256 -- and under the default
+`distance.propagate=field` the source is not read: the output is the mask's falloff, 1 on
+every stone and 0.9 at the mortar centre, mean 0.980. The per-stone tone the reference
+carries (tone_between 0.053) is discarded at that record, and `10337 distance` discards it
+a second time one step on. Bricks wires a source that differs from the mask on 40 of its 86
+two-edge `distance` records, and every graph in the pack has this construct
+(`244`, `2663`, `10254` are the same 13.86-px node in graphs 003, 005, 001).
+
+THE TWO ARMS THAT EXISTED, on graph 001 height, seed 1, 256 grid:
+
+                     mean    p5     p50    p95   line_w  jitter  blob_d  tone_betw  tone_within
+    field           0.728  0.132  0.825  1.000   3.0    1.36    36.5    0.038      0.127
+    nearest         0.296  0.020  0.346  0.513   6.0    1.20    30.5    0.050      0.054
+    Textures_1      0.440  0.131  0.469  0.694   5.0    1.68    35.8    0.053      0.074
+
+`nearest` (source at the nearest lit mask pixel, TIMES the falloff) restores the tone per
+stone and the mortar width, and darkens everything: on graph 003, deterministic, it draws
+the per-brick tone the reference has and a dark low-frequency cloud with a halo round every
+brick that the reference does not. The multiply is wrong and the propagation is right --
+which is what the sources say: `combinedistance` is declared 0 in all 19 permitted sightings
+(the earlier "unlocatable, no contrast" finding, read now as a default).
+
+THE THIRD ARM, `distance.propagate=spread`: the source's value at the nearest lit mask
+pixel wherever the field is non-zero, 0 beyond the radius, no falloff. Two readings inside
+it, both from Bricks: a source that is the mask record itself (`[158, 158]`, 46 of the 86)
+is no source and draws the field -- read as one, it hard-dilates every soft shape in graph
+005 and the grid lines go with it; and a distinct source is spread flat. `render2/filters.py`
+`f_distance`, `assume.QUESTIONS['distance.propagate']` gains the candidate; default `field`,
+25 tests pass, every default render byte-identical.
+
+THE GUARD, mean signed corr per graph, 128 grid, `$outputsize` 10, `--dim 256`, the eleven
+arms plus the one named (this harness; the numbers differ slightly from the previous
+section's, same ordering):
+
+    graph            field    nearest   spread(all)   spread(distinct source)
+    001 (rand)      +0.133    +0.089     +0.117          +0.093
+    002             +0.763    +0.694     +0.183          +0.605
+    003             +0.764    +0.690     +0.592          +0.714
+    004             +0.720    +0.711     +0.303          +0.637
+    005             +0.791    +0.760     +0.082          +0.676
+
+Refused as a default on that table. But the table and the pictures disagree, and the
+pictures are the ones to read:
+
+    005 height           mean    corr    low-pass corr (gauss 6)   high-pass corr
+    field               0.836   +0.648         +0.248                 +0.869
+    spread              0.603   +0.406         +0.137                 +0.683
+    Textures_1          0.579
+
+`spread` puts 002's height at 0.571 against 0.572 and 005's at 0.603 against 0.579 where
+`field` had 0.822 and 0.836, and draws the domed tiles, the dark corner spots and the ring
+outlines the reference has and `field` does not. Isolated one record at a time on graph
+005, the corr loss is two records: `2707` (source `2706`, r 4.62) and `2712` (source `2711`,
+r 6.47) cost 0.044 and 0.050 each; `2663` (the tone) costs 0.007; the other five nothing.
+What those two do under `spread` is ERASE THE MORTAR LINES from their sources -- a mortar
+pixel takes the nearest tile pixel's value -- and keep the corner spots and the per-tile
+radial gradient, which is a coherent thing for a node to be for. Under `field` the same two
+records carried the mortar lines by accident, as the mask's own falloff, and that accident
+is most of the high-pass corr. Seen against the reference at 256, what `spread` gets wrong
+is weight, not structure: `2711`'s per-tile gradient reaches the height as a full cone
+where the reference has a shallow edge bevel; the grid lines that survive are thin and
+faint where the reference's are 4 px and black; the grunge blotches (`3143`, blended in at
+`opacitymult` 0.12 by `3144`) are far more contrasty than the reference's. Those three are
+the next things, and each is a different record from the distance.
+
+NOT DONE. Which pixels count as "beyond the radius" under `combinedistance` 0 (0 here; the
+source's own value is the other reading) is not separable on Bricks, where every distinct-
+source radius covers its mortar. `distance.mask_edge` was not re-arbitrated. Graph 001's
+cross-hair lines inside each stone under `nearest`/`spread` are `10252`'s cell-centre seams
+propagated, and not chased.

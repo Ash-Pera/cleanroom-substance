@@ -1140,14 +1140,21 @@ def f_distance(ctx, v):
     payload = next(
         (e for k, e in enumerate(v.inputs) if k != mask_edge and e in ctx.outputs), None
     )
-    if (
-        assume.assumed("distance.propagate", "field") == "nearest"
-        and payload is not None
-    ):
+    prop = assume.assumed("distance.propagate", "field")
+    # A SOURCE THAT IS THE MASK ITSELF IS NO SOURCE. Bricks wires the same record to both
+    # edges on 46 of its 86 two-edge `distance` records ([158, 158]); read as a source it
+    # turns the field into a hard dilation of the mask, and graph 005's bevels and grid
+    # lines go with it. Under `spread` such a record draws the field.
+    if prop == "spread" and payload is not None and payload == v.edge(mask_edge):
+        payload = None
+    if prop in ("nearest", "spread") and payload is not None:
         src = sampler(ctx.outputs[payload])(pos).reshape(H, W, -1)
         vals = dist.propagate(mask, dist.scale_radius(val, W), src)
         assume.note(v.index)
-        return to_image((vals * field[:, :, None]).reshape(H * W, -1), W * H, H, W)
+        # `nearest` combines the propagated value with the falloff; `spread` keeps the
+        # value flat out to the radius (`combinedistance` = 0, see assume.QUESTIONS).
+        gain = field if prop == "nearest" else (field > 0).astype(np.float32)
+        return to_image((vals * gain[:, :, None]).reshape(H * W, -1), W * H, H, W)
     return to_image(field.reshape(-1, 1), W * H, H, W)
 
 

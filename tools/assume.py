@@ -89,7 +89,12 @@ QUESTIONS = {
     "distance.param": ("program", "block1", "slot5", "wide", "layout"),
     "distance.invert": (False, True),
     "distance.mask_edge": (0, 1),
-    "distance.propagate": ("field", "nearest"),
+    # `spread` is `nearest` WITHOUT the falloff multiply: the source's value at the nearest
+    # lit mask pixel wherever the field is non-zero, 0 beyond the radius. It is what a
+    # `combinedistance` of 0 says, and 0 is what every one of the 19 permitted sightings
+    # declares; `nearest` is the combined (=1) reading. Arbitrated on Bricks graph 003,
+    # deterministic, same construct as graph 001's 10254. See FORMAT-NOTES.md.
+    "distance.propagate": ("field", "nearest", "spread"),
     "fx.profile": (
         "rect",
         "square",
