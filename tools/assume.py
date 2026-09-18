@@ -374,6 +374,10 @@ QUESTIONS = {
     # 1.0 remain as the other fills a sweep can ask for. No reference pack exercises it at
     # the guard's grids, so the ratchet is silent; the record is marked low-confidence.
     "nonfinite.fill": (0.0, "refuse", 0.5, 1.0),
+    # A PROGRAM RETURNING SEVERAL DIFFERING CHANNELS TO A GREYSCALE RECORD: `first` reads
+    # component 0 (the engine's float from a float2/float4 -- cache-writer helpers whose
+    # program returns `$size`); `refuse` treats it as the wrong program evaluated.
+    "greyscale.wide": ("first", "refuse"),
     "uniform.fill": (),
     "grayscale.weights": (),
     "fx.branchoffset": ("canvas", "cell"),

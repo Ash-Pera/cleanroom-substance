@@ -288,7 +288,17 @@ def conform(arr, want):
         return a
     if want == 1:
         spread = float(np.max(np.abs(a - a[..., :1]))) if a.size else 0.0
-        return a[..., :1] if spread <= 1e-9 else None
+        if spread <= 1e-9:
+            return a[..., :1]
+        # A WIDE RESULT ON A GREYSCALE RECORD IS ITS FIRST COMPONENT, behind
+        # `greyscale.wide`. The records that do this are cache writers -- TilesSubstance017
+        # 901's whole program is `cache_write($size, 3); return $size` -- whose picture is a
+        # by-product of the side effect, and the engine's greyscale output reads the x
+        # component of a wider value. `refuse` keeps the reading this docstring argues
+        # for; 11 corpus files carry the case.
+        if assume.assumed("greyscale.wide", "first") == "first":
+            return a[..., :1]
+        return None
     if a.shape[-1] == 3:
         return np.concatenate([a, np.ones(a.shape[:2] + (1,), dtype=a.dtype)], axis=-1)
     if a.shape[-1] == 1:

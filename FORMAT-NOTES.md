@@ -60519,3 +60519,19 @@ over 48 rows): defaults +0.679 / 1.564 / 0.062; `fx.subdivide=tree` +0.645 / 1.6
 other two are within 0.004 of the defaults either way -- the ratchet's 256-px objections to
 them were partly grid, and the native row has nothing to add for or against. All three
 stay arms; the question the previous native section asked is answered.
+
+## Two more pixel-processor gaps from the census: an unwired edge is not a refusal at binding time, and a wide result on a greyscale record is its first component
+
+`input 0 is not wired` (14 files): `f_pixelprocessor` bound every edge slot before the
+program ran and refused at the first gap, so a program that never samples the gap refused
+with it. The gap is skipped at binding; what the program does decides -- an annihilated
+read is bound to zeros, a live one raises at the point of use. TilesSubstance017 6,500 ->
+6,707 of 8,082.
+
+`greyscale record produced 2 channels, not 1` (11 files): `conform` refused a wide result
+on a greyscale record unless its channels were identical, on the argument that it means
+the wrong program was evaluated. The records that do it are cache writers -- 901's whole
+program is `cache_write($size, 3); return $size`, a float2 -- whose picture is the side
+effect's by-product, and the engine's greyscale output reads a wider value's x.
+`greyscale.wide` (`first`, `refuse`): component 0. Tiles017 6,711 of 8,082, its one
+remaining root an unbound graph image input. Both ratchet tests pass; 20 tests.

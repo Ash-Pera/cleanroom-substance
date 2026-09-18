@@ -383,6 +383,13 @@ def f_pixelprocessor(ctx, v):
         assume.note(v.index)
     try:
         for k in range(len(v.inputs)):
+            # AN UNWIRED EDGE IS NOT BOUND, and is not a refusal here: whether the
+            # program reads it decides -- an annihilated read is bound to zeros below, a
+            # live one raises `MissingSampler` at the point of use. Refusing every record
+            # with a gap in its edge list ("input 0 is not wired", 14 corpus files)
+            # refused programs that never sample the gap.
+            if v.edge(k) is None:
+                continue
             sbsruntime.SAMPLERS[k] = make(ctx.src(v, k))
         for k, src in ctx.sampler_bindings(v).items():
             if k not in sbsruntime.SAMPLERS:
