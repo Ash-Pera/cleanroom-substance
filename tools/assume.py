@@ -147,6 +147,10 @@ QUESTIONS = {
     # record, one value per call, as an engine's generator does. Neither is what the file
     # states -- the hash is arbitrary either way -- so a picture decides.
     "rand.draws": ("hash", "stream"),
+    # AN ENTRY PARAMETER THAT WRITES SLOTS FOR ITS SIBLINGS, under the batched emission:
+    # `sibling` evaluates the table as one frame in order (the walk's own model) and
+    # batches it; `scalar` is the walk as it stood, one program run per pattern.
+    "fx.batchwrites": ("sibling", "scalar"),
     # WHERE A CHAIN NODE'S PROGRAMS ARE PLACED. 'table' reads the byte offsets out of
     # `FX_NODE_PARAMS`, per header; 'walk' computes them from the header's mask through
     # `node_shape` and pairs the names onto them in field order. Two statements of one

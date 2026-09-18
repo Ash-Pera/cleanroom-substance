@@ -66,7 +66,14 @@ from sbsasm import fx_patterntype
 
 from ops import Unsupported, sampler
 
-MAX_PATTERNS = 300000
+#: THE PATTERN BUDGET IS A RUNTIME GUARD, NOT A READING, and it sits above the largest
+#: count the corpus states. Tile samplers at full density emit 1024^2, 1025^2, 1501^2 and
+#: 2049^2 = 4,198,401 patterns (54 files refused at the old 300,000, each after minutes
+#: of walking). With the table batched (`batch_reads`, sibling writes included) the
+#: emission of 589,824 patterns is 0.3 s and their draw 18 s at 64 px; the draw is the
+#: cost, ~30 us a pattern, so the worst corpus record is ~2 min. 2^23 leaves the guard
+#: for a count program gone wrong (2^31 - 1 is what an unset count reads as).
+MAX_PATTERNS = 1 << 23
 
 _GRID_CACHE = {}
 
@@ -290,8 +297,20 @@ def batch_reads(asm, run, nodes, table):
     flow = getattr(run, "flow", None)
     if flow is None:
         return None
-    reads = set()
+    reads, written = set(), set()
     writes_idx, reads_idx = set(), set()
+    # A SLOT AN ENTRY PARAMETER WRITES FOR ITS SIBLINGS IS NOT STATE. The Tile Sampler
+    # template's `opacity` program computes the pattern's shared values once and stores
+    # them in slots 26-31 for `frameoffset`, `patternsize` and `patternrotation` -- the
+    # same pattern's, evaluated after it in the table's order. 498 of 5,140 records over
+    # 80 files carry that shape, and refusing every write sent them all down the scalar
+    # walk (FabricSubstance009: ten records of 147,456 patterns at 92 s each, 600 s
+    # before its one refusal). The write is loop-carried only if something reads the
+    # slot BEFORE the writer in an emission -- a chain program, or an entry parameter at
+    # or before the writer's position (its own read-before-write included, which is what
+    # `flow` reports as a read) -- and those are refused as before. What the batch then
+    # does is what the walk does: one frame through the table in order, the writer's
+    # (m, C) column read by the parameters after it.
     for _o, _t, params in table:
         for _n, (kind, value) in fxrender.in_eval_order(params):
             if kind == "baked" or not value:
@@ -303,9 +322,12 @@ def batch_reads(asm, run, nodes, table):
                 r, w = flow(value)
             except Exception:
                 return None
-            if w:
+            if w & reads or w & r:
+                return None
+            if w and assume.assumed("fx.batchwrites", "sibling") != "sibling":
                 return None
             reads |= r
+            written |= w
             writes_idx |= {int(x) for x in _CACHE_WRITE.findall(src)}
             reads_idx |= {int(x) for x in _CACHE_READ.findall(src)}
     for _o, _h, ps in nodes:
@@ -316,9 +338,18 @@ def batch_reads(asm, run, nodes, table):
             if src is None:
                 return None
             reads_idx |= {int(x) for x in _CACHE_READ.findall(src)}
+            if written:
+                try:
+                    r, _w = flow(value)
+                except Exception:
+                    return None
+                if r & written:
+                    return None
     if reads_idx & writes_idx:
         return None
-    return reads
+    # The frames need only what the chain supplies; a slot the table writes before it
+    # reads it is the table's own.
+    return reads - written
 
 
 def _collapse_cache(cache, before, m):
@@ -474,6 +505,10 @@ def _batch_emit(run, table, frames, reads, cache=None):
         return None
     before = dict(cache) if cache is not None else {}
     cols = []
+    # ONE FRAME THROUGH THE TABLE, as the scalar walk's `emit` has: a parameter that
+    # writes a slot for the parameters after it (`batch_reads` admits exactly those)
+    # leaves an (m, C) column the later ones read. Nothing outside the table sees it.
+    frame = dict(stacked)
     for _o, tag, params in table:
         per = {"patterntype": fx_patterntype(tag), "_tag": tag}
         wide = {}
@@ -481,11 +516,7 @@ def _batch_emit(run, table, frames, reads, cache=None):
             if value is None:
                 continue
             if kind != "baked":
-                # A FRESH FRAME PER PARAMETER. `batch_reads` has already refused any
-                # parameter that writes a slot, so nothing should reach the dict -- the
-                # copy is what makes that a fact rather than a hope, and it is one dict
-                # per parameter, not per pattern.
-                a = np.asarray(run(value, dict(stacked), numbers, flatten=False))
+                a = np.asarray(run(value, frame, numbers, flatten=False))
                 # ROWS ARE PATTERNS ONLY WHEN THERE ARE m OF THEM. A program reading
                 # neither `$number` nor a stacked slot returns ONE row however wide, and
                 # that row is one value's components, not a per-pattern column.

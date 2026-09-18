@@ -58,8 +58,8 @@ from sbsasm import fx_patterntype
 
 from ops import Unsupported
 
-#: The pattern budget, the same scalar `render2.fx` refuses at.
-MAX_PATTERNS = 300000
+#: The pattern budget, the same scalar `render2.fx` refuses at (see its note).
+MAX_PATTERNS = 1 << 23
 MAX_DEPTH = 64
 SKEW = 52
 

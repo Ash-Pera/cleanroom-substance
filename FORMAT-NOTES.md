@@ -60840,3 +60840,32 @@ improve, Bricks +0.675 -> +0.676, Chesterfield +0.920 -> +0.912. The same refusa
 mechanism: a smooth ring correlates with the export's mean ring better than a ring warped
 by a noise whose draws are not the engine's. The instrument cannot see this one; what
 would is a noise-free Auras graph, or the engine's `rand`. Arms stay arms.
+
+## Ten minutes to refuse one file: an entry parameter that writes slots for its siblings was sent down the scalar walk, and the pattern budget sat below what tile samplers state
+
+FabricSubstance009 spent 607 s to render 786 of 1,961 records and refuse the rest behind
+one `numberadded = 589824`. Timed per record: ten FX-Maps (1619, 1639, ... 1793) at 57 s
+each in `emissions`, 147,456 patterns apiece, walked one program run per pattern per
+parameter -- `batch_reads` had refused the table because its `opacity` program WRITES
+slots 26/28/29/31. It writes them for its siblings: `frameoffset` reads 26, `patternsize`
+29, `patternrotation` 28, all evaluated after it in the table's order, all the same
+pattern's. That is the Tile Sampler template, and 498 of 5,140 fxmaps records over 80
+files carry it (`opacity` writing (26, 27, 29, 30, 31) on 355 of them).
+
+THE RULE THAT ADMITS IT. A write is loop-carried only if something reads the slot before
+the writer within an emission: a chain program, or an entry parameter at or before the
+writer's position (the writer's own read-before-write included -- `flow` reports it as a
+read). Those refuse as before. Otherwise the batch does what the walk does: one frame
+through the table in order, the writer's (m, C) column read by the parameters after it;
+the frames recorded by the chain need only the slots the table does not write first.
+`fx.batchwrites` (`sibling` | `scalar`). Verified against the scalar walk on 1619 at its
+full count: 147,456 of 147,456 patterns identical to 1e-5 on every parameter, 0.3 s
+against 56 s. The ratchet passes bit-identical (it is the same arithmetic).
+
+THE BUDGET. `MAX_PATTERNS` 300,000 was below what the corpus states -- 1024^2, 1025^2,
+1501^2, 2049^2 = 4,198,401, 54 files' tile samplers at full density -- and each refusal
+came after the walk had already spent its minutes. Raised to 2^23; the draw is the cost
+now (~30 us a pattern, 589,824 in 18 s at 64 px), and an unset count still reads as
+2^31 - 1 and refuses. FabricSubstance009: 1,961 of 1,961 in 47 s (from 786 in 607 s).
+The fourth sweep, three and a half hours in at 220 of 437 files on the code before this,
+is restarted on this.
