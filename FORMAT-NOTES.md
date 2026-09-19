@@ -60894,3 +60894,20 @@ is scored now, +0.640 / +0.632 / +0.287, the same three digits under 0.0 .. 10.0
 `dirmotionblur.default_intensity = 10.0` on the weaker footing the table shows (two
 never-typed values; the reading before was a silent 0.0), 8 records, marked
 low-confidence. SPEC §13.8 and the defaults list in §13.9 updated.
+
+## Chesterfield's basecolor red is 0.10 low and has been since its floor was taken; what it is not
+
+basecolor ch0 dc -0.097 at 256 and -0.097 at 2048 (ch1 +0.011, ch2 -0.003): ours
+(0.508, 0.185, 0.178), the export ~(0.605, 0.174, 0.180) -- more red, slightly less
+green, i.e. more saturated and lighter, not a gain. Checked against the paired source:
+the gradient ramps decode exactly (349's five keys at 0 / 0.267 / 0.606 / 0.825 / 1 with
+the source's colours to 8 bits; the compiled ramp is the source's, sorted), and the
+four HSL nodes pair (864 dynamic h/s/l evaluating to 0.5, 361 bare, 351 saturation 0.58,
+866 saturation 0.65 luminosity 0.6). The final blend 871 (868 over grey 869 at 0.2 x
+mask 0.95) cannot be it: no per-channel mode lifts red past its base while lowering
+green, and ours (multiply) lands where multiply lands. Not moved by `fx.header`,
+`transformation.matrix`, `pixelprocessor.outputsize`, `fx.leafcount` or `program.select`
+(all 0.920 / 0.914). What is left is upstream of 868: the gradient's INDEX (320, mean
+0.499; the export's colour sits near the ramp's 0.6-1.0 stops) or HSL's saturation
+model (ours multiplies chroma by 2s; the engine's may not be linear in s). A picture with
+one HSL node and a known input would decide it; Chesterfield's has three in series.
