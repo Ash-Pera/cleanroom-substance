@@ -61417,3 +61417,16 @@ three outputs, `/tmp/roof_treepow.png`) and collapses SandyStonePath's band (0.5
 draws it, and `opacitymult` at 53.8 and 10.7 (Clouds_3's) is not an opacity multiplier
 in the 0..1 sense this renderer applies -- an FX-Map header field whose meaning is open
 and whose misreading is what the tree arm does to RoofTiles.
+
+ADDENDUM, 8025 read. Five `0x420008` offset cells over a leaf of `patternsize` (2, 2)
+region units with an opacity program: under the tree arm a field of 1,024 round blobs
+a sixteenth of the canvas across (mean 0.205, sd 0.170; `/tmp/b8025.png` while it
+lasts), which 8026 cuts at 0.29 into a 28% spot mask, 8027 inverts, 8028 dilates by
+2.56 px, and 8031 -- a `directionalwarp` at intensity 100 driven by the tile distance
+field 7562 -- smears by (2h - 1) x 100 / 256 of the canvas at the capped grid, which is
+where the soft blotches come from; 8043 mixes the result into the height at 0.12. Under
+the flat arm 8025 is a flat 0.386, the cut leaves nothing, and the chain is 0. So the
+chain is a dirt-spot overlay that the tree arm turns on at a blob size and a smear the
+export does not show; whether that is the splatter's scale, the warp's pixel scale at
+a capped grid (100 px at 256 is a third of the canvas; at 1024 under the record reading
+a tenth), or the 0.29 cut on our blob amplitude is not separated here.
