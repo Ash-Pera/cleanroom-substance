@@ -61494,3 +61494,15 @@ white noise as uniform (mean 0.513, sd 0.292) from the file's own arithmetic, no
 an export; this is the first export-side constraint on it, and it points the other way.
 Next: the per-tile tone DISTRIBUTION of the export (a histogram of tile means against
 the sum's) decides between "bright noise" and "not an add".
+
+ADDENDUM, "bright noise" refuted. Substituting the max of k uniforms for 7660 and
+rendering 002's height through the file's own chain (`precomputed`): tiles mean 0.541
+(k = 1), 0.490 (2), 0.490 (3), 0.431 (4) -- brighter noise makes the tiles DARKER, because
+the ladder's sawtooth wraps and the 0.46 cut (7741) make the chain non-monotone in the
+noise. So the export's 0.645 +- 0.042 with its left tail is not a noise distribution
+this chain maps to from any draw statistic tried, and the flat arm's 0.593 from a
+constant 0.922 is the wrap's coincidence. The +0.1 is downstream of 7741 -- the
+dirwarp / blur-32 ladder and the blends 8043 (0.12), 8063 (0.46), 8072 (0.5) -- or a
+blend mode among modes 1, 2, 3, 7 this renderer reads as add / subtract / multiply /
+switch. Left there; the histogram instrument (per-tile mean distribution against the
+export's) is what will test the next reading.
