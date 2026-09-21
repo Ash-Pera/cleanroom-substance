@@ -61859,3 +61859,36 @@ depends on the unit of a cell that draws and subdivides (region-scaled sizes giv
 0.09 x 0.37 at depth 4) and on what `opacitymult` 53.8 means for a record whose
 patterns are +/-1 -- under `max` the negative strokes cannot cut, under `add` every
 stroke saturates (`/tmp/roof606b.png`).
+
+## Chesterfield's mottle under the tree, by octave: 8-256 cycles land on the export to 2%, 4-8 is 2x and moves under no hurst arm, 1-4 is the hurst's -- the instrument the blue's corr loss needs
+
+Octave band power, ours / export, Chesterfield at 512 (`/tmp/octaves_ch.py`):
+
+                                 1-4    4-8   8-16  16-32  32-64  64-128 128-256
+    roughness   flat            0.53   0.62   0.75   0.78   0.77   0.63   0.77
+    roughness   quadrant        0.16   2.05   1.00   1.02   1.02   0.85   1.09
+    roughness   quadrant, hurst absent = one
+                                1.98   1.99   1.00   1.02   1.01   0.84   1.04
+    roughness   quadrant, combine = add
+                                6.88   1.34   1.11   1.17   1.26   1.09   1.15
+    basecolor 2 flat            0.01   0.02   0.17   0.17   0.22   0.31   0.70
+    basecolor 2 quadrant        0.10   5.13   0.25   0.15   0.22   0.41   1.11
+
+The mottle is 321, the BnW-Spots structure (0x18B, the spiral, a root Quadrant, eight
+nested pattern-drawing cells, the `$size` child gates): 21,848 paraboloids, every
+level cell-filling (size 1.1-1.7 x 1.0 regions), no per-pattern opacity, `opacitymult`
+0.9, no `hurst` word. Under `quadrant` the five octaves from 8 to 256 cycles carry the
+export's power to within 2-9% -- the fine structure of the leather is this record
+drawn this way -- and two things are wrong at the coarse end: 1-4 cycles is the hurst
+question (0.16 under `hurst.absent = zero`, 1.98 under `one`, the export between), and
+4-8 cycles is 2.05 under both hurst arms, so it is not a per-depth gain but what the
+depth-2/3 paraboloids do under `max` -- cell-filling bumps whose own profile is the
+4-8 band, twice too strong, and the same bumps at 5x in blue where the buttons carry
+little power of their own. The blue corr loss (+0.825 -> +0.365) is therefore not
+shown rand-driven: half of it is the 4-8 octave's amplitude, an instrumented, seed-free
+quantity, and the companion rule cannot re-take that floor until it reads ~1.0.
+
+What would decide the 4-8 band: the paraboloid's profile width at a region (a
+cell-filling paraboloid under `max` gives the whole cell its dome; a narrower profile
+or a lower cell opacity halves the band without touching 8-256), and whether
+`opacitymult` 0.9 is per pattern or per level. Not changed.
