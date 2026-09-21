@@ -61737,3 +61737,32 @@ is the author's export workflow, not the file's; ours stays 1.0 and `refcompare`
 RGB only. The picture (`/tmp/auras004_alpha.png`): the export's ring is smoky and wavy
 with two thin bright lines where ours is a clean thick band -- the warp driver's, the
 lattice question above.
+
+## RoofTiles' roughness grain rests on a White Noise record through a Perlin-zoom pyramid; `fx.subdivide = noise` re-tried under `max` and still refused on Bricks
+
+The roughness output 2595 is `copy(2593, uniform 0.345, mask 1778)` with 1778 flat 0
+(a `levels` on 1777 by two graph-input programs), so it is 2593 = `copy(2591, uniform
+0.918, mask 1102)`, and 2591 the dark shingles (0.314) with 0.765 at 2231's edges --
+the picture: dark tiles with light edges where the export is streaked light wood grain
+(`/tmp/roof_now.png`). The grain is 1102's mask: `levels(screen(904, 1100) x 0.27)`,
+and 1100 is a chain of adds (1067-1089) of a bare 32 x 32 `uniform` (1062, one word
+`0x0008550c`, black by the node default `filters.DEFAULTS`) plus 1061 = a
+levels / blur / gradient pyramid 1046 -> 1049 -> 1053 -> 1057 -> 1060 (16 -> 32 -> 64 ->
+128, each level a gradient of a 0.5 copy of the transformed last -- the perlin-zoom
+family) whose base 1046 is a 16 x 16 White Noise record (root offset, bare Quadrants,
+`rand(1)` leaf) that the flat arm draws as the constant 0.922. Every level of the
+pyramid is then flat, 1092's warp warps a flat, and the mask is 0.065.
+
+Under `fx.subdivide = noise` (the tree walk for the White Noise class alone) 1100 is
+0.965 sd 0.066 and 1102 0.042 sd 0.112 -- the pyramid comes alive but the mask stays a
+few percent (`/tmp/roof_noise.png`: a faint mottle on the dark shingles, not the
+export's streaks; the streak direction would be 1092's warp of 1089, the adds of the
+black uniform, which stay flat under every arm). On the packs at 256 (`/tmp
+/packs_noise.log`): RoofTiles +0.536 / 1.26 / 0.032 -> +0.537 / 1.22 / 0.033, Bricks
++0.577 / 0.95 / 0.039 -> +0.551 / 0.83 / 0.042, Auras / Chesterfield / Sandy
+identical. The earlier objection to `noise` -- Bricks' tile level -0.07 -- was the dirt
+overlay's and is gone under `max`; what remains is Bricks' correlation, -0.026 over 48
+rows, and the arm stays refused on it. What would move RoofTiles' grain is upstream of
+the noise: the adds of a black `uniform` (1067-1089) are either the node default
+(black, one ground truth: Rokviz 8's metallic) or a fill this file states somewhere the
+walk does not read, and no source for RoofTiles is on disk.
