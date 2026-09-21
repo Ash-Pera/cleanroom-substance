@@ -61248,3 +61248,33 @@ bit-identical; graph 001's nine rows score for the first time (corr +0.12 -- the
 rand-driven row heights -- band 0.62, |dc| 0.032) and its picture is the export's
 construct: rounded stones, a tone each, cracks, bevelled AO (`/tmp/b001_native2.png`
 while it lasts). SPEC §13.6 (blur), §13.9 updated.
+
+## SandyStonePath's cracks reach the output now and die at a blend with the flat Clouds-2 octave; the tree arm's octaves, measured: its noise is 8x too coarse, and shrinking the strokes alone does not move it
+
+With `blur.reference_px = 256` the outline chain lives at every grid, and the crack
+network (20, mean 0.15 sd 0.36 at 256) now runs 21 -> 22 -> 28 -> 29 -> the Blur HQ
+30-33 -> 42 = blend(33, 41) = 0.000: 41 is `levels` 0.333 of the three-octave Clouds
+construct 34 / 36 / 39 -- 34 the `background` 1.0 record that the flat subdivision arm
+draws as a black canvas (two canvas-sized strokes at -1), subtracted from the others --
+so the mask is 0 and the cracks are multiplied away. The same three records, the same
+death, on the third pack.
+
+The tree arm by octave (Bricks heights, ours / export power, 256 grid, `spread`):
+
+    cycles             1-4    4-8    8-16   16-32  32-64  64-128
+    002  flat          0.33   1.07   0.68   0.43   0.24   0.16
+         tree          3.87   1.85   0.55   0.28   0.16   0.13
+    005  flat          0.95   0.51   0.38   0.21   0.19   0.25
+         tree          1.37   0.59   0.37   0.13   0.11   0.23
+
+The arm adds power at 1-8 cycles -- four to twelve times the export's on 002 -- and
+none at 16-128 where the export's mottle is: the noise it draws is right in kind and
+about eight times too coarse. The per-tile instruments under it: 002 tilt 0.238 ->
+0.229, level 0.590 -> 0.593; 005 0.221 -> 0.234 / 0.598 -> 0.605 -- unmoved, as they
+should be. Scaling the subdivided cells' pattern SIZE alone (an experiment, x0.25 and
+x0.0625, withdrawn) moves the power up the octaves and takes the tile-scale power with
+it (1-4 cycles 0.02 -- the strokes stop covering, the tone chain dies). So the scale is
+not the stroke's size by itself: the construct's coverage and its scale are one number
+under region units, and the export has both. What separates them in the engine --
+more regions per level, or a size per depth that is not the region's -- is the open
+question, now with its magnitude: three octaves.
