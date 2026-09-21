@@ -121,6 +121,15 @@ QUESTIONS = {
     # deterministic, same construct as graph 001's 10254. See FORMAT-NOTES.md.
     # `flag` reads the record: word 1 bit 1 set -> `nearest` (combined), clear -> `spread`
     # with the source kept even where it is the mask's own record (SandyStonePath 3).
+    # THREE SEED-FREE INSTRUMENTS, AND THEY DISAGREE. Per tile (tilt, level, Bricks
+    # 002-005 at 256): `spread` and `nearest` are the reference's (tilt 0.21 against 0.23,
+    # level 0.58 against 0.62), `field` is not (0.05, 0.83). Band power, 48 rows: `field`
+    # |log band| 0.52 at 256 and 0.50 at native, `nearest` 0.64 / 0.61, `spread` 0.85 /
+    # 0.78 -- the bevel readings lose the high-frequency content the export has on
+    # 002/004/005 and gain it on 003. Level: `nearest` and `spread` |dc| 0.045, `field`
+    # 0.065. Corr (partly the per-tile random direction): 0.79 / 0.75 / 0.68 at 256.
+    # No arm wins two of three; `field` stays the default until an instrument set agrees.
+    # FORMAT-NOTES.md, "The companion instrument does not settle `distance.propagate`".
     "distance.propagate": ("field", "nearest", "spread", "flag"),
     "fx.profile": (
         "rect",

@@ -60924,3 +60924,43 @@ at this grid" above it. At 64 px that is 262,144 -- where the old 300,000 cap sa
 px it is 4.2M, every count the corpus states. Fence at 64: 54,831 s -> 587 s (4,551 of
 4,855; the 304 behind two 2.25M records are the sub-pixel class); FabricSubstance009 36 s.
 The sweep restarts a third time on this.
+
+## The companion instrument does not settle `distance.propagate`: per tile it says `spread`, the band says `field`, the level says either but `field`
+
+THE PLAN AS WRITTEN ("add tilt / tile level / mortar level beside the corr and flip on
+the pair") was tried in full: `refguard.Entry.companion` (a corr floor re-taken lower
+under a named seed-free instrument), the default flipped to `spread`, every guarded row
+re-measured at 128 / 256 / 512 and the per-tile instruments taken under all three arms
+at 256, then Bricks at native under all three. The numbers, Bricks' 48 rows:
+
+                              corr              |log band|          |dc|         per-tile (256)
+                          256     native      256     native     256   native   tilt   level
+    reference                                                                    0.23   0.62
+    field                 0.794   0.680      0.520   0.502      0.065  0.065    0.05   0.83
+    nearest               0.745   0.628      0.644   0.613      0.046  0.045    0.21   0.58
+    spread                0.684   0.579      0.852   0.783      0.046  0.045    0.21   0.58
+
+    per graph at native (corr / |log band| / |dc|)
+    002   field 0.78/0.41/0.09   nearest 0.68/0.76/0.07   spread 0.60/1.22/0.07
+    003   field 0.83/1.02/0.04   nearest 0.77/0.77/0.03   spread 0.77/0.41/0.02
+    004   field 0.74/0.33/0.05   nearest 0.73/0.48/0.04   spread 0.66/0.73/0.04
+    005   field 0.85/0.36/0.08   nearest 0.80/0.63/0.05   spread 0.72/1.10/0.06
+
+The per-tile instrument says what the previous section said: the bevel readings put the
+tilt and the level where the export has them and `field` does not. But the BAND is
+seed-free too -- a per-tile random direction moves no octave's power -- and it says the
+bevel readings lose the export's high-frequency content on 002, 004 and 005 (band 0.3-0.4
+at 256 under `spread` where `field` reads 0.9-1.0) and gain it on 003, at 256 and at
+native alike. Only the level (|dc|) and the tiles agree, and they agree on two arms.
+The native pictures (`/tmp/bricks_spread.png` while it lasted): `spread`'s tiles are
+bevelled, mid-grey, dished -- the export's shape -- and smooth where the export's carry
+grain; `field`'s are flat white with the grain. The export has both, and neither arm is
+"the reading" -- the grain the export has on a bevelled tile comes from a chain this
+renderer is not reproducing under either, which the earlier "Flood Fill is dead under a
+capped grid" sections partly locate.
+
+So no floor was re-taken and `field` stays the default; `refguard.Entry.companion` was
+withdrawn unused rather than left as a mechanism with no instrument set to apply it to.
+The rule that comes out of this: a companion re-take needs EVERY seed-free instrument
+on the row to agree or hold, not one of them -- the band is the one that would have
+been overridden here, and it was right to object.
