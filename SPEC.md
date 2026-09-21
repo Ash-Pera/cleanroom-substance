@@ -2162,15 +2162,18 @@ tag **bit 18 says a `blendingmode` is declared** (ie_curve 43 of 43 own entries,
 ie_particles 2 of 2, ie_pcloud 110 of 110 set it; Simulator__Grid 0 of 19 and Clouds_3 0 of
 4 declare none): the `max`-arbitrated tufts set it and the −1 construct clears it, so the
 composite is per cell and a reader should read the bit (`fx.header`, `fx.combine = bit18`,
-`fx.negopacity`, `fx.hurst` in `assume`). **What the composite is where bit 18 is clear is
-open**: the authored thresholds downstream of Bricks' −1 construct (`levels` at 0.333 and
-[0.66, 0.82]) only cut something under signed subtraction, while the seed-invariant LEVEL
-of graphs 004/005's roughness (reference 0.558 / 0.555) is met by the construct drawn as
-`max` (0.571 / 0.562) and missed by signed add (0.30) — reconciling them needs a
-subtraction gain that leaves the canvas near white, and the `hurst` gain's form
-(`2^(−h·d)`, `d+1`, `exp2`: mask fractions 0.05%, 2.4%, 39%) is not decidable from the
-chain. FORMAT-NOTES.md, "Graph 001's first annihilation point is a white canvas the file
-states". The shape is the entry tag's `patterntype` nibble (§8): `3 disc, 4 paraboloid,
+`fx.negopacity`, `fx.hurst` in `assume`). **Where bit 18 is clear the composite is `max`
+too** (`fx.combine = max`): the seed-invariant LEVEL of graphs 004/005's roughness
+(reference 0.558 / 0.555) is met by the construct drawn as `max` (0.571 / 0.562) and
+missed by signed add (0.30), and Bricks' dirt splatter 8025 — 256 gaussians at
+`opacitymult` 0.4, bit 18 clear — passes 28% of the canvas through its 0.29 cut under
+signed add and 6% under `max`, which is the few-percent dirt the export shows and what
+lets the file's own composition land the tiles' level and top on the export's (0.623 /
+0.764 against 0.645 / 0.775 on 002). The authored thresholds downstream of the −1
+construct (`levels` at 0.333 and [0.66, 0.82]) still cut nothing under `max` with a
+white canvas, so that construct's draw is the subdivision gain's question (§13.7,
+`fx.hurst`), not the combine's. FORMAT-NOTES.md, "Graph 001's first annihilation point
+is a white canvas the file states" and "The dirt overlay's coverage is the combine". The shape is the entry tag's `patterntype` nibble (§8): `3 disc, 4 paraboloid,
 5 bell, 6 gaussian, 7 thorn, 8 pyramid, 9 brick, 10 gradation, 11 waves, 12 half bell,
 13 ridged bell, 14 crescent, 15 capsule, 16 cone`; nibble 0 is a catch-all that includes
 Square. `imageindex`, when present, makes the pattern an input image sampled over its own
@@ -2427,7 +2430,7 @@ reading, bit-identical on Bricks, RoofTiles band 1.36 → 1.39); `fx.header = re
 the ratchet now); and the eight Bricks readings the graph-001 sections verified —
 `fx.chain = tree`, `program.select = lazy`, `pixelprocessor.rand = pixel`,
 `pixelprocessor.sample = nearest`, `fx.brick = fill`, `fx.negopacity = signed`,
-`fx.combine = bit18`, `fx.hurst = exp` — which pass alone and together (`tree` needs `lazy`:
+`fx.combine = max` (the combine for every entry, declared or not — under `bit18`'s signed add on an undeclared entry Bricks' dirt splatter summed its overlaps and 28% of the canvas passed a 0.29 cut where the export's spots cover a few percent; under `max` 6% does, and the file's own arithmetic lands the tiles' level and top on the export's), `fx.hurst = exp` — which pass alone and together (`tree` needs `lazy`:
 alone it turns 10081's row-start count into 2³¹ − 1). Refused by the same rule and kept as
 arms: `distance.propagate = field` (the reading before `spread`: tiles a third of the way
 to white, no per-tile tone), `fx.subdivide = tree` (one record, 708, whose Quadrant

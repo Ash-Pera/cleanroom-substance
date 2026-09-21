@@ -61557,3 +61557,35 @@ percent. That coverage is 8026's cut at 0.29 on 8025's blob field (mean 0.205, s
 arm to hold this reading; on the packs it is Bricks +0.523 / 0.97 / 0.039, RoofTiles
 +0.519 / 1.04 / 0.064, Chesterfield +0.889, SandyStonePath's band 0.11 -- the same
 objections as `tree` less the tone's, not a default.
+
+## The dirt overlay's coverage is the combine: `fx.combine = max` for the undeclared entries too, and the file's own arithmetic lands the tiles on the export
+
+8025's leaf is 256 gaussians (patterntype 5, size (2, 2) regions, opacity `rand(1)`,
+`opacitymult` 0.4) and its entries clear bit 18, so `bit18` drew them by signed add:
+overlapping gaussians sum, the field reads mean 0.205 sd 0.170 and 27.6% of it passes
+8026's 0.29 cut. Under `max` it reads 0.126 / 0.094 and 6.4% passes -- the few-percent
+dirt the export's tiles carry. Through the composition of the previous section that is
+the whole tile level: per tile 0.623 sd 0.060 on 002 (export 0.645 / 0.042), 0.633 /
+0.055 on 005 (0.619 / 0.051); the height histograms 0.340 / 0.574 / 0.764 on 002 against
+the export's 0.257 / 0.600 / 0.775, and 0.397 / 0.604 / 0.792 on 005 against 0.215 /
+0.604 / 0.788 -- the median and the top to a hundredth on 005.
+
+On the packs at 256 (`bit18` -> `max`): Bricks +0.579 / 0.90 / 0.044 -> +0.577 / 0.95 /
+0.039; RoofTiles +0.501 / 1.24 / 0.040 -> +0.536 / 1.26 / 0.032 (basecolor ch0 +0.07 with
+its band 1.64 -> 0.89, ch2 +0.16 with 0.58 -> 1.00); Chesterfield +0.920 -> +0.923;
+SandyStonePath +0.027 -> +0.073 (basecolor +0.10 on every channel); Auras identical.
+Rows that lose are corr-only and small -- 005 basecolor -0.025 with its band 0.72 ->
+0.90, 005 height -0.034, 003 normal ch2 -0.03, 002 normal ch2 -0.026 -- the dirt spots
+moving with the combine. The companion instruments: tile level 0.619 / 0.585 / 0.624 /
+0.625 against 0.644 / 0.593 / 0.622 / 0.628 (from 0.59 / 0.54 / 0.59 / 0.60), tilt
+within 0.04, low band 1.23 / 0.92 / 1.21 / 0.90. Tables re-taken: no new companion
+entries were needed (the four rows' re-taken bounds stay above their old floors),
+health census 40 -> 38 (003 basecolor ch1 and height band recovered, none newly out),
+constant yields 0. Ratchet, floor and companion tests pass; the 47 fast tests pass.
+
+WHAT THIS SAYS ABOUT THE BIT. Bit 18 marks a DECLARED `blendingmode` (the pairing
+stands); its clear state was read as signed add on the strength of graph 001's -1
+construct, whose downstream thresholds only cut under subtraction. Under `max` that
+construct still draws a white canvas -- which is the subdivision gain's question, the
+Clouds sections' -- and every other clear-bit record the packs exercise reads `max`.
+The declared modes (2, 3, 4, 5, 6 in the paired sources) are still one `max` here.

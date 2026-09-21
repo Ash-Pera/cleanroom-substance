@@ -694,7 +694,7 @@ def draw(canvas, b, W, H, images=None, header=None):
         return
     if b.size is None:
         return
-    mode = assume.assumed("fx.combine", "bit18")
+    mode = assume.assumed("fx.combine", "max")
     if mode == "bit18":
         mode = fx._mode_for(b.tag, mode)
     if mode not in ("max", "add"):

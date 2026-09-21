@@ -269,7 +269,17 @@ QUESTIONS = {
     # Chesterfield's tufting records, whose entries set bit 18; Bricks' subdivided
     # scatters -- the `opacity = -1` construct among them -- clear it. See FORMAT-NOTES.md,
     # "Graph 001's first annihilation point is a white canvas the file states".
-    "fx.combine": ("bit18", "max", "add", "over"),
+    # `max` IS THE DEFAULT, for the undeclared entries too. Under `bit18`'s signed `add`
+    # on a clear bit, Bricks' dirt splatter 8025 (256 gaussians at `opacitymult` 0.4)
+    # sums its overlaps and 28% of the canvas passes the 0.29 cut where the export's
+    # dirt spots cover a few percent; under `max` 6% does, and the file's own
+    # arithmetic then lands the tiles' level and top on the export's (0.623 / 0.764
+    # against 0.645 / 0.775 on 002, 0.633 / 0.792 against 0.619 / 0.788 on 005). RoofTiles'
+    # basecolor +0.07 / band 1.64 -> 0.89 and SandyStonePath's +0.10 move the same way;
+    # the corr rows that lose (005 basecolor, 003 / 002 normal ch2, by 0.02-0.04) gain on
+    # band and dc. `bit18` is the reading before, an arm; FORMAT-NOTES.md, "The dirt
+    # overlay's coverage is the combine".
+    "fx.combine": ("max", "bit18", "add", "over"),
     "fx.negopacity": ("signed", "clip", "abs"),
     # THE FX-MAP RECORD'S OWN HEADER FIELDS. `read` initialises the canvas to field 0
     # (`background`, 1 word grey / 4 colour) and multiplies every pattern's opacity by

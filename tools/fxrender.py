@@ -1839,7 +1839,7 @@ def cell_divisor(rec, patterns, cells=None):
 
 def _combine(dst, src):
     """Fold one pattern's contribution into the canvas -- see QUESTIONS['fx.combine']."""
-    mode = assume.assumed("fx.combine", "bit18")
+    mode = assume.assumed("fx.combine", "max")
     if mode == "add":
         return dst + src
     if mode == "over":

@@ -794,7 +794,7 @@ def _mode_for(tag, mode):
 
 def _combine(dst, src, mode=None):
     if mode is None:
-        mode = assume.assumed("fx.combine", "bit18")
+        mode = assume.assumed("fx.combine", "max")
     if mode == "add":
         return dst + src
     if mode == "over":
@@ -905,7 +905,7 @@ def splat(rec, patterns, W, H, images=None, header=None):
 
     forced = assume.assumed("fx.profile")
     # ONCE PER RECORD. `_combine` asked `assume` for this on every tile it drew.
-    mode = assume.assumed("fx.combine", "bit18")
+    mode = assume.assumed("fx.combine", "max")
     cell = None
     for key in ("fx.branchoffset", "fx.patternsize", "fx.frameoffset"):
         if assume.assumed(key) == "cell":
