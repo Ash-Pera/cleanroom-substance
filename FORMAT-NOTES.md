@@ -61369,3 +61369,19 @@ check does not separate the two layouts on a monotonic 5-float row where two col
 both ascend. No source with a float ramp is on disk; the 16 corpus files that carry one
 are ambientCG's. Recorded, not changed: the current layout is the checked one, and the
 picture that would decide it is 001's fire against its own export once its RGB renders.
+
+ADDENDUM, the hue question narrowed. Graphs 001-003 have no colour inputs at all
+(pattern amount, opacity, warp intensity), so their fire / yellow / blue / green
+variants are coloured OUTSIDE the graph -- the author's screenshot shows exactly that
+workflow (004 -> Grayscale Conversion -> Gradient Map) -- and their exports' RGB is that
+external ramp, not the file's; only alpha is the file's, and ours matches it in kind.
+So the ramp layout cannot be decided from 001, and 004 alone carries the question.
+There the export's ring hue (~255 degrees) is the purple ramp UNSHIFTED (~260); a fire
+ramp shifted 180 degrees lands 30 degrees off, and under that layout 424 has three
+stops at position 1.0. The layout as read stands. What is left is the neutral: over the
+corpus, 178 HSL records drive `hue` from a bare graph-input `inputref`, and 165 of
+those inputs default to 0.5 -- the 0.5-neutral convention, Chesterfield's -- against 4
+at 0.0. Auras' two are the 0.0 kind, and its own author's screenshot renders them
+unshifted. Two files, two conventions, no record word yet found that separates them
+(the `0x0a42xxxx` class word is 0x55 on Auras' and 0x44 on Chesterfield's, on records
+of two different graphs of two different sizes; not a reading, a lead). Open.
