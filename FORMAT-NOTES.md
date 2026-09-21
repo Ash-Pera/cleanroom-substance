@@ -61430,3 +61430,14 @@ chain is a dirt-spot overlay that the tree arm turns on at a blob size and a sme
 export does not show; whether that is the splatter's scale, the warp's pixel scale at
 a capped grid (100 px at 256 is a third of the canvas; at 1024 under the record reading
 a tenth), or the 0.29 cut on our blob amplitude is not separated here.
+
+ADDENDUM, the splatter's scale is the source's. `pairs5` BnW_Spots_Animated pairs a
+7-quadrant source (three drawing levels, `patternsize` = (1 + rand(1), 1) at every
+level, `branchoffset` a 0.001-0.04 polar jitter) with a twin whose walk is 1 bare + 3
+offset + 3 drawing cells: region units, one level per cell, as read. So 8025's blobs are
+a sixteenth of the canvas in the engine too, and the blotches are not the splatter's
+scale. Nor the warp's pixel scale: a fixed 256 on `directionalwarp` alone (tried as an
+arm, withdrawn) changes the tree arm's 002 by nothing a picture shows. What the native
+pictures do show (`/tmp/bricks_dirwarp.png` while it lasts) is per-TILE brightness
+swinging by 0.4 under the tree arm where 8043 mixes at 0.12 -- the dirt chain reaches
+the tiles' tone through more than 8043, and that is the next thing to trace.
