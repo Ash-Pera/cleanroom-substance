@@ -791,6 +791,22 @@ def _cell(patterns):
     return np.asarray(d, np.float32)
 
 
+def combine_mode(header):
+    """The record's combine under `fx.combine`, resolving `background` by the header.
+
+    `background`: a record that BAKES a background (header field 0) draws by signed add
+    over it, every other record by `max`. Corpus-wide the 2,071 records carrying a
+    negative baked opacity all bake `background = 1.0` and none of the 2,874 with only
+    non-negative ones does (`assume.QUESTIONS['fx.header']`), and under `max` a canvas
+    that starts at 1.0 can never change -- Chesterfield's creases 331 (background 1.0,
+    pyramids at opacity -1) drew a flat white. See `assume.QUESTIONS['fx.combine']`.
+    """
+    mode = assume.assumed("fx.combine", "max")
+    if mode == "background":
+        return "add" if header is not None and header.get("background") is not None else "max"
+    return mode
+
+
 def _mode_for(tag, mode):
     """The combine one pattern draws under: `mode`, or per cell under `bit18`.
 
@@ -920,7 +936,7 @@ def splat(rec, patterns, W, H, images=None, header=None):
 
     forced = assume.assumed("fx.profile")
     # ONCE PER RECORD. `_combine` asked `assume` for this on every tile it drew.
-    mode = assume.assumed("fx.combine", "max")
+    mode = combine_mode(header)
     cell = None
     for key in ("fx.branchoffset", "fx.patternsize", "fx.frameoffset"):
         if assume.assumed(key) == "cell":

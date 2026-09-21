@@ -279,7 +279,12 @@ QUESTIONS = {
     # the corr rows that lose (005 basecolor, 003 / 002 normal ch2, by 0.02-0.04) gain on
     # band and dc. `bit18` is the reading before, an arm; FORMAT-NOTES.md, "The dirt
     # overlay's coverage is the combine".
-    "fx.combine": ("max", "bit18", "add", "over"),
+    # `background`: `max` for every record EXCEPT one that bakes a background (header
+    # field 0), which draws by signed add over it. Under `max` a canvas starting at 1.0
+    # cannot move, so the 2,071 records that bake `background = 1.0` -- exactly the ones
+    # carrying negative opacities -- are flat under `max`: Chesterfield 331 (creases,
+    # pyramids at opacity -1 over white) is one. See `render2.fx.combine_mode`.
+    "fx.combine": ("max", "background", "bit18", "add", "over"),
     "fx.negopacity": ("signed", "clip", "abs"),
     # THE FX-MAP RECORD'S OWN HEADER FIELDS. `read` initialises the canvas to field 0
     # (`background`, 1 word grey / 4 colour) and multiplies every pattern's opacity by

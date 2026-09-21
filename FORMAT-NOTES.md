@@ -61892,3 +61892,47 @@ What would decide the 4-8 band: the paraboloid's profile width at a region (a
 cell-filling paraboloid under `max` gives the whole cell its dome; a narrower profile
 or a lower cell opacity halves the band without touching 8-256), and whether
 `opacitymult` 0.9 is per pattern or per level. Not changed.
+
+## The 4-8 band was two records, not one, and one of them is a class `max` killed: a record that bakes a `background` draws by signed add -- `fx.combine = background`, an arm the ratchet refuses on four dc rows of 0.006-0.026
+
+Attenuating or dropping 321's coarse levels (a `_gain` hook on that record alone)
+leaves the 4-8 octave at 1.88-2.05 on roughness and ~5 on blue, so the excess is not
+321's domes. Per record with the tree walk (`/tmp/isolate_ch.py`, 256): 321 alone puts
+the roughness 4-8 band at 1.08 and 333 alone at 0.99 -- each is right by itself, and
+together they are 2.05, two noises of the export's power where the export has one.
+They are not two Clouds: 331 (128 px) is `background` 1.0 with pyramids 5:1 at opacity
+-1 over depths 4-5 -- creases cut from white -- and 333 (256 px) the same pyramids at
++0.85 over depths 6-7 on black, `hurst` 0.75; 334 = transformation(331) - 333. Under
+`max` a canvas that starts at 1.0 cannot move, so 331 has been a flat white under every
+arm, and `assume.QUESTIONS['fx.header']` already says how large that class is: the
+2,071 corpus records with a negative baked opacity ALL bake `background = 1.0`, and
+none of the 2,874 with only non-negative ones does. A background is only ever baked
+where something subtracts from it.
+
+`fx.combine = background` (`render2.fx.combine_mode`): signed add for a record that
+bakes a background, `max` for every other -- the dirt splatter's reading kept where it
+was arbitrated, the creases' where the header states one. On the packs at 256 alone:
+
+    Bricks         +0.577 / 0.953 / 0.039  ->  +0.590 / 0.990 / 0.041
+    RoofTiles      +0.536 / 1.259 / 0.032  ->  +0.541 / 1.478 / 0.019
+    Chesterfield   +0.923 / 1.092 / 0.024  ->  +0.924 / 1.089 / 0.024
+    Auras, Sandy   identical
+
+every Bricks graph's normal, roughness, height and AO rows up (005 normal +0.705 ->
++0.749, roughness +0.797 -> +0.851, 004 normal +0.412 -> +0.452), Chesterfield
+roughness +0.918 -> +0.935. THE RATCHET REFUSES IT: 003 roughness dc -0.117 -> -0.123,
+004 roughness -0.312 -> -0.326, 005 roughness -0.344 -> -0.361 (adverse at every
+grid), 005 height +0.021 -> +0.047 at 256 / 512 -- the subtracting records darken
+roughness outputs that are already 0.3 too dark for another reason, and the dc
+ratchet has no companion clause. So the arm waits on the roughness LEVEL of 004 / 005,
+which is the next thing to trace; with that fault out, the same rows should re-take.
+
+With the tree walk as well (`background` + `quadrant`) Bricks falls to +0.504: the
+tree draws the subtracting records' every level and the creases cut too deep -- the
+same depth-gain question, now on the negative side.
+
+Chesterfield under `background` alone is pixel-identical on its pictures
+(`/tmp/chest_bgcmp.png`): 331's creases live at depths 4-5, which only the tree
+reaches. So the creases need both arms, and the 4-8 band that refuses the tree on the
+blue is, in part, 331 and 333 both alive at full power where the export's 334 is their
+difference.
