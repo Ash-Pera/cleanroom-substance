@@ -61506,3 +61506,16 @@ dirwarp / blur-32 ladder and the blends 8043 (0.12), 8063 (0.46), 8072 (0.5) -- 
 blend mode among modes 1, 2, 3, 7 this renderer reads as add / subtract / multiply /
 switch. Left there; the histogram instrument (per-tile mean distribution against the
 export's) is what will test the next reading.
+
+ADDENDUM, the final composition of 002's height read against the export's histogram.
+Export: mean 0.572, p5 0.257, p50 0.600, p95 0.775. Ours (spread, flat noise): 0.544 /
+0.342 / 0.554 / 0.702 -- compressed at both ends. The stages: the tile field 8024
+(0.626; p5 0.336, p95 0.820 -- the tiles' top already at the export's), `min` with the
+dirt chain at 0.12 (8043), `multiply` with 8062 at 0.46 (8062 = `screen`(8061, mortar
+mask): mortar to 1, tiles to 0.76-0.98), then two Blur-HQ ladders averaged (8072, mode
+0 at 0.5). The multiply pulls the tiles' top from 0.82 to 0.70 and the blur lifts the
+mortar's bottom from 0.34 to 0.34 -> 0.41 on the mask; the export keeps 0.775 and
+0.257. The modes are the source-verified table (`ops.BLEND_MODES`), so what is left is
+8061 (what the multiply's other operand is on the tiles) and the ladder's blur width
+(0.502 px at 256 in a `dirmotionblur`, the record reading). Not resolved; recorded
+with the numbers that would decide it.
