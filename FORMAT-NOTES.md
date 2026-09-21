@@ -61467,3 +61467,14 @@ engine samples the 16-px noise bilinearly upscaled (mean 0.5 still), or the S-cu
 7698 / 7703 / 7708 are not what our `gradient` reads (a 64-stop ramp with a mid-point
 field this renderer ignores) -- is the next thing; the arm is `noise`, the default
 stays `flat`.
+
+ADDENDUM, the tone ladder read. 7660's leaf is `rand(1)`, the root's offset `slots[12]`.
+The ladder alternates an average of two transformed copies (a 2x scale and a flip,
+blend 0.5: sd 0.29 -> 0.17) with a sawtooth `gradient` (0 -> 0, 0.5 -> 1, 0.504 -> 0,
+1 -> 1: double and wrap, back to sd 0.29) six times -- a value-noise refinement -- then
+an S-curve, `levels` to [0.25, 0.75] and a `switch` blend against a 1-px blur of the
+same. Its output is 0.5 +- 0.25 x noise BY CONSTRUCTION (mean 0.499 at every stage),
+so the tile level it can set is 0.5 whatever the noise, and the export's 0.644 is not
+the tone's to give: the +0.13 sits in whatever the tone is combined with downstream --
+which the flat arm's accidental constant (0.922 -> 0.31 through the same ladder)
+happened to leave brighter. The class stays an arm; the combine is the next trace.
