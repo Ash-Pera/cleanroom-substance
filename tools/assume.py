@@ -464,7 +464,9 @@ QUESTIONS = {
     # `noise`: the tree walk for the 16-px White Noise class alone (`fx.white_noise_record`
     # -- a root offset, bare Quadrants, one leaf with an opacity program; the flat arm
     # draws it as a constant), the flat walk for every other Quadrant record.
-    "fx.subdivide": ("flat", "noise", "tree"),
+    # `quadrant`: the tree walk for every Quadrant record EXCEPT the White Noise class
+    # (the complement of `noise`).
+    "fx.subdivide": ("flat", "noise", "quadrant", "tree"),
     # The two draw-model questions the tree arm leaves open. `branchoffset` offsets a cell's
     # own pattern and its children; whether its unit is the canvas or the cell's region is
     # not settled (Bricks 9804's author halves it per level by hand, which argues canvas).

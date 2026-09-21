@@ -61531,3 +61531,29 @@ the tiles' top from 0.82 to 0.70. The export keeps 0.775: 8059 sits nearer 1.0 t
 which is a wider field (more of the canvas within 48.64 px of the mask) or a mask that
 covers more -- the 31% is `levels` of `distance` 2.0 of 8051, and 8051 is where to look
 next. The tile-top question is therefore in 8051-8059, one chain, all deterministic.
+
+## The tile level's missing 0.05: a dead dirt overlay is `min`-blended over every tile at 12%, and the arithmetic with a live one lands on the export's 0.645
+
+The final composition, per pixel on the tiles: the tile field 8024 (plateau ~0.70, top
+0.82) -> 8043 = `min`(8024, 8042) at 0.12 -> 8063 = `multiply`(.., 8062 ~ 8061 ~0.92 on
+tiles) at 0.46 -> the Blur-HQ average. 8042 is the dirt overlay (8025's splatter through
+the 0.29 cut, the dilation, the 100-px swirl and the mortar-mask screen), and under the
+flat arm it is 0 on the tiles, so the `min` takes every tile down 12%: 0.70 -> 0.616 ->
+x(0.54 + 0.46 x 0.92) -> 0.59, which is the tile level this renderer has had under
+`spread` (0.593). With the overlay mostly WHITE on the tiles -- spots at a few percent --
+the same arithmetic gives 0.70 -> 0.70 -> 0.674 -> the ladder -> 0.645: the export's,
+and its top 0.775 = 0.82 x (0.54 + 0.46 x 0.88) likewise. So the level deficit that the
+White Noise, the ladder, `distance` and 8059 were each suspected of is the overlay's,
+and under every arm the height p95 held at 0.70 because 8042 was 0.
+
+Under the tree walk 8042 is 0.804 -- alive, spots dark on white -- and the tiles' top
+comes up (p95 0.736) but their mean does not (0.573, sd 0.087 against the export's
+0.645 / 0.042): the spots cover 20% of the tiles where the export's cover a few
+percent. That coverage is 8026's cut at 0.29 on 8025's blob field (mean 0.205, sd 0.17,
+28% above the cut): the splatter's amplitude or its combine -- 1,024 blobs at
+`opacitymult` 0.4 under `max` -- is what the cut sees, and that, not the region scale
+(BnW_Spots settles that), is the dirt chain's open term. `fx.subdivide = quadrant`
+(the tree walk for every Quadrant record except the White Noise class) is added as an
+arm to hold this reading; on the packs it is Bricks +0.523 / 0.97 / 0.039, RoofTiles
++0.519 / 1.04 / 0.064, Chesterfield +0.889, SandyStonePath's band 0.11 -- the same
+objections as `tree` less the tone's, not a default.

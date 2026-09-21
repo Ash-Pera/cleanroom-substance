@@ -455,7 +455,7 @@ def emissions(rec, run, slots, cache=None):
     # the same table, the same seeding, the same answer about whether the table batches.
     # See `fxtree` for what is established and what the arm leaves open.
     how = assume.assumed("fx.subdivide", "flat")
-    if how == "tree" or (how == "noise" and white_noise_record(rec, table)):
+    if how == "tree" or (how == "noise") == white_noise_record(rec, table) and how in ("noise", "quadrant"):
         return fxtree.emissions(rec, run, slots, nodes, table, reads, cache)
     if reads is not None:
         seed = dict(slots)
