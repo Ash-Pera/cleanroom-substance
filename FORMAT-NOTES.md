@@ -61328,3 +61328,44 @@ a flat 0.5; and 657-668, a Blur HQ of a `levels` cut to 0. The pack's picture is
 the subdivision gain (34 / 36 / 39), the lattice's unit (678 / 680) and 639 at once;
 none of the three has a picture of its own in the packs, and the two Clouds twins in
 `pairs5` ship no render. Recorded; the next lever with a picture is elsewhere.
+
+## Three of Auras' four graphs drew nothing: a leaf node inside a chain is a link the tree survey did not read, and the 0x19B iterate behind it ran once
+
+Looking at all four Auras graphs against their exports (`/tmp/auras_all.png` while it
+lasts): 004 the ring, 001 a black frame with one dot, 002 and 003 white. The ratchet
+scores 004 alone, so nothing noticed. Graph 001's output (313) rests on 250, an FX-Map
+splatting six flame sprites (image inputs 237..248) whose chain is 0x18B -> 0x89 -> 0x10B
+-> 0x19B -> five `0x95140098` entries: the count node returns a literal 1, the gate is
+the spiral, and the 0x19B -- an ITERATE, whose program reads the graph's `Pattern
+Amount` (64) -- sits behind a leaf `0x10B`. The tree survey read the leaf as "neither a
+modelled node nor an entry" and sent the record down the list walk, where 0x19B is a
+state node run once: one flame. `read_node` now reads a nibble-B, mask-clear leaf as a
+link (successor at word 1, `leaf_successor`), the walk passes through it, and `needed`
+sends a chain with a leaf and a 0x19B to the tree: 250 emits 64.
+
+The exports are RGBA with the shape in ALPHA (002_white: RGB 1.0, alpha mean 0.05), and
+so are ours now: 001 a ring of flame spikes, 002 a sun flare, 003 a segmented ring
+(`/tmp/auras_alpha.png`) -- the three constructs the exports show, from records that
+were one pattern each. `refcompare` scores channels 0-2 only, so the three graphs are
+still unscored; 004 is bit-identical, every other pack is, the ratchet passes. What is
+left on them is colour: 001's RGB is grey where the export's is the flame ramp, which
+is the `rgba-float` ramp layout / HSL hue question the next section records, and 004's
+alpha is 1.0 where the export's is the ring.
+
+THE HUE QUESTION, opened by 004's colour: ours is yellow-green (0.24, 0.26, 0.14), the
+export purple (0.10, 0.045, 0.20). The ring's ramp (442, `rgba-float`, seven stops) reads
+as a purple ramp under the (position, R, G, B, A) layout, and the graph's `Ring1 Hue`
+input -- a bare `inputref` into the HSL's hue -- defaults to 0, which under the
+0.5-neutral convention is a 180-degree shift: purple to yellow-green. The author's own
+screenshot (`reference_renders/How to change color in SD.jpg`) shows the 004 instance
+at Ring1 Hue 0 rendering purple. Chesterfield's HSL 864 reads its hue from an input
+defaulting to 0.5 and its export is the unshifted red; `hsl.hue = direct` (0 neutral)
+takes Auras to +0.915 / 3.27 / 0.079 and Chesterfield to +0.713. So both conventions
+cannot hold with the ramp as read, and the alternative is the ramp: under a
+(R, G, B, position, A) layout 442 is a fire ramp (olive, brown, orange, cream) and hue 0
+= 180 degrees gives purple-blue -- graph 001's variants are named fire / yellow / blue /
+green / white, which is a fire base under hue shifts. The float form's 24-of-25 source
+check does not separate the two layouts on a monotonic 5-float row where two columns
+both ascend. No source with a float ramp is on disk; the 16 corpus files that carry one
+are ambientCG's. Recorded, not changed: the current layout is the checked one, and the
+picture that would decide it is 001's fire against its own export once its RGB renders.

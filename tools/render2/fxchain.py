@@ -125,6 +125,18 @@ def read_node(asm, off):
     hdr = _word(d, off, 0)
     kind = family(hdr)
     if kind is None:
+        # A LEAF INSIDE THE CHAIN IS A LINK. Nibble B with the mask bits clear -- `0x10B`,
+        # `0x190B` -- names one successor at word 1 (`leaf_successor`); the survey read it
+        # as "neither a modelled node nor an entry" and sent the record down the list walk,
+        # where the 0x19B iterate BEHIND it is a state node that runs once: Auras' flame
+        # splatter 250 (0x18B, 0x89, 0x10B, 0x19B reading `Pattern Amount` = 64) emitted
+        # one flame. Its upper bits are the baked count `render2.fx.leaf_count` reads;
+        # under a count node ahead of it the walk keeps that node's count as before.
+        if hdr <= 0xFFFF and (hdr & 0xFF) == 0x0B:
+            succ = sbsasm.leaf_successor(hdr)
+            if succ is None:
+                return None
+            return Node(off, hdr, "leaf", [], _word(d, off, succ // 4), 0)
         return None
     shape = sbsasm.node_shape(hdr)
     if shape is None:
@@ -252,6 +264,8 @@ def needed(rec):
     if why is not None or not nodes:
         return False
     for n in nodes.values():
+        if n.kind == "leaf" and any(m.hdr == 0x19B for m in nodes.values()):
+            return True
         if n.kind == "switch" and n.spare:
             return True
         if n.hdr == 0x1CB and n.spare:
@@ -294,6 +308,10 @@ def emissions(rec, run, slots):
             emit(off, number)
             return
         n = nodes[off]
+        if n.kind == "leaf":
+            if n.loop:
+                walk(n.loop + SKEW, number, depth + 1)
+            return
         if n.kind == "switch":
             ok = bool(np.asarray(run(n.progs[0], slots, number)).ravel()[0])
             child = n.loop if ok else n.spare
