@@ -61073,3 +61073,21 @@ blends the tan 2233 (0.533, 0.462, 0.374) through mask 1102 (mean 0.246) at 0.83
 that is the warmth. 1102 is `levels` of a blend whose second input 1100 is flat 1.0 off
 a chain (1044 .. 1093, 911) of flat records that the subdivision arm would change --
 so the tint too sits behind the arm.
+
+## At native the tree arm's noise is blotches at every `fx.hurst` reading, and the Clouds-2 chain's three octaves are at ONE canvas scale by construction
+
+Bricks 003 basecolor and 005 height at 1024 under `fx.subdivide=tree` with `fx.hurst`
+= `exp`, `off`, `pow` (`/tmp/bricks_hurst.png` while it lasts): three near-identical
+pictures, soft spots an eighth of the canvas across where the export has per-brick tone
+and fine grit. The hurst gain is not where the scale is. Nor are the octave transforms:
+7946 and 7949 carry no matrix (a resize 64 -> 128 -> 256), the blends 7948 / 7951 are
+mode 2 (subtract: 0.520 - 0.192 = 0.33 against the measured 0.344), so the three
+records' strokes -- (5, 1) region units at depths 2 and 3, 0.625 x 0.125 of the canvas
+at depth 3 whatever the record's pixels -- sit at one canvas scale three times over.
+Under the region convention as established (root does not subdivide, depth d region
+2^-(d-1)) this construct cannot produce a multi-scale noise, and the export's grain says
+the engine's does. Either the (5, 1) size is not in region units, or a depth's region
+is finer than 2^-(d-1) below the first bare cells -- the "(5.0, 1.0) family" question,
+now with a picture that says which way: finer. Not changed; a per-depth size reading
+needs the RoofTiles shingle record (606) or 9806 to be measured against, and the
+instrument for that is the next thing to build.
