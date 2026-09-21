@@ -61589,3 +61589,12 @@ construct, whose downstream thresholds only cut under subtraction. Under `max` t
 construct still draws a white canvas -- which is the subdivision gain's question, the
 Clouds sections' -- and every other clear-bit record the packs exercise reads `max`.
 The declared modes (2, 3, 4, 5, 6 in the paired sources) are still one `max` here.
+
+ADDENDUM, the pictures under `max` at native (`/tmp/bricks_max_native.png`,
+`/tmp/roof_max.png` while they last). Bricks 002's height is now mid-grey pillowed tiles
+with a tone each -- the export's construct at the export's level, the ramp a little
+stronger than its; 005's height a mottled field under crisp rings, as the export;
+003's bricks with mortar and a mild tone each where the export adds per-brick grit;
+004's wheels and dark discs in place. RoofTiles' height and basecolor read as the
+export's shingles; its roughness is still the grain chain's (dark tiles on grey where
+the export is streaked light). The full suite: 23 passed.
