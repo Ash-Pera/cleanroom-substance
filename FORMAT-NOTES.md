@@ -61173,3 +61173,48 @@ to agree or HOLD), the band does not hold, so `field` stays the default and this
 record of why the rule, applied to the scalar band, keeps a reading four of its own
 octaves reject. The instrument to add beside the corr is the band BY OCTAVE, with the
 octaves a reading acts on named; that is a guard change and it is not made here.
+
+## `distance.propagate = spread` is the default, on the companion instruments: 33 Bricks correlation floors re-taken under `refguard.Entry.companion`, the band by octave beside them
+
+THE RULE AS SET (the guard's owner, this session): a correlation floor may come down
+where a companion instrument -- seed-free, of the same channel -- improves and the
+correlation loss is shown rand-driven. Both halves are on file: the per-tile and
+pillow sections show the loss is the Flood Fill to Gradient's per-tile random DIRECTION
+(`sample_lum(1, centre)` of white noise), and the octave section shows every instrument
+on the octaves `distance` acts on reading `spread`. The band's remaining objection --
+the 16-128-cycle octaves -- is a noise chain dead under every arm (`fx.subdivide`), not
+this reading's, and `field`'s ~1 there is cones standing in for mottle.
+
+WHAT WENT IN. `refguard.Entry.companion = (instrument, replaced bound)`: `bound("corr")`
+no longer rises to `was` on such an entry; `test_the_new_guard_does_not_weaken_the_old_floors`
+requires the instrument to be in `COMPANION_INSTRUMENTS` and the replaced bound to be the
+old floor (history), and counts them. The instrument: `test_bricks_per_tile_and_low_octave_instruments_do_not_regress`
+-- Bricks 002-005 height at 256 under the graph's own tile mask: tilt, tile level, mortar
+level, and ours / export power at 1-8 cycles; the bound is the recorded distance to the
+export plus a margin (0.02 / 0.02 / 0.03 / 0.15 in log), so each can only move closer.
+`COMPANION_TABLE` at the re-take:
+
+    graph   tilt        tile level    mortar level   low-band ratio
+    002     0.238/0.255  0.590/0.644   0.412/0.317    0.893
+    003     0.183/0.201  0.537/0.593   0.214/0.349    0.771
+    004     0.200/0.228  0.593/0.622   0.337/0.346    1.079
+    005     0.221/0.233  0.598/0.628   0.446/0.246    0.659
+
+Then every guarded row re-measured at 128 / 256 / 512 under the new default and
+`GUARD_TABLE` re-taken at its current value: 33 Bricks rows whose derived correlation
+bound fell below the old floor carry `companion=("bricks_tile_octaves", old)`; every
+other row keeps its floor (Chesterfield metallic's 0.99 pins as before). `HEALTH_CENSUS`
+re-taken: 40 rows outside a bar (44 before) -- 12 recovered (002 basecolor and height
+band, 003/004/005 basecolor dc ...), 8 newly outside (003 basecolor and height band, the
+normal ch2 bands: the mid-octave deficit named above). Bricks' constant yields 9 -> 0:
+graph 001 renders under `spread`. The ratchet, the floor test and the companion test
+pass; the 47 fast tests pass.
+
+    at 256, mean corr / band / |dc|     field (before)      spread (now)
+    Bricks (48 rows)                    +0.794/0.52/0.065   +0.684/0.85/0.046
+    Auras, Chesterfield, RoofTiles,
+    SandyStonePath                      bit-identical
+
+SPEC §13.6 (the distance row), §13.9 (the rule for a default, the defaults list) updated.
+What `spread` leaves: the plateau 0.055 low (the per-tile greys' mean), the mid-octave
+mottle (the subdivision arm's scale), and the corr rows, which now measure the seed.

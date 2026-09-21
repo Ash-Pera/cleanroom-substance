@@ -385,16 +385,27 @@ class Entry(object):
 
     `declared` is `{quantity: cause id}` for quantities outside a health bar today.
     `mae` is recorded per grid as context and is not bounded.
+
+    `companion` is `(instrument, old corr bound)` on an entry whose correlation floor was
+    RE-TAKEN LOWER under a companion instrument: a seed-free measurement of the same
+    channel -- a per-tile level and tilt, the band power in the octaves the reading acts
+    on -- that a per-cell random draw in the picture cannot move, where pixel correlation
+    can. It is the one way a floor comes down, and it is not a loophole: the instrument
+    is named, `test_the_new_guard_does_not_weaken_the_old_floors` requires it to be one
+    the suite guards (`COMPANION_INSTRUMENTS`), the old bound stays here as history, and
+    the correlation is still ratcheted from the re-taken value. FORMAT-NOTES.md, "The
+    band's objection to `spread`, decomposed by octave".
     """
 
-    __slots__ = ("at", "was", "declared", "mae", "note")
+    __slots__ = ("at", "was", "declared", "mae", "note", "companion")
 
-    def __init__(self, at, was=None, declared=None, mae=None, note=""):
+    def __init__(self, at, was=None, declared=None, mae=None, note="", companion=None):
         self.at = dict(at)
         self.was = was
         self.declared = dict(declared or {})
         self.mae = dict(mae or {})
         self.note = note
+        self.companion = companion
 
     def grids(self):
         return sorted(self.at)
@@ -411,7 +422,7 @@ class Entry(object):
         corr, band, dc = self.at[grid]
         if quantity == "corr":
             lo = corr - CORR_MARGIN
-            if self.was is not None and self.was[1] == grid:
+            if self.was is not None and self.was[1] == grid and self.companion is None:
                 lo = max(lo, self.was[0])
             return lo
         if quantity == "band":

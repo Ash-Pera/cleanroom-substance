@@ -57,6 +57,7 @@ import collections
 import contextlib
 import glob
 import io
+import math
 import os
 import re
 import struct
@@ -1761,207 +1762,229 @@ GUARD_GRIDS = (128, 256, 512)
 #: bound is not allowed BELOW it -- re-taking can raise a floor and can never lower one, which
 #: `test_the_new_guard_does_not_weaken_the_old_floors` checks directly.
 GUARD_TABLE = {
-    ("Kutejnikov__Auras", "004/basecolor", 0): Entry(
+    ('Kutejnikov__Auras', '004/basecolor', 0): Entry(
         at={
-            128: (+0.9276, 4.2881, +0.1372),
-            256: (+0.9277, 4.1348, +0.1332),
-            512: (+0.9277, 4.1348, +0.1332),
+            128: (+0.9280, 4.2923, +0.1372),
+            256: (+0.9278, 4.1346, +0.1332),
+            512: (+0.9278, 4.1346, +0.1332),
         },
         was=(0.9, 256),
     ),
-    ("Kutejnikov__Auras", "004/basecolor", 1): Entry(
+    ('Kutejnikov__Auras', '004/basecolor', 1): Entry(
         at={
-            128: (+0.7450, 18.7731, +0.2232),
-            256: (+0.7497, 17.3662, +0.2190),
-            512: (+0.7497, 17.3662, +0.2190),
+            128: (+0.7453, 18.7607, +0.2229),
+            256: (+0.7498, 17.3649, +0.2190),
+            512: (+0.7498, 17.3649, +0.2190),
         },
         was=(0.72, 256),
     ),
-    ("Kutejnikov__Auras", "004/basecolor", 2): Entry(
+    ('Kutejnikov__Auras', '004/basecolor', 2): Entry(
         at={
-            128: (+0.9467, 0.5174, -0.0583),
-            256: (+0.9398, 0.4733, -0.0653),
-            512: (+0.9398, 0.4733, -0.0653),
+            128: (+0.9465, 0.5165, -0.0585),
+            256: (+0.9397, 0.4736, -0.0653),
+            512: (+0.9397, 0.4736, -0.0653),
         },
         was=(0.91, 256),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "002/ambientocclusion", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '002/ambientocclusion', 0): Entry(
         at={
-            128: (+0.9484, 2.1699, -0.0862),
-            256: (+0.9270, 1.1009, +0.0736),
-            512: (+0.9290, 1.0984, +0.0731),
+            128: (+0.9113, 1.4548, +0.0010),
+            256: (+0.8318, 0.4181, +0.0711),
+            512: (+0.8365, 0.4105, +0.0692),
         },
         was=(0.9, 256),
+        companion=('bricks_tile_octaves', 0.9),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "002/basecolor", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0): Entry(
         at={
-            128: (+0.6425, 5.0332, +0.0054),
-            256: (+0.6184, 0.8924, +0.0270),
-            512: (+0.6184, 0.8924, +0.0270),
+            128: (+0.6252, 1.6741, -0.0425),
+            256: (+0.4024, 0.3932, -0.0279),
+            512: (+0.4027, 0.3932, -0.0279),
         },
         was=(0.59, 256),
+        companion=('bricks_tile_octaves', 0.59),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "002/basecolor", 1): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1): Entry(
         at={
-            128: (+0.6975, 4.7562, -0.0012),
-            256: (+0.6681, 0.8751, +0.0141),
-            512: (+0.6684, 0.8752, +0.0142),
+            128: (+0.6832, 2.0725, -0.0326),
+            256: (+0.4788, 0.4424, -0.0233),
+            512: (+0.4797, 0.4424, -0.0233),
         },
         was=(0.64, 256),
+        companion=('bricks_tile_octaves', 0.64),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "002/basecolor", 2): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2): Entry(
         at={
-            128: (+0.6841, 4.2466, +0.0000),
-            256: (+0.6520, 0.7390, +0.0036),
-            512: (+0.6524, 0.7391, +0.0036),
+            128: (+0.6716, 2.0975, -0.0155),
+            256: (+0.4534, 0.4064, -0.0147),
+            512: (+0.4543, 0.4064, -0.0147),
         },
         was=(0.63, 256),
+        companion=('bricks_tile_octaves', 0.63),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "002/height", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '002/height', 0): Entry(
         at={
-            128: (+0.6732, 6.8677, -0.0284),
-            256: (+0.5907, 0.6650, +0.2162),
-            512: (+0.5907, 0.6650, +0.2162),
+            128: (+0.5398, 2.5274, -0.2153),
+            256: (+0.2948, 0.5188, -0.0286),
+            512: (+0.2948, 0.5188, -0.0286),
         },
         was=(0.57, 256),
+        companion=('bricks_tile_octaves', 0.57),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "002/normal", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '002/normal', 0): Entry(
         at={
-            128: (+0.7607, 3.1273, +0.0005),
-            256: (+0.8754, 0.8876, +0.0005),
-            512: (+0.8754, 0.8876, +0.0005),
+            128: (+0.7763, 1.4342, +0.0006),
+            256: (+0.6527, 0.3153, +0.0005),
+            512: (+0.6527, 0.3153, +0.0005),
         },
         was=(0.85, 256),
+        companion=('bricks_tile_octaves', 0.85),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "002/normal", 1): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '002/normal', 1): Entry(
         at={
-            128: (+0.7609, 3.1522, +0.0007),
-            256: (+0.8776, 0.8811, +0.0007),
-            512: (+0.8776, 0.8811, +0.0007),
+            128: (+0.7771, 1.4459, +0.0006),
+            256: (+0.6439, 0.3097, +0.0009),
+            512: (+0.6439, 0.3097, +0.0009),
         },
         was=(0.85, 256),
+        companion=('bricks_tile_octaves', 0.85),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "002/normal", 2): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '002/normal', 2): Entry(
         at={
-            128: (+0.5099, 0.8610, -0.0071),
-            256: (+0.9170, 0.4375, +0.0069),
-            512: (+0.9170, 0.4375, +0.0069),
+            128: (+0.6178, 0.1496, +0.0111),
+            256: (+0.8234, 0.0410, +0.0168),
+            512: (+0.8234, 0.0410, +0.0168),
         },
         was=(0.89, 256),
+        companion=('bricks_tile_octaves', 0.89),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "002/roughness", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '002/roughness', 0): Entry(
         at={
-            128: (+0.8960, 10.4656, -0.2032),
-            256: (+0.8732, 4.8969, -0.4345),
-            512: (+0.8732, 4.8981, -0.4346),
+            128: (+0.8587, 7.1766, -0.3229),
+            256: (+0.7750, 3.3465, -0.4343),
+            512: (+0.7737, 3.3582, -0.4344),
         },
         was=(0.85, 256),
+        companion=('bricks_tile_octaves', 0.85),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "003/ambientocclusion", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '003/ambientocclusion', 0): Entry(
         at={
-            128: (+0.6362, 0.7661, +0.0619),
-            256: (+0.9306, 2.7255, -0.0392),
-            512: (+0.9299, 2.6799, -0.0433),
+            128: (+0.5277, 0.3185, +0.0840),
+            256: (+0.9239, 1.4729, +0.0105),
+            512: (+0.9245, 1.4551, +0.0086),
         },
         was=(0.91, 256),
+        companion=('bricks_tile_octaves', 0.91),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "003/basecolor", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0): Entry(
         at={
-            128: (+0.5008, 0.7199, +0.0674),
-            256: (+0.7453, 1.6308, +0.0555),
-            512: (+0.7452, 1.6301, +0.0555),
+            128: (+0.5057, 0.1607, +0.0110),
+            256: (+0.5955, 0.7495, +0.0043),
+            512: (+0.5956, 0.7494, +0.0043),
         },
         was=(0.72, 256),
+        companion=('bricks_tile_octaves', 0.72),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "003/basecolor", 1): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 1): Entry(
         at={
-            128: (+0.5553, 0.7584, +0.0374),
-            256: (+0.8245, 1.7123, +0.0329),
-            512: (+0.8242, 1.7095, +0.0326),
+            128: (+0.5587, 0.1894, +0.0137),
+            256: (+0.7460, 0.8423, +0.0014),
+            512: (+0.7466, 0.8420, +0.0014),
         },
         was=(0.8, 256),
+        companion=('bricks_tile_octaves', 0.8),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "003/basecolor", 2): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '003/basecolor', 2): Entry(
         at={
-            128: (+0.5317, 0.5547, -0.0107),
-            256: (+0.7876, 1.2529, -0.0059),
-            512: (+0.7871, 1.2508, -0.0061),
+            128: (+0.5310, 0.1594, +0.0094),
+            256: (+0.7008, 0.8295, -0.0058),
+            512: (+0.7014, 0.8292, -0.0058),
         },
         was=(0.76, 256),
+        companion=('bricks_tile_octaves', 0.76),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "003/height", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '003/height', 0): Entry(
         at={
-            128: (+0.5243, 0.7069, +0.2840),
-            256: (+0.7373, 2.8838, +0.1303),
-            512: (+0.7373, 2.8838, +0.1303),
+            128: (+0.3175, 0.1462, -0.0896),
+            256: (+0.6393, 1.1227, -0.0697),
+            512: (+0.6393, 1.1227, -0.0697),
         },
         was=(0.71, 256),
+        companion=('bricks_tile_octaves', 0.71),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "003/normal", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '003/normal', 0): Entry(
         at={
-            128: (+0.7170, 0.9967, -0.0001),
-            256: (+0.8398, 2.9980, -0.0001),
-            512: (+0.8398, 2.9980, -0.0001),
+            128: (+0.8389, 0.2843, +0.0004),
+            256: (+0.8149, 1.1657, -0.0002),
+            512: (+0.8149, 1.1657, -0.0002),
         },
         was=(0.81, 256),
+        companion=('bricks_tile_octaves', 0.81),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "003/normal", 1): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '003/normal', 1): Entry(
         at={
-            128: (+0.4118, 0.1238, -0.0001),
-            256: (+0.8846, 3.5443, -0.0001),
-            512: (+0.8846, 3.5443, -0.0001),
+            128: (+0.1977, 0.0236, -0.0008),
+            256: (+0.8710, 1.4086, -0.0000),
+            512: (+0.8710, 1.4086, -0.0000),
         },
         was=(0.86, 256),
+        companion=('bricks_tile_octaves', 0.86),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "003/normal", 2): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '003/normal', 2): Entry(
         at={
-            128: (+0.3456, 0.0787, +0.0020),
-            256: (+0.8016, 5.3166, -0.0093),
-            512: (+0.8016, 5.3166, -0.0093),
+            128: (+0.4866, 0.0127, +0.0028),
+            256: (+0.7574, 0.6604, -0.0016),
+            512: (+0.7574, 0.6604, -0.0016),
         },
         was=(0.78, 256),
+        companion=('bricks_tile_octaves', 0.78),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "003/roughness", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '003/roughness', 0): Entry(
         at={
-            128: (+0.6413, 2.4857, -0.1560),
-            256: (+0.9257, 6.6217, -0.1118),
-            512: (+0.9257, 6.4715, -0.1095),
+            128: (+0.4947, 0.9544, -0.1644),
+            256: (+0.9111, 5.1536, -0.1284),
+            512: (+0.9126, 5.1064, -0.1277),
         },
         was=(0.9, 256),
+        companion=('bricks_tile_octaves', 0.9),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/ambientocclusion", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0): Entry(
         at={
-            128: (+0.7673, 1.8084, -0.0680),
-            256: (+0.7232, 1.0699, +0.0245),
-            512: (+0.7252, 1.0668, +0.0238),
+            128: (+0.7756, 1.2658, -0.0198),
+            256: (+0.6334, 0.4662, +0.0514),
+            512: (+0.6347, 0.4605, +0.0506),
         },
         was=(0.7, 256),
+        companion=('bricks_tile_octaves', 0.7),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/basecolor", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0): Entry(
         at={
-            128: (+0.5593, 4.5760, +0.0628),
-            256: (+0.6618, 1.3726, +0.0725),
-            512: (+0.6618, 1.3726, +0.0725),
+            128: (+0.6168, 2.1862, +0.0207),
+            256: (+0.6240, 0.8474, +0.0268),
+            512: (+0.6241, 0.8474, +0.0268),
         },
         was=(0.64, 256),
+        companion=('bricks_tile_octaves', 0.64),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/basecolor", 1): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 1): Entry(
         at={
-            128: (+0.6010, 3.8578, +0.0270),
-            256: (+0.7365, 1.1966, +0.0277),
-            512: (+0.7366, 1.1966, +0.0278),
+            128: (+0.6423, 2.0156, -0.0048),
+            256: (+0.6899, 0.7376, -0.0059),
+            512: (+0.6901, 0.7374, -0.0058),
         },
         was=(0.71, 256),
+        companion=('bricks_tile_octaves', 0.71),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/basecolor", 2): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/basecolor', 2): Entry(
         at={
-            128: (+0.6060, 2.8954, +0.0082),
-            256: (+0.7478, 0.8925, +0.0026),
-            512: (+0.7479, 0.8925, +0.0026),
+            128: (+0.6511, 1.7490, -0.0052),
+            256: (+0.6953, 0.6270, -0.0124),
+            512: (+0.6955, 0.6269, -0.0124),
         },
         was=(0.72, 256),
+        companion=('bricks_tile_octaves', 0.72),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/emission", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/emission', 0): Entry(
         at={
             128: (+0.9939, 1.2332, +0.0033),
             256: (+0.9992, 1.0616, +0.0010),
@@ -1969,175 +1992,186 @@ GUARD_TABLE = {
         },
         was=(0.96, 256),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/emission", 1): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/emission', 1): Entry(
         at={
             128: (+0.9795, 0.7642, -0.0002),
             256: (+0.9898, 0.6587, -0.0006),
             512: (+0.9898, 0.6587, -0.0006),
         },
         was=(0.98, 256),
+        companion=('bricks_tile_octaves', 0.98),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/emission", 2): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/emission', 2): Entry(
         at={
             128: (+0.9786, 0.7948, -0.0001),
             256: (+0.9895, 0.6870, -0.0005),
             512: (+0.9895, 0.6870, -0.0005),
         },
         was=(0.97, 256),
+        companion=('bricks_tile_octaves', 0.97),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/height", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/height', 0): Entry(
         at={
-            128: (+0.5305, 5.0080, +0.0010),
-            256: (+0.4667, 1.2717, +0.1725),
-            512: (+0.4667, 1.2717, +0.1725),
+            128: (+0.4740, 1.9268, -0.1620),
+            256: (+0.3307, 0.6448, -0.0210),
+            512: (+0.3307, 0.6448, -0.0210),
         },
         was=(0.44, 256),
+        companion=('bricks_tile_octaves', 0.44),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/normal", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/normal', 0): Entry(
         at={
-            128: (+0.5977, 2.6248, -0.0001),
-            256: (+0.5768, 1.0317, -0.0001),
-            512: (+0.5768, 1.0317, -0.0001),
+            128: (+0.6325, 1.2635, +0.0000),
+            256: (+0.4081, 0.3592, +0.0002),
+            512: (+0.4081, 0.3592, +0.0002),
         },
         was=(0.55, 256),
+        companion=('bricks_tile_octaves', 0.55),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/normal", 1): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/normal', 1): Entry(
         at={
-            128: (+0.5925, 2.6114, +0.0001),
-            256: (+0.5728, 0.9885, +0.0001),
-            512: (+0.5728, 0.9885, +0.0001),
+            128: (+0.6322, 1.2559, -0.0000),
+            256: (+0.3877, 0.3539, -0.0000),
+            512: (+0.3877, 0.3539, -0.0000),
         },
         was=(0.55, 256),
+        companion=('bricks_tile_octaves', 0.55),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/normal", 2): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/normal', 2): Entry(
         at={
-            128: (+0.3767, 0.7390, -0.0007),
-            256: (+0.7870, 0.4754, +0.0044),
-            512: (+0.7870, 0.4754, +0.0044),
+            128: (+0.4971, 0.1360, +0.0097),
+            256: (+0.5841, 0.0694, +0.0136),
+            512: (+0.5841, 0.0694, +0.0136),
         },
         was=(0.76, 256),
+        companion=('bricks_tile_octaves', 0.76),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "004/roughness", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '004/roughness', 0): Entry(
         at={
-            128: (+0.7337, 8.7103, -0.1879),
-            256: (+0.5942, 4.3923, -0.3283),
-            512: (+0.5972, 4.3722, -0.3276),
+            128: (+0.7372, 6.6666, -0.2431),
+            256: (+0.5755, 2.7126, -0.3435),
+            512: (+0.5776, 2.6857, -0.3431),
         },
         was=(0.57, 256),
+        companion=('bricks_tile_octaves', 0.57),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "005/ambientocclusion", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '005/ambientocclusion', 0): Entry(
         at={
-            128: (+0.8812, 2.1654, -0.0622),
-            256: (+0.9543, 1.0180, +0.0366),
-            512: (+0.9567, 1.0159, +0.0370),
+            128: (+0.8883, 1.4456, -0.0178),
+            256: (+0.8662, 0.3689, +0.0535),
+            512: (+0.8750, 0.3655, +0.0539),
         },
         was=(0.85, 256),
+        companion=('bricks_tile_octaves', 0.85),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "005/basecolor", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0): Entry(
         at={
-            128: (+0.5150, 4.0208, +0.0784),
-            256: (+0.7967, 1.0672, +0.0788),
-            512: (+0.7968, 1.0673, +0.0789),
+            128: (+0.6084, 1.8739, +0.0295),
+            256: (+0.7271, 0.7175, +0.0307),
+            512: (+0.7272, 0.7175, +0.0307),
         },
         was=(-0.05, 256),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "005/basecolor", 1): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 1): Entry(
         at={
-            128: (+0.5549, 3.4857, +0.0388),
-            256: (+0.8169, 0.9303, +0.0303),
-            512: (+0.8171, 0.9305, +0.0304),
+            128: (+0.6299, 1.8113, +0.0023),
+            256: (+0.7376, 0.6132, -0.0040),
+            512: (+0.7380, 0.6132, -0.0039),
         },
         was=(0.2, 256),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "005/basecolor", 2): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '005/basecolor', 2): Entry(
         at={
-            128: (+0.5672, 2.5690, +0.0155),
-            256: (+0.8296, 0.6970, +0.0032),
-            512: (+0.8298, 0.6971, +0.0032),
+            128: (+0.6445, 1.5467, +0.0002),
+            256: (+0.7470, 0.5244, -0.0115),
+            512: (+0.7473, 0.5244, -0.0115),
         },
         was=(0.2, 256),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "005/height", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '005/height', 0): Entry(
         at={
-            128: (+0.5831, 5.1629, +0.0729),
-            256: (+0.6345, 0.6355, +0.2196),
-            512: (+0.6345, 0.6355, +0.2196),
+            128: (+0.5384, 1.8967, -0.1289),
+            256: (+0.3335, 0.4171, -0.0025),
+            512: (+0.3335, 0.4171, -0.0025),
         },
         was=(0.54, 256),
+        companion=('bricks_tile_octaves', 0.54),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "005/normal", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '005/normal', 0): Entry(
         at={
-            128: (+0.7256, 2.9432, +0.0004),
-            256: (+0.8941, 0.9900, +0.0005),
-            512: (+0.8941, 0.9900, +0.0005),
+            128: (+0.7727, 1.3815, +0.0006),
+            256: (+0.7030, 0.2740, +0.0007),
+            512: (+0.7030, 0.2740, +0.0007),
         },
         was=(0.75, 256),
+        companion=('bricks_tile_octaves', 0.75),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "005/normal", 1): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '005/normal', 1): Entry(
         at={
-            128: (+0.7328, 2.9209, +0.0003),
-            256: (+0.9061, 0.9470, +0.0003),
-            512: (+0.9061, 0.9470, +0.0003),
+            128: (+0.7844, 1.3713, +0.0002),
+            256: (+0.6605, 0.2805, +0.0002),
+            512: (+0.6605, 0.2805, +0.0002),
         },
         was=(0.75, 256),
+        companion=('bricks_tile_octaves', 0.75),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "005/normal", 2): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '005/normal', 2): Entry(
         at={
-            128: (+0.4847, 0.8259, -0.0032),
-            256: (+0.9416, 0.4477, +0.0042),
-            512: (+0.9416, 0.4477, +0.0042),
+            128: (+0.6114, 0.1505, +0.0068),
+            256: (+0.8559, 0.0449, +0.0121),
+            512: (+0.8559, 0.0449, +0.0121),
         },
         was=(0.66, 256),
     ),
-    ("Kutejnikov__Bricks_and_tiles", "005/roughness", 0): Entry(
+    ('Kutejnikov__Bricks_and_tiles', '005/roughness', 0): Entry(
         at={
-            128: (+0.8583, 10.5119, -0.2394),
-            256: (+0.8895, 4.3310, -0.3724),
-            512: (+0.8930, 4.3197, -0.3733),
+            128: (+0.8712, 7.8473, -0.2814),
+            256: (+0.8341, 2.4301, -0.3773),
+            512: (+0.8442, 2.4192, -0.3790),
         },
         was=(0.77, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/AO", 0): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0): Entry(
         at={
-            128: (+0.8604, 8.8715, -0.1126),
-            256: (+0.8725, 2.5524, -0.0143),
-            512: (+0.9056, 1.6993, -0.0004),
+            128: (+0.8656, 8.8705, -0.1127),
+            256: (+0.8798, 2.5165, -0.0137),
+            512: (+0.9194, 1.6872, +0.0003),
         },
         was=(0.84, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 0): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0): Entry(
         at={
-            128: (+0.9338, 0.7747, -0.1042),
-            256: (+0.9149, 0.6321, -0.0967),
-            512: (+0.9147, 0.6129, -0.0978),
+            128: (+0.9327, 0.7721, -0.1040),
+            256: (+0.9120, 0.6264, -0.0962),
+            512: (+0.9135, 0.6115, -0.0977),
         },
         was=(0.82, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 1): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 1): Entry(
         at={
-            128: (+0.9541, 0.5522, +0.0148),
-            256: (+0.9775, 0.5549, +0.0097),
-            512: (+0.9860, 0.5508, +0.0088),
+            128: (+0.9545, 0.5537, +0.0150),
+            256: (+0.9778, 0.5579, +0.0101),
+            512: (+0.9862, 0.5518, +0.0088),
         },
         was=(0.92, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 2): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2): Entry(
         at={
-            128: (+0.7855, 0.1217, -0.0038),
-            256: (+0.8389, 0.1953, -0.0041),
-            512: (+0.8847, 0.2001, -0.0048),
+            128: (+0.7973, 0.1227, -0.0036),
+            256: (+0.8515, 0.1979, -0.0036),
+            512: (+0.8884, 0.2009, -0.0047),
         },
         was=(-0.46, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/height", 0): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0): Entry(
         at={
-            128: (+0.9620, 1.4562, +0.0250),
-            256: (+0.9620, 1.2120, +0.0414),
-            512: (+0.9619, 1.1165, +0.0474),
+            128: (+0.9584, 1.4119, +0.0281),
+            256: (+0.9585, 1.1399, +0.0471),
+            512: (+0.9585, 1.0986, +0.0488),
         },
         was=(0.93, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/metallic", 0): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/metallic', 0): Entry(
         at={
             128: (+0.9979, 1.0840, +0.0021),
             256: (+0.9998, 1.0306, +0.0008),
@@ -2145,35 +2179,35 @@ GUARD_TABLE = {
         },
         was=(0.99, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/normal", 0): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 0): Entry(
         at={
-            128: (+0.9642, 1.3880, +0.0001),
-            256: (+0.9642, 1.2059, -0.0001),
-            512: (+0.9701, 1.1717, -0.0003),
+            128: (+0.9707, 1.3416, -0.0003),
+            256: (+0.9701, 1.1387, -0.0004),
+            512: (+0.9750, 1.1455, -0.0002),
         },
         was=(0.93, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/normal", 1): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 1): Entry(
         at={
-            128: (+0.9640, 1.3826, +0.0002),
-            256: (+0.9628, 1.2020, +0.0003),
-            512: (+0.9687, 1.1590, +0.0001),
+            128: (+0.9690, 1.3593, +0.0003),
+            256: (+0.9697, 1.1517, +0.0002),
+            512: (+0.9752, 1.1565, -0.0001),
         },
         was=(0.92, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/normal", 2): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/normal', 2): Entry(
         at={
-            128: (+0.4911, 0.5299, +0.0005),
-            256: (+0.6995, 0.6057, +0.0004),
-            512: (+0.8486, 0.9558, -0.0035),
+            128: (+0.5311, 0.5054, +0.0014),
+            256: (+0.7456, 0.5550, +0.0021),
+            512: (+0.8856, 0.9397, -0.0030),
         },
         was=(0.72, 256),
     ),
-    ("minime453__Chesterfield_PBR_Material", "PaddedWalls/roughness", 0): Entry(
+    ('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0): Entry(
         at={
-            128: (+0.9373, 0.7196, -0.0640),
-            256: (+0.9349, 0.6836, -0.0639),
-            512: (+0.9339, 0.6750, -0.0639),
+            128: (+0.9370, 0.7187, -0.0640),
+            256: (+0.9344, 0.6821, -0.0639),
+            512: (+0.9336, 0.6746, -0.0639),
         },
         was=(0.91, 256),
     ),
@@ -2197,50 +2231,46 @@ GUARD_TABLE = {
 #: outside a bar). Both are strictly more than the single correlation floor this replaces,
 #: which had no notion of amplitude or level at all.
 HEALTH_CENSUS = {
-    (("Kutejnikov__Auras", "004/basecolor", 0), "band"),
-    (("Kutejnikov__Auras", "004/basecolor", 0), "dc"),
-    (("Kutejnikov__Auras", "004/basecolor", 1), "band"),
-    (("Kutejnikov__Auras", "004/basecolor", 1), "dc"),
-    (("Kutejnikov__Auras", "004/basecolor", 2), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "002/ambientocclusion", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "002/basecolor", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "002/basecolor", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "002/basecolor", 1), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "002/basecolor", 2), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "002/height", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "002/height", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "002/roughness", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "002/roughness", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "003/ambientocclusion", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "003/basecolor", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "003/basecolor", 1), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "003/height", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "003/normal", 1), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "003/normal", 2), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "003/roughness", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "003/roughness", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "004/ambientocclusion", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "004/basecolor", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "004/basecolor", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "004/basecolor", 1), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "004/height", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "004/height", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "004/roughness", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "004/roughness", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "005/ambientocclusion", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "005/basecolor", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "005/basecolor", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "005/basecolor", 1), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "005/height", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "005/height", 0), "dc"),
-    (("Kutejnikov__Bricks_and_tiles", "005/roughness", 0), "band"),
-    (("Kutejnikov__Bricks_and_tiles", "005/roughness", 0), "dc"),
-    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/AO", 0), "band"),
-    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/AO", 0), "dc"),
-    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 0), "dc"),
-    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/basecolor", 2), "band"),
-    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/height", 0), "dc"),
-    (("minime453__Chesterfield_PBR_Material", "PaddedWalls/roughness", 0), "dc"),
+    (('Kutejnikov__Auras', '004/basecolor', 0), 'band'),
+    (('Kutejnikov__Auras', '004/basecolor', 0), 'dc'),
+    (('Kutejnikov__Auras', '004/basecolor', 1), 'band'),
+    (('Kutejnikov__Auras', '004/basecolor', 1), 'dc'),
+    (('Kutejnikov__Auras', '004/basecolor', 2), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/normal', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '003/ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/basecolor', 1), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/basecolor', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/height', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '003/normal', 1), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/normal', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '004/normal', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/height', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '005/normal', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0), 'band'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2), 'band'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0), 'dc'),
+    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/roughness', 0), 'dc'),
 }
 
 #: Causes for health-bar failures whose mechanism IS traced. A `Cause` pins its quantity
@@ -2306,7 +2336,7 @@ GUARD_CAUSES = {
 #: both zero information; the difference is that only one of them is silent.
 CONSTANT_YIELDS_RENDER2 = {
     "Kutejnikov__Auras": 0,
-    "Kutejnikov__Bricks_and_tiles": 9,
+    "Kutejnikov__Bricks_and_tiles": 0,
     "minime453__Chesterfield_PBR_Material": 0,
 }
 
@@ -2554,6 +2584,87 @@ def test_render2_reference_agreement_does_not_regress():
     return
 
 
+#: THE COMPANION INSTRUMENTS: seed-free measurements a per-cell random draw cannot move,
+#: which is what lets a correlation floor be re-taken lower (`refguard.Entry.companion`).
+#: Each names the test that guards it. Bricks 002-005's heights, 256 grid, the graph's own
+#: tile mask (`structstats._tone_mask_record`):
+#:
+#:   tilt          value change across one tile of the plane fitted inside it (median)
+#:   tile_level    mean height on the tiles;  mortar_level  mean height off them
+#:   low_band      ours / export power at 1-8 cycles per image -- the tile-scale octaves,
+#:                 the ones `distance.propagate` acts on
+#:
+#: `COMPANION_TABLE` is the measurement under the defaults at the re-take, against the
+#: export's own; the bound is the recorded DISTANCE to the export plus a margin, so an
+#: instrument can only move closer. FORMAT-NOTES.md, "The band's objection to `spread`,
+#: decomposed by octave" and the sections before it.
+COMPANION_INSTRUMENTS = {
+    "bricks_tile_octaves": "test_bricks_per_tile_and_low_octave_instruments_do_not_regress",
+}
+COMPANION_MARGIN = {"tilt": 0.02, "tile_level": 0.02, "mortar_level": 0.03, "low_band": 0.15}
+COMPANION_TABLE = {
+    "002": {"tilt": (0.2382, 0.2555), "tile_level": (0.5903, 0.6443), "mortar_level": (0.4117, 0.3167), "low_band": (0.8930, 1.0)},
+    "003": {"tilt": (0.1832, 0.2006), "tile_level": (0.5369, 0.5931), "mortar_level": (0.2137, 0.3486), "low_band": (0.7709, 1.0)},
+    "004": {"tilt": (0.2004, 0.2281), "tile_level": (0.5934, 0.6216), "mortar_level": (0.3369, 0.3458), "low_band": (1.0795, 1.0)},
+    "005": {"tilt": (0.2214, 0.2325), "tile_level": (0.5981, 0.6283), "mortar_level": (0.4465, 0.2461), "low_band": (0.6590, 1.0)},
+}
+
+
+def test_bricks_per_tile_and_low_octave_instruments_do_not_regress():
+    """The companion guard (see `COMPANION_INSTRUMENTS`): per tile and per octave, the
+    height of Bricks 002-005 stays as close to the export as it was measured, whatever
+    the per-tile random direction does to the correlation."""
+    try:
+        import structstats as ss
+        from scipy import ndimage
+    except Exception:
+        print("SKIP test_bricks_per_tile_and_low_octave_instruments_do_not_regress: no structstats/scipy")
+        return
+    aps = glob.glob(ss.BRICKS + "/x_Bricks_Textures_1/assemblies/content/0000/*.sbsasm")
+    if not aps:
+        print("SKIP test_bricks_per_tile_and_low_octave_instruments_do_not_regress: no Bricks")
+        return
+    import sbsasm as _sbsasm
+    from render2.engine import render as _render
+
+    asm = _sbsasm.Assembly(aps[0])
+    grid = 256
+    outs, _f, _i = _render(asm, max_dim=grid, outputsize=(10, 10))
+    worse = []
+    for graph, rec in sorted(COMPANION_TABLE.items()):
+        mrec = ss._tone_mask_record(asm, graph)
+        m = np.asarray(outs[mrec], np.float64)
+        m = m if m.ndim == 3 else m[:, :, None]
+        mask = ss.resample(m, grid)[:, :, 0] > 0.5
+        lab, n = ndimage.label(ndimage.binary_erosion(mask, iterations=3))
+        hri = [ri for g, nm, ri in ss._bricks_outputs() if g == graph and nm == "height"][0]
+        ref = ss.load_png(ss.BRICKS + "/reference_renders/Textures_1/%s_height.png" % graph, grid)[:, :, 0]
+        a = np.asarray(outs[hri], np.float64)
+        a = a if a.ndim == 3 else a[:, :, None]
+        ours = ss.resample(a, grid)[:, :, 0]
+        t_o, t_r = ss.tile_instruments(ours, lab, n, mask), ss.tile_instruments(ref, lab, n, mask)
+        bo, _ = refguard.band_power(ours, (1, 4, 8))
+        br, _ = refguard.band_power(ref, (1, 4, 8))
+        got = {
+            "tilt": (t_o["tilt"], t_r["tilt"]),
+            "tile_level": (t_o["tile_level"], t_r["tile_level"]),
+            "mortar_level": (t_o["mortar_level"], t_r["mortar_level"]),
+            "low_band": (sum(bo) / sum(br), 1.0),
+        }
+        for k, (o, r) in got.items():
+            ro, rr = rec[k]
+            dist = abs(o - r) if k != "low_band" else abs(math.log(o))
+            was = abs(ro - rr) if k != "low_band" else abs(math.log(ro))
+            if dist > was + COMPANION_MARGIN[k]:
+                worse.append((graph, k, round(o, 3), round(r, 3), round(ro, 3)))
+    assert not worse, (
+        "a companion instrument moved AWAY from the export: (graph, instrument, now, "
+        "export, recorded) %s" % (worse,)
+    )
+    print("ok  test_bricks_per_tile_and_low_octave_instruments_do_not_regress (%d graphs x 4)" % len(COMPANION_TABLE))
+    return
+
+
 def test_the_new_guard_does_not_weaken_the_old_floors():
     """RE-TAKING A TABLE MUST NOT BE A WAY TO LOWER A FLOOR, and this is what checks it.
 
@@ -2577,18 +2688,30 @@ def test_the_new_guard_does_not_weaken_the_old_floors():
             sorted(set(REFERENCE_FLOOR_RENDER2) - set(GUARD_TABLE)),
         )
     )
-    weakened, unpinned = [], []
+    weakened, unpinned, companion, bad_companion = [], [], [], []
     for key, entry in sorted(GUARD_TABLE.items()):
         old = REFERENCE_FLOOR_RENDER2[key]
         if entry.was != (old, RENDER2_FLOOR_DIM):
             unpinned.append((key, entry.was, (old, RENDER2_FLOOR_DIM)))
             continue
         bound = entry.bound("corr", RENDER2_FLOOR_DIM)
+        if entry.companion is not None:
+            # A FLOOR RE-TAKEN LOWER UNDER A COMPANION INSTRUMENT: the instrument must be
+            # one this suite guards, and the bound it replaced is carried as history.
+            name, replaced = entry.companion
+            if name not in COMPANION_INSTRUMENTS or replaced < old - 1e-9:
+                bad_companion.append((key, entry.companion, old))
+            companion.append(key)
+            continue
         if bound < old:
             weakened.append((key, round(bound, 4), old))
     assert (
         not unpinned
     ), "an entry does not carry its old floor: (key, was, expected) %s" % (unpinned,)
+    assert not bad_companion, (
+        "a companion re-take names no guarded instrument or drops its history: "
+        "(key, companion, old floor) %s -- see COMPANION_INSTRUMENTS" % (bad_companion,)
+    )
     assert not weakened, (
         "the derived bound fell BELOW the old floor: (key, bound, floor) "
         "%s -- re-taking may raise a floor and may never lower one" % (weakened,)
@@ -2600,7 +2723,8 @@ def test_the_new_guard_does_not_weaken_the_old_floors():
     ]
     print(
         "ok  test_the_new_guard_does_not_weaken_the_old_floors (%d floors still enforced, "
-        "%d of them above today's measurement)" % (len(GUARD_TABLE), len(pinned))
+        "%d of them above today's measurement, %d re-taken under a companion instrument)"
+        % (len(GUARD_TABLE), len(pinned), len(companion))
     )
     return
 

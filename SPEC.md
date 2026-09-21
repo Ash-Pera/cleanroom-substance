@@ -2021,7 +2021,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | warp | displace input 0 by the **gradient** of input 1, scaled `·W/ref·I` |
 | normal | `n = normalise(−gx·I·W/256, −gy·I·W/256, 1)`, `out = ½ + ½n`; `inversedy` negates `gy`. The reference is a **constant 256**, not the record's size: the engine's own exports give slope/gradient = 160.005 on a 2048-px Chesterfield export at `I` 10 and 9.397 on a 4096-px Rokviz export at `I` 0.25, against 160.000 and 9.405 predicted by a fixed 256 and 20.000 / 0.588 predicted by the record's width. Scale it by the record's own size instead and strength tracks the output resolution: at `$outputsize` 11 that takes Chesterfield's normal Z from 0.961 to 0.999 against the export's 0.966, its MAE from 0.0332 to 0.0650 and its fit slope from 0.764 to 5.432. The same regression run on a RENDER's own normal and height pair — no export in it — reproduces `K = (I/g)·(W/256)` at 10.000 / 20.001 / 40.000 / 80.000 for widths 128 / 256 / 512 / 1024 at correlation 1.000, and the ratio `K_ref/K_ours = R_ref/R_ours` holds to 0.4% on three graphs in two packages without knowing either pack's `I` or `g`. A residual on this channel is therefore its height input's: on Chesterfield `normal` and `height` fit the export at the same slope (0.764 against 0.762) and on `Bricks_and_tiles` they do again with the sign reversed (1.361 against 1.292) |
 | emboss | `base + k·(g₁(pos) − g₁(pos + (δ, −δ)))`, `δ = 0.005859375` |
-| distance | a distance field grown from the mask input (edge 0), `1 − d/R` clipped, `R` = `w1` field 1 (§13.4) in **pixels at 256**, baked or a program; a fallback locator remains for the records that name neither — mark every record it answers for. Radius unit and falloff are arbitrated: ×0.25 / ×0.5 / ×2 and exponents 2 / ½ all lose on every Bricks graph. A second edge that is a DIFFERENT record is a **source** (edge 1 is colour whenever the record is, 1,693 of 1,693 corpus two-edge records): the engine spreads the source's value from the nearest lit mask pixel across the field. Which combination it applies is open — `field` (source ignored), `nearest` (source × falloff) and `spread` (source flat to the radius; `combinedistance` is 0 in all 19 permitted sightings) are the candidates, and `spread` puts every Bricks graph's per-tile tilt and tile level and graph 001's height on the export while losing correlation to the export's per-tile random directions and 002's roughness level (§13.9). A source that is the mask record itself is no source |
+| distance | a distance field grown from the mask input (edge 0), `1 − d/R` clipped, `R` = `w1` field 1 (§13.4) in **pixels at 256**, baked or a program; a fallback locator remains for the records that name neither — mark every record it answers for. Radius unit and falloff are arbitrated: ×0.25 / ×0.5 / ×2 and exponents 2 / ½ all lose on every Bricks graph. A second edge that is a DIFFERENT record is a **source** (edge 1 is colour whenever the record is, 1,693 of 1,693 corpus two-edge records): the engine spreads the source's value from the nearest lit mask pixel across the field. The combination is **`spread`** — the source's value flat out to the radius, `combinedistance = 0`, which every one of the 19 permitted sightings declares: on the companion instruments it puts every Bricks graph's per-tile tilt and level, the pillow profile and the tile-scale octaves on the export where `field` (source ignored) has none of them, and what it loses is correlation to the export's per-tile random directions and the mid octaves a dead noise chain owns (§13.9). `nearest` (source × falloff) darkens the pillow's edge 0.06 below the export; `field` is the reading before. A source that is the mask record itself is no source |
 | vectorshape | filter 5, a generator: the embedded triangle strip (§9, `vector_shape` / `vector_faces` — joins and part boundaries dropped) rasterised as a mask, 1.0 where a triangle covers a pixel centre, 0.0 elsewhere; no parameter is read (the class-bit-25 float is 1.0 on every record checked) |
 | pixelprocessor | the program at the **last header slot**, evaluated per pixel; earlier slots are inherited parameters and setup, run first to seed the slot frame. Inside a **canvas-sized** pixel processor (declared size = `2^$outputsize`) `$size`, `$pos` AND `$outputsize` all describe the grid the record is drawn on: a program that derives its texel from `$outputsize` (`0.5 / 2^os` — Bricks' flood-fill seed, RoofTiles' height-to-normal) is otherwise told the export size and on a capped grid its neighbour tap is a fraction of a pixel, no edge is found, and the machine emits constants. A record pinned to its own size (Chesterfield's 2048 × 16 HBAO LUT) reads the render's `$outputsize`, which it uses to turn a per-pixel slope into a per-canvas one. A slot the frame never set reads as 0 (an accumulator's initial value; Onyx 1470). A `sample` of an input past the wired arity whose every use is multiplied by a constant 0 is bound to zeros — its binding cannot change the output (SandyStonePath 177, 995 records behind it); a LIVE read of an unwired input refuses |
 | fxmaps | §13.7 |
@@ -2402,12 +2402,23 @@ Two more instruments and a rule, added after the eleven readings below were deci
 `test_render2_reference_agreement_does_not_regress`, per row on corr, band and dc at 128 /
 256 / 512, against bounds taken when the row was first scored — and the old reading is
 kept as a named arm. Per-pack mean correlation is not the ratchet: it hid the loss of a
-whole AO channel (Chesterfield's, band 0.0007) behind +0.887. Under that rule these
-nineteen readings are the defaults, each with the section that arbitrated it in
-FORMAT-NOTES.md: `transformation.matrix = columns`; `pixelprocessor.outputsize = grid` for
-canvas-sized records; `warp.default_intensity = 1.0`, `normal.default_intensity = 1.0`,
-`blur.default_intensity = 10.0`, `dirmotionblur.default_intensity = 10.0`,
-`nonfinite.fill = 0.0` (§13.8); `fx.leafcount = header` (§13.7 — a corpus-wide structural
+whole AO channel (Chesterfield's, band 0.0007) behind +0.887. **A correlation floor may
+be re-taken lower under a companion instrument** (`refguard.Entry.companion`): a
+seed-free measurement of the same channel that a per-cell random draw in the picture
+cannot move — Bricks' per-tile tilt and level, the pillow profile, the band power in the
+octaves the reading acts on — guarded by its own test (`COMPANION_INSTRUMENTS`), with
+the replaced bound kept as history; the correlation is still ratcheted from the re-taken
+value. Under that rule these twenty readings are the defaults, each with the section that
+arbitrated it in FORMAT-NOTES.md: `transformation.matrix = columns`;
+`pixelprocessor.outputsize = grid` for canvas-sized records; `warp.default_intensity =
+1.0`, `normal.default_intensity = 1.0`, `blur.default_intensity = 10.0`,
+`dirmotionblur.default_intensity = 10.0`, `nonfinite.fill = 0.0` (§13.8);
+`distance.propagate = spread` (§13.6; on the companion instruments — per-tile level 0.58
+against the export's 0.62 where `field` reads 0.83, tilt 0.21 against 0.23 where `field`
+reads 0.05, the pillow's edge 0.459 against 0.457, the band at 1–8 cycles 0.9–1.6 of the
+export's on all four graphs where `field` reads 0.05–0.12 — and 33 Bricks correlation
+floors re-taken under it, the loss being the Flood Fill to Gradient's per-tile random
+direction); `fx.leafcount = header` (§13.7 — a corpus-wide structural
 reading, bit-identical on Bricks, RoofTiles band 1.36 → 1.39); `fx.header = read`
 (RoofTiles +0.441 → +0.491, its roughness −0.03 → +0.26 with the dc 0.151 → 0.060; Bricks
 +0.674 → +0.675, its 256-px objection of an earlier session was the grid's, and it passes
@@ -2416,8 +2427,9 @@ the ratchet now); and the eight Bricks readings the graph-001 sections verified 
 `pixelprocessor.sample = nearest`, `fx.brick = fill`, `fx.negopacity = signed`,
 `fx.combine = bit18`, `fx.hurst = exp` — which pass alone and together (`tree` needs `lazy`:
 alone it turns 10081's row-start count into 2³¹ − 1). Refused by the same rule and kept as
-arms: `distance.propagate = spread` (level right, line power and 002's roughness wrong),
-`fx.subdivide = tree` (one record, 708, whose Quadrant leaves emit sparsely under a 0.29
-step), `blur.subpixel = fractional` (within 0.004 of the defaults at native, worse at
-256) and `fx.gridnamed = branchoffset` (inert on every pack: the leaf-only chains that
+arms: `distance.propagate = field` (the reading before `spread`: tiles a third of the way
+to white, no per-tile tone), `fx.subdivide = tree` (one record, 708, whose Quadrant
+leaves emit sparsely under a 0.29 step; and at native its noise is blotches where the
+export has grain), `blur.subpixel = fractional` (within 0.004 of the defaults at native,
+worse at 256) and `fx.gridnamed = branchoffset` (inert on every pack: the leaf-only chains that
 spell a grid in their entry's `branchoffset` program take the leaf's count instead).

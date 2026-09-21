@@ -1302,7 +1302,7 @@ def f_distance(ctx, v):
     payload = next(
         (e for k, e in enumerate(v.inputs) if k != mask_edge and e in ctx.outputs), None
     )
-    prop = assume.assumed("distance.propagate", "field")
+    prop = assume.assumed("distance.propagate", "spread")
     if prop == "flag":
         # WORD 1 BIT 1 AS `combinedistance`. Over 2,277 corpus distance records word 1 is
         # 5 / 9 / 21 (two edges, bit 1 clear) on 1,552, 6 / 10 (one edge, bit 1 set) on
