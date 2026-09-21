@@ -61269,9 +61269,10 @@ The tree arm by octave (Bricks heights, ours / export power, 256 grid, `spread`)
 
 The arm adds power at 1-8 cycles -- four to twelve times the export's on 002 -- and
 none at 16-128 where the export's mottle is: the noise it draws is right in kind and
-about eight times too coarse. The per-tile instruments under it: 002 tilt 0.238 ->
-0.229, level 0.590 -> 0.593; 005 0.221 -> 0.234 / 0.598 -> 0.605 -- unmoved, as they
-should be. Scaling the subdivided cells' pattern SIZE alone (an experiment, x0.25 and
+about eight times too coarse. The per-tile instruments under it move the wrong way:
+tile level 002 0.590 -> 0.485, 003 0.537 -> 0.436, 004 0.593 -> 0.511, 005 0.598 ->
+0.512 (the export 0.59-0.64) -- the coarse blotches darken whole tiles, which is the
+companion guard refusing the arm on its own terms. Scaling the subdivided cells' pattern SIZE alone (an experiment, x0.25 and
 x0.0625, withdrawn) moves the power up the octaves and takes the tile-scale power with
 it (1-4 cycles 0.02 -- the strokes stop covering, the tone chain dies). So the scale is
 not the stroke's size by itself: the construct's coverage and its scale are one number
