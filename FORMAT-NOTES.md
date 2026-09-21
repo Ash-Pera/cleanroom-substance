@@ -61006,3 +61006,22 @@ What 35 draws is six patterns -- two 0x1A3 rows of 3, the row iterates at 1 -- f
 tile counts the switch writes off a prologue that reads only `$outputsize` and one
 graph input at 0. A three-stone wall is not what an author exports; which input is the
 count and what its default means is open, and there is no picture for the file.
+
+## Where Bricks' grain goes: the eight warps on 002's height read a driver that is flat under the flat subdivision arm, and a low-frequency cloud under the tree arm
+
+Looking for the grain the export's bevelled tiles carry and neither `distance` arm draws:
+002's height (8072) is eight `warp`s (8011..8023, intensity 0.002) whose driver 7961 is a
+blend of two `dirmotionblur` ladders over 7952, a `levels` of blends of three FX-Maps --
+7945 (`background` 1.0, `hurst` 0.66, `opacitymult` 0.44), 7947 and 7950 (the same
+without the background). Under the defaults 7945 is 0.000 flat and 7947 / 7950 are
+1.000 flat (the 9806 structure: the -1 strokes cover the white canvas), so 7961 is 0
+and the warps displace nothing: the tiles are flat where the export has grain. This is
+the SandyStonePath 34 / 36 / 39 structure again, and Auras' warp driver too -- three
+packs, one construct, one dead reading.
+
+Under `fx.subdivide=tree` the three are Clouds-like fields (7945 mean 0.52 sd 0.16,
+7947 0.19 / 0.14) and 7961 is a cloud mask (0.11 / 0.17); the height gains dark blotches
+at the cloud's scale where the export has fine grain (`/tmp/b002_tree.png` while it
+lasts). So the arm brings the driver to life at the wrong scale -- the Quadrant nesting's
+size per depth, the 708 question -- and the grain is behind that, not behind
+`distance`. Recorded; not flipped (the tree arm is refused on 708).
