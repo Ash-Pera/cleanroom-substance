@@ -61091,3 +61091,20 @@ is finer than 2^-(d-1) below the first bare cells -- the "(5.0, 1.0) family" que
 now with a picture that says which way: finer. Not changed; a per-depth size reading
 needs the RoofTiles shingle record (606) or 9806 to be measured against, and the
 instrument for that is the next thing to build.
+
+## The (5, 1) strokes are not pixels: read as 5 x 1 px of the record, 80 of them leave a 64-px canvas white
+
+The one reading under which the Clouds-2 chain's three records (64 / 128 / 256 px, the
+same (5, 1) strokes) would be three octaves -- a baked `patternsize` in PIXELS of the
+declared size -- was tried as an arm on the tree walk: 7945 renders 0.996 (sd 0.016),
+7947 and 7950 0.006 / 0.007; eighty 5-px strokes do not dent a white canvas, and the
+levels 0.333 cut then passes 0.974 of it. Refuted by coverage: 80 strokes that are to
+cover a canvas must be ~0.6 x 0.13 of it, which is what REGION units give. So the
+octaves are at one scale under the only size reading that covers, and what makes the
+export's grain finer than ours is not the stroke size. The arm is withdrawn.
+
+WHAT THE WARPS DO WITH IT. 002's height passes through eight `warp`s of intensity
+0.002 driven by this cloud. At 256 that is a sub-pixel displacement; at 1024 it is
+2-3 px of edge wobble and the fine relief the export's tiles carry -- the "grain" may
+be the warps' doing at native rather than a finer octave, which is the next picture to
+take: 002's height at 1024 under the tree arm against the export, tile by tile.
