@@ -60964,3 +60964,28 @@ withdrawn unused rather than left as a mechanism with no instrument set to apply
 The rule that comes out of this: a companion re-take needs EVERY seed-free instrument
 on the row to agree or hold, not one of them -- the band is the one that would have
 been overridden here, and it was right to object.
+
+## The fifth sweep: 92.9% of the corpus renders at bare defaults; what is left is images the package does not ship, unwired inputs an FX-Map samples, and sub-pixel tile samplers at 64 px
+
+All 437 files, 64 px, bare defaults, at `f76441e` (leaf count, entry bit 7, `fx.header`,
+`blur` 10.0, sibling-write batching, the per-pixel budget): 839,317 of 903,616 records
+(92.9%; 89.9% at the third sweep). Roots by records:
+
+    486   bitmap        a graph image input the package does not ship   (inherent)
+    175   fxmaps        "no sampler for input k": an entry program samples an unwired edge
+    104   fxmaps        sub-pixel at this grid (144 .. 1,024 patterns a pixel at 64 px;
+                        every one drawable at 256)
+     12   curve         no readable spline
+     10   transformation   offset program not 2-wide
+      8   pixelprocessor   a (4096, ...) broadcast error
+      7   fxmaps        numberadded 9,443,329 / 16,777,216 (over 2^23)
+      5   filter9       unnamed, version-2 files only
+      5   fxmaps        emitted no patterns and no gate closed
+      8   fxmaps        no emittable entries (two shapes)
+      3   fxmaps        node header 0x1db not modelled (list walk)
+      8   pixelprocessor   unwired-input samples and a cache read before its write
+
+The `blur` class (137 records, 81 files at the third sweep) is gone. The largest
+non-inherent root is now the FX-Map that samples an unwired edge -- `annihilated_samplers`
+covers the pixel processor's version of this and not the FX-Map's -- then the sub-pixel
+class, which is a property of the 64-px sweep and not of the files.
