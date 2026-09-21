@@ -61385,3 +61385,35 @@ at 0.0. Auras' two are the 0.0 kind, and its own author's screenshot renders the
 unshifted. Two files, two conventions, no record word yet found that separates them
 (the `0x0a42xxxx` class word is 0x55 on Auras' and 0x44 on Chesterfield's, on records
 of two different graphs of two different sizes; not a reading, a lead). Open.
+
+## The tree arm under `fx.hurst = pow` puts Bricks' mottle in the right octaves -- and does it by killing the `hurst` 0.0 records, not by weighting the Clouds octaves
+
+Octave bands, ours / export, heights at 512 (256 grid), the arm on top of the defaults:
+
+    002          1-4    4-8    8-16   16-32  32-64  64-128        005    1-4   8-16  16-32  32-64
+    defaults    0.33   1.07   0.68   0.43   0.24   0.16                 0.95  0.38  0.21   0.19
+    tree, exp   3.87   1.85   0.55   0.28   0.16   0.13                 1.37  0.37  0.13   0.11
+    tree, off   6.00   1.63   0.43   0.26   0.15   0.13                 2.41  0.36  0.14   0.11
+    tree, pow   0.53   1.55   1.02   0.71   0.40   0.20                 1.22  0.62  0.41   0.31
+
+Under `pow` the mid octaves come up (16-32: 0.43 -> 0.71 on 002, 0.21 -> 0.41 on 005)
+without the low-octave blow-up `exp` and `off` bring, the per-tile level lands 0.66
+against the export's 0.64 (`spread` alone 0.59), the tilt 0.29 / 0.21 / 0.23 / 0.24
+against 0.26 / 0.20 / 0.23 / 0.23, and Bricks' 48 rows move +0.579 -> +0.596 on corr,
+0.90 -> 1.13 on band and 0.044 -> 0.039 on |dc| -- the first arm to move all three the
+right way. The pictures agree (`/tmp/bricks_treepow.png`): 003's bricks take a tone
+each and a grunge, 002's tiles a mottle, 005's field the export's mottling.
+
+BUT THE MECHANISM IS NOT THE GAIN. `exp` is 2^(-0.66 d) = 0.633 a level and `pow` is
+0.66 a level -- indistinguishable on the Clouds records (7945: 0.520 against 0.470).
+What `pow` changes is the records that bake `hurst` 0.0: 0^d is 0 at every depth past
+the root, so 8025 (the record behind 8031's `directionalwarp` at intensity 100 and the
+blotch chain 8042 at 0.12) draws its root patterns only. The mottle improves because a
+wrong chain is switched off, which is not a reading of the file; and the same arm
+washes RoofTiles out (roughness band 1.24 -> 0.74, corr +0.50 -> +0.44; its shingle
+splat 606 -- `opacitymult` 53.8, `hurst` 0.18 -- saturates to shapes that flatten
+three outputs, `/tmp/roof_treepow.png`) and collapses SandyStonePath's band (0.56 ->
+0.11). Not flipped. Two things it names: 8025's chain is wrong under every arm that
+draws it, and `opacitymult` at 53.8 and 10.7 (Clouds_3's) is not an opacity multiplier
+in the 0..1 sense this renderer applies -- an FX-Map header field whose meaning is open
+and whose misreading is what the tree arm does to RoofTiles.
