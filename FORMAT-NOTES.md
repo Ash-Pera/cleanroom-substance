@@ -61053,3 +61053,23 @@ Chesterfield move away, and SandyStonePath's detail vanishes (band 0.50 -> 0.09)
 arm, two directions: the reading is right in kind on the Clouds construct and wrong in
 scale or amplitude somewhere the packs disagree about. Refused as before; what would
 decide it is the per-depth size convention measured on RoofTiles' own tiles.
+
+## RoofTiles under the tree arm, record by record, and its basecolor tint
+
+Looking at the 75 RoofTiles FX-Maps the tree arm changes (`/tmp/roof_subdiv.png` while
+it lasts): 498 is Clouds 1 -- a root over seven sizeless cells whose opacity program is
+`max(1 - rand(2), 0)`, so under the arm every depth 1..7 draws its 4^d discs at region
+size with a mean opacity 0.25 and the `hurst` 0.7 gain; the flat arm draws ONE disc.
+400 / 401 / 402 are the Clouds-2 octaves Bricks has (means 0.062 / 0.192 / 0.521, the
+same three numbers). 606 (`opacitymult` 53.8, `patternsuppl` 0.84) is a shingle-shape
+splat under the arm and black under the flat one. Per row the arm moves RoofTiles both
+ways at 256: basecolor ch2 +0.29 -> +0.49 and normal ch2 band 0.54 -> 1.01 toward the
+export, roughness +0.26 -> +0.09 with its band 1.36 -> 0.17 away from it; `fx.combine`
+and `fx.hurst` variants under the arm move the pack by 0.005. Still refused.
+
+The basecolor tint: ours (0.239, 0.300, 0.320), the export (0.208, 0.321, 0.372) --
+ours is warmer. The chain's colour is right at 2232 (0.254, 0.332, 0.369); 2234 then
+blends the tan 2233 (0.533, 0.462, 0.374) through mask 1102 (mean 0.246) at 0.83, and
+that is the warmth. 1102 is `levels` of a blend whose second input 1100 is flat 1.0 off
+a chain (1044 .. 1093, 911) of flat records that the subdivision arm would change --
+so the tint too sits behind the arm.
