@@ -61025,3 +61025,31 @@ at the cloud's scale where the export has fine grain (`/tmp/b002_tree.png` while
 lasts). So the arm brings the driver to life at the wrong scale -- the Quadrant nesting's
 size per depth, the 708 question -- and the grain is behind that, not behind
 `distance`. Recorded; not flipped (the tree arm is refused on 708).
+
+## The tree subdivision arm today: the Clouds-2 octaves come alive and read as a noise, RoofTiles improves, Bricks / Chesterfield / SandyStonePath lose -- refused, with the pictures
+
+Bricks 7945 / 7947 / 7950 under `fx.subdivide=tree` are three octaves of one construct
+(a 64-, 128- and 256-px record, each a root cell over two bare cells over two stroke
+cells of `patternsize` (5, 1) at `opacity` -1 -- 16 + 64 strokes at depths 2 and 3 on a
+white canvas), blended up through transformations: Clouds 2, octave by octave, and the
+pictures read as one (`/tmp/b002_noise.png` while it lasts: a coarse 64-px web, a finer
+128-px web, a 256-px one, the `levels` 0.333 cut turning the sum into a blotch mask).
+So the tree arm's draw of the (5, 1) family is at least a noise where the flat arm's is
+a flat 0 / flat 1.
+
+The ratchet under the arm, all packs at 256 (defaults in brackets):
+
+    Auras            +0.872 / 7.32 / 0.139   (same)
+    Bricks           +0.640 / 1.73 / 0.062   (+0.675 / 1.58 / 0.065)   FAIL: 004 / 005 dc,
+                                                                        band and corr
+    RoofTiles        +0.520 / 1.04 / 0.064   (+0.491 / 1.39 / 0.030)   better on corr and
+                                                                        band, dc worse
+    Chesterfield     +0.885 / 1.01 / 0.018   (+0.920 / 0.96 / 0.024)
+    SandyStonePath   +0.029 / 0.09 / 0.026   (+0.021 / 0.50 / 0.022)   band collapses
+
+RoofTiles, whose layout IS a subdivided record, moves toward the export (its roughness
+and height look closer under the arm, `/tmp/roof_tree.png`); Bricks 004 / 005 and
+Chesterfield move away, and SandyStonePath's detail vanishes (band 0.50 -> 0.09). One
+arm, two directions: the reading is right in kind on the Clouds construct and wrong in
+scale or amplitude somewhere the packs disagree about. Refused as before; what would
+decide it is the per-depth size convention measured on RoofTiles' own tiles.
