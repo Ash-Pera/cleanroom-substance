@@ -61766,3 +61766,57 @@ rows, and the arm stays refused on it. What would move RoofTiles' grain is upstr
 the noise: the adds of a black `uniform` (1067-1089) are either the node default
 (black, one ground truth: Rokviz 8's metallic) or a fill this file states somewhere the
 walk does not read, and no source for RoofTiles is on disk.
+
+## Under `max` the tree arm's Bricks objection is gone: `fx.subdivide = quadrant` now lifts all four Bricks graphs, and what refuses it is RoofTiles' shingle record 606 and Chesterfield's blue
+
+Looking at Bricks 003 at 512 (`/tmp/bricks003.png`): ours carries three faint circles
+~0.35 of the canvas across on basecolor, roughness and height where the export has
+per-brick chips. Traced: 724 = screen(714, 723), 714 the warp of `distance` 712 of a
+threshold (709 / 710) on fxmaps 708 -- the record the tree-arm refusal named -- and 708
+under the flat walk is ONE gaussian of `patternsize` 2 (a root Quadrant with a
+`branchoffset`, four nested `0x420008` cells, a leaf with `opacity = rand`), so the
+threshold cuts three discs out of its tail. Under `fx.subdivide = quadrant` it is 256
+gaussians of 1/8 canvas with random opacity, the threshold cuts chips, and the
+picture is the export's kind (`/tmp/bricks003_q.png`: pits on the bricks, the rings
+gone, roughness at the export's level). Per record on graph 003 at 128 (`isolate_fx`):
+708 alone moves every row the right way (roughness +0.46 -> +0.48, height dc -0.053 ->
+-0.037, AO +0.51 -> +0.52); 12347 / 12350 take roughness corr +0.46 -> +0.42 with its
+dc -0.151 -> -0.058; the other sixteen Quadrant records in the cone are inert.
+
+On the packs at 256, `quadrant` against the defaults (`/tmp/packs_quad_all.log`):
+
+    Bricks         +0.577 / 0.95 / 0.039  ->  +0.610 / 0.88 / 0.016
+        001  +0.123 -> +0.122   002  +0.604 -> +0.650   003  +0.764 -> +0.772
+        004  +0.663 -> +0.711   005  +0.701 -> +0.762   (|dc| halves on each)
+    Chesterfield   +0.923 / 1.09 / 0.024  ->  +0.876 / 1.15 / 0.020
+    RoofTiles      +0.536 / 1.26 / 0.032  ->  +0.481 / 1.34 / 0.021
+    Auras, Sandy   identical / within 0.005
+
+Before `max` the same arm read Bricks +0.523: the gaussian overlaps summed. So the
+Bricks side of the subdivision question is answered by the combine, not by the octave
+weights, and the arm is now refused by two other packs:
+
+Chesterfield: basecolor ch0 dc -0.097 -> +0.017 (the red level, an open item, is 321 --
+a Quadrant record flat 0 under the walk, so 869's gradient is 0.38 and the multiply at
+871 darkens everything 12%; alive it is 0.84 with a mottle sd 0.21 that the export's
+roughness and basecolor carry -- `/tmp/chest_cmp.png`, flat / quadrant / export) but
+ch2 corr +0.825 -> +0.365: blue in the export is 0.185 sd 0.051, the buttons (corr 0.93
+with green), and the mottle at ours' amplitude and placement lands on it. Its placement
+is `rand`'s and cannot correlate; its amplitude can be instrumented (band 0.20 -> 0.38
+against the export's 1.0 -- still a factor of 2.6 short in power, so the mottle in ours
+is too weak, not too strong, and the corr loss is the placement's).
+
+RoofTiles: basecolor ch1 +0.614 -> +0.482, ch2 +0.444 -> +0.167 -- the picture
+(`/tmp/roof_qcmp.png`) says why: the shingles become small light squares on dark. 606
+is three bare `0x20008` cells over three pattern cells (`0x34520a48` x 2 with pointers,
+`0x34500a48` the leaf; `branchoffset` (-2.29, -4.44), `patternsize` (1.92, 5.49),
+opacity -0.886, `patternsuppl` 0.84) -- offsets and sizes in some cell unit of the
+14 x 9 grid the graph inputs state; under the flat walk three huge patterns, under the
+tree 342 with centres at 3.4 / 2.9 canvases and sizes 0.26 -- neither is 126 shingles,
+and the shingles the default picture shows come from elsewhere in the chain. The unit
+of a cell that draws AND subdivides is the next thing to read; it is the same unit
+question as the perlin lattice (678 / 680) and Auras 391.
+
+NOT FLIPPED: the ratchet would refuse on Chesterfield ch2 and RoofTiles ch1 / ch2, and
+the companion rule needs the corr loss shown rand-driven -- true of Chesterfield's
+blue by the argument above, not of RoofTiles' squares, which are a wrong drawing.
