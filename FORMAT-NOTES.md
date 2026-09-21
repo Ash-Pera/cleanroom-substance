@@ -61218,3 +61218,33 @@ pass; the 47 fast tests pass.
 SPEC §13.6 (the distance row), §13.9 (the rule for a default, the defaults list) updated.
 What `spread` leaves: the plateau 0.055 low (the per-tile greys' mean), the mid-octave
 mottle (the subdivision arm's scale), and the corr rows, which now measure the seed.
+
+## Graph 001's stones never existed because a blur's intensity is in pixels at 256, not at the record: `blur.reference_px = 256` is the default, and the Flood Fill lives at native
+
+Looking at graph 001 at 1024 after the `spread` flip: a regular grid of rectangles with
+a vignette across them, where the export has rounded stones with a tone each and cracks.
+Walked from the flood fill (10253, flat 0.779 at 1024 -- the one cell it found is the
+canvas) back to its mask: `levels` 10174 flat 1.0, its outline chain 10165 / 10166 /
+10167 (`|x - blur(x)|`, SandyStonePath 13-15's construct) flat 0, because the blur 10164
+was the identity. Its intensity is the program `256 / min($size)` = 0.25 at 1024, and
+`_reference_px` reads the RECORD's width, so the radius was 0.25 / 1024 of the canvas: a
+quarter of a pixel at native, and "alive at 256 / os 8" only because there the record
+IS 256. That idiom is an author's "one pixel whatever the size", which it is under a
+fixed 256 (0.25 / 256 x 1024 = 1 px) and under nothing else; the earlier session's
+`pixelprocessor.outputsize` diagnosis of this graph named the seed pass's texel and
+missed that its mask was already white.
+
+Tried first and refused: `pixelprocessor.outputsize = own` (a non-canvas record reads
+its own size) -- 10253 is canvas-sized at os 10 anyway (its tag's 256 is at os 8), and
+the arm flattens Chesterfield's AO (band 0.0007), whose mip pyramid and LUT read the
+graph's. Kept as an arm. Then `warp.reference_px = 256.0` for every filter: graph 001
+lives (10253 sd 0.305) but Chesterfield's AO flattens again -- its Blur HQ is four
+`dirmotionblur` passes baked 3.3, which at 2048 become 26 px each under a fixed 256 and
+smooth the height the HBAO reads. So the scale is per filter: `blur.reference_px`
+(256 | record | 128 | 512), the blur alone, `warp` / `dirmotionblur` / `directionalwarp`
+keeping the record reading under `warp.reference_px`. Ratchet, floor and companion
+tests pass; Auras, RoofTiles, Chesterfield, SandyStonePath and Bricks 002-005 are
+bit-identical; graph 001's nine rows score for the first time (corr +0.12 -- the
+rand-driven row heights -- band 0.62, |dc| 0.032) and its picture is the export's
+construct: rounded stones, a tone each, cracks, bevelled AO (`/tmp/b001_native2.png`
+while it lasts). SPEC §13.6 (blur), §13.9 updated.

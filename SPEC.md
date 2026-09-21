@@ -2014,7 +2014,7 @@ a fixed 256). Sampling is bilinear and **wrap-tiled** throughout; `pos` is pixel
 | curve | a cubic-Bezier transfer curve, sampled to a lookup |
 | gradient / dyngradient | a ramp indexed by the input's channel 0; `dyngradient`'s ramp is a second input's long axis |
 | hsl | RGB → HSL, then `hue += h − ½` (mod 1), `sat ← clip(sat·2s)`, `lum ← clip(lum + lu − ½)`, back to RGB; each of the three defaults to ½, which is the neutral value — so an unnamed parameter here is silently an identity |
-| blur | separable box, radius `clip(\|I\|,0,256)/ref · max(W,H)` px. **Sub-pixel is NOT an identity where the record is an edge detector**: a `256/min($size)` blur whose consumer computes `\|blur − x\|` has its whole signal in the fractional radius (`blur.subpixel`). Likewise the `brick` pattern profile's 85% inset swallows a 2-px mortar at 256 (`fx.brick`) |
+| blur | separable box, radius `clip(\|I\|,0,256)/256 · max(W,H)` px — the intensity is in **pixels at 256 whatever the record's size** (`blur.reference_px = 256`; `record`, the record's own width, is the reading before and stays what `warp` / `dirmotionblur` / `directionalwarp` use). The `256/min($size)` idiom says so: it is "one pixel at any size" only under a fixed 256, and under the record's width it is a quarter-pixel no-op at 1024 — Bricks graph 001's outline `\|x − blur(x)\|` (10164) was zero, its Flood Fill saw one cell, and its stones never existed (10253 flat at native; sd 0.305 now). **Sub-pixel is NOT an identity where the record is an edge detector** (`blur.subpixel`), and at a capped grid that idiom is sub-pixel again. Likewise the `brick` pattern profile's 85% inset swallows a 2-px mortar at 256 (`fx.brick`) |
 | sharpen | `src + amount·(src − box₁)`; `amount` = `intensity`, absent ⇒ 1. Read the baked arm only and a stated 0 (6 corpus records) is indistinguishable from an absent one |
 | dirmotionblur | 17 taps over ±L/2 along `2π·mblurangle`, `L = clip(\|I\|,0,256)/ref · 10` |
 | directionalwarp | displace input 0 by `(2·h − 1)·I/ref` along `2π·warpangle`, `h` = input 1 |
@@ -2408,12 +2408,14 @@ seed-free measurement of the same channel that a per-cell random draw in the pic
 cannot move — Bricks' per-tile tilt and level, the pillow profile, the band power in the
 octaves the reading acts on — guarded by its own test (`COMPANION_INSTRUMENTS`), with
 the replaced bound kept as history; the correlation is still ratcheted from the re-taken
-value. Under that rule these twenty readings are the defaults, each with the section that
+value. Under that rule these twenty-one readings are the defaults, each with the section that
 arbitrated it in FORMAT-NOTES.md: `transformation.matrix = columns`;
 `pixelprocessor.outputsize = grid` for canvas-sized records; `warp.default_intensity =
 1.0`, `normal.default_intensity = 1.0`, `blur.default_intensity = 10.0`,
 `dirmotionblur.default_intensity = 10.0`, `nonfinite.fill = 0.0` (§13.8);
-`distance.propagate = spread` (§13.6; on the companion instruments — per-tile level 0.58
+`blur.reference_px = 256` (§13.6: graph 001's stones exist under it and under nothing
+else; the ratchet passes, the other four packs are bit-identical, and its nine rows are
+scored for the first time); `distance.propagate = spread` (§13.6; on the companion instruments — per-tile level 0.58
 against the export's 0.62 where `field` reads 0.83, tilt 0.21 against 0.23 where `field`
 reads 0.05, the pillow's edge 0.459 against 0.457, the band at 1–8 cycles 0.9–1.6 of the
 export's on all four graphs where `field` reads 0.05–0.12 — and 33 Bricks correlation

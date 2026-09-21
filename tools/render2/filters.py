@@ -455,16 +455,24 @@ def f_pixelprocessor(ctx, v):
         # flattened the pack's AO (band 0.0007, dc +0.11 on the ratchet). The record's
         # declared size against the render's `$outputsize` is the test; a canvas-sized
         # record is one whose size IS `2^$outputsize`.
+        # `own` (an arm, refused): a non-canvas record's programs read log2 of its OWN
+        # size, the engine's per-node `$outputsize`. It flattens Chesterfield's AO (band
+        # 0.0007): the HBAO's mip pyramid (64 -> 1 px) and its 2048 x 16 LUT read
+        # `$outputsize` to mean the GRAPH's, as `grid` gives them. And it was not what
+        # graph 001's flood fill needed (`blur.reference_px` was).
         gi = None
-        if (
-            assume.assumed("pixelprocessor.outputsize", "grid") == "grid"
-            and ctx._os_uid is not None
-            and ctx.outputsize is not None
-            and (v.width, v.height)
-            == (2 ** int(ctx.outputsize[0]), 2 ** int(ctx.outputsize[1]))
-        ):
-            gi = {ctx._os_uid: (math.log2(W), math.log2(H))}
-            assume.note(v.index)
+        mode = assume.assumed("pixelprocessor.outputsize", "grid")
+        if mode in ("grid", "own") and ctx._os_uid is not None and ctx.outputsize is not None:
+            canvas = (v.width, v.height) == (
+                2 ** int(ctx.outputsize[0]),
+                2 ** int(ctx.outputsize[1]),
+            )
+            if canvas:
+                gi = {ctx._os_uid: (math.log2(W), math.log2(H))}
+                assume.note(v.index)
+            elif mode == "own" and v.width and v.height:
+                gi = {ctx._os_uid: (math.log2(v.width), math.log2(v.height))}
+                assume.note(v.index)
         for p in progs:
             if p != main:
                 try:
@@ -899,7 +907,19 @@ def f_blur(ctx, v):
             raise Unsupported("blur intensity program does not evaluate to a scalar")
         intensity = float(got[0])
     src = to_image(ctx.sample(v, 0, pos), N, H, W)
-    radius = float(np.clip(abs(intensity), 0.0, 256.0)) / _reference_px(v)
+    # THE BLUR'S PIXEL SCALE IS A FIXED 256, under `blur.reference_px`. Bricks graph 001's
+    # outline is `|x - blur(x)|` with the blur's intensity `256 / min($size)` (10164): an
+    # author's idiom for "one pixel whatever the size", which it is only if the intensity
+    # is in pixels AT 256 -- under the record's own width it is a quarter-pixel at 1024,
+    # the difference is zero, the mask is white, the Flood Fill sees one cell, and graph
+    # 001's stones never existed (10253 flat 0.779 at native; sd 0.305 under this). The
+    # directional blur keeps the record reading: Chesterfield's Blur HQ (3.3 baked, four
+    # passes at 2048) flattens the AO's height under a fixed 256 (band 0.0007).
+    if assume.assumed("blur.reference_px", 256.0) == "record":
+        ref_px = _reference_px(v)
+    else:
+        ref_px = float(assume.assumed("blur.reference_px", 256.0))
+    radius = float(np.clip(abs(intensity), 0.0, 256.0)) / ref_px
     rfl = radius * max(W, H)
     rpx = int(round(rfl))
     if rpx < 1:

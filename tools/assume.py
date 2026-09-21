@@ -12,6 +12,11 @@ import contextlib
 # Empty tuples identify free-form values; other entries list the candidates a scope may use.
 QUESTIONS = {
     "blur.intensity": ("program", "slot3"),
+    # THE PIXEL SCALE OF `blur`'S INTENSITY: 256 fixed (the `256 / min($size)` idiom is
+    # "one pixel at any size" only under this; Bricks graph 001's flood fill lives on it)
+    # or `record`, the record's own width, which `warp` / `dirmotionblur` / `directionalwarp`
+    # keep (`warp.reference_px`; Chesterfield's Blur HQ passes flatten the AO otherwise).
+    "blur.reference_px": (256.0, "record", 128.0, 512.0),
     "warp.reference_px": (
         "record",
         256.0,
@@ -513,7 +518,11 @@ QUESTIONS = {
     # the export size it is the difference between a live flood fill / height-to-normal
     # and a constant: RoofTiles' normal 0.00 -> +0.31/+0.73/+0.39, Chesterfield +0.002,
     # Auras and Bricks 002-005 identical, at 256 px under the implied `$outputsize`.
-    "pixelprocessor.outputsize": ("grid", "render"),
+    # `own` (refused): a non-canvas record's programs read log2 of the record's OWN size,
+    # the engine's per-node `$outputsize`; it flattens Chesterfield's AO, whose mip
+    # pyramid and LUT read the graph's. `grid` gives non-canvas records the render's;
+    # `render` gives everything the render's.
+    "pixelprocessor.outputsize": ("grid", "own", "render"),
     # WHAT A PIXEL PROGRAM READS FROM A SLOT NOTHING SET. `zero`: 0.0, the engine's
     # unset variable, after the record's own programs have seeded the frame. `refuse`:
     # the "slot N read but never set" refusal, which found the slot-frame model and is
