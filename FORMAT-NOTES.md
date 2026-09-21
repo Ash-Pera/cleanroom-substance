@@ -61132,3 +61132,44 @@ the bevel's profile (13.86-px `distance` then `levels`), which the ratchet's ban
 as `nearest` 0.61 against `field` 0.50 at native. The pictures say `nearest` + a
 weaker ramp; the number that would confirm it is the band under `nearest` with 2713's
 weight halved, which is the next thing to measure.
+
+## The band's objection to `spread`, decomposed by octave: `spread` has the tile-scale power right where `field` has a tenth of it, and lacks the mottle octaves where `field` has ridges
+
+The pillow profile first (height against distance into the tile, the tile mask's EDT,
+graph 002): at 1024 the export rolls 0.457 at the edge to a 0.645 plateau over ~18 px;
+`spread` 0.459 -> 0.593 over the same 18 px, `nearest` 0.393 -> 0.589, `field` 0.80 ->
+0.845. The roll-off is the mortar's 13.86-px distance, present under every arm; what
+the arm sets is the edge value (`spread` exact, `nearest` 0.06 dark) and the plateau
+(both 0.055 low -- the per-tile greys' mean, a hash's). So the pillow is not the cone's,
+and the previous section's "nearest has the pillow" was the ramp's contrast read as a
+rim. `spread` is the profile's reading.
+
+Then the band, per octave, ours / export power, heights, native render:
+
+    cycles          1-4    4-8    8-16   16-32  32-64  64-128  128-256
+    002  field     0.12   0.23   0.39   0.71   1.11   1.63    5.76
+         spread    0.33   1.07   0.68   0.43   0.24   0.16    1.21
+    003  field     0.05   2.00   3.31   3.85  12.00   4.69    5.89
+         spread    0.86   0.75   1.13   1.80   2.25   1.23    3.73
+    004  field     2.58   0.57   1.51   1.11   0.88   0.94   15.46
+         spread    1.61   0.71   0.61   0.38   0.19   0.22    3.14
+    005  field     0.07   0.34   0.72   0.94   1.00   1.06   17.28
+         spread    0.95   0.51   0.38   0.21   0.19   0.25    3.66
+
+The tile-scale octaves (1-8 cycles: the per-tile tone and level) are `spread`'s on all
+four graphs and `field`'s on none (0.05, 0.07, 0.12 -- a tenth of the export's power).
+The mottle octaves (16-128) are where `spread` falls to 0.2-0.4: the texture the dead
+noise chains would supply (the subdivision sections). `field` reads ~1 there on 002 /
+005 with ridges standing in for mottle, and 4-12x on 003, 15-17x at 128-256 on 004 /
+005 -- power in the wrong octave from cones and their aliasing. The scalar `|log band|`
+averages these into a tie that favours `field`.
+
+WHAT THIS SETTLES AND WHAT IT DOES NOT. Every instrument that measures the octaves
+`distance` acts on -- level, pillow profile, per-tile tilt and level, band at 1-8
+cycles -- reads `spread`; the objections to it are the corr (a per-tile random
+direction) and the band's mid octaves (a noise chain that is dead under both arms).
+Under the rule as it now stands (a companion re-take needs every seed-free instrument
+to agree or HOLD), the band does not hold, so `field` stays the default and this is the
+record of why the rule, applied to the scalar band, keeps a reading four of its own
+octaves reject. The instrument to add beside the corr is the band BY OCTAVE, with the
+octaves a reading acts on named; that is a guard change and it is not made here.
