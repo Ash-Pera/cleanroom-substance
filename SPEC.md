@@ -846,7 +846,15 @@ discriminated by the tag word's **low nibble**:
   pattern, and the cons chain is quadrant subdivision". The cell
   is **two words** when bare, and the list strictly alternates with the three-word pointer cell:
   `[0x9][next][payload] [0x00020008][next] [0x9][next][payload] …`, every pointer cell's
-  payload naming the same shared `0x?4B`. The walk steps through the link by its slot 1 and
+  payload naming the same shared `0x?4B`. **What the list is:** the library Splatter's
+  chain of Switches with `Grid_Number` folded by the compiler — each `0x9` is
+  `[switch][false → next, the bare Quadrant][true → the draw]` with the selector BAKED into
+  bit 6 (`0x49` = true), so a `0x49` at index k after k bare Quadrants draws its payload in
+  4^k regions. Over the corpus 59 of 60 such lists carry exactly one `0x49`; the paired
+  source `Texture_Randomizer.sbs` instances `splatter` with `Grid_Number` 0 four times and
+  each compiles to a lone `0x49`; SandyStonePath's `Grid_Number` 3 puts it fourth. Read
+  under the arm `fx.pointercell = switch` (§13.9); the default still walks the list as a
+  list. The walk steps through the link by its slot 1 and
   now reports it; it did not, so its two words were the one structure in the walk that
   nothing named — 91 of the 721 unreached cells over 60 files, traversed all along, and
   2,832 bytes corpus-wide. Guard on the LOW NIBBLE: `0x0002711B` is a `0x??1B` branch whose
@@ -2438,3 +2446,8 @@ leaves emit sparsely under a 0.29 step; and at native its noise is blotches wher
 export has grain), `blur.subpixel = fractional` (within 0.004 of the defaults at native,
 worse at 256) and `fx.gridnamed = branchoffset` (inert on every pack: the leaf-only chains that
 spell a grid in their entry's `branchoffset` program take the leaf's count instead).
+Open as an arm and not yet refused: `fx.pointercell = switch` (§8 — the `0x9`/`0x49`
+list read as the library Splatter's baked `Grid_Number` switches; the ratchet packs carry
+no such record, and the one pack that does, SandyStonePath, cannot arbitrate it while its
+sand sits below its tiles at the declared inputs — FORMAT-NOTES.md, "The `0x9`/`0x49`
+pointer-cell list is the library Splatter's `Grid_Number`").
