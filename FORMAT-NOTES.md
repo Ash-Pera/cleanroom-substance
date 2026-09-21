@@ -61519,3 +61519,15 @@ mortar's bottom from 0.34 to 0.34 -> 0.41 on the mask; the export keeps 0.775 an
 8061 (what the multiply's other operand is on the tiles) and the ladder's blur width
 (0.502 px at 256 in a `dirmotionblur`, the record reading). Not resolved; recorded
 with the numbers that would decide it.
+
+ADDENDUM, 8061 read. A `directionalwarp` at intensity 500 (half a canvas under the
+record reading, two under a fixed 256; the field is smooth, so either is a swirl) of
+8060 = 8059 + 0.11 x 7934, where 7934 is the 27 x 27 lattice noise (7929 / 7930, flat
+1.0 under the canvas-unit reading -> a flat 0.47 here; a +-0.02 mottle if the lattice
+drew) and 8059 = 1 - clamp(x / 0.77) of x = 1 - `distance`(48.64 px) of a 31% mask
+(8052-8056: `levels` of a 2-px `distance`): a broad darkening (0.68 .. 1.0 on the
+tiles, mean 0.88) that the `multiply` at 0.46 puts on the tile field and that takes
+the tiles' top from 0.82 to 0.70. The export keeps 0.775: 8059 sits nearer 1.0 there,
+which is a wider field (more of the canvas within 48.64 px of the mask) or a mask that
+covers more -- the 31% is `levels` of `distance` 2.0 of 8051, and 8051 is where to look
+next. The tile-top question is therefore in 8051-8059, one chain, all deterministic.
