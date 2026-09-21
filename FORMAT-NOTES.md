@@ -61279,3 +61279,37 @@ not the stroke's size by itself: the construct's coverage and its scale are one 
 under region units, and the export has both. What separates them in the engine --
 more regions per level, or a size per depth that is not the region's -- is the open
 question, now with its magnitude: three octaves.
+
+## The Clouds-2 pair (`pairs5/SubstanceDesigner__Clouds_2_Animated`): the walk's entries are the source's quadrants one for one, the octaves ARE three depths, and what is missing is their gain, not their scale
+
+The repository ships Clouds 2 as a source and its compiled twin. The source's three
+FX-Map graphs are chains of 5, 7 and 9 `paramset` nodes (each output0..3 naming the same
+child); the twin's three records (64 / 128 / 256 px) walk as 3 bare + 2 stroke cells,
+3 bare + 2 offset + 2 stroke, 3 bare + 4 offset + 2 stroke -- 5, 7, 9. Bricks' 7945 /
+7947 / 7950 walk the same 5 / 7 / 9 (7 and 9 carry `0x420008` offset cells the earlier
+section did not count). So the tree arm's depth is the source's, the stroke cells of the
+256-px octave sit six and seven subdivisions down, and the three octaves are
+geometrically three octaves apart in our render too -- the "same canvas scale three
+times over" of the earlier section was 7945 alone read as all three.
+
+The source's stroke quadrant: `patterntype` 8, `patternsize` (5, 1), `opacity` =
+`rand(-1)`, `patternrotation` = `rand(1)`, `branchoffset` = `cartesian(rand(r), 6.28)`.
+The twin bakes the opacity as -1.0 (the compiler folds `rand(-1)`; the rotation's
+`rand(1)` stays a program), which is what Bricks' cells hold, so the -1 is the engine's
+too.
+
+WHERE THE OCTAVES GO. Under the tree arm the three records read, by `fx.hurst`:
+
+                exp            off            pow / exp2
+    7945 (5)    0.520 / 0.162  0.048 / 0.129  0.470 / 0.179     white minus -1 strokes
+    7947 (7)    0.192 / 0.141  0.779 / 0.330  0.231 / 0.170     +1 strokes on black
+    7950 (9)    0.062 / 0.063  0.609 / 0.416  0.081 / 0.083
+
+Each level's strokes cover the canvas five times over whatever the depth (4^d strokes
+of 5 x 1 regions), so a per-depth gain is what decides an octave's weight, and under
+every gain arm the deep octaves are faint (`exp`: 0.06 against 0.52) or the shallow one
+is wiped (`off`: 0.05). The fine detail is drawn and then out-weighed: that is the
+three-octave deficit the band measured, and it is a gain model, not a geometry. What
+would decide the gain is this pair's own export -- Clouds_2_Animated ships as `.sbsar`
+only, no render -- or the FX-Map node's roughness semantics read off a record whose
+octave count is one. Not changed.
