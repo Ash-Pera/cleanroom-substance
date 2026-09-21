@@ -91,8 +91,18 @@ def family(hdr):
 
 
 def is_entry(asm, hdr):
-    """Is this word an entry-cell tag rather than a chain node?"""
-    return hdr > 0xFFFF and fx_patterntype(hdr) is not None
+    """Is this word an entry-cell tag rather than a chain node?
+
+    A NIBBLE-0 TAG IS AN ENTRY TOO. `fx_patterntype` returns None for patterntype nibble
+    0 -- the catch-all that holds patterntype 1, 2 and every function-graph pattern --
+    and this read that None as "not an entry", so a tree whose leaf is `0x55300058`
+    (desert_sandstone_dark 35, three files' 0x1DB tilings) surveyed as "neither a
+    modelled node nor an entry" and fell to the list walk, which does not model 0x1DB.
+    The tag's own low nibble is what says entry: 145,506 of 145,723 entry tags the walk
+    reaches end in 8 (198 in B, 16 in 9, 3 in 1 -- pointer-shaped words the table step
+    admits), and no chain node header exceeds 0xFFFF.
+    """
+    return hdr > 0xFFFF and (fx_patterntype(hdr) is not None or (hdr & 0xF) == 8)
 
 
 class Node(object):
@@ -247,6 +257,12 @@ def needed(rec):
         if n.hdr == 0x1CB and n.spare:
             return True
         if n.hdr == 0x19B:
+            return True
+        # THE VARIANT COMPILE'S ITERATES. `family` reads 0x1DB / 0x1A3 as iterates and the
+        # list walk does not model them at all ("node header 0x1db is not modelled",
+        # desert_sandstone_dark 35: 3 records behind it, 2,780 downstream), so a chain
+        # that carries one holds a reading only this walk has.
+        if n.hdr in (0x1DB, 0x1A3):
             return True
     return False
 

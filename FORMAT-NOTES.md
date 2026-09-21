@@ -60989,3 +60989,20 @@ The `blur` class (137 records, 81 files at the third sweep) is gone. The largest
 non-inherent root is now the FX-Map that samples an unwired edge -- `annihilated_samplers`
 covers the pixel processor's version of this and not the FX-Map's -- then the sub-pixel
 class, which is a property of the 64-px sweep and not of the files.
+
+## The 0x1DB tilings fell to the list walk twice over: the tree survey did not read a nibble-0 tag as an entry, and `needed` did not name the variant iterates
+
+desert_sandstone_dark 35 ("node header 0x1db is not modelled", 2,780 records behind it)
+never reached the tree walk that models 0x1DB: `fxchain.needed` names the chains only the
+tree can read (a wired false child, a 0x1CB after-child, 0x19B) and the variant iterates
+0x1DB / 0x1A3 were not among them; and its survey stopped at the leaf `0x55300058` --
+patterntype nibble 0, the catch-all, which `fx_patterntype` returns None for and
+`is_entry` read as "not an entry". The tag's own low nibble says entry: 145,506 of
+145,723 entry tags the walk reaches end in 8, and no chain node header exceeds 0xFFFF.
+Both fixed; desert_sandstone_dark 2,541 -> 7,862 of 7,862, Cliff / Cobblestone /
+RMF_Floor / RockyGround / desert_cliff_eroded all complete. The ratchet passes.
+
+What 35 draws is six patterns -- two 0x1A3 rows of 3, the row iterates at 1 -- from
+tile counts the switch writes off a prologue that reads only `$outputsize` and one
+graph input at 0. A three-stone wall is not what an author exports; which input is the
+count and what its default means is open, and there is no picture for the file.
