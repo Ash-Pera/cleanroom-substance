@@ -61313,3 +61313,18 @@ three-octave deficit the band measured, and it is a gain model, not a geometry. 
 would decide the gain is this pair's own export -- Clouds_2_Animated ships as `.sbsar`
 only, no render -- or the FX-Map node's roughness semantics read off a record whose
 octave count is one. Not changed.
+
+## SandyStonePath's height, chain by chain under the tree arm: the cracks reach 56, the stone field reaches 180, and 957's `max` with a flat 688 erases both
+
+With `fx.subdivide=tree` the Clouds mask 41 is 0.114 / 0.174, the cracks survive 42 and
+43 (binary, 0.119 / 0.322), 56 carries them (0.151 / 0.358), and `distance` 180
+(`spread`, 64.22 px) is the stone field (0.509 / 0.307) -- the export's construct up to
+there. Then 405 blends it at 0.07, 925 levels it, and 957 = max(925, 688) with 688 flat
+0.681: gone. 688's chain is three more dead constructs in one: 639 (a blend of three
+records, 0) behind four Blur-HQ passes and a `levels` to a flat 0.383; the 27 x 27
+gaussian lattice 678 / 680 (`hurst` 0.0, `opacitymult` 0.44 -- Auras 391's record,
+flat 1.0 under the canvas-unit reading) driving the directional warps 684 / 685 through
+a flat 0.5; and 657-668, a Blur HQ of a `levels` cut to 0. The pack's picture is behind
+the subdivision gain (34 / 36 / 39), the lattice's unit (678 / 680) and 639 at once;
+none of the three has a picture of its own in the packs, and the two Clouds twins in
+`pairs5` ship no render. Recorded; the next lever with a picture is elsewhere.
