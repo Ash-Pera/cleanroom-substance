@@ -61478,3 +61478,19 @@ so the tile level it can set is 0.5 whatever the noise, and the export's 0.644 i
 the tone's to give: the +0.13 sits in whatever the tone is combined with downstream --
 which the flat arm's accidental constant (0.922 -> 0.31 through the same ladder)
 happened to leave brighter. The class stays an arm; the combine is the next trace.
+
+ADDENDUM, where the tone meets the level. 002's tile tone is an ADDITIVE sum (blend
+mode 1) of six octaves of the same noise: each octave a `levels` of the refined noise
+with `levelinlow` ~0.1, `levelinhigh` ~0.85 and `levelouthigh` 0.251 / 0.251 / 0.123 /
+0.060 / ... (7666, 7672, 7678, 7684, 7717 ..), summed through 7728 -> 7738 (0.643 under
+the flat arm's constant, 0.376 under `noise`), then blur, warp and a `levels` cut at
+0.46-0.467 (7741) into the bevel chain. Under a uniform noise every octave sits at half
+its `levelouthigh` and the sum is 0.38; the export's level says the octaves sit near
+their MAXIMA -- which is what a noise whose values mostly exceed 0.82 gives, and what
+the flat arm's accidental 0.922 gave. So either the engine's White Noise is not a
+uniform per-pixel draw (a bright, overlapping draw -- max of several -- has mean 0.8-0.9
+and a lower sd), or mode 1 is not a plain add. The 9924 calibration read the tree's
+white noise as uniform (mean 0.513, sd 0.292) from the file's own arithmetic, not from
+an export; this is the first export-side constraint on it, and it points the other way.
+Next: the per-tile tone DISTRIBUTION of the export (a histogram of tile means against
+the sum's) decides between "bright noise" and "not an add".
