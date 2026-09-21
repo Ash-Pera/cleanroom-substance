@@ -60911,3 +60911,16 @@ green, and ours (multiply) lands where multiply lands. Not moved by `fx.header`,
 0.499; the export's colour sits near the ramp's 0.6-1.0 stops) or HSL's saturation
 model (ours multiplies chroma by 2s; the engine's may not be linear in s). A picture with
 one HSL node and a known input would decide it; Chesterfield's has three in series.
+
+## The flat 2^23 budget cost the sweep fifteen hours on one file: the draw budget is per pixel of the grid
+
+Under the raised budget the fourth sweep spent 54,831 s on Fence.sbsasm, 24,215 s on
+Fabric21, 18,965 s on Onyx and 10,066 s on ChristmasOrnamentTest01 -- 2.25M-pattern tile
+samplers (1500^2) drawn at ~30 us a pattern on a 64-px grid where each is 0.04 px across
+and the pixel-step rasteriser hits a centre with one in ~500 of them. The budget is now
+per pixel: `MAX_PER_PIXEL` = 64 patterns a pixel of the grid drawn, refused as "sub-pixel
+at this grid" above it. At 64 px that is 262,144 -- where the old 300,000 cap sat, so the
+64-px census reads as before on these records, now with the reason stated -- and at 256
+px it is 4.2M, every count the corpus states. Fence at 64: 54,831 s -> 587 s (4,551 of
+4,855; the 304 behind two 2.25M records are the sub-pixel class); FabricSubstance009 36 s.
+The sweep restarts a third time on this.

@@ -74,6 +74,9 @@ from ops import Unsupported, sampler
 #: cost, ~30 us a pattern, so the worst corpus record is ~2 min. 2^23 leaves the guard
 #: for a count program gone wrong (2^31 - 1 is what an unset count reads as).
 MAX_PATTERNS = 1 << 23
+#: Patterns per pixel of the grid above which a record is refused as sub-pixel at that
+#: grid (see `render_fxmaps`).
+MAX_PER_PIXEL = 64
 
 _GRID_CACHE = {}
 
@@ -1172,6 +1175,20 @@ def render_fxmaps(ctx, v):
             pats = emissions(rec, run, seeded, cache=ctx.cache)
         except fxrender.Unmodelled as e:
             raise Unsupported("fxmaps: %s" % e) from e
+        # THE DRAW BUDGET IS PER PIXEL OF THE GRID, because both the cost and the meaning
+        # of a pattern scale with it. A 2049^2 tile sampler is 4.2M patterns; at 64 px that
+        # is 1,025 per pixel, each 0.03 px across, and the pixel-step rasteriser (no
+        # anti-aliasing, SPEC 13.7) hits a centre with one in a thousand of them -- noise,
+        # drawn at ~30 us a pattern: the fourth sweep spent 15 hours on Fence.sbsasm and
+        # 7 on Fabric21 under the flat 2^23 budget. At 256 px the same record is 16 a
+        # pixel and draws; at native, one. 64 a pixel puts the 64-px sweep where the old
+        # 300,000 cap had it and lets every corpus count through at 256 and above.
+        n = sum(int(p.count) if isinstance(p, fxtree.Batch) else 1 for p in pats)
+        if n > MAX_PER_PIXEL * W * H:
+            raise Unsupported(
+                "fxmaps: %d patterns on a %d x %d grid (%.0f a pixel, over %d): sub-pixel "
+                "at this grid" % (n, W, H, n / float(W * H), MAX_PER_PIXEL)
+            )
         return splat(rec, pats, W, H, images=images, header=header_fields(ctx, v))
     finally:
         sbsruntime.CONTEXT["stream"] = False
