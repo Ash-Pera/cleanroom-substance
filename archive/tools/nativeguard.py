@@ -15,8 +15,11 @@ hears differently". Bricks takes ~2 min, RoofTiles ~11 min at 2048.
     ONLY=Bricks python3 archive/tools/nativeguard.py           # one pack
 
 Graph-input overrides the exports used and the file does not record (RoofTiles' tile
-counts, SandyStonePath's `Use_Random_Tiles`) are applied per pack, as `refcompare`'s
-pairing corrections are: a score against an export made with other inputs is not a score.
+counts) are applied per pack, as `refcompare`'s pairing corrections are: a score against
+an export made with other inputs is not a score. SandyStonePath's `Use_Random_Tiles` is
+`refcompare.EXPORT_SETS`'s now -- its two export sets are two settings of that toggle and
+each is scored under its own -- so the override here merges UNDER whatever the pairing
+passes rather than replacing it.
 """
 import os, sys, time
 _HERE=os.path.dirname(os.path.abspath(__file__)); ROOT=os.path.dirname(os.path.dirname(_HERE))
@@ -28,14 +31,14 @@ for k,v in list(EXTRA.items()):
     for c in assume.QUESTIONS.get(k,()):
         if str(c)==v: EXTRA[k]=c
 packs=refcompare.reference_packs()
-OV={'Kutejnikov__Stylized_Wooden_Roof_Tiles':{2367149106:(14,9),2366871910:(14,),2366870030:(9,)},'minime453__Stylized_Sandy_Stone_Path':{89582107:(1,)}}
+OV={'Kutejnikov__Stylized_Wooden_Roof_Tiles':{2367149106:(14,9),2366871910:(14,),2366870030:(9,)}}
 orig=render2.render
 with assume.scope(**EXTRA):
     for pack in sorted(packs):
         if os.environ.get('ONLY') and os.environ['ONLY'] not in pack: continue
         os_=refcompare.implied_outputsize(packs[pack]); dim=2**max(os_) if os_ else 256
         ov=OV.get(pack,{})
-        render2.render=lambda *a,**k: orig(*a, inputs=ov, **k)
+        render2.render=lambda *a,ov=ov,**k: orig(*a, **dict(k, inputs=dict(ov, **(k.get('inputs') or {}))))
         t=time.time()
         try:
             rows=[(n,c,refguard.measure(o,r)) for n,c,o,r in refcompare.compare_pack(pack, packs[pack], max_dim=dim, outputsize="implied", renderer="render2", grid=None, qualify_graph=True) if c is not None]

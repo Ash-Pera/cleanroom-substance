@@ -457,6 +457,10 @@ def emissions(rec, run, slots, cache=None):
     how = assume.assumed("fx.subdivide", "flat")
     if how == "tree" or (how == "noise") == white_noise_record(rec, table) and how in ("noise", "quadrant"):
         return fxtree.emissions(rec, run, slots, nodes, table, reads, cache)
+    # A POINTER-CELL LIST AT THE ROOT selects a nesting depth under `fx.pointercell =
+    # switch`, and a depth is only drawable as a tree: see `assume.QUESTIONS`.
+    if assume.assumed("fx.pointercell", "list") == "switch" and pointer_list_record(rec):
+        return fxtree.emissions(rec, run, slots, nodes, table, reads, cache)
     if reads is not None:
         seed = dict(slots)
         frames, closed = _walk(rec, run, slots, nodes, table, reads)
@@ -665,6 +669,17 @@ def _walk(rec, run, slots, nodes, table, collect):
     else:
         walk(0, 0, "chain")
     return out, closed[0]
+
+
+def pointer_list_record(rec):
+    """Does the record's chain root open a `0x9`/`0x49` pointer-cell list?"""
+    root = rec.fx_root
+    if root is None:
+        return False
+    for kind, off, hdr, _p in rec.fx_walk():
+        if kind == "node" and off == root:
+            return fxtree.pointer_cell_kind(hdr) == "switch"
+    return False
 
 
 def white_noise_record(rec, table):

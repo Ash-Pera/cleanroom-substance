@@ -505,6 +505,20 @@ QUESTIONS = {
     # 88 of 238 0x99, 65 of 1,865 0x1CB -- about 150 records. A record whose chain has
     # none of these renders identically under both arms by construction (`fxchain.needed`).
     "fx.chain": ("tree", "list"),
+    # THE POINTER-CELL LIST `[0x9][next][payload] [0x20008][next] ...` (`sbsasm
+    # .pointer_cell_successor`: "not established what the chain LIST is for"). `list`
+    # walks it as the structure it was read as -- every payload one shared draw, the list
+    # feeding nothing -- and the record draws its table once. `switch` reads each `0x9`
+    # as a two-way switch whose selector the compiler BAKED: bit 6 (`0x49`) takes the
+    # payload, clear takes `next`, which is the bare Quadrant `0x20008` and so one more
+    # nesting of four before the next switch. StylizedCobblestoneStreet 652 is the
+    # library Splatter (`splatter.sbs`, `Grid_Number` 3 in the source instance) compiled:
+    # nine switches, bare Quadrants between them, the FOURTH switch the one `0x49`, and
+    # the payload of every switch after the first the same image-pattern entry -- three
+    # nestings then the draw, 4^3 = 64 stamps of the source at 220% x 265% of the region,
+    # the "8 x 8 grid" Grid_Number 3 names; under `list` the record drew its two entries
+    # once each at depth 0. Sent through `fxtree` because the switch selects a depth.
+    "fx.pointercell": ("list", "switch"),
     # `rand` INSIDE A PIXEL PROCESSOR. `image` is one draw per record -- `$number` is 0
     # and nothing else salts the hash -- so a program that is only `rand(1)` renders a
     # constant. `pixel` salts the hash per pixel, so the same program is a white noise.

@@ -61598,3 +61598,111 @@ stronger than its; 005's height a mottled field under crisp rings, as the export
 004's wheels and dark discs in place. RoofTiles' height and basecolor read as the
 export's shingles; its roughness is still the grain chain's (dark tiles on grey where
 the export is streaked light). The full suite: 23 passed.
+
+## SandyStonePath ships TWO export sets from one graph, and the guard was scoring one render against both: `refcompare.EXPORT_SETS` pairs each set with the toggle it was made under
+
+Looking at SandyStonePath under `max` (`/tmp/sandy_max.png`): ours a flat grey with one
+dark blob and horizontal banding on every output, the "reference" a Voronoi cobble for
+height, a 5 x 5 square grid for roughness and a Voronoi again for basecolor -- two
+different constructs across three columns of one pack. The pack's `reference_renders/`
+holds `SandyStoneRoad01_*` and `SandyStoneRoad02_*`, twelve maps from the one graph
+`StylizedCobblestoneStreet`, and `_compare_one` took `paired[0]` -- glob order -- so
+roughness, AO and metallic met 02's maps and height, normal and basecolor met 01's.
+01 is the Voronoi (record 55's switch under `Use_Random_Tiles` = 1, the toggle the
+notes already knew the exporter set); 02 is the 5 x 5 grid, the graph at its DECLARED
+inputs. The correspondence is read from the switch's two branches and the two
+pictures, as the Bricks numbering is read from the manifest -- not chosen by fit.
+
+`refcompare.EXPORT_SETS` = {pack: ((prefix, inputs), ...)}: `compare_pack` scores each
+set against a render made with that set's inputs (render2 takes `inputs`; `render.py`
+cannot and skips a set that needs any), rows qualified `<prefix>/<graph>/<name>`.
+`nativeguard`'s Sandy override moves into the table and its monkeypatch merges under the
+pairing's inputs instead of replacing them. `CHANNEL_ABBREVIATIONS` pairs `_AO.png` with
+`ambientOcclusion` as a whole filename token (a two-letter substring would pair with
+anything); Sandy's AO scored for the first time.
+
+At 128, the declared render against 02 / the toggled render against 01:
+
+    basecolor   +0.357 / +0.322 / +0.273      +0.140 / +0.145 / +0.028
+    normal      +0.453 / +0.473 / +0.381      -0.007 / +0.050 / -0.075
+    roughness   +0.362                        +0.157
+    height      +0.203                        -0.170
+    AO          +0.258 (band 15.2, ours 5x too strong)
+
+01 is the jittered scatter on an unrecorded `$randomseed` and stays noise; 02 is the
+first row of this pack that measures the renderer. The picture (`/tmp/sandy02.png`):
+ours the 5 x 5 grid with a tone per tile, the export the same grid under a sand
+overlay -- big irregular light patches covering ~45% of the tiles, grainy -- which ours
+has as one blob. That overlay is the next section's.
+
+## The `0x9`/`0x49` pointer-cell list is the library Splatter's `Grid_Number`, compiled: each `0x9` a switch whose selector the compiler baked into bit 6 -- `fx.pointercell = switch`, an arm, with the source pairing that falsifies it
+
+Sandy's sand overlay is 652, an `fxmaps` whose root is the list `sbsasm
+.pointer_cell_successor` records as "not established what the chain LIST is for":
+`[0x9][next][payload] [0x20008][next] [0x9][next][payload] ...` -- nine `0x9` cells with
+bare Quadrants between them, the FOURTH of the nine `0x49`, every pointer +52, the
+first cell's payload one image-pattern entry (B) and every other cell's the same
+second entry (A). Under the list walk the record drew A and B once each at depth 0 --
+and two pointer WORDS as entries (`fxrender.entries` admits `0x553f8`/`0x55448`-shaped
+words whose low nibble is 8: "patterntype 5" and "6" with no parameters), which is the
+big gaussian in the picture.
+
+The source (`SandyStonePath.sbs`) names the node: `pkg:///splatter` (the library
+`splatter.sbs`, not on disk) with `Grid_Number` 3, `PatternSize` 6, `Pattern_size`
+219.9 x 264.6 %, `Size_Var` 100, `Disorder` 100, fed by a `shape` gaussian (648). A
+Splatter is a chain of Switches whose selectors compare `Grid_Number` with a depth,
+each true branch a Quadrant leaf drawing the input image, each false branch one more
+Quadrant of subdivision -- and with `Grid_Number` a constant of the instance the
+compiler FOLDS the selector: `[0x9][next][payload]` is `[switch][false -> next
+Quadrant][true -> draw]`, bit 6 the baked TRUE, and `0x49` sits at index 3 for
+`Grid_Number` 3. The list beyond it is dead code the compiler kept.
+
+FALSIFICATION, on the one paired source with a Splatter. `pairs5/SubstanceDesigner__
+Texture_Randomizer.sbs` instances `splatter` four times, `Grid_Number` 0 in all four;
+its compiled records 120, 169, 173, 174 are each a SINGLE `0x49` and the entry -- the
+true switch at index 0, nothing pruned before it, nothing after. Corpus census (437
+files, records whose chain root is a pointer cell):
+
+    60 records    59 carry exactly ONE 0x49, 1 carries none (a lone 0x9)
+    lists of 7 or 9 switches, the 0x49 at index 1 (9), 2 (27), 3 (12), 4 (4), 5 (2), 8 (1)
+    4 records are the bare "T" of Grid_Number 0
+
+Exactly one true per list, at a position that is the source's `Grid_Number` on the two
+files with a source, and no list with two.
+
+`fx.pointercell` = `list` (the default: the walk as it was) | `switch`. Under `switch`
+`fxtree.cells_of` admits the list's bare `0x20008` links as cells, resolves a pointer
+through the list by the baked bit (`through`), and takes the tree's root from where
+the list's first cell sends it -- the cells the untaken branches name are not roots.
+The record is sent through `fxtree` because a depth is only drawable as a nesting.
+652 under `switch`: Q -> Q -> Q -> A, 16 stamps of the gaussian at depth 2 (the root
+convention -- "the root does not subdivide" -- takes one nesting; without it 64) with
+`rand`-varied size and opacity, the splatter in the picture (`/tmp/sandy_652sw.png`).
+
+A SECOND STRUCTURE SURFACED IN THE SAME CHAIN: 607 (`bnw_spots_1` in the source) is
+0x18B -> 0x89 (the spiral) -> a root Quadrant -> eight nested pattern-drawing Quadrants
+-> a 0x89 gate -> a ninth -> a 0x89 -> a tenth. The two inner gates read `min($size)
+>= 12` and `>= 13`: subdivide twice more only above 4096 px. `fxrender.chain` lines
+them up after the spiral and the list walk runs them once per emission, so at any
+smaller size the first of them closes every pattern -- 607 drew nothing under every
+arm, and 639, 646 (a highpass of it) and the whole sand base rested on it. Under the
+tree arms `cells_of` now takes `run`/`slots`: a child pointer landing on a `0x89` is
+decided by that gate's own predicate over the seeded frame (`gated`), the true child
+its successor, the false one its spare, and the gates so consumed leave the chain walk
+(`gated_nodes`). 607 under `fx.subdivide=quadrant`: 21,848 patterns, a speckled noise
+(`/tmp/sandy_639q.png`), and the highpass 646 lands on 0.5 as a highpass should.
+Under `flat` -- the default -- nothing changes: the tree is not consulted.
+
+WHAT THE SAND STILL WAITS ON. With 652 and 607 alive the sand height (688) is
+`SandHeight` 0.4 + 0.6 x levels(0.383 + ripples x 0.07 - blobs x 0.3): a plateau at
+0.73 with holes, against tiles (925) at 0.852 = `TilesHeight` 0.9 x 0.947; the mask
+927 is sand / tiles >= 0.998, so sand shows on 15% (the mortar) where the export
+shows it on ~45% of the tiles. The blend is the source's (mode 2, destination the
+ripples, source the blobs), the levels are baked, and nothing in the chain at the
+DECLARED inputs lifts sand above the tiles. `SandHeight` 0.6 through the override
+(`/tmp/sandy_sh0.6.png`) puts sand patches on the tiles at the export's sharp edges
+-- the construct is right and the level is not -- and 0.75 floods everything, so the
+export sits between on an input the pack does not record, as its `Use_Random_Tiles`
+was. Not fitted. On the packs at 256 `switch` alone moves Sandy 02 basecolor +0.186
+-> +0.118 and AO +0.372 -> +0.463 (the overlay's blobs land in the wrong tiles: the
+coverage is the level's, above); the ratchet packs are in `/tmp/packs_pcell.log`.

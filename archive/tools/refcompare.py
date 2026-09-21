@@ -320,6 +320,10 @@ assert refguard.SCORE_GRID == SIZE, (
 )
 
 
+#: A declared channel and the token an exporter abbreviates it to in a filename.
+CHANNEL_ABBREVIATIONS = {"ambientocclusion": "ao"}
+
+
 def _key(s):
     return re.sub(r"[^a-z]", "", (s or "").lower())
 
@@ -437,22 +441,24 @@ def _renderer(which):
         # `render2` takes an `$outputsize` and derives the sizes itself, so handing it a
         # `sizes` dict as well would run `record_sizes` twice and let the two answers
         # drift. It takes the OUTPUT SIZE; `render.py` takes the sizes.
-        def go(asm, max_dim, sizes, _os=None):
+        def go(asm, max_dim, sizes, _os=None, inputs=None):
             outs, _f, _i = _r2.render(
-                asm, verbose=False, max_dim=max_dim, outputsize=_os
+                asm, verbose=False, max_dim=max_dim, outputsize=_os, inputs=inputs
             )
             return outs
 
         go.wants_outputsize = True
+        go.takes_inputs = True
         return go
 
-    def go(asm, max_dim, sizes, _os=None):
+    def go(asm, max_dim, sizes, _os=None, inputs=None):
         produced, _failures, _synth = render.render(
             asm, verbose=False, max_dim=max_dim, sizes=sizes
         )
         return produced
 
     go.wants_outputsize = False
+    go.takes_inputs = False
     return go
 
 
@@ -486,9 +492,49 @@ def compare_pack(
     for _asm_path in sorted(asms):
         if _excluded_export(pack, _asm_path):
             continue
-        for _row in _compare_one(_asm_path, refs, max_dim, outputsize, renderer,
-                                 grid, qualify_graph):
-            yield _row
+        for _prefix, _inputs in EXPORT_SETS.get(pack, ((None, None),)):
+            _refs = refs
+            if _prefix is not None:
+                _refs = [r for r in refs if os.path.basename(r).startswith(_prefix + "_")]
+                if not _refs:
+                    continue
+            for _row in _compare_one(_asm_path, _refs, max_dim, outputsize, renderer,
+                                     grid, qualify_graph, _inputs, _prefix):
+                yield _row
+
+
+#: Export sets a package ships from ONE .sbsar under DIFFERENT GRAPH INPUTS, keyed by the
+#: filename prefix the exporter gave each set, with the inputs that set was made with.
+#:
+#: `minime453__Stylized_Sandy_Stone_Path` ships `SandyStoneRoad01_*` and `SandyStoneRoad02_*`
+#: from a single graph, `StylizedCobblestoneStreet`. The graph's height, colour and roughness
+#: all pass through record 55, a `switch` whose selector is `select(inputs[89582107], 1, 0)`
+#: -- `Use_Random_Tiles`, a toggle the manifest declares 0 -- between 27, a 5 x 5 square-tile
+#: grid, and 54, the outlines of a jittered Voronoi scatter. `SandyStoneRoad02_BaseColor`
+#: is a 5 x 5 square grid under a sand overlay; `SandyStoneRoad01_BaseColor` is the Voronoi.
+#: So 02 is the graph at its declared inputs and 01 is the graph with the toggle on: the
+#: correspondence is read from the switch's two branches and the two pictures, the way the
+#: Bricks numbering is read from the manifest, and not chosen by which our render resembles.
+#:
+#: WHAT THIS REPLACES. Both sets share every channel name, so `paired[0]` was glob order:
+#: roughness, AO and metallic met 02's maps and height, normal and basecolor met 01's --
+#: one render scored against two settings of one input, and the three rows against 01
+#: measure a scatter jittered on a `$randomseed` the pack does not record (corr within
+#: +/-0.17 at 128 under the toggle, both ways). With the sets separated, the declared
+#: render against 02 reads +0.36 / +0.32 / +0.27 basecolor, +0.45 / +0.47 / +0.38 normal,
+#: +0.36 roughness and +0.20 height at 128 -- the first rows of this pack that measure the
+#: renderer rather than the seed.
+#:
+#: A set's inputs are applied by `_compare_one` through the renderer (render2 only; the old
+#: `render.py` takes no graph inputs and keeps scoring the declared render against every
+#: set it can pair). Rows are qualified `<prefix>/<name>` so the two sets cannot collide in
+#: a guard table. A package absent from this table pairs as before.
+EXPORT_SETS = {
+    "minime453__Stylized_Sandy_Stone_Path": (
+        ("SandyStoneRoad02", {}),
+        ("SandyStoneRoad01", {89582107: (1,)}),
+    ),
+}
 
 
 #: Export sets that CANNOT be scored, and why -- checked, not assumed. An entry here is a
@@ -558,18 +604,24 @@ def _package_refs(asm_path, refs):
 
 
 def _compare_one(
-    asm_path, refs, max_dim, outputsize=None, renderer="render", grid=SIZE, qualify_graph=False
+    asm_path, refs, max_dim, outputsize=None, renderer="render", grid=SIZE,
+    qualify_graph=False, inputs=None, set_prefix=None
 ):
     asm = sbsasm.Assembly(asm_path)
     refs = _package_refs(asm_path, refs)
     names = manifest.output_names(asm)
     want = implied_outputsize(refs) if outputsize == "implied" else outputsize
     run = _renderer(renderer)
+    if inputs and not run.takes_inputs:
+        # `render.py` cannot render this set's inputs; scoring its declared render against
+        # the set would be the glob-order mixture `EXPORT_SETS` exists to end.
+        return
     produced = run(
         asm,
         max_dim,
         None if run.wants_outputsize else _sizes_at(asm, want),
         want if run.wants_outputsize else None,
+        **({"inputs": inputs} if run.takes_inputs else {}),
     )
     for uid, _fmt, _gray, rec in asm.outputs():
         name = names.get(uid) or "?"
@@ -679,6 +731,17 @@ def _compare_one(
                     for r in pool
                     if _key(_ch) and _key(_ch) in _key(os.path.basename(r))
                 ]
+                if not paired and _key(_ch) in CHANNEL_ABBREVIATIONS:
+                    # THE EXPORTER'S ABBREVIATION, as a whole token only: `_AO.png` is
+                    # `ambientocclusion` (SandyStoneRoad01_AO), and a substring test on
+                    # two letters would pair it with anything.
+                    _ab = CHANNEL_ABBREVIATIONS[_key(_ch)]
+                    paired = [
+                        r
+                        for r in pool
+                        if os.path.splitext(os.path.basename(r))[0].lower()
+                        .split("_")[-1] == _ab
+                    ]
                 if paired:
                     name = _ch
         # ONE KEY PER GRAPH, when the caller asks. A multi-graph pack yields the same
@@ -687,6 +750,8 @@ def _compare_one(
         # guarded by one. Qualified, each graph is its own row and none can hide another.
         if qualify_graph and gdir:
             name = "%s/%s" % (gdir, name)
+        if set_prefix:
+            name = "%s/%s" % (set_prefix, name)
         if rec not in produced or not paired:
             yield (
                 name,

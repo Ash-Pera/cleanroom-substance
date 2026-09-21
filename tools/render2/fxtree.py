@@ -167,8 +167,12 @@ def pointer_count(tag):
     return 0
 
 
-def cells_of(rec, table):
+def cells_of(rec, table, run=None, slots=None):
     """The record's entry cells as a tree: ({offset: Cell}, walk order, roots).
+
+    With `run` and `slots`, a child pointer that lands on a `0x89` gate is decided by the
+    gate's own predicate over the seeded frame -- see `gated` -- and the gates so
+    consumed are listed by `gated_nodes` for the chain walk to leave alone.
 
     Every `entry` item the walk yields is a cell; its parameters are the table's for that
     offset (the chain family is in the table too, once it carries a program -- `0x420008`
@@ -183,11 +187,18 @@ def cells_of(rec, table):
     """
     data = rec.asm.data
     by_off = {off: params for off, _tag, params in table}
-    cells, order, nodes = {}, [], set()
+    cells, order, nodes, headers = {}, [], set(), {}
+    switched = assume.assumed("fx.pointercell", "list") == "switch"
     for item in rec.fx_walk():
         if item[0] != "entry":
             nodes.add(item[1])
-            continue
+            headers[item[1]] = item[2]
+            # A BARE QUADRANT MET IN A POINTER-CELL LIST is a cell of the tree: the walk
+            # yields the list's `0x20008` links as nodes, and under `switch` each is the
+            # nesting the switch before it passed into.
+            if not (switched and item[2] > 0xFFFF and (item[2] & 0xF) == 8
+                    and pointer_count(item[2]) and pointer_slot(item[2]) == 1):
+                continue
         _k, off, tag, _p = item
         if off in cells:
             continue
@@ -215,13 +226,52 @@ def cells_of(rec, table):
             return target + 4
         return None
 
+    consumed = set()
+    _GATED[rec.index] = consumed
+
+    def through(target, depth=0):
+        """The cell a POINTER CELL selects, under `fx.pointercell = switch`.
+
+        `[0x9 | 0x49][next][payload]`, both pointers +52: bit 6 takes the payload, clear
+        takes `next`; a `0x?4B` continues at its payload. See `assume.QUESTIONS`.
+        """
+        while switched and target in headers and pointer_cell_kind(headers[target]):
+            if depth > MAX_DEPTH:
+                return None
+            hdr = headers[target]
+            nxt = struct.unpack_from("<I", data, target + 4)[0]
+            pay = struct.unpack_from("<I", data, target + 8)[0]
+            pick = pay if (pointer_cell_kind(hdr) == "payload" or hdr & 0x40) else nxt
+            if not pick:
+                return None
+            target = pick + SKEW
+            depth += 1
+        return target
+
     for c in cells.values():
         kids = []
         for w in c.kids:
             if not w:
                 kids.append(None)
                 continue
-            target = w + SKEW
+            target = through(w + SKEW)
+            if target is None:
+                kids.append(None)
+                continue
+            if run is not None and target in nodes:
+                # A CHILD BEHIND A GATE THE FRAME CAN DECIDE. StylizedCobblestoneStreet
+                # 607 (the library Tile Sampler): the eighth nested cell's pointer lands
+                # on a `0x89` whose predicate is `min($size) >= 12`, and the next on
+                # `>= 13` -- subdivide twice more only above 4096 px. `fxrender.chain`
+                # lines those gates up after the spiral's and the list walk runs them per
+                # emission, so at any smaller size the SECOND closes every pattern. Read
+                # as the cell's own child gate: its predicate over the seeded frame picks
+                # the true child (the gate's successor) or the false one (its spare),
+                # and a gate with no child on the side it picks ends the nesting there.
+                target = gated(rec, target, run, slots, consumed)
+                if target is None:
+                    kids.append(None)
+                    continue
             k = resolve(target)
             if k is None and target in nodes:
                 # AN OUTPUT WIRED THROUGH A CHAIN NODE. ChesterfieldSofa record 321 (and
@@ -244,7 +294,61 @@ def cells_of(rec, table):
         c.kids = kids
     pointed = {k for c in cells.values() for k in c.kids if k is not None}
     roots = [o for o in order if o not in pointed]
+    if switched and rec.fx_root in headers and pointer_cell_kind(headers[rec.fx_root]):
+        # THE ROOT IS A POINTER-CELL LIST: the tree starts at the cell the list selects,
+        # and the cells the untaken branches name are not roots -- they are what the
+        # baked switches passed over.
+        top = through(rec.fx_root)
+        top = resolve(top) if top is not None else None
+        roots = [top] if top is not None else []
     return cells, order, roots
+
+
+def gated(rec, target, run, slots, consumed, depth=0):
+    """The offset a `0x89` gate at `target` hands its region to, or None.
+
+    Follows the gate's TRUE child (its successor) when its predicate holds over `slots`
+    and its FALSE child (its spare word) when it does not; either may be another gate.
+    Anything that is not a gate is returned as it is for the caller to resolve.
+    """
+    import fxchain
+
+    while depth <= MAX_DEPTH:
+        n = fxchain.read_node(rec.asm, target)
+        if n is None or n.kind != "switch" or not n.progs:
+            return target
+        consumed.add(target)
+        try:
+            ok = bool(np.asarray(run(n.progs[0], slots, 0)).ravel()[0])
+        except Exception:
+            return None
+        child = n.loop if ok else n.spare
+        if not child:
+            return None
+        target = child + SKEW
+        depth += 1
+    return None
+
+
+#: {record index: gate offsets} `cells_of` consumed as child gates on its last call.
+_GATED = {}
+
+
+def gated_nodes(rec):
+    """The gate offsets `cells_of` consumed as child gates on its last call."""
+    return set(_GATED.get(rec.index, ()))
+
+
+def pointer_cell_kind(hdr):
+    """'switch' for the chain cell (`0x9`/`0x49`), 'payload' for `0x?4B`, else None."""
+    if hdr > 0xFFFF or hdr & 0x80:
+        return None
+    nib = hdr & 0xF
+    if nib == 9:
+        return "switch"
+    if nib == 0xB and hdr & 0x40:
+        return "payload"
+    return None
 
 
 def topological(cells, roots):
@@ -569,10 +673,13 @@ def emissions(rec, run, slots, nodes, table, reads, cache=None):
     """
     import fx
 
-    cells, order, roots = cells_of(rec, table)
+    cells, order, roots = cells_of(rec, table, run, slots)
     topo = topological(cells, roots)
     if any(k is not None for c in cells.values() for k in c.kids):
         assume.note(rec.index)
+    skip = gated_nodes(rec)
+    if skip:
+        nodes = [n for n in nodes if n[0] not in skip]
     before = dict(cache) if cache is not None else {}
     try:
         if reads is not None:
