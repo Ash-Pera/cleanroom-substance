@@ -38,7 +38,7 @@ with assume.scope(**EXTRA):
         if os.environ.get('ONLY') and os.environ['ONLY'] not in pack: continue
         os_=refcompare.implied_outputsize(packs[pack]); dim=2**max(os_) if os_ else 256
         ov=OV.get(pack,{})
-        render2.render=lambda *a,ov=ov,**k: orig(*a, **dict(k, inputs=dict(ov, **(k.get('inputs') or {}))))
+        render2.render=lambda *a,ov=ov,**k: orig(*a, **dict(k, inputs={**ov, **(k.get('inputs') or {})}))
         t=time.time()
         try:
             rows=[(n,c,refguard.measure(o,r)) for n,c,o,r in refcompare.compare_pack(pack, packs[pack], max_dim=dim, outputsize="implied", renderer="render2", grid=None, qualify_graph=True) if c is not None]
