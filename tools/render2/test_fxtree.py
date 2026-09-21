@@ -259,6 +259,8 @@ def test_a_rand_leaf_under_five_quadrants_is_white_noise():
     )
     flat, _n = _render(asm, 9924)
     assert flat.std() < 1e-6, "the flat arm draws one pattern: a constant"
+    noise, _n = _render(asm, 9924, **{"fx.subdivide": "noise"})
+    assert abs(noise.std() - 0.289) < 0.04, "the `noise` arm draws this class as the tree does"
     print("ok  9924 under the tree arm: mean %.3f sd %.3f lag-1 %+.3f" % (x.mean(), x.std(), lag))
 
 

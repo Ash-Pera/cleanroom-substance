@@ -461,7 +461,10 @@ QUESTIONS = {
     # leaves; record 9924 at 0.513 / 0.292 / -0.012). DEFAULT `flat` UNTIL THE ARBITER SAYS
     # OTHERWISE: the reference guards are floored on flat, and a default flips when the
     # seed-free instruments on the deterministic graphs say the tree arm is not worse.
-    "fx.subdivide": ("flat", "tree"),
+    # `noise`: the tree walk for the 16-px White Noise class alone (`fx.white_noise_record`
+    # -- a root offset, bare Quadrants, one leaf with an opacity program; the flat arm
+    # draws it as a constant), the flat walk for every other Quadrant record.
+    "fx.subdivide": ("flat", "noise", "tree"),
     # The two draw-model questions the tree arm leaves open. `branchoffset` offsets a cell's
     # own pattern and its children; whether its unit is the canvas or the cell's region is
     # not settled (Bricks 9804's author halves it per level by hand, which argues canvas).

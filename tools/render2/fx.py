@@ -454,7 +454,8 @@ def emissions(rec, run, slots, cache=None):
     # which `splat` draws as grids. Everything above this line is shared: the same chain,
     # the same table, the same seeding, the same answer about whether the table batches.
     # See `fxtree` for what is established and what the arm leaves open.
-    if assume.assumed("fx.subdivide", "flat") == "tree":
+    how = assume.assumed("fx.subdivide", "flat")
+    if how == "tree" or (how == "noise" and white_noise_record(rec, table)):
         return fxtree.emissions(rec, run, slots, nodes, table, reads, cache)
     if reads is not None:
         seed = dict(slots)
@@ -664,6 +665,45 @@ def _walk(rec, run, slots, nodes, table, collect):
     else:
         walk(0, 0, "chain")
     return out, closed[0]
+
+
+def white_noise_record(rec, table):
+    """Is this the library's 16-px White Noise: a root offset cell, bare Quadrants, and one
+    leaf whose only parameter is an opacity program?
+
+    THE FLAT ARM DRAWS THIS RECORD AS A CONSTANT -- one pattern, one `rand(1)` -- and
+    Bricks 7660 came out 0.922 flat where the tree walk gives white noise (mean 0.49, sd
+    0.287; 9924, the same record, calibrated the tree's region convention at 0.513 /
+    0.292 / lag-1 -0.012). It is the source of every per-tile tone in graph 002 (the
+    gradient ladder 7667-7709 maps it) and the corpus carries ~1,300 of them in 100+
+    files, all 16 x 16. `fx.subdivide = noise` sends this class down the tree walk and
+    nothing else; `tree` sends every Quadrant record, `flat` none. `noise` is an ARM:
+    the tone ladder above it lands the tiles 0.07 darker than the export where the flat
+    arm's accidental constant lands them 0.05 brighter, so the ratchet and the companion
+    both refuse it (FORMAT-NOTES.md, "The White Noise class").
+    """
+    if not (rec.width == 16 and rec.height == 16):
+        return False
+    try:
+        cells, order, roots = fxtree.cells_of(rec, table)
+    except Exception:
+        return False
+    if len(order) < 3:
+        return False
+    leaves = [o for o in order if not any(cells[o].kids)]
+    if len(leaves) != 1:
+        return False
+    for o in order:
+        c = cells[o]
+        if o == leaves[0]:
+            if set(c.params) != {"opacity"} or c.params["opacity"][0] != "program":
+                return False
+        elif o in roots:
+            if set(c.params) - {"branchoffset"}:
+                return False
+        elif c.params:
+            return False
+    return True
 
 
 def leaf_count(rec):

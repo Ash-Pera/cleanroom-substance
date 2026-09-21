@@ -61441,3 +61441,29 @@ arm, withdrawn) changes the tree arm's 002 by nothing a picture shows. What the 
 pictures do show (`/tmp/bricks_dirwarp.png` while it lasts) is per-TILE brightness
 swinging by 0.4 under the tree arm where 8043 mixes at 0.12 -- the dirt chain reaches
 the tiles' tone through more than 8043, and that is the next thing to trace.
+
+## The White Noise class: the per-tile tone's source is a 16-px `rand(1)` FX-Map the flat arm draws as a constant 0.922; drawn as noise, the tiles land 0.07 too dark, so it stays an arm
+
+Tracing the tree arm's per-tile brightness swings on 002's height: of 692 records in the
+chain, the first the arm changes is 7660 -- 16 x 16, `hurst` 0.0, a root offset cell,
+four bare Quadrants and a leaf whose only parameter is an opacity program (`rand(1)`):
+the library's White Noise, the same record 9924 calibrated the tree's region convention
+on (0.513 / 0.292 / lag-1 -0.012). The flat arm draws it as ONE pattern at 0.922. It
+feeds a ladder of `gradient`s (7667 .. 7697: sawtooth ramps 0 -> 0, 0.5 -> 1, 0.504 ->
+0, 1 -> 1 -- each doubles and wraps, extracting the next bit of the noise -- then three
+S-curves) that becomes the per-tile tone. The corpus carries ~1,300 of these records in
+100+ files, every one 16 x 16.
+
+`fx.subdivide = noise`: the tree walk for this class alone (`fx.white_noise_record`).
+Under it the per-tile tone spread is the export's kind -- 002 0.064, 003 0.065, 005
+0.068 against the export's 0.040 / 0.056 / 0.049 (the flat arm: 0.023 / 0.062 / 0.031)
+-- and the tile LEVEL falls: 0.517 / 0.455 / 0.537 / 0.540 against 0.644 / 0.593 /
+0.622 / 0.628, where `spread` alone had 0.590 / 0.537 / 0.593 / 0.598. The noise's
+mean (0.49) through the ladder lands the tiles darker than the flat arm's accidental
+0.922 did; the export sits above both. Ratchet: height dc hard-adverse on 002-005,
+005 normal corr; the companion refuses on the level. So the construct is the file's and
+the tone's LEVEL is not this reading's to fix: what the ladder maps -- whether the
+engine samples the 16-px noise bilinearly upscaled (mean 0.5 still), or the S-curves
+7698 / 7703 / 7708 are not what our `gradient` reads (a 64-stop ramp with a mid-point
+field this renderer ignores) -- is the next thing; the arm is `noise`, the default
+stays `flat`.
