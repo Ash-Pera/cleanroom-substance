@@ -61108,3 +61108,27 @@ WHAT THE WARPS DO WITH IT. 002's height passes through eight `warp`s of intensit
 2-3 px of edge wobble and the fine relief the export's tiles carry -- the "grain" may
 be the warps' doing at native rather than a finer octave, which is the next picture to
 take: 002's height at 1024 under the tree arm against the export, tile by tile.
+
+## At matched scale the export's 002 tile is a pillow with a mild ramp; `nearest` has both in kind, `spread` the ramp without the pillow, `field` neither
+
+Native crops at ONE scale (ours 1024, the export 4096, the same 1/4 of the canvas;
+`/tmp/b002_both_crop.png`, `/tmp/b002_nearest_crop.png` while they last):
+
+    field           flat white tiles, thin dark lines, faint mottle
+    spread          mid-grey tiles, a strong linear ramp across each (one side bright,
+                    the other dark), a dark seam, no edge roll-off
+    nearest         mid-grey tiles, the ramp, AND a darker rim -- the cone's falloff
+                    times the propagated grey: a pillow with a tilt
+    export          mid-grey tiles, a pillow (bright interior, dark toward every edge),
+                    a mild ramp, a wide dark mortar with rounded corners, fine mottle
+    + fx.subdivide=tree on any of them: soft mottle patches a few tiles wide
+
+So the reading closest in kind is `nearest` -- `combinedistance = 1`, the node's own
+default -- not `spread`, and the earlier per-tile table cannot tell them apart (both
+0.21 / 0.58). What `nearest` still has wrong is the ramp's amplitude against the
+pillow's: ours is a half-range ramp on a full cone; the export's ramp is a fraction of
+its pillow. That is the Flood Fill to Gradient's weight (2713, multiply at 0.54) and
+the bevel's profile (13.86-px `distance` then `levels`), which the ratchet's band sees
+as `nearest` 0.61 against `field` 0.50 at native. The pictures say `nearest` + a
+weaker ramp; the number that would confirm it is the band under `nearest` with 2713's
+weight halved, which is the next thing to measure.
