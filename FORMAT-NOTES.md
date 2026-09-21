@@ -61820,3 +61820,42 @@ question as the perlin lattice (678 / 680) and Auras 391.
 NOT FLIPPED: the ratchet would refuse on Chesterfield ch2 and RoofTiles ch1 / ch2, and
 the companion rule needs the corr loss shown rand-driven -- true of Chesterfield's
 blue by the argument above, not of RoofTiles' squares, which are a wrong drawing.
+
+## RoofTiles ships two export sets and neither is at the declared inputs: `old` carries moss the file declares off, `clear` a paint with no age and no dirt; only height and normal are honest rows
+
+Chasing 606 (the record the tree arm draws as squares): its entry is a noise
+generator reading only `$outputsize` and `$randomseed` -- opacity `rand(2) - 1`,
+`branchoffset` 5 x (cos, sin) of a random angle, `patternsize` (1 + rand(1), 4 +
+rand(4)), rotation 0.93 + rand(0.135) turns, halfbell with `patternsuppl` 0.84 --
+elongated near-vertical strokes of either sign, and 607 -> 609 -> 673 -> 838 ... 871
+carries it into the basecolor as the paint's PEEL. The export shows where it goes: the
+pack's `reference_renders/old/` is the blue paint peeling in vertical ragged streaks
+with green moss in the gaps, `reference_renders/clear/` the same blue paint intact
+(`/tmp/roof_sets.png`).
+
+WHAT THE TWO SETS ARE. Height is byte-identical between them (mean 0.3883, sd 0.2172,
+both), so the sets differ only in the paint chain's inputs. `clear`'s roughness is ONE
+value, 0.2824, over 4 M pixels: `Paint_Age` 0 (2231's peel mask empty), `Dirt` 0
+(1102's mask empty) and `Moss` 0 (1778's), and the paint's roughness 0.2824 -- not the
+declared `Paint_Roughness` 0.3137. `old` has moss, so `Moss` > 0 against the declared
+0, and its `Paint_Age` / `Dirt` are whatever gives its streaks. The file declares
+`Paint_Age` 0.27, `Dirt` 0.2, `Moss` 0 -- ours at the defaults is a third state, a
+little peel and dirt and no moss, and `compare_pack` pairs it with `old` (glob order;
+the pool is every `RoofTiles_*` under the directory) for both assemblies, 1.0 and 1.1,
+which differ only in basecolor (+0.690 / +0.612 / +0.447 against +0.728 / +0.588 /
++0.417 at 128) and are deduplicated to one row set.
+
+So RoofTiles' basecolor and roughness rows measure the paint chain against inputs the
+pack does not record, as Sandy's sand does; its height, normal (and the flat metallic)
+are the rows that measure the renderer. This changes what can refuse an arm: the
+`quadrant` losses on RoofTiles were basecolor ch1 / ch2 (the peel drawn as squares
+against a peel at unknown age), while its honest rows move within 0.016 (normal ch1
++0.728 -> +0.712, height unchanged). RoofTiles has no rows in `GUARD_TABLE`, so no
+floor is affected; `EXPORT_SETS` is not extended to it because neither set's inputs
+are derivable (`clear`'s three zeros are, its paint roughness is not).
+
+606 itself stays open: whether its strokes are the 1/16-canvas streaks the peel needs
+depends on the unit of a cell that draws and subdivides (region-scaled sizes give
+0.09 x 0.37 at depth 4) and on what `opacitymult` 53.8 means for a record whose
+patterns are +/-1 -- under `max` the negative strokes cannot cut, under `add` every
+stroke saturates (`/tmp/roof606b.png`).
