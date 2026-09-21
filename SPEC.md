@@ -853,8 +853,7 @@ discriminated by the tag word's **low nibble**:
   4^k regions. Over the corpus 59 of 60 such lists carry exactly one `0x49`; the paired
   source `Texture_Randomizer.sbs` instances `splatter` with `Grid_Number` 0 four times and
   each compiles to a lone `0x49`; SandyStonePath's `Grid_Number` 3 puts it fourth. Read
-  under the arm `fx.pointercell = switch` (§13.9); the default still walks the list as a
-  list. The walk steps through the link by its slot 1 and
+  by default (`fx.pointercell = switch`, §13.9; `list` keeps the old walk as an arm). The walk steps through the link by its slot 1 and
   now reports it; it did not, so its two words were the one structure in the walk that
   nothing named — 91 of the 721 unreached cells over 60 files, traversed all along, and
   2,832 bytes corpus-wide. Guard on the LOW NIBBLE: `0x0002711B` is a `0x??1B` branch whose
@@ -2419,7 +2418,7 @@ seed-free measurement of the same channel that a per-cell random draw in the pic
 cannot move — Bricks' per-tile tilt and level, the pillow profile, the band power in the
 octaves the reading acts on — guarded by its own test (`COMPANION_INSTRUMENTS`), with
 the replaced bound kept as history; the correlation is still ratcheted from the re-taken
-value. Under that rule these twenty-one readings are the defaults, each with the section that
+value. Under that rule these twenty-two readings are the defaults, each with the section that
 arbitrated it in FORMAT-NOTES.md: `transformation.matrix = columns`;
 `pixelprocessor.outputsize = grid` for canvas-sized records; `warp.default_intensity =
 1.0`, `normal.default_intensity = 1.0`, `blur.default_intensity = 10.0`,
@@ -2438,7 +2437,7 @@ reading, bit-identical on Bricks, RoofTiles band 1.36 → 1.39); `fx.header = re
 the ratchet now); and the eight Bricks readings the graph-001 sections verified —
 `fx.chain = tree`, `program.select = lazy`, `pixelprocessor.rand = pixel`,
 `pixelprocessor.sample = nearest`, `fx.brick = fill`, `fx.negopacity = signed`,
-`fx.combine = max` (the combine for every entry, declared or not — under `bit18`'s signed add on an undeclared entry Bricks' dirt splatter summed its overlaps and 28% of the canvas passed a 0.29 cut where the export's spots cover a few percent; under `max` 6% does, and the file's own arithmetic lands the tiles' level and top on the export's), `fx.hurst = exp` — which pass alone and together (`tree` needs `lazy`:
+`fx.pointercell = switch` (§8, the `0x9`/`0x49` list as baked switches — structural, the ratchet packs bit-identical), `fx.combine = max` (the combine for every entry, declared or not — under `bit18`'s signed add on an undeclared entry Bricks' dirt splatter summed its overlaps and 28% of the canvas passed a 0.29 cut where the export's spots cover a few percent; under `max` 6% does, and the file's own arithmetic lands the tiles' level and top on the export's), `fx.hurst = exp` — which pass alone and together (`tree` needs `lazy`:
 alone it turns 10081's row-start count into 2³¹ − 1). Refused by the same rule and kept as
 arms: `distance.propagate = field` (the reading before `spread`: tiles a third of the way
 to white, no per-tile tone), `fx.subdivide = tree` (one record, 708, whose Quadrant
@@ -2446,8 +2445,9 @@ leaves emit sparsely under a 0.29 step; and at native its noise is blotches wher
 export has grain), `blur.subpixel = fractional` (within 0.004 of the defaults at native,
 worse at 256) and `fx.gridnamed = branchoffset` (inert on every pack: the leaf-only chains that
 spell a grid in their entry's `branchoffset` program take the leaf's count instead).
-Open as an arm and not yet refused: `fx.pointercell = switch` (§8 — the `0x9`/`0x49`
-list read as the library Splatter's baked `Grid_Number` switches; the ratchet packs carry
-no such record, and the one pack that does, SandyStonePath, cannot arbitrate it while its
-sand sits below its tiles at the declared inputs — FORMAT-NOTES.md, "The `0x9`/`0x49`
+`fx.pointercell = switch` is a default on the structure alone, as `fx.leafcount` is:
+59 of 60 corpus lists carry exactly one `0x49`, the paired source compiles `Grid_Number`
+0 to a lone `0x49` four times, the ratchet packs carry no such record and are bit-identical
+under both arms, and SandyStonePath — the one pack that does — cannot arbitrate it while
+its sand sits below its tiles at the declared inputs (FORMAT-NOTES.md, "The `0x9`/`0x49`
 pointer-cell list is the library Splatter's `Grid_Number`").

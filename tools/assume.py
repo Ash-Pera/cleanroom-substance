@@ -518,7 +518,11 @@ QUESTIONS = {
     # nestings then the draw, 4^3 = 64 stamps of the source at 220% x 265% of the region,
     # the "8 x 8 grid" Grid_Number 3 names; under `list` the record drew its two entries
     # once each at depth 0. Sent through `fxtree` because the switch selects a depth.
-    "fx.pointercell": ("list", "switch"),
+    # DEFAULT `switch` on the structure alone: the four ratchet packs carry no such record
+    # and are bit-identical under both; SandyStonePath, the one pack that does, moves
+    # 02 basecolor +0.19 -> +0.12 and AO +0.37 -> +0.46 at 256 with its height band
+    # 2.55 -> 1.91, and its sand overlay's coverage is the level's, not the splatter's.
+    "fx.pointercell": ("switch", "list"),
     # `rand` INSIDE A PIXEL PROCESSOR. `image` is one draw per record -- `$number` is 0
     # and nothing else salts the hash -- so a program that is only `rand(1)` renders a
     # constant. `pixel` salts the hash per pixel, so the same program is a white noise.

@@ -459,7 +459,7 @@ def emissions(rec, run, slots, cache=None):
         return fxtree.emissions(rec, run, slots, nodes, table, reads, cache)
     # A POINTER-CELL LIST AT THE ROOT selects a nesting depth under `fx.pointercell =
     # switch`, and a depth is only drawable as a tree: see `assume.QUESTIONS`.
-    if assume.assumed("fx.pointercell", "list") == "switch" and pointer_list_record(rec):
+    if assume.assumed("fx.pointercell", "switch") == "switch" and pointer_list_record(rec):
         return fxtree.emissions(rec, run, slots, nodes, table, reads, cache)
     if reads is not None:
         seed = dict(slots)

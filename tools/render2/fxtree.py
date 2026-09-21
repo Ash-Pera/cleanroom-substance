@@ -188,7 +188,7 @@ def cells_of(rec, table, run=None, slots=None):
     data = rec.asm.data
     by_off = {off: params for off, _tag, params in table}
     cells, order, nodes, headers = {}, [], set(), {}
-    switched = assume.assumed("fx.pointercell", "list") == "switch"
+    switched = assume.assumed("fx.pointercell", "switch") == "switch"
     for item in rec.fx_walk():
         if item[0] != "entry":
             nodes.add(item[1])

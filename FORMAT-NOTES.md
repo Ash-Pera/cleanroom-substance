@@ -61706,3 +61706,34 @@ export sits between on an input the pack does not record, as its `Use_Random_Til
 was. Not fitted. On the packs at 256 `switch` alone moves Sandy 02 basecolor +0.186
 -> +0.118 and AO +0.372 -> +0.463 (the overlay's blobs land in the wrong tiles: the
 coverage is the level's, above); the ratchet packs are in `/tmp/packs_pcell.log`.
+
+ADDENDUM, `fx.pointercell = switch` made the default. On the packs at 256 (`/tmp
+/packs_pcell.log`): Auras, Bricks, RoofTiles and Chesterfield bit-identical -- none
+carries a pointer-cell record -- so the ratchet cannot speak; Sandy 02 basecolor
++0.186 / +0.120 / +0.059 -> +0.118 / +0.056 / +0.031, AO +0.372 -> +0.463, height band
+2.55 -> 1.91, roughness +0.442 -> +0.378 (its 01 rows are seed noise either way). The
+flip rests on the structure -- 59 of 60 lists with exactly one `0x49`, the source's
+`Grid_Number` at its index on both files with a source -- as `fx.leafcount = header`
+did; `list` stays as the arm. The Sandy rows that move do so through an overlay whose
+level, not whose splatter, is what the export disagrees on.
+
+ALSO SEEN, not acted on: 678 and 680 (the source's `perlin_noise`, scale 4) are the
+0x18B -> 0x89 spiral -> 0x1CB / 0x18B -> one gaussian entry, 16 draws each with
+`branchoffset` stepping INTEGER cells ((0,0), (0,1), (-1,1), (-1,0), (-1,-1), ...),
+`patternsize` 2.82 and `frameoffset` radius 0.125 from the same `$randomseed + 1`,
+and the two draw the SAME picture (same seed, same draws), so 681 = levels(678) -
+680 x 0.5 is flat 0.5 and 682 with it -- the flat 0.5 the directional warps 684 / 685
+read. Under `fx.branchoffset = cell` the 16 gaussians land on their 4 x 4 lattice
+(`/tmp/sandy_perlin.png`; under `canvas` the integer offsets wrap onto one point and the
+record is a single blob), which is the lattice-unit question already open on Auras 391;
+what it does not explain is two identical records subtracted -- the library
+`perlin_noise.sbs` is not on disk and `Perlin_Noise_Animated` in `pairs5` is another
+construct (an `addnode` + `paramset` with an Ellipse function). Open.
+
+ALSO SEEN, Auras 004's alpha: the export's alpha is 1.34 x its own luminance + 0.01
+(residual 0.015 over a three-channel fit), not a channel the graph makes -- 442 / 424's
+ramps carry alpha 1.0 at every stop and 444 is their add. Like graphs 001-003's RGB it
+is the author's export workflow, not the file's; ours stays 1.0 and `refcompare` scores
+RGB only. The picture (`/tmp/auras004_alpha.png`): the export's ring is smoky and wavy
+with two thin bright lines where ours is a clean thick band -- the warp driver's, the
+lattice question above.
