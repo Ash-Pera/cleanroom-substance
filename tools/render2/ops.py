@@ -454,6 +454,12 @@ def blend(mode, dst, src, opacity):
         raise Unsupported("blend mode %r is outside the verified 0-11 range" % (mode,))
     name, fn = entry
     if name == "switch":
+        # `blend.switch`: `threshold` selects by `op >= 1/2`; `lerp` is the plain
+        # `dst (1 - op) + src op`, alpha-blind -- what the library Slope Blur's 32-step
+        # ladder of mode-7 blends at opacity 1/k needs to be a running mean (Bricks
+        # 12280-12340, opacities 1/2, 1/3 ... 1/32 up the chain). See `assume.QUESTIONS`.
+        if assume.assumed("blend.switch", "threshold") == "lerp":
+            return np.clip(dst * (1.0 - opacity) + src * opacity, 0.0, 1.0)
         return np.where(opacity >= 0.5, src, dst)
     with np.errstate(all="ignore"):
         return np.clip(dst * (1.0 - opacity) + fn(dst, src) * opacity, 0.0, 1.0)

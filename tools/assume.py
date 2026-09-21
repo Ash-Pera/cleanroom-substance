@@ -413,6 +413,15 @@ QUESTIONS = {
     #                         `Lichen_Colour_Variation` -- the material author's names for a
     #                         position into a gradient, not the parameter's own.
     "blend.w1bit8": ("ignore", "alphablend", "background_used"),
+    # BLEND MODE 7. `threshold`: `op >= 1/2 ? src : dst`, the reading arbitrated on the
+    # 0/1 selectors (`hblend`'s Auto Level switch, Chesterfield's metallic). `lerp`: the
+    # plain `dst (1 - op) + src op`, alpha-blind, which agrees with every 0/1 selector and
+    # differs on fractional ones -- and the library Slope Blur is 32 mode-7 blends in a
+    # ladder at opacity 1/2, 1/3, ... 1/32, each step one more warp along the slope
+    # (Bricks 12280-12340 under graph 005's roughness): a running MEAN under `lerp`, a
+    # single warp step under `threshold`. Mode 0 (`copy`) coincides with it on greyscale;
+    # the two would differ on colour alpha, which is not modelled here.
+    "blend.switch": ("threshold", "lerp"),
     "transformation.w1low": ("ignore", "tiling", "filtering", "mipmap"),
     # HOW `matrix22`'S FOUR WORDS ARE LAID OUT. `columns` (the default since this was
     # arbitrated on the whole reference set): the words are a column-major 2x2, so the

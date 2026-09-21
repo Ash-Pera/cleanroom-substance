@@ -61936,3 +61936,38 @@ Chesterfield under `background` alone is pixel-identical on its pictures
 reaches. So the creases need both arms, and the 4-8 band that refuses the tree on the
 blue is, in part, 331 and 333 both alive at full power where the export's 334 is their
 difference.
+
+## Bricks 005's roughness is 0.34 dark through a softlight of a black grunge whose slope blur warps along a dead noise; the library Slope Blur is 32 mode-7 blends at opacity 1/k, and `blend.switch = lerp` is refused on every other switch
+
+The dc the `background` arm tripped on: 005 roughness 12344 = multiply(12343, uniform
+0, mask 0) = 12343 = levels(12342: in 0.114..1 -> out 0.048..0.877 -- the export's top
+IS 0.877), 12342 = softlight(12341, 12340) at 0.94, 12341 = an inverting levels of
+4620 (out 1.0 -> 0.343; ours mean 0.479, the tiles dark grey with white rings), and
+12340 mean 0.043: a black field with a few light diagonal streaks. Softlight with a
+black source is d^2, so the tiles fall 0.48 -> 0.29 -> 0.21 where the export holds
+them at 0.55 (`/tmp/b005_rough_chain.png`: 4620, 12341, the export). For the export's
+level 12342 must sit ABOVE 12341, i.e. the grunge source must be light where the
+export's blotches are -- our 12340 is not that grunge but the streak mask 12276 warped
+32 times along 12277, an fxmaps that is FLAT 0.179 under the flat walk (another
+Quadrant noise dead under `fx.subdivide = flat`), so every warp is the identity.
+
+THE LADDER. 12278 = warp(12276, 12277); 12280 = blend mode 7 (12278, warp(12278)) at
+opacity 1/2; 12282 = mode 7 (12280, warp(12279)) at 1/3; ... 12340 at 1/32: thirty-one
+mode-7 blends whose baked opacities run 1/2, 1/3 ... 1/32 up the chain, each source
+one more warp along the same slope map (`/tmp/b005_ladder.png`). That is the library
+Slope Blur (`slope_blur_grayscale_2`, four instances in Sandy's source too): a
+running MEAN of 32 warp steps -- which the mode-7 reading as `op >= 1/2 ? src : dst`
+collapses to the second step alone (only the 1/2 passes). So either mode 7 is a
+cross-fade (`dst (1 - op) + src op`, the reading `ops.blend` refused as "duplicating
+mode 0") or the Slope Blur's blend is compiled from a MODE PROGRAM this reader sees as
+7. `blend.switch = lerp` is added as an arm and REFUSED on the packs at 256: Bricks
++0.577 / 0.95 -> +0.463 / 1.82 (every graph's normal, AO and roughness fall, band
+doubling -- the fractional selectors elsewhere are selectors), RoofTiles / Chesterfield
+/ Auras within 0.001, Sandy +0.162 -> +0.126. Two readings of one mode number cannot
+both hold on greyscale, and the selectors have the packs; what the ladder says is
+that the compiled mode word (`0x117`, `0x11b` on 12342's softlight, bit 8 set on both)
+may carry more than the low nibble. Open, with the ladder as the specimen.
+
+The dc fault itself is upstream of both: 12277 (a `fx.subdivide` casualty) and the
+grunge's level. Under `quadrant` the 005 roughness dc is -0.344 -> -0.361 still, so
+the noise alone does not lift it; the grunge chain feeding 12276 is the next trace.
