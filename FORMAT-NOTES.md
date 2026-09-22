@@ -62655,3 +62655,62 @@ as `precomputed` so the loop skips it -- one Bricks output at 1024 is ~50-80 s a
 peak for ~1,250 records. The companion instrument should be re-checked at 1024 BEFORE anyone
 rewrites it: its `_tone_mask_record` segmentation was taken from a clamped 256 render, which
 is very likely why the EXPORT side of 003's tilt moved at all.
+
+## The clamp census: the honest cap is PER PACK and it is the pack's own implied export size -- at which the clamped fraction falls from ~80% to 1.3-5.4%, and what is left is one structured ladder of `transformation` + `blend` at 2/4/8/16x the canvas
+
+The re-take needed a cap and "1024" was the wrong rule: the size a pack's exports imply is
+not the same number twice. Measured (`/tmp/clampcensus.py`, `refcompare.implied_outputsize`
+over each pack's own paired maps):
+
+    Auras                    512 px       Bricks              1024 px
+    RoofTiles               2048 px       Chesterfield        2048 px
+    SandyStonePath          2048 px
+
+RECORDS STILL CLAMPED at a given cap -- a record is clamped when its DECLARED size, which
+is what its `$size` programs read, exceeds the render cap, and that is exactly when the
+over-scale smear of the previous entry appears:
+
+                             cap 256   cap 512   cap 1024   cap 2048   at its OWN size
+    Auras      (512)  first      105         0          0          0        0 of 445
+    Auras      (512)  pergraph   443         0          0          0        0 of 445
+    Bricks    (1024)  first     2,359     2,290        106         56      106 of 12,585
+    Bricks    (1024)  pergraph 11,348    11,163        170        120      170 of 12,585
+    RoofTiles (2048)           2,207     2,080      1,883         32       32 of 2,632
+    Chesterfd (2048)             738       714        699         32       32 of 881
+    SandyPath (2048)           1,411     1,365      1,319         96       96 of 1,778
+
+READ THE `cap 512` COLUMN AGAINST `GUARD_GRIDS`. The guard scores at 128/256/512, so EVERY
+reading in `GUARD_TABLE` was taken with the overwhelming majority of every pack's records
+clamped -- 714 of Chesterfield's 881, 2,080 of RoofTiles' 2,632, 1,365 of SandyStonePath's
+1,778 -- and those three packs are SINGLE-GRAPH and read identically under both arms. So
+this was never a `pergraph` problem or a multi-graph problem. `pergraph` only made a
+pre-existing fault visible on the two packs where it also moved a uid.
+
+WHAT IS LEFT AT THE HONEST CAP IS NOT NOISE, IT IS ONE CONSTRUCT. The residual records --
+those declared LARGER than the canvas itself, which no cap short of 16x can render honestly
+-- form an exact geometric ladder, equal counts at 2x, 4x, 8x and 16x the canvas:
+
+    Bricks         170 = 50/40/40/40 at 2/4/8/16x   120 transformation, 40 blend, 10 pixelprocessor
+    Chesterfield    32 =  8/8/8/8                    24 transformation,  8 blend
+    SandyStonePath  96 = 24/24/24/24                 72 transformation, 24 blend
+
+Three `transformation` and one `blend` per rung, per chain, at doubling scales -- eight such
+chains in Chesterfield, twenty-four in SandyStonePath. That is a supersample-and-accumulate
+construct, and all 170 / 32 / 96 lie in some declared output's edge closure, so none is
+dead. Clamping them to the canvas does not corrupt them the way clamping a 4x record does;
+it turns supersampling into no supersampling, which is a quality loss and not a smear. The
+distinction matters because it is the difference between a caveat and a blocker.
+
+SO THE RE-TAKE IS WELL-DEFINED NOW: render each pack once per output at `max_dim` = ITS OWN
+implied `$outputsize` (Auras 512, Bricks 1024, the rest 2048) through `refcompare`'s
+`render2-lean`, resample down to 128/256/512 to score, and record the residual ladder as a
+stated limit of the reading rather than pretending it away. Memory is the reason `lean`
+exists: Bricks at 1024 is 3.5 GB live against 112 GB if nothing is freed, Chesterfield at
+2048 is 13.1 GB against 58 GB.
+
+ONE CAVEAT ON THE ATTRIBUTION ABOVE, for whoever uses it: "in some output's edge closure"
+is computed from `Record.edges`, and the same value-cache CSE that makes a per-output cone
+unsound for RENDERING (see `refcompare._lean_renderer`) makes an edge closure an UNDER-count
+for influence -- a record outside the closure can still reach the output through a shared
+0x03/0x06 cache index. It is a lower bound, and here it already covers every record, so
+nothing rests on the gap.
