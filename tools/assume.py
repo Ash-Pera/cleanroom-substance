@@ -335,7 +335,7 @@ QUESTIONS = {
     # (+0.6821 -> +0.7321). Chesterfield, a single-graph file, is bit-identical under
     # both. Promoting it is a decision to RE-TAKE those floors, not a bug fix to slip in.
     # See FORMAT-NOTES.md, "ROOT CAUSE: a multi-graph package has ONE `$outputsize`".
-    "graph.outputsize": ("first", "pergraph"),
+    "graph.outputsize": ("pergraph", "first"),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
     # candidate below is a guess that would need something outside the file to settle.

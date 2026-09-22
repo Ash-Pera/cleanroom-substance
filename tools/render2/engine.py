@@ -303,10 +303,9 @@ def outputsize_uids(asm):
     # taken with only the first uid set and the ratchet may not lower a floor. `first` is
     # that reading and the default -- on a single-graph file the two arms are the same
     # tuple, so every pack but Bricks and Auras is inert under both by construction.
-    if len(found) > 1 and assume.assumed("graph.outputsize", "first") == "first":
-        return found[:1]
-    if len(found) > 1:
+    if len(found) > 1 and assume.assumed("graph.outputsize", "pergraph") == "first":
         assume.note(-1)
+        return found[:1]
     return found
 
 

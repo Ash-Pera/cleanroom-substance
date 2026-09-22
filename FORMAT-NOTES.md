@@ -62714,3 +62714,60 @@ unsound for RENDERING (see `refcompare._lean_renderer`) makes an edge closure an
 for influence -- a record outside the closure can still reach the output through a shared
 0x03/0x06 cache index. It is a lower bound, and here it already covers every record, so
 nothing rests on the gap.
+
+## STATUS: the re-take is done and `graph.outputsize = pergraph` is the default -- 52 entries re-recorded from honest renders, 19 of 19 enforced floors CLEAR -- and the correction has left exactly two things red, both of them instruments calibrated against the smear
+
+WHAT IS APPLIED (uncommitted at the time of writing): `GUARD_TABLE`'s 52 `at` blocks
+rewritten from renders at each pack's OWN implied `$outputsize` (Auras 512, Bricks 1024,
+Chesterfield 2048) through `refcompare`'s `render2-lean`, resampled to 128/256/512 to score;
+`was`, `companion`, `declared`, `mae` and `note` untouched, so no floor moved. The default
+arm of `graph.outputsize` is now `pergraph`, in `assume.QUESTIONS` AND in `engine`'s own
+fallback -- `assumed(key, default)` returns the CALL SITE's default, so flipping the tuple
+alone would have changed nothing, which is worth knowing for the next arm anyone promotes.
+`test_render2_reference_agreement_does_not_regress` no longer renders at `max_dim = grid`:
+it renders once per pack at the implied size and resamples, because scoring three `max_dim`
+values was never a resolution sweep. Renders cost 32 s / 578 s / 101 s at peak RSS 0.6 /
+3.5 / 2.8 GB.
+
+THE FLOORS. All 52 rows covered, 19 carry an enforced `was` floor at 256, and ALL 19 CLEAR.
+005/roughness ch0 -- the single row that blocked promotion for two sessions -- reads +0.8450
+against its 0.77 floor. The honest render splits by channel type and the band ratios say
+why: every `normal`, `ambientocclusion`, `height` and `roughness` row rises with its band
+moving TOWARD 1.0 (002/normal ch2 +0.7975 -> +0.9505, band 0.047 -> 2.147; 005/AO +0.8676 ->
++0.9447, band 0.358 -> 0.963; Chesterfield AO +0.8990 -> +0.9638, band 2.793 -> 1.441), and
+every `basecolor` row falls with its band collapsing AWAY from 1.0. Chesterfield is the
+control that makes this not about the arm: single-graph, identical under both arms, and it
+improves on six of ten rows purely from being rendered at its own size.
+
+RED 1, AND IT IS A REAL FAULT THE SMEAR WAS HIDING. Bricks 002/basecolor ch0/1/2 `band`
+reads 0.166 / 0.188 / 0.156 against `BAND_BAR` 4.0, which requires >= 0.25 -- outside the
+health bar, reported as "new breakage, not a recorded one". Under the clamped render the
+same rows read 0.425 / 0.480 / 0.442, comfortably inside. So our Bricks basecolor carries
+about a sixth of the export's structural power and always did; the clamp's quadrant-scale
+smear was supplying the difference. `Entry.declared` with a `Cause` is the sanctioned way to
+record a quantity outside a bar, and it is NOT used here: a `Cause` must name a record index
+or a mechanism, this one is not yet known, and the class docstring says plainly that the
+requirement exists so "a bypass cannot be written by leaving the reason out". The bar is
+doing its job. The basecolor deficit is the next fault to trace, and it is the same channel
+that refuses `fx.subdivide = quadrant`.
+
+RED 2, THE COMPANION INSTRUMENT, which this predicted. Rendered honestly it is BETTER and
+still red: 003 `tilt` now PASSES -- it was the worst reading at ours 0.227 against an EXPORT
+value of 0.047 where the table records 0.2006, and with an unsmeared mask the export side is
+sane again. 003 `low_band` improves 0.525 -> 1.293 (|log| 0.644 -> 0.257) and misses its
+0.236 allowance. And 004 `mortar_level` reads 0.014 against 0.356 with a "Mean of empty
+slice" warning: `mortar_level` is `mean(x[~mask])` and the tone mask now covers essentially
+the whole canvas, so the quantity is computed on nothing. THE INSTRUMENT LABELS TILES BY
+CONNECTED COMPONENTS OF OUR OWN TONE MASK AND MEASURES BOTH SIDES OVER THOSE LABELS, so its
+reference numbers are a function of our render and its erosion (`binary_erosion`, 3
+iterations) is resolution-dependent. It is not seed-free in the way its docstring claims and
+it needs labels derived from the EXPORT's own structure. Until then it cannot arbitrate, and
+it is the only route by which a correlation floor may be lowered.
+
+A TRAP WORTH RECORDING FOR WHOEVER TOUCHES THIS NEXT: the first attempt to render the
+companion instrument honestly used `render2.engine.render` directly at `max_dim` 1024. That
+holds every array -- 112 GB on Bricks -- and the process was OOM-killed, leaving a
+ZERO-BYTE pytest log that reads exactly like a clean run if the file size is not checked.
+It goes through `_renderer(("render2-lean", extra_keep))` now, naming the tone-mask records
+and the height outputs, because `lean` frees every intermediate that is not a declared
+output or a `bitmap` and this instrument reads one that is neither.

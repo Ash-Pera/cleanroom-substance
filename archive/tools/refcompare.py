@@ -453,6 +453,13 @@ def _renderer(which):
 
     if which == "render2-lean":
         return _lean_renderer()
+    if isinstance(which, tuple) and which and which[0] == "render2-lean":
+        # ("render2-lean", extra_keep): a caller that needs an INTERMEDIATE alive -- the
+        # companion instrument reads a tone-mask record that is not a declared output and
+        # would otherwise be freed under it. Naming them is the caller's job for the same
+        # reason the liveness list is: this module cannot know which intermediates a
+        # measurement wants.
+        return _lean_renderer(which[1])
 
     def go(asm, max_dim, sizes, _os=None, inputs=None):
         produced, _failures, _synth = render.render(
@@ -465,7 +472,7 @@ def _renderer(which):
     return go
 
 
-def _lean_renderer():
+def _lean_renderer(extra_keep=()):
     """`render2`, one whole-file pass, with dead intermediates FREED as it goes.
 
     WHY NOT A PER-OUTPUT CONE, which is the obvious way to make a native-size render fit.
@@ -518,6 +525,7 @@ def _lean_renderer():
                 views[r.index] = None
         keep = set(ri for _u, _f, _g, ri in asm.outputs())
         keep |= set(r.index for r in asm.records if r.filter_name == "bitmap")
+        keep |= set(extra_keep or ())
         last = {}
         for i in sorted(views):
             v = views[i]
