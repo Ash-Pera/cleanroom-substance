@@ -774,6 +774,11 @@ def _gain(b, header):
         d = np.asarray(b.depth, np.float64).reshape(-1, 1)
         if how == "exp":
             f = np.exp2(-float(h) * d)
+        elif how == "exp2":
+            # 2^(-2 * hurst * depth): the exponent per AREA halving. This branch was
+            # missing -- `exp2` fell through to `pow` and was a duplicate of it, so the
+            # reading `assume.py` describes had never been run. `exp` is untouched.
+            f = np.exp2(-2.0 * float(h) * d)
         else:
             f = np.power(float(h), d)
         f = f.astype(np.float32)

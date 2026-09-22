@@ -62120,3 +62120,133 @@ but `region` vs `canvas` moves max |dcorr| 0.0015 (Chesterfield 512) and 0.0056 
 256), so the packs cannot separate the two readings under `max` either. The docstring's
 "graph 003 cannot tell them apart" now extends to both deterministic packs at three grids.
 Deciding `order` needs a specimen pack with an export, not a better instrument.
+
+## RETRACTION: Chesterfield's blue does not invert -- the sign statistic was taken on 1.7% of the export's power in that band. The term is record 333's LEVEL, its root is `fx.hurst`, and `off` is refused at 45 rows
+
+Retracts the blue paragraph of the entry above (committed as f6fe74e, "a wrong-sign blue
+mix"): there is no node where the 4-8 octave inverts, and the heading of that entry is
+wrong on this point. What follows replaces it. The failure mode is the one the seed floor
+predicts -- a correlation computed where our own signal is nearly absent -- and it is worth
+naming as such, because the number looked decisive and was not.
+
+ABSOLUTE BAND POWER, both sides, Hanning/Parseval, variance units, 512
+(`/tmp/export_blue.py`), which the ratio tables above never showed:
+
+                              mean      sd      1-4      4-8     8-16    16-32
+    basecolor ch2 export     0.1850   0.0492   2.8e-06  7.7e-06  1.3e-04  9.7e-05
+    basecolor ch2 ours       0.1795   0.0218   3.0e-08  1.3e-07  2.1e-05  1.6e-05
+
+Ours' blue at 4-8 is 1.7% of the export's, so "blue -0.80 against green +0.995" was
+computed on noise and means nothing. And the export's own blue has a NOTCH there: 7.7e-06
+against its own 8-16 of 1.3e-04, a factor of 17, where red's ratio is 4.6 and green's 3.1.
+The export's blue does not carry button-scale structure at all. That absence, not a sign,
+is the constraint the arm has to meet. Second correction: the blue excess under `quadrant`
+is 5.13x, not the 12.2x quoted above -- 5.13 is the Hanning/Parseval ratio `refguard.
+band_power` uses and agrees with the isolation table; 12.2 came from an unwindowed variant.
+
+WHERE BLUE ENTERS: record 859, and red is untouched across the same node (512,
+`/tmp/diff_arms.py`). 859 = blend(361 dst, 857 src, mask 858); blue's 4-8 power goes
+2.06e-05 -> 2.84e-04 across it, 13.8x, while red goes 1.77e-03 -> 1.67e-03, 0.9x. The mask
+858 is what moves, and it moves in LEVEL, not in structure: mean 0.175 -> 0.0073, max
+0.982 -> 0.056, frac > 0.1 from 0.574 to 0.000. The route is
+`333 -> 334 (= 1 - 333) -> 853 -> 856 (an inverting levels) -> 858`:
+
+                       flat mean   quadrant mean
+    333 (fxmaps)        0.9587       0.0399  (max 1.000 -> 0.066)
+    334                 0.041        0.960
+    853                 0.8822       0.9951
+    856                 0.1178       0.0049
+    858 (the mask)      0.1753       0.0073
+
+THREE PROBES SAY IT IS THE LEVEL AND NOT THE MOTTLE, all 512. (a) Flatten 333's structure
+and keep its mean (`/tmp/verify_pre.py`): 334's 4-8 power goes 1.018e-05 -> 0 and 871's
+blue goes 2.874e-04 -> 2.873e-04 -- the mottle contributes 0.03%. (b) Cross-arm
+substitution, giving the `quadrant` render one node's `flat` output (`/tmp/cross_sub.py`;
+valid because `engine.py:500,507` honours `precomputed`), basecolor 4-8 ours/export:
+
+                              red    green   blue
+    flat                     0.31    0.78    0.02
+    quadrant                 0.97    0.20    5.13
+    quadrant, 333 from flat  0.69    0.68    0.31
+    quadrant, 334 from flat  0.69    0.68    0.31
+    quadrant, 858 from flat  0.64    0.58    1.54
+    quadrant, 859 from flat  0.69    0.68    0.31
+    quadrant, 857 from flat  0.99    0.19    5.22   (the gradient: not the term)
+
+(c) Override 333 with a CONSTANT under `quadrant` (`/tmp/level_sweep.py`):
+
+    333 mean      0.04   0.20   0.40   0.60   0.80   0.96
+    blue 4-8      5.13   4.41   1.63   0.51   0.38   0.31
+    858 mean     0.007  0.037  0.073  0.110  0.147  0.176
+
+Monotone in the level, and a constant 0.96 gives the same answer as the real field shifted
+to mean 0.96 (both 0.69 / 0.68 / 0.31 across the three channels): only the level reaches
+the output. Blue crosses 1.0 at 333 mean ~0.50. Excluded on the way: the gradients are read
+correctly (`/tmp/ramps.py` -- 349's ramp really is monotone-together brown, 352's really
+does oppose), 856 really is an inverting `levels` and not a reversed in/out, and no node in
+the colour path is in `info["ignored"]` (the 54 ignored are all `pixelprocessor` / `fxmaps`
+/ `dirmotionblur`, `/tmp/ignored.py`), so the `hsl` nodes 351/361/864/866 are identities
+because the file states nothing there. The hue question is not this.
+
+THE ROOT IS `fx.hurst`, AN ARM THAT ALREADY EXISTS. 333's cells (`/tmp/rec333.py`): depths
+0-6 bare subdividing Quadrants, only the two deepest draw, `patternsize (5.0, 1.0)`, leaf
+`opacity 0.85`, header `hurst 0.75`, `opacitymult 1.5`. Under `fx.hurst = exp`
+(`fxtree.py:752-781`) the gain is 2^(-0.75 d) at d = 6 and 7 -- 0.0078 and 0.0046 -- so the
+record's MAXIMUM over a 512-px canvas is 0.066 where its leaf states 0.85. This is not an
+outlier. Two censuses over 437 files (`/tmp/depth_census.py`, `/tmp/hurst_census.py`):
+23,462 of 23,462 subdividing records have their DEEPEST cell draw, and max drawing depth
+minus log2(record width) is 0 for 31.9%, -1 for 22.5%, -2 for 14.6% -- 69% within [-2, 0],
+so drawing depth tracks the record's pixel size and a depth-from-root exponent makes a
+construct's amplitude a function of the resolution it was compiled at. Of the 13,267
+subdividing records that bake a NON-ZERO hurst (3,752 bake 0.0), 2^(-hurst * deepest
+drawing depth) has median 0.041, 10th pct 0.016, 90th 0.254, with 8,234 (62%) under 0.1.
+Median hurst 0.66, median deepest drawing depth 7. THE DEFAULT READING PUTS THE MEDIAN
+SUBDIVIDING RECORD'S ALWAYS-PRESENT DEEPEST DRAWING LEVEL AT 4% OF ITS STATED OPACITY.
+
+`fx.hurst = off` MEASURED, AND REFUSED:
+
+                                    failures   Bricks corr @256   Bricks |dc| @256
+    off alone, subdivide = flat         0       +0.6815 unchanged   0.0410 unchanged
+    quadrant (reference)                8       +0.7229             0.0153
+    quadrant + off                     45       +0.5087             0.0545
+
+It is EXACTLY inert under the default subdivide arm -- every guarded row identical to four
+decimals, which `_gain`'s docstring explains (flat's patterns are all depth 0, so only
+`opacitymult` applies) -- and under `quadrant` it is a rout: Bricks 002/normal ch0 band
+0.338 -> 0.181, 005/basecolor ch0 band 0.903 -> 0.378, 002/height dc -0.008 -> -0.154. The
+fBm ladder needs the per-depth attenuation that Chesterfield's standalone record does not.
+And it does not clear the gate anyway: of the four Chesterfield `basecolor` rows, only
+basecolor 0's band comes in; basecolor 2 corr reaches +0.613 at 256 against .805, its dc
++0.0142 against .0096, basecolor 1 dc +0.0267 against .0141 -- and Chesterfield's
+roughness 0 corr BREAKS (+0.883 against .910), a new casualty. Refused, arm not withdrawn.
+
+ONE THING THE LEVEL TERM EXPLAINS FOR FREE: the standing objection two entries above, that
+Chesterfield's roughness 4-8 is "2.05, two noises of the export's power where the export has
+one", is the same fault. It reads 1.18 under `hurst = off` and 1.07 under `quadrant` with
+333 held at its flat level. Not two noises -- one noise and a gain.
+
+A DEFECT IN THE ARM ITSELF, found while checking the above and NOT measured by anything
+here: `assume.py:304` and `_gain`'s docstring both state `exp2` as 2^(-2 * hurst * depth),
+but `_gain` branches `if how == "exp": exp2(-h*d) else: power(h, d)` -- so the `exp2` arm
+computes hurst^depth and is IDENTICAL TO `pow`. The reading described in `assume.py` has
+never been run. Nothing published is invalidated (no entry quotes an `exp2` result), but
+`assume.py:305`'s remark that graph 001's thresholds "sit between `exp` and it" was
+reasoned about a formula the code does not implement. FIXED in this commit: `_gain` now
+branches `exp2` to `np.exp2(-2 * h * d)`, and the four arms are distinct at last --
+h 0.75, depth 6 gives `exp` 0.044194, `exp2` 0.001953, `pow` 0.177979 (what `exp2` used
+to return), `off` none. Default-inert by construction (`exp` is a separate branch and is
+untouched) and `tools/render2` is 43/43. The arm is now runnable and HAS NOT BEEN RUN:
+`exp2` attenuates harder than `exp`, so it moves 333's level the wrong way and is not a
+candidate for the blue, but every measurement above that quotes `exp2` -- there are
+none -- would have to be re-taken.
+
+NEXT, AND IT IS THE SAME QUESTION AS THE BRICKS HEIGHT DC. The depth ORIGIN is the
+load-bearing part of `fx.hurst`, and Chesterfield cannot separate `off` from counting the
+exponent from the shallowest DRAWING cell rather than the root (the proposed follow-on key
+`fx.hurst.depth = root | firstdraw`), because 11,415 of 23,462 records have drawing cells
+spanning only 1-2 levels, where `firstdraw` degenerates to within 2^(-h) of `off`. What
+separates them is a record whose drawing cells span 4+ depths: 6,842 exist (2,285 at 4
+levels, 1,156 at 5, 2,150 at 8), and TWO ARE IN A SCORED PACK -- Bricks 430 (drawing cells
+at depths 5-8, no baked hurst) and Bricks 63 (depths 3-6, hurst 0.65, `opacitymult` 2.0).
+On a 4-level record `exp`, `off` and `firstdraw` give three different octave profiles, and
+the per-octave band ratios separate them with no correlation anywhere in the argument.
