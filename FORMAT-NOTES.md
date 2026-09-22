@@ -62467,3 +62467,59 @@ until it is re-taken the ratchet cannot arbitrate anything on those two packs. T
 decision about the guard, not a bug fix, and it is left for one. What can be said now is
 that `fx.subdivide = quadrant`'s eight refusals, the Bricks height dc among them, were all
 measured on graphs that cannot render their own exports' finest two octaves.
+
+## The `$outputsize` fix, made and gated: `graph.outputsize = ("first", "pergraph")`, default `first`, inert on all 183 guard readings -- `pergraph` is what the file says and it moves 114 of them, failing 26
+
+The reading fault of the entry above is fixed at its source and left default-off, because
+the 42 guard rows on Bricks and Auras were every one of them taken under the fault and the
+ratchet may not lower a floor.
+
+WHAT CHANGED. `engine.outputsize_uids` (new) returns EVERY uid named `$outputsize` in
+manifest order; `outputsize_uid` is kept as "the first", which is all `declared_outputsize`
+needs since every graph in a package declares the same value (Bricks' five all state (8,8)).
+Four call sites set a size and all four now take the tuple: `record_sizes`' `at()` closure
+(`engine.py:405`), `Context._os_uids` (`:50`), `Context.graph_inputs` (`:134`) and
+`program_inputs` (`:151`), plus `filters.py:465` -- the pixelprocessor's `$outputsize`
+override, which was the one this reader missed on the first pass and which the suite caught
+as an `AttributeError` rather than as a wrong number. Worth recording: three other test
+failures went with it, and all three were that one fault in disguise.
+
+THE ARM. `assume.QUESTIONS["graph.outputsize"]`: `first` sets only the first uid, the
+reading this renderer has always had; `pergraph` sets them all. ON A SINGLE-GRAPH FILE THE
+TWO ARE THE SAME TUPLE, so Chesterfield, RoofTiles, Sandy and the 99 corpus assemblies are
+inert under both BY CONSTRUCTION, not by measurement. Measured anyway: Chesterfield's
+`record_sizes` is identical under both arms, and all 183 guard readings are identical to
+every decimal under the default. `tools/render2` 43/43.
+
+    graph.outputsize   uids   Bricks 003/normal   records off their tag at $outputsize 1024
+    first (default)       1        256x256              2,342 of 12,585
+    pergraph              5      1024x1024             11,943 of 12,585
+
+WHAT `pergraph` COSTS AND BUYS, on the 183 guard readings: 114 move -- Bricks 111 of 144,
+Auras 3 of 9, CHESTERFIELD 0 of 30, which is the diagnosis confirming itself. The ratchet
+fails 26 (key, quantity) pairs, all Bricks, spread over 002/003/004/005 and concentrated in
+`basecolor` (9 pairs) and `roughness` (5). Against that, on the guarded rows only:
+
+                          corr                              mean |dc|
+    Bricks @128   +0.6544 -> +0.6170            0.0455 -> 0.0367
+    Bricks @256   +0.6815 -> +0.6762            0.0410 -> 0.0363
+    Bricks @512   +0.6821 -> +0.7321            0.0409 -> 0.0369
+    Auras         +0.8724 -> +0.8725 (512)      0.1392 -> 0.1390
+    Chesterfield  identical at every grid       identical
+
+The level improves at every grid and the correlation improves markedly at 512 and falls at
+128 -- which is what a record that is now 1024 px being resampled down to 128 should do, and
+is a reason to doubt the 128 column rather than the arm. Individual rows move a long way in
+both directions: 002/ambientocclusion at 512 goes corr +0.8422 -> +0.9416, band 0.420 ->
+1.215, dc +0.0553 -> +0.0074, all three onto the export at once; 002/basecolor ch0 at 256
+goes +0.4147 -> +0.2869 with its band 0.425 -> 0.189.
+
+SO THE ARM IS NOT PROMOTED AND THE QUESTION IT LEAVES IS NOT A RENDERING QUESTION. The
+evidence that a package declares one `$outputsize` per graph is the file's own interface
+block, not an inference, and `pergraph` is what it says; what stands in the way is that
+every floor on the two multi-graph packs encodes the other reading. Promoting it means
+RE-TAKING those 42 rows at the sizes the exports were actually made at, which
+`test_the_new_guard_does_not_weaken_the_old_floors` exists to prevent being done quietly.
+Until someone decides that, Bricks and Auras numbers in this notebook continue to mean
+"at 256, against a 1024 export brought down to meet it", and the 26 failures above are the
+bill for the years of floors taken that way -- not evidence against the reading.

@@ -319,6 +319,23 @@ QUESTIONS = {
     # cell is the root, which is most of them; they separate only where the drawing
     # cells sit several levels down, and `fxtree._emit` records that level per batch.
     "fx.hurst.depth": ("root", "firstdraw"),
+    # WHICH `$outputsize` INPUTS A RENDER SETS. A package declares one per graph -- Bricks
+    # five, Auras four, the same uids in the same order -- and a record's size expression
+    # reads the uid of ITS OWN graph. `first` sets only the first, which is what this
+    # renderer did for as long as there has been one, and it pins every graph but 001 at
+    # its declared size whatever is asked for: Bricks 002-005 and Auras 002-004 rendered
+    # at 256 against 1024 exports, blind above 128 cycles. `pergraph` sets them all and
+    # unpins the file (Bricks: 2,342 -> 11,943 of 12,585 records move off their tag at
+    # $outputsize 1024, and 003's four outputs reach 1024x1024).
+    # THE EVIDENCE FAVOURS `pergraph` AND THE DEFAULT IS STILL `first`, because the 42
+    # guard rows on those two packs were every one of them taken under `first` and the
+    # ratchet may not lower a floor: `pergraph` moves 114 of the 183 guard readings and
+    # fails 26 (key, quantity) pairs, all Bricks, while improving Bricks' mean |dc| at
+    # every grid (0.0455/0.0410/0.0409 -> 0.0367/0.0363/0.0369) and its mean corr at 512
+    # (+0.6821 -> +0.7321). Chesterfield, a single-graph file, is bit-identical under
+    # both. Promoting it is a decision to RE-TAKE those floors, not a bug fix to slip in.
+    # See FORMAT-NOTES.md, "ROOT CAUSE: a multi-graph package has ONE `$outputsize`".
+    "graph.outputsize": ("first", "pergraph"),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
     # candidate below is a guess that would need something outside the file to settle.

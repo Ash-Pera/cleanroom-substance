@@ -462,16 +462,18 @@ def f_pixelprocessor(ctx, v):
         # graph 001's flood fill needed (`blur.reference_px` was).
         gi = None
         mode = assume.assumed("pixelprocessor.outputsize", "grid")
-        if mode in ("grid", "own") and ctx._os_uid is not None and ctx.outputsize is not None:
+        # EVERY `$outputsize` uid, because a package declares one per graph and this
+        # record may belong to any of them -- see `engine.outputsize_uids`.
+        if mode in ("grid", "own") and ctx._os_uids and ctx.outputsize is not None:
             canvas = (v.width, v.height) == (
                 2 ** int(ctx.outputsize[0]),
                 2 ** int(ctx.outputsize[1]),
             )
             if canvas:
-                gi = {ctx._os_uid: (math.log2(W), math.log2(H))}
+                gi = {u: (math.log2(W), math.log2(H)) for u in ctx._os_uids}
                 assume.note(v.index)
             elif mode == "own" and v.width and v.height:
-                gi = {ctx._os_uid: (math.log2(v.width), math.log2(v.height))}
+                gi = {u: (math.log2(v.width), math.log2(v.height)) for u in ctx._os_uids}
                 assume.note(v.index)
         for p in progs:
             if p != main:

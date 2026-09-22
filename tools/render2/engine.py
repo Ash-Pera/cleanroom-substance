@@ -47,10 +47,10 @@ class Context(object):
         # no `$outputsize` or the file states no default for it, and then every record keeps
         # its tag; so must every program.
         self.outputsize = outputsize
-        self._os_uid = (
-            outputsize_uid(asm)
+        self._os_uids = (
+            outputsize_uids(asm)
             if outputsize is not None and declared_outputsize(asm) is not None
-            else None
+            else ()
         )
         self.outputs = {}
         self.low_confidence = set()
@@ -131,8 +131,8 @@ class Context(object):
                     got[uid] = np.repeat(
                         np.array(val, np.float32).reshape(1, -1), n, axis=0
                     )
-            if self._os_uid is not None:
-                got[self._os_uid] = np.repeat(
+            for _os in self._os_uids:
+                got[_os] = np.repeat(
                     np.array(self.outputsize, np.float32).reshape(1, -1), n, axis=0
                 )
             for uid, val in self.input_overrides.items():
@@ -148,8 +148,8 @@ class Context(object):
         read. Before this, an FX program reading `$outputsize` by `inputref` got the
         DECLARED size under `--outputsize` while every filter parameter got the render's."""
         out = dict(self.input_overrides)
-        if self._os_uid is not None:
-            out[self._os_uid] = tuple(self.outputsize)
+        for _os in self._os_uids:
+            out[_os] = tuple(self.outputsize)
         return out
 
     def run(self, v, ptr, n, slots=None, pos=None, W=None, H=None, inputs=None):
@@ -278,17 +278,44 @@ def _cascade(e):
 # ---------------------------------------------------------------------------
 
 
-def outputsize_uid(asm):
-    """The uid of the graph's `$outputsize` input, or None.
+def outputsize_uids(asm):
+    """Every uid named `$outputsize`, in manifest order -- ONE PER GRAPH.
 
     BY IDENTIFIER, from the manifest, not by type. `$outputsize` is a type-8 integer2 and
     so is any author-exposed 2-vector of integers, so picking "the type-8 input" would
     silently pick someone's tile count on the next file.
+
+    A PACKAGE DECLARES ONE OF THESE PER GRAPH AND THEY ARE NOT INTERCHANGEABLE. Bricks
+    declares five (1530875923, 3258319273, 3039899967, 727032988, 1548915722) and Auras
+    four -- the same first four uids in the same order, so they are per-graph-slot
+    identifiers rather than file-specific ones. A record's size expression reads the uid
+    of the graph it belongs to, so setting only the first pins every other graph at its
+    declared size whatever the caller asks for: Bricks 002-005 and Auras 002-004 rendered
+    at 256 against 1024 exports for as long as this returned one uid. See FORMAT-NOTES.md,
+    "ROOT CAUSE: a multi-graph package has ONE `$outputsize` INPUT PER GRAPH".
     """
-    for uid, entry in (manifest.alter_outputs(asm) or {}).items():
-        if len(entry) > 1 and entry[1] == "$outputsize":
-            return uid
-    return None
+    found = tuple(
+        uid
+        for uid, entry in (manifest.alter_outputs(asm) or {}).items()
+        if len(entry) > 1 and entry[1] == "$outputsize"
+    )
+    # BEHIND `graph.outputsize`, because the 42 guard floors on these two packs were all
+    # taken with only the first uid set and the ratchet may not lower a floor. `first` is
+    # that reading and the default -- on a single-graph file the two arms are the same
+    # tuple, so every pack but Bricks and Auras is inert under both by construction.
+    if len(found) > 1 and assume.assumed("graph.outputsize", "first") == "first":
+        return found[:1]
+    if len(found) > 1:
+        assume.note(-1)
+    return found
+
+
+def outputsize_uid(asm):
+    """The FIRST `$outputsize` uid, or None -- for the declared value, which every graph
+    in a package states identically (all five of Bricks' declare (8, 8)). Anything that
+    SETS a size must use `outputsize_uids` instead."""
+    uids = outputsize_uids(asm)
+    return uids[0] if uids else None
 
 
 def declared_outputsize(asm):
@@ -402,8 +429,8 @@ def record_sizes(asm, outputsize):
     if outputsize is None:
         return None
     declared = declared_outputsize(asm)
-    uid = outputsize_uid(asm)
-    if declared is None or uid is None:
+    uids = outputsize_uids(asm)
+    if declared is None or not uids:
         return None
     base = {}
     for _t, u, val in asm.header.get("inputs") or []:
@@ -412,7 +439,8 @@ def record_sizes(asm, outputsize):
 
     def at(size_log2):
         got = dict(base)
-        got[uid] = np.array(size_log2, np.float32).reshape(1, -1)
+        for u in uids:
+            got[u] = np.array(size_log2, np.float32).reshape(1, -1)
         return got
 
     want, cache, out = at(outputsize), {}, {}
