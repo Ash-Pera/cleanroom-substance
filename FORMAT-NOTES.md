@@ -62584,3 +62584,74 @@ None of that is a reason to doubt the reading. A package declares one `$outputsi
 graph; `pergraph` is what the file says, and the guard's inability to accept it is a fact
 about floors taken over years against a renderer that could not render four fifths of its
 own specimens at their exports' size.
+
+## The blocker dissolves: 005/roughness never lost anything: `max_dim` CLAMPS EACH RECORD INDEPENDENTLY, so a 1024-canvas graph drawn into a 256 buffer computes every `$size` parameter 4x over-scale. At `max_dim` 1024 it reads +0.8452, over its floor and over `first`
+
+The one row standing between `graph.outputsize = pergraph` and the guard was an artefact of
+the sweep, not a rendering fault, and no record is at fault: no bisection was needed.
+
+`model.View.size(cap)` is `(min(w, cap), min(h, cap))` PER RECORD (`model.py:607`), fed the
+sweep's cap from `engine.py:527`, while the size a record's PROGRAMS read is its declared,
+uncapped one -- `engine.py:543` builds the View at `sizes.get(i)` and `engine.py:156` says
+so outright ("`$size` is the RECORD'S DECLARED SIZE"), by design, so a parameter does not
+move when the caller renders smaller. Under `first` that is harmless: graph 005's canvas IS
+256, so at cap 256/512/1024 exactly ONE record of 1,277 ever clamps and the arm is
+cap-insensitive (+0.7969 at 256, +0.8072 at 1024). Under `pergraph` the canvas is 1024 and
+at cap 256 **1,167 of 1,277 records clamp** (`/tmp/sizecensus.py`): every `$size`-derived
+pixel parameter computed for 1024 and applied in a 256 buffer. `f_blur` is the worked
+example and `filters.py:933`'s own comment already names the trap -- "0.25 px when a 1024
+record is drawn on a 256 grid". 005's chain is the 31-step Slope Blur ladder, where an
+over-scaled pixel displacement does the most damage there is.
+
+MEASURED, 005/roughness ch0 against the native 1024 export (verified here from the saved
+arrays, `/tmp/r005_*.npy`, `refguard.measure`):
+
+                             corr      band       dc
+    first    cap 256       +0.7969    2.380    -0.3443   <- the table's recorded value
+    first    cap 1024      +0.8072    2.375    -0.3439   (cap-insensitive: the record is 256)
+    pergraph cap 128       +0.7457   10.766    -0.1816
+    pergraph cap 256       +0.6456    3.440    -0.2581   <- THE GUARD'S NUMBER, the artefact
+    pergraph cap 512       +0.8436    4.066    -0.3146
+    pergraph cap 1024      +0.8452    3.508    -0.3352   <- over the 0.77 floor
+    pergraph 1024 -> 256   +0.8450    3.400    -0.3351
+    pergraph 1024 -> 128   +0.8417    3.226    -0.3351
+
+RENDERING BIG AND RESAMPLING DOWN RECOVERS EVERYTHING (+0.8450 at 256 against +0.6456
+rendered there), which is what says the clamped render is a DIFFERENT PICTURE and not a
+coarser one. 003 is the same mechanism and worse, its clamp ratio at cap 128 being 8x:
++0.2748 at cap 128 -> +0.9008 at 1024, beating `first`'s +0.8995.
+
+AND THE PICTURES SAY IT WITHOUT THE NUMBERS (`/tmp/sheet005.png`, `/tmp/sheet003.png`,
+export | `first`@256 | `pergraph`@256 | `pergraph`@1024, raw above, stretched below).
+`pergraph`@256 on 005 has huge pale lens-shaped wedges sweeping diagonally across the whole
+frame that exist NOWHERE in the export; `pergraph`@1024 has none of them -- it is `first`'s
+picture with the export's finer mottle resolved. On 003 at cap 128 the brick lattice is
+GONE, replaced by isolated vertical bars and giant quadrant wedges; at 1024 it is a clean
+brick wall. Both graphs stay far too dark against the export (005 mean 0.211/0.298/0.221
+against 0.555), which is the separate standing fault and is untouched by any of this.
+
+A CLAIM OF MINE TO CORRECT. The entry and commit for `graph.outputsize` (7bcf36f) said
+`pergraph` "improves Bricks mean |dc| at every grid". That improvement is mostly the smear:
+a quadrant-scale wedge pulls the mean toward mid-grey while dumping variance into the
+lowest octave, and at the honest render the dc goes back where it was -- 005 roughness
+-0.3443 (`first`) -> -0.2581 (clamped) -> -0.3352 (true 1024), 003 -0.1168 -> -0.0985 ->
+-0.1152. The low band is the tell: 005's 1-7 cycle power at cap 256 is 2.18e-03 against the
+export's 3.65e-04, six times, where `first` is 7.95e-04 and the true 1024 render 1.14e-03.
+So "dc improves, band worsens" was not a reading saying anything about the file. It was
+saying SMEAR. 005/roughness is still 0.34 dark, exactly as recorded.
+
+TWO CONSEQUENCES BEYOND THIS ROW. (1) Under `pergraph`, `GUARD_GRIDS` 128/256/512 are NOT a
+resolution sweep of one picture -- they are three different mis-scalings of a graph whose
+canvas is 1024, and a `pergraph` reading is only meaningful at `max_dim` >= the implied
+`$outputsize`. (2) Graph 001 is a free control only DIFFERENTIALLY: both arms set its uid so
+it clamps identically in both, but it does clamp -- 001/roughness reads +0.1239 at cap 256
+and +0.2100 at cap 1024. Every Bricks 001 guard row, including the eight readings SPEC 13.9
+verified on that graph, was taken on a 1024-canvas graph drawn into a small buffer.
+
+NEXT: re-take the 19 enforced-floor rows under `pergraph` at `max_dim` 1024 rather than at
+`GUARD_GRIDS`. A whole-file render at 1024 will not fit; `/tmp/cone005.py <arm> <cap>
+<record> <out.npy>` hands every record outside the chosen output's cone to `engine.render`
+as `precomputed` so the loop skips it -- one Bricks output at 1024 is ~50-80 s and ~10 GB
+peak for ~1,250 records. The companion instrument should be re-checked at 1024 BEFORE anyone
+rewrites it: its `_tone_mask_record` segmentation was taken from a clamped 256 render, which
+is very likely why the EXPORT side of 003's tilt moved at all.
