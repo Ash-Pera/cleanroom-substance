@@ -62341,3 +62341,78 @@ SEEN IN THE SAME PICTURES AND NOT ABOUT `hurst`: on height both `flat` AND `exp`
 brick face a strong directional gradient the export does not have (the export's faces are
 evenly lit and mottled), which is the per-tile Flood Fill to Gradient direction fault
 already named in SPEC 13.9. Visible in every arm, unchanged by all of them.
+
+## The `normal` counterexample is not a `hurst` question: Bricks graph 003's WHOLE CONE is pinned at 256 px while its exports carry real detail to 256-512 cycles -- 0 of 1,694 records track `$outputsize` where 2,342 elsewhere in the same file do
+
+The measurement the entry above asked for, taken. It does not rescue `firstdraw` and it
+does not indict `exp`; it says the channel was never evidence about `hurst` at all.
+
+RECORD 755 RENDERS 256 px NO MATTER WHAT IS ASKED OF IT (`/tmp/normal_native.py`).
+Rendering the graph at `max_dim` 1024 with `outputsize` (10,10) returns record 755 at
+shape (256, 256, 4) and every band ratio BIT-IDENTICAL to the 256 run -- ch0 ours/export
+1-4 0.48, 4-8 0.73, 8-16 1.38, 16-32 2.85, 32-64 1.92, 64-128 0.23 at both. `record_sizes`
+says why directly: 755 is (256, 256) at `$outputsize` (8,8), (10,10) AND (11,11), and so
+are 745 (height), 12420 (roughness) and 1708 (AO).
+
+IT IS THE WHOLE GRAPH, AND IT IS LOCAL TO IT. Walking each output's cone and counting the
+records whose size moves between `$outputsize` 256 and 1024:
+
+    003/height      cone   741   move 0   reach 1024   0
+    003/normal      cone   751   move 0   reach 1024   0
+    003/roughness   cone 1,307   move 0   reach 1024   0
+    003/AO          cone 1,694   move 0   reach 1024   0
+
+    the same file, all records          2,342 of 12,585 move (2,184 reach 1024x1024)
+    Chesterfield (ChesterfieldSofa)       815 of   881 move
+    RoofTiles (RoofTiles_1.1)           2,322 of 2,632 move
+
+So the size model is not globally stuck -- 2,342 records in Bricks itself scale -- but not
+one record in any of graph 003's four cones does. Graph 003 is, as this reader has it, a
+fixed-256 graph whose reference maps are 1024.
+
+AND THE EXPORTS ARE NOT UPSCALED 256s. Absolute band power at their native 1024
+(channel 0), beside the control of each export taken down to 256 and back up:
+
+                      1-4      4-8     8-16    16-32    32-64   64-128  128-256  256-512
+    normal native   1.49e-6  1.55e-5  5.13e-5  5.46e-5  3.15e-5  3.35e-5  1.21e-5  4.85e-6
+    normal up-256   1.49e-6  1.55e-5  5.13e-5  5.48e-5  3.27e-5  2.52e-5  9.93e-7  1.50e-9
+    ratio              1.00     1.00     1.00     1.04     0.75     0.08     0.00
+    rough  native   2.06e-6  5.06e-5  1.36e-4  6.18e-5  1.83e-5  6.43e-6  6.10e-7  4.35e-8
+    rough  up-256   2.06e-6  5.06e-5  1.36e-4  6.19e-5  1.89e-5  5.35e-6  7.13e-8  1.73e-9
+
+A 1024 map upscaled from a 256 render loses everything above 128 cycles (0.12 and 0.04 of
+its own power on roughness, 0.08 and 0.00 on normal). The real exports keep 1.21e-05 and
+4.85e-06 there. THE AUTHOR'S RENDERER PRODUCED DETAIL OUR PINNED CONE CANNOT REPRESENT.
+
+AND `normal` IS PRECISELY THE CHANNEL THAT LIVES UP THERE. Its power barely falls across
+the octaves -- 64-128 at 3.35e-05 against 8-16 at 5.13e-05, two thirds -- where roughness
+collapses by two orders (6.10e-07 at 128-256) and height by three. So of the five maps,
+`normal` is the one whose content is mostly ABOVE what a 256-px render can hold, which is
+why it and only it reads as a deficit. `exp`'s 0.14-0.23 in the two finest octaves is not
+a reading fault: our record has NO CAPACITY there. `firstdraw` "closes" it by injecting
+coarse energy that bleeds into those bands, which is exactly what the matched crop shows
+(`/tmp/hurst_crop_normal.png`): the export's relief is coherent wavy undulation following
+the brick with crisp mortar grooves, `off`/`firstdraw`'s is diagonal streaky blobs with
+pixel stair-stepping, unrelated to the brick. Power in the right octave in the wrong form.
+
+THE CONTRADICTION IS WITHDRAWN and `fx.hurst.depth = root` stands unopposed. What replaces
+it is a new and larger question, which is not about `hurst` and not about `fx.subdivide`:
+WHY DOES GRAPH 003'S CONE NOT TRACK `$outputsize` WHEN 2,342 RECORDS AROUND IT DO? Either
+the author published these maps at an `$outputsize` this reader does not recover from the
+file, or the size programs in this cone are misread -- and `record_sizes`'s own doctrine
+says which way to look: it trusts a size expression only where it reproduces the tag at the
+declared size, and falls back to scaling by the parent's factor otherwise, so a cone whose
+sources carry fixed tags and no `$outputsize`-reading expression stays where it is forever.
+Until that is settled, EVERY Bricks 003 comparison in this notebook is being made at 256
+against a 1024 original, with `structure_grid` taking the export down to meet us -- fair,
+but blind above 128 cycles by construction, and blindest on the one channel that has most
+of its power there.
+
+A PROBE FAULT WORTH RECORDING, because every band table here depends on not making it:
+the first pass at the table above read `ambientocclusion`, `height` and `roughness` as
+EXACTLY 0.00e+00 in every octave. Those three are `I;16` PNGs and PIL's `convert("RGB")`
+degenerates a 16-bit grey image to a constant; only the two `RGBA` maps survived. Reading
+the arrays as uint16 and scaling by 65535 gives the numbers above, and they agree with
+`refcompare`'s means (roughness 0.663), so the repository's own loader is correct and only
+the throwaway probe was wrong. An export that reads as identically flat is a loader bug
+until proven otherwise.
