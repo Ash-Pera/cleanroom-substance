@@ -62416,3 +62416,54 @@ the arrays as uint16 and scaling by 65535 gives the numbers above, and they agre
 `refcompare`'s means (roughness 0.663), so the repository's own loader is correct and only
 the throwaway probe was wrong. An export that reads as identically flat is a loader bug
 until proven otherwise.
+
+## ROOT CAUSE: a multi-graph package has ONE `$outputsize` INPUT PER GRAPH and `outputsize_uid` returns only the first, so every Bricks graph but 001 -- and every Auras graph but 001 -- has been rendered at 256 against 1024 exports. 42 of the 52 guard rows sit on pinned graphs
+
+`engine.outputsize_uid` (`engine.py:281`) walks `manifest.alter_outputs` and RETURNS THE
+FIRST uid whose identifier is `$outputsize`. That is right for a one-graph file and wrong
+for a package: Bricks declares FIVE inputs named `$outputsize`, one per graph --
+1530875923, 3258319273, 3039899967, 727032988, 1548915722, every one declared (8,8) -- and
+`record_sizes` sets only 1530875923. The other four keep their declared 256 at every output
+size asked for, so the four graphs that read them are pinned, forever, whatever is
+requested. Measured, at `$outputsize` (10,10):
+
+    pkg://001   6 outputs   1024x1024      pkg://001 (Auras)  1 output   1024x1024
+    pkg://002   6 outputs    256x256       pkg://002          1 output    256x256
+    pkg://003   6 outputs    256x256       pkg://003          1 output    256x256
+    pkg://004   7 outputs    256x256       pkg://004          1 output    256x256
+    pkg://005   6 outputs    256x256
+
+Setting every uid instead of the first (`/tmp/allsize.py`, `record_sizes_all`) unpins all of
+them: 003's height, normal, roughness and AO all go to 1024x1024, and the file's records
+moving off their tag go from 2,342 to 11,943 of 12,585. That is the whole of the previous
+entry's mystery -- graph 003's cone does not "ignore" `$outputsize`, it reads a DIFFERENT
+`$outputsize` that nothing ever sets. Nothing is wrong with the size programs: 11,798 of
+12,585 records carry an expression that reproduces its own tag at the declared size, 45
+mismatch, 742 have no slot.
+
+The uids are not file-specific: Auras' four are 1530875923, 3258319273, 3039899967,
+727032988 -- the same first four, in the same order, as Bricks'. One per graph slot.
+
+SCOPE. Of the 10 specimen assemblies, 3 are multi-graph: both Bricks export sets (5 graphs,
+5 uids) and Auras (4 and 4). The other 7, Chesterfield and RoofTiles among them, declare
+one graph and one uid and are UNAFFECTED -- which is exactly why 815 of 881 Chesterfield
+records and 2,322 of 2,632 RoofTiles records scale while Bricks' 002-005 do not. The 99
+`corpus/` assemblies are all single-graph, so every corpus-wide census in this notebook
+(the 23,462 subdividing records, the 13,267 hurst records, the 244 order-observable cells,
+the 2,242 White Noise class) is untouched by this.
+
+WHAT IT COSTS, AND WHY IT IS NOT FIXED IN THIS ENTRY. `GUARD_TABLE` is Bricks 39,
+Chesterfield 10, Auras 3. THE BRICKS ROWS ARE ALL GRAPHS 002-005 AND THE AURAS ROWS ARE
+004 -- all pinned. So 42 of 52 guard rows, and every Bricks and Auras number anywhere above
+in this notebook, were taken from a 256-px render compared against a 1024-px export with
+`structure_grid` bringing the export down to meet it. The comparison was fair and it was
+blind above 128 cycles, which is precisely the band the previous entry found `normal`
+lives in. Only Bricks graph 001 has ever been rendered at the size its exports were made
+at -- and SPEC 13.9's eight verified readings are the graph-001 sections, so those stand.
+
+Fixing `outputsize_uid` to set every uid would re-render Bricks and Auras at 16x the
+pixels and move all 42 rows at once: every floor in `GUARD_TABLE` would need re-taking, and
+until it is re-taken the ratchet cannot arbitrate anything on those two packs. That is a
+decision about the guard, not a bug fix, and it is left for one. What can be said now is
+that `fx.subdivide = quadrant`'s eight refusals, the Bricks height dc among them, were all
+measured on graphs that cannot render their own exports' finest two octaves.
