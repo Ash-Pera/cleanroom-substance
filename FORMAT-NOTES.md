@@ -62250,3 +62250,94 @@ levels, 1,156 at 5, 2,150 at 8), and TWO ARE IN A SCORED PACK -- Bricks 430 (dra
 at depths 5-8, no baked hurst) and Bricks 63 (depths 3-6, hurst 0.65, `opacitymult` 2.0).
 On a 4-level record `exp`, `off` and `firstdraw` give three different octave profiles, and
 the per-octave band ratios separate them with no correlation anywhere in the argument.
+
+## `fx.hurst`'s depth origin decided by LOOKING: `root` stands, `firstdraw` prints the subdivision lattice into the picture and is refused at 33 rows -- and Bricks 430 is not a specimen for it at all
+
+The arm is implemented and left default-off: `fx.hurst.depth = ("root", "firstdraw")`
+(`assume.py:308`), `root` = exactly the arithmetic that was there. `Batch` carries a
+`drawdepth0` (`fxtree.py:430,444`), `_emit` stamps each record's shallowest DRAWING depth
+on every batch (`:651`, a cell draws exactly when it got a size -- the predicate `draw`
+itself uses), and `_gain` subtracts it clamped at 0 under `firstdraw` alone (`:794`).
+Default-inert proven twice over the 183 readings the guard takes (52 keys x 3 grids):
+committed HEAD vs working tree both at defaults, 0 rows differing at all; working tree
+default vs explicit `fx.hurst.depth=root`, 0 rows differing at all. `tools/render2` 43/43.
+
+BRICKS 430 IS NOT A SPECIMEN, and the entry above that nominated it was wrong: 430 BAKES
+NO `hurst`, so under the default `fx.hurst.absent = zero` the exponent is 0*d = 0 and
+`exp`, `off`, `firstdraw` and `exp2` are bit-identical -- rendered all four, one picture
+(`/tmp/hurst_430.png`, mean 0.5314 sd 0.0725 max 0.8974 for every arm). It is a specimen
+for `fx.hurst.absent` instead: under `absent = one`, `exp` and `exp2` kill it DEAD (0.500,
+sd 0.000) and only `firstdraw` keeps it alive. Nothing here recommends `absent = one`.
+
+BRICKS 63 SEPARATES ALL FOUR, and the record's own output decides it on sight
+(`/tmp/hurst_63.png`, 128 px, cap 512, `subdivide = quadrant`):
+
+    exp (default)   0.225 / 0.087 / 0.505   dark, low contrast, a faint embossed lattice
+                                            of soft diamonds
+    off             0.900 / 0.181 / 1.000   white field cut by dark ragged veins, clipped
+                                            to white over most of its area
+    firstdraw       0.784 / 0.216 / 1.000   the same crackle, softer veins
+    exp2            0.056 / 0.024 / 0.131   near-black, dead
+    flat (today)    1.000 / 0.000 / 1.000   PURE WHITE -- the record contributes nothing
+                                            at all under the default subdivide arm
+
+AND THE TWO LIVE ARMS PRINT THE SUBDIVISION LATTICE INTO THE IMAGE. `off` carries hard
+pixel-scale blocky speckle along its veins and `firstdraw` shows axis-aligned RECTANGULAR
+plateaus -- whole regions saturating at 1.0. That is the region grid showing through a
+clamp, not an fBm, and it is an argument against both arms that needs no export at all:
+a reading whose artefacts are the shape of its own subdivision is wrong on its face.
+
+AGAINST THE EXPORT, graph 003, ours at 512 beside the export
+(`/tmp/hurst_bricks003_{height,roughness,ambientocclusion,basecolor,normal}.png`):
+
+    roughness   export 0.663 / 0.044   a smooth pale wall, faces almost featureless
+                exp    0.672 / 0.055   lands on it, same level and same low contrast
+                exp2   0.673 / 0.054   the same
+                off    0.570 / 0.083   every brick under a dark cracked-mud crackle
+                firstdraw 0.583/0.083  the same crackle
+                flat   0.548 / 0.102   VISIBLY WORSE THAN THE REFUSED ARM: too dark,
+                                       with diagonal scratch lines the export has not
+    height      export 0.520 / 0.131   evenly lit bricks, each face softly mottled
+                off / firstdraw 0.342 / 0.361   ragged blotches eat the faces, several
+                                       bricks randomly near-white, 0.16-0.18 too dark
+    AO          export 0.857 / 0.139   mottle CONFINED to the brick face
+                off / firstdraw        mottle spills over the edge and breaks the mortar
+
+Per-octave ours/export at render grid 256 (`/tmp/hurst_bands256.log`) says what the
+pictures say: `off`/`firstdraw` blow the finest octave out by 11-362x -- that is the grit
+-- and the coarsest by 2.7-56x, that is the crackle. Roughness 128-256 cycles: `exp` 12.11,
+`off` 362.17, `firstdraw` 352.06. THE RATCHET AGREES: `quadrant` + `firstdraw` fails 33
+(key, quantity) pairs against plain `quadrant`'s 8, including Bricks 002/AO corr HARD, and
+takes Bricks' guarded |dc| to 0.0492 where `quadrant` alone improves it to 0.0153.
+
+`fx.hurst.depth = root` STANDS. Refused on the pictures, on the bands and on the ratchet,
+by three independent arbiters that for once all say the same thing.
+
+ONE INFERENCE CORRECTED ON THE WAY. `firstdraw` shifts the exponent's origin, which
+multiplies every level by one constant 2^(h*d0), so it ought to be a pure per-record gain
+that cannot change a spectrum. It is not: measured on 63's own render at 512, the
+firstdraw/exp ratio per octave runs 5.90 / 7.27 / 8.51 / 13.02 / 12.00 / 11.94 across
+1-4 ... 64-128 (`/tmp/hurst_profile.py`). `max` combining and the [0,1] clamp are
+nonlinear, so lifting the gain brings deep levels up out from under the shallow ones and
+clips the top. The depth origin CAN tilt a record's rendered spectrum -- just not by
+changing the ladder.
+
+THE ONE CHANNEL THAT LOOKS LIKE A CONTRADICTION IS CONFOUNDED, AND THE MEASUREMENT THAT
+WOULD SETTLE IT HAS NOT BEEN TAKEN. On `normal` the bands run the other way: `exp` carries
+0.14-0.23 of the export's power in the two finest octaves (ch0 64-128 0.23, 128-256 0.14)
+where `firstdraw` reads 0.57-1.08, and the export's brick faces do carry a fine relief our
+smooth faces lack. BUT THE EXPORTS ARE 1024 px AND THAT TABLE WAS TAKEN AT RENDER GRID
+256: the 128-256 cycles column sits at OUR OWN NYQUIST, and the matched crop
+(`/tmp/hurst_crop_normal.png`) shows a 256-px render magnified 4x against a 1024-px export.
+Two octaves of the deficit are render headroom we did not give ourselves. Nor does the
+crop support `firstdraw` when read as a picture rather than as a power: the export's relief
+is COHERENT WAVY UNDULATION FOLLOWING THE BRICK FORM with crisp mortar grooves, while
+`off`/`firstdraw` add diagonal streaky blobs with visible pixel stair-stepping, unrelated
+to the brick -- power in about the right octave in the wrong form, which is not a match.
+So `normal` is not yet evidence for anything. Re-render it at native 1024 and re-take the
+two finest octaves before this is called a contradiction; that is the next measurement.
+
+SEEN IN THE SAME PICTURES AND NOT ABOUT `hurst`: on height both `flat` AND `exp` give every
+brick face a strong directional gradient the export does not have (the export's faces are
+evenly lit and mottled), which is the per-tile Flood Fill to Gradient direction fault
+already named in SPEC 13.9. Visible in every arm, unchanged by all of them.

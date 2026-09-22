@@ -305,6 +305,20 @@ QUESTIONS = {
     # per side halving, kept because graph 001's own thresholds sit between `exp` and it.
     "fx.hurst": ("exp", "off", "exp2", "pow"),
     "fx.hurst.absent": ("zero", "one"),
+    # WHERE THE HURST EXPONENT STARTS COUNTING. `root` is the reading above and the
+    # default: depth is the region depth from the record's root, so the gain at a
+    # record's deepest level is a function of how many times the tree subdivided to get
+    # there -- and 23,462 of 23,462 subdividing records have their deepest cell DRAW, at
+    # a depth that tracks log2(record width) (31.9% at exactly it, 69% within [-2, 0]).
+    # The same construct compiled at 64 / 128 / 256 px is therefore attenuated by
+    # 2^(-h*2), 2^(-h*4), 2^(-h*6): corpus-wide the median record baking a non-zero
+    # `hurst` puts its deepest drawing level at 0.041 of its stated opacity (n = 13,267).
+    # `firstdraw` counts from the SHALLOWEST cell that draws instead, so a record's own
+    # octave ladder keeps its shape and its top level is unattenuated whatever size the
+    # record was compiled at. The two coincide on any record whose shallowest drawing
+    # cell is the root, which is most of them; they separate only where the drawing
+    # cells sit several levels down, and `fxtree._emit` records that level per batch.
+    "fx.hurst.depth": ("root", "firstdraw"),
     # THREE BITS THE BIT CENSUS PLACED AND DID NOT NAME. All three cost zero header words,
     # so nothing is misplaced by leaving them here; what is open is what they MEAN, and each
     # candidate below is a guess that would need something outside the file to settle.

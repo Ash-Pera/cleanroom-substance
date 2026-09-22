@@ -427,6 +427,7 @@ class Batch(object):
         "opacity",
         "imageindex",
         "depth",
+        "drawdepth0",
     )
 
     def __init__(self, tag, count, centre, size, frameoffset, rotation, opacity, imageindex, depth):
@@ -440,6 +441,9 @@ class Batch(object):
         self.opacity = opacity
         self.imageindex = imageindex
         self.depth = depth
+        #: The record's shallowest DRAWING depth, filled in by `_emit` once every cell's
+        #: batch exists. Read only by `_gain` under `fx.hurst.depth = firstdraw`.
+        self.drawdepth0 = 0
 
     def as_dicts(self):
         """The same m patterns as `fx.splat`'s per-pattern dicts, for the arbiter draw."""
@@ -644,6 +648,19 @@ def _emit(rec, run, cells, order, roots, frame, numbers, cache):
             regions[k].append(
                 (cxo2 + qx * q, cyo2 + qy * q, depth + 1, salt * 4.0 + (qi + 1.0))
             )
+    # THE SHALLOWEST LEVEL THAT PUTS INK ON THE CANVAS, for `fx.hurst.depth = firstdraw`.
+    # A cell DRAWS exactly when it got a size: a marker (`tag & 0xFF == 0x08`) that states
+    # no `patternsize` only places regions for its children, so it cannot be where a
+    # per-depth gain starts counting. Taken from the batches rather than from the tags
+    # because that is the same predicate `draw` uses to decide whether to draw at all.
+    drawn = [
+        int(b.depth.min())
+        for b in out
+        if b.size is not None and b.depth is not None and len(b.depth)
+    ]
+    d0 = min(drawn) if drawn else 0
+    for b in out:
+        b.drawdepth0 = d0
     return out
 
 
@@ -758,7 +775,9 @@ def _gain(b, header):
     that bakes no `hurst` takes `fx.hurst.absent` -- 0 or 1 -- because the source omits
     the default and the file does not state it. Depth is the region depth the tree gave
     each pattern (root 0, its children 0, one more per quadrant level), so the flat arm,
-    whose patterns are all depth 0, is scaled by `opacitymult` alone.
+    whose patterns are all depth 0, is scaled by `opacitymult` alone -- or, under
+    `fx.hurst.depth = firstdraw`, that depth measured from the record's shallowest
+    DRAWING level (`Batch.drawdepth0`). `root` is the default and is what this did.
     """
     if header is None:
         return None
@@ -772,6 +791,13 @@ def _gain(b, header):
         if h is None:
             h = 1.0 if assume.assumed("fx.hurst.absent", "zero") == "one" else 0.0
         d = np.asarray(b.depth, np.float64).reshape(-1, 1)
+        # WHERE THE EXPONENT STARTS, behind `fx.hurst.depth`. `root` leaves `d` as the
+        # region depth; `firstdraw` measures it from the record's shallowest drawing
+        # level, so the top of a record's own ladder is unattenuated whatever depth the
+        # subdivision had to reach to get there. Clamped at 0: a batch shallower than
+        # `drawdepth0` is a marker and puts no ink down, so its gain is never read.
+        if assume.assumed("fx.hurst.depth", "root") == "firstdraw":
+            d = np.maximum(d - float(b.drawdepth0), 0.0)
         if how == "exp":
             f = np.exp2(-float(h) * d)
         elif how == "exp2":
