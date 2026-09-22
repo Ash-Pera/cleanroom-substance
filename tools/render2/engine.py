@@ -504,6 +504,7 @@ def render(
     stop_after=None,
     outputsize=None,
     inputs=None,
+    drop_after=None,
 ):
     """Evaluate every record. Returns (outputs, failures, info).
 
@@ -523,6 +524,21 @@ def render(
     that used to be invisible: an unnamed parameter reads as its default, and a default
     renders, so `hsl` was an identity in 747 records and `sharpen` in 1,156 without either
     ever appearing in a count.
+
+    `drop_after` is `{record index: [records to free once it has run]}` and is a MEMORY
+    policy the CALLER owns, not one this loop invents. None -- the default -- keeps every
+    array, which is what every existing caller gets and why this parameter is inert.
+
+    WHY THE POLICY IS THE CALLER'S. Freeing an array early is safe only against a
+    liveness analysis, and this loop cannot do one that is sound: `sample` reads a
+    record's EDGES, which are structural, but `sampler_bindings` reaches a `bitmap`
+    graph-input record that no edge points at, and `filters.py:396` then indexes
+    `ctx.outputs` with it. A caller that has already walked the cone knows which records
+    those are and can refuse to list them; this loop would have to guess. It therefore
+    executes the caller's list and derives nothing. `refcompare._renderer('render2-cone')`
+    is the caller that supplies one, because a 1024-px render of a 12,585-record package
+    does not fit in memory whole and a per-output cone with its dead intermediates freed
+    does.
     """
     ctx = Context(asm, cap=max_dim, outputsize=outputsize, inputs=inputs)
     ctx.outputs.update(precomputed or {})
@@ -594,6 +610,11 @@ def render(
                     "rec%d (%s): ERROR - %s: %s"
                     % (i, rec.filter_name, type(e).__name__, e)
                 )
+        # AFTER THE `except` CLAUSES, so a record that REFUSED still frees its inputs: a
+        # failure is a record without an output, not a record whose inputs are still live.
+        if drop_after:
+            for j in drop_after.get(i, ()):
+                ctx.outputs.pop(j, None)
         if stop_after is not None and i >= stop_after:
             break
 

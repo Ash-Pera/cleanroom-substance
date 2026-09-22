@@ -2663,6 +2663,65 @@ def test_bricks_per_tile_and_low_octave_instruments_do_not_regress():
     return
 
 
+def test_render2_lean_renderer_matches_the_whole_file_render():
+    """`render2-lean` is a MEMORY policy and nothing else: same outputs, bit for bit.
+
+    `refcompare._lean_renderer` frees a record's array once the last record that lists it
+    as an input has run, so a native-size render fits (Bricks at `$outputsize` 1024 holds
+    112 GB of record arrays if none is ever freed). The freeing is only sound against a
+    liveness analysis, and two things are live that `View.inputs` does not reach -- the
+    declared outputs and every `bitmap`, because `sampler_bindings` finds a graph image
+    input no edge points at. This is the A/B that holds the policy to producing identical
+    pictures, and it is what the docstring in `_lean_renderer` cites.
+
+    BOTH PACK SHAPES, because the failure this replaced was shape-dependent: a per-output
+    CONE is unsound for the same reason in mirror image -- the 0x03/0x06 value cache is
+    cross-record CSE, so a record inside a cone can read an index a record outside it
+    wrote. That is invisible on a single-graph pack whose cone happens to contain its own
+    writers and fatal on `Kutejnikov__Auras`, so a single-graph specimen cannot stand in
+    for a package here.
+    """
+    import refcompare
+
+    packs = []
+    for pat in ("minime453__Chesterfield_PBR_Material", "Kutejnikov__Auras"):
+        found = sorted(
+            glob.glob(os.path.join(refcompare.PACKS, pat, "**", "*.sbsasm"), recursive=True)
+        )
+        if found:
+            packs.append(found[0])
+    if len(packs) < 2:
+        print("SKIP test_render2_lean_renderer_matches_the_whole_file_render: no specimens")
+        return
+    full_run = refcompare._renderer("render2")
+    lean_run = refcompare._renderer("render2-lean")
+    bad, checked = [], 0
+    for path in packs:
+        asm = sbsasm.Assembly(path)
+        full = full_run(asm, 256, None, (8, 8))
+        lean = lean_run(asm, 256, None, (8, 8))
+        for _uid, _fmt, _gray, ri in asm.outputs():
+            a, b = full.get(ri), lean.get(ri)
+            checked += 1
+            if a is None or b is None:
+                bad.append((os.path.basename(path), ri, "missing", a is None, b is None))
+            elif np.asarray(a).shape != np.asarray(b).shape:
+                bad.append((os.path.basename(path), ri, "shape",
+                            np.asarray(a).shape, np.asarray(b).shape))
+            elif not np.array_equal(np.asarray(a), np.asarray(b)):
+                bad.append((os.path.basename(path), ri, "values", float(
+                    np.abs(np.asarray(a, np.float64) - np.asarray(b, np.float64)).max()), None))
+    assert not bad, (
+        "the lean renderer changed a picture rather than only its memory: "
+        "(file, record, why, a, b) %s" % (bad,)
+    )
+    print(
+        "ok  test_render2_lean_renderer_matches_the_whole_file_render "
+        "(%d outputs over %d packages, bit-identical)" % (checked, len(packs))
+    )
+    return
+
+
 def test_the_new_guard_does_not_weaken_the_old_floors():
     """RE-TAKING A TABLE MUST NOT BE A WAY TO LOWER A FLOOR, and this is what checks it.
 

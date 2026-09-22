@@ -451,6 +451,9 @@ def _renderer(which):
         go.takes_inputs = True
         return go
 
+    if which == "render2-lean":
+        return _lean_renderer()
+
     def go(asm, max_dim, sizes, _os=None, inputs=None):
         produced, _failures, _synth = render.render(
             asm, verbose=False, max_dim=max_dim, sizes=sizes
@@ -459,6 +462,83 @@ def _renderer(which):
 
     go.wants_outputsize = False
     go.takes_inputs = False
+    return go
+
+
+def _lean_renderer():
+    """`render2`, one whole-file pass, with dead intermediates FREED as it goes.
+
+    WHY NOT A PER-OUTPUT CONE, which is the obvious way to make a native-size render fit.
+    It is unsound, and the file says so: the 0x03/0x06 value cache is cross-record common
+    -subexpression elimination, so a record inside an output's edge closure can read a
+    cache index that a record OUTSIDE it wrote. Skipping the writers costs Auras' graph
+    004 its whole basecolor cone -- `NoSharedCache: cache index 5 read before anything
+    wrote it` at record 408, cascading to the output -- while Bricks 005's roughness cone
+    happens to contain its own writers and comes out identical. A cone is therefore an
+    optimisation that is correct on the specimens where it is tested and wrong elsewhere,
+    which is the worst shape a measurement tool can have.
+
+    So every record is evaluated, in order, exactly as `engine.render` always did, and the
+    only thing that changes is that an array nothing further reads is dropped. Bricks at
+    `$outputsize` 1024 holds 112 GB of record arrays if none ever is; the peak LIVE set is
+    3.5 GB. Chesterfield at 2048 is 58 GB against a 13.1 GB peak.
+
+    WHAT IS NEVER FREED, and both are structural rather than cautious: the declared
+    OUTPUTS, which are the answer, and every `bitmap` record, because `sampler_bindings`
+    reaches a graph image input that no edge points at and `filters.py:396` and
+    `fx.py:1229` then index `ctx.outputs` with it. Liveness over `View.inputs` alone would
+    free those and the failure would be silent. The VALUE cache is `ctx.cache`, a separate
+    dict this does not touch.
+
+    A record whose `View` raises is treated as reading nothing, which is not an
+    approximation: `engine.render` builds the View inside its `try`, so such a record is
+    refused before it samples anything.
+
+    WHY IT EXISTS. `GUARD_GRIDS` used to be `max_dim` values, and `max_dim` CLAMPS each
+    record independently (`model.View.size`) while a record's `$size` programs read its
+    declared size -- so a 1024-canvas graph drawn into a 256 buffer computes its pixel
+    parameters 4x over-scale and renders a DIFFERENT PICTURE, not a coarser one. The
+    honest reading renders at the size the exports were made at and resamples down to
+    score. See FORMAT-NOTES.md, "the `pergraph` blocker was an artefact of `max_dim`".
+    `test_filters.test_render2_lean_renderer_matches_the_whole_file_render` is the A/B that
+    holds this to being a memory policy and nothing else: every declared output of a
+    single-graph pack and a package, bit-identical against the ordinary whole-file render.
+    Verified beyond the test on `Kutejnikov__Bricks_and_tiles` as well -- 31 outputs, 12,585
+    records reduced to 31 held -- which is kept out of the suite only for its runtime.
+    """
+    from render2 import engine as _engine, model as _model
+
+    def go(asm, max_dim, sizes, _os=None, inputs=None):
+        _sizes = _engine.record_sizes(asm, _os) or {}
+        views = {}
+        for r in asm.records:
+            try:
+                views[r.index] = _model.View(asm, r, size=_sizes.get(r.index))
+            except Exception:
+                views[r.index] = None
+        keep = set(ri for _u, _f, _g, ri in asm.outputs())
+        keep |= set(r.index for r in asm.records if r.filter_name == "bitmap")
+        last = {}
+        for i in sorted(views):
+            v = views[i]
+            for j in (v.inputs if v is not None else ()) or ():
+                if isinstance(j, int) and j in views and j not in keep:
+                    last[j] = max(last.get(j, -1), i)
+        drop = {}
+        for j, k in last.items():
+            drop.setdefault(k, []).append(j)
+        outs, _f, _i = _engine.render(
+            asm,
+            verbose=False,
+            max_dim=max_dim,
+            outputsize=_os,
+            inputs=inputs,
+            drop_after=drop,
+        )
+        return outs
+
+    go.wants_outputsize = True
+    go.takes_inputs = True
     return go
 
 
