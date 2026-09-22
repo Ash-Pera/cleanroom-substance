@@ -62523,3 +62523,64 @@ RE-TAKING those 42 rows at the sizes the exports were actually made at, which
 Until someone decides that, Bricks and Auras numbers in this notebook continue to mean
 "at 256, against a 1024 export brought down to meet it", and the 26 failures above are the
 bill for the years of floors taken that way -- not evidence against the reading.
+
+## The `pergraph` re-take, measured in full and BLOCKED by one floor and the companion instrument itself: 51 of 52 entries would re-take clean, 005/roughness falls 0.12 under a floor the ratchet may not lower, and the one sanctioned way down fails on 003 and 004 as well
+
+All 183 guard readings were re-taken under `graph.outputsize = pergraph`
+(`/tmp/guard_fixed.json`, grids 128/256/512). The arithmetic of the re-take is better than
+the 26 ratchet failures suggest, and it still cannot be landed.
+
+WHAT THE 26 FAILURES ACTUALLY WERE. `Entry.bound("corr", g)` is
+`max(recorded - CORR_MARGIN, was_floor)` and `_adverse` is `bound - value`, so a failure is
+movement away from the RECORDED value, not absolute shortfall. Re-recording `at` at the
+pergraph values makes that movement zero by construction, and the 18 `band` and `dc`
+failures -- whose bounds derive from `at` alone with no `was` to pin them -- go with it.
+What survives a re-take is only a row whose measured corr falls below its own pinned floor.
+Counted: 19 entries carry an enforced `was` floor at 256; under today's default 0 of them
+sit below it, and under `pergraph` exactly ONE does:
+
+    Bricks 005/roughness ch0    floor 0.77    pergraph +0.6456    today +0.7969   short 0.1244
+
+Note what the same measurement does elsewhere: 005/normal ch0 and ch1 come UP through their
+0.75 floor (+0.7055 -> +0.7984, +0.6687 -> +0.7837), so `pergraph` frees two rows and pins
+one. This is not a table that degrades under the correction; it is one row.
+
+THE ONE WAY DOWN IS SHUT. `Entry.companion` is the sanctioned route for a floor re-taken
+lower, and it requires an instrument the suite guards -- `COMPANION_INSTRUMENTS` registers
+exactly one, `bricks_tile_octaves`
+(`test_bricks_per_tile_and_low_octave_instruments_do_not_regress`), whose `COMPANION_TABLE`
+covers Bricks 002-005 on tilt, tile level, mortar level and the 1-8 band. It is the right
+instrument for this row and IT FAILS UNDER `pergraph`, on four of its sixteen readings:
+
+    003  tilt         ours 0.227   export 0.047   recorded 0.197
+    003  low_band     ours 0.525   export 1.0     recorded 0.918
+    004  tile_level   ours 0.669   export 0.622   recorded 0.624
+    005  tile_level   ours 0.675   export 0.628   recorded 0.625
+
+It passes under `first`. So the seed-free instrument that exists precisely to overrule a
+correlation floor is itself unstable across this change, and cannot be used to justify
+lowering one.
+
+AND THE EXPORT SIDE MOVED, WHICH IS THE REAL WARNING. 003's tilt reads 0.047 for the
+EXPORT where the table recorded 0.2006 -- the export did not change. The instrument labels
+tiles by connected components of OUR OWN tone mask (`ss._tone_mask_record`, eroded, at
+grid 256) and measures both sides over those labels, so when the mask changes the export's
+own numbers change with it. Under `pergraph` that mask is computed from a record that is
+now 1024 px resampled to 256 rather than a native 256, and the segmentation it produces is
+different enough to move the export's tilt by 0.15. A companion instrument whose reference
+side is a function of our render is not seed-free in the way its docstring claims, and that
+is worth knowing independently of this arm.
+
+WHERE THIS LEAVES IT. `graph.outputsize` stays `first` by default and `GUARD_TABLE` is NOT
+re-taken -- a table re-taken to `pergraph` values while the default renders `first` would
+describe a renderer nobody runs. Promoting the arm needs, in order: (1) why 005/roughness
+loses 0.15 of correlation when its graph is finally rendered at the size its export was
+made at -- the drop is specific, 002 and 003 roughness move far less; (2) a companion
+instrument whose tile labelling does not depend on the arm under test, which means labels
+from the EXPORT's own structure rather than from ours; (3) then the re-take, which at that
+point is 51 rows of arithmetic and one justified floor.
+
+None of that is a reason to doubt the reading. A package declares one `$outputsize` per
+graph; `pergraph` is what the file says, and the guard's inability to accept it is a fact
+about floors taken over years against a renderer that could not render four fifths of its
+own specimens at their exports' size.
