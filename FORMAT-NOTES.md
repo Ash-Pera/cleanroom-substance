@@ -61971,3 +61971,152 @@ may carry more than the low nibble. Open, with the ladder as the specimen.
 The dc fault itself is upstream of both: 12277 (a `fx.subdivide` casualty) and the
 grunge's level. Under `quadrant` the 005 roughness dc is -0.344 -> -0.361 still, so
 the noise alone does not lift it; the grunge chain feeding 12276 is the next trace.
+
+## `fx.subdivide` re-measured whole, at 26fd239: the dispatch is right, neither named blocker survives isolation, and what actually refuses `quadrant` is Bricks' height dc and a wrong-sign blue mix -- with a 22-record subset that passes the ratchet clean today
+
+Everything below was re-taken against `GUARD_TABLE` at HEAD; where a number contradicts
+an earlier entry, the earlier entry was written under a different renderer (`max` and
+`fx.header = read` are defaults now) and this one stands. Probes in `/tmp`, named per
+paragraph. Nothing flipped: `flat` is still the default.
+
+THE DISPATCH IS CORRECT AS WRITTEN. `fx.py:457`'s selector leans on `and` binding tighter
+than `or`; enumerated it is exactly what its comment claims -- `noise` sends the White
+Noise class down the tree and nothing else, `quadrant` sends everything else and not the
+class, `tree` sends both. And the two halves partition: over 437 DISTINCT files and
+41,164 FX-map records (`/tmp/subdiv_census.py`), 23,462 subdivide, of which 2,242 are the
+White Noise class and ALL 2,242 subdivide, all 16 px. So `noise` + `quadrant` = `tree`
+exactly, which every earlier entry assumed without counting. (The class is 2,242, not the
+"~1,300" quoted above; that count predates `fx.header = read`.) Per record at cap 64
+(`/tmp/dispatch_identity.py`): Chesterfield 9/9, Bricks 80/80, RoofTiles 33/33
+non-subdividing records bit-identical under `flat` and `quadrant`, and all 18 White Noise
+records in Bricks + RoofTiles bit-identical under `quadrant`. The arm touches only what it
+says it touches. Two side notes from the census: `cells_of` refuses 282 of the 41,164
+(`Unsupported`) -- they draw under `flat` and would fail under `quadrant`/`tree`, none in
+a scored pack -- and `flat` is not pure flat, since `fx.py:461` already routes pointer-list
+roots through `fxtree`: 55 corpus records, 0.23% of the subdividing population, are drawn
+as trees under the default.
+
+THE RATCHET, RUN FOR REAL, all four arms at 128/256/512 against all 52 `GUARD_TABLE`
+entries (`/tmp/guardrun.py` + `/tmp/ratchet.py`, both deriving every bound from
+`refguard.Entry.bound` and `_adverse` rather than restating it):
+
+                        fails   Bricks corr @256   Bricks |dc| @256   Chesterfield corr @256
+    flat (default)        --          +0.6815            0.0410              +0.9226
+    noise                  2          +0.6497            0.0446              identical
+    quadrant               8          +0.7229            0.0153              +0.8755
+    tree                   7          +0.6518            0.0162              +0.8755
+    quadrant on set B2     0          +0.6833            0.0127              identical
+
+`tree` is WORSE than `quadrant` on Bricks correlation: the `noise` half cancels the
+`quadrant` half's gain, the arms are not additive, and there is no configuration in which
+`tree` is the right default while `quadrant` is not. `noise`'s two failures are HARD dc
+(Bricks 002/003 height, +0.029/+0.038 past bound at 256 and 512); it is bit-identical to
+the baseline on every guarded row at 128 and only appears at >= 256. Both refused.
+
+`quadrant`'s eight are Bricks 002/004/005 height dc (HARD), Bricks 003 height band, and
+four Chesterfield `basecolor` rows. NEITHER IS THE BLOCKER THE ENTRIES ABOVE NAME.
+
+ROOFTILES CANNOT REFUSE ANYTHING -- it has ZERO rows in `GUARD_TABLE` (52 entries: Bricks
+39, Chesterfield 10, Auras 3; RoofTiles and Sandy none), so it is outside the ratchet by
+construction, and 606's squares were a picture judgement the guard never held. Re-measured
+whole-pack at 128/256/512 (`/tmp/armrun.py`), every one of its 8 rows reads |corr| <= 0.10
+under BOTH arms (height -0.0412 -> -0.0362 at 256; normal ch1 -0.0520 -> -0.0677;
+basecolor ch1 -0.0161 -> +0.0015), and |dc| IMPROVES under `quadrant` on 4 of 8 (basecolor
+ch2 +0.0806 -> +0.0202, roughness -0.0811 -> -0.0297). The pack's layout is in the wrong
+place under the default renderer for a reason that has nothing to do with this arm, and
+until that is found it arbitrates nothing. OPEN, AND THE ONE THING HERE TO RE-TAKE BEFORE
+IT IS RELIED ON: the +0.536 mean corr quoted for RoofTiles in the entries above did not
+reproduce. `tools/` and `archive/tools/` were extracted by `git archive` at 48503a3,
+ada95d0, 10ce512 and 26fd239 into `/tmp/cs_<sha>` (specimens symlinked, repo untouched,
+`/tmp/oldrun.py`) and all four read mean corr -0.0082 at 128, and +0.005 at `$outputsize`
+declared / 512 / 1024. Either the quoted figure came from a configuration not recovered by
+extracting the tools alone, or it was taken against the other export set; not resolved.
+
+CHESTERFIELD'S BLUE IS A COLOUR MIX, NOT A DRAW. The whole `quadrant` delta on the pack is
+two records: `{321, 333}` reproduces it to every printed digit (`/tmp/isolate_ch2.py`, 512).
+Per record, ours/export power, which corrects the attribution in the mottle entry above --
+the fine leather structure at 8-256 cycles is 333's, not 321's, and 321 alone leaves that
+band at flat's values:
+
+                        flat    321 only   333 only   321+333 = quadrant
+    roughness 4-8       0.62      1.06       0.98           2.05
+    roughness 8-256  0.63-0.78  0.64-0.80  0.82-1.00      0.85-1.09
+    roughness corr     +0.917    +0.916     +0.940         +0.927
+    basecolor 2 4-8     0.02      0.31       2.75           5.13
+    basecolor 2 corr   +0.862    +0.662     +0.589         +0.387
+
+Each is right by itself at 4-8 and together they are 2.05, as before -- but the blue's corr
+loss is almost entirely that one octave, and notching 4-8 out of BOTH sides before
+correlating says so (`/tmp/blue_band.py`, 512): raw +0.387 -> +0.833 notched under
+`quadrant`, +0.862 -> +0.948 under flat, with the band alone at -0.406 (flat) and -0.484
+(quadrant). THE BAND IS ANTI-CORRELATED WITH THE EXPORT UNDER EVERY ARM, INCLUDING THE
+DEFAULT. Why, per channel in 4-8 cycles/image (`/tmp/blue_source.py`, 512):
+
+                      blue vs green   blue vs red   blue vs roughness
+    export                +0.844         -0.658          -0.719
+    ours, flat            -0.756         +0.811          +0.732
+    ours, quadrant        -0.992         +0.999          +0.998
+
+ours-vs-export in that band: green +0.995, red +0.962, roughness +0.968, BLUE -0.80
+(-0.60 under flat). Power ours/export in 4-8 under `quadrant`: green 0.18, red 1.08,
+roughness 1.73, blue 12.2. In that octave our blue IS the red/roughness field where the
+export's blue is the green field, sign-inverted. Three channels of four land at +0.96 or
+better: the draw is right and the blue mix is wrong. Under `flat` the wrong-signed content
+is 4% of the export's power and invisible; subdivision raises it to 12.2x and the
+correlation collapses -- which is why this reads as a subdivision fault and is not one.
+All four Chesterfield refusals are `basecolor` rows. `fx.combine = background` does not
+flip the sign (blue 4-8 stays -0.408 flat / -0.422 quadrant) and wrecks the rest
+(roughness corr +0.934 -> +0.773 with `quadrant`), so it is not the term.
+
+THE BRICKS BLOCKER IS THE HEIGHT DC, AND IT IS A LEVEL FAULT, NOT A RECORD. By allow-set
+bisection (`/tmp/armrun.py` subdivides exactly a chosen record set by patching
+`fx.white_noise_record`; sets in `/tmp/bs_*.txt`, all at 256): 005 height dc +0.0211 ->
++0.0872 comes from records 2884-5310 and splits again into +0.0677 (2884-3048) and +0.0387
+(3051-5310); 004's comes from 5311-5593; 002's from 7394-9845, again across both halves.
+ADDITIVE ACROSS RECORDS -- more coverage under `max`, tracking each graph's own cone, the
+same family as the open "roughness LEVEL of 004/005" trace. At 128 all three height dc rows
+IMPROVE (adverse -0.016 to -0.021) and only reverse at 256/512, a `refguard` failure-3 sign
+reversal the HARD margin trips anyway.
+
+WHAT PASSES TODAY. Five identical 3-octave triples, one per Bricks graph -- 12190/12192/
+12195, 12268/12270/12273, 12345/12347/12350, 12421/12423/12426, 12497/12499/12502 (64 px
+depth 4, 128 px depth 6, 256 px depth 8; tags `0x1240_0648`/`0x1242_0648`/`0x20008`/
+`0x420008`) -- carry the ENTIRE Bricks roughness win by themselves: dc 002 -0.4123 ->
+-0.0482, 003 -0.1168 -> +0.0078, 004 -0.3117 -> +0.0135, 005 -0.3443 -> +0.0115; band
+3.47 -> 1.39, 5.24 -> 1.45, 2.74 -> 0.84, 2.38 -> 0.69. They move the height dc not at
+all, and the 22-record superset (set B2 above) passes the ratchet with 0 failures.
+
+THE TABLE THAT WOULD PROMOTE `quadrant`. These eight rows, and only these; everything else
+already passes:
+
+    row                        quantity   bound 128/256/512        today under quadrant
+    Bricks 002/height 0          dc       .1969 / .0127 / .0127    -.1805 / +.0497 / +.0497
+    Bricks 004/height 0          dc       .1386 / .0071 / .0071    -.1207 / +.0561 / +.0561
+    Bricks 005/height 0          dc       .0988 / .0261 / .0261    -.0777 / +.0868 / +.0868
+    Bricks 003/height 0          band     1.294 / .326 / .326       .249 / 1.670 / 1.670
+    Chesterfield basecolor 0     band     .343 / .535 / .561        .526 / .471 / .460
+    Chesterfield basecolor 1     dc       .0186 / .0141 / .0134    +.0363 / +.0376 / +.0362
+    Chesterfield basecolor 2     corr     .769 / .805 / .842       +.310 / +.365 / +.388
+    Chesterfield basecolor 2     dc       .0094 / .0096 / .0105    +.0349 / +.0368 / +.0354
+
+The first four need the height level fault, the last four the blue mix. Neither is the
+draw. `quadrant` is refused and the arm is NOT withdrawn.
+
+`fx.tree.order` IS STRUCTURALLY UNDECIDABLE ON THE PACKS, and the nomination of RoofTiles
+for it in `fxtree.py`'s docstring is refuted. The arm is only observable on a cell whose
+four output pointers resolve to more than one distinct child; everywhere else all four name
+the same cell and the arm merely permutes which quadrant gets which salt. Census over 437
+files (`/tmp/order_census.py`): 244 of 23,462 subdividing records, 1.04%, contain such a
+cell -- and per pack Auras 0, Bricks 0/190, ROOFTILES 0/160, Chesterfield 0/3, Sandy 0/5.
+The one pack that has a specimen (`OwlishMedia__Metal_rust_pattern`, record 0 of
+`Rusty_Metal.sbsasm`) ships no paired reference maps and is not scored; the 66 files that
+have them are led by `x_RoadSubstance002` (18), `x_LeakingSubstance002` (15),
+`x_TilesSubstance011` (12), none with an export. Measured, under `quadrant`:
+`clockwise`/`colmajor` move max |dcorr| 0.0024/0.0041 (Chesterfield 512) and 0.0060
+(Bricks 256), against `CORR_MARGIN` 0.02. `fx.tree.branchoffset` is different in kind --
+it IS observable (19,737 of 23,462 records carry a `branchoffset` below the root; Bricks
+160/190, Chesterfield 3/3, RoofTiles 140/160) and genuinely wired (`fxtree.py:557,599`) --
+but `region` vs `canvas` moves max |dcorr| 0.0015 (Chesterfield 512) and 0.0056 (Bricks
+256), so the packs cannot separate the two readings under `max` either. The docstring's
+"graph 003 cannot tell them apart" now extends to both deterministic packs at three grids.
+Deciding `order` needs a specimen pack with an export, not a better instrument.
