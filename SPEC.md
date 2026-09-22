@@ -1405,7 +1405,7 @@ bit clear, so `height` gains a factor of 4. Without it a decoder reads the top q
 each.
 
 **And the tag is that size at ONE `$outputsize`, which is the graph input the manifest
-declares a default for.** The record's real size is the program at its size slot (§13.3),
+declares a default for — one input PER GRAPH, not one per file.** The record's real size is the program at its size slot (§13.3),
 evaluated at whatever `$outputsize` the graph is being run at; the tag caches its value at
 the manifest's default. A reader rendering at that default may use the tag and will be
 right — over 437 files the size programs reproduce it — but a reader rendering at any other
@@ -1417,6 +1417,31 @@ at the file's own declared `$outputsize` — 718 of 746 do, and where it does no
 been misidentified and its answer at any other size is worth nothing. A record with no size
 expression takes its parent's size **relatively**, scaling its tag by the factor the parent
 moved, not copying the parent's new size.
+
+**A PACKAGE DECLARES ONE `$outputsize` PER GRAPH AND THEY ARE NOT INTERCHANGEABLE.** A
+single-graph file has one and the distinction never arises, which is how a reader comes to
+assume it. `Kutejnikov__Bricks_and_tiles` declares **five** inputs whose manifest identifier
+is `$outputsize` — 1530875923, 3258319273, 3039899967, 727032988, 1548915722, every one with
+default `(8,8)` — and `Kutejnikov__Auras` four, *the same first four uids in the same order*,
+so these are per-graph-slot identifiers rather than file-specific ones. A record's size
+expression reads the uid of the graph it belongs to. Set only the first and every other
+graph stays at its declared size no matter what is asked for: of Bricks' 12,585 records,
+2,342 move when the first uid is set against **11,943** when all five are, and graphs 002–005
+are pinned at 256 while their exported maps are 1024. Of 10 specimen assemblies 3 are
+multi-graph; all 99 `corpus/` assemblies are single-graph, which is why a census taken over
+the corpus is unaffected by this and a reference score is not. `engine.outputsize_uids`
+returns them all; `assume.QUESTIONS['graph.outputsize']` carries the two readings.
+
+A SECOND TRAP SITS BESIDE IT, and it belongs to the reader rather than the format: a
+"render at most N pixels" sweep is **not** a scaled-down render. A cap applied per record
+(`min(w, N)`) while each record's programs still read their own **declared** size computes
+every `$size`-derived pixel parameter for the big canvas and applies it in the small buffer.
+On a 1024-canvas graph drawn into a 256 buffer, 1,167 of one output's 1,277 records clamp and
+the result is not a coarser picture but a different one — quadrant-scale smear that lands in
+the lowest octave (1–7 cycles at six times the export's power) while pulling the mean toward
+mid-grey, so it can read as a *level improvement* while destroying structure. Render at the
+canvas size and resample down; the two differ by +0.65 against +0.85 in correlation on the
+same output. See FORMAT-NOTES.md, "The blocker dissolves".
 
 This is not a resolution knob. `$outputsize` is read by ordinary programs, so changing it
 changes the graph: on `ChesterfieldSofa` 98 of 102 `switch` blends take their selector from
@@ -2290,13 +2315,32 @@ level fault upstream of 10055", and "Quadrant subdivision lands in render2"):
   Bricks cannot separate any of these: every structural instrument moves less than the
   renderer's own seed floor.
 
-`tools/render2/fxtree.py` draws the tree behind `assume.QUESTIONS['fx.subdivide']`, arms
-`flat` (the reading above this paragraph, still the default: the reference guards are
-floored on it) and `tree`, with `fx.tree.branchoffset` and `fx.tree.order` for the two open
-questions. Under `tree`, Bricks 003's `height` reaches the per-brick tone the reference has
-(`tone_between` 0.035 against 0.039; `flat` 0.022) and the deterministic graphs 004 and 005
-move −0.012 and −0.050 in pixel correlation — the arbiter that decides the default is the
-instrument table, not the correlation, and it has not yet said.
+`tools/render2/fxtree.py` draws the tree behind `assume.QUESTIONS['fx.subdivide']`, four
+arms: `flat` (the reading above this paragraph, still the default: the reference guards are
+floored on it), `noise`, `quadrant` and `tree`, with `fx.tree.branchoffset` and
+`fx.tree.order` for two further questions. **The arms partition.** Over 437 files and 41,164
+FX-map records, 23,462 subdivide; 2,242 of those are the 16-px `rand(1)` White Noise class
+and all 2,242 subdivide, so `noise` (that class alone) and `quadrant` (everything else)
+compose exactly to `tree`, and the dispatch touches only what it claims to — 122 of 122
+non-subdividing pack records are bit-identical under `flat` and `quadrant`.
+
+Re-measured against the full ratchet at 128/256/512, `noise` and `tree` are **refused**, and
+`tree` is strictly dominated: it fails more rows than `quadrant` and scores below it on the
+same packs, because its `noise` half cancels its `quadrant` half. There is no configuration
+in which `tree` is the right default and `quadrant` is not. `quadrant` lifts all four Bricks
+graphs and is refused on eight rows — Bricks `height` dc and four Chesterfield `basecolor`
+rows — both of which have since been traced to **gain at depth** rather than to subdivision,
+so the arm waits on that fault and is not withdrawn. A 22-record subset of it passes the
+ratchet with zero failures.
+
+`fx.tree.order` is **structurally undecidable on these packs**, which is a fact about the
+specimens and not about the instrument: the arm is only observable on a cell whose four
+output pointers resolve to more than one distinct child, and of 23,462 subdividing records
+just 244 (1.04%) contain one — **none of them in any scored pack**, RoofTiles included
+(0 of its 160 subdividing records, refuting the obvious nomination). Deciding it needs a
+specimen pack with an export, not a better measurement. `fx.tree.branchoffset` *is*
+observable (19,737 of 23,462 records carry one below the root) and still moves less than
+`CORR_MARGIN` on every deterministic pack at three grids.
 
 ### 13.8 What the file does not state
 
@@ -2451,3 +2495,27 @@ spell a grid in their entry's `branchoffset` program take the leaf's count inste
 under both arms, and SandyStonePath — the one pack that does — cannot arbitrate it while
 its sand sits below its tiles at the declared inputs (FORMAT-NOTES.md, "The `0x9`/`0x49`
 pointer-cell list is the library Splatter's `Grid_Number`").
+
+Three arms added since, all default-off and all proven inert at their default before being
+recorded here. `fx.hurst.depth = root | firstdraw` — where the hurst exponent starts
+counting, from the record's root or from its shallowest **drawing** cell. `root` stands, and
+for once the pictures, the octave bands and the ratchet all say the same thing: `firstdraw`
+prints the subdivision lattice into the image (pixel-blocky speckle, axis-aligned plateaus
+where whole regions saturate at the clamp), crackles every Bricks 003 channel, overshoots
+the finest octave by 11–362× and fails 33 ratchet rows against `quadrant`'s 8. A reading
+whose artefacts are the shape of its own subdivision is wrong on its face. Note the corpus
+context that makes the question worth asking at all: 23,462 of 23,462 subdividing records
+have their deepest cell **draw**, and for the 13,267 baking a non-zero `hurst` the gain
+2^(−h·depth) at that level has median **0.041** — the default reading puts the median
+record's always-present deepest drawing level at 4% of its stated opacity.
+
+`graph.outputsize = first | pergraph` — §13.3's per-graph `$outputsize` inputs. `pergraph`
+is what the file says; the default is `first` only because the 42 guard rows on the two
+multi-graph packs were every one of them taken under the other reading, and a floor may be
+raised and never lowered.
+
+Also corrected rather than added: `fx.hurst`'s `exp2` arm (2^(−2·h·depth), the exponent per
+**area** halving) had never actually run — `_gain` branched `exp` and fell everything else
+through to `pow`, making `exp2` a silent duplicate of it. No recorded measurement quoted an
+`exp2` result, so nothing published was invalidated, but the arm described in `assume.py`
+and the arm the code ran were different arms.

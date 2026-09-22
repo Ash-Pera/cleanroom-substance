@@ -43,8 +43,14 @@ WHAT IS OPEN, and has an arm:
   * `fx.tree.order` -- which output is which quadrant. Default `rowmajor`
     (output0 top-left, output1 top-right, output2 bottom-left, output3 bottom-right);
     `clockwise` and `colmajor` are the other two readings. 003 cannot tell these apart
-    either; a graph whose LAYOUT is a subdivided record (RoofTiles, 80 of 113 records)
-    is where this goes.
+    either, AND NEITHER CAN ANY SCORED PACK -- the arm is only observable on a cell whose
+    four output pointers resolve to more than one distinct child, and a census over 437
+    files finds 244 of 23,462 subdividing records (1.04%) with such a cell and NONE in a
+    scored pack. RoofTiles was the obvious nomination and is refuted: 0 of its 160
+    subdividing records. The one specimen file that has them ships no reference maps.
+    Measured under `quadrant`, `clockwise`/`colmajor` move max |dcorr| 0.0024-0.0060,
+    against `CORR_MARGIN` 0.02. This needs a specimen pack with an export, not a better
+    instrument. See FORMAT-NOTES.md, "`fx.subdivide` re-measured whole".
   * `$pos` per region is NOT modelled: `fxrender.make_runner` sets it from `fx.pos`
     once per record, as it did before, and a subdivided tree does not thread a
     per-region position through it. Left as it is.

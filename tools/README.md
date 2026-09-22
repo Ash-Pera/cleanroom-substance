@@ -421,10 +421,14 @@ quarters of its region; bit 17 names one child for all four, bit 16 one per outp
 "chain family" `0x0002xxxx` is bare Quadrants -- nothing to draw, four nestings each -- so a
 leaf under five of them is 4^4 patterns, not one. `render2/fxtree.py` reads the tree from
 the cells' own pointers and draws it as grids behind `assume.QUESTIONS['fx.subdivide']`
-(default `flat`, the reading above; `tree` is the nesting), with the root convention the
-notebook settled -- the first cell does not subdivide -- and two arms for what it did not:
-`fx.tree.branchoffset` (canvas or region units) and `fx.tree.order` (which output is which
-quadrant). The layout it reads, `[tag][params ptr][bit-7 word]?[child ptrs][bit-4 word]?
+(default `flat`, the reading above; `tree` is the nesting, and `noise` / `quadrant` are its
+two halves -- the 16-px White Noise class and everything else, which partition it exactly:
+2,242 of 23,462 subdividing records are that class and all 2,242 subdivide), with the root
+convention the notebook settled -- the first cell does not subdivide -- and two arms for what
+it did not: `fx.tree.branchoffset` (canvas or region units) and `fx.tree.order` (which output
+is which quadrant, NOT observable on any scored pack: 244 of 23,462 records have a cell whose
+four outputs differ and none is in a pack with an export). A third arm settled since,
+`fx.hurst.depth`, decides where the hurst exponent starts counting; `root` stands. The layout it reads, `[tag][params ptr][bit-7 word]?[child ptrs][bit-4 word]?
 [params ...]`, is measured in its `pointer_slot` docstring and differs from `fx_entry_walk`'s
 ascending order in one place that moves no program slot: the bit-4 word sits after the
 pointers. `test_fxtree.py` holds the grid drawer equal to `fx.splat`'s loop and the tree arm
