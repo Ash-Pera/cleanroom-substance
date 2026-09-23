@@ -2627,10 +2627,10 @@ COMPANION_INSTRUMENTS = {
 }
 COMPANION_MARGIN = {"tilt": 0.02, "tile_level": 0.02, "mortar_level": 0.03, "low_band": 0.15}
 COMPANION_TABLE = {
-    "002": {"tilt": (0.2645, 0.2555), "tile_level": (0.6193, 0.6443), "mortar_level": (0.4109, 0.3167), "low_band": (1.2299, 1.0)},
-    "003": {"tilt": (0.1971, 0.2006), "tile_level": (0.5853, 0.5931), "mortar_level": (0.2159, 0.3486), "low_band": (0.9183, 1.0)},
-    "004": {"tilt": (0.1903, 0.2281), "tile_level": (0.6241, 0.6216), "mortar_level": (0.3364, 0.3458), "low_band": (1.2082, 1.0)},
-    "005": {"tilt": (0.2171, 0.2325), "tile_level": (0.6255, 0.6283), "mortar_level": (0.4459, 0.2461), "low_band": (0.8991, 1.0)},
+    "002": {"tilt": (0.2063, 0.2064), "tile_level": (0.6589, 0.6432), "mortar_level": (0.4905, 0.4713), "low_band": (1.1193, 1.0)},
+    "003": {"tilt": (0.1518, 0.1689), "tile_level": (0.6180, 0.5796), "mortar_level": (0.4289, 0.4516), "low_band": (1.2929, 1.0)},
+    "004": {"tilt": (0.2045, 0.2234), "tile_level": (0.6335, 0.6313), "mortar_level": (0.3818, 0.3794), "low_band": (1.1223, 1.0)},
+    "005": {"tilt": (0.2199, 0.2203), "tile_level": (0.6560, 0.6273), "mortar_level": (0.4186, 0.4006), "low_band": (0.8824, 1.0)},
 }
 
 
@@ -2664,16 +2664,17 @@ def test_bricks_per_tile_and_low_octave_instruments_do_not_regress():
     # render holds every array and Bricks at 1024 is 112 GB of them -- rendering honestly
     # with it is an OOM, not a measurement. The tone-mask records are not declared outputs,
     # so they must be named or the freeing takes them.
-    _keep = [ss._tone_mask_record(asm, g) for g in sorted(COMPANION_TABLE)]
-    _keep += [ri for g, nm, ri in ss._bricks_outputs() if nm == "height"]
+    _keep = [ri for g, nm, ri in ss._bricks_outputs() if nm == "height"]
     outs = _rc._renderer(("render2-lean", _keep))(asm, 1 << 10, None, (10, 10))
     worse = []
     for graph, rec in sorted(COMPANION_TABLE.items()):
-        mrec = ss._tone_mask_record(asm, graph)
-        m = np.asarray(outs[mrec], np.float64)
-        m = m if m.ndim == 3 else m[:, :, None]
-        mask = ss.resample(m, grid)[:, :, 0] > 0.5
-        lab, n = ndimage.label(ndimage.binary_erosion(mask, iterations=3))
+        # LABELS FROM THE EXPORT, NOT FROM OUR RENDER. `ss.export_tile_labels` says why at
+        # length: labelling from a record of our own render made the EXPORT's readings a
+        # function of our renderer, and correcting the `max_dim` clamp moved 003's reference
+        # tilt from a recorded 0.2006 to 0.047 and emptied 004's mortar mask. The export's
+        # normal map is fixed, so from here only OUR side can move -- which is the only
+        # thing this instrument was ever meant to measure.
+        mask, lab, n = ss.export_tile_labels(graph, grid)
         hri = [ri for g, nm, ri in ss._bricks_outputs() if g == graph and nm == "height"][0]
         ref = ss.load_png(ss.BRICKS + "/reference_renders/Textures_1/%s_height.png" % graph, grid)[:, :, 0]
         a = np.asarray(outs[hri], np.float64)

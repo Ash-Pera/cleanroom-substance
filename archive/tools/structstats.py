@@ -344,6 +344,64 @@ def _tone_mask_record(asm, graph):
     return None
 
 
+def _otsu(x, bins=512):
+    """The threshold minimising intra-class variance, over the DATA'S OWN range.
+
+    Over a fixed (0, 1) range this returns nothing useful on a normal map: `z` sits within
+    a few thousandths of 1.0 on every flat face, so 256 bins over the unit interval put the
+    whole picture in one bin and the split degenerates to the tail. Binning between the
+    array's own min and max is what makes the two classes separable.
+    """
+    lo, hi = float(np.min(x)), float(np.max(x))
+    if not (hi > lo):
+        return lo
+    h, e = np.histogram(np.ravel(x), bins=bins, range=(lo, hi))
+    h = h.astype(np.float64)
+    c = (e[:-1] + e[1:]) / 2.0
+    w0 = np.cumsum(h)
+    w1 = w0[-1] - w0
+    m0 = np.cumsum(h * c)
+    mt = m0[-1]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        between = (mt * w0 - m0) ** 2 / (w0 * w1)
+    between[~np.isfinite(between)] = -1.0
+    return float(c[int(np.argmax(between))])
+
+
+def export_tile_labels(graph, grid=GRID, iterations=3):
+    """Tile mask and labels from the EXPORT'S OWN normal map. Returns (mask, lab, n).
+
+    WHY NOT FROM OUR RENDER, which is what this replaced. The companion instrument exists to
+    overrule a pixel correlation with something a per-cell random draw cannot move, and it
+    measures OURS and the EXPORT over one set of tile labels. Deriving those labels from a
+    record of our own render makes the EXPORT'S numbers a function of our renderer: when the
+    `max_dim` clamp was corrected, graph 003's reference tilt moved from a recorded 0.2006 to
+    0.047 without the export changing at all, and 004's `mortar_level` became `mean` of an
+    empty slice because the mask had grown to cover the canvas. An instrument whose reference
+    side moves cannot arbitrate, and this one is the only route by which a correlation floor
+    may be lowered.
+
+    WHY THE NORMAL'S z AND NOT THE HEIGHT. The height is unimodal -- each face carries a
+    gradient that overlaps the mortar, so no threshold separates them (Bricks 002: one broad
+    hump at 0.55-0.60, Otsu degenerating to 0.873 and a mask covering 0.0%). That is exactly
+    why the original reached for a distance-field record instead. The normal map states the
+    geometry directly: `z` is ~1.0 wherever the surface is flat, which is the face, and drops
+    at the mortar bevel. Otsu over its own range then splits faces from edges cleanly --
+    64 / 36 / 21 / 25 tiles of at least 150 px on graphs 002 / 003 / 004 / 005, whose
+    `tile_level` on the export reads 0.643 / 0.580 / 0.631 / 0.627 against the 0.6443 /
+    0.5931 / 0.6216 / 0.6283 the old labelling recorded: the same quantity, and now a fixed
+    one. FORMAT-NOTES.md, "the companion instrument".
+    """
+    from scipy import ndimage
+
+    z = load_png(
+        BRICKS + "/reference_renders/Textures_1/%s_normal.png" % graph, grid
+    )[:, :, 2]
+    mask = z > _otsu(z)
+    lab, n = ndimage.label(ndimage.binary_erosion(mask, iterations=iterations))
+    return mask, lab, n
+
+
 def tile_instruments(x, lab, n, mask):
     """tilt (median, p25, p75), tile_level, mortar_level of channel `x` under labels `lab`."""
     yy, xx = np.mgrid[0 : x.shape[0], 0 : x.shape[1]]

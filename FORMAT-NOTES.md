@@ -62771,3 +62771,49 @@ ZERO-BYTE pytest log that reads exactly like a clean run if the file size is not
 It goes through `_renderer(("render2-lean", extra_keep))` now, naming the tone-mask records
 and the height outputs, because `lean` frees every intermediate that is not a declared
 output or a `bitmap` and this instrument reads one that is neither.
+
+## The companion instrument rebuilt on EXPORT-derived labels: its reference side no longer moves when our renderer does, and it still fails a wrong render
+
+The instrument that is the only sanctioned route to lowering a correlation floor was
+labelling tiles by connected components of a record of OUR OWN render and then measuring
+BOTH sides over those labels -- so correcting the `max_dim` clamp moved graph 003's
+REFERENCE tilt from the recorded 0.2006 to 0.047, and grew 004's mask until `mortar_level`,
+which is `mean(x[~mask])`, was computed on an empty slice. Its docstring called it seed-free;
+it was not, in the one way that matters.
+
+`structstats.export_tile_labels(graph, grid)` takes the labels from the export's own NORMAL
+map instead. THE HEIGHT CANNOT DO THIS and that is why the original reached for a render
+record: the export height is unimodal -- each face carries a gradient that overlaps the
+mortar, Bricks 002 is one broad hump at 0.55-0.60 -- and an Otsu split on it returns 0.873
+with a mask covering 0.0%. The normal states the geometry directly: `z` is ~1.0 wherever the
+surface is flat, which is the face, and drops at the mortar bevel. Otsu must be taken over
+the array's OWN min..max, not over (0, 1), or 256 bins put every flat face in one bin and the
+split degenerates again. That yields 64 / 36 / 21 / 25 tiles of >= 150 px on 002 / 003 / 004
+/ 005, and the check that it is the same quantity as before: `tile_level` on the export reads
+0.643 / 0.580 / 0.631 / 0.627 against the 0.6443 / 0.5931 / 0.6216 / 0.6283 the old labelling
+recorded.
+
+`COMPANION_TABLE` re-taken under it, from an honest 1024 render. Our agreement with the
+export is far better than the old pairs recorded -- 002 tilt distance 0.0090 -> 0.0001, 002
+`mortar_level` 0.0942 -> 0.0192, 005 `mortar_level` 0.1998 -> 0.0180, 005 tilt 0.0004 -- which
+is what a correct render against a stable reference ought to look like.
+
+ONE ROW IS A LOOSENING AND IT IS NOT HIDDEN: 003 `low_band` reads 1.2929 where the table
+recorded 0.918, i.e. |log| 0.257 against 0.0856, FURTHER from the export. That instrument
+uses no labels at all, so this is purely the honest render: our graph 003 height carries ~29%
+too much power in the 1-8 cycle band, and the clamped render happened to sit nearer. Recorded
+as measured rather than argued away; it is the one place in this re-take where the honest
+number is the less flattering one, and it is a fault to trace, not a bound to enjoy.
+
+VALIDATED TWO WAYS, because a table re-taken from today's measurement passes today's
+measurement by construction and that proves nothing. Under the honest default it PASSES
+(493 s). Under `graph.outputsize = first` -- the pinned 256-canvas graph, a genuinely
+different picture -- it FAILS on four readings (003 and 004 and 005 `mortar_level`, 005
+`tilt`), so it still detects a wrong render. And the export column is now STABLE across both
+runs: 003 `mortar_level` 0.452 against the recorded 0.4516, 004 0.379 against 0.3794, 005
+`tilt` 0.22 against 0.2203. From here only our side can move, which is all it was ever
+meant to measure.
+
+WHAT REMAINS RED, and it is the one this whole correction uncovered: Bricks 002/basecolor
+ch0/1/2 `band` at 0.166 / 0.188 / 0.156 against a bar requiring >= 0.25. Not declared: a
+`Cause` must name a record or a mechanism and this one is not known yet.
