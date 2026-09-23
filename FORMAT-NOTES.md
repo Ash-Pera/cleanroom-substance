@@ -62872,3 +62872,134 @@ next trace starts. Of the tail's own inputs only 9231 (sd 0.1057, power 2.5e-04 
 
 Not declared, and still red: a `Cause` must name a record or a mechanism, and "upstream of
 9792" is a direction, not a mechanism.
+
+## `fx.subdivide` is owed an honest re-take: at native, `flat` renders Chesterfield's mottle record as a CONSTANT ZERO, `quadrant` puts roughness's 8-64 octaves on the export to 3%, and both of the arm's recorded blockers have moved since it was refused
+
+Every reading that refused `fx.subdivide = quadrant` was taken at a 128 / 256 grid before
+`1f9a4fd`, i.e. under the `max_dim` clamp this file has since recorded as A DIFFERENT
+PICTURE AND NOT A COARSER ONE. That is the same fault that forced `GUARD_TABLE`'s 52
+entries to be re-taken, and nothing about the subdivision arm was re-taken with them.
+
+WHAT THE HONEST RENDER SHOWS, Chesterfield at its own implied 2048 through `render2-lean`,
+each arm in turn (`/tmp/ch_arm.py`). Mean / sd, and band power as a ratio to the EXPORT's
+own:
+
+    record 321 (the BnW-Spots mottle)   flat 0.0000 / 0.0000     quadrant 0.7938 / 0.1114
+    record 331 (creases, background 1)  flat 1.0000 / 0.0000     quadrant 1.0000 / 0.0000
+    record 333 (pyramids, hurst 0.75)   flat 0.9587 / 0.0586     quadrant 0.0399 / 0.0131
+
+    roughness, ours / export      1-4    4-8   8-16  16-32  32-64  64-128 128-256
+      flat                       0.52   0.61   0.75   0.77   0.76   0.60   0.62
+      quadrant                   0.16   2.02   1.00   1.03   1.03   0.81   0.83
+    basecolor ch0, ours / export
+      flat                       0.01   0.30   0.77   0.55   0.57   0.44   0.55
+      quadrant                   0.06   0.92   0.40   0.35   0.35   0.33   0.48
+
+321 IS NOT DIM UNDER THE DEFAULT, IT IS ABSENT: mean 0.0000, sd 0.0000, zero power in
+every octave. `fx._batch_emit`'s own docstring says why -- one of the two gates the
+`e231131` chain walk opened closes at pattern 0, and zero frames is accepted as an answer
+because `closed` is true. It is a legitimate refusal of the flat walk and it is also the
+whole of the leather grain: alive, roughness's five octaves from 8 to 128 cycles read 1.00
+/ 1.03 / 1.03 / 0.81 / 0.83 against the export where the default reads 0.75 / 0.77 / 0.76
+/ 0.60 / 0.62, and the level comes with it (0.1747 -> 0.2802 against the export's 0.2352,
+dc -0.0605 -> +0.0450). The pictures say the same thing in one look
+(`/tmp/sheet_Chesterfield_PBR_Material.png`): our panels are flat red and flat grey where
+the export is mottled leather, and every other thing about the six outputs -- layout,
+buttons, creases, normals, the metallic dots -- already lands.
+
+AND THE ARM IS NOT ONE QUESTION, which is the thing the honest reading adds. `basecolor`
+goes the OTHER WAY, 0.77 -> 0.40 in the mid-band, and the cause is visible in the same
+table: 333 collapses from 0.9587 / 0.0586 to 0.0399 / 0.0131. 321 carries no `hurst` word
+and 333 carries 0.75, and `fx.hurst`'s default `exp` puts the median subdividing record's
+deepest drawing level at 0.041 of its stated opacity -- so the arm that brings 321 to life
+is the same arm that lets the hurst gain bury 333, and the two records are separated by a
+mechanism already named. `fx.hurst = off` has been measured exactly once, at `03429a7`:
+"inert under flat and refused at 45 rows under quadrant". Inert in the combination where
+it cannot act, refused in the combination where it can -- and both readings taken under
+the clamp. THE MEASUREMENT IS A 2x2 OVER (`fx.subdivide`, `fx.hurst`) AT NATIVE, not two
+arms in sequence, and taking it in sequence is how this arm got refused the first time.
+
+TWO SMALLER FACTS FROM THE SAME RUN. `tree` and `quadrant` are bit-identical on this pack
+and so are `noise` and `flat`, which is the dispatch partition (`fx.py:457`) behaving as
+documented on a pack with no white-noise record. And `AO` and `height` do not move under
+any of the four arms -- identical to every digit -- so of Chesterfield's ten guard rows
+only `roughness` and the three `basecolor` channels can speak to this question at all.
+
+BOTH RECORDED BLOCKERS HAVE MOVED. `48503a3` refused the arm on RoofTiles' basecolor ch1 /
+ch2 and Chesterfield's blue ch2. RoofTiles has **0 of GUARD_TABLE's 52 rows** (39 Bricks,
+10 Chesterfield, 3 Auras), and `ada95d0` then found both of its export sets to be at paint
+inputs the file does not record -- so those two channels are not a row the ratchet holds
+and not a score either. Chesterfield's blue was argued at the time to be rand-driven
+placement rather than amplitude (band 0.20 -> 0.38 against the export's 1.0: the mottle
+too WEAK, not too strong), and the companion instrument -- this file's only sanctioned
+route to lowering a correlation floor -- was rebuilt at `d3d2234` on labels taken from the
+export's own normal map, so it can now arbitrate that claim without moving its own
+reference. Neither of these makes the arm right. They mean the refusal rests on nothing
+that is still standing, and the arm is owed a reading, not a promotion.
+
+Chesterfield is the cheap specimen for all of it: 132 s at native through the lean pass,
+against 652 s for Bricks' 26 outputs at 1024.
+
+## The pictures at native, all five packs side by side with their exports: the geometry lands nearly everywhere, and three defects are visible that no instrument in this repository is currently pointed at
+
+`/tmp/sheet.py`, each pack at its own implied `$outputsize` through `render2-lean`, ours
+and the export on one display grid: `/tmp/sheet_Bricks_and_tiles.png` (26 outputs, 1024),
+`/tmp/sheet_Chesterfield_PBR_Material.png` (6, 2048), `/tmp/sheet_Stylized_Sandy_Stone_Path
+.png` (12, 2048). Memory of what a correlation cannot say: these were read by looking.
+
+WHAT LANDS, and it is most of it: every pack's tile layout, mortar geometry, normals,
+heights and Bricks 004's emission sit on the export. Chesterfield is near-exact on all six
+outputs bar the grain above. Bricks 002-005 draw the right arrangement at the right scale.
+
+THREE DEFECTS, ranked by how wrong the picture looks.
+
+(1) BRICKS ROUGHNESS ON 002 / 004 / 005 IS NEAR-BLACK where the export is mid-grey -- the
+tiles read as holes and only the grout is bright. This is the "roughness 0.3 too dark for
+another reason" that `10ce512` named as the thing `fx.combine = background` waits on, and
+it is by a wide margin the most visibly wrong picture in the corpus. It is not subtle and
+it is not a band: it is the level of a whole channel on three of five graphs.
+
+(2) A GIANT RING SWEEPS ACROSS BRICKS 003 / 004 / 005 in height, normal, roughness, AO and
+basecolor -- a faint circular arc a third of the canvas across, absent from every export.
+It is the flat walk drawing one huge pattern where the export has per-brick chips, the
+same construct `48503a3` traced to record 708 ("708's giant discs become chips" under
+quadrant). Recorded here because it is an artefact a reader can SEE in five channels and
+no guard row names it.
+
+(3) NEW, AND IN NO SECTION OF THIS FILE: SANDYSTONEPATH DRAWS COG-SHAPED ORNAMENTS ON
+EVERY TILE. Lobed, gear-like rosettes, one per tile, in ALL SIX channels and in BOTH
+export sets -- and the exports have nothing of the kind, only plain stones under sandy
+overlay patches we do not draw at all. The pack holds no `vectorshape` record (1,778
+records: 669 `blend`, 535 `transformation`, 164 `levels`, 131 `warp`, 26 `fxmaps`), so the
+rosette is an FX-Map drawing a lobed profile or drawing one pattern at many rotations.
+`fx.profile`, `fx.typeless_profile` and `fx.rotation` are all open arms and any of them
+could produce this shape. Untraced: naming the record needs a render with intermediates
+and this pack is 786 s at native.
+
+## `nativeguard.py` was scoring through the NON-lean renderer, and `engine.py` is loaded twice under two names so the graph-input override it installs was one renderer-swap away from being silently inert
+
+Two faults in the tool that exists to take a native-resolution arm row, both dated.
+
+THE RENDERER. `nativeguard` passed `renderer="render2"`, which is `render2`'s ordinary
+whole-file pass holding every array. Its docstring's "Bricks takes ~2 min, RoofTiles ~11
+min at 2048" was honest when written and stopped being so at `37efcd5`: under
+`graph.outputsize = first` most of Bricks' records were pinned at 256, so the run that
+timing was taken on was mostly not at native at all. With `pergraph` the default the same
+invocation asks for 112 GB on Bricks and 58 GB on Chesterfield (`refcompare
+._lean_renderer`'s measured figures, against 3.5 and 13.1 GB live under the lean pass). It
+now passes `renderer="render2-lean"`. A/B on `Kutejnikov__Auras`, the one pack small
+enough to render both ways: all three rows identical to three decimals, corr +0.928 /
++0.751 / +0.938, band 4.090 / 16.841 / 0.463, dc +0.132 / +0.218 / -0.067.
+
+THE OVERRIDE, and this is the one that would have produced a wrong NUMBER rather than a
+crash. `engine.py` is loaded TWICE in this process under two names -- top-level `engine`,
+because `render2/__init__.py` says `from engine import render`, and `render2.engine`,
+because `refcompare._lean_renderer` says `from render2 import engine`. Two module objects,
+one file, and `render2.render is engine.render` is True while `render2.render is
+render2.engine.render` is False. `nativeguard` patched `render2.render` to merge RoofTiles'
+14 x 9 tile counts into every render call; the lean renderer calls `render2.engine.render`
+and would never have seen it. RoofTiles would have been scored at its declared 1 x 1
+tiling against exports made at 14 x 9 -- not a score, by this tool's own docstring, and
+nothing in its output would have said so. `_install` now patches all three bindings and
+`_calls` counts them, with an assertion that a pack producing rows went through a patched
+one, so a fourth binding is a stopped run and not a quiet number.

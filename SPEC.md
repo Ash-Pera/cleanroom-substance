@@ -2450,7 +2450,13 @@ Two more instruments and a rule, added after the eleven readings below were deci
    there is no one `$size` reading that is right under a cap (the declared size is the
    faithful downsample, the grid the only reading under which a texel machine runs). At
    native every deterministic Bricks graph scores 0.02–0.06 higher than at 256 and
-   Chesterfield 0.06 higher; those were the guard's own grid artefacts.
+   Chesterfield 0.06 higher; those were the guard's own grid artefacts. It scores through
+   `render2-lean`, and must: once `graph.outputsize = pergraph` became the default this row
+   is genuinely at native on every graph, and the ordinary whole-file pass holds 112 GB on
+   Bricks and 58 GB on Chesterfield. Its graph-input overrides are installed on all three
+   bindings of `render` — `engine.py` is loaded twice, as `engine` and as `render2.engine` —
+   and counted, because a patch on one binding is inert under a renderer that calls the
+   other. See FORMAT-NOTES.md, "`nativeguard.py` was scoring through the NON-lean renderer".
 
 **The rule for a default.** A reading becomes the default when it passes the ratchet —
 `test_render2_reference_agreement_does_not_regress`, per row on corr, band and dc at 128 /
