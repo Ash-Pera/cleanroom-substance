@@ -62817,3 +62817,58 @@ meant to measure.
 WHAT REMAINS RED, and it is the one this whole correction uncovered: Bricks 002/basecolor
 ch0/1/2 `band` at 0.166 / 0.188 / 0.156 against a bar requiring >= 0.25. Not declared: a
 `Cause` must name a record or a mechanism and this one is not known yet.
+
+## Bricks basecolor's deficit located to an octave band and a place in the chain: mid-band only, 0.11-0.20 of the export at 8-64 cycles, and it arrives ALREADY FLAT at the tail -- 9792 enters at sd 0.029 against the export's 0.108
+
+The health-bar red the honest re-take exposed, measured. Absolute band power at 1024, ours
+and export, Bricks 002 `basecolor` (`/tmp/bc_analyse.py`, arrays in `/tmp/bc_00*.npy`):
+
+                  1-4     4-8    8-16   16-32   32-64  64-128 128-256 256-512
+    ch0 ratio    0.67    0.68    0.20    0.15    0.11    0.14    0.33    0.52
+    ch1 ratio    0.82    0.57    0.21    0.19    0.14    0.18    0.26    0.57
+    ch2 ratio    1.01    0.53    0.17    0.16    0.11    0.15    0.28    0.67
+
+THE COARSE LAYOUT AND THE LEVEL ARE RIGHT AND THE MIDDLE IS GONE: 1-4 cycles at 0.67-1.01,
+mean 0.329 against 0.344, and 8-128 cycles at a tenth to a fifth. Worst at 32-64, which at
+1024 px is a feature of 16-32 px. Overall sd 0.049 against 0.108, so we are 2.2x too smooth.
+The same shape on 003 (0.22-0.43 through those octaves, 1-4 slightly OVER at 1.11-1.57) and
+005 (0.17-0.20 at 8-16), so it is one fault across the pack.
+
+WHAT IT LOOKS LIKE (`/tmp/bc_sheet.png`, export and ours, full frame and a 256-px crop at
+2x). 002's export is a bold near-black mortar lattice with a bright rim on each tile and
+wear mottling over every face; ours has a thin pale-grey lattice, smooth faces and no rim.
+003's export varies brick to brick -- tan, olive, pink -- with chipped outlines, scratches
+and within-brick mottle; ours are flat, uniform and cleanly rounded. We draw the LAYOUT and
+the LEVEL and lose the mortar definition and the per-tile wear.
+
+TWO CANDIDATES RAISED AND KILLED, both worth recording so they are not raised again.
+
+(1) THE DISTANCE RADIUS IS NOT THE FAULT. 9795, the mask under the first blend, is a
+`distance` with a baked radius of 3.25 -- a pixel value stated against a 256 canvas, exactly
+the shape of the `f_blur` trap, and if it did not scale our mortar would be 4x too thin at
+1024, which matches the picture and would explain why `basecolor` alone DEGRADED under
+honest rendering. It scales: `distance.scale_radius` is `value * (width / REFERENCE_PX)`,
+giving 13 px at 1024.
+
+(2) THE TAIL'S "FLAT SOURCES" ARE UNIFORMS BY DESIGN. Measuring each blend source
+(`/tmp/bc_chain.py`) showed 9230 and 9232 at mean 1.0000 sd 0.0000 in channel 0, which reads
+like the flat-leaf failure family. They are `uniform` records and are SUPPOSED to be
+constant: 9232 states `outputcolor = (1.0, 0.9238, 0.8947, 1.0)`, a colour tint whose
+channel 0 happens to be 1.0. A one-channel probe on a colour record cannot tell a tint from
+a failure. The tail is ordinary: a base tinted by uniforms through masks.
+
+WHERE IT ACTUALLY ENTERS. Along 002's tail at 1024, mean / sd:
+
+    9792 (base into the tail)   0.2498 / 0.0294      9797 = blend(9796, 9231)  0.2819 / 0.0386
+    9795 (distance mask)        0.1692 / 0.2999      9798 = blend(9797, 9230)  0.3101 / 0.0424
+    9796 = blend(9792, 9232, mask 9795)              9799 = blend(9798, 9229)  0.3106 / 0.0427
+                                0.2542 / 0.0318      9800 = levels(9799)       0.3106 / 0.0427
+
+The final `levels` is a BIT-IDENTICAL IDENTITY, the four blends together take sd from 0.0294
+to 0.0427, and the export is at 0.108. So the tail adds what it should and the base ARRIVES
+ALREADY TOO SMOOTH: the loss is upstream of 9792, in its own cone, and that is where the
+next trace starts. Of the tail's own inputs only 9231 (sd 0.1057, power 2.5e-04 at 8-16 and
+6.0e-04 at 16-32) and the mask carry structure at the missing scales.
+
+Not declared, and still red: a `Cause` must name a record or a mechanism, and "upstream of
+9792" is a direction, not a mechanism.

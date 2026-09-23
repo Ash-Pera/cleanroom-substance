@@ -437,6 +437,17 @@ upstream of 10055 is a white-noise FX-Map emitting ONE pattern, and the cons cha
 quadrant subdivision" and "Quadrant subdivision lands in render2".
 Do not step 8 bytes and do not read the length from a table -- both were wrong.
 
+`refcompare` scores through `render2-lean` (`_lean_renderer`), which is `render2`'s ordinary
+whole-file pass with every array dropped once the last record that reads it has run. It is a
+MEMORY policy and nothing else -- `test_render2_lean_renderer_matches_the_whole_file_render`
+holds it to bit-identical outputs -- and it exists because a score must be taken at the size
+the exports were made at: Bricks at `$outputsize` 1024 holds 112 GB of record arrays if none
+is ever freed, against a 3.5 GB live peak. The liveness list is the CALLER's, because this
+loop cannot derive a sound one (`sampler_bindings` reaches a `bitmap` no edge points at), and
+a per-output CONE is not a substitute: the 0x03/0x06 value cache is cross-record CSE, so a
+cone can read an index a record outside it wrote -- fatal on Auras 004, silently fine on
+Bricks 005.
+
 Nor is the extent a pure function of the tag. `fx_entry_walk`'s `max(slot + width - 1) + 1`
 is exact for 98.94% of entries and ONE WORD TOO LONG for 93, and no bit says which: bit 31 is
 necessary and not sufficient (`0xD5140088` carries it and is exact), and the bits separating

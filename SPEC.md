@@ -2509,10 +2509,26 @@ have their deepest cell **draw**, and for the 13,267 baking a non-zero `hurst` t
 2^(−h·depth) at that level has median **0.041** — the default reading puts the median
 record's always-present deepest drawing level at 4% of its stated opacity.
 
-`graph.outputsize = first | pergraph` — §13.3's per-graph `$outputsize` inputs. `pergraph`
-is what the file says; the default is `first` only because the 42 guard rows on the two
-multi-graph packs were every one of them taken under the other reading, and a floor may be
-raised and never lowered.
+`graph.outputsize = pergraph | first` — §13.3's per-graph `$outputsize` inputs.
+**`pergraph` is now the DEFAULT**, which took re-taking every floor it touched. The blocker
+was one row, Bricks 005/roughness, reading +0.6456 against a 0.77 floor — and that turned out
+to be an artefact of the sweep rather than of the arm (§13.3, the `max_dim` trap). Re-taken
+from renders at each pack's own implied `$outputsize`, all 52 entries re-recorded and every
+`was` left untouched, **19 of 19 enforced floors clear** and that row reads +0.8450. Note for
+anyone promoting an arm after this one: flipping the tuple in `assume.QUESTIONS` is not
+enough, because `assumed(key, default)` returns the CALL SITE's default — `engine` carried
+its own `"first"` and had to be changed too.
+
+Two consequences of that re-take are properties of the SCORE rather than of the format, and
+both are now how the guard works. A reading is taken from ONE render at the pack's implied
+`$outputsize`, resampled down to 128/256/512 — scoring three `max_dim` values was never a
+resolution sweep, it was three mis-scalings. And the companion instrument, the only
+sanctioned route by which a correlation floor may be lowered, now takes its tile labels from
+the EXPORT's own normal map: labelling from a record of our own render made the reference
+side a function of our renderer, and correcting the clamp moved graph 003's *export* tilt
+from a recorded 0.2006 to 0.047. The height cannot supply those labels — it is unimodal,
+each face's gradient overlapping the mortar — which is why the original reached for a render
+record at all.
 
 Also corrected rather than added: `fx.hurst`'s `exp2` arm (2^(−2·h·depth), the exponent per
 **area** halving) had never actually run — `_gain` branched `exp` and fell everything else
