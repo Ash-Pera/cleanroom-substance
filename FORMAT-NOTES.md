@@ -62873,7 +62873,7 @@ next trace starts. Of the tail's own inputs only 9231 (sd 0.1057, power 2.5e-04 
 Not declared, and still red: a `Cause` must name a record or a mechanism, and "upstream of
 9792" is a direction, not a mechanism.
 
-## `fx.subdivide` is owed an honest re-take: at native, `flat` renders Chesterfield's mottle record as a CONSTANT ZERO, `quadrant` puts roughness's 8-64 octaves on the export to 3%, and both of the arm's recorded blockers have moved since it was refused
+## `fx.subdivide` is owed an honest re-take: every reading that refused `quadrant` predates the `max_dim` correction, both of its recorded blockers have moved, and at native the arm turns on what a `0x89` node IS -- a stop, or a branch selector whose spare word puts Chesterfield's roughness octaves on the export to 3%
 
 Every reading that refused `fx.subdivide = quadrant` was taken at a 128 / 256 grid before
 `1f9a4fd`, i.e. under the `max_dim` clamp this file has since recorded as A DIFFERENT
@@ -62895,14 +62895,44 @@ own:
       flat                       0.01   0.30   0.77   0.55   0.57   0.44   0.55
       quadrant                   0.06   0.92   0.40   0.35   0.35   0.33   0.48
 
-321 IS NOT DIM UNDER THE DEFAULT, IT IS ABSENT: mean 0.0000, sd 0.0000, zero power in
-every octave. `fx._batch_emit`'s own docstring says why -- one of the two gates the
-`e231131` chain walk opened closes at pattern 0, and zero frames is accepted as an answer
-because `closed` is true. It is a legitimate refusal of the flat walk and it is also the
-whole of the leather grain: alive, roughness's five octaves from 8 to 128 cycles read 1.00
-/ 1.03 / 1.03 / 0.81 / 0.83 against the export where the default reads 0.75 / 0.77 / 0.76
-/ 0.60 / 0.62, and the level comes with it (0.1747 -> 0.2802 against the export's 0.2352,
-dc -0.0605 -> +0.0450). The pictures say the same thing in one look
+321 IS EMPTY UNDER THE DEFAULT -- mean 0.0000, sd 0.0000, zero power in every octave --
+AND `4d8480d` ALREADY ESTABLISHED THAT ITS EMPTINESS IS CORRECT. That retraction
+disassembled the two gates that close: `min($sizelog2.x, $sizelog2.y) >= 12` and `>= 13`,
+level-of-detail guards that add octaves at 4096 and 8192 px. THE CHECK IT COULD NOT RUN AT
+THE TIME NOW RUNS AND IT PASSES: it worried that a threshold between our cap and the
+declared size would flip silently, and 321 renders at 2048 under `pergraph` through the
+lean pass (`/tmp/ch_grain.npz`), so `$sizelog2` is 11, both predicates are false at the
+TRUE export size, and the flat walk takes the branch the file states. Record 321 has now
+been named as a defect twice -- `fa2afd1`, and this session before this paragraph was
+written -- and withdrawn twice. **A third reader should not raise it without answering the
+paragraph below.**
+
+WHAT IS ACTUALLY AT ISSUE IS WHAT A `0x89` NODE IS, and the two walks disagree. The flat
+walk treats a gate whose predicate is false as TERMINATING -- `closed` is set, zero frames
+is accepted as an answer, the record draws nothing. The tree walk consumes the same nodes
+as CHILD GATES (`fxtree.py:703`, `gated_nodes`): a false predicate takes the gate's spare
+word, the nesting continues, and 321 draws at 0.7938 / 0.1114. So `quadrant` does not
+"revive" a dead record; it reads the same two words as a branch selector rather than as a
+stop, and the resulting picture is the one whose octaves land.
+
+THAT IS EVIDENCE AND IT IS NOT PROOF, and the direction it points is worth stating exactly
+because the amplitude argument is the same shape as the one `4d8480d` threw out. In FAVOUR
+of the tree reading: `4d8480d`'s own disassembly calls these guards that ADD octaves at
+4096, and a guard that adds detail above a threshold should, below it, leave the base
+detail rather than annihilate the record -- "false" reading as "draw nothing" is the odd
+branch of the two. And at the spare branch roughness's five octaves from 8 to 128 cycles
+read 1.00 / 1.03 / 1.03 / 0.81 / 0.83 against the export where the default reads 0.75 /
+0.77 / 0.76 / 0.60 / 0.62, with the level following (0.1747 -> 0.2802 against the export's
+0.2352, dc -0.0605 -> +0.0450). AGAINST it: that is an amplitude landing where an amplitude
+was missing, which is precisely what `4d8480d` calls compensation rather than causation --
+"a forcing experiment shows a record is REACHED by a channel; it cannot show the record is
+WRONG" -- and `basecolor` moves the other way at the same time. WHAT WOULD DECIDE IT is a
+reading of the `0x89` node that does not come from either picture: whether a gate's spare
+word is populated on records where the predicate is a plain branch, and whether any record
+in the corpus carries a `0x89` whose true and false children are BOTH present, which is a
+structural question the corpus can answer without a render.
+
+The pictures state the deficit itself without depending on any of this
 (`/tmp/sheet_Chesterfield_PBR_Material.png`): our panels are flat red and flat grey where
 the export is mottled leather, and every other thing about the six outputs -- layout,
 buttons, creases, normals, the metallic dots -- already lands.
@@ -62911,9 +62941,9 @@ AND THE ARM IS NOT ONE QUESTION, which is the thing the honest reading adds. `ba
 goes the OTHER WAY, 0.77 -> 0.40 in the mid-band, and the cause is visible in the same
 table: 333 collapses from 0.9587 / 0.0586 to 0.0399 / 0.0131. 321 carries no `hurst` word
 and 333 carries 0.75, and `fx.hurst`'s default `exp` puts the median subdividing record's
-deepest drawing level at 0.041 of its stated opacity -- so the arm that brings 321 to life
-is the same arm that lets the hurst gain bury 333, and the two records are separated by a
-mechanism already named. `fx.hurst = off` has been measured exactly once, at `03429a7`:
+deepest drawing level at 0.041 of its stated opacity -- so the arm that takes 321's gates
+down the spare branch is the same arm that lets the hurst gain bury 333, and the two
+records are separated by a mechanism already named. `fx.hurst = off` has been measured exactly once, at `03429a7`:
 "inert under flat and refused at 45 rows under quadrant". Inert in the combination where
 it cannot act, refused in the combination where it can -- and both readings taken under
 the clamp. THE MEASUREMENT IS A 2x2 OVER (`fx.subdivide`, `fx.hurst`) AT NATIVE, not two
