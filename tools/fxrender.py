@@ -1604,6 +1604,11 @@ def profile_value(lx, ly, profile):
         return (np.clip(0.5 + lx, 0.0, 1.0) * ins).astype(np.float32)  # ramp along x
     # --- SHAPE_MODELLED below: the family is named, the curve is chosen. ---
     if profile == "bell":
+        # `fx.bell`: `t2` (as it was) is (1 - r^2)^2; `gaussian` is this file's own exp(-4 r^2).
+        # Raised by `fx.halfbell`, which matched the export as a halved GAUSSIAN rather than a
+        # halved bell. `fx._coverage` fast-paths `t2` and steps aside for anything else.
+        if assume.assumed("fx.bell", "t2") == "gaussian":
+            return (np.exp(-4.0 * r * r) * ins).astype(np.float32)
         t = np.clip(1.0 - r * r, 0.0, 1.0)
         return (t * t * ins).astype(np.float32)  # smoother than paraboloid
     if profile == "halfbell":

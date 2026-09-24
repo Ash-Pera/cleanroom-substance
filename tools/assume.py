@@ -542,6 +542,11 @@ QUESTIONS = {
     # reads the curve directly (a low levels window on six type-12 arms), and against the
     # export the arm width is 1.71-1.79x too wide under `paraboloid` and 1.03-1.04x under
     # `gaussian`, taper included. See `fxrender.profile_value`.
+    # WHICH CURVE `bell` (patterntype 5) IS. `t2` is the modelled (1 - r^2)^2 as it stood;
+    # `gaussian` is `fxrender`'s own exp(-4 r^2). Raised, not decided, by `fx.halfbell`
+    # matching the export as a halved gaussian. `bell` is ~94% of drawn patterns, so this
+    # arm has the widest reach of any in this file.
+    "fx.bell": ("t2", "gaussian"),
     "fx.halfbell": ("paraboloid", "gaussian"),
     # WHICH `0x89` THE TREE WALK MAY CONSUME AS A CHILD GATE. `consume` (the reading as it
     # was) takes any gate a cell's pointer lands on; `twoway` takes only one carrying BOTH

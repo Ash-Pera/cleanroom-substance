@@ -891,7 +891,7 @@ def _coverage(lx, ly, prof):
     """
     if not FAST_RASTER:
         return fxrender.profile_value(lx, ly, prof)
-    if prof == "bell":
+    if prof == "bell" and assume.assumed("fx.bell", "t2") == "t2":
         r = np.sqrt((2.0 * lx) ** 2 + (2.0 * ly) ** 2)
         t = np.clip(1.0 - r * r, 0.0, 1.0)
         return (t * t).astype(np.float32)
