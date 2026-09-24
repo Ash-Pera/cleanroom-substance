@@ -63582,3 +63582,11 @@ the chain walk). Isolating which is the next measurement.
 `fx.bell = gaussian` on Auras and Chesterfield: INERT -- correlations identical, three
 band/dc values moving at the third decimal. "94% of drawn patterns are bell" does not become
 reach on these packs; Bricks, RoofTiles and Sandy are running.
+
+`fx.bell = gaussian` across every pack (`scratchpad/ng_bell_small.log`, `ng_bell_big.log`):
+Auras identical, Chesterfield identical in correlation, Bricks +0.612 -> +0.613 (band 1.229
+-> 1.259), RoofTiles +0.521 -> +0.521, Sandy +0.188 -> +0.186 (band 1.797 -> 1.694). NEUTRAL
+EVERYWHERE, within +/-0.002. The question `fx.halfbell` raised is answered for the scored
+packs: whatever share of drawn patterns is `bell`, its exact curve does not reach a scored
+output enough to arbitrate, so the halfbell result says nothing about bell and bell stays
+`t2`. The arm stays as the record that it was asked.
