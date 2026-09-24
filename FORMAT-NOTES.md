@@ -63307,3 +63307,82 @@ So the regression is real and is not the round-tile fault. `record` needs re-arb
 TAG width versus RENDERED width -- they were one quantity when it was decided and they are
 two now -- and the round-tile groove is set somewhere `_reference_px` does not reach.
 `distance` scales by its own `REFERENCE_PX` constant and is untouched by this arm.
+
+## The round-tile groove: Bricks 004 and 005 end in one eight-direction `dirmotionblur` stack that is 8x too short, and `warp.reference_px = 256` + `dirmotionblur.extent = radius` puts their joints on the export -- width ratio 0.75 -> 1.00, floor/face 0.043 -> 0.297 against 0.278 / 0.293
+
+Found by looking (Ash: "more obvious on the round bricks"). The previous section's whole-image
+metric said 004 was fine and 005 was at 0.42; a PER-JOINT metric says otherwise, and it is
+the one to trust. Every straight joint found on the export by its own minimum (a band-mean
+profile 60 px across, local minimum over +/-6 px, depth > 0.25, floor/face < 0.5 so only
+joints and not shallow features), then floor/face and half-depth width at the same place in
+ours:
+
+                  floor/face ours  export     half-depth width ours / export
+    002 (20)      0.339            0.448      6 / 9   0.67
+    004 (16)      0.043            0.278      6 / 8   0.75
+    005 (16)      0.043            0.293      6 / 8   0.75
+
+004 AND 005 ARE EQUALLY WRONG: hard black slots where the export's grooves are soft and
+shallow. The whole-image Otsu that called 004 "1.08" was averaging joints with every other
+dark feature in the picture, and it should not be used to arbitrate a groove again.
+
+THE STAGE, BY BISECTION (`scratchpad/chain005.py` keeps all 198 records within depth 20 of
+005's height, `scratchpad/dmb_fit.py`). A 60-px profile across one joint, at every record
+of the chain that carries it: the slot is born 3 / 5 / 10 px wide at 25 / 50 / 90% depth
+with floor 0.000 up the 3117 -> 3147 warp chain, 3167 blends it at 0.46, and then EIGHT
+`dirmotionblur` records -- two chains of four at angles 0, 1/16, 1/8, 3/16, 1/4, 5/16,
+3/8, 7/16 of a turn, intensity 0.5016 each, averaged 50/50 by 3176 -- leave it at 3 / 5 /
+10 with floor 0.027. A hand-built isotropic blur, and it does nothing. 004's height tail is
+the IDENTICAL stack (5635-5642 over 5634), and 002's height ends in eight as well.
+
+THE EXPORT STATES THE LENGTH, and it can be read without a render per guess: emulating the
+stack in numpy on the SAVED input reproduces the rendered output to max |diff| 0.0000, so
+the emulation IS the filter, and sweeping its length against each graph's own export joint
+by joint (`scratchpad/stack_fit.py`):
+
+    graph   joints   best multiplier on today's length       median
+    005     16       x8 on 12, x6 on 3, x10 on 1              x8.0
+    004     16       x8 on 11, x6 on 4, x10 on 1              x8.0
+    002     20       x1..x12, spread                           x5.0
+
+THE FALSIFICATION IT HAD TO SURVIVE: if x8 were compensation for a slot that is too narrow
+upstream in 005 alone -- the shape of `4d8480d`'s lesson -- the graph with the identical
+stack would not want the same factor. 004 wants x8 on 11 of 16 joints. Two graphs, one
+stack, one factor, an equally hard input slot (floor/face 0.000 on both): it is the filter.
+002 is the noisier one because its slot is already soft before its stack (0.312).
+
+x8 IS TWO READINGS, AND NEITHER ALONE: x4 is `warp.reference_px = 256` -- the intensity in
+the TAG's pixels, the arbitrated meaning of `record` before `pergraph` split tag from
+rendered width (previous section) -- and x2 is `dirmotionblur.extent = radius`, new here:
+the intensity is the reach EACH SIDE, taps over +/- length, where `total` spreads them over
++/- length/2. Emulated, x4 alone reaches floor/face 0.153 and x2 alone 0.088 against the
+export's 0.316; together, 0.305.
+
+RENDERED, BOTH ARMS, per joint (`scratchpad/joint_check.py`):
+
+                  floor/face ours  export     width ratio
+    002           0.509            0.448      0.89     (was 0.67)
+    004           0.297            0.278      1.00     (was 0.75)
+    005           0.297            0.293      1.00     (was 0.75)
+
+And the Bricks guard at native, 48 rows (`scratchpad/ng_both.log`):
+
+                        corr     band    |dc|
+    default            +0.612   1.229   0.0342
+    256 alone          +0.626   1.159   0.0336
+    256 + radius       +0.619   1.008   0.0339
+
+MEAN BAND LANDS ON 1.0. Every height and normal row of 004 and 005 rises or holds (005
+normal ch0 +0.848 -> +0.866, ch1 +0.861 -> +0.880, height +0.467 -> +0.479), and the normal
+band -- which is where a bevel's width shows -- collapses onto the export on both round
+graphs: 005 ch2 1.862 -> 0.989, 004 ch2 1.764 -> 0.941. Correlation is up on 29 rows and
+down on 16. |dc| does not move, and should not: this arm widens grooves, the levels were
+`quadrant`'s.
+
+THE COST IS ONE GRAPH, AND IT IS OVER-BLURRED RATHER THAN UNDER: all five largest losses are
+003 -- normal ch2 +0.765 -> +0.719, ch1 +0.851 -> +0.821, basecolor ch0/1/2 -0.034 to
+-0.041 -- and 003's normal band falls to 0.658 / 0.647 / 0.415, below 1.0 where it was on
+it. 003 has no terminal eight-stack; its `dirmotionblur` records sit inside other chains, and
+`warp.reference_px` also quadruples every `warp` and `directionalwarp` it holds. Which of
+the two over-reaches on 003 is the next question, and it decides whether the tag reading
+belongs to `dirmotionblur` alone or to every `_reference_px` caller. NOT PROMOTED.

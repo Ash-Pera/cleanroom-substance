@@ -1013,6 +1013,19 @@ def f_dirmotionblur(ctx, v):
     # That is the field-level fault measured separately -- 0.161 against 0.513 -- and it is
     # a different fault in the same graph.
     length = np.clip(np.abs(intensity), 0.0, 256.0) / _reference_px(v)
+    # `dirmotionblur.extent`: WHETHER THE INTENSITY IS THE BLUR'S TOTAL EXTENT OR ITS REACH
+    # EACH SIDE. `total` (as it was) spreads the 17 taps over [-length/2, +length/2];
+    # `radius` over [-length, +length]. The export states which, and it states it on a
+    # construct this filter can be tested on in isolation: Bricks 004 and 005 each end in
+    # the SAME eight-direction stack (two chains of four at 1/16-turn steps, averaged 50/50,
+    # intensity 0.5016), fed a hard slot (floor/face 0.000). Emulated on the saved stack
+    # input the stack reproduces the rendered output to max |diff| 0.0000, and swept against
+    # each graph's OWN export joint by joint it wants 8x today's length -- 005 best at x8 on
+    # 12 of 16 joints, 004 on 11 of 16, median x8.0 on both. x8 is x4 (reading the
+    # intensity in the TAG's pixels, `warp.reference_px`) times x2 (this). Neither alone.
+    # See FORMAT-NOTES.md, "the round-tile groove".
+    if assume.assumed("dirmotionblur.extent", "total") == "radius":
+        length = length * 2.0
     turn = 2.0 * np.pi * angle
     smp = sampler(ctx.src(v, 0))
     TAPS = 17

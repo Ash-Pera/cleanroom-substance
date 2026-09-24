@@ -81,6 +81,13 @@ QUESTIONS = {
     # single it out; 10.0 is the value blur's signature names and it is the one a no-op
     # (0.0, the reading before) is certainly not.
     "dirmotionblur.default_intensity": (10.0, 0.0, 5.0, "refuse"),
+    # IS A `dirmotionblur` INTENSITY THE BLUR'S TOTAL EXTENT OR ITS REACH EACH SIDE?
+    # `total` (as it was) spreads the taps over +/- length/2, `radius` over +/- length.
+    # Decided on the one construct that isolates it: Bricks 004 and 005 end in the same
+    # eight-direction stack over a hard slot, and each graph's own export wants 8x today's
+    # length joint by joint (x8 on 12 of 16 and 11 of 16 joints) -- x4 of which is reading
+    # the intensity in the tag's pixels (`warp.reference_px`), x2 this.
+    "dirmotionblur.extent": ("total", "radius"),
     "normal.default_intensity": (1.0, "refuse", 0.5, 2.0, 4.0, 8.0, 16.0),
     "blur.kernel": ("box", "gaussian"),
     "emboss.probe": ("passthrough",),
