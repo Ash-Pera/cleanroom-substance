@@ -63413,3 +63413,11 @@ warps are each 8x too weak against the canvas under `record`. A disc that the fi
 into an irregular pebble, displaced an eighth as far, stays a disc with a crenellated edge
 -- which is what the rosettes look like. `refsheet.py Sandy warp.reference_px=tag` is the
 test.
+
+PREDICTION FAILED, recorded as such: `refsheet.py Sandy warp.reference_px=tag` leaves the cog
+rosettes UNCHANGED in every channel -- the render is visually indistinguishable from the
+`record` one beside it (`scratchpad/sandy_tag_cmp.png`, record / tag / export). So the cogs
+are neither the depth fault (`quadrant` + `twoway`, two sections up) nor the warp scale.
+Two mechanisms tested and killed; still unattributed. That the whole picture barely moves
+under an 8x change to 211 warps is itself worth knowing: whatever draws the cogs does not
+pass through a `_reference_px` caller with any weight.
