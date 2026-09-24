@@ -63437,3 +63437,26 @@ flat, Sandy -0.012 on a pack whose rows are dominated by the unattributed cogs. 
 arbitrated reading restored and it is nearly non-negative, which makes it the strongest
 promotion candidate in this file -- and NOT PROMOTED HERE: the rule is the ratchet, per row,
 and a pack mean is not the ratchet (it once hid the loss of a whole AO channel).
+
+## The round bricks with every arm applied, beside the default and the export: 005's joints land, and 004's WHEEL is wrong in the OPPOSITE direction -- its lines too THICK -- which nothing in this session touched
+
+`refsheet.py Bricks fx.subdivide=quadrant,warp.reference_px=tag,dirmotionblur.extent=radius`
+against the default sheet, cropped to the top-left quarter of 005 height, 005 normal and
+004 height (`scratchpad/round_bricks_before_after.png`, default / all three arms / export).
+
+005, WHERE ASH POINTED: the normal's bevel band around the circle and along every straight
+joint is now as broad and soft as the export's, where the default drew a thin sharp double
+line; the height grooves soften the same way; the ring arc is gone. That is the per-joint
+measurement (width ratio 1.00, floor/face 0.297 against 0.293) seen.
+
+004, NOT FIXED AND NOT THE SAME FAULT: the centre of each round tile is a six-spoke wheel.
+Ours draws the spokes and the wheel's outer ring as FAT BLACK wedges; the export draws six
+bright segments separated by THIN dark lines and a thin ring. Our dark lines there are
+several times too wide -- the opposite sign to the joints -- and identical under every arm
+tried. So "the line width on the round bricks" was two faults: the joints too narrow
+(settled above) and the wheel's lines too wide (open). The wheel is a shape or a threshold,
+not a blur: a blur of the wrong length softens a line, it does not triple it.
+
+AND ONE SMALLER THING THE ARMS INTRODUCE: the fine detail the tree walk now draws arrives as
+clean round PITS on the tile faces, where the export has irregular mottle -- the same
+"right number, right size, wrong shape" the Bricks 003 pictures showed under `quadrant`.
