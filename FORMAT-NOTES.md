@@ -63033,3 +63033,80 @@ tiling against exports made at 14 x 9 -- not a score, by this tool's own docstri
 nothing in its output would have said so. `_install` now patches all three bindings and
 `_calls` counts them, with an assertion that a pack producing rows went through a patched
 one, so a fourth binding is a stopped run and not a quiet number.
+
+## The unit of a cell that draws AND subdivides, read: `patternsize` is ONE number read at the depth its cell sits at, `5.0 / 2^depth` to every digit -- so `canvas` was right at depth 0 all along, and the flat walk's fault is drawing a depth-7 pattern at depth 0
+
+The RoofTiles 606 section left this as "the next thing to read". It reads, and it needs no
+fit: the two arms' own numbers are an exact arithmetic identity.
+
+Chesterfield, patterns actually DRAWN per arm, counted at the draw call
+(`scratchpad/pat_count.py` through `fx.splat`, `scratchpad/pat_tree.py` through
+`fxtree._emit`):
+
+    record   fx.subdivide = flat            fx.subdivide = quadrant
+    321      0 patterns                     21,848   depths 0-7   size med 0.0130
+    331      4 patterns   size 5.0          1,366    depths 0-5   size med 0.1562, max 0.3125
+    333      6 patterns   size 5.0          21,846   depths 0-7   size med 0.0391, max 0.0781
+
+    5.0 / 2^5 = 0.15625      5.0 / 2^4 = 0.3125
+    5.0 / 2^7 = 0.0390625    5.0 / 2^6 = 0.078125
+
+Every size the tree arm draws is the SAME baked 5.0 divided by two per level of depth. So
+there is no second unit and no rescaling rule to choose: a cell's `patternsize` is in the
+units of the cell it is drawn in, and at depth 0 a cell IS the canvas, which is why
+`e4f6491` arbitrated `patternsize` in canvas units correctly on depth-0 records and why
+that arbitration is not disturbed by this. THE FLAT WALK'S FAULT IS NOT THE UNIT, IT IS
+THE DEPTH: it draws every pattern at depth 0, so a stamp the file places at depth 7 at
+1/128 of the canvas is drawn at 5 TIMES the canvas.
+
+AND THE FILE'S OWN STRUCTURE SAYS WHICH DEPTHS, INDEPENDENTLY. `10ce512` read 331 and 333
+off the records -- "331 is `background` 1.0 with pyramids 5:1 at opacity -1 over DEPTHS
+4-5, creases cut from white; 333 the same pyramids at +0.85 over DEPTHS 6-7 on black,
+`hurst` 0.75" -- from the entry cells, before any of this was measured. The tree arm draws
+331 at depths 0-5 with its two finest sizes at 0.3125 and 0.1562 (depths 4 and 5) and 333
+at depths 0-7 with its two finest at 0.0781 and 0.0391 (depths 6 and 7). The arm puts each
+record's patterns at the depths the file independently states. The flat walk puts both at
+depth 0.
+
+WHAT THAT COSTS, ON A SCALAR THAT CANNOT BE ARGUED WITH. 333 bakes NO `background` field,
+so its background is black, and it draws pyramids at `opacity` +0.85 (`opacitymult` 1.5).
+Under the flat walk it renders **mean 0.9587**, near-white, because two of its six stamps
+are at least a canvas wide and cover everything. A black record rendering white is not a
+level to be tuned; it is the wrong picture. 334 = `subtract`(332, 333) then collapses to
+~0.04, and Chesterfield's whole roughness chain is crushed with it: 855 at 0.1720, the
+output at 0.1747 against the export's 0.2352. Under the tree arm 333 renders 0.0399 --
+black with fine pyramids, as its own header describes -- 334 comes back near 1.0 with
+structure, and roughness reads 0.2802.
+
+THE SAME ARTEFACT IS VISIBLE IN THE PICTURES OF TWO OTHER PACKS and was already written
+down as a puzzle in each: Bricks' giant ring across five channels of graphs 003 / 004 /
+005 (`48503a3`: 708 "under the flat walk is ONE gaussian of `patternsize` 2"), and
+RoofTiles 606, "under the flat walk three huge patterns". One mechanism, three packs.
+
+## CORRECTION to `89d5302`: the `0x89` gate has no FALSE branch to take -- 98.92% of the corpus's switch nodes carry a TRUE child only -- so `4d8480d` stands unqualified, and the gate was never what the grain turned on
+
+`89d5302` hedged that `quadrant` might be right about record 321 because the tree walk
+"takes the gate's spare word" where the flat walk stops. That is not what the file holds.
+Census over the whole corpus (`scratchpad/gate_census.py`, `fxchain.survey` over every
+`fxmaps` record in all 400 files, 27,333 switch nodes):
+
+    TRUE + FALSE      289   1.06%      in 27 files; Chesterfield is not one of them
+    TRUE only      27,037  98.92%
+    FALSE only          4   0.01%
+    neither             1   0.00%
+
+Record 321's `0x89` at offset 624564 has `spare` = 0, as do 331's and 333's. A false
+predicate has NOWHERE TO GO, which is what a loop guard looks like -- the TRUE child is
+the loop body and exiting is the absence of a child -- and `4d8480d`'s reading of 321's
+emptiness as correct stands with no qualification from me. Record 321 has now been named
+as a cause three times and withdrawn three times.
+
+THE GATE AND THE DRAWING WERE TWO QUESTIONS AND ONLY ONE OF THEM MATTERED. 333's gate is
+OPEN under the flat walk -- it emits its 6 patterns -- and 333 is still wrong, by the
+whole width of the section above. So the grain never turned on the gate at all. What the
+tree arm does to 321 (0 patterns under flat, 21,848 under quadrant, because `cells_of`
+consumes the gate and `fxtree.emissions` then drops it from the chain walk,
+`fxtree.py:703`) remains an open objection TO the arm, and it is now separable from the
+arm's case rather than confused with it: the case rests on 331 and 333, whose gates are
+open, whose depths the file states independently, and whose drawn sizes are `5.0 / 2^depth`
+exactly.
