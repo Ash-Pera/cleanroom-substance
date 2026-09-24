@@ -63624,3 +63624,50 @@ the same fit on a LARGE-intensity stack against an export: 004 and 005 also carr
 feature, its best multiplier decides between the two.
 
 Meanwhile the best configuration measured for Sandy is all five minus `radius`.
+
+## The large-blur fit: the 7.43 stack cannot be fitted, Auras' 3.861 chain can, and it ALSO wants ~8x -- so large blurs are not over-lengthened, and the two fits agree on "8 x intensity in RENDERED pixels", not on `tag` x `radius`
+
+THE 7.43 STACK IS NOT FITTABLE. Bricks 004's eight 7.4316 records (4970-4977, the same
+two-chains-of-four construct, averaged by 4978) blur a faint white-noise field (4969: mean
+0.993, sd 0.010) into soft mottle 14-17 records upstream of all five outputs. There is no
+sharp feature and too much in between for a per-feature fit against the export.
+
+THE ONLY LARGE-INTENSITY TERMINAL BLUR IN THE SCORED PACKS (searched: every
+`dirmotionblur` within three records of an output) is Auras graph 003, records 384-387: ONE
+chain of four at intensity 3.861 (7.7x the 0.5016 stack), angles 0 / 1/8 / 1/4 / -1/8, into
+`388 = add(382, 0.08 x 387)` and a shuffle to basecolor. The output's shape is in ALPHA (RGB
+is constant white, ours and export alike). Rendered with only 384-387's length scaled by m
+(`scratchpad/auras_dmb.py`; the stack's own output moves, sd 0.132 -> 0.041 at x16, so the
+patch bites), and since 388 adds the blur at 8% over the sharp shapes of 382, the blur's
+length is readable only in the HALO -- alpha outside each shape's core -- which is what was
+measured (`scratchpad/auras_halo.py`), against all 60 exported frames of `003_white`. Our
+default-time render does not align with any frame (best corr +0.299), so a
+position-independent profile: halo level against distance from the core, relative to the
+shapes' own level.
+
+    halo reach (to 10% of its d=1 level)    export 23 px (frames 17..25)
+                                            ours x1 7, x2 8, x4 11, x8 14, x16 20
+    rms of the halo profile vs export       x0.5 .0435  x1 .0409  x2 .0360  x4 .0279
+                                            x8 .0230  x16 .0238
+
+The large blur wants to be ~8x longer too (x16 barely separable). So reading (2) of the
+section above -- x8 holds for half-pixel blurs only -- is NOT supported.
+
+WHAT THE TWO FITS AGREE ON, and it is not `tag` x `radius`:
+
+    stack            intensity  rendered at  best vs today   in RENDERED px   tag x radius gives
+    Bricks 004/005   0.5016     1024         x8              8 x intensity    x8  (4 x 2)
+    Auras 003        3.861       512         x8 (x16 tied)   8 x intensity    x4  (2 x 2)
+
+Both are "total length = 8 x intensity in the rendered image's pixels" -- today's `record`
+reading times eight. `tag` x `radius` matched Bricks only because Bricks' rendered-to-tag
+ratio is 4, so 4 x 2 happens to be 8; on Auras the ratio is 2 and it under-reaches (rms
+.0279 against .0230). If this holds, `dirmotionblur` should NOT take `warp.reference_px`
+(warps stay better under `tag` -- RoofTiles +0.037), and at 2048 it gives Sandy's blurs HALF
+the length `tag` x `radius` did, which bears directly on Sandy's colour loss.
+
+CAVEATS, stated because this is two fits and not a law: the halo is an 8% glow on 8-bit alpha;
+the export frames are at other animation phases than our render; the export halo is also
+BRIGHTER at d=1 (0.33 against our 0.24), a level difference this does not explain; and x8 and
+x16 are not separated on Auras. The test is a candidate that reads `dirmotionblur` as 8 x
+intensity in rendered pixels independently of `warp.reference_px`, scored on every pack.
