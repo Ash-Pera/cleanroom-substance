@@ -63590,3 +63590,37 @@ EVERYWHERE, within +/-0.002. The question `fx.halfbell` raised is answered for t
 packs: whatever share of drawn patterns is `bell`, its exact curve does not reach a scored
 output enough to arbitrate, so the halfbell result says nothing about bell and bell stays
 `t2`. The arm stays as the record that it was asked.
+
+## ISOLATED: SandyStonePath's colour loss is `dirmotionblur.extent = radius` interacting with `warp.reference_px = tag` -- inert alone, and with it removed the other arms lift Sandy's honest-set basecolor from +0.29 / +0.23 / +0.21 to +0.40 / +0.36 / +0.37
+
+Four Sandy runs at native (`scratchpad/iso_*.log`):
+
+    configuration                corr     Road02 basecolor ch0 / ch1 / ch2
+    default                     +0.188    +0.286 / +0.225 / +0.207
+    radius alone                +0.188    (inert, band 1.797 -> 1.794)
+    twoway alone                +0.188    (identical to default)
+    all five                    +0.181    +0.235 / +0.163 / +0.101
+    all five minus twoway       +0.182    identical to all five
+    all five minus radius       +0.206    +0.402 / +0.360 / +0.373
+
+`twoway` plays no part (record 607's gates change nothing a scored row sees). `radius` is the
+whole of it, and ONLY IN COMBINATION: alone it is inert because under `record` Sandy's
+`dirmotionblur` intensities are read in 2048-px pixels and are tiny, and doubling tiny is
+tiny. Under `tag` they are 8x longer, `radius` doubles them again, and Sandy's intensities
+run to 6.6 / 9.9 / 10.43 px at 256 -- a +/-80 px smear at 2048 that erases the colour
+structure the other arms had just gained. The price of dropping `radius` on Sandy is
+geometry: Road02 height +0.308 -> +0.233, normal ch1 +0.426 -> +0.398.
+
+WHAT THIS DOES TO THE `radius` EVIDENCE. The x8 that decided `radius` was measured on the
+0.5016 stack that ends Bricks 004 and 005 -- half-pixel blurs. `radius` over-reaches in the
+two places where the `dirmotionblur` records it doubles are LARGE: Bricks 003 (2.85, 7.43,
+program-driven, and no 0.5016 stack) and Sandy (up to 10.43). Two readings remain and the
+data so far does not separate them: (1) the length is linear in intensity as `radius`
+assumes, and the large-intensity losses are compensation for something else wrong in those
+chains -- Sandy is a +0.188 pack with unattributed cogs, a weak arbiter; or (2) the length
+is not linear in intensity, and x8 is right for half-pixel blurs only. THE DISCRIMINATOR is
+the same fit on a LARGE-intensity stack against an export: 004 and 005 also carry eight
+7.4316 records and eight 1.947, so if either can be isolated to an export-measurable
+feature, its best multiplier decides between the two.
+
+Meanwhile the best configuration measured for Sandy is all five minus `radius`.
