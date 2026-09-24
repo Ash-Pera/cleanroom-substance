@@ -63460,3 +63460,80 @@ not a blur: a blur of the wrong length softens a line, it does not triple it.
 AND ONE SMALLER THING THE ARMS INTRODUCE: the fine detail the tree walk now draws arrives as
 clean round PITS on the tile faces, where the export has irregular mottle -- the same
 "right number, right size, wrong shape" the Bricks 003 pictures showed under `quadrant`.
+
+## The six-spoke wheel: Bricks 004's radial lines are drawn 3.5x too wide because `halfbell` is a modelled paraboloid, and `fx.halfbell = gaussian` puts them on the export -- spokes 35 -> 12 px against the export's 10, 004/height +0.425 -> +0.528, normal +0.648 -> +0.728 / +0.646 -> +0.737, inert on three packs
+
+Found by looking (Ash: "the radial line on 004 normal"). Measured on the rendered height
+around each wheel: the export's spokes are 8-11 px at r = 80 / 95 / 110 px, ours 33-36.
+
+A CORRECTION BEFORE ANYTHING ELSE. The first measurement also reported our wheel ROTATED
+-25 to -30 degrees against the export's. It is not. The angle came from the phase of the
+six-fold harmonic, and that phase flips by half a period (30 degrees for six-fold) whenever
+the dark part of the pattern crosses half the circle -- ours is 0.576 dark, the export's
+0.097. The spoke ANGLES are right; the star's arms sit at +5.3 degrees from the export's.
+A phase is not a rotation when the duty cycle crosses a half, and this measurement should
+not be used to claim a rotation again.
+
+THE CONSTRUCT, BY BISECTION over 731 saved records of 004's height cone
+(`scratchpad/chain004.py`, `scratchpad/wheel_bisect.py`). The wheel is `4923 = subtract(4922,
+4917)`: a disc (4922, four type-3 patterns) minus a six-armed star (4917), rendered 4923 is
+exactly 4922 - 4917 and the other order is not the picture. The star is FX-Map 4917 stamping
+image 4913 at size 0.92 (solved from our own two renders, residual 0.32 px^2); 4913 is
+`levels(0.2603, 0.365)` of an identity transformation of a 0.41-px-at-256 blur of FX-Map
+4910; 4910 is SIX TYPE-12 PATTERNS, 0.75 x 0.075 of the canvas, at 0, 1/6 ... 5/6 of a turn.
+The blur is ~1.6 px at 1024 and does nothing, so a levels window that low on a soft curve
+makes the arm width a direct reading of the curve.
+
+AND THE CURVE IS A GUESS: `fxrender.SHAPE_MODELLED` lists `halfbell`, drawn as a paraboloid
+`1 - r^2` halved across the arm -- not even that file's own `bell` (t^2). Emulated in numpy
+(4910 reproduced to max |diff| 0.0013), the thresholded arm width at the three radii
+against what the export implies after the ~23 px our downstream insets each spoke by:
+
+    paraboloid, halved (as it was)      1.71  1.73  1.79
+    bell t^2, halved                    1.34  1.33  1.37
+    cone, halved                        1.38  1.40  1.43
+    cosine bell, halved                 1.24  1.25  1.26
+    gaussian exp(-4 r^2), halved        1.04  1.03  1.03
+
+The gaussian -- `fxrender`'s own `gaussian` formula -- matches the width AND the taper (the
+ratio is flat across radii), which is two properties and not one point. `fx.halfbell =
+(paraboloid, gaussian)`, default `paraboloid`.
+
+RENDERED, NOT EMULATED -- because the emulation leaned on the downstream inset:
+
+    wheel       spokes at r = 80 / 95 / 110 px
+                ours, paraboloid       ours, gaussian        export
+    (256,256)   35.6 / 34.0 / 33.0     13.4 / 11.8 /  9.9    11.3 /  9.6 / 8.3
+    (768,256)                          13.9 / 12.2 / 10.3    11.9 /  9.5 / 9.6
+    (256,768)                          13.4 / 11.8 / 10.4    11.1 / 11.3 / --
+    (768,768)                          14.0 / 11.7 /  9.6    11.3 /  9.9 / --
+
+(the export's r = 110 reading on the lower two wheels crosses another feature). From 3.5x
+too wide to ~1.2x on all four wheels, tapering outward as the export's do.
+
+THE GUARD, every pack at native (`scratchpad/ng_halfbell.log`): Auras 0 of 3 rows moved,
+Chesterfield 0 of 10, Sandy 0 of 20 -- inert where there is no type-12 pattern that
+reaches a scored output. RoofTiles 7 of 9 move, every one at the third decimal (<= 0.002
+corr), mean +0.521 -> +0.520. Bricks 9 of 48, ALL on graph 004, 8 of the 9 up:
+
+    004/height      +0.425 -> +0.528   band 1.160 -> 0.993
+    004/normal ch0  +0.648 -> +0.728
+    004/normal ch1  +0.646 -> +0.737
+    004/AO          +0.775 -> +0.833
+    004/roughness   +0.619 -> +0.681
+    004/basecolor   +0.538 -> +0.566, +0.652 -> +0.679, +0.662 -> +0.679
+    004/normal ch2  +0.819 -> +0.798   (the one loss)
+
+The normal's x and y channels -- the slopes that draw the radial lines -- gain most. NOT
+PROMOTED; it is the cleanest candidate this session produced: one pattern type, one graph
+carrying it into a scored output, a large gain there and nothing measurable anywhere else.
+
+WHAT IT SAYS ABOUT THE OTHER MODELLED SHAPES, as a question and not a claim: `halfbell`
+matched the export as a halved GAUSSIAN, not a halved `bell`. If the engine's bell family
+is gaussian-like, `bell` (t^2) -- which `fx._coverage` says is 94% of drawn patterns --
+is a modelled guess carrying far more weight than this one. Nothing here tests it.
+
+A CENSUS TRAP met on the way: `Record.fx_table()` yields NO rows for 4910 while
+`fxchain.survey` finds its type-12 leaf, and `survey` itself refuses 200 of Bricks' 382
+FX-Maps -- so no cheap structural count of "records drawing type 12" is complete. Reach was
+measured the way this file always measures it, by rendering every pack with the arm.

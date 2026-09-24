@@ -537,6 +537,12 @@ QUESTIONS = {
     # not settled (Bricks 9804's author halves it per level by hand, which argues canvas).
     # Which output is which quadrant is not settled either. Graph 003 cannot tell any of
     # these apart -- every instrument moves less than the renderer's own seed floor.
+    # WHICH CURVE `halfbell` (patterntype 12) HALVES. `paraboloid` is the modelled guess as
+    # it stood; `gaussian` is `fxrender`'s own exp(-4 r^2). Bricks 004's six-spoke wheel
+    # reads the curve directly (a low levels window on six type-12 arms), and against the
+    # export the arm width is 1.71-1.79x too wide under `paraboloid` and 1.03-1.04x under
+    # `gaussian`, taper included. See `fxrender.profile_value`.
+    "fx.halfbell": ("paraboloid", "gaussian"),
     # WHICH `0x89` THE TREE WALK MAY CONSUME AS A CHILD GATE. `consume` (the reading as it
     # was) takes any gate a cell's pointer lands on; `twoway` takes only one carrying BOTH
     # children. Consuming a gate removes it from the chain walk (`fxtree.emissions` drops

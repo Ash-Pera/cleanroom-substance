@@ -1607,7 +1607,20 @@ def profile_value(lx, ly, profile):
         t = np.clip(1.0 - r * r, 0.0, 1.0)
         return (t * t * ins).astype(np.float32)  # smoother than paraboloid
     if profile == "halfbell":
-        t = np.clip(1.0 - r * r, 0.0, 1.0)
+        # `fx.halfbell`: WHICH CURVE IS HALVED. `paraboloid` (as it was) is 1 - r^2, which
+        # is not even this file's own `bell` (t^2). `gaussian` is this file's own `gaussian`,
+        # exp(-4 r^2). Decided on the one construct that isolates it: Bricks 004's wheel is a
+        # disc minus a six-armed star, the star is FX-Map 4910's six type-12 arms (0.75 x
+        # 0.075 of the canvas) through a near-zero blur and a 0.2603-0.365 levels window, and
+        # a window that low on a soft curve makes the arm width a direct reading of the
+        # curve. Emulated (4910 reproduced to max |diff| 0.0013) the arm widths at three
+        # radii against what the export implies: paraboloid 1.71 / 1.73 / 1.79, bell 1.34 /
+        # 1.33 / 1.37, cone 1.38 / 1.40 / 1.43, gaussian 1.04 / 1.03 / 1.03 -- the width AND
+        # its taper. See FORMAT-NOTES.md, "the six-spoke wheel".
+        if assume.assumed("fx.halfbell", "paraboloid") == "gaussian":
+            t = np.exp(-4.0 * r * r)
+        else:
+            t = np.clip(1.0 - r * r, 0.0, 1.0)
         return (t * (ly >= 0.0) * ins).astype(np.float32)
     if profile == "ridgedbell":
         t = np.clip(1.0 - r, 0.0, 1.0)
