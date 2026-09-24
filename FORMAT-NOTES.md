@@ -63166,3 +63166,67 @@ against the export -- the mottle too WEAK, which is the amplitude side of the ar
 `fba4661` made and not the placement side. So this fixes the tree walk; it does not by
 itself decide `fx.subdivide`, and the aggregate correlation is still below the flat
 default's because of that one channel.
+
+## Bricks under `quadrant` + `twoway`: EVERY roughness row's level collapses to near zero -- 002 from dc -0.401 to -0.043, 004 from -0.290 to +0.014, 005 from -0.335 to +0.001 -- and the giant ring is gone from all five channels that carried it
+
+The roughness LEVEL of 004 / 005 is the thing `10ce512` named as what `fx.combine =
+background` waits on: "the subtracting records darken roughness outputs that are already
+0.3 too dark FOR ANOTHER REASON, and the dc ratchet has no companion clause. So the arm
+waits on the roughness LEVEL of 004 / 005, which is the next thing to trace." It traces to
+the section above -- the flat walk drawing a depth-6 pattern at depth 0 -- and it moves
+when that is corrected. Bricks' native row at 1024, 48 rows both readings
+(`scratchpad/bricks_twoway.log` against the `DEFAULTS` block of `scratchpad/ng_arms.log`):
+
+                        default            quadrant + twoway
+    mean corr           +0.612             +0.615
+    mean band            1.229              1.077
+    mean |dc|            0.0342             0.0115
+
+    001/roughness   corr +0.210 -> +0.239   dc -0.119 -> +0.004
+    002/roughness   corr +0.857 -> +0.823   dc -0.401 -> -0.043
+    003/roughness   corr +0.901 -> +0.906   dc -0.115 -> +0.011
+    004/roughness   corr +0.619 -> +0.750   dc -0.290 -> +0.014
+    005/roughness   corr +0.750 -> +0.750   dc -0.335 -> +0.001
+
+FIVE GRAPHS, FIVE LEVELS, ALL OF THEM. `002` was the extreme -- dc -0.401 is a channel
+whose tiles read as holes -- and the picture
+(`archive/tools/refsheet.py Bricks fx.subdivide=quadrant,fx.tree.gate=twoway`) is the same
+statement: black tiles with white grout become mid-grey tiles with white grout, which is
+the export's arrangement. THE GIANT RING IS GONE from every channel that carried it: 003's
+height / normal / roughness / AO / basecolor and 005's, where a faint arc a third of the
+canvas across ran under the whole picture, are now clean.
+
+WHAT THE NUMBERS COST, stated because the mean hides it: correlation is up on 19 rows and
+DOWN on 23, with the mean flat (+0.612 -> +0.615). The two roughness rows that fall are
+002 (+0.857 -> +0.823) and 005 (+0.845 -> +0.805) -- the two whose dc improves most -- and
+`002/height` and `005/height` dc go the wrong way (+0.017 -> +0.047, +0.026 -> +0.056).
+The band is the clearest single movement: 1.229 -> 1.077, toward 1.0 from above.
+
+WHAT THE PICTURE STILL SHOWS WRONG, so the next reader starts from the picture and not
+from the mean. (1) The drawn patterns are CLEAN ROUND DISCS where the export has irregular
+chips, cracks and mottle -- 003's AO and basecolor, 005's AO and roughness. We now draw
+the right NUMBER of marks at the right SIZE in the right PLACES and the mark itself is the
+wrong shape, which is a profile question and not a subdivision one. (2) Per-brick colour
+variation is still absent on 003 and the `basecolor` band is still far under: 002 reads
+0.210 / 0.240 / 0.200 against the >= 0.25 bar, improved from the recorded 0.166 / 0.188 /
+0.156 and still red. (3) 004 and 005 `basecolor` are brown where the export is grey, a hue
+error this arm does not touch.
+
+## `archive/tools/refsheet.py`: the render beside the export as a PICTURE, because three faults this session were invisible to every scalar in the guard
+
+Promoted from the throwaway that found them, and the reason is on the record rather than
+asserted: `refcompare` and `nativeguard` answer "by how much" per channel, and a fault no
+column is a function of does not appear in either. Three, found by looking, none of which
+moved a guard row enough to notice -- the giant ring across five channels of three Bricks
+graphs, SandyStonePath's cog-shaped rosettes on every tile in all six channels and both
+export sets, and RoofTiles' shingles as smooth gradient ramps against the export's dense
+vertical grain. The last two are still unattributed.
+
+It takes `assume` arms on the command line, so a candidate reading can be LOOKED AT before
+it is scored, and it renders each pack at its own implied `$outputsize` through
+`render2-lean` with both sides resampled to one display grid. The pairing is
+`compare_pack`'s and is not reimplemented -- the argument `corpus.py` makes about corpus
+lists. One caveat is in its docstring: it applies no `nativeguard`-style graph-input
+override, so RoofTiles is drawn at the declared inputs and its row count will not match
+its export's, which is the pack's own recorded property and not a fault to read off the
+sheet.
