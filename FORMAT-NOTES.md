@@ -63230,3 +63230,80 @@ lists. One caveat is in its docstring: it applies no `nativeguard`-style graph-i
 override, so RoofTiles is drawn at the declared inputs and its row count will not match
 its export's, which is the pack's own recorded property and not a fault to read off the
 sheet.
+
+## ATTRIBUTION FIX to `4e68462`: on Bricks the whole movement is `fx.subdivide = quadrant` -- `fx.tree.gate = twoway` is inert there, all 48 native rows byte-identical -- and the full five-pack sweep at native
+
+`4e68462` titled its section "Bricks under `quadrant` + `twoway`". The numbers are right and
+the attribution was loose: Bricks' 48 native rows under `quadrant` alone
+(`scratchpad/ng_arms.log`, QUADRANT block) and under `quadrant` + `twoway`
+(`scratchpad/bricks_twoway.log`) differ on **0 of 48** -- no Bricks record has a gate the
+tree walk consumes that is not two-way. `twoway` acts on Chesterfield (record 321) among
+the scored packs and nowhere else yet measured. The roughness levels, the band and the
+ring are `quadrant`'s.
+
+The whole sweep, every pack at its own implied `$outputsize` through the lean
+`nativeguard`, default against `fx.subdivide = quadrant` (gate `consume`):
+
+    pack           default corr / band / |dc|     quadrant
+    Auras          +0.873 / 7.131 / 0.139         identical
+    Bricks         +0.612 / 1.229 / 0.034         +0.615 / 1.077 / 0.011
+    RoofTiles      +0.521 / 0.800 / 0.039         +0.475 / 0.870 / 0.026
+    Chesterfield   +0.951 / 0.969 / 0.025         +0.903 / 1.020 / 0.021   (twoway: +0.928 / 0.985 / 0.017)
+    Sandy          +0.188 / 1.797 / 0.039         +0.188 / 1.665 / 0.030
+
+|dc| improves on every pack that moves and band moves toward 1.0 on three of four;
+correlation falls on RoofTiles (-0.046) and Chesterfield (-0.048, -0.023 under `twoway`)
+and is flat on Bricks and Sandy. THE ARM IS NOT PROMOTED BY THIS NOTE: the ratchet is the
+decision and RoofTiles' rows are at unrecorded paint inputs. What the sweep settles is that
+the refusal `48503a3` recorded does not reproduce as it was stated -- Bricks does not fall.
+
+SandyStonePath's cog rosettes are NOT the depth fault: they survive `quadrant` + `twoway`
+unchanged in every channel (`refsheet.py Sandy fx.subdivide=quadrant,fx.tree.gate=twoway`).
+Still unattributed.
+
+## Bricks' mortar grooves are too NARROW in height, worst on the ROUND tiles (005: 0.42 of the export's width) -- and `_reference_px` silently changed meaning when `pergraph` became the default, which is part of it and not the round-tile part
+
+Found by looking (Ash, on the sheets: "something with the line width on bricks, height and
+normal -- more obvious on the round bricks"), then measured at native 1024
+(`scratchpad/mortar.py`): Otsu on the HEIGHT channel over each array's own range, dark
+fraction and mean horizontal+vertical run length of the dark class, ours / export.
+
+    height        dark fraction   mean run        what the tiles are
+    001           0.88            0.83            rectangular
+    002           0.59            0.57            octagons
+    003           0.87            0.92            rectangular
+    004           1.03            1.08            round
+    005           0.42            0.42            round
+
+THE NORMAL ROWS OF THE SAME RUN ARE NOT A MEASUREMENT AND ARE DISCARDED: Otsu on a normal's
+x channel splits on slope DIRECTION, not groove depth, so it returns nonsense (003/normal
+11.00, 005/normal 0.03). Height is the clean channel.
+
+WHAT THE PICTURE SAYS IT IS: not the line alone but the BEVEL beside it. On 005 the
+export's height darkens toward every groove over a visible band and the normal carries a
+coloured slope band around each circle and each straight joint roughly twice as wide as
+ours; ours stays flat-bright right up to a near-hairline. It is identical under `flat` and
+`quadrant` (the subdivision arm does not touch it).
+
+ONE CONTRIBUTOR FOUND, AND IT IS A DATED REGRESSION. `filters._reference_px(v)` returns
+`v.width` -- the pixel scale a pixel-valued intensity (`dirmotionblur`, `warp`,
+`directionalwarp`) is read in. When `record` was arbitrated as that reading, every graph
+rendered at its tag size, so `v.width` WAS the tag width. `37efcd5` made `pergraph` the
+default and `v.width` became the RENDERED width: for Bricks 005's records it is 1024 under
+`pergraph` and 256 under `first`, so every pixel-valued intensity in graphs 002-005 shrank
+4x relative to the canvas, silently. The same holds for any pack rendered at an implied
+size above its tags (SandyStonePath: tags 256, rendered 2048, 8x). `warp.reference_px =
+256.0` restores the arbitrated meaning with no code change, and at native:
+
+    height mean run     record (now)   256
+    001                 0.83           0.90
+    002                 0.57           0.71
+    003                 0.92           0.91
+    004                 1.08           1.10
+    005                 0.42           0.44
+
+It moves 002 and 001 the right way and it does NOT fix the round tiles: 005 stays at 0.44.
+So the regression is real and is not the round-tile fault. `record` needs re-arbitrating as
+TAG width versus RENDERED width -- they were one quantity when it was decided and they are
+two now -- and the round-tile groove is set somewhere `_reference_px` does not reach.
+`distance` scales by its own `REFERENCE_PX` constant and is untouched by this arm.
