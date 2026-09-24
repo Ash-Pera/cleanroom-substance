@@ -63421,3 +63421,19 @@ are neither the depth fault (`quadrant` + `twoway`, two sections up) nor the war
 Two mechanisms tested and killed; still unattributed. That the whole picture barely moves
 under an 8x change to 211 warps is itself worth knowing: whatever draws the cogs does not
 pass through a `_reference_px` caller with any weight.
+
+`warp.reference_px = tag` over every pack at native (`scratchpad/ng_tag.log`), against the
+default:
+
+    pack           default corr / band / |dc|     tag
+    Auras          +0.873 / 7.131 / 0.139         identical
+    Bricks         +0.612 / 1.229 / 0.034         +0.626 / 1.159 / 0.034
+    RoofTiles      +0.521 / 0.800 / 0.039         +0.558 / 0.798 / 0.038
+    Chesterfield   +0.951 / 0.969 / 0.025         +0.950 / 0.952 / 0.025
+    Sandy          +0.188 / 1.797 / 0.039         +0.176 / 1.800 / 0.039
+
+Two packs up (RoofTiles +0.037, the largest single-pack gain of any arm this session), two
+flat, Sandy -0.012 on a pack whose rows are dominated by the unattributed cogs. It is the
+arbitrated reading restored and it is nearly non-negative, which makes it the strongest
+promotion candidate in this file -- and NOT PROMOTED HERE: the rule is the ratchet, per row,
+and a pack mean is not the ratchet (it once hid the loss of a whole AO channel).
