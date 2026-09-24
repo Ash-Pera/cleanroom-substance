@@ -63537,3 +63537,48 @@ A CENSUS TRAP met on the way: `Record.fx_table()` yields NO rows for 4910 while
 `fxchain.survey` finds its type-12 leaf, and `survey` itself refuses 200 of Bricks' 382
 FX-Maps -- so no cheap structural count of "records drawing type 12" is complete. Reach was
 measured the way this file always measures it, by rendering every pack with the arm.
+
+## All five arms together, every pack at native: the geometry channels gain and the COLOUR channels pay, and the colour loss belongs mostly to `quadrant`
+
+`nativeguard.py fx.subdivide=quadrant,fx.tree.gate=twoway,warp.reference_px=tag,
+dirmotionblur.extent=radius,fx.halfbell=gaussian` (`scratchpad/ng_all5.log`) -- the arms had
+only been measured in subsets, and they interact.
+
+    pack           default corr / band / |dc|     all five
+    Auras          +0.873 / 7.131 / 0.139         identical
+    Bricks         +0.612 / 1.229 / 0.034         +0.635 / 0.843 / 0.012
+    RoofTiles      +0.521 / 0.800 / 0.039         +0.533 / 0.796 / 0.027
+    Chesterfield   +0.951 / 0.969 / 0.025         +0.927 / 0.948 / 0.016
+    Sandy          +0.188 / 1.797 / 0.039         +0.181 / 1.645 / 0.033
+
+Over 87 non-flat rows: correlation up by more than 0.005 on 40, down on 23, level on 24;
+|dc| better on 22, worse on 9. The gains add rather than cancel -- Bricks alone reached
++0.626 (tag), +0.621 (halfbell), +0.619 (tag+radius), +0.615 (quadrant); together +0.635.
+
+THE SPLIT IS BY CHANNEL TYPE. The ten largest gains are geometry: 004 roughness +0.619 ->
++0.819, 004 height +0.425 -> +0.540, 004 normal ch1/ch0 +0.10, RoofTiles roughness +0.239 ->
++0.351, RoofTiles normal +0.096 / +0.083, and 004 basecolor riding on them. Nine of the ten
+largest losses are BASECOLOR. Attributed with each arm alone against the default:
+
+    row                        quadrant   tag      halfbell   tag+radius
+    Chesterfield blue          -0.464     -0.005   0          --
+    RoofTiles basecolor ch2    -0.183     +0.040   0          --
+    RoofTiles basecolor ch1    -0.147     +0.029   0          --
+    Bricks 003 basecolor x3    -0.02      +0.02-0.03   0      -0.034..-0.041
+
+`quadrant` owns the large colour losses; `radius` owns Bricks 003's (the over-blur recorded
+above); `tag` is a small colour GAIN nearly everywhere; `halfbell` touches no colour row.
+Chesterfield's blue is the case `fba4661` argued: the tree walk's fine marks land at rand's
+placement, which a correlation cannot reward, and their band says they are too weak, not too
+strong. RoofTiles' two colour rows are at unrecorded paint inputs (`ada95d0`). Neither of
+those makes the loss disappear; both say correlation on colour is the weakest arbiter here.
+
+SANDY IS AN INTERACTION, NOT A SUM: `SandyStoneRoad02` (the honest set) basecolor falls
+-0.051 / -0.062 / -0.106 with all five, while `quadrant`, `tag` and `halfbell` alone each move
+it by under 0.02. The two arms never run alone on Sandy are `radius` (48 `dirmotionblur`
+records) and `twoway` (record 607, the Tile Sampler whose `$sizelog2` gates `twoway` leaves in
+the chain walk). Isolating which is the next measurement.
+
+`fx.bell = gaussian` on Auras and Chesterfield: INERT -- correlations identical, three
+band/dc values moving at the third decimal. "94% of drawn patterns are bell" does not become
+reach on these packs; Bricks, RoofTiles and Sandy are running.
