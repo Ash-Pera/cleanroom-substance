@@ -274,7 +274,21 @@ def cells_of(rec, table, run=None, slots=None):
                 # as the cell's own child gate: its predicate over the seeded frame picks
                 # the true child (the gate's successor) or the false one (its spare),
                 # and a gate with no child on the side it picks ends the nesting there.
-                target = gated(rec, target, run, slots, consumed)
+                #
+                # `fx.tree.gate = twoway` CONSUMES ONLY A GATE THAT HAS BOTH CHILDREN.
+                # Consuming one removes it from the chain walk (`emissions` drops
+                # `gated_nodes`), so a gate that was the chain's own terminator loses the
+                # power to close the record: ChesterfieldSofa 321 emits 0 patterns under
+                # the flat walk and 21,848 under this one, entirely because its two
+                # `$sizelog2` gates are consumed here. A gate with no `spare` is not a
+                # selector -- there is no false side for a predicate to pick -- and the
+                # corpus agrees that this is the normal shape: of 27,333 `0x89`/`0x99`
+                # nodes, 27,037 (98.92%) carry a TRUE child only and 289 (1.06%, in 27
+                # files) carry both. Under `twoway` those 98.92% stay in the chain walk
+                # and keep terminating it, and the 1.06% that really are two-way still
+                # read as child gates. Default `consume` is the reading as it was.
+                if assume.assumed("fx.tree.gate", "consume") == "consume" or _two_way(rec, target):
+                    target = gated(rec, target, run, slots, consumed)
                 if target is None:
                     kids.append(None)
                     continue
@@ -308,6 +322,18 @@ def cells_of(rec, table, run=None, slots=None):
         top = resolve(top) if top is not None else None
         roots = [top] if top is not None else []
     return cells, order, roots
+
+
+def _two_way(rec, target):
+    """Does the `0x89` / `0x99` switch at `target` carry BOTH children?
+
+    A gate with no `spare` has no false side for a predicate to pick, so it is a loop
+    guard rather than a selector. See the census in `cells_of` and FORMAT-NOTES.md.
+    """
+    import fxchain
+
+    n = fxchain.read_node(rec.asm, target)
+    return n is not None and n.kind == "switch" and bool(n.loop) and bool(n.spare)
 
 
 def gated(rec, target, run, slots, consumed, depth=0):

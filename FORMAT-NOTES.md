@@ -63110,3 +63110,59 @@ consumes the gate and `fxtree.emissions` then drops it from the chain walk,
 arm's case rather than confused with it: the case rests on 331 and 333, whose gates are
 open, whose depths the file states independently, and whose drawn sizes are `5.0 / 2^depth`
 exactly.
+
+## `fx.tree.gate = twoway`: the tree walk may consume a `0x89` as a child gate only when it HAS a false side, which hands record 321 back its terminator and takes Chesterfield's roughness to corr +0.940 / band 0.933 / dc +0.016 -- right on all three at once, for the first time
+
+THE BUG, LOCATED EXACTLY. `cells_of` consumes any `0x89` a cell's pointer lands on, and
+`fxtree.emissions` then DROPS every consumed gate from the list the chain walk runs
+(`fxtree.py`, `skip = gated_nodes(rec)`). A gate that was the chain's own terminator
+therefore loses the power to close the record. Instrumented on ChesterfieldSofa at 512
+(`scratchpad/pat_tree.py` and the `_walk` spy beside it), the same `fx._walk`, on the same
+four chain nodes, with byte-identical seeded slots:
+
+    record 321   flat       nodes [624392, 624564, 626124, 626324]   frames 0   closed True
+                 quadrant   nodes [624392, 624564]                   frames 1   closed False
+                            gated_nodes after cells_of: [626124, 626324]
+
+Those two offsets are the pair `e231131` added to this record's chain, and they are the
+`min($sizelog2) >= 12` / `>= 13` guards `4d8480d` disassembled. Nothing about the slots or
+the predicates differs between the arms: the gate simply is not there to run.
+
+A MEASUREMENT TRAP INSIDE THIS TRACE, recorded because it cost a wrong reading first:
+`gated_nodes(rec)` reports what `cells_of` consumed ON ITS LAST CALL, so reading it before
+`emissions` runs returns the previous record's answer. Read before, 321's consumed set
+looks EMPTY and the mechanism above is invisible. Read after, it is `[626124, 626324]`.
+
+THE READING. A `0x89` with no `spare` has no false side for a predicate to pick, so it is
+a loop guard, not a selector -- the TRUE child is the loop body and exiting is the absence
+of a child. The corpus says that is the normal shape: of 27,333 `0x89`/`0x99` nodes 27,037
+(98.92%) carry a TRUE child only and 289 (1.06%, in 27 files) carry both. `twoway`
+consumes only the 1.06% that really are two-way and leaves the rest in the chain walk,
+where they keep terminating it. `consume` is the reading as it was and stays the default.
+
+INERT WHERE IT CANNOT ACT, which is the check that it is an arm and not a rewrite: with
+`fx.tree.gate = twoway` alone, at the current `fx.subdivide = flat` default, Chesterfield's
+ten native rows and Auras' three are IDENTICAL TO EVERY DIGIT to the defaults
+(`scratchpad/inert.log`). It only bites on the tree path.
+
+WHAT IT BUYS, Chesterfield's native row at 2048 (`scratchpad/ch_three.log`):
+
+    reading                          corr    band   |dc|     roughness ch0
+    default (flat)                 +0.951   0.969  0.025   +0.917 / 0.699 / -0.060
+    quadrant, gate = consume       +0.903   1.020  0.021   +0.928 / 1.294 / +0.045
+    quadrant, gate = twoway        +0.928   0.985  0.017   +0.940 / 0.933 / +0.016
+
+`twoway` beats `consume` on all three aggregates and it is the first reading that puts
+ROUGHNESS right on all three quantities at once: the best correlation of the three, a band
+ratio of 0.933 where `flat` is 0.699 (a third of the octave power missing) and `consume`
+1.294 (a third too much), and a dc of +0.016 INSIDE the 0.02 bar where `flat` is -0.060
+and `consume` +0.045. Record 321 renders 0.0000 again, as the file's gate and `4d8480d`
+both say it should, while 331 and 333 keep the depth-correct drawing of the section above
+-- their gates are never consumed, so they are untouched by this.
+
+WHAT IT DOES NOT SETTLE. The blue still falls: `basecolor` ch2 corr +0.855 -> +0.595,
+which is half of `consume`'s loss to +0.391 and still a loss, and its band reads 0.268
+against the export -- the mottle too WEAK, which is the amplitude side of the argument
+`fba4661` made and not the placement side. So this fixes the tree walk; it does not by
+itself decide `fx.subdivide`, and the aggregate correlation is still below the flat
+default's because of that one channel.

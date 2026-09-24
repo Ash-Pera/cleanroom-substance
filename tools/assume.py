@@ -527,6 +527,16 @@ QUESTIONS = {
     # not settled (Bricks 9804's author halves it per level by hand, which argues canvas).
     # Which output is which quadrant is not settled either. Graph 003 cannot tell any of
     # these apart -- every instrument moves less than the renderer's own seed floor.
+    # WHICH `0x89` THE TREE WALK MAY CONSUME AS A CHILD GATE. `consume` (the reading as it
+    # was) takes any gate a cell's pointer lands on; `twoway` takes only one carrying BOTH
+    # children. Consuming a gate removes it from the chain walk (`fxtree.emissions` drops
+    # `gated_nodes`), so a gate that was the chain's own terminator stops being able to
+    # close the record: ChesterfieldSofa 321 emits 0 patterns under the flat walk and
+    # 21,848 under the tree, entirely through this. A gate with no `spare` has no false
+    # side for a predicate to pick, and the corpus says that is the normal shape -- of
+    # 27,333 `0x89`/`0x99` nodes 27,037 (98.92%) carry a TRUE child only, 289 (1.06%, 27
+    # files) carry both. Inert on 331 and 333, whose gates the tree walk never consumes.
+    "fx.tree.gate": ("consume", "twoway"),
     "fx.tree.branchoffset": ("canvas", "region"),
     "fx.tree.order": ("rowmajor", "clockwise", "colmajor"),
     # HOW A `set` UNDER A `select` BRANCH EXECUTES. `eager` is the transpiler as it stood:
