@@ -876,6 +876,15 @@ def _reference_px(v):
     format, and wrong by 2x or 4x on the rest. An explicit `warp.reference_px` still wins.
     """
     forced = assume.assumed("warp.reference_px")
+    if forced == "tag":
+        # THE RECORD'S TAG WIDTH, which is what `record` MEANT when it was arbitrated: every
+        # graph then rendered at its tag size, so `v.width` and the tag were one number.
+        # `pergraph` split them -- Bricks 005's records are 1024 wide under it and 256 under
+        # `first` -- and `record` silently became the RENDERED width, shrinking every
+        # pixel-valued intensity in graphs 002-005 by 4x against the canvas. `tag` reads the
+        # arbitrated quantity back; for a record tagged 64 or 128 it is not the same as a
+        # forced 256.0. See FORMAT-NOTES.md, "`_reference_px` silently changed meaning".
+        return float(v.rec.width) if getattr(v, "rec", None) is not None and v.rec.width else 256.0
     if forced is not None and forced != "record":
         return float(forced)
     return float(v.width) if v.width else 256.0

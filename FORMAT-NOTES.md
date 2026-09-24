@@ -63386,3 +63386,30 @@ it. 003 has no terminal eight-stack; its `dirmotionblur` records sit inside othe
 `warp.reference_px` also quadruples every `warp` and `directionalwarp` it holds. Which of
 the two over-reaches on 003 is the next question, and it decides whether the tag reading
 belongs to `dirmotionblur` alone or to every `_reference_px` caller. NOT PROMOTED.
+
+## `warp.reference_px = tag`: the `_reference_px` regression is UNIVERSAL, not a `pergraph` side-effect -- every pixel-valued intensity in every scored pack is read in the rendered width's pixels, 2x to 8x smaller against the canvas than the reading that was arbitrated
+
+The section two above found `_reference_px` returning the RENDERED width on Bricks 002-005
+and blamed `pergraph`. That was too narrow. `record` was arbitrated when every record
+rendered at its tag size, so tag and rendered width were one number; ANY render at a size
+other than the tag splits them, and the move to scoring each pack at its implied export
+size did that to every pack at once. Per pack, over every `_reference_px` caller
+(`dirmotionblur`, `warp`, `directionalwarp`), at the implied `$outputsize`:
+
+    pack           callers   tag px -> record-as-now px        shrink against the canvas
+    Bricks          973      256 -> 1024                        4x
+    SandyStone      211      256 -> 2048                        8x
+    Chesterfield     16      256 -> 2048                        8x
+    RoofTiles       242      64 -> 512, 128 -> 1024, 256 -> 2048   8x
+    Auras           144      256 -> 512                         2x
+
+1,586 records. `tag` (new) reads `v.rec.width`, the arbitrated quantity, and it is NOT a
+forced 256.0: RoofTiles carries 5 callers tagged 64 and 19 tagged 128, where a forced 256
+is wrong by 4x and 2x. Default stays `record`; fast lane 19 passed with the candidate
+registered.
+
+WHY THIS MAY BE SANDYSTONEPATH'S COGS, stated as a prediction so it can fail: Sandy's 211
+warps are each 8x too weak against the canvas under `record`. A disc that the file warps
+into an irregular pebble, displaced an eighth as far, stays a disc with a crenellated edge
+-- which is what the rosettes look like. `refsheet.py Sandy warp.reference_px=tag` is the
+test.

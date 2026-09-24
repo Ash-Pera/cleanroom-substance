@@ -19,6 +19,9 @@ QUESTIONS = {
     "blur.reference_px": (256.0, "record", 128.0, 512.0),
     "warp.reference_px": (
         "record",
+        # `tag`: the record's TAG width -- what `record` meant when it was arbitrated, before
+        # `pergraph` made `v.width` the rendered width. See `filters._reference_px`.
+        "tag",
         256.0,
         64.0,
         128.0,
