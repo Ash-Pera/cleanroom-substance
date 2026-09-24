@@ -1033,8 +1033,17 @@ def f_dirmotionblur(ctx, v):
     # 12 of 16 joints, 004 on 11 of 16, median x8.0 on both. x8 is x4 (reading the
     # intensity in the TAG's pixels, `warp.reference_px`) times x2 (this). Neither alone.
     # See FORMAT-NOTES.md, "the round-tile groove".
-    if assume.assumed("dirmotionblur.extent", "total") == "radius":
+    _ext = assume.assumed("dirmotionblur.extent", "total")
+    if _ext == "radius":
         length = length * 2.0
+    elif _ext == "x8render":
+        # EIGHT TIMES THE INTENSITY IN THE RENDERED IMAGE'S PIXELS, independent of
+        # `warp.reference_px`. The two export fits agree on this and not on tag x radius:
+        # Bricks 004/005's 0.5016 stack at 1024 wants 8 x intensity rendered px (joints), and
+        # Auras 003's 3.861 chain at 512 wants 8 x intensity rendered px (glow halo), where
+        # tag x radius gives x8 on Bricks only because its rendered/tag ratio is 4 and x4 on
+        # Auras. See FORMAT-NOTES.md, "The large-blur fit".
+        length = np.clip(np.abs(intensity), 0.0, 256.0) * 8.0 / float(W)
     turn = 2.0 * np.pi * angle
     smp = sampler(ctx.src(v, 0))
     TAPS = 17
