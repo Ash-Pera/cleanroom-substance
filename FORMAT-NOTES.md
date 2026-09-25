@@ -63984,3 +63984,113 @@ cone: paraboloid 141,948 / 21 records, `waves` 90,113 / 8 records (0, 1201, 1202
 varying along x: vertical stripes, i.e. wood grain -- and in the 4x-averaged stash four of its
 records (1201, 1208, 1378, 1385; 512 x 256 tiles) are an exact constant 0.47. The average could
 hide a stripe of period 2 or 4 px, so the native check is pending before the profile is blamed.
+
+## `tag` promoted -- in the working tree, NOT committed: the default is switched and 004/height's floor re-taken with the owner's approval, the ratchet clears every row, and the commit is held on a health census that has been stale since 7658f42
+
+WHAT CHANGED. `filters._reference_px` defaults to `tag` (`assume.assumed("warp.reference_px",
+"tag")`, and `tag` first in `assume.QUESTIONS`, since the tuple order alone does nothing).
+`record` -- the rendered width -- is an arm. `archive/tools/render.py`, the legacy renderer,
+reads the key with no default and is left as it was.
+
+THE ONE FLOOR MOVED, approved by the owner as a floor decision on 2026-09-25. Under `tag` alone
+the only ratchet refusal was Bricks `004/height` ch0 dc, -0.0067 -> -0.0120, still inside
+`DC_BAR`. Re-taken:
+
+    grid   was (corr, band, dc)            now
+    128    +0.4175  1.1004  -0.0067        +0.4276  1.1569  -0.0120
+    256    +0.4233  1.1169  -0.0067        +0.4331  1.1555  -0.0120
+    512    +0.4247  1.1424  -0.0068        +0.4344  1.1655  -0.0121
+
+The old values are kept in a comment on the entry. No other entry was touched.
+
+THE RATCHET WITH THE NEW DEFAULT (`ratchet_tag_default.log`, 748 s): no row worse, no channel
+missing, no new constant yields. It FAILS at the frozen health census, and that failure is not
+`tag`'s: `newly_sick` lists Bricks `002/basecolor` band ch0/1/2, which is the red 7658f42 left
+deliberately ("band 0.166-0.188 outside BAND_BAR ... NOT declared because a Cause must name a
+mechanism and this one is unknown"). HEAD therefore fails the same assertion; earlier arm runs
+never showed it because `worse` is asserted first and they stopped there.
+
+THE CENSUS IS STALE IN BOTH DIRECTIONS. Run with `HEALTH_CENSUS` replaced by every (key, q) so
+the `recovered` assertion lists the complement (`census_probe.py`, `census_tag.log`): 21
+quantities sick under `tag` against 38 in the census --
+
+    sick, not in the census    3    002/basecolor band ch0, ch1, ch2
+    in the census, not sick   20    Bricks AO dc (002, 003, 004, 005), height dc (002, 003,
+                                    004), normal ch2 band (002, 003, 004, 005), roughness band
+                                    (003, 004, 005), 003 basecolor band ch0/ch2, 003 normal
+                                    ch1 band, 002 basecolor ch1 dc; Chesterfield AO band + dc
+
+The 7658f42 re-take moved every basecolor row down and every normal / AO / height / roughness
+row toward band 1.0 and did not re-take the census, which fits all 23. The same probe under
+`ASSUME=warp.reference_px=record` (`census_record.log`) is RUNNING at the time of writing; if its
+set equals `tag`'s, the staleness is 7658f42's alone and `tag` changes no health state.
+
+WHAT COMMITTING NEEDS: a re-take of `HEALTH_CENSUS` to the measured set, which is the owner's
+decision (it moves the recorded backlog, and 002/basecolor band would enter it with no `Cause`,
+as 7658f42 argued it should not be declared). Until then the four files stay uncommitted.
+
+## `fx.tree.bare` = (`fill`, `skip`), default `fill`: a tree cell that states nothing to draw with is drawn at its region at opacity 1, which is what paints RoofTiles' `waves` records white
+
+The native probe of RoofTiles 1201 (`trace1201.log`) shows every batch it draws:
+
+    tag 0x420008   marker          count   1   no size
+    tag 0x420018   type None       count   1   size 1        no opacity
+    tag 0x420018   type None       count   4   size 0.5      no opacity
+    tag 0xc520958  type 11 (waves) count  16   size 0.375 x 0.17-1.64   opacity ~0.04
+    tag 0xc520958  type 11         count  64   size 0.19 x 0.008-0.87   opacity ~0.03
+    tag 0xc500958  type 11         count 256   size 0.094 x 0.0003-0.44 opacity ~0.02
+    result 0.4700 everywhere = opacitymult x 1.0
+
+1208 is the same with typeless levels down to size 0.0625 and 1,024 waves below them. The
+`0x420018` cells carry bits {3, 4, 17, 22}: structural words and a branchoffset program, NO
+patternsize, NO opacity, pattern nibble 0. `fxtree._emit` gives any non-marker cell without a
+patternsize its region as a size (the tree's form of `fx.sizeless = fill`), `draw` reads a
+missing opacity as 1, and `fx.typeless_profile = rect` makes it a square: a white canvas that
+the waves, at a few percent opacity, cannot show through under `max`.
+
+This file already records that Substance's `patterntype` 0 is a Quadrant that subdivides without
+drawing and that nibble 0 cannot tell it from 1 or 2 ("The white FX-Maps have a root node").
+`skip` takes the cell that states NOTHING to draw with -- nibble 0 and no patternsize, opacity
+or imageindex field -- as that Quadrant: it places its children's regions and draws nothing.
+`fx.typeless_profile = rect` is untouched; the Chesterfield buttons that settled it are a
+different population and are what a ratchet run under `skip` has to keep.
+
+MEASURED on RoofTiles' normal cone at `clear`'s inputs (`roof_normal_clear_bare.npz` against
+`roof_normal_clear.npz`): 117 records change and the waves come alive -- 1201 0.470 / 0 ->
+0.405 / 0.087, 1208 0.470 / 0 -> 0.238 / 0.160, 1213 1.000 / 0 -> 0.592 / 0.199 -- and the normal
+output moves by less than 0.01 anywhere (corr against the export +0.202 both ways). Why nothing
+reaches the output is the next entry. `skip` has not been through the ratchet, the fast lane or
+`test_fxtree`.
+
+## CORRECTION: RoofTiles' wood grain is IN THE HEIGHT, not in the normal only; and neither the waves nor the grain chain can reach our height at `clear`'s inputs
+
+The entry "RoofTiles' wood grain" above said the export's height has no grain (fine share 0.0005,
+isotropic) and the normal carries it. That was a power share, and a power share cannot see a
+low-amplitude detail that a derivative amplifies. The export's normal R channel IS the height's
+x-derivative: corr(R, -dh/dx) = +0.984 on the 16-bit `clear` height, and the derivative shows
+the vertical grain lines and the growth-ring arcs on every shingle (`roof_height_deriv.png`).
+So the grain is the height's, at small amplitude.
+
+WHERE OUR GRAPH PUTS IT. The height output is record 1779 = `blend(1184, 1778, mask 1778)`: the
+tile height 1184, with the moss levels 1778 (black at `Moss` 0) as both layer and mask. Every
+route from the waves records and the 1224 -> 1243 ... 1264 grain chain into 1779 passes through
+1778; none avoids it. The normal's other inputs are masked the same way (numbers above 1779 in
+this paragraph are the 1.1 assembly's; see the hazard below): 2231 is the PAINT mask,
+both programs reading uid 2367033056 and reducing to in-low = in-high = 1 - P, i.e.
+`src >= 1 - P` -- empty at `Paint_Age` 0, as 1778 is at `Moss` 0, correct, not a fault. The
+normal's live face structure comes from 1782, the dirmotionblur derivative of 1184.
+
+WHY THE GRAIN MUST BE IN 1184. The two export sets' heights are byte-identical while `old`
+carries moss, so in the export the moss path adds nothing to the height, and the height's grain
+is therefore 1184's. Our 1184 has none: against the export height (4x averaged) corr +0.706,
+clean per-shingle ramps, no lines, no arcs (`roof_1184_vs_height.png`). Its cone (164 records)
+holds 16 FX-Maps -- 1, 7, 16, 23, 29, 61, 74, 1103, 1114, 1128, 1132, 1136, 1144, 1145, 1149,
+1151 -- and ONE is flat: 1145, 0.498, sd 0, under both `fx.tree.bare` readings. 1149 draws
+tall vertical bands, the right orientation for grain. Probing 1145's batches is the next step
+(`probe1145.py`, running at the time of writing).
+
+A HAZARD IN MY OWN PROBES, stated because it cost a wrong turn: the pack ships TWO assemblies,
+`x_RoofTiles_1.0` and `x_RoofTiles_1.1`. `conestash` and `refcompare` take `sorted(glob)[0]` =
+1.0; an unsorted `glob()[0]` returns 1.1. Record indices agree up to the height (1779 in both)
+and are 2 apart after it (normal 2629 / 2631, roughness 2593 / 2595). Reading a 1.0 stash with
+1.1 indices made 2228 and 2231 look "missing" and 2229 look flat. Always `sorted()`.
