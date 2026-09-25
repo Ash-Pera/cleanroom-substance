@@ -63869,3 +63869,35 @@ The mid band is the right AMOUNT in the wrong FORM -- a few round pits carry as 
 the export's mottle, which no band measure separates -- and the fine band is at HALF. That fine
 deficit is the same shape as Bricks 002 basecolor's "arrives already flat", and following it
 into what 4097 samples is the next trace.
+
+## The round pits, attributed: a sparse threshold crossing of bubbles capped at 0.4 by `max`, and `fx.combine = bit18` -- the per-entry reading -- turns them into the export's irregular mottle
+
+Bricks 005's height, every arm on (`conestash.py Bricks height --graph 005`, 710 records). On the
+tile faces the height has 0.37-0.40 of the export's fine detail (1-5 px at the 256 stash), and the
+greedy descent finds the choke in one step: 3143 carries the texture (fine 0.0198) and reaches the
+height only through `3144 = min(3125, 3143)` at opacity 0.12, where it drops 12x. A MIN passes the
+source only where it is darker than the destination: 3143 sits at 0.9945 on the faces against
+3125's 0.692, active on 0.7% of face pixels. (005's AO is the same deficit amplified: its output
+is a step LUT, 4097, 0.039 wide around 0.5, applied to 3706, whose faces sit ON the slope with sd
+0.0004 -- the AO carries the height's fine detail at ~23x gain.)
+
+WHY 3143 IS WHITE: it is 3132, a directional warp of a warp of `distance` 3130 of an inverted
+levels threshold at 0.29 (3127) on FX-Map 3126 -- a dense field of overlapping soft bubbles whose
+header `opacitymult` 0.4 (the UI's Global Opacity) caps each at 0.4. Under `fx.combine = max`
+overlaps do not sum, 3126 peaks at 0.398, and the 0.29 threshold catches only bubble PEAKS: 6.2%
+lit, isolated round discs -- THE ROUND PITS, and the white face with nowhere for the min to act.
+
+`fx.combine = bit18` reads the combine per entry: bit 18 set is `max`, clear is signed `add`, and
+over the permitted paired sources the bit is set on exactly the entries whose paramset declares a
+`blendingmode`. 3126's drawing cells are tag 0x420008 -- bits 3, 17, 22, bit 18 CLEAR -- so under
+`bit18` they add. Rendered, every other arm unchanged:
+
+                        3126 max   3127 lit   3143 face mean   height face fine vs export
+    max (every arm)     0.398      6.2%       0.9945           0.37
+    bit18               0.924      27.4%      0.8138           1.38
+
+The mask becomes IRREGULAR MERGED BLOBS instead of round discs, and the height's faces carry an
+irregular mottle that is visually the export's kind (`b005h_bit18.png`: max / bit18 / export). It
+overshoots the fine band by 38% where `max` fell 63% short. `bit18` was set aside for a global
+`max` at `9eeedbb`, measured before the native-resolution corrections; the full sweep under it is
+running.
