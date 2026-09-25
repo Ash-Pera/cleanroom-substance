@@ -63735,3 +63735,37 @@ against 0.278 / 0.293). Sandy gets back the whole colour gain `radius` erased --
 1024, the 3.861 glow at 512, and the Sandy colour at 2048 -- "total length = 8 x intensity
 in the rendered image's pixels". RoofTiles gives back 0.015 against `radius`, the one cost.
 `radius` stays as the record that the tag-times-two decomposition was tried.
+
+## CORRECTION to `d3bad15`: the engine does NOT store Sandy's chain at 8 bits -- word0 bit 20 is a 16-bit flag, set on nearly every record -- and global 8-bit storage wrecks Bricks (+0.612 -> +0.383, band 1.229 -> 0.159)
+
+`engine.bitdepth = 8` over the packs (`~/Documents/cleanroom-substance-runs/ng_bitdepth8.log`,
+stopped after Bricks): Auras unchanged, Bricks corr +0.612 -> +0.383, band 1.229 -> 0.159,
+|dc| 0.034 -> 0.060. One named casualty: Bricks 004's 7.43 stack blurs a noise field of sd
+0.010 into sd 0.001 -- a quarter of an 8-bit step -- and 8-bit rounding erases it. So 8-bit
+cannot be the engine's storage in general, and a per-record depth was the next question.
+
+BIT 20 IS A 16-BIT FLAG, decoded against the exports rather than inferred. Every graph
+output's `format`, the record's word0 bit 20, and the PIL mode of the paired export PNG:
+
+    output fmt   grey   bit 20   export PNG    count
+    28           yes    1        I;16 (16-bit)   38
+    12           yes    0        L    (8-bit)     4
+    16           no     1        RGBA            30   (PIL flattens 16-bit RGBA; uninformative)
+    0            no     0        RGB              4
+
+42 of 42 greyscale outputs: bit 20 set <-> exported at 16 bits, clear <-> 8 bits. SPEC 7's
+"format bit 4 ... a depth flag by inference" is confirmed as a depth flag. And bit 20 is
+set on 1,773 of Sandy's 1,778 records and 12,300 of Bricks' 12,585, INCLUDING the whole
+edge-detector chain 2 -> 22 -- so that chain runs at 16 bits in the engine, and the
+`--quantize 16` probe keeps the cogs. 8-bit removed them by snapping the field and its blur
+onto the same 1/255 staircase so their difference is exactly zero on the flanks, which is a
+mechanism the engine is not using here. `engine.bitdepth` stays as an arm; per-record depth
+from bit 20 is a correct reading waiting for a case where 8-bit records matter.
+
+TWO FURTHER CANDIDATES RULED OUT on a synthetic disc at the same scale: a sub-pixel distance
+and an anti-aliased source both leave the flank error at 0.07-0.15 px, and a 1e-4 threshold
+tolerates ~0.045 px -- the edge detector still lights 4-51% of the flanks. What remains:
+blur 12's intensity program evaluates to 0.125, read as 0.125 px at 256 = a 1-px box at 2048
+-- precisely the size that exposes grid noise without averaging it. Under
+`blur.reference_px = record` it is 0.125 rendered px, below a pixel, an exact copy, and the
+branch draws nothing. Probe running.
