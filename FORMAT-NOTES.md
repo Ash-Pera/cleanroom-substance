@@ -63956,3 +63956,31 @@ And `fx.combine = background` with every arm costs Bricks as `bit18` did (+0.635
 0.012 -> 0.033). So 005's roughness wants `max`, 005's height (3126) wants add, and neither the
 entry's bit 18, the header's background, nor the lattice test tells them apart. Stated as the open
 question it is: WHICH ENTRIES SUM is not decided by any field read so far.
+
+## RoofTiles' wood grain: the peel strokes were an INPUT difference, the black mask on the grain path is Moss = 0 and correct, and what is really missing is fine vertical grain and growth-ring arcs -- drawn, on the evidence so far, by the MODELLED `waves` profile
+
+Stashed RoofTiles' normal cone with the 14 x 9 tile overrides and every arm (`conestash.py Roof
+normal --inputs ...`, 1,163 records). THE LAYOUT IS RIGHT: rows, offsets, edges and bottom rims
+line up with the export (`roof_normal_cmp.png`).
+
+WHERE THE GRAIN LIVES in the exports, measured as fine power varying across x against down y:
+the HEIGHT has none (0.87-0.88, isotropic, fine share 0.0005 in both sets -- our smooth height
+ramps are right); the NORMAL carries it (37-75x across x). `clear`'s roughness is a constant.
+
+THE PEEL STROKES ARE THE INPUTS. The file's defaults are Paint_Age 0.27 and Dirt 0.2; the notes
+record `clear` as age 0 / dirt 0. Rendered at age 0, dirt 0 the horizontal peel strokes vanish and
+the faces match `clear` there (`roof_clear_cmp.png`). A first trace followed the grain source (the
+1252-1255 directional-blur stack over crystal noise 1224) downstream by highest correlation and
+reached `levels` 1778, whose programs return in-low = in-high = 1.0 and so black out the mask of
+blend 2595. Disassembled, both programs read ONE input: uid 2367019856, MOSS, default 0 --
+in-low = (max(1-P, .5) - .5) x 2, in-high = min(2(1-P), 1). A black moss mask at Moss 0 is correct;
+the trace had wandered into the moss branch, which uses the grain as an ingredient.
+
+WHAT IS REALLY MISSING at `clear`'s inputs: fine vertical grain lines and curved growth-ring arcs
+on every face, and slightly wavy bottom edges. A census of pattern shapes drawn in the normal's
+cone: paraboloid 141,948 / 21 records, `waves` 90,113 / 8 records (0, 1201, 1202, 1208, 1378,
+1379, 1385, 2226), disc 61,440, gaussian 26,360, pyramid 17,040, halfbell 1,745, bell 256.
+`waves` is in `fxrender.SHAPE_MODELLED` -- modelled as `0.5 + 0.5 cos(4 pi lx)`, two cycles
+varying along x: vertical stripes, i.e. wood grain -- and in the 4x-averaged stash four of its
+records (1201, 1208, 1378, 1385; 512 x 256 tiles) are an exact constant 0.47. The average could
+hide a stripe of period 2 or 4 px, so the native check is pending before the profile is blamed.
