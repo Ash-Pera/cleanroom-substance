@@ -63769,3 +63769,36 @@ blur 12's intensity program evaluates to 0.125, read as 0.125 px at 256 = a 1-px
 -- precisely the size that exposes grid noise without averaging it. Under
 `blur.reference_px = record` it is 0.125 rendered px, below a pixel, an exact copy, and the
 branch draws nothing. Probe running.
+
+## The ratchet: `tag` fails on ONE row by 0.005 of a mean; `tag` + `halfbell` + `twoway` fail on three, all `halfbell`'s spoke-area level shift -- and Sandy's cogs, fully traced, with every cheap fix ruled out
+
+THE RATCHET (`test_render2_reference_agreement_does_not_regress` under `ASSUME`, logs in
+`~/Documents/cleanroom-substance-runs/ratchet_*.log`), 52 guarded rows over Bricks,
+Chesterfield and Auras:
+
+    tag alone                  FAIL, 1 row:  004/height dc -0.007 -> -0.012, adverse at every grid
+    tag + halfbell + twoway    FAIL, 3 rows: 004/roughness dc -0.290 -> -0.307,
+                                             004/height dc -0.007 -> +0.012,
+                                             004/AO dc +0.007 -> +0.013
+
+No correlation or band row regresses under either. `twoway` is inert without `quadrant`.
+The three-arm failures are `halfbell`'s (they match its single-arm sweep): thinning the
+wheel's spokes from ~35% of the ring to ~10% removes dark area, so the mean moves. 004/height
+is a touchy row -- `tag` moves its dc by -0.005, `halfbell` by +0.019, `quadrant` by +0.03 --
+and the render2 ratchet has no cause register (`GUARD_CAUSES` belongs to the older table and is
+empty by design), so promotion of any of these is a re-take of the named entries: a floor
+decision, left to the owner. Smallest ask: `tag` alone, one entry, 0.005.
+
+SANDY'S COGS, and why the fix is not an arm. Traced (`conestash.py` stashes, above): radial
+spikes from the edge detector 13-17 (threshold 1e-4), fattened by `distance` 18, originating
+at the PIXEL-STEPPED EDGES of record 2's 248 stone shapes (types 3 and 9, disc and brick,
+median size 0.089 -- real stones, identical under both subdivision arms, not seed points),
+which an integer-lattice EDT (`distance.distance_field`: `m > 0.5` then
+`distance_transform_edt`) carries outward along every ray. Ruled out by measurement:
+8-bit storage (right picture, wrong mechanism, wrecks Bricks); a sub-pixel EDT or an
+anti-aliased source (flank error still 0.07-0.15 px against ~0.045 px tolerated);
+`blur.reference_px = record` (13-18 go to exactly zero -- no cogs -- but the cell cracks
+come from THIS branch too and vanish with them, and every other blur shrinks 8x into
+horizontal banding); point seeds (they are not points). What remains is that the engine's
+distance field is smooth on the flanks to under ~0.045 px, which asks for a genuinely more
+accurate distance algorithm -- an implementation, not an arm flip.
