@@ -63913,3 +63913,24 @@ and is real; "bit 18 clear means add" is not the rule that decides which entries
 bit is known to mean is only that it tracks a DECLARED `blendingmode` in the permitted sources --
 which says a mode was stated, not which one -- so the next reading is the stated mode itself,
 where the paramset carries it.
+
+WHAT `bit18` BREAKS, by record (005 roughness stashed under `max` and under `bit18`, every other
+arm on; the output falls 0.562 -> 0.278): 27 FX-Maps change, in two opposite classes.
+
+    BACKGROUND-BAKED (field 0 = 1.0, hurst 0.66): 3046, 12268, 2884
+        max   1.000 flat -- a white canvas `max` cannot carve
+        add   0.520 with structure -- the creases appear
+    CANVAS-FILLING PLATEAUS (no background, hurst 0.0): 3030 3032 3037 3039 2746 2748 2752 2754
+    (opacitymult 0.44), 3129 12277 (opacitymult 0.18)
+        max   ~constant at the opacity (0.40 / 0.18)
+        add   SATURATED at 1.000 -- overlapping patterns across subdivision levels, with no
+              per-level decay at hurst 0, sum past 1
+
+The gain is the first class, and it already has a principled rule: `fx.combine = background`
+(signed add only where a background is baked -- the 2,071 corpus records with negative
+opacities, all background 1.0). The damage is the second. And 3126 -- the bubbles whose summing
+fixed the round pits -- is in NEITHER: no background, hurst 0, yet sparse, so add sums a few
+overlaps to 0.92 rather than saturating. The rule that separates 3126 from the plateau family is
+therefore about coverage or level structure, not a header field; unfound. `background` was refused
+at `10ce512` on dc rows that were 0.3 too dark for another reason -- a reason the current arms have
+since removed -- so it is re-swept now with every arm on.
