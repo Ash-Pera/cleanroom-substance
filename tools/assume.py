@@ -564,6 +564,10 @@ QUESTIONS = {
     # 27,333 `0x89`/`0x99` nodes 27,037 (98.92%) carry a TRUE child only, 289 (1.06%, 27
     # files) carry both. Inert on 331 and 333, whose gates the tree walk never consumes.
     "fx.tree.gate": ("consume", "twoway"),
+    # A DEPTH-0 TREE CELL WHOSE EMISSIONS WALK AN INTEGER LATTICE IS DRAWN IN LATTICE-CELL
+    # UNITS (`fx._cell`'s test, on the tree path it declines). Bricks 3030: 841 integer
+    # offsets that the canvas reading wraps onto one point of the torus. See `fxtree._emit`.
+    "fx.tree.gridcell": ("canvas", "cell"),
     "fx.tree.branchoffset": ("canvas", "region"),
     "fx.tree.order": ("rowmajor", "clockwise", "colmajor"),
     # HOW A `set` UNDER A `select` BRANCH EXECUTES. `eager` is the transpiler as it stood:

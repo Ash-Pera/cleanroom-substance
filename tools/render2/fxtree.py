@@ -636,6 +636,37 @@ def _emit(rec, run, cells, order, roots, frame, numbers, cache):
             bo_m = bo_m[:, :2] * (s_m if bo_region else 1.0)
         cxo = cx.reshape(m) + bo_m[:, 0]
         cyo = cy.reshape(m) + bo_m[:, 1]
+        # `fx.tree.gridcell = cell`: A DEPTH-0 CELL WHOSE EMISSIONS WALK A LATTICE IS DRAWN IN
+        # LATTICE-CELL UNITS. Bricks 3030 emits 841 = 29 x 29 patterns at branchoffsets
+        # (0,0), (0,1), (-1,1) ... -- integers -- with patternsize 2.82; read in canvas units
+        # every integer offset wraps to the SAME point of the toroidal canvas, so 841 stamps
+        # of a 2.82-canvas blob pile on one spot: a constant under `max`, saturated under
+        # add. Read in cells of 1/29 it is a 29 x 29 grid of bumps 2.82 cells wide. The test
+        # is `fx._cell`'s, applied to the batch's own offsets: every value an integer, span
+        # >= 1, one distinct value per cell. `fx._cell` declines tree batches; this is the
+        # same rule on the path that now draws these records. Default `canvas`, as it was.
+        grid = None
+        if (
+            assume.assumed("fx.tree.gridcell", "canvas") == "cell"
+            and bo is not None
+            and not np.any(depth)
+        ):
+            d = []
+            for k in range(2):
+                col = bo_m[:, k]
+                sp = float(col.max() - col.min())
+                ok = (
+                    sp >= 1
+                    and abs(sp - round(sp)) < 1e-4
+                    and bool(np.all(np.abs(col - np.round(col)) < 1e-4))
+                    and len({round(float(t), 6) for t in col}) == round(sp) + 1
+                )
+                d.append(1.0 / (round(sp) + 1.0) if ok else 1.0)
+            if any(x != 1.0 for x in d):
+                grid = np.asarray(d, np.float64)[None, :]
+                cxo = cx.reshape(m) + bo_m[:, 0] * grid[0, 0]
+                cyo = cy.reshape(m) + bo_m[:, 1] * grid[0, 1]
+                assume.note(rec.index)
         centre = np.stack([cxo, cyo], axis=1)
         marker = (cell.tag & 0xFF) == 0x08
         size = got.get("patternsize")
@@ -646,12 +677,16 @@ def _emit(rec, run, cells, order, roots, frame, numbers, cache):
             if size_m.shape[1] < 2:
                 size_m = np.repeat(size_m[:, :1], 2, axis=1)
             size_m = size_m[:, :2] * s_m
+            if grid is not None:
+                size_m = size_m * grid
         fo = got.get("frameoffset")
         if fo is not None:
             fo = _broadcast(fo, E, R).astype(np.float64)
             if fo.shape[1] < 2:
                 fo = np.repeat(fo[:, :1], 2, axis=1)
             fo = fo[:, :2] * s_m
+            if grid is not None:
+                fo = fo * grid
         rot = got.get("patternrotation")
         rot = None if rot is None else _broadcast(rot, E, R)[:, 0].astype(np.float64)
         opa = got.get("opacity")

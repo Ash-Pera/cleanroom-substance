@@ -63934,3 +63934,25 @@ overlaps to 0.92 rather than saturating. The rule that separates 3126 from the p
 therefore about coverage or level structure, not a header field; unfound. `background` was refused
 at `10ce512` on dc rows that were 0.3 too dark for another reason -- a reason the current arms have
 since removed -- so it is re-swept now with every arm on.
+
+## `fx.tree.gridcell` (new, default `canvas`) is ~inert on 005 roughness, `fx.combine = background` also costs Bricks, and `max` is simply RIGHT for 005 roughness -- so which entries sum is still unanswered
+
+`fx.tree.gridcell = cell` gives the tree path `fx._cell`'s lattice test (every branchoffset an
+integer, span >= 1, one value per cell -> draw offsets, sizes and frame offsets in 1/(span+1)).
+Written on the reading that Bricks 3030's integer offsets (0,0), (0,1), (-1,1) ... wrap its 841
+stamps onto one point of the torus. THAT READING WAS WRONG in its picture: under canvas units 3030
+is already a low-contrast noise field (0.36-0.44) -- the "vignette" an earlier sheet showed was a
+percentile stretch -- and 3129's offsets are jittered, not a lattice, so the test never fires on it.
+005 roughness, every other arm on (export mean 0.555, sd 0.120):
+
+    max,   canvas      0.562 / 0.128   corr +0.855
+    max,   gridcell    0.567 / 0.125   corr +0.855
+    bit18, canvas      0.278 / 0.234   corr +0.803
+    bit18, gridcell    0.282 / 0.233   corr +0.800
+
+`gridcell` moves nothing that matters; `max` is right for this output (level to 0.007, corr
++0.855); add saturates 3129's 1,024 overlapping patterns even at cell size (~20 overlaps x 0.18).
+And `fx.combine = background` with every arm costs Bricks as `bit18` did (+0.635 -> +0.599, |dc|
+0.012 -> 0.033). So 005's roughness wants `max`, 005's height (3126) wants add, and neither the
+entry's bit 18, the header's background, nor the lattice test tells them apart. Stated as the open
+question it is: WHICH ENTRIES SUM is not decided by any field read so far.
