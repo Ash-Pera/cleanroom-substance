@@ -63802,3 +63802,36 @@ come from THIS branch too and vanish with them, and every other blur shrinks 8x 
 horizontal banding); point seeds (they are not points). What remains is that the engine's
 distance field is smooth on the flanks to under ~0.045 px, which asks for a genuinely more
 accurate distance algorithm -- an implementation, not an arm flip.
+
+## The `rgba-u16` ramp byte order is VERIFIED RGBA against both permitted source twins, 9 of 9 -- which refutes the BGRA swap that halved Bricks 004's red excess: that was compensation. The overlay gate is decided the same afternoon, by absolute colour
+
+Bricks 004 / 005 basecolor render WARM: red +0.035 high, green exact (0.247 against 0.247),
+blue -0.008; red-minus-blue 0.084 against the export's 0.041. Followed along 004's basecolor
+cone (`conestash.py Bricks basecolor --graph 004`, 1,513 records): the chain enters the tail at
+the export's balance (`hsl` 7321, R-B +0.041) and the last blends add it -- 7370 softlight of
+uniform (0.500, 0.111, 0.111) through mask 5613 (+0.005), 7372 overlay of gradient 7371 at
+0.17 (+0.020), 7374 overlay of white at 0.100 (+0.008).
+
+THE OVERLAY GATE (`ops.BLEND_MODES` 9, an open fork the guard could not decide: 54% of Bricks'
+mode-9 pixels move under it). Emulated on the saved inputs (7372 reproduced to 0.0015, 7374's
+opacity solved to 0.100, residual 0.0004), gating on the FOREGROUND brightens the final mean to
+0.384-0.414 against the export's 0.272 and leaves it no less warm; gating on the background (as
+implemented) gets green exactly. Absolute colour decides what correlation could not: the
+background gate stands.
+
+THE RAMP BYTE ORDER. `read_ramp`'s docstring states "`lo | hi<<16` is RGBA bytes" with no
+evidence behind it (the 23,153-record agreement it cites is about the ramp's FORM). Read as BGRA
+instead, gradient 7371 turns from warm cream (1.000, 0.949, 0.784) to cool blue, and the emulated
+tail's red excess halves (0.035 -> 0.017, R-B 0.084 -> 0.053). ASKED OF THE SOURCE rather than of
+the render: `sourcematch.py --pairs` lists exactly two compiled twins, both readable under SPEC 12,
+and each states its gradients' stop colours as float4 `value`s in a `gradientrgba` paramsArray.
+Matched to compiled ramps by stop POSITION (which byte order does not touch):
+
+    ChesterfieldSofa   8 gradients   RGBA wins 5, ties 3 (grey stops)   RGBA error <= 0.0019, BGRA 0.30-0.57
+    SandyStonePath     5 gradients   RGBA wins 4, tie 1 (a position mismatch, both orders fail alike)
+
+9 of 9 discriminating gradients match RGBA to 8-bit rounding. The decode is RIGHT and is now
+source-verified; the BGRA improvement on 004 was a wrong reading compensating for something else
+-- `4d8480d`'s shape, caught before it became an arm. The red excess stays UNATTRIBUTED: it is a
+sum of small tints in the tail, and without the export's intermediates no single one of them can
+be named over-applied without a fit of exactly the kind just refuted.

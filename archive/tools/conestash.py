@@ -4,7 +4,7 @@ in one output's cone, so a picture-level fault can be bisected offline without h
 cone at full size.
 
     python3 archive/tools/conestash.py <pack> <output channel> <out.npz> [--factor 4]
-                                       [--inputs uid=v[,v]...] [--arms a=b,c=d]
+                                       [--inputs uid=v[,v]...] [--arms a=b,c=d] [--graph 004]
 
     python3 archive/tools/conestash.py Sandy height ~/Documents/cleanroom-substance-runs/sandy01_height.npz \
         --inputs 89582107=1
@@ -73,8 +73,10 @@ def main(argv):
     R = asm.records
     chans = manifest.output_channels(asm)
     names = manifest.output_names(asm)
+    graph = _opt(argv, "--graph")
     target = [ri for uid, _f, _g, ri in asm.outputs()
-              if channel in ((chans.get(uid) or "").lower(), (names.get(uid) or "").lower())]
+              if channel in ((chans.get(uid) or "").lower(), (names.get(uid) or "").lower())
+              and (graph is None or rc.graph_dir(asm, uid) == graph)]
     if not target:
         raise SystemExit("no output with channel or name %r" % channel)
     root = target[0]
