@@ -63835,3 +63835,37 @@ source-verified; the BGRA improvement on 004 was a wrong reading compensating fo
 -- `4d8480d`'s shape, caught before it became an arm. The red excess stays UNATTRIBUTED: it is a
 sum of small tints in the tail, and without the export's intermediates no single one of them can
 be named over-applied without a fit of exactly the kind just refuted.
+
+## The round pits: `tag` does not un-round them, the generators are rich, and on 005's tile FACES the mid-band texture is the export's amount in the wrong form while the fine band is at HALF
+
+Looked first (`refsheet.py Bricks` under `quadrant` alone and under every arm, top-left
+quarters of 003 AO, 004 roughness, 005 AO and height, `~/Documents/cleanroom-substance-runs/
+pits_cmp.png`). Every arm helps the geometry -- the 004 wheel's spokes now match the export,
+roughness levels match, the stray straight scratch lines `quadrant` draws are gone -- but THE
+PITS STAY PERFECTLY ROUND under every arm, so the warp 714 that should chip them is not being
+held back by the `_reference_px` scale. And the pits are not the main gap: the export's faces
+carry a DENSE, IRREGULAR, CELLULAR MOTTLE over the whole surface, where ours are smooth with a
+few isolated round pits.
+
+THE GENERATORS ARE NOT THE PROBLEM. A stash of 005's AO cone under every arm
+(`conestash.py Bricks ambientocclusion --graph 005 --arms ...`, 1,663 records) shows 35 FX-Maps
+producing exactly the export's vocabulary -- dense bubbly noise (3136, 2871), cellular fields
+(3129, 2863), thorn-shaped splatters (3051, 3048, 2880, 2896), fine speckle (2857, 2849), a
+blotchy mask (2497). The AO itself is COMPUTED: the output is an inverted levels of a
+dyngradient fed by pixelprocessor 4097, which has no image edges and reads its inputs through
+sampler bindings -- so its face detail is whatever it samples, presumably the height.
+
+MEASURED ON THE FACES ONLY (bright in both and eroded 3 px from edges, 59% of the tile; both
+sides on the stash's 256 grid -- a first pass compared a 256-px stash with a 512-px export and
+is discarded):
+
+    band            ours      export    ratio
+    1-5 px          0.0057    0.0114    0.50     (4-20 px at 1024)
+    3-17 px         0.0574    0.0563    1.02
+    9-33 px         0.0394    0.0386    1.02
+    face level      0.981     0.952     (too little occlusion)
+
+The mid band is the right AMOUNT in the wrong FORM -- a few round pits carry as much energy as
+the export's mottle, which no band measure separates -- and the fine band is at HALF. That fine
+deficit is the same shape as Bricks 002 basecolor's "arrives already flat", and following it
+into what 4097 samples is the next trace.
