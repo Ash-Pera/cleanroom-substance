@@ -63901,3 +63901,15 @@ irregular mottle that is visually the export's kind (`b005h_bit18.png`: max / bi
 overshoots the fine band by 38% where `max` fell 63% short. `bit18` was set aside for a global
 `max` at `9eeedbb`, measured before the native-resolution corrections; the full sweep under it is
 running.
+
+`fx.combine = bit18` AS A BLANKET READING IS REFUTED by the sweep (`ng_all6_bit18.log`, every
+other arm on): Bricks +0.635 / 0.843 / 0.012 -> +0.596 / 0.973 / 0.035 (|dc| tripled),
+RoofTiles +0.518 / 0.898 / 0.026 -> +0.528 / 0.566 / 0.064. The picture says where
+(`bit18_cmp.png`): 003's bricks gain the export's irregular per-brick mottle and 005's height
+faces are fixed as measured above, but 005 ROUGHNESS GOES NEAR-BLACK with blotches where the
+export is mid-grey -- an FX-Map in its cone over-summed under add -- and 003's height grows
+axis-aligned rectangular blocks, a quadrant-cell shape. So overlaps SUMMING is what 3126 needs
+and is real; "bit 18 clear means add" is not the rule that decides which entries sum. What the
+bit is known to mean is only that it tracks a DECLARED `blendingmode` in the permitted sources --
+which says a mode was stated, not which one -- so the next reading is the stated mode itself,
+where the paramset carries it.
