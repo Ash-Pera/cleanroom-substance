@@ -63712,3 +63712,26 @@ shaded. The ridge difference sits near 1/255, so blur 12 -- nearly the identity 
 probably too short as well, and record 2's discs may be a separate question (an isolated
 seed with a rim is a kink the export shows no ring for). This arm touches every record of
 every pack; the sweep is running.
+
+## `dirmotionblur.extent = x8render` settles the blur unit: one reading gets the round-brick joints, Auras' glow AND Sandy's colour right, where `radius` got the first and broke the third
+
+All five arms with `x8render` in place of `radius`, every pack at native
+(`~/Documents/cleanroom-substance-runs/ng_all5_x8.log`):
+
+    pack           all five, radius           all five, x8render
+    Auras          +0.873 / 7.131 / 0.139     +0.873 / 7.131 / 0.139
+    Bricks         +0.635 / 0.843 / 0.012     +0.635 / 0.843 / 0.012   identical, as predicted
+    RoofTiles      +0.533 / 0.796 / 0.027     +0.518 / 0.898 / 0.026
+    Chesterfield   +0.927 / 0.948 / 0.016     +0.928 / 0.968 / 0.017
+    Sandy          +0.181 / 1.645 / 0.033     +0.206 / 1.658 / 0.034
+
+    Sandy Road02 basecolor   radius +0.235 / +0.163 / +0.101    x8render +0.402 / +0.360 / +0.373
+
+Bricks is byte-identical because at 1024 the two readings give the same length; the joints
+stay fixed (`grooves.py` under every arm: 004 / 005 width ratio 1.00, floor/face 0.289
+against 0.278 / 0.293). Sandy gets back the whole colour gain `radius` erased -- at 2048
+`x8render` gives half `radius`'s length, which is exactly the `tag`-total length the
+"minus radius" run had. Three independent consequences, one reading: the 0.5016 joints at
+1024, the 3.861 glow at 512, and the Sandy colour at 2048 -- "total length = 8 x intensity
+in the rendered image's pixels". RoofTiles gives back 0.015 against `radius`, the one cost.
+`radius` stays as the record that the tag-times-two decomposition was tried.
