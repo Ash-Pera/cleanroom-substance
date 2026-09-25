@@ -18,10 +18,12 @@ QUESTIONS = {
     # keep (`warp.reference_px`; Chesterfield's Blur HQ passes flatten the AO otherwise).
     "blur.reference_px": (256.0, "record", 128.0, 512.0),
     "warp.reference_px": (
-        "record",
-        # `tag`: the record's TAG width -- what `record` meant when it was arbitrated, before
-        # `pergraph` made `v.width` the rendered width. See `filters._reference_px`.
+        # `tag` IS THE DEFAULT: the record's TAG width -- what `record` meant when it was
+        # arbitrated, before `pergraph` made `v.width` the rendered width. Promoted after the
+        # ratchet with one entry re-taken (004/height dc -0.0067 -> -0.012); see
+        # FORMAT-NOTES.md, "`tag` promoted". `record` is the rendered width, now an arm.
         "tag",
+        "record",
         256.0,
         64.0,
         128.0,

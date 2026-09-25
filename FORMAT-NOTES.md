@@ -64094,3 +64094,19 @@ A HAZARD IN MY OWN PROBES, stated because it cost a wrong turn: the pack ships T
 1.0; an unsorted `glob()[0]` returns 1.1. Record indices agree up to the height (1779 in both)
 and are 2 apart after it (normal 2629 / 2631, roughness 2593 / 2595). Reading a 1.0 stash with
 1.1 indices made 2228 and 2231 look "missing" and 2229 look flat. Always `sorted()`.
+
+## `tag` promoted, COMMITTED: `HEALTH_CENSUS` re-taken on the owner's instruction, and the ratchet passes
+
+The `record` probe finished (`census_record.log`): 20 sick against `tag`'s 21, and the one
+difference is Bricks `002/basecolor` ch0 dc -- recorded at -0.0197, one step inside `DC_BAR`, and
+pushed just past it by `tag` without tripping the ratchet's margin. Every other entry of the
+stale census is 7658f42's. The census was already listing that quantity.
+
+`HEALTH_CENSUS` is re-taken to the measured `tag` set (21 quantities over 17 of the 52 entries;
+the header sentence said "19 of these 25 entries", a count from before the table grew, and now
+says 17 of 52). With it: the render2 ratchet passes, 52 entries x 3 grids, 0 constant yields,
+21 quantities outside a bar as recorded (`ratchet_tag_census.log`, 633 s); fast lane 19;
+`test_fxtree` 8.
+
+`fx.tree.bare` stays out of this commit: its `fxtree.py` and `assume.py` hunks are in the
+working tree and untested beyond its default being inert.

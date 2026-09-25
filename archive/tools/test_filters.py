@@ -2010,11 +2010,17 @@ GUARD_TABLE = {
         was=(0.97, 256),
         companion=('bricks_tile_octaves', 0.97),
     ),
+    # RE-TAKEN when `warp.reference_px = tag` became the default (the arbitrated reading
+    # restored -- tag width, not rendered width). The ratchet under `tag` failed on this row
+    # alone, dc adverse at every grid by 0.0053 (-0.0067 -> -0.0120), while its corr rose
+    # ~0.010 at each grid; approved as a floor decision by the owner, 2026-09-25. Was:
+    # 128 (+0.4175, 1.1004, -0.0067), 256 (+0.4233, 1.1169, -0.0067), 512 (+0.4247, 1.1424,
+    # -0.0068). FORMAT-NOTES.md, "`tag` promoted".
     ('Kutejnikov__Bricks_and_tiles', '004/height', 0): Entry(
         at={
-            128: (+0.4175, 1.1004, -0.0067),
-            256: (+0.4233, 1.1169, -0.0067),
-            512: (+0.4247, 1.1424, -0.0068),
+            128: (+0.4276, 1.1569, -0.0120),
+            256: (+0.4331, 1.1555, -0.0120),
+            512: (+0.4344, 1.1655, -0.0121),
         },
         was=(0.44, 256),
         companion=('bricks_tile_octaves', 0.44),
@@ -2216,8 +2222,8 @@ GUARD_TABLE = {
 #: WHAT IS OUTSIDE A HEALTH BAR TODAY, frozen exactly like `CONSTANT_YIELDS_RENDER2` above.
 #:
 #: `refguard`'s health bars -- `|dc| <= 0.02`, `band` within a factor of 4 of 1.0 -- are
-#: absolute statements about what a CORRECT channel looks like, and 19 of these 25 entries
-#: fail one today. That is a true statement about this renderer and not a scoring artefact.
+#: absolute statements about what a CORRECT channel looks like, and 17 of the 52 `GUARD_TABLE`
+#: entries fail one today (2026-09-25). That is a true statement about this renderer and not a scoring artefact.
 #:
 #: THEY ARE FROZEN RATHER THAN FATAL, AND THAT IS A DELIBERATE NARROWING OF `refguard.check`.
 #: The module's design is that an entry outside a health bar carries a `Cause` naming the
@@ -2230,41 +2236,31 @@ GUARD_TABLE = {
 #: it measurably is, at every grid at once) and freezes the health census (nothing NEW goes
 #: outside a bar). Both are strictly more than the single correlation floor this replaces,
 #: which had no notion of amplitude or level at all.
+#: RE-TAKEN 2026-09-25 with `warp.reference_px = tag` the default, on the owner's instruction:
+#: the census had not been re-taken at 7658f42, whose honest renders moved every basecolor row
+#: down and every normal / AO / height / roughness row toward band 1.0. Against the 38 entries
+#: it replaces, 3 enter -- Bricks `002/basecolor` band ch0/1/2, the red 7658f42 left undeclared
+#: because its mechanism is unknown -- and 20 leave, back inside their bars. The same probe with
+#: `record` gives this set less `002/basecolor` ch0 dc, recorded at -0.0197 and pushed just past
+#: `DC_BAR` by `tag`; it was already listed. FORMAT-NOTES.md, "`tag` promoted".
 HEALTH_CENSUS = {
     (('Kutejnikov__Auras', '004/basecolor', 0), 'band'),
     (('Kutejnikov__Auras', '004/basecolor', 0), 'dc'),
     (('Kutejnikov__Auras', '004/basecolor', 1), 'band'),
     (('Kutejnikov__Auras', '004/basecolor', 1), 'dc'),
     (('Kutejnikov__Auras', '004/basecolor', 2), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '002/ambientocclusion', 0), 'dc'),
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '002/height', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '002/normal', 2), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 1), 'band'),
+    (('Kutejnikov__Bricks_and_tiles', '002/basecolor', 2), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '002/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '003/ambientocclusion', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '003/basecolor', 0), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '003/basecolor', 2), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '003/height', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '003/normal', 1), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '003/normal', 2), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '003/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '004/basecolor', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/height', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '004/normal', 2), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '004/roughness', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/ambientocclusion', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '005/basecolor', 0), 'dc'),
     (('Kutejnikov__Bricks_and_tiles', '005/height', 0), 'dc'),
-    (('Kutejnikov__Bricks_and_tiles', '005/normal', 2), 'band'),
-    (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'band'),
     (('Kutejnikov__Bricks_and_tiles', '005/roughness', 0), 'dc'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0), 'band'),
-    (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/AO', 0), 'dc'),
     (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 0), 'dc'),
     (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/basecolor', 2), 'band'),
     (('minime453__Chesterfield_PBR_Material', 'PaddedWalls/height', 0), 'dc'),

@@ -875,7 +875,9 @@ def _reference_px(v):
     A fixed 256 is right for 98.6% of the corpus by a property of the corpus, not of the
     format, and wrong by 2x or 4x on the rest. An explicit `warp.reference_px` still wins.
     """
-    forced = assume.assumed("warp.reference_px")
+    # DEFAULT `tag` since the re-take recorded in FORMAT-NOTES.md, "`tag` promoted": the
+    # arbitrated reading restored. `record` (the rendered width) stays as an arm.
+    forced = assume.assumed("warp.reference_px", "tag")
     if forced == "tag":
         # THE RECORD'S TAG WIDTH, which is what `record` MEANT when it was arbitrated: every
         # graph then rendered at its tag size, so `v.width` and the tag were one number.
