@@ -546,6 +546,12 @@ QUESTIONS = {
     # `gaussian` is `fxrender`'s own exp(-4 r^2). Raised, not decided, by `fx.halfbell`
     # matching the export as a halved gaussian. `bell` is ~94% of drawn patterns, so this
     # arm has the widest reach of any in this file.
+    # WHAT BIT DEPTH A RECORD'S RESULT IS STORED AT BETWEEN RECORDS. `float` is the float32
+    # pipeline as it was; `8` / `16` store UNORM (clip to [0, 1], round). SandyStonePath's cog
+    # rosettes are sub-1/255 noise that an edge detector's 1e-4 threshold turns into geometry
+    # under `float` and that vanishes under `8`. The widest-reaching arm in this file: every
+    # record of every pack. See `engine.render`.
+    "engine.bitdepth": ("float", "8", "16"),
     "fx.bell": ("t2", "gaussian"),
     "fx.halfbell": ("paraboloid", "gaussian"),
     # WHICH `0x89` THE TREE WALK MAY CONSUME AS A CHILD GATE. `consume` (the reading as it

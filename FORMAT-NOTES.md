@@ -63671,3 +63671,44 @@ the export frames are at other animation phases than our render; the export halo
 BRIGHTER at d=1 (0.33 against our 0.24), a level difference this does not explain; and x8 and
 x16 are not separated on Auras. The test is a candidate that reads `dirmotionblur` as 8 x
 intensity in rendered pixels independently of `warp.reference_px`, scored on every pack.
+
+## SandyStonePath's cog rosettes, attributed: they are sub-1/255 NOISE that an edge detector's 1e-4 threshold turns into geometry, and storing records at 8 bits makes them vanish -- 16 bits does not
+
+Bisected on a stash of all 480 records of Sandy's height cone at native, `Use_Random_Tiles`
+on (`archive/tools/conestash.py`, a 512-px copy of each record kept as it is produced; logs
+and arrays in `~/Documents/cleanroom-substance-runs/`). Two earlier hypotheses were already
+dead (the depth fault, the warp scale).
+
+THE CHAIN. FX-Map 2 draws plain DISCS at the seed points, exactly where the cogs sit; `distance`
+3 turns them into the cell field; 11 = pixelprocessor(3, 10) with 10 a constant 1.0, so
+11 = 3; 12 = blur(11) with a program intensity; 13 = subtract(11, 12), 14 = subtract(12, 11),
+15 = add(14, 13) = |11 - 12|; 16 = levels in-high 0.05 (x20); 17 = levels in-low = in-high =
+0.002, a THRESHOLD. So 17 lights wherever |field - blur(field)| exceeds 1e-4 -- a classic edge
+detector meant to find the kinks, the cell boundaries. 18 = `distance` fattens what 17 lit,
+and every record after carries the result.
+
+WHAT WENT WRONG, measured. `distance` 3 is not the fault: its variation around a disc at fixed
+radius is 0.26-0.28 px, the same as an exact Euclidean transform's 0.29-0.34 px, which is the
+pixel grid. 11 and 12 are identical to four decimals -- the blur is nearly the identity -- so
+13 is almost zero everywhere (0 to 0.076), and under float32 its residue survives the 1e-4
+threshold as RADIAL SPIKES around every disc (they are what an earlier look at 13 read as
+"streaks"; a percentile stretch of a near-zero image made them look like signal). 18 fattens
+the spikes into teeth. The cogs are not a shape the file draws.
+
+THE DISCRIMINATOR, all three at native with every record rounded after it is produced:
+
+                 rec 17 lit    rec 18 lit    output
+    float32        0.0134        0.1676      cogs in every cell
+    16-bit         0.0140        0.1696      cogs in every cell
+    8-bit          0.0000        0.0618      stone cells and cracks, NO cogs
+
+The noise sits above 1/65535 and below 1/255, so only 8 bits removes it. `engine.bitdepth =
+(float, 8, 16)`, default `float`, quantises at the one store in `engine.render` (UNORM:
+clip to [0, 1], round). Defaults pass (fast lane 19, test_fxtree 8).
+
+NOT THE WHOLE STORY, and stated before any sweep: at 8 bits the cracks come out DASHED where
+the export's are continuous and wide, and the stone faces are flat where the export's are
+shaded. The ridge difference sits near 1/255, so blur 12 -- nearly the identity here -- is
+probably too short as well, and record 2's discs may be a separate question (an isolated
+seed with a rim is a kink the export shows no ring for). This arm touches every record of
+every pack; the sweep is running.

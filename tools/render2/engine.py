@@ -593,6 +593,18 @@ def render(
                 fixed = np.where(np.isfinite(fixed), fixed, np.float32(fill))
                 ctx.low_confidence.add(i)
                 assume.note(i)
+            # `engine.bitdepth`: WHAT A RECORD'S RESULT IS STORED AT BEFORE THE NEXT RECORD
+            # READS IT. `float` (as it was) carries float32 between records; `8` / `16` store
+            # it as UNORM, clipped to [0, 1] and rounded to 2^n - 1 levels. Raised by
+            # SandyStonePath's cog rosettes: records 13-17 are an edge detector, |field -
+            # blur(field)| x 20 then a threshold at 0.002, i.e. ANY difference above 1e-4
+            # becomes a hard line, and under float32 the distance field's sub-pixel grid noise
+            # survives it as radial spikes that `distance` 18 fattens into teeth. Stored at 8
+            # bits the noise rounds to zero and only the cell outlines remain.
+            _bd = assume.assumed("engine.bitdepth", "float")
+            if _bd != "float":
+                _s = np.float32((1 << int(_bd)) - 1)
+                fixed = (np.round(np.clip(fixed, 0.0, 1.0) * _s) / _s).astype(np.float32)
             ctx.outputs[i] = fixed
         # `rec.filter_name`, NOT `v.filter`: building the View is inside the try now, so
         # `v` is not bound when it is the View that raised.
