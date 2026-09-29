@@ -947,7 +947,7 @@ def splat(rec, patterns, W, H, images=None, header=None):
     size_scale = cell if assume.assumed("fx.patternsize") == "cell" else None
     frame_scale = cell if assume.assumed("fx.frameoffset") == "cell" else None
     sizeless = assume.assumed("fx.sizeless", "fill")
-    bare_skip = assume.assumed("fx.bare", "fill") == "skip"
+    bare_skip = assume.assumed("fx.bare", "skip") == "skip"
     skip_root = assume.assumed("fx.rootentry") == "skip"
     skip_markers = assume.assumed("fx.markers", "skip") == "skip"
     neg = assume.assumed("fx.negopacity", "signed")

@@ -1602,10 +1602,11 @@ the centre modulo the canvas, the only reading under which all of RoofTiles reco
 whose size is `≤ 0`, `> 64` or `< 10⁻⁶` (the corpus has nothing between 1e-30 and 1e-06), or
 that is a marker (tag low byte `0x08`, `fx.markers = skip`). No `patternsize` ⇒ the whole
 canvas (`fx.sizeless = fill`; `skip`, `half`, `quarter` are arms). A cell that **states nothing to draw with** — pattern
-nibble 0 (and not a marker) with no `patternsize`, `opacity` or `imageindex` — is drawn like any
-sizeless pattern, at opacity 1 (`fx.bare = fill`); `skip`, an arm, draws nothing for it on both
-draw paths. Under `fill` every one of the 587 corpus FX-Maps holding such a cell renders as a
-constant (FORMAT-NOTES.md, "`fx.bare`"). The value is
+nibble 0 (and not a marker) with no `patternsize`, `opacity` or `imageindex` — draws nothing: it
+only places regions (`fx.bare = skip`, on both draw paths). `fill`, an arm, draws it like any
+sizeless pattern at opacity 1, and under `max` that square hides every pattern after it: all
+587 corpus FX-Maps holding such a cell then render as a constant, and none do under `skip`
+(FORMAT-NOTES.md, "`fx.bare`"). The value is
 `clip(opacity, −1, 1) · gain · profile` (absent opacity ⇒ 1, `fx.negopacity = signed`), times
 the named input image sampled over the footprint when `imageindex` is present (absent on a
 record with exactly one image input, it names that input). Patterns combine by **`max`**, for
@@ -1675,7 +1676,7 @@ fault upstream of 10055", and "Quadrant subdivision lands in render2"):
   parent's region size; `fx.tree.order = rowmajor`: 0 top-left, 1 top-right, 2 bottom-left,
   3 bottom-right (`clockwise`, `colmajor` arms).
 - `patternsize` and `frameoffset` are in REGION units; a sizeless, non-marker cell fills its
-  region (`fx.bare = fill`; see **Drawing** for a cell that states nothing to draw with). A cell's programs run once PER REGION with a fresh `rand`
+  region, except a cell that states nothing to draw with, which draws nothing (`fx.bare = skip`, **Drawing**). A cell's programs run once PER REGION with a fresh `rand`
   draw; `$number` stays the emission index.
 - **Open:** `branchoffset`'s unit (`fx.tree.branchoffset = canvas`; it offsets the cell's
   pattern and children, and Bricks 9804's author halves it by hand per level), the quadrant
@@ -1795,7 +1796,7 @@ The defaults, by the section that states them (each arbitrated in FORMAT-NOTES.m
 |---|---|
 | §13.2 | `graph.outputsize = pergraph` (every floor it touched re-taken; FORMAT-NOTES.md, "STATUS: the re-take is done") |
 | §13.6 | `transformation.matrix = columns`; `pixelprocessor.outputsize = grid`, `.rand = pixel`, `.sample = nearest`; `blur.reference_px = 256`; `warp.reference_px = tag`; `dirmotionblur.extent = total`; `distance.propagate = spread` (33 Bricks correlation floors re-taken under it) |
-| §13.7 | `fx.leafcount = header`; `fx.chain = tree` with `program.select = lazy` (without `lazy` it turns 10081's row-start count into 2³¹ − 1); `fx.header = read`; `fx.combine = max`; `fx.negopacity = signed`; `fx.hurst = exp`; `fx.hurst.depth = root`; `fx.brick = fill`; `fx.halfbell = gaussian` |
+| §13.7 | `fx.leafcount = header`; `fx.chain = tree` with `program.select = lazy` (without `lazy` it turns 10081's row-start count into 2³¹ − 1); `fx.header = read`; `fx.combine = max`; `fx.negopacity = signed`; `fx.hurst = exp`; `fx.hurst.depth = root`; `fx.brick = fill`; `fx.halfbell = gaussian`; `fx.bare = skip` (on structure alone: no scored output holds such a cell) |
 | §13.8 | `warp.default_intensity = 1.0`, `normal.default_intensity = 1.0`, `blur.default_intensity = 10.0`, `dirmotionblur.default_intensity = 10.0`, `nonfinite.fill = 0.0` |
 | §8 | `fx.pointercell = switch`, on the structure alone as `fx.leafcount`: the ratchet packs carry no such record (FORMAT-NOTES.md, "The `0x9`/`0x49` pointer-cell list") |
 

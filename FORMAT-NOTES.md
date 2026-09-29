@@ -64372,3 +64372,21 @@ does not show that what `skip` draws is the engine's picture.
 
 NOT PROMOTED in this commit: `fx.bare` is committed with default `fill`, both paths, and the
 ratchet, `test_fxtree`, render2 suites (44) and the fast lane (19) pass with it.
+
+## `fx.bare = skip` promoted, and the README's status section re-taken from scripts
+
+Owner's decision, 2026-09-29, on the structural census above (587 of 587 FX-Maps holding a cell
+that states nothing to draw with are exact constants under `fill`, structured under `skip`) --
+the evidence class that settled `fx.leafcount`. `skip` is the call-site default in `fx.splat` and
+`fxtree._emit` and first in `assume.QUESTIONS`; `fill` is the arm. No floor moves: the render2
+ratchet passes under the new default, 52 x 3, census unchanged at 21
+(`bare_0928/ratchet_default_skip.log`); render2 suites 44, fast lane 19.
+
+README "Where the format stands" rewritten from runs made the same night rather than from the
+2026-08 snapshot it carried: `audit_corpus.py` (437 files, 903,616 records, 3.6 min; record bytes
+96.548% / 99.535% / 99.990%, 27,456 uninterpreted, `audit_0928.log`), `nativeguard.py` over all
+five packs (`ng_all_0928.log`: Chesterfield +0.950, Auras +0.873, Bricks +0.636, RoofTiles +0.558,
+Sandy +0.176) and `grooves.py` under the defaults (`grooves_0928.log`). The last says the
+round-tile joints are STILL 0.75 of the export's width and half its depth (floor/face 0.148
+against 0.278 / 0.293): `dirmotionblur.extent = x8render`, which fixes them, was never promoted,
+and the README now lists it as open rather than implying it was settled.

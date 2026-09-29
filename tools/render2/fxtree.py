@@ -677,7 +677,7 @@ def _emit(rec, run, cells, order, roots, frame, numbers, cache):
             and got.get("opacity") is None
             and got.get("imageindex") is None
             and fx_patterntype(cell.tag) is None
-            and assume.assumed("fx.bare", "fill") == "skip"
+            and assume.assumed("fx.bare", "skip") == "skip"
         )
         if bare:
             assume.note(rec.index)

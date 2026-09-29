@@ -581,17 +581,16 @@ QUESTIONS = {
     # UNITS (`fx._cell`'s test, on the tree path it declines). Bricks 3030: 841 integer
     # offsets that the canvas reading wraps onto one point of the torus. See `fxtree._emit`.
     "fx.tree.gridcell": ("canvas", "cell"),
-    # A BARE CELL -- pattern nibble 0, and no `patternsize`, `opacity` or `imageindex` field
-    # in its tag -- is drawn at its region (tree) or the canvas (flat, via `fx.sizeless`) at
-    # opacity 1 under `fill` (the reading as it was) and draws nothing under `skip`, on BOTH
-    # draw paths. FORMAT-NOTES.md records that Substance's `patterntype` 0 is a Quadrant that
-    # subdivides without drawing and that nibble 0 cannot tell it from 1 or 2; a cell stating
-    # nothing to draw with is the candidate. RoofTiles 1201/1208/1378/1385 are a flat 0.47 and
-    # 1213 a flat 1.0 under `fill` on the default draw as well as the tree: their `0x420018`
-    # cells paint the canvas and the `waves` below (opacity ~0.03) cannot show under `max`.
-    # Corpus: 590 FX-Maps in 45 files carry one (`fx_table`'s view). FORMAT-NOTES.md,
-    # "`fx.bare`".
-    "fx.bare": ("fill", "skip"),
+    # A CELL THAT STATES NOTHING TO DRAW WITH -- pattern nibble 0, not a marker, and no
+    # `patternsize`, `opacity` or `imageindex` field in its tag. `skip` IS THE DEFAULT
+    # (2026-09-28): it places regions (tree) and draws nothing, on BOTH draw paths. `fill`,
+    # the reading before and now an arm, draws it at its region (tree) or the canvas (flat,
+    # via `fx.sizeless`) at opacity 1, and under `max` that square hides every pattern after
+    # it: 587 of 587 corpus FX-Maps holding such a cell render as an exact constant under
+    # `fill` and as structure under `skip`, 0 the other way (RoofTiles 1201/1208/1378/1385 =
+    # 0.47, 1213 = 1.0). No scored output moves -- promoted on that structural census, as
+    # `fx.leafcount` was. FORMAT-NOTES.md, "`fx.bare`" and "`fx.bare = skip` promoted".
+    "fx.bare": ("skip", "fill"),
     "fx.tree.branchoffset": ("canvas", "region"),
     "fx.tree.order": ("rowmajor", "clockwise", "colmajor"),
     # HOW A `set` UNDER A `select` BRANCH EXECUTES. `eager` is the transpiler as it stood:
