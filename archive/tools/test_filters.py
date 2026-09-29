@@ -1948,11 +1948,18 @@ GUARD_TABLE = {
         was=(0.9, 256),
         companion=('bricks_tile_octaves', 0.9),
     ),
+    # RE-TAKEN when `fx.halfbell = gaussian` became the default (the wheel's spokes drawn
+    # ~10 px wide as the export's, not ~35). The ratchet failed on this row and 004/roughness
+    # only, dc adverse at every grid (+0.0070 -> +0.0128, still inside DC_BAR) -- thinner
+    # dark spokes, less dark area -- while corr rose +0.77 -> +0.84; approved as a floor
+    # decision by the owner, 2026-09-28. Was: 128 (+0.7707, 0.9704, +0.0070), 256 (+0.7744,
+    # 1.0082, +0.0070), 512 (+0.7750, 1.0444, +0.0069). FORMAT-NOTES.md, "`fx.halfbell =
+    # gaussian` promoted".
     ('Kutejnikov__Bricks_and_tiles', '004/ambientocclusion', 0): Entry(
         at={
-            128: (+0.7707, 0.9704, +0.0070),
-            256: (+0.7744, 1.0082, +0.0070),
-            512: (+0.7750, 1.0444, +0.0069),
+            128: (+0.8389, 0.9949, +0.0128),
+            256: (+0.8387, 1.0336, +0.0128),
+            512: (+0.8381, 1.0556, +0.0128),
         },
         was=(0.7, 256),
         companion=('bricks_tile_octaves', 0.7),
@@ -2052,11 +2059,16 @@ GUARD_TABLE = {
         was=(0.76, 256),
         companion=('bricks_tile_octaves', 0.76),
     ),
+    # RE-TAKEN with 004/ambientocclusion when `fx.halfbell = gaussian` became the default:
+    # dc -0.2895 -> -0.3066 at every grid (thinner BRIGHT spokes on a channel already ~0.29
+    # too dark, a level fault in `HEALTH_CENSUS` that belongs to `quadrant`), corr +0.62 ->
+    # +0.69; approved by the owner, 2026-09-28. Was: 128 (+0.6153, 3.7416, -0.2895), 256
+    # (+0.6184, 3.8094, -0.2895), 512 (+0.6188, 3.8358, -0.2896).
     ('Kutejnikov__Bricks_and_tiles', '004/roughness', 0): Entry(
         at={
-            128: (+0.6153, 3.7416, -0.2895),
-            256: (+0.6184, 3.8094, -0.2895),
-            512: (+0.6188, 3.8358, -0.2896),
+            128: (+0.6864, 3.2716, -0.3066),
+            256: (+0.6869, 3.3870, -0.3066),
+            512: (+0.6866, 3.4256, -0.3067),
         },
         was=(0.57, 256),
         companion=('bricks_tile_octaves', 0.57),

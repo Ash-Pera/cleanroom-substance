@@ -1621,8 +1621,9 @@ def profile_value(lx, ly, profile):
         # curve. Emulated (4910 reproduced to max |diff| 0.0013) the arm widths at three
         # radii against what the export implies: paraboloid 1.71 / 1.73 / 1.79, bell 1.34 /
         # 1.33 / 1.37, cone 1.38 / 1.40 / 1.43, gaussian 1.04 / 1.03 / 1.03 -- the width AND
-        # its taper. See FORMAT-NOTES.md, "the six-spoke wheel".
-        if assume.assumed("fx.halfbell", "paraboloid") == "gaussian":
+        # its taper. See FORMAT-NOTES.md, "the six-spoke wheel". `gaussian` is the default
+        # since "`fx.halfbell = gaussian` promoted"; `paraboloid` is the arm.
+        if assume.assumed("fx.halfbell", "gaussian") == "gaussian":
             t = np.exp(-4.0 * r * r)
         else:
             t = np.clip(1.0 - r * r, 0.0, 1.0)

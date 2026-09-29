@@ -25,9 +25,11 @@ px. DO NOT READ A ROTATION off a six-fold profile's harmonic phase: it flips by 
 whenever the dark duty crosses a half, which is how a phantom -25..-30 degree "rotation"
 was once reported.
 
-Recorded values to reproduce (default / every arm):
+Recorded values to reproduce (the 2026-09-24 default / every arm):
     joints  004 floor/face 0.043 / ~0.30, width ratio 0.75 / 1.00;  005 the same
     spokes  (256,256) 35.6 34.0 33.0 px / ~13.4 11.8 9.9;  export 11.3 9.6 8.3
+The spokes' second column is today's default (`fx.halfbell = gaussian`, promoted 2026-09-28);
+`fx.halfbell=paraboloid` gives the first.
 """
 import os, sys, time
 import numpy as np

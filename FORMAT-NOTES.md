@@ -64110,3 +64110,67 @@ says 17 of 52). With it: the render2 ratchet passes, 52 entries x 3 grids, 0 con
 
 `fx.tree.bare` stays out of this commit: its `fxtree.py` and `assume.py` hunks are in the
 working tree and untested beyond its default being inert.
+
+## `fx.halfbell = gaussian` promoted: the wheel's spokes land, the `distance` stage after them is calibrated by the wheel's own RING, and what remains is an ~8% arm width amplified by that stage -- plus a per-wheel rotation that is `rand`
+
+LOOKED FIRST (`refsheet.py Bricks` default and under the arm, 004 height / normal / roughness
+beside the export: `~/Documents/cleanroom-substance-runs/spokes_0928/spokes_before_after.png`).
+The default draws each wheel as fat black wedges; under `gaussian` all four wheels in all three
+channels are thin spokes and a thin ring, as the export's. The faint giant arc and the dark
+004 roughness level are still there under both -- `quadrant`'s, not this arm's.
+
+WHERE THE LAST ~1.25x LIVES. `grooves.py` read the rendered spokes at ~1.2x the export's; a
+full-resolution stash of the wheel's chain (`spokes_0928/wheelstash.py`, 4910 ... 5643,
+`wheel_chain.png`) puts it at one stage. Spoke FWHM at wheel (256,256), px at 1024:
+
+    r      4923 (disc - star)   4961 (distance)   5643 (height)   export
+    80     35.0                 23.0              12.8            9.5
+    95     33.7                 21.0              11.0            8.3
+    110    31.8                 19.0               9.0            7.2
+
+`distance` 4961 grows the bright side into every dark band by a fixed amount, so the output
+width is the arm's width MINUS a constant (~22 px). That turns a small arm excess into a large
+output ratio. The same record carries the wheel's dark RING, and the ring is the calibration:
+between the spokes the radial profile of ours and the export agree to the pixel on all four
+wheels -- ring 11 px against 11 (13 on one), hub edge 0.01 / 0.13 / 0.67 against 0.02 / 0.16 /
+0.54 at r = 60 / 64 / 68. So the distance radius and everything downstream of 4923 are right,
+and the residual is the star arm: ~32 px wanted against 35, about 8%, which is ~0.75 px a side
+at the record's 256-px tag. The cross-profiles agree: the export's spoke is a V (floor ~2-4
+px), ours a U with an ~8 px flat floor where the ramp from each side does not meet.
+
+NOT FITTED. 8% of one construct cannot choose between the gaussian's constant, 4917's stamp
+size (0.92, itself solved from our renders), the 0.2603 / 0.365 levels window and a
+pixel-centre convention -- each would move it by that much, and nothing else scored reads any
+of them. `gaussian` stays as `fxrender`'s own formula.
+
+THE ROTATION IS A SEED, NOT A FAULT. The spokes sit at an exact 60-degree spacing in both, and
+each wheel's phase differs: ours 34 / 29 / 53 / 42 degrees (mod 60) against the export's 10 /
+18 / 22 / 59, with no common offset. A per-wheel random rotation; our `rand` is not the
+engine's, the same floor as every rand placement in this file.
+
+PROMOTED, with the owner's approval as a floor decision (2026-09-28). The ratchet under the
+arm with `tag` the default (`spokes_0928/ratchet_halfbell.log`, 783 s) fails on two rows,
+dc only, adverse at every grid; no corr or band row regresses, and 004/height, which failed
+here on 2026-09-24, now passes (dc -0.0120 -> +0.0123, the same magnitude):
+
+    004/ambientocclusion dc   +0.0070 -> +0.0128   (inside DC_BAR 0.02)   corr +0.774 -> +0.839
+    004/roughness dc          -0.2895 -> -0.3066   (in HEALTH_CENSUS)     corr +0.618 -> +0.687
+
+Both are the mean moving because thin spokes cover less area than fat wedges; on roughness
+the spokes are the BRIGHT feature on a channel already ~0.29 too dark. Those two entries are
+re-taken (old values in a comment on each); nothing else in `GUARD_TABLE` or `HEALTH_CENSUS`
+is touched. Other Bricks graph-004 rows at 256, table value -> now: height +0.433 -> +0.538,
+normal x / y +0.645 / +0.644 -> +0.737 / +0.747, basecolor +0.538 / +0.652 / +0.663 -> +0.610 /
++0.716 / +0.720, normal z +0.820 -> +0.801 (the one loss, as on 2026-09-24).
+
+A HAZARD FOR THE NEXT RE-TAKE: measured against the table, every Bricks row in graphs 002-005
+reads as "moved" (`spokes_0928/retake_bricks_gauss.log`), because the table predates `tag` and
+only 004/height was re-taken for it. Those moves pass the ratchet by being non-adverse. They
+are `tag`'s, not this arm's: `fx.halfbell` moved graph-004 rows only on 2026-09-24's native
+guard. Do not read a halfbell reach off this log.
+
+WITH THE NEW DEFAULT AND THE TWO ENTRIES RE-TAKEN: the render2 ratchet passes, 52 entries x 3
+grids, 0 constant yields, 21 quantities outside a health bar as recorded -- the census is
+unchanged (`spokes_0928/ratchet_halfbell_default.log`, 700 s); fast lane 19; `test_fxtree` 8;
+`test_the_new_guard_does_not_weaken_the_old_floors` passes. `fx.tree.bare`'s hunks stay out
+of this commit, as before.

@@ -539,11 +539,13 @@ QUESTIONS = {
     # not settled (Bricks 9804's author halves it per level by hand, which argues canvas).
     # Which output is which quadrant is not settled either. Graph 003 cannot tell any of
     # these apart -- every instrument moves less than the renderer's own seed floor.
-    # WHICH CURVE `halfbell` (patterntype 12) HALVES. `paraboloid` is the modelled guess as
-    # it stood; `gaussian` is `fxrender`'s own exp(-4 r^2). Bricks 004's six-spoke wheel
-    # reads the curve directly (a low levels window on six type-12 arms), and against the
-    # export the arm width is 1.71-1.79x too wide under `paraboloid` and 1.03-1.04x under
-    # `gaussian`, taper included. See `fxrender.profile_value`.
+    # WHICH CURVE `halfbell` (patterntype 12) HALVES. `gaussian` IS THE DEFAULT: `fxrender`'s
+    # own exp(-4 r^2). `paraboloid` is the modelled guess as it stood, now an arm. Bricks
+    # 004's six-spoke wheel reads the curve directly (a low levels window on six type-12
+    # arms), and against the export the arm width is 1.71-1.79x too wide under `paraboloid`
+    # and 1.03-1.04x under `gaussian`, taper included. Promoted after the ratchet with two
+    # entries re-taken (004/AO and 004/roughness dc); see FORMAT-NOTES.md, "`fx.halfbell =
+    # gaussian` promoted". See `fxrender.profile_value`.
     # WHICH CURVE `bell` (patterntype 5) IS. `t2` is the modelled (1 - r^2)^2 as it stood;
     # `gaussian` is `fxrender`'s own exp(-4 r^2). Raised, not decided, by `fx.halfbell`
     # matching the export as a halved gaussian. `bell` is ~94% of drawn patterns, so this
@@ -555,7 +557,7 @@ QUESTIONS = {
     # record of every pack. See `engine.render`.
     "engine.bitdepth": ("float", "8", "16"),
     "fx.bell": ("t2", "gaussian"),
-    "fx.halfbell": ("paraboloid", "gaussian"),
+    "fx.halfbell": ("gaussian", "paraboloid"),
     # WHICH `0x89` THE TREE WALK MAY CONSUME AS A CHILD GATE. `consume` (the reading as it
     # was) takes any gate a cell's pointer lands on; `twoway` takes only one carrying BOTH
     # children. Consuming a gate removes it from the chain walk (`fxtree.emissions` drops
