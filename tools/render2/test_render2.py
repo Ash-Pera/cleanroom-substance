@@ -1564,8 +1564,64 @@ def test_the_two_node_models_read_the_same_chain():
     )
 
 
+def test_every_call_site_default_is_its_questions_first_candidate():
+    """`assume.assumed(key, default)` returns `default` outside a scope, so the CALL SITE is
+    what runs; `assume.QUESTIONS[key][0]` is only a convention -- and it had drifted from
+    the call site on `fx.gridcount` (`divisor` ran, `numberadded` was listed first) and
+    `normal.inversedy` (`field1` ran, `ignore` first), found while cleaning SPEC.md. This
+    holds the two together: every literal default passed at a call site in the live tree
+    (tools/ and tools/render2/, not archive/) is its key's first candidate, and a key's call
+    sites agree with each other. A call site passing no default reads `None` and its effective
+    reading is the code's else-branch, which no parse can see (`emboss.intensity` was one
+    such drift); those are left to the SPEC's §13.9 table. FORMAT-NOTES.md, "The call-site
+    defaults, checked"."""
+    import ast
+    import assume
+
+    root = os.path.dirname(_HERE)
+    files = [
+        f
+        for f in glob.glob(os.path.join(root, "*.py")) + glob.glob(os.path.join(_HERE, "*.py"))
+        if not os.path.basename(f).startswith("test_")
+    ]
+    seen = {}
+    for f in files:
+        tree = ast.parse(open(f).read(), f)
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "assumed"
+                and len(node.args) >= 2
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                continue
+            try:
+                val = ast.literal_eval(node.args[1])
+            except ValueError:
+                continue  # a computed default (DEFAULTS[...]) is not a literal to compare
+            if val is None:
+                continue
+            seen.setdefault(node.args[0].value, set()).add(
+                (val, "%s:%d" % (os.path.basename(f), node.lineno))
+            )
+    bad = []
+    for key, sites in sorted(seen.items()):
+        vals = {v for v, _ in sites}
+        if len(vals) > 1:
+            bad.append((key, "call sites disagree", sorted(sites, key=str)))
+        q = assume.QUESTIONS.get(key)
+        if q and q[0] not in vals:
+            bad.append((key, "QUESTIONS first is %r" % (q[0],), sorted(sites, key=str)))
+    assert not bad, bad
+    print("ok  %d keys: every literal call-site default is its question's first candidate"
+          % len(seen))
+
+
 if __name__ == "__main__":
     for fn in (
+        test_every_call_site_default_is_its_questions_first_candidate,
         test_every_parameter_a_filter_asks_for_can_be_supplied,
         test_the_declared_fields_the_legend_ignores_are_the_known_ones,
         test_walk_reads_the_parameters_the_memo_cannot,

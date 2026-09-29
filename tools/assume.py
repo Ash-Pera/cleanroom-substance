@@ -100,7 +100,11 @@ QUESTIONS = {
     # 'word1bit2' is the archived renderer's reading -- bit 2 as a BOOLEAN, which sees
     # a baked flag and misses the 38 corpus records whose field 1 holds a program.
     # 'field1' reads the two-bit code the walk declares, both arms.
-    "normal.inversedy": ("ignore", "word1bit2", "field1"),
+    # `field1` IS THE DEFAULT (the call site's; this tuple listed `ignore` first until
+    # 2026-09-28). Re-checked then on the ratchet: `ignore` flips Bricks' green channel on all
+    # four normal outputs (corr ~+0.84 -> -0.84); `word1bit2` passes (it differs from
+    # `field1` only on the 38 program-valued records, none on a guarded output).
+    "normal.inversedy": ("field1", "ignore", "word1bit2"),
     # THE GRID `normal`'s INTENSITY IS EXPRESSED AGAINST. Default 256.0 -- a constant, not
     # the record's size. Measured against the engine's own exports, with no render of ours
     # in the loop: regressing the exported normal map's slope on the exported height map's
@@ -170,8 +174,16 @@ QUESTIONS = {
     ),
     "fx.sizeless": ("fill", "skip", "half", "quarter"),
     "fx.rootentry": ("draw", "skip"),
-    "emboss.intensity": ("program", "reference"),
-    "fx.gridcount": ("numberadded", "divisor"),
+    # `reference` IS WHAT RUNS: the call sites pass no default, and outside a scope
+    # `f_emboss` uses its constant k = 0.1. Re-checked 2026-09-28: `program` fails the
+    # ratchet on Bricks 002 basecolor, all three channels (-0.05 to -0.09 corr).
+    "emboss.intensity": ("reference", "program"),
+    # `divisor` IS THE DEFAULT (the call site's; this tuple listed `numberadded` first until
+    # 2026-09-28). Decided decisively when `numberadded` lost 31 of Chesterfield's 41 buttons;
+    # re-checked 2026-09-28 it is INERT on Chesterfield, Auras and Bricks -- `fx.leafcount =
+    # header` and `fx.chain = tree` now reach the same draws (Bricks 553/2971: 625 as `grid`
+    # vs 1 as `chain`, outputs bit-identical). Kept as the established reading.
+    "fx.gridcount": ("divisor", "numberadded"),
     # WHICH PROGRAMS `grid_width` READS `floor($number / N)` FROM. `slot26` is the chain
     # spelling alone -- a program that writes the placement into slot 26; `branchoffset`
     # adds the table entry's own bit-22 program, which returns the position instead.

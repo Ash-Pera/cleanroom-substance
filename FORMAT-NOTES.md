@@ -64294,3 +64294,36 @@ not their `QUESTIONS` first candidate (`divisor` vs `numberadded`, `field1` vs `
 call site is what runs. Stale code comments: `sbsasm.node_shape` (0x1DB, bit 6), `leaf_successor`,
 `fxchain`'s SCOPE note, `fx_table`'s FX_PAYLOAD_PROG count. `decompose` does not apply `text`'s
 `w1` order (render2 does; 14 records).
+
+## The call-site defaults, checked: three `QUESTIONS` tuples listed a non-default first; the running reading is right in all three, and `fx.gridcount` is now INERT on every reference pack
+
+`assume.assumed(key, default)` returns the call site's `default`, so that is what runs; the
+first candidate in `assume.QUESTIONS` is only a convention. The SPEC cleanup found two keys
+where they differ, and an audit of the call sites that pass NO default (whose reading is the
+code's else-branch) found a third. Each non-running arm put through the render2 ratchet on
+today's renderer (`~/Documents/cleanroom-substance-runs/defaults_0928/`):
+
+    arm                            ratchet    what it does
+    normal.inversedy = ignore      FAILS      Bricks 002/003/004/005 normal ch1 corr ~+0.84 -> -0.84
+    normal.inversedy = word1bit2   passes     differs from field1 only on 38 program-valued records
+    emboss.intensity = program     FAILS      Bricks 002 basecolor ch0/1/2 -0.05..-0.09 corr
+    fx.gridcount = numberadded     passes     bit-identical outputs (below)
+
+So `field1`, `reference` (the constant k = 0.1) and `divisor` stand, and the three tuples now
+list them first. `test_render2.test_every_call_site_default_is_its_questions_first_candidate`
+(new) parses every literal `assume.assumed(key, default)` in `tools/` and `tools/render2/` and
+fails if one is not its key's first candidate or a key's sites disagree; it caught exactly the
+two literal cases. A `None`-default site cannot be parsed for its reading -- `emboss.intensity`
+was found by reading `f_emboss` -- so those stay a reviewer's job.
+
+`fx.gridcount` IS NO LONGER DOING ANYTHING. It was decided decisively (53982: `numberadded`
+found 10 of Chesterfield's 41 buttons, height corr +0.962 -> -0.008). Re-measured by evaluating
+`emission_count` under both arms at every call during a native render of all five packs
+(`gridcount_probe.py`): Chesterfield 4 records, Bricks 18, Sandy 1, Auras and RoofTiles 0 differ
+in (count, mode) -- and on every one either the count is equal and only the drive mode differs
+(`grid` vs `placement`), or, on Bricks 553 and 2971, `numberadded` gives count 1 in `chain`
+mode where `divisor` gives 625 as a grid, and the chain walk itself drives the same 625 draws.
+The six Bricks records stashed (553, 2971 and the 003/005 height and roughness outputs) and all
+of Sandy's outputs are BIT-IDENTICAL under both arms. What absorbed it: `fx.leafcount = header`
+(a leaf's baked count stands in when `numberadded` is 1) and `fx.chain = tree`, both added after
+the decision. `divisor` stays as the established reading; the arm could be retired.
