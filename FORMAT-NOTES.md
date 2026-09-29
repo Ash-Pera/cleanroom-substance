@@ -64390,3 +64390,36 @@ Sandy +0.176) and `grooves.py` under the defaults (`grooves_0928.log`). The last
 round-tile joints are STILL 0.75 of the export's width and half its depth (floor/face 0.148
 against 0.278 / 0.293): `dirmotionblur.extent = x8render`, which fixes them, was never promoted,
 and the README now lists it as open rather than implying it was settled.
+
+## `dirmotionblur.extent = x8render` REFUSED for promotion: it is a uniform 2x on Bricks, and the same blur stacks feed the joints it fixes and graph 003's detail it destroys -- so the joint fault is not the blur's unit
+
+Tried for promotion on 2026-09-29 (the README had listed it as the fix for the round-tile
+joints). Logs in `~/Documents/cleanroom-substance-runs/x8_0929/`.
+
+THE RATCHET REFUSES, 18 rows (`ratchet_x8.log`), almost all Bricks 003: basecolor corr on all
+three channels, height / normal band, normal ch1 and ch2 corr, roughness corr and dc; plus
+004/basecolor and 005/basecolor dc and 004/normal ch2 corr.
+
+NATIVE, EVERY PACK against tonight's defaults (`ng_all_x8.log` vs `bare_0928/ng_all_0928.log`):
+INERT on Auras, RoofTiles, Chesterfield and SandyStonePath -- identical means. At 2048 a tag-256
+record gets `8I/2048 = I/256`, which IS `total`; the earlier "x8render gets Sandy's colour right"
+was relative to `radius`, not to the default. On Bricks a trade that nets negative, mean
++0.636 -> +0.629:
+
+    gains    002 basecolor +0.02..+0.03   004 basecolor +0.02..+0.03   005 basecolor +0.01
+    losses   003 basecolor -0.05..-0.08, height -0.05 (band 1.03 -> 0.80), normal -0.02..-0.04
+             (band 0.92 -> 0.66), roughness -0.03; 001 basecolor -0.04..-0.08
+
+LOOKED (`x8_cmp.png`, default | x8render | export, 003 and 005 height and normal): 005's joints
+broaden and soften toward the export; 003's bevels soften too and its faces lose the fine
+detail the export keeps.
+
+WHY NO UNIT CAN DO IT. Every `dirmotionblur` in every Bricks graph has a 256 tag and renders at
+1024, so every candidate unit is a uniform multiple here. And the records on the two sides are
+the SAME constructs: the blurs only in 003's cone and those only in 004/005's are baked at the
+same intensities (7.432, 1.947, 0.535, 0.495 on both sides; 003 also has 4 program-valued).
+Whatever length makes 004/005's joints right makes 003's copies of the same stacks twice too
+long. So the joints' deficit is not in the blur -- `x8render` / `radius` compensate for
+something upstream of it in the joint construct (the width of what the stack blurs is the
+first candidate), and that is the next measurement. `total` stays the default; the README's
+"not yet promoted" line is corrected to say this.

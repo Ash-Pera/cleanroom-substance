@@ -199,8 +199,10 @@ What is visibly wrong, each with its section in `FORMAT-NOTES.md`:
     walk (`fx.subdivide = quadrant`) fixes the level and removes a faint canvas-sized ring from
     graphs 003–005, but costs colour elsewhere (Chesterfield's blue), so it is not the default.
   - **Bricks' round-tile mortar joints are 0.75 of the export's width and half its depth.**
-    `dirmotionblur.extent = x8render` puts them on the export (width ratio 1.00) without
-    the colour cost `radius` had on SandyStonePath; not yet promoted.
+    Doubling the `dirmotionblur` length (`x8render` or `radius`) widens them to the export
+    but over-blurs graph 003 by the same amount, because the same blur stacks at the same
+    intensities feed both; the ratchet refuses it on 18 rows. The fault is upstream of the
+    blur, in the joint construct, and is not yet found.
   - **Tile faces carry round pits where the export has an irregular mottle**: which FX entries
     sum rather than take the max is not decided by any field read so far.
   - **SandyStonePath draws cog-shaped rosettes on every tile**: an edge detector amplifying
