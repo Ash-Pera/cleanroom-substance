@@ -128,7 +128,15 @@ def main(argv):
     if not packs:
         raise SystemExit("refsheet: no pack matching %r under %s" % (args[0], rc.PACKS))
     choices = arms(args[1] if len(args) > 1 else "")
-    out_dir = opts.get("out") or "/tmp"
+    # THE DIRECTORY IS MADE AND PROVED WRITABLE BEFORE ANY RENDER. It used to be opened only
+    # at `im.save`, after a native render (Bricks ~12 min), so a missing `--out` directory threw
+    # the whole render away -- twice in one session on 2026-09-28. The default is the runs
+    # directory, not /tmp: a container restart on 2026-09-24 wiped /tmp mid-sweep.
+    out_dir = os.path.expanduser(
+        opts.get("out") or os.path.join("~", "Documents", "cleanroom-substance-runs"))
+    os.makedirs(out_dir, exist_ok=True)
+    if not os.access(out_dir, os.W_OK):
+        raise SystemExit("refsheet: cannot write to %r" % out_dir)
     for pack, refs in sorted(packs.items()):
         sheet(pack, refs, choices, out_dir)
     return 0
