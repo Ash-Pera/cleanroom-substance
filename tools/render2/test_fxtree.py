@@ -200,9 +200,13 @@ def test_the_grid_drawer_is_the_per_pattern_loop():
         assert a.shape == b.shape == (H, W, nchan)
         assert a.max() > 0.5
         err = float(np.abs(a - b).max())
-        # `max` is order-free and the casts are the loop's own, so it is an EQUALITY;
-        # `add` sums in a different order and is held to float32 noise.
-        tol = 0.0 if mode == "max" else 1e-4
+        # `max` is order-free and was an EQUALITY while both drawers were numpy in float32;
+        # the per-pattern loop now draws through `fxjit`'s compiled raster, which forms a
+        # footprint's local coordinates in float64, so `max` is held to a few float32 ulps
+        # (the owner's rule, 2026-09-28: speed does not need bit-equality). With
+        # `fxjit.ENABLED = False` it is exact again. `add` sums in a different order and is
+        # held to float32 noise.
+        tol = 1e-6 if mode == "max" else 1e-4
         assert err <= tol, (nchan, with_image, mode, err)
     print("ok  the grid drawer equals the per-pattern loop on %d synthetic batches" % (4 * 4))
 
@@ -225,7 +229,11 @@ def test_a_depth_zero_record_draws_the_same_under_both_arms():
             continue
         tree, nt = _render(asm, rec.index, cap=128, **{"fx.subdivide": "tree"})
         assert nf == nt, (rec.index, nf, nt)
-        assert np.array_equal(flat, tree), (rec.index, float(np.abs(flat - tree).max()))
+        # Was `np.array_equal`: the flat walk now draws through `fxjit`'s compiled raster
+        # (float64 footprint coordinates) and the tree through numpy, so the two agree to
+        # float32 ulps, not bits -- the owner's rule, 2026-09-28. Exact with fxjit off.
+        err = float(np.abs(flat - tree).max())
+        assert err <= 1e-6, (rec.index, err)
         checked += 1
         if checked >= 12:
             break

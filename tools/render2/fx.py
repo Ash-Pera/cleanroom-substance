@@ -58,6 +58,7 @@ import numpy as np
 import assume
 import disasm
 import fxchain
+import fxjit
 import fxnodes
 import fxrender
 import fxtree
@@ -978,8 +979,15 @@ def splat(rec, patterns, W, H, images=None, header=None):
                 )
         patterns = expanded
 
+    # THE COMPILED RASTER (`fxjit`, numba when importable): analytic-profile tiles are
+    # queued and drawn in one pass per flush, in order; anything the kernel does not draw
+    # (an image pattern, a tree batch, an unknown profile) flushes the queue first and is
+    # drawn below as before, so the order of draws on every pixel is unchanged.
+    queue = fxjit.TileQueue(canvas, pxg, pyg) if (FAST_RASTER and fxjit.active()) else None
     for p in patterns:
         if isinstance(p, fxtree.Batch):
+            if queue is not None:
+                queue.flush()
             fxtree.draw(canvas, p, W, H, images=images, header=header)
             continue
         tag = p.get("_tag")
@@ -1053,6 +1061,13 @@ def splat(rec, patterns, W, H, images=None, header=None):
             th = -th
         ct, st = math.cos(th), math.sin(th)
         prof = forced if forced is not None else _profile_for(p)
+        code = (
+            fxjit.profile_code(prof, assume.assumed)
+            if (queue is not None and src is None)
+            else None
+        )
+        if queue is not None and code is None:
+            queue.flush()
         hx = 0.5 * (sx * abs(ct) + sy * abs(st))
         hy = 0.5 * (sx * abs(st) + sy * abs(ct))
         reach = int(min(3, math.ceil(max(sx, sy))))
@@ -1068,6 +1083,10 @@ def splat(rec, patterns, W, H, images=None, header=None):
                 r0 = max(math.floor((uy - hy + 0.5) * H - 0.5), 0)
                 r1 = min(math.ceil((uy + hy + 0.5) * H - 0.5), H - 1)
                 if c0 > c1 or r0 > r1:
+                    continue
+                if code is not None:
+                    queue.add(ux, uy, ct, st, sx, sy, c0, c1, r0, r1, code,
+                              fxjit.MODES[pmode], col)
                     continue
                 if FAST_RASTER:
                     dx = (pxg[c0 : c1 + 1] - ux)[None, :]
@@ -1114,6 +1133,8 @@ def splat(rec, patterns, W, H, images=None, header=None):
                     else got[:, :nchan] * col * cov[hit, None],
                     pmode,
                 )
+    if queue is not None:
+        queue.flush()
     return np.clip(canvas, 0.0, 1.0)
 
 

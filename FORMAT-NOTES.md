@@ -64225,3 +64225,34 @@ already had an equality-bound speed pass (`fx._coverage`, `BLEND_IN_PLACE`); its
 cost is the Python loop drawing overlapping footprints, which wants a compiled rasteriser.
 numba 0.60 is installed and a fused bilinear kernel measured 3.7x on the general sampler, but
 no file in this repository imports it -- adding it is the owner's call.
+
+## numba: `fxjit` compiles the FX-Map raster and the general bilinear sampler -- native Bricks 287 s -> 161 s, the ratchet 357 s -> 232 s, optional and switchable
+
+Approved by the owner (2026-09-28) as an OPTIONAL dependency: `tools/render2/fxjit.py` imports
+numba if it can and sets `AVAILABLE`; without it every caller keeps its numpy path.
+`fxjit.ENABLED = False` switches the kernels off in-process for an A/B.
+
+  1. THE RASTER. `fx.splat` still walks its patterns in Python (placement, size, opacity,
+     tiling), but queues each analytic-profile tile (`fxjit.TileQueue`) and one kernel draws
+     the queue, parallel over canvas rows, each row applying its draws in queue order -- so
+     `over` and `add` keep their order per pixel. An image pattern, a tree batch or a profile
+     the kernel does not know flushes the queue first and draws as before. Every
+     `fxrender.profile_value` shape is a kernel code; `profile_code` resolves the modelled
+     shapes' arms (`fx.bell`, `fx.halfbell`, `fx.brick`) with the SAME defaults
+     `profile_value` uses -- a changed default there must change there too.
+  2. THE SAMPLER. `ops._fast_sampler`'s bilinear branch on a float image is one compiled pass
+     (`fxjit._bilinear`, the same dtype steps); the identity-grid and exact-texel branches stay
+     numpy. Bit-identical to the numpy form on every case tested, not promised.
+
+NOT BIT-IDENTICAL (owner's rule): the raster forms footprint coordinates in float64 where numpy
+stayed in float32. `test_fxtree`'s two drawer-equality tests move from exact to 1e-6 (both
+exact again with `ENABLED = False`). Whole-pack A/B against the pre-speedup render
+(`profile_0928/ab4_bricks.log`): the same 25 outputs as the shift paths, same worst case (003
+AO max 0.24 on 0.04% of pixels), mean |d| <= 2.3e-5 everywhere; Auras max 1.7e-5.
+
+    Bricks native     587 s (this morning) -> 287 s (shift paths) -> 161 s (numba)
+    Auras native       24 s                ->  15 s               ->   8 s
+    render2 ratchet   700 s                -> 357 s               -> 232 s, passes unchanged
+
+`test_filters` 22 (non-ratchet), render2 suites 43, fast lane 19. The kernels are
+`cache=True`: the first run after an edit to `fxjit.py` pays ~10 s of compilation.

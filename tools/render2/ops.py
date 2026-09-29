@@ -12,6 +12,7 @@ import math
 import numpy as np
 
 import assume
+import fxjit
 import sbsruntime
 import transpile
 
@@ -137,6 +138,9 @@ def _fast_sampler(image):
     # The grid for THIS IMAGE's dimensions, not the caller's. A 128px source sampled on a
     # 256px render grid is not the identity case and must not take that branch.
     grid = _GRIDS.get((W, H)) if IDENTITY_GRID else None
+    jit = fxjit.active() and base.dtype in (np.float32, np.float64)
+    if jit:
+        base = np.ascontiguousarray(base)
 
     def sampler(pos):
         pos = np.asarray(pos)
@@ -168,6 +172,10 @@ def _fast_sampler(image):
             return base[v0m * W + u0m].astype(
                 np.result_type(base.dtype, fdt), copy=False
             )
+        if jit:
+            # ONE COMPILED PASS for the four-corner lerp (`fxjit._bilinear`, same dtype
+            # steps), where the numpy form below is ~20 memory-bound passes.
+            return fxjit._bilinear(base, u, v, W, H)
         if pow2:
             u1m = (u0 + 1) & wm
             v1m = (v0 + 1) & hm
